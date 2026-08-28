@@ -90,6 +90,29 @@ def test_arena_allocates_exact_extent_and_publishes_active_bytes(tmp_path) -> No
         assert status["free_capacity_bytes"] == 16 * _MIB
 
 
+def test_descriptor_publication_never_rewrites_fixed_header(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """运行期只改单 descriptor 和计数，不能重写 epoch/layout 全局头。"""
+
+    with MmapBufferArena(_config(tmp_path)) as arena:
+
+        def reject_full_header_rewrite() -> None:
+            raise AssertionError("descriptor publication rewrote the fixed header")
+
+        monkeypatch.setattr(arena, "_write_header", reject_full_header_rewrite)
+        receipt = arena.allocate(content_length=32, deadline_ns=_deadline())
+        arena.publish_active(receipt)
+        external = MmapBufferArenaExternalAccess(_config(tmp_path))
+        try:
+            with external.acquire_reader_view(receipt) as view:
+                assert bytes(view) == b"\x00" * 32
+        finally:
+            external.close()
+        assert arena.request_reclaim(receipt) == "released"
+
+
 def test_reclaim_holds_all_guards_and_quarantines_blocked_reader(tmp_path) -> None:
     """reader 未释放时不能 FREE/merge，超过 grace 后进入 QUARANTINED。"""
 
@@ -328,6 +351,30 @@ def test_direct_writer_and_reader_views_revalidate_after_guard(tmp_path) -> None
         with arena.acquire_reader_view(transferred) as reader:
             assert bytes(reader) == b"BGR24!"
         assert arena.request_reclaim(transferred) == "released"
+
+
+def test_external_writer_stale_error_reports_expected_and_actual_fence(tmp_path) -> None:
+    """descriptor 复用时诊断必须包含新旧 generation、状态和 publication fence。"""
+
+    with MmapBufferArena(_config(tmp_path)) as arena:
+        stale = arena.allocate(content_length=6, deadline_ns=_deadline())
+        external = MmapBufferArenaExternalAccess(_config(tmp_path))
+        try:
+            assert arena.request_reclaim(stale) == "released"
+            current = arena.allocate(content_length=6, deadline_ns=_deadline())
+            assert current.descriptor_index == stale.descriptor_index
+            with pytest.raises(
+                LocalBufferArenaError,
+                match=(
+                    r"expected_generation=.*actual_generation=.*"
+                    r"publication_generation="
+                ),
+            ):
+                with external.acquire_writer_view(stale):
+                    pass
+            assert arena.request_reclaim(current) == "released"
+        finally:
+            external.close()
 
 
 def test_close_waits_for_borrow_and_remains_retryable(tmp_path) -> None:

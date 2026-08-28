@@ -143,17 +143,25 @@ class WorkflowNodeRuntimeRegistryLoader:
         node_catalog_registry: NodeCatalogRegistry,
         node_pack_loader: NodePackLoader,
         load_custom_node_handlers: bool = True,
+        required_node_type_ids: set[str] | frozenset[str] | None = None,
     ) -> None:
         """初始化 workflow 节点运行时注册表加载器。
 
         参数：
         - node_catalog_registry：统一节点目录注册表。
         - node_pack_loader：node pack 目录加载器。
+        - load_custom_node_handlers：是否加载自定义节点 handler。
+        - required_node_type_ids：固定 runtime 实际使用的节点类型；为空时保持全量加载。
         """
 
         self.node_catalog_registry = node_catalog_registry
         self.node_pack_loader = node_pack_loader
         self.load_custom_node_handlers = bool(load_custom_node_handlers)
+        self.required_node_type_ids = (
+            frozenset(required_node_type_ids)
+            if required_node_type_ids is not None
+            else None
+        )
         self._runtime_registry = WorkflowNodeRuntimeRegistry()
 
     def refresh(self) -> None:
@@ -171,6 +179,11 @@ class WorkflowNodeRuntimeRegistryLoader:
         for manifest in self.node_pack_loader.get_node_pack_manifests():
             node_definitions = node_definitions_by_pack_key.get((manifest.node_pack_id, manifest.version), ())
             if not node_definitions:
+                continue
+            if self.required_node_type_ids is not None and not any(
+                definition.node_type_id in self.required_node_type_ids
+                for definition in node_definitions
+            ):
                 continue
             self._register_node_pack_handlers(
                 manifest=manifest,

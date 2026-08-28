@@ -106,11 +106,7 @@ class WorkflowSubmitter:
                     request.trigger_source.workflow_runtime_id,
                     execution_request,
                     created_by=request.created_by,
-                    execution_acquisition_mode=(
-                        "reject"
-                        if _is_high_speed_trigger_source(request.trigger_source)
-                        else "wait"
-                    ),
+                    execution_acquisition_mode="reject",
                 )
                 timings["trigger_runtime_submit_ms"] = _elapsed_ms(runtime_submit_started_at)
                 workflow_run = invoke_result.workflow_run

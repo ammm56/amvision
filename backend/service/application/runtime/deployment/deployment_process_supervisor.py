@@ -127,7 +127,7 @@ class DeploymentProcessStatus:
     - runtime_mode：当前进程所属通道；sync 或 async。
     - instance_count：实例数量。
     - desired_state：监督器期望状态；running 或 stopped。
-    - process_state：当前进程状态；running、stopped 或 crashed。
+    - process_state：当前进程状态；starting、running、stopped 或 crashed。
     - process_id：当前子进程 pid。
     - auto_restart：是否启用崩溃自动拉起。
     - restart_count：已发生的自动拉起次数。
@@ -157,6 +157,10 @@ class DeploymentProcessInstanceHealth:
     healthy: bool
     warmed: bool
     busy: bool
+    inference_count: int = 0
+    inference_count_rollover_count: int = 0
+    error_count: int = 0
+    error_count_rollover_count: int = 0
     last_error: str | None = None
 
 
@@ -263,6 +267,8 @@ class _DeploymentProcessState:
     config: DeploymentProcessConfig
     effective_runtime_configuration: DeploymentRuntimeConfiguration | None = None
     desired_running: bool = False
+    accepting_inference: bool = False
+    warmed_instance_count: int = 0
     process: Any | None = None
     request_queue: Any | None = None
     response_queue: Any | None = None
@@ -275,7 +281,10 @@ class _DeploymentProcessState:
     last_error: str | None = None
     started_at_monotonic: float | None = None
     lock: Lock = field(default_factory=Lock, repr=False)
+    lifecycle_lock: Lock = field(default_factory=Lock, repr=False)
     device_lease: DeviceLease | None = field(default=None, repr=False)
+    next_restart_at_monotonic: float = 0.0
+    consecutive_restart_failure_count: int = 0
 
 
 class _DeploymentProcessFleetLimiter:
@@ -476,61 +485,118 @@ class DeploymentProcessSupervisor:
     def start_deployment(
         self, config: DeploymentProcessConfig
     ) -> DeploymentProcessStatus:
-        """显式启动指定 deployment 的子进程。"""
+        """启动并预热全部实例；只有完成后才允许接收推理。"""
 
         state = self._ensure_state(config)
         with state.lock:
             previous_status = self._build_status_from_locked_state(state)
             self._start_process_with_capacity_locked(state)
             state.desired_running = True
-            current_status = self._build_status_from_locked_state(state)
-        if current_status.process_state == "running":
-            try:
-                self._send_request(
-                    state=state,
-                    action="start",
-                    timeout_seconds=self.settings.startup_timeout_seconds,
-                )
-            except ServiceError as error:
-                current_status = self._mark_start_failed(state, error.message)
-                self._record_deployment_status_event(
-                    current_status,
-                    event_type="deployment.start.failed",
-                    message="deployment 启动确认失败",
-                    payload={
-                        "error_code": error.code,
-                        "error_message": error.message,
-                        "error_details": dict(error.details),
-                    },
-                )
-                raise
-            except Exception as error:
-                error_message = f"deployment 启动确认失败: {error}"
-                current_status = self._mark_start_failed(state, error_message)
-                self._record_deployment_status_event(
-                    current_status,
-                    event_type="deployment.start.failed",
-                    message="deployment 启动确认失败",
-                    payload={
-                        "error_code": "deployment_start_failed",
-                        "error_message": error_message,
-                    },
-                )
-                raise ServiceConfigurationError(
-                    error_message,
-                    details={
-                        "deployment_instance_id": state.config.deployment_instance_id,
-                        "runtime_mode": self.runtime_mode,
-                    },
-                ) from error
-            current_status = self._build_status(state)
+        try:
+            self._warm_process_until_ready(state=state, force=False)
+        except ServiceError as error:
+            current_status = self._mark_start_failed(state, error.message)
+            self._record_deployment_status_event(
+                current_status,
+                event_type="deployment.start.failed",
+                message="deployment 启动或预热失败",
+                payload={
+                    "error_code": error.code,
+                    "error_message": error.message,
+                    "error_details": dict(error.details),
+                },
+            )
+            raise
+        except Exception as error:
+            error_message = f"deployment 启动或预热失败: {error}"
+            current_status = self._mark_start_failed(state, error_message)
+            self._record_deployment_status_event(
+                current_status,
+                event_type="deployment.start.failed",
+                message="deployment 启动或预热失败",
+                payload={
+                    "error_code": "deployment_start_failed",
+                    "error_message": error_message,
+                },
+            )
+            raise ServiceConfigurationError(
+                error_message,
+                details={
+                    "deployment_instance_id": state.config.deployment_instance_id,
+                    "runtime_mode": self.runtime_mode,
+                },
+            ) from error
+        current_status = self._build_status(state)
         if self._status_changed(previous_status, current_status):
             self._record_deployment_status_event(
                 current_status,
                 event_type="deployment.started",
-                message="deployment 进程已启动",
+                message="deployment 全部实例已启动并预热",
             )
         return current_status
+
+    def _warm_process_until_ready(
+        self,
+        *,
+        state: _DeploymentProcessState,
+        force: bool,
+    ) -> dict[str, object] | None:
+        """串行预热全部实例，并原子开放父进程推理入口。"""
+
+        with state.lifecycle_lock:
+            with state.lock:
+                process = state.process
+                if process is None or not process.is_alive():
+                    raise InvalidRequestError(
+                        "当前 deployment 进程尚未启动",
+                        details={
+                            "deployment_instance_id": (
+                                state.config.deployment_instance_id
+                            ),
+                            "runtime_mode": self.runtime_mode,
+                        },
+                    )
+                if (
+                    not force
+                    and state.accepting_inference
+                    and state.warmed_instance_count >= state.config.instance_count
+                ):
+                    return None
+                # 控制命令进入 worker 前先关闭父进程推理入口，避免请求在
+                # worker 的 warmup 后面排队等待。
+                state.accepting_inference = False
+            payload = self._send_request(
+                state=state,
+                action="warmup",
+                timeout_seconds=self.settings.startup_timeout_seconds,
+            )
+            healthy_count = _read_response_optional_int(
+                payload, "healthy_instance_count"
+            ) or 0
+            warmed_count = _read_response_optional_int(
+                payload, "warmed_instance_count"
+            ) or 0
+            if (
+                healthy_count != state.config.instance_count
+                or warmed_count != state.config.instance_count
+            ):
+                raise ServiceConfigurationError(
+                    "deployment 预热后实例未全部就绪",
+                    details={
+                        "deployment_instance_id": state.config.deployment_instance_id,
+                        "runtime_mode": self.runtime_mode,
+                        "instance_count": state.config.instance_count,
+                        "healthy_instance_count": healthy_count,
+                        "warmed_instance_count": warmed_count,
+                    },
+                )
+            with state.lock:
+                state.warmed_instance_count = warmed_count
+                state.accepting_inference = True
+                state.last_error = None
+                state.consecutive_restart_failure_count = 0
+                state.next_restart_at_monotonic = 0.0
+            return payload
 
     def _mark_start_failed(
         self,
@@ -581,71 +647,47 @@ class DeploymentProcessSupervisor:
     def warmup_deployment(
         self, config: DeploymentProcessConfig
     ) -> DeploymentProcessHealth:
-        """显式启动并预热指定 deployment 子进程。"""
+        """显式确认并重新预热指定 deployment 的全部实例。"""
 
         state = self._ensure_state(config)
         was_running = self._is_process_running(state)
-        self.start_deployment(config)
-        try:
-            payload = self._send_request(
-                state=state,
-                action="warmup",
-                timeout_seconds=self.settings.startup_timeout_seconds,
+        if not was_running:
+            self.start_deployment(config)
+            payload = self._send_request(state=state, action="health")
+            health = self._build_health(state, payload)
+            self._record_deployment_health_event(
+                health,
+                event_type="deployment.warmup.completed",
+                message="deployment 预热已完成",
             )
+            return health
+        try:
+            payload = self._warm_process_until_ready(state=state, force=True) or {}
         except ServiceError as error:
-            if was_running:
-                with state.lock:
-                    state.last_error = error.message
-                health = self._build_health(state, None)
-                self._record_deployment_health_event(
-                    health,
-                    event_type="deployment.warmup.failed",
-                    message="deployment 预热失败",
-                    payload={
-                        "error_code": error.code,
-                        "error_message": error.message,
-                        "error_details": dict(error.details),
-                    },
-                )
-            else:
-                status = self._mark_start_failed(state, error.message)
-                self._record_deployment_status_event(
-                    status,
-                    event_type="deployment.warmup.failed",
-                    message="deployment 预热失败",
-                    payload={
-                        "error_code": error.code,
-                        "error_message": error.message,
-                        "error_details": dict(error.details),
-                    },
-                )
+            status = self._mark_start_failed(state, error.message)
+            self._record_deployment_status_event(
+                status,
+                event_type="deployment.warmup.failed",
+                message="deployment 预热失败",
+                payload={
+                    "error_code": error.code,
+                    "error_message": error.message,
+                    "error_details": dict(error.details),
+                },
+            )
             raise
         except Exception as error:
             error_message = f"deployment 预热失败: {error}"
-            if was_running:
-                with state.lock:
-                    state.last_error = error_message
-                health = self._build_health(state, None)
-                self._record_deployment_health_event(
-                    health,
-                    event_type="deployment.warmup.failed",
-                    message="deployment 预热失败",
-                    payload={
-                        "error_code": "deployment_warmup_failed",
-                        "error_message": error_message,
-                    },
-                )
-            else:
-                status = self._mark_start_failed(state, error_message)
-                self._record_deployment_status_event(
-                    status,
-                    event_type="deployment.warmup.failed",
-                    message="deployment 预热失败",
-                    payload={
-                        "error_code": "deployment_warmup_failed",
-                        "error_message": error_message,
-                    },
-                )
+            status = self._mark_start_failed(state, error_message)
+            self._record_deployment_status_event(
+                status,
+                event_type="deployment.warmup.failed",
+                message="deployment 预热失败",
+                payload={
+                    "error_code": "deployment_warmup_failed",
+                    "error_message": error_message,
+                },
+            )
             raise ServiceConfigurationError(
                 error_message,
                 details={
@@ -684,6 +726,8 @@ class DeploymentProcessSupervisor:
         state = self._ensure_state(config)
         self._require_running_process(state)
         payload = self._send_request(state=state, action="reset")
+        with state.lock:
+            state.warmed_instance_count = 0
         health = self._build_health(state, payload)
         self._record_deployment_health_event(
             health,
@@ -1084,14 +1128,28 @@ class DeploymentProcessSupervisor:
             return state
 
     def _require_running_process(self, state: _DeploymentProcessState) -> None:
-        """校验指定 deployment 子进程当前处于运行状态。"""
+        """校验 deployment 已完成预热；未就绪时立即拒绝。"""
 
-        if not self._is_process_running(state):
+        with state.lock:
+            process = state.process
+            process_running = process is not None and process.is_alive()
+            accepting_inference = state.accepting_inference
+        if not process_running:
             raise InvalidRequestError(
                 "当前 deployment 进程尚未启动",
                 details={
                     "deployment_instance_id": state.config.deployment_instance_id,
                     "runtime_mode": self.runtime_mode,
+                },
+            )
+        if not accepting_inference:
+            raise InvalidRequestError(
+                "当前 deployment 正在加载或预热，尚未就绪",
+                details={
+                    "deployment_instance_id": state.config.deployment_instance_id,
+                    "runtime_mode": self.runtime_mode,
+                    "process_state": "starting",
+                    "retryable": True,
                 },
             )
 
@@ -1179,9 +1237,17 @@ class DeploymentProcessSupervisor:
             if isinstance(error_payload.get("details"), dict)
             else {}
         )
-        if error_code == "invalid_request":
-            raise InvalidRequestError(error_message, details=error_details)
-        raise ServiceConfigurationError(error_message, details=error_details)
+        error_status_code = error_payload.get("status_code")
+        if isinstance(error_status_code, bool) or not isinstance(
+            error_status_code, int
+        ):
+            error_status_code = 500
+        raise ServiceError(
+            error_message,
+            code=error_code,
+            status_code=error_status_code,
+            details=error_details,
+        )
 
     def _start_process_locked(self, state: _DeploymentProcessState) -> None:
         """在持有状态锁时启动 deployment 子进程。"""
@@ -1262,6 +1328,8 @@ class DeploymentProcessSupervisor:
         state.started_at_monotonic = monotonic()
         state.last_exit_code = None
         state.last_error = None
+        state.accepting_inference = False
+        state.warmed_instance_count = 0
         state.response_thread = Thread(
             target=self._run_response_loop,
             args=(state,),
@@ -1342,6 +1410,8 @@ class DeploymentProcessSupervisor:
         state.local_buffer_broker_event_channel = None
         state.response_thread = None
         state.started_at_monotonic = None
+        state.accepting_inference = False
+        state.warmed_instance_count = 0
         for pending in state.pending_responses.values():
             pending.error_message = "deployment 子进程已经退出"
             pending.event.set()
@@ -1412,6 +1482,8 @@ class DeploymentProcessSupervisor:
                     process = state.process
                     if process is None:
                         if state.desired_running and self.settings.auto_restart:
+                            if monotonic() < state.next_restart_at_monotonic:
+                                continue
                             try:
                                 self._start_process_with_capacity_locked(state)
                             except (InvalidRequestError, DeviceLeaseUnavailableError):
@@ -1448,6 +1520,35 @@ class DeploymentProcessSupervisor:
                                 ),
                             )
                             self._release_device_lease_locked(state)
+                if restarted_status is not None:
+                    try:
+                        self._warm_process_until_ready(state=state, force=False)
+                    except Exception as error:  # noqa: BLE001 - monitor 必须继续巡检
+                        with state.lock:
+                            state.accepting_inference = False
+                            state.last_error = str(error) or type(error).__name__
+                            state.consecutive_restart_failure_count += 1
+                            restart_delay = min(
+                                30.0,
+                                2.0
+                                ** max(
+                                    0,
+                                    min(
+                                        state.consecutive_restart_failure_count - 1,
+                                        5,
+                                    ),
+                                ),
+                            )
+                            state.next_restart_at_monotonic = (
+                                monotonic() + restart_delay
+                            )
+                            self._stop_process_locked(state)
+                            restart_deferred_status = (
+                                self._build_status_from_locked_state(state)
+                            )
+                        restarted_status = None
+                    else:
+                        restarted_status = self._build_status(state)
                 if crashed_status is not None:
                     self._record_deployment_status_event(
                         crashed_status,
@@ -1504,7 +1605,7 @@ class DeploymentProcessSupervisor:
         process_id = process.pid if process is not None and process.is_alive() else None
         desired_state = "running" if state.desired_running else "stopped"
         if process is not None and process.is_alive():
-            process_state = "running"
+            process_state = "running" if state.accepting_inference else "starting"
         elif state.desired_running and state.last_exit_code is not None:
             process_state = "crashed"
         else:
@@ -1599,6 +1700,20 @@ class DeploymentProcessSupervisor:
                 healthy=bool(item.get("healthy") is True),
                 warmed=bool(item.get("warmed") is True),
                 busy=bool(item.get("busy") is True),
+                inference_count=normalize_safe_counter_value(
+                    _read_response_optional_int(item, "inference_count")
+                ),
+                inference_count_rollover_count=normalize_safe_counter_value(
+                    _read_response_optional_int(
+                        item, "inference_count_rollover_count"
+                    )
+                ),
+                error_count=normalize_safe_counter_value(
+                    _read_response_optional_int(item, "error_count")
+                ),
+                error_count_rollover_count=normalize_safe_counter_value(
+                    _read_response_optional_int(item, "error_count_rollover_count")
+                ),
                 last_error=str(item.get("last_error"))
                 if item.get("last_error") is not None
                 else None,
@@ -1914,6 +2029,12 @@ def _build_health_event_payload(health: DeploymentProcessHealth) -> dict[str, ob
                 "healthy": item.healthy,
                 "warmed": item.warmed,
                 "busy": item.busy,
+                "inference_count": item.inference_count,
+                "inference_count_rollover_count": (
+                    item.inference_count_rollover_count
+                ),
+                "error_count": item.error_count,
+                "error_count_rollover_count": item.error_count_rollover_count,
                 "last_error": item.last_error,
             }
             for item in health.instances

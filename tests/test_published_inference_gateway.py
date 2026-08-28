@@ -8,6 +8,8 @@ from threading import Barrier
 from time import sleep
 from types import SimpleNamespace
 
+import pytest
+
 from backend.contracts.buffers import BufferRef
 from backend.nodes import ExecutionImageRegistry, build_memory_image_payload
 from backend.nodes.core_nodes.model.deployment.deployment_detection import (
@@ -37,6 +39,10 @@ from backend.service.application.workflows.execution_cleanup import (
     WORKFLOW_EXECUTION_CLEANUP_KIND_LOCAL_BUFFER_LEASE,
     list_registered_execution_cleanups,
     prepare_execution_cleanup_state,
+)
+from backend.service.application.errors import (
+    DeploymentInferenceBusyError,
+    ServiceError,
 )
 from backend.service.application.workflows.graph_executor import (
     WorkflowNodeExecutionRequest,
@@ -146,6 +152,51 @@ def test_published_inference_gateway_client_correlates_out_of_order_responses() 
 
         assert slow_result.metadata["trace_id"] == "slow"
         assert fast_result.metadata["trace_id"] == "fast"
+    finally:
+        client.close()
+        dispatcher.stop()
+        channel.request_queue.close()
+        channel.request_queue.join_thread()
+        channel.response_queue.close()
+        channel.response_queue.join_thread()
+
+
+def test_published_inference_gateway_preserves_deployment_busy_error() -> None:
+    """验证 workflow 子进程能收到 deployment 满载的稳定 409 错误码。"""
+
+    class _BusyGateway:
+        """固定返回同步 deployment 满载错误。"""
+
+        def infer(self, request: PublishedInferenceRequest) -> PublishedInferenceResult:
+            raise DeploymentInferenceBusyError(
+                details={
+                    "deployment_instance_id": request.deployment_instance_id,
+                    "instance_count": 2,
+                }
+            )
+
+    context = multiprocessing.get_context("spawn")
+    channel = PublishedInferenceGatewayEventChannel(
+        request_queue=context.Queue(),
+        response_queue=context.Queue(),
+        request_timeout_seconds=3.0,
+    )
+    dispatcher = PublishedInferenceGatewayDispatcher(
+        channel=channel,
+        gateway=_BusyGateway(),
+    )
+    dispatcher.start()
+    client = PublishedInferenceGatewayClient(channel)
+    try:
+        with pytest.raises(ServiceError) as captured:
+            client.infer(_build_gateway_request("busy"))
+
+        assert captured.value.code == "deployment_inference_busy"
+        assert captured.value.status_code == 409
+        assert captured.value.details == {
+            "deployment_instance_id": "deployment-busy",
+            "instance_count": 2,
+        }
     finally:
         client.close()
         dispatcher.stop()

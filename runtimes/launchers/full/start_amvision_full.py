@@ -1081,6 +1081,47 @@ def _calculate_worker_restart_delay(restart_count: int) -> float:
     return min(30.0, 2.0 ** max(0, min(restart_count - 1, 5)))
 
 
+def _wait_for_local_buffer_ready(
+    *,
+    app_root: Path,
+    backend_process: subprocess.Popen[bytes],
+    timeout_seconds: float,
+    probe_command: list[str],
+) -> None:
+    """等待 backend lifespan 中最先启动的主 LocalBuffer 数据面。"""
+
+    deadline = time.monotonic() + max(1.0, timeout_seconds)
+    last_error = ""
+    while time.monotonic() < deadline:
+        return_code = backend_process.poll()
+        if return_code is not None:
+            raise RuntimeError(
+                f"backend-service 在 LocalBuffer 就绪前退出，returncode={return_code}"
+            )
+        try:
+            probe_result = subprocess.run(
+                [*probe_command, "--probe-local-buffer"],
+                cwd=str(app_root),
+                env=_build_child_process_environment(),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+                timeout=min(10.0, max(1.0, deadline - time.monotonic())),
+            )
+        except subprocess.TimeoutExpired:
+            last_error = "LocalBuffer probe 子进程超时"
+        else:
+            if probe_result.returncode == 0:
+                print("backend-service 主 LocalBuffer 已就绪。", flush=True)
+                return
+            last_error = f"probe returncode={probe_result.returncode}"
+        time.sleep(0.2)
+    raise TimeoutError(
+        f"backend-service 主 LocalBuffer 未在 {timeout_seconds:.0f}s 内就绪："
+        f"{last_error}"
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     """执行 full 发布目录一键启动入口。
 
@@ -1175,38 +1216,6 @@ def main(argv: list[str] | None = None) -> int:
             ),
             log_file_path=logs_dir / "database-migration.log",
         )
-        daemon_log_file_path = logs_dir / "inference-daemon.log"
-        daemon_process, daemon_log_capture = _start_component(
-            "inference-daemon",
-            _build_inference_daemon_command(
-                app_root,
-                release_manifest,
-                python_executable=python_executable,
-            ),
-            app_root=app_root,
-            log_file_path=daemon_log_file_path,
-        )
-        components.append(
-            SupervisedComponent(
-                name="inference-daemon",
-                process=daemon_process,
-                log_capture=daemon_log_capture,
-                started_monotonic=time.monotonic(),
-            )
-        )
-        persist_stack_state()
-        _wait_for_inference_daemon_ready(
-            app_root=app_root,
-            process=daemon_process,
-            log_capture=daemon_log_capture,
-            timeout_seconds=args.service_ready_timeout_seconds,
-            probe_command=_build_inference_daemon_command(
-                app_root,
-                release_manifest,
-                python_executable=python_executable,
-            ),
-        )
-
         service_log_file_path = logs_dir / "backend-service.log"
         service_command = _build_service_command(
             app_root,
@@ -1234,6 +1243,47 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.startup_delay_seconds > 0:
             time.sleep(args.startup_delay_seconds)
+        inference_daemon_command = _build_inference_daemon_command(
+            app_root,
+            release_manifest,
+            python_executable=python_executable,
+        )
+        _wait_for_local_buffer_ready(
+            app_root=app_root,
+            backend_process=service_process,
+            timeout_seconds=args.service_ready_timeout_seconds,
+            probe_command=inference_daemon_command,
+        )
+
+        # inference deployment worker 直接打开 backend-service 持有的主
+        # LocalBuffer。必须先确认 backend lifespan 和 Broker 已完成启动，
+        # 再恢复 deployment，避免把依赖尚未出现误记成模型启动失败。
+        daemon_log_file_path = logs_dir / "inference-daemon.log"
+        daemon_process, daemon_log_capture = _start_component(
+            "inference-daemon",
+            inference_daemon_command,
+            app_root=app_root,
+            log_file_path=daemon_log_file_path,
+        )
+        components.append(
+            SupervisedComponent(
+                name="inference-daemon",
+                process=daemon_process,
+                log_capture=daemon_log_capture,
+                started_monotonic=time.monotonic(),
+            )
+        )
+        persist_stack_state()
+        _wait_for_inference_daemon_ready(
+            app_root=app_root,
+            process=daemon_process,
+            log_capture=daemon_log_capture,
+            timeout_seconds=args.service_ready_timeout_seconds,
+            probe_command=inference_daemon_command,
+        )
+
+        # Workflow Runtime 的 startup 可能包含依赖 daemon 的模型节点。
+        # daemon 完整 ready 后再等待 FastAPI health，可避免二者互相等待。
         _wait_for_backend_service_ready(
             host=args.host,
             port=args.port,

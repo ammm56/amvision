@@ -920,11 +920,11 @@ def test_release_full_worker_readiness_uses_current_epoch_heartbeat_not_log_text
     assert 'ready_marker = "backend-worker ready"' not in start_text
 
 
-def test_release_full_start_cleans_started_daemon_when_readiness_fails(
+def test_release_full_start_cleans_backend_and_daemon_when_daemon_readiness_fails(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """验证 daemon 初始化或 probe 失败时记录 pid 并回收已经启动的进程。"""
+    """验证 daemon probe 失败时按反序回收 daemon 与先启动的 backend。"""
 
     _patch_release_runtime_asset_sources(monkeypatch, tmp_path)
     result = assemble_release(
@@ -959,6 +959,16 @@ def test_release_full_start_cleans_started_daemon_when_readiness_fails(
     monkeypatch.setattr(start_module, "_run_database_migration", lambda **_kwargs: None)
     monkeypatch.setattr(
         start_module,
+        "_wait_for_backend_service_ready",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        start_module,
+        "_wait_for_local_buffer_ready",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        start_module,
         "_start_component",
         lambda *_args, **_kwargs: (fake_process, fake_log_capture),
     )
@@ -984,8 +994,11 @@ def test_release_full_start_cleans_started_daemon_when_readiness_fails(
             result.release_dir / "logs" / "startup-failure" / "runtime-state.json"
         )
         state_payload = json.loads(state_path.read_text(encoding="utf-8"))
-        assert state_payload["components"][0]["name"] == "inference-daemon"
-        assert state_payload["components"][0]["process"]["pid"] == 321
+        assert [item["name"] for item in state_payload["components"]] == [
+            "backend-service",
+            "inference-daemon",
+        ]
+        assert state_payload["components"][1]["process"]["pid"] == 321
         raise RuntimeError("daemon probe failed")
 
     monkeypatch.setattr(
@@ -1002,7 +1015,7 @@ def test_release_full_start_cleans_started_daemon_when_readiness_fails(
             ]
         )
 
-    assert stopped_processes == [fake_process]
+    assert stopped_processes == [fake_process, fake_process]
     assert not (
         result.release_dir / "logs" / "startup-failure" / "runtime-state.json"
     ).exists()

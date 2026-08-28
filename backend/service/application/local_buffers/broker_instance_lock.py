@@ -102,6 +102,35 @@ class LocalBufferBrokerInstanceLock:
             lock_file.close()
 
 
+def is_local_buffer_broker_instance_active(root_dir: Path) -> bool:
+    """只读探测指定根目录是否有 Broker 正持有单实例锁。
+
+    该函数不创建目录、不改写占用者元数据。能够取得锁表示当前没有活动
+    Broker；锁被占用才表示数据面的 owner 仍然存活。
+    """
+
+    lock_path = root_dir.resolve() / _LOCK_FILE_NAME
+    if not lock_path.is_file():
+        return False
+    try:
+        lock_file = lock_path.open("r+b", buffering=0)
+    except PermissionError:
+        # Windows 的持锁 handle 可能同时拒绝第二个 open；对同一受信运行目录，
+        # 这与首字节锁冲突具有相同的“已有 owner”语义。
+        return True
+    except OSError:
+        return False
+    try:
+        try:
+            _lock_file_non_blocking(lock_file)
+        except (BlockingIOError, OSError):
+            return True
+        _unlock_file(lock_file)
+        return False
+    finally:
+        lock_file.close()
+
+
 def _write_owner_metadata(lock_file: BinaryIO, *, root_dir: Path) -> None:
     """在锁文件首字节之后写入当前占用者信息。"""
 

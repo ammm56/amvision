@@ -13,9 +13,6 @@ from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.evaluation.manifest_splits import (
     select_independent_evaluation_split,
 )
-from backend.service.application.runtime.tasks.classification_model_runtime import (
-    DefaultClassificationModelRuntime,
-)
 from backend.service.application.runtime.contracts.classification.prediction import (
     ClassificationPredictionRequest,
 )
@@ -26,6 +23,9 @@ from backend.service.application.runtime.session_lifecycle import RuntimeSession
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
+
+
+DefaultClassificationModelRuntime: type | None = None
 
 
 @dataclass(frozen=True)
@@ -80,7 +80,13 @@ def run_yolov8_classification_evaluation(
             top5_accuracy=0.0,
         )
 
-    runtime = DefaultClassificationModelRuntime()
+    runtime_class = DefaultClassificationModelRuntime
+    if runtime_class is None:
+        from backend.service.application.runtime.tasks.classification_model_runtime import (
+            DefaultClassificationModelRuntime as runtime_class,
+        )
+
+    runtime = runtime_class()
     session = RuntimeSessionLease(
         runtime.load_session(
             dataset_storage=dataset_storage,

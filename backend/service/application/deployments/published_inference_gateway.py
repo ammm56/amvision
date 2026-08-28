@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass, field, replace
 from queue import Empty
 from threading import Event, Lock, Thread
 from time import perf_counter
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 from uuid import uuid4
 
 from backend.nodes.runtime_support import (
@@ -20,6 +20,7 @@ from backend.service.application.errors import (
     InvalidRequestError,
     OperationTimeoutError,
     ServiceConfigurationError,
+    ServiceError,
 )
 from backend.service.application.runtime.contracts.classification.prediction import (
     ClassificationPredictionRequest,
@@ -27,9 +28,6 @@ from backend.service.application.runtime.contracts.classification.prediction imp
 from backend.service.application.runtime.serialization.classification.prediction import (
     serialize_classification_category,
     serialize_classification_runtime_session_info,
-)
-from backend.service.application.runtime.deployment.deployment_process_supervisor import (
-    DeploymentProcessSupervisor,
 )
 from backend.service.application.runtime.contracts.detection.prediction import (
     DetectionPredictionRequest,
@@ -66,6 +64,11 @@ from backend.service.domain.models.model_task_types import (
     POSE_TASK_TYPE,
     SEGMENTATION_TASK_TYPE,
 )
+
+if TYPE_CHECKING:
+    from backend.service.application.runtime.deployment.deployment_process_supervisor import (
+        DeploymentProcessSupervisor,
+    )
 
 
 _SUPPORTED_TASK_TYPES: tuple[str, ...] = (
@@ -1149,11 +1152,15 @@ def _deserialize_control_response(
         if isinstance(error_payload.get("details"), dict)
         else {}
     )
-    if error_code == "invalid_request":
-        raise InvalidRequestError(error_message, details=error_details)
-    if error_code == "operation_timeout":
-        raise OperationTimeoutError(error_message, details=error_details)
-    raise ServiceConfigurationError(error_message, details=error_details)
+    error_status_code = error_payload.get("status_code")
+    if isinstance(error_status_code, bool) or not isinstance(error_status_code, int):
+        error_status_code = 500
+    raise ServiceError(
+        error_message,
+        code=error_code,
+        status_code=error_status_code,
+        details=error_details,
+    )
 
 
 def _serialize_error(error: Exception) -> dict[str, object]:
@@ -1164,6 +1171,7 @@ def _serialize_error(error: Exception) -> dict[str, object]:
         "error": {
             "code": getattr(error, "code", "service_configuration_error"),
             "message": getattr(error, "message", str(error) or type(error).__name__),
+            "status_code": getattr(error, "status_code", 500),
             "details": getattr(error, "details", {"error_type": type(error).__name__}),
         },
     }

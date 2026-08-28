@@ -37,6 +37,23 @@ class WorkflowResultDispatcher:
         - TriggerResultContract：协议中立结果回执。
         """
 
+        metadata: dict[str, object] = {
+            "workflow_runtime_id": workflow_run.workflow_runtime_id,
+            "workflow_state": workflow_run.state,
+            "ack_policy": trigger_source.ack_policy,
+            "result_mode": trigger_source.result_mode,
+        }
+        if workflow_run.state != "succeeded":
+            raw_error_details = workflow_run.metadata.get("error_details")
+            if isinstance(raw_error_details, dict):
+                error_details = dict(raw_error_details)
+                metadata["error_details"] = error_details
+                error_code = error_details.get("error_code")
+                if isinstance(error_code, str) and error_code.strip():
+                    metadata["error_code"] = error_code.strip()
+            elif workflow_run.state == "timed_out":
+                metadata["error_code"] = "operation_timeout"
+
         return TriggerResultContract(
             trigger_source_id=trigger_source.trigger_source_id,
             event_id=trigger_event.event_id,
@@ -49,12 +66,7 @@ class WorkflowResultDispatcher:
                 prepared_trigger_result=prepared_trigger_result,
             ),
             error_message=workflow_run.error_message,
-            metadata={
-                "workflow_runtime_id": workflow_run.workflow_runtime_id,
-                "workflow_state": workflow_run.state,
-                "ack_policy": trigger_source.ack_policy,
-                "result_mode": trigger_source.result_mode,
-            },
+            metadata=metadata,
         )
 
     def _build_response_payload(

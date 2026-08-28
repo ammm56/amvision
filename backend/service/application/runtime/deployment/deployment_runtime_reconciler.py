@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 from threading import Event, Lock, Thread
-from typing import Protocol
+from typing import Callable, Protocol
 from uuid import uuid4
 import logging
 
@@ -71,17 +71,29 @@ class DeploymentRuntimeReconciler:
         bindings_by_task_type: dict[str, DeploymentRuntimeBinding],
         settings: BackendServiceDeploymentRuntimeReconcilerConfig,
         controller_id: str | None = None,
+        dependency_readiness_provider: Callable[[], dict[str, object]] | None = None,
     ) -> None:
-        """绑定状态服务、deployment 服务、运行组件和协调参数。"""
+        """绑定状态服务、deployment 服务、运行组件、依赖探测和协调参数。"""
 
         self.state_service = state_service
         self.lookup_service = lookup_service
         self.bindings_by_task_type = dict(bindings_by_task_type)
         self.settings = settings
         self.controller_id = controller_id or f"deployment-controller-{uuid4().hex}"
+        self.dependency_readiness_provider = dependency_readiness_provider
         self._stop_event = Event()
         self._thread: Thread | None = None
         self._lifecycle_lock = Lock()
+        self._readiness_lock = Lock()
+        self._dependency_snapshot: dict[str, object] = {
+            "ready": dependency_readiness_provider is None,
+            "error": None,
+        }
+        self._initial_reconcile_completed = False
+        self._desired_running_count = 0
+        self._last_round_failure_count = 0
+        self._last_round_not_ready_count = 0
+        self._recovery_in_progress = False
 
     @property
     def is_running(self) -> bool:
@@ -94,6 +106,14 @@ class DeploymentRuntimeReconciler:
         """启动协调线程；线程启动后立即执行第一轮恢复。"""
 
         if not self.settings.enabled:
+            dependency_snapshot = self._read_dependency_snapshot()
+            with self._readiness_lock:
+                self._dependency_snapshot = dependency_snapshot
+                self._initial_reconcile_completed = True
+                self._desired_running_count = 0
+                self._last_round_failure_count = 0
+                self._last_round_not_ready_count = 0
+                self._recovery_in_progress = False
             return
         with self._lifecycle_lock:
             if self.is_running:
@@ -123,11 +143,77 @@ class DeploymentRuntimeReconciler:
     def reconcile_once(self) -> None:
         """执行一轮协调；单条 deployment 失败不会阻断其余恢复。"""
 
-        for state in self.state_service.list_desired_running_states():
+        dependency_snapshot = self._read_dependency_snapshot()
+        if dependency_snapshot.get("ready") is not True:
+            with self._readiness_lock:
+                self._dependency_snapshot = dependency_snapshot
+                self._initial_reconcile_completed = False
+                self._desired_running_count = 0
+                self._last_round_failure_count = 0
+                self._last_round_not_ready_count = 0
+                self._recovery_in_progress = False
+            return
+        desired_states = self.state_service.list_desired_running_states()
+        failure_count = 0
+        not_ready_count = 0
+        for state in desired_states:
             try:
-                self._reconcile_running_state(state)
+                if not self._reconcile_running_state(state):
+                    not_ready_count += 1
             except Exception as error:  # noqa: BLE001 - 协调循环必须隔离单项失败
+                failure_count += 1
                 self._record_reconcile_failure(state, error)
+        with self._readiness_lock:
+            self._dependency_snapshot = dependency_snapshot
+            self._initial_reconcile_completed = True
+            self._desired_running_count = len(desired_states)
+            self._last_round_failure_count = failure_count
+            self._last_round_not_ready_count = not_ready_count
+            self._recovery_in_progress = False
+
+    def readiness_snapshot(self) -> dict[str, object]:
+        """返回 daemon probe 使用的依赖与首轮恢复就绪状态。"""
+
+        with self._readiness_lock:
+            dependency_snapshot = dict(self._dependency_snapshot)
+            initial_reconcile_completed = self._initial_reconcile_completed
+            desired_running_count = self._desired_running_count
+            failure_count = self._last_round_failure_count
+            not_ready_count = self._last_round_not_ready_count
+            recovery_in_progress = self._recovery_in_progress
+        dependency_ready = dependency_snapshot.get("ready") is True
+        return {
+            "ready": (
+                dependency_ready
+                and initial_reconcile_completed
+                and failure_count == 0
+                and not_ready_count == 0
+                and not recovery_in_progress
+            ),
+            "local_buffer": dependency_snapshot,
+            "initial_reconcile_completed": initial_reconcile_completed,
+            "desired_running_count": desired_running_count,
+            "reconcile_failure_count": failure_count,
+            "reconcile_not_ready_count": not_ready_count,
+            "recovery_in_progress": recovery_in_progress,
+        }
+
+    def _read_dependency_snapshot(self) -> dict[str, object]:
+        """执行可选依赖探测，并把异常收束为未就绪状态。"""
+
+        provider = self.dependency_readiness_provider
+        if provider is None:
+            return {"ready": True, "error": None}
+        try:
+            snapshot = provider()
+        except Exception as error:  # noqa: BLE001 - 依赖故障不得终止协调线程
+            return {
+                "ready": False,
+                "error": str(error) or type(error).__name__,
+            }
+        if not isinstance(snapshot, dict):
+            return {"ready": False, "error": "依赖探测未返回结构化状态"}
+        return dict(snapshot)
 
     def _run_loop(self) -> None:
         """持续执行协调并隔离数据库临时故障。"""
@@ -139,24 +225,24 @@ class DeploymentRuntimeReconciler:
                 LOGGER.exception("deployment runtime 协调循环发生异常，将继续重试")
             self._stop_event.wait(self.settings.reconcile_interval_seconds)
 
-    def _reconcile_running_state(self, state: DeploymentRuntimeState) -> None:
-        """恢复或续租一条 desired=running 状态。"""
+    def _reconcile_running_state(self, state: DeploymentRuntimeState) -> bool:
+        """恢复或续租一条 desired=running 状态，并返回本轮是否已就绪。"""
 
         if _is_future_timestamp(state.next_restart_at):
-            return
+            return False
         if not self.state_service.try_claim(
             state=state,
             owner_id=self.controller_id,
             lease_seconds=self.settings.controller_lease_seconds,
         ):
-            return
+            return False
 
         current = self.state_service.get_runtime_state(
             deployment_instance_id=state.deployment_instance_id,
             runtime_mode=state.runtime_mode,
         )
         if current.generation != state.generation or current.desired_state != "running":
-            return
+            return True
 
         view = self.lookup_service.get_deployment_instance(state.deployment_instance_id)
         binding = self.bindings_by_task_type.get(view.task_type)
@@ -168,6 +254,10 @@ class DeploymentRuntimeReconciler:
         supervisor = binding.get_supervisor(state.runtime_mode)
         status = supervisor.get_status(process_config)
         if status.process_state != "running":
+            # start_deployment 会同步完成所有实例预热。开始该阻塞操作前必须立即
+            # 撤销 daemon readiness，不能在数秒预热窗口继续发布上一轮 ready。
+            with self._readiness_lock:
+                self._recovery_in_progress = True
             # 每次由持久化协调器重建缺失进程都属于一次恢复重启。
             # supervisor 的进程内计数在 daemon 重启后会归零，因此先在
             # 持久层累加，再由状态服务的单调合并保留历史值。
@@ -192,7 +282,7 @@ class DeploymentRuntimeReconciler:
                 binding.async_gateway_registry.stop_dispatcher_for_deployment(
                     state.deployment_instance_id
                 )
-            return
+            return True
         if state.runtime_mode == "async":
             binding.async_gateway_registry.ensure_dispatcher_for_deployment(
                 state.deployment_instance_id
@@ -203,6 +293,7 @@ class DeploymentRuntimeReconciler:
             generation=state.generation,
             process_status=status,
         )
+        return status.process_state == "running"
 
     def _record_reconcile_failure(
         self,

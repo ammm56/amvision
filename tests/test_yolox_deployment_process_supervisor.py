@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
 from time import monotonic, sleep
@@ -146,10 +147,10 @@ def test_deployment_process_supervisor_supports_lifecycle_and_auto_restart(
 
         initial_health = _wait_for_health(supervisor, config)
         assert initial_health.healthy_instance_count == 2
-        assert initial_health.warmed_instance_count == 0
-        assert initial_health.pinned_output_total_bytes == 0
+        assert initial_health.warmed_instance_count == 2
+        assert initial_health.pinned_output_total_bytes == 1048576
         assert initial_health.keep_warm is not None
-        assert initial_health.keep_warm.activated is False
+        assert initial_health.keep_warm.activated is True
 
         warmup_health = supervisor.warmup_deployment(config)
         assert warmup_health.healthy_instance_count == 2
@@ -201,7 +202,9 @@ def test_deployment_process_supervisor_supports_lifecycle_and_auto_restart(
         assert restarted_status.restart_count_rollover_count == 1
         assert restarted_status.process_id is not None
         assert restarted_status.process_id != previous_process_id
-        _wait_for_health(supervisor, config)
+        recovered_health = _wait_for_health(supervisor, config)
+        assert recovered_health.healthy_instance_count == 2
+        assert recovered_health.warmed_instance_count == 2
 
         reset_health = supervisor.reset_deployment(config)
         assert reset_health.warmed_instance_count == 0
@@ -225,6 +228,60 @@ def test_deployment_process_supervisor_supports_lifecycle_and_auto_restart(
     finally:
         supervisor.stop()
         buffer_broker.stop()
+
+
+def test_sync_inference_rejects_immediately_while_instances_are_warming(
+    tmp_path: Path,
+) -> None:
+    """同步调用不得排在 startup warmup 后面等待。"""
+
+    runtime_artifact_path = tmp_path / "runtime-artifact.onnx"
+    runtime_artifact_path.write_bytes(b"fake-runtime-artifact")
+    config = DeploymentProcessConfig(
+        deployment_instance_id="deployment-instance-slow-warmup",
+        runtime_target=_build_runtime_target(runtime_artifact_path),
+        runtime_configuration=DeploymentRuntimeConfiguration(
+            execution=DeploymentExecutionPolicy(instance_count=2)
+        ),
+    )
+    supervisor = DeploymentProcessSupervisor(
+        dataset_storage_root_dir=str(tmp_path),
+        runtime_mode="sync",
+        settings=BackendServiceDeploymentProcessSupervisorConfig(
+            auto_restart=False,
+            request_timeout_seconds=30.0,
+            shutdown_timeout_seconds=1.0,
+            operator_thread_count=1,
+        ),
+        worker_target=fake_deployment_process_worker,
+    )
+    supervisor.start()
+    try:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            start_future = executor.submit(supervisor.start_deployment, config)
+            deadline = monotonic() + 10.0
+            while monotonic() < deadline:
+                if supervisor.get_status(config).process_state == "starting":
+                    break
+                sleep(0.01)
+            else:
+                raise AssertionError("未观察到 deployment starting 状态")
+
+            call_started_at = monotonic()
+            with pytest.raises(InvalidRequestError, match="正在加载或预热"):
+                supervisor.run_inference(
+                    config=config,
+                    request=DetectionPredictionRequest(
+                        input_image_bytes=b"image",
+                        score_threshold=0.3,
+                        save_result_image=False,
+                        extra_options={},
+                    ),
+                )
+            assert monotonic() - call_started_at < 0.5
+            assert start_future.result(timeout=10.0).process_state == "running"
+    finally:
+        supervisor.stop()
 
 
 def test_async_deployment_process_uses_object_store_without_local_buffer(
@@ -651,7 +708,9 @@ def _wait_for_running_restart(
 ) -> object:
     """等待 supervisor 完成崩溃拉起。"""
 
-    deadline = monotonic() + 3.0
+    # Windows spawn 后还要完成全部实例 warmup；等待的是可接收推理状态，
+    # 不是仅有 pid 的中间状态。
+    deadline = monotonic() + 15.0
     while monotonic() < deadline:
         status = supervisor.get_status(config)
         if (

@@ -10,7 +10,7 @@
 - local-shared-memory Trigger 的配置、health、前端入口与故障回收；
 - LocalBuffer 从固定分辨率 pool/slot 迁移到固定总容量 arena + buddy allocator；
 - Python/.NET SDK、BufferRef、frame channel、配置、已有开发数据和验证门禁的原子迁移。
-- HTTP/ZeroMQ/local-shared-memory 输入、Workflow 节点间图片、Deployment 推理输入与结果图、Preview 和异步任务物化边界统一使用 LocalBuffer 的项目级规则。
+- HTTP/ZeroMQ/local-shared-memory 同步输入、Workflow 节点间图片、同步 Deployment 推理输入与结果图、Preview 统一使用 LocalBuffer；跨重启异步任务使用 ObjectStore 的项目级规则。
 
 [ADR-0007](../decisions/ADR-0007-local-shared-memory-workflow-trigger.md) 继续定义 Trigger 产品边界，[ADR-0008](../decisions/ADR-0008-local-buffer-fixed-arena-allocation.md) 定义 LocalBuffer 分配模型。旧的[本机共享内存 Trigger 实施基线](local-shared-memory-trigger-implementation.md)保留已交付协议细节和历史性能证据，但不再作为完成状态来源；与本文冲突时以本文和最新 ADR 为准。
 
@@ -64,7 +64,7 @@ LocalBuffer 是本机进程间和 Workflow 节点间短期内存图片的统一�
 | Workflow 到 Deployment/inference | inference mailbox 只传引用和结构化参数，模型进程直接读取主 arena |
 | 推理或节点结果图片 | 同步结果继续使用主 arena；local-shared SDK 持有 guard，ZeroMQ/HTTP 只在协议响应边界编码或复制 |
 | Preview | 运行期图片使用主 arena；只有前端显示或显式保存时生成显示图/ObjectStore对象 |
-| 持久异步任务 | 排队和跨重启边界使用 ObjectStore；任务被 daemon 领取后才物化到该 owner 的私有 arena |
+| 持久异步任务 | 排队、执行和结果传递都使用稳定 ObjectStore key；deployment worker 直接读取，不创建私有 arena |
 
 跨节点、跨进程或跨请求阶段保存的内存图片不得使用裸 `bytes`、Base64、任意 mmap 路径或进程私有 ndarray 作为公开契约。单个节点内部的临时 OpenCV/NumPy 矩阵、codec 输出和模型张量仍可存在于进程内，但只能在本次 handler 生命周期内使用，不能作为节点输出或跨进程引用。这里的“零整图复制”指不产生可避免的传输和桥接副本，不否认解码、颜色转换、裁剪、绘制或模型预处理本身必需的算法写入。
 

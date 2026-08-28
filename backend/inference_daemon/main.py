@@ -7,6 +7,9 @@ import signal
 import sys
 from threading import Event
 
+from backend.inference_daemon.local_buffer_dependency import (
+    LocalBufferDependencyProbe,
+)
 from backend.inference_daemon.runtime import build_inference_daemon_runtime
 from backend.service.infrastructure.ipc.inference_mailbox import InferenceLocalMmapClient
 from backend.service.settings import get_backend_service_settings
@@ -26,6 +29,11 @@ def build_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="探测 mmap 推理热路径，不启动新 daemon",
     )
+    parser.add_argument(
+        "--probe-local-buffer",
+        action="store_true",
+        help="只探测 backend 主 LocalBuffer owner 与 layout",
+    )
     return parser
 
 
@@ -34,6 +42,19 @@ def main(argv: list[str] | None = None) -> int:
 
     args = build_argument_parser().parse_args(argv)
     settings = get_backend_service_settings()
+    if args.probe_local_buffer:
+        snapshot = LocalBufferDependencyProbe(
+            buffers_root=settings.local_memory.root_dir,
+            broker_settings=settings.local_buffer_broker,
+        ).snapshot()
+        if snapshot.get("ready") is True:
+            return 0
+        print(
+            "inference-daemon LocalBuffer probe failed: "
+            f"{snapshot.get('error') or 'unknown'}",
+            file=sys.stderr,
+        )
+        return 1
     if args.probe:
         if not settings.inference_daemon.mmap_mailbox.enabled:
             print(

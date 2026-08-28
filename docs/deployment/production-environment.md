@@ -81,10 +81,11 @@ NVIDIA 环境替换为对应目录。布局校验失败必须修正发行资产�
 启动器按顺序：
 
 1. Alembic `upgrade head`，SQLite schema 变化前创建一致性备份；
-2. inference daemon 启动并通过 mmap 热路径 ready/probe；
-3. backend-service 启动并通过 health；
-4. 六个 Worker Profile 启动并通过 heartbeat；
-5. 写入 `logs/full-stack/runtime-state.json`。
+2. backend-service 启动，独立 probe 确认主 LocalBufferBroker owner/layout 可用；
+3. inference daemon 恢复并预热 Deployment，通过完整 mmap ready/probe；
+4. backend-service 通过完整 health；
+5. 六个 Worker Profile 启动并通过 heartbeat；
+6. 写入 `logs/full-stack/runtime-state.json`。
 
 任一关键步骤失败都会回收已经启动的组件并返回非零。根脚本保持前台运行；直接按 `Ctrl+C` 会按逆序停止进程树。
 

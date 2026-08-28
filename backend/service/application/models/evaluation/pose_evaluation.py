@@ -19,9 +19,6 @@ from backend.service.application.models.support.yolo_dataset_manifest_support im
     build_coco_payload_from_yolo_pose_split,
     normalize_yolo_category_names,
 )
-from backend.service.application.runtime.tasks.pose_model_runtime import (
-    DefaultPoseModelRuntime,
-)
 from backend.service.application.runtime.contracts.pose.prediction import (
     PosePredictionRequest,
 )
@@ -32,6 +29,9 @@ from backend.service.application.runtime.session_lifecycle import RuntimeSession
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
+
+
+DefaultPoseModelRuntime: type | None = None
 
 
 @dataclass(frozen=True)
@@ -69,7 +69,13 @@ def run_pose_evaluation(request: PoseEvaluationRequest) -> PoseEvaluationResult:
     output_prefix = f"task-runs/evaluation/{request.runtime_target.model_version_id}"
     _, samples, categories = _parse_pose_manifest(manifest, dataset_storage)
 
-    model_runtime = DefaultPoseModelRuntime()
+    runtime_class = DefaultPoseModelRuntime
+    if runtime_class is None:
+        from backend.service.application.runtime.tasks.pose_model_runtime import (
+            DefaultPoseModelRuntime as runtime_class,
+        )
+
+    model_runtime = runtime_class()
     session = RuntimeSessionLease(
         model_runtime.load_session(
             dataset_storage=dataset_storage,

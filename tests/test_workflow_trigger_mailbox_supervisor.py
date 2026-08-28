@@ -107,10 +107,12 @@ class _FakeRuntimeService:
         busy: bool = False,
         fail_invoke: bool = False,
         result_state: str = "succeeded",
+        result_error_details: dict[str, object] | None = None,
     ) -> None:
         self.busy = busy
         self.fail_invoke = fail_invoke
         self.result_state = result_state
+        self.result_error_details = dict(result_error_details or {})
         self.admitted_count = 0
         self.failed_admission_count = 0
 
@@ -149,6 +151,11 @@ class _FakeRuntimeService:
                 "outputs": {"workflow_result": {"code": 200}},
                 "metadata": {
                     **admission.execution_metadata,
+                    **(
+                        {"error_details": self.result_error_details}
+                        if self.result_error_details
+                        else {}
+                    ),
                     **(
                         {
                             "timings": {
@@ -501,6 +508,55 @@ def test_workflow_timed_out_increments_source_timeout(tmp_path: Path) -> None:
                 assert health["error_count"] == 1
                 assert health["timeout_count"] == 1
                 assert health["request_timeout_count"] == 0
+                client.acknowledge(identity=identity)
+                supervisor.process_once()
+        finally:
+            supervisor.close()
+
+
+def test_workflow_deployment_busy_increments_source_busy(tmp_path: Path) -> None:
+    """Workflow 内模型节点满载时，mailbox 保持冻结响应码并补充 busy 指标。"""
+
+    runtime = _FakeRuntimeService(
+        result_state="failed",
+        result_error_details={"error_code": "deployment_inference_busy"},
+    )
+    with _build_pool(tmp_path) as pool:
+        supervisor = _build_supervisor(tmp_path, pool, runtime)
+        try:
+            route = supervisor.register_trigger_source(_source("source-1"))
+            with WorkflowTriggerMailboxClient(buffers_root=tmp_path) as client:
+                content = b"image"
+                identity, allocation = _prepare(
+                    supervisor,
+                    client,
+                    route.route_generation,
+                    content_length=len(content),
+                )
+                _write_allocation(pool, allocation, content, identity.deadline_ns)
+                client.publish_request(
+                    identity=identity,
+                    payload=WorkflowTriggerRequestV1(
+                        trigger_source_id="source-1",
+                        event_id="event-1",
+                    )
+                    .model_dump_json()
+                    .encode("utf-8"),
+                )
+
+                response = _wait_response(supervisor, client, identity)
+                assert (
+                    response.error_code
+                    == mailbox_contract.ERROR_CODE_WORKFLOW_EXECUTION_FAILED
+                )
+                health = supervisor.build_source_status("source-1")
+                assert health["error_count"] == 1
+                assert health["busy_count"] == 1
+                assert health["capacity_reject_count"] == 0
+                assert (
+                    health["recent_error"]["workflow_error_code"]
+                    == "deployment_inference_busy"
+                )
                 client.acknowledge(identity=identity)
                 supervisor.process_once()
         finally:

@@ -8,8 +8,8 @@
 
 开发时需要同时运行以下进程：
 
-1. inference daemon：托管 Deployment 和模型推理进程。
-2. backend-service：提供 REST API、WebSocket、Workflow Runtime、Trigger 和控制面。
+1. backend-service：提供 REST API、WebSocket、Workflow Runtime、Trigger 和控制面，并持有唯一主 LocalBufferBroker。
+2. inference daemon：托管 Deployment 和模型推理进程，直接访问 backend-service 创建的主 LocalBuffer。
 3. backend-worker development supervisor：激活一代源码开发 Worker Topology，并启动数据集导入、数据集导出、训练、转换、评估、异步推理六个 Worker Profile。
 4. Vue Vite：提供源码前端和 HMR。
 
@@ -43,9 +43,27 @@ python -m alembic -c backend/alembic.ini current
 
 必须先完成迁移，再启动常驻进程。禁止用 `stamp`、ORM `create_all()` 或删除数据库绕过 migration chain。
 
-### 2. 启动 inference daemon
+### 2. 启动 backend-service
 
 终端一：
+
+```powershell
+conda activate amvision
+python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 5600 --reload --reload-dir backend --reload-dir custom_nodes
+```
+
+backend lifespan 会先创建 LocalBuffer，再恢复现有 Workflow Runtime。恢复流程可能需要调用 inference daemon，因此此时不等待完整 HTTP health。另开临时终端只探测主 LocalBuffer：
+
+```powershell
+conda activate amvision
+python -m backend.inference_daemon.main --probe-local-buffer
+```
+
+退出码为 `0` 表示主 LocalBufferBroker owner 和 arena layout 已就绪，可以启动 daemon。`--reload` 只监视后端源码，不会代替 daemon 或 Worker 的重启。
+
+### 3. 启动 inference daemon
+
+终端二：
 
 ```powershell
 conda activate amvision
@@ -54,32 +72,22 @@ python -m backend.inference_daemon.main
 
 看到 `inference-daemon ready` 后保持该终端运行。当前默认配置为 `inference_daemon.runtime_owner=daemon`；没有 daemon 时，Deployment、预热与推理链路不完整。
 
-### 3. 探测 inference daemon
+### 4. 探测 inference daemon
 
-终端二先执行一次真实 probe：
+另开临时终端执行真实 probe：
 
 ```powershell
 conda activate amvision
 python -m backend.inference_daemon.main --probe
 ```
 
-退出码为 `0` 后继续使用终端二启动 backend-service。probe 会验证 daemon ready 状态和本机 mmap mailbox，不应跳过。变更控制队列由后续 start/stop/warmup/reset 链路覆盖。
-
-### 4. 启动 backend-service
-
-终端二：
-
-```powershell
-python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 5600 --reload --reload-dir backend --reload-dir custom_nodes
-```
-
-等待 FastAPI lifespan 完成，再验证：
+退出码为 `0` 后，再验证 backend-service 完整 health：
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:5600/api/v1/system/health
 ```
 
-`--reload` 只监视后端源码，适用于接口和 Workflow 控制面开发；它不会代替 daemon 或 Worker 的重启。
+daemon probe 同时验证 mailbox、主 LocalBuffer 依赖、首轮 Deployment 恢复以及全部实例预热结果，不再把仅能 ping 通误报为 ready。backend health 必须放在 daemon probe 后，避免包含模型节点的 Workflow Runtime startup 与 daemon 互相等待。
 
 ### 5. 启动完整 backend-worker Topology
 
@@ -121,8 +129,8 @@ npm run dev
 
 以下条件同时满足才是完整开发环境：
 
-1. inference daemon 持续运行，独立 probe 返回 `0`。
-2. backend-service health 可访问，API 与 OpenAPI 正常。
+1. backend-service health 可访问，主 LocalBufferBroker、API 与 OpenAPI 正常。
+2. inference daemon 持续运行，独立 probe 返回 `0`。
 3. Worker Supervisor 显示完整 Topology ready。
 4. Settings 服务页显示六个 Worker Profile 属于同一 active generation/epoch 且状态为 `running`。
 5. Vite 页面能完成登录和 API bootstrap。
@@ -135,8 +143,8 @@ npm run dev
 
 1. 停止 Vite。
 2. 停止 backend-worker development supervisor，等待六个子进程退出。
-3. 停止 backend-service，等待 lifespan 清理完成。
-4. 停止 inference daemon。
+3. 停止 inference daemon，等待 deployment 子进程退出。
+4. 停止 backend-service，等待 lifespan 和 LocalBufferBroker 清理完成。
 
 确认没有遗留进程后再迁移数据库、切换分支或替换 runtime 文件。
 
@@ -148,7 +156,7 @@ npm run dev
 | REST/API 普通代码 | Uvicorn reload |
 | backend-service bootstrap、Workflow Runtime、Trigger | 完整重启 backend-service |
 | Worker、训练、转换、评估、数据集任务 | 重启 Worker Supervisor |
-| inference daemon、Deployment、mmap、LocalBuffer | 停止 service，重启 daemon 并 probe，再启动 service |
+| inference daemon、Deployment、mmap、LocalBuffer | 停止 daemon，再停止 service；启动 service 并通过 health 后再启动 daemon 和 probe |
 | Alembic、配置、公共进程协议 | 停止全部进程，迁移后按本文顺序完整启动 |
 
 ## 快速局部调试边界

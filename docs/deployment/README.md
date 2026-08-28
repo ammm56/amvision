@@ -22,8 +22,8 @@
 
 ```text
 Alembic
-  → inference daemon
-  → backend-service（Uvicorn reload）
+  → backend-service（Uvicorn reload，创建主 LocalBuffer）
+  → inference daemon（恢复并预热 Deployment）
   → backend.workers.supervisor（六个 Profile）
   → Vite
 ```

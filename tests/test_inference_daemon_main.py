@@ -35,6 +35,7 @@ def _settings(*, mmap_enabled: bool) -> SimpleNamespace:
 
     return SimpleNamespace(
         local_memory=SimpleNamespace(root_dir="./data/buffers"),
+        local_buffer_broker=SimpleNamespace(arena_id="local-buffer-main"),
         inference_daemon=SimpleNamespace(
             service_id="inference-daemon-main",
             mmap_mailbox=SimpleNamespace(enabled=mmap_enabled),
@@ -76,3 +77,27 @@ def test_probe_rejects_disabled_mmap_hot_path(monkeypatch, capsys) -> None:
 
     assert inference_daemon_main.main(["--probe"]) == 1
     assert "mmap v1 热路径未启用" in capsys.readouterr().err
+
+
+def test_local_buffer_probe_has_independent_cli_gate(monkeypatch) -> None:
+    """backend health 尚未开放时也能独立确认 LocalBuffer 数据面。"""
+
+    captured: dict[str, object] = {}
+
+    class _Probe:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+        def snapshot(self) -> dict[str, object]:
+            return {"ready": True, "error": None}
+
+    monkeypatch.setattr(
+        inference_daemon_main,
+        "get_backend_service_settings",
+        lambda: _settings(mmap_enabled=True),
+    )
+    monkeypatch.setattr(inference_daemon_main, "LocalBufferDependencyProbe", _Probe)
+
+    assert inference_daemon_main.main(["--probe-local-buffer"]) == 0
+    assert captured["buffers_root"] == "./data/buffers"
+    assert getattr(captured["broker_settings"], "arena_id") == "local-buffer-main"

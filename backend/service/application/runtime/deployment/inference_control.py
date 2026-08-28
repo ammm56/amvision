@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import Event, Lock, Thread
 from time import monotonic, sleep
-from typing import Any
+from typing import Any, Callable
 from uuid import uuid4
 
 from backend.contracts.buffers import BufferLease, BufferRef
@@ -696,6 +696,7 @@ class InferenceControlDispatcher:
         lease_timeout_seconds: float = 900.0,
         response_queue_retention_seconds: float = 3600.0,
         response_queue_cleanup_interval_seconds: float = 60.0,
+        readiness_provider: Callable[[], dict[str, object]] | None = None,
     ) -> None:
         """绑定队列、共享存储和 daemon 运行组件。"""
 
@@ -715,6 +716,7 @@ class InferenceControlDispatcher:
             1.0,
             response_queue_cleanup_interval_seconds,
         )
+        self.readiness_provider = readiness_provider
         self._stop_event = Event()
         self._thread: Thread | None = None
         self._lock = Lock()
@@ -868,8 +870,8 @@ class InferenceControlDispatcher:
                 "request_id": request_id,
                 "ok": False,
                 "error": {
-                    "code": serialized.get("error_code", "service_error"),
-                    "message": serialized.get("error_message", str(error)),
+                    "error_code": serialized.get("error_code", "service_error"),
+                    "error_message": serialized.get("error_message", str(error)),
                     "status_code": serialized.get("status_code", 500),
                     "details": serialized.get("details", {}),
                 },
@@ -900,7 +902,12 @@ class InferenceControlDispatcher:
 
         action = str(payload.get("action") or "")
         if action == "ping":
-            return {"ready": True, "service_id": self.service_id}
+            readiness = (
+                self.readiness_provider()
+                if self.readiness_provider is not None
+                else {"ready": True}
+            )
+            return {**dict(readiness), "service_id": self.service_id}
         if action not in {"infer", "status", "health"}:
             raise InvalidRequestError(
                 "inference mmap v1 action 不合法",

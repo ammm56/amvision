@@ -371,6 +371,13 @@ def test_workflow_result_dispatcher_preserves_failed_run_root_error() -> None:
         state="failed",
         outputs={},
         error_message="原始节点执行错误",
+        metadata={
+            "error_details": {
+                "error_code": "deployment_inference_busy",
+                "deployment_instance_id": "deployment-1",
+                "instance_count": 2,
+            }
+        },
     )
 
     trigger_result = WorkflowResultDispatcher().build_result(
@@ -381,6 +388,8 @@ def test_workflow_result_dispatcher_preserves_failed_run_root_error() -> None:
 
     assert trigger_result.state == "failed"
     assert trigger_result.error_message == "原始节点执行错误"
+    assert trigger_result.metadata["error_code"] == "deployment_inference_busy"
+    assert trigger_result.metadata["error_details"]["instance_count"] == 2
     assert trigger_result.response_payload == {
         "workflow_run_id": "workflow-run-failed",
         "workflow_state": "failed",
@@ -439,6 +448,7 @@ def test_workflow_submitter_allows_trigger_source_without_external_inputs() -> N
     assert trigger_result.state == "succeeded"
     assert runtime_service.last_request is not None
     assert runtime_service.last_request.input_bindings == {}
+    assert runtime_service.last_execution_acquisition_mode == "reject"
 
 
 def test_workflow_submitter_zeromq_defaults_to_no_trace() -> None:
@@ -945,6 +955,51 @@ def test_zeromq_error_reply_uses_unified_trigger_result_contract() -> None:
         "error_details": {"field": "payload"},
     }
     assert "amvision.zeromq-trigger-error.v1" not in json.dumps(payload)
+
+
+def test_zeromq_health_classifies_workflow_deployment_busy_result() -> None:
+    """验证模型节点满载结果能进入 ZeroMQ source-scoped busy 指标。"""
+
+    endpoint = f"inproc://zeromq-trigger-busy-{uuid4().hex}"
+    trigger_source = _build_trigger_source(
+        trigger_kind="zeromq-topic",
+        submit_mode="sync",
+        input_binding_mapping={},
+        transport_config={"bind_endpoint": endpoint},
+    )
+    adapter = _build_zeromq_adapter(_FakeLocalBufferWriter())
+
+    class _BusyResultHandler:
+        def handle_trigger_event(self, *, trigger_source, raw_event):
+            return WorkflowTriggerDispatchResult(
+                trigger_result=TriggerResultContract(
+                    trigger_source_id=trigger_source.trigger_source_id,
+                    event_id=raw_event.event_id or "event-busy",
+                    state="failed",
+                    error_message="当前 deployment 推理实例已满载",
+                    metadata={"error_code": "deployment_inference_busy"},
+                )
+            )
+
+    adapter.start(trigger_source=trigger_source, event_handler=_BusyResultHandler())
+    try:
+        result = adapter.handle_multipart_message(
+            trigger_source=trigger_source,
+            frames=[b'{"event_id":"event-busy"}'],
+            event_handler=_BusyResultHandler(),
+        )
+        health = adapter.get_health(
+            trigger_source_id=trigger_source.trigger_source_id
+        )
+    finally:
+        adapter.stop(trigger_source_id=trigger_source.trigger_source_id)
+
+    assert result.state == "failed"
+    assert health["request_count"] == 1
+    assert health["error_count"] == 1
+    assert health["busy_count"] == 1
+    assert health["capacity_reject_count"] == 0
+    assert health["recent_error"]["error_code"] == "deployment_inference_busy"
 
 
 def test_zeromq_image_reply_rejects_capacity_before_first_frame() -> None:

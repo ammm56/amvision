@@ -14,9 +14,9 @@
 
 ## 启动与探测
 
-发行目录根启动器在数据库迁移成功后启动 inference daemon，并同时校验 ready 日志和真实 mmap ping，再启动 backend-service 和 worker。开发环境的唯一命令入口见 [development-environment.md](development-environment.md)，本文不重复维护启动命令。
+发行目录根启动器在数据库迁移成功后先启动 backend-service，并用 `--probe-local-buffer` 确认唯一主 LocalBufferBroker owner/layout 可用；随后启动 inference daemon，等待持久化 Deployment 恢复和全部实例预热完成，再等待 backend-service 完整 health 并启动 worker。不能在 daemon 前等待 backend health，因为 Workflow Runtime startup 可能包含依赖 daemon 的模型节点。开发环境的唯一命令入口见 [development-environment.md](development-environment.md)，本文不重复维护启动命令。
 
-`--probe` 通过实际 mmap ping 判断 daemon 和 mailbox 是否可达。`GET /api/v1/system/diagnostics` 的 `services.inference_daemon` 使用 1 秒短探测返回 `ok` 或 `unavailable`，不会仅根据客户端对象存在就误报健康。
+`--probe` 通过实际 mmap ping 检查 mailbox、LocalBuffer owner/layout、首轮恢复以及恢复失败数。只有这些条件全部通过才返回成功。`GET /api/v1/system/diagnostics` 的 `services.inference_daemon` 使用 1 秒短探测返回 `ok` 或 `unavailable`，不会仅根据客户端对象存在就误报健康。
 
 ## 恢复语义
 
@@ -28,7 +28,7 @@
 - controller lease、PID、heartbeat、重启与连续失败计数
 - 下一次重试时间和最近错误
 
-daemon 启动后扫描 `desired_state=running` 的记录并恢复进程。进程崩溃和启动失败使用指数退避；generation 防止较早的 start 结果覆盖较新的 stop 请求；数据库 lease 防止同一 deployment 被两个 daemon 同时恢复。新 daemon 接管旧 owner 时，最坏需要等待 `controller_lease_seconds` 到期，正式默认值为 15 秒。
+daemon 启动后先验证主 LocalBuffer 依赖，再扫描 `desired_state=running` 的记录并恢复进程。依赖尚未出现时不创建子进程、不增加 restart/failure 计数。`start` 和崩溃恢复使用同一条全实例预热路径；父进程只在 `healthy_instance_count == warmed_instance_count == instance_count` 后开放推理。加载或预热期间的同步调用立即返回未就绪错误，不进入等待队列。进程崩溃和启动失败使用指数退避；generation 防止较早的 start 结果覆盖较新的 stop 请求；数据库 lease 防止同一 deployment 被两个 daemon 同时恢复。新 daemon 接管旧 owner 时，最坏需要等待 `controller_lease_seconds` 到期，正式默认值为 15 秒。
 
 backend-service 不可达不会改变 daemon 中已运行模型进程的期望状态。daemon 不可达时，deployment status/health 返回结构化降级状态，仍允许把持久化期望状态改成 `stopped`，避免恢复后意外拉起。
 
@@ -40,7 +40,7 @@ backend-service 不可达不会改变 daemon 中已运行模型进程的期望�
 
 - `BufferRef` / `FrameRef` 只传 path、offset、size、shape、dtype、layout、pixel format、broker epoch 和 generation。
 - deployment worker 只读映射 LocalBufferBroker 已配置 pool 的对应区间。raw BGR24 直接返回 `memoryview`，由统一 raw-aware loader 构造 NumPy view。
-- 普通 HTTP 上传或 storage image-ref 在 API 边界仍可使用 ObjectStore。同步调用由 backend-service 写入主 LocalBuffer；持久异步任务先保留可恢复的 ObjectStore 引用，daemon 消费任务后再写入私有短期 LocalBuffer。两者进入模型子进程时都只剩 BufferRef/FrameRef。
+- 普通 HTTP 上传或 storage image-ref 在 API 边界仍可使用 ObjectStore。同步调用由 backend-service 写入主 LocalBuffer，进入模型子进程时只传 BufferRef/FrameRef；持久异步任务始终保留可恢复的 ObjectStore key，由 deployment worker 直接读取，不创建第二个或私有 LocalBuffer arena。
 - 要求结果图片时，backend-service 先分配 writing lease，daemon 把图片直接写入该 LocalBuffer 槽位，mmap 响应只返回实际长度和媒体类型，backend-service 再提交和读取结果。
 - mmap 已完成时，本次临时输入和结果 lease 立即释放；timeout、daemon 重启等传输状态不确定时不立即复用槽位，而是保留到有界 TTL 后由 Broker 回收。daemon 拒绝写入剩余有效期不足的结果 lease。
 - 热路径禁止 inline image bytes、base64、PNG 临时编码和 `runtime/inputs/inference-control/` 临时图片。

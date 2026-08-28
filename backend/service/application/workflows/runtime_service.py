@@ -2278,7 +2278,7 @@ class WorkflowRuntimeService:
         request: WorkflowRuntimeInvokeRequest,
         *,
         created_by: str | None,
-        execution_acquisition_mode: str = "wait",
+        execution_acquisition_mode: str = "reject",
     ) -> WorkflowRuntimeSyncInvokeResult:
         """通过已启动的 runtime 发起一次同步调用，并保留未脱敏输出。
 
@@ -2286,6 +2286,7 @@ class WorkflowRuntimeService:
         - workflow_runtime_id：目标 WorkflowAppRuntime id。
         - request：同步运行请求。
         - created_by：创建主体 id。
+        - execution_acquisition_mode：同步槽位准入方式；默认立即拒绝满载请求。
 
         返回：
         - WorkflowRuntimeSyncInvokeResult：包含持久化 WorkflowRun 和未脱敏 outputs。

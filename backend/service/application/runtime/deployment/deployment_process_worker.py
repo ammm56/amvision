@@ -17,6 +17,7 @@ from backend.nodes.runtime_support import (
 )
 from backend.runtime.processes import configure_managed_child_signals
 from backend.service.application.errors import (
+    DeploymentInferenceBusyError,
     InvalidRequestError,
     ServiceError,
     ServiceConfigurationError,
@@ -351,8 +352,8 @@ def run_deployment_process_worker(
                     _put_error_response(
                         response_queue=response_queue,
                         request_id=request_id,
-                        error=InvalidRequestError(
-                            "当前 deployment keep-warm 尚未让出推理实例，请稍后重试",
+                        error=DeploymentInferenceBusyError(
+                            "当前 deployment keep-warm 尚未让出推理实例",
                             details={
                                 "deployment_instance_id": config.deployment_instance_id,
                                 "action": action,
@@ -366,8 +367,8 @@ def run_deployment_process_worker(
                 _put_error_response(
                     response_queue=response_queue,
                     request_id=request_id,
-                    error=InvalidRequestError(
-                        "当前 deployment 推理线程已满载，请稍后重试",
+                    error=DeploymentInferenceBusyError(
+                        "当前 deployment 推理实例已满载",
                         details={
                             "deployment_instance_id": config.deployment_instance_id,
                             "instance_count": config.instance_count,
@@ -1050,6 +1051,12 @@ def _serialize_health(health: object) -> dict[str, object]:
                 "healthy": item.healthy,
                 "warmed": item.warmed,
                 "busy": item.busy,
+                "inference_count": item.inference_count,
+                "inference_count_rollover_count": (
+                    item.inference_count_rollover_count
+                ),
+                "error_count": item.error_count,
+                "error_count_rollover_count": item.error_count_rollover_count,
                 "last_error": item.last_error,
             }
             for item in getattr(health, "instances")
@@ -1153,6 +1160,7 @@ def _put_error_response(
                 "error": {
                     "code": error.code,
                     "message": error.message,
+                    "status_code": error.status_code,
                     "details": dict(error.details),
                 },
             }
@@ -1165,6 +1173,7 @@ def _put_error_response(
             "error": {
                 "code": ServiceConfigurationError().code,
                 "message": str(error),
+                "status_code": ServiceConfigurationError().status_code,
                 "details": {"error_type": error.__class__.__name__},
             },
         }

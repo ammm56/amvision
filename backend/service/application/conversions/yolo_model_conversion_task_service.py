@@ -15,8 +15,8 @@ from backend.service.application.conversions.yolo_conversion_task_service_base i
 from backend.service.application.conversions.task_kinds import (
     YOLO_MODEL_CONVERSION_TASK_KIND,
 )
-from backend.service.application.conversions.runtime.yolo_model_conversion_runner import (
-    YoloModelConversionRunRequest,
+from backend.service.application.backends import (
+    ConversionBackendRunRequest as YoloModelConversionRunRequest,
 )
 
 

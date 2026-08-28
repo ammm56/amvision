@@ -418,6 +418,14 @@ OpenVINO stream：自动（当前实际 1）
 - 把 OpenVINO GPU/NPU 或 TensorRT 参数塞进 CPU 表单
 - 把单个 session 的健康状态描述成进程隔离
 
+## 进程内存边界
+
+- inference daemon 管理进程只导入控制面、契约和进程监督代码，不在模块导入期加载 PyTorch 或五类模型 runtime。
+- deployment worker 在实际加载 Deployment 时只导入当前 `task_type` 的模型 runtime；classification worker 不应同时加载 detection、segmentation、pose 和 OBB 执行实现。
+- 每个 deployment 子进程仍独立持有自己的模型 session、OpenVINO/TensorRT/ONNX Runtime 状态和运行库，这是进程隔离的实际内存成本，不能按实例数假定共享。
+- Windows 上普通 Working Set 会把已经触碰的文件映射页计入多个进程，跨进程相加会重复计算；长期审计同时记录 Working Set-Private（或 psutil USS）、Private Bytes、进程角色和系统 available memory。LocalBuffer 的 2 GiB 固定文件映射不等于 2 GiB 私有物理占用。
+- 模型 runtime 延迟导入只减少管理进程和无关 task runtime 的常驻内存，不改变实例选择、同步拒绝、warmup、LocalBuffer 或推理结果语义。
+
 ## 同步调用和 workflow 边界
 
 模型 runtime 资源配置不改变 workflow 的业务语义：
@@ -426,6 +434,7 @@ OpenVINO stream：自动（当前实际 1）
 - workflow 不负责决定 OpenVINO stream、CPU线程或TensorRT context。
 - workflow 可以根据现场业务明确使用一个 For Each 或多条并行分支；deployment runtime 不自动合并、拆分或重写这些调用。
 - deployment runtime 不因启用 throughput 配置就自动增加等待队列。
+- 实例级 health 公开 `inference_count`、`error_count` 及各自 rollover 数量，用于核对真实并行分支是否落到全部实例；计数只提供审计事实，不参与调度或容量等待。
 - 对批处理、异步聚合或跨请求调度的支持如果后续进入范围，必须作为独立能力设计，不能由本配置隐式启用。
 
 ## 验收规则
@@ -437,6 +446,7 @@ OpenVINO stream：自动（当前实际 1）
 - OpenVINO CPU、GPU、NPU 不共享错误的低层字段。
 - TensorRT 构建参数不能在 deployment 页面被伪装成运行期可修改参数。
 - 运行详情能够同时显示 requested 和 effective 配置。
+- 两实例同步 Deployment 执行图内两个并行模型分支时，两实例计数都必须增长，满载时仍保持立即拒绝而不是排队。
 - 所有 deployment task type 和 model type 复用同一套配置边界。
 - workflow 同步调用语义不因本次配置扩展而改变。
 - 并发性能必须由真实 benchmark 和长期 soak 证明，不能用实例数做线性推算。

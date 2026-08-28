@@ -313,6 +313,25 @@ class WorkflowTriggerExecutorBusyError(ServiceError):
         )
 
 
+class DeploymentInferenceBusyError(ServiceError):
+    """表示同步 deployment 的全部推理实例当前都在执行请求。"""
+
+    def __init__(
+        self,
+        message: str = "当前 deployment 推理实例已满载",
+        *,
+        details: Mapping[str, object] | None = None,
+    ) -> None:
+        """初始化不排队、不重试的同步推理容量错误。"""
+
+        super().__init__(
+            message,
+            code="deployment_inference_busy",
+            status_code=409,
+            details=details,
+        )
+
+
 class ZeroMqTransportCapacityError(ServiceError):
     """表示 ZeroMQ 输出传输生命周期表当前没有可用容量。"""
 

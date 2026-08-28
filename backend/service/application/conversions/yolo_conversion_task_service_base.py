@@ -9,7 +9,13 @@ import time
 from typing import Any, Callable
 from uuid import uuid4
 
-from backend.service.application.backends import ConversionBackend, DetectionConversionPlanStep
+from backend.service.application.backends import (
+    ConversionBackend,
+    ConversionBackendOutput,
+    ConversionBackendRunRequest,
+    ConversionBackendRunResult,
+    DetectionConversionPlanStep,
+)
 from backend.service.application.conversions.conversion_result_snapshot import ConversionResultSnapshot
 from backend.service.application.conversions.deadline_policy import (
     ConversionCancellationProbe,
@@ -73,11 +79,11 @@ from backend.service.domain.tasks.task_records import TaskAttempt, TaskRecord, T
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
-from backend.service.application.conversions.runtime.yolo_model_conversion_runner import (
-    YoloModelConversionOutput,
-    YoloModelConversionRunRequest,
-    YoloModelConversionRunResult,
-)
+
+
+YoloModelConversionOutput = ConversionBackendOutput
+YoloModelConversionRunRequest = ConversionBackendRunRequest
+YoloModelConversionRunResult = ConversionBackendRunResult
 
 
 _EXECUTABLE_TARGET_FORMATS = frozenset({"onnx", "onnx-optimized", "openvino-ir", "tensorrt-engine"})

@@ -235,6 +235,46 @@ def test_runtime_registry_loader_can_keep_custom_code_out_of_control_process(
     )
 
 
+def test_runtime_registry_loader_imports_only_custom_packs_used_by_snapshot(
+    tmp_path: Path,
+) -> None:
+    """固定 Workflow Runtime 不得导入图中未使用的自定义节点包。"""
+
+    custom_nodes_root_dir = _create_executable_node_pack_fixture(tmp_path)
+    import_marker_path = tmp_path / "unused-custom-entrypoint-imported.txt"
+    entrypoint_path = (
+        custom_nodes_root_dir / "text_basic_nodes" / "backend" / "entry.py"
+    )
+    original_entrypoint = entrypoint_path.read_text(encoding="utf-8")
+    entrypoint_path.write_text(
+        "from pathlib import Path\n"
+        f"Path({str(import_marker_path)!r}).write_text('imported', encoding='utf-8')\n"
+        f"{original_entrypoint}",
+        encoding="utf-8",
+    )
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+    node_pack_loader.refresh()
+    node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    runtime_registry_loader = WorkflowNodeRuntimeRegistryLoader(
+        node_catalog_registry=node_catalog_registry,
+        node_pack_loader=node_pack_loader,
+        required_node_type_ids={"core.logic.payload-to-value"},
+    )
+
+    runtime_registry_loader.refresh()
+
+    assert not import_marker_path.exists()
+    runtime_registry = runtime_registry_loader.get_runtime_registry()
+    custom_definition = next(
+        item
+        for item in runtime_registry.list_node_definitions()
+        if item.node_type_id == "custom.text.normalize"
+    )
+    assert runtime_registry.has_registered_handler(
+        node_definition=custom_definition
+    ) is False
+
+
 def test_runtime_registry_loader_registers_core_basic_nodes(
     tmp_path: Path,
 ) -> None:

@@ -15,6 +15,7 @@ from backend.service.application.local_buffers import (
 from backend.service.application.local_buffers import broker_instance_lock as lock_module
 from backend.service.application.local_buffers.broker_instance_lock import (
     LocalBufferBrokerInstanceLock,
+    is_local_buffer_broker_instance_active,
 )
 
 
@@ -424,3 +425,23 @@ def test_broker_instance_lock_releases_owner_when_metadata_write_is_interrupted(
     recovered = LocalBufferBrokerInstanceLock(root_dir=tmp_path)
     recovered.acquire()
     recovered.release()
+
+
+def test_broker_instance_active_probe_does_not_claim_or_modify_owner(
+    tmp_path: Path,
+) -> None:
+    """只读 probe 只区分锁是否被占用，不接管空闲根目录。"""
+
+    assert is_local_buffer_broker_instance_active(tmp_path) is False
+    owner = LocalBufferBrokerInstanceLock(root_dir=tmp_path)
+    owner.acquire()
+    try:
+        assert owner._lock_file is not None  # noqa: SLF001 - 验证持锁 handle 内容
+        owner._lock_file.seek(0)  # noqa: SLF001
+        lock_content = owner._lock_file.read()  # noqa: SLF001
+        assert is_local_buffer_broker_instance_active(tmp_path) is True
+        owner._lock_file.seek(0)  # noqa: SLF001
+        assert owner._lock_file.read() == lock_content  # noqa: SLF001
+    finally:
+        owner.release()
+    assert is_local_buffer_broker_instance_active(tmp_path) is False

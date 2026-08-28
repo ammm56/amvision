@@ -21,9 +21,6 @@ from backend.service.application.models.support.yolo_dataset_manifest_support im
     build_coco_payload_from_yolo_segmentation_split,
     normalize_yolo_category_names,
 )
-from backend.service.application.runtime.tasks.segmentation_model_runtime import (
-    DefaultSegmentationModelRuntime,
-)
 from backend.service.application.runtime.contracts.segmentation.prediction import (
     SegmentationPredictionRequest,
 )
@@ -34,6 +31,9 @@ from backend.service.application.runtime.session_lifecycle import RuntimeSession
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
+
+
+DefaultSegmentationModelRuntime: type | None = None
 
 
 @dataclass(frozen=True)
@@ -99,7 +99,13 @@ def run_segmentation_evaluation(
             mask_map50_95=0.0,
         )
 
-    runtime = DefaultSegmentationModelRuntime()
+    runtime_class = DefaultSegmentationModelRuntime
+    if runtime_class is None:
+        from backend.service.application.runtime.tasks.segmentation_model_runtime import (
+            DefaultSegmentationModelRuntime as runtime_class,
+        )
+
+    runtime = runtime_class()
     session = RuntimeSessionLease(
         runtime.load_session(
             dataset_storage=dataset_storage,

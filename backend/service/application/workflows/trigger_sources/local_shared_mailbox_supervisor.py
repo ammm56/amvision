@@ -61,6 +61,11 @@ from backend.service.application.workflows.trigger_sources.local_shared_runtime 
 from backend.service.application.workflows.trigger_sources.result_dispatcher import (
     WorkflowResultDispatcher,
 )
+from backend.service.application.workflows.trigger_sources.error_classification import (
+    BUSY_ERROR_CODES,
+    CAPACITY_ERROR_CODES,
+    read_trigger_result_error_code,
+)
 from backend.service.application.workflows.trigger_sources.trigger_message_channel import (
     WorkflowTriggerDescriptorIdentity,
     WorkflowTriggerMailboxRequest,
@@ -849,6 +854,7 @@ class WorkflowTriggerMailboxSupervisor:
                 pending,
                 workflow_state=trigger_result.state,
                 published_error_code=published_error_code,
+                workflow_error_code=read_trigger_result_error_code(trigger_result),
             )
         except Exception as error:
             # 错误 RESPONSE 不公开任何图片 locator。先回收当前 input/output
@@ -1175,6 +1181,7 @@ class WorkflowTriggerMailboxSupervisor:
         *,
         workflow_state: str,
         published_error_code: int,
+        workflow_error_code: str | None = None,
     ) -> None:
         """以 SDK 最终可见终态记录完成计数和稳定错误分类。"""
 
@@ -1202,13 +1209,13 @@ class WorkflowTriggerMailboxSupervisor:
                 mailbox_contract.ERROR_CODE_TRIGGER_SOURCE_BUSY,
                 mailbox_contract.ERROR_CODE_WORKFLOW_RUNTIME_BUSY,
                 mailbox_contract.ERROR_CODE_WORKFLOW_EXECUTOR_BUSY,
-            }:
+            } or workflow_error_code in BUSY_ERROR_CODES:
                 source.busy_count += 1
             if published_error_code in {
                 mailbox_contract.ERROR_CODE_LOCAL_BUFFER_CAPACITY_EXHAUSTED,
                 mailbox_contract.ERROR_CODE_LOCAL_BUFFER_OUTPUT_CAPACITY_EXHAUSTED,
                 mailbox_contract.ERROR_CODE_TRIGGER_RESPONSE_CAPACITY_EXHAUSTED,
-            }:
+            } or workflow_error_code in CAPACITY_ERROR_CODES:
                 source.capacity_reject_count += 1
             if (
                 workflow_state == "timed_out"
@@ -1224,6 +1231,7 @@ class WorkflowTriggerMailboxSupervisor:
             source.recent_error = {
                 "error_type": "WorkflowTriggerPublishedResult",
                 "error_code": _mailbox_error_code_name(published_error_code),
+                "workflow_error_code": workflow_error_code,
                 "workflow_state": workflow_state,
                 "occurred_at": datetime.now(timezone.utc).isoformat(),
             }

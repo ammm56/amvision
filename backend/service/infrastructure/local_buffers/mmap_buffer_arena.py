@@ -160,6 +160,7 @@ class MmapBufferArena:
         self.geometry = config.geometry
         self._allocator = BuddyArenaAllocator(self.geometry)
         self._allocator_lock = RLock()
+        self._publication_lock = RLock()
         self._lifecycle = Condition(RLock())
         self._lifecycle_state: Literal[
             "open", "closing", "close_blocked", "closed"
@@ -1269,7 +1270,7 @@ class MmapBufferArena:
         )
 
     def _write_header(self) -> None:
-        """写入固定 metadata header。"""
+        """在 owner 启动期一次性发布固定 metadata header。"""
 
         if self._allocator_mmap is None:
             return
@@ -1291,6 +1292,24 @@ class MmapBufferArena:
             self.layout_fingerprint,
             self._publication_generation,
         )
+
+    def _next_publication_generation(self) -> int:
+        """在 publication lock 内生成并持久化下一诊断序号。
+
+        broker epoch、layout 和 geometry 在 owner 生命周期内不可变，运行期不得
+        再整块覆盖 header。否则不同 descriptor 的并行发布会让外部 reader 读到
+        struct.pack_into 的中间态。这里只更新末尾独立的 8 字节计数。
+        """
+
+        assert self._allocator_mmap is not None
+        self._publication_generation += 1
+        struct.pack_into(
+            "<Q",
+            self._allocator_mmap,
+            _HEADER.size - 8,
+            self._publication_generation,
+        )
+        return self._publication_generation
 
     def _publish_descriptor(
         self,
@@ -1322,34 +1341,34 @@ class MmapBufferArena:
                 )
             return
         assert self._allocator_mmap is not None
-        self._publication_generation += 1
-        descriptor_offset = _descriptor_offset(descriptor_index)
-        _DESCRIPTOR.pack_into(
-            self._allocator_mmap,
-            descriptor_offset,
-            _STATE_FREE,
-            _DOMAIN_HUGE_RESERVE
-            if extent.domain == "huge_reserve"
-            else _DOMAIN_GENERAL,
-            descriptor_generation,
-            lease_token,
-            owner_token,
-            extent.offset,
-            extent.capacity_bytes,
-            extent.content_length,
-            deadline_ns,
-            revocation_deadline_ns,
-            extent.order,
-            0,
-            self._publication_generation,
-        )
-        struct.pack_into(
-            "<I",
-            self._allocator_mmap,
-            descriptor_offset,
-            _state_code(state),
-        )
-        self._write_header()
+        with self._publication_lock:
+            publication_generation = self._next_publication_generation()
+            descriptor_offset = _descriptor_offset(descriptor_index)
+            _DESCRIPTOR.pack_into(
+                self._allocator_mmap,
+                descriptor_offset,
+                _STATE_FREE,
+                _DOMAIN_HUGE_RESERVE
+                if extent.domain == "huge_reserve"
+                else _DOMAIN_GENERAL,
+                descriptor_generation,
+                lease_token,
+                owner_token,
+                extent.offset,
+                extent.capacity_bytes,
+                extent.content_length,
+                deadline_ns,
+                revocation_deadline_ns,
+                extent.order,
+                0,
+                publication_generation,
+            )
+            struct.pack_into(
+                "<I",
+                self._allocator_mmap,
+                descriptor_offset,
+                _state_code(state),
+            )
 
     def _write_descriptor_state(
         self,
@@ -1360,43 +1379,43 @@ class MmapBufferArena:
         """在 body 不变时最后覆盖 state publication。"""
 
         assert self._allocator_mmap is not None
-        self._publication_generation += 1
-        descriptor_offset = _descriptor_offset(descriptor_index)
-        struct.pack_into(
-            "<I", self._allocator_mmap, descriptor_offset, _state_code(state)
-        )
-        struct.pack_into(
-            "<Q",
-            self._allocator_mmap,
-            descriptor_offset + _DESCRIPTOR.size - 8,
-            self._publication_generation,
-        )
-        self._write_header()
+        with self._publication_lock:
+            publication_generation = self._next_publication_generation()
+            descriptor_offset = _descriptor_offset(descriptor_index)
+            struct.pack_into(
+                "<I", self._allocator_mmap, descriptor_offset, _state_code(state)
+            )
+            struct.pack_into(
+                "<Q",
+                self._allocator_mmap,
+                descriptor_offset + _DESCRIPTOR.size - 8,
+                publication_generation,
+            )
 
     def _publish_free_descriptor(self, descriptor: ArenaDescriptorSnapshot) -> None:
         """generation 提升后清空 identity，最后发布 FREE。"""
 
         assert self._allocator_mmap is not None
-        self._publication_generation += 1
-        descriptor_offset = _descriptor_offset(descriptor.descriptor_index)
-        _DESCRIPTOR.pack_into(
-            self._allocator_mmap,
-            descriptor_offset,
-            _STATE_FREE,
-            _DOMAIN_GENERAL,
-            descriptor.descriptor_generation + 1,
-            b"\x00" * 16,
-            b"\x00" * 16,
-            0,
-            0,
-            0,
-            0,
-            0,
-            self.geometry.min_order,
-            0,
-            self._publication_generation,
-        )
-        self._write_header()
+        with self._publication_lock:
+            publication_generation = self._next_publication_generation()
+            descriptor_offset = _descriptor_offset(descriptor.descriptor_index)
+            _DESCRIPTOR.pack_into(
+                self._allocator_mmap,
+                descriptor_offset,
+                _STATE_FREE,
+                _DOMAIN_GENERAL,
+                descriptor.descriptor_generation + 1,
+                b"\x00" * 16,
+                b"\x00" * 16,
+                0,
+                0,
+                0,
+                0,
+                0,
+                self.geometry.min_order,
+                0,
+                publication_generation,
+            )
 
     def _read_descriptor(self, descriptor_index: int) -> ArenaDescriptorSnapshot:
         """读取一个固定 descriptor；state 是最后发布字段。"""
@@ -1752,26 +1771,46 @@ class MmapBufferArenaExternalAccess:
             raise LocalBufferArenaError("LocalBuffer arena identity 不匹配")
         header = _HEADER.unpack_from(self._allocator_mmap, 0)
         broker_epoch = bytes(header[11]).hex()
-        if str(getattr(locator, "broker_epoch")) != broker_epoch:
-            raise LocalBufferArenaError("LocalBuffer broker epoch 已失效")
+        locator_broker_epoch = str(getattr(locator, "broker_epoch"))
+        if locator_broker_epoch != broker_epoch:
+            raise LocalBufferArenaError(
+                "LocalBuffer broker epoch 已失效："
+                f"expected={locator_broker_epoch}, actual={broker_epoch}"
+            )
         descriptor = self._read_descriptor(int(getattr(locator, "descriptor_index")))
+        locator_generation = int(getattr(locator, "descriptor_generation"))
+        locator_offset = int(getattr(locator, "offset"))
         locator_content_length = int(getattr(locator, "content_length"))
+        locator_capacity = int(getattr(locator, "allocation_capacity_bytes"))
         content_length_matches = (
             0 < locator_content_length <= descriptor.content_length
             if descriptor.state == "frame_reserved"
             else locator_content_length == descriptor.content_length
         )
+        now_ns = monotonic_ns()
         if (
             descriptor.state not in expected_states
-            or descriptor.descriptor_generation
-            != int(getattr(locator, "descriptor_generation"))
-            or descriptor.offset != int(getattr(locator, "offset"))
+            or descriptor.descriptor_generation != locator_generation
+            or descriptor.offset != locator_offset
             or not content_length_matches
-            or descriptor.allocation_capacity_bytes
-            != int(getattr(locator, "allocation_capacity_bytes"))
-            or descriptor.deadline_ns <= monotonic_ns()
+            or descriptor.allocation_capacity_bytes != locator_capacity
+            or descriptor.deadline_ns <= now_ns
         ):
-            raise LocalBufferArenaError("LocalBuffer locator identity 或状态不匹配")
+            raise LocalBufferArenaError(
+                "LocalBuffer locator identity 或状态不匹配："
+                f"expected_states={sorted(expected_states)}, "
+                f"expected_generation={locator_generation}, "
+                f"expected_offset={locator_offset}, "
+                f"expected_capacity={locator_capacity}, "
+                f"expected_content_length={locator_content_length}; "
+                f"actual_state={descriptor.state}, "
+                f"actual_generation={descriptor.descriptor_generation}, "
+                f"actual_offset={descriptor.offset}, "
+                f"actual_capacity={descriptor.allocation_capacity_bytes}, "
+                f"actual_content_length={descriptor.content_length}, "
+                f"actual_deadline_ns={descriptor.deadline_ns}, now_ns={now_ns}, "
+                f"publication_generation={descriptor.publication_generation}"
+            )
         return descriptor
 
     def _read_descriptor(self, descriptor_index: int) -> ArenaDescriptorSnapshot:

@@ -35,7 +35,7 @@ LocalBuffer 是所有本机短期内存图片跨模块、跨节点和跨进程�
 - Workflow 输入、节点间图片输出、OpenCV/Barcode/ROI处理结果、模型输入、同步结果图片和 Preview运行期图片都使用同一引用契约；
 - 节点只读时借用 mmap view，节点产生新像素时申请新 extent并发布不可变输出，不修改已经发布的输入；
 - inference mailbox、Workflow Trigger mailbox和节点结构化输出只携带引用与小型JSON，不携带图片主体；
-- 跨重启异步任务和长期保存仍使用ObjectStore，任务真正领取后才物化到相应Broker owner的arena；
+- 跨重启异步任务和长期保存始终使用 ObjectStore，deployment worker 直接读取稳定 key，不物化到短期 arena；
 - 节点内部短生命周期的OpenCV/NumPy矩阵和模型tensor可以按算法需要存在，但不能作为公开节点输出或跨进程契约。
 
 主arena容量由所有实际在途图片动态共享，不按已创建的Runtime、Deployment、TriggerSource或节点数量预留。避免传输副本不等于禁止算法本身必要的decode、颜色转换、crop、draw或preprocess写入；性能审计需要把协议复制、arena写入、算法转换和模型计算分别计时。
@@ -123,7 +123,8 @@ LocalBuffer 是所有本机短期内存图片跨模块、跨节点和跨进程�
 - raw BGR24 使用只读 mmap `memoryview -> np.frombuffer`，不执行 PNG/JPEG encode/decode。
 - encoded JPEG/PNG/BMP 在 direct mmap reader 中同样保持为只读 `memoryview`，只在 `cv2.imdecode` 内部生成目标矩阵，不先复制一份 encoded bytes。
 - mmap reader 只能打开 SDK/服务配置固定的 arena 文件，并校验 layout fingerprint、broker epoch、descriptor generation、offset、content length 和 allocation capacity，不能读取任意本地路径。
-- storage/inline 同步输入由 backend-service 写入主 LocalBuffer；持久异步任务由 daemon 领取 ObjectStore 引用后写入私有短期 LocalBuffer。要求同步结果图片时由 backend-service 预分配 writing lease，daemon 直接写入；mmap 和模型进程 Queue 都不携带图片 bytes 或 base64。
+- arena header 中的 magic、layout、geometry、fingerprint 和 broker epoch 只在 owner 启动期整块发布一次。运行期不同 descriptor 的状态发布只写各自 descriptor，并在进程内极短临界区更新 header 末尾独立的 8 字节诊断计数；禁止在 descriptor 热路径整块重写 header，避免并行分支让跨进程 reader 读到 epoch 中间态。
+- storage/inline 同步输入由 backend-service 写入主 LocalBuffer；持久异步任务只传 ObjectStore key，deployment worker 通过自身的 ObjectStore adapter 直接读取。要求同步结果图片时由 backend-service 预分配 writing lease，daemon 直接写入；mmap 和模型进程 Queue 都不携带图片 bytes 或 base64。
 - mmap 成功或收到 daemon 错误响应后立即释放临时 lease；传输状态不确定时保留 lease 到 TTL，由 Broker 回收，不能提前复用给下一请求。
 - mailbox descriptor 请求和响应包含 server epoch、generation、owner、deadline 和 CRC32；大型 segmentation 等结构化结果使用固定溢出页池，每页也有 descriptor identity、next page、长度和 CRC32。
 - 溢出页连续优先，碎片化时沿非连续 page chain 读取；client ACK 后由 daemon 回收。页池满载或单响应超过配置上限时返回 `mmap_response_capacity_exhausted`，不退回持久化队列、不动态扩文件。
@@ -210,7 +211,7 @@ BGR24 输入下不应再走 `cv2.imdecode`。运行时指标可以把 encoded �
 | Camera/ZeroMQ/视频帧入口 | Camera/OpenCV 帧默认输出 raw memory image-ref，跨进程入口输出 BufferRef/FrameRef，并保留 shape、dtype、layout、pixel_format | 默认生成 base64 或临时 PNG |
 | model-inference-submit 等异步任务提交节点 | 使用 storage ref 作为可恢复任务输入 | 把短生命周期 BufferRef 持久化进异步队列 |
 
-storage 输入属于持久化任务边界。短期 mmap 引用不能跨服务重启或长队列等待，异步任务必须使用可恢复的 ObjectStore 引用；daemon 真正领取任务后才写入私有 LocalBuffer，模型子进程仍只读取 BufferRef/FrameRef。
+storage 输入属于持久化任务边界。短期 mmap 引用不能跨服务重启或长队列等待，异步任务必须使用可恢复的 ObjectStore 引用；模型子进程直接读取 ObjectStore key，不创建异步专用 LocalBuffer，也不把图片 bytes 写入持久队列。
 
 ### OpenCV 和显示节点
 

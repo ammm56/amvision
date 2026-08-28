@@ -6,11 +6,17 @@ from dataclasses import dataclass, field
 from threading import Lock
 
 from backend.service.application.errors import (
+    DeploymentInferenceBusyError,
     InvalidRequestError,
     ServiceConfigurationError,
 )
 from backend.service.application.support.resource_cleanup import (
     release_model_task_resources,
+)
+from backend.service.application.runtime.support.safe_counter import (
+    SafeCounterState,
+    increment_safe_counter,
+    snapshot_safe_counter,
 )
 from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetSnapshot,
@@ -87,6 +93,10 @@ class DeploymentRuntimeInstanceHealth:
     - healthy：实例是否健康。
     - warmed：实例是否已经完成模型加载。
     - busy：实例当前是否正在处理请求。
+    - inference_count：成功推理次数当前安全整数窗口值。
+    - inference_count_rollover_count：成功推理次数 rollover 数量。
+    - error_count：实例加载或推理失败次数当前安全整数窗口值。
+    - error_count_rollover_count：失败次数 rollover 数量。
     - last_error：最近一次失败错误。
     """
 
@@ -94,6 +104,10 @@ class DeploymentRuntimeInstanceHealth:
     healthy: bool
     warmed: bool
     busy: bool
+    inference_count: int = 0
+    inference_count_rollover_count: int = 0
+    error_count: int = 0
+    error_count_rollover_count: int = 0
     last_error: str | None = None
 
 
@@ -145,6 +159,8 @@ class _InferenceInstanceState:
     healthy: bool = True
     busy: bool = False
     last_error: str | None = None
+    inference_counter: SafeCounterState = field(default_factory=SafeCounterState)
+    error_counter: SafeCounterState = field(default_factory=SafeCounterState)
     lock: Lock = field(default_factory=Lock, repr=False)
 
 
@@ -276,6 +292,8 @@ class DeploymentRuntimePool:
                 instance.healthy = True
                 instance.busy = False
                 instance.last_error = None
+                instance.inference_counter = SafeCounterState()
+                instance.error_counter = SafeCounterState()
             self._close_session_if_supported(session_to_close)
         return self._build_health(state)
 
@@ -324,6 +342,7 @@ class DeploymentRuntimePool:
                     config=config, instance=instance
                 )
                 execution_result = session.predict(request)
+                self._record_instance_inference(instance)
                 return DeploymentRuntimeExecution(
                     deployment_instance_id=config.deployment_instance_id,
                     instance_id=_build_instance_id(
@@ -332,12 +351,13 @@ class DeploymentRuntimePool:
                     execution_result=execution_result,
                 )
             except InvalidRequestError:
+                self._record_instance_error(instance)
                 raise
             except Exception as error:
                 last_error = error
                 self._mark_instance_unhealthy(instance=instance, error=error)
             finally:
-                self._release_instance(instance)
+                self._release_instance(state=state, instance=instance)
 
         raise ServiceConfigurationError(
             "当前 deployment 没有可用的健康推理实例",
@@ -385,7 +405,9 @@ class DeploymentRuntimePool:
         """根据内部实例池状态构建详细健康视图。"""
 
         with state.lock:
-            instance_states = tuple(state.instances)
+            instance_states = tuple(
+                (instance, instance.busy) for instance in state.instances
+            )
         instance_health: list[DeploymentRuntimeInstanceHealth] = []
         pinned_output_total_bytes = 0
         effective_runtime_configuration: dict[str, object] = {}
@@ -396,8 +418,12 @@ class DeploymentRuntimePool:
         configuration_warnings = evaluate_runtime_configuration_warnings(
             requested_configuration
         )
-        for instance in instance_states:
+        for instance, instance_busy in instance_states:
             with instance.lock:
+                inference_counter = snapshot_safe_counter(
+                    instance.inference_counter
+                )
+                error_counter = snapshot_safe_counter(instance.error_counter)
                 pinned_output_total_bytes += (
                     DeploymentRuntimePool._read_session_pinned_output_bytes(
                         instance.session
@@ -410,7 +436,13 @@ class DeploymentRuntimePool:
                         ),
                         healthy=instance.healthy,
                         warmed=instance.session is not None,
-                        busy=instance.busy,
+                        busy=instance_busy,
+                        inference_count=inference_counter["value"],
+                        inference_count_rollover_count=(
+                            inference_counter["rollover_count"]
+                        ),
+                        error_count=error_counter["value"],
+                        error_count_rollover_count=error_counter["rollover_count"],
                         last_error=instance.last_error,
                     )
                 )
@@ -498,14 +530,15 @@ class DeploymentRuntimePool:
                     state.instances
                 )
                 instance = state.instances[instance_index]
-                if not instance.healthy or instance.busy:
-                    continue
+                with instance.lock:
+                    if not instance.healthy or instance.busy:
+                        continue
                 instance.busy = True
                 state.next_instance_index = (instance_index + 1) % len(state.instances)
                 return instance
 
-        raise InvalidRequestError(
-            "当前 deployment 推理线程已满载，请稍后重试",
+        raise DeploymentInferenceBusyError(
+            "当前 deployment 推理实例已满载",
             details={
                 "deployment_instance_id": state.config.deployment_instance_id,
                 "instance_count": state.config.instance_count,
@@ -513,10 +546,14 @@ class DeploymentRuntimePool:
         )
 
     @staticmethod
-    def _release_instance(instance: _InferenceInstanceState) -> None:
+    def _release_instance(
+        *,
+        state: _DeploymentRuntimeState,
+        instance: _InferenceInstanceState,
+    ) -> None:
         """在一次推理结束后释放实例占用状态。"""
 
-        with instance.lock:
+        with state.lock:
             instance.busy = False
 
     def _ensure_instance_session(
@@ -563,6 +600,7 @@ class DeploymentRuntimePool:
 
         session_to_close = None
         with instance.lock:
+            increment_safe_counter(instance.error_counter)
             instance.healthy = False
             session_to_close = instance.session
             instance.session = None
@@ -570,6 +608,20 @@ class DeploymentRuntimePool:
             instance.busy = False
 
         DeploymentRuntimePool._close_session_if_supported(session_to_close)
+
+    @staticmethod
+    def _record_instance_inference(instance: _InferenceInstanceState) -> None:
+        """记录一次由当前实例成功完成的推理调用。"""
+
+        with instance.lock:
+            increment_safe_counter(instance.inference_counter)
+
+    @staticmethod
+    def _record_instance_error(instance: _InferenceInstanceState) -> None:
+        """记录一次不会使模型 session 失效的请求错误。"""
+
+        with instance.lock:
+            increment_safe_counter(instance.error_counter)
 
     @staticmethod
     def _close_session_if_supported(session: object | None) -> None:

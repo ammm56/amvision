@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import multiprocessing
 import os
+import subprocess
+import sys
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Event, Thread
 from time import perf_counter, sleep
+from types import SimpleNamespace
 
 import pytest
 
@@ -18,6 +21,7 @@ from backend.service.application.errors import (
     InvalidRequestError,
     OperationCancelledError,
     OperationTimeoutError,
+    ServiceError,
     ServiceConfigurationError,
 )
 from backend.service.application.local_buffers import (
@@ -58,6 +62,8 @@ from backend.service.infrastructure.ipc.inference_mailbox import (
 from backend.service.domain.deployments.deployment_runtime_configuration import (
     DeploymentRuntimeConfiguration,
 )
+
+
 from backend.service.infrastructure.queue.local_file import (
     LocalFileQueueBackend,
     LocalFileQueueSettings,
@@ -67,6 +73,42 @@ from tests.runtime_pool_test_support import (
     build_test_runtime_target,
     create_test_dataset_storage,
 )
+
+
+def test_inference_daemon_parent_import_does_not_load_model_runtimes() -> None:
+    """daemon 管理进程导入期不得装入 PyTorch 或五类模型执行实现。"""
+
+    script = """
+import sys
+import backend.inference_daemon.runtime
+
+unexpected = sorted(
+    name
+    for name in sys.modules
+    if name == "torch"
+    or name.startswith("torch.")
+    or name.endswith(
+        (
+            "classification_model_runtime",
+            "detection_model_runtime",
+            "segmentation_model_runtime",
+            "pose_model_runtime",
+            "obb_model_runtime",
+        )
+    )
+)
+if unexpected:
+    raise SystemExit("unexpected heavy imports: " + ",".join(unexpected))
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    assert completed.returncode == 0, completed.stderr or completed.stdout
 
 
 class _FakeSupervisor:
@@ -244,6 +286,29 @@ class _FakeSegmentationSupervisor(_FakeSupervisor):
         )
 
 
+def test_inference_ping_reports_reconciler_and_local_buffer_readiness() -> None:
+    """mmap probe 必须反映真实依赖状态，不能只证明 mailbox 可往返。"""
+
+    dispatcher = InferenceControlDispatcher(
+        queue_backend=SimpleNamespace(),  # type: ignore[arg-type]
+        dataset_storage=SimpleNamespace(),  # type: ignore[arg-type]
+        service_id="inference-daemon",
+        bindings_by_task_type={},
+        readiness_provider=lambda: {
+            "ready": False,
+            "local_buffer": {"ready": False, "error": "broker missing"},
+            "initial_reconcile_completed": False,
+        },
+    )
+
+    assert dispatcher.handle_inference_message_request({"action": "ping"}) == {
+        "ready": False,
+        "local_buffer": {"ready": False, "error": "broker missing"},
+        "initial_reconcile_completed": False,
+        "service_id": "inference-daemon",
+    }
+
+
 def _run_mmap_echo_server(
     *, buffers_root: str, service_id: str, ready_queue, stop_event
 ) -> None:
@@ -339,6 +404,60 @@ def test_queue_backed_inference_control_round_trip(
         dispatcher.stop()
 
     assert fake_supervisor.actions == ["start", "status", "health", "stop"]
+
+
+def test_inference_mmap_error_round_trip_preserves_service_error(
+    tmp_path: Path,
+) -> None:
+    """验证 mmap server 的规范错误字段能被真实控制客户端完整恢复。"""
+
+    dataset_storage = create_test_dataset_storage(tmp_path)
+    queue_backend = LocalFileQueueBackend(
+        LocalFileQueueSettings(root_dir=str(tmp_path / "queue"))
+    )
+    buffers_root = tmp_path / "error-round-trip"
+
+    def _raise_capacity_error(_payload: dict[str, object]) -> dict[str, object]:
+        raise InvalidRequestError(
+            "当前 deployment 推理线程已满载，请稍后重试",
+            details={"deployment_instance_id": "deployment-instance-1", "instance_count": 2},
+        )
+
+    server = InferenceLocalMmapServer(
+        buffers_root=buffers_root,
+        service_id="test-daemon",
+        request_handler=_raise_capacity_error,
+    )
+    mmap_client = InferenceLocalMmapClient(
+        buffers_root=buffers_root,
+        service_id="test-daemon",
+        request_timeout_seconds=5.0,
+    )
+    client = QueueBackedInferenceControlClient(
+        queue_backend=queue_backend,
+        dataset_storage=dataset_storage,
+        runtime_mode="sync",
+        service_id="test-daemon",
+        request_timeout_seconds=5.0,
+        startup_timeout_seconds=5.0,
+        message_client=mmap_client,
+    )
+
+    server.start()
+    try:
+        with pytest.raises(ServiceError) as captured:
+            client.ping()
+    finally:
+        mmap_client.close()
+        server.stop()
+
+    assert captured.value.code == "invalid_request"
+    assert captured.value.message == "当前 deployment 推理线程已满载，请稍后重试"
+    assert captured.value.status_code == 400
+    assert captured.value.details == {
+        "deployment_instance_id": "deployment-instance-1",
+        "instance_count": 2,
+    }
 
 
 def test_preview_image_request_uses_mmap_v1(

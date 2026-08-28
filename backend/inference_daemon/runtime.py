@@ -6,6 +6,9 @@ import contextlib
 import logging
 from dataclasses import dataclass
 
+from backend.inference_daemon.local_buffer_dependency import (
+    LocalBufferDependencyProbe,
+)
 from backend.service.application.deployments.classification_deployment_service import (
     SqlAlchemyClassificationDeploymentService,
 )
@@ -189,6 +192,10 @@ def build_inference_daemon_runtime(
         )
 
     runtime_by_task_type = {item.task_type: item for item in task_runtimes}
+    local_buffer_dependency_probe = LocalBufferDependencyProbe(
+        buffers_root=settings.local_memory.root_dir,
+        broker_settings=settings.local_buffer_broker,
+    )
     deployment_runtime_reconciler = DeploymentRuntimeReconciler(
         state_service=DeploymentRuntimeStateService(session_factory=session_factory),
         lookup_service=SqlAlchemyDeploymentInstanceService(
@@ -205,6 +212,7 @@ def build_inference_daemon_runtime(
             for task_type, item in runtime_by_task_type.items()
         },
         settings=settings.deployment_runtime_reconciler,
+        dependency_readiness_provider=local_buffer_dependency_probe.snapshot,
     )
     control_dispatcher = InferenceControlDispatcher(
         queue_backend=queue_backend,
@@ -229,6 +237,7 @@ def build_inference_daemon_runtime(
         response_queue_retention_seconds=(
             settings.queue.response_queue_retention_seconds
         ),
+        readiness_provider=deployment_runtime_reconciler.readiness_snapshot,
     )
     local_mmap_server = (
         InferenceLocalMmapServer(

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from queue import Empty
+from time import sleep
 from typing import Any
 
 from backend.contracts.buffers import BufferLease
@@ -75,6 +76,8 @@ def fake_deployment_process_worker(
             )
             continue
         if action == "warmup":
+            if config.deployment_instance_id.endswith("slow-warmup"):
+                sleep(0.5)
             for instance_index in range(config.instance_count):
                 warmed_instance_indexes.add(instance_index)
             keep_warm_activated = True

@@ -826,15 +826,15 @@ def _serialize_error(error: Exception) -> dict[str, object]:
     serialized = serialize_error(error)
     if isinstance(error, ServiceError):
         return {
-            "code": serialized.get("error_code", error.code),
-            "message": serialized.get("error_message", error.message),
+            "error_code": serialized.get("error_code", error.code),
+            "error_message": serialized.get("error_message", error.message),
             "status_code": serialized.get("status_code", error.status_code),
             "details": serialized.get("details", {}),
             "error_type": serialized.get("error_type", error.__class__.__name__),
         }
     return {
-        "code": "service_error",
-        "message": serialized.get("error_message", str(error)),
+        "error_code": "service_error",
+        "error_message": serialized.get("error_message", str(error)),
         "status_code": 500,
         "details": {
             "error_type": serialized.get("error_type", error.__class__.__name__)
@@ -873,7 +873,7 @@ def _build_gateway_failure_metadata(
 
 
 def _deserialize_error(payload: object, *, fallback_message: str) -> ServiceError:
-    """把错误载荷恢复为 ServiceError。"""
+    """把规范错误载荷恢复为 ServiceError，并兼容旧进程字段。"""
 
     if not isinstance(payload, dict):
         return ServiceError(
@@ -882,8 +882,16 @@ def _deserialize_error(payload: object, *, fallback_message: str) -> ServiceErro
             status_code=500,
         )
     return ServiceError(
-        code=_read_optional_str(payload, "code") or "service_error",
-        message=_read_optional_str(payload, "message") or fallback_message,
+        code=(
+            _read_optional_str(payload, "error_code")
+            or _read_optional_str(payload, "code")
+            or "service_error"
+        ),
+        message=(
+            _read_optional_str(payload, "error_message")
+            or _read_optional_str(payload, "message")
+            or fallback_message
+        ),
         status_code=_read_required_int_with_default(
             payload, "status_code", default=500
         ),

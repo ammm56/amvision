@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+from threading import Event, Thread
 from types import SimpleNamespace
 
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
@@ -106,6 +107,28 @@ class _Registry:
     def stop_dispatcher_for_deployment(self, deployment_instance_id: str) -> None:
         if deployment_instance_id in self.started:
             self.started.remove(deployment_instance_id)
+
+
+class _BlockingSupervisor(_Supervisor):
+    """在测试指定时刻阻塞启动，用于观察预热窗口内 readiness。"""
+
+    def __init__(self, runtime_mode: str) -> None:
+        super().__init__(runtime_mode)
+        self.block_start = False
+        self.start_entered = Event()
+        self.start_release = Event()
+
+    def start_deployment(
+        self,
+        config: DeploymentProcessConfig,
+    ) -> DeploymentProcessStatus:
+        self.start_count += 1
+        if self.block_start:
+            self.start_entered.set()
+            if not self.start_release.wait(timeout=5.0):
+                raise RuntimeError("测试未释放 deployment 启动")
+        self.running = True
+        return self._status(config)
 
 
 def test_reconciler_restores_persisted_desired_running_after_runtime_restart(
@@ -248,6 +271,88 @@ def test_restart_backoff_is_bounded_for_extremely_large_failure_count() -> None:
     )
 
     assert 0.1 <= delay <= settings.restart_backoff_max_seconds
+
+
+def test_reconciler_waits_for_local_buffer_without_touching_runtime_state() -> None:
+    """依赖未就绪时不得领取状态、创建子进程或累计恢复失败。"""
+
+    state_service = SimpleNamespace(
+        list_desired_running_states=lambda: (_ for _ in ()).throw(
+            AssertionError("LocalBuffer 未就绪时不应查询或修改 runtime state")
+        )
+    )
+    reconciler = DeploymentRuntimeReconciler(
+        state_service=state_service,  # type: ignore[arg-type]
+        lookup_service=SimpleNamespace(),  # type: ignore[arg-type]
+        bindings_by_task_type={},
+        settings=BackendServiceDeploymentRuntimeReconcilerConfig(),
+        dependency_readiness_provider=lambda: {
+            "ready": False,
+            "error": "backend LocalBufferBroker 尚未持有主数据面",
+        },
+    )
+
+    reconciler.reconcile_once()
+
+    readiness = reconciler.readiness_snapshot()
+    assert readiness["ready"] is False
+    assert readiness["initial_reconcile_completed"] is False
+    assert readiness["reconcile_failure_count"] == 0
+
+
+def test_reconciler_withdraws_readiness_while_rewarming_missing_process() -> None:
+    """已就绪 daemon 发现子进程缺失后，应在同步预热期间立即撤销 readiness。"""
+
+    deployment_instance_id = "deployment-rewarming-readiness"
+    state = DeploymentRuntimeState(
+        deployment_instance_id=deployment_instance_id,
+        runtime_mode="sync",
+        desired_state="running",
+        observed_state="running",
+        generation=1,
+    )
+    state_service = SimpleNamespace(
+        list_desired_running_states=lambda: (state,),
+        try_claim=lambda **_kwargs: True,
+        get_runtime_state=lambda **_kwargs: state,
+        record_observed_state=lambda **_kwargs: state,
+        record_process_status=lambda **_kwargs: state,
+    )
+    process_config = SimpleNamespace(deployment_instance_id=deployment_instance_id)
+    supervisor = _BlockingSupervisor("sync")
+    supervisor.running = True
+    reconciler = DeploymentRuntimeReconciler(
+        state_service=state_service,  # type: ignore[arg-type]
+        lookup_service=_LookupService(),  # type: ignore[arg-type]
+        bindings_by_task_type={
+            "detection": DeploymentRuntimeBinding(
+                deployment_service=_DeploymentService(process_config),  # type: ignore[arg-type]
+                sync_supervisor=supervisor,  # type: ignore[arg-type]
+                async_supervisor=_Supervisor("async"),  # type: ignore[arg-type]
+                async_gateway_registry=_Registry(),
+            )
+        },
+        settings=BackendServiceDeploymentRuntimeReconcilerConfig(),
+    )
+    reconciler.reconcile_once()
+    assert reconciler.readiness_snapshot()["ready"] is True
+
+    supervisor.running = False
+    supervisor.block_start = True
+    reconcile_thread = Thread(target=reconciler.reconcile_once)
+    reconcile_thread.start()
+    assert supervisor.start_entered.wait(timeout=2.0)
+
+    recovering = reconciler.readiness_snapshot()
+    assert recovering["ready"] is False
+    assert recovering["recovery_in_progress"] is True
+
+    supervisor.start_release.set()
+    reconcile_thread.join(timeout=2.0)
+    assert not reconcile_thread.is_alive()
+    recovered = reconciler.readiness_snapshot()
+    assert recovered["ready"] is True
+    assert recovered["recovery_in_progress"] is False
 
 
 def _insert_deployment_record(session_factory, deployment_instance_id: str) -> None:

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Barrier, Lock
 from types import SimpleNamespace
 
 import pytest
@@ -98,6 +100,83 @@ def test_runtime_pool_loads_onnxruntime_session_once_and_reuses_warmed_instance(
     )
 
 
+def test_two_warmed_instances_complete_exact_two_concurrent_inferences(
+    tmp_path: Path,
+) -> None:
+    """验证两实例 deployment 的每一轮两个同步节点调用都完整成功。"""
+
+    dataset_storage = create_test_dataset_storage(tmp_path)
+    runtime_target = build_test_runtime_target(
+        dataset_storage=dataset_storage,
+        runtime_backend="onnxruntime",
+        device_name="cpu",
+        runtime_precision="fp32",
+        runtime_artifact_file_name="two-instance-model.optimized.onnx",
+        runtime_artifact_file_type=YOLOX_ONNX_OPTIMIZED_FILE,
+    )
+    config = DeploymentRuntimePoolConfig(
+        deployment_instance_id="deployment-instance-exact-two",
+        runtime_target=runtime_target,
+        runtime_configuration=DeploymentRuntimeConfiguration(
+            execution=DeploymentExecutionPolicy(instance_count=2)
+        ),
+    )
+    request = DetectionPredictionRequest(
+        score_threshold=0.1,
+        save_result_image=False,
+        input_image_bytes=b"fake-image-bytes",
+    )
+    round_barrier = Barrier(2)
+    session_lock = Lock()
+    loaded_sessions: list[object] = []
+    execution_result = build_test_execution_result(runtime_target=runtime_target)
+
+    class _ConcurrentSession:
+        """要求每轮两个 session 同时进入 predict 的测试会话。"""
+
+        def predict(self, _request: DetectionPredictionRequest):
+            round_barrier.wait(timeout=2.0)
+            return execution_result
+
+    def load_session(**_: object) -> object:
+        session = _ConcurrentSession()
+        with session_lock:
+            loaded_sessions.append(session)
+        return session
+
+    pool = DeploymentRuntimePool(
+        dataset_storage=dataset_storage,
+        model_runtime=SimpleNamespace(load_session=load_session),
+    )
+    warmup = pool.warmup_deployment(config)
+    observed_instance_pairs: list[set[str]] = []
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        for _ in range(100):
+            futures = tuple(
+                executor.submit(pool.run_inference, config=config, request=request)
+                for _ in range(2)
+            )
+            executions = tuple(future.result(timeout=3.0) for future in futures)
+            observed_instance_pairs.append(
+                {execution.instance_id for execution in executions}
+            )
+
+    assert warmup.warmed_instance_count == 2
+    assert len(loaded_sessions) == 2
+    assert all(
+        pair
+        == {
+            "deployment-instance-exact-two:instance-0",
+            "deployment-instance-exact-two:instance-1",
+        }
+        for pair in observed_instance_pairs
+    )
+    health = pool.get_health(config)
+    assert all(not instance.busy for instance in health.instances)
+    assert [instance.inference_count for instance in health.instances] == [100, 100]
+    assert [instance.error_count for instance in health.instances] == [0, 0]
+
+
 def test_runtime_pool_marks_onnxruntime_instance_unhealthy_after_predict_failure(
     tmp_path: Path,
 ) -> None:
@@ -141,6 +220,8 @@ def test_runtime_pool_marks_onnxruntime_instance_unhealthy_after_predict_failure
     assert health.instances[0].healthy is False
     assert health.instances[0].warmed is False
     assert health.instances[0].busy is False
+    assert health.instances[0].inference_count == 0
+    assert health.instances[0].error_count == 1
     assert health.instances[0].last_error == "onnxruntime predict failed"
 
 

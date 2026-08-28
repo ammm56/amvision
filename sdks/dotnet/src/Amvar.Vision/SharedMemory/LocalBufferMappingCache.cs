@@ -169,6 +169,8 @@ namespace Amvar.Vision.SharedMemory
             var descriptorDataOffset = checked((long)allocatorView.ReadUInt64(descriptorOffset + 48));
             var descriptorCapacity = checked((long)allocatorView.ReadUInt64(descriptorOffset + 56));
             var descriptorContentLength = checked((long)allocatorView.ReadUInt64(descriptorOffset + 64));
+            var descriptorDeadlineNs = allocatorView.ReadUInt64(descriptorOffset + 72);
+            var descriptorPublicationGeneration = allocatorView.ReadUInt64(descriptorOffset + 96);
             if (descriptorState != StateWriting
                 || descriptorGeneration != checked((ulong)allocation.DescriptorGeneration)
                 || !string.Equals(ToHex(headerEpoch), allocation.BrokerEpoch, StringComparison.OrdinalIgnoreCase)
@@ -176,9 +178,22 @@ namespace Amvar.Vision.SharedMemory
                 || descriptorCapacity != allocation.AllocationCapacityBytes
                 || descriptorContentLength != allocation.ContentLength)
             {
-                throw new SharedMemoryTriggerException(
-                    "stale_reference",
-                    "Workflow Trigger allocation descriptor identity is stale.");
+                throw BuildStaleDescriptorException(
+                    subject: "Workflow Trigger allocation",
+                    expectedState: StateWriting,
+                    expectedGeneration: checked((ulong)allocation.DescriptorGeneration),
+                    expectedBrokerEpoch: allocation.BrokerEpoch,
+                    expectedOffset: allocation.Offset,
+                    expectedCapacity: allocation.AllocationCapacityBytes,
+                    expectedContentLength: allocation.ContentLength,
+                    actualState: descriptorState,
+                    actualGeneration: descriptorGeneration,
+                    actualBrokerEpoch: ToHex(headerEpoch),
+                    actualOffset: descriptorDataOffset,
+                    actualCapacity: descriptorCapacity,
+                    actualContentLength: descriptorContentLength,
+                    actualDeadlineNs: descriptorDeadlineNs,
+                    actualPublicationGeneration: descriptorPublicationGeneration);
             }
         }
 
@@ -212,15 +227,91 @@ namespace Amvar.Vision.SharedMemory
 
             var headerEpoch = new byte[16];
             allocatorView.ReadArray(64, headerEpoch, 0, headerEpoch.Length);
-            if (allocatorView.ReadUInt32(descriptorOffset) != 2
-                || allocatorView.ReadUInt64(descriptorOffset + 8) != checked((ulong)descriptorGeneration)
+            var actualState = allocatorView.ReadUInt32(descriptorOffset);
+            var actualGeneration = allocatorView.ReadUInt64(descriptorOffset + 8);
+            var actualOffset = checked((long)allocatorView.ReadUInt64(descriptorOffset + 48));
+            var actualCapacity = checked((long)allocatorView.ReadUInt64(descriptorOffset + 56));
+            var actualContentLength = checked((long)allocatorView.ReadUInt64(descriptorOffset + 64));
+            var actualDeadlineNs = allocatorView.ReadUInt64(descriptorOffset + 72);
+            var actualPublicationGeneration = allocatorView.ReadUInt64(descriptorOffset + 96);
+            if (actualState != 2
+                || actualGeneration != checked((ulong)descriptorGeneration)
                 || !string.Equals(ToHex(headerEpoch), brokerEpoch, StringComparison.OrdinalIgnoreCase)
-                || checked((long)allocatorView.ReadUInt64(descriptorOffset + 48)) != offset
-                || checked((long)allocatorView.ReadUInt64(descriptorOffset + 56)) != allocationCapacityBytes
-                || checked((long)allocatorView.ReadUInt64(descriptorOffset + 64)) != contentLength)
+                || actualOffset != offset
+                || actualCapacity != allocationCapacityBytes
+                || actualContentLength != contentLength)
             {
-                throw new SharedMemoryTriggerException("stale_reference", "LocalBuffer result descriptor identity is stale.");
+                throw BuildStaleDescriptorException(
+                    subject: "LocalBuffer result",
+                    expectedState: 2,
+                    expectedGeneration: checked((ulong)descriptorGeneration),
+                    expectedBrokerEpoch: brokerEpoch,
+                    expectedOffset: offset,
+                    expectedCapacity: allocationCapacityBytes,
+                    expectedContentLength: contentLength,
+                    actualState: actualState,
+                    actualGeneration: actualGeneration,
+                    actualBrokerEpoch: ToHex(headerEpoch),
+                    actualOffset: actualOffset,
+                    actualCapacity: actualCapacity,
+                    actualContentLength: actualContentLength,
+                    actualDeadlineNs: actualDeadlineNs,
+                    actualPublicationGeneration: actualPublicationGeneration);
             }
+        }
+
+        private static SharedMemoryTriggerException BuildStaleDescriptorException(
+            string subject,
+            uint expectedState,
+            ulong expectedGeneration,
+            string expectedBrokerEpoch,
+            long expectedOffset,
+            long expectedCapacity,
+            long expectedContentLength,
+            uint actualState,
+            ulong actualGeneration,
+            string actualBrokerEpoch,
+            long actualOffset,
+            long actualCapacity,
+            long actualContentLength,
+            ulong actualDeadlineNs,
+            ulong actualPublicationGeneration)
+        {
+            var error = new SharedMemoryTriggerException(
+                "stale_reference",
+                string.Format(
+                    CultureInfo.InvariantCulture,
+                    "{0} descriptor identity is stale; expected state={1}, generation={2}, broker_epoch={3}, offset={4}, capacity={5}, content_length={6}; actual state={7}, generation={8}, broker_epoch={9}, offset={10}, capacity={11}, content_length={12}, deadline_ns={13}, publication_generation={14}.",
+                    subject,
+                    expectedState,
+                    expectedGeneration,
+                    expectedBrokerEpoch,
+                    expectedOffset,
+                    expectedCapacity,
+                    expectedContentLength,
+                    actualState,
+                    actualGeneration,
+                    actualBrokerEpoch,
+                    actualOffset,
+                    actualCapacity,
+                    actualContentLength,
+                    actualDeadlineNs,
+                    actualPublicationGeneration));
+            error.Data["expected_state"] = expectedState;
+            error.Data["expected_generation"] = expectedGeneration;
+            error.Data["expected_broker_epoch"] = expectedBrokerEpoch;
+            error.Data["expected_offset"] = expectedOffset;
+            error.Data["expected_capacity"] = expectedCapacity;
+            error.Data["expected_content_length"] = expectedContentLength;
+            error.Data["actual_state"] = actualState;
+            error.Data["actual_generation"] = actualGeneration;
+            error.Data["actual_broker_epoch"] = actualBrokerEpoch;
+            error.Data["actual_offset"] = actualOffset;
+            error.Data["actual_capacity"] = actualCapacity;
+            error.Data["actual_content_length"] = actualContentLength;
+            error.Data["actual_deadline_ns"] = actualDeadlineNs;
+            error.Data["actual_publication_generation"] = actualPublicationGeneration;
+            return error;
         }
 
         public void Dispose()

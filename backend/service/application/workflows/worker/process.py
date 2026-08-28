@@ -111,6 +111,40 @@ def run_workflow_runtime_worker_process(
         )
         session_factory = SessionFactory(settings.to_database_settings())
         dataset_storage = LocalDatasetStorage(settings.to_dataset_storage_settings())
+        workflow_runtime_id = require_payload_str(
+            runtime_payload, "workflow_runtime_id"
+        )
+        workflow_runtime_revision_id = require_payload_str(
+            runtime_payload,
+            "workflow_runtime_revision_id",
+        )
+        runtime_generation = read_optional_int(runtime_payload, "runtime_generation")
+        if runtime_generation is None or runtime_generation < 0:
+            raise InvalidRequestError("workflow runtime worker 缺少有效 generation")
+        expected_snapshot_fingerprint = read_optional_str(
+            runtime_payload,
+            "expected_snapshot_fingerprint",
+        )
+        runtime_instance_id = require_payload_str(
+            runtime_payload,
+            "worker_instance_id",
+        )
+        application_id = require_payload_str(runtime_payload, "application_id")
+        application_snapshot_object_key = require_payload_str(
+            runtime_payload, "application_snapshot_object_key"
+        )
+        template_snapshot_object_key = require_payload_str(
+            runtime_payload, "template_snapshot_object_key"
+        )
+        snapshot_application = FlowApplication.model_validate(
+            dataset_storage.read_json(application_snapshot_object_key)
+        )
+        snapshot_template = WorkflowGraphTemplate.model_validate(
+            dataset_storage.read_json(template_snapshot_object_key)
+        )
+        required_node_type_ids = {
+            node.node_type_id for node in snapshot_template.nodes if node.enabled
+        }
         local_buffer_reader = build_local_buffer_reader(
             local_buffer_broker_event_channel
         )
@@ -123,6 +157,7 @@ def run_workflow_runtime_worker_process(
         runtime_registry_loader = WorkflowNodeRuntimeRegistryLoader(
             node_catalog_registry=node_catalog_registry,
             node_pack_loader=node_pack_loader,
+            required_node_type_ids=required_node_type_ids,
         )
         runtime_registry_loader.refresh()
         model_session_manager = WorkflowModelSessionManager(
@@ -171,37 +206,6 @@ def run_workflow_runtime_worker_process(
             published_inference_gateway=published_inference_gateway,
             workflow_model_session_manager=model_session_manager,
             workflow_storage_image_cache=storage_image_cache,
-        )
-        workflow_runtime_id = require_payload_str(
-            runtime_payload, "workflow_runtime_id"
-        )
-        workflow_runtime_revision_id = require_payload_str(
-            runtime_payload,
-            "workflow_runtime_revision_id",
-        )
-        runtime_generation = read_optional_int(runtime_payload, "runtime_generation")
-        if runtime_generation is None or runtime_generation < 0:
-            raise InvalidRequestError("workflow runtime worker 缺少有效 generation")
-        expected_snapshot_fingerprint = read_optional_str(
-            runtime_payload,
-            "expected_snapshot_fingerprint",
-        )
-        runtime_instance_id = require_payload_str(
-            runtime_payload,
-            "worker_instance_id",
-        )
-        application_id = require_payload_str(runtime_payload, "application_id")
-        application_snapshot_object_key = require_payload_str(
-            runtime_payload, "application_snapshot_object_key"
-        )
-        template_snapshot_object_key = require_payload_str(
-            runtime_payload, "template_snapshot_object_key"
-        )
-        snapshot_application = FlowApplication.model_validate(
-            dataset_storage.read_json(application_snapshot_object_key)
-        )
-        snapshot_template = WorkflowGraphTemplate.model_validate(
-            dataset_storage.read_json(template_snapshot_object_key)
         )
         snapshot_fingerprint = compute_workflow_app_content_fingerprint(
             application=snapshot_application,

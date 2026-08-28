@@ -191,8 +191,11 @@ def create_app(
         """在应用生命周期启动阶段执行服务级初始化。"""
 
         bootstrap.initialize(runtime)
-        bootstrap.start_runtime(runtime)
         try:
+            # start_runtime 包含多个跨进程组件。任一步失败也必须进入同一
+            # stop 路径，避免 FastAPI 尚未 yield 时遗留 Broker、Workflow
+            # Runtime 或模型子进程。
+            bootstrap.start_runtime(runtime)
             yield
         finally:
             bootstrap.stop_runtime(runtime)

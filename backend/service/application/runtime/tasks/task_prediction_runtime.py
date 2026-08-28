@@ -12,9 +12,6 @@ from backend.service.application.errors import (
 from backend.service.application.task_type_support import (
     require_supported_platform_task_type,
 )
-from backend.service.application.runtime.tasks.classification_model_runtime import (
-    DefaultClassificationModelRuntime,
-)
 from backend.service.application.runtime.contracts.classification.prediction import (
     ClassificationPredictionExecutionResult,
     ClassificationPredictionRequest,
@@ -26,9 +23,6 @@ from backend.service.application.runtime.serialization.classification.prediction
     serialize_classification_category,
     serialize_classification_runtime_session_info,
 )
-from backend.service.application.runtime.tasks.detection_model_runtime import (
-    DefaultDetectionModelRuntime,
-)
 from backend.service.application.runtime.contracts.detection.prediction import (
     DetectionPredictionExecutionResult,
     DetectionPredictionRequest,
@@ -39,9 +33,6 @@ from backend.service.application.runtime.serialization.detection.prediction impo
     serialize_detection,
     serialize_runtime_session_info,
 )
-from backend.service.application.runtime.tasks.obb_model_runtime import (
-    DefaultObbModelRuntime,
-)
 from backend.service.application.runtime.contracts.obb.prediction import (
     ObbPredictionExecutionResult,
     ObbPredictionRequest,
@@ -51,9 +42,6 @@ from backend.service.application.runtime.serialization.obb.prediction import (
     deserialize_obb_runtime_session_info,
     serialize_obb_instance,
     serialize_obb_runtime_session_info,
-)
-from backend.service.application.runtime.tasks.pose_model_runtime import (
-    DefaultPoseModelRuntime,
 )
 from backend.service.application.runtime.contracts.pose.prediction import (
     PosePredictionExecutionResult,
@@ -67,9 +55,6 @@ from backend.service.application.runtime.serialization.pose.prediction import (
 )
 from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetSnapshot,
-)
-from backend.service.application.runtime.tasks.segmentation_model_runtime import (
-    DefaultSegmentationModelRuntime,
 )
 from backend.service.application.runtime.contracts.segmentation.prediction import (
     SegmentationPredictionExecutionResult,
@@ -120,30 +105,50 @@ def load_runtime_session(
         unsupported_message="当前 deployment runtime 尚未接通该 task_type",
     )
     if task_type == "detection":
+        from backend.service.application.runtime.tasks.detection_model_runtime import (
+            DefaultDetectionModelRuntime,
+        )
+
         return DefaultDetectionModelRuntime().load_session(
             dataset_storage=dataset_storage,
             runtime_target=runtime_target,
             runtime_configuration=runtime_configuration,
         )
     if task_type == "classification":
+        from backend.service.application.runtime.tasks.classification_model_runtime import (
+            DefaultClassificationModelRuntime,
+        )
+
         return DefaultClassificationModelRuntime().load_session(
             dataset_storage=dataset_storage,
             runtime_target=runtime_target,
             runtime_configuration=runtime_configuration,
         )
     if task_type == "segmentation":
+        from backend.service.application.runtime.tasks.segmentation_model_runtime import (
+            DefaultSegmentationModelRuntime,
+        )
+
         return DefaultSegmentationModelRuntime().load_session(
             dataset_storage=dataset_storage,
             runtime_target=runtime_target,
             runtime_configuration=runtime_configuration,
         )
     if task_type == "pose":
+        from backend.service.application.runtime.tasks.pose_model_runtime import (
+            DefaultPoseModelRuntime,
+        )
+
         return DefaultPoseModelRuntime().load_session(
             dataset_storage=dataset_storage,
             runtime_target=runtime_target,
             runtime_configuration=runtime_configuration,
         )
     if task_type == "obb":
+        from backend.service.application.runtime.tasks.obb_model_runtime import (
+            DefaultObbModelRuntime,
+        )
+
         return DefaultObbModelRuntime().load_session(
             dataset_storage=dataset_storage,
             runtime_target=runtime_target,
@@ -234,11 +239,16 @@ def serialize_prediction_request(
         empty_message="task_type 不能为空",
         unsupported_message="prediction request 缺少支持的 task_type",
     )
+    input_image_payload = getattr(request, "input_image_payload", None)
     common_payload: dict[str, object] = {
         "save_result_image": bool(getattr(request, "save_result_image", False)),
         "input_uri": getattr(request, "input_uri", None),
-        "input_image_payload": dict(
-            getattr(request, "input_image_payload", None) or {}
+        # 持久异步任务只保留 ObjectStore input_uri；None 必须跨 IPC 保持
+        # 为 None，不能退化为空 image-ref 并被误判为缺少 transport_kind。
+        "input_image_payload": (
+            None
+            if input_image_payload is None
+            else dict(input_image_payload)
         ),
         "extra_options": dict(getattr(request, "extra_options", {}) or {}),
     }

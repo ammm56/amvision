@@ -35,6 +35,11 @@ from backend.service.application.workflows.trigger_sources.protocol_adapter impo
     WorkflowTriggerDispatchResult,
     WorkflowTriggerEventHandler,
 )
+from backend.service.application.workflows.trigger_sources.error_classification import (
+    BUSY_ERROR_CODES,
+    CAPACITY_ERROR_CODES,
+    read_trigger_result_error_code,
+)
 from backend.service.application.workflows.trigger_sources.output_delivery import (
     PreparedPhysicalPayload,
     PreparedTriggerResult,
@@ -198,7 +203,10 @@ class _ZeroMqAdapterState:
     submitted_count: SafeCounterState = field(default_factory=SafeCounterState)
     error_count: SafeCounterState = field(default_factory=SafeCounterState)
     timeout_count: SafeCounterState = field(default_factory=SafeCounterState)
+    busy_count: SafeCounterState = field(default_factory=SafeCounterState)
+    capacity_reject_count: SafeCounterState = field(default_factory=SafeCounterState)
     last_error: str | None = None
+    recent_error: dict[str, object] | None = None
     startup_error: str | None = None
 
 
@@ -361,19 +369,30 @@ class ZeroMqTriggerAdapter:
             running = state.running
             stopping = state.stopping
             last_error = state.last_error
+            recent_error = (
+                dict(state.recent_error) if state.recent_error is not None else None
+            )
         with self._transport_timing_lock:
             transport_timings = dict(self._transport_timings)
         return {
             "adapter_kind": self.adapter_kind,
+            "source_scoped": True,
             "running": running,
             "stopping": stopping,
             "trigger_source_id": normalized_trigger_source_id,
             "bind_endpoint": state.bind_endpoint,
             "last_error": last_error,
+            "recent_error": recent_error,
+            **_counter_fields("request_count", state.received_count),
+            **_counter_fields("success_count", state.submitted_count),
             **_counter_fields("received_count", state.received_count),
             **_counter_fields("submitted_count", state.submitted_count),
             **_counter_fields("error_count", state.error_count),
             **_counter_fields("timeout_count", state.timeout_count),
+            **_counter_fields("busy_count", state.busy_count),
+            **_counter_fields(
+                "capacity_reject_count", state.capacity_reject_count
+            ),
             **self._transport_registry.snapshot(),
             "transport_timings": transport_timings,
         }
@@ -963,19 +982,33 @@ class ZeroMqTriggerAdapter:
     ) -> None:
         """把 TriggerResult 计入 adapter health。"""
 
+        error_code = read_trigger_result_error_code(trigger_result)
         if trigger_result.state == "timed_out":
             increment_safe_counter(state.timeout_count)
             with state.lifecycle_lock:
                 state.last_error = trigger_result.error_message
+                state.recent_error = _build_recent_error(
+                    error_code=error_code or "operation_timeout",
+                    error_message=trigger_result.error_message,
+                )
             return
         if trigger_result.state == "failed":
             increment_safe_counter(state.error_count)
+            if error_code in BUSY_ERROR_CODES:
+                increment_safe_counter(state.busy_count)
+            if error_code in CAPACITY_ERROR_CODES:
+                increment_safe_counter(state.capacity_reject_count)
             with state.lifecycle_lock:
                 state.last_error = trigger_result.error_message
+                state.recent_error = _build_recent_error(
+                    error_code=error_code or "workflow_execution_failed",
+                    error_message=trigger_result.error_message,
+                )
             return
         increment_safe_counter(state.submitted_count)
         with state.lifecycle_lock:
             state.last_error = None
+            state.recent_error = None
 
 
 def _parse_envelope(frames: list[bytes]) -> ZeroMqFrameEnvelope:
@@ -1142,12 +1175,34 @@ def _record_adapter_error(state: _ZeroMqAdapterState, error: Exception) -> None:
     """记录 adapter 错误计数和最近错误。"""
 
     increment_safe_counter(state.error_count)
+    error_code = getattr(error, "code", "protocol_error")
+    if error_code in BUSY_ERROR_CODES:
+        increment_safe_counter(state.busy_count)
+    if error_code in CAPACITY_ERROR_CODES:
+        increment_safe_counter(state.capacity_reject_count)
     with state.lifecycle_lock:
         state.last_error = (
             error.message
             if isinstance(error, ServiceError)
             else error.__class__.__name__
         )
+        state.recent_error = _build_recent_error(
+            error_code=error_code,
+            error_message=state.last_error,
+        )
+
+
+def _build_recent_error(
+    *,
+    error_code: str,
+    error_message: str | None,
+) -> dict[str, object]:
+    """构造不携带业务 payload 的最近错误摘要。"""
+
+    return {
+        "error_code": error_code,
+        "error_message": error_message,
+    }
 
 
 def _counter_fields(prefix: str, counter: SafeCounterState) -> dict[str, int]:

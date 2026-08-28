@@ -24,6 +24,81 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 )
 
 
+def test_catalog_keeps_legacy_training_constant_exports() -> None:
+    """验证轻量目录拆分后仍保留 API catalog 的历史常量入口。"""
+
+    expected = {
+        "YOLOV8_CLASSIFICATION": (
+            "yolov8-classification-training",
+            "yolov8-classification-trainings",
+            "classification_training_control",
+        ),
+        "YOLO11_CLASSIFICATION": (
+            "yolo11-classification-training",
+            "yolo11-classification-trainings",
+            "classification_training_control",
+        ),
+        "YOLO26_CLASSIFICATION": (
+            "yolo26-classification-training",
+            "yolo26-classification-trainings",
+            "classification_training_control",
+        ),
+        "SEGMENTATION": (
+            "segmentation-training",
+            "segmentation-trainings",
+            "segmentation_training_control",
+        ),
+        "YOLO11_SEGMENTATION": (
+            "yolo11-segmentation-training",
+            "yolo11-segmentation-trainings",
+            "segmentation_training_control",
+        ),
+        "YOLO26_SEGMENTATION": (
+            "yolo26-segmentation-training",
+            "yolo26-segmentation-trainings",
+            "segmentation_training_control",
+        ),
+        "YOLOV8_POSE": (
+            "yolov8-pose-training",
+            "yolov8-pose-trainings",
+            "pose_training_control",
+        ),
+        "YOLO11_POSE": (
+            "yolo11-pose-training",
+            "yolo11-pose-trainings",
+            "pose_training_control",
+        ),
+        "YOLO26_POSE": (
+            "yolo26-pose-training",
+            "yolo26-pose-trainings",
+            "pose_training_control",
+        ),
+        "YOLOV8_OBB": (
+            "yolov8-obb-training",
+            "yolov8-obb-trainings",
+            "obb_training_control",
+        ),
+        "YOLO11_OBB": (
+            "yolo11-obb-training",
+            "yolo11-obb-trainings",
+            "obb_training_control",
+        ),
+        "YOLO26_OBB": (
+            "yolo26-obb-training",
+            "yolo26-obb-trainings",
+            "obb_training_control",
+        ),
+    }
+
+    for prefix, (task_kind, queue_name, control_key) in expected.items():
+        assert getattr(catalog_module, f"{prefix}_TRAINING_TASK_KIND") == task_kind
+        assert getattr(catalog_module, f"{prefix}_TRAINING_QUEUE_NAME") == queue_name
+        assert (
+            getattr(catalog_module, f"{prefix}_TRAINING_CONTROL_METADATA_KEY")
+            == control_key
+        )
+
+
 def test_build_summary_response_exposes_task_type_for_non_detection_training() -> None:
     """验证非 detection 训练摘要响应公开 task_type，而不是误导性的 model_type。"""
 

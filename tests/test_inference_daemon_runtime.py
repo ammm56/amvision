@@ -12,7 +12,11 @@ from backend.inference_daemon.runtime import (
     InferenceDaemonRuntime,
     build_inference_daemon_runtime,
 )
+from backend.inference_daemon.local_buffer_dependency import (
+    LocalBufferDependencyProbe,
+)
 from backend.service.application.local_buffers import (
+    LocalBufferBrokerProcessSupervisor,
     LocalBufferBrokerSettings,
 )
 from backend.service.application.local_memory import LocalMemorySettings
@@ -94,6 +98,40 @@ def test_inference_daemon_uses_only_backend_main_local_buffer(
             assert async_supervisor.local_buffer_direct_reader_settings is None
     finally:
         runtime.session_factory.engine.dispose()
+
+
+def test_inference_daemon_dependency_probe_requires_live_broker_and_valid_layout(
+    tmp_path: Path,
+) -> None:
+    """daemon 只有在 Broker owner 和主 arena 均有效时才报告依赖就绪。"""
+
+    settings = LocalBufferBrokerSettings(
+        arena_size_bytes=16 * 1024 * 1024,
+        min_block_size_bytes=1024 * 1024,
+        max_allocation_bytes=8 * 1024 * 1024,
+        reader_guard_slots=4,
+    )
+    probe = LocalBufferDependencyProbe(
+        buffers_root=tmp_path,
+        broker_settings=settings,
+        layout_validation_interval_seconds=0.1,
+    )
+    broker = LocalBufferBrokerProcessSupervisor(
+        root_dir=tmp_path,
+        settings=settings,
+    )
+
+    assert probe.snapshot()["ready"] is False
+    broker.start()
+    try:
+        assert probe.snapshot() == {
+            "ready": True,
+            "arena_id": "local-buffer-main",
+            "error": None,
+        }
+    finally:
+        broker.stop()
+    assert probe.snapshot()["ready"] is False
 
 
 def test_inference_daemon_stop_reclaims_every_component_after_one_failure() -> None:

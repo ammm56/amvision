@@ -15,14 +15,28 @@ from backend.service.application.models.inference.detection_async_inference_gate
     QueueBackedDetectionAsyncInferenceClient,
 )
 from backend.service.application.models.inference.inference_gateway import (
+    _deserialize_error,
+    _serialize_error,
     build_async_inference_preview_object_key,
     serialize_async_inference_execution_result,
+)
+from backend.service.application.runtime.contracts.classification.prediction import (
+    ClassificationPredictionRequest,
 )
 from backend.service.application.runtime.contracts.detection.prediction import (
     DetectionPredictionExecutionResult,
     DetectionPredictionRequest,
     DetectionRuntimeSessionInfo,
     DetectionRuntimeTensorSpec,
+)
+from backend.service.application.runtime.contracts.obb.prediction import (
+    ObbPredictionRequest,
+)
+from backend.service.application.runtime.contracts.pose.prediction import (
+    PosePredictionRequest,
+)
+from backend.service.application.runtime.contracts.segmentation.prediction import (
+    SegmentationPredictionRequest,
 )
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessConfig,
@@ -33,6 +47,10 @@ from backend.service.application.runtime.deployment.runtime_factory import (
 )
 from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetSnapshot,
+)
+from backend.service.application.runtime.tasks.task_prediction_runtime import (
+    build_prediction_request_from_payload,
+    serialize_prediction_request,
 )
 from backend.service.domain.deployments.deployment_runtime_configuration import (
     DeploymentRuntimeConfiguration,
@@ -70,6 +88,7 @@ def test_async_gateway_dispatcher_consumes_owner_deployment_queue(
         captured_deployment_ids.append(captured_process_config.deployment_instance_id)
         captured_request = kwargs["request"]
         assert captured_request.input_image_bytes is None
+        assert captured_request.input_image_payload is None
         assert isinstance(captured_request.input_uri, str)
         assert (
             dataset_storage.resolve(captured_request.input_uri).read_bytes()
@@ -117,6 +136,112 @@ def test_async_gateway_dispatcher_consumes_owner_deployment_queue(
     assert (
         dispatcher.request_queue_name == "inference-gateway-backend-service-owner-1-1"
     )
+
+
+@pytest.mark.parametrize(
+    ("task_type", "prediction_request"),
+    (
+        (
+            "detection",
+            DetectionPredictionRequest(
+                input_uri="runtime/async/detection.png",
+                score_threshold=0.3,
+                save_result_image=False,
+            ),
+        ),
+        (
+            "classification",
+            ClassificationPredictionRequest(
+                input_uri="runtime/async/classification.png",
+                top_k=3,
+                save_result_image=False,
+            ),
+        ),
+        (
+            "segmentation",
+            SegmentationPredictionRequest(
+                input_uri="runtime/async/segmentation.png",
+                score_threshold=0.3,
+                mask_threshold=0.5,
+                save_result_image=False,
+            ),
+        ),
+        (
+            "pose",
+            PosePredictionRequest(
+                input_uri="runtime/async/pose.png",
+                score_threshold=0.3,
+                keypoint_confidence_threshold=0.5,
+                save_result_image=False,
+            ),
+        ),
+        (
+            "obb",
+            ObbPredictionRequest(
+                input_uri="runtime/async/obb.png",
+                score_threshold=0.3,
+                save_result_image=False,
+            ),
+        ),
+    ),
+)
+def test_prediction_ipc_preserves_object_store_only_input_for_every_task_type(
+    task_type: str,
+    prediction_request: object,
+) -> None:
+    """验证五类持久异步请求跨 IPC 后仍只有 ObjectStore 引用。"""
+
+    payload = serialize_prediction_request(
+        task_type=task_type,
+        request=prediction_request,
+    )
+
+    assert payload["input_image_payload"] is None
+    rebuilt = build_prediction_request_from_payload(
+        task_type=task_type,
+        payload=payload,
+    )
+    assert rebuilt.input_uri == prediction_request.input_uri
+    assert rebuilt.input_image_bytes is None
+    assert rebuilt.input_image_payload is None
+
+
+def test_inference_error_contract_emits_canonical_fields_and_reads_legacy_fields() -> (
+    None
+):
+    """验证 gateway 统一发送规范错误字段，同时允许旧进程滚动升级。"""
+
+    error = InvalidRequestError(
+        "deployment input is invalid",
+        details={"deployment_instance_id": "deployment-instance-1"},
+    )
+    payload = _serialize_error(error)
+
+    assert payload["error_code"] == "invalid_request"
+    assert payload["error_message"] == "deployment input is invalid"
+    assert "code" not in payload
+    assert "message" not in payload
+    restored = _deserialize_error(payload, fallback_message="fallback")
+    assert restored.code == "invalid_request"
+    assert restored.message == "deployment input is invalid"
+    assert restored.status_code == 400
+    assert restored.details == {
+        "deployment_instance_id": "deployment-instance-1"
+    }
+
+    legacy = _deserialize_error(
+        {
+            "code": "legacy_error",
+            "message": "legacy message",
+            "status_code": 409,
+            "details": {"legacy": True},
+        },
+        fallback_message="fallback",
+    )
+    assert legacy.code == "legacy_error"
+    assert legacy.message == "legacy message"
+    assert legacy.status_code == 409
+    assert legacy.details == {"legacy": True}
 
 
 def test_async_gateway_assigns_request_scoped_object_store_output(

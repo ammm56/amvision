@@ -38,6 +38,14 @@ class DeploymentRuntimeInstanceHealthResponse(BaseModel):
     healthy: bool = Field(description="是否健康")
     warmed: bool = Field(description="是否已完成模型加载")
     busy: bool = Field(description="当前是否正在处理请求")
+    inference_count: int = Field(default=0, description="成功推理次数当前安全整数窗口值")
+    inference_count_rollover_count: int = Field(
+        default=0, description="成功推理次数 rollover 数量"
+    )
+    error_count: int = Field(default=0, description="实例加载或推理失败次数")
+    error_count_rollover_count: int = Field(
+        default=0, description="实例失败次数 rollover 数量"
+    )
     last_error: str | None = Field(default=None, description="最近一次失败错误")
 
 
@@ -92,7 +100,7 @@ class DeploymentProcessStatusResponse(BaseModel):
     )
     generation: int = Field(default=0, description="期望状态变更代次")
     process_state: str = Field(
-        description="当前进程状态；running、stopped、crashed 或 unavailable"
+        description="当前进程状态；starting、running、stopped、crashed 或 unavailable"
     )
     process_id: int | None = Field(default=None, description="当前子进程 pid")
     auto_restart: bool = Field(description="是否启用崩溃自动拉起")
@@ -680,6 +688,10 @@ def _build_runtime_instance_health_response(
         healthy=item.healthy,
         warmed=item.warmed,
         busy=item.busy,
+        inference_count=item.inference_count,
+        inference_count_rollover_count=item.inference_count_rollover_count,
+        error_count=item.error_count,
+        error_count_rollover_count=item.error_count_rollover_count,
         last_error=item.last_error,
     )
 
