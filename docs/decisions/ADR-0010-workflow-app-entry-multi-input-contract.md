@@ -2,7 +2,7 @@
 
 ## 状态
 
-已接受，尚未实现。当前 Runtime JSON 请求可以同时接收多个已声明 `input_bindings`，但 App Entry 快捷入口仍以图片为主，Runtime multipart 仍只支持 `dataset-package.v1`。实施顺序、payload 形状和验收矩阵见 [Workflow App Entry 多类型输入实施基线](../development/workflow-app-entry-input-implementation.md)。
+已接受，已实施。统一 payload/节点/校验、App Contract v2、ObjectStore streaming、Runtime/Preview multipart、App Entry、typed Preview、.NET SDK 和 local-shared-memory event-only v2 已完成。实施顺序、payload 形状和验收矩阵见 [Workflow App Entry 多类型输入实施基线](../development/workflow-app-entry-input-implementation.md)。
 
 ## 背景
 

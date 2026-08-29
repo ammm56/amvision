@@ -82,7 +82,9 @@ from backend.service.application.runtime.deployment.inference_control import (
     NoOpAsyncInferenceGatewayRegistry,
     QueueBackedInferenceControlClient,
 )
-from backend.service.infrastructure.ipc.inference_mailbox import InferenceLocalMmapClient
+from backend.service.infrastructure.ipc.inference_mailbox import (
+    InferenceLocalMmapClient,
+)
 from backend.service.application.runtime.deployment.runtime_factory import (
     build_task_type_deployment_runtimes,
 )
@@ -402,6 +404,20 @@ class RecoverIncompleteWorkflowAppVersionsStep:
             session_factory=runtime.session_factory,
             dataset_storage=runtime.dataset_storage,
         ).recover_interrupted_operations()
+
+
+class CleanupInterruptedWorkflowRuntimeInputsStep:
+    """清理上一次进程异常退出遗留的临时 Runtime 输入。"""
+
+    def get_step_name(self) -> str:
+        """返回启动步骤名称。"""
+
+        return "cleanup-interrupted-workflow-runtime-inputs"
+
+    def run(self, runtime: BackendServiceRuntime) -> None:
+        """在任何 Runtime worker 启动前删除失去执行所有者的输入目录。"""
+
+        runtime.dataset_storage.delete_tree("workflows/runtime-inputs")
 
 
 class BackendServiceBootstrap(
@@ -829,9 +845,7 @@ class BackendServiceBootstrap(
             workflow_runtime_worker_manager=workflow_runtime_worker_manager,
             workflow_preview_run_manager=workflow_preview_run_manager,
             trigger_source_supervisor=trigger_source_supervisor,
-            workflow_trigger_mailbox_supervisor=(
-                workflow_trigger_mailbox_supervisor
-            ),
+            workflow_trigger_mailbox_supervisor=(workflow_trigger_mailbox_supervisor),
             deployment_runtime_reconciler=deployment_runtime_reconciler,
             classification_sync_deployment_supervisor=classification_sync_deployment_supervisor,
             classification_async_deployment_supervisor=classification_async_deployment_supervisor,
@@ -1048,6 +1062,7 @@ class BackendServiceBootstrap(
             LoadBackendServiceNodeCatalogStep(),
             RecoverIncompleteWorkflowAppVersionsStep(),
             MigrateLegacyWorkflowAppRuntimeVersionsStep(),
+            CleanupInterruptedWorkflowRuntimeInputsStep(),
         )
 
     def _build_seeders(self) -> tuple[BackendServiceSeeder, ...]:

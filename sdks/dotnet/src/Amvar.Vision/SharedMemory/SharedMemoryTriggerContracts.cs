@@ -101,6 +101,30 @@ namespace Amvar.Vision.SharedMemory
         public bool EnableTimings { get; set; }
     }
 
+    /// <summary>
+    /// 不携带图片的 local-shared-memory event-only v2 请求。
+    /// </summary>
+    public sealed class SharedMemoryTriggerEventRequest
+    {
+        /// <summary>调用事件 id；为空时由 SDK 生成。</summary>
+        public string? EventId { get; set; }
+
+        /// <summary>链路 trace id；为空时由 SDK 生成。</summary>
+        public string? TraceId { get; set; }
+
+        /// <summary>可选幂等键。</summary>
+        public string? IdempotencyKey { get; set; }
+
+        /// <summary>业务 payload；由 Trigger input mapping 映射到公开 binding。</summary>
+        public IDictionary<string, object?> Payload { get; } = new Dictionary<string, object?>();
+
+        /// <summary>请求元数据。</summary>
+        public IDictionary<string, object?> Metadata { get; } = new Dictionary<string, object?>();
+
+        /// <summary>是否采集 SDK 本地分阶段耗时。</summary>
+        public bool EnableTimings { get; set; }
+    }
+
     /// <summary>一次本机共享内存调用的 SDK 本地诊断耗时，单位为毫秒。</summary>
     public sealed class SharedMemoryTriggerTimings
     {
@@ -248,6 +272,30 @@ namespace Amvar.Vision.SharedMemory
     {
         [JsonProperty("format_id")]
         public string FormatId { get; set; } = "amvision.workflow-trigger-request.v1";
+
+        [JsonProperty("trigger_source_id")]
+        public string TriggerSourceId { get; set; } = string.Empty;
+
+        [JsonProperty("event_id")]
+        public string EventId { get; set; } = string.Empty;
+
+        [JsonProperty("payload")]
+        public IDictionary<string, object?> Payload { get; set; } = new Dictionary<string, object?>();
+
+        [JsonProperty("metadata")]
+        public IDictionary<string, object?> Metadata { get; set; } = new Dictionary<string, object?>();
+
+        [JsonProperty("trace_id")]
+        public string? TraceId { get; set; }
+
+        [JsonProperty("idempotency_key")]
+        public string? IdempotencyKey { get; set; }
+    }
+
+    internal sealed class WorkflowTriggerEventRequestPayload
+    {
+        [JsonProperty("format_id")]
+        public string FormatId { get; set; } = "amvision.workflow-trigger-event-request.v2";
 
         [JsonProperty("trigger_source_id")]
         public string TriggerSourceId { get; set; } = string.Empty;

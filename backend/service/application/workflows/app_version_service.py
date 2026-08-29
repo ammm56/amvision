@@ -13,7 +13,6 @@ import uuid
 
 from backend.contracts.workflows.workflow_graph import (
     FlowApplication,
-    FlowApplicationBinding,
     NodeDefinition,
     WorkflowGraphTemplate,
 )
@@ -26,6 +25,11 @@ from backend.service.application.errors import (
 )
 from backend.service.application.workflows.workflow_service import (
     LocalWorkflowJsonService,
+)
+from backend.service.application.workflows.input_contracts import (
+    WORKFLOW_APP_CONTRACT_V2_FORMAT,
+    build_workflow_app_public_contract_v2,
+    normalize_contract_for_compatibility,
 )
 from backend.service.application.workflows.application_lifecycle import (
     WorkflowApplicationLifecycleService,
@@ -45,7 +49,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 
 
 WORKFLOW_APP_VERSION_MANIFEST_FORMAT = "amvision.workflow-app-version-manifest.v1"
-WORKFLOW_APP_CONTRACT_FORMAT = "amvision.workflow-app-contract.v1"
+WORKFLOW_APP_CONTRACT_FORMAT = WORKFLOW_APP_CONTRACT_V2_FORMAT
 WORKFLOW_APP_DEPENDENCY_MANIFEST_FORMAT = "amvision.workflow-app-dependencies.v1"
 
 
@@ -144,7 +148,11 @@ class WorkflowAppVersionService:
             application=application,
             template_override=template,
         )
-        contract = _build_public_contract(application=application, template=template)
+        contract = _build_public_contract(
+            application=application,
+            template=template,
+            node_catalog_registry=self.node_catalog_registry,
+        )
         dependencies = _build_dependency_manifest(
             application=application,
             template=template,
@@ -461,7 +469,11 @@ class WorkflowAppVersionService:
     ) -> WorkflowAppDraftSnapshot:
         """从明确的 Application 与 Template 内容构建稳定发布快照。"""
 
-        contract = _build_public_contract(application=application, template=template)
+        contract = _build_public_contract(
+            application=application,
+            template=template,
+            node_catalog_registry=self.node_catalog_registry,
+        )
         dependencies = _build_dependency_manifest(
             application=application,
             template=template,
@@ -1104,16 +1116,37 @@ def compute_workflow_app_content_fingerprint(
 ) -> str:
     """计算 worker 实际加载内容的完整指纹。"""
 
-    contract = _build_public_contract(application=application, template=template)
+    contract = _build_public_contract(
+        application=application,
+        template=template,
+        node_catalog_registry=node_catalog_registry,
+    )
     dependencies = _build_dependency_manifest(
         application=application,
         template=template,
         node_catalog_registry=node_catalog_registry,
     )
+    return compute_workflow_app_content_fingerprint_from_artifacts(
+        application=application.model_dump(mode="json"),
+        template=template.model_dump(mode="json"),
+        contract=contract,
+        dependencies=dependencies,
+    )
+
+
+def compute_workflow_app_content_fingerprint_from_artifacts(
+    *,
+    application: object,
+    template: object,
+    contract: object,
+    dependencies: object,
+) -> str:
+    """只按不可变发布文件计算内容指纹，不读取当前 Node Catalog。"""
+
     return _fingerprint(
         _build_content_fingerprint_payload(
-            application=application.model_dump(mode="json"),
-            template=template.model_dump(mode="json"),
+            application=application,
+            template=template,
             contract=contract,
             dependencies=dependencies,
         )
@@ -1171,43 +1204,18 @@ def _dependency_fingerprint_payload(dependencies: object) -> object:
 
 
 def _build_public_contract(
-    *, application: FlowApplication, template: WorkflowGraphTemplate
+    *,
+    application: FlowApplication,
+    template: WorkflowGraphTemplate,
+    node_catalog_registry: NodeCatalogRegistry,
 ) -> dict[str, object]:
-    """从模板端口和 Application bindings 生成稳定公开契约。"""
+    """从统一节点目录冻结 App Contract v2。"""
 
-    input_index = {item.input_id: item for item in template.template_inputs}
-    output_index = {item.output_id: item for item in template.template_outputs}
-    inputs: list[dict[str, object]] = []
-    outputs: list[dict[str, object]] = []
-    for binding in sorted(application.bindings, key=lambda item: item.binding_id):
-        target = input_index.get(binding.template_port_id)
-        if binding.direction == "input" and target is not None:
-            inputs.append(_binding_contract(binding, target.payload_type_id))
-            continue
-        source = output_index.get(binding.template_port_id)
-        if binding.direction == "output" and source is not None:
-            outputs.append(_binding_contract(binding, source.payload_type_id))
-    return {
-        "format_id": WORKFLOW_APP_CONTRACT_FORMAT,
-        "application_id": application.application_id,
-        "inputs": inputs,
-        "outputs": outputs,
-    }
-
-
-def _binding_contract(
-    binding: FlowApplicationBinding, payload_type_id: str
-) -> dict[str, object]:
-    """构建单个公开 binding 的契约摘要。"""
-
-    return {
-        "binding_id": binding.binding_id,
-        "template_port_id": binding.template_port_id,
-        "payload_type_id": payload_type_id,
-        "binding_kind": binding.binding_kind,
-        "required": binding.required,
-        "config": binding.config,
-    }
+    return build_workflow_app_public_contract_v2(
+        application=application,
+        template=template,
+        node_catalog_registry=node_catalog_registry,
+    )
 
 
 def _build_dependency_manifest(
@@ -1374,11 +1382,21 @@ def _compare_contracts(
 ) -> dict[str, object]:
     """比较公开契约，返回兼容和破坏性变化。"""
 
+    source_compatibility_contract = normalize_contract_for_compatibility(
+        source_contract
+    )
+    target_compatibility_contract = normalize_contract_for_compatibility(
+        target_contract
+    )
     changes: list[dict[str, object]] = []
     breaking_changes: list[dict[str, object]] = []
     for direction in ("inputs", "outputs"):
-        source_items = _contract_item_index(source_contract.get(direction))
-        target_items = _contract_item_index(target_contract.get(direction))
+        source_items = _contract_item_index(
+            source_compatibility_contract.get(direction)
+        )
+        target_items = _contract_item_index(
+            target_compatibility_contract.get(direction)
+        )
         for binding_id in sorted(source_items.keys() - target_items.keys()):
             breaking_changes.append(
                 {"kind": "removed", "direction": direction, "binding_id": binding_id}
@@ -1445,6 +1463,11 @@ def _compare_contracts(
                             "to": target.get("required"),
                         }
                     )
+    _append_v2_input_rejection_set_changes(
+        source_contract=source_contract,
+        target_contract=target_contract,
+        breaking_changes=breaking_changes,
+    )
     return {
         "compatible": not breaking_changes,
         "changes": changes,
@@ -1452,6 +1475,59 @@ def _compare_contracts(
         "source_contract_fingerprint": _fingerprint(source_contract),
         "target_contract_fingerprint": _fingerprint(target_contract),
     }
+
+
+def _append_v2_input_rejection_set_changes(
+    *,
+    source_contract: dict[str, object],
+    target_contract: dict[str, object],
+    breaking_changes: list[dict[str, object]],
+) -> None:
+    """把 v2 输入限制变化作为真实拒绝集合变化报告。"""
+
+    target_is_v2 = target_contract.get("format_id") == WORKFLOW_APP_CONTRACT_FORMAT
+    if not target_is_v2:
+        return
+    source_is_v2 = source_contract.get("format_id") == WORKFLOW_APP_CONTRACT_FORMAT
+    source_items = _contract_item_index(source_contract.get("inputs"))
+    target_items = _contract_item_index(target_contract.get("inputs"))
+    request_fields = (
+        "payload_schema",
+        "request_schema",
+        "allowed_media_types",
+        "max_inline_bytes",
+        "max_file_bytes",
+        "max_files",
+        "transports",
+        "charset",
+    )
+    for binding_id in sorted(source_items.keys() & target_items.keys()):
+        if not source_is_v2:
+            breaking_changes.append(
+                {
+                    "kind": "changed",
+                    "direction": "inputs",
+                    "binding_id": binding_id,
+                    "field": "request_rejection_set",
+                    "from": "legacy-permissive",
+                    "to": "contract-v2",
+                }
+            )
+            continue
+        source = source_items[binding_id]
+        target = target_items[binding_id]
+        for field in request_fields:
+            if source.get(field) != target.get(field):
+                breaking_changes.append(
+                    {
+                        "kind": "changed",
+                        "direction": "inputs",
+                        "binding_id": binding_id,
+                        "field": field,
+                        "from": source.get(field),
+                        "to": target.get(field),
+                    }
+                )
 
 
 def _contract_item_index(value: object) -> dict[str, dict[str, object]]:

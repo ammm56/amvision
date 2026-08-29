@@ -15,7 +15,7 @@ export interface WorkflowRequestImageNodeView {
   outputs: NodePortDefinition[]
 }
 
-interface RequestImageInputConfig {
+interface RequestInputConfig {
   bindingId: string
   displayName: string
   nodeTypeId: string
@@ -49,7 +49,7 @@ export interface WorkflowRequestImageInputOptions<NodeView extends WorkflowReque
 
 export function useWorkflowRequestImageInputs<NodeView extends WorkflowRequestImageNodeView>(options: WorkflowRequestImageInputOptions<NodeView>) {
   function addRequestImageRefInput(): void {
-    addRequestImageInputNode({
+    addRequestInputNode({
       bindingId: 'request_image_ref',
       displayName: 'request_image_ref',
       nodeTypeId: 'core.logic.image-ref-coalesce',
@@ -58,10 +58,55 @@ export function useWorkflowRequestImageInputs<NodeView extends WorkflowRequestIm
   }
 
   function addRequestImageBase64Input(): void {
-    addRequestImageInputNode({
+    addRequestInputNode({
       bindingId: 'request_image_base64',
       displayName: 'request_image_base64',
       nodeTypeId: 'core.io.image-base64-decode',
+      portName: 'payload',
+    })
+  }
+
+  function addRequestJsonInput(): void {
+    addRequestInputNode({
+      bindingId: 'request_json',
+      displayName: 'JSON Parameters',
+      nodeTypeId: 'core.io.template-input.object',
+      portName: 'payload',
+    })
+  }
+
+  function addRequestValueInput(): void {
+    addRequestInputNode({
+      bindingId: 'request_value',
+      displayName: 'Value',
+      nodeTypeId: 'core.io.template-input.value',
+      portName: 'payload',
+    })
+  }
+
+  function addRequestTextInput(): void {
+    addRequestInputNode({
+      bindingId: 'request_text',
+      displayName: 'Text',
+      nodeTypeId: 'core.io.template-input.text',
+      portName: 'payload',
+    })
+  }
+
+  function addRequestFileInput(): void {
+    addRequestInputNode({
+      bindingId: 'request_file',
+      displayName: 'File',
+      nodeTypeId: 'core.io.template-input.file',
+      portName: 'payload',
+    })
+  }
+
+  function addRequestFilesInput(): void {
+    addRequestInputNode({
+      bindingId: 'request_files',
+      displayName: 'Files',
+      nodeTypeId: 'core.io.template-input.files',
       portName: 'payload',
     })
   }
@@ -74,7 +119,7 @@ export function useWorkflowRequestImageInputs<NodeView extends WorkflowRequestIm
     }
   }
 
-  function addRequestImageInputNode(input: RequestImageInputConfig): void {
+  function addRequestInputNode(input: RequestInputConfig): void {
     if (!options.workflowApp.value) return
     const existingBinding = options.appInputBindings.value.find((binding) => binding.binding_id === input.bindingId)
     if (existingBinding) {
@@ -174,6 +219,11 @@ export function useWorkflowRequestImageInputs<NodeView extends WorkflowRequestIm
   return {
     addRequestImageRefInput,
     addRequestImageBase64Input,
+    addRequestJsonInput,
+    addRequestValueInput,
+    addRequestTextInput,
+    addRequestFileInput,
+    addRequestFilesInput,
     normalizeLoadedRequestImageInputBindings,
   }
 }

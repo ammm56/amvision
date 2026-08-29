@@ -448,6 +448,21 @@ GET /api/v1/workflows/runs/{workflow_run_id}?response_mode=run</pre>
               {{ t('workflowEditor.appDetail.actions.syncInvoke') }}
             </Button>
           </div>
+          <div v-if="requestExamples" class="field field--wide">
+            <span>{{ t('workflowEditor.appDetail.fields.requestExamples') }}</span>
+            <details class="result-details" open>
+              <summary>JSON · direct top-level bindings</summary>
+              <pre class="json-view">{{ requestExamples.json }}</pre>
+            </details>
+            <details class="result-details">
+              <summary>multipart / curl</summary>
+              <pre class="json-view">{{ requestExamples.multipartCurl }}</pre>
+            </details>
+            <details class="result-details">
+              <summary>.NET SDK</summary>
+              <pre class="json-view">{{ requestExamples.dotnet }}</pre>
+            </details>
+          </div>
         </div>
         <EmptyState
           v-else
@@ -643,11 +658,13 @@ import {
   buildWorkflowRuntimeInputSample,
   type ImageRefSampleTransportKind,
 } from '../runtime-input-samples'
+import { buildWorkflowAppRequestExamples } from '../workflow-app-request-examples'
 import type {
   FlowApplicationBinding,
   WorkflowAppRuntime,
   WorkflowAppVersion,
   WorkflowAppVersionComparison,
+  WorkflowAppVersionDetail,
   WorkflowJsonObject,
   WorkflowRun,
   WorkflowRuntimeRevision,
@@ -698,6 +715,7 @@ const loading = ref(false)
 const errorMessage = ref<string | null>(null)
 const statusMessage = ref<string | null>(null)
 const workflowApp = ref<WorkflowAppDocument | null>(null)
+const latestVersionDetail = ref<WorkflowAppVersionDetail | null>(null)
 const triggerSources = ref<WorkflowTriggerSource[]>([])
 const selectedRuntimeId = ref('')
 const busyRuntimeId = ref<string | null>(null)
@@ -754,6 +772,10 @@ const runtimeCreateVersionSelectable = computed(() => publishedVersions.value.so
   (version) => version.workflow_app_version_id === runtimeCreateVersionId.value,
 ))
 const selectedRuntime = computed(() => runtimes.value.find((runtime) => runtime.workflow_runtime_id === selectedRuntimeId.value) ?? workflowApp.value?.primaryRuntime ?? runtimes.value[0] ?? null)
+const requestExamples = computed(() => buildWorkflowAppRequestExamples(
+  latestVersionDetail.value?.contract ?? null,
+  selectedRuntime.value?.workflow_runtime_id ?? '',
+))
 const selectedActiveRevision = computed(() => {
   const runtime = selectedRuntime.value
   return runtime ? runtimeRevision(runtime, runtime.active_revision_id) : null
@@ -1063,6 +1085,11 @@ async function publishVersion(): Promise<void> {
     )
     app.versions = [version, ...app.versions.filter((item) => item.workflow_app_version_id !== version.workflow_app_version_id)]
     app.latestVersion = version
+    latestVersionDetail.value = await getWorkflowAppVersion(
+      selectedProjectId.value,
+      applicationId.value,
+      version.workflow_app_version_id,
+    )
     app.versionPagination = {
       ...app.versionPagination,
       totalCount: app.versionPagination.totalCount === null ? null : app.versionPagination.totalCount + 1,
@@ -1110,6 +1137,13 @@ async function refreshLatestVersionAfterStateChange(app: WorkflowAppDocument): P
       .sort((left, right) => right.version_number - left.version_number)
   }
   app.latestVersion = latestPublishedVersion
+  latestVersionDetail.value = latestPublishedVersion
+    ? await getWorkflowAppVersion(
+      selectedProjectId.value,
+      applicationId.value,
+      latestPublishedVersion.workflow_app_version_id,
+    )
+    : null
 
   const candidateIds = new Set(selectRuntimeCandidateVersions(app.versions).map(
     (version) => version.workflow_app_version_id,
@@ -1479,6 +1513,13 @@ async function loadPage(): Promise<void> {
       ?? runtimeStatusResult.items[0]
       ?? null
     workflowApp.value = appDocument
+    latestVersionDetail.value = appDocument.latestVersion
+      ? await getWorkflowAppVersion(
+        selectedProjectId.value,
+        applicationId.value,
+        appDocument.latestVersion.workflow_app_version_id,
+      )
+      : null
     triggerSources.value = triggerStatusResult.items
     const queryRuntimeId = typeof route.query.runtime_id === 'string' ? route.query.runtime_id : ''
     selectedRuntimeId.value = appDocument.runtimes.some((runtime) => runtime.workflow_runtime_id === queryRuntimeId)

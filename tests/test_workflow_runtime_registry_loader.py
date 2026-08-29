@@ -142,7 +142,7 @@ def test_runtime_registry_loader_registers_python_and_worker_handlers_from_entry
             WorkflowGraphInput(
                 input_id="source_text",
                 display_name="Source Text",
-                payload_type_id="text.v1",
+                payload_type_id="test-text.v1",
                 target_node_id="normalize",
                 target_port="text",
             ),
@@ -151,7 +151,7 @@ def test_runtime_registry_loader_registers_python_and_worker_handlers_from_entry
             WorkflowGraphOutput(
                 output_id="final_text",
                 display_name="Final Text",
-                payload_type_id="text.v1",
+                payload_type_id="test-text.v1",
                 source_node_id="uppercase",
                 source_port="result",
             ),
@@ -4064,7 +4064,7 @@ def register(context):
         "payload_contracts": [
             {
                 "format_id": "amvision.workflow-payload-contract.v1",
-                "payload_type_id": "text.v1",
+                "payload_type_id": "test-text.v1",
                 "display_name": "Text",
                 "transport_kind": "inline-json",
                 "json_schema": {
@@ -4089,14 +4089,14 @@ def register(context):
                     {
                         "name": "text",
                         "display_name": "Text",
-                        "payload_type_id": "text.v1",
+                        "payload_type_id": "test-text.v1",
                     }
                 ],
                 "output_ports": [
                     {
                         "name": "text",
                         "display_name": "Text",
-                        "payload_type_id": "text.v1",
+                        "payload_type_id": "test-text.v1",
                     }
                 ],
                 "parameter_schema": {"type": "object", "properties": {}},
@@ -4117,14 +4117,14 @@ def register(context):
                     {
                         "name": "text",
                         "display_name": "Text",
-                        "payload_type_id": "text.v1",
+                        "payload_type_id": "test-text.v1",
                     }
                 ],
                 "output_ports": [
                     {
                         "name": "result",
                         "display_name": "Result",
-                        "payload_type_id": "text.v1",
+                        "payload_type_id": "test-text.v1",
                     }
                 ],
                 "parameter_schema": {"type": "object", "properties": {}},
@@ -4174,7 +4174,7 @@ def _create_missing_entrypoint_node_pack_fixture(tmp_path: Path) -> Path:
         "payload_contracts": [
             {
                 "format_id": "amvision.workflow-payload-contract.v1",
-                "payload_type_id": "text.v1",
+                "payload_type_id": "test-text.v1",
                 "display_name": "Text",
                 "transport_kind": "inline-json",
                 "json_schema": {
@@ -4199,14 +4199,14 @@ def _create_missing_entrypoint_node_pack_fixture(tmp_path: Path) -> Path:
                     {
                         "name": "text",
                         "display_name": "Text",
-                        "payload_type_id": "text.v1",
+                        "payload_type_id": "test-text.v1",
                     }
                 ],
                 "output_ports": [
                     {
                         "name": "text",
                         "display_name": "Text",
-                        "payload_type_id": "text.v1",
+                        "payload_type_id": "test-text.v1",
                     }
                 ],
                 "parameter_schema": {"type": "object", "properties": {}},
@@ -4278,7 +4278,7 @@ def register(context):
         "payload_contracts": [
             {
                 "format_id": "amvision.workflow-payload-contract.v1",
-                "payload_type_id": "text.v1",
+                "payload_type_id": "test-text.v1",
                 "display_name": "Text",
                 "transport_kind": "inline-json",
                 "json_schema": {
@@ -4304,7 +4304,7 @@ def register(context):
                     {
                         "name": "result",
                         "display_name": "Result",
-                        "payload_type_id": "text.v1",
+                        "payload_type_id": "test-text.v1",
                     }
                 ],
                 "parameter_schema": {"type": "object", "properties": {}},

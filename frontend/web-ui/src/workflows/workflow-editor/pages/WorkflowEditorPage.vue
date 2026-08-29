@@ -154,6 +154,11 @@
         @normalize-new-app-application-id="normalizeNewWorkflowApplicationId"
         @normalize-new-app-graph-id="normalizeNewWorkflowGraphId"
         @normalize-new-app-graph-version="normalizeNewWorkflowGraphVersion"
+        @add-request-json="addRequestJsonInput"
+        @add-request-value="addRequestValueInput"
+        @add-request-text="addRequestTextInput"
+        @add-request-file="addRequestFileInput"
+        @add-request-files="addRequestFilesInput"
         @add-request-image-ref="addRequestImageRefInput"
         @add-request-image-base64="addRequestImageBase64Input"
         @update-node-enabled="updateNodeEnabled"
@@ -162,6 +167,11 @@
         @update-binding-display-name="updateBindingDisplayNameFromEvent"
         @update-binding-kind="updateBindingKindFromValue"
         @update-binding-required="updateBindingRequiredFromEvent"
+        @update-binding-description="updateBindingDescriptionFromEvent"
+        @update-binding-request-schema="updateBindingRequestSchemaFromEvent"
+        @update-binding-media-types="updateBindingMediaTypesFromEvent"
+        @update-binding-charset="updateBindingCharsetFromEvent"
+        @update-binding-positive-limit="updateBindingPositiveLimitFromEvent"
         @delete-application-binding="deleteApplicationBinding"
         @add-preview-value-field="addPreviewValueField"
         @remove-preview-value-field="removePreviewValueField"
@@ -593,6 +603,11 @@ const {
   updateBindingDisplayNameFromEvent,
   updateBindingKindFromValue,
   updateBindingRequiredFromEvent,
+  updateBindingDescriptionFromEvent,
+  updateBindingRequestSchemaFromEvent,
+  updateBindingMediaTypesFromEvent,
+  updateBindingCharsetFromEvent,
+  updateBindingPositiveLimitFromEvent,
   deleteApplicationBinding,
   deleteContextApplicationBinding,
   resetContextBoundaryPosition,
@@ -1083,6 +1098,11 @@ const {
 const {
   addRequestImageRefInput,
   addRequestImageBase64Input,
+  addRequestJsonInput,
+  addRequestValueInput,
+  addRequestTextInput,
+  addRequestFileInput,
+  addRequestFilesInput,
   normalizeLoadedRequestImageInputBindings,
 } = useWorkflowRequestImageInputs<GraphNodeView>({
   workflowApp,

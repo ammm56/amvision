@@ -13,6 +13,7 @@ from backend.service.application.message_channels.codec import (
 PREPARE_SCHEMA_ID = "amvision.workflow-trigger.prepare.v1"
 ALLOCATION_SCHEMA_ID = "amvision.workflow-trigger.allocation.v1"
 REQUEST_SCHEMA_ID = "amvision.workflow-trigger.request.v1"
+EVENT_REQUEST_SCHEMA_ID = "amvision.workflow-trigger.event-request.v2"
 RESPONSE_SCHEMA_ID = "amvision.workflow-trigger.response.v1"
 
 
@@ -36,6 +37,7 @@ class WorkflowTriggerMailboxRequest:
     payload: bytes
     route_generation: int
     accepted_timeout_ms: int
+    request_schema_id: str = REQUEST_SCHEMA_ID
 
 
 @dataclass(frozen=True)
@@ -152,6 +154,7 @@ def decode_trigger_payload(
 
 __all__ = [
     "ALLOCATION_SCHEMA_ID",
+    "EVENT_REQUEST_SCHEMA_ID",
     "PREPARE_SCHEMA_ID",
     "REQUEST_SCHEMA_ID",
     "RESPONSE_SCHEMA_ID",

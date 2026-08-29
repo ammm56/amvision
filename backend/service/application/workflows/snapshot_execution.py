@@ -59,6 +59,7 @@ from backend.service.application.workflows.service_runtime.context import (
 from backend.service.application.workflows.workflow_service import (
     LocalWorkflowJsonService,
 )
+from backend.service.application.workflows.input_contracts import WorkflowInputValidator
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
@@ -111,6 +112,8 @@ class WorkflowSnapshotExecutionRequest:
     application_id: str
     application_snapshot_object_key: str
     template_snapshot_object_key: str
+    contract_snapshot_object_key: str | None = None
+    public_contract: dict[str, object] | None = None
     input_bindings: dict[str, object] = field(default_factory=dict)
     execution_metadata: dict[str, object] = field(default_factory=dict)
     target_node_id: str | None = None
@@ -254,9 +257,21 @@ class SnapshotExecutionService:
             scope_id=model_session_scope_id,
         )
 
-        template_input_values = _build_template_input_values(
+        public_contract = self._load_public_contract(request)
+        validated_input_bindings = WorkflowInputValidator(
+            object_store=self.dataset_storage
+        ).validate(
             application=application,
             input_bindings=request.input_bindings,
+            public_contract=public_contract,
+            allowed_template_input_ids={
+                item.input_id for item in template.template_inputs
+            },
+            project_id=request.project_id,
+        )
+        template_input_values = _build_template_input_values(
+            application=application,
+            input_bindings=validated_input_bindings,
             allowed_template_input_ids={
                 item.input_id for item in template.template_inputs
             },
@@ -521,6 +536,26 @@ class SnapshotExecutionService:
                 self._validated_snapshots.popitem(last=False)
             return value
 
+    def _load_public_contract(
+        self,
+        request: WorkflowSnapshotExecutionRequest,
+    ) -> dict[str, object] | None:
+        """读取请求固定的公开契约；旧 v1 直接执行路径可为空。"""
+
+        if request.public_contract is not None:
+            return dict(request.public_contract)
+        if request.contract_snapshot_object_key is None:
+            return None
+        payload = self.dataset_storage.read_json(request.contract_snapshot_object_key)
+        if not isinstance(payload, dict):
+            raise ServiceConfigurationError(
+                "Workflow App 公开契约快照必须是对象",
+                details={
+                    "contract_snapshot_object_key": request.contract_snapshot_object_key
+                },
+            )
+        return dict(payload)
+
 
 def _cleanup_registered_deployment(
     *,
@@ -621,9 +656,7 @@ def _cleanup_local_buffer_lease(
                     "当前 LocalBufferBroker reader 不支持 identity-fenced release"
                 )
             conditional_release(
-                receipt=LeaseOwnershipReceipt.model_validate(
-                    ownership_receipt_payload
-                )
+                receipt=LeaseOwnershipReceipt.model_validate(ownership_receipt_payload)
             )
         else:
             release(cleanup.resource_id)

@@ -99,7 +99,7 @@ export function useWorkflowSaveRunOrchestration(options: WorkflowSaveRunOrchestr
       template,
       application,
       inputBindings: previewInputPayload.inputBindings,
-      imageUploads: previewInputPayload.imageUploads,
+      fileUploads: previewInputPayload.fileUploads,
       executionScope: targetNodeId
         ? { kind: 'node', targetNodeId }
         : { kind: 'application' },

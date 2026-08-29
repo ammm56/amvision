@@ -6,6 +6,26 @@
     </div>
     <section class="workflow-graph-contract-section">
       <div class="workflow-graph-contract-actions">
+        <Button size="sm" variant="secondary" type="button" @click="emit('add-request-json')">
+          <Plus :size="14" />
+          JSON Parameters
+        </Button>
+        <Button size="sm" variant="secondary" type="button" @click="emit('add-request-value')">
+          <Plus :size="14" />
+          Value
+        </Button>
+        <Button size="sm" variant="secondary" type="button" @click="emit('add-request-text')">
+          <Plus :size="14" />
+          Text
+        </Button>
+        <Button size="sm" variant="secondary" type="button" @click="emit('add-request-file')">
+          <Plus :size="14" />
+          File
+        </Button>
+        <Button size="sm" variant="secondary" type="button" @click="emit('add-request-files')">
+          <Plus :size="14" />
+          Files
+        </Button>
         <Button size="sm" variant="secondary" type="button" @click="emit('add-request-image-ref')">
           <Plus :size="14" />
           request_image_ref
@@ -47,6 +67,11 @@ defineProps<{
 }>()
 
 const emit = defineEmits<{
+  'add-request-json': []
+  'add-request-value': []
+  'add-request-text': []
+  'add-request-file': []
+  'add-request-files': []
   'add-request-image-ref': []
   'add-request-image-base64': []
 }>()

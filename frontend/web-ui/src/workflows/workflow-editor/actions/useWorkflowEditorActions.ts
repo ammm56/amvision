@@ -5,7 +5,7 @@ import { saveWorkflowApp, type WorkflowAppSaveResult } from '../services/workflo
 import { useWorkflowResourceStream } from '../composables/useWorkflowResourceStream'
 import { createWorkflowPreviewRun, getWorkflowPreviewRun } from '../services/workflow-runtime.service'
 import type { WorkflowPreviewExecutionScope } from '../services/workflow-runtime.service'
-import type { WorkflowPreviewImageUpload } from '../preview/useWorkflowPreviewInputs'
+import type { WorkflowPreviewFileUpload } from '../preview/useWorkflowPreviewInputs'
 import { validateWorkflowTemplate } from '../services/workflow-template.service'
 import type { FlowApplication, WorkflowGraphTemplate, WorkflowJsonObject, WorkflowPreviewRun } from '../types'
 
@@ -17,7 +17,7 @@ export interface WorkflowSaveActionInput {
 
 export interface WorkflowPreviewRunActionInput extends WorkflowSaveActionInput {
   inputBindings: WorkflowJsonObject
-  imageUploads?: WorkflowPreviewImageUpload[]
+  fileUploads?: WorkflowPreviewFileUpload[]
   executionScope?: WorkflowPreviewExecutionScope
 }
 
@@ -94,7 +94,7 @@ export function useWorkflowEditorActions() {
         projectId: input.projectId,
         template: input.template,
         inputBindings: input.inputBindings,
-        imageUploads: input.imageUploads ?? [],
+        fileUploads: input.fileUploads ?? [],
         executionMetadata: {
           source: 'workflow-graph-workbench',
           preview_execution_mode: 'inline',

@@ -4,6 +4,7 @@ using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
+using System.Threading;
 
 namespace Amvar.Vision
 {
@@ -107,9 +108,19 @@ namespace Amvar.Vision
         public string MediaType { get; set; } = "application/octet-stream";
 
         /// <summary>
-        /// 文件内容 bytes。
+        /// 可选文件内容 bytes；只用于调用方已经持有 bytes 的兼容入口。
         /// </summary>
-        public byte[] ContentBytes { get; set; } = Array.Empty<byte>();
+        public byte[]? ContentBytes { get; set; }
+
+        /// <summary>
+        /// 每次发送时创建独立可读 stream 的工厂。
+        /// </summary>
+        public Func<Stream>? StreamFactory { get; set; }
+
+        /// <summary>
+        /// 可选内容长度；已知时写入 Content-Length，不会预读 stream。
+        /// </summary>
+        public long? ContentLength { get; set; }
 
         /// <summary>
         /// 从 bytes 创建 multipart 文件绑定。
@@ -124,6 +135,7 @@ namespace Amvar.Vision
             {
                 BindingId = bindingId,
                 ContentBytes = contentBytes,
+                ContentLength = contentBytes?.LongLength,
                 FileName = fileName,
                 MediaType = mediaType
             };
@@ -146,11 +158,23 @@ namespace Amvar.Vision
             var normalizedMediaType = string.IsNullOrWhiteSpace(mediaType)
                 ? "application/octet-stream"
                 : mediaType!.Trim();
-            return FromBytes(
+            var fileInfo = new FileInfo(normalizedPath);
+            if (!fileInfo.Exists)
+            {
+                throw new FileNotFoundException("Upload file does not exist.", normalizedPath);
+            }
+            return FromStreamFactory(
                 bindingId,
-                File.ReadAllBytes(normalizedPath),
+                () => new FileStream(
+                    normalizedPath,
+                    FileMode.Open,
+                    FileAccess.Read,
+                    FileShare.Read,
+                    1024 * 1024,
+                    FileOptions.SequentialScan),
                 Path.GetFileName(normalizedPath),
-                normalizedMediaType);
+                normalizedMediaType,
+                fileInfo.Length);
         }
 
         /// <summary>
@@ -167,9 +191,40 @@ namespace Amvar.Vision
                 throw new ArgumentNullException(nameof(stream));
             }
 
-            using var memoryStream = new MemoryStream();
-            stream.CopyTo(memoryStream);
-            return FromBytes(bindingId, memoryStream.ToArray(), fileName, mediaType);
+            var opened = 0;
+            return FromStreamFactory(
+                bindingId,
+                () => Interlocked.Exchange(ref opened, 1) == 0
+                    ? stream
+                    : throw new InvalidOperationException(
+                        "FromStream creates a single-use upload. Use FromStreamFactory for each send."),
+                fileName,
+                mediaType,
+                stream.CanSeek ? (long?)(stream.Length - stream.Position) : null);
+        }
+
+        /// <summary>
+        /// 从每次发送独立创建的 stream factory 构造文件绑定。
+        /// </summary>
+        public static WorkflowRuntimeMultipartFile FromStreamFactory(
+            string bindingId,
+            Func<Stream> streamFactory,
+            string fileName,
+            string mediaType = "application/octet-stream",
+            long? contentLength = null)
+        {
+            if (streamFactory is null)
+            {
+                throw new ArgumentNullException(nameof(streamFactory));
+            }
+            return new WorkflowRuntimeMultipartFile
+            {
+                BindingId = bindingId,
+                StreamFactory = streamFactory,
+                FileName = fileName,
+                MediaType = mediaType,
+                ContentLength = contentLength
+            };
         }
 
         /// <summary>
@@ -178,9 +233,47 @@ namespace Amvar.Vision
         internal HttpContent ToHttpContent()
         {
             Validate();
-            var content = new ByteArrayContent(ContentBytes);
-            content.Headers.ContentType = MediaTypeHeaderValue.Parse(MediaType);
-            return content;
+            if (ContentBytes != null)
+            {
+                var bytesContent = new ByteArrayContent(ContentBytes);
+                bytesContent.Headers.ContentType = MediaTypeHeaderValue.Parse(MediaType);
+                return bytesContent;
+            }
+
+            var stream = StreamFactory!();
+            if (stream is null || !stream.CanRead)
+            {
+                stream?.Dispose();
+                throw new InvalidOperationException("StreamFactory must return a readable stream.");
+            }
+            try
+            {
+                var streamContent = new StreamContent(stream, 1024 * 1024);
+                streamContent.Headers.ContentType = MediaTypeHeaderValue.Parse(MediaType);
+                long? actualLength = null;
+                if (stream.CanSeek)
+                {
+                    actualLength = stream.Length - stream.Position;
+                }
+                if (ContentLength != null && actualLength != null
+                    && ContentLength.Value != actualLength.Value)
+                {
+                    streamContent.Dispose();
+                    throw new InvalidOperationException(
+                        "Upload stream length changed after the request was built.");
+                }
+                var resolvedContentLength = actualLength ?? ContentLength;
+                if (resolvedContentLength != null)
+                {
+                    streamContent.Headers.ContentLength = resolvedContentLength.Value;
+                }
+                return streamContent;
+            }
+            catch
+            {
+                stream.Dispose();
+                throw;
+            }
         }
 
         /// <summary>
@@ -203,9 +296,17 @@ namespace Amvar.Vision
                 throw new InvalidOperationException("MediaType cannot be empty.");
             }
 
-            if (ContentBytes is null || ContentBytes.Length == 0)
+            if (ContentBytes != null && ContentBytes.Length == 0)
             {
                 throw new InvalidOperationException("ContentBytes cannot be empty.");
+            }
+            if (ContentBytes is null && StreamFactory is null)
+            {
+                throw new InvalidOperationException("ContentBytes or StreamFactory is required.");
+            }
+            if (ContentLength != null && ContentLength.Value <= 0)
+            {
+                throw new InvalidOperationException("ContentLength must be greater than zero.");
             }
         }
     }

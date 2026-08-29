@@ -75,12 +75,15 @@ README.md
 
 - backend API 地址、token 和 HTTP timeout；
 - 稳定的 Workflow Runtime key 与 id；
+- Runtime revision 固定的 `runtime.public_contract`；新版本为 App Contract v2，旧 Runtime 没有契约快照时为 `null`；
 - 同步/异步调用默认参数；
 - 绑定的 ZeroMQ TriggerSource；
 - 绑定的 local-shared-memory TriggerSource；其配置只包含 `buffers_root`、路由 generation、默认输入 binding 和 timeout，不复制 arena 容量、mmap 路径、reader guard 数或图片上限；
 - 空的或实际的模型 Deployment 列表。
 
 模型配置可以只包含 `backend` 与 `model_deployments`；SDK 不要求伪造 Workflow Runtime。
+
+`.NET` SDK 可把 `runtime.public_contract` 传给 `WorkflowRequestBuilder`，再通过 `AddJson`、`AddText`、`AddImage`、`AddFile` 和 `AddFiles` 构建统一请求。文件和图片在 HTTP 发送阶段以 stream 读取，不在 SDK 内预先复制完整文件。SDK 的契约检查用于尽早发现 binding、类型、MIME、大小和数量错误；后端仍是完整契约与 ObjectStore 引用校验的权威入口。
 
 ## 使用步骤
 

@@ -22,6 +22,7 @@
     "prepare": "amvision.workflow-trigger.prepare.v1",
     "allocation": "amvision.workflow-trigger.allocation.v1",
     "request": "amvision.workflow-trigger.request.v1",
+    "event_request_v2": "amvision.workflow-trigger.event-request.v2",
     "response": "amvision.workflow-trigger.response.v1"
   },
   "phases": {

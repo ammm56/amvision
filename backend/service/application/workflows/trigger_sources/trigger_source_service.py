@@ -25,6 +25,9 @@ from backend.service.application.errors import (
 from backend.service.application.workflows.app_version_service import (
     WORKFLOW_APP_CONTRACT_FORMAT,
 )
+from backend.service.application.workflows.input_contracts import (
+    WORKFLOW_APP_CONTRACT_V1_FORMAT,
+)
 from backend.service.application.workflows.application_lifecycle import (
     WorkflowApplicationLifecycleService,
 )
@@ -162,16 +165,12 @@ class WorkflowTriggerSourceService:
         self.dataset_storage = dataset_storage
         self.workflow_runtime_worker_manager = workflow_runtime_worker_manager
         if local_shared_default_reply_timeout_seconds <= 0:
-            raise ValueError(
-                "local_shared_default_reply_timeout_seconds 必须大于 0"
-            )
+            raise ValueError("local_shared_default_reply_timeout_seconds 必须大于 0")
         self.local_shared_default_reply_timeout_seconds = (
             local_shared_default_reply_timeout_seconds
         )
         if local_shared_response_ack_timeout_seconds <= 0:
-            raise ValueError(
-                "local_shared_response_ack_timeout_seconds 必须大于 0"
-            )
+            raise ValueError("local_shared_response_ack_timeout_seconds 必须大于 0")
         self.local_shared_response_ack_timeout_seconds = (
             local_shared_response_ack_timeout_seconds
         )
@@ -803,8 +802,7 @@ class WorkflowTriggerSourceService:
         reply_timeout_seconds = request.reply_timeout_seconds
         if trigger_kind == "local-shared-memory" and submit_mode == "sync":
             reply_timeout_seconds = (
-                reply_timeout_seconds
-                or self.local_shared_default_reply_timeout_seconds
+                reply_timeout_seconds or self.local_shared_default_reply_timeout_seconds
             )
         if request.debounce_window_ms is not None and request.debounce_window_ms < 0:
             raise InvalidRequestError("debounce_window_ms 不能小于 0")
@@ -830,10 +828,7 @@ class WorkflowTriggerSourceService:
                 "result_mapping 格式无效",
                 details={"errors": exc.errors(include_url=False)},
             ) from exc
-        if (
-            result_mode == "event-only"
-            and normalized_result_mapping["result_bindings"]
-        ):
+        if result_mode == "event-only" and normalized_result_mapping["result_bindings"]:
             raise InvalidRequestError(
                 "event-only TriggerSource 不能配置 result_bindings"
             )
@@ -1184,7 +1179,8 @@ class WorkflowTriggerSourceService:
         contract = dataset_storage.read_json(version.contract_snapshot_object_key)
         if (
             not isinstance(contract, dict)
-            or contract.get("format_id") != WORKFLOW_APP_CONTRACT_FORMAT
+            or contract.get("format_id")
+            not in {WORKFLOW_APP_CONTRACT_V1_FORMAT, WORKFLOW_APP_CONTRACT_FORMAT}
             or contract.get("application_id") != version.application_id
         ):
             raise ResourceConflictError(
@@ -1401,23 +1397,18 @@ def _with_validated_trigger_configuration(
     raw_bindings = result_mapping.get("result_bindings")
     result_bindings = tuple(
         item.strip()
-        for item in (
-            raw_bindings if isinstance(raw_bindings, list | tuple) else ()
-        )
+        for item in (raw_bindings if isinstance(raw_bindings, list | tuple) else ())
         if isinstance(item, str) and item.strip()
     )
     output_payload_types = dict(validated_contract.output_payload_types)
     selected_output_payload_types = {
-        binding_id: output_payload_types[binding_id]
-        for binding_id in result_bindings
+        binding_id: output_payload_types[binding_id] for binding_id in result_bindings
     }
     response_plan = build_trigger_response_plan(
         trigger_source_id=trigger_source_id,
         trigger_kind=trigger_kind,
         workflow_runtime_id=workflow_runtime_id,
-        workflow_runtime_revision_id=(
-            validated_contract.workflow_runtime_revision_id
-        ),
+        workflow_runtime_revision_id=(validated_contract.workflow_runtime_revision_id),
         workflow_app_version_id=validated_contract.workflow_app_version_id,
         workflow_runtime_generation=validated_contract.revision_generation,
         expected_snapshot_fingerprint=(
@@ -1502,12 +1493,8 @@ def _build_supervisor_health_summary(
         or adapter_health.get("recent_poller_error"),
         "supervisor": dict(supervisor_health),
         "busy_count": _as_int(adapter_health.get("busy_count")),
-        "capacity_reject_count": _as_int(
-            adapter_health.get("capacity_reject_count")
-        ),
-        "request_timeout_count": _as_int(
-            adapter_health.get("request_timeout_count")
-        ),
+        "capacity_reject_count": _as_int(adapter_health.get("capacity_reject_count")),
+        "request_timeout_count": _as_int(adapter_health.get("request_timeout_count")),
         "response_ack_timeout_count": _as_int(
             adapter_health.get("response_ack_timeout_count")
         ),

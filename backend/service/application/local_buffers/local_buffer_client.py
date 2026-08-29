@@ -76,25 +76,16 @@ class LocalBufferBrokerClient:
     """通过控制通道访问 Broker，图片 bytes 直接读写固定 arena。"""
 
     def __init__(self, channel: LocalBufferBrokerEventChannel) -> None:
-        """初始化控制计数、mmap handle cache 和 writer locator cache。"""
+        """初始化控制计数、延迟 direct mmap 和 writer locator cache。"""
 
         self.channel = channel
         self._mmap_cache = _MmapFileCache()
         self._writer_locations: dict[str, dict[str, object]] = {}
+        self._direct_access_settings = channel.direct_access_settings
+        self._direct_access = None
         self._direct_reader = None
         self._direct_writer = None
-        if channel.direct_access_settings is not None:
-            from backend.service.application.local_buffers.direct_mmap_reader import (
-                DirectMmapLocalBufferReader,
-                DirectMmapLocalBufferWriter,
-            )
-
-            self._direct_reader = DirectMmapLocalBufferReader(
-                channel.direct_access_settings
-            )
-            self._direct_writer = DirectMmapLocalBufferWriter(
-                channel.direct_access_settings
-            )
+        self._direct_access_lock = Lock()
         self._closed = False
         self._request_count = SafeCounterState()
         self._error_count = SafeCounterState()
@@ -356,7 +347,7 @@ class LocalBufferBrokerClient:
                     "content_length": len(normalized),
                 },
             )
-        direct_writer = self._direct_writer
+        direct_writer = self._get_direct_writer()
         if direct_writer is not None and direct_writer.accepts_lease(lease):
             direct_writer.write_lease_bytes(lease=lease, content=normalized)
             return
@@ -666,7 +657,7 @@ class LocalBufferBrokerClient:
     def acquire_buffer_ref_view(self, buffer_ref: BufferRef) -> Iterator[memoryview]:
         """单次 Broker 校验后让 reader guard 覆盖完整零复制消费过程。"""
 
-        direct_reader = self._direct_reader
+        direct_reader = self._get_direct_reader()
         if direct_reader is not None and direct_reader.accepts_arena(
             buffer_ref.arena_id
         ):
@@ -693,8 +684,13 @@ class LocalBufferBrokerClient:
                 view.release()
 
     def read_buffer_ref_view(self, buffer_ref: BufferRef) -> memoryview:
-        """返回 arena view；调用方必须已持有 reader guard。"""
+        """返回执行期 owner view；调用方必须在 owner cleanup 前释放。"""
 
+        direct_reader = self._get_direct_reader()
+        if direct_reader is not None and direct_reader.accepts_arena(
+            buffer_ref.arena_id
+        ):
+            return direct_reader.read_owned_buffer_ref_view(buffer_ref)
         location = self._prepare_buffer_reader(buffer_ref)
         return self._mmap_cache.read_view(
             path=_require_text(location, "arena_path"),
@@ -730,7 +726,7 @@ class LocalBufferBrokerClient:
     def acquire_frame_ref_view(self, frame_ref: FrameRef) -> Iterator[memoryview]:
         """单次 Broker 校验后让 reader guard 覆盖完整 frame 消费过程。"""
 
-        direct_reader = self._direct_reader
+        direct_reader = self._get_direct_reader()
         if direct_reader is not None and direct_reader.accepts_arena(
             frame_ref.arena_id
         ):
@@ -757,6 +753,13 @@ class LocalBufferBrokerClient:
                 view.release()
 
     def read_frame_ref_view(self, frame_ref: FrameRef) -> memoryview:
+        """返回执行期 frame owner view；调用方必须在 owner cleanup 前释放。"""
+
+        direct_reader = self._get_direct_reader()
+        if direct_reader is not None and direct_reader.accepts_arena(
+            frame_ref.arena_id
+        ):
+            return direct_reader.read_owned_frame_ref_view(frame_ref)
         location = self._prepare_frame_reader(frame_ref)
         return self._mmap_cache.read_view(
             path=_require_text(location, "arena_path"),
@@ -847,15 +850,66 @@ class LocalBufferBrokerClient:
                 )
             except Exception:
                 pass
-        if self._direct_reader is not None:
-            self._direct_reader.close()
-            self._direct_reader = None
-        if self._direct_writer is not None:
-            self._direct_writer.close()
-            self._direct_writer = None
+        with self._direct_access_lock:
+            if self._direct_reader is not None:
+                self._direct_reader.close()
+                self._direct_reader = None
+            if self._direct_writer is not None:
+                self._direct_writer.close()
+                self._direct_writer = None
+            if self._direct_access is not None:
+                self._direct_access.close()
+                self._direct_access = None
         self._mmap_cache.close()
         self._writer_locations.clear()
         self._closed = True
+
+    def _ensure_direct_accessors(self) -> None:
+        """首次数据面访问时建立一个由 reader/writer 共享的 mmap view。"""
+
+        if self._direct_access_settings is None or self._direct_access is not None:
+            return
+        with self._direct_access_lock:
+            if self._direct_access is not None:
+                return
+            if self._closed:
+                raise InvalidRequestError("LocalBuffer client 已关闭")
+            from backend.service.application.local_buffers.direct_mmap_reader import (
+                DirectMmapLocalBufferReader,
+                DirectMmapLocalBufferWriter,
+                open_direct_mmap_local_buffer_access,
+            )
+
+            access = open_direct_mmap_local_buffer_access(
+                self._direct_access_settings
+            )
+            try:
+                reader = DirectMmapLocalBufferReader(
+                    self._direct_access_settings,
+                    shared_access=access,
+                )
+                writer = DirectMmapLocalBufferWriter(
+                    self._direct_access_settings,
+                    shared_access=access,
+                )
+            except BaseException:
+                access.close()
+                raise
+            self._direct_access = access
+            self._direct_reader = reader
+            self._direct_writer = writer
+
+    def _get_direct_reader(self) -> Any | None:
+        """返回延迟创建的 direct reader。"""
+
+        self._ensure_direct_accessors()
+        return self._direct_reader
+
+    def _get_direct_writer(self) -> Any | None:
+        """返回延迟创建的 direct writer。"""
+
+        self._ensure_direct_accessors()
+        return self._direct_writer
 
     def get_health_summary(self) -> dict[str, object]:
         request = snapshot_safe_counter(self._request_count)

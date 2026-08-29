@@ -214,6 +214,12 @@ class WorkflowAppVersionMigrationService:
             metadata={
                 **dict(workflow_app_runtime.metadata),
                 "workflow_app_version_id": app_version.workflow_app_version_id,
+                "contract_snapshot_object_key": (
+                    app_version.contract_snapshot_object_key
+                ),
+                "dependency_manifest_object_key": (
+                    app_version.dependency_manifest_object_key
+                ),
                 "legacy_runtime_snapshot_migrated": True,
                 "legacy_application_snapshot_object_key": (
                     workflow_app_runtime.application_snapshot_object_key

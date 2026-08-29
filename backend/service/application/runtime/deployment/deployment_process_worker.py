@@ -766,7 +766,14 @@ def _build_local_buffer_writer(
     if isinstance(local_buffer_reader, LocalBufferBrokerClient):
         return local_buffer_reader
     if direct_writer_settings is not None:
-        return DirectMmapLocalBufferWriter(direct_writer_settings)
+        return DirectMmapLocalBufferWriter(
+            direct_writer_settings,
+            shared_access=(
+                local_buffer_reader.shared_access
+                if isinstance(local_buffer_reader, DirectMmapLocalBufferReader)
+                else None
+            ),
+        )
     return None
 
 

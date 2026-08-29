@@ -68,7 +68,9 @@ class PermissionDeniedError(ServiceError):
         - details：附加错误细节。
         """
 
-        super().__init__(message, code="permission_denied", status_code=403, details=details)
+        super().__init__(
+            message, code="permission_denied", status_code=403, details=details
+        )
 
 
 class ServiceConfigurationError(ServiceError):
@@ -87,7 +89,12 @@ class ServiceConfigurationError(ServiceError):
         - details：附加错误细节。
         """
 
-        super().__init__(message, code="service_configuration_error", status_code=500, details=details)
+        super().__init__(
+            message,
+            code="service_configuration_error",
+            status_code=500,
+            details=details,
+        )
 
 
 class PersistenceOperationError(ServiceError):
@@ -106,7 +113,12 @@ class PersistenceOperationError(ServiceError):
         - details：附加错误细节。
         """
 
-        super().__init__(message, code="persistence_operation_error", status_code=503, details=details)
+        super().__init__(
+            message,
+            code="persistence_operation_error",
+            status_code=503,
+            details=details,
+        )
 
 
 class WorkflowRecoveryRequiredError(ServiceError):
@@ -163,7 +175,26 @@ class InvalidRequestError(ServiceError):
         - details：附加错误细节。
         """
 
-        super().__init__(message, code="invalid_request", status_code=400, details=details)
+        super().__init__(
+            message, code="invalid_request", status_code=400, details=details
+        )
+
+
+class WorkflowInputError(ServiceError):
+    """表示 Workflow 公开输入没有通过稳定契约校验。"""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str,
+        details: Mapping[str, object] | None = None,
+    ) -> None:
+        """初始化带稳定错误码的 Workflow 输入错误。"""
+
+        if not code.startswith("workflow_input_"):
+            raise ValueError("Workflow 输入错误码必须以 workflow_input_ 开头")
+        super().__init__(message, code=code, status_code=400, details=details)
 
 
 class EphemeralImageRefInJsonResultError(ServiceError):
@@ -201,7 +232,9 @@ class OperationTimeoutError(ServiceError):
         - details：附加错误细节。
         """
 
-        super().__init__(message, code="operation_timeout", status_code=504, details=details)
+        super().__init__(
+            message, code="operation_timeout", status_code=504, details=details
+        )
 
 
 class OperationCancelledError(ServiceError):
@@ -220,7 +253,9 @@ class OperationCancelledError(ServiceError):
         - details：附加错误细节。
         """
 
-        super().__init__(message, code="operation_cancelled", status_code=409, details=details)
+        super().__init__(
+            message, code="operation_cancelled", status_code=409, details=details
+        )
 
 
 class ResourceInUseError(ServiceError):
@@ -239,7 +274,9 @@ class ResourceInUseError(ServiceError):
         - details：附加错误细节。
         """
 
-        super().__init__(message, code="resource_in_use", status_code=409, details=details)
+        super().__init__(
+            message, code="resource_in_use", status_code=409, details=details
+        )
 
 
 class ResourceConflictError(ServiceError):
@@ -253,7 +290,9 @@ class ResourceConflictError(ServiceError):
     ) -> None:
         """初始化资源冲突错误。"""
 
-        super().__init__(message, code="resource_conflict", status_code=409, details=details)
+        super().__init__(
+            message, code="resource_conflict", status_code=409, details=details
+        )
 
 
 class WorkflowRuntimeBusyError(ServiceError):
@@ -391,7 +430,9 @@ class UnsupportedDatasetFormatError(ServiceError):
         - details：附加错误细节。
         """
 
-        super().__init__(message, code="unsupported_dataset_format", status_code=422, details=details)
+        super().__init__(
+            message, code="unsupported_dataset_format", status_code=422, details=details
+        )
 
 
 class ResourceNotFoundError(ServiceError):
@@ -410,4 +451,6 @@ class ResourceNotFoundError(ServiceError):
         - details：附加错误细节。
         """
 
-        super().__init__(message, code="resource_not_found", status_code=404, details=details)
+        super().__init__(
+            message, code="resource_not_found", status_code=404, details=details
+        )

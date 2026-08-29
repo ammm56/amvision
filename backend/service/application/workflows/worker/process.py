@@ -25,6 +25,7 @@ from backend.service.application.local_buffers import (
 )
 from backend.service.application.workflows.app_version_service import (
     compute_workflow_app_content_fingerprint,
+    compute_workflow_app_content_fingerprint_from_artifacts,
 )
 from backend.service.application.workflows.model_sessions import (
     WORKFLOW_MODEL_SESSION_SCOPE_ID_METADATA_KEY,
@@ -67,6 +68,7 @@ from backend.service.application.workflows.worker.messages import (
     serialize_node_records,
 )
 from backend.service.infrastructure.db.session import SessionFactory
+from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
@@ -136,11 +138,69 @@ def run_workflow_runtime_worker_process(
         template_snapshot_object_key = require_payload_str(
             runtime_payload, "template_snapshot_object_key"
         )
+        contract_snapshot_object_key = read_optional_str(
+            runtime_payload, "contract_snapshot_object_key"
+        )
+        dependency_manifest_object_key = read_optional_str(
+            runtime_payload, "dependency_manifest_object_key"
+        )
+        workflow_app_version_id = read_optional_str(
+            runtime_payload, "workflow_app_version_id"
+        )
+        if workflow_app_version_id is not None:
+            unit_of_work = SqlAlchemyUnitOfWork(session_factory.create_session())
+            try:
+                workflow_app_version = (
+                    unit_of_work.workflow_runtime.get_workflow_app_version(
+                        workflow_app_version_id
+                    )
+                )
+            finally:
+                unit_of_work.close()
+            if workflow_app_version is None:
+                raise InvalidRequestError(
+                    "workflow runtime worker 引用的 WorkflowAppVersion 不存在",
+                    details={"workflow_app_version_id": workflow_app_version_id},
+                )
+            expected_object_keys = {
+                "application_snapshot_object_key": (
+                    workflow_app_version.application_snapshot_object_key
+                ),
+                "template_snapshot_object_key": (
+                    workflow_app_version.template_snapshot_object_key
+                ),
+            }
+            actual_object_keys = {
+                "application_snapshot_object_key": application_snapshot_object_key,
+                "template_snapshot_object_key": template_snapshot_object_key,
+            }
+            if actual_object_keys != expected_object_keys:
+                raise InvalidRequestError(
+                    "workflow runtime worker 加载的版本文件引用不匹配",
+                    details={
+                        "workflow_app_version_id": workflow_app_version_id,
+                        "expected": expected_object_keys,
+                        "actual": actual_object_keys,
+                    },
+                )
+            # Runtime 记录里的键用于快速启动；版本记录是冻结发布文件的权威来源。
+            contract_snapshot_object_key = (
+                workflow_app_version.contract_snapshot_object_key
+            )
+            dependency_manifest_object_key = (
+                workflow_app_version.dependency_manifest_object_key
+            )
+        snapshot_application_payload = dataset_storage.read_json(
+            application_snapshot_object_key
+        )
+        snapshot_template_payload = dataset_storage.read_json(
+            template_snapshot_object_key
+        )
         snapshot_application = FlowApplication.model_validate(
-            dataset_storage.read_json(application_snapshot_object_key)
+            snapshot_application_payload
         )
         snapshot_template = WorkflowGraphTemplate.model_validate(
-            dataset_storage.read_json(template_snapshot_object_key)
+            snapshot_template_payload
         )
         required_node_type_ids = {
             node.node_type_id for node in snapshot_template.nodes if node.enabled
@@ -207,11 +267,45 @@ def run_workflow_runtime_worker_process(
             workflow_model_session_manager=model_session_manager,
             workflow_storage_image_cache=storage_image_cache,
         )
-        snapshot_fingerprint = compute_workflow_app_content_fingerprint(
-            application=snapshot_application,
-            template=snapshot_template,
-            node_catalog_registry=node_catalog_registry,
-        )
+        if (
+            contract_snapshot_object_key is not None
+            and dependency_manifest_object_key is not None
+        ):
+            # 已发布 Runtime 必须按版本内冻结的四份文件验签。Node Catalog
+            # 后续升级不能改变旧版本的内容指纹或让旧 Runtime 无法重启。
+            snapshot_fingerprint = (
+                compute_workflow_app_content_fingerprint_from_artifacts(
+                    application=snapshot_application_payload,
+                    template=snapshot_template_payload,
+                    contract=dataset_storage.read_json(
+                        contract_snapshot_object_key
+                    ),
+                    dependencies=dataset_storage.read_json(
+                        dependency_manifest_object_key
+                    ),
+                )
+            )
+        else:
+            # 仅兼容没有 WorkflowAppVersion 身份的早期 Runtime；当前发布路径
+            # 必须同时提供 contract 与 dependencies，缺少任一文件时不能静默降级。
+            if workflow_app_version_id is not None:
+                raise InvalidRequestError(
+                    "workflow runtime worker 缺少冻结版本文件引用",
+                    details={
+                        "workflow_app_version_id": workflow_app_version_id,
+                        "contract_snapshot_object_key": (
+                            contract_snapshot_object_key
+                        ),
+                        "dependency_manifest_object_key": (
+                            dependency_manifest_object_key
+                        ),
+                    },
+                )
+            snapshot_fingerprint = compute_workflow_app_content_fingerprint(
+                application=snapshot_application,
+                template=snapshot_template,
+                node_catalog_registry=node_catalog_registry,
+            )
         if (
             expected_snapshot_fingerprint is not None
             and snapshot_fingerprint != expected_snapshot_fingerprint
@@ -275,6 +369,7 @@ def run_workflow_runtime_worker_process(
                 application_id=application_id,
                 application_snapshot_object_key=application_snapshot_object_key,
                 template_snapshot_object_key=template_snapshot_object_key,
+                contract_snapshot_object_key=contract_snapshot_object_key,
                 execution_metadata=startup_execution_metadata,
             )
         )
@@ -457,6 +552,7 @@ def run_workflow_runtime_worker_process(
                         application_id=application_id,
                         application_snapshot_object_key=application_snapshot_object_key,
                         template_snapshot_object_key=template_snapshot_object_key,
+                        contract_snapshot_object_key=contract_snapshot_object_key,
                         input_bindings=input_bindings,
                         execution_metadata=execution_metadata,
                     )

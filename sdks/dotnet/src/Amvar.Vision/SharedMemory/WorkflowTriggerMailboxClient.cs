@@ -42,6 +42,7 @@ namespace Amvar.Vision.SharedMemory
         private const string PrepareSchemaId = "amvision.workflow-trigger.prepare.v1";
         private const string AllocationSchemaId = "amvision.workflow-trigger.allocation.v1";
         private const string RequestSchemaId = "amvision.workflow-trigger.request.v1";
+        private const string EventRequestSchemaId = "amvision.workflow-trigger.event-request.v2";
         private const string ResponseSchemaId = "amvision.workflow-trigger.response.v1";
         private static readonly byte[] Magic = { 0x41, 0x4d, 0x56, 0x4c, 0x4d, 0x53, 0x47, 0x00 };
 
@@ -148,17 +149,52 @@ namespace Amvar.Vision.SharedMemory
             byte[] preparePayload,
             Guid requestId)
         {
+            return ClaimCore(
+                timeoutMs,
+                routeGeneration,
+                preparePayload,
+                requestId,
+                PrepareSchemaId,
+                WorkflowTriggerMailboxV1.PhasePrepare,
+                "PREPARE");
+        }
+
+        internal WorkflowTriggerDescriptorIdentity ClaimEvent(
+            uint timeoutMs,
+            ulong routeGeneration,
+            byte[] eventPayload,
+            Guid requestId)
+        {
+            return ClaimCore(
+                timeoutMs,
+                routeGeneration,
+                eventPayload,
+                requestId,
+                EventRequestSchemaId,
+                WorkflowTriggerMailboxV1.PhaseRequest,
+                "event-only v2 REQUEST");
+        }
+
+        private WorkflowTriggerDescriptorIdentity ClaimCore(
+            uint timeoutMs,
+            ulong routeGeneration,
+            byte[] payload,
+            Guid requestId,
+            string schemaId,
+            int phase,
+            string envelopeName)
+        {
             if (timeoutMs == 0)
             {
                 throw new ArgumentOutOfRangeException(nameof(timeoutMs));
             }
 
-            var wireBytes = EncodeEnvelope(PrepareSchemaId, preparePayload, requestId);
+            var wireBytes = EncodeEnvelope(schemaId, payload, requestId);
             if (wireBytes.Length > WorkflowTriggerMailboxV1.MaxRequestBytes)
             {
                 throw new SharedMemoryTriggerException(
                     "trigger_request_too_large",
-                    "Workflow Trigger PREPARE envelope exceeds 64 KiB.");
+                    "Workflow Trigger " + envelopeName + " envelope exceeds 64 KiB.");
             }
 
             var ownerToken = CreateNonZeroToken();
@@ -240,7 +276,7 @@ namespace Amvar.Vision.SharedMemory
                             -1);
                         WriteInt32(
                             descriptorOffset + WorkflowTriggerMailboxV1.ExtensionPhaseOffset,
-                            WorkflowTriggerMailboxV1.PhasePrepare);
+                            phase);
                         WriteUInt32(
                             descriptorOffset
                             + WorkflowTriggerMailboxV1.ExtensionRequestedTimeoutMsOffset,

@@ -181,6 +181,10 @@ def _build_default_registry() -> PayloadAdapterRegistry:
         "local-features.v1",
         "feature-matches.v1",
         "planar-transform.v1",
+        "points.v1",
+        "localizations.v1",
+        "camera-calibration.v1",
+        "stereo-calibration.v1",
     )
     for source_contract in object_contracts:
         registry.register(source_contract, "value.v1", _convert_object)

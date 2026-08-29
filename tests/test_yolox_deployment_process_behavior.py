@@ -36,6 +36,8 @@ from backend.service.application.runtime.deployment.deployment_process_worker im
     _LocalBufferBrokerRuntimeHealth,
     _activate_keep_warm,
     _begin_real_inference,
+    _build_local_buffer_reader,
+    _build_local_buffer_writer,
     _finish_real_inference,
     _resolve_warmup_behavior,
     _run_deployment_parent_watchdog,
@@ -74,6 +76,51 @@ class _DeadParentProcess:
         """返回父进程已退出。"""
 
         return False
+
+
+def test_deployment_direct_reader_and_writer_share_one_mmap_access(
+    tmp_path: Path,
+) -> None:
+    """独立 deployment worker 的双向数据面不得重复映射主 arena。"""
+
+    settings = LocalBufferBrokerSettings(
+        arena_size_bytes=16 * 1024 * 1024,
+        min_block_size_bytes=1024 * 1024,
+        max_allocation_bytes=8 * 1024 * 1024,
+        reader_guard_slots=4,
+    )
+    pool = LocalBufferArenaPool(
+        MmapBufferArenaConfig(
+            root_dir=tmp_path / "buffers",
+            arena_id=settings.arena_id,
+            arena_size_bytes=settings.arena_size_bytes,
+            min_block_size_bytes=settings.min_block_size_bytes,
+            max_allocation_bytes=settings.max_allocation_bytes,
+            reader_guard_slots=settings.reader_guard_slots,
+        )
+    )
+    direct_settings = {
+        **settings.model_dump(mode="json"),
+        "buffers_root": str(tmp_path / "buffers"),
+    }
+    reader = _build_local_buffer_reader(
+        None,
+        direct_reader_settings=direct_settings,
+    )
+    writer = _build_local_buffer_writer(
+        reader,
+        direct_writer_settings=direct_settings,
+    )
+    try:
+        assert isinstance(reader, DirectMmapLocalBufferReader)
+        assert isinstance(writer, DirectMmapLocalBufferWriter)
+        assert reader.shared_access is writer._access
+    finally:
+        if reader is not None:
+            reader.close()
+        if writer is not None:
+            writer.close()
+        pool.close()
 
 
 def test_deployment_worker_exits_when_inference_daemon_is_lost() -> None:

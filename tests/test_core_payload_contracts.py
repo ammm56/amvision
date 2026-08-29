@@ -28,6 +28,22 @@ def test_core_payload_contracts_include_image_base64_and_local_buffer_image_refs
     }
 
     assert "image-base64.v1" in payload_contracts
+    assert {"text.v1", "file-ref.v1", "file-refs.v1"} <= set(payload_contracts)
+
+    text_contract = payload_contracts["text.v1"]
+    assert text_contract.json_schema["additionalProperties"] is False
+    assert text_contract.json_schema["required"] == ["text", "media_type", "charset"]
+
+    file_contract = payload_contracts["file-ref.v1"]
+    assert file_contract.transport_kind == "artifact-ref"
+    assert file_contract.json_schema["additionalProperties"] is False
+    assert {"object_key", "checksum", "immutable_version"} <= set(
+        file_contract.json_schema["required"]
+    )
+
+    files_contract = payload_contracts["file-refs.v1"]
+    assert files_contract.json_schema["required"] == ["items", "count"]
+    assert files_contract.json_schema["additionalProperties"] is False
 
     image_ref_contract = payload_contracts["image-ref.v1"]
     image_ref_schema = image_ref_contract.json_schema
@@ -105,9 +121,7 @@ def test_core_catalog_cold_start_includes_circles_contract() -> None:
     """验证不依赖 OpenCV 自定义包的核心目录可在冷启动时独立通过引用校验。"""
 
     payload_contracts = get_core_workflow_payload_contracts()
-    payload_contract_index = {
-        item.payload_type_id: item for item in payload_contracts
-    }
+    payload_contract_index = {item.payload_type_id: item for item in payload_contracts}
 
     assert "circles.v1" in payload_contract_index
     validate_node_definition_catalog(

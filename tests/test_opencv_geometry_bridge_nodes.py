@@ -233,6 +233,8 @@ def _build_translation_planar_transform_payload(*, include_inverse_matrix: bool)
 
     payload: dict[str, object] = {
         "transform_kind": "homography",
+        "source_coordinate_space": "source-a-image-pixels",
+        "target_coordinate_space": "source-b-image-pixels",
         "matrix_3x3": [[1.0, 0.0, 10.0], [0.0, 1.0, 5.0], [0.0, 0.0, 1.0]],
         "match_count": 24,
         "inlier_count": 20,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from backend.service.application.errors import InvalidRequestError
@@ -37,7 +38,10 @@ def require_number(value: object, *, field_name: str) -> float:
 
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise InvalidRequestError(f"{field_name} 必须是数值")
-    return float(value)
+    normalized_value = float(value)
+    if not math.isfinite(normalized_value):
+        raise InvalidRequestError(f"{field_name} 必须是有限数值")
+    return normalized_value
 
 
 def require_non_negative_float(value: object, *, field_name: str) -> float:
@@ -51,7 +55,7 @@ def require_non_negative_float(value: object, *, field_name: str) -> float:
     - float：规范化后的非负浮点数。
     """
 
-    normalized_value = float(value)
+    normalized_value = require_number(value, field_name=field_name)
     if normalized_value < 0:
         raise InvalidRequestError(f"{field_name} 不能小于 0")
     return normalized_value

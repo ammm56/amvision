@@ -135,5 +135,16 @@ namespace Amvar.Vision
                 mediaType,
                 request);
         }
+
+        /// <summary>按配置 key 发布不带图片的 event-only v2 请求。</summary>
+        public SharedMemoryTriggerResult InvokeSharedMemoryEvent(
+            string triggerSourceName,
+            SharedMemoryTriggerEventRequest request)
+        {
+            EnsureNotDisposed();
+            return localSharedMemoryTriggerOperations.InvokeEvent(
+                triggerSourceName,
+                request);
+        }
     }
 }

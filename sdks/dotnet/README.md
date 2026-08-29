@@ -36,9 +36,11 @@ JSON 统一使用 Newtonsoft.Json；ZeroMQ 统一使用 NetMQ。SDK 项目文件
 
 - Workflow App Runtime 查询、启动、停止、重启、健康检查、revision 读取和停机版本选择
 - Workflow App Runtime 同步 invoke、异步 run、run/event 查询
+- Workflow App Contract v2 读取、请求 binding 校验和多类型 multipart 请求构建
 - Model Deployment runtime 查询、启动、停止、预热、重置和推理调用
 - TriggerSource 查询、启用、禁用、健康检查
 - ZeroMQ TriggerSource 图片、BGR24、Base64、事件触发调用
+- local-shared-memory 图片 v1 与无图片 event-only v2 调用
 - 本地配置文件加载和按 key 调用已配置 runtime / deployment / trigger
 
 Console 示例不是 SDK 边界的一部分，不能把核心封装写到 console 项目中。
@@ -57,9 +59,36 @@ SDK 默认会自动查找 `Config/config*.json`，并把所有 runtime、Trigger
 
 local-shared-memory 配置只保存同机受信 `data/buffers` 根目录、TriggerSource id/generation、默认 binding 和 timeout。SDK从 `local-buffer/state.mmap` header自动发现图片共享内存容量、descriptor/reader guard几何、broker epoch和layout fingerprint，因此后端调整容量或guard数量不要求修改SDK配置。该Trigger只适用于同一台机器；远程SDK即使能访问配置HTTP接口，也必须选择HTTP或ZeroMQ调用链路。
 
+无图片的 JSON/文本事件使用 `SharedMemoryTriggerClient.InvokeEvent` 或 `AMVisionOperationRunner.InvokeSharedMemoryEvent`。该方法发布 `amvision.workflow-trigger-event-request.v2`，直接进入 mailbox REQUEST，不执行图片 v1 的 PREPARE、不申请 LocalBuffer、不创建假图片 lease。`Payload` 仍按 TriggerSource 的 `input_binding_mapping` 映射到 Workflow 公开 binding，最终由 Runtime 固定的 App Contract 权威校验；同步结果和 ACK 生命周期与图片调用共用现有 response v1。
+
 `AMVisionOperationRunner` 高层 API 明确区分 name 与 id：原有不带 `ById` 后缀的方法只接收配置中的可读 `name`，对应的 `ById` 方法分别接收 `workflow_runtime_id`、`trigger_source_id` 或 `deployment_instance_id`。SDK 不在同一个字符串参数中猜测 name 或 id；模型 deployment 的管理类 `ById` 方法还要求显式传入 `sync` 或 `async` runtime mode，推理方法则由同步或异步方法语义确定 mode。
 
 生成配置和 .NET SDK 的 HTTP 默认超时统一为 300 秒。Workflow invoke 和 ZeroMQ reply 的业务超时仍由各自配置字段独立控制，不与 HTTP 连接超时混用。
+
+新 Runtime 的生成配置会在 `runtime.public_contract` 中携带该 Runtime revision 固定的 App Contract v2。`WorkflowRequestBuilder` 可以用这份契约对 binding、payload type、MIME、单文件大小、文件数量和必填输入进行快速校验；服务端仍执行完整 JSON Schema、ObjectStore identity 和 Project 范围校验。旧 Runtime 没有契约快照时该字段为 `null`，SDK 不使用当前应用草稿补齐。
+
+HTTP multipart 调用示例：
+
+```csharp
+var request = new WorkflowRequestBuilder(runtime.PublicContract)
+    .AddJson("request_json", new { recipe = "3570", station = 2 })
+    .AddText("request_text", "lot-20260830")
+    .AddImage("request_image", WorkflowUploadFile.FromFile(@".\images\tray.jpg", "image/jpeg"))
+    .AddFile("request_file", WorkflowUploadFile.FromFile(@".\recipes\limits.json", "application/json"))
+    .AddFiles("request_files", new[]
+    {
+        WorkflowUploadFile.FromFile(@".\files\a.txt", "text/plain"),
+        WorkflowUploadFile.FromFile(@".\files\b.txt", "text/plain")
+    })
+    .WithTimeoutSeconds(30)
+    .Build();
+
+var result = await client.InvokeWorkflowAppRuntimeUploadAppResultResponseAsync(
+    runtime.WorkflowRuntimeId,
+    request).ConfigureAwait(false);
+```
+
+`FromFile` 在 HTTP 发送阶段才打开文件并由 `StreamContent` 分块读取，不预先执行 `File.ReadAllBytes`。已有流使用 `FromStream`；需要重建请求时使用 `FromStreamFactory`，每次返回新的可读流。请求及 multipart content 释放时会关闭本次发送打开的流。Builder 不实现重试、排队或同步调用并发等待策略。
 
 配置加载阶段会完成以下稳定性校验：
 

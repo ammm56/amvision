@@ -53,7 +53,7 @@ describe('workflow 属性面板文本', () => {
     expect(wrapper.text()).not.toContain('api-request')
   })
 
-  it('公开接口编辑器隐藏端点和 schema 并本地化绑定类型', () => {
+  it('公开接口编辑器显示 payload policy 且隐藏内部端点', () => {
     const wrapper = mount(WorkflowPublicBindingEditorPanel, {
       global: { plugins: [i18n] },
       props: {
@@ -61,12 +61,14 @@ describe('workflow 属性面板文本', () => {
         bindings: [inputBinding],
         readDisplayName: () => 'request_image_ref',
         readKindOptions: () => [{ label: 'api-request', value: 'api-request' }],
+        getPayloadTypeId: () => 'image-ref.v1',
       },
     })
 
     expect(wrapper.text()).toContain('绑定类型')
     expect(wrapper.text()).not.toContain('core_logic_image_ref_coalesce.primary')
-    expect(wrapper.text()).not.toContain('image-ref.v1')
+    expect(wrapper.find('input[readonly]').attributes('value')).toBe('image-ref.v1')
+    expect(wrapper.text()).toContain('支持的传输方式')
   })
 
   it('可保存时不显示首次保存说明，阻断时保留必要错误', () => {

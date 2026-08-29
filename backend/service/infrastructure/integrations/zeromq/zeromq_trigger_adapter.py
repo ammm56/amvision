@@ -446,6 +446,9 @@ class ZeroMqTriggerAdapter:
                 timings["zeromq_write_buffer_ms"] = _elapsed_ms(write_started_at)
                 payload[input_binding] = {
                     "transport_kind": "buffer",
+                    # 公开 image-ref.v1 把 media_type 定义为顶层必填字段；
+                    # BufferRef 内的同名字段只用于校验底层共享内存内容。
+                    "media_type": str(buffer_ref_payload["media_type"]),
                     "buffer_ref": buffer_ref_payload,
                 }
             metadata = dict(envelope.metadata)

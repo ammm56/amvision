@@ -32,6 +32,8 @@ namespace Amvar.Vision.ContractTests
                     return InvokeSharedMemoryOutput(args);
                 case "--invoke-shared-memory-input":
                     return InvokeSharedMemoryInput(args);
+                case "--invoke-shared-memory-event":
+                    return InvokeSharedMemoryEvent(args);
                 case "--benchmark-workflow-trigger":
                     return WorkflowTriggerBenchmarkProbe.Run(args);
                 default:
@@ -174,6 +176,60 @@ namespace Amvar.Vision.ContractTests
                         InnerType = error.InnerException?.GetType().FullName,
                         InnerMessage = error.InnerException?.Message
                     }));
+                return 1;
+            }
+        }
+
+        private static int InvokeSharedMemoryEvent(string[] args)
+        {
+            if (args.Length != 5)
+            {
+                return 64;
+            }
+
+            try
+            {
+                using (var client = new SharedMemoryTriggerClient(BuildSharedMemoryOptions(
+                    args[1],
+                    args[2],
+                    long.Parse(args[3], CultureInfo.InvariantCulture))))
+                {
+                    var request = new SharedMemoryTriggerEventRequest
+                    {
+                        EventId = "dotnet-event-only-v2",
+                        TraceId = "dotnet-event-only-v2-trace",
+                        EnableTimings = true
+                    };
+                    request.Payload["request_json"] = new
+                    {
+                        value = new { station = 2, recipe = "3570" }
+                    };
+                    using (var result = client.InvokeEvent(request))
+                    {
+                        File.WriteAllText(
+                            args[4],
+                            JsonConvert.SerializeObject(new
+                            {
+                                result.Result.FormatId,
+                                result.Result.State,
+                                result.Result.WorkflowRunId,
+                                AttachmentCount = result.Attachments.Count,
+                                result.Timings
+                            }));
+                    }
+                }
+                return 0;
+            }
+            catch (Exception error)
+            {
+                File.WriteAllText(args[4], JsonConvert.SerializeObject(new
+                {
+                    ErrorType = error.GetType().FullName,
+                    error.Message,
+                    error.StackTrace,
+                    InnerType = error.InnerException?.GetType().FullName,
+                    InnerMessage = error.InnerException?.Message
+                }));
                 return 1;
             }
         }

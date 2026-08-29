@@ -268,6 +268,93 @@ namespace Amvar.Vision.SharedMemory
                 timings: timings);
         }
 
+        /// <summary>
+        /// 直接发布不带图片的 event-only v2 请求；不执行 PREPARE 或 LocalBuffer allocation。
+        /// </summary>
+        public SharedMemoryTriggerResult InvokeEvent(
+            SharedMemoryTriggerEventRequest request)
+        {
+            if (request == null)
+            {
+                throw new ArgumentNullException(nameof(request));
+            }
+
+            var timings = request.EnableTimings ? new SharedMemoryTriggerTimings() : null;
+            if (timings != null)
+            {
+                timings.InvokeStartedAtTicks = Stopwatch.GetTimestamp();
+            }
+            BeginInvocation();
+            try
+            {
+                var eventId = NormalizeOptional(request.EventId)
+                    ?? "trigger-event-" + Guid.NewGuid().ToString("N");
+                var traceId = NormalizeOptional(request.TraceId)
+                    ?? "trace-" + Guid.NewGuid().ToString("N");
+                var localDeadline = WorkflowTriggerMailboxClient.LocalDeadline(options.Timeout);
+                var eventPayload = WorkflowJsonDefaults.SerializeToUtf8Bytes(
+                    new WorkflowTriggerEventRequestPayload
+                    {
+                        TriggerSourceId = options.TriggerSourceId,
+                        EventId = eventId,
+                        Payload = new Dictionary<string, object?>(request.Payload),
+                        Metadata = new Dictionary<string, object?>(request.Metadata),
+                        TraceId = traceId,
+                        IdempotencyKey = NormalizeOptional(request.IdempotencyKey)
+                    });
+                var claimStartedAt = StartTiming(timings);
+                var identity = mailbox.ClaimEvent(
+                    checked((uint)Math.Ceiling(options.Timeout.TotalMilliseconds)),
+                    checked((ulong)options.RouteGeneration),
+                    eventPayload,
+                    Guid.NewGuid());
+                if (timings != null)
+                {
+                    timings.SdkMailboxClaimMs = ElapsedMilliseconds(claimStartedAt);
+                }
+                try
+                {
+                    var responseWaitStartedAt = StartTiming(timings);
+                    var response = WaitForResponse(identity, localDeadline);
+                    if (timings != null)
+                    {
+                        timings.SdkResponseWaitMs = ElapsedMilliseconds(responseWaitStartedAt);
+                    }
+                    var resultBuildStartedAt = StartTiming(timings);
+                    var responseAckDeadline =
+                        WorkflowTriggerMailboxClient.LocalDeadlineFromBackendMonotonicNs(
+                            response.ResponseAckDeadlineNs);
+                    var result = BuildResult(response, responseAckDeadline, timings);
+                    if (timings != null)
+                    {
+                        timings.SdkResultBuildMs = ElapsedMilliseconds(resultBuildStartedAt);
+                        timings.InvokeReturnMs = ElapsedMilliseconds(timings.InvokeStartedAtTicks);
+                    }
+                    return result;
+                }
+                catch (Exception error)
+                {
+                    try
+                    {
+                        var cancelReason = error is SharedMemoryTriggerException triggerError
+                            && string.Equals(triggerError.ErrorCode, "timeout", StringComparison.Ordinal)
+                                ? WorkflowTriggerMailboxV1.CancelReasonRequestTimeout
+                                : WorkflowTriggerMailboxV1.CancelReasonExplicit;
+                        mailbox.Cancel(identity, cancelReason);
+                    }
+                    catch
+                    {
+                        // 原异常保持为调用方可见结果；取消只做 identity-fenced 补偿。
+                    }
+                    throw;
+                }
+            }
+            finally
+            {
+                EndInvocation();
+            }
+        }
+
         /// <summary>停止接收新调用；已有零复制结果释放后再关闭 mailbox。</summary>
         public void Dispose()
         {

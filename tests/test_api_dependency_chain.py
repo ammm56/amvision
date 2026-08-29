@@ -43,9 +43,7 @@ def test_health_route_returns_request_id_header(tmp_path: Path) -> None:
     client, session_factory = _create_test_client(tmp_path)
     try:
         with client:
-            mailbox_supervisor = (
-                client.app.state.workflow_trigger_mailbox_supervisor
-            )
+            mailbox_supervisor = client.app.state.workflow_trigger_mailbox_supervisor
             assert mailbox_supervisor is not None
             assert mailbox_supervisor.build_status()["running"] is True
             assert (
@@ -355,13 +353,13 @@ def test_create_app_mounts_frontend_static_files_with_spa_fallback(
             receive_hwm=1,
             send_hwm=1,
             max_message_size_bytes=1024 * 1024 * 1024,
-                poll_timeout_ms=100,
-                startup_timeout_seconds=2.0,
-                shutdown_timeout_seconds=10.0,
-                transport_registry_max_entries=32,
-                transport_registry_max_bytes=1024 * 1024 * 1024,
-                transport_tracker_timeout_seconds=30.0,
-                transport_reaper_poll_interval_seconds=0.005,
+            poll_timeout_ms=100,
+            startup_timeout_seconds=2.0,
+            shutdown_timeout_seconds=10.0,
+            transport_registry_max_entries=32,
+            transport_registry_max_bytes=1024 * 1024 * 1024,
+            transport_tracker_timeout_seconds=30.0,
+            transport_reaper_poll_interval_seconds=0.005,
         ),
     )
 
@@ -420,13 +418,13 @@ def test_get_backend_service_settings_reads_json_files_and_environment_overrides
                     "receive_hwm": 1,
                     "send_hwm": 1,
                     "max_message_size_bytes": 1073741824,
-                        "poll_timeout_ms": 100,
-                        "startup_timeout_seconds": 2.0,
-                        "shutdown_timeout_seconds": 10.0,
-                        "transport_registry_max_entries": 32,
-                        "transport_registry_max_bytes": 1073741824,
-                        "transport_tracker_timeout_seconds": 30.0,
-                        "transport_reaper_poll_interval_seconds": 0.005,
+                    "poll_timeout_ms": 100,
+                    "startup_timeout_seconds": 2.0,
+                    "shutdown_timeout_seconds": 10.0,
+                    "transport_registry_max_entries": 32,
+                    "transport_registry_max_bytes": 1073741824,
+                    "transport_tracker_timeout_seconds": 30.0,
+                    "transport_reaper_poll_interval_seconds": 0.005,
                 },
             }
         ),
@@ -511,6 +509,10 @@ def test_bootstrap_runs_explicit_seeders_in_initialize(tmp_path: Path) -> None:
     )
     runtime = bootstrap.build_runtime(bootstrap.load_settings())
     try:
+        runtime.dataset_storage.write_bytes(
+            "workflows/runtime-inputs/project-1/runtime-1/stale.bin",
+            b"stale",
+        )
         bootstrap.initialize(runtime)
         assert recorded_steps == ["amvision seeded-service"]
         assert bootstrap.get_step_names() == (
@@ -519,7 +521,9 @@ def test_bootstrap_runs_explicit_seeders_in_initialize(tmp_path: Path) -> None:
             "load-service-node-catalog",
             "recover-incomplete-workflow-app-versions",
             "migrate-legacy-workflow-app-runtime-versions",
+            "cleanup-interrupted-workflow-runtime-inputs",
         )
+        assert not runtime.dataset_storage.resolve("workflows/runtime-inputs").exists()
     finally:
         runtime.session_factory.engine.dispose()
 

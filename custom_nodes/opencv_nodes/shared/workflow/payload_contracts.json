@@ -1637,6 +1637,16 @@
         "source_b_object_key": {
           "type": "string"
         },
+        "source_coordinate_space": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "target_coordinate_space": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
         "transform_kind": {
           "type": "string"
         },
@@ -1684,6 +1694,8 @@
       },
       "required": [
         "transform_kind",
+        "source_coordinate_space",
+        "target_coordinate_space",
         "matrix_3x3",
         "match_count",
         "inlier_count",
@@ -1692,5 +1704,588 @@
     },
     "artifact_kinds": [],
     "metadata": {}
+  },
+  {
+    "format_id": "amvision.workflow-payload-contract.v1",
+    "payload_type_id": "points.v1",
+    "display_name": "2D Points",
+    "transport_kind": "inline-json",
+    "json_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "coordinate_space": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "unit": {
+          "type": "string",
+          "enum": [
+            "pixel",
+            "millimeter",
+            "meter",
+            "unitless"
+          ]
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "point_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "point_index": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "xy": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 2,
+                "items": {
+                  "type": "number"
+                }
+              },
+              "label": {
+                "type": "string"
+              },
+              "score": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "diagnostics": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "point_id",
+              "point_index",
+              "xy"
+            ]
+          }
+        }
+      },
+      "required": [
+        "coordinate_space",
+        "unit",
+        "count",
+        "items"
+      ]
+    },
+    "artifact_kinds": [],
+    "metadata": {
+      "angle_unit": "degrees",
+      "coordinate_order": "xy"
+    }
+  },
+  {
+    "format_id": "amvision.workflow-payload-contract.v1",
+    "payload_type_id": "localizations.v1",
+    "display_name": "2D Localizations",
+    "transport_kind": "inline-json",
+    "json_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "coordinate_space": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "angle_unit": {
+          "const": "degrees"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "source_image": {
+          "type": "object"
+        },
+        "reference_image": {
+          "type": "object"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "localization_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "method": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "center_xy": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 2,
+                "items": {
+                  "type": "number"
+                }
+              },
+              "angle_degrees": {
+                "type": "number"
+              },
+              "scale": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "score": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "transform": {
+                "type": "object",
+                "properties": {
+                  "transform_kind": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "source_coordinate_space": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "target_coordinate_space": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "matrix_3x3": {
+                    "type": "array",
+                    "minItems": 3,
+                    "maxItems": 3,
+                    "items": {
+                      "type": "array",
+                      "minItems": 3,
+                      "maxItems": 3,
+                      "items": {
+                        "type": "number"
+                      }
+                    }
+                  },
+                  "match_count": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "inlier_count": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "inlier_match_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "transform_kind",
+                  "source_coordinate_space",
+                  "target_coordinate_space",
+                  "matrix_3x3",
+                  "match_count",
+                  "inlier_count",
+                  "inlier_match_ids"
+                ]
+              },
+              "roi": {
+                "type": "object"
+              },
+              "region": {
+                "type": "object"
+              },
+              "diagnostics": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "localization_id",
+              "method",
+              "center_xy",
+              "angle_degrees",
+              "scale",
+              "score",
+              "transform"
+            ]
+          }
+        }
+      },
+      "required": [
+        "coordinate_space",
+        "angle_unit",
+        "count",
+        "items"
+      ]
+    },
+    "artifact_kinds": [],
+    "metadata": {
+      "angle_unit": "degrees",
+      "score_range": [
+        0,
+        1
+      ],
+      "transform_direction": "source-to-target"
+    }
+  },
+  {
+    "format_id": "amvision.workflow-payload-contract.v1",
+    "payload_type_id": "camera-calibration.v1",
+    "display_name": "Camera Calibration",
+    "transport_kind": "inline-json",
+    "json_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "$defs": {
+        "matrix3x3": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 3,
+            "items": {
+              "type": "number"
+            }
+          }
+        }
+      },
+      "properties": {
+        "calibration_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "camera_model": {
+          "type": "string",
+          "enum": [
+            "pinhole",
+            "fisheye"
+          ]
+        },
+        "image_size": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "camera_matrix": {
+          "$ref": "#/$defs/matrix3x3"
+        },
+        "distortion_coefficients": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 14,
+          "items": {
+            "type": "number"
+          }
+        },
+        "image_coordinate_space": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "camera_coordinate_space": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "object_point_unit": {
+          "type": "string",
+          "enum": [
+            "millimeter",
+            "meter",
+            "unitless"
+          ]
+        },
+        "observation_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "rms_reprojection_error": {
+          "type": "number",
+          "minimum": 0
+        },
+        "source_fingerprint": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "diagnostics": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "calibration_id",
+        "camera_model",
+        "image_size",
+        "camera_matrix",
+        "distortion_coefficients",
+        "image_coordinate_space",
+        "camera_coordinate_space",
+        "object_point_unit",
+        "observation_count",
+        "rms_reprojection_error",
+        "source_fingerprint",
+        "diagnostics"
+      ]
+    },
+    "artifact_kinds": [],
+    "metadata": {
+      "matrix_order": "row-major",
+      "image_size_order": "width-height"
+    }
+  },
+  {
+    "format_id": "amvision.workflow-payload-contract.v1",
+    "payload_type_id": "stereo-calibration.v1",
+    "display_name": "Stereo Calibration",
+    "transport_kind": "inline-json",
+    "json_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "$defs": {
+        "matrix3x3": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 3,
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "matrix3x4": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "array",
+            "minItems": 4,
+            "maxItems": 4,
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "matrix4x4": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "array",
+            "minItems": 4,
+            "maxItems": 4,
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "cameraCalibration": {
+          "type": "object",
+          "required": [
+            "calibration_id",
+            "camera_model",
+            "image_size",
+            "camera_matrix",
+            "distortion_coefficients",
+            "image_coordinate_space",
+            "camera_coordinate_space",
+            "object_point_unit",
+            "observation_count",
+            "rms_reprojection_error",
+            "source_fingerprint",
+            "diagnostics"
+          ]
+        }
+      },
+      "properties": {
+        "stereo_calibration_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "left_camera": {
+          "$ref": "#/$defs/cameraCalibration"
+        },
+        "right_camera": {
+          "$ref": "#/$defs/cameraCalibration"
+        },
+        "image_size": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "left_coordinate_space": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "right_coordinate_space": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "rotation_3x3": {
+          "$ref": "#/$defs/matrix3x3"
+        },
+        "translation_3": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "number"
+          }
+        },
+        "essential_matrix_3x3": {
+          "$ref": "#/$defs/matrix3x3"
+        },
+        "fundamental_matrix_3x3": {
+          "$ref": "#/$defs/matrix3x3"
+        },
+        "rms_epipolar_error": {
+          "type": "number",
+          "minimum": 0
+        },
+        "source_fingerprint": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "diagnostics": {
+          "type": "object"
+        },
+        "rectification": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "left_rotation_3x3": {
+              "$ref": "#/$defs/matrix3x3"
+            },
+            "right_rotation_3x3": {
+              "$ref": "#/$defs/matrix3x3"
+            },
+            "left_projection_3x4": {
+              "$ref": "#/$defs/matrix3x4"
+            },
+            "right_projection_3x4": {
+              "$ref": "#/$defs/matrix3x4"
+            },
+            "disparity_to_depth_4x4": {
+              "$ref": "#/$defs/matrix4x4"
+            },
+            "left_valid_roi_xywh": {
+              "type": "array",
+              "minItems": 4,
+              "maxItems": 4,
+              "items": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "right_valid_roi_xywh": {
+              "type": "array",
+              "minItems": 4,
+              "maxItems": 4,
+              "items": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "map_object_keys": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "left_map_x": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1024
+                },
+                "left_map_y": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1024
+                },
+                "right_map_x": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1024
+                },
+                "right_map_y": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1024
+                }
+              },
+              "required": [
+                "left_map_x",
+                "left_map_y",
+                "right_map_x",
+                "right_map_y"
+              ]
+            }
+          },
+          "required": [
+            "left_rotation_3x3",
+            "right_rotation_3x3",
+            "left_projection_3x4",
+            "right_projection_3x4",
+            "disparity_to_depth_4x4",
+            "left_valid_roi_xywh",
+            "right_valid_roi_xywh"
+          ]
+        }
+      },
+      "required": [
+        "stereo_calibration_id",
+        "left_camera",
+        "right_camera",
+        "image_size",
+        "left_coordinate_space",
+        "right_coordinate_space",
+        "rotation_3x3",
+        "translation_3",
+        "essential_matrix_3x3",
+        "fundamental_matrix_3x3",
+        "rms_epipolar_error",
+        "source_fingerprint",
+        "diagnostics"
+      ]
+    },
+    "artifact_kinds": [
+      "object-store-key"
+    ],
+    "metadata": {
+      "matrix_order": "row-major",
+      "map_storage": "object-store"
+    }
   }
 ]

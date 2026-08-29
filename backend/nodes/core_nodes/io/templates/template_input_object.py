@@ -57,7 +57,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
             ),
         ),
         parameter_schema={"type": "object", "properties": {}},
-        capability_tags=("io.input",),
+        capability_tags=("io.input", "execution.pure"),
     ),
     handler=_template_input_object_handler,
 )

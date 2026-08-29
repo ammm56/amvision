@@ -1,0 +1,251 @@
+{
+  "format_id": "amvision.industrial-vision-payload-fixture.v1",
+  "valid": {
+    "points.v1": {
+      "coordinate_space": "source-image-pixels",
+      "unit": "pixel",
+      "count": 2,
+      "items": [
+        {
+          "point_id": "p-1",
+          "point_index": 0,
+          "xy": [12.5, 24.25],
+          "score": 0.99
+        },
+        {
+          "point_id": "p-2",
+          "point_index": 1,
+          "xy": [40.0, 80.0],
+          "label": "corner"
+        }
+      ]
+    },
+    "localizations.v1": {
+      "coordinate_space": "source-image-pixels",
+      "angle_unit": "degrees",
+      "count": 1,
+      "items": [
+        {
+          "localization_id": "loc-1",
+          "method": "template-match",
+          "center_xy": [320.0, 240.0],
+          "angle_degrees": 15.0,
+          "scale": 1.0,
+          "score": 0.97,
+          "transform": {
+            "transform_kind": "similarity",
+            "source_coordinate_space": "reference-image-pixels",
+            "target_coordinate_space": "source-image-pixels",
+            "matrix_3x3": [
+              [0.9659258, -0.258819, 73.0],
+              [0.258819, 0.9659258, 41.0],
+              [0.0, 0.0, 1.0]
+            ],
+            "match_count": 0,
+            "inlier_count": 0,
+            "inlier_match_ids": []
+          },
+          "diagnostics": {
+            "search_candidates": 32
+          }
+        }
+      ]
+    },
+    "camera-calibration.v1": {
+      "calibration_id": "camera-left-v1",
+      "camera_model": "pinhole",
+      "image_size": [1920, 1080],
+      "camera_matrix": [
+        [1200.0, 0.0, 960.0],
+        [0.0, 1200.0, 540.0],
+        [0.0, 0.0, 1.0]
+      ],
+      "distortion_coefficients": [0.01, -0.02, 0.0, 0.0, 0.001],
+      "image_coordinate_space": "left-image-pixels",
+      "camera_coordinate_space": "left-camera-millimeters",
+      "object_point_unit": "millimeter",
+      "observation_count": 20,
+      "rms_reprojection_error": 0.18,
+      "source_fingerprint": "sha256:left-calibration-fixture",
+      "diagnostics": {
+        "max_view_error": 0.31
+      }
+    },
+    "stereo-calibration.v1": {
+      "stereo_calibration_id": "stereo-main-v1",
+      "left_camera": {
+        "calibration_id": "camera-left-v1",
+        "camera_model": "pinhole",
+        "image_size": [1920, 1080],
+        "camera_matrix": [
+          [1200.0, 0.0, 960.0],
+          [0.0, 1200.0, 540.0],
+          [0.0, 0.0, 1.0]
+        ],
+        "distortion_coefficients": [0.01, -0.02, 0.0, 0.0, 0.001],
+        "image_coordinate_space": "left-image-pixels",
+        "camera_coordinate_space": "left-camera-millimeters",
+        "object_point_unit": "millimeter",
+        "observation_count": 20,
+        "rms_reprojection_error": 0.18,
+        "source_fingerprint": "sha256:left-calibration-fixture",
+        "diagnostics": {}
+      },
+      "right_camera": {
+        "calibration_id": "camera-right-v1",
+        "camera_model": "pinhole",
+        "image_size": [1920, 1080],
+        "camera_matrix": [
+          [1198.0, 0.0, 958.0],
+          [0.0, 1199.0, 542.0],
+          [0.0, 0.0, 1.0]
+        ],
+        "distortion_coefficients": [0.011, -0.019, 0.0, 0.0, 0.001],
+        "image_coordinate_space": "right-image-pixels",
+        "camera_coordinate_space": "right-camera-millimeters",
+        "object_point_unit": "millimeter",
+        "observation_count": 20,
+        "rms_reprojection_error": 0.19,
+        "source_fingerprint": "sha256:right-calibration-fixture",
+        "diagnostics": {}
+      },
+      "image_size": [1920, 1080],
+      "left_coordinate_space": "left-image-pixels",
+      "right_coordinate_space": "right-image-pixels",
+      "rotation_3x3": [
+        [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.0, 0.0, 1.0]
+      ],
+      "translation_3": [-120.0, 0.0, 0.0],
+      "essential_matrix_3x3": [
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 120.0],
+        [0.0, -120.0, 0.0]
+      ],
+      "fundamental_matrix_3x3": [
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.1],
+        [0.0, -0.1, 0.0]
+      ],
+      "rms_epipolar_error": 0.22,
+      "source_fingerprint": "sha256:stereo-calibration-fixture",
+      "diagnostics": {
+        "pair_count": 20
+      },
+      "rectification": {
+        "left_rotation_3x3": [
+          [1.0, 0.0, 0.0],
+          [0.0, 1.0, 0.0],
+          [0.0, 0.0, 1.0]
+        ],
+        "right_rotation_3x3": [
+          [1.0, 0.0, 0.0],
+          [0.0, 1.0, 0.0],
+          [0.0, 0.0, 1.0]
+        ],
+        "left_projection_3x4": [
+          [1200.0, 0.0, 960.0, 0.0],
+          [0.0, 1200.0, 540.0, 0.0],
+          [0.0, 0.0, 1.0, 0.0]
+        ],
+        "right_projection_3x4": [
+          [1200.0, 0.0, 960.0, -144000.0],
+          [0.0, 1200.0, 540.0, 0.0],
+          [0.0, 0.0, 1.0, 0.0]
+        ],
+        "disparity_to_depth_4x4": [
+          [1.0, 0.0, 0.0, -960.0],
+          [0.0, 1.0, 0.0, -540.0],
+          [0.0, 0.0, 0.0, 1200.0],
+          [0.0, 0.0, 0.008333333, 0.0]
+        ],
+        "left_valid_roi_xywh": [0, 0, 1920, 1080],
+        "right_valid_roi_xywh": [0, 0, 1920, 1080],
+        "map_object_keys": {
+          "left_map_x": "calibration/stereo-main-v1/left-map-x.npy",
+          "left_map_y": "calibration/stereo-main-v1/left-map-y.npy",
+          "right_map_x": "calibration/stereo-main-v1/right-map-x.npy",
+          "right_map_y": "calibration/stereo-main-v1/right-map-y.npy"
+        }
+      }
+    }
+  },
+  "invalid": {
+    "points.v1": [
+      {
+        "case": "missing-coordinate-space",
+        "payload": {
+          "unit": "pixel",
+          "count": 0,
+          "items": []
+        }
+      },
+      {
+        "case": "score-out-of-range",
+        "payload": {
+          "coordinate_space": "source-image-pixels",
+          "unit": "pixel",
+          "count": 1,
+          "items": [
+            {
+              "point_id": "p-1",
+              "point_index": 0,
+              "xy": [1.0, 2.0],
+              "score": 1.1
+            }
+          ]
+        }
+      }
+    ],
+    "localizations.v1": [
+      {
+        "case": "wrong-angle-unit",
+        "payload": {
+          "coordinate_space": "source-image-pixels",
+          "angle_unit": "radians",
+          "count": 0,
+          "items": []
+        }
+      }
+    ],
+    "camera-calibration.v1": [
+      {
+        "case": "invalid-camera-matrix-shape",
+        "payload": {
+          "calibration_id": "camera-left-v1",
+          "camera_model": "pinhole",
+          "image_size": [1920, 1080],
+          "camera_matrix": [[1.0, 0.0], [0.0, 1.0]],
+          "distortion_coefficients": [0.0, 0.0, 0.0, 0.0],
+          "image_coordinate_space": "left-image-pixels",
+          "camera_coordinate_space": "left-camera-millimeters",
+          "object_point_unit": "millimeter",
+          "observation_count": 1,
+          "rms_reprojection_error": 0.0,
+          "source_fingerprint": "sha256:invalid",
+          "diagnostics": {}
+        }
+      }
+    ],
+    "stereo-calibration.v1": [
+      {
+        "case": "missing-rotation",
+        "payload": {
+          "stereo_calibration_id": "invalid",
+          "left_camera": {},
+          "right_camera": {},
+          "image_size": [1920, 1080],
+          "left_coordinate_space": "left-image-pixels",
+          "right_coordinate_space": "right-image-pixels",
+          "translation_3": [0.0, 0.0, 0.0],
+          "essential_matrix_3x3": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+          "fundamental_matrix_3x3": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+          "rms_epipolar_error": 0.0,
+          "source_fingerprint": "sha256:invalid",
+          "diagnostics": {}
+        }
+      }
+    ]
+  }
+}

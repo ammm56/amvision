@@ -16,7 +16,7 @@ import type {
   WorkflowRunEvent,
   WorkflowRuntimeRevision,
 } from '../types'
-import type { WorkflowPreviewImageUpload } from '../preview/useWorkflowPreviewInputs'
+import type { WorkflowPreviewFileUpload } from '../preview/useWorkflowPreviewInputs'
 
 export interface WorkflowRuntimeListQuery {
   projectId: string
@@ -37,7 +37,7 @@ export interface WorkflowPreviewRunCreateInput {
   application?: FlowApplication | null
   template?: WorkflowGraphTemplate | null
   inputBindings?: WorkflowJsonObject
-  imageUploads?: WorkflowPreviewImageUpload[]
+  fileUploads?: WorkflowPreviewFileUpload[]
   executionMetadata?: WorkflowJsonObject
   timeoutSeconds?: number | null
   waitMode?: 'sync'
@@ -138,12 +138,11 @@ export async function createWorkflowPreviewRun(input: WorkflowPreviewRunCreateIn
         ? { kind: 'node', target_node_id: input.executionScope.targetNodeId }
         : { kind: 'application', target_node_id: null },
   }
-  if (input.imageUploads?.length) {
+  if (input.fileUploads?.length) {
     const form = new FormData()
     form.append('request', JSON.stringify(requestBody))
-    for (const upload of input.imageUploads) {
-      form.append('image_binding_id', upload.bindingId)
-      form.append('image_file', upload.file, upload.file.name)
+    for (const upload of input.fileUploads) {
+      form.append(upload.bindingId, upload.file, upload.file.name)
     }
     return apiRequest<WorkflowPreviewRun>('/workflows/preview-runs/multipart', {
       method: 'POST',

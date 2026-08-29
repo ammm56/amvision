@@ -150,6 +150,7 @@ class SdkConfigPackageService:
         builder = _SdkConfigPackageBuilder(
             normalized_request,
             local_memory_settings=self.local_memory_settings,
+            dataset_storage=self.dataset_storage,
         )
         return builder.build(resources)
 
@@ -230,9 +231,11 @@ class _SdkConfigPackageBuilder:
         request: SdkConfigPackageBuildRequest,
         *,
         local_memory_settings: LocalMemorySettings,
+        dataset_storage: LocalDatasetStorage,
     ) -> None:
         self.request = request
         self.local_memory_settings = local_memory_settings
+        self.dataset_storage = dataset_storage
         self.buffers_root = Path(local_memory_settings.root_dir).resolve()
         self.generated_at = datetime.now(timezone.utc)
         self.timestamp = self.generated_at.strftime("%Y%m%d%H%M%S")
@@ -339,6 +342,7 @@ class _SdkConfigPackageBuilder:
             "runtime": {
                 "name": runtime_key,
                 "workflow_runtime_id": runtime.workflow_runtime_id,
+                "public_contract": self._read_runtime_public_contract(runtime),
             },
             "invoke": {
                 "image_path": "",
@@ -369,6 +373,23 @@ class _SdkConfigPackageBuilder:
             runtime_key=runtime_key,
             trigger_source_count=len(trigger_sources),
         )
+
+    def _read_runtime_public_contract(
+        self,
+        runtime: WorkflowAppRuntime,
+    ) -> dict[str, object] | None:
+        """读取 Runtime revision 固定的 v1/v2 App Contract。"""
+
+        object_key = runtime.metadata.get("contract_snapshot_object_key")
+        if not isinstance(object_key, str) or not object_key.strip():
+            return None
+        payload = self.dataset_storage.read_json(object_key.strip())
+        if not isinstance(payload, dict):
+            raise InvalidRequestError(
+                "Workflow Runtime contract snapshot 必须是 JSON 对象",
+                details={"workflow_runtime_id": runtime.workflow_runtime_id},
+            )
+        return dict(payload)
 
     def _build_workflow_config_path(
         self,

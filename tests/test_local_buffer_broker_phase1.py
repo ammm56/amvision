@@ -129,6 +129,44 @@ def test_shared_client_serializes_control_responses(tmp_path: Path) -> None:
         supervisor.stop()
 
 
+def test_broker_client_lazily_shares_one_direct_mmap_access(tmp_path: Path) -> None:
+    """控制面不应映射 arena，首次数据访问后 reader/writer 共用一个 view。"""
+
+    supervisor = _supervisor(tmp_path)
+    supervisor.start()
+    try:
+        client = supervisor.create_client()
+        assert client is not None
+        assert client._direct_access is None
+        assert client.get_status()["state"] == "healthy"
+        assert client._direct_access is None
+
+        result = client.write_bytes(
+            content=b"shared-direct-access",
+            owner_kind="test",
+            owner_id="shared-direct-access",
+            media_type="image/raw",
+        )
+
+        assert client._direct_access is not None
+        assert client._direct_reader is not None
+        assert client._direct_writer is not None
+        assert client._direct_reader._access is client._direct_access
+        assert client._direct_writer._access is client._direct_access
+        assert client.read_buffer_ref(result.buffer_ref) == b"shared-direct-access"
+        owned_view = client.read_buffer_ref_view(result.buffer_ref)
+        try:
+            assert bytes(owned_view) == b"shared-direct-access"
+        finally:
+            owned_view.release()
+        assert client._mmap_cache._files == {}
+        client.release(result.lease.lease_id)
+        client.close()
+        assert client._direct_access is None
+    finally:
+        supervisor.stop()
+
+
 def test_transient_clients_unregister_router_channels(tmp_path: Path) -> None:
     """短生命周期同进程 client 关闭后不得泄漏 router channel。"""
 

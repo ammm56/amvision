@@ -14,6 +14,7 @@ ADR 记录已经接受的关键取舍及未采用方案。ADR 可以处于待实
 - [ADR-0008：LocalBuffer 固定总容量与动态分配](ADR-0008-local-buffer-fixed-arena-allocation.md)
 - [ADR-0009：本机结构化消息共享内存通道](ADR-0009-local-message-channel.md)
 - [ADR-0010：Workflow App Entry 多类型输入契约](ADR-0010-workflow-app-entry-multi-input-contract.md)
+- [ADR-0011：工业二维视觉节点覆盖与节点粒度](ADR-0011-industrial-vision-node-coverage.md)
 
 ## 规则
 

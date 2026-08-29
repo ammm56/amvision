@@ -20,7 +20,18 @@
           </StatusBadge>
         </div>
       </div>
-      <template v-if="states[binding.binding_id] && getPayloadTypeId(binding) === 'value.v1'">
+      <template v-if="states[binding.binding_id] && getPayloadTypeId(binding) === 'value.v1' && usesJsonPreviewEditor(binding)">
+        <label class="workflow-graph-preview-field">
+          <span>{{ t('workflowEditor.editor.jsonValue') }}</span>
+          <textarea
+            v-model="states[binding.binding_id].jsonValue"
+            rows="8"
+            placeholder="{}"
+            spellcheck="false"
+          />
+        </label>
+      </template>
+      <template v-else-if="states[binding.binding_id] && getPayloadTypeId(binding) === 'value.v1'">
         <div class="workflow-graph-value-fields">
           <label v-for="field in states[binding.binding_id].valueFields" :key="field.id" class="workflow-graph-value-field">
             <input v-model="field.key" :placeholder="t('workflowEditor.editor.fieldName')" />
@@ -56,7 +67,14 @@
             @update:model-value="emit('set-image-ref-transport-kind', binding.binding_id, $event)"
           />
         </label>
-        <label v-if="states[binding.binding_id].imageRefTransportKind === 'storage'" class="workflow-graph-preview-field">
+        <FilePicker
+          v-if="states[binding.binding_id].imageRefTransportKind === 'upload'"
+          v-model="states[binding.binding_id].file"
+          icon="image"
+          accept="image/*"
+          :label="t('workflowEditor.editor.imageFile')"
+        />
+        <label v-else-if="states[binding.binding_id].imageRefTransportKind === 'storage'" class="workflow-graph-preview-field">
           <span>{{ t('workflowEditor.editor.storagePath') }}</span>
           <input v-model="states[binding.binding_id].objectKey" placeholder="project/files/image.jpg" />
         </label>
@@ -68,10 +86,38 @@
           <span>{{ t('workflowEditor.editor.imageHandle') }}</span>
           <input v-model="states[binding.binding_id].imageHandle" placeholder="execution-scoped image handle" />
         </label>
-        <label class="workflow-graph-preview-field">
+        <label v-if="states[binding.binding_id].imageRefTransportKind !== 'upload'" class="workflow-graph-preview-field">
           <span>{{ t('workflowEditor.editor.mediaType') }}</span>
           <input v-model="states[binding.binding_id].mediaType" placeholder="image/jpeg" />
         </label>
+      </template>
+      <template v-else-if="states[binding.binding_id] && getPayloadTypeId(binding) === 'text.v1'">
+        <label class="workflow-graph-preview-field">
+          <span>{{ t('workflowEditor.editor.textValue') }}</span>
+          <textarea v-model="states[binding.binding_id].textValue" rows="5" />
+        </label>
+        <label class="workflow-graph-preview-field">
+          <span>{{ t('workflowEditor.editor.mediaType') }}</span>
+          <input v-model="states[binding.binding_id].mediaType" placeholder="text/plain" />
+        </label>
+      </template>
+      <template v-else-if="states[binding.binding_id] && getPayloadTypeId(binding) === 'file-ref.v1'">
+        <FilePicker
+          v-model="states[binding.binding_id].file"
+          icon="upload"
+          :accept="readBindingAccept(binding)"
+          :label="t('workflowEditor.editor.file')"
+        />
+      </template>
+      <template v-else-if="states[binding.binding_id] && getPayloadTypeId(binding) === 'file-refs.v1'">
+        <FilePicker
+          :model-value="states[binding.binding_id].files"
+          icon="upload"
+          multiple
+          :accept="readBindingAccept(binding)"
+          :label="t('workflowEditor.editor.files')"
+          @update:model-value="setMultipleFiles(binding.binding_id, $event)"
+        />
       </template>
       <template v-else-if="states[binding.binding_id]">
         <label class="workflow-graph-preview-field">
@@ -92,9 +138,9 @@ import FilePicker from '@/shared/ui/components/FilePicker.vue'
 import SelectField from '@/shared/ui/components/Select.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import type { FlowApplicationBinding } from '../types'
-import type { PreviewInputState, PreviewSelectOption, PreviewSelectValue } from '../preview/useWorkflowPreviewInputs'
+import { usesJsonPreviewEditor, type PreviewInputState, type PreviewSelectOption, type PreviewSelectValue } from '../preview/useWorkflowPreviewInputs'
 
-defineProps<{
+const props = defineProps<{
   bindings: FlowApplicationBinding[]
   states: Record<string, PreviewInputState>
   blockingMessages: string[]
@@ -109,4 +155,15 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+
+function readBindingAccept(binding: FlowApplicationBinding): string {
+  const allowedMediaTypes = binding.config.allowed_media_types
+  return Array.isArray(allowedMediaTypes) ? allowedMediaTypes.map(String).join(',') : ''
+}
+
+function setMultipleFiles(bindingId: string, value: File | File[] | null): void {
+  const state = props.states[bindingId]
+  if (!state) return
+  state.files = Array.isArray(value) ? value : value ? [value] : []
+}
 </script>

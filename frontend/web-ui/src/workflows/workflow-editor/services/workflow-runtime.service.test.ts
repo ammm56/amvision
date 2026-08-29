@@ -35,7 +35,7 @@ describe('workflow Preview runtime service', () => {
       projectId: 'project-1',
       applicationId: 'app-1',
       inputBindings: { threshold: { value: 0.5 } },
-      imageUploads: [{ bindingId: 'request_image_ref', file: imageFile }],
+      fileUploads: [{ bindingId: 'request_image_ref', file: imageFile }],
     })
 
     const [path, options] = vi.mocked(apiRequest).mock.calls[0]
@@ -45,8 +45,8 @@ describe('workflow Preview runtime service', () => {
     const form = options?.body as FormData
     const request = JSON.parse(String(form.get('request'))) as Record<string, unknown>
     expect(request.input_bindings).toEqual({ threshold: { value: 0.5 } })
-    expect(form.getAll('image_binding_id')).toEqual(['request_image_ref'])
-    const submittedFile = form.get('image_file') as File
+    expect(form.getAll('image_binding_id')).toEqual([])
+    const submittedFile = form.get('request_image_ref') as File
     expect(submittedFile.name).toBe('tray.bmp')
     expect(submittedFile.type).toBe('image/bmp')
     expect(submittedFile.size).toBe(imageFile.size)

@@ -14,6 +14,8 @@ def build_planar_transform_payload(
     *,
     matrix_3x3: list[list[float]],
     inverse_matrix_3x3: list[list[float]] | None,
+    source_coordinate_space: str,
+    target_coordinate_space: str,
     match_count: int,
     inlier_count: int,
     inlier_match_ids: list[str],
@@ -28,6 +30,14 @@ def build_planar_transform_payload(
 
     payload: dict[str, object] = {
         "transform_kind": transform_kind,
+        "source_coordinate_space": _require_coordinate_space(
+            source_coordinate_space,
+            field_name="source_coordinate_space",
+        ),
+        "target_coordinate_space": _require_coordinate_space(
+            target_coordinate_space,
+            field_name="target_coordinate_space",
+        ),
         "matrix_3x3": [[float(cell_value) for cell_value in row_values] for row_values in matrix_3x3],
         "match_count": int(match_count),
         "inlier_count": int(inlier_count),
@@ -59,6 +69,15 @@ def require_planar_transform_payload(payload: object) -> dict[str, object]:
     if not isinstance(transform_kind, str) or not transform_kind.strip():
         raise InvalidRequestError("当前节点要求 transform_kind 必须是非空字符串")
 
+    source_coordinate_space = _require_coordinate_space(
+        payload.get("source_coordinate_space"),
+        field_name="source_coordinate_space",
+    )
+    target_coordinate_space = _require_coordinate_space(
+        payload.get("target_coordinate_space"),
+        field_name="target_coordinate_space",
+    )
+
     matrix_3x3 = _normalize_matrix_3x3(payload.get("matrix_3x3"), field_name="matrix_3x3")
     inverse_matrix_3x3 = None
     if payload.get("inverse_matrix_3x3") is not None:
@@ -83,6 +102,8 @@ def require_planar_transform_payload(payload: object) -> dict[str, object]:
 
     normalized_payload: dict[str, object] = {
         "transform_kind": transform_kind.strip(),
+        "source_coordinate_space": source_coordinate_space,
+        "target_coordinate_space": target_coordinate_space,
         "matrix_3x3": matrix_3x3,
         "match_count": int(match_count),
         "inlier_count": int(inlier_count),
@@ -119,6 +140,17 @@ def require_planar_transform_payload(payload: object) -> dict[str, object]:
         if isinstance(source_object_key, str) and source_object_key:
             normalized_payload["source_b_object_key"] = source_object_key
     return normalized_payload
+
+
+def _require_coordinate_space(raw_value: object, *, field_name: str) -> str:
+    """读取非空坐标空间标识。"""
+
+    if not isinstance(raw_value, str) or not raw_value.strip():
+        raise InvalidRequestError(f"{field_name} 必须是非空字符串")
+    normalized_value = raw_value.strip()
+    if len(normalized_value) > 128:
+        raise InvalidRequestError(f"{field_name} 长度不能超过 128")
+    return normalized_value
 
 def _normalize_matrix_3x3(raw_value: object, *, field_name: str) -> list[list[float]]:
     """把 3x3 数值矩阵规范化为嵌套浮点数组。"""

@@ -120,6 +120,20 @@ class ObjectStore(Protocol):
 
         ...
 
+    def write_immutable_stream(
+        self,
+        *,
+        object_prefix: str,
+        source_stream: BinaryIO,
+        media_type: str,
+        extension: str | None = None,
+        chunk_size: int = 1024 * 1024,
+        max_bytes: int | None = None,
+    ) -> ObjectWriteReceipt:
+        """分块读取输入流，计算 SHA-256 后原子发布不可变对象。"""
+
+        ...
+
     def materialize_immutable_object(
         self,
         *,

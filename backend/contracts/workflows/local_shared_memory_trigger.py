@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 WORKFLOW_TRIGGER_PREPARE_FORMAT = "amvision.workflow-trigger-prepare.v1"
 WORKFLOW_TRIGGER_ALLOCATION_FORMAT = "amvision.workflow-trigger-allocation.v1"
 WORKFLOW_TRIGGER_REQUEST_FORMAT = "amvision.workflow-trigger-request.v1"
+WORKFLOW_TRIGGER_EVENT_REQUEST_FORMAT = "amvision.workflow-trigger-event-request.v2"
 
 
 class WorkflowTriggerInputImageSpec(BaseModel):
@@ -115,6 +116,34 @@ class WorkflowTriggerRequestV1(BaseModel):
     @model_validator(mode="after")
     def validate_request(self) -> WorkflowTriggerRequestV1:
         """校验 request identity 与可选追踪字段。"""
+
+        _require_text(self.trigger_source_id, "trigger_source_id")
+        _require_text(self.event_id, "event_id")
+        if self.trace_id is not None:
+            _require_text(self.trace_id, "trace_id")
+        if self.idempotency_key is not None:
+            _require_text(self.idempotency_key, "idempotency_key")
+        return self
+
+
+class WorkflowTriggerEventRequestV2(BaseModel):
+    """不携带图片、直接发布到 mailbox REQUEST 阶段的结构化事件。"""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    format_id: Literal[WORKFLOW_TRIGGER_EVENT_REQUEST_FORMAT] = (
+        WORKFLOW_TRIGGER_EVENT_REQUEST_FORMAT
+    )
+    trigger_source_id: str
+    event_id: str
+    payload: dict[str, object] = Field(default_factory=dict)
+    metadata: dict[str, object] = Field(default_factory=dict)
+    trace_id: str | None = None
+    idempotency_key: str | None = None
+
+    @model_validator(mode="after")
+    def validate_event_request(self) -> WorkflowTriggerEventRequestV2:
+        """校验 event-only v2 的稳定 identity 与追踪字段。"""
 
         _require_text(self.trigger_source_id, "trigger_source_id")
         _require_text(self.event_id, "event_id")

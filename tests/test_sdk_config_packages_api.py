@@ -109,6 +109,12 @@ def test_sdk_config_package_preview_and_download_include_project_resources(tmp_p
     assert workflow_config["backend"]["http_timeout_seconds"] == 300
     assert workflow_config["runtime"]["name"] == "新建应用yolo11m_barqrcode"
     assert workflow_config["runtime"]["workflow_runtime_id"] == "workflow-runtime-sdk-config"
+    assert workflow_config["runtime"]["public_contract"]["format_id"] == (
+        "amvision.workflow-app-contract.v2"
+    )
+    assert workflow_config["runtime"]["public_contract"]["inputs"][0]["binding_id"] == (
+        "request_json"
+    )
     assert workflow_config_name == "Config/config_workflow-app-sdk-config.json"
     assert workflow_config["trigger_sources"][0]["name"] == "zeromq yolo11m_barqrcode runtime"
     assert workflow_config["trigger_sources"][0]["trigger_source_id"] == "zeromq-sdk-config"
@@ -421,6 +427,31 @@ def _seed_workflow_runtime_and_trigger_source(
             "display_name": "新建应用yolo11m_barqrcode",
         },
     )
+    contract_object_key = (
+        "projects/project-1/workflows/apps/workflow-app-sdk-config/contract.json"
+    )
+    dataset_storage.write_json(
+        contract_object_key,
+        {
+            "format_id": "amvision.workflow-app-contract.v2",
+            "application_id": "workflow-app-sdk-config",
+            "inputs": [
+                {
+                    "binding_id": "request_json",
+                    "payload_type_id": "value.v1",
+                    "required": True,
+                    "transports": ["json"],
+                    "payload_schema": {
+                        "type": "object",
+                        "properties": {"value": {}},
+                        "required": ["value"],
+                        "additionalProperties": False,
+                    },
+                }
+            ],
+            "outputs": [],
+        },
+    )
     unit_of_work = SqlAlchemyUnitOfWork(session_factory.create_session())
     try:
         unit_of_work.workflow_runtime.save_workflow_app_runtime(
@@ -435,6 +466,7 @@ def _seed_workflow_runtime_and_trigger_source(
                 observed_state="running",
                 created_at=now,
                 updated_at=now,
+                metadata={"contract_snapshot_object_key": contract_object_key},
             )
         )
         unit_of_work.workflow_trigger_sources.save_trigger_source(

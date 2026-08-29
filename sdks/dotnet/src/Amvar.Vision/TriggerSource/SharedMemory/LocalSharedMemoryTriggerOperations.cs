@@ -133,6 +133,19 @@ namespace Amvar.Vision.TriggerSource.SharedMemory
                 ApplyDefaults(request, configured));
         }
 
+        internal SharedMemoryTriggerResult InvokeEvent(
+            string triggerSourceName,
+            SharedMemoryTriggerEventRequest request)
+        {
+            if (request == null)
+            {
+                throw new ArgumentNullException(nameof(request));
+            }
+            var configured = RequireConfiguredSource(triggerSourceName);
+            return GetClient(configured).InvokeEvent(
+                ApplyEventDefaults(request, configured));
+        }
+
         public void Dispose()
         {
             lock (clientSyncRoot)
@@ -215,6 +228,19 @@ namespace Amvar.Vision.TriggerSource.SharedMemory
             }
 
             return normalized;
+        }
+
+        private static SharedMemoryTriggerEventRequest ApplyEventDefaults(
+            SharedMemoryTriggerEventRequest request,
+            ConfiguredTriggerSource configured)
+        {
+            request.Metadata["trigger_source_name"] = configured.TriggerSource.Name;
+            request.Metadata["runtime_name"] = configured.Runtime.Name;
+            if (!request.Payload.ContainsKey("request_id"))
+            {
+                request.Payload["request_id"] = request.EventId ?? $"request-{Guid.NewGuid():N}";
+            }
+            return request;
         }
     }
 }

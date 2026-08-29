@@ -22,6 +22,12 @@ internal sealed class WorkflowRuntimeConfig
     public string WorkflowRuntimeId { get; set; } = string.Empty;
 
     /// <summary>
+    /// Runtime revision 固定的公开 App Contract；旧配置文件允许为空。
+    /// </summary>
+    [JsonProperty("public_contract")]
+    public WorkflowAppContract? PublicContract { get; set; }
+
+    /// <summary>
     /// 校验 runtime 配置是否指向一个已存在的后端 runtime。
     /// </summary>
     /// <param name="path">配置字段路径。</param>
@@ -29,6 +35,7 @@ internal sealed class WorkflowRuntimeConfig
     {
         Name = ConfigValidation.RequireText(Name, $"{path}.name");
         WorkflowRuntimeId = ConfigValidation.RequireText(WorkflowRuntimeId, $"{path}.workflow_runtime_id");
+        PublicContract?.Validate($"{path}.public_contract");
     }
 }
 }

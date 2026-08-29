@@ -29,6 +29,7 @@ from backend.service.application.message_channels.errors import (
 from backend.service.application.message_channels.models import MailboxRequestContext
 from backend.service.application.workflows.trigger_sources.trigger_message_channel import (
     ALLOCATION_SCHEMA_ID,
+    EVENT_REQUEST_SCHEMA_ID,
     PREPARE_SCHEMA_ID,
     REQUEST_SCHEMA_ID,
     RESPONSE_SCHEMA_ID,
@@ -264,7 +265,7 @@ class WorkflowTriggerMailboxServer:
         accepted_timeout_ms = min(current_timeout_ms, timeout_ms)
         accepted_at_ns = identity.deadline_ns - current_timeout_ms * 1_000_000
         updated_extension = contract.pack_descriptor_extension(
-                phase=contract.DESCRIPTOR_STATE_PREPARE,
+                phase=int(extension[0]),
                 requested_timeout_ms=int(extension[2]),
                 accepted_timeout_ms=accepted_timeout_ms,
                 route_generation=int(extension[4]),
@@ -315,7 +316,7 @@ class WorkflowTriggerMailboxServer:
         self._forget_context(identity)
 
     def poll_request(self) -> WorkflowTriggerMailboxRequest | None:
-        """非阻塞取得 client 完整发布的最终 REQUEST。"""
+        """非阻塞取得图片 v1 最终 REQUEST 或 event-only v2 REQUEST。"""
 
         received = self._poll_phase(contract.DESCRIPTOR_STATE_REQUEST)
         if received is None:
@@ -324,11 +325,20 @@ class WorkflowTriggerMailboxServer:
         identity = self._identity(context)
         self._remember(identity, context, extension=extension)
         try:
-            payload = decode_trigger_payload(
-                context.wire_bytes,
-                expected_schema_id=REQUEST_SCHEMA_ID,
-                request_id=context.request_id,
-            )
+            try:
+                payload = decode_trigger_payload(
+                    context.wire_bytes,
+                    expected_schema_id=EVENT_REQUEST_SCHEMA_ID,
+                    request_id=context.request_id,
+                )
+                request_schema_id = EVENT_REQUEST_SCHEMA_ID
+            except ChannelInvalidMessageError:
+                payload = decode_trigger_payload(
+                    context.wire_bytes,
+                    expected_schema_id=REQUEST_SCHEMA_ID,
+                    request_id=context.request_id,
+                )
+                request_schema_id = REQUEST_SCHEMA_ID
         except ChannelInvalidMessageError as error:
             self.publish_error(
                 identity=identity,
@@ -336,11 +346,53 @@ class WorkflowTriggerMailboxServer:
                 message=str(error),
             )
             return None
+        accepted_timeout_ms = int(extension[3])
+        if request_schema_id == EVENT_REQUEST_SCHEMA_ID:
+            if accepted_timeout_ms != 0:
+                self.publish_error(
+                    identity=identity,
+                    error_code=contract.ERROR_CODE_PROTOCOL_ERROR,
+                    message="event-only v2 不能复用图片 PREPARE 上下文",
+                )
+                return None
+            requested_timeout_ms = int(extension[2])
+            accepted_timeout_ms = min(
+                max(requested_timeout_ms, 1),
+                self.max_request_timeout_ms,
+            )
+            accepted_at_ns = monotonic_ns()
+            updated_extension = contract.pack_descriptor_extension(
+                phase=contract.DESCRIPTOR_STATE_REQUEST,
+                requested_timeout_ms=requested_timeout_ms,
+                accepted_timeout_ms=accepted_timeout_ms,
+                route_generation=int(extension[4]),
+            )
+            context = self._mailbox.update_processing_deadline(
+                context,
+                deadline_ns=accepted_at_ns + accepted_timeout_ms * 1_000_000,
+                descriptor_extension=updated_extension,
+            )
+            identity = self._identity(context)
+            extension = _unpack_extension(updated_extension)
+            self._remember(identity, context, extension=extension)
+            self._last_timeout_diagnostic = {
+                "requested_timeout_ms": requested_timeout_ms,
+                "accepted_timeout_ms": accepted_timeout_ms,
+                "accepted_at_ns": accepted_at_ns,
+            }
+        elif accepted_timeout_ms <= 0:
+            self.publish_error(
+                identity=identity,
+                error_code=contract.ERROR_CODE_PROTOCOL_ERROR,
+                message="图片 v1 REQUEST 缺少 PREPARE 接受上下文",
+            )
+            return None
         return WorkflowTriggerMailboxRequest(
             identity=identity,
             payload=payload,
             route_generation=int(extension[4]),
-            accepted_timeout_ms=int(extension[3]),
+            accepted_timeout_ms=accepted_timeout_ms,
+            request_schema_id=request_schema_id,
         )
 
     def publish_response(
@@ -745,22 +797,65 @@ class WorkflowTriggerMailboxClient:
     ) -> WorkflowTriggerDescriptorIdentity:
         """满载立即拒绝地发布 PREPARE。"""
 
+        return self._claim(
+            timeout_ms=timeout_ms,
+            route_generation=route_generation,
+            payload=prepare_payload,
+            request_id=request_id,
+            schema_id=PREPARE_SCHEMA_ID,
+            phase=contract.DESCRIPTOR_STATE_PREPARE,
+            envelope_name="PREPARE",
+        )
+
+    def claim_event(
+        self,
+        *,
+        timeout_ms: int,
+        route_generation: int,
+        event_payload: bytes,
+        request_id: UUID | None = None,
+    ) -> WorkflowTriggerDescriptorIdentity:
+        """直接发布 event-only v2 REQUEST，不创建图片 allocation。"""
+
+        return self._claim(
+            timeout_ms=timeout_ms,
+            route_generation=route_generation,
+            payload=event_payload,
+            request_id=request_id,
+            schema_id=EVENT_REQUEST_SCHEMA_ID,
+            phase=contract.DESCRIPTOR_STATE_REQUEST,
+            envelope_name="event-only v2 REQUEST",
+        )
+
+    def _claim(
+        self,
+        *,
+        timeout_ms: int,
+        route_generation: int,
+        payload: bytes,
+        request_id: UUID | None,
+        schema_id: str,
+        phase: int,
+        envelope_name: str,
+    ) -> WorkflowTriggerDescriptorIdentity:
+        """按明确 schema/phase 单次 claim 一个 descriptor。"""
+
         if timeout_ms <= 0 or timeout_ms > 0xFFFFFFFF:
             raise InvalidRequestError(
                 "Workflow Trigger timeout_ms 必须位于 1..4294967295"
             )
         resolved_request_id = request_id or uuid4()
         wire_bytes = self._encode(
-            schema_id=PREPARE_SCHEMA_ID,
-            payload=prepare_payload,
+            schema_id=schema_id,
+            payload=payload,
             request_id=resolved_request_id,
         )
         if len(wire_bytes) > WORKFLOW_TRIGGER_MAILBOX_PROFILE_V1.max_request_bytes:
             raise InvalidRequestError(
-                "Workflow Trigger PREPARE envelope 超过 64 KiB 上限"
+                f"Workflow Trigger {envelope_name} envelope 超过 64 KiB 上限"
             )
         extension = contract.pack_descriptor_extension(
-            phase=contract.DESCRIPTOR_STATE_PREPARE,
+            phase=phase,
             requested_timeout_ms=timeout_ms,
             route_generation=route_generation,
         )

@@ -21,6 +21,7 @@ from backend.contracts.ipc import workflow_trigger_mailbox_v1 as mailbox_contrac
 from backend.contracts.workflows import (
     TriggerResultContract,
     WorkflowTriggerAllocationV1,
+    WorkflowTriggerEventRequestV2,
     WorkflowTriggerInputImageSpec,
     WorkflowTriggerPrepareV1,
     WorkflowTriggerRequestV1,
@@ -115,6 +116,7 @@ class _FakeRuntimeService:
         self.result_error_details = dict(result_error_details or {})
         self.admitted_count = 0
         self.failed_admission_count = 0
+        self.admitted_input_bindings: list[dict[str, object]] = []
 
     def admit_sync_workflow_run(self, workflow_runtime_id, request, **_kwargs):
         """创建稳定 Run identity，或注入 Runtime busy。"""
@@ -122,6 +124,7 @@ class _FakeRuntimeService:
         if self.busy:
             raise WorkflowRuntimeBusyError()
         self.admitted_count += 1
+        self.admitted_input_bindings.append(dict(request.input_bindings or {}))
         run_id = f"workflow-run-{self.admitted_count}"
         return _FakeAdmission(
             workflow_app_runtime=SimpleNamespace(
@@ -372,8 +375,52 @@ def test_full_prepare_request_runtime_response_ack_chain(tmp_path: Path) -> None
                 assert result.response_payload["results"] == {
                     "workflow_result": {"code": 200}
                 }
+                image_payload = runtime.admitted_input_bindings[0]["request_image_ref"]
+                assert image_payload["media_type"] == "application/octet-stream"
+                assert (
+                    image_payload["buffer_ref"]["media_type"]
+                    == image_payload["media_type"]
+                )
                 assert pool.build_status()["active_lease_count"] == 0
 
+                client.acknowledge(identity=identity)
+                supervisor.process_once()
+                assert (
+                    supervisor.routes.build_status()["active_source_permit_count"] == 0
+                )
+        finally:
+            supervisor.close()
+
+
+def test_event_only_v2_runtime_chain_has_no_input_local_buffer_lease(
+    tmp_path: Path,
+) -> None:
+    """结构化事件直接映射 binding，整个输入链不分配 LocalBuffer。"""
+
+    runtime = _FakeRuntimeService()
+    with _build_pool(tmp_path) as pool:
+        supervisor = _build_supervisor(tmp_path, pool, runtime)
+        try:
+            route = supervisor.register_trigger_source(_event_source("source-event"))
+            with WorkflowTriggerMailboxClient(buffers_root=tmp_path) as client:
+                event = WorkflowTriggerEventRequestV2(
+                    trigger_source_id="source-event",
+                    event_id="event-json-1",
+                    payload={"request_json": {"value": {"station": 2}}},
+                )
+                identity = client.claim_event(
+                    timeout_ms=5_000,
+                    route_generation=route.route_generation,
+                    event_payload=event.model_dump_json().encode("utf-8"),
+                )
+                assert pool.build_status()["active_lease_count"] == 0
+                response = _wait_response(supervisor, client, identity)
+                result = TriggerResultContract.model_validate_json(response.payload)
+                assert result.state == "succeeded"
+                assert runtime.admitted_input_bindings == [
+                    {"request_json": {"value": {"station": 2}}}
+                ]
+                assert pool.build_status()["active_lease_count"] == 0
                 client.acknowledge(identity=identity)
                 supervisor.process_once()
                 assert (
@@ -931,12 +978,89 @@ def test_dotnet_sdk_runs_real_prepare_write_request_response_ack_chain(
             payload = json.loads(result_path.read_text(encoding="utf-8"))
             assert payload["State"] == "succeeded"
             assert payload["AttachmentCount"] == 0
+            image_payload = runtime.admitted_input_bindings[0]["request_image_ref"]
+            assert image_payload["media_type"] == "application/octet-stream"
+            assert image_payload["buffer_ref"]["media_type"] == image_payload["media_type"]
             deadline = monotonic_ns() + 2_000_000_000
             while (
                 pool.build_status()["active_lease_count"] != 0
                 and monotonic_ns() < deadline
             ):
                 sleep(0.01)
+            assert pool.build_status()["active_lease_count"] == 0
+        finally:
+            supervisor.close()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="net472 共享内存门禁仅适用于 Windows")
+def test_dotnet_sdk_event_only_v2_skips_input_local_buffer(
+    tmp_path: Path,
+) -> None:
+    """真实 net472 SDK 单阶段发布结构化事件，输入侧不产生 lease。"""
+
+    dotnet = shutil.which("dotnet")
+    if dotnet is None:
+        pytest.skip("未安装 dotnet/MSBuild")
+    build = subprocess.run(
+        [
+            dotnet,
+            "msbuild",
+            str(DOTNET_CONTRACT_PROJECT),
+            "/t:Rebuild",
+            "/p:Configuration=Release",
+            "/p:TreatWarningsAsErrors=true",
+            "/v:minimal",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=120,
+        check=False,
+    )
+    assert build.returncode == 0, build.stdout + build.stderr
+
+    runtime = _FakeRuntimeService()
+    with _build_pool(tmp_path) as pool:
+        supervisor = _build_supervisor(tmp_path, pool, runtime)
+        try:
+            route = supervisor.register_trigger_source(_event_source("source-dotnet-event"))
+            supervisor.start()
+            result_path = tmp_path / "sdk-event-result.json"
+            invoke = subprocess.run(
+                [
+                    str(DOTNET_CONTRACT_PROBE),
+                    "--invoke-shared-memory-event",
+                    str(tmp_path),
+                    "source-dotnet-event",
+                    str(route.route_generation),
+                    str(result_path),
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=30,
+                check=False,
+            )
+            assert invoke.returncode == 0, (
+                invoke.stdout
+                + invoke.stderr
+                + result_path.read_text(encoding="utf-8")
+                + json.dumps(supervisor.build_status(), ensure_ascii=False)
+            )
+            payload = json.loads(result_path.read_text(encoding="utf-8"))
+            assert payload["State"] == "succeeded"
+            assert payload["AttachmentCount"] == 0
+            assert runtime.admitted_input_bindings == [
+                {
+                    "request_json": {
+                        "value": {"station": 2, "recipe": "3570"}
+                    }
+                }
+            ]
             assert pool.build_status()["active_lease_count"] == 0
         finally:
             supervisor.close()
@@ -1825,6 +1949,24 @@ def _source(trigger_source_id: str) -> WorkflowTriggerSource:
         metadata={
             TRIGGER_RESPONSE_PLAN_METADATA_KEY: response_plan.model_dump(mode="json")
         },
+    )
+
+
+def _event_source(trigger_source_id: str) -> WorkflowTriggerSource:
+    """创建只映射 value.v1 的 event-only v2 本机 source。"""
+
+    source = _source(trigger_source_id)
+    return WorkflowTriggerSource(
+        **{
+            **source.__dict__,
+            "input_binding_mapping": {
+                "request_json": {
+                    "source": "payload.request_json",
+                    "required": True,
+                    "payload_type_id": "value.v1",
+                }
+            },
+        }
     )
 
 

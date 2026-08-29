@@ -4,6 +4,18 @@
 
 工业能力通过可组合节点进入 Workflow，不把现场协议、相机驱动或行业规则膨胀到平台资源主链。平台提供稳定的图、payload、Runtime、版本与审计边界；具体设备和算法由 Core Node 或受控 Custom Node Pack 实现。
 
+二维工业视觉节点的扩展只进入 Core 或现有 `opencv.nodes`。当前不规划 Python Script 节点或 Python Script Node Pack；缺失能力必须形成明确、可测试的节点契约，不能以任意脚本执行代替。
+
+## 节点粒度
+
+节点按三层组织：
+
+1. 原子节点提供单一、可预测、容易组合的操作。
+2. 常用组合工具覆盖跨项目高频能力；当原子节点组合会形成很长流程时，可以封装特征定位、形状定位、胶路检查、轮廓偏差和标定诊断等稳定工具。
+3. Workflow App 与 Template 保存产品、工位、阈值、OK/NG 和交付方式等场景编排。
+
+常用组合工具必须复用共享算法函数，不在 handler 内嵌套执行 Workflow 或其他节点 handler。产品专用名称和规则不进入节点 Catalog。
+
 ## 当前节点层次
 
 ### Core Node
@@ -45,6 +57,11 @@ Core Node 不直接持有相机、PLC、MES 或数据库连接。
 - 本地图片输入与保存同时支持 ObjectStore 相对位置和明确的磁盘绝对路径；两种语义不能混用。
 - 网络、数据库和设备节点必须设置 timeout；失败返回结构化错误，不能无限等待。
 - 节点执行默认可信且同进程，避免无意义的跨进程开销；长期隔离由 Workflow/Deployment Worker 进程边界提供。
+- 算法节点输出 metrics、geometry、regions 和 diagnostics，OK/NG 阈值由 Core Rule 节点处理。
+- 大型图片、rectification map、variation model 和 heatmap 使用 ImageRef、LocalBuffer 或 ObjectStore 引用，不内联到 Workflow JSON。
+- 二维定位统一输出位置、角度、尺度、score、坐标空间、二维变换和诊断信息；同一语义不因模板、特征或形状算法而使用互不兼容的松散对象。
+- 语义不明确的“联合标定”“关联标定”“补正生成”“自动删除”和“Mark 查找”不形成节点；使用 Stereo/Hand-Eye Calibration、Transform、变量和 Locate 等明确能力表达。
+- 本轮工业视觉补齐范围只覆盖二维；深度图、点云和三维量测另立里程碑。
 
 ## 典型链路
 
@@ -67,3 +84,5 @@ Image/Frame Ref
 - [ROI 节点边界](editor.md)
 - [节点包开发](../../nodes/README.md)
 - [Workflow 示例](../../examples/workflows/README.md)
+- [ADR-0011：工业二维视觉节点覆盖与节点粒度](../../decisions/ADR-0011-industrial-vision-node-coverage.md)
+- [工业二维视觉节点实施基线](../../development/industrial-vision-node-implementation.md)

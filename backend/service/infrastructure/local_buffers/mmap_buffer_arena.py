@@ -1657,6 +1657,30 @@ class MmapBufferArenaExternalAccess:
         finally:
             self._end_borrow()
 
+    def read_owned_view(self, locator: object) -> memoryview:
+        """重验由当前执行持有的 locator，并返回不额外映射 arena 的只读 view。
+
+        此入口只供已经持有 lease 所有权、且会在 owner cleanup 前释放 view 的
+        Workflow 执行缓存使用。普通跨进程读取仍必须使用 acquire_reader_view，
+        不能用本方法替代 reader guard。
+        """
+
+        self._begin_borrow()
+        try:
+            descriptor_index = int(getattr(locator, "descriptor_index"))
+            with self._publication_guard(descriptor_index):
+                self._require_locator(
+                    locator,
+                    expected_states={"active", "frame_reserved"},
+                )
+            assert self._arena_mmap is not None
+            return memoryview(self._arena_mmap)[
+                int(getattr(locator, "offset")) : int(getattr(locator, "offset"))
+                + int(getattr(locator, "content_length"))
+            ].toreadonly()
+        finally:
+            self._end_borrow()
+
     def close(self) -> None:
         """按可重试状态机关闭当前进程的 mmap view。"""
 

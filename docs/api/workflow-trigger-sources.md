@@ -95,6 +95,13 @@ ZeroMQ adapter 接收 envelope 与图片 bytes，把图片写入 LocalBufferBrok
 
 ZeroMQ reply 统一使用 `amvision.workflow-trigger-result.v1` multipart：Frame 0 是 JSON manifest，后续 0 到 N 帧是按完整物理 identity 去重后的 raw 或 encoded 图片 bytes。当前 .NET SDK 会读取完整 multipart、严格校验帧集合、长度和 checksum，并允许多个逻辑 attachment 共享同一物理帧。本机共享内存 Trigger 仍需通过故障注入、性能和发行门禁后才对外宣称正式可用。
 
+local-shared-memory 有两个明确的请求操作，共用同一固定 mailbox layout 和 response v1：
+
+- 图片 v1：`PREPARE → LocalBuffer allocation/write → REQUEST`，`WorkflowTriggerPrepareV1.image` 始终必填。
+- event-only v2：直接发布 `amvision.workflow-trigger-event-request.v2` REQUEST，用于 JSON/文本等无图片事件；不执行 PREPARE，不分配输入 LocalBuffer lease，也不创建假图片。
+
+两种操作都使用 TriggerSource `input_binding_mapping`，并在 Runtime 入口执行同一份已发布 App Contract 校验。event-only v2 不改变 `result_mode`；`sync-reply`、`accepted-then-query`、`event-only` 仍表示结果交付策略。
+
 ## 多类型输入当前边界
 
 协议中立 `TriggerEventContract.payload` 当前可以携带结构化 JSON，`input_binding_mapping` 按显式 dotted path 生成 Runtime binding。`local-shared-memory` v1 的 PREPARE 仍要求一张图片，因此可以在图片请求中附带 JSON，但不能表达无图片的纯 JSON 事件；普通文件也没有 LocalBuffer 输入语义。

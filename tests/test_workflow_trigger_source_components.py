@@ -629,6 +629,7 @@ def test_zeromq_trigger_adapter_maps_content_frame_to_buffer_ref_payload() -> No
     payload = submitter.last_request.trigger_event.payload
     image_payload = payload["request_image_ref"]
     assert image_payload["transport_kind"] == "buffer"
+    assert image_payload["media_type"] == "image/png"
     assert image_payload["buffer_ref"]["format_id"] == "amvision.buffer-ref.v1"
     assert image_payload["buffer_ref"]["media_type"] == "image/png"
     assert local_buffer_writer.write_calls[0]["content"] == b"image-bytes"

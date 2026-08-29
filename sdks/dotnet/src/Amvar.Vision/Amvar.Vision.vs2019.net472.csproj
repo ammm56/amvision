@@ -146,12 +146,14 @@
     <Compile Include="Http\Requests\WorkflowRuntimeImageInvokeRequest.cs" />
     <Compile Include="Http\Requests\WorkflowRuntimeInvokeRequest.cs" />
     <Compile Include="Http\Requests\WorkflowRuntimeMultipartInvokeRequest.cs" />
+    <Compile Include="Http\Requests\WorkflowRequestBuilder.cs" />
     <Compile Include="Http\Requests\WorkflowTriggerSourceCreateRequest.cs" />
     <Compile Include="Http\Responses\ModelDeploymentRuntimeResponse.cs" />
     <Compile Include="Http\Responses\ModelInferenceResponse.cs" />
     <Compile Include="Http\Responses\SystemConfigResponse.cs" />
     <Compile Include="Http\Responses\WorkflowAppResultResponse.cs" />
     <Compile Include="Http\Responses\WorkflowAppRuntimeResponse.cs" />
+    <Compile Include="Http\Responses\WorkflowAppContract.cs" />
     <Compile Include="Http\Responses\WorkflowAppVersionResponse.cs" />
     <Compile Include="Http\Responses\WorkflowRunResponse.cs" />
     <Compile Include="Http\Responses\WorkflowTriggerSourceHealthResponse.cs" />

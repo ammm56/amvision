@@ -152,6 +152,9 @@ from backend.service.application.workflows.workflow_service import (
 from backend.service.application.workflows.app_version_service import (
     WorkflowAppVersionService,
 )
+from backend.service.application.workflows.input_contracts import (
+    build_workflow_app_public_contract_v2,
+)
 from backend.service.application.workflows.application_lifecycle import (
     WorkflowApplicationLifecycleService,
 )
@@ -413,6 +416,26 @@ class WorkflowRuntimeService:
                 created_by=created_by,
             )
 
+    def resolve_preview_input_contract(
+        self,
+        request: WorkflowPreviewRunCreateRequest,
+    ) -> tuple[FlowApplication, dict[str, object]]:
+        """解析本次 Preview 的固定应用输入契约。
+
+        multipart 路由在写入上传内容前调用本方法，确保 payload type、MIME、大小和
+        数量限制都来自与 Preview 执行相同的 Application/Template 快照规则。
+        """
+
+        normalized_request = normalize_preview_run_create_request(request)
+        _application_id, application, template, _source_kind = (
+            self._resolve_preview_source(normalized_request)
+        )
+        return application, build_workflow_app_public_contract_v2(
+            application=application,
+            template=template,
+            node_catalog_registry=self.node_catalog_registry,
+        )
+
     def _create_preview_run(
         self,
         request: WorkflowPreviewRunCreateRequest,
@@ -618,6 +641,21 @@ class WorkflowRuntimeService:
             return round(max(0.0, graph_total_ms - graph_event_persist_ms), 3)
 
         try:
+            preview_application = FlowApplication.model_validate(
+                self.dataset_storage.read_json(
+                    execution_request.application_snapshot_object_key
+                )
+            )
+            preview_template = WorkflowGraphTemplate.model_validate(
+                self.dataset_storage.read_json(
+                    execution_request.template_snapshot_object_key
+                )
+            )
+            preview_public_contract = build_workflow_app_public_contract_v2(
+                application=preview_application,
+                template=preview_template,
+                node_catalog_registry=self.node_catalog_registry,
+            )
             if model_session_manager is not None and model_session_scope_id:
                 evicted_scope_ids = model_session_manager.enforce_scope_limit(
                     scope_prefix=WORKFLOW_PREVIEW_MODEL_SESSION_SCOPE_PREFIX,
@@ -648,6 +686,7 @@ class WorkflowRuntimeService:
                     application_id=execution_request.application_id,
                     application_snapshot_object_key=execution_request.application_snapshot_object_key,
                     template_snapshot_object_key=execution_request.template_snapshot_object_key,
+                    public_contract=preview_public_contract,
                     input_bindings=dict(execution_request.input_bindings),
                     execution_metadata=execution_metadata,
                     target_node_id=execution_request.target_node_id,
@@ -1177,6 +1216,12 @@ class WorkflowRuntimeService:
                     {
                         **dict(normalized_request.metadata or {}),
                         "workflow_app_version_id": app_version.workflow_app_version_id,
+                        "contract_snapshot_object_key": (
+                            app_version.contract_snapshot_object_key
+                        ),
+                        "dependency_manifest_object_key": (
+                            app_version.dependency_manifest_object_key
+                        ),
                         "legacy_application_create": legacy_application_create,
                     },
                     execution_policy=execution_policy,
@@ -1492,6 +1537,12 @@ class WorkflowRuntimeService:
                 {
                     **dict(workflow_app_runtime.metadata),
                     "workflow_app_version_id": target_version.workflow_app_version_id,
+                    "contract_snapshot_object_key": (
+                        target_version.contract_snapshot_object_key
+                    ),
+                    "dependency_manifest_object_key": (
+                        target_version.dependency_manifest_object_key
+                    ),
                     "last_contract_comparison": comparison or {"compatible": True},
                     "breaking_change_reason": normalized_request.breaking_change_reason,
                 },
@@ -2469,9 +2520,7 @@ class WorkflowRuntimeService:
                 error=exc,
             )
         except ServiceError as exc:
-            self._cleanup_unpublished_prepared_trigger_result(
-                prepared_trigger_result
-            )
+            self._cleanup_unpublished_prepared_trigger_result(prepared_trigger_result)
             self.worker_manager.cleanup_parent_local_buffer_leases(
                 worker_execution_metadata
             )
@@ -2487,9 +2536,7 @@ class WorkflowRuntimeService:
                 )
             raise
         except Exception as exc:
-            self._cleanup_unpublished_prepared_trigger_result(
-                prepared_trigger_result
-            )
+            self._cleanup_unpublished_prepared_trigger_result(prepared_trigger_result)
             self.worker_manager.cleanup_parent_local_buffer_leases(
                 worker_execution_metadata
             )
@@ -2503,8 +2550,8 @@ class WorkflowRuntimeService:
 
         workflow_persist_started_at = perf_counter()
         try:
-            sync_timings["workflow_runtime_sync_total_before_persist_ms"] = (
-                _elapsed_ms(sync_timing_started_at)
+            sync_timings["workflow_runtime_sync_total_before_persist_ms"] = _elapsed_ms(
+                sync_timing_started_at
             )
             workflow_run = replace(
                 workflow_run,
@@ -2564,13 +2611,9 @@ class WorkflowRuntimeService:
                     payload={"reason": workflow_run.state},
                 )
         except Exception:
-            self._cleanup_unpublished_prepared_trigger_result(
-                prepared_trigger_result
-            )
+            self._cleanup_unpublished_prepared_trigger_result(prepared_trigger_result)
             raise
-        sync_timings["workflow_persist_ms"] = _elapsed_ms(
-            workflow_persist_started_at
-        )
+        sync_timings["workflow_persist_ms"] = _elapsed_ms(workflow_persist_started_at)
         workflow_run = replace(
             workflow_run,
             metadata=_merge_workflow_run_diagnostic_metadata(

@@ -16,6 +16,9 @@ from backend.contracts.ipc.local_message_profiles import (
     MAILBOX_PUBLIC_RESPONSE_CAPACITY_BYTES,
 )
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.workflows.trigger_sources.trigger_message_channel import (
+    EVENT_REQUEST_SCHEMA_ID,
+)
 from backend.service.infrastructure.ipc.mmap_primitives import MmapOwnerLockBusyError
 from backend.service.infrastructure.ipc.workflow_trigger_mailbox import (
     MAILBOX_FILE_SIZE_BYTES,
@@ -170,6 +173,46 @@ def test_server_authoritative_deadline_returns_readable_terminal(
             response = client.read_response(identity=claimed)
             assert response is not None
             assert response.error_code == contract.ERROR_CODE_DEADLINE_EXCEEDED
+            client.acknowledge(identity=claimed)
+            assert server.sweep()["released_count"] == 1
+
+
+def test_event_only_v2_claim_skips_prepare_and_gets_server_deadline(
+    tmp_path: Path,
+) -> None:
+    """event-only v2 直接进入 REQUEST，不发布 allocation 或假图片。"""
+
+    event_payload = json.dumps(
+        {
+            "format_id": "amvision.workflow-trigger-event-request.v2",
+            "trigger_source_id": "source-1",
+            "event_id": "event-1",
+            "payload": {"request_text": {"text": "hello"}},
+            "metadata": {},
+        },
+        separators=(",", ":"),
+    ).encode()
+    with WorkflowTriggerMailboxServer(buffers_root=tmp_path) as server:
+        with WorkflowTriggerMailboxClient(buffers_root=tmp_path) as client:
+            claimed = client.claim_event(
+                timeout_ms=5_000,
+                route_generation=7,
+                event_payload=event_payload,
+            )
+            assert server.poll_prepare() is None
+            request = server.poll_request()
+            assert request is not None
+            assert request.request_schema_id == EVENT_REQUEST_SCHEMA_ID
+            assert request.payload == event_payload
+            assert request.identity.deadline_ns > 0
+            assert request.accepted_timeout_ms == 5_000
+            server.publish_json_response(
+                identity=request.identity,
+                payload={"state": "succeeded"},
+            )
+            response = client.read_response(identity=claimed)
+            assert response is not None
+            assert response.json_payload()["state"] == "succeeded"
             client.acknowledge(identity=claimed)
             assert server.sweep()["released_count"] == 1
 

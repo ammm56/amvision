@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from io import BytesIO
 
 import pytest
 
@@ -90,10 +91,61 @@ def test_invalid_or_missing_immutable_manifest_is_rejected(tmp_path: Path) -> No
         content=b"content",
         media_type="application/octet-stream",
     )
-    metadata_path = storage.resolve(receipt.metadata.object_key).parent / "metadata.json"
+    metadata_path = (
+        storage.resolve(receipt.metadata.object_key).parent / "metadata.json"
+    )
     metadata_path.unlink()
     with pytest.raises(InvalidRequestError, match="manifest 缺失"):
         storage.stat_object(receipt.metadata.object_key)
+
+
+def test_immutable_stream_is_chunked_atomic_and_cleans_failed_staging(
+    tmp_path: Path,
+) -> None:
+    """流式不可变写入限制单次读取大小，并在超限时清理 staging。"""
+
+    storage = _storage(tmp_path)
+    content = b"abcdefghij"
+    source = _BoundedReadStream(content, max_read_size=3)
+    receipt = storage.write_immutable_stream(
+        object_prefix="projects/project-1/workflow-inputs/request-1",
+        source_stream=source,
+        media_type="application/octet-stream",
+        extension=".bin",
+        chunk_size=3,
+        max_bytes=len(content),
+    )
+
+    assert source.read_sizes == [3, 3, 3, 3, 3]
+    assert receipt.metadata.content_length == len(content)
+    assert storage.resolve(receipt.metadata.object_key).read_bytes() == content
+    assert not tuple(storage.root_dir.rglob(".stream-*.tmp"))
+
+    with pytest.raises(InvalidRequestError, match="超过大小限制"):
+        storage.write_immutable_stream(
+            object_prefix="projects/project-1/workflow-inputs/request-2",
+            source_stream=BytesIO(content),
+            media_type="application/octet-stream",
+            chunk_size=3,
+            max_bytes=5,
+        )
+    assert not tuple(storage.root_dir.rglob(".stream-*.tmp"))
+
+
+class _BoundedReadStream(BytesIO):
+    """拒绝底层实现请求超出测试上限的单次读取。"""
+
+    def __init__(self, content: bytes, *, max_read_size: int) -> None:
+        super().__init__(content)
+        self.max_read_size = max_read_size
+        self.read_sizes: list[int] = []
+
+    def read(self, size: int = -1) -> bytes:
+        """记录并约束每次 read 大小。"""
+
+        assert 0 < size <= self.max_read_size
+        self.read_sizes.append(size)
+        return super().read(size)
 
 
 def _storage(tmp_path: Path) -> LocalDatasetStorage:

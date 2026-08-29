@@ -99,9 +99,11 @@ from backend.contracts.workflows.resource_semantics import (
 )
 from backend.contracts.workflows.local_shared_memory_trigger import (
     WORKFLOW_TRIGGER_ALLOCATION_FORMAT,
+    WORKFLOW_TRIGGER_EVENT_REQUEST_FORMAT,
     WORKFLOW_TRIGGER_PREPARE_FORMAT,
     WORKFLOW_TRIGGER_REQUEST_FORMAT,
     WorkflowTriggerAllocationV1,
+    WorkflowTriggerEventRequestV2,
     WorkflowTriggerInputImageSpec,
     WorkflowTriggerPrepareV1,
     WorkflowTriggerRequestV1,
@@ -200,9 +202,11 @@ __all__ = [
     "WorkflowTriggerAckPolicy",
     "WorkflowTriggerKind",
     "WORKFLOW_TRIGGER_ALLOCATION_FORMAT",
+    "WORKFLOW_TRIGGER_EVENT_REQUEST_FORMAT",
     "WORKFLOW_TRIGGER_PREPARE_FORMAT",
     "WORKFLOW_TRIGGER_REQUEST_FORMAT",
     "WorkflowTriggerAllocationV1",
+    "WorkflowTriggerEventRequestV2",
     "WorkflowTriggerInputImageSpec",
     "WorkflowTriggerPrepareV1",
     "WorkflowTriggerRequestV1",

@@ -21,26 +21,30 @@ export interface PreviewInputState {
   payloadTypeId: string
   valueFields: PreviewValueField[]
   file: File | null
+  files: File[]
   mediaType: string
-  imageRefTransportKind: 'storage' | 'local-path' | 'memory'
+  imageRefTransportKind: 'upload' | 'storage' | 'local-path' | 'memory'
   objectKey: string
   localPath: string
   imageHandle: string
   plainValue: string
+  jsonValue: string
+  textValue: string
 }
 
-export interface WorkflowPreviewImageUpload {
+export interface WorkflowPreviewFileUpload {
   bindingId: string
   file: File
 }
 
 export interface WorkflowPreviewInputPayload {
   inputBindings: Record<string, unknown>
-  imageUploads: WorkflowPreviewImageUpload[]
+  fileUploads: WorkflowPreviewFileUpload[]
 }
 
 export function getPreviewImageRefTransportKindOptions(): PreviewSelectOption[] {
   return [
+    { label: translate('workflowEditor.feedback.uploadImage'), value: 'upload' },
     { label: translate('workflowEditor.feedback.objectStoreImage'), value: 'storage' },
     { label: translate('workflowEditor.feedback.localDiskImage'), value: 'local-path' },
     { label: translate('workflowEditor.feedback.memoryImageHandle'), value: 'memory' },
@@ -63,14 +67,19 @@ export function useWorkflowPreviewInputs(options: WorkflowPreviewInputsOptions) 
     if (!state) return false
     const payloadTypeId = options.getBindingPayloadTypeId(binding)
     if (payloadTypeId === 'value.v1') {
+      if (usesJsonPreviewEditor(binding)) return Boolean(state.jsonValue.trim())
       return state.valueFields.some((field) => field.key.trim() && field.value.trim())
     }
     if (payloadTypeId === 'image-base64.v1') return state.file !== null
     if (payloadTypeId === 'image-ref.v1') {
+      if (state.imageRefTransportKind === 'upload') return state.file !== null
       if (state.imageRefTransportKind === 'storage') return Boolean(state.objectKey.trim())
       if (state.imageRefTransportKind === 'local-path') return Boolean(state.localPath.trim())
       return Boolean(state.imageHandle.trim() && state.mediaType.trim())
     }
+    if (payloadTypeId === 'text.v1') return Boolean(state.textValue.trim())
+    if (payloadTypeId === 'file-ref.v1') return state.file !== null
+    if (payloadTypeId === 'file-refs.v1') return state.files.length > 0
     return Boolean(state.plainValue.trim())
   }
 
@@ -88,12 +97,15 @@ export function useWorkflowPreviewInputs(options: WorkflowPreviewInputsOptions) 
       payloadTypeId,
       valueFields,
       file: null,
+      files: [],
       mediaType: '',
       imageRefTransportKind: 'storage',
       objectKey: '',
       localPath: '',
       imageHandle: '',
       plainValue: '',
+      jsonValue: readPreviewJsonValue(binding),
+      textValue: '',
     }
   }
 
@@ -160,14 +172,16 @@ export function useWorkflowPreviewInputs(options: WorkflowPreviewInputsOptions) 
     const state = previewInputState.value[bindingId]
     if (!state) return
     const normalizedValue = selectValueToString(value)
-    state.imageRefTransportKind = normalizedValue === 'memory'
+    state.imageRefTransportKind = normalizedValue === 'upload'
+      ? 'upload'
+      : normalizedValue === 'memory'
       ? 'memory'
       : normalizedValue === 'local-path' ? 'local-path' : 'storage'
   }
 
   async function buildPreviewInputBindings(bindings: FlowApplicationBinding[]): Promise<WorkflowPreviewInputPayload> {
     const inputBindings: Record<string, unknown> = {}
-    const imageUploads: WorkflowPreviewImageUpload[] = []
+    const fileUploads: WorkflowPreviewFileUpload[] = []
     const imageRefBindings = bindings.filter(
       (binding) => options.getBindingPayloadTypeId(binding) === 'image-ref.v1',
     )
@@ -187,21 +201,49 @@ export function useWorkflowPreviewInputs(options: WorkflowPreviewInputsOptions) 
           throw new Error(translate('workflowEditor.feedback.previewImageRefRequired'))
         }
         usedUploadBindingIds.add(targetBinding.binding_id)
-        imageUploads.push({ bindingId: targetBinding.binding_id, file: state.file })
+        fileUploads.push({ bindingId: targetBinding.binding_id, file: state.file })
+        continue
+      }
+      if (payloadTypeId === 'image-ref.v1') {
+        const state = previewInputState.value[binding.binding_id]
+        if (state?.imageRefTransportKind === 'upload' && state.file) {
+          fileUploads.push({ bindingId: binding.binding_id, file: state.file })
+          continue
+        }
+      }
+      if (payloadTypeId === 'file-ref.v1') {
+        const file = previewInputState.value[binding.binding_id]?.file
+        if (file) fileUploads.push({ bindingId: binding.binding_id, file })
+        continue
+      }
+      if (payloadTypeId === 'file-refs.v1') {
+        const files = previewInputState.value[binding.binding_id]?.files ?? []
+        fileUploads.push(...files.map((file) => ({ bindingId: binding.binding_id, file })))
         continue
       }
       inputBindings[binding.binding_id] = await buildPreviewPayload(binding)
     }
-    return { inputBindings, imageUploads }
+    return { inputBindings, fileUploads }
   }
 
   async function buildPreviewPayload(binding: FlowApplicationBinding): Promise<unknown> {
     const state = previewInputState.value[binding.binding_id]
     const payloadTypeId = options.getBindingPayloadTypeId(binding)
     if (!state) return null
-    if (payloadTypeId === 'value.v1') return buildValuePreviewPayload(state)
+    if (payloadTypeId === 'value.v1') {
+      return usesJsonPreviewEditor(binding)
+        ? buildJsonValuePreviewPayload(state, binding)
+        : buildValuePreviewPayload(state)
+    }
     if (payloadTypeId === 'image-base64.v1') return {}
     if (payloadTypeId === 'image-ref.v1') return buildImageRefPreviewPayload(state)
+    if (payloadTypeId === 'text.v1') {
+      return {
+        text: state.textValue,
+        media_type: state.mediaType.trim() || 'text/plain',
+        charset: readBindingConfigText(binding, 'charset') || 'utf-8',
+      }
+    }
     return { value: parsePreviewScalarValue(state.plainValue) }
   }
 
@@ -218,7 +260,14 @@ export function useWorkflowPreviewInputs(options: WorkflowPreviewInputsOptions) 
     removePreviewValueField,
     setPreviewImageRefTransportKind,
     buildPreviewInputBindings,
+    usesJsonPreviewEditor,
   }
+}
+
+export function usesJsonPreviewEditor(binding: FlowApplicationBinding): boolean {
+  if (binding.binding_id === 'request_json' || binding.binding_id === 'request_value') return true
+  const schema = binding.config.request_schema
+  return Boolean(schema && typeof schema === 'object' && !Array.isArray(schema))
 }
 
 function readPreviewValueFields(binding: FlowApplicationBinding): PreviewValueField[] {
@@ -233,6 +282,39 @@ function normalizePreviewValueObject(rawValue: unknown): Record<string, unknown>
   const nestedValue = rawRecord.value
   if (nestedValue && typeof nestedValue === 'object' && !Array.isArray(nestedValue)) return nestedValue as Record<string, unknown>
   return rawRecord
+}
+
+function readPreviewJsonValue(binding: FlowApplicationBinding): string {
+  if (!usesJsonPreviewEditor(binding)) return ''
+  const rawValue = binding.config.default_value
+    ?? binding.config.example_value
+    ?? binding.metadata.default_value
+    ?? binding.metadata.example_value
+  if (rawValue === undefined) return ''
+  const value = rawValue && typeof rawValue === 'object' && !Array.isArray(rawValue) && 'value' in rawValue
+    ? (rawValue as Record<string, unknown>).value
+    : rawValue
+  return JSON.stringify(value, null, 2)
+}
+
+function buildJsonValuePreviewPayload(
+  state: PreviewInputState,
+  binding: FlowApplicationBinding,
+): Record<string, unknown> {
+  try {
+    const value = JSON.parse(state.jsonValue) as unknown
+    if (binding.binding_id === 'request_json' && (!value || typeof value !== 'object' || Array.isArray(value))) {
+      throw new Error('request_json requires an object')
+    }
+    return { value }
+  } catch {
+    throw new Error(translate('workflowEditor.feedback.previewJsonInvalid'))
+  }
+}
+
+function readBindingConfigText(binding: FlowApplicationBinding, fieldName: string): string {
+  const value = binding.config[fieldName]
+  return typeof value === 'string' ? value.trim() : ''
 }
 
 function buildValuePreviewPayload(state: PreviewInputState): Record<string, unknown> {

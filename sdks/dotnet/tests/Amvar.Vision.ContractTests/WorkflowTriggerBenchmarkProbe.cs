@@ -225,6 +225,10 @@ namespace Amvar.Vision.ContractTests
                     TraceId = "benchmark-shared-" + Guid.NewGuid().ToString("N"),
                     EnableTimings = collectTimings
                 };
+                foreach (var property in config.Payload.Properties())
+                {
+                    request.Payload[property.Name] = property.Value.DeepClone();
+                }
                 SharedMemoryTriggerTimings? timings;
                 var runtimeInvokeMs = -1.0;
                 using (var result = InvokeByMode(request))
@@ -305,6 +309,10 @@ namespace Amvar.Vision.ContractTests
                 _ = collectTimings;
                 _ = totals;
                 var request = BuildRequest();
+                foreach (var property in config.Payload.Properties())
+                {
+                    request.Payload[property.Name] = property.Value.DeepClone();
+                }
                 request.EventId = "benchmark-zmq-" + sequence.ToString(CultureInfo.InvariantCulture) + "-" + Guid.NewGuid().ToString("N");
                 request.TraceId = "benchmark-zmq-" + Guid.NewGuid().ToString("N");
                 var result = client.InvokeImage(request);
@@ -374,6 +382,9 @@ namespace Amvar.Vision.ContractTests
             [JsonProperty("media_type")]
             public string MediaType { get; set; } = "application/octet-stream";
 
+            [JsonProperty("payload")]
+            public JObject Payload { get; set; } = new JObject();
+
             [JsonProperty("width")]
             public int Width { get; set; }
 
@@ -398,6 +409,7 @@ namespace Amvar.Vision.ContractTests
                     || string.IsNullOrWhiteSpace(TriggerSourceId)
                     || string.IsNullOrWhiteSpace(InputMode)
                     || string.IsNullOrWhiteSpace(InputPath)
+                    || Payload == null
                     || !File.Exists(InputPath))
                 {
                     throw new ArgumentException("Benchmark transport, source, mode and input file are required.");

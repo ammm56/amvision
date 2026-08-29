@@ -22,6 +22,9 @@ from backend.service.application.workflows.service_runtime.context import (
 from backend.service.application.workflows.workflow_service import (
     LocalWorkflowJsonService,
 )
+from backend.service.application.workflows.input_contracts import (
+    build_workflow_app_public_contract_v2,
+)
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
@@ -100,6 +103,11 @@ class WorkflowApplicationRuntimeExecutor:
                 application_id=normalized_request.application_id,
                 application_snapshot_object_key=application_document.object_key,
                 template_snapshot_object_key=template_document.object_key,
+                public_contract=build_workflow_app_public_contract_v2(
+                    application=application,
+                    template=template_document.template,
+                    node_catalog_registry=self.node_catalog_registry,
+                ),
                 input_bindings=dict(normalized_request.input_bindings),
                 execution_metadata=dict(normalized_request.execution_metadata),
             )

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+from io import BytesIO
 import mimetypes
 import os
 import shutil
@@ -538,42 +539,87 @@ class LocalDatasetStorage:
     ) -> ObjectWriteReceipt:
         """用完整目录 rename 一次发布 content 和 manifest。"""
 
+        return self.write_immutable_stream(
+            object_prefix=object_prefix,
+            source_stream=BytesIO(content),
+            media_type=media_type,
+            extension=extension,
+        )
+
+    def write_immutable_stream(
+        self,
+        *,
+        object_prefix: str,
+        source_stream: BinaryIO,
+        media_type: str,
+        extension: str | None = None,
+        chunk_size: int = 1024 * 1024,
+        max_bytes: int | None = None,
+    ) -> ObjectWriteReceipt:
+        """分块写入 staging，并在完整校验后原子发布 content 和 manifest。"""
+
         normalized_media_type = media_type.strip()
         if not normalized_media_type:
             raise InvalidRequestError("不可变对象 media_type 不能为空")
-        digest = hashlib.sha256(content).hexdigest()
-        normalized_extension = _normalize_immutable_extension(extension, normalized_media_type)
-        object_dir_key = (
-            PurePosixPath(object_prefix)
-            / _IMMUTABLE_DIRECTORY_NAME
-            / f"sha256-{digest}"
+        if chunk_size <= 0:
+            raise InvalidRequestError("不可变对象 chunk_size 必须是正整数")
+        if max_bytes is not None and max_bytes <= 0:
+            raise InvalidRequestError("不可变对象 max_bytes 必须是正整数")
+        normalized_extension = _normalize_immutable_extension(
+            extension, normalized_media_type
         )
-        object_key = (object_dir_key / f"content{normalized_extension}").as_posix()
-        final_dir = to_filesystem_path(self.resolve(object_dir_key.as_posix()))
-        metadata = ObjectSnapshotMetadata(
-            object_key=object_key,
-            content_length=len(content),
-            media_type=normalized_media_type,
-            checksum_algorithm="sha256",
-            checksum=digest,
-            immutable_version=f"sha256:{digest}",
-            is_immutable=True,
+        immutable_root = to_filesystem_path(
+            self.resolve(
+                (PurePosixPath(object_prefix) / _IMMUTABLE_DIRECTORY_NAME).as_posix()
+            )
         )
-        if final_dir.is_dir():
-            existing = self.stat_object(object_key)
-            if existing != metadata:
-                raise InvalidRequestError("不可变 ObjectStore identity 已存在但元数据不一致")
-            return ObjectWriteReceipt(metadata=existing)
-
-        final_dir.parent.mkdir(parents=True, exist_ok=True)
-        staging_dir = final_dir.with_name(f".{final_dir.name}.{uuid.uuid4().hex}.tmp")
+        immutable_root.mkdir(parents=True, exist_ok=True)
+        staging_dir = immutable_root / f".stream-{uuid.uuid4().hex}.tmp"
+        staging_dir.mkdir(parents=False, exist_ok=False)
+        staging_content_path = staging_dir / f"content{normalized_extension}"
+        digest = hashlib.sha256()
+        content_length = 0
         try:
-            staging_dir.mkdir(parents=False, exist_ok=False)
-            content_path = staging_dir / f"content{normalized_extension}"
-            with content_path.open("wb") as stream:
-                stream.write(content)
-                stream.flush()
-                os.fsync(stream.fileno())
+            if hasattr(source_stream, "seek"):
+                source_stream.seek(0)
+            with staging_content_path.open("wb") as target_stream:
+                while True:
+                    chunk = source_stream.read(chunk_size)
+                    if not chunk:
+                        break
+                    if not isinstance(chunk, bytes):
+                        raise InvalidRequestError("不可变对象输入流必须返回 bytes")
+                    content_length += len(chunk)
+                    if max_bytes is not None and content_length > max_bytes:
+                        raise InvalidRequestError(
+                            "不可变对象输入流超过大小限制",
+                            details={
+                                "content_length": content_length,
+                                "max_bytes": max_bytes,
+                            },
+                        )
+                    digest.update(chunk)
+                    target_stream.write(chunk)
+                target_stream.flush()
+                os.fsync(target_stream.fileno())
+
+            checksum = digest.hexdigest()
+            object_dir_key = (
+                PurePosixPath(object_prefix)
+                / _IMMUTABLE_DIRECTORY_NAME
+                / f"sha256-{checksum}"
+            )
+            object_key = (object_dir_key / f"content{normalized_extension}").as_posix()
+            final_dir = to_filesystem_path(self.resolve(object_dir_key.as_posix()))
+            metadata = ObjectSnapshotMetadata(
+                object_key=object_key,
+                content_length=content_length,
+                media_type=normalized_media_type,
+                checksum_algorithm="sha256",
+                checksum=checksum,
+                immutable_version=f"sha256:{checksum}",
+                is_immutable=True,
+            )
             metadata_path = staging_dir / _IMMUTABLE_METADATA_FILE_NAME
             with metadata_path.open("w", encoding="utf-8", newline="") as stream:
                 json.dump(metadata.__dict__, stream, ensure_ascii=False, sort_keys=True)
@@ -584,13 +630,13 @@ class LocalDatasetStorage:
             except FileExistsError:
                 shutil.rmtree(staging_dir, ignore_errors=True)
             _sync_directory_after_replace(final_dir.parent)
+            published = self.stat_object(object_key)
+            if published != metadata:
+                raise InvalidRequestError("不可变 ObjectStore 对象发布校验失败")
+            return ObjectWriteReceipt(metadata=published)
         except Exception:
             shutil.rmtree(staging_dir, ignore_errors=True)
             raise
-        published = self.stat_object(object_key)
-        if published != metadata:
-            raise InvalidRequestError("不可变 ObjectStore 对象发布校验失败")
-        return ObjectWriteReceipt(metadata=published)
 
     def materialize_immutable_object(
         self,

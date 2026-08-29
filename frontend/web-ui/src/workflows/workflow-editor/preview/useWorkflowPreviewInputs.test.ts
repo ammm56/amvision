@@ -23,7 +23,7 @@ describe('workflow Preview image inputs', () => {
     const payload = await previewInputs.buildPreviewInputBindings(bindings)
 
     expect(payload.inputBindings).toEqual({})
-    expect(payload.imageUploads).toEqual([
+    expect(payload.fileUploads).toEqual([
       { bindingId: 'request_image_ref', file: imageFile },
     ])
   })
@@ -48,7 +48,39 @@ describe('workflow Preview image inputs', () => {
         media_type: 'image/bmp',
       },
     })
-    expect(payload.imageUploads).toEqual([])
+    expect(payload.fileUploads).toEqual([])
+  })
+
+  it('builds typed JSON, text, single-file, and ordered multi-file inputs', async () => {
+    const bindings = [
+      buildBinding('request_json', 'value.v1'),
+      buildBinding('request_text', 'text.v1'),
+      buildBinding('request_file', 'file-ref.v1'),
+      buildBinding('request_files', 'file-refs.v1'),
+    ]
+    const previewInputs = useWorkflowPreviewInputs({
+      getBindingPayloadTypeId: (binding) => String(binding.config.payload_type_id),
+    })
+    previewInputs.initializePreviewInputs(bindings)
+    previewInputs.previewInputState.value.request_json.jsonValue = '{"threshold":0.7}'
+    previewInputs.previewInputState.value.request_text.textValue = 'lot-001'
+    const recipe = new File(['{}'], 'recipe.json', { type: 'application/json' })
+    const first = new File(['a'], 'a.txt', { type: 'text/plain' })
+    const second = new File(['b'], 'b.txt', { type: 'text/plain' })
+    previewInputs.previewInputState.value.request_file.file = recipe
+    previewInputs.previewInputState.value.request_files.files = [first, second]
+
+    const payload = await previewInputs.buildPreviewInputBindings(bindings)
+
+    expect(payload.inputBindings).toEqual({
+      request_json: { value: { threshold: 0.7 } },
+      request_text: { text: 'lot-001', media_type: 'text/plain', charset: 'utf-8' },
+    })
+    expect(payload.fileUploads).toEqual([
+      { bindingId: 'request_file', file: recipe },
+      { bindingId: 'request_files', file: first },
+      { bindingId: 'request_files', file: second },
+    ])
   })
 })
 

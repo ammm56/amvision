@@ -15,6 +15,7 @@ from backend.service.application.workflows.app_version_migration import (
 from backend.service.application.workflows.app_version_service import (
     WorkflowAppVersionService,
     compute_workflow_app_content_fingerprint,
+    compute_workflow_app_content_fingerprint_from_artifacts,
 )
 from backend.service.application.workflows.workflow_service import (
     LocalWorkflowJsonService,
@@ -389,7 +390,7 @@ def test_content_fingerprint_detects_node_definition_drift(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    """验证完整内容指纹会覆盖 worker 实际使用的节点定义。"""
+    """验证新发布会感知节点变更，冻结版本指纹不受当前 Catalog 影响。"""
 
     client, session_factory, dataset_storage = _create_runtime_api_client(
         tmp_path,
@@ -417,6 +418,14 @@ def test_content_fingerprint_detects_node_definition_drift(
                 template=template,
                 node_catalog_registry=client.app.state.node_catalog_registry,
             )
+            frozen_fingerprint = (
+                compute_workflow_app_content_fingerprint_from_artifacts(
+                    application=snapshot.application.model_dump(mode="json"),
+                    template=template.model_dump(mode="json"),
+                    contract=snapshot.contract,
+                    dependencies=snapshot.dependencies,
+                )
+            )
             definitions = list(
                 client.app.state.node_catalog_registry.get_workflow_node_definitions()
             )
@@ -439,9 +448,19 @@ def test_content_fingerprint_detects_node_definition_drift(
                 template=template,
                 node_catalog_registry=client.app.state.node_catalog_registry,
             )
+            frozen_fingerprint_after_catalog_drift = (
+                compute_workflow_app_content_fingerprint_from_artifacts(
+                    application=snapshot.application.model_dump(mode="json"),
+                    template=template.model_dump(mode="json"),
+                    contract=snapshot.contract,
+                    dependencies=snapshot.dependencies,
+                )
+            )
 
         assert current_fingerprint == snapshot.content_fingerprint
+        assert frozen_fingerprint == current_fingerprint
         assert drifted_fingerprint != current_fingerprint
+        assert frozen_fingerprint_after_catalog_drift == frozen_fingerprint
     finally:
         session_factory.engine.dispose()
 

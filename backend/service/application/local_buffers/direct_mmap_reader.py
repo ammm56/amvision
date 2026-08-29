@@ -31,18 +31,27 @@ class DirectMmapLocalBufferReader:
         settings: LocalBufferBrokerSettings | dict[str, Any],
         *,
         root_dir: str | Path | None = None,
+        shared_access: MmapBufferArenaExternalAccess | None = None,
     ) -> None:
-        """打开固定 arena 的非 owner 访问器。"""
+        """打开或复用固定 arena 的非 owner 访问器。"""
 
         self.settings, self.root_dir = _normalize_settings(settings, root_dir=root_dir)
-        self._access = MmapBufferArenaExternalAccess(
-            _build_config(self.settings, root_dir=self.root_dir)
-        )
+        config = _build_config(self.settings, root_dir=self.root_dir)
+        if shared_access is not None and shared_access.config != config:
+            raise ValueError("共享 LocalBuffer mmap access 的配置不匹配")
+        self._access = shared_access or MmapBufferArenaExternalAccess(config)
+        self._owns_access = shared_access is None
 
     def accepts_arena(self, arena_id: str) -> bool:
         """返回 locator 是否属于 backend 主 arena。"""
 
         return self._access.accepts_arena(arena_id)
+
+    @property
+    def shared_access(self) -> MmapBufferArenaExternalAccess:
+        """返回供同一进程 writer 复用的受控 mmap access。"""
+
+        return self._access
 
     @contextmanager
     def acquire_buffer_ref_view(
@@ -79,6 +88,22 @@ class DirectMmapLocalBufferReader:
         with self.acquire_frame_ref_view(frame_ref) as view:
             return bytes(view)
 
+    def read_owned_buffer_ref_view(self, buffer_ref: BufferRef) -> memoryview:
+        """为持有 lease 所有权的 Workflow cache 返回直接只读 view。"""
+
+        try:
+            return self._access.read_owned_view(buffer_ref)
+        except LocalBufferArenaError as error:
+            raise InvalidRequestError(str(error)) from error
+
+    def read_owned_frame_ref_view(self, frame_ref: FrameRef) -> memoryview:
+        """为持有 frame 所有权的 Workflow cache 返回直接只读 view。"""
+
+        try:
+            return self._access.read_owned_view(frame_ref)
+        except LocalBufferArenaError as error:
+            raise InvalidRequestError(str(error)) from error
+
     def get_health_summary(self) -> dict[str, object]:
         """返回 direct mmap reader 健康摘要。"""
 
@@ -91,7 +116,8 @@ class DirectMmapLocalBufferReader:
     def close(self) -> None:
         """关闭当前进程的 arena mappings。"""
 
-        self._access.close()
+        if self._owns_access:
+            self._access.close()
 
 
 class DirectMmapLocalBufferWriter:
@@ -102,13 +128,16 @@ class DirectMmapLocalBufferWriter:
         settings: LocalBufferBrokerSettings | dict[str, Any],
         *,
         root_dir: str | Path | None = None,
+        shared_access: MmapBufferArenaExternalAccess | None = None,
     ) -> None:
-        """打开固定 arena 的非 owner 访问器。"""
+        """打开或复用固定 arena 的非 owner 访问器。"""
 
         self.settings, self.root_dir = _normalize_settings(settings, root_dir=root_dir)
-        self._access = MmapBufferArenaExternalAccess(
-            _build_config(self.settings, root_dir=self.root_dir)
-        )
+        config = _build_config(self.settings, root_dir=self.root_dir)
+        if shared_access is not None and shared_access.config != config:
+            raise ValueError("共享 LocalBuffer mmap access 的配置不匹配")
+        self._access = shared_access or MmapBufferArenaExternalAccess(config)
+        self._owns_access = shared_access is None
 
     def write_lease_bytes(
         self,
@@ -152,7 +181,21 @@ class DirectMmapLocalBufferWriter:
     def close(self) -> None:
         """关闭当前进程的 arena mappings。"""
 
-        self._access.close()
+        if self._owns_access:
+            self._access.close()
+
+
+def open_direct_mmap_local_buffer_access(
+    settings: LocalBufferBrokerSettings | dict[str, Any],
+    *,
+    root_dir: str | Path | None = None,
+) -> MmapBufferArenaExternalAccess:
+    """为同一 client 打开一个可由 reader/writer 共用的 mmap access。"""
+
+    normalized, normalized_root = _normalize_settings(settings, root_dir=root_dir)
+    return MmapBufferArenaExternalAccess(
+        _build_config(normalized, root_dir=normalized_root)
+    )
 
 
 def _normalize_settings(

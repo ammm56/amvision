@@ -21,6 +21,7 @@ from backend.contracts.ipc import workflow_trigger_mailbox_v1 as mailbox_contrac
 from backend.contracts.workflows import (
     TriggerEventContract,
     WorkflowTriggerAllocationV1,
+    WorkflowTriggerEventRequestV2,
     WorkflowTriggerPrepareV1,
     WorkflowTriggerRequestV1,
 )
@@ -67,6 +68,7 @@ from backend.service.application.workflows.trigger_sources.error_classification 
     read_trigger_result_error_code,
 )
 from backend.service.application.workflows.trigger_sources.trigger_message_channel import (
+    EVENT_REQUEST_SCHEMA_ID,
     WorkflowTriggerDescriptorIdentity,
     WorkflowTriggerMailboxRequest,
     WorkflowTriggerMailboxServerPort,
@@ -95,9 +97,11 @@ class _PendingMailboxRequest:
     """保存 descriptor 外部的权威路由、permit 和 private receipt。"""
 
     identity: WorkflowTriggerDescriptorIdentity
-    prepare: WorkflowTriggerPrepareV1
+    trigger_source_id: str
+    event_id: str
     route: WorkflowTriggerRoute
     source_permit: WorkflowTriggerSourcePermit
+    prepare: WorkflowTriggerPrepareV1 | None = None
     allocation: ExternalBufferAllocation | None = None
     current_receipt: LeaseOwnershipReceipt | None = None
     trigger_event: TriggerEventContract | None = None
@@ -308,10 +312,16 @@ class WorkflowTriggerMailboxSupervisor:
         request = self.mailbox.poll_request()
         if request is not None:
             progressed = True
-            self._handle_request(
-                request,
-                request_detect_ms=_elapsed_ms(request_poll_started_at),
-            )
+            if request.request_schema_id == EVENT_REQUEST_SCHEMA_ID:
+                self._handle_event_request(
+                    request,
+                    request_detect_ms=_elapsed_ms(request_poll_started_at),
+                )
+            else:
+                self._handle_request(
+                    request,
+                    request_detect_ms=_elapsed_ms(request_poll_started_at),
+                )
         with self._pending_lock:
             active_descriptor_indexes = tuple(
                 identity.descriptor_index for identity in self._pending
@@ -401,7 +411,7 @@ class WorkflowTriggerMailboxSupervisor:
             pending = tuple(
                 item
                 for item in self._pending.values()
-                if item.prepare.trigger_source_id == trigger_source_id
+                if item.trigger_source_id == trigger_source_id
             )
             return {
                 "source_scoped": True,
@@ -512,6 +522,8 @@ class WorkflowTriggerMailboxSupervisor:
             )
             pending = _PendingMailboxRequest(
                 identity=identity,
+                trigger_source_id=prepare.trigger_source_id,
+                event_id=prepare.event_id,
                 prepare=prepare,
                 route=route,
                 source_permit=source_permit,
@@ -601,6 +613,9 @@ class WorkflowTriggerMailboxSupervisor:
             pending.timings["request_decode_validate_ms"] = _elapsed_ms(
                 request_decode_started_at
             )
+            prepare = pending.prepare
+            if prepare is None:
+                raise InvalidRequestError("Workflow Trigger 图片 PREPARE 上下文不存在")
             if pending.current_receipt is None:
                 raise InvalidRequestError("Workflow Trigger input lease receipt 不存在")
             provisional_buffer_ref = self._build_provisional_input_buffer_ref(pending)
@@ -656,7 +671,7 @@ class WorkflowTriggerMailboxSupervisor:
             commit_handoff_started_at = perf_counter()
             committed = self._require_local_buffer_client().publish_and_transfer_external_buffer(
                 receipt=pending.current_receipt,
-                media_type=pending.prepare.image.media_type,
+                media_type=prepare.image.media_type,
                 new_owner_kind="workflow-runtime",
                 new_owner_id=(
                     f"{admission.workflow_run.workflow_run_id}:"
@@ -664,10 +679,10 @@ class WorkflowTriggerMailboxSupervisor:
                     f"{request.identity.request_id.hex}"
                 ),
                 deadline_ns=request.identity.deadline_ns,
-                shape=pending.prepare.image.shape,
-                dtype=pending.prepare.image.dtype,
-                layout=pending.prepare.image.layout,
-                pixel_format=pending.prepare.image.pixel_format,
+                shape=prepare.image.shape,
+                dtype=prepare.image.dtype,
+                layout=prepare.image.layout,
+                pixel_format=prepare.image.pixel_format,
             )
             pending.timings["broker_commit_owner_handoff_ms"] = _elapsed_ms(
                 commit_handoff_started_at
@@ -717,6 +732,140 @@ class WorkflowTriggerMailboxSupervisor:
             pending.task_active = False
             self._compensate_before_worker_submit(pending, error)
             self._publish_failure(request.identity, error, pending=pending)
+
+    def _handle_event_request(
+        self,
+        request: WorkflowTriggerMailboxRequest,
+        *,
+        request_detect_ms: float,
+    ) -> None:
+        """执行 event-only v2，并明确跳过图片 PREPARE、allocation 和 input lease。"""
+
+        pending: _PendingMailboxRequest | None = None
+        source_id: str | None = None
+        request_started_at = perf_counter()
+        try:
+            event_request = WorkflowTriggerEventRequestV2.model_validate_json(
+                request.payload
+            )
+            source_id = event_request.trigger_source_id
+            route = self.routes.get_route(
+                trigger_source_id=source_id,
+                expected_generation=request.route_generation,
+            )
+            self._record_source_request(source_id)
+            identity = self.mailbox.tighten_accepted_timeout(
+                identity=request.identity,
+                timeout_ms=min(
+                    request.accepted_timeout_ms,
+                    int(route.trigger_source.reply_timeout_seconds * 1_000),
+                ),
+            )
+            source_permit = self.routes.acquire_source_permit(
+                route=route,
+                request_id=str(identity.request_id),
+            )
+            pending = _PendingMailboxRequest(
+                identity=identity,
+                trigger_source_id=source_id,
+                event_id=event_request.event_id,
+                route=route,
+                source_permit=source_permit,
+            )
+            pending.timings["mailbox_request_detect_ms"] = request_detect_ms
+            with self._pending_lock:
+                self._pending[identity] = pending
+            trigger_event = TriggerEventContract(
+                trigger_source_id=source_id,
+                trigger_kind="local-shared-memory",
+                event_id=event_request.event_id,
+                trace_id=event_request.trace_id,
+                occurred_at=datetime.now(timezone.utc).isoformat(),
+                idempotency_key=event_request.idempotency_key,
+                payload=dict(event_request.payload),
+                metadata=dict(event_request.metadata),
+            )
+            pending.trigger_event = trigger_event
+            input_binding_started_at = perf_counter()
+            input_bindings = self.input_binding_mapper.map_input_bindings(
+                trigger_source=route.trigger_source,
+                trigger_event=trigger_event,
+            )
+            submit_request = WorkflowTriggerSubmitRequest(
+                trigger_source=route.trigger_source,
+                trigger_event=trigger_event,
+                created_by=route.trigger_source.created_by,
+            )
+            pending.timings["input_binding_map_ms"] = _elapsed_ms(
+                input_binding_started_at
+            )
+            self._raise_if_request_terminal(pending)
+            remaining_ns = identity.deadline_ns - monotonic_ns()
+            if remaining_ns <= 0:
+                raise OperationTimeoutError("Workflow Trigger request deadline 已到期")
+            runtime_admission_started_at = perf_counter()
+            admission = self.runtime_service.admit_sync_workflow_run(
+                route.trigger_source.workflow_runtime_id,
+                WorkflowRuntimeInvokeRequest(
+                    input_bindings=input_bindings,
+                    execution_metadata=build_trigger_execution_metadata(submit_request),
+                    timeout_seconds=max(1, ceil(remaining_ns / 1_000_000_000)),
+                ),
+                created_by=route.trigger_source.created_by,
+                execution_acquisition_mode="reject",
+                cancellation_grace_seconds=self.cancellation_grace_seconds,
+            )
+            pending.timings["runtime_admission_ms"] = _elapsed_ms(
+                runtime_admission_started_at
+            )
+            pending.admission = admission
+            pending.cancel_event = admission.cancel_event
+            self._raise_if_request_terminal(pending)
+            executor_reserve_started_at = perf_counter()
+            executor_permit = self.executor.reserve()
+            pending.timings["executor_reserve_ms"] = _elapsed_ms(
+                executor_reserve_started_at
+            )
+            pending.executor_permit = executor_permit
+            self._raise_if_request_terminal(pending)
+            execution_metadata = dict(admission.execution_metadata)
+            response_plan = require_trigger_response_plan(route.trigger_source.metadata)
+            execution_metadata[WORKFLOW_OUTPUT_DELIVERY_PLAN_METADATA_KEY] = (
+                build_workflow_output_delivery_plan(
+                    response_plan,
+                    response_owner_kind="workflow-trigger-response",
+                    response_owner_id=_build_response_owner_id(identity),
+                    deadline_ns=identity.deadline_ns,
+                ).model_dump(mode="json")
+            )
+            pending.admission = replace(
+                admission,
+                execution_metadata=execution_metadata,
+            )
+            pending.task_active = True
+            self._raise_if_request_terminal(pending)
+            pending.timings["request_admission_submit_ms"] = _elapsed_ms(
+                request_started_at
+            )
+            executor_submit_started_at = perf_counter()
+            pending.executor_submitted_at = executor_submit_started_at
+            self.executor.submit_reserved(
+                executor_permit,
+                lambda: self._execute_pending(identity),
+            )
+            pending.timings["executor_submit_ms"] = _elapsed_ms(
+                executor_submit_started_at
+            )
+        except Exception as error:
+            if pending is not None:
+                pending.task_active = False
+                self._compensate_before_worker_submit(pending, error)
+            self._publish_failure(
+                pending.identity if pending is not None else request.identity,
+                error,
+                pending=pending,
+                source_id=source_id,
+            )
 
     def _execute_pending(self, identity: WorkflowTriggerDescriptorIdentity) -> None:
         """在有界 worker 中执行 Workflow；完成后只发布结果，不在 poller 等待。"""
@@ -920,9 +1069,15 @@ class WorkflowTriggerMailboxSupervisor:
     ) -> TriggerEventContract:
         """把 committed BufferRef 放入受 route mapping 约束的事件 payload。"""
 
+        prepare = pending.prepare
+        if prepare is None:
+            raise InvalidRequestError("Workflow Trigger 图片 PREPARE 上下文不存在")
         event_payload = dict(request.payload)
-        event_payload[pending.prepare.image.event_payload_key] = {
+        event_payload[prepare.image.event_payload_key] = {
             "transport_kind": "buffer",
+            # image-ref.v1 的公开 schema 要求顶层 media_type。BufferRef 内虽然也
+            # 保存该字段，但不能让公开输入契约依赖定位器内部的重复元数据。
+            "media_type": prepare.image.media_type,
             "buffer_ref": buffer_ref.model_dump(mode="json"),
         }
         return TriggerEventContract(
@@ -950,7 +1105,10 @@ class WorkflowTriggerMailboxSupervisor:
         if allocation is None:
             raise InvalidRequestError("Workflow Trigger input allocation 不存在")
         lease = allocation.lease
-        image = pending.prepare.image
+        prepare = pending.prepare
+        if prepare is None:
+            raise InvalidRequestError("Workflow Trigger 图片 PREPARE 上下文不存在")
+        image = prepare.image
         return BufferRef(
             buffer_id=lease.buffer_id,
             lease_id=lease.lease_id,
@@ -977,8 +1135,8 @@ class WorkflowTriggerMailboxSupervisor:
         """REQUEST 不能替换 PREPARE 已固定的 source/event。"""
 
         if (
-            request.trigger_source_id != pending.prepare.trigger_source_id
-            or request.event_id != pending.prepare.event_id
+            request.trigger_source_id != pending.trigger_source_id
+            or request.event_id != pending.event_id
         ):
             raise InvalidRequestError(
                 "Workflow Trigger REQUEST 与 PREPARE identity 不匹配"
@@ -1029,9 +1187,7 @@ class WorkflowTriggerMailboxSupervisor:
                     if pending is not None:
                         pending.outcome_recorded = True
                     resolved_source_id = source_id or (
-                        pending.prepare.trigger_source_id
-                        if pending is not None
-                        else None
+                        pending.trigger_source_id if pending is not None else None
                     )
                     if resolved_source_id is not None:
                         self._record_source_failure_locked(
@@ -1149,7 +1305,7 @@ class WorkflowTriggerMailboxSupervisor:
             with self._pending_lock:
                 if self._pending.get(identity) is pending:
                     self._pending.pop(identity, None)
-                self._prune_source_health_locked(pending.prepare.trigger_source_id)
+                self._prune_source_health_locked(pending.trigger_source_id)
                 self._latest_timings = dict(pending.timings)
 
     @staticmethod
@@ -1191,7 +1347,7 @@ class WorkflowTriggerMailboxSupervisor:
                 return
             pending.outcome_recorded = True
             source = self._source_health.setdefault(
-                pending.prepare.trigger_source_id,
+                pending.trigger_source_id,
                 _SourceMailboxHealth(),
             )
             succeeded = (
@@ -1242,7 +1398,7 @@ class WorkflowTriggerMailboxSupervisor:
         if trigger_source_id in self._registered_source_ids:
             return
         if any(
-            item.prepare.trigger_source_id == trigger_source_id
+            item.trigger_source_id == trigger_source_id
             for item in self._pending.values()
         ):
             return
@@ -1315,7 +1471,7 @@ class WorkflowTriggerMailboxSupervisor:
                 return
             pending.terminal_categories.add(category)
             source = self._source_health.setdefault(
-                pending.prepare.trigger_source_id,
+                pending.trigger_source_id,
                 _SourceMailboxHealth(),
             )
             if category == "cancelled_identities":

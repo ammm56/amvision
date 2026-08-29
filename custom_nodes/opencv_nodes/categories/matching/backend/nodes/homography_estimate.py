@@ -297,6 +297,8 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     transform_payload = build_planar_transform_payload(
         matrix_3x3=matrix_payload,
         inverse_matrix_3x3=inverse_matrix_payload,
+        source_coordinate_space="source-a-image-pixels",
+        target_coordinate_space="source-b-image-pixels",
         match_count=len(match_ids),
         inlier_count=len(inlier_match_ids),
         inlier_match_ids=inlier_match_ids,

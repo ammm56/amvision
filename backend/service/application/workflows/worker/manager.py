@@ -29,6 +29,7 @@ from backend.service.application.local_buffers import (
     LocalBufferBrokerEventChannel,
 )
 from backend.service.application.workflows.execution_cleanup import (
+    WORKFLOW_EXECUTION_CLEANUP_KIND_DATASET_STORAGE_TREE,
     WORKFLOW_EXECUTION_CLEANUP_KIND_LOCAL_BUFFER_LEASE,
     WORKFLOW_EXECUTION_TIMEOUT_SECONDS_KEY,
     build_process_safe_execution_metadata,
@@ -443,6 +444,15 @@ class WorkflowRuntimeWorkerManager:
                         "application_id": workflow_app_runtime.application_id,
                         "application_snapshot_object_key": workflow_app_runtime.application_snapshot_object_key,
                         "template_snapshot_object_key": workflow_app_runtime.template_snapshot_object_key,
+                        "contract_snapshot_object_key": workflow_app_runtime.metadata.get(
+                            "contract_snapshot_object_key"
+                        ),
+                        "dependency_manifest_object_key": workflow_app_runtime.metadata.get(
+                            "dependency_manifest_object_key"
+                        ),
+                        "workflow_app_version_id": workflow_app_runtime.metadata.get(
+                            "workflow_app_version_id"
+                        ),
                         "heartbeat_interval_seconds": workflow_app_runtime.heartbeat_interval_seconds,
                         "workflow_runtime_revision_id": resolved_revision_id,
                         "runtime_generation": resolved_generation,
@@ -868,9 +878,7 @@ class WorkflowRuntimeWorkerManager:
             while True:
                 if cancel_event is not None and cancel_event.is_set():
                     worker_response_received = self._cancel_runtime_invocation(
-                        workflow_runtime_id=(
-                            workflow_app_runtime.workflow_runtime_id
-                        ),
+                        workflow_runtime_id=(workflow_app_runtime.workflow_runtime_id),
                         handle=handle,
                         pending=pending,
                         cancellation_grace_seconds=cancellation_grace_seconds,
@@ -885,9 +893,7 @@ class WorkflowRuntimeWorkerManager:
                 remaining_seconds = deadline - monotonic()
                 if remaining_seconds <= 0:
                     worker_response_received = self._cancel_runtime_invocation(
-                        workflow_runtime_id=(
-                            workflow_app_runtime.workflow_runtime_id
-                        ),
+                        workflow_runtime_id=(workflow_app_runtime.workflow_runtime_id),
                         handle=handle,
                         pending=pending,
                         cancellation_grace_seconds=cancellation_grace_seconds,
@@ -937,10 +943,7 @@ class WorkflowRuntimeWorkerManager:
                     message_id if "message_id" in locals() else "", None
                 )
                 if "message_id" in locals():
-                    if (
-                        handle.active_run_request_ids.get(workflow_run_id)
-                        == message_id
-                    ):
+                    if handle.active_run_request_ids.get(workflow_run_id) == message_id:
                         handle.active_run_request_ids.pop(workflow_run_id, None)
                     handle.node_timeout_states.pop(workflow_run_id, None)
                     handle.active_node_invocations = {
@@ -1164,11 +1167,26 @@ class WorkflowRuntimeWorkerManager:
         self,
         execution_metadata: dict[str, object],
     ) -> int:
-        """父进程兜底释放 worker 未能执行 cleanup 的 LocalBufferBroker lease。"""
+        """父进程兜底清理 worker 未能执行的输入资源。"""
+
+        cleanup_items_snapshot = list_registered_execution_cleanups(execution_metadata)
+        for cleanup_item in cleanup_items_snapshot:
+            if (
+                cleanup_item.resource_kind
+                == WORKFLOW_EXECUTION_CLEANUP_KIND_DATASET_STORAGE_TREE
+            ):
+                try:
+                    self.dataset_storage.delete_tree(cleanup_item.resource_id)
+                except Exception as exc:
+                    LOGGER.warning(
+                        "父进程清理 Workflow 输入目录失败: object_key=%s error=%s",
+                        cleanup_item.resource_id,
+                        exc,
+                    )
 
         cleanup_items = tuple(
             item
-            for item in list_registered_execution_cleanups(execution_metadata)
+            for item in cleanup_items_snapshot
             if item.resource_kind == WORKFLOW_EXECUTION_CLEANUP_KIND_LOCAL_BUFFER_LEASE
         )
         if not cleanup_items:
@@ -1182,9 +1200,7 @@ class WorkflowRuntimeWorkerManager:
             return 0
         released_count = 0
         for cleanup_item in cleanup_items:
-            ownership_receipt_payload = cleanup_item.metadata.get(
-                "ownership_receipt"
-            )
+            ownership_receipt_payload = cleanup_item.metadata.get("ownership_receipt")
             try:
                 if isinstance(ownership_receipt_payload, dict):
                     client.conditional_release(
@@ -1753,9 +1769,7 @@ class WorkflowRuntimeWorkerManager:
                 "current_run_id": None,
                 "started_at": latest_state.started_at if latest_state else None,
                 "heartbeat_at": now_isoformat(),
-                "loaded_snapshot_fingerprint": (
-                    handle.expected_snapshot_fingerprint
-                ),
+                "loaded_snapshot_fingerprint": (handle.expected_snapshot_fingerprint),
                 "last_error": None,
                 "health_summary": (
                     dict(latest_state.health_summary) if latest_state else {}
@@ -1939,8 +1953,7 @@ class WorkflowRuntimeWorkerManager:
                 if request_id is None:
                     continue
                 force_deadline = (
-                    invocation.deadline_monotonic
-                    + invocation.kill_grace_seconds
+                    invocation.deadline_monotonic + invocation.kill_grace_seconds
                 )
                 existing_timeout = handle.node_timeout_states.get(
                     invocation.workflow_run_id
@@ -2506,9 +2519,7 @@ class WorkflowRuntimeWorkerManager:
                         handle.workflow_runtime_revision_id or ""
                     ),
                     runtime_generation=handle.runtime_generation,
-                    snapshot_fingerprint=(
-                        handle.expected_snapshot_fingerprint or ""
-                    ),
+                    snapshot_fingerprint=(handle.expected_snapshot_fingerprint or ""),
                     worker_instance_id=handle.worker_instance_id or "",
                     acquisition_mode=acquisition_mode,
                     acquired_at_monotonic=monotonic(),
@@ -2554,9 +2565,7 @@ class WorkflowRuntimeWorkerManager:
             if handle.active_execution_token_id != token.token_id:
                 return False
             execution_tokens.pop(token.token_id, None)
-            token_ids_by_runtime = getattr(
-                self, "_execution_token_ids_by_runtime", {}
-            )
+            token_ids_by_runtime = getattr(self, "_execution_token_ids_by_runtime", {})
             runtime_token_ids = token_ids_by_runtime.get(token.workflow_runtime_id)
             if runtime_token_ids is not None:
                 runtime_token_ids.discard(token.token_id)
@@ -2603,8 +2612,7 @@ class WorkflowRuntimeWorkerManager:
                 registered is not token
                 or current_handle is not token._handle
                 or token._handle.active_execution_token_id != token.token_id
-                or token.workflow_runtime_id
-                != workflow_app_runtime.workflow_runtime_id
+                or token.workflow_runtime_id != workflow_app_runtime.workflow_runtime_id
                 or token.workflow_run_id != workflow_run_id
             ):
                 raise ResourceConflictError(

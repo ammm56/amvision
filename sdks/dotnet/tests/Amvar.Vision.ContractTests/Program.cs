@@ -44,6 +44,8 @@ namespace Amvar.Vision.ContractTests
             VerifyLocalBufferMappingCache();
             VerifyWorkflowTriggerHealthResponse();
             VerifyAutomaticConfigurationRequiresAsyncFactory();
+            VerifyWorkflowAppContractV1V2();
+            await VerifyWorkflowRequestBuilderStreamingAsync().ConfigureAwait(false);
             await VerifyCreateSelectorAsync().ConfigureAwait(false);
             await VerifySelectVersionRequestAsync().ConfigureAwait(false);
             await VerifyVersionArchiveRestoreAsync().ConfigureAwait(false);
@@ -135,6 +137,150 @@ namespace Amvar.Vision.ContractTests
             finally
             {
                 Directory.Delete(root, true);
+            }
+        }
+
+        private static void VerifyWorkflowAppContractV1V2()
+        {
+            var legacy = JsonConvert.DeserializeObject<WorkflowAppContract>(@"{
+                ""format_id"":""amvision.workflow-app-contract.v1"",
+                ""application_id"":""legacy-app"",
+                ""inputs"":[{""binding_id"":""request_value"",""payload_type_id"":""value.v1""}],
+                ""outputs"":[]
+            }");
+            Assert(legacy != null, "v1 App Contract must deserialize");
+            legacy!.Validate("legacy");
+
+            var current = JsonConvert.DeserializeObject<WorkflowAppContract>(@"{
+                ""format_id"":""amvision.workflow-app-contract.v2"",
+                ""application_id"":""current-app"",
+                ""inputs"":[{
+                    ""binding_id"":""request_file"",
+                    ""payload_type_id"":""file-ref.v1"",
+                    ""required"":true,
+                    ""payload_schema"":{""type"":""object""},
+                    ""request_schema"":{},
+                    ""allowed_media_types"":[""application/json""],
+                    ""max_file_bytes"":1024,
+                    ""max_files"":1,
+                    ""transports"":[""json-reference"",""multipart-upload""]
+                }],
+                ""outputs"":[]
+            }");
+            Assert(current != null, "v2 App Contract must deserialize");
+            current!.Validate("current");
+            AssertEqual(1024L, current.Inputs[0].MaxFileBytes, "v2 max file bytes");
+        }
+
+        private static async Task VerifyWorkflowRequestBuilderStreamingAsync()
+        {
+            var contract = JsonConvert.DeserializeObject<WorkflowAppContract>(@"{
+                ""format_id"":""amvision.workflow-app-contract.v2"",
+                ""application_id"":""stream-app"",
+                ""inputs"":[{
+                    ""binding_id"":""request_file"",
+                    ""payload_type_id"":""file-ref.v1"",
+                    ""required"":true,
+                    ""payload_schema"":{""type"":""object""},
+                    ""allowed_media_types"":[""application/json""],
+                    ""max_file_bytes"":1024,
+                    ""max_files"":1,
+                    ""transports"":[""multipart-upload""]
+                },{
+                    ""binding_id"":""request_json"",
+                    ""payload_type_id"":""value.v1"",
+                    ""required"":false,
+                    ""payload_schema"":{""type"":""object""},
+                    ""max_inline_bytes"":24,
+                    ""transports"":[""json""]
+                }],
+                ""outputs"":[]
+            }")!;
+            TrackingMemoryStream? openedStream = null;
+            var request = new WorkflowRequestBuilder(contract)
+                .AddFile(
+                    "request_file",
+                    () => openedStream = new TrackingMemoryStream(Encoding.UTF8.GetBytes("{\"ok\":true}")),
+                    "request.json",
+                    "application/json",
+                    contentLength: 11)
+                .Build();
+
+            using (var content = request.ToMultipartContent())
+            {
+                Assert(openedStream != null, "stream factory must run when HTTP content is created");
+                AssertEqual(0L, openedStream!.Position, "stream must not be copied while building multipart content");
+                var bytes = await content.ReadAsByteArrayAsync().ConfigureAwait(false);
+                Assert(bytes.Length > 11, "multipart body must contain streamed file content");
+                AssertEqual(openedStream.Length, openedStream.Position, "HTTP serialization must consume the source stream");
+            }
+            Assert(openedStream!.Disposed, "disposing multipart content must close the upload stream");
+
+            try
+            {
+                new WorkflowRequestBuilder(contract)
+                    .AddFile(
+                        "request_file",
+                        () => new MemoryStream(new byte[2048]),
+                        "oversize.json",
+                        "application/json",
+                        2048);
+                throw new InvalidOperationException("contract file limit must reject oversized input");
+            }
+            catch (InvalidOperationException error)
+            {
+                Assert(error.Message.Contains("exceeds"), "oversized file rejection must be explicit");
+            }
+
+            try
+            {
+                new WorkflowRequestBuilder(contract)
+                    .AddJson("request_json", new string('x', 64));
+                throw new InvalidOperationException("contract inline limit must reject oversized input");
+            }
+            catch (InvalidOperationException error)
+            {
+                Assert(error.Message.Contains("exceeds"), "oversized inline rejection must be explicit");
+            }
+
+            try
+            {
+                new WorkflowRequestBuilder(contract)
+                    .AddFile(
+                        "request_file",
+                        () => new MemoryStream(new byte[11]),
+                        "first.json",
+                        "application/json",
+                        11)
+                    .AddFile(
+                        "request_file",
+                        () => new MemoryStream(new byte[11]),
+                        "second.json",
+                        "application/json",
+                        11);
+                throw new InvalidOperationException("duplicate single-file binding must be rejected");
+            }
+            catch (InvalidOperationException error)
+            {
+                Assert(error.Message.Contains("already supplied"), "duplicate binding rejection must be explicit");
+            }
+
+            var changedLengthRequest = new WorkflowRequestBuilder(contract)
+                .AddFile(
+                    "request_file",
+                    () => new MemoryStream(new byte[12]),
+                    "changed.json",
+                    "application/json",
+                    11)
+                .Build();
+            try
+            {
+                using var content = changedLengthRequest.ToMultipartContent();
+                throw new InvalidOperationException("changed stream length must be rejected before sending");
+            }
+            catch (InvalidOperationException error)
+            {
+                Assert(error.Message.Contains("length changed"), "changed stream length rejection must be explicit");
             }
         }
 
@@ -742,6 +888,76 @@ namespace Amvar.Vision.ContractTests
             {
                 throw new InvalidOperationException(
                     field + " mismatch. Expected: " + expected + "; actual: " + actual + ".");
+            }
+        }
+
+        private sealed class TrackingMemoryStream : Stream
+        {
+            private readonly MemoryStream inner;
+
+            internal TrackingMemoryStream(byte[] buffer)
+            {
+                inner = new MemoryStream(buffer, writable: false);
+            }
+
+            internal int ReadCount { get; private set; }
+
+            internal bool Disposed { get; private set; }
+
+            public override bool CanRead => inner.CanRead;
+
+            public override bool CanSeek => inner.CanSeek;
+
+            public override bool CanWrite => false;
+
+            public override long Length => inner.Length;
+
+            public override long Position
+            {
+                get => inner.Position;
+                set => inner.Position = value;
+            }
+
+            public override void Flush()
+            {
+            }
+
+            public override int Read(byte[] buffer, int offset, int count)
+            {
+                ReadCount++;
+                return inner.Read(buffer, offset, count);
+            }
+
+            public override Task<int> ReadAsync(
+                byte[] buffer,
+                int offset,
+                int count,
+                CancellationToken cancellationToken)
+            {
+                ReadCount++;
+                return inner.ReadAsync(buffer, offset, count, cancellationToken);
+            }
+
+            public override long Seek(long offset, SeekOrigin origin)
+            {
+                return inner.Seek(offset, origin);
+            }
+
+            public override void SetLength(long value)
+            {
+                throw new NotSupportedException();
+            }
+
+            public override void Write(byte[] buffer, int offset, int count)
+            {
+                throw new NotSupportedException();
+            }
+
+            protected override void Dispose(bool disposing)
+            {
+                Disposed = true;
+                if (disposing) inner.Dispose();
+                base.Dispose(disposing);
             }
         }
 

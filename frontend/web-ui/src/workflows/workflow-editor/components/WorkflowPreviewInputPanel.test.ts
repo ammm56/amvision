@@ -20,12 +20,15 @@ const state: PreviewInputState = {
   payloadTypeId: 'image-ref.v1',
   valueFields: [],
   file: null,
+  files: [],
   mediaType: '',
   imageRefTransportKind: 'storage',
   objectKey: '',
   localPath: '',
   imageHandle: '',
   plainValue: '',
+  jsonValue: '',
+  textValue: '',
 }
 
 function mountPanel(

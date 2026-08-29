@@ -10,14 +10,25 @@ from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
-from backend.contracts.workflows.workflow_graph import FlowApplication, WorkflowGraphTemplate
+from backend.contracts.workflows.workflow_graph import (
+    FlowApplication,
+    FlowApplicationBinding,
+    FlowTemplateReference,
+    WorkflowGraphEdge,
+    WorkflowGraphInput,
+    WorkflowGraphNode,
+    WorkflowGraphOutput,
+    WorkflowGraphTemplate,
+)
 from backend.service.application.local_buffers import LocalBufferBrokerSettings
 from backend.service.application.errors import ServiceConfigurationError
 from backend.service.api.app import create_app
 from backend.service.api.rest.v1.routes.workflow_runtime_support.services import (
     build_workflow_runtime_service as _build_workflow_runtime_service,
 )
-from backend.service.application.workflows.workflow_service import LocalWorkflowJsonService
+from backend.service.application.workflows.workflow_service import (
+    LocalWorkflowJsonService,
+)
 from backend.service.settings import (
     BackendServiceCustomNodesConfig,
     BackendServiceDatabaseConfig,
@@ -27,7 +38,11 @@ from backend.service.settings import (
     BackendServiceWorkflowRuntimeConfig,
 )
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
-from tests.api_test_support import build_test_headers, build_valid_test_png_bytes, create_test_runtime
+from tests.api_test_support import (
+    build_test_headers,
+    build_valid_test_png_bytes,
+    create_test_runtime,
+)
 from tests.test_workflow_barcode_nodes import _build_mixed_barcode_test_png_bytes
 from tests.workflow_test_timing import WORKFLOW_TEST_WAIT_TIMEOUT_SECONDS
 
@@ -63,7 +78,9 @@ def test_workflow_app_runtime_invoke_api_accepts_image_base64_for_barcode_result
                 headers=headers,
                 json={
                     "input_bindings": {
-                        "request_image_base64": _build_image_base64_payload(_build_mixed_barcode_test_png_bytes())
+                        "request_image_base64": _build_image_base64_payload(
+                            _build_mixed_barcode_test_png_bytes()
+                        )
                     },
                     "execution_metadata": {
                         "scenario": "barcode-result-display-api",
@@ -93,7 +110,9 @@ def test_workflow_app_runtime_invoke_api_accepts_image_base64_for_barcode_result
     response_payload = run_payload["outputs"]["http_response"]
     response_body = response_payload["body"]
     response_data = response_body["data"]
-    persisted_response_data = persisted_run_payload["outputs"]["http_response"]["body"]["data"]
+    persisted_response_data = persisted_run_payload["outputs"]["http_response"]["body"][
+        "data"
+    ]
 
     assert run_payload["state"] == "succeeded"
     assert response_payload["status_code"] == 200
@@ -101,10 +120,15 @@ def test_workflow_app_runtime_invoke_api_accepts_image_base64_for_barcode_result
     assert response_body["message"] == "decoded"
     assert response_data["count"] == 2
     assert set(response_data["matched_formats"]) == {"QR Code", "Code 128"}
-    assert response_data["annotated_image"]["image"]["transport_kind"] == "inline-base64"
+    assert (
+        response_data["annotated_image"]["image"]["transport_kind"] == "inline-base64"
+    )
     assert isinstance(response_data["annotated_image"]["image"]["image_base64"], str)
     assert response_data["annotated_image"]["image"]["image_base64"]
-    assert persisted_response_data["annotated_image"]["image"]["image_base64_redacted"] is True
+    assert (
+        persisted_response_data["annotated_image"]["image"]["image_base64_redacted"]
+        is True
+    )
     assert "image_base64" not in persisted_response_data["annotated_image"]["image"]
 
 
@@ -138,7 +162,9 @@ def test_workflow_app_runtime_invoke_api_default_response_returns_public_app_res
                 headers=headers,
                 json={
                     "input_bindings": {
-                        "request_image_base64": _build_image_base64_payload(_build_mixed_barcode_test_png_bytes())
+                        "request_image_base64": _build_image_base64_payload(
+                            _build_mixed_barcode_test_png_bytes()
+                        )
                     },
                     "execution_metadata": {
                         "scenario": "barcode-result-display-public-result",
@@ -197,7 +223,9 @@ def test_workflow_app_runtime_run_query_default_response_returns_public_app_resu
                 headers=headers,
                 json={
                     "input_bindings": {
-                        "request_image_base64": _build_image_base64_payload(_build_mixed_barcode_test_png_bytes())
+                        "request_image_base64": _build_image_base64_payload(
+                            _build_mixed_barcode_test_png_bytes()
+                        )
                     },
                     "execution_metadata": {
                         "scenario": "barcode-result-display-run-query",
@@ -273,7 +301,9 @@ def test_workflow_app_runtime_async_run_query_returns_raw_public_image_without_p
                 headers=headers,
                 json={
                     "input_bindings": {
-                        "request_image_base64": _build_image_base64_payload(_build_mixed_barcode_test_png_bytes())
+                        "request_image_base64": _build_image_base64_payload(
+                            _build_mixed_barcode_test_png_bytes()
+                        )
                     },
                     "execution_metadata": {
                         "scenario": "barcode-result-display-async-result",
@@ -321,7 +351,9 @@ def test_workflow_app_runtime_async_run_query_returns_raw_public_image_without_p
     assert annotated_image["image_base64"]
     assert "image_base64_redacted" not in annotated_image
 
-    persisted_image = run_response.json()["outputs"]["http_response"]["body"]["data"]["annotated_image"]["image"]
+    persisted_image = run_response.json()["outputs"]["http_response"]["body"]["data"][
+        "annotated_image"
+    ]["image"]
     assert persisted_image["image_base64_redacted"] is True
     assert "image_base64" not in persisted_image
 
@@ -360,7 +392,9 @@ def test_workflow_app_runtime_async_run_query_uses_persisted_result_when_raw_cac
                 headers=headers,
                 json={
                     "input_bindings": {
-                        "request_image_base64": _build_image_base64_payload(_build_mixed_barcode_test_png_bytes())
+                        "request_image_base64": _build_image_base64_payload(
+                            _build_mixed_barcode_test_png_bytes()
+                        )
                     },
                     "execution_metadata": {
                         "scenario": "barcode-result-display-async-result-cache-disabled",
@@ -427,7 +461,9 @@ def test_workflow_app_runtime_invoke_api_accepts_image_base64_for_opencv_process
                 headers=headers,
                 json={
                     "input_bindings": {
-                        "request_image_base64": _build_image_base64_payload(build_valid_test_png_bytes())
+                        "request_image_base64": _build_image_base64_payload(
+                            build_valid_test_png_bytes()
+                        )
                     },
                     "execution_metadata": {
                         "scenario": "opencv-process-save-image-api",
@@ -488,7 +524,9 @@ def test_workflow_app_runtime_invoke_api_accepts_image_base64_for_dual_input_ope
                 headers=headers,
                 json={
                     "input_bindings": {
-                        "request_image_base64": _build_image_base64_payload(build_valid_test_png_bytes())
+                        "request_image_base64": _build_image_base64_payload(
+                            build_valid_test_png_bytes()
+                        )
                     },
                     "execution_metadata": {
                         "scenario": "opencv-process-save-image-zeromq",
@@ -592,7 +630,9 @@ def test_workflow_app_runtime_invoke_api_invalid_image_base64_keeps_runtime_runn
 
     second_start_payload = second_start_response.json()
     assert second_start_payload["observed_state"] == "running"
-    assert second_start_payload["worker_process_id"] == health_payload["worker_process_id"]
+    assert (
+        second_start_payload["worker_process_id"] == health_payload["worker_process_id"]
+    )
 
 
 def test_workflow_app_runtime_invoke_api_invalid_image_content_keeps_runtime_running_for_dual_input_opencv_process_save_image(
@@ -625,7 +665,9 @@ def test_workflow_app_runtime_invoke_api_invalid_image_content_keeps_runtime_run
                 headers=headers,
                 json={
                     "input_bindings": {
-                        "request_image_base64": _build_image_base64_payload(b"not-a-valid-image-content")
+                        "request_image_base64": _build_image_base64_payload(
+                            b"not-a-valid-image-content"
+                        )
                     },
                     "execution_metadata": {
                         "scenario": "opencv-process-save-image-zeromq-invalid-image-content",
@@ -692,7 +734,9 @@ def test_workflow_app_runtime_invoke_api_invalid_image_content_keeps_runtime_run
                 headers=headers,
                 json={
                     "input_bindings": {
-                        "request_image_base64": _build_image_base64_payload(b"not-a-valid-image-content")
+                        "request_image_base64": _build_image_base64_payload(
+                            b"not-a-valid-image-content"
+                        )
                     },
                     "execution_metadata": {
                         "scenario": "barcode-result-display-invalid-image-content",
@@ -911,12 +955,331 @@ def test_workflow_app_runtime_invoke_upload_rejects_image_file_for_non_dataset_p
     assert stop_response.status_code == 200
 
     error_payload = invoke_response.json()["error"]
-    assert error_payload["code"] == "invalid_request"
-    assert error_payload["message"] == "当前 multipart 上传入口仅支持 dataset-package.v1 输入绑定"
+    assert error_payload["code"] == "workflow_input_payload_schema_invalid"
+    assert (
+        error_payload["message"] == "当前 payload type 不支持 multipart 文件 transport"
+    )
     assert error_payload["details"] == {
         "binding_id": "request_image_base64",
         "payload_type_id": "image-base64.v1",
     }
+
+
+def test_runtime_multipart_streams_single_and_ordered_files_then_cleans_inputs(
+    tmp_path: Path,
+) -> None:
+    """同步单文件和异步多文件共用流式发布，并在执行结束清理输入目录。"""
+
+    client, session_factory, dataset_storage = _create_runtime_api_client(
+        tmp_path,
+        database_name="workflow-runtime-stream-files.db",
+        enable_local_buffer_broker=False,
+    )
+    headers = build_test_headers(scopes="workflows:read,workflows:write")
+    workflow_service = LocalWorkflowJsonService(
+        dataset_storage=dataset_storage,
+        node_catalog_registry=client.app.state.node_catalog_registry,
+    )
+    single_template, single_application = _build_file_metadata_application(
+        multiple=False
+    )
+    files_template, files_application = _build_file_metadata_application(multiple=True)
+    workflow_service.save_template(project_id="project-1", template=single_template)
+    workflow_service.save_application(
+        project_id="project-1", application=single_application
+    )
+    workflow_service.save_template(project_id="project-1", template=files_template)
+    workflow_service.save_application(
+        project_id="project-1", application=files_application
+    )
+    try:
+        with client:
+            single_runtime_id = _create_and_start_runtime(
+                client=client,
+                headers=headers,
+                application_id=single_application.application_id,
+                display_name="Single File Runtime",
+            )
+            conflict_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{single_runtime_id}/invoke/upload",
+                headers=headers,
+                data={
+                    "input_bindings_json": json.dumps(
+                        {"request_file": {"unexpected": True}}
+                    )
+                },
+                files={
+                    "request_file": (
+                        "recipe.json",
+                        b"{}",
+                        "application/json",
+                    )
+                },
+            )
+            rejected_media_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{single_runtime_id}/invoke/upload",
+                headers=headers,
+                files={
+                    "request_file": (
+                        "recipe.txt",
+                        b"text",
+                        "text/plain",
+                    )
+                },
+            )
+            single_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{single_runtime_id}/invoke/upload",
+                params={"response_mode": "run"},
+                headers=headers,
+                files={
+                    "request_file": (
+                        "recipe.json",
+                        b'{"threshold":0.7}',
+                        "application/json",
+                    )
+                },
+            )
+            assert (
+                client.post(
+                    f"/api/v1/workflows/app-runtimes/{single_runtime_id}/stop",
+                    headers=headers,
+                ).status_code
+                == 200
+            )
+
+            files_runtime_id = _create_and_start_runtime(
+                client=client,
+                headers=headers,
+                application_id=files_application.application_id,
+                display_name="Files Runtime",
+            )
+            partial_failure_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{files_runtime_id}/runs/upload",
+                headers=headers,
+                files=[
+                    ("request_files", ("a.txt", b"a", "text/plain")),
+                    (
+                        "request_files",
+                        ("wrong.json", b"{}", "application/json"),
+                    ),
+                ],
+            )
+            files_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{files_runtime_id}/runs/upload",
+                headers=headers,
+                files=[
+                    ("request_files", ("a.txt", b"a", "text/plain")),
+                    ("request_files", ("b.txt", b"bb", "text/plain")),
+                ],
+            )
+            assert files_response.status_code == 201, files_response.text
+            files_run = _wait_for_workflow_run(
+                client=client,
+                headers=headers,
+                workflow_run_id=files_response.json()["workflow_run_id"],
+            )
+            assert (
+                client.post(
+                    f"/api/v1/workflows/app-runtimes/{files_runtime_id}/stop",
+                    headers=headers,
+                ).status_code
+                == 200
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert single_response.status_code == 200
+    assert conflict_response.status_code == 400
+    assert conflict_response.json()["error"]["code"] == (
+        "workflow_input_multipart_binding_conflict"
+    )
+    assert rejected_media_response.status_code == 400
+    assert rejected_media_response.json()["error"]["code"] == (
+        "workflow_input_file_media_type_rejected"
+    )
+    assert single_response.json()["outputs"]["metadata"]["value"]["file_name"] == (
+        "recipe.json"
+    )
+    assert single_response.json()["outputs"]["metadata"]["value"][
+        "content_length"
+    ] == len(b'{"threshold":0.7}')
+    assert files_response.status_code == 201
+    assert partial_failure_response.status_code == 400
+    assert partial_failure_response.json()["error"]["code"] == (
+        "workflow_input_file_media_type_rejected"
+    )
+    assert files_run["state"] == "succeeded"
+    assert files_run["outputs"]["metadata"]["value"]["file_name"] == "b.txt"
+    assert files_run["outputs"]["metadata"]["value"]["content_length"] == 2
+    runtime_inputs_root = dataset_storage.resolve("workflows/runtime-inputs")
+    assert not runtime_inputs_root.exists() or not tuple(
+        runtime_inputs_root.rglob("content.*")
+    )
+
+
+def test_preview_multipart_streams_ordered_files_and_cleans_inputs(
+    tmp_path: Path,
+) -> None:
+    """Preview 复用同名 binding、多文件顺序和流式临时对象清理规则。"""
+
+    client, session_factory, dataset_storage = _create_runtime_api_client(
+        tmp_path,
+        database_name="workflow-preview-stream-files.db",
+        enable_local_buffer_broker=False,
+    )
+    headers = build_test_headers(scopes="workflows:read,workflows:write")
+    workflow_service = LocalWorkflowJsonService(
+        dataset_storage=dataset_storage,
+        node_catalog_registry=client.app.state.node_catalog_registry,
+    )
+    template, application = _build_file_metadata_application(multiple=True)
+    workflow_service.save_template(project_id="project-1", template=template)
+    workflow_service.save_application(
+        project_id="project-1", application=application
+    )
+    try:
+        with client:
+            response = client.post(
+                "/api/v1/workflows/preview-runs/multipart",
+                headers=headers,
+                data={
+                    "request": json.dumps(
+                        {
+                            "project_id": "project-1",
+                            "application_ref": {
+                                "application_id": application.application_id
+                            },
+                            "input_bindings": {},
+                            "execution_metadata": {
+                                "scenario": "typed-preview-files"
+                            },
+                        }
+                    )
+                },
+                files=[
+                    ("request_files", ("a.txt", b"a", "text/plain")),
+                    ("request_files", ("b.txt", b"bb", "text/plain")),
+                ],
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert response.status_code == 201, response.text
+    payload = response.json()
+    assert payload["state"] == "succeeded"
+    assert payload["outputs"]["metadata"]["value"]["file_name"] == "b.txt"
+    assert payload["outputs"]["metadata"]["value"]["content_length"] == 2
+    runtime_inputs_root = dataset_storage.resolve("workflows/runtime-inputs")
+    assert not runtime_inputs_root.exists() or not tuple(
+        runtime_inputs_root.rglob("content.*")
+    )
+
+
+def _build_file_metadata_application(
+    *,
+    multiple: bool,
+) -> tuple[WorkflowGraphTemplate, FlowApplication]:
+    """构造验证单文件或有序多文件输入的通用应用。"""
+
+    suffix = "files" if multiple else "file"
+    nodes = [
+        WorkflowGraphNode(
+            node_id="input",
+            node_type_id=(
+                "core.io.template-input.files"
+                if multiple
+                else "core.io.template-input.file"
+            ),
+        )
+    ]
+    edges: list[WorkflowGraphEdge] = []
+    metadata_source_node_id = "input"
+    metadata_source_port = "file"
+    if multiple:
+        nodes.append(
+            WorkflowGraphNode(
+                node_id="item",
+                node_type_id="core.logic.file-refs-get-item",
+                parameters={"index": 1},
+            )
+        )
+        edges.append(
+            WorkflowGraphEdge(
+                edge_id="input-item",
+                source_node_id="input",
+                source_port="files",
+                target_node_id="item",
+                target_port="files",
+            )
+        )
+        metadata_source_node_id = "item"
+    nodes.append(
+        WorkflowGraphNode(node_id="metadata", node_type_id="core.io.file-metadata")
+    )
+    edges.append(
+        WorkflowGraphEdge(
+            edge_id="file-metadata",
+            source_node_id=metadata_source_node_id,
+            source_port=metadata_source_port,
+            target_node_id="metadata",
+            target_port="file",
+        )
+    )
+    template = WorkflowGraphTemplate(
+        template_id=f"multipart-{suffix}-template",
+        template_version="1.0.0",
+        display_name=f"Multipart {suffix.title()} Template",
+        nodes=tuple(nodes),
+        edges=tuple(edges),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id=f"{suffix}_payload",
+                display_name=suffix.title(),
+                payload_type_id="file-refs.v1" if multiple else "file-ref.v1",
+                target_node_id="input",
+                target_port="payload",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="metadata",
+                display_name="Metadata",
+                payload_type_id="value.v1",
+                source_node_id="metadata",
+                source_port="metadata",
+            ),
+        ),
+    )
+    application = FlowApplication(
+        application_id=f"multipart-{suffix}-app",
+        display_name=f"Multipart {suffix.title()} App",
+        template_ref=FlowTemplateReference(
+            template_id=template.template_id,
+            template_version=template.template_version,
+            source_uri=f"templates/{template.template_id}/1.0.0.json",
+        ),
+        bindings=(
+            FlowApplicationBinding(
+                binding_id="request_files" if multiple else "request_file",
+                direction="input",
+                template_port_id=f"{suffix}_payload",
+                binding_kind="api-request",
+                config={
+                    "allowed_media_types": [
+                        "text/plain" if multiple else "application/json"
+                    ]
+                },
+            ),
+            FlowApplicationBinding(
+                binding_id="metadata",
+                direction="output",
+                template_port_id="metadata",
+                binding_kind="http-response",
+            ),
+        ),
+        metadata={"project_id": "project-1"},
+    )
+    return template, application
 
 
 def _create_runtime_api_client(
@@ -936,10 +1299,16 @@ def _create_runtime_api_client(
     application = create_app(
         settings=BackendServiceSettings(
             database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
-            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            dataset_storage=BackendServiceDatasetStorageConfig(
+                root_dir=str(dataset_storage.root_dir)
+            ),
             queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
-            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
-            local_buffer_broker=LocalBufferBrokerSettings(enabled=enable_local_buffer_broker),
+            custom_nodes=BackendServiceCustomNodesConfig(
+                root_dir=str(custom_nodes_root_dir)
+            ),
+            local_buffer_broker=LocalBufferBrokerSettings(
+                enabled=enable_local_buffer_broker
+            ),
             workflow_runtime=workflow_runtime or BackendServiceWorkflowRuntimeConfig(),
         ),
         session_factory=session_factory,
@@ -967,15 +1336,25 @@ def _save_example_documents(
     return template, application
 
 
-def _load_example_documents(example_name: str) -> tuple[WorkflowGraphTemplate, FlowApplication]:
+def _load_example_documents(
+    example_name: str,
+) -> tuple[WorkflowGraphTemplate, FlowApplication]:
     """加载指定 workflow 示例的 template 与 application 文档。"""
 
-    example_dir = Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    example_dir = (
+        Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    )
     template = WorkflowGraphTemplate.model_validate(
-        json.loads((example_dir / f"{example_name}.template.json").read_text(encoding="utf-8"))
+        json.loads(
+            (example_dir / f"{example_name}.template.json").read_text(encoding="utf-8")
+        )
     )
     application = FlowApplication.model_validate(
-        json.loads((example_dir / f"{example_name}.application.json").read_text(encoding="utf-8"))
+        json.loads(
+            (example_dir / f"{example_name}.application.json").read_text(
+                encoding="utf-8"
+            )
+        )
     )
     return template, application
 

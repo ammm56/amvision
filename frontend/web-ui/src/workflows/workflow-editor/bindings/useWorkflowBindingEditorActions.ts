@@ -63,6 +63,89 @@ export function useWorkflowBindingEditorActions(options: WorkflowBindingEditorAc
     options.setStatusMessage(translate('workflowEditor.feedback.requiredStateUpdated'))
   }
 
+  function updateBindingDescriptionFromEvent(binding: FlowApplicationBinding, event: Event): void {
+    const target = event.target
+    if (!(target instanceof HTMLTextAreaElement) && !(target instanceof HTMLInputElement)) return
+    const description = target.value.trim()
+    binding.metadata = { ...binding.metadata }
+    if (description) binding.metadata.description = description
+    else delete binding.metadata.description
+    options.setStatusMessage(translate('workflowEditor.feedback.bindingPolicyUpdated'))
+    options.setErrorMessage(null)
+  }
+
+  function updateBindingRequestSchemaFromEvent(binding: FlowApplicationBinding, event: Event): void {
+    const target = event.target
+    if (!(target instanceof HTMLTextAreaElement)) return
+    const source = target.value.trim()
+    if (!source) {
+      removeBindingConfigField(binding, 'request_schema')
+      options.setStatusMessage(translate('workflowEditor.feedback.bindingPolicyUpdated'))
+      options.setErrorMessage(null)
+      return
+    }
+    try {
+      const schema = JSON.parse(source) as unknown
+      if (!schema || typeof schema !== 'object' || Array.isArray(schema)) throw new Error()
+      binding.config = { ...binding.config, request_schema: schema }
+      target.value = JSON.stringify(schema, null, 2)
+      options.setStatusMessage(translate('workflowEditor.feedback.bindingPolicyUpdated'))
+      options.setErrorMessage(null)
+    } catch {
+      options.setErrorMessage(translate('workflowEditor.feedback.requestSchemaInvalid'))
+    }
+  }
+
+  function updateBindingMediaTypesFromEvent(binding: FlowApplicationBinding, event: Event): void {
+    const target = event.target
+    if (!(target instanceof HTMLInputElement)) return
+    const mediaTypes = target.value
+      .split(',')
+      .map((value) => value.trim().toLowerCase())
+      .filter(Boolean)
+    if (mediaTypes.length > 0) binding.config = { ...binding.config, allowed_media_types: [...new Set(mediaTypes)] }
+    else removeBindingConfigField(binding, 'allowed_media_types')
+    target.value = mediaTypes.join(', ')
+    options.setStatusMessage(translate('workflowEditor.feedback.bindingPolicyUpdated'))
+    options.setErrorMessage(null)
+  }
+
+  function updateBindingCharsetFromEvent(binding: FlowApplicationBinding, event: Event): void {
+    const target = event.target
+    if (!(target instanceof HTMLInputElement)) return
+    const charset = target.value.trim().toLowerCase()
+    if (charset) binding.config = { ...binding.config, charset }
+    else removeBindingConfigField(binding, 'charset')
+    target.value = charset
+    options.setStatusMessage(translate('workflowEditor.feedback.bindingPolicyUpdated'))
+    options.setErrorMessage(null)
+  }
+
+  function updateBindingPositiveLimitFromEvent(
+    binding: FlowApplicationBinding,
+    fieldName: 'max_inline_bytes' | 'max_file_bytes' | 'max_files',
+    event: Event,
+  ): void {
+    const target = event.target
+    if (!(target instanceof HTMLInputElement)) return
+    const source = target.value.trim()
+    if (!source) {
+      removeBindingConfigField(binding, fieldName)
+      options.setStatusMessage(translate('workflowEditor.feedback.bindingPolicyUpdated'))
+      options.setErrorMessage(null)
+      return
+    }
+    const value = Number(source)
+    if (!Number.isSafeInteger(value) || value <= 0) {
+      options.setErrorMessage(translate('workflowEditor.feedback.bindingLimitInvalid'))
+      return
+    }
+    binding.config = { ...binding.config, [fieldName]: value }
+    target.value = String(value)
+    options.setStatusMessage(translate('workflowEditor.feedback.bindingPolicyUpdated'))
+    options.setErrorMessage(null)
+  }
+
   function deleteApplicationBinding(binding: FlowApplicationBinding): void {
     options.selectedBoundaryKind.value = options.deletePublicApplicationBinding(binding)
     options.setStatusMessage(translate('workflowEditor.feedback.publicBindingDeleted'))
@@ -92,10 +175,21 @@ export function useWorkflowBindingEditorActions(options: WorkflowBindingEditorAc
     updateBindingDisplayNameFromEvent,
     updateBindingKindFromValue,
     updateBindingRequiredFromEvent,
+    updateBindingDescriptionFromEvent,
+    updateBindingRequestSchemaFromEvent,
+    updateBindingMediaTypesFromEvent,
+    updateBindingCharsetFromEvent,
+    updateBindingPositiveLimitFromEvent,
     deleteApplicationBinding,
     deleteContextApplicationBinding,
     resetContextBoundaryPosition,
   }
+}
+
+function removeBindingConfigField(binding: FlowApplicationBinding, fieldName: string): void {
+  const config = { ...binding.config }
+  delete config[fieldName]
+  binding.config = config
 }
 
 function selectValueToString(value: WorkflowBindingEditorSelectValue): string {
