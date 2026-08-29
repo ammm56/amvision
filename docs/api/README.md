@@ -43,6 +43,8 @@
 | 外部触发 | [Trigger Source](workflow-trigger-sources.md) |
 | .NET 调用 | [Workflow SDK](workflow-sdks.md) |
 
+App Runtime 的 JSON、文本、图片、文件和多文件统一输入规划见 [Workflow App Entry 多类型输入实施基线](../development/workflow-app-entry-input-implementation.md)。该专题明确标记当前实现与待实现能力，API 字段仍以当前 OpenAPI 为准。
+
 revision、generation、worker epoch 和稳定 id 的内部设计见 [Workflow App 版本管理](../architecture/workflows/app-versioning.md)。
 
 ## 示例与调试

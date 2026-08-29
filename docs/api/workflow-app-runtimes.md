@@ -384,6 +384,12 @@ Runtime 通过不可变 `WorkflowRuntimeRevision` 选择准确的 `WorkflowAppVe
 - `dataset-package.v1` 可以通过 `POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke/upload` 或 `POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs/upload` 上传，文件字段名必须等于 binding_id。当前 multipart 上传入口只支持这类 zip 包输入，不支持把图片文件直接作为 `request_image_base64` 或 `request_image_ref` 上传。
 - invoke 默认返回公开 App Result：单个输出直接返回该输出值，多个输出按 application output binding_id 返回对象。需要平台运行回执时传 `response_mode=run`，需要完整 template_outputs 和 node_records 调试信息时传 `response_mode=debug`。
 
+## 多类型输入规划
+
+当前 JSON invoke 的 `input_bindings` 可以同时包含多个已声明 binding，`value.v1` 可用于结构化 JSON；因此 Runtime 内核并非只支持图片输入。当前尚未交付的是 App Entry 的 JSON/文本/文件快捷入口、`text.v1`、通用文件引用、图片与普通文件 multipart 上传，以及所有入口共用的完整 schema 校验。
+
+详细的多类型 binding、wire 形状、streaming ObjectStore、错误、兼容性和验收规划见 [Workflow App Entry 多类型输入实施基线](../development/workflow-app-entry-input-implementation.md)。在对应代码、OpenAPI 和测试落地前，现有 `/invoke/upload` 与 `/runs/upload` 限制保持不变。
+
 ## 相关文档
 
 - [docs/api/conventions.md](conventions.md)

@@ -4,6 +4,7 @@
 
 ## 当前实施基线
 
+- [Workflow App Entry 多类型输入实施基线](workflow-app-entry-input-implementation.md)：JSON、文本、图片、文件、多文件、multipart、ObjectStore、Trigger、前端和 SDK 的统一待实现边界。
 - [任务执行与运行时可靠性实施基线](task-runtime-reliability-implementation.md)：阶段 1 至阶段 7 已完成，源码真实业务链路与发行基础设施已分别通过验收。该文档是 Task/Attempt、Training Resume、Conversion、完整前端 Task 状态和 Node Pack timeout 的唯一详细实施记录。
 - [共享内存数据面可靠性实施基线](shared-memory-data-plane-reliability-implementation.md)：Workflow Trigger mailbox 正确性修复与 LocalBuffer 固定 arena 重构已经完成，保留源码门禁和发行持续认证边界。
 - [本机共享内存 Trigger 实施基线](local-shared-memory-trigger-implementation.md)：保留已交付 Trigger 协议、SDK、结果生命周期和历史性能证据；当前可靠性与 allocator 完成状态以共享内存数据面可靠性实施基线为准。

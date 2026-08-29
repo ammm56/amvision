@@ -121,6 +121,8 @@
 - node scope 只允许 Workflow 编辑态 Preview 使用；正式 AppRuntime invoke 和
   WorkflowRun 不接受该字段。
 
+Preview 当前通过 JSON `input_bindings` 使用已注册 payload；前端已经为 `value.v1`、`image-base64.v1` 和 `image-ref.v1` 提供部分输入能力，但没有通用文本、文件和多文件上传契约。统一 typed Preview 输入规划见 [Workflow App Entry 多类型输入实施基线](../development/workflow-app-entry-input-implementation.md)。
+
 ### 最小请求 JSON
 
 ```json

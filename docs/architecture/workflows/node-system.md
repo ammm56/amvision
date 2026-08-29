@@ -119,6 +119,12 @@ Trigger adapter 负责把外部事件转换成 Workflow Run 请求；业务图�
 - 隐式类型转换禁止；需要转换时使用明确 bridge 节点。
 - `node_type_id`、端口或 payload 的破坏性变化必须同步版本、示例、迁移和测试。
 
+## App Entry 多类型输入
+
+App Entry 是公开 binding 边界，不是新的节点执行器。当前 `request_image_ref`、`request_image_base64` 等名称只是可重命名的默认 binding id；节点连线和 Runtime 校验仍由 `image-ref.v1`、`image-base64.v1`、`value.v1` 等版本化 payload 决定。
+
+当前 Runtime JSON 请求可以同时提交多个已声明 binding，结构化值使用 `value.v1`。JSON、文本、图片和文件的后续 payload、multipart、ObjectStore、Trigger、LocalBuffer、前端与 SDK 统一规划见 [Workflow App Entry 多类型输入实施基线](../../development/workflow-app-entry-input-implementation.md)。该文档当前是待实现设计，不能据此把未注册 payload 或未公开上传能力标记为已交付。
+
 ## Parallel、ForEach 与节点组
 
 - Parallel 和 ForEach 是 Core 结构节点的执行语义，不由普通 Node Pack 自行实现调度器。

@@ -43,6 +43,12 @@ using (var client = AMVisionClient.CreateFromConfig())
 
 配置包接口见 [SDK 配置包](sdk-config-packages.md)。完整引用、依赖 DLL、name/id 规则、Console 示例和 VS2019 构建命令见 [sdks/dotnet/README.md](../../sdks/dotnet/README.md)。
 
+## 多类型 App Entry 输入规划
+
+当前 .NET HTTP multipart request 已能同时构造 `input_bindings_json` 和文件字段，但现有 helper 会把文件完整缓冲到 `byte[]`，后端 multipart Runtime 也仍只接受 `dataset-package.v1`。这些能力不能解释为通用 JSON + 图片 + 文件调用已经交付。
+
+计划增加统一组合 request builder，使一个调用可以显式添加 JSON、文本、图片、单文件和有序多文件。新文件路径必须使用 stream factory / `StreamContent`，不使用 `File.ReadAllBytes`、完整 `MemoryStream` copy、隐藏重试、排队或 transport fallback。SDK 调用前按配置包中的公开契约快速校验，后端仍执行权威校验。完整契约和验收规则见 [Workflow App Entry 多类型输入实施基线](../development/workflow-app-entry-input-implementation.md)。
+
 ## 高速图片调用
 
 图片来源与传输表示相互独立。调用方可以从相机、文件、网络或内存获得图片，再显式选择：

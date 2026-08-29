@@ -13,6 +13,7 @@ ADR 记录已经接受的关键取舍及未采用方案。ADR 可以处于待实
 - [ADR-0007：本机共享内存 Workflow Trigger](ADR-0007-local-shared-memory-workflow-trigger.md)
 - [ADR-0008：LocalBuffer 固定总容量与动态分配](ADR-0008-local-buffer-fixed-arena-allocation.md)
 - [ADR-0009：本机结构化消息共享内存通道](ADR-0009-local-message-channel.md)
+- [ADR-0010：Workflow App Entry 多类型输入契约](ADR-0010-workflow-app-entry-multi-input-contract.md)
 
 ## 规则
 

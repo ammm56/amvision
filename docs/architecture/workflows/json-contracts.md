@@ -239,6 +239,12 @@ Batch payload 是 inline JSON，不得嵌套 memory image handle、BufferRef、F
 
 第一版 Batch 固定 fail-fast，不在同一个 payload 中混合未声明的 success/error union。完整节点、runtime 和验收规则见[视觉并行与模型批量节点设计](vision-parallel-and-model-batch.md)。
 
+## App Entry 当前输入边界
+
+App Entry 的 `request_*` 名称是 Application 的公开 binding id，不是 payload type。当前 Runtime JSON 请求可以同时提交多个已声明 binding，结构化 JSON 可以使用现有 `value.v1`；Catalog 当前没有 `text.v1`、`file-ref.v1` 或 `file-refs.v1`，multipart Runtime 当前只支持 `dataset-package.v1`。
+
+JSON、文本、图片、文件和多文件的跨 Runtime、ObjectStore、Trigger、前端与 SDK 待实现方案统一见 [Workflow App Entry 多类型输入实施基线](../../development/workflow-app-entry-input-implementation.md)。实现完成前，本页不把计划中的 payload 或上传能力列为当前契约。
+
 ## 最小 JSON 例子
 
 ### NodeDefinition
