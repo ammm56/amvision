@@ -46,7 +46,9 @@ def get_detection_conversion_task_result(
         include_events=False,
     )
     model_type = resolve_detection_conversion_model_type_from_task(task_detail.task)
-    service_cls, _ = DETECTION_CONVERSION_SERVICE_BY_MODEL_TYPE[model_type]
+    service_cls, _request_cls = DETECTION_CONVERSION_SERVICE_BY_MODEL_TYPE[
+        model_type
+    ].resolve_types()
     result_snapshot = service_cls(
         session_factory=session_factory,
         dataset_storage=dataset_storage,

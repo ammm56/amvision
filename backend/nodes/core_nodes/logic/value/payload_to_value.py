@@ -30,6 +30,8 @@ def _payload_to_value_handler(request: WorkflowNodeExecutionRequest) -> dict[str
         "boolean": "boolean.v1",
         "roi": "roi.v1",
         "rois": "roi-list.v1",
+        "image": "image-ref.v1",
+        "images": "image-refs.v1",
         "result": "result-record.v1",
         "body": "response-body.v1",
         "prompts": "prompt-regions.v1",
@@ -38,6 +40,7 @@ def _payload_to_value_handler(request: WorkflowNodeExecutionRequest) -> dict[str
         "categories": "categories.v1",
         "poses": "poses.v1",
         "obbs": "obbs.v1",
+        "circles": "circles.v1",
         "video": "video-ref.v1",
         "frames": "frame-window.v1",
         "tracks": "tracks.v1",
@@ -52,7 +55,7 @@ def _payload_to_value_handler(request: WorkflowNodeExecutionRequest) -> dict[str
 
     if not candidate_values:
         raise InvalidRequestError(
-            "payload-to-value 节点至少需要连接一个 value、boolean、roi、rois、result、body、prompts、detections、segments、categories、poses、obbs、video、frames、tracks 或 regions 输入",
+            "payload-to-value 节点至少需要连接一个 value、boolean、roi、rois、image、images、result、body、prompts、detections、segments、categories、poses、obbs、circles、video、frames、tracks 或 regions 输入",
             details={"node_id": request.node_id},
         )
     if len(candidate_values) > 1:
@@ -76,7 +79,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
         node_type_id="core.logic.payload-to-value",
         display_name="Payload To Value",
         category="core.logic.transform",
-        description="把 value、boolean、roi、roi-list、result-record、response-body、prompt-regions、detections、segments、categories、poses、obbs、video、frame-window、tracks 或 regions 这类结构化结果包装成 value.v1，供 object-create、for-each、value-field-extract、response-envelope 和 value-preview 继续组合或预览。",
+        description="把 value、boolean、ROI、图片引用和各类视觉结果显式包装成 value.v1，供 Parallel、For Each、对象组合和结果预览继续使用。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,
         runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
         input_ports=(
@@ -117,6 +120,18 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 required=False,
             ),
             NodePortDefinition(
+                name="image",
+                display_name="Image",
+                payload_type_id="image-ref.v1",
+                required=False,
+            ),
+            NodePortDefinition(
+                name="images",
+                display_name="Images",
+                payload_type_id="image-refs.v1",
+                required=False,
+            ),
+            NodePortDefinition(
                 name="prompts",
                 display_name="Prompts",
                 payload_type_id="prompt-regions.v1",
@@ -150,6 +165,12 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 name="obbs",
                 display_name="OBBs",
                 payload_type_id="obbs.v1",
+                required=False,
+            ),
+            NodePortDefinition(
+                name="circles",
+                display_name="Circles",
+                payload_type_id="circles.v1",
                 required=False,
             ),
             NodePortDefinition(

@@ -70,8 +70,10 @@ class LocalBufferBrokerRegistry:
         handlers = {
             "status": self._handle_status,
             "allocate-buffer": self._handle_allocate_buffer,
+            "allocate-buffers": self._handle_allocate_buffers,
             "allocate-external-buffer": self._handle_allocate_external_buffer,
             "commit-buffer": self._handle_commit_buffer,
+            "commit-buffers": self._handle_commit_buffers,
             "commit-external-buffer": self._handle_commit_external_buffer,
             "publish-and-transfer-external-buffer": (
                 self._handle_publish_and_transfer_external_buffer
@@ -90,6 +92,7 @@ class LocalBufferBrokerRegistry:
             "prepare-frame-reader": self._handle_prepare_frame_reader,
             "read-frame-ref": self._handle_read_frame_ref,
             "release": self._handle_release,
+            "release-many": self._handle_release_many,
             "release-owner": self._handle_release_owner,
             "release-by-owner": self._handle_release_owner,
             "expire-leases": self._handle_expire_leases,
@@ -128,6 +131,46 @@ class LocalBufferBrokerRegistry:
         return {
             "lease": lease.model_dump(mode="json"),
             "writer": self._build_writer_location(lease.descriptor_index),
+        }
+
+    def _handle_allocate_buffers(self, payload: dict[str, object]) -> dict[str, object]:
+        """在一条控制消息中有序分配多块普通 WRITING extent。"""
+
+        raw_items = _require_dict_items(payload, "items", max_count=256)
+        owner_kind = _require_str(payload, "owner_kind")
+        owner_id = _require_str(payload, "owner_id")
+        ttl_seconds = _read_optional_float(payload, "ttl_seconds")
+        trace_id = _read_optional_str(payload, "trace_id")
+        leases: list[BufferLease] = []
+        try:
+            for item in raw_items:
+                leases.append(
+                    self._arena.allocate(
+                        content_length=_require_positive_int(
+                            item,
+                            "content_length",
+                        ),
+                        owner_kind=owner_kind,
+                        owner_id=owner_id,
+                        ttl_seconds=ttl_seconds,
+                        trace_id=trace_id,
+                    )
+                )
+        except Exception:
+            self._release_lease_ids_best_effort(
+                tuple(lease.lease_id for lease in leases)
+            )
+            raise
+        return {
+            "allocations": [
+                {
+                    "lease": lease.model_dump(mode="json"),
+                    "writer": self._build_writer_location(
+                        lease.descriptor_index
+                    ),
+                }
+                for lease in leases
+            ]
         }
 
     def _handle_allocate_external_buffer(
@@ -173,6 +216,49 @@ class LocalBufferBrokerRegistry:
         return {
             "lease": result.lease.model_dump(mode="json"),
             "buffer_ref": result.buffer_ref.model_dump(mode="json"),
+        }
+
+    def _handle_commit_buffers(self, payload: dict[str, object]) -> dict[str, object]:
+        """校验全部元数据后有序发布一批 WRITING lease。"""
+
+        raw_items = _require_dict_items(payload, "items", max_count=256)
+        prepared = [
+            (
+                BufferLease.model_validate(_require_dict(item, "lease")),
+                _require_str(item, "media_type"),
+                _read_int_tuple(item.get("shape")),
+                _read_optional_str(item, "dtype"),
+                _read_optional_str(item, "layout"),
+                _read_optional_str(item, "pixel_format"),
+            )
+            for item in raw_items
+        ]
+        results = []
+        try:
+            for lease, media_type, shape, dtype, layout, pixel_format in prepared:
+                results.append(
+                    self._arena.commit_lease(
+                        lease=lease,
+                        media_type=media_type,
+                        shape=shape,
+                        dtype=dtype,
+                        layout=layout,
+                        pixel_format=pixel_format,
+                    )
+                )
+        except Exception:
+            self._release_lease_ids_best_effort(
+                tuple(item[0].lease_id for item in prepared)
+            )
+            raise
+        return {
+            "results": [
+                {
+                    "lease": result.lease.model_dump(mode="json"),
+                    "buffer_ref": result.buffer_ref.model_dump(mode="json"),
+                }
+                for result in results
+            ]
         }
 
     def _handle_commit_external_buffer(
@@ -359,6 +445,30 @@ class LocalBufferBrokerRegistry:
         self._arena.release(_require_str(payload, "lease_id"))
         return {"released": True}
 
+    def _handle_release_many(self, payload: dict[str, object]) -> dict[str, object]:
+        """按 lease_id 列表尽最大努力释放全部记录。"""
+
+        raw_ids = payload.get("lease_ids")
+        if not isinstance(raw_ids, list) or not raw_ids or len(raw_ids) > 256:
+            raise InvalidRequestError("release-many 要求 1 到 256 个 lease_id")
+        lease_ids = tuple(
+            _require_str({"lease_id": value}, "lease_id") for value in raw_ids
+        )
+        released_count = self._release_lease_ids_best_effort(lease_ids)
+        return {"released_count": released_count}
+
+    def _release_lease_ids_best_effort(self, lease_ids: tuple[str, ...]) -> int:
+        """释放仍存在的精确 lease，单项失效不阻断其余项清理。"""
+
+        released_count = 0
+        for lease_id in lease_ids:
+            try:
+                self._arena.release(lease_id)
+                released_count += 1
+            except InvalidRequestError:
+                continue
+        return released_count
+
     def _handle_release_owner(self, payload: dict[str, object]) -> dict[str, object]:
         count = self._arena.release_owner(
             owner_kind=_read_optional_str(payload, "owner_kind"),
@@ -509,6 +619,24 @@ def _require_str(payload: dict[str, object], field_name: str) -> str:
             details={"field_name": field_name},
         )
     return normalized
+
+
+def _require_dict_items(
+    payload: dict[str, object],
+    field_name: str,
+    *,
+    max_count: int,
+) -> tuple[dict[str, object], ...]:
+    """读取有界、非空、全为对象的 item 数组。"""
+
+    value = payload.get(field_name)
+    if not isinstance(value, list) or not value or len(value) > max_count:
+        raise InvalidRequestError(
+            f"{field_name} 必须包含 1 到 {max_count} 个对象"
+        )
+    if not all(isinstance(item, dict) for item in value):
+        raise InvalidRequestError(f"{field_name} 的每一项都必须是对象")
+    return tuple(dict(item) for item in value)
 
 
 def _read_optional_str(payload: dict[str, object], field_name: str) -> str | None:

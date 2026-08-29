@@ -19,13 +19,22 @@ from backend.service.api.rest.v1.routes.task_evaluation.services import (
     list_evaluation_task_records,
     require_evaluation_project_access,
 )
-from backend.service.application.models.evaluation.segmentation_evaluation_service import (
-    SEGMENTATION_EVALUATION_TASK_KIND,
-    SqlAlchemySegmentationEvaluationService,
-    SegmentationEvaluationTaskRequest,
-)
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+
+
+SEGMENTATION_EVALUATION_TASK_KIND = "segmentation-evaluation"
+
+
+def _load_segmentation_evaluation_service_types() -> tuple[type, type]:
+    """仅在提交评估任务时加载 segmentation 评估实现。"""
+
+    from backend.service.application.models.evaluation.segmentation_evaluation_service import (
+        SegmentationEvaluationTaskRequest,
+        SqlAlchemySegmentationEvaluationService,
+    )
+
+    return SqlAlchemySegmentationEvaluationService, SegmentationEvaluationTaskRequest
 
 
 def create_segmentation_evaluation_task_response(
@@ -38,12 +47,13 @@ def create_segmentation_evaluation_task_response(
     """创建 segmentation evaluation 任务并返回提交响应。"""
 
     require_evaluation_project_access(principal=principal, project_id=body.project_id)
-    service = SqlAlchemySegmentationEvaluationService(
+    service_cls, request_cls = _load_segmentation_evaluation_service_types()
+    service = service_cls(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     )
     submission = service.submit_evaluation_task(
-        SegmentationEvaluationTaskRequest(
+        request_cls(
             project_id=body.project_id,
             model_version_id=body.model_version_id,
             dataset_export_id=body.dataset_export_id,

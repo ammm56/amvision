@@ -19,6 +19,44 @@ InputInterpolationKind = Literal["bilinear"]
 MAX_MODEL_INPUT_DIMENSION = 8192
 MAX_MODEL_INPUT_PIXELS = 16_777_216
 
+_RFDETR_SCALE_ALIASES: dict[str, str] = {
+    "n": "nano",
+    "nano": "nano",
+    "base": "base",
+    "s": "s",
+    "small": "s",
+    "m": "m",
+    "medium": "m",
+    "l": "l",
+    "large": "l",
+    "preview": "preview",
+    "x": "x",
+    "xl": "x",
+    "xlarge": "x",
+    "xxl": "xxl",
+    "xxlarge": "xxl",
+}
+_RFDETR_DEFAULT_INPUT_SIZE_BY_TASK_AND_SCALE: dict[
+    str, dict[str, int]
+] = {
+    "detection": {
+        "nano": 384,
+        "base": 560,
+        "s": 512,
+        "m": 576,
+        "l": 704,
+    },
+    "segmentation": {
+        "preview": 432,
+        "nano": 312,
+        "s": 384,
+        "m": 432,
+        "l": 504,
+        "x": 624,
+        "xxl": 768,
+    },
+}
+
 
 @dataclass(frozen=True)
 class SpatialSize:
@@ -331,6 +369,40 @@ def resolve_yolo_default_spatial_size(*, task_type: str) -> SpatialSize:
     if task_type.strip().lower() == "classification":
         return SpatialSize(width=224, height=224)
     return SpatialSize(width=640, height=640)
+
+
+def normalize_rfdetr_model_scale(model_scale: str) -> str:
+    """把 RF-DETR model scale 归一化为平台内部正式值。"""
+
+    normalized = _RFDETR_SCALE_ALIASES.get(model_scale.strip().lower())
+    if normalized is None:
+        raise ValueError(f"RF-DETR full core 不支持 model_scale={model_scale!r}")
+    return normalized
+
+
+def resolve_rfdetr_default_spatial_size(
+    *,
+    task_type: str,
+    model_scale: str,
+) -> SpatialSize:
+    """不加载 PyTorch，返回 RF-DETR 原生方形输入尺寸。"""
+
+    normalized_task_type = task_type.strip().lower()
+    normalized_scale = normalize_rfdetr_model_scale(model_scale)
+    scale_map = _RFDETR_DEFAULT_INPUT_SIZE_BY_TASK_AND_SCALE.get(
+        normalized_task_type
+    )
+    if scale_map is None:
+        raise ValueError(
+            f"RF-DETR full core 暂不支持 task_type={task_type!r}"
+        )
+    resolution = scale_map.get(normalized_scale)
+    if resolution is None:
+        raise ValueError(
+            "RF-DETR full core 的 "
+            f"{normalized_task_type} 任务不支持 model_scale={model_scale!r}"
+        )
+    return SpatialSize(width=resolution, height=resolution)
 
 
 def serialize_spatial_size_hw(

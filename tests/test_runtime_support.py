@@ -202,6 +202,87 @@ def test_register_image_matrix_keeps_raw_bgr24_in_memory_and_encodes_only_for_re
     assert "shape" not in response_image
 
 
+def test_register_image_matrix_keeps_raw_gray8_without_bgr_expansion(
+    tmp_path: Path,
+) -> None:
+    """验证 GRAY8 在 Workflow 内保持单通道，并能按需转为彩色或响应图片。"""
+
+    cv2 = pytest.importorskip("cv2")
+    np = pytest.importorskip("numpy")
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "files"))
+    )
+    grayscale_matrix = np.arange(6, dtype=np.uint8).reshape((2, 3))
+    request = _build_request(
+        dataset_storage=dataset_storage,
+        image_registry=ExecutionImageRegistry(),
+        payload={"object_key": "inputs/source.png"},
+    )
+
+    memory_payload = register_image_matrix(request, image_matrix=grayscale_matrix)
+    request.input_values["image"] = memory_payload
+    _, loaded_grayscale = load_image_matrix(
+        request,
+        cv2_module=cv2,
+        np_module=np,
+    )
+    _, loaded_color = load_image_matrix(
+        request,
+        cv2_module=cv2,
+        np_module=np,
+        imdecode_flags=cv2.IMREAD_COLOR,
+    )
+    response_image = build_response_image_payload(request, image_payload=memory_payload)
+
+    assert memory_payload["media_type"] == "image/raw"
+    assert memory_payload["shape"] == [2, 3]
+    assert memory_payload["dtype"] == "uint8"
+    assert memory_payload["layout"] == "HW"
+    assert memory_payload["pixel_format"] == "gray8"
+    image_entry = request.execution_metadata[
+        "execution_image_registry"
+    ].get_entry(str(memory_payload["image_handle"]))
+    assert image_entry.byte_length == 6
+    assert np.array_equal(loaded_grayscale, grayscale_matrix)
+    assert loaded_color.shape == (2, 3, 3)
+    assert np.array_equal(loaded_color[:, :, 0], grayscale_matrix)
+    assert np.array_equal(loaded_color[:, :, 1], grayscale_matrix)
+    assert np.array_equal(loaded_color[:, :, 2], grayscale_matrix)
+    assert response_image["transport_kind"] == "inline-base64"
+    assert base64.b64decode(response_image["image_base64"]).startswith(b"\xff\xd8\xff")
+
+
+def test_register_gray8_matrix_content_sha_is_stable_and_format_sensitive(
+    tmp_path: Path,
+) -> None:
+    """验证 GRAY8 hash 跨执行稳定，且不会与 BGR24 表示混淆。"""
+
+    cv2 = pytest.importorskip("cv2")
+    np = pytest.importorskip("numpy")
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "files"))
+    )
+    grayscale_matrix = np.arange(6, dtype=np.uint8).reshape((2, 3))
+    color_matrix = cv2.cvtColor(grayscale_matrix, cv2.COLOR_GRAY2BGR)
+    first_request = _build_request(
+        dataset_storage=dataset_storage,
+        image_registry=ExecutionImageRegistry(),
+        payload={"object_key": "inputs/source.png"},
+    )
+    second_request = _build_request(
+        dataset_storage=dataset_storage,
+        image_registry=ExecutionImageRegistry(),
+        payload={"object_key": "inputs/source.png"},
+    )
+
+    first_gray = register_image_matrix(first_request, image_matrix=grayscale_matrix)
+    second_gray = register_image_matrix(second_request, image_matrix=grayscale_matrix)
+    color = register_image_matrix(second_request, image_matrix=color_matrix)
+
+    assert first_gray["content_sha256"] == second_gray["content_sha256"]
+    assert first_gray["content_sha256"] != color["content_sha256"]
+
+
 def test_register_image_matrix_content_sha_is_stable_across_runs(
     tmp_path: Path,
 ) -> None:

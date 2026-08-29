@@ -8,6 +8,7 @@ from threading import Lock
 from backend.service.application.errors import (
     DeploymentInferenceBusyError,
     InvalidRequestError,
+    ServiceError,
     ServiceConfigurationError,
 )
 from backend.service.application.support.resource_cleanup import (
@@ -40,6 +41,10 @@ from backend.service.application.runtime.support.openvino_execution import (
 from backend.service.application.runtime.deployment.runtime_capabilities import (
     evaluate_runtime_configuration_warnings,
 )
+
+
+MAX_DEPLOYMENT_RUNTIME_BATCH_ITEMS = 64
+"""单次同步批量推理允许的最大图片数量。"""
 
 
 @dataclass(frozen=True)
@@ -148,6 +153,21 @@ class DeploymentRuntimeExecution:
     deployment_instance_id: str
     instance_id: str
     execution_result: PredictionExecutionResult
+
+
+@dataclass(frozen=True)
+class DeploymentRuntimeBatchExecution:
+    """描述一次由同一 runtime instance 顺序完成的批量推理结果。
+
+    字段：
+    - deployment_instance_id：DeploymentInstance id。
+    - instance_id：完整批次实际占用的唯一实例 id。
+    - execution_results：与输入请求严格同序的预测执行结果。
+    """
+
+    deployment_instance_id: str
+    instance_id: str
+    execution_results: tuple[PredictionExecutionResult, ...]
 
 
 @dataclass
@@ -366,6 +386,96 @@ class DeploymentRuntimePool:
                 "last_error": str(last_error) if last_error is not None else None,
             },
         )
+
+    def run_inference_batch(
+        self,
+        *,
+        config: DeploymentRuntimePoolConfig,
+        requests: tuple[PredictionRequest, ...],
+    ) -> DeploymentRuntimeBatchExecution:
+        """占用一个实例并按输入顺序执行完整批次。
+
+        该调用不排队、不拆批、不并行执行批内图片，也不会在失败后切换实例
+        或重试。这样可保证一个 Batch 节点只占用一个部署实例，并使两实例部署
+        能确定性地承载两路并行 Batch 调用。
+        """
+
+        if not requests:
+            raise InvalidRequestError("批量推理至少需要 1 个请求")
+        if len(requests) > MAX_DEPLOYMENT_RUNTIME_BATCH_ITEMS:
+            raise InvalidRequestError(
+                "批量推理请求数量超过上限",
+                details={
+                    "count": len(requests),
+                    "max_count": MAX_DEPLOYMENT_RUNTIME_BATCH_ITEMS,
+                },
+            )
+
+        state = self._ensure_state(config)
+        instance = self._acquire_instance(state)
+        execution_results: list[PredictionExecutionResult] = []
+        try:
+            try:
+                session = self._ensure_instance_session(
+                    config=config,
+                    instance=instance,
+                )
+            except InvalidRequestError:
+                self._record_instance_error(instance)
+                raise
+            except Exception as error:
+                self._mark_instance_unhealthy(instance=instance, error=error)
+                raise ServiceConfigurationError(
+                    "deployment 批量推理实例加载失败",
+                    details={
+                        "deployment_instance_id": config.deployment_instance_id,
+                        "instance_id": _build_instance_id(
+                            config.deployment_instance_id,
+                            instance.instance_index,
+                        ),
+                        "last_error": str(error),
+                    },
+                ) from error
+            for item_index, request in enumerate(requests):
+                try:
+                    execution_result = session.predict(request)
+                except InvalidRequestError as error:
+                    self._record_instance_error(instance)
+                    error.details.setdefault("item_index", item_index)
+                    raise
+                except ServiceError as error:
+                    error.details.setdefault("item_index", item_index)
+                    if error.status_code >= 500:
+                        self._mark_instance_unhealthy(instance=instance, error=error)
+                    else:
+                        self._record_instance_error(instance)
+                    raise
+                except Exception as error:
+                    self._mark_instance_unhealthy(instance=instance, error=error)
+                    raise ServiceConfigurationError(
+                        "deployment 批量推理执行失败",
+                        details={
+                            "deployment_instance_id": config.deployment_instance_id,
+                            "instance_id": _build_instance_id(
+                                config.deployment_instance_id,
+                                instance.instance_index,
+                            ),
+                            "item_index": item_index,
+                            "last_error": str(error),
+                        },
+                    ) from error
+                self._record_instance_inference(instance)
+                execution_results.append(execution_result)
+
+            return DeploymentRuntimeBatchExecution(
+                deployment_instance_id=config.deployment_instance_id,
+                instance_id=_build_instance_id(
+                    config.deployment_instance_id, instance.instance_index
+                ),
+                execution_results=tuple(execution_results),
+            )
+        finally:
+            self._release_instance(state=state, instance=instance)
 
     def _ensure_state(
         self, config: DeploymentRuntimePoolConfig

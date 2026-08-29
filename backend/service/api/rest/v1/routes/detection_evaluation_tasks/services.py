@@ -25,17 +25,26 @@ from backend.service.application.model_type_support import (
     require_optional_supported_platform_model_type,
     require_supported_platform_model_type,
 )
-from backend.service.application.models.evaluation.detection_evaluation_task_service import (
-    DETECTION_EVALUATION_TASK_KIND,
-    DetectionEvaluationTaskRequest,
-    SqlAlchemyDetectionEvaluationTaskService,
-)
 from backend.service.application.project_access import require_explicit_project_access
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService, TaskQueryFilters
 from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
 from backend.service.domain.models.platform_model_support import normalize_platform_model_type
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+
+
+DETECTION_EVALUATION_TASK_KIND = "detection-evaluation"
+
+
+def _load_detection_evaluation_service_types() -> tuple[type, type]:
+    """仅在提交评估任务时加载模型评估实现。"""
+
+    from backend.service.application.models.evaluation.detection_evaluation_task_service import (
+        DetectionEvaluationTaskRequest,
+        SqlAlchemyDetectionEvaluationTaskService,
+    )
+
+    return SqlAlchemyDetectionEvaluationTaskService, DetectionEvaluationTaskRequest
 
 
 def create_detection_evaluation_task_response(
@@ -52,12 +61,13 @@ def create_detection_evaluation_task_response(
         project_id=body.project_id,
     )
     model_type = _normalize_detection_evaluation_model_type(body.model_type)
-    service = SqlAlchemyDetectionEvaluationTaskService(
+    service_cls, request_cls = _load_detection_evaluation_service_types()
+    service = service_cls(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     )
     submission = service.submit_evaluation_task(
-        DetectionEvaluationTaskRequest(
+        request_cls(
             project_id=body.project_id,
             model_type=model_type,
             model_version_id=body.model_version_id,

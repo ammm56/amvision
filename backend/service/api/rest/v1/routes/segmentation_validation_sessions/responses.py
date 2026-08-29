@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from pydantic import BaseModel, Field
 from backend.service.api.rest.v1.routes.model_input_schemas import SpatialSizeResponse
 
 from backend.service.api.rest.v1.routes.task_validation.services import (
     build_tensor_spec_payload,
 )
-from backend.service.application.models.validation.segmentation_session_service import (
-    SegmentationValidationPredictionView,
-    SegmentationValidationSessionView,
-)
+if TYPE_CHECKING:
+    from backend.service.application.models.validation.segmentation_session_service import (
+        SegmentationValidationPredictionView,
+        SegmentationValidationSessionView,
+    )
 
 
 class SegmentationValidationInstanceResponse(BaseModel):

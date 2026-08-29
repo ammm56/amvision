@@ -17,13 +17,22 @@ from backend.service.api.rest.v1.routes.task_evaluation.services import (
     list_evaluation_task_records,
     require_evaluation_project_access,
 )
-from backend.service.application.models.evaluation.obb_evaluation_task_service import (
-    OBB_EVALUATION_TASK_KIND,
-    ObbEvaluationTaskRequest,
-    SqlAlchemyObbEvaluationTaskService,
-)
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+
+
+OBB_EVALUATION_TASK_KIND = "obb-evaluation"
+
+
+def _load_obb_evaluation_service_types() -> tuple[type, type]:
+    """仅在提交评估任务时加载 OBB 评估实现。"""
+
+    from backend.service.application.models.evaluation.obb_evaluation_task_service import (
+        ObbEvaluationTaskRequest,
+        SqlAlchemyObbEvaluationTaskService,
+    )
+
+    return SqlAlchemyObbEvaluationTaskService, ObbEvaluationTaskRequest
 
 
 def create_obb_evaluation_task_response(
@@ -36,12 +45,13 @@ def create_obb_evaluation_task_response(
     """创建 OBB evaluation 任务并返回提交响应。"""
 
     require_evaluation_project_access(principal=principal, project_id=body.project_id)
-    service = SqlAlchemyObbEvaluationTaskService(
+    service_cls, request_cls = _load_obb_evaluation_service_types()
+    service = service_cls(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     )
     submission = service.submit_evaluation_task(
-        ObbEvaluationTaskRequest(
+        request_cls(
             project_id=body.project_id,
             model_version_id=body.model_version_id,
             dataset_export_id=body.dataset_export_id,

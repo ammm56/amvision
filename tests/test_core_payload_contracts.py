@@ -2,7 +2,20 @@
 
 from __future__ import annotations
 
-from backend.nodes.core_catalog import get_core_workflow_payload_contracts
+import json
+from pathlib import Path
+
+from backend.contracts.workflows.workflow_graph import (
+    WorkflowPayloadContract,
+    validate_node_definition_catalog,
+)
+from backend.nodes.core_catalog import (
+    get_core_workflow_node_definitions,
+    get_core_workflow_payload_contracts,
+)
+
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_core_payload_contracts_include_image_base64_and_local_buffer_image_refs() -> (
@@ -86,3 +99,48 @@ def test_core_payload_contracts_include_image_base64_and_local_buffer_image_refs
     segments_contract = payload_contracts["segments.v1"]
     assert segments_contract.transport_kind == "inline-json"
     assert segments_contract.json_schema["required"] == ["items"]
+
+
+def test_core_catalog_cold_start_includes_circles_contract() -> None:
+    """验证不依赖 OpenCV 自定义包的核心目录可在冷启动时独立通过引用校验。"""
+
+    payload_contracts = get_core_workflow_payload_contracts()
+    payload_contract_index = {
+        item.payload_type_id: item for item in payload_contracts
+    }
+
+    assert "circles.v1" in payload_contract_index
+    validate_node_definition_catalog(
+        node_definitions=get_core_workflow_node_definitions(),
+        payload_contracts=payload_contracts,
+    )
+
+
+def test_core_circles_contract_matches_opencv_shared_contract() -> None:
+    """验证核心与 OpenCV 包共用唯一 circles.v1 格式，合并时不会产生冲突。"""
+
+    shared_contract_path = (
+        REPOSITORY_ROOT
+        / "custom_nodes"
+        / "opencv_nodes"
+        / "shared"
+        / "workflow"
+        / "payload_contracts.json"
+    )
+    shared_contract_payloads = json.loads(
+        shared_contract_path.read_text(encoding="utf-8")
+    )
+    shared_contract = WorkflowPayloadContract.model_validate(
+        next(
+            item
+            for item in shared_contract_payloads
+            if item["payload_type_id"] == "circles.v1"
+        )
+    )
+    core_contract = next(
+        item
+        for item in get_core_workflow_payload_contracts()
+        if item.payload_type_id == "circles.v1"
+    )
+
+    assert core_contract == shared_contract

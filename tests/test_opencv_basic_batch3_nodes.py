@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+from threading import Lock
+from time import sleep
 
 import pytest
 
@@ -16,6 +18,7 @@ from backend.contracts.workflows.workflow_graph import (
 from backend.nodes import ExecutionImageRegistry
 from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
+from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowGraphExecutor
 from backend.service.application.workflows.runtime_registry_loader import (
     WorkflowNodeRuntimeRegistryLoader,
@@ -266,6 +269,7 @@ def test_opencv_basic_batch3_hough_circles_execute(tmp_path: Path) -> None:
             "execution_image_registry": image_registry,
             "workflow_run_id": "opencv-batch3-hough-circles",
             "debug_image_panels_enabled": True,
+            "return_timing_metadata_enabled": True,
         },
     )
 
@@ -277,6 +281,20 @@ def test_opencv_basic_batch3_hough_circles_execute(tmp_path: Path) -> None:
     assert 14.0 <= float(circles["items"][0]["radius"]) <= 24.0
     assert circles_summary["value"]["count"] == circles["count"]
     assert circles_summary["value"]["max_radius_detected"] >= 14.0
+    assert circles_summary["value"]["input_pixel_format"] == "gray8"
+    assert circles_summary["value"]["roi_grayscale_requested"] is False
+    assert circles_summary["value"]["roi_grayscale_applied"] is False
+    assert circles_summary["value"]["grayscale_scope"] == "none"
+    assert circles_summary["value"]["grayscale_bbox_xyxy"] == [0, 0, 0, 0]
+    timings = circles_summary["value"]["timings"]
+    assert set(timings) == {
+        "image_load_ms",
+        "roi_resolve_ms",
+        "roi_grayscale_ms",
+        "hough_ms",
+        "candidate_refinement_ms",
+    }
+    assert all(float(value) >= 0.0 for value in timings.values())
     assert circles_value["value"]["count"] == circles["count"]
     debug_preview = _read_record_output(execution_result, node_id="circles", output_name="debug_preview")
     interaction = debug_preview["interaction"]
@@ -293,6 +311,7 @@ def test_opencv_basic_batch3_hough_circles_execute(tmp_path: Path) -> None:
         "reference_radius_px",
     ]
     assert {
+        "convert_roi_to_grayscale",
         "canny_high_threshold",
         "center_vote_threshold",
         "minimum_radius_px",
@@ -301,6 +320,250 @@ def test_opencv_basic_batch3_hough_circles_execute(tmp_path: Path) -> None:
         "minimum_quality_score",
         "show_rejected_candidates",
     } <= set(controls_by_name)
+
+
+def test_hough_circles_rejects_color_input_when_roi_grayscale_is_disabled(
+    tmp_path: Path,
+) -> None:
+    """验证默认关闭 ROI Grayscale 时不再暗中把彩色整图转灰度。"""
+
+    with pytest.raises(InvalidRequestError, match="显式启用 ROI Grayscale"):
+        _execute_hough_circle_image(
+            tmp_path,
+            object_key="inputs/hough-circle-color-disabled.png",
+            image_bytes=_build_shifted_color_circle_test_png_bytes(),
+            parameters={
+                "search_bbox_xyxy": [20, 20, 340, 220],
+                "minimum_radius_px": 20,
+                "maximum_radius_px": 45,
+                "refine_candidates": False,
+            },
+        )
+
+
+def test_hough_circles_converts_only_resolved_roi_when_explicitly_enabled(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证 ROI Grayscale 的颜色转换输入是裁剪区域，不是整张图片。"""
+
+    import cv2
+
+    original_cvt_color = cv2.cvtColor
+    grayscale_input_shapes: list[tuple[int, ...]] = []
+
+    def record_cvt_color(image_matrix: object, color_code: int, *args: object, **kwargs: object):
+        if color_code == cv2.COLOR_BGR2GRAY:
+            grayscale_input_shapes.append(
+                tuple(int(item) for item in getattr(image_matrix, "shape", ()))
+            )
+        return original_cvt_color(image_matrix, color_code, *args, **kwargs)
+
+    monkeypatch.setattr(cv2, "cvtColor", record_cvt_color)
+    outputs = _execute_hough_circle_image(
+        tmp_path,
+        object_key="inputs/hough-circle-color-enabled.png",
+        image_bytes=_build_shifted_color_circle_test_png_bytes(),
+        parameters={
+            "convert_roi_to_grayscale": True,
+            "search_bbox_xyxy": [20, 20, 340, 220],
+            "minimum_radius_px": 20,
+            "maximum_radius_px": 45,
+            "minimum_center_distance_px": 40.0,
+            "center_vote_threshold": 18.0,
+            "refine_candidates": False,
+        },
+    )
+
+    assert int(outputs["count"]) >= 1
+    assert grayscale_input_shapes == [(200, 320, 3)]
+
+
+def test_four_hough_circle_nodes_run_concurrently_inside_parallel_boundary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证四个同类 Hough 节点由显式 Parallel 边界并发，结果仍按分支顺序返回。"""
+
+    import cv2
+
+    executor = _create_repository_executor()
+    dataset_storage = _create_dataset_storage(tmp_path)
+    image_registry = ExecutionImageRegistry()
+    dataset_storage.write_bytes("inputs/parallel-circles.png", _build_circle_test_png_bytes())
+    state_lock = Lock()
+    active_count = 0
+    maximum_active_count = 0
+    original_hough_circles = cv2.HoughCircles
+
+    def record_hough_concurrency(*args: object, **kwargs: object):
+        nonlocal active_count, maximum_active_count
+        with state_lock:
+            active_count += 1
+            maximum_active_count = max(maximum_active_count, active_count)
+        try:
+            sleep(0.03)
+            return original_hough_circles(*args, **kwargs)
+        finally:
+            with state_lock:
+                active_count -= 1
+
+    monkeypatch.setattr(cv2, "HoughCircles", record_hough_concurrency)
+    branch_nodes = tuple(
+        node
+        for branch_index in range(1, 5)
+        for node in (
+            WorkflowGraphNode(
+                node_id=f"restore-{branch_index}",
+                node_type_id="core.logic.value-to-image-ref",
+            ),
+            WorkflowGraphNode(
+                node_id=f"hough-{branch_index}",
+                node_type_id="custom.opencv.hough-circles",
+                parameters={
+                    "minimum_radius_px": 14,
+                    "maximum_radius_px": 24,
+                    "center_vote_threshold": 18.0,
+                    "maximum_candidates": 5,
+                    "max_results": 5,
+                    "refine_candidates": False,
+                },
+            ),
+            WorkflowGraphNode(
+                node_id=f"circles-value-{branch_index}",
+                node_type_id="core.logic.payload-to-value",
+            ),
+        )
+    )
+    branch_edges = tuple(
+        edge
+        for branch_index in range(1, 5)
+        for edge in (
+            WorkflowGraphEdge(
+                edge_id=f"edge-start-restore-{branch_index}",
+                source_node_id="parallel-start",
+                source_port="value",
+                target_node_id=f"restore-{branch_index}",
+                target_port="value",
+            ),
+            WorkflowGraphEdge(
+                edge_id=f"edge-restore-hough-{branch_index}",
+                source_node_id=f"restore-{branch_index}",
+                source_port="image",
+                target_node_id=f"hough-{branch_index}",
+                target_port="image",
+            ),
+            WorkflowGraphEdge(
+                edge_id=f"edge-hough-value-{branch_index}",
+                source_node_id=f"hough-{branch_index}",
+                source_port="circles",
+                target_node_id=f"circles-value-{branch_index}",
+                target_port="circles",
+            ),
+            WorkflowGraphEdge(
+                edge_id=f"edge-value-end-{branch_index}",
+                source_node_id=f"circles-value-{branch_index}",
+                source_port="value",
+                target_node_id="parallel-end",
+                target_port="results",
+            ),
+        )
+    )
+    template = WorkflowGraphTemplate(
+        template_id="opencv-hough-four-way-parallel",
+        template_version="1.0.0",
+        display_name="OpenCV Hough Four Way Parallel",
+        nodes=(
+            WorkflowGraphNode(
+                node_id="input",
+                node_type_id="core.io.template-input.image",
+            ),
+            WorkflowGraphNode(
+                node_id="grayscale",
+                node_type_id="custom.opencv.grayscale",
+            ),
+            WorkflowGraphNode(
+                node_id="image-value",
+                node_type_id="core.logic.payload-to-value",
+            ),
+            WorkflowGraphNode(
+                node_id="parallel-start",
+                node_type_id="core.logic.parallel-start",
+                parameters={"max_concurrency": 4},
+            ),
+            *branch_nodes,
+            WorkflowGraphNode(
+                node_id="parallel-end",
+                node_type_id="core.logic.parallel-end",
+                parameters={"mode": "collect"},
+            ),
+        ),
+        edges=(
+            WorkflowGraphEdge(
+                edge_id="edge-input-grayscale",
+                source_node_id="input",
+                source_port="image",
+                target_node_id="grayscale",
+                target_port="image",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-grayscale-value",
+                source_node_id="grayscale",
+                source_port="image",
+                target_node_id="image-value",
+                target_port="image",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-value-start",
+                source_node_id="image-value",
+                source_port="value",
+                target_node_id="parallel-start",
+                target_port="value",
+            ),
+            *branch_edges,
+        ),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="request_image",
+                display_name="Request Image",
+                payload_type_id="image-ref.v1",
+                target_node_id="input",
+                target_port="payload",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="results",
+                display_name="Results",
+                payload_type_id="value.v1",
+                source_node_id="parallel-end",
+                source_port="results",
+            ),
+        ),
+    )
+
+    execution_result = executor.execute(
+        template=template,
+        input_values={
+            "request_image": {
+                "object_key": "inputs/parallel-circles.png",
+                "width": 96,
+                "height": 96,
+                "media_type": "image/png",
+            }
+        },
+        execution_metadata={
+            "dataset_storage": dataset_storage,
+            "execution_image_registry": image_registry,
+            "workflow_run_id": "opencv-hough-four-way-parallel",
+        },
+    )
+
+    results = execution_result.outputs["results"]["value"]
+    assert maximum_active_count == 4
+    assert len(results) == 4
+    assert all(int(result["count"]) >= 1 for result in results)
+    assert results[0]["items"] == results[1]["items"] == results[2]["items"] == results[3]["items"]
 
 
 def test_hough_circles_reference_radius_allows_large_position_shift(tmp_path: Path) -> None:
@@ -963,6 +1226,21 @@ def _build_shifted_circle_test_png_bytes() -> bytes:
     cv2.circle(image, (285, 150), 32, 220, thickness=-1, lineType=cv2.LINE_AA)
     image = cv2.GaussianBlur(image, (5, 5), 1.0)
     success, encoded = cv2.imencode(".png", image)
+    assert success is True
+    return encoded.tobytes()
+
+
+def _build_shifted_color_circle_test_png_bytes() -> bytes:
+    """构建与灰度样本等价的三通道圆图片。"""
+
+    import cv2
+    import numpy as np
+
+    grayscale_buffer = np.frombuffer(_build_shifted_circle_test_png_bytes(), dtype=np.uint8)
+    grayscale_image = cv2.imdecode(grayscale_buffer, cv2.IMREAD_GRAYSCALE)
+    assert grayscale_image is not None
+    color_image = cv2.cvtColor(grayscale_image, cv2.COLOR_GRAY2BGR)
+    success, encoded = cv2.imencode(".png", color_image)
     assert success is True
     return encoded.tobytes()
 

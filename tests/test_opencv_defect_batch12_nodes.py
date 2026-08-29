@@ -294,7 +294,9 @@ def test_opencv_defect_batch12_skeletonize_execute(tmp_path: Path) -> None:
     assert skeleton_summary["value"]["iteration_count"] > 0
     assert skeleton_summary["value"]["input_foreground_pixel_count"] > skeleton_summary["value"]["skeleton_pixel_count"]
     assert skeleton_summary["value"]["skeleton_ratio"] < 1.0
-    assert int(np.count_nonzero(np.any(skeleton_matrix != 0, axis=2))) == (
+    assert skeleton_image["pixel_format"] == "gray8"
+    assert skeleton_image["layout"] == "HW"
+    assert int(np.count_nonzero(skeleton_matrix)) == (
         skeleton_summary["value"]["skeleton_pixel_count"]
     )
 

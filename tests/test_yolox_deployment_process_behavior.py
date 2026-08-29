@@ -38,13 +38,16 @@ from backend.service.application.runtime.deployment.deployment_process_worker im
     _begin_real_inference,
     _finish_real_inference,
     _resolve_warmup_behavior,
+    _run_deployment_parent_watchdog,
     _run_dummy_warmup_passes,
     _run_inference_request,
+    _run_inference_batch_request,
     _run_keep_warm_loop,
     _snapshot_local_buffer_health,
     _snapshot_keep_warm_state,
 )
 from backend.service.application.runtime.deployment.deployment_runtime_pool import (
+    DeploymentRuntimeBatchExecution,
     DeploymentRuntimeExecution,
     DeploymentRuntimePoolConfig,
 )
@@ -62,6 +65,47 @@ from backend.service.domain.deployments.deployment_runtime_configuration import 
 )
 from backend.service.settings import BackendServiceDeploymentProcessSupervisorConfig
 from tests.runtime_pool_test_support import build_test_execution_result
+
+
+class _DeadParentProcess:
+    """模拟已异常退出的 inference daemon。"""
+
+    def is_alive(self) -> bool:
+        """返回父进程已退出。"""
+
+        return False
+
+
+def test_deployment_worker_exits_when_inference_daemon_is_lost() -> None:
+    """父 daemon 失联后 deployment worker 不得作为孤儿进程常驻。"""
+
+    exit_codes: list[int] = []
+
+    _run_deployment_parent_watchdog(
+        parent_process=_DeadParentProcess(),
+        stop_event=Event(),
+        force_exit=exit_codes.append,
+        poll_seconds=0.001,
+    )
+
+    assert exit_codes == [0]
+
+
+def test_deployment_worker_watchdog_stops_during_normal_shutdown() -> None:
+    """正常 shutdown 已开始时 watchdog 不得强制结束进程。"""
+
+    stop_event = Event()
+    stop_event.set()
+    exit_codes: list[int] = []
+
+    _run_deployment_parent_watchdog(
+        parent_process=_DeadParentProcess(),
+        stop_event=stop_event,
+        force_exit=exit_codes.append,
+        poll_seconds=0.001,
+    )
+
+    assert exit_codes == []
 
 
 def test_deployment_keep_warm_is_disabled_by_default() -> None:
@@ -162,6 +206,36 @@ class _ObjectStorePreviewRuntimePool:
             deployment_instance_id=config.deployment_instance_id,
             instance_id="instance-object-store-preview",
             execution_result=self.execution_result,
+        )
+
+
+class _BatchRuntimePool:
+    """核对 Batch worker 保持 mmap view 并只调用一次 runtime pool。"""
+
+    def __init__(self, *, execution_result, fail_item_index: int | None = None) -> None:
+        self.execution_result = execution_result
+        self.fail_item_index = fail_item_index
+        self.call_count = 0
+
+    def run_inference_batch(self, *, config, requests) -> DeploymentRuntimeBatchExecution:
+        """校验有序图片 view，或返回带 item_index 的输入错误。"""
+
+        self.call_count += 1
+        assert [request.input_image_bytes.tobytes() for request in requests] == [
+            b"batch-image-0",
+            b"batch-image-1",
+        ]
+        if self.fail_item_index is not None:
+            from backend.service.application.errors import InvalidRequestError
+
+            raise InvalidRequestError(
+                "batch item invalid",
+                details={"item_index": self.fail_item_index},
+            )
+        return DeploymentRuntimeBatchExecution(
+            deployment_instance_id=config.deployment_instance_id,
+            instance_id="instance-batch",
+            execution_results=(self.execution_result, self.execution_result),
         )
 
 
@@ -267,6 +341,187 @@ def test_deployment_worker_returns_preview_only_through_localbuffer(
         content_length=len(preview_bytes),
     )
     assert pool.read_buffer_ref(output.buffer_ref) == preview_bytes
+    pool.close()
+
+
+def test_deployment_worker_batch_reads_ordered_mmap_views_and_releases_slot(
+    tmp_path: Path,
+) -> None:
+    """验证 infer_batch 一次占用 slot、同序返回并正确释放 mmap reader guard。"""
+
+    settings = LocalBufferBrokerSettings(
+        arena_size_bytes=16 * 1024 * 1024,
+        min_block_size_bytes=1024 * 1024,
+        max_allocation_bytes=8 * 1024 * 1024,
+        reader_guard_slots=4,
+    )
+    pool = LocalBufferArenaPool(
+        MmapBufferArenaConfig(
+            root_dir=tmp_path / "buffers",
+            arena_id=settings.arena_id,
+            arena_size_bytes=settings.arena_size_bytes,
+            min_block_size_bytes=settings.min_block_size_bytes,
+            max_allocation_bytes=settings.max_allocation_bytes,
+            reader_guard_slots=settings.reader_guard_slots,
+        )
+    )
+    buffer_refs = []
+    for item_index in range(2):
+        content = f"batch-image-{item_index}".encode()
+        lease = pool.allocate(
+            content_length=len(content),
+            owner_kind="workflow-runtime",
+            owner_id=f"run-batch-{item_index}",
+        )
+        pool.write_lease_bytes(lease=lease, content=memoryview(content))
+        buffer_refs.append(
+            pool.commit_lease(lease=lease, media_type="image/jpeg").buffer_ref
+        )
+    runtime_target = _build_runtime_target(tmp_path)
+    execution_result = build_test_execution_result(runtime_target=runtime_target)
+    runtime_pool = _BatchRuntimePool(execution_result=execution_result)
+    response_queue: Queue = Queue()
+    infer_slots = BoundedSemaphore(1)
+    assert infer_slots.acquire(blocking=False) is True
+    reader = DirectMmapLocalBufferReader(settings, root_dir=tmp_path / "buffers")
+    health = _LocalBufferBrokerRuntimeHealth(
+        connected=True,
+        channel_id="direct-mmap",
+    )
+    try:
+        _run_inference_batch_request(
+            response_queue=response_queue,
+            request_id="request-batch",
+            runtime_pool=runtime_pool,
+            runtime_pool_config=DeploymentRuntimePoolConfig(
+                deployment_instance_id="deployment-batch",
+                runtime_target=runtime_target,
+            ),
+            payload={
+                "task_type": "detection",
+                "prediction_requests": [
+                    {
+                        "input_uri": None,
+                        "input_image_payload": {
+                            "transport_kind": "buffer",
+                            "media_type": "image/jpeg",
+                            "buffer_ref": buffer_ref.model_dump(mode="json"),
+                        },
+                        "score_threshold": 0.3,
+                        "save_result_image": False,
+                        "extra_options": {},
+                    }
+                    for buffer_ref in buffer_refs
+                ],
+            },
+            local_buffer_reader=reader,
+            local_buffer_writer=None,
+            local_buffer_health=health,
+            dataset_storage=LocalDatasetStorage(
+                DatasetStorageSettings(root_dir=str(tmp_path / "objects"))
+            ),
+            infer_slots=infer_slots,
+            keep_warm_state=None,
+        )
+    finally:
+        reader.close()
+
+    response = response_queue.get_nowait()
+    assert response["ok"] is True
+    assert response["payload"]["instance_id"] == "instance-batch"
+    assert len(response["payload"]["execution_results"]) == 2
+    assert runtime_pool.call_count == 1
+    assert health.buffer_input_count == 2
+    assert health.error_count == 0
+    assert infer_slots.acquire(blocking=False) is True
+    pool.close()
+
+
+def test_batch_prediction_failure_is_not_counted_as_local_buffer_read_error(
+    tmp_path: Path,
+) -> None:
+    """验证下游模型输入错误不会污染 LocalBuffer 读取健康计数。"""
+
+    settings = LocalBufferBrokerSettings(
+        arena_size_bytes=8 * 1024 * 1024,
+        min_block_size_bytes=1024 * 1024,
+        max_allocation_bytes=4 * 1024 * 1024,
+        reader_guard_slots=4,
+    )
+    pool = LocalBufferArenaPool(
+        MmapBufferArenaConfig(
+            root_dir=tmp_path / "buffers",
+            arena_id=settings.arena_id,
+            arena_size_bytes=settings.arena_size_bytes,
+            min_block_size_bytes=settings.min_block_size_bytes,
+            max_allocation_bytes=settings.max_allocation_bytes,
+            reader_guard_slots=settings.reader_guard_slots,
+        )
+    )
+    refs = []
+    for item_index in range(2):
+        content = f"batch-image-{item_index}".encode()
+        lease = pool.allocate(
+            content_length=len(content),
+            owner_kind="workflow-runtime",
+            owner_id=f"run-error-{item_index}",
+        )
+        pool.write_lease_bytes(lease=lease, content=memoryview(content))
+        refs.append(pool.commit_lease(lease=lease, media_type="image/jpeg").buffer_ref)
+    runtime_target = _build_runtime_target(tmp_path)
+    response_queue: Queue = Queue()
+    infer_slots = BoundedSemaphore(1)
+    assert infer_slots.acquire(blocking=False) is True
+    reader = DirectMmapLocalBufferReader(settings, root_dir=tmp_path / "buffers")
+    health = _LocalBufferBrokerRuntimeHealth(True, "direct-mmap")
+    try:
+        _run_inference_batch_request(
+            response_queue=response_queue,
+            request_id="request-batch-error",
+            runtime_pool=_BatchRuntimePool(
+                execution_result=build_test_execution_result(
+                    runtime_target=runtime_target
+                ),
+                fail_item_index=1,
+            ),
+            runtime_pool_config=DeploymentRuntimePoolConfig(
+                deployment_instance_id="deployment-batch-error",
+                runtime_target=runtime_target,
+            ),
+            payload={
+                "task_type": "detection",
+                "prediction_requests": [
+                    {
+                        "input_image_payload": {
+                            "transport_kind": "buffer",
+                            "media_type": "image/jpeg",
+                            "buffer_ref": ref.model_dump(mode="json"),
+                        },
+                        "score_threshold": 0.3,
+                        "save_result_image": False,
+                        "extra_options": {},
+                    }
+                    for ref in refs
+                ],
+            },
+            local_buffer_reader=reader,
+            local_buffer_writer=None,
+            local_buffer_health=health,
+            dataset_storage=LocalDatasetStorage(
+                DatasetStorageSettings(root_dir=str(tmp_path / "objects"))
+            ),
+            infer_slots=infer_slots,
+            keep_warm_state=None,
+        )
+    finally:
+        reader.close()
+
+    response = response_queue.get_nowait()
+    assert response["ok"] is False
+    assert response["error"]["details"]["item_index"] == 1
+    assert health.buffer_input_count == 2
+    assert health.error_count == 0
+    assert infer_slots.acquire(blocking=False) is True
     pool.close()
 
 

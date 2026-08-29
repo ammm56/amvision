@@ -49,6 +49,10 @@ from backend.service.domain.models.model_task_types import (
     SEGMENTATION_TASK_TYPE,
     ModelTaskType,
 )
+from backend.service.domain.models.model_input_spec import (
+    normalize_rfdetr_model_scale,
+    resolve_rfdetr_default_spatial_size,
+)
 
 RfdetrConfigClass: TypeAlias = type[ModelConfig]
 
@@ -56,24 +60,6 @@ PROJECT_RFDETR_MODEL_DEFAULTS: ModelDefaults = replace(
     MODEL_DEFAULTS,
     force_no_pretrain=True,
 )
-
-_SCALE_ALIASES: dict[str, str] = {
-    "n": "nano",
-    "nano": "nano",
-    "base": "base",
-    "s": "s",
-    "small": "s",
-    "m": "m",
-    "medium": "m",
-    "l": "l",
-    "large": "l",
-    "preview": "preview",
-    "x": "x",
-    "xl": "x",
-    "xlarge": "x",
-    "xxl": "xxl",
-    "xxlarge": "xxl",
-}
 
 _DETECTION_CONFIG_BY_SCALE: dict[str, RfdetrConfigClass] = {
     "nano": RFDETRNanoConfig,
@@ -122,10 +108,7 @@ def normalize_rfdetr_full_core_scale(model_scale: str) -> str:
     - 当前函数的执行结果。
     """
 
-    normalized = _SCALE_ALIASES.get(model_scale.strip().lower())
-    if normalized is None:
-        raise ValueError(f"RF-DETR full core 不支持 model_scale={model_scale!r}")
-    return normalized
+    return normalize_rfdetr_model_scale(model_scale)
 
 
 def resolve_rfdetr_full_core_input_divisor(
@@ -159,12 +142,11 @@ def resolve_rfdetr_full_core_default_input_size(
 ) -> tuple[int, int]:
     """返回指定任务和 scale 的原生方形训练输入尺寸。"""
 
-    config_cls = resolve_rfdetr_full_core_config_class(
+    spatial_size = resolve_rfdetr_default_spatial_size(
         task_type=task_type,
         model_scale=model_scale,
     )
-    resolution = _read_int_config_default(config_cls, "resolution")
-    return resolution, resolution
+    return spatial_size.hw
 
 
 def align_rfdetr_full_core_input_size(

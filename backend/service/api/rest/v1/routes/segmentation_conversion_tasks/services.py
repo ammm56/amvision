@@ -3,56 +3,44 @@
 from __future__ import annotations
 
 from backend.service.api.rest.v1.routes.task_conversion.services import TaskConversionServiceEntry
-from backend.service.application.conversions.rfdetr_conversion_task_service import (
-    RFDETR_CONVERSION_QUEUE_NAME,
-    RFDETR_CONVERSION_TASK_KIND,
-    RfdetrConversionTaskRequest,
-    SqlAlchemyRfdetrConversionTaskService,
-)
-from backend.service.application.conversions.yolo11_conversion_task_service import (
-    YOLO11_CONVERSION_QUEUE_NAME,
-    YOLO11_CONVERSION_TASK_KIND,
-    SqlAlchemyYolo11ConversionTaskService,
-    Yolo11ConversionTaskRequest,
-)
-from backend.service.application.conversions.yolo26_conversion_task_service import (
-    YOLO26_CONVERSION_QUEUE_NAME,
-    YOLO26_CONVERSION_TASK_KIND,
-    SqlAlchemyYolo26ConversionTaskService,
-    Yolo26ConversionTaskRequest,
-)
-from backend.service.application.conversions.yolov8_conversion_task_service import (
-    YOLOV8_CONVERSION_QUEUE_NAME,
-    YOLOV8_CONVERSION_TASK_KIND,
-    SqlAlchemyYoloV8ConversionTaskService,
-    YoloV8ConversionTaskRequest,
-)
+
+
+_CONVERSION_MODULE_BY_MODEL_TYPE = {
+    "yolov8": "backend.service.application.conversions.yolov8_conversion_task_service",
+    "yolo11": "backend.service.application.conversions.yolo11_conversion_task_service",
+    "yolo26": "backend.service.application.conversions.yolo26_conversion_task_service",
+    "rfdetr": "backend.service.application.conversions.rfdetr_conversion_task_service",
+}
 
 
 SEGMENTATION_CONVERSION_SERVICE_ENTRIES = {
     "yolov8": TaskConversionServiceEntry(
-        service_cls=SqlAlchemyYoloV8ConversionTaskService,
-        request_cls=YoloV8ConversionTaskRequest,
-        task_kind=YOLOV8_CONVERSION_TASK_KIND,
-        queue_name=YOLOV8_CONVERSION_QUEUE_NAME,
+        module_name=_CONVERSION_MODULE_BY_MODEL_TYPE["yolov8"],
+        service_class_name="SqlAlchemyYoloV8ConversionTaskService",
+        request_class_name="YoloV8ConversionTaskRequest",
+        task_kind="yolov8-conversion",
+        queue_name="yolov8-conversions",
     ),
     "yolo11": TaskConversionServiceEntry(
-        service_cls=SqlAlchemyYolo11ConversionTaskService,
-        request_cls=Yolo11ConversionTaskRequest,
-        task_kind=YOLO11_CONVERSION_TASK_KIND,
-        queue_name=YOLO11_CONVERSION_QUEUE_NAME,
+        module_name=_CONVERSION_MODULE_BY_MODEL_TYPE["yolo11"],
+        service_class_name="SqlAlchemyYolo11ConversionTaskService",
+        request_class_name="Yolo11ConversionTaskRequest",
+        task_kind="yolo11-conversion",
+        queue_name="yolo11-conversions",
     ),
     "yolo26": TaskConversionServiceEntry(
-        service_cls=SqlAlchemyYolo26ConversionTaskService,
-        request_cls=Yolo26ConversionTaskRequest,
-        task_kind=YOLO26_CONVERSION_TASK_KIND,
-        queue_name=YOLO26_CONVERSION_QUEUE_NAME,
+        module_name=_CONVERSION_MODULE_BY_MODEL_TYPE["yolo26"],
+        service_class_name="SqlAlchemyYolo26ConversionTaskService",
+        request_class_name="Yolo26ConversionTaskRequest",
+        task_kind="yolo26-conversion",
+        queue_name="yolo26-conversions",
     ),
     "rfdetr": TaskConversionServiceEntry(
-        service_cls=SqlAlchemyRfdetrConversionTaskService,
-        request_cls=RfdetrConversionTaskRequest,
-        task_kind=RFDETR_CONVERSION_TASK_KIND,
-        queue_name=RFDETR_CONVERSION_QUEUE_NAME,
+        module_name=_CONVERSION_MODULE_BY_MODEL_TYPE["rfdetr"],
+        service_class_name="SqlAlchemyRfdetrConversionTaskService",
+        request_class_name="RfdetrConversionTaskRequest",
+        task_kind="rfdetr-conversion",
+        queue_name="rfdetr-conversions",
         request_includes_task_type=True,
     ),
 }

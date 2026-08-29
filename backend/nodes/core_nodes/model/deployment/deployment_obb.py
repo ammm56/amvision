@@ -14,6 +14,9 @@ from backend.nodes.core_nodes.support.deployment_model import (
     DEFAULT_DIRECT_MODEL_SCORE_THRESHOLD,
     run_direct_model_inference,
 )
+from backend.nodes.core_nodes.support.deployment_result_payloads import (
+    build_deployment_result_payload,
+)
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from backend.service.domain.models.model_task_types import OBB_TASK_TYPE
 from backend.version import BACKEND_VERSION
@@ -26,29 +29,12 @@ def _deployment_obb_handler(request: WorkflowNodeExecutionRequest) -> dict[str, 
         request,
         task_type=OBB_TASK_TYPE,
     )
-    obb_items = []
-    for index, item in enumerate(inference_result.instances, start=1):
-        obb_items.append(
-            {
-                "obb_id": str(item.get("obb_id") or f"obb-{index}"),
-                "score": float(item.get("score") or 0.0),
-                "class_id": int(item.get("class_id") or 0),
-                "class_name": item.get("class_name"),
-                "bbox_xyxy": list(item.get("bbox_xyxy")) if isinstance(item.get("bbox_xyxy"), list) else [],
-                "angle": float(item["angle"]) if isinstance(item.get("angle"), int | float) else None,
-            }
-        )
     return {
-        "obbs": {
-            "source_image": dict(source_image),
-            "count": len(obb_items),
-            "items": obb_items,
-            "image_width": inference_result.image_width,
-            "image_height": inference_result.image_height,
-            "latency_ms": inference_result.latency_ms,
-            "runtime_session_info": dict(inference_result.runtime_session_info),
-            "metadata": dict(inference_result.metadata),
-        }
+        "obbs": build_deployment_result_payload(
+            task_type=OBB_TASK_TYPE,
+            inference_result=inference_result,
+            source_image=source_image,
+        )
     }
 
 

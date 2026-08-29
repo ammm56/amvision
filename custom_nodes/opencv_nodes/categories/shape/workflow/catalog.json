@@ -2963,7 +2963,7 @@
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
       "version": "0.1.4",
-      "concurrency_policy": "serialized",
+      "concurrency_policy": "thread-safe",
       "input_ports": [
         {
           "name": "image",
@@ -3016,6 +3016,12 @@
       "parameter_schema": {
         "type": "object",
         "properties": {
+          "convert_roi_to_grayscale": {
+            "type": "boolean",
+            "default": false,
+            "title": "ROI Grayscale",
+            "description": "显式启用后，只对已解析并裁剪的 Search ROI 执行灰度转换；关闭时要求输入已经是灰度图。"
+          },
           "accumulator_resolution_ratio": {
             "type": "number",
             "exclusiveMinimum": 0,

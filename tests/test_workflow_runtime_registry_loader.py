@@ -72,6 +72,25 @@ def _assert_memory_raw_bgr24_image(
     assert len(image_bytes) == height * width * 3
 
 
+def _assert_memory_raw_gray8_image(
+    payload: dict[str, object],
+    *,
+    image_registry: ExecutionImageRegistry,
+) -> None:
+    """验证内部 memory image-ref 使用紧凑 raw GRAY8 契约。"""
+
+    assert payload["transport_kind"] == "memory"
+    assert payload["media_type"] == "image/raw"
+    assert payload["dtype"] == "uint8"
+    assert payload["layout"] == "HW"
+    assert payload["pixel_format"] == "gray8"
+    width = int(payload["width"])
+    height = int(payload["height"])
+    assert payload["shape"] == [height, width]
+    image_bytes = image_registry.read_bytes(str(payload["image_handle"]))
+    assert len(image_bytes) == height * width
+
+
 def _assert_inline_jpeg_image(payload: dict[str, object]) -> None:
     """验证明确预览边界返回可显示的 inline JPEG。"""
 
@@ -2484,7 +2503,7 @@ def test_repository_opencv_filter_nodes_accept_memory_image_payload(
     )
 
     image_payload = execution_result.outputs["result_image"]
-    _assert_memory_raw_bgr24_image(
+    _assert_memory_raw_gray8_image(
         image_payload,
         image_registry=image_registry,
     )
@@ -3083,7 +3102,7 @@ def test_repository_opencv_morphology_and_canny_nodes_accept_memory_image_payloa
     )
 
     image_payload = execution_result.outputs["result_image"]
-    _assert_memory_raw_bgr24_image(
+    _assert_memory_raw_gray8_image(
         image_payload,
         image_registry=image_registry,
     )

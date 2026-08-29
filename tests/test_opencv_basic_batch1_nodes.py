@@ -169,15 +169,14 @@ def test_opencv_basic_batch1_preprocess_nodes_execute(tmp_path: Path) -> None:
     assert adaptive_image["height"] == 20
     assert otsu_image["width"] == 80
     assert otsu_image["height"] == 40
-    _assert_bgr24_image_payload(image_registry, grayscale_image)
-    _assert_bgr24_image_payload(image_registry, resized_image)
-    _assert_bgr24_image_payload(image_registry, adaptive_image)
-    _assert_bgr24_image_payload(image_registry, otsu_image)
+    _assert_gray8_image_payload(image_registry, grayscale_image)
+    _assert_gray8_image_payload(image_registry, resized_image)
+    _assert_gray8_image_payload(image_registry, adaptive_image)
+    _assert_gray8_image_payload(image_registry, otsu_image)
     grayscale_matrix = image_registry.get_entry(
         str(grayscale_image["image_handle"])
     ).matrix
-    assert (grayscale_matrix[:, :, 0] == grayscale_matrix[:, :, 1]).all()
-    assert (grayscale_matrix[:, :, 1] == grayscale_matrix[:, :, 2]).all()
+    assert grayscale_matrix.shape == (40, 80)
 
 
 def test_opencv_basic_batch1_contour_bridge_nodes_execute(tmp_path: Path) -> None:
@@ -627,6 +626,25 @@ def _assert_bgr24_image_payload(
     assert (
         len(image_bytes)
         == int(image_payload["width"]) * int(image_payload["height"]) * 3
+    )
+
+
+def _assert_gray8_image_payload(
+    image_registry: ExecutionImageRegistry, image_payload: dict[str, object]
+) -> None:
+    """验证节点输出保持内存 GRAY8，不扩展成三通道或额外 PNG 编码。"""
+
+    assert image_payload["transport_kind"] == "memory"
+    assert image_payload["media_type"] == "image/raw"
+    assert image_payload["pixel_format"] == "gray8"
+    assert image_payload["layout"] == "HW"
+    assert image_payload["shape"] == [
+        int(image_payload["height"]),
+        int(image_payload["width"]),
+    ]
+    image_bytes = image_registry.read_bytes(str(image_payload["image_handle"]))
+    assert len(image_bytes) == int(image_payload["width"]) * int(
+        image_payload["height"]
     )
 
 

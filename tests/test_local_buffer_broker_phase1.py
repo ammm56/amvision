@@ -72,6 +72,44 @@ def test_broker_process_serves_dynamic_extents_and_capacity_metrics(
     assert supervisor.is_running is False
 
 
+def test_broker_batch_write_preserves_order_and_releases_in_one_action(
+    tmp_path: Path,
+) -> None:
+    """批量 allocate/commit 保持顺序，release-many 后容量完整回收。"""
+
+    supervisor = _supervisor(tmp_path)
+    supervisor.start()
+    try:
+        client = supervisor.create_client()
+        assert client is not None
+        contents = (b"first", b"second-image", b"third")
+        results = client.write_many(
+            items=tuple(
+                {
+                    "content": content,
+                    "media_type": "image/raw",
+                    "shape": (1, len(content)),
+                    "dtype": "uint8",
+                    "layout": "HW",
+                    "pixel_format": "gray8",
+                }
+                for content in contents
+            ),
+            owner_kind="workflow-runtime",
+            owner_id="workflow-run-1:classification-batch",
+        )
+
+        assert tuple(
+            client.read_buffer_ref(result.buffer_ref) for result in results
+        ) == contents
+        assert client.release_many(
+            tuple(result.lease.lease_id for result in results)
+        ) == 3
+        assert client.get_status()["free_capacity_bytes"] == 16 * _MIB
+    finally:
+        supervisor.stop()
+
+
 def test_shared_client_serializes_control_responses(tmp_path: Path) -> None:
     """多线程复用同一 client 时控制响应不会串包。"""
 

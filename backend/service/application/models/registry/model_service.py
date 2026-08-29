@@ -36,6 +36,7 @@ from backend.service.domain.models.model_input_spec import (
     ModelInputSpec,
     SpatialSize,
     build_platform_model_input_spec,
+    resolve_rfdetr_default_spatial_size,
     resolve_yolo_default_spatial_size,
 )
 from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
@@ -1368,15 +1369,10 @@ class SqlAlchemyModelService:
                     "RF-DETR 预训练模型缺少 model_scale，无法解析输入尺寸",
                     details={"task_type": task_type},
                 )
-            from backend.service.application.models.rfdetr_core.factory import (
-                resolve_rfdetr_full_core_default_input_size,
-            )
-
-            input_height, input_width = resolve_rfdetr_full_core_default_input_size(
+            return resolve_rfdetr_default_spatial_size(
                 task_type=task_type,
                 model_scale=model_scale,
             )
-            return SpatialSize(width=input_width, height=input_height)
         raise InvalidRequestError(
             "模型类型缺少默认输入尺寸规则",
             details={"model_type": model_type, "task_type": task_type},

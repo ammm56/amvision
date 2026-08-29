@@ -45,6 +45,7 @@ from backend.service.application.runtime.contracts.segmentation.prediction impor
 )
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessConfig,
+    DeploymentProcessBatchExecution,
     DeploymentProcessExecution,
     DeploymentProcessHealth,
     DeploymentProcessStatus,
@@ -197,6 +198,25 @@ class _FakeRefSupervisor(_FakeSupervisor):
             instance_id="instance-mmap",
             execution_result=build_test_execution_result(
                 runtime_target=config.runtime_target
+            ),
+        )
+
+    def run_inference_batch(self, *, config, requests):
+        """记录 Batch 并校验每项始终携带 BufferRef。"""
+
+        self.actions.append("infer_batch")
+        for request in requests:
+            assert request.input_image_bytes is None
+            assert request.input_uri is None
+            assert request.input_image_payload is not None
+            assert request.input_image_payload["transport_kind"] == "buffer"
+            assert request.input_image_payload["buffer_ref"]["content_length"] == 12
+        return DeploymentProcessBatchExecution(
+            deployment_instance_id=config.deployment_instance_id,
+            instance_id="instance-mmap-batch",
+            execution_results=tuple(
+                build_test_execution_result(runtime_target=config.runtime_target)
+                for _ in requests
             ),
         )
 
@@ -833,6 +853,113 @@ def test_local_mmap_hot_path_keeps_buffer_ref_and_handles_eighty_calls(
     assert not (Path(queue_backend.root_dir) / "inference-control-test-daemon").exists()
     staged_root = dataset_storage.resolve("runtime/inputs/inference-control")
     assert not staged_root.exists()
+
+
+def test_queue_backed_client_routes_two_concurrent_batches_over_mmap(
+    tmp_path: Path,
+) -> None:
+    """验证 Workflow 两分支并发 Batch 走 daemon mmap，而不落入基类本地状态。"""
+
+    dataset_storage = create_test_dataset_storage(tmp_path)
+    queue_backend = LocalFileQueueBackend(
+        LocalFileQueueSettings(root_dir=str(tmp_path / "queue"))
+    )
+    target = build_test_runtime_target(
+        dataset_storage=dataset_storage,
+        runtime_backend="pytorch",
+        device_name="cpu",
+        runtime_precision="fp32",
+        runtime_artifact_file_name="model.pt",
+        runtime_artifact_file_type="pytorch-state-dict",
+    )
+    config = DeploymentProcessConfig(
+        deployment_instance_id="deployment-mmap-batch",
+        runtime_target=target,
+        project_id="project-1",
+        runtime_configuration=DeploymentRuntimeConfiguration(),
+    )
+    fake_supervisor = _FakeRefSupervisor(dataset_storage=dataset_storage)
+    dispatcher = InferenceControlDispatcher(
+        queue_backend=queue_backend,
+        dataset_storage=dataset_storage,
+        service_id="test-daemon",
+        bindings_by_task_type={
+            "detection": InferenceControlBinding(
+                sync_supervisor=fake_supervisor,  # type: ignore[arg-type]
+                async_supervisor=fake_supervisor,  # type: ignore[arg-type]
+                async_gateway_registry=_FakeRegistry(),
+            )
+        },
+    )
+    buffers_root = tmp_path / "batch-buffers"
+    mmap_server = InferenceLocalMmapServer(
+        buffers_root=buffers_root,
+        service_id="test-daemon",
+        request_handler=dispatcher.handle_inference_message_request,
+        max_concurrent_requests=4,
+    )
+    mmap_client = InferenceLocalMmapClient(
+        buffers_root=buffers_root,
+        service_id="test-daemon",
+        request_timeout_seconds=5.0,
+    )
+    client = QueueBackedInferenceControlClient(
+        queue_backend=queue_backend,
+        dataset_storage=dataset_storage,
+        runtime_mode="sync",
+        service_id="test-daemon",
+        request_timeout_seconds=5.0,
+        startup_timeout_seconds=5.0,
+        message_client=mmap_client,
+    )
+    buffer_ref = BufferRef(
+        buffer_id="local-buffer-main:0",
+        lease_id="lease-batch",
+        arena_id="local-buffer-main",
+        descriptor_index=0,
+        descriptor_generation=1,
+        broker_epoch="1" * 32,
+        offset=0,
+        content_length=12,
+        allocation_capacity_bytes=1024 * 1024,
+        shape=(2, 2, 3),
+        dtype="uint8",
+        layout="HWC",
+        pixel_format="BGR24",
+        media_type="image/raw",
+    )
+    request = DetectionPredictionRequest(
+        input_image_payload={
+            "transport_kind": "buffer",
+            "media_type": "image/raw",
+            "buffer_ref": buffer_ref.model_dump(mode="json"),
+        },
+        score_threshold=0.25,
+        save_result_image=False,
+    )
+
+    mmap_server.start()
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            executions = tuple(
+                executor.map(
+                    lambda _: client.run_inference_batch(
+                        config=config,
+                        requests=(request,) * 12,
+                    ),
+                    range(2),
+                )
+            )
+        response_metrics = mmap_server.get_health_summary()["response_metrics"]
+    finally:
+        mmap_client.close()
+        mmap_server.stop()
+
+    assert len(executions) == 2
+    assert all(item.instance_id == "instance-mmap-batch" for item in executions)
+    assert all(len(item.execution_results) == 12 for item in executions)
+    assert sorted(fake_supervisor.actions) == ["infer_batch", "infer_batch"]
+    assert response_metrics["raw_size_bytes_by_task_type"]["detection"]["sample_count"] == 2
 
 
 def test_direct_mmap_reader_reads_only_configured_arena_identity(tmp_path: Path) -> None:

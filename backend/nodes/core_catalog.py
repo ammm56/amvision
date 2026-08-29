@@ -87,6 +87,114 @@ def _build_image_ref_json_schema(
     }
 
 
+def _build_opencv_shared_image_ref_json_schema() -> dict[str, object]:
+    """构造与 OpenCV 共享合约完全一致的 image-ref 内嵌规则。"""
+
+    schema = _build_image_ref_json_schema()
+    one_of = schema.get("oneOf")
+    if isinstance(one_of, list) and len(one_of) == 5:
+        schema["oneOf"] = [one_of[0], one_of[2], one_of[1], one_of[3], one_of[4]]
+    return schema
+
+
+def _build_model_batch_payload_contracts() -> tuple[WorkflowPayloadContract, ...]:
+    """构造五类模型 Batch 的统一信封契约。"""
+
+    definitions = (
+        (
+            "detections-batch.v1",
+            "Detection Batch Result",
+            "amvision.detections-batch.v1",
+            "detection",
+            "detections.v1",
+        ),
+        (
+            "categories-batch.v1",
+            "Classification Batch Result",
+            "amvision.categories-batch.v1",
+            "classification",
+            "categories.v1",
+        ),
+        (
+            "segments-batch.v1",
+            "Segmentation Batch Result",
+            "amvision.segments-batch.v1",
+            "segmentation",
+            "segments.v1",
+        ),
+        (
+            "poses-batch.v1",
+            "Pose Batch Result",
+            "amvision.poses-batch.v1",
+            "pose",
+            "poses.v1",
+        ),
+        (
+            "obbs-batch.v1",
+            "OBB Batch Result",
+            "amvision.obbs-batch.v1",
+            "obb",
+            "obbs.v1",
+        ),
+    )
+    return tuple(
+        WorkflowPayloadContract(
+            payload_type_id=payload_type_id,
+            display_name=display_name,
+            transport_kind="inline-json",
+            json_schema={
+                "type": "object",
+                "properties": {
+                    "format_id": {"const": format_id},
+                    "task_type": {"const": task_type},
+                    "result_payload_type_id": {
+                        "const": result_payload_type_id,
+                    },
+                    "count": {"type": "integer", "minimum": 1, "maximum": 64},
+                    "items": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 64,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "item_index": {"type": "integer", "minimum": 0},
+                                "item_id": {"type": "string", "minLength": 1},
+                                "source": {"type": "object"},
+                                "result": {"type": "object"},
+                            },
+                            "required": [
+                                "item_index",
+                                "item_id",
+                                "source",
+                                "result",
+                            ],
+                        },
+                    },
+                    "batch_latency_ms": {"type": "number", "minimum": 0},
+                    "metadata": {"type": "object"},
+                },
+                "required": [
+                    "format_id",
+                    "task_type",
+                    "result_payload_type_id",
+                    "count",
+                    "items",
+                    "batch_latency_ms",
+                    "metadata",
+                ],
+            },
+        )
+        for (
+            payload_type_id,
+            display_name,
+            format_id,
+            task_type,
+            result_payload_type_id,
+        ) in definitions
+    )
+
+
 @lru_cache(maxsize=1)
 def get_core_workflow_payload_contracts() -> tuple[WorkflowPayloadContract, ...]:
     """返回 backend 内建的最小 payload 规则 目录。
@@ -271,6 +379,7 @@ def get_core_workflow_payload_contracts() -> tuple[WorkflowPayloadContract, ...]
             },
             artifact_kinds=("image",),
         ),
+        *_build_model_batch_payload_contracts(),
         WorkflowPayloadContract(
             payload_type_id="video-ref.v1",
             display_name="Video Reference",
@@ -798,6 +907,58 @@ def get_core_workflow_payload_contracts() -> tuple[WorkflowPayloadContract, ...]
                     "metadata": {"type": "object"},
                 },
                 "required": ["count", "items"],
+            },
+        ),
+        WorkflowPayloadContract(
+            payload_type_id="circles.v1",
+            display_name="Circle Result",
+            transport_kind="inline-json",
+            json_schema={
+                "type": "object",
+                "properties": {
+                    "source_image": _build_opencv_shared_image_ref_json_schema(),
+                    "source_object_key": {"type": "string"},
+                    "count": {"type": "integer"},
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "circle_index": {"type": "integer"},
+                                "center_xy": {
+                                    "type": "array",
+                                    "items": {"type": "number"},
+                                    "minItems": 2,
+                                    "maxItems": 2,
+                                },
+                                "center_x": {"type": "number"},
+                                "center_y": {"type": "number"},
+                                "radius": {"type": "number"},
+                                "diameter": {"type": "number"},
+                                "area": {"type": "number"},
+                                "circumference": {"type": "number"},
+                                "bbox_xyxy": {
+                                    "type": "array",
+                                    "items": {"type": "number"},
+                                    "minItems": 4,
+                                    "maxItems": 4,
+                                },
+                                "contour_index": {"type": "integer"},
+                                "point_count": {"type": "integer"},
+                                "contour_area": {"type": "number"},
+                                "fill_ratio": {"type": "number"},
+                            },
+                            "required": [
+                                "circle_index",
+                                "center_xy",
+                                "radius",
+                                "diameter",
+                                "area",
+                            ],
+                        },
+                    },
+                },
+                "required": ["items"],
             },
         ),
         WorkflowPayloadContract(

@@ -1,6 +1,6 @@
 # 视觉并行与模型批量节点设计
 
-> 状态：已确认的实施设计。本文固定 Hough Circles、显式 Parallel、五类模型 Batch 节点、payload 互操作和同步 deployment 调用边界。本文描述的新增能力尚未全部落地；实现过程中不得在没有同步更新本文、相关公开契约和验证证据的情况下改变这些边界。
+> 状态：已实现并完成开发环境真实数据验收。本文固定 Hough Circles、显式 Parallel、五类模型 Batch 节点、payload 互操作和同步 deployment 调用边界；后续变更仍需同步更新公开契约和验证证据。
 
 ## 文档目的
 
@@ -25,9 +25,9 @@
 - Batch 输出必须能经显式 bridge 恢复为已有单项 payload，继续接入现有通用节点；不得产生只能由当前 App 或一个专用汇总节点识别的结果。
 - 图片主体继续位于 `image-ref.v1` / LocalBuffer 数据面。Batch inline JSON 不嵌套临时 memory、BufferRef 或 FrameRef locator。
 
-## 当前证据边界
+## 优化前基线证据
 
-当前性能证据来自现有开发数据和 Workflow Preview Run，不把它描述为生产 Trigger soak 结论：
+以下数据是实现前用于定位问题的开发数据和 Workflow Preview Run 基线，不是修改后的 Trigger 和长时间内存结论：
 
 - 四个 Hough Circles 单节点耗时约 115 至 341 ms；整图 Grayscale 与四个 Hough 的近期合计平均约 1009 ms。
 - Hough 的主要耗时除整图灰度外，还包含候选径向采样和 robust circle fitting。
@@ -37,6 +37,47 @@
 - 近期 Preview 的 72 次 classification 均成功，两个实例各处理相同数量；当前证据不能替代修改后的正式 Runtime、Trigger 和长期内存验收。
 
 实现和验收必须保留原始运行数据、运行类型、样本数、warm/cold 状态和诊断开关，不能只记录一个总耗时。
+
+## 实现与实际验收结果
+
+2026-08-29 使用现有模型、两实例 OpenVINO CPU deployment、现场图片和正式 Workflow Runtime 完成验收。原应用保持不变，建立了两个独立副本：
+
+| 用途 | 原应用 | 验证副本 | 发布版本 |
+| --- | --- | --- | --- |
+| 3570 治具空盘，24 项分类与 4 个圆定位 | `workflow-app-20260804015118` | `workflow-app-20260829184603` | `v2` |
+| 3570 塑盒满盘，80 项分类 | `workflow-app-20260804015507` | `workflow-app-20260829184604` | `v2` |
+
+实现结果：
+
+- `Grayscale` 保留真实 `gray8/HW`；Hough Circles 的 `convert_roi_to_grayscale` 在面板中可见且默认关闭，开启时只转换解析后的 Search ROI。
+- Hough Circles 已完成无共享可变状态审计并声明 `thread-safe`，但是否并行仍只由显式 `Parallel Start` / `Parallel End` 决定。
+- `circles.v1` 已提升为核心公共 payload 合约，与 OpenCV 节点包共享完全一致的 schema；核心 typed bridge 不再依赖自定义包先加载。
+- detection、classification、segmentation、pose、OBB 五类 Batch 节点、统一有序 Batch 信封、五类 Batch-to-value bridge 和对称 typed bridge 已实现。
+- gateway、inference daemon、deployment worker 和 runtime pool 已实现单次 `infer_batch`。Batch 在整个调用中固定占用一个实例，按输入顺序执行；无实例时立即 busy，不等待、不排队、不重试、不拆批。
+- Workflow memory 图片使用 LocalBuffer 批量控制操作分配和提交；结束时按本次节点 owner 一次释放，错误路径仍保留逐 lease 条件释放兜底。Batch JSON 不暴露临时 locator。
+
+Hough 结果与性能：
+
+- 对 9 张现场图片、4 个 ROI 共 36 个实际 case 比较 `maximum_candidates=40` 和 4/8/12/16。`16` 在 36/36 case 中与 `40` 的最终圆结果完全一致；因此只在验证副本中显式设置为 `16`，没有修改节点默认值 `40`。
+- 同一张 5472×3648 图片上，Hough 显式 Parallel 的 `max_concurrency=1/2/4` 分别实测。并发 2 和 4 因 OpenCV/CPU/内存带宽竞争没有降低 wall time；最终应用明确保存 `max_concurrency=1`，仍保留显式 Parallel 边界，避免运行环境变化时改图结构。
+- 原应用 Preview 的 graph/total 为 1778.081/2383.894 ms；验证副本相同最终参数的最佳 warm 数据为 1055.590/1187.341 ms，最终发布前复核为 1183.742/1305.530 ms。按最终复核计算分别降低约 33.4%/45.2%，圆心和半径保持一致。
+
+Classification Batch 结果与性能：
+
+- 24 项正式 Runtime 调试调用中，两路 12 项 Batch 分别固定命中 `instance-0` 和 `instance-1`，节点耗时 154.507/162.651 ms，daemon Batch 耗时 121.477/123.342 ms；输入暂存 18.816/21.352 ms，gateway 124.684/127.252 ms，释放 10.322/13.637 ms。
+- 30 次连续正式同步 Workflow 调用为 30/30 成功，端到端 mean/min/P95/max 为 831.3/779.0/946.2/966.0 ms；每次 Workflow 内只有两路 Batch 并发，没有制造额外同步请求洪峰。
+- 80 项应用在相同现场输入上的结果统计与原应用一致：`count=80`、`empty=16`、`full=0`、`abnormal=64`。原应用 Preview graph/total 为 1973.389/2554.580 ms；Batch 副本首次为 1340.314/1566.177 ms，最终 LocalBuffer 控制面优化后复核为 1238.820/1469.404 ms；正式 Runtime 单次端到端为 1185.6 ms。业务判定仍为原规则的 `ng`，本次优化没有改写标签和判定规则。
+
+Trigger、LocalBuffer 与内存结果：
+
+- 为 24 项副本创建并启用 `local-shared-workflow-runtime-c9013239760d4eeca4f5b4f5db5a83d4`。仓库内 .NET Framework SDK 使用 59,885,622 字节 BMP 完成 warmup 2 次和正式 20 次调用，正式调用 20/20 成功；端到端 P50/P95 为 969.113/1080.357 ms，SDK 写 LocalBuffer 平均 4.393 ms。
+- Trigger 结束后 mailbox `used_page_count=0`、`pending_request_count=0`、`active_task_count=0`；LocalBuffer `active_lease_count=0`、allocated/published/revoking/quarantined 均为 0，2 GiB arena 全部可用。
+- 30 次正式 Runtime 调用后，24 项 Runtime Working Set 从 223.1 MiB 到 224.2 MiB，未持续单调增长。Trigger 调用后约增加一份 59 MiB 输入映射 Working Set，Private Bytes 只增加约 3.5 MiB；这是受限 mmap page residency，不是未释放 lease。
+- 审计发现 inference daemon 被强制结束时 Windows 会留下 5 个 deployment 孤儿进程，额外占用约 3.9 GiB Working Set。deployment worker 已增加父进程 watchdog；真实故障注入中强制结束 daemon 后，5/5 子进程在 3 秒检查点前全部退出。
+- daemon 重启后的第一个旧 epoch 同步调用明确失败且不重试；epoch 刷新后的 Trigger 连续调用全部成功。这是受控重启边界，不把失败隐藏成排队或自动重试。
+- 完整 backend 冷重载后，两个 `v2` Runtime 均自动恢复为 `running/running`；分别使用现场治具空盘和塑盒满盘 BMP 再执行一次同步调用，两次都为 `succeeded`。24 项输出仍为 `count=24/passed=true`；80 项输出仍保留原业务规则的统计和判定。
+- 完成控制面内存修复并再次冷重载后，现场复核运行 `workflow-run-7c361566eb43464d9d2cac9054c44a37` 和 `workflow-run-344dc5e1f50b44faa4bc952b99e59dd0` 均为 `succeeded`。数据库时间戳计算的端到端 wall time 分别为 1019.764 ms 和 990.395 ms；结果仍为 24/24 empty/pass 和 80/80、16 empty、64 abnormal、业务 `ng`。
+- 两个验证 Runtime 冷启动空闲时分别约 100 MiB RSS、78 MiB USS，执行现场大图后约 221 至 228 MiB RSS、195 至 197 MiB USS，均无 PyTorch 映射。开发库中另有 8 个 `desired_state=running` 的 Stage 9 benchmark Runtime，每个空闲约 77 至 78 MiB USS；这些是显式运行资源，不是重复恢复或 lease 泄漏，系统不会用隐藏的空闲休眠改变其状态。
 
 ## Hough Circles 输入处理设计
 

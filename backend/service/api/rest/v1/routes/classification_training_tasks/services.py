@@ -9,18 +9,6 @@ from backend.service.api.rest.v1.routes.classification_training_tasks.schemas im
 from backend.service.application.model_type_support import (
     require_supported_platform_model_type,
 )
-from backend.service.application.models.training.yolov8_classification_training_service import (
-    SqlAlchemyYoloV8ClassificationTrainingService,
-    YoloV8ClassificationTrainingRequest,
-)
-from backend.service.application.models.training.yolo11_classification_training_service import (
-    SqlAlchemyYolo11ClassificationTrainingTaskService,
-    Yolo11ClassificationTrainingTaskRequest,
-)
-from backend.service.application.models.training.yolo26_classification_training_service import (
-    SqlAlchemyYolo26ClassificationTrainingTaskService,
-    Yolo26ClassificationTrainingTaskRequest,
-)
 from backend.service.domain.models.model_task_types import CLASSIFICATION_TASK_TYPE
 from backend.service.api.rest.v1.routes.training_execution_schemas import (
     merge_training_execution_options,
@@ -45,21 +33,8 @@ def submit_classification_training_task(
         model_type=body.model_type,
         unsupported_message="当前 classification 训练不支持指定模型分类",
     )
-    service_cls_by_model_type = {
-        "yolo11": SqlAlchemyYolo11ClassificationTrainingTaskService,
-        "yolo26": SqlAlchemyYolo26ClassificationTrainingTaskService,
-    }
-    request_cls_by_model_type = {
-        "yolo11": Yolo11ClassificationTrainingTaskRequest,
-        "yolo26": Yolo26ClassificationTrainingTaskRequest,
-    }
-    service_cls = service_cls_by_model_type.get(
-        model_type,
-        SqlAlchemyYoloV8ClassificationTrainingService,
-    )
-    request_cls = request_cls_by_model_type.get(
-        model_type,
-        YoloV8ClassificationTrainingRequest,
+    service_cls, request_cls = _resolve_classification_training_service(
+        model_type
     )
     service = service_cls(
         session_factory=session_factory,
@@ -97,4 +72,38 @@ def submit_classification_training_task(
         status=result["status"],
         queue_name=result["queue_name"],
         queue_task_id=result["queue_task_id"],
+    )
+
+
+def _resolve_classification_training_service(model_type: str) -> tuple[type, type]:
+    """按实际训练请求延迟加载模型执行服务。"""
+
+    if model_type == "yolo11":
+        from backend.service.application.models.training.yolo11_classification_training_service import (
+            SqlAlchemyYolo11ClassificationTrainingTaskService,
+            Yolo11ClassificationTrainingTaskRequest,
+        )
+
+        return (
+            SqlAlchemyYolo11ClassificationTrainingTaskService,
+            Yolo11ClassificationTrainingTaskRequest,
+        )
+    if model_type == "yolo26":
+        from backend.service.application.models.training.yolo26_classification_training_service import (
+            SqlAlchemyYolo26ClassificationTrainingTaskService,
+            Yolo26ClassificationTrainingTaskRequest,
+        )
+
+        return (
+            SqlAlchemyYolo26ClassificationTrainingTaskService,
+            Yolo26ClassificationTrainingTaskRequest,
+        )
+    from backend.service.application.models.training.yolov8_classification_training_service import (
+        SqlAlchemyYoloV8ClassificationTrainingService,
+        YoloV8ClassificationTrainingRequest,
+    )
+
+    return (
+        SqlAlchemyYoloV8ClassificationTrainingService,
+        YoloV8ClassificationTrainingRequest,
     )

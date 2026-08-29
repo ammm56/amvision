@@ -9,18 +9,6 @@ from backend.service.api.rest.v1.routes.segmentation_training_tasks.schemas impo
 from backend.service.application.model_type_support import (
     require_supported_platform_model_type,
 )
-from backend.service.application.models.training.segmentation_training_service import (
-    SqlAlchemySegmentationTrainingService,
-    SegmentationTrainingRequest,
-)
-from backend.service.application.models.training.yolo11_segmentation_training_service import (
-    SqlAlchemyYolo11SegmentationTrainingTaskService,
-    Yolo11SegmentationTrainingTaskRequest,
-)
-from backend.service.application.models.training.yolo26_segmentation_training_service import (
-    SqlAlchemyYolo26SegmentationTrainingTaskService,
-    Yolo26SegmentationTrainingTaskRequest,
-)
 from backend.service.domain.models.model_task_types import SEGMENTATION_TASK_TYPE
 from backend.service.api.rest.v1.routes.training_execution_schemas import (
     merge_training_execution_options,
@@ -45,23 +33,7 @@ def submit_segmentation_training_task(
         model_type=body.model_type,
         unsupported_message="当前 segmentation 训练不支持指定模型分类",
     )
-    service_and_request_by_model_type = {
-        "yolo11": (
-            SqlAlchemyYolo11SegmentationTrainingTaskService,
-            Yolo11SegmentationTrainingTaskRequest,
-        ),
-        "yolo26": (
-            SqlAlchemyYolo26SegmentationTrainingTaskService,
-            Yolo26SegmentationTrainingTaskRequest,
-        ),
-    }
-    service_cls, request_cls = service_and_request_by_model_type.get(
-        model_type,
-        (
-            SqlAlchemySegmentationTrainingService,
-            SegmentationTrainingRequest,
-        ),
-    )
+    service_cls, request_cls = _resolve_segmentation_training_service(model_type)
     service = service_cls(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -99,3 +71,34 @@ def submit_segmentation_training_task(
         queue_name=result["queue_name"],
         queue_task_id=result["queue_task_id"],
     )
+
+
+def _resolve_segmentation_training_service(model_type: str) -> tuple[type, type]:
+    """按实际训练请求延迟加载模型执行服务。"""
+
+    if model_type == "yolo11":
+        from backend.service.application.models.training.yolo11_segmentation_training_service import (
+            SqlAlchemyYolo11SegmentationTrainingTaskService,
+            Yolo11SegmentationTrainingTaskRequest,
+        )
+
+        return (
+            SqlAlchemyYolo11SegmentationTrainingTaskService,
+            Yolo11SegmentationTrainingTaskRequest,
+        )
+    if model_type == "yolo26":
+        from backend.service.application.models.training.yolo26_segmentation_training_service import (
+            SqlAlchemyYolo26SegmentationTrainingTaskService,
+            Yolo26SegmentationTrainingTaskRequest,
+        )
+
+        return (
+            SqlAlchemyYolo26SegmentationTrainingTaskService,
+            Yolo26SegmentationTrainingTaskRequest,
+        )
+    from backend.service.application.models.training.segmentation_training_service import (
+        SegmentationTrainingRequest,
+        SqlAlchemySegmentationTrainingService,
+    )
+
+    return SqlAlchemySegmentationTrainingService, SegmentationTrainingRequest

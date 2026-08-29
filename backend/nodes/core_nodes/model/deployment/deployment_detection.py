@@ -14,6 +14,9 @@ from backend.nodes.core_nodes.support.deployment_model import (
     DEFAULT_DIRECT_MODEL_SCORE_THRESHOLD,
     run_direct_model_inference,
 )
+from backend.nodes.core_nodes.support.deployment_result_payloads import (
+    build_deployment_result_payload,
+)
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
 from backend.version import BACKEND_VERSION
@@ -22,15 +25,16 @@ from backend.version import BACKEND_VERSION
 def _deployment_detection_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     """通过 PublishedInferenceGateway 调用已发布 detection 推理服务。"""
 
-    inference_result, _ = run_direct_model_inference(
+    inference_result, _source_image = run_direct_model_inference(
         request,
         task_type=DETECTION_TASK_TYPE,
     )
     return {
-        "detections": {
-            "items": list(inference_result.detections),
-            "metadata": dict(inference_result.metadata),
-        }
+        "detections": build_deployment_result_payload(
+            task_type=DETECTION_TASK_TYPE,
+            inference_result=inference_result,
+            source_image=None,
+        )
     }
 
 

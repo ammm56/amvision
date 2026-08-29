@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from importlib import import_module
+
 from backend.service.api.deps.auth import AuthenticatedPrincipal
 from backend.service.application.errors import (
     InvalidRequestError,
@@ -10,31 +12,6 @@ from backend.service.application.errors import (
 from backend.service.application.model_type_support import (
     normalize_optional_platform_model_type,
     require_supported_platform_model_type,
-)
-from backend.service.application.models.training.rfdetr_detection_task_service import (
-    RFDETR_TRAINING_TASK_KIND,
-    RfdetrTrainingTaskRequest,
-    SqlAlchemyRfdetrTrainingTaskService,
-)
-from backend.service.application.models.training.yolo11_training_service import (
-    YOLO11_TRAINING_TASK_KIND,
-    SqlAlchemyYolo11TrainingTaskService,
-    Yolo11TrainingTaskRequest,
-)
-from backend.service.application.models.training.yolo26_training_service import (
-    YOLO26_TRAINING_TASK_KIND,
-    SqlAlchemyYolo26TrainingTaskService,
-    Yolo26TrainingTaskRequest,
-)
-from backend.service.application.models.training.yolov8_training_service import (
-    YOLOV8_TRAINING_TASK_KIND,
-    SqlAlchemyYoloV8TrainingTaskService,
-    YoloV8TrainingTaskRequest,
-)
-from backend.service.application.models.training.yolox_detection_task_service import (
-    YOLOX_TRAINING_TASK_KIND,
-    SqlAlchemyYoloXTrainingTaskService,
-    YoloXTrainingTaskRequest,
 )
 from backend.service.application.project_access import require_explicit_project_access
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
@@ -45,19 +22,39 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 )
 from backend.service.infrastructure.queue.local_file import LocalFileQueueBackend
 
-_DETECTION_TRAINING_SERVICE_BY_MODEL_TYPE = {
-    "yolox": (SqlAlchemyYoloXTrainingTaskService, YoloXTrainingTaskRequest),
-    "yolov8": (SqlAlchemyYoloV8TrainingTaskService, YoloV8TrainingTaskRequest),
-    "yolo11": (SqlAlchemyYolo11TrainingTaskService, Yolo11TrainingTaskRequest),
-    "yolo26": (SqlAlchemyYolo26TrainingTaskService, Yolo26TrainingTaskRequest),
-    "rfdetr": (SqlAlchemyRfdetrTrainingTaskService, RfdetrTrainingTaskRequest),
+_DETECTION_TRAINING_SERVICE_ENTRY_BY_MODEL_TYPE = {
+    "yolox": (
+        "backend.service.application.models.training.yolox_detection_task_service",
+        "SqlAlchemyYoloXTrainingTaskService",
+        "YoloXTrainingTaskRequest",
+    ),
+    "yolov8": (
+        "backend.service.application.models.training.yolov8_training_service",
+        "SqlAlchemyYoloV8TrainingTaskService",
+        "YoloV8TrainingTaskRequest",
+    ),
+    "yolo11": (
+        "backend.service.application.models.training.yolo11_training_service",
+        "SqlAlchemyYolo11TrainingTaskService",
+        "Yolo11TrainingTaskRequest",
+    ),
+    "yolo26": (
+        "backend.service.application.models.training.yolo26_training_service",
+        "SqlAlchemyYolo26TrainingTaskService",
+        "Yolo26TrainingTaskRequest",
+    ),
+    "rfdetr": (
+        "backend.service.application.models.training.rfdetr_detection_task_service",
+        "SqlAlchemyRfdetrTrainingTaskService",
+        "RfdetrTrainingTaskRequest",
+    ),
 }
 _DETECTION_TRAINING_TASK_KIND_BY_MODEL_TYPE = {
-    "yolox": YOLOX_TRAINING_TASK_KIND,
-    "yolov8": YOLOV8_TRAINING_TASK_KIND,
-    "yolo11": YOLO11_TRAINING_TASK_KIND,
-    "yolo26": YOLO26_TRAINING_TASK_KIND,
-    "rfdetr": RFDETR_TRAINING_TASK_KIND,
+    "yolox": "yolox-training",
+    "yolov8": "yolov8-training",
+    "yolo11": "yolo11-training",
+    "yolo26": "yolo26-training",
+    "rfdetr": "rfdetr-training",
 }
 _DETECTION_TRAINING_MODEL_TYPE_BY_TASK_KIND = {
     task_kind: model_type
@@ -189,9 +186,30 @@ def _build_detection_training_service_for_task(
     """按训练任务模型分类构造对应的 detection 训练服务。"""
 
     model_type = _resolve_detection_training_model_type_from_task(task)
-    service_cls, _request_cls = _DETECTION_TRAINING_SERVICE_BY_MODEL_TYPE[model_type]
+    service_cls, _request_cls = _resolve_detection_training_service_and_request(
+        model_type
+    )
     return service_cls(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
         queue_backend=queue_backend,
     )
+
+
+def _resolve_detection_training_service_and_request(
+    model_type: str,
+) -> tuple[type, type]:
+    """按实际训练请求延迟加载 detection 模型执行服务。"""
+
+    module_name, service_class_name, request_class_name = (
+        _DETECTION_TRAINING_SERVICE_ENTRY_BY_MODEL_TYPE[model_type]
+    )
+    module = import_module(module_name)
+    service_class = getattr(module, service_class_name)
+    request_class = getattr(module, request_class_name)
+    if not isinstance(service_class, type) or not isinstance(request_class, type):
+        raise InvalidRequestError(
+            "detection 训练服务入口无效",
+            details={"model_type": model_type},
+        )
+    return service_class, request_class

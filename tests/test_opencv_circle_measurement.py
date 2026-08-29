@@ -84,6 +84,7 @@ def test_hough_circle_tool_keeps_search_roi_independent() -> None:
     """验证 Reference Circle 工具不会再写回或覆盖 Search ROI。"""
 
     interaction = _build_circle_interaction(
+        convert_roi_to_grayscale=False,
         accumulator_resolution_ratio=1.0,
         minimum_center_distance_px=20.0,
         canny_high_threshold=100.0,

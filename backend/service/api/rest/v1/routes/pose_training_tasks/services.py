@@ -9,18 +9,6 @@ from backend.service.api.rest.v1.routes.pose_training_tasks.schemas import (
 from backend.service.application.model_type_support import (
     require_supported_platform_model_type,
 )
-from backend.service.application.models.training.yolov8_pose_training_service import (
-    SqlAlchemyYoloV8PoseTrainingService,
-    YoloV8PoseTrainingRequest,
-)
-from backend.service.application.models.training.yolo11_pose_training_service import (
-    SqlAlchemyYolo11PoseTrainingTaskService,
-    Yolo11PoseTrainingTaskRequest,
-)
-from backend.service.application.models.training.yolo26_pose_training_service import (
-    SqlAlchemyYolo26PoseTrainingTaskService,
-    Yolo26PoseTrainingTaskRequest,
-)
 from backend.service.domain.models.model_task_types import POSE_TASK_TYPE
 from backend.service.api.rest.v1.routes.training_execution_schemas import (
     merge_training_execution_options,
@@ -45,22 +33,7 @@ def submit_pose_training_task(
         model_type=body.model_type,
         unsupported_message="pose 训练不支持该模型分类",
     )
-    service_cls_by_model_type = {
-        "yolo11": SqlAlchemyYolo11PoseTrainingTaskService,
-        "yolo26": SqlAlchemyYolo26PoseTrainingTaskService,
-    }
-    request_cls_by_model_type = {
-        "yolo11": Yolo11PoseTrainingTaskRequest,
-        "yolo26": Yolo26PoseTrainingTaskRequest,
-    }
-    service_cls = service_cls_by_model_type.get(
-        model_type,
-        SqlAlchemyYoloV8PoseTrainingService,
-    )
-    request_cls = request_cls_by_model_type.get(
-        model_type,
-        YoloV8PoseTrainingRequest,
-    )
+    service_cls, request_cls = _resolve_pose_training_service(model_type)
     service = service_cls(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -98,5 +71,36 @@ def submit_pose_training_task(
         queue_name=result["queue_name"],
         queue_task_id=result["queue_task_id"],
     )
+
+
+def _resolve_pose_training_service(model_type: str) -> tuple[type, type]:
+    """按实际训练请求延迟加载模型执行服务。"""
+
+    if model_type == "yolo11":
+        from backend.service.application.models.training.yolo11_pose_training_service import (
+            SqlAlchemyYolo11PoseTrainingTaskService,
+            Yolo11PoseTrainingTaskRequest,
+        )
+
+        return (
+            SqlAlchemyYolo11PoseTrainingTaskService,
+            Yolo11PoseTrainingTaskRequest,
+        )
+    if model_type == "yolo26":
+        from backend.service.application.models.training.yolo26_pose_training_service import (
+            SqlAlchemyYolo26PoseTrainingTaskService,
+            Yolo26PoseTrainingTaskRequest,
+        )
+
+        return (
+            SqlAlchemyYolo26PoseTrainingTaskService,
+            Yolo26PoseTrainingTaskRequest,
+        )
+    from backend.service.application.models.training.yolov8_pose_training_service import (
+        SqlAlchemyYoloV8PoseTrainingService,
+        YoloV8PoseTrainingRequest,
+    )
+
+    return SqlAlchemyYoloV8PoseTrainingService, YoloV8PoseTrainingRequest
 
 

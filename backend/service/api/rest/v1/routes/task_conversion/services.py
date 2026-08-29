@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from importlib import import_module
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, Response, status
@@ -54,11 +55,21 @@ from .visibility import (
 class TaskConversionServiceEntry:
     """描述一个模型分类对应的转换任务服务。"""
 
-    service_cls: type
-    request_cls: type
+    module_name: str
+    service_class_name: str
+    request_class_name: str
     task_kind: str
     queue_name: str
     request_includes_task_type: bool = False
+
+    def resolve_types(self) -> tuple[type[Any], type[Any]]:
+        """仅在实际提交或读取转换结果时加载转换实现。"""
+
+        module = import_module(self.module_name)
+        return (
+            getattr(module, self.service_class_name),
+            getattr(module, self.request_class_name),
+        )
 
 
 def create_task_conversion_router(
@@ -292,11 +303,12 @@ def submit_task_conversion_task(
     }
     if entry.request_includes_task_type:
         request_kwargs["task_type"] = task_type
-    submission = entry.service_cls(
+    service_cls, request_cls = entry.resolve_types()
+    submission = service_cls(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     ).submit_conversion_task(
-        entry.request_cls(**request_kwargs),
+        request_cls(**request_kwargs),
         created_by=principal.principal_id,
         display_name=body.display_name,
     )

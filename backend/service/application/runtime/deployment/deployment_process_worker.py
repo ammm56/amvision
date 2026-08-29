@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field
+import multiprocessing
 import os
 from threading import BoundedSemaphore, Event, Lock, Thread
-from typing import Any, Iterator
+from typing import Any, Callable, Iterator
 
 from backend.contracts.buffers import BufferLease, BufferRef, FrameRef
 from backend.nodes.runtime_support import (
@@ -34,6 +35,7 @@ from backend.service.application.runtime.deployment.deployment_process_settings 
 from backend.service.application.runtime.deployment.deployment_runtime_pool import (
     DeploymentRuntimePool,
     DeploymentRuntimePoolConfig,
+    MAX_DEPLOYMENT_RUNTIME_BATCH_ITEMS,
 )
 from backend.service.application.runtime.support.safe_counter import (
     SafeCounterState,
@@ -141,6 +143,8 @@ _LocalBufferWriter = (
     LocalBufferBrokerClient | DirectMmapLocalBufferWriter
 )
 
+_PARENT_PROCESS_POLL_SECONDS = 0.5
+
 
 def run_deployment_process_worker(
     *,
@@ -167,6 +171,17 @@ def run_deployment_process_worker(
     """
 
     configure_managed_child_signals()
+    parent_watchdog_stop_event = Event()
+    parent_watchdog_thread = Thread(
+        target=_run_deployment_parent_watchdog,
+        kwargs={
+            "parent_process": multiprocessing.parent_process(),
+            "stop_event": parent_watchdog_stop_event,
+        },
+        name=f"deployment-parent-watchdog-{os.getpid()}",
+        daemon=True,
+    )
+    parent_watchdog_thread.start()
     _configure_process_threads(operator_thread_count)
     local_buffer_reader = _build_local_buffer_reader(
         local_buffer_broker_event_channel,
@@ -222,6 +237,8 @@ def run_deployment_process_worker(
         )
 
         if action == "shutdown":
+            parent_watchdog_stop_event.set()
+            parent_watchdog_thread.join(timeout=1.0)
             _stop_keep_warm_thread(
                 keep_warm_state=keep_warm_state,
                 timeout_seconds=behavior.keep_warm_yield_timeout_seconds,
@@ -341,7 +358,7 @@ def run_deployment_process_worker(
                 )
             continue
 
-        if action == "infer":
+        if action in {"infer", "infer_batch"}:
             if keep_warm_state is not None:
                 _begin_real_inference(keep_warm_state)
                 yielded = keep_warm_state.idle_event.wait(
@@ -377,7 +394,11 @@ def run_deployment_process_worker(
                 )
                 continue
             Thread(
-                target=_run_inference_request,
+                target=(
+                    _run_inference_batch_request
+                    if action == "infer_batch"
+                    else _run_inference_request
+                ),
                 kwargs={
                     "response_queue": response_queue,
                     "request_id": request_id,
@@ -392,7 +413,7 @@ def run_deployment_process_worker(
                     "keep_warm_state": keep_warm_state,
                 },
                 daemon=True,
-                name=f"deployment-infer-{config.deployment_instance_id}",
+                name=f"deployment-{action}-{config.deployment_instance_id}",
             ).start()
             continue
 
@@ -493,6 +514,108 @@ def _run_inference_request(
         _finish_real_inference(keep_warm_state)
 
 
+def _run_inference_batch_request(
+    *,
+    response_queue: Any,
+    request_id: str,
+    runtime_pool: DeploymentRuntimePool,
+    runtime_pool_config: DeploymentRuntimePoolConfig,
+    payload: dict[str, object],
+    local_buffer_reader: _LocalBufferReader | None,
+    local_buffer_writer: _LocalBufferWriter | None,
+    local_buffer_health: _LocalBufferBrokerRuntimeHealth,
+    dataset_storage: LocalDatasetStorage,
+    infer_slots: BoundedSemaphore,
+    keep_warm_state: _KeepWarmState | None,
+) -> None:
+    """在一个 worker 线程和一个实例槽位中执行完整有序批次。"""
+
+    del local_buffer_writer, dataset_storage
+    try:
+        with _build_prediction_requests(
+            payload=payload,
+            local_buffer_reader=local_buffer_reader,
+            local_buffer_health=local_buffer_health,
+        ) as prediction_requests:
+            execution = runtime_pool.run_inference_batch(
+                config=runtime_pool_config,
+                requests=prediction_requests,
+            )
+        task_type = runtime_pool_config.runtime_target.task_type
+        _put_ok_response(
+            response_queue=response_queue,
+            request_id=request_id,
+            payload={
+                "instance_id": execution.instance_id,
+                "execution_results": [
+                    serialize_prediction_execution_result(
+                        task_type=task_type,
+                        execution_result=execution_result,
+                    )
+                    for execution_result in execution.execution_results
+                ],
+            },
+        )
+    except Exception as error:
+        _put_error_response(
+            response_queue=response_queue,
+            request_id=request_id,
+            error=error,
+        )
+    finally:
+        infer_slots.release()
+        _finish_real_inference(keep_warm_state)
+
+
+@contextmanager
+def _build_prediction_requests(
+    *,
+    payload: dict[str, object],
+    local_buffer_reader: _LocalBufferReader | None,
+    local_buffer_health: _LocalBufferBrokerRuntimeHealth,
+) -> Iterator[tuple[PredictionRequest, ...]]:
+    """解析批量请求并在整个批次期间保持所有 mmap reader guard。"""
+
+    task_type = _require_payload_str(payload, "task_type")
+    raw_requests = payload.get("prediction_requests")
+    if not isinstance(raw_requests, list) or not raw_requests:
+        raise InvalidRequestError("批量推理至少需要 1 个 prediction_request")
+    if len(raw_requests) > MAX_DEPLOYMENT_RUNTIME_BATCH_ITEMS:
+        raise InvalidRequestError(
+            "批量推理请求数量超过上限",
+            details={
+                "count": len(raw_requests),
+                "max_count": MAX_DEPLOYMENT_RUNTIME_BATCH_ITEMS,
+            },
+        )
+
+    with ExitStack() as stack:
+        prediction_requests: list[PredictionRequest] = []
+        for item_index, raw_request in enumerate(raw_requests):
+            if not isinstance(raw_request, dict):
+                raise InvalidRequestError(
+                    "批量推理 prediction_request 必须是 object",
+                    details={"item_index": item_index},
+                )
+            try:
+                prediction_requests.append(
+                    stack.enter_context(
+                        _build_prediction_request(
+                            payload={
+                                "task_type": task_type,
+                                "prediction_request": raw_request,
+                            },
+                            local_buffer_reader=local_buffer_reader,
+                            local_buffer_health=local_buffer_health,
+                        )
+                    )
+                )
+            except ServiceError as error:
+                error.details.setdefault("item_index", item_index)
+                raise
+        yield tuple(prediction_requests)
+
+
 @contextmanager
 def _build_prediction_request(
     *,
@@ -533,21 +656,37 @@ def _build_prediction_request(
         if transport_kind == IMAGE_TRANSPORT_BUFFER
         else local_buffer_reader.acquire_frame_ref_view
     )
+    reader_guard = acquire(ref)
     try:
-        with acquire(ref) as content:
-            _record_local_buffer_input(
-                local_buffer_health,
-                transport_kind=transport_kind,
-            )
-            yield replace_prediction_request_inputs(
-                request=prediction_request,
-                input_uri=None,
-                input_image_bytes=content,
-                input_image_payload=normalized_payload,
-            )
+        content = reader_guard.__enter__()
     except Exception as exc:
         _record_local_buffer_error(local_buffer_health, exc)
         raise
+    _record_local_buffer_input(
+        local_buffer_health,
+        transport_kind=transport_kind,
+    )
+    try:
+        yield replace_prediction_request_inputs(
+            request=prediction_request,
+            input_uri=None,
+            input_image_bytes=content,
+            input_image_payload=normalized_payload,
+        )
+    except BaseException as exc:
+        try:
+            suppressed = reader_guard.__exit__(type(exc), exc, exc.__traceback__)
+        except Exception as exit_error:
+            _record_local_buffer_error(local_buffer_health, exit_error)
+            raise
+        if not suppressed:
+            raise
+    else:
+        try:
+            reader_guard.__exit__(None, None, None)
+        except Exception as exc:
+            _record_local_buffer_error(local_buffer_health, exc)
+            raise
 
 
 def _resolve_input_image_payload(
@@ -1113,6 +1252,29 @@ def _snapshot_local_buffer_health(
             "recent_error": local_buffer_health.last_error
             or client_summary.get("recent_error"),
         }
+
+
+def _run_deployment_parent_watchdog(
+    *,
+    parent_process: Any,
+    stop_event: Event,
+    force_exit: Callable[[int], object] = os._exit,
+    poll_seconds: float = _PARENT_PROCESS_POLL_SECONDS,
+) -> None:
+    """父 inference daemon 消失时立即结束 deployment 子进程。
+
+    deployment worker 的请求循环会阻塞在 multiprocessing Queue 上。Windows 不会在
+    父进程被强制结束后自动回收这些子进程，因此必须独立监视父进程；父进程失联后
+    已不存在可接收推理回执的调用方，直接结束当前进程可释放模型、mmap guard 与运行时。
+    """
+
+    if parent_process is None:
+        return
+    while not stop_event.wait(max(0.001, poll_seconds)):
+        if parent_process.is_alive():
+            continue
+        force_exit(0)
+        return
 
 
 def _configure_process_threads(operator_thread_count: int) -> None:

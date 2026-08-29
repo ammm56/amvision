@@ -8,30 +8,8 @@ from backend.service.api.rest.v1.routes.detection_conversion_tasks.schemas impor
     DetectionConversionTaskCreateRequestBody,
     DetectionConversionTaskSubmissionResponse,
 )
-from backend.service.application.conversions.rfdetr_conversion_task_service import (
-    RFDETR_CONVERSION_TASK_KIND,
-    RfdetrConversionTaskRequest,
-    SqlAlchemyRfdetrConversionTaskService,
-)
-from backend.service.application.conversions.yolo11_conversion_task_service import (
-    YOLO11_CONVERSION_TASK_KIND,
-    SqlAlchemyYolo11ConversionTaskService,
-    Yolo11ConversionTaskRequest,
-)
-from backend.service.application.conversions.yolo26_conversion_task_service import (
-    YOLO26_CONVERSION_TASK_KIND,
-    SqlAlchemyYolo26ConversionTaskService,
-    Yolo26ConversionTaskRequest,
-)
-from backend.service.application.conversions.yolov8_conversion_task_service import (
-    YOLOV8_CONVERSION_TASK_KIND,
-    SqlAlchemyYoloV8ConversionTaskService,
-    YoloV8ConversionTaskRequest,
-)
-from backend.service.application.conversions.yolox_conversion_task_service import (
-    YOLOX_CONVERSION_TASK_KIND,
-    SqlAlchemyYoloXConversionTaskService,
-    YoloXConversionTaskRequest,
+from backend.service.api.rest.v1.routes.task_conversion.services import (
+    TaskConversionServiceEntry,
 )
 from backend.service.application.errors import (
     InvalidRequestError,
@@ -50,19 +28,47 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 )
 
 DETECTION_CONVERSION_SERVICE_BY_MODEL_TYPE = {
-    "yolox": (SqlAlchemyYoloXConversionTaskService, YoloXConversionTaskRequest),
-    "yolov8": (SqlAlchemyYoloV8ConversionTaskService, YoloV8ConversionTaskRequest),
-    "yolo11": (SqlAlchemyYolo11ConversionTaskService, Yolo11ConversionTaskRequest),
-    "yolo26": (SqlAlchemyYolo26ConversionTaskService, Yolo26ConversionTaskRequest),
-    "rfdetr": (SqlAlchemyRfdetrConversionTaskService, RfdetrConversionTaskRequest),
+    "yolox": TaskConversionServiceEntry(
+        module_name="backend.service.application.conversions.yolox_conversion_task_service",
+        service_class_name="SqlAlchemyYoloXConversionTaskService",
+        request_class_name="YoloXConversionTaskRequest",
+        task_kind="yolox-conversion",
+        queue_name="yolox-conversions",
+    ),
+    "yolov8": TaskConversionServiceEntry(
+        module_name="backend.service.application.conversions.yolov8_conversion_task_service",
+        service_class_name="SqlAlchemyYoloV8ConversionTaskService",
+        request_class_name="YoloV8ConversionTaskRequest",
+        task_kind="yolov8-conversion",
+        queue_name="yolov8-conversions",
+    ),
+    "yolo11": TaskConversionServiceEntry(
+        module_name="backend.service.application.conversions.yolo11_conversion_task_service",
+        service_class_name="SqlAlchemyYolo11ConversionTaskService",
+        request_class_name="Yolo11ConversionTaskRequest",
+        task_kind="yolo11-conversion",
+        queue_name="yolo11-conversions",
+    ),
+    "yolo26": TaskConversionServiceEntry(
+        module_name="backend.service.application.conversions.yolo26_conversion_task_service",
+        service_class_name="SqlAlchemyYolo26ConversionTaskService",
+        request_class_name="Yolo26ConversionTaskRequest",
+        task_kind="yolo26-conversion",
+        queue_name="yolo26-conversions",
+    ),
+    "rfdetr": TaskConversionServiceEntry(
+        module_name="backend.service.application.conversions.rfdetr_conversion_task_service",
+        service_class_name="SqlAlchemyRfdetrConversionTaskService",
+        request_class_name="RfdetrConversionTaskRequest",
+        task_kind="rfdetr-conversion",
+        queue_name="rfdetr-conversions",
+        request_includes_task_type=True,
+    ),
 }
 
 DETECTION_CONVERSION_TASK_KIND_BY_MODEL_TYPE = {
-    "yolox": YOLOX_CONVERSION_TASK_KIND,
-    "yolov8": YOLOV8_CONVERSION_TASK_KIND,
-    "yolo11": YOLO11_CONVERSION_TASK_KIND,
-    "yolo26": YOLO26_CONVERSION_TASK_KIND,
-    "rfdetr": RFDETR_CONVERSION_TASK_KIND,
+    model_type: entry.task_kind
+    for model_type, entry in DETECTION_CONVERSION_SERVICE_BY_MODEL_TYPE.items()
 }
 
 DETECTION_CONVERSION_MODEL_TYPE_BY_TASK_KIND = {
@@ -88,7 +94,9 @@ def submit_detection_conversion_task(
             details={"project_id": body.project_id},
         )
     model_type = normalize_detection_conversion_model_type(body.model_type)
-    service_cls, request_cls = DETECTION_CONVERSION_SERVICE_BY_MODEL_TYPE[model_type]
+    service_cls, request_cls = DETECTION_CONVERSION_SERVICE_BY_MODEL_TYPE[
+        model_type
+    ].resolve_types()
     service = service_cls(
         session_factory=session_factory,
         dataset_storage=dataset_storage,

@@ -22,14 +22,22 @@ from backend.nodes.save_locations import (
     save_bytes,
 )
 from backend.service.application.images.image_matrix import (
+    IMAGE_LAYOUT_HW,
+    IMAGE_LAYOUT_HWC,
     IMAGE_MEDIA_TYPE_RAW,
+    IMAGE_PIXEL_FORMAT_BGR24,
+    IMAGE_PIXEL_FORMAT_GRAY8,
+    apply_raw_decode_flags,
     apply_raw_ref_metadata,
     build_raw_bgr24_payload_fields,
+    build_raw_gray8_payload_fields,
     decode_image_bytes_to_matrix,
     encode_matrix_to_image_bytes,
     is_raw_bgr24_payload,
+    is_raw_gray8_payload,
     normalize_image_payload_metadata,
     prepare_matrix_for_raw_bgr24,
+    prepare_matrix_for_raw_gray8,
 )
 from backend.service.application.errors import (
     InvalidRequestError,
@@ -309,12 +317,31 @@ class ExecutionImageRegistry:
         height: int,
         created_by_node_id: str | None = None,
     ) -> ExecutionImageEntry:
-        """注册一张 raw BGR24 内存图片并返回稳定条目。"""
+        """注册一张规范 raw BGR24/GRAY8 内存图片并返回稳定条目。"""
+
+        matrix_shape = tuple(int(item) for item in getattr(matrix, "shape", ()))
+        if matrix_shape == (int(height), int(width)):
+            shape = matrix_shape
+            layout = IMAGE_LAYOUT_HW
+            pixel_format = IMAGE_PIXEL_FORMAT_GRAY8
+            byte_length = int(width) * int(height)
+        elif matrix_shape == (int(height), int(width), 3):
+            shape = matrix_shape
+            layout = IMAGE_LAYOUT_HWC
+            pixel_format = IMAGE_PIXEL_FORMAT_BGR24
+            byte_length = int(width) * int(height) * 3
+        else:
+            raise InvalidRequestError(
+                "execution image registry 只接受规范 BGR24/GRAY8 matrix",
+                details={"shape": list(matrix_shape)},
+            )
 
         image_handle = f"img-{uuid4().hex}"
         content_hasher = hashlib.sha256()
         content_hasher.update(
-            f"bgr24:{int(width)}x{int(height)}:uint8:HWC\0".encode("ascii")
+            (
+                f"{pixel_format}:{int(width)}x{int(height)}:uint8:{layout}\0"
+            ).encode("ascii")
         )
         content_hasher.update(memoryview(matrix).cast("B"))
         entry = ExecutionImageEntry(
@@ -324,11 +351,11 @@ class ExecutionImageRegistry:
             media_type=IMAGE_MEDIA_TYPE_RAW,
             width=_normalize_optional_dimension(width),
             height=_normalize_optional_dimension(height),
-            byte_length=int(width) * int(height) * 3,
-            shape=(int(height), int(width), 3),
+            byte_length=byte_length,
+            shape=shape,
             dtype="uint8",
-            layout="HWC",
-            pixel_format="bgr24",
+            layout=layout,
+            pixel_format=pixel_format,
             content_sha256=content_hasher.hexdigest(),
             created_by_node_id=_normalize_optional_text(created_by_node_id),
         )
@@ -1412,7 +1439,7 @@ def register_image_matrix(
     image_matrix: Any,
     created_by_node_id: str | None = None,
 ) -> dict[str, object]:
-    """把 OpenCV matrix 以 raw BGR24 注册到 execution image registry。
+    """把 OpenCV matrix 以规范 raw BGR24/GRAY8 注册到 execution image registry。
 
     参数：
     - request：当前节点执行请求。
@@ -1420,17 +1447,28 @@ def register_image_matrix(
     - created_by_node_id：创建节点 id。
 
     返回：
-    - dict[str, object]：memory 模式 raw BGR24 图片引用。
+    - dict[str, object]：memory 模式 raw 图片引用。
     """
 
     import cv2  # noqa: PLC0415
     import numpy as np  # noqa: PLC0415
 
-    normalized_matrix = prepare_matrix_for_raw_bgr24(
-        cv2_module=cv2,
-        np_module=np,
-        image_matrix=image_matrix,
+    matrix_shape = tuple(int(item) for item in getattr(image_matrix, "shape", ()))
+    is_grayscale = len(matrix_shape) == 2 or (
+        len(matrix_shape) == 3 and matrix_shape[2] == 1
     )
+    if is_grayscale:
+        normalized_matrix = prepare_matrix_for_raw_gray8(
+            cv2_module=cv2,
+            np_module=np,
+            image_matrix=image_matrix,
+        )
+    else:
+        normalized_matrix = prepare_matrix_for_raw_bgr24(
+            cv2_module=cv2,
+            np_module=np,
+            image_matrix=image_matrix,
+        )
     image_registry = require_execution_image_registry(request)
     height, width = normalized_matrix.shape[:2]
     image_entry = image_registry.register_image_matrix(
@@ -1439,7 +1477,11 @@ def register_image_matrix(
         height=int(height),
         created_by_node_id=created_by_node_id or request.node_id,
     )
-    raw_fields = build_raw_bgr24_payload_fields(width=int(width), height=int(height))
+    raw_fields = (
+        build_raw_gray8_payload_fields(width=int(width), height=int(height))
+        if is_grayscale
+        else build_raw_bgr24_payload_fields(width=int(width), height=int(height))
+    )
     return build_memory_image_payload(
         image_handle=image_entry.image_handle,
         media_type=str(raw_fields["media_type"]),
@@ -1492,18 +1534,32 @@ def load_image_matrix_from_payload(
     image_access_started_at = _start_workflow_image_access_timing(request)
     if normalized_payload.get("transport_kind") == IMAGE_TRANSPORT_MEMORY:
         image_handle = _normalize_optional_text(normalized_payload.get("image_handle"))
-        if image_handle is not None and is_raw_bgr24_payload(normalized_payload):
+        if image_handle is not None and (
+            is_raw_bgr24_payload(normalized_payload)
+            or is_raw_gray8_payload(normalized_payload)
+        ):
             image_registry = require_execution_image_registry(request)
             matrix = image_registry.read_matrix(image_handle)
             if matrix is not None:
-                matrix = prepare_matrix_for_raw_bgr24(
+                if is_raw_gray8_payload(normalized_payload):
+                    matrix = prepare_matrix_for_raw_gray8(
+                        cv2_module=cv2_module,
+                        np_module=np_module,
+                        image_matrix=matrix,
+                        copy_matrix=copy_raw,
+                    )
+                else:
+                    matrix = prepare_matrix_for_raw_bgr24(
+                        cv2_module=cv2_module,
+                        np_module=np_module,
+                        image_matrix=matrix,
+                        copy_matrix=copy_raw,
+                    )
+                matrix = apply_raw_decode_flags(
                     cv2_module=cv2_module,
-                    np_module=np_module,
-                    image_matrix=matrix,
-                    copy_matrix=copy_raw,
+                    matrix=matrix,
+                    imdecode_flags=imdecode_flags,
                 )
-                if imdecode_flags == getattr(cv2_module, "IMREAD_GRAYSCALE", 0):
-                    matrix = cv2_module.cvtColor(matrix, cv2_module.COLOR_BGR2GRAY)
                 _record_workflow_image_access_timing(
                     request,
                     field_name="workflow_raw_view_ms",
@@ -1575,7 +1631,7 @@ def load_image_matrix_from_payload(
                 request,
                 field_name=(
                     "workflow_raw_view_ms"
-                    if is_raw_bgr24_payload(normalized_payload)
+                    if _is_raw_image_payload(normalized_payload)
                     else "workflow_image_decode_ms"
                 ),
                 started_at=image_access_started_at,

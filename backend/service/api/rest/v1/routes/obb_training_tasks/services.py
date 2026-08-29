@@ -9,18 +9,6 @@ from backend.service.api.rest.v1.routes.obb_training_tasks.schemas import (
 from backend.service.application.model_type_support import (
     require_supported_platform_model_type,
 )
-from backend.service.application.models.training.yolov8_obb_training_service import (
-    SqlAlchemyYoloV8ObbTrainingService,
-    YoloV8ObbTrainingRequest,
-)
-from backend.service.application.models.training.yolo11_obb_training_service import (
-    SqlAlchemyYolo11ObbTrainingTaskService,
-    Yolo11ObbTrainingTaskRequest,
-)
-from backend.service.application.models.training.yolo26_obb_training_service import (
-    SqlAlchemyYolo26ObbTrainingTaskService,
-    Yolo26ObbTrainingTaskRequest,
-)
 from backend.service.domain.models.model_task_types import OBB_TASK_TYPE
 from backend.service.api.rest.v1.routes.training_execution_schemas import (
     merge_training_execution_options,
@@ -89,9 +77,24 @@ def _resolve_obb_training_service_and_request(model_type: str):
     """按 model_type 返回 OBB 训练 service 与请求 DTO。"""
 
     if model_type == "yolo11":
+        from backend.service.application.models.training.yolo11_obb_training_service import (
+            SqlAlchemyYolo11ObbTrainingTaskService,
+            Yolo11ObbTrainingTaskRequest,
+        )
+
         return SqlAlchemyYolo11ObbTrainingTaskService, Yolo11ObbTrainingTaskRequest
     if model_type == "yolo26":
+        from backend.service.application.models.training.yolo26_obb_training_service import (
+            SqlAlchemyYolo26ObbTrainingTaskService,
+            Yolo26ObbTrainingTaskRequest,
+        )
+
         return SqlAlchemyYolo26ObbTrainingTaskService, Yolo26ObbTrainingTaskRequest
+    from backend.service.application.models.training.yolov8_obb_training_service import (
+        SqlAlchemyYoloV8ObbTrainingService,
+        YoloV8ObbTrainingRequest,
+    )
+
     return SqlAlchemyYoloV8ObbTrainingService, YoloV8ObbTrainingRequest
 
 

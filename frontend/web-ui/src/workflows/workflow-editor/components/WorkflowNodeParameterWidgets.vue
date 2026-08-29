@@ -54,7 +54,7 @@
         :step="readWorkflowNumericParameterInputAttributes(field).step"
         :value="readTextValue(node, field)"
         :disabled="field.readonly"
-        @change="emit('update-number', node, field, $event)"
+        @input="emit('update-number', node, field, $event)"
       />
       <input
         v-else-if="isString(field)"

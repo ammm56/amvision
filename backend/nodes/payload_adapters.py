@@ -12,6 +12,10 @@ from backend.nodes.core_nodes.support.roi import (
     require_roi_list_payload,
     require_roi_payload,
 )
+from backend.nodes.core_nodes.support.typed_payload_bridges import (
+    require_image_refs_payload,
+)
+from backend.nodes.runtime_support import require_image_payload
 from backend.service.application.errors import (
     InvalidRequestError,
     ServiceConfigurationError,
@@ -132,6 +136,19 @@ def _convert_object(payload: object, request: WorkflowNodeExecutionRequest) -> o
     return dict(payload)
 
 
+def _convert_image_ref(payload: object, request: WorkflowNodeExecutionRequest) -> object:
+    """校验并复制 image-ref.v1。"""
+
+    del request
+    return require_image_payload(payload)
+
+
+def _convert_image_refs(payload: object, request: WorkflowNodeExecutionRequest) -> object:
+    """校验并复制 image-refs.v1。"""
+
+    return require_image_refs_payload(payload, request.node_id)
+
+
 def _build_default_registry() -> PayloadAdapterRegistry:
     """创建平台内建的结构化 payload 到 value.v1 转换表。"""
 
@@ -140,6 +157,8 @@ def _build_default_registry() -> PayloadAdapterRegistry:
     registry.register("boolean.v1", "value.v1", _convert_boolean)
     registry.register("roi.v1", "value.v1", _convert_roi)
     registry.register("roi-list.v1", "value.v1", _convert_roi_list)
+    registry.register("image-ref.v1", "value.v1", _convert_image_ref)
+    registry.register("image-refs.v1", "value.v1", _convert_image_refs)
     object_contracts = (
         "result-record.v1",
         "response-body.v1",

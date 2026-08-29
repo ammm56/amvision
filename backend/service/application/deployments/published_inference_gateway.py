@@ -64,6 +64,9 @@ from backend.service.domain.models.model_task_types import (
     POSE_TASK_TYPE,
     SEGMENTATION_TASK_TYPE,
 )
+from backend.service.application.runtime.deployment.deployment_runtime_pool import (
+    MAX_DEPLOYMENT_RUNTIME_BATCH_ITEMS,
+)
 
 if TYPE_CHECKING:
     from backend.service.application.runtime.deployment.deployment_process_supervisor import (
@@ -124,11 +127,37 @@ class PublishedInferenceResult:
     metadata: dict[str, object] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class PublishedInferenceBatchRequest:
+    """描述一组使用完全相同部署参数的有序同步推理请求。"""
+
+    requests: tuple[PublishedInferenceRequest, ...]
+
+
+@dataclass(frozen=True)
+class PublishedInferenceBatchResult:
+    """描述由同一部署实例顺序完成的批量推理结果。"""
+
+    task_type: str
+    deployment_instance_id: str
+    instance_id: str
+    batch_latency_ms: float
+    results: tuple[PublishedInferenceResult, ...]
+    metadata: dict[str, object] = field(default_factory=dict)
+
+
 class PublishedInferenceGateway(Protocol):
     """定义 workflow 调用已发布推理服务的稳定边界。"""
 
     def infer(self, request: PublishedInferenceRequest) -> PublishedInferenceResult:
         """执行一次已发布推理服务调用。"""
+
+        ...
+
+    def infer_batch(
+        self, request: PublishedInferenceBatchRequest
+    ) -> PublishedInferenceBatchResult:
+        """执行一次不排队、不拆分的有序批量推理调用。"""
 
         ...
 
@@ -256,6 +285,90 @@ class TaskTypeDeploymentPublishedInferenceGateway:
             gateway_started_at
         )
         return _merge_inference_result_timings(result, timings)
+
+    def infer_batch(
+        self, request: PublishedInferenceBatchRequest
+    ) -> PublishedInferenceBatchResult:
+        """在一个 deployment instance 上顺序执行完整批次。"""
+
+        gateway_started_at = perf_counter()
+        requests = _validate_batch_request(request)
+        first_request = requests[0]
+        normalized_task_type = _normalize_task_type(first_request.task_type)
+        normalized_runtime_mode = first_request.runtime_mode.strip().lower()
+        if normalized_runtime_mode != self.runtime_mode:
+            raise InvalidRequestError(
+                "PublishedInferenceGateway 当前只支持指定 deployment runtime_mode",
+                details={
+                    "runtime_mode": first_request.runtime_mode,
+                    "supported_runtime_mode": self.runtime_mode,
+                },
+            )
+        deployment_service = self._require_deployment_service(normalized_task_type)
+        deployment_process_supervisor = self._require_deployment_process_supervisor(
+            normalized_task_type
+        )
+        timings: dict[str, object] = {}
+        process_config, prepared_context_reused = self._resolve_process_context(
+            request=first_request,
+            normalized_task_type=normalized_task_type,
+            deployment_service=deployment_service,
+            deployment_process_supervisor=deployment_process_supervisor,
+            timings=timings,
+        )
+        timings["published_inference_gateway_context_reused"] = (
+            prepared_context_reused
+        )
+        prediction_request_items = []
+        for item_index, item_request in enumerate(requests):
+            try:
+                prediction_request_items.append(
+                    _build_prediction_request(
+                        task_type=normalized_task_type,
+                        request=item_request,
+                        normalized_image_payload=require_image_payload(
+                            item_request.image_payload
+                        ),
+                    )
+                )
+            except ServiceError as error:
+                error.details.setdefault("item_index", item_index)
+                raise
+        prediction_requests = tuple(prediction_request_items)
+        infer_started_at = perf_counter()
+        execution = deployment_process_supervisor.run_inference_batch(
+            config=process_config,
+            requests=prediction_requests,
+        )
+        batch_latency_ms = _elapsed_ms(infer_started_at)
+        timings["published_inference_gateway_run_inference_batch_ms"] = (
+            batch_latency_ms
+        )
+        results = tuple(
+            _build_published_inference_result(
+                task_type=normalized_task_type,
+                deployment_instance_id=execution.deployment_instance_id,
+                instance_id=execution.instance_id,
+                execution_result=execution_result,
+            )
+            for execution_result in execution.execution_results
+        )
+        timings["published_inference_gateway_total_ms"] = _elapsed_ms(
+            gateway_started_at
+        )
+        return PublishedInferenceBatchResult(
+            task_type=normalized_task_type,
+            deployment_instance_id=execution.deployment_instance_id,
+            instance_id=execution.instance_id,
+            batch_latency_ms=batch_latency_ms,
+            results=results,
+            metadata={
+                "instance_id": execution.instance_id,
+                "execution_mode": "sequential-reserved-instance",
+                "count": len(results),
+                "timings": timings,
+            },
+        )
 
     def _resolve_process_context(
         self,
@@ -521,6 +634,26 @@ class PublishedInferenceGatewayClient:
             },
         )
 
+    def infer_batch(
+        self, request: PublishedInferenceBatchRequest
+    ) -> PublishedInferenceBatchResult:
+        """通过一条父进程事件执行批量推理。"""
+
+        request_started_at = perf_counter()
+        payload = self._send_request(
+            action="infer_batch",
+            payload=_serialize_batch_request(request),
+        )
+        result = _deserialize_batch_result(payload)
+        metadata = dict(result.metadata)
+        timings = metadata.get("timings")
+        merged_timings = dict(timings) if isinstance(timings, dict) else {}
+        merged_timings["published_inference_gateway_client_roundtrip_ms"] = (
+            _elapsed_ms(request_started_at)
+        )
+        metadata["timings"] = merged_timings
+        return replace(result, metadata=metadata)
+
     def get_status(self) -> dict[str, object]:
         """读取 gateway dispatcher 状态。"""
 
@@ -689,7 +822,7 @@ class PublishedInferenceGatewayDispatcher:
                 and isinstance(message.get("payload"), dict)
                 else {}
             )
-            if action == "infer" and self._executor is not None:
+            if action in {"infer", "infer_batch"} and self._executor is not None:
                 self._executor.submit(
                     self._handle_and_respond,
                     request_id=request_id,
@@ -735,6 +868,10 @@ class PublishedInferenceGatewayDispatcher:
             return {"state": "stopping"}
         if action == "infer":
             return _serialize_result(self.gateway.infer(_deserialize_request(payload)))
+        if action == "infer_batch":
+            return _serialize_batch_result(
+                self.gateway.infer_batch(_deserialize_batch_request(payload))
+            )
         raise InvalidRequestError(
             "PublishedInferenceGateway 收到未知事件", details={"action": action}
         )
@@ -1046,6 +1183,92 @@ def _deserialize_request(payload: dict[str, object]) -> PublishedInferenceReques
     )
 
 
+def _validate_batch_request(
+    request: PublishedInferenceBatchRequest,
+) -> tuple[PublishedInferenceRequest, ...]:
+    """校验 Batch 数量以及所有 item 的部署和参数一致性。"""
+
+    requests = tuple(request.requests)
+    if not requests:
+        raise InvalidRequestError("PublishedInferenceBatchRequest 至少需要 1 个请求")
+    if len(requests) > MAX_DEPLOYMENT_RUNTIME_BATCH_ITEMS:
+        raise InvalidRequestError(
+            "PublishedInferenceBatchRequest 请求数量超过上限",
+            details={
+                "count": len(requests),
+                "max_count": MAX_DEPLOYMENT_RUNTIME_BATCH_ITEMS,
+            },
+        )
+    expected_signature = _build_batch_request_signature(requests[0])
+    for item_index, item_request in enumerate(requests):
+        if item_request.save_result_image or item_request.return_preview_image_base64:
+            raise InvalidRequestError(
+                "PublishedInferenceBatchRequest 当前不支持结果预览图",
+                details={"item_index": item_index},
+            )
+        if _build_batch_request_signature(item_request) != expected_signature:
+            raise InvalidRequestError(
+                "PublishedInferenceBatchRequest 的部署和推理参数必须完全一致",
+                details={"item_index": item_index},
+            )
+    return requests
+
+
+def _build_batch_request_signature(
+    request: PublishedInferenceRequest,
+) -> tuple[object, ...]:
+    """构造不包含图片输入的 Batch 公共参数签名。"""
+
+    return (
+        _normalize_task_type(request.task_type),
+        request.deployment_instance_id.strip(),
+        request.score_threshold,
+        request.top_k,
+        request.mask_threshold,
+        request.keypoint_confidence_threshold,
+        request.auto_start_process,
+        request.runtime_mode.strip().lower(),
+        request.save_result_image,
+        request.return_preview_image_base64,
+        request.extra_options,
+        request.trace_id,
+        request.execution_scope_id,
+    )
+
+
+def _serialize_batch_request(
+    request: PublishedInferenceBatchRequest,
+) -> dict[str, object]:
+    """把 PublishedInferenceBatchRequest 转换为事件 payload。"""
+
+    return {"requests": [_serialize_request(item) for item in request.requests]}
+
+
+def _deserialize_batch_request(
+    payload: dict[str, object],
+) -> PublishedInferenceBatchRequest:
+    """从事件 payload 读取 PublishedInferenceBatchRequest。"""
+
+    raw_requests = payload.get("requests")
+    if not isinstance(raw_requests, list):
+        raise InvalidRequestError("PublishedInferenceBatchRequest 缺少 requests")
+    requests: list[PublishedInferenceRequest] = []
+    for item_index, raw_request in enumerate(raw_requests):
+        if not isinstance(raw_request, dict):
+            raise InvalidRequestError(
+                "PublishedInferenceBatchRequest item 必须是 object",
+                details={"item_index": item_index},
+            )
+        try:
+            requests.append(_deserialize_request(raw_request))
+        except ServiceError as error:
+            error.details.setdefault("item_index", item_index)
+            raise
+    batch_request = PublishedInferenceBatchRequest(requests=tuple(requests))
+    _validate_batch_request(batch_request)
+    return batch_request
+
+
 def _serialize_result(result: PublishedInferenceResult) -> dict[str, object]:
     """把 PublishedInferenceResult 转换为事件 payload。"""
 
@@ -1090,6 +1313,53 @@ def _deserialize_result(payload: dict[str, object]) -> PublishedInferenceResult:
         ),
         metadata=dict(
             payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
+        ),
+    )
+
+
+def _serialize_batch_result(
+    result: PublishedInferenceBatchResult,
+) -> dict[str, object]:
+    """把 PublishedInferenceBatchResult 转换为事件 payload。"""
+
+    return {
+        "task_type": result.task_type,
+        "deployment_instance_id": result.deployment_instance_id,
+        "instance_id": result.instance_id,
+        "batch_latency_ms": result.batch_latency_ms,
+        "results": [_serialize_result(item) for item in result.results],
+        "metadata": dict(result.metadata),
+    }
+
+
+def _deserialize_batch_result(
+    payload: dict[str, object],
+) -> PublishedInferenceBatchResult:
+    """从事件 payload 读取 PublishedInferenceBatchResult。"""
+
+    raw_results = payload.get("results")
+    if not isinstance(raw_results, list):
+        raise ServiceConfigurationError(
+            "PublishedInferenceBatchResult 缺少 results"
+        )
+    results: list[PublishedInferenceResult] = []
+    for item_index, item in enumerate(raw_results):
+        if not isinstance(item, dict):
+            raise ServiceConfigurationError(
+                "PublishedInferenceBatchResult item 必须是 object",
+                details={"item_index": item_index},
+            )
+        results.append(_deserialize_result(item))
+    return PublishedInferenceBatchResult(
+        task_type=_normalize_task_type(payload.get("task_type")),
+        deployment_instance_id=str(payload.get("deployment_instance_id") or ""),
+        instance_id=str(payload.get("instance_id") or ""),
+        batch_latency_ms=float(payload.get("batch_latency_ms") or 0.0),
+        results=tuple(results),
+        metadata=dict(
+            payload.get("metadata")
+            if isinstance(payload.get("metadata"), dict)
+            else {}
         ),
     )
 

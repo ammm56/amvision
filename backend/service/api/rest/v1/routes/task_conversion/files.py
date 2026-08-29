@@ -20,7 +20,8 @@ def read_task_conversion_result_snapshot(
     """按模型分类读取 conversion 结果快照。"""
 
     entry = service_entries[model_type]
-    return entry.service_cls(
+    service_cls, _request_cls = entry.resolve_types()
+    return service_cls(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     ).read_conversion_result(task_id)

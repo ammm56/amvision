@@ -26,6 +26,7 @@ from backend.service.application.errors import (
     InvalidRequestError,
     OperationTimeoutError,
     ServiceConfigurationError,
+    ServiceError,
 )
 from backend.service.application.local_buffers.broker_settings import (
     resolve_preview_reservation_length,
@@ -41,12 +42,16 @@ from backend.service.application.runtime.deployment.deployment_events import (
 )
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessConfig,
+    DeploymentProcessBatchExecution,
     DeploymentProcessExecution,
     DeploymentProcessHealth,
     DeploymentProcessInstanceHealth,
     DeploymentProcessKeepWarmStatus,
     DeploymentProcessStatus,
     DeploymentProcessSupervisor,
+)
+from backend.service.application.runtime.deployment.deployment_runtime_pool import (
+    MAX_DEPLOYMENT_RUNTIME_BATCH_ITEMS,
 )
 from backend.service.application.runtime.deployment.inference_message_channel import (
     InferenceMessageClient,
@@ -306,6 +311,118 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
             ),
         )
 
+    def run_inference_batch(
+        self,
+        *,
+        config: DeploymentProcessConfig,
+        requests: tuple[PredictionRequest, ...],
+    ) -> DeploymentProcessBatchExecution:
+        """通过同一条 mmap v1 请求执行有序 Batch，不进入基类本地进程状态。"""
+
+        if self.message_client is None:
+            raise ServiceConfigurationError("独立 inference daemon 缺少 mmap v1 热路径")
+        if not requests:
+            raise InvalidRequestError("批量推理至少需要 1 个请求")
+        if len(requests) > MAX_DEPLOYMENT_RUNTIME_BATCH_ITEMS:
+            raise InvalidRequestError(
+                "批量推理请求数量超过上限",
+                details={
+                    "count": len(requests),
+                    "max_count": MAX_DEPLOYMENT_RUNTIME_BATCH_ITEMS,
+                },
+            )
+        if any(bool(getattr(request, "save_result_image", False)) for request in requests):
+            raise InvalidRequestError("批量推理当前不支持结果预览图")
+
+        request_id = uuid4().hex
+        prepared_requests: list[PredictionRequest] = []
+        owned_buffers: list[str] = []
+        try:
+            for item_index, request in enumerate(requests):
+                try:
+                    prepared_request, owned_buffer = self._stage_prediction_input(
+                        request=request,
+                        owner_id=f"inference-batch-{request_id}-{item_index}",
+                    )
+                except ServiceError as error:
+                    error.details.setdefault("item_index", item_index)
+                    raise
+                prepared_requests.append(prepared_request)
+                if owned_buffer is not None:
+                    owned_buffers.append(owned_buffer)
+        except Exception:
+            for owned_buffer in owned_buffers:
+                self._release_owned_input_buffer(owned_buffer)
+            raise
+
+        message_request_started = False
+        message_request_completed = False
+        try:
+            message_payload: dict[str, object] = {
+                "action": "infer_batch",
+                "runtime_mode": self.runtime_mode,
+                "process_config": _serialize_process_config(config),
+                "prediction_requests": [
+                    serialize_prediction_request(
+                        task_type=config.runtime_target.task_type,
+                        request=request,
+                    )
+                    for request in prepared_requests
+                ],
+            }
+            message_request_started = True
+            response = self.message_client.request(message_payload)
+            message_request_completed = True
+            if response.get("ok") is not True:
+                raise _deserialize_error(
+                    response.get("error"),
+                    fallback_message="inference daemon mmap Batch 执行失败",
+                )
+            payload = response.get("result")
+            if not isinstance(payload, dict):
+                raise InvalidRequestError("inference daemon mmap Batch 响应缺少 result")
+            raw_results = payload.get("execution_results")
+            if not isinstance(raw_results, list):
+                raise ServiceConfigurationError(
+                    "inference daemon mmap Batch 响应缺少 execution_results"
+                )
+            if len(raw_results) != len(requests):
+                raise ServiceConfigurationError(
+                    "inference daemon mmap Batch 响应数量不一致",
+                    details={
+                        "request_count": len(requests),
+                        "result_count": len(raw_results),
+                    },
+                )
+            execution_results = tuple(
+                deserialize_prediction_execution_result(
+                    task_type=config.runtime_target.task_type,
+                    payload=result_payload,
+                )
+                for result_payload in raw_results
+            )
+            instance_id = str(payload.get("instance_id") or "")
+            if not instance_id:
+                raise ServiceConfigurationError(
+                    "inference daemon mmap Batch 响应缺少 instance_id"
+                )
+        finally:
+            if not message_request_started or message_request_completed:
+                for owned_buffer in owned_buffers:
+                    self._release_owned_input_buffer(owned_buffer)
+            elif owned_buffers:
+                LOGGER.warning(
+                    "inference Batch mmap 状态不确定，LocalBuffer lease 保留到 TTL 后回收: "
+                    "request_id=%s",
+                    request_id,
+                )
+
+        return DeploymentProcessBatchExecution(
+            deployment_instance_id=config.deployment_instance_id,
+            instance_id=instance_id,
+            execution_results=execution_results,
+        )
+
     def list_events(
         self,
         deployment_instance_id: str,
@@ -384,7 +501,7 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
     ) -> dict[str, object]:
         """提交一条持久化控制请求并等待专属响应队列。"""
 
-        if action in {"infer", "ping", "status", "health"}:
+        if action in {"infer", "infer_batch", "ping", "status", "health"}:
             raise InvalidRequestError(
                 "推理和只读状态请求只能使用 mmap v1",
                 details={"action": action},
@@ -896,7 +1013,7 @@ class InferenceControlDispatcher:
     ) -> dict[str, object]:
         """执行本机 mmap 热路径请求。
 
-        该入口只允许 infer 和无副作用的 ping、status、health。启停、重置和
+        该入口只允许 infer、infer_batch 和无副作用的 ping、status、health。启停、重置和
         预热通过持久化控制队列执行，避免 daemon 重启时丢失控制意图。
         """
 
@@ -908,7 +1025,7 @@ class InferenceControlDispatcher:
                 else {"ready": True}
             )
             return {**dict(readiness), "service_id": self.service_id}
-        if action not in {"infer", "status", "health"}:
+        if action not in {"infer", "infer_batch", "status", "health"}:
             raise InvalidRequestError(
                 "inference mmap v1 action 不合法",
                 details={"action": action},
@@ -929,6 +1046,47 @@ class InferenceControlDispatcher:
             return asdict(supervisor.get_status(config))
         if action == "health":
             return asdict(supervisor.get_health(config))
+        if action == "infer_batch":
+            raw_requests = payload.get("prediction_requests")
+            if not isinstance(raw_requests, list):
+                raise InvalidRequestError(
+                    "inference mmap Batch 请求缺少 prediction_requests"
+                )
+            if not raw_requests or len(raw_requests) > MAX_DEPLOYMENT_RUNTIME_BATCH_ITEMS:
+                raise InvalidRequestError(
+                    "inference mmap Batch 请求数量不合法",
+                    details={
+                        "count": len(raw_requests),
+                        "max_count": MAX_DEPLOYMENT_RUNTIME_BATCH_ITEMS,
+                    },
+                )
+            requests = tuple(
+                build_prediction_request_from_payload(
+                    task_type=config.runtime_target.task_type,
+                    payload=request_payload,
+                )
+                for request_payload in raw_requests
+            )
+            execution = supervisor.run_inference_batch(
+                config=config,
+                requests=requests,
+            )
+            serialized_results = []
+            for execution_result in execution.execution_results:
+                if execution_result.preview_image_bytes is not None:
+                    raise ServiceConfigurationError(
+                        "deployment worker 不得通过 Batch 进程队列返回结果图片 bytes"
+                    )
+                serialized_results.append(
+                    serialize_prediction_execution_result(
+                        task_type=config.runtime_target.task_type,
+                        execution_result=execution_result,
+                    )
+                )
+            return {
+                "instance_id": execution.instance_id,
+                "execution_results": serialized_results,
+            }
         request_payload = payload.get("prediction_request")
         if not isinstance(request_payload, dict):
             raise InvalidRequestError("inference mmap 请求缺少 prediction_request")

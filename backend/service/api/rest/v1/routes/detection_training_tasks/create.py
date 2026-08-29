@@ -21,8 +21,8 @@ from .schemas import (
     DetectionTrainingTaskSubmissionResponse,
 )
 from .services import (
-    _DETECTION_TRAINING_SERVICE_BY_MODEL_TYPE,
     _normalize_detection_training_model_type,
+    _resolve_detection_training_service_and_request,
 )
 
 detection_training_create_router = APIRouter()
@@ -48,7 +48,9 @@ def create_detection_training_task(
         )
     model_type = _normalize_detection_training_model_type(body.model_type)
 
-    service_cls, request_cls = _DETECTION_TRAINING_SERVICE_BY_MODEL_TYPE[model_type]
+    service_cls, request_cls = _resolve_detection_training_service_and_request(
+        model_type
+    )
     service = service_cls(
         session_factory=session_factory,
         queue_backend=queue_backend,

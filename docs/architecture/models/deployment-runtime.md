@@ -425,6 +425,17 @@ OpenVINO stream：自动（当前实际 1）
 - 每个 deployment 子进程仍独立持有自己的模型 session、OpenVINO/TensorRT/ONNX Runtime 状态和运行库，这是进程隔离的实际内存成本，不能按实例数假定共享。
 - Windows 上普通 Working Set 会把已经触碰的文件映射页计入多个进程，跨进程相加会重复计算；长期审计同时记录 Working Set-Private（或 psutil USS）、Private Bytes、进程角色和系统 available memory。LocalBuffer 的 2 GiB 固定文件映射不等于 2 GiB 私有物理占用。
 - 模型 runtime 延迟导入只减少管理进程和无关 task runtime 的常驻内存，不改变实例选择、同步拒绝、warmup、LocalBuffer 或推理结果语义。
+- deployment worker 启动后独立监视 inference daemon 父进程。Windows 上父进程被强制结束不会自动回收 multiprocessing 子进程，因此父进程失联时 worker 必须直接退出并释放模型和 mmap guard；不能永久阻塞在 request queue 上成为孤儿进程。正常 shutdown 会先停止 watchdog，再按既有顺序关闭 runtime。
+- FastAPI 路由只登记控制面 schema 和 service descriptor。训练、validation session、conversion、evaluation 和 RF-DETR core 必须在实际提交或执行时按需导入；自定义 SAM3/YOLOE entrypoint 只登记线程安全的惰性 handler/provider 代理，节点首次执行或 model session 首次准备时才加载 PyTorch。
+- RF-DETR 预训练登记所需的 task/scale 默认输入尺寸属于领域元数据规则，统一由无 PyTorch 依赖的 `model_input_spec` 解析；model core factory 复用同一规则，不允许 seeder 为读取尺寸加载完整模型工厂。
+
+2026-08-29 Windows 开发机的冷启动审计结果：
+
+- 单纯导入 FastAPI 应用由约 798.5 MiB RSS / 596.1 MiB USS 降到 219.6 MiB RSS / 186.5 MiB USS，`torch` 未进入模块表。
+- 使用现有 RF-DETR 资产、deployment、Trigger 和 Workflow Runtime 数据完成完整 lifespan 启动后，API server 进程由约 863.4 MiB RSS / 656.1 MiB USS 降到 272.4 MiB RSS / 235.2 MiB USS，进程不再映射 PyTorch/CUDA DLL。
+- `--reload` 只用于源码开发。reloader 管理进程约 11.5 MiB USS，但会映射 2 GiB LocalBuffer arena；Private Bytes 或映射容量不能当成常驻物理内存相加。
+- 当前数据库显式要求 10 个 Workflow Runtime 保持 running，其中 8 个是 Stage 9 benchmark、2 个是本次验证副本。空闲 Runtime 每个约 100 MiB RSS / 77 至 78 MiB USS；生产部署应显式停止不需要的 Runtime，不实现自动休眠、隐式回收或下次调用时隐藏冷启动。
+- 控制面导入、完整空数据 lifespan 和 RF-DETR 预训练登记均有独立子进程测试，防止后续路由、节点包或 seeder 再次提前加载 `torch`。
 
 ## 同步调用和 workflow 边界
 

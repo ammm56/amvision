@@ -19,13 +19,22 @@ from backend.service.api.rest.v1.routes.task_evaluation.services import (
     list_evaluation_task_records,
     require_evaluation_project_access,
 )
-from backend.service.application.models.evaluation.yolov8_classification_evaluation_service import (
-    CLASSIFICATION_EVALUATION_TASK_KIND,
-    SqlAlchemyYoloV8ClassificationEvaluationService,
-    YoloV8ClassificationEvaluationRequest,
-)
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+
+
+CLASSIFICATION_EVALUATION_TASK_KIND = "classification-evaluation"
+
+
+def _load_classification_evaluation_service_types() -> tuple[type, type]:
+    """仅在提交评估任务时加载 classification 评估实现。"""
+
+    from backend.service.application.models.evaluation.yolov8_classification_evaluation_service import (
+        SqlAlchemyYoloV8ClassificationEvaluationService,
+        YoloV8ClassificationEvaluationRequest,
+    )
+
+    return SqlAlchemyYoloV8ClassificationEvaluationService, YoloV8ClassificationEvaluationRequest
 
 
 def create_classification_evaluation_task_response(
@@ -38,12 +47,13 @@ def create_classification_evaluation_task_response(
     """创建 classification evaluation 任务并返回提交响应。"""
 
     require_evaluation_project_access(principal=principal, project_id=body.project_id)
-    service = SqlAlchemyYoloV8ClassificationEvaluationService(
+    service_cls, request_cls = _load_classification_evaluation_service_types()
+    service = service_cls(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     )
     submission = service.submit_evaluation_task(
-        YoloV8ClassificationEvaluationRequest(
+        request_cls(
             project_id=body.project_id,
             model_version_id=body.model_version_id,
             dataset_export_id=body.dataset_export_id,

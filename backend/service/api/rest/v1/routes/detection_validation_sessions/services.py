@@ -16,11 +16,6 @@ from backend.service.api.rest.v1.routes.detection_validation_sessions.schemas im
 from backend.service.api.rest.v1.routes.task_validation.services import (
     require_validation_project_access,
 )
-from backend.service.application.models.validation.detection_session_service import (
-    DetectionValidationSessionCreateRequest,
-    DetectionValidationSessionPredictRequest,
-    LocalDetectionValidationSessionService,
-)
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
@@ -36,16 +31,19 @@ def create_detection_validation_session_response(
 ) -> DetectionValidationSessionDetailResponse:
     """创建 detection validation session 并返回响应。"""
 
+    service_cls, create_request_cls, _predict_request_cls = (
+        _load_detection_validation_service_types()
+    )
     require_validation_project_access(
         principal_project_ids=principal.project_ids,
         project_id=body.project_id,
     )
-    service = LocalDetectionValidationSessionService(
+    service = service_cls(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     )
     session_view = service.create_session(
-        DetectionValidationSessionCreateRequest(
+        create_request_cls(
             project_id=body.project_id,
             model_type=body.model_type,
             model_version_id=body.model_version_id,
@@ -70,7 +68,10 @@ def get_detection_validation_session_response(
 ) -> DetectionValidationSessionDetailResponse:
     """读取 detection validation session 并返回响应。"""
 
-    service = LocalDetectionValidationSessionService(
+    service_cls, _create_request_cls, _predict_request_cls = (
+        _load_detection_validation_service_types()
+    )
+    service = service_cls(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     )
@@ -91,7 +92,10 @@ def predict_detection_validation_session_response(
 ) -> DetectionValidationPredictionResponse:
     """执行 detection validation session 单图预测并返回响应。"""
 
-    service = LocalDetectionValidationSessionService(
+    service_cls, _create_request_cls, predict_request_cls = (
+        _load_detection_validation_service_types()
+    )
+    service = service_cls(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     )
@@ -101,7 +105,7 @@ def predict_detection_validation_session_response(
     )
     prediction_view = service.predict(
         session_id,
-        DetectionValidationSessionPredictRequest(
+        predict_request_cls(
             input_uri=body.input_uri,
             input_file_id=body.input_file_id,
             score_threshold=body.score_threshold,
@@ -110,3 +114,19 @@ def predict_detection_validation_session_response(
         ),
     )
     return build_detection_validation_prediction_response(prediction_view)
+
+
+def _load_detection_validation_service_types() -> tuple[type, type, type]:
+    """仅在实际访问 validation API 时加载模型 runtime。"""
+
+    from backend.service.application.models.validation.detection_session_service import (
+        DetectionValidationSessionCreateRequest,
+        DetectionValidationSessionPredictRequest,
+        LocalDetectionValidationSessionService,
+    )
+
+    return (
+        LocalDetectionValidationSessionService,
+        DetectionValidationSessionCreateRequest,
+        DetectionValidationSessionPredictRequest,
+    )

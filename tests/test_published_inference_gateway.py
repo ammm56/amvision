@@ -20,6 +20,8 @@ from backend.service.application.deployments import (
     PublishedInferenceGatewayClient,
     PublishedInferenceGatewayDispatcher,
     PublishedInferenceGatewayEventChannel,
+    PublishedInferenceBatchRequest,
+    PublishedInferenceBatchResult,
     PublishedInferenceRequest,
     PublishedInferenceResult,
 )
@@ -27,6 +29,7 @@ from backend.service.application.models.inference.detection_inference_task_servi
     run_detection_inference_task,
 )
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
+    DeploymentProcessBatchExecution,
     DeploymentProcessExecution,
 )
 from backend.service.application.runtime.contracts.detection.prediction import (
@@ -152,6 +155,69 @@ def test_published_inference_gateway_client_correlates_out_of_order_responses() 
 
         assert slow_result.metadata["trace_id"] == "slow"
         assert fast_result.metadata["trace_id"] == "fast"
+    finally:
+        client.close()
+        dispatcher.stop()
+        channel.request_queue.close()
+        channel.request_queue.join_thread()
+        channel.response_queue.close()
+        channel.response_queue.join_thread()
+
+
+def test_published_inference_gateway_batch_uses_one_event_and_one_supervisor_call() -> (
+    None
+):
+    """验证 Batch 通过一条事件调用 supervisor，并保留结果顺序和 instance id。"""
+
+    context = multiprocessing.get_context("spawn")
+    fake_supervisor = _FakeDeploymentSupervisor()
+    gateway = DetectionDeploymentPublishedInferenceGateway(
+        deployment_service=_FakeDeploymentService(),
+        deployment_process_supervisor=fake_supervisor,
+    )
+    channel = PublishedInferenceGatewayEventChannel(
+        request_queue=context.Queue(),
+        response_queue=context.Queue(),
+        request_timeout_seconds=3.0,
+    )
+    dispatcher = PublishedInferenceGatewayDispatcher(channel=channel, gateway=gateway)
+    dispatcher.start()
+    client = PublishedInferenceGatewayClient(channel)
+    try:
+        requests = tuple(
+            PublishedInferenceRequest(
+                task_type="detection",
+                deployment_instance_id="deployment-1",
+                image_payload={
+                    "transport_kind": "buffer",
+                    "buffer_ref": _build_buffer_ref(
+                        lease_id=f"lease-batch-{item_index}"
+                    ).model_dump(mode="json"),
+                    "media_type": "image/jpeg",
+                    "width": 64,
+                    "height": 64,
+                },
+                score_threshold=0.41,
+                auto_start_process=True,
+                execution_scope_id="workflow-batch-scope",
+            )
+            for item_index in range(3)
+        )
+
+        result = client.infer_batch(PublishedInferenceBatchRequest(requests=requests))
+
+        assert isinstance(result, PublishedInferenceBatchResult)
+        assert result.instance_id == "deployment-1:instance-0"
+        assert len(result.results) == 3
+        assert [item.detections[0]["class_name"] for item in result.results] == [
+            "defect",
+            "defect",
+            "defect",
+        ]
+        assert result.metadata["execution_mode"] == "sequential-reserved-instance"
+        assert fake_supervisor.batch_inference_calls == 1
+        assert fake_supervisor.inference_calls == 0
+        assert len(fake_supervisor.last_prediction_requests) == 3
     finally:
         client.close()
         dispatcher.stop()
@@ -575,6 +641,8 @@ class _FakeDeploymentSupervisor:
         self.ensure_calls = 0
         self.status_calls = 0
         self.inference_calls = 0
+        self.batch_inference_calls = 0
+        self.last_prediction_requests = ()
 
     def ensure_deployment(self, config: SimpleNamespace) -> None:
         """登记 deployment 配置。"""
@@ -623,6 +691,40 @@ class _FakeDeploymentSupervisor:
                 preview_image_bytes=None,
                 runtime_session_info=_build_runtime_session_info(),
             ),
+        )
+
+    def run_inference_batch(
+        self,
+        *,
+        config: SimpleNamespace,
+        requests: tuple[object, ...],
+    ) -> DeploymentProcessBatchExecution:
+        """记录一次 Batch，并让全部结果来自同一实例。"""
+
+        self.batch_inference_calls += 1
+        self.last_prediction_requests = requests
+        execution_results = tuple(
+            DetectionPredictionExecutionResult(
+                detections=(
+                    DetectionPredictionDetection(
+                        bbox_xyxy=(4.0, 4.0, 24.0, 24.0),
+                        score=0.97,
+                        class_id=0,
+                        class_name="defect",
+                    ),
+                ),
+                latency_ms=7.5,
+                image_width=64,
+                image_height=64,
+                preview_image_bytes=None,
+                runtime_session_info=_build_runtime_session_info(),
+            )
+            for _ in requests
+        )
+        return DeploymentProcessBatchExecution(
+            deployment_instance_id=config.deployment_instance_id,
+            instance_id="deployment-1:instance-0",
+            execution_results=execution_results,
         )
 
 

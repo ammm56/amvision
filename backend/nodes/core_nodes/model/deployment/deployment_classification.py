@@ -14,6 +14,9 @@ from backend.nodes.core_nodes.support.deployment_model import (
     DEFAULT_DIRECT_MODEL_TOP_K,
     run_direct_model_inference,
 )
+from backend.nodes.core_nodes.support.deployment_result_payloads import (
+    build_deployment_result_payload,
+)
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from backend.service.domain.models.model_task_types import CLASSIFICATION_TASK_TYPE
 from backend.version import BACKEND_VERSION
@@ -27,17 +30,11 @@ def _deployment_classification_handler(request: WorkflowNodeExecutionRequest) ->
         task_type=CLASSIFICATION_TASK_TYPE,
     )
     return {
-        "categories": {
-            "source_image": dict(source_image),
-            "count": len(inference_result.categories),
-            "items": [dict(item) for item in inference_result.categories],
-            "top_item": dict(inference_result.top_category) if isinstance(inference_result.top_category, dict) else None,
-            "image_width": inference_result.image_width,
-            "image_height": inference_result.image_height,
-            "latency_ms": inference_result.latency_ms,
-            "runtime_session_info": dict(inference_result.runtime_session_info),
-            "metadata": dict(inference_result.metadata),
-        }
+        "categories": build_deployment_result_payload(
+            task_type=CLASSIFICATION_TASK_TYPE,
+            inference_result=inference_result,
+            source_image=source_image,
+        )
     }
 
 

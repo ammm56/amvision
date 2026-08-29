@@ -61,6 +61,9 @@ from backend.service.application.runtime.support.safe_counter import (
 from backend.service.application.runtime.deployment.deployment_process_worker import (
     run_deployment_process_worker,
 )
+from backend.service.application.runtime.deployment.deployment_runtime_pool import (
+    MAX_DEPLOYMENT_RUNTIME_BATCH_ITEMS,
+)
 from backend.service.application.runtime.device_capabilities import (
     validate_runtime_target_available,
 )
@@ -249,6 +252,15 @@ class DeploymentProcessExecution:
     instance_id: str
     execution_result: PredictionExecutionResult
     preview_image_transfer: dict[str, object] | None = None
+
+
+@dataclass(frozen=True)
+class DeploymentProcessBatchExecution:
+    """描述一次通过 deployment 子进程完成的有序批量推理结果。"""
+
+    deployment_instance_id: str
+    instance_id: str
+    execution_results: tuple[PredictionExecutionResult, ...]
 
 
 @dataclass
@@ -846,6 +858,106 @@ class DeploymentProcessSupervisor:
             instance_id=instance_id,
             execution_result=execution_result,
             preview_image_transfer=preview_transfer,
+        )
+
+    def run_inference_batch(
+        self,
+        *,
+        config: DeploymentProcessConfig,
+        requests: tuple[PredictionRequest, ...],
+    ) -> DeploymentProcessBatchExecution:
+        """把有序请求批次一次性交给 deployment worker。
+
+        Batch 第一版不生成预览图。所有输入先转换为 LocalBuffer/ObjectStore
+        引用，再通过一条 ``infer_batch`` 控制消息提交，避免每张图片重复跨进程
+        往返。
+        """
+
+        if not requests:
+            raise InvalidRequestError("批量推理至少需要 1 个请求")
+        if len(requests) > MAX_DEPLOYMENT_RUNTIME_BATCH_ITEMS:
+            raise InvalidRequestError(
+                "批量推理请求数量超过上限",
+                details={
+                    "count": len(requests),
+                    "max_count": MAX_DEPLOYMENT_RUNTIME_BATCH_ITEMS,
+                },
+            )
+        if any(bool(getattr(request, "save_result_image", False)) for request in requests):
+            raise InvalidRequestError("批量推理当前不支持结果预览图")
+
+        state = self._ensure_state(config)
+        self._require_running_process(state)
+        request_id = uuid4().hex
+        prepared_requests: list[PredictionRequest] = []
+        owned_inputs: list[str] = []
+        try:
+            for item_index, request in enumerate(requests):
+                try:
+                    prepared_request, owned_input = self._stage_prediction_input(
+                        request=request,
+                        owner_id=f"deployment-batch-{request_id}-{item_index}",
+                    )
+                except ServiceError as error:
+                    error.details.setdefault("item_index", item_index)
+                    raise
+                prepared_requests.append(prepared_request)
+                if owned_input is not None:
+                    owned_inputs.append(owned_input)
+        except Exception:
+            for owned_input in owned_inputs:
+                self._release_local_buffer(owned_input)
+            raise
+
+        request_started = False
+        request_completed = False
+        try:
+            request_started = True
+            payload = self._send_request(
+                state=state,
+                action="infer_batch",
+                payload={
+                    "task_type": config.runtime_target.task_type,
+                    "prediction_requests": [
+                        serialize_prediction_request(
+                            task_type=config.runtime_target.task_type,
+                            request=request,
+                        )
+                        for request in prepared_requests
+                    ],
+                },
+            )
+            request_completed = True
+            raw_results = payload.get("execution_results")
+            if not isinstance(raw_results, list):
+                raise ServiceConfigurationError(
+                    "deployment 批量推理响应缺少 execution_results"
+                )
+            if len(raw_results) != len(requests):
+                raise ServiceConfigurationError(
+                    "deployment 批量推理响应数量不一致",
+                    details={
+                        "request_count": len(requests),
+                        "result_count": len(raw_results),
+                    },
+                )
+            execution_results = tuple(
+                deserialize_prediction_execution_result(
+                    task_type=config.runtime_target.task_type,
+                    payload=result_payload,
+                )
+                for result_payload in raw_results
+            )
+            instance_id = _require_response_str(payload, "instance_id")
+        finally:
+            if not request_started or request_completed:
+                for owned_input in owned_inputs:
+                    self._release_local_buffer(owned_input)
+
+        return DeploymentProcessBatchExecution(
+            deployment_instance_id=config.deployment_instance_id,
+            instance_id=instance_id,
+            execution_results=execution_results,
         )
 
     def _stage_prediction_input(

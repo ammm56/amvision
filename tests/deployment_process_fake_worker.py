@@ -202,6 +202,72 @@ def fake_deployment_process_worker(
                 }
             )
             continue
+        if action == "infer_batch":
+            prediction_requests = payload.get("prediction_requests")
+            if not isinstance(prediction_requests, list) or not prediction_requests:
+                raise RuntimeError("fake worker 缺少 prediction_requests")
+            instance_index = next_instance_index % config.instance_count
+            next_instance_index += 1
+            warmed_instance_indexes.add(instance_index)
+            execution_results = []
+            for prediction_request in prediction_requests:
+                if not isinstance(prediction_request, dict):
+                    raise RuntimeError("fake worker prediction_request 不是 object")
+                execution_results.append(
+                    {
+                        "detections": [
+                            {
+                                "bbox_xyxy": [8.0, 10.0, 18.0, 22.0],
+                                "score": 0.91,
+                                "class_id": 0,
+                                "class_name": "bolt",
+                            }
+                        ],
+                        "latency_ms": 7.5,
+                        "image_width": 64,
+                        "image_height": 64,
+                        "runtime_session_info": {
+                            "backend_name": config.runtime_target.runtime_backend,
+                            "model_uri": (
+                                config.runtime_target.runtime_artifact_storage_uri
+                            ),
+                            "device_name": config.runtime_target.device_name,
+                            "input_spec": {
+                                "name": "images",
+                                "shape": [1, 3, 64, 64],
+                                "dtype": "float32",
+                            },
+                            "output_spec": {
+                                "name": "detections",
+                                "shape": [-1, 7],
+                                "dtype": "float32",
+                            },
+                            "metadata": {
+                                "model_version_id": (
+                                    config.runtime_target.model_version_id
+                                ),
+                                "input_transport_kind": (
+                                    prediction_request.get("input_image_payload")
+                                    or {}
+                                ).get("transport_kind"),
+                                "worker_pid": os.getpid(),
+                            },
+                        },
+                    }
+                )
+            response_queue.put(
+                {
+                    "request_id": request_id,
+                    "ok": True,
+                    "payload": {
+                        "instance_id": (
+                            f"{config.deployment_instance_id}:instance-{instance_index}"
+                        ),
+                        "execution_results": execution_results,
+                    },
+                }
+            )
+            continue
 
         response_queue.put(
             {

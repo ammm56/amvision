@@ -147,6 +147,125 @@ class LocalBufferBrokerClient:
                 pass
             raise
 
+    def write_many(
+        self,
+        *,
+        items: tuple[dict[str, object], ...],
+        owner_kind: str,
+        owner_id: str,
+        ttl_seconds: float | None = None,
+        trace_id: str | None = None,
+    ) -> tuple[LocalBufferWriteResult, ...]:
+        """用两次控制往返分配并发布一批有序 bytes，内容仍直接写 mmap。"""
+
+        if not items:
+            raise InvalidRequestError("批量写入至少需要 1 个 item")
+        if len(items) > 256:
+            raise InvalidRequestError("批量写入 item 数量不能大于 256")
+        normalized_items: list[dict[str, object]] = []
+        for item_index, item in enumerate(items):
+            content = _normalize_write_content(item.get("content"))
+            media_type = item.get("media_type")
+            if not isinstance(media_type, str) or not media_type.strip():
+                raise InvalidRequestError(
+                    "批量写入 item 缺少 media_type",
+                    details={"item_index": item_index},
+                )
+            shape_value = item.get("shape", ())
+            if not isinstance(shape_value, tuple | list):
+                raise InvalidRequestError(
+                    "批量写入 item shape 必须是数组",
+                    details={"item_index": item_index},
+                )
+            normalized_items.append(
+                {
+                    "content": content,
+                    "media_type": media_type.strip(),
+                    "shape": tuple(int(value) for value in shape_value),
+                    "dtype": item.get("dtype"),
+                    "layout": item.get("layout"),
+                    "pixel_format": item.get("pixel_format"),
+                }
+            )
+
+        allocation_payload = self._send_request(
+            action="allocate-buffers",
+            payload={
+                "items": [
+                    {"content_length": len(item["content"])}
+                    for item in normalized_items
+                ],
+                "owner_kind": owner_kind,
+                "owner_id": owner_id,
+                "ttl_seconds": ttl_seconds,
+                "trace_id": trace_id,
+            },
+        )
+        raw_allocations = allocation_payload.get("allocations")
+        if not isinstance(raw_allocations, list) or len(raw_allocations) != len(
+            normalized_items
+        ):
+            raise ServiceConfigurationError("Broker 批量分配响应数量不一致")
+        leases: list[BufferLease] = []
+        for raw_allocation in raw_allocations:
+            if not isinstance(raw_allocation, dict):
+                raise ServiceConfigurationError("Broker 批量分配响应格式无效")
+            lease = BufferLease.model_validate(_require_dict(raw_allocation, "lease"))
+            leases.append(lease)
+            self._writer_locations[lease.lease_id] = _require_dict(
+                raw_allocation,
+                "writer",
+            )
+
+        try:
+            for lease, item in zip(leases, normalized_items, strict=True):
+                self.write_lease_bytes(lease=lease, content=item["content"])
+            commit_payload = self._send_request(
+                action="commit-buffers",
+                payload={
+                    "items": [
+                        {
+                            "lease": lease.model_dump(mode="json"),
+                            "media_type": item["media_type"],
+                            "shape": item["shape"],
+                            "dtype": item["dtype"],
+                            "layout": item["layout"],
+                            "pixel_format": item["pixel_format"],
+                        }
+                        for lease, item in zip(
+                            leases,
+                            normalized_items,
+                            strict=True,
+                        )
+                    ]
+                },
+            )
+            raw_results = commit_payload.get("results")
+            if not isinstance(raw_results, list) or len(raw_results) != len(leases):
+                raise ServiceConfigurationError("Broker 批量发布响应数量不一致")
+            results = tuple(
+                LocalBufferWriteResult(
+                    lease=BufferLease.model_validate(_require_dict(item, "lease")),
+                    buffer_ref=BufferRef.model_validate(
+                        _require_dict(item, "buffer_ref")
+                    ),
+                )
+                for item in raw_results
+                if isinstance(item, dict)
+            )
+            if len(results) != len(leases):
+                raise ServiceConfigurationError("Broker 批量发布响应格式无效")
+            return results
+        except Exception:
+            try:
+                self.release_many(tuple(lease.lease_id for lease in leases))
+            except Exception:
+                pass
+            raise
+        finally:
+            for lease in leases:
+                self._writer_locations.pop(lease.lease_id, None)
+
     def allocate_buffer(
         self,
         *,
@@ -666,6 +785,24 @@ class LocalBufferBrokerClient:
     def release(self, lease_id: str) -> None:
         self._send_request(action="release", payload={"lease_id": lease_id})
         self._writer_locations.pop(lease_id, None)
+
+    def release_many(self, lease_ids: tuple[str, ...]) -> int:
+        """用一条控制消息按给定顺序释放一批 lease。"""
+
+        normalized_ids = tuple(
+            lease_id.strip()
+            for lease_id in lease_ids
+            if isinstance(lease_id, str) and lease_id.strip()
+        )
+        if not normalized_ids:
+            return 0
+        payload = self._send_request(
+            action="release-many",
+            payload={"lease_ids": list(normalized_ids)},
+        )
+        for lease_id in normalized_ids:
+            self._writer_locations.pop(lease_id, None)
+        return _require_nonnegative_int(payload, "released_count")
 
     def release_owner(
         self,

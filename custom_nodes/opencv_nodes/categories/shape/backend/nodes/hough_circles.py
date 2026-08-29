@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import math
+from dataclasses import replace
+from time import perf_counter
 
 from backend.nodes.core_nodes.support.logic import build_value_payload
 from backend.nodes.debug_image_panel import (
@@ -17,6 +19,9 @@ from backend.nodes.debug_image_panel import (
 from backend.nodes.parameter_utils import is_empty_parameter
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
+from backend.service.application.workflows.runtime.policies import (
+    should_return_workflow_timing_metadata,
+)
 from custom_nodes.opencv_nodes.shared.backend.runtime.circle_measurement import (
     fit_circle_robust,
     sample_radial_edges,
@@ -58,13 +63,55 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     """对输入图片执行 Hough 圆检测。"""
 
     cv2_module, np_module = require_opencv_imports()
+    image_load_started_at = perf_counter()
     image_payload, source_object_key, image_matrix = load_image_matrix(
         request,
-        imdecode_flags=cv2_module.IMREAD_GRAYSCALE,
+        imdecode_flags=cv2_module.IMREAD_UNCHANGED,
     )
+    image_load_ms = (perf_counter() - image_load_started_at) * 1000.0
     image_height = int(image_matrix.shape[0])
     image_width = int(image_matrix.shape[1])
+    input_pixel_format = _describe_input_pixel_format(
+        image_payload=image_payload,
+        image_matrix=image_matrix,
+    )
+    convert_roi_to_grayscale = require_boolean(
+        request.parameters.get("convert_roi_to_grayscale", False),
+        field_name="convert_roi_to_grayscale",
+    )
+    roi_resolve_started_at = perf_counter()
     search_roi = resolve_search_roi(request, image_matrix=image_matrix)
+    roi_resolve_ms = (perf_counter() - roi_resolve_started_at) * 1000.0
+    roi_grayscale_started_at = perf_counter()
+    roi_matrix = search_roi.image_matrix
+    roi_grayscale_applied = False
+    if len(roi_matrix.shape) == 2:
+        grayscale_roi_matrix = roi_matrix
+    elif len(roi_matrix.shape) == 3 and int(roi_matrix.shape[2]) == 1:
+        grayscale_roi_matrix = roi_matrix[:, :, 0]
+    elif len(roi_matrix.shape) == 3 and int(roi_matrix.shape[2]) in {3, 4}:
+        if not convert_roi_to_grayscale:
+            raise InvalidRequestError(
+                "Hough Circles 要求灰度输入；请连接 Grayscale，或显式启用 ROI Grayscale",
+                details={
+                    "input_pixel_format": input_pixel_format,
+                    "convert_roi_to_grayscale": False,
+                },
+            )
+        color_code = (
+            cv2_module.COLOR_BGR2GRAY
+            if int(roi_matrix.shape[2]) == 3
+            else cv2_module.COLOR_BGRA2GRAY
+        )
+        grayscale_roi_matrix = cv2_module.cvtColor(roi_matrix, color_code)
+        roi_grayscale_applied = True
+    else:
+        raise InvalidRequestError(
+            "Hough Circles 不支持当前输入图片布局",
+            details={"shape": [int(item) for item in image_matrix.shape]},
+        )
+    search_roi = replace(search_roi, image_matrix=grayscale_roi_matrix)
+    roi_grayscale_ms = (perf_counter() - roi_grayscale_started_at) * 1000.0
     accumulator_resolution_ratio = _read_positive_float(
         request.parameters.get("accumulator_resolution_ratio"),
         field_name="accumulator_resolution_ratio",
@@ -297,6 +344,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         if median_blur_kernel_size > 1
         else normalized_image
     )
+    hough_started_at = perf_counter()
     raw_circles = cv2_module.HoughCircles(
         circle_input_image,
         method=cv2_module.HOUGH_GRADIENT,
@@ -307,9 +355,11 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         minRadius=int(round(effective_minimum_radius_px * processing_scale)) if effective_minimum_radius_px > 0 else 0,
         maxRadius=max(1, int(round(effective_maximum_radius_px * processing_scale))) if effective_maximum_radius_px > 0 else 0,
     )
+    hough_ms = (perf_counter() - hough_started_at) * 1000.0
     circle_items: list[dict[str, object]] = []
     rejected_items: list[dict[str, object]] = []
     candidate_processing_limit = maximum_candidates
+    candidate_refinement_started_at = perf_counter()
     if raw_circles is not None:
         for circle_index, raw_circle in enumerate(
             raw_circles[0][:candidate_processing_limit],
@@ -481,6 +531,9 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 rejected_items.append(item)
             else:
                 circle_items.append(item)
+    candidate_refinement_ms = (
+        perf_counter() - candidate_refinement_started_at
+    ) * 1000.0
 
     circle_items, duplicate_items = _suppress_duplicate_circles(circle_items)
     rejected_items.extend(duplicate_items)
@@ -508,6 +561,23 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         item["circle_index"] = selected_index
         item["selected"] = selected_index == 1
 
+    grayscale_bbox_xyxy = (
+        list(search_roi.bbox_xyxy)
+        if convert_roi_to_grayscale and search_roi.bbox_xyxy is not None
+        else [0, 0, image_width, image_height]
+        if convert_roi_to_grayscale
+        else [0, 0, 0, 0]
+    )
+    timing_summary: dict[str, object] = {}
+    if should_return_workflow_timing_metadata(request.execution_metadata):
+        timing_summary["timings"] = {
+            "image_load_ms": round(image_load_ms, 3),
+            "roi_resolve_ms": round(roi_resolve_ms, 3),
+            "roi_grayscale_ms": round(roi_grayscale_ms, 3),
+            "hough_ms": round(hough_ms, 3),
+            "candidate_refinement_ms": round(candidate_refinement_ms, 3),
+        }
+
     outputs: dict[str, object] = {
         "circles": build_circles_payload(
             items=circle_items,
@@ -519,6 +589,11 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 "count": len(circle_items),
                 "rejected_count": len(rejected_items),
                 "rejection_reason_counts": rejection_reason_counts,
+                "input_pixel_format": input_pixel_format,
+                "roi_grayscale_requested": convert_roi_to_grayscale,
+                "roi_grayscale_applied": roi_grayscale_applied,
+                "grayscale_scope": "roi" if convert_roi_to_grayscale else "none",
+                "grayscale_bbox_xyxy": grayscale_bbox_xyxy,
                 "sort_by": sort_by,
                 "descending": descending,
                 "max_results": max_results,
@@ -567,6 +642,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 ),
                 **build_search_roi_summary(search_roi),
                 **build_processing_summary(processing_image),
+                **timing_summary,
             }
         ),
     }
@@ -583,6 +659,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 show_rejected_candidates=show_rejected_candidates,
             ),
             interaction=_build_circle_interaction(
+                convert_roi_to_grayscale=convert_roi_to_grayscale,
                 accumulator_resolution_ratio=accumulator_resolution_ratio,
                 minimum_center_distance_px=minimum_center_distance_px,
                 canny_high_threshold=canny_high_threshold,
@@ -624,6 +701,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
 
 def _build_circle_interaction(
     *,
+    convert_roi_to_grayscale: bool,
     accumulator_resolution_ratio: float,
     minimum_center_distance_px: float,
     canny_high_threshold: float,
@@ -683,6 +761,11 @@ def _build_circle_interaction(
             ),
         ],
         controls=[
+            build_checkbox_control(
+                "convert_roi_to_grayscale",
+                "ROI Grayscale",
+                convert_roi_to_grayscale,
+            ),
             build_numeric_control(
                 "accumulator_resolution_ratio",
                 "Accumulator Resolution Ratio",
@@ -922,6 +1005,26 @@ def _build_circle_interaction(
             ),
         ],
     )
+
+
+def _describe_input_pixel_format(
+    *,
+    image_payload: dict[str, object],
+    image_matrix: object,
+) -> str:
+    """返回输入图片的明确像素格式，供 Summary 和错误详情审计。"""
+
+    raw_pixel_format = image_payload.get("pixel_format")
+    if isinstance(raw_pixel_format, str) and raw_pixel_format.strip():
+        return raw_pixel_format.strip().lower()
+    shape = tuple(int(item) for item in getattr(image_matrix, "shape", ()))
+    if len(shape) == 2 or (len(shape) == 3 and shape[2] == 1):
+        return "gray8"
+    if len(shape) == 3 and shape[2] == 3:
+        return "bgr24"
+    if len(shape) == 3 and shape[2] == 4:
+        return "bgra32"
+    return "unknown"
 
 
 def _build_circle_control_ranges(*, image_width: int, image_height: int) -> tuple[float, float, float]:

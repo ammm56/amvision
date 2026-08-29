@@ -10,6 +10,7 @@ from backend.service.application.errors import InvalidRequestError, ServiceConfi
 
 IMAGE_MEDIA_TYPE_RAW = "image/raw"
 IMAGE_DTYPE_UINT8 = "uint8"
+IMAGE_LAYOUT_HW = "HW"
 IMAGE_LAYOUT_HWC = "HWC"
 IMAGE_PIXEL_FORMAT_BGR24 = "bgr24"
 IMAGE_PIXEL_FORMAT_RGB24 = "rgb24"
@@ -137,6 +138,51 @@ def validate_raw_bgr24_bytes(
         )
 
 
+def validate_raw_gray8_bytes(
+    *,
+    image_bytes: bytes | bytearray | memoryview,
+    shape: tuple[int, ...],
+    dtype: str | None,
+    layout: str | None,
+    pixel_format: str | None,
+) -> None:
+    """校验 raw GRAY8 字节和元数据是否一致。"""
+
+    normalized_dtype = _normalize_optional_text(dtype)
+    normalized_layout = _normalize_layout(layout)
+    normalized_pixel_format = _normalize_pixel_format(pixel_format)
+    if normalized_dtype != IMAGE_DTYPE_UINT8:
+        raise InvalidRequestError(
+            "raw GRAY8 图片要求 dtype=uint8",
+            details={"dtype": dtype},
+        )
+    if normalized_layout != IMAGE_LAYOUT_HW:
+        raise InvalidRequestError(
+            "raw GRAY8 图片要求 layout=HW",
+            details={"layout": layout},
+        )
+    if normalized_pixel_format != IMAGE_PIXEL_FORMAT_GRAY8:
+        raise InvalidRequestError(
+            "raw GRAY8 图片要求 pixel_format=gray8",
+            details={"pixel_format": pixel_format},
+        )
+    if len(shape) != 2:
+        raise InvalidRequestError(
+            "raw GRAY8 图片要求 shape=[height,width]",
+            details={"shape": list(shape)},
+        )
+    expected_size = int(shape[0]) * int(shape[1])
+    if len(image_bytes) != expected_size:
+        raise InvalidRequestError(
+            "raw GRAY8 图片 bytes 长度与 shape 不一致",
+            details={
+                "expected_size": expected_size,
+                "actual_size": len(image_bytes),
+                "shape": list(shape),
+            },
+        )
+
+
 def decode_image_bytes_to_matrix(
     *,
     cv2_module: Any,
@@ -218,6 +264,36 @@ def prepare_matrix_for_raw_bgr24(
     return np_module.ascontiguousarray(matrix, dtype=np_module.uint8)
 
 
+def prepare_matrix_for_raw_gray8(
+    *,
+    cv2_module: Any,
+    np_module: Any,
+    image_matrix: Any,
+    copy_matrix: bool = False,
+) -> Any:
+    """把 OpenCV 常见图片矩阵规整为 HW uint8 GRAY8。"""
+
+    if image_matrix is None or not hasattr(image_matrix, "shape"):
+        raise InvalidRequestError("图片矩阵不能为空")
+    matrix = image_matrix
+    if len(matrix.shape) == 3 and int(matrix.shape[2]) == 1:
+        matrix = matrix[:, :, 0]
+    elif len(matrix.shape) == 3 and int(matrix.shape[2]) == 3:
+        matrix = cv2_module.cvtColor(matrix, cv2_module.COLOR_BGR2GRAY)
+    elif len(matrix.shape) == 3 and int(matrix.shape[2]) == 4:
+        matrix = cv2_module.cvtColor(matrix, cv2_module.COLOR_BGRA2GRAY)
+    elif len(matrix.shape) != 2:
+        raise InvalidRequestError(
+            "raw GRAY8 输出要求图片矩阵为 HW 灰度图或常见 BGR/BGRA 图片",
+            details={"shape": [int(item) for item in getattr(matrix, "shape", ())]},
+        )
+    if getattr(matrix, "dtype", None) != np_module.uint8:
+        matrix = matrix.astype(np_module.uint8)
+    if copy_matrix:
+        return np_module.ascontiguousarray(matrix, dtype=np_module.uint8).copy()
+    return np_module.ascontiguousarray(matrix, dtype=np_module.uint8)
+
+
 def encode_matrix_to_image_bytes(
     *,
     cv2_module: Any,
@@ -260,6 +336,27 @@ def build_raw_bgr24_payload_fields(*, width: int, height: int) -> dict[str, obje
     }
 
 
+def build_raw_gray8_payload_fields(*, width: int, height: int) -> dict[str, object]:
+    """构造 raw GRAY8 image-ref payload 的公共字段。"""
+
+    normalized_width = int(width)
+    normalized_height = int(height)
+    if normalized_width <= 0 or normalized_height <= 0:
+        raise InvalidRequestError(
+            "raw GRAY8 payload 要求 width/height 为正整数",
+            details={"width": width, "height": height},
+        )
+    return {
+        "media_type": IMAGE_MEDIA_TYPE_RAW,
+        "width": normalized_width,
+        "height": normalized_height,
+        "shape": [normalized_height, normalized_width],
+        "dtype": IMAGE_DTYPE_UINT8,
+        "layout": IMAGE_LAYOUT_HW,
+        "pixel_format": IMAGE_PIXEL_FORMAT_GRAY8,
+    }
+
+
 def is_raw_bgr24_payload(payload: object) -> bool:
     """判断 image-ref payload 是否声明为 raw BGR24。"""
 
@@ -269,6 +366,19 @@ def is_raw_bgr24_payload(payload: object) -> bool:
         and metadata.dtype == IMAGE_DTYPE_UINT8
         and metadata.layout == IMAGE_LAYOUT_HWC
         and metadata.pixel_format == IMAGE_PIXEL_FORMAT_BGR24
+    )
+
+
+def is_raw_gray8_payload(payload: object) -> bool:
+    """判断 image-ref payload 是否声明为规范 raw GRAY8。"""
+
+    metadata = normalize_image_payload_metadata(payload)
+    return (
+        _is_raw_media_type(metadata.media_type)
+        and metadata.dtype == IMAGE_DTYPE_UINT8
+        and metadata.layout == IMAGE_LAYOUT_HW
+        and metadata.pixel_format == IMAGE_PIXEL_FORMAT_GRAY8
+        and len(metadata.shape) == 2
     )
 
 
@@ -291,9 +401,6 @@ def _decode_raw_image_bytes_to_matrix(
     normalized_pixel_format = metadata.pixel_format
     if normalized_dtype != IMAGE_DTYPE_UINT8:
         raise InvalidRequestError("raw 图片当前仅支持 dtype=uint8", details={"dtype": metadata.dtype})
-    if normalized_layout != IMAGE_LAYOUT_HWC:
-        raise InvalidRequestError("raw 图片当前仅支持 layout=HWC", details={"layout": metadata.layout})
-
     if normalized_pixel_format == IMAGE_PIXEL_FORMAT_BGR24:
         validate_raw_bgr24_bytes(
             image_bytes=image_bytes,
@@ -304,10 +411,22 @@ def _decode_raw_image_bytes_to_matrix(
         )
         matrix = np_module.frombuffer(image_bytes, dtype=np_module.uint8).reshape(shape)
     elif normalized_pixel_format == IMAGE_PIXEL_FORMAT_RGB24:
+        if normalized_layout != IMAGE_LAYOUT_HWC:
+            raise InvalidRequestError(
+                "raw RGB24 图片要求 layout=HWC",
+                details={"layout": metadata.layout},
+            )
         _validate_raw_3_channel_bytes(image_bytes=image_bytes, shape=shape, pixel_format=normalized_pixel_format)
         rgb_matrix = np_module.frombuffer(image_bytes, dtype=np_module.uint8).reshape(shape)
         matrix = cv2_module.cvtColor(rgb_matrix, cv2_module.COLOR_RGB2BGR)
     elif normalized_pixel_format == IMAGE_PIXEL_FORMAT_GRAY8:
+        validate_raw_gray8_bytes(
+            image_bytes=image_bytes,
+            shape=shape,
+            dtype=metadata.dtype,
+            layout=metadata.layout,
+            pixel_format=metadata.pixel_format,
+        )
         matrix = _decode_gray8_bytes(np_module=np_module, image_bytes=image_bytes, shape=shape)
     else:
         raise InvalidRequestError(
@@ -317,14 +436,14 @@ def _decode_raw_image_bytes_to_matrix(
 
     if copy_raw and hasattr(matrix, "copy"):
         matrix = matrix.copy()
-    return _apply_raw_decode_flags(
+    return apply_raw_decode_flags(
         cv2_module=cv2_module,
         matrix=matrix,
         imdecode_flags=imdecode_flags,
     )
 
 
-def _apply_raw_decode_flags(*, cv2_module: Any, matrix: Any, imdecode_flags: int | None) -> Any:
+def apply_raw_decode_flags(*, cv2_module: Any, matrix: Any, imdecode_flags: int | None) -> Any:
     """按 OpenCV imdecode flags 调整 raw matrix 输出形态。"""
 
     if imdecode_flags is None:
@@ -348,12 +467,9 @@ def _decode_gray8_bytes(
 ) -> Any:
     """把 gray8 raw bytes 解释为灰度矩阵。"""
 
-    if len(shape) == 2:
-        height, width = int(shape[0]), int(shape[1])
-    elif len(shape) == 3 and int(shape[2]) == 1:
-        height, width = int(shape[0]), int(shape[1])
-    else:
-        raise InvalidRequestError("raw gray8 图片要求 shape=[height,width] 或 [height,width,1]")
+    if len(shape) != 2:
+        raise InvalidRequestError("raw gray8 图片要求 shape=[height,width]")
+    height, width = int(shape[0]), int(shape[1])
     expected_size = height * width
     if len(image_bytes) != expected_size:
         raise InvalidRequestError(

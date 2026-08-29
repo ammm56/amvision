@@ -186,6 +186,29 @@ def test_deployment_process_supervisor_supports_lifecycle_and_auto_restart(
             ]
             == "buffer"
         )
+        batch_execution = supervisor.run_inference_batch(
+            config=config,
+            requests=(
+                DetectionPredictionRequest(
+                    input_uri="runtime-inputs/image-1.jpg",
+                    score_threshold=0.3,
+                    save_result_image=False,
+                    extra_options={},
+                ),
+                DetectionPredictionRequest(
+                    input_uri="runtime-inputs/image-2.jpg",
+                    score_threshold=0.3,
+                    save_result_image=False,
+                    extra_options={},
+                ),
+            ),
+        )
+        assert len(batch_execution.execution_results) == 2
+        assert batch_execution.instance_id.endswith(":instance-0")
+        assert all(
+            item.runtime_session_info.metadata["input_transport_kind"] == "buffer"
+            for item in batch_execution.execution_results
+        )
 
         state = supervisor._deployments[config.deployment_instance_id]
         assert state.process is not None

@@ -575,6 +575,17 @@ TriggerSource 和 SDK 配置包不增加 `reply_protocol`、JSON/multipart mode 
 - `set_lease_deadline()`：handoff 时更新 backend 权威 deadline。
 - `sweep_external_leases()`：处理 REVOKING、QUARANTINED 和 response reader guard。
 
+### Workflow 模型 Batch 控制操作
+
+Workflow 模型 Batch 的图片仍使用相同 LocalBuffer arena、descriptor、guard 和 owner 规则，不增加第二套共享内存格式。为减少同一节点几十张小图产生的控制面往返，Broker control channel 支持以下有界操作：
+
+- `allocate-buffers`：一次校验并按输入顺序分配最多 256 个 WRITING lease；任一分配失败时回滚本次已经分配的 lease。
+- `commit-buffers`：调用方在各自 writer guard 内写入后，一次按顺序提交全部 lease；结果顺序与请求顺序一致。
+- `release-many`：按显式 lease id 集合执行幂等释放。
+- Workflow Batch 正常和异常结束优先按 `owner_kind=workflow-runtime` 与本次 `workflow-run:node` owner id 一次释放；只在 client 不支持 owner release 时退回逐 lease 条件释放。
+
+这些操作只合并控制消息，不把多张图片暗中打包为一个 BufferRef，不增加 slice metadata，也不改变每张图片的公开 `image-ref.v1`。当前 arena 的最小分配块仍为 1 MiB；是否引入公开的批量切片格式必须另行版本化，不能作为 Batch 节点隐藏实现。
+
 ### owner 规则
 
 | 阶段 | owner_kind | owner_id 组成 |
