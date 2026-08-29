@@ -4,7 +4,7 @@
 
 本文固定 Workflow 图中通用 Parallel 分支的公开契约、执行边界和使用方式。节点实现不能绑定某个 Workflow App、模型类型、ROI 数量或 deployment instance 数量。
 
-当前 `workflow-app-20260718114943` 使用 80 个 ROI，classification 发布服务配置了 3 个 deployment instances。该信息只决定当前应用应画 3 条分支并把 `max_concurrency` 设置为 3，不属于任何基础节点的名称、端口或固定行为。
+具体 Hough 同类节点和五类模型 Batch 节点设计见[视觉并行与模型批量节点设计](vision-parallel-and-model-batch.md)。其中 ROI 数量、图片数量和 deployment instance 数量只决定当前应用的画布分支与 `max_concurrency`，不属于任何基础节点的名称、端口或固定行为。
 
 ## 设计原则
 
@@ -97,19 +97,27 @@ Parallel Start(max_concurrency=M)
 
 锁只在 Workflow worker 进程内创建。父进程向 `multiprocessing.Queue` 发送执行 metadata 前会剥离 cleanup lock、Parallel node locks 和分支标记；worker 收到请求后再创建当前进程的锁，避免 `threading.RLock` 被异步 pickle 后导致请求静默丢失。
 
+### 同类节点和类型 bridge
+
+- 同一个 `node_type_id` 可以出现在多条 Parallel 分支中；只有显式声明 `thread-safe` 时才会真正同时执行。
+- 普通节点不增加 parallel checkbox。并行关系只存在于 Start/End 边界和画布连线中。
+- 当前 Parallel v1 只收发 `value.v1`，强类型输入输出必须通过明确 bridge 进入和离开边界。
+- `Payload To Value` 支持的结构化 payload 必须补齐对称 `Value To ...` 节点。当前设计至少补齐 image-refs、circles、detections、categories、poses 和 obbs；已有 segments bridge 继续使用。
+- bridge 只校验和恢复 JSON 结构，不复制 `image-ref.v1` 的图片主体。
+- Hough Circles 在完成 ExecutionImageRegistry、Debug Preview、cleanup、timing 和 OpenCV 全局状态审计前保持 `serialized`；不得只修改 Catalog 字段便宣称同类并行安全。
+
 ## 当前应用配置
 
-当前 80 ROI、3 deployment instances 的应用建议配置：
+当前 24 张 crop、2 个同步 deployment instances 的 classification 图目标配置：
 
-1. `Split List.partition_count = 3`，得到 27、27、26 三个 partitions。
-2. `Parallel Start.max_concurrency = 3`。
-3. 使用三个 `Get List Item`，index 分别为 0、1、2。
-4. 每条分支放置独立的 For Each、Value To Image Ref、Classification、Payload To Value 和 For Each End。
-5. 三条 For Each End 连接同一个 `Parallel End.Results`，并设置 `mode = concat`。
-6. Parallel End 输出继续连接现有 `Slot Classification Summary`，后续节点不变。
-7. 当前汇总只使用 top1 时，将三个 Classification 的 `top_k` 设置为 1。
+1. `Split List.partition_count = 2`，得到两个保持原始顺序的 12 项 partitions。
+2. `Parallel Start.max_concurrency = 2`。
+3. 使用两个 `Get List Item`，index 分别为 0、1。
+4. 每条分支执行 `Value To Image Refs -> Classification Batch -> Categories Batch To Value List`。
+5. 两条结果连接同一个 `Parallel End.Results`，并设置 `mode = concat`。
+6. Parallel End 输出继续连接通用 Classification Results Summary，后续规则链不变。
 
-以上数字只存在于当前 Workflow App 的节点参数和画布连线中。其他应用可以使用 1、10 或更多分支，也可以在分支内调用 detection、segmentation、pose、OBB、OCR 或非模型节点。
+四个 Hough Circles 使用四条显式分支，但初始 `max_concurrency` 不直接固定为 4。gray8 和 ROI grayscale 落地后按 1、2、4 实测选择，当前验证优先从 2 开始。以上数字只存在于当前 Workflow App 的节点参数和画布连线中，其他应用可以选择不同分支数，也可以在分支内调用 detection、segmentation、pose、OBB、OCR 或非模型节点。
 
 ## 验证要求
 
@@ -118,4 +126,6 @@ Parallel Start(max_concurrency=M)
 - 10 个分支配 `max_concurrency=3` 时，同时运行数不超过 3，但结果仍包含全部 10 个分支。
 - 空 partitions 不制造占位结果。
 - 分支完成顺序变化不影响最终 Results 顺序。
+- 同类 `serialized` 节点进入不同分支时仍保持串行；审计并声明 `thread-safe` 后才能观察到重叠执行。
+- 24 项按两个 Batch 分支执行时，concat 后顺序和逐图执行一致，两个健康实例的 inference counter 都增长。
 - 高频运行后 LocalBuffer `free_count` 回到基线，无 orphan lease、线程和临时文件。

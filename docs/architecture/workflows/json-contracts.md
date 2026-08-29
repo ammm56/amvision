@@ -217,6 +217,28 @@ Measurement、Inspection、Output 十个一级分类，并在每个一级分类�
 
 `capability_tags` 中的 `execution.pure` 是图执行优化契约。节点只有在不写文件、不修改变量、不发外部请求、不控制运行时，也不依赖“是否执行”这一可观察行为时才能声明该标签。图执行器会保守地执行未声明该标签的节点；纯节点仅在其输出进入模板输出或被启用的可观察节点消费时执行。这样禁用 Preview 后可以连同只服务于该 Preview 的绘制链一起跳过，又不会误跳过 HTTP、协议、持久化和状态更新节点。
 
+## 模型 Batch payload 设计
+
+> 状态：以下 contract 是已确认的待实现公开设计，当前 Catalog 尚未注册这些 Batch payload；实现状态以[视觉并行与模型批量节点设计](vision-parallel-and-model-batch.md)和实际 Catalog 为准。
+
+五类模型 Batch 节点使用五个强类型 payload，但共享同一个外层信封：
+
+| Batch payload | 单项 result payload | task_type |
+| --- | --- | --- |
+| `detections-batch.v1` | `detections.v1` | `detection` |
+| `categories-batch.v1` | `categories.v1` | `classification` |
+| `segments-batch.v1` | `segments.v1` | `segmentation` |
+| `poses-batch.v1` | `poses.v1` | `pose` |
+| `obbs-batch.v1` | `obbs.v1` | `obb` |
+
+统一字段为 `format_id`、`task_type`、`result_payload_type_id`、`count`、有序 `items`、`batch_latency_ms` 和 `metadata`。每个 item 固定包含从 0 开始的 `item_index`、稳定 `item_id`、不含临时 locator 的 `source` 和符合对应单项 contract 的 `result`。
+
+Batch payload 是 inline JSON，不得嵌套 memory image handle、BufferRef、FrameRef 或其他需要 lease 的临时图片引用。需要图片输出时，Workflow App 必须另外公开顶层 `image-ref.v1` 或 `image-refs.v1` binding。
+
+每个 Batch payload 提供对应的 `Batch To Value List` bridge，之后通过 `Get List Item` 和 `Value To Detections/Categories/Segments/Poses/OBBs` 恢复单项强类型结果。`Payload To Value` 已支持的 image-refs、circles 和五类模型 payload 也必须具有对称恢复节点，避免 Parallel 或 ForEach 只能收集而无法继续接入强类型节点。
+
+第一版 Batch 固定 fail-fast，不在同一个 payload 中混合未声明的 success/error union。完整节点、runtime 和验收规则见[视觉并行与模型批量节点设计](vision-parallel-and-model-batch.md)。
+
 ## 最小 JSON 例子
 
 ### NodeDefinition

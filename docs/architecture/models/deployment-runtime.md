@@ -435,7 +435,17 @@ OpenVINO stream：自动（当前实际 1）
 - workflow 可以根据现场业务明确使用一个 For Each 或多条并行分支；deployment runtime 不自动合并、拆分或重写这些调用。
 - deployment runtime 不因启用 throughput 配置就自动增加等待队列。
 - 实例级 health 公开 `inference_count`、`error_count` 及各自 rollover 数量，用于核对真实并行分支是否落到全部实例；计数只提供审计事实，不参与调度或容量等待。
-- 对批处理、异步聚合或跨请求调度的支持如果后续进入范围，必须作为独立能力设计，不能由本配置隐式启用。
+- 五类模型 Batch 作为独立 Workflow 节点和 gateway `infer_batch` 能力设计，不能由 deployment performance 配置隐式启用。完整节点、payload 和验收基线见[视觉并行与模型批量节点设计](../workflows/vision-parallel-and-model-batch.md)。
+
+### 同步 Batch 实例边界
+
+- Batch 请求一次携带有序 `image-refs.v1` 和一组公共推理参数。
+- deployment worker 以非阻塞方式申请一个 infer slot；runtime pool 只获取一次空闲实例，并在整个 Batch 内保持占用。
+- 第一版固定按输入顺序在该实例上执行 `sequential-reserved-instance`，不把 Batch 项再次在线程池中并发。
+- 无实例时立即返回 `deployment_inference_busy`，不等待、不排队、不重试、不自动拆批。
+- 两个健康实例和两条 Batch 分支、且没有第三方调用占用时，两条分支必须各获得一个实例并成功；存在外部抢占时仍遵守立即拒绝语义。
+- 原生 tensor batch 只能由 runtime capability 显式声明并由节点显式选择，不能自动改变 engine profile、精度、顺序或结果 contract。
+- Batch 结束、失败或取消时必须在 `finally` 释放实例、LocalBuffer reader guard 和全部临时 lease。
 
 ## 验收规则
 
@@ -447,6 +457,8 @@ OpenVINO stream：自动（当前实际 1）
 - TensorRT 构建参数不能在 deployment 页面被伪装成运行期可修改参数。
 - 运行详情能够同时显示 requested 和 effective 配置。
 - 两实例同步 Deployment 执行图内两个并行模型分支时，两实例计数都必须增长，满载时仍保持立即拒绝而不是排队。
+- 两个 12 项 classification Batch 在两个健康实例上并行时逐项结果和单图基线一致，成功率 100%，warm p95 低于 200 ms；该性能目标必须由真实 Runtime 和 Trigger 数据证明。
+- 单次 Batch 内的全部项固定在同一实例，结果顺序与输入一致，失败后实例和 LocalBuffer lease 全部回到基线。
 - 所有 deployment task type 和 model type 复用同一套配置边界。
 - workflow 同步调用语义不因本次配置扩展而改变。
 - 并发性能必须由真实 benchmark 和长期 soak 证明，不能用实例数做线性推算。

@@ -113,6 +113,7 @@ Workflow 节点统一消费 `image-ref.v1`：
 ## 明确边界
 
 - Runtime 不替代训练、转换、验证、部署和模型推理 worker。
+- 模型 Batch 节点仍通过已发布 DeploymentInstance 执行；Workflow Runtime 只执行显式 Parallel 图，不把 Batch 改造成跨请求调度、等待队列或自动重试。详细边界见[视觉并行与模型批量节点设计](vision-parallel-and-model-batch.md)。
 - Runtime 不做跨主机调度、通用资源编排或自动扩缩容。
 - 核心平台不直接内置 PLC、相机或传感器驱动；相关能力由自定义节点提供。
 - 不使用逐节点安全沙箱。节点包由使用者显式安装和启用，执行链路以本地工业视觉性能为优先。

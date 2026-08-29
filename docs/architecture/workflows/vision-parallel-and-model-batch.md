@@ -1,0 +1,376 @@
+# 视觉并行与模型批量节点设计
+
+> 状态：已确认的实施设计。本文固定 Hough Circles、显式 Parallel、五类模型 Batch 节点、payload 互操作和同步 deployment 调用边界。本文描述的新增能力尚未全部落地；实现过程中不得在没有同步更新本文、相关公开契约和验证证据的情况下改变这些边界。
+
+## 文档目的
+
+本文解决以下已经在真实 Workflow Preview 中确认的问题：
+
+- Hough Circles 当前在读取完整图片时隐式执行灰度转换，Search ROI 不能减少这部分整图开销。
+- Grayscale 产生单通道矩阵后，execution image registry 又把它转换成 BGR24，造成额外颜色转换和约三倍图片字节占用。
+- `Parallel Start` / `Parallel End` 已能并发显式分支，但默认 `serialized` 的同类节点不会并发，`value.v1` 边界也需要完整的强类型 bridge 才能复用结构化结果。
+- 当前 24 个 classification 单图节点被拆成两条 12 项 For Each 分支，单次模型计算约 8 至 10 ms，节点平均耗时却约 34 ms，主要额外成本来自逐图节点生命周期、gateway 往返、LocalBuffer 准备和实例获取/释放。
+
+目标不是增加应用专用节点，也不是自动并发整张 DAG，而是用通用基础节点、稳定 payload 和确定性执行边界把实际 Workflow 推进到接近理论耗时。
+
+## 已确认的硬约束
+
+- 普通节点不提供 `parallel` 开关。并行只由 `Parallel Start` / `Parallel End` 的画布边界表达。
+- `Parallel Start.max_concurrency` 是唯一的分支并发上限，不等于分支数量，也不保证更大的值一定更快。
+- Hough Circles 不再隐式执行灰度转换。ROI 灰度参数必须在节点参数面板可见，默认关闭。
+- Hough Circles 启用灰度转换时，必须先解析并裁剪 Search ROI，再对该 ROI 转灰度；不得先转换整图。
+- 五类模型 Batch 节点按 detection、classification、segmentation、pose、OBB 的任务语义区分，不按 YOLOX、YOLOv8、YOLO11、YOLO26、RF-DETR 等模型家族区分。
+- Batch 节点的复杂功能由共享 runtime 实现；Workflow App、工位、托盘、ROI 数量和 deployment instance 数量不得进入节点名称或固定行为。
+- 同步 Batch 调用不新增容量等待队列、自动重试、隐式拆批或节点内部线程池。没有空闲实例时继续立即返回 `deployment_inference_busy`。
+- Batch 输出必须能经显式 bridge 恢复为已有单项 payload，继续接入现有通用节点；不得产生只能由当前 App 或一个专用汇总节点识别的结果。
+- 图片主体继续位于 `image-ref.v1` / LocalBuffer 数据面。Batch inline JSON 不嵌套临时 memory、BufferRef 或 FrameRef locator。
+
+## 当前证据边界
+
+当前性能证据来自现有开发数据和 Workflow Preview Run，不把它描述为生产 Trigger soak 结论：
+
+- 四个 Hough Circles 单节点耗时约 115 至 341 ms；整图 Grayscale 与四个 Hough 的近期合计平均约 1009 ms。
+- Hough 的主要耗时除整图灰度外，还包含候选径向采样和 robust circle fitting。
+- 32 张现有图片、四个 ROI 共 128 个 Hough case 中，把 `maximum_candidates` 从 40 降至 12 虽明显降低耗时，但已出现少量结果偏移，因此不能直接修改默认值替代结构优化。
+- 当前两条 classification 分支分别约 509 ms 和 502 ms，Parallel 完成约 528 ms。
+- classification 单节点平均约 34.5 ms，gateway 约 18.8 ms，daemon 约 9.9 ms，模型 infer 约 7.8 ms。
+- 近期 Preview 的 72 次 classification 均成功，两个实例各处理相同数量；当前证据不能替代修改后的正式 Runtime、Trigger 和长期内存验收。
+
+实现和验收必须保留原始运行数据、运行类型、样本数、warm/cold 状态和诊断开关，不能只记录一个总耗时。
+
+## Hough Circles 输入处理设计
+
+### 可见参数
+
+新增以下参数，并同时进入 NodeDefinition 参数 schema、参数 UI schema 和 Debug Image Panel controls：
+
+| 字段 | 面板名称 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `convert_roi_to_grayscale` | `ROI Grayscale` | `false` | 只对解析后的 Search ROI 执行 BGR/BGRA 到 Gray 转换 |
+
+该参数属于 `Input Processing` 分组，不得只存在于后端参数或隐藏调试面板中。
+
+### 关闭时的行为
+
+- `gray8` 或解码后二维 `uint8` 输入直接进入 ROI、CLAHE、blur、Hough 和 refinement 链路。
+- BGR/BGRA 输入立即返回稳定参数错误，提示连接 `Grayscale` 或显式启用 `ROI Grayscale`。
+- 节点不得暗中选取单个通道、调用 `IMREAD_GRAYSCALE` 或复制整图。
+
+### 开启时的行为
+
+处理顺序固定为：
+
+```text
+image-ref.v1
+  -> IMREAD_UNCHANGED / raw view
+  -> resolve Search ROI
+  -> crop view
+  -> BGR/BGRA to Gray for ROI only
+  -> optional CLAHE
+  -> optional median blur
+  -> HoughCircles
+  -> radial samples / robust fitting
+  -> add ROI offset
+  -> circles.v1
+```
+
+- 输入本身已经是二维 gray8 时不重复转换。
+- 未连接 ROI 且 `search_bbox_xyxy` 为空时，解析后的 Search ROI 是整图；Summary 和面板必须明确显示这一范围。
+- 图片宽高和最终 circle 坐标继续使用原图坐标系。
+- Debug Preview 可以使用原图绘制 overlay，但生产未启用 Debug Preview 时不得生成调试图片。
+
+### Summary 与计时
+
+Hough Summary 至少增加：
+
+```json
+{
+  "input_pixel_format": "gray8",
+  "roi_grayscale_requested": false,
+  "roi_grayscale_applied": false,
+  "grayscale_scope": "none",
+  "grayscale_bbox_xyxy": [0, 0, 0, 0],
+  "timings": {
+    "image_load_ms": 0,
+    "roi_resolve_ms": 0,
+    "roi_grayscale_ms": 0,
+    "hough_ms": 0,
+    "candidate_refinement_ms": 0
+  }
+}
+```
+
+生产默认关闭详细 timing 时可以省略 `timings`，但灰度请求、实际执行状态和有效 Search ROI 仍应保留在节点 Summary 中。
+
+## gray8 图片数据面
+
+`image-ref.v1` 已有 `shape`、`dtype`、`layout` 和 `pixel_format` 字段；gray8 继续使用同一公开 payload，不新增 Hough 专用图片类型。
+
+raw gray8 使用以下元数据：
+
+```json
+{
+  "media_type": "image/raw",
+  "pixel_format": "gray8",
+  "dtype": "uint8",
+  "layout": "HW",
+  "shape": [3648, 5472],
+  "width": 5472,
+  "height": 3648
+}
+```
+
+实现要求：
+
+- `register_image_matrix` 保留二维连续 `uint8` matrix 为 gray8，不转换回 BGR24。
+- execution image registry 的 memory fast path、LocalBuffer BufferRef 和通用 raw loader 都必须识别 gray8。
+- gray8 字节长度必须等于 `width * height`。
+- content hash 必须基于准确表示，不能让同样字节但不同 `shape/dtype/layout/pixel_format` 被错误复用。
+- 默认要求彩色输入的旧节点继续显式请求 BGR，避免 gray8 改造使旧节点收到意外二维矩阵。
+- `Grayscale` 读取输入时使用 unchanged 语义；输入已经是 gray8 且没有显式 `save_location` 时直接透传，不创建重复 image handle 或 LocalBuffer lease；显式保存时仍按保存契约写出文件。
+- 5472×3648 的 gray8 主体约 20 MB；同尺寸 BGR24 约 60 MB。内存验收必须证明 Grayscale 后不再同时常驻一份由该输出产生的伪 BGR24 灰度图。
+
+## Parallel 同类节点设计
+
+### 当前能力和限制
+
+现有执行器已经使用有界线程池执行显式 Parallel 分支，并按模板中的稳定分支顺序合并结果。是否能让同类节点同时执行，由 `NodeDefinition.concurrency_policy` 决定：
+
+- `thread-safe`：同类型实例可以并发。
+- `serialized`：默认值；同一 `node_type_id` 在一个 Workflow Run 内串行。
+- `exclusive`：与其他 exclusive 节点互斥。
+- `unsupported-in-parallel`：保存或执行前拒绝。
+
+Hough Circles 当前没有显式声明 `thread-safe`，因此不能仅靠把四个节点画入 Parallel 获得同类并行。
+
+### 选定方案
+
+本阶段保留现有 `value.v1` Parallel 边界，不新增 graph control edge、动态端口或透明跨边界输出。原因是当前需求可以通过通用 bridge 完整表达，没有必要同时升级 WorkflowGraphEdge、编辑器连线和执行器格式。
+
+补齐以下对称 bridge：
+
+- `Value To Image Refs`
+- `Value To Circles`
+- `Value To Detections`
+- `Value To Categories`
+- `Value To Poses`
+- `Value To OBBs`
+- 已有 `Value To Segments` 继续使用
+
+bridge 只校验并恢复强类型结构，不复制图片主体。所有可进入 `Payload To Value` 的正式结构化模型和视觉 payload 都应具有对称的恢复路径；新增 payload 时必须同步检查这一规则。
+
+Hough Circles 只有在以下审计完成后才能改为 `thread-safe`：
+
+- handler 没有模块级可变状态。
+- Debug Preview artifact 注册、ExecutionImageRegistry 和 cleanup collection 可并发访问。
+- 分支 timing、Summary 和 workflow metadata 不发生无锁共享写。
+- OpenCV 全局线程数不在节点 handler 内动态修改。
+- Preview 与正式 Runtime 的并发结果、失败 cleanup 和顺序一致。
+
+### 四个 Hough 的通用图
+
+```text
+Grayscale(gray8)
+  -> Payload To Value
+  -> Parallel Start(max_concurrency=N)
+      |-- Value To Image Ref -> Hough ROI-1 -> Payload To Value --|
+      |-- Value To Image Ref -> Hough ROI-2 -> Payload To Value --|
+      |-- Value To Image Ref -> Hough ROI-3 -> Payload To Value --|
+      `-- Value To Image Ref -> Hough ROI-4 -> Payload To Value --|
+  -> Parallel End(mode=collect)
+  -> Get List Item x 4
+  -> Value To Circles x 4
+  -> downstream typed nodes
+```
+
+四个 ROI 可以由 Parallel Start 之前已经完成的通用 ROI 节点提供。普通 Hough 节点不保存分支 id，不知道其他 Hough 是否存在。
+
+四路 native/Python CPU 工作同时运行可能因 OpenCV 内部线程和内存带宽争用而变慢。第一次迁移不把 `max_concurrency` 固定为 4；gray8 和 ROI 灰度落地后必须实测 1、2、4，按 p50、p95、CPU、RSS 和结果一致性选择当前 Workflow 参数。初始验证优先使用 2。
+
+## 五类模型 Batch 节点
+
+### 节点和端口
+
+| Node type id | 显示名称 | 输入 | 强类型输出 |
+| --- | --- | --- | --- |
+| `core.model.detection-batch` | `Detection Batch` | `Images / image-refs.v1` | `Detections Batch / detections-batch.v1` |
+| `core.model.classification-batch` | `Classification Batch` | `Images / image-refs.v1` | `Categories Batch / categories-batch.v1` |
+| `core.model.segmentation-batch` | `Segmentation Batch` | `Images / image-refs.v1` | `Segments Batch / segments-batch.v1` |
+| `core.model.pose-batch` | `Pose Batch` | `Images / image-refs.v1` | `Poses Batch / poses-batch.v1` |
+| `core.model.obb-batch` | `OBB Batch` | `Images / image-refs.v1` | `OBBs Batch / obbs-batch.v1` |
+
+各节点继续提供与对应单图节点一致的公共参数，例如 `deployment_instance_id`、score/mask/keypoint threshold、`top_k` 和 `extra_options`。第一版要求同一个 Batch 内使用同一 deployment 和同一组参数，不支持每项覆盖 deployment 或 threshold。
+
+输入数量至少为 1。平台设置明确的 Batch item 上限并在调用前校验；超过上限直接报错，不自动拆成多个请求。
+
+### 统一 Batch 信封
+
+五个 payload 使用相同外层结构，`format_id`、`task_type` 和 `result_payload_type_id` 固定对应各自任务：
+
+```json
+{
+  "format_id": "amvision.categories-batch.v1",
+  "task_type": "classification",
+  "result_payload_type_id": "categories.v1",
+  "count": 12,
+  "items": [
+    {
+      "item_index": 0,
+      "item_id": "crop-1",
+      "source": {
+        "width": 320,
+        "height": 320,
+        "crop_index": 1,
+        "bbox_xyxy": [0, 0, 320, 320],
+        "content_sha256": "..."
+      },
+      "result": {
+        "count": 5,
+        "items": [],
+        "top_item": {}
+      }
+    }
+  ],
+  "batch_latency_ms": 120,
+  "metadata": {
+    "deployment_instance_id": "...",
+    "execution_mode": "sequential-reserved-instance"
+  }
+}
+```
+
+固定规则：
+
+- `items` 与输入图片顺序一致，不按完成时间或 score 重排。
+- `item_index` 从 0 开始；已有 `crop_index`、ROI id、bbox 等关联字段原样保留。
+- `item_id` 优先使用输入显式 id，其次使用 `crop_index`，否则生成稳定的 `item-{index}`。
+- `result` 必须是对应单项 payload contract 的有效对象。
+- 外层 `source` 只保存非 locator 的关联信息。图片引用由原 `image-refs.v1` 链或独立 App output 继续传递。
+- 第一版固定 fail-fast；任一项失败使 Batch 节点失败，并返回 `item_index`、`item_id` 和原始错误。不得返回未声明的半成功结构，也不得换实例重试。
+
+### Batch 结果 bridge
+
+新增以下 bridge，把有序 `items[*].result` 提取为 `value.v1` List：
+
+- `Detections Batch To Value List`
+- `Categories Batch To Value List`
+- `Segments Batch To Value List`
+- `Poses Batch To Value List`
+- `OBBs Batch To Value List`
+
+需要单项强类型结果时，继续使用通用 `Get List Item` 和 `Value To Detections/Categories/Segments/Poses/OBBs`。Batch 节点不重复输出一份 typed batch 和一份 value list，避免未连接时仍保留两份大型结构化结果。
+
+## 同步 Batch runtime
+
+### 请求边界
+
+现有单图 `PublishedInferenceRequest.image_payload` 不能通过 Workflow 节点内循环解决 Batch 开销。新增独立 `PublishedInferenceBatchRequest` 和 gateway `infer_batch`，一次请求携带有序图片引用和一组公共推理参数。
+
+执行顺序固定为：
+
+1. Workflow Batch 节点校验全部 `image-refs.v1`。
+2. 已是 BufferRef/FrameRef 的图片原样传递；execution memory 图片批量写入 LocalBuffer，并持有全部临时 lease。
+3. gateway 发送一次 `infer_batch`。
+4. deployment worker 使用非阻塞 `infer_slots.acquire(blocking=False)` 立即申请一个 slot。
+5. runtime pool 只获取一次空闲且健康的实例。
+6. 该实例按输入顺序处理全部图片。
+7. gateway 一次返回有序结果。
+8. `finally` 释放实例、reader guard 和全部临时 LocalBuffer lease。
+
+第一版 `execution_mode` 固定为 `sequential-reserved-instance`。这不是模型 tensor native batch，而是把逐图 gateway 和实例生命周期合并。后续只有 runtime 明确声明兼容的动态 Batch capability 时，才允许增加显式 `native-batch` 模式；不能隐式改变精度、顺序或 engine profile。
+
+### 容量语义
+
+- Batch 开始时必须立即获得一个实例，并在整个 Batch 内保持占用。
+- 无空闲实例时立即返回 `deployment_inference_busy`。
+- 不等待另一个实例释放，不进入调度队列，不自动重试。
+- 两个健康实例、两条同时开始的 Batch 分支且没有第三方调用占用时，两条分支必须各获得一个实例并全部成功。
+- 存在第三方请求已经占满实例时，在禁止容量等待的前提下不能承诺本次 Workflow 仍成功；这属于明确的外部容量边界。
+
+## 24 项 Classification 目标图
+
+当前 Workflow 的通用替换结构为：
+
+```text
+Crop Export(image-refs.v1)
+  -> Image Refs To Value List
+  -> Split List(partition_count=2)
+  -> Parallel Start(max_concurrency=2)
+      |-- Get List Item(0)
+      |     -> Value To Image Refs
+      |     -> Classification Batch
+      |     -> Categories Batch To Value List
+      `-- Get List Item(1)
+            -> Value To Image Refs
+            -> Classification Batch
+            -> Categories Batch To Value List
+  -> Parallel End(mode=concat)
+  -> Classification Results Summary
+```
+
+该结构只有两个模型节点、两次 gateway Batch 请求和两次实例获取。`Parallel End.concat` 按分支稳定顺序恢复 24 项结果。分类汇总继续消费现有单项 categories 对象，不需要当前 App 专用 Batch Summary。
+
+按 daemon 单图约 9.9 ms 计算，每条 12 项分支的模型时间约 119 ms；两个实例并行时 Workflow wall time由较慢分支决定。目标是 warm p50 不高于 150 ms、warm p95 低于 200 ms。该目标必须由改造后的真实 Preview、正式 Runtime 和 Trigger 数据验证，不作为未测试的保证值。
+
+## 实施顺序
+
+1. 补齐 gray8 payload fields、matrix registry、memory/buffer raw loader 和回归测试。
+2. 修改 Grayscale 的 gray8 输出和已灰度透传行为。
+3. 修改 Hough Circles 的显式 ROI grayscale、面板、Summary 和阶段 timing。
+4. 补齐 Value 与 image-refs、circles、五类模型结果的对称 bridge。
+5. 审计并验证 Hough Circles `thread-safe`，再更新 NodeDefinition。
+6. 新增 Batch request/result、gateway action、deployment worker action 和 runtime pool 的单实例 Batch 执行。
+7. 基于同一共享实现注册五类 Batch 节点、五类 Batch payload 和五个 Batch To Value List bridge。
+8. 将当前 24 classification 图迁移为两个 Batch 分支。
+9. 执行 Preview、正式 Runtime、Trigger、LocalBuffer、长期 RSS 和错误恢复验收。
+
+每一步完成后必须先核对公开契约、旧图兼容、错误 cleanup 和实际数据，再进入下一步。不得在 gray8、Parallel 或 Batch 尚未闭环时用当前 App 专用节点绕过缺口。
+
+## 验收矩阵
+
+### Hough 和 gray8
+
+- 32 张现有图片、4 个 ROI、128 个 case 与当前结果对比。
+- 对比 circle count、selected circle、圆心、半径、quality、rejection reason。
+- `convert_roi_to_grayscale=false` 时彩色输入明确失败，gray8 输入不发生颜色转换。
+- `convert_roi_to_grayscale=true` 时计时和内存证明确认只转换 Search ROI。
+- 5472×3648 Grayscale 输出为约 20 MB gray8，不再注册约 60 MB BGR24。
+- 1、2、4 路 Parallel 分别记录 p50、p95、CPU、Working Set-Private/USS 和结果一致性。
+
+### Batch 正确性
+
+- 五类 Batch 的每项结果与对应单图节点逐项比较。
+- 输入顺序、`item_index`、`item_id`、`crop_index` 和 bbox 保持一致。
+- Batch To Value List 后能接现有 For Each、regions、规则、汇总和输出节点。
+- Batch JSON 不包含 memory handle、BufferRef、FrameRef 或 local path 等临时 locator。
+- 任一项失败时 Batch fail-fast，错误定位到具体 item，实例和全部 lease 在 finally 释放。
+
+### 两实例性能与稳定性
+
+- 两个 classification Batch 每个 12 项，在两个健康实例上重复运行，成功率 100%。
+- 两个实例的 inference counter 都增长，单次 Batch 内不在实例间迁移。
+- warm p50 不高于 150 ms、warm p95 低于 200 ms；同时保留 gateway、daemon、infer 和节点阶段计时。
+- 没有空闲实例时立即返回 busy，不观察到容量等待、排队或自动重试。
+- 连续运行后 LocalBuffer active lease、active bytes 和 free extent 回到基线，无 orphan/revoking 增长。
+- warmup 后 backend、Workflow worker、deployment worker 的 Private Bytes/USS 不持续单调增长；审计时区分文件映射 Working Set 与私有物理占用。
+
+## 明确不做
+
+- 不增加 Hough Batch、Tray Classification、24 Slot Classification 等应用专用节点。
+- 不在 Hough、Classification 或其他普通节点上增加 parallel checkbox。
+- 不自动识别 DAG 中的同类 sibling 并并行。
+- 不把四个 ROI 固化进 Hough 参数。
+- 不用降低 `maximum_candidates` 默认值掩盖整图灰度和 refinement 开销。
+- 不让 Batch runtime 自动等待实例、排队、重试、拆批或并行轰击同一 deployment。
+- 不把临时图片引用嵌入 Batch JSON 作为 Trigger 返回方式。
+- 不因第一版 Batch 增加新的模型框架专用节点。
+
+## 相关文档
+
+- [Parallel 分支](parallel-branches.md)
+- [节点系统](node-system.md)
+- [Workflow JSON 规则](json-contracts.md)
+- [Workflow Runtime](runtime.md)
+- [高性能图片数据面](../platform/image-data-plane.md)
+- [模型发布运行时配置](../models/deployment-runtime.md)
+- [模型接入与工作流边界](../models/workflow-boundaries.md)

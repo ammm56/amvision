@@ -8,6 +8,7 @@
 - [Workflow App 版本管理](app-versioning.md)
 - [模型 Session Runtime](model-session-runtime.md)
 - [Parallel 分支](parallel-branches.md)
+- [视觉并行与模型批量节点设计](vision-parallel-and-model-batch.md)
 
 ## 图与编辑器
 

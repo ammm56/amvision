@@ -123,9 +123,11 @@ Trigger adapter 负责把外部事件转换成 Workflow Run 请求；业务图�
 
 - Parallel 和 ForEach 是 Core 结构节点的执行语义，不由普通 Node Pack 自行实现调度器。
 - `max_concurrency` 只限制显式分支或循环项，不自动并行整张 DAG。
+- 普通节点不提供 `parallel` 开关；同类节点能否同时执行由显式 Parallel 边界和 NodeDefinition `concurrency_policy` 共同决定。
+- `Payload To Value` 能接收的正式结构化 payload 应具有对称的 `Value To ...` 恢复路径，确保 Parallel、ForEach 和集合节点不会形成只能生成、不能继续消费的数据孤岛。
 - 画布节点组只影响布局与成员的最终 enabled 状态，不创建运行时子图或隔离进程。
 
-详见 [Parallel 分支](parallel-branches.md) 与 [Workflow 编辑器](editor.md)。
+详见 [Parallel 分支](parallel-branches.md)、[视觉并行与模型批量节点设计](vision-parallel-and-model-batch.md)与 [Workflow 编辑器](editor.md)。
 
 ## 生命周期
 

@@ -51,6 +51,7 @@ LocalBuffer 是所有本机短期内存图片跨模块、跨节点和跨进程�
 | storage `image-ref.v1` | 已落盘图片、长期文件引用 | 用于可复现和审计，不代表内存高速 |
 | buffer/frame `image-ref.v1` | 本机高速 TriggerSource、workflow runtime、deployment worker | 默认高性能路径 |
 | raw BGR24 BufferRef | SDK 已有或转换后的连续 BGR24 | 默认高速图片格式 |
+| raw gray8 BufferRef | Grayscale、mask、ROI 内灰度算法 | 保留单通道表示，不转换成伪 BGR24 |
 
 高性能链路中的图片应尽量保持为 buffer/frame `image-ref.v1`，只在明确需要预览、保存、HTTP 响应或外部系统要求时编码成 PNG、JPEG 或 base64。
 
@@ -80,6 +81,29 @@ LocalBuffer 是所有本机短期内存图片跨模块、跨节点和跨进程�
 - 当前 BufferRef 要求连续内存，不处理行填充。只有协议显式增加 `row_stride_bytes` 后才能接收带 pitch/stride 的工业相机内存，不能隐式猜测。
 - SDK 在发送前必须校验宽、高、shape、dtype、layout、pixel_format 和 bytes 长度。
 - 后端写入 LocalBufferBroker 时必须保留 shape、dtype、layout、pixel_format 和 media_type。
+
+### gray8 中间结果
+
+Grayscale、mask 和明确要求灰度输入的算法可以继续使用同一 `image-ref.v1` 输出 raw gray8：
+
+```json
+{
+  "media_type": "image/raw",
+  "pixel_format": "gray8",
+  "dtype": "uint8",
+  "layout": "HW",
+  "shape": [2160, 3840],
+  "width": 3840,
+  "height": 2160
+}
+```
+
+- 字节长度必须等于 `width * height`。
+- `register_image_matrix`、execution image registry、LocalBuffer 和 raw loader 必须保留 gray8，不得为了复用 BGR helper 将二维矩阵转换成三通道。
+- 默认要求彩色输入的节点继续显式请求 BGR；要求保留输入真实通道的节点使用 unchanged 语义。
+- Grayscale 输入已经为 gray8 且没有显式 `save_location` 时直接透传，不创建重复像素主体；显式保存仍按保存契约执行。
+- Hough Circles 的可选灰度转换必须先解析 Search ROI，再只转换 ROI。默认关闭，关闭时彩色输入明确报错，不执行隐藏整图转换。
+- Hough、gray8、Parallel 和五类模型 Batch 的完整实施基线见[视觉并行与模型批量节点设计](../workflows/vision-parallel-and-model-batch.md)。
 
 ## 推荐高速调用链
 
@@ -187,6 +211,7 @@ allocator 只按精确 `content_length` 选择动态 extent；adapter 不再选�
 
 - encoded JPEG/PNG/BMP：继续 `cv2.imdecode`。
 - raw `bgr24`：通过 `np.frombuffer(...).reshape(height, width, 3)` 获得 BGR matrix，不执行 decode。
+- raw `gray8`：通过 `np.frombuffer(...).reshape(height, width)` 获得 Gray matrix，不扩展成三通道。
 - 节点只读时尽量使用 view；节点会修改像素时再 copy。
 - helper 负责校验 shape、dtype、layout、pixel_format 和 bytes 长度。
 
@@ -371,6 +396,8 @@ TriggerSource 和 SDK 配置包不增加 reply protocol 或 JSON/multipart mode�
 - .NET SDK 能直接发送 BGR24 bytes，并自动写入正确 envelope metadata。
 - Backend ZeroMQ adapter 能把 BGR24 第二帧写入 LocalBufferBroker，并把 `request_image_ref` 映射给 workflow app。
 - 模型推理节点和 OpenCV 节点能直接读取 BGR24 BufferRef，不执行 PNG/JPEG 解码。
+- Grayscale 输出和灰度算法链能保留 raw gray8；同尺寸 gray8 不产生一份额外 BGR24 主体。
+- Hough Circles 默认不隐式灰度化，启用 ROI Grayscale 时有阶段计时证明转换范围是 Search ROI。
 - 默认高性能 workflow 模板不包含 `request_image_ref -> base64 encode -> base64 decode` 的绕路。
 - TriggerSource 默认 `result_bindings` 只选择小 JSON，不默认返回 inline-base64 或图片 attachment。
 - 1080p、4K、20MP 图片都有端到端 fixture 或 smoke 测试，至少覆盖 SDK envelope、adapter 写入、workflow 节点读取和模型节点推理。
