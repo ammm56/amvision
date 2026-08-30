@@ -43,11 +43,19 @@ using (var client = AMVisionClient.CreateFromConfig())
 
 配置包接口见 [SDK 配置包](sdk-config-packages.md)。完整引用、依赖 DLL、name/id 规则、Console 示例和 VS2019 构建命令见 [sdks/dotnet/README.md](../../sdks/dotnet/README.md)。
 
-## 多类型 App Entry 输入规划
+## Workflow 输入调用面
 
-当前 .NET HTTP multipart request 已能同时构造 `input_bindings_json` 和文件字段，但现有 helper 会把文件完整缓冲到 `byte[]`，后端 multipart Runtime 也仍只接受 `dataset-package.v1`。这些能力不能解释为通用 JSON + 图片 + 文件调用已经交付。
+`.NET` SDK 分别面向 HTTP Runtime 和高性能 Trigger，两套 API 不混用：
 
-计划增加统一组合 request builder，使一个调用可以显式添加 JSON、文本、图片、单文件和有序多文件。新文件路径必须使用 stream factory / `StreamContent`，不使用 `File.ReadAllBytes`、完整 `MemoryStream` copy、隐藏重试、排队或 transport fallback。SDK 调用前按配置包中的公开契约快速校验，后端仍执行权威校验。完整契约和验收规则见 [Workflow App Entry 多类型输入实施基线](../development/workflow-app-entry-input-implementation.md)。
+| SDK 调用面 | 输入能力 | 当前状态 |
+| --- | --- | --- |
+| HTTP Runtime | `image-ref.v1`、`image-base64.v1`、`value.v1`、`text.v1`、`file-ref.v1`、`file-refs.v1` | Runtime 与 multipart streaming 已实现；统一 Base64/reference Builder 方法和显式 JSON/multipart build 待补齐 |
+| ZeroMQ Trigger | `image-ref.v1`、`value.v1`、`text.v1` | 图片和通用 payload 已实现；高层图片方法附带强类型 JSON/文本 inputs 待补齐 |
+| local-shared-memory Trigger | `image-ref.v1`、`value.v1`、`text.v1` | 图片请求 payload 和 event-only v2 已实现；共用强类型 inputs Builder 待补齐 |
+
+HTTP Builder 必须覆盖 JSON、文本、图片上传、图片引用、Base64 图片、单文件、多文件及文件引用。文件路径使用 stream factory / `StreamContent`，不使用 `File.ReadAllBytes`、完整 `MemoryStream` copy、隐藏重试、排队或 transport fallback。调用方显式选择 JSON 或 multipart build，SDK 不根据输入内容猜测 transport。
+
+高性能 Trigger 使用独立 `WorkflowTriggerInputsBuilder`，只允许 `AddJson` 和 `AddText`。图片由 ZeroMQ 或 local-shared-memory 图片调用方法提供并生成 `request_image_ref`；Builder 不接受 Base64 图片、单文件或多文件。SDK 调用前按配置包中的 Runtime App Contract、TriggerSource mapping 和 transport 上限快速失败，后端仍执行权威校验。完整 API 规划和验收规则见 [Workflow App Entry 多类型输入实施基线](../development/workflow-app-entry-input-implementation.md)。
 
 ## 高速图片调用
 
@@ -57,6 +65,8 @@ using (var client = AMVisionClient.CreateFromConfig())
 - `InvokeImageBytes`、`InvokeImageFromFile`、`InvokeImageBase64`：保留 JPEG、PNG、BMP 等 encoded bytes；后端首次矩阵消费时解码一次并在本次 Workflow 内复用。
 
 两组方法都是正式支持入口。BGR24 是本机高性能默认选择，不是强制格式；encoded 方法通常减少传输字节但增加后端解码和矩阵分配，SDK 开发者根据现场链路选择。
+
+`InvokeImageBase64` 中的 Base64 只描述调用方图片来源。SDK 将其解码为 encoded image bytes，再通过 ZeroMQ binary frame 或 LocalBuffer 发送，最终绑定 `image-ref.v1`；它不向 Workflow 的 `request_image_base64` 输入发送 Base64。需要 `image-base64.v1` 时使用 HTTP Runtime。
 
 ```text
 SDK BGR24/image bytes
@@ -78,7 +88,7 @@ ZeroMQ SDK 不直接操作 mmap 文件或 slot。timeout、transport error 和�
 
 `SharedMemoryTriggerRequest.EnableTimings` 默认是 `false`。显式开启后，返回结果的 `Timings` 提供 `SdkConvertToBgr24Ms`、`SdkBase64DecodeMs`、`SdkWriteLocalBufferMs`、`SdkChecksumMs`、`InvokeReturnMs`、`AttachmentAccessMs` 和 `DisposeAckMs`。`SdkChecksumMs` 只记录结果 attachment 校验；trusted-local 输入通过 writer guard 与 descriptor publication 保证一致性，不做 full-image CRC。`InvokeReturnMs` 截止结果对象可返回；零复制 attachment 的读取持有耗时与最终 ACK 只有在结果 `Dispose`/`DisposeAsync` 后才完整。诊断关闭时不为图片写入热路径创建这些计时。
 
-v1 固定为同步调用、每次一张输入图片、最多 512 KiB 结构化参数和 0 到 N 张输出图片。SDK 必须先完成精确长度写入、销毁写 view并释放 writer guard，随后才发布 REQUEST；后端取得 guard并校验 receipt/epoch/generation/owner/deadline，在同一 Broker 锁内原子发布 lease与首次 owner transfer。SDK 不在 Workflow 执行期间继续持有输入 writer guard，也不自行写 Broker owner、lease state 或 descriptor FREE。
+v1 固定为同步调用、每次一张输入图片和 0 到 N 张输出图片。当前 Workflow Trigger mailbox 的完整 request wire 上限为 64 KiB；SDK 必须在 claim 前按实际序列化长度校验 JSON/文本 payload。图片内容不计入该 wire 大小，而是写入 LocalBuffer。SDK 必须先完成精确长度写入、销毁写 view并释放 writer guard，随后才发布 REQUEST；后端取得 guard并校验 receipt/epoch/generation/owner/deadline，在同一 Broker 锁内原子发布 lease与首次 owner transfer。SDK 不在 Workflow 执行期间继续持有输入 writer guard，也不自行写 Broker owner、lease state 或 descriptor FREE。
 
 ### 统一结果模型
 

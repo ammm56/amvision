@@ -55,6 +55,18 @@ Console 示例不是 SDK 边界的一部分，不能把核心封装写到 consol
 
 SDK 默认会自动查找 `Config/config*.json`，并把所有 runtime、TriggerSource、ModelDeployment 配置按 `name` 建立索引。生成的 `name` 优先保留前端用户维护的应用、触发源和部署实例展示名称。
 
+## Workflow 输入调用边界
+
+HTTP Runtime 与高性能 Trigger 是两套独立调用面：
+
+- HTTP Runtime 支持 `request_image_ref`、`request_image_base64`、`request_json`、`request_text`、`request_file` 和 `request_files`；JSON 与 multipart 可以组合多个 binding。
+- ZeroMQ 和 local-shared-memory Trigger 只支持 `request_image_ref`、`request_json` 和 `request_text`。图片通过 binary frame 或 LocalBuffer 生成 `image-ref.v1`，JSON/文本位于小型事件 payload。
+- Trigger 不支持 `request_image_base64`、`request_file` 或 `request_files`，不增加文件 staging、普通文件图片帧、普通文件 LocalBuffer 或自动 HTTP fallback。
+
+现有低层 `ImageTriggerRequest.Payload`、`SharedMemoryTriggerRequest.Payload` 和 event request 可以携带 JSON/文本。后续高层 API 使用共用强类型 `WorkflowTriggerInputsBuilder`，并为 ZeroMQ 图片方法补充附加 inputs 参数；在实现完成前，文档和示例不得把规划中的 Builder 写成已交付方法。
+
+`InvokeZeroMqImageBase64` 和 `InvokeSharedMemoryImageBase64` 只表示调用方以 Base64 提供图片来源。SDK 解码后仍通过高性能图片通道绑定 `request_image_ref`，不会向 `request_image_base64` 发送 Base64。需要 Base64 binding、普通文件或多文件时使用 HTTP Runtime。
+
 下载包同时包含 `Config/sdk-bootstrap.json`。默认 `configuration_sync.enabled=false`，继续使用手工放置的 `config*.json`。需要由 HTTP 检查最新配置时，配置 backend 地址、Project 配置路径和专用 token，启用开关，并使用 `CreateFromConfigAsync` 或 `CreateFromConfigDirectoryAsync`。SDK发送 ETag 条件请求，完整校验 revision、manifest、逐文件 SHA-256和配置语义后，把不可变快照发布到 `Config/.managed/<revision>/`；下载或校验失败时可按 `use_last_known_good` 使用最近有效快照。同步工厂只在 client 创建时执行，不在运行中替换已创建 client。
 
 local-shared-memory 配置只保存同机受信 `data/buffers` 根目录、TriggerSource id/generation、默认 binding 和 timeout。SDK从 `local-buffer/state.mmap` header自动发现图片共享内存容量、descriptor/reader guard几何、broker epoch和layout fingerprint，因此后端调整容量或guard数量不要求修改SDK配置。该Trigger只适用于同一台机器；远程SDK即使能访问配置HTTP接口，也必须选择HTTP或ZeroMQ调用链路。
@@ -67,14 +79,28 @@ local-shared-memory 配置只保存同机受信 `data/buffers` 根目录、Trigg
 
 新 Runtime 的生成配置会在 `runtime.public_contract` 中携带该 Runtime revision 固定的 App Contract v2。`WorkflowRequestBuilder` 可以用这份契约对 binding、payload type、MIME、单文件大小、文件数量和必填输入进行快速校验；服务端仍执行完整 JSON Schema、ObjectStore identity 和 Project 范围校验。旧 Runtime 没有契约快照时该字段为 `null`，SDK 不使用当前应用草稿补齐。
 
+HTTP Builder 的目标接口还包括 `AddImageBase64`、`AddImageReference`、`AddFileReference`、`AddFileReferences`、`BuildJson` 和 `BuildMultipart`。当前代码尚未全部提供这些统一方法；这是明确的后续实现清单，不允许通过手写隐藏转换、自动选择 transport 或把 HTTP 文件能力塞入 Trigger API 代替。
+
 HTTP multipart 调用示例：
 
 ```csharp
+var image = WorkflowUploadFile.FromFile(@".\images\tray.jpg", "image/jpeg");
+var singleFile = WorkflowUploadFile.FromFile(@".\recipes\limits.json", "application/json");
 var request = new WorkflowRequestBuilder(runtime.PublicContract)
     .AddJson("request_json", new { recipe = "3570", station = 2 })
     .AddText("request_text", "lot-20260830")
-    .AddImage("request_image", WorkflowUploadFile.FromFile(@".\images\tray.jpg", "image/jpeg"))
-    .AddFile("request_file", WorkflowUploadFile.FromFile(@".\recipes\limits.json", "application/json"))
+    .AddImage(
+        "request_image_ref",
+        image.StreamFactory,
+        image.FileName,
+        image.MediaType,
+        image.ContentLength)
+    .AddFile(
+        "request_file",
+        singleFile.StreamFactory,
+        singleFile.FileName,
+        singleFile.MediaType,
+        singleFile.ContentLength)
     .AddFiles("request_files", new[]
     {
         WorkflowUploadFile.FromFile(@".\files\a.txt", "text/plain"),

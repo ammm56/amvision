@@ -1,6 +1,6 @@
 # Workflow App Entry 多类型输入实施基线
 
-> 状态：已完成。阶段 1—6 的统一 payload/节点/校验、App Contract v2、ObjectStore streaming、Runtime/Preview multipart、App Entry、typed Preview、.NET SDK、local-shared-memory event-only v2 和真实 Workflow App 全链验证均已完成。代码、OpenAPI、Catalog 和持续测试是实现状态的最终证据。
+> 状态：阶段 1—6 的统一 payload/节点/校验、App Contract v2、ObjectStore streaming、Runtime/Preview multipart、App Entry、typed Preview、现有 .NET HTTP 请求、local-shared-memory event-only v2 和真实 Workflow App 验证已完成。阶段 7—9 的高性能 Trigger capability 校验、.NET 双调用面强类型 API 和补充全链验收处于待实现状态。代码、OpenAPI、Catalog 和持续测试是实现状态的最终证据。
 
 不可变架构取舍见 [ADR-0010：Workflow App Entry 多类型输入契约](../decisions/ADR-0010-workflow-app-entry-multi-input-contract.md)。本文只维护实现顺序、具体 contract 和验证门禁。
 
@@ -23,9 +23,12 @@ Workflow 调用不应被限制为每次只提交一张图片。一个公开 App 
 | 1 | payload、输入节点、共同校验、App Contract v2 | 已完成 |
 | 2 | ObjectStore streaming 与 Runtime multipart | 已完成 |
 | 3 | App Entry 前端与 typed Preview | 已完成 |
-| 4 | .NET SDK 组合请求与 streaming | 已完成 |
+| 4 | .NET HTTP multipart 组合请求与 streaming | 已完成 |
 | 5 | local-shared-memory event-only v2 | 已完成 |
 | 6 | 真实 App 复制、版本切换、HTTP/SDK/LocalBuffer 稳定性审计 | 已完成 |
+| 7 | ZeroMQ/local-shared-memory 高性能输入 capability 固定与配置校验 | 待实现 |
+| 8 | .NET HTTP 全量 Builder 与高性能 Trigger Builder 分层 | 待实现 |
+| 9 | 两套调用面的真实组合、拒绝矩阵和长期稳定性验收 | 待实现 |
 
 每个阶段只有在代码、迁移、契约测试和真实链路验证同时完成后才能改为已完成。部分代码落地不能提前修改本文顶部的“尚未实现”结论。
 
@@ -45,6 +48,18 @@ request_file       →       file-ref.v1     →       JSON reference 或 multip
 ```
 
 App Entry 是画布上的公开输入边界和编辑器能力，不新增另一套执行器。快捷入口只创建普通通用输入节点、公开模板端口和 Application binding。多类型输入不改变同步 Runtime admission，不新增业务等待队列、容量等待、自动重试或隐式重放。
+
+### 两套调用面固定分工
+
+App 可以同时公开六类输入，但 transport 不需要具有相同能力。最终边界固定为：
+
+| 调用面 | 支持的默认 binding | 设计目的 |
+| --- | --- | --- |
+| HTTP Runtime | `request_image_ref`、`request_image_base64`、`request_json`、`request_text`、`request_file`、`request_files` | 通用 JSON、引用和 multipart 文件调用 |
+| ZeroMQ Trigger | `request_image_ref`、`request_json`、`request_text` | 跨进程高性能图片和小型参数调用 |
+| local-shared-memory Trigger | `request_image_ref`、`request_json`、`request_text` | 同机低复制图片和小型参数调用 |
+
+表中的名称仍只是默认 binding id；Trigger 的实际允许类型是 `image-ref.v1`、`value.v1` 和 `text.v1`。高性能 Trigger 不绑定 `image-base64.v1`、`file-ref.v1` 或 `file-refs.v1`。HTTP Runtime 承担 Base64 图片、普通文件和多文件输入，不为 Trigger 增加文件 staging、额外 binary frame、普通文件 LocalBuffer 或大 payload mailbox。
 
 ### 多输入不产生组合类型
 
@@ -327,17 +342,17 @@ v1 到 v2 比较先把 v1 binding 映射为 legacy validation profile；如果 v
 
 ## Trigger 与 LocalBuffer
 
-Trigger 的协议中立事件 `payload` 已经可以携带 JSON，input mapping 继续按显式 dotted path 映射到公开 binding。统一规则为：
+高性能 Trigger 的协议中立事件 `payload` 携带 JSON 和文本，input mapping 按显式 dotted path 映射到公开 binding。统一规则为：
 
 - JSON 和文本直接放入事件 payload；
 - 图片继续通过 LocalBuffer 或现有 ZeroMQ binary frame 转成 `image-ref.v1`；
-- 普通文件先进入 ObjectStore，再在事件 payload 中传 `file-ref.v1`；
+- `image-base64.v1`、`file-ref.v1` 和 `file-refs.v1` 只通过 HTTP Runtime 调用，不进入高性能 Trigger mapping；
 - TriggerSource mapping 与 HTTP 调用最终必须经过同一个 `WorkflowInputValidator`；
 - Trigger adapter 不根据内容生成未声明 binding，也不自动 fallback transport。
 
 local-shared-memory 图片 v1 的 `WorkflowTriggerPrepareV1.image` 保持必填；`WorkflowTriggerRequestV1.payload` 可在同一次图片调用中同时携带 JSON 和文本。event-only v2 已作为独立操作实现，纯 JSON/文本请求直接进入 REQUEST phase，跳过图片 PREPARE、LocalBuffer allocation 和 lease 状态机。v1 没有把必填 image 改成可空，也不会为空事件分配假图片 slot。
 
-ZeroMQ JSON 事件继续支持纯结构化请求。需要文件时先提交或解析为 ObjectStore ref；普通文件不得复用图片 binary frame 语义。
+ZeroMQ JSON 事件继续支持纯结构化 JSON/文本请求。普通文件不得复用图片 binary frame，local-shared-memory 也不得为普通文件分配 LocalBuffer。`Invoke*ImageBase64` 只表示 SDK 接受 Base64 作为图片来源并解码成图片 bytes，最终仍写入 `request_image_ref`；该方法不表示 Trigger 支持 `request_image_base64`。
 
 ## 前端编辑器与 Preview
 
@@ -362,13 +377,30 @@ Preview 输入组件按 payload type 渲染：结构化 JSON 编辑器、纯文�
 
 ## SDK 设计
 
-.NET SDK 新增一个组合请求 builder，允许在同一请求中增加：
+### HTTP Runtime Builder
+
+.NET HTTP SDK 使用组合请求 builder，在同一请求中支持：
 
 - `AddJson(bindingId, value)`；
 - `AddText(bindingId, textPayload)`；
 - `AddImage(bindingId, streamFactory, fileName, mediaType)`；
+- `AddImageReference(bindingId, imageRef)`；
+- `AddImageBase64(bindingId, imageBase64, mediaType)`；
 - `AddFile(bindingId, streamFactory, fileName, mediaType)`；
-- `AddFiles(bindingId, orderedFiles)`。
+- `AddFileReference(bindingId, fileRef)`；
+- `AddFiles(bindingId, orderedFiles)`；
+- `AddFileReferences(bindingId, orderedFileRefs)`。
+
+同一输入集合由调用方显式选择 `BuildJson()` 或 `BuildMultipart()`，不由 SDK 猜测 transport。`BuildJson()` 拒绝待上传 stream；`BuildMultipart()` 使用 `input_bindings_json` 携带非文件输入，并流式发送图片和文件。现有 `WorkflowRequestBuilder` 已实现 JSON、文本、图片上传、单文件和多文件上传；Base64/引用类方法和显式双 Build API 属于阶段 8 待实现内容。
+
+### 高性能 Trigger Builder
+
+ZeroMQ 与 local-shared-memory 共用只包含 JSON/文本的 `WorkflowTriggerInputsBuilder`：
+
+- `AddJson(bindingId, value)`；
+- `AddText(bindingId, textPayload)`。
+
+图片不放入该 Builder，由 `InvokeZeroMqImage*` 或 `InvokeSharedMemoryImage*` 的图片参数提供，并按 TriggerSource 默认或显式 image binding 生成 `image-ref.v1`。图片调用可以同时附带 Builder 生成的 JSON/文本；event-only 调用只发送 JSON/文本。Builder 必须依据 Runtime 固定 App Contract 和 TriggerSource mapping 拒绝未映射 binding、错误 payload type、超过 transport 限制的 payload，以及 `image-base64/file/files`。
 
 方法名表示调用方意图，但最终仍按 Runtime 公开契约校验。SDK 不缓存整文件、不隐藏排队、等待、自动重试或 transport fallback；重试和幂等策略由调用方显式决定。stream 必须由每次发送独立创建，并在 HTTP content 释放时关闭。
 
@@ -409,9 +441,31 @@ SDK 配置包固定 Runtime id、公开输入契约和限制，用于调用前�
 - 复用 Trigger input mapping 和统一校验器；
 - 保持图片 v1 协议、lease 与 ACK 生命周期不变。
 
+### 阶段 7：高性能 Trigger capability
+
+- 为 ZeroMQ/local-shared-memory 固定 `image-ref.v1`、`value.v1`、`text.v1` capability；
+- TriggerSource 创建、enable 和 Runtime 切版时拒绝 `image-base64.v1`、`file-ref.v1`、`file-refs.v1` mapping；
+- 前端 mapping 面板只展示当前 transport 可用的公开 binding，并明确标记其余输入为 HTTP Runtime only；
+- 保持当前 `request_image_ref/request_json/request_text` 三条映射，不自动补 binding。
+
+### 阶段 8：.NET 双调用面 API
+
+- 补齐 HTTP Builder 的 Base64 和 ObjectStore reference 方法，并显式区分 JSON/multipart build；
+- 增加共用 `WorkflowTriggerInputsBuilder`；
+- 为 ZeroMQ 图片高层方法增加可选 JSON/文本 inputs；
+- 让 local-shared-memory 图片和 event-only 调用复用相同 inputs 校验；
+- 保留低层 Dictionary API，不把它作为常用调用示例。
+
+### 阶段 9：真实链路验收
+
+- HTTP 同步 invoke、异步 run 和 .NET SDK 覆盖六类输入及组合；
+- ZeroMQ/local-shared-memory 覆盖 image、image+JSON、image+text、image+JSON+text、JSON+text event-only；
+- 在 SDK、TriggerSource 配置和后端分别验证高性能 Trigger 对 Base64/file/files 的确定性拒绝；
+- 完成长时间资源、handle、LocalBuffer lease、mailbox descriptor 和进程内存审计。
+
 ## 验收矩阵
 
-功能与兼容性至少覆盖：
+HTTP Runtime 功能与兼容性至少覆盖：
 
 - JSON-only、text-only、file-only 和 files-only；
 - JSON + base64 图片、JSON + multipart 图片、JSON + 文件；
@@ -419,8 +473,17 @@ SDK 配置包固定 Runtime id、公开输入契约和限制，用于调用前�
 - direct top-level binding 与 `input_bindings` 两种 JSON 形态；
 - unknown、missing required、重复文件、JSON/file 冲突、schema invalid；
 - MIME 拒绝、文件过大、数量过多、checksum 或 immutable version 不一致；
-- 同步 invoke、异步 run、Preview、ZeroMQ Trigger 和 event-only Trigger 一致；
+- 同步 invoke、异步 run、Preview 和 .NET HTTP SDK 结果一致；
 - 已发布图片 App 和 App Contract v1 不发生行为回归。
+
+高性能 Trigger 至少覆盖：
+
+- image、image + JSON、image + text、image + JSON + text；
+- JSON + text event-only；
+- ZeroMQ 与 local-shared-memory 使用相同 binding payload 形状；
+- `image-base64.v1`、`file-ref.v1`、`file-refs.v1` mapping 和 SDK 添加操作稳定拒绝；
+- Runtime 满载立即返回 busy，不增加 SDK 或服务端等待队列；
+- Base64 图片 helper 最终进入 `request_image_ref`，不误写入 `request_image_base64`。
 
 稳定性与内存至少覆盖：
 

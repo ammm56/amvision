@@ -51,7 +51,19 @@ DELETE /api/v1/workflows/trigger-sources/{trigger_source_id}
   "match_rule": {},
   "input_binding_mapping": {
     "request_image_ref": {
-      "source": "payload.request_image_ref"
+      "source": "payload.request_image_ref",
+      "required": false,
+      "payload_type_id": "image-ref.v1"
+    },
+    "request_json": {
+      "source": "payload.request_json",
+      "required": false,
+      "payload_type_id": "value.v1"
+    },
+    "request_text": {
+      "source": "payload.request_text",
+      "required": false,
+      "payload_type_id": "text.v1"
     }
   },
   "result_mapping": {
@@ -104,9 +116,22 @@ local-shared-memory 有两个明确的请求操作，共用同一固定 mailbox 
 
 ## 多类型输入当前边界
 
-协议中立 `TriggerEventContract.payload` 当前可以携带结构化 JSON，`input_binding_mapping` 按显式 dotted path 生成 Runtime binding。`local-shared-memory` v1 的 PREPARE 仍要求一张图片，因此可以在图片请求中附带 JSON，但不能表达无图片的纯 JSON 事件；普通文件也没有 LocalBuffer 输入语义。
+ZeroMQ 与 local-shared-memory 是高性能调用面，输入 capability 固定为：
 
-纯 JSON event-only、本地共享内存 v2、ObjectStore 文件引用和统一 Runtime 输入校验仍处于规划阶段，见 [Workflow App Entry 多类型输入实施基线](../development/workflow-app-entry-input-implementation.md)。实现前不能用空图片 slot 或普通文件复用图片 frame 绕过当前协议边界。
+| payload type | ZeroMQ | local-shared-memory | 传输方式 |
+| --- | --- | --- | --- |
+| `image-ref.v1` | 支持 | 支持 | ZeroMQ 唯一图片 frame 或 LocalBuffer；服务端生成引用 |
+| `value.v1` | 支持 | 支持 | envelope/mailbox 中的小型 JSON payload |
+| `text.v1` | 支持 | 支持 | envelope/mailbox 中的小型文本 payload |
+| `image-base64.v1` | 不支持 | 不支持 | 使用 HTTP Runtime；Trigger 图片 helper 仍生成 `image-ref.v1` |
+| `file-ref.v1` | 不支持 | 不支持 | 使用 HTTP Runtime JSON reference 或 multipart upload |
+| `file-refs.v1` | 不支持 | 不支持 | 使用 HTTP Runtime JSON reference 或 multipart upload |
+
+图片调用可以同时附带 JSON 和文本。ZeroMQ 无图片事件以及 local-shared-memory event-only v2 可以提交纯 JSON/文本。`input_binding_mapping` 继续按显式 dotted path 生成 Runtime binding，所有结果进入 Runtime 固定 App Contract 和共同 `WorkflowInputValidator`。
+
+TriggerSource 创建、enable 和 Runtime 切版校验应按 adapter capability 拒绝不支持的 mapping；前端只展示当前 adapter 可用的公开 binding。当前已配置的 `request_image_ref`、`request_json`、`request_text` 三条 mapping 是目标配置，不自动扩展到 Base64 或文件输入。
+
+普通文件不得复用图片 frame 或 LocalBuffer。高性能 Trigger 不增加文件 staging、额外输入 frame、自动 HTTP fallback 或 payload 类型转换。完整实施阶段和 .NET SDK 规划见 [Workflow App Entry 多类型输入实施基线](../development/workflow-app-entry-input-implementation.md)。
 
 ## 结果返回设计与实现边界
 
@@ -136,7 +161,7 @@ Trigger adapter 按能力映射结果：
 - PLC、IO、MQTT、目录和定时等 `event-only` Trigger：明确丢弃输出，不建立图片 handoff；
 - `accepted-then-query`：不能保存短期 BufferRef；临时图片和绝对路径复制到受管理 ObjectStore，只有同时具有不可变 version、checksum、准确长度和 media type 的 ObjectStore 引用可以直接复用。
 
-同步 adapter 不支持某个已选择 binding 时，在创建、enable 或 Runtime 切版时拒绝配置；不需要返回的 binding 直接不选择，不增加 `discard` 配置。`local-shared-memory` v1 仅支持一张输入图片、最多 512 KiB 结构化参数和同步回复；输出可以包含 0 到 N 张图片。
+同步 adapter 不支持某个已选择 binding 时，在创建、enable 或 Runtime 切版时拒绝配置；不需要返回的 binding 直接不选择，不增加 `discard` 配置。`local-shared-memory` v1 仅支持一张输入图片；当前 Workflow Trigger mailbox 的完整 request wire 上限为 64 KiB，JSON/文本必须在 SDK claim 前按实际序列化长度校验。输出可以包含 0 到 N 张图片。
 
 公开结果统一为 `WorkflowTriggerResultV1`，包含有序 `attachments` 和按 `payload_id` 去重的 `payloads`；attachment 只保存 binding/item 与 payload 引用，physical payload locator 使用带 `kind` 的联合类型：
 

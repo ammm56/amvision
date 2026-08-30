@@ -35,7 +35,7 @@
 - sync invoke 在当前请求内等待执行结束，适合低时延、短链路和高频交互。
 - async runs 在创建时先返回 workflow_run_id，调用方再通过 GET 查询结果，必要时可发起 cancel，适合长时间执行、后台提交、排队和后续回查。
 - WorkflowPreviewRun 只用于编辑态试跑。生产态正式执行统一落在 WorkflowRun，不再为不同触发方式引入另一类正式执行资源。
-- 当前公开入口是 HTTP API；后续如果通过 PLC、ZeroMQ、MQTT、IO 变化或其他已实现的集成方式触发 workflow，仍应统一映射为 WorkflowRun。
+- 当前正式入口包括 HTTP Runtime API 和已注册 TriggerSource adapter；PLC、ZeroMQ、local-shared-memory、目录或其他 Trigger 仍统一映射为 WorkflowRun，不增加另一类正式执行资源。
 - 多 runtime 实例仍用于吞吐和隔离。async runs 解决的是长时间执行、排队、取消和回查，不承担扩容职责。
 
 ## 接口入口
@@ -158,10 +158,12 @@
   - execution_metadata_json，可选
   - timeout_seconds，可选
 - 其他文件字段名必须等于 application 的 input binding_id
-- 当前 multipart 文件上传只支持 `dataset-package.v1` 输入绑定，不支持把图片文件直接作为 `request_image_base64` 或 `request_image_ref` 上传
+- 当前 multipart 文件 part 支持 `image-ref.v1`、`file-ref.v1`、`file-refs.v1` 和兼容的 `dataset-package.v1`
+- `input_bindings_json` 可以同时携带 `image-base64.v1`、`value.v1`、`text.v1` 和已有 ObjectStore 引用
+- 单文件 binding 只允许一个 part；`file-refs.v1` 通过重复同名 part 保留顺序；同一 binding 不能同时出现在 JSON 和文件 part
 - 返回完整 WorkflowRun 规则
 
-JSON、文本、图片、文件和多文件的统一输入仍处于规划阶段，见 [Workflow App Entry 多类型输入实施基线](../development/workflow-app-entry-input-implementation.md)。对应代码和 OpenAPI 落地前，本入口继续执行以上当前限制。
+六类 App Entry 输入、HTTP 与高性能 Trigger 的能力边界见 [Workflow App Entry 多类型输入实施基线](../development/workflow-app-entry-input-implementation.md)。
 
 ### 最小响应 JSON
 
@@ -261,10 +263,12 @@ JSON、文本、图片、文件和多文件的统一输入仍处于规划阶段�
   - execution_metadata_json，可选
   - timeout_seconds，可选
 - 其他文件字段名必须等于 application 的 input binding_id
-- 当前 multipart 文件上传只支持 `dataset-package.v1` 输入绑定，不支持把图片文件直接作为 `request_image_base64` 或 `request_image_ref` 上传
+- 当前 multipart 文件 part 支持 `image-ref.v1`、`file-ref.v1`、`file-refs.v1` 和兼容的 `dataset-package.v1`
+- `input_bindings_json` 可以同时携带 `image-base64.v1`、`value.v1`、`text.v1` 和已有 ObjectStore 引用
+- 单文件 binding 只允许一个 part；`file-refs.v1` 通过重复同名 part 保留顺序；同一 binding 不能同时出现在 JSON 和文件 part
 - 响应模式与 JSON `invoke` 一致，默认只返回公开 App Result；需要运行回执或完整 trace 时显式传 `response_mode=run` 或 `response_mode=debug`
 
-JSON、文本、图片、文件和多文件的统一输入仍处于规划阶段，见 [Workflow App Entry 多类型输入实施基线](../development/workflow-app-entry-input-implementation.md)。对应代码和 OpenAPI 落地前，本入口继续执行以上当前限制。
+六类 App Entry 输入、HTTP 与高性能 Trigger 的能力边界见 [Workflow App Entry 多类型输入实施基线](../development/workflow-app-entry-input-implementation.md)。
 
 ### 默认最小响应 JSON
 

@@ -2,7 +2,7 @@
 
 ## 状态
 
-已接受，已实施。统一 payload/节点/校验、App Contract v2、ObjectStore streaming、Runtime/Preview multipart、App Entry、typed Preview、.NET SDK 和 local-shared-memory event-only v2 已完成。实施顺序、payload 形状和验收矩阵见 [Workflow App Entry 多类型输入实施基线](../development/workflow-app-entry-input-implementation.md)。
+已接受。统一 payload/节点/校验、App Contract v2、ObjectStore streaming、Runtime/Preview multipart、App Entry、typed Preview、现有 .NET HTTP 请求和 local-shared-memory event-only v2 已实施。HTTP Runtime 与高性能 Trigger 的调用面边界已经固定；.NET SDK 的统一强类型调用入口和对应全链验收仍按实施基线推进。实施顺序、payload 形状和验收矩阵见 [Workflow App Entry 多类型输入实施基线](../development/workflow-app-entry-input-implementation.md)。
 
 ## 背景
 
@@ -56,11 +56,15 @@ JSON 请求继续支持 `input_bindings` 包装字段或公开 binding 顶层字
 
 同一 binding 不能同时出现在 JSON 和文件 part。未知字段、普通非文件 form part、类型不匹配和数量冲突直接失败，不自动 fallback 到 Base64、临时文件或其他 transport。
 
-### 7. Trigger 不扩张 LocalBuffer 语义
+### 7. HTTP Runtime 与高性能 Trigger 使用不同能力面
 
-协议中立 Trigger event payload 继续携带 JSON 和文本，图片继续使用现有图片 transport，普通文件先形成 ObjectStore ref。所有映射结果进入共同输入校验器。
+HTTP Runtime 是通用调用面，支持 `image-ref.v1`、`image-base64.v1`、`value.v1`、`text.v1`、`file-ref.v1` 和 `file-refs.v1`。JSON 请求负责 inline payload 和已有引用，multipart 请求负责图片、单文件和多文件的流式上传；同一请求可以组合多个独立 binding。
 
-local-shared-memory v1 的必填图片语义保持不变。纯 JSON/文本调用使用后续显式 event-only v2，跳过图片 PREPARE、LocalBuffer allocation 和 lease 状态机；不能把 v1 image 改成隐式可空或为空事件分配假图片。
+ZeroMQ 与 local-shared-memory 是高性能 Trigger 调用面，只允许映射 `image-ref.v1`、`value.v1` 和 `text.v1`。调用方图片 bytes 分别通过 ZeroMQ binary frame 或 LocalBuffer 传输，由服务端生成 `image-ref.v1`；JSON 和文本位于小型事件 payload。高性能 Trigger 不映射 `image-base64.v1`、`file-ref.v1` 或 `file-refs.v1`，也不增加文件 staging、普通文件 binary frame 或普通文件 LocalBuffer 语义。
+
+local-shared-memory v1 的必填图片语义保持不变。纯 JSON/文本调用使用显式 event-only v2，跳过图片 PREPARE、LocalBuffer allocation 和 lease 状态机；不能把 v1 image 改成隐式可空或为空事件分配假图片。ZeroMQ 和 local-shared-memory 的 transport 限制必须在 TriggerSource 配置、SDK 调用前校验和 Runtime 权威校验三处保持一致。
+
+`.NET` SDK 同时覆盖两套调用面，但 API 不混用：HTTP Builder 支持六类输入；高性能 Trigger Builder 只支持 JSON 和文本，图片由对应 transport 的图片调用方法提供。两套 Builder 都不得隐藏排队、重试、等待或 transport fallback。
 
 ## 未采用方案
 
@@ -74,8 +78,8 @@ local-shared-memory v1 的必填图片语义保持不变。纯 JSON/文本调用
 
 ## 影响
 
-- Workflow App 可以用通用 binding 组合 JSON、文本、图片、单文件和多文件，不增加应用专用节点。
+- Workflow App 可以用通用 binding 组合 JSON、文本、图片、单文件和多文件，不增加应用专用节点；具体调用入口仍受 transport capability 限制。
 - Node Catalog、App Contract、Runtime、Preview、Trigger、ObjectStore、前端和 SDK 必须共享同一 payload 与限制定义。
 - 文件上传增加 staging、流式 checksum、不可变发布、引用保留和启动清理职责，但大文件不进入 Runtime command 或数据库 JSON。
 - App Contract v2 和新 payload 属于显式公开契约变化，需要兼容比较、SDK contract test 和旧 v1 回归门禁。
-- local-shared-memory v1 图片热路径不受影响；纯结构化事件通过单独版本扩展，不向图片状态机加入隐藏分支。
+- local-shared-memory v1 图片热路径不受影响；纯结构化事件通过单独版本扩展，不向图片状态机加入隐藏分支。ZeroMQ/local-shared-memory 不承担 Base64 图片或普通文件输入。

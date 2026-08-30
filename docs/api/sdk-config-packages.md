@@ -83,7 +83,9 @@ README.md
 
 模型配置可以只包含 `backend` 与 `model_deployments`；SDK 不要求伪造 Workflow Runtime。
 
-`.NET` SDK 可把 `runtime.public_contract` 传给 `WorkflowRequestBuilder`，再通过 `AddJson`、`AddText`、`AddImage`、`AddFile` 和 `AddFiles` 构建统一请求。文件和图片在 HTTP 发送阶段以 stream 读取，不在 SDK 内预先复制完整文件。SDK 的契约检查用于尽早发现 binding、类型、MIME、大小和数量错误；后端仍是完整契约与 ObjectStore 引用校验的权威入口。
+`.NET` HTTP SDK 可把 `runtime.public_contract` 传给 `WorkflowRequestBuilder`。当前 `AddJson`、`AddText`、`AddImage`、`AddFile` 和 `AddFiles` 已用于 JSON/文本与 multipart streaming；后续补齐 `AddImageBase64`、图片/文件引用方法和显式 JSON/multipart build。文件和图片在 HTTP 发送阶段以 stream 读取，不在 SDK 内预先复制完整文件。
+
+ZeroMQ 与 local-shared-memory 配置只允许高性能输入 `image-ref.v1`、`value.v1` 和 `text.v1`。后续共用 `WorkflowTriggerInputsBuilder` 只提供 `AddJson` 和 `AddText`；图片由 transport 图片方法提供。配置包需要同时携带 Runtime 固定公开契约、TriggerSource mapping 和 transport 限制，使 SDK 在调用前拒绝未映射 binding、Base64/file/files Trigger 输入和超限 payload。后端仍是完整契约校验的权威入口。
 
 ## 使用步骤
 

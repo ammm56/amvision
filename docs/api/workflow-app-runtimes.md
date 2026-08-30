@@ -369,7 +369,7 @@ Runtime 通过不可变 `WorkflowRuntimeRevision` 选择准确的 `WorkflowAppVe
 
 - WorkflowAppRuntime 是 [docs/api/workflow-runs.md](workflow-runs.md) 的宿主资源。
 - 当前同步调用入口仍挂在 runtime 下：POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke。
-- `dataset-package.v1` 类型的同步调用和异步 run 也可以分别通过 `POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke/upload` 与 `POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs/upload` 提交；两条 multipart 入口当前都只支持 zip 包文件输入。
+- 同步调用和异步 run 可以分别通过 `POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke/upload` 与 `POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs/upload` 提交 multipart。除兼容的 `dataset-package.v1` 外，当前入口支持 `image-ref.v1`、`file-ref.v1` 和 `file-refs.v1` 流式上传，并可通过 `input_bindings_json` 同时提交 JSON、文本、Base64 图片或已有 ObjectStore 引用。
 - WorkflowAppRuntime create 当前可以引用 [docs/api/workflow-execution-policies.md](workflow-execution-policies.md) 中的 execution_policy_id，并返回 execution_policy_snapshot_object_key。
 - 编辑态试跑见 [docs/api/workflow-preview-runs.md](workflow-preview-runs.md)。
 
@@ -381,14 +381,19 @@ Runtime 通过不可变 `WorkflowRuntimeRevision` 选择准确的 `WorkflowAppVe
 - `image-base64.v1` 常见 JSON 形状是 `{"image_base64": "<base64>", "media_type": "image/png"}`；也支持单行 data URL。
 - `image-ref.v1` 在本机受控 adapter 或 TriggerSource 场景下也可以携带 `buffer_ref` 或 `frame_ref`，用于复用 LocalBufferBroker 的 direct mmap 数据面；这类引用只在同机短期有效，不作为长期公开文件引用。
 - `value.v1` 常见 JSON 形状是 `{"value": {...}}`。
-- `dataset-package.v1` 可以通过 `POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke/upload` 或 `POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs/upload` 上传，文件字段名必须等于 binding_id。当前 multipart 上传入口只支持这类 zip 包输入，不支持把图片文件直接作为 `request_image_base64` 或 `request_image_ref` 上传。
+- `text.v1` 常见 JSON 形状是 `{"text": "lot-20260830", "media_type": "text/plain", "charset": "utf-8"}`。
+- `file-ref.v1` 和 `file-refs.v1` 可以在 JSON 中提交经过 Project、checksum 和 immutable version 校验的 ObjectStore 引用，也可以通过 multipart 流式上传。`file-refs.v1` 使用重复同名文件字段保留顺序。
+- multipart 文件字段名必须等于 binding id；`image-ref.v1`、`file-ref.v1` 和 `file-refs.v1` 支持文件 part。`image-base64.v1` 仍放入 JSON 或 `input_bindings_json`，不会把上传图片暗中转换为 Base64。
+- `dataset-package.v1` 保留现有 zip 上传兼容入口，不改变六类 App Entry 输入的规则。
 - invoke 默认返回公开 App Result：单个输出直接返回该输出值，多个输出按 application output binding_id 返回对象。需要平台运行回执时传 `response_mode=run`，需要完整 template_outputs 和 node_records 调试信息时传 `response_mode=debug`。
 
-## 多类型输入规划
+## 多类型输入当前边界
 
-当前 JSON invoke 的 `input_bindings` 可以同时包含多个已声明 binding，`value.v1` 可用于结构化 JSON；因此 Runtime 内核并非只支持图片输入。当前尚未交付的是 App Entry 的 JSON/文本/文件快捷入口、`text.v1`、通用文件引用、图片与普通文件 multipart 上传，以及所有入口共用的完整 schema 校验。
+HTTP Runtime 是通用调用面，当前支持 `image-ref.v1`、`image-base64.v1`、`value.v1`、`text.v1`、`file-ref.v1` 和 `file-refs.v1`。JSON 与 multipart 最终进入同一个输入规范化和 `WorkflowInputValidator`，不根据 binding 名称、扩展名或内容执行隐藏转换。
 
-详细的多类型 binding、wire 形状、streaming ObjectStore、错误、兼容性和验收规划见 [Workflow App Entry 多类型输入实施基线](../development/workflow-app-entry-input-implementation.md)。在对应代码、OpenAPI 和测试落地前，现有 `/invoke/upload` 与 `/runs/upload` 限制保持不变。
+ZeroMQ 与 local-shared-memory Trigger 是独立的高性能调用面，只映射 `image-ref.v1`、`value.v1` 和 `text.v1`。App 可以同时发布六类输入，但 Trigger capability 不因此扩张。详细矩阵和 .NET SDK 分层计划见 [Workflow App Entry 多类型输入实施基线](../development/workflow-app-entry-input-implementation.md)。
+
+详细的多类型 binding、wire 形状、streaming ObjectStore、错误、兼容性和后续 SDK/Trigger 验收规划见 [Workflow App Entry 多类型输入实施基线](../development/workflow-app-entry-input-implementation.md)。
 
 ## 相关文档
 
