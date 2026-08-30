@@ -282,10 +282,10 @@ def test_opencv_basic_batch3_hough_circles_execute(tmp_path: Path) -> None:
     assert circles_summary["value"]["count"] == circles["count"]
     assert circles_summary["value"]["max_radius_detected"] >= 14.0
     assert circles_summary["value"]["input_pixel_format"] == "gray8"
-    assert circles_summary["value"]["roi_grayscale_requested"] is False
+    assert circles_summary["value"]["roi_grayscale_requested"] is True
     assert circles_summary["value"]["roi_grayscale_applied"] is False
-    assert circles_summary["value"]["grayscale_scope"] == "none"
-    assert circles_summary["value"]["grayscale_bbox_xyxy"] == [0, 0, 0, 0]
+    assert circles_summary["value"]["grayscale_scope"] == "roi"
+    assert circles_summary["value"]["grayscale_bbox_xyxy"] == [0, 0, 96, 96]
     timings = circles_summary["value"]["timings"]
     assert set(timings) == {
         "image_load_ms",
@@ -325,7 +325,7 @@ def test_opencv_basic_batch3_hough_circles_execute(tmp_path: Path) -> None:
 def test_hough_circles_rejects_color_input_when_roi_grayscale_is_disabled(
     tmp_path: Path,
 ) -> None:
-    """验证默认关闭 ROI Grayscale 时不再暗中把彩色整图转灰度。"""
+    """验证显式关闭 ROI Grayscale 时彩色输入稳定失败。"""
 
     with pytest.raises(InvalidRequestError, match="显式启用 ROI Grayscale"):
         _execute_hough_circle_image(
@@ -333,6 +333,7 @@ def test_hough_circles_rejects_color_input_when_roi_grayscale_is_disabled(
             object_key="inputs/hough-circle-color-disabled.png",
             image_bytes=_build_shifted_color_circle_test_png_bytes(),
             parameters={
+                "convert_roi_to_grayscale": False,
                 "search_bbox_xyxy": [20, 20, 340, 220],
                 "minimum_radius_px": 20,
                 "maximum_radius_px": 45,
@@ -341,11 +342,11 @@ def test_hough_circles_rejects_color_input_when_roi_grayscale_is_disabled(
         )
 
 
-def test_hough_circles_converts_only_resolved_roi_when_explicitly_enabled(
+def test_hough_circles_converts_only_resolved_roi_when_enabled_by_default(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """验证 ROI Grayscale 的颜色转换输入是裁剪区域，不是整张图片。"""
+    """验证默认 ROI Grayscale 的颜色转换输入是裁剪区域，不是整张图片。"""
 
     import cv2
 
@@ -365,7 +366,6 @@ def test_hough_circles_converts_only_resolved_roi_when_explicitly_enabled(
         object_key="inputs/hough-circle-color-enabled.png",
         image_bytes=_build_shifted_color_circle_test_png_bytes(),
         parameters={
-            "convert_roi_to_grayscale": True,
             "search_bbox_xyxy": [20, 20, 340, 220],
             "minimum_radius_px": 20,
             "maximum_radius_px": 45,

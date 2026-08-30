@@ -697,6 +697,7 @@ const {
 } = useWorkflowGraphDeletion({
   graphNodes,
   graphEdges,
+  graphGroups,
   templateInputs,
   templateOutputs,
   applicationBindingsDraft,

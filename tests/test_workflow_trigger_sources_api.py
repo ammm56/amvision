@@ -29,6 +29,7 @@ def test_trigger_source_health_response_preserves_detailed_counters() -> None:
             "enabled": True,
             "desired_state": "running",
             "observed_state": "running",
+            "last_triggered_at": "2026-08-30T08:00:16Z",
             "health_summary": {
                 "adapter_configured": True,
                 "adapter_running": True,
@@ -45,6 +46,7 @@ def test_trigger_source_health_response_preserves_detailed_counters() -> None:
         }
     ).model_dump(mode="json")
 
+    assert response["last_triggered_at"] == "2026-08-30T08:00:16Z"
     assert response["health_summary"] == {
         "adapter_configured": True,
         "adapter_running": True,

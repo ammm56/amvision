@@ -3693,9 +3693,9 @@
         "properties": {
           "convert_roi_to_grayscale": {
             "type": "boolean",
-            "default": false,
+            "default": true,
             "title": "ROI Grayscale",
-            "description": "显式启用后，只对已解析并裁剪的 Search ROI 执行灰度转换；关闭时要求输入已经是灰度图。"
+            "description": "默认启用，只对已解析并裁剪的 Search ROI 执行灰度转换，确保 BGR/BGRA 输入可直接使用；关闭时要求输入已经是灰度图。"
           },
           "accumulator_resolution_ratio": {
             "type": "number",

@@ -10,6 +10,7 @@ from threading import Event, Lock
 from time import monotonic, perf_counter
 from typing import TYPE_CHECKING
 from uuid import uuid4
+from weakref import WeakValueDictionary
 
 from backend.service.application.events import ServiceEvent
 from backend.service.application.project_summary import (
@@ -268,7 +269,11 @@ class WorkflowRuntimeService:
     """封装 workflow runtime 当前阶段的资源创建、调用和状态收敛逻辑。"""
 
     _event_lock = Lock()
-    _workflow_run_event_locks: dict[str, Lock] = {}
+    # 同一 WorkflowRun 的并发事件写入共享一把锁；最后一个写入者退出后自动
+    # 释放锁对象，避免 Windows 为每次历史 run 永久保留一个内核句柄。
+    _workflow_run_event_locks: WeakValueDictionary[str, Lock] = (
+        WeakValueDictionary()
+    )
     _workflow_run_event_sequences: dict[str, int] = {}
     _workflow_app_runtime_event_locks: dict[str, Lock] = {}
     _raw_workflow_run_result_lock = Lock()

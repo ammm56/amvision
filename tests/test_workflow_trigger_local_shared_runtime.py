@@ -19,6 +19,9 @@ from backend.service.application.workflows.trigger_sources.output_delivery impor
     TRIGGER_RESPONSE_PLAN_METADATA_KEY,
     build_trigger_response_plan,
 )
+from backend.service.application.workflows.trigger_sources.trigger_source_service import (
+    _build_supervisor_health_summary,
+)
 from backend.service.infrastructure.integrations.local_shared_memory.local_shared_memory_trigger_adapter import (
     LocalSharedMemoryTriggerAdapter,
 )
@@ -151,6 +154,7 @@ def test_local_shared_memory_adapter_uses_common_running_health_field() -> None:
         "source_scoped": True,
         "running": True,
         "route_generation": 7,
+        "last_triggered_at": "2026-08-30T10:20:30+00:00",
         "pending_request_count": 0,
         "active_task_count": 0,
         "request_count": 5,
@@ -170,6 +174,23 @@ def test_local_shared_memory_adapter_uses_common_running_health_field() -> None:
         "recent_request_error": None,
         "latest_timings": {"total_ms": 12.5},
     }
+
+
+def test_supervisor_health_summary_uses_source_live_trigger_time() -> None:
+    """source 内存态时间必须进入控制面摘要，且不依赖数据库写入。"""
+
+    summary = _build_supervisor_health_summary(
+        supervisor_health={
+            "adapter_health": {
+                "source_scoped": True,
+                "running": True,
+                "last_triggered_at": "2026-08-30T10:20:30+00:00",
+            }
+        },
+        adapter_configured=True,
+    )
+
+    assert summary["last_triggered_at"] == "2026-08-30T10:20:30+00:00"
 
 
 def _source(
@@ -254,6 +275,7 @@ class _FakeMailboxSupervisor:
         assert trigger_source_id == "source-health"
         return {
             "source_scoped": True,
+            "last_triggered_at": "2026-08-30T10:20:30+00:00",
             "pending_request_count": 0,
             "active_task_count": 0,
             "request_count": 5,

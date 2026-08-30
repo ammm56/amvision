@@ -1378,6 +1378,7 @@ def test_same_source_second_prepare_is_immediate_busy(tmp_path: Path) -> None:
                 assert pool.build_status()["active_lease_count"] == 1
                 health = supervisor.build_source_status("source-1")
                 assert health["request_count"] == 2
+                assert isinstance(health["last_triggered_at"], str)
                 assert health["error_count"] == 1
                 assert health["busy_count"] == 1
                 assert supervisor.build_source_status("source-2")["request_count"] == 0

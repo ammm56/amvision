@@ -76,7 +76,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         image_matrix=image_matrix,
     )
     convert_roi_to_grayscale = require_boolean(
-        request.parameters.get("convert_roi_to_grayscale", False),
+        request.parameters.get("convert_roi_to_grayscale", True),
         field_name="convert_roi_to_grayscale",
     )
     roi_resolve_started_at = perf_counter()

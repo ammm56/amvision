@@ -17,6 +17,7 @@ interface WorkflowNodeDragState {
   nodeId: string
   offsetX: number
   offsetY: number
+  hasMoved: boolean
 }
 
 export interface WorkflowNodeDragOptions<NodeView extends WorkflowNodeDragNodeView> {
@@ -38,6 +39,7 @@ export function useWorkflowNodeDrag<NodeView extends WorkflowNodeDragNodeView>(o
       nodeId: node.node.node_id,
       offsetX: worldPosition.x - node.x,
       offsetY: worldPosition.y - node.y,
+      hasMoved: false,
     }
     event.preventDefault()
     document.addEventListener('mousemove', moveDraggedNode)
@@ -58,18 +60,21 @@ export function useWorkflowNodeDrag<NodeView extends WorkflowNodeDragNodeView>(o
       return
     }
     const worldPosition = options.screenToWorld(event.clientX, event.clientY)
-    targetNode.x = Math.round(worldPosition.x - drag.offsetX)
-    targetNode.y = Math.round(worldPosition.y - drag.offsetY)
+    const nextX = Math.round(worldPosition.x - drag.offsetX)
+    const nextY = Math.round(worldPosition.y - drag.offsetY)
+    drag.hasMoved = drag.hasMoved || nextX !== targetNode.x || nextY !== targetNode.y
+    targetNode.x = nextX
+    targetNode.y = nextY
     targetNode.node.ui_state = { ...targetNode.node.ui_state, x: targetNode.x, y: targetNode.y, width: targetNode.width }
   }
 
   function stopNodeDrag(): void {
-    const wasDragging = Boolean(nodeDragState.value)
+    const hasMoved = nodeDragState.value?.hasMoved === true
     nodeDragState.value = null
     document.removeEventListener('mousemove', moveDraggedNode)
     document.removeEventListener('mouseup', stopNodeDrag)
     window.removeEventListener('blur', stopNodeDrag)
-    if (wasDragging) options.onStop?.()
+    if (hasMoved) options.onStop?.()
   }
 
   return {

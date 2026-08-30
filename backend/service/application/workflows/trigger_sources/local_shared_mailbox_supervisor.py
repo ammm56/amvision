@@ -124,6 +124,7 @@ class _PendingMailboxRequest:
 class _SourceMailboxHealth:
     """保存单个 TriggerSource 的无内容运行计数。"""
 
+    last_triggered_at: str | None = None
     request_count: int = 0
     success_count: int = 0
     error_count: int = 0
@@ -415,6 +416,7 @@ class WorkflowTriggerMailboxSupervisor:
             )
             return {
                 "source_scoped": True,
+                "last_triggered_at": counters.last_triggered_at,
                 "request_count": counters.request_count,
                 "success_count": counters.success_count,
                 "error_count": counters.error_count,
@@ -1412,6 +1414,7 @@ class WorkflowTriggerMailboxSupervisor:
                 trigger_source_id,
                 _SourceMailboxHealth(),
             )
+            source.last_triggered_at = datetime.now(timezone.utc).isoformat()
             source.request_count += 1
 
     def _record_source_failure_locked(

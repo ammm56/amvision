@@ -2,7 +2,13 @@ import type { Ref } from 'vue'
 
 import { translate } from '@/platform/i18n'
 import type { WorkflowBoundaryKind } from '../bindings/useWorkflowPublicBindings'
-import type { FlowApplicationBinding, WorkflowGraphEdge, WorkflowGraphInput, WorkflowGraphOutput } from '../types'
+import type {
+  FlowApplicationBinding,
+  WorkflowGraphEdge,
+  WorkflowGraphGroup,
+  WorkflowGraphInput,
+  WorkflowGraphOutput,
+} from '../types'
 
 export interface WorkflowDeletionGraphNode {
   node: {
@@ -19,6 +25,7 @@ export interface WorkflowDeletionSelection {
 export interface WorkflowGraphDeletionOptions<NodeView extends WorkflowDeletionGraphNode> {
   graphNodes: Ref<NodeView[]>
   graphEdges: Ref<WorkflowGraphEdge[]>
+  graphGroups: Ref<WorkflowGraphGroup[]>
   templateInputs: Ref<WorkflowGraphInput[]>
   templateOutputs: Ref<WorkflowGraphOutput[]>
   applicationBindingsDraft: Ref<FlowApplicationBinding[]>
@@ -49,6 +56,9 @@ export function useWorkflowGraphDeletion<NodeView extends WorkflowDeletionGraphN
 
     options.graphNodes.value = options.graphNodes.value.filter((node) => node.node.node_id !== nodeId)
     options.graphEdges.value = options.graphEdges.value.filter((edge) => edge.source_node_id !== nodeId && edge.target_node_id !== nodeId)
+    options.graphGroups.value.forEach((group) => {
+      group.member_node_ids = group.member_node_ids.filter((memberNodeId) => memberNodeId !== nodeId)
+    })
     options.templateInputs.value = options.templateInputs.value.filter((input) => !removedInputIds.has(input.input_id))
     options.templateOutputs.value = options.templateOutputs.value.filter((output) => !removedOutputIds.has(output.output_id))
     options.applicationBindingsDraft.value = options.applicationBindingsDraft.value.filter(

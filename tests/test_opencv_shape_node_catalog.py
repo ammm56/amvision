@@ -98,7 +98,7 @@ def test_opencv_shape_node_catalog_builder_matches_checked_in_catalog() -> None:
         == 2048
     )
     hough_circle_properties = node_by_type["custom.opencv.hough-circles"]["parameter_schema"]["properties"]
-    assert hough_circle_properties["convert_roi_to_grayscale"]["default"] is False
+    assert hough_circle_properties["convert_roi_to_grayscale"]["default"] is True
     assert (
         node_by_type["custom.opencv.hough-circles"]["concurrency_policy"]
         == "thread-safe"

@@ -620,7 +620,12 @@ class WorkflowTriggerSourceService:
             "enabled": trigger_source.enabled,
             "desired_state": trigger_source.desired_state,
             "observed_state": observed_state,
-            "last_triggered_at": trigger_source.last_triggered_at,
+            "last_triggered_at": (
+                live_health_summary.get("last_triggered_at")
+                if live_health_summary is not None
+                and live_health_summary.get("last_triggered_at")
+                else trigger_source.last_triggered_at
+            ),
             "last_error": trigger_source.last_error,
             "health_summary": health_summary,
         }
@@ -1470,6 +1475,8 @@ def _build_supervisor_health_summary(
     return {
         "adapter_configured": adapter_configured,
         "adapter_running": bool(adapter_health.get("running")),
+        "last_triggered_at": supervisor_health.get("last_triggered_at")
+        or adapter_health.get("last_triggered_at"),
         "request_count": _select_count("request_count"),
         "request_count_rollover_count": _as_int(
             supervisor_health.get("request_count_rollover_count")

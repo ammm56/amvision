@@ -17,7 +17,7 @@
 
 - 普通节点不提供 `parallel` 开关。并行只由 `Parallel Start` / `Parallel End` 的画布边界表达。
 - `Parallel Start.max_concurrency` 是唯一的分支并发上限，不等于分支数量，也不保证更大的值一定更快。
-- Hough Circles 不再隐式执行灰度转换。ROI 灰度参数必须在节点参数面板可见，默认关闭。
+- Hough Circles 的 ROI 灰度参数必须在节点参数面板可见，默认启用；只转换解析后的 Search ROI，显式关闭时要求输入已经是灰度图。
 - Hough Circles 启用灰度转换时，必须先解析并裁剪 Search ROI，再对该 ROI 转灰度；不得先转换整图。
 - 五类模型 Batch 节点按 detection、classification、segmentation、pose、OBB 的任务语义区分，不按 YOLOX、YOLOv8、YOLO11、YOLO26、RF-DETR 等模型家族区分。
 - Batch 节点的复杂功能由共享 runtime 实现；Workflow App、工位、托盘、ROI 数量和 deployment instance 数量不得进入节点名称或固定行为。
@@ -49,7 +49,7 @@
 
 实现结果：
 
-- `Grayscale` 保留真实 `gray8/HW`；Hough Circles 的 `convert_roi_to_grayscale` 在面板中可见且默认关闭，开启时只转换解析后的 Search ROI。
+- `Grayscale` 保留真实 `gray8/HW`；Hough Circles 的 `convert_roi_to_grayscale` 在面板中可见且默认启用，只转换解析后的 Search ROI，避免直接连接 BGR/BGRA 时失败。
 - Hough Circles 已完成无共享可变状态审计并声明 `thread-safe`，但是否并行仍只由显式 `Parallel Start` / `Parallel End` 决定。
 - `circles.v1` 已提升为核心公共 payload 合约，与 OpenCV 节点包共享完全一致的 schema；核心 typed bridge 不再依赖自定义包先加载。
 - detection、classification、segmentation、pose、OBB 五类 Batch 节点、统一有序 Batch 信封、五类 Batch-to-value bridge 和对称 typed bridge 已实现。
@@ -79,6 +79,63 @@ Trigger、LocalBuffer 与内存结果：
 - 完成控制面内存修复并再次冷重载后，现场复核运行 `workflow-run-7c361566eb43464d9d2cac9054c44a37` 和 `workflow-run-344dc5e1f50b44faa4bc952b99e59dd0` 均为 `succeeded`。数据库时间戳计算的端到端 wall time 分别为 1019.764 ms 和 990.395 ms；结果仍为 24/24 empty/pass 和 80/80、16 empty、64 abnormal、业务 `ng`。
 - 两个验证 Runtime 冷启动空闲时分别约 100 MiB RSS、78 MiB USS，执行现场大图后约 221 至 228 MiB RSS、195 至 197 MiB USS，均无 PyTorch 映射。开发库中另有 8 个 `desired_state=running` 的 Stage 9 benchmark Runtime，每个空闲约 77 至 78 MiB USS；这些是显式运行资源，不是重复恢复或 lease 泄漏，系统不会用隐藏的空闲休眠改变其状态。
 
+### 2026-08-30 v4 复验与资源修复
+
+本轮使用 `workflow-app-20260830050503` 的独立验证版本
+`workflow-app-version-adee8f6b693e414496265f1589a15038`，正式 Runtime 为
+`workflow-runtime-8c257afd0c144890a58592c8a15586e9`、generation 4。应用明确保存以下参数，不依赖隐藏默认行为：
+
+- 四个 Hough Circles 的 `ROI Grayscale=true`，输入直接连接 BGR 图片引用；原整图 `Grayscale` 节点保留但显式禁用。
+- Hough 的 `Parallel Start.max_concurrency=1`；两路 Classification Batch 的 `max_concurrency=2`。
+- 删除节点时同步清理 `member_node_ids`；普通点击没有坐标变化时不重算分组成员，避免节点卡片尺寸变化导致 Parallel 分组静默漂移。
+
+同一张 5472×3648 现场 BMP 的 Preview 实测如下：
+
+| Hough 并行度 | 四个 Hough 节点耗时 | Parallel wall time | 结论 |
+| --- | --- | --- | --- |
+| 1 | 102.9 / 100.4 / 107.5 / 110.7 ms | 447.0 ms | 最稳定，作为 v4 正式参数 |
+| 2 | 251.0 / 171.3 / 198.0 / 178.6 ms | 448.5 ms | 无 wall time 收益 |
+| 4 | 736.4 / 741.1 / 670.7 / 747.2 ms | 775.1 ms | CPU 与内存带宽争用，明显更慢 |
+
+因此没有为 Hough 增加节点内部线程池、自动并发或动态调度。当前机器和图片上的最简稳定实现就是显式 Parallel 边界加并行度 1；运行环境或 OpenCV 配置改变后必须重新实测，不能自动改成 2 或 4。
+
+v4 正式 Runtime 顺序调用 100 次为 100/100 成功，数据库端到端
+mean/min/max 为 615.8/571.0/859.0 ms。每次 Workflow 内两路 12 项
+Classification Batch 并发调用两个 deployment instance，24 项结果持续为
+`count=24`、`expected_count_matched=true`、`passed=true`、
+`problem_count=0`。没有增加同步请求队列、等待、自动重试或额外并发压力。
+
+同一 v4 Runtime 的 local-shared-memory Trigger 使用仓库 .NET Framework x64
+SDK 和 59,885,622 字节 BMP 完成两轮各 100 次严格顺序 soak，两轮均为
+100/100 成功。第一轮 latency mean/P50/P95/P99/min/max 为
+820.873/810.414/972.551/1110.648/749.464/1284.114 ms；第二轮为
+827.606/811.887/1000.053/1113.453/748.882/1250.473 ms。Trigger mailbox
+在调用后保持 `pending_request_count=0`、`active_task_count=0`、
+`used_page_count=0`，SDK 结果 `Dispose` 完成 ACK。
+控制面只在 per-source 内存健康计数中同步更新 `last_triggered_at`，不为每次高速
+Trigger 增加数据库写入。后端冷重载后的真实 encoded-file 调用成功，公开健康接口
+返回非空最后触发时间；调用后 128 个 mailbox descriptor 全部空闲、512 个 page
+全部可用，pending/active 均为 0。
+
+资源审计还定位并修复了一个确定的 Windows 句柄保留问题：
+`WorkflowRuntimeService._workflow_run_event_locks` 原来按每个历史 run id 永久保存
+一把 `threading.Lock`。隔离进程中 5000 把锁精确增加 5000 个句柄，真实 backend
+也表现为约每次 Workflow 增加 1 个句柄。锁表改为弱引用后，同一 run 的并发事件
+写入仍共享同一把锁，最后一个写入者退出后锁自动释放，不改变执行、等待或调度语义。
+冷重载后的第一轮 100 次从 1594 增至 1639 handles，同时工作线程从 103 增至
+112，属于首次执行热身；第二轮再执行 100 次 handles 从 1639 降至 1638，Private
+Bytes 从 1226.86 MiB 到 1226.89 MiB，不再按 run 线性增长。v4 worker 执行后约
+130.8 MiB Private / 176.6 MiB Working Set，inference daemon 保持 499 handles / 571.29 MiB Private。
+
+冷重载后的开发环境还完成了进程树口径复核。backend 树共 17 个进程，包括控制面、
+LocalBuffer broker 和数据库中显式保持 running 的 Runtime，合计约 1861.2 MiB USS；
+其中 v4 worker 约 87.8 MiB USS / 128.0 MiB Private / 174.8 MiB Working Set。
+inference daemon 与 5 个 deployment worker 合计约 2687.4 MiB USS，Vite 开发进程约
+152.0 MiB USS；三个开发进程树合计约 4700.6 MiB USS。Windows `Private Bytes`
+会同时反映保留地址空间，RSS 求和也会重复计算共享 DLL 映射，因此容量审计以 USS、
+进程数量和多轮趋势共同判断。该高基线来自显式运行配置，不按调用次数增长；生产配置
+应停止不使用的 Runtime 和 deployment，不增加隐藏休眠或调用时冷启动。
+
 ## Hough Circles 输入处理设计
 
 ### 可见参数
@@ -87,14 +144,14 @@ Trigger、LocalBuffer 与内存结果：
 
 | 字段 | 面板名称 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `convert_roi_to_grayscale` | `ROI Grayscale` | `false` | 只对解析后的 Search ROI 执行 BGR/BGRA 到 Gray 转换 |
+| `convert_roi_to_grayscale` | `ROI Grayscale` | `true` | 只对解析后的 Search ROI 执行 BGR/BGRA 到 Gray 转换；显式关闭时要求灰度输入 |
 
 该参数属于 `Input Processing` 分组，不得只存在于后端参数或隐藏调试面板中。
 
 ### 关闭时的行为
 
 - `gray8` 或解码后二维 `uint8` 输入直接进入 ROI、CLAHE、blur、Hough 和 refinement 链路。
-- BGR/BGRA 输入立即返回稳定参数错误，提示连接 `Grayscale` 或显式启用 `ROI Grayscale`。
+- 默认配置接受 BGR/BGRA 输入并只转换 Search ROI；显式关闭 `ROI Grayscale` 时立即返回稳定参数错误并提示连接 `Grayscale`。
 - 节点不得暗中选取单个通道、调用 `IMREAD_GRAYSCALE` 或复制整图。
 
 ### 开启时的行为
@@ -182,7 +239,7 @@ raw gray8 使用以下元数据：
 - `exclusive`：与其他 exclusive 节点互斥。
 - `unsupported-in-parallel`：保存或执行前拒绝。
 
-Hough Circles 当前没有显式声明 `thread-safe`，因此不能仅靠把四个节点画入 Parallel 获得同类并行。
+Hough Circles 已显式声明 `thread-safe`，但只有放入 `Parallel Start` / `Parallel End` 的不同分支后才可能并发；声明本身不会让普通 DAG 或同类节点自动并行。
 
 ### 选定方案
 
@@ -211,7 +268,7 @@ Hough Circles 只有在以下审计完成后才能改为 `thread-safe`：
 ### 四个 Hough 的通用图
 
 ```text
-Grayscale(gray8)
+Image Ref(BGR/BGRA/gray8)
   -> Payload To Value
   -> Parallel Start(max_concurrency=N)
       |-- Value To Image Ref -> Hough ROI-1 -> Payload To Value --|
@@ -226,7 +283,7 @@ Grayscale(gray8)
 
 四个 ROI 可以由 Parallel Start 之前已经完成的通用 ROI 节点提供。普通 Hough 节点不保存分支 id，不知道其他 Hough 是否存在。
 
-四路 native/Python CPU 工作同时运行可能因 OpenCV 内部线程和内存带宽争用而变慢。第一次迁移不把 `max_concurrency` 固定为 4；gray8 和 ROI 灰度落地后必须实测 1、2、4，按 p50、p95、CPU、RSS 和结果一致性选择当前 Workflow 参数。初始验证优先使用 2。
+四路 native/Python CPU 工作同时运行可能因 OpenCV 内部线程和内存带宽争用而变慢。v4 已实测 1、2、4，并按 wall time、资源占用和结果一致性选择 `max_concurrency=1`。后续只有在 CPU、OpenCV 配置或输入尺寸变化时才重新比较，不引入自动调参。
 
 ## 五类模型 Batch 节点
 
@@ -374,7 +431,7 @@ Crop Export(image-refs.v1)
 - 32 张现有图片、4 个 ROI、128 个 case 与当前结果对比。
 - 对比 circle count、selected circle、圆心、半径、quality、rejection reason。
 - `convert_roi_to_grayscale=false` 时彩色输入明确失败，gray8 输入不发生颜色转换。
-- `convert_roi_to_grayscale=true` 时计时和内存证明确认只转换 Search ROI。
+- 默认 `convert_roi_to_grayscale=true` 时计时和内存证明确认只转换 Search ROI。
 - 5472×3648 Grayscale 输出为约 20 MB gray8，不再注册约 60 MB BGR24。
 - 1、2、4 路 Parallel 分别记录 p50、p95、CPU、Working Set-Private/USS 和结果一致性。
 
