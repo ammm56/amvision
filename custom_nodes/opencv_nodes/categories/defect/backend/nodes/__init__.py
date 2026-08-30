@@ -34,6 +34,9 @@ from custom_nodes.opencv_nodes.categories.defect.backend.nodes.watershed import 
     NODE_TYPE_ID as WATERSHED_NODE_TYPE_ID,
     handle_node as watershed_handler,
 )
+from custom_nodes.opencv_nodes.categories.defect.backend.nodes.industrial_inspection import (
+    INDUSTRIAL_INSPECTION_NODE_HANDLERS,
+)
 from custom_nodes.opencv_nodes.categories.defect.backend.nodes.clear_border import (
     NODE_TYPE_ID as CLEAR_BORDER_NODE_TYPE_ID,
     handle_node as clear_border_handler,
@@ -74,6 +77,9 @@ from custom_nodes.opencv_nodes.categories.defect.backend.nodes.watershed_markers
     NODE_TYPE_ID as WATERSHED_MARKERS_NODE_TYPE_ID,
     handle_node as watershed_markers_handler,
 )
+from custom_nodes.opencv_nodes.categories.defect.backend.nodes.variation_model import (
+    VARIATION_MODEL_NODE_HANDLERS,
+)
 
 
 NODE_HANDLERS = (
@@ -95,6 +101,8 @@ NODE_HANDLERS = (
     (REGION_INTERSECTION_NODE_TYPE_ID, region_intersection_handler),
     (REGION_DIFFERENCE_NODE_TYPE_ID, region_difference_handler),
     (MORPHOLOGY_HITMISS_NODE_TYPE_ID, morphology_hitmiss_handler),
+    *INDUSTRIAL_INSPECTION_NODE_HANDLERS,
+    *VARIATION_MODEL_NODE_HANDLERS,
 )
 
 

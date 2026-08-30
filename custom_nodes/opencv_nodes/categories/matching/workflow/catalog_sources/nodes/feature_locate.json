@@ -1,0 +1,31 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.feature-locate",
+  "display_name": "Feature Locate",
+  "category": "opencv.matching.feature",
+  "description": "完成特征提取、ratio 匹配、RANSAC 几何验证并输出统一 localization 和 transform。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {"name": "image", "display_name": "Image", "payload_type_id": "image-ref.v1"},
+    {"name": "template_image", "display_name": "Template Image", "payload_type_id": "image-ref.v1"}
+  ],
+  "output_ports": [
+    {"name": "localizations", "display_name": "Localizations", "payload_type_id": "localizations.v1"},
+    {"name": "transform", "display_name": "Transform", "payload_type_id": "planar-transform.v1"}
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "detector": {"type": "string", "enum": ["orb", "akaze", "sift"], "default": "orb"},
+      "max_features": {"type": "integer", "minimum": 16, "maximum": 20000, "default": 1500},
+      "ratio_threshold": {"type": "number", "minimum": 0.01, "maximum": 1.0, "default": 0.75},
+      "minimum_matches": {"type": "integer", "minimum": 4, "maximum": 10000, "default": 8},
+      "ransac_reprojection_threshold": {"type": "number", "minimum": 0.01, "default": 3.0}
+    }
+  },
+  "capability_tags": ["opencv.feature-locate", "vision.opencv", "vision.localization"],
+  "runtime_requirements": {"python_packages": ["opencv-python", "numpy"]},
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.1.3"
+}

@@ -19,6 +19,7 @@
 | 模型任务 | `detection_training_*`、`detection_evaluation_*`、`detection_conversion_*` | 训练、评估、转换的提交与结果 |
 | Deployment | `*_deployment_*` | detection、classification、segmentation、pose、OBB 的同步调用和健康检查 |
 | OpenCV | `opencv_process_save_image*` | 图片处理和保存位置 |
+| 工业二维视觉工具 | `industrial_vision_*` | 灰度/特征/形状定位、亚像素量测、双目标定诊断、胶路和轮廓偏差的可组合基础示例 |
 | 单帧工业规则 | `industrial_single_frame_*` | ROI、测量、匹配、缺陷、连续性和质量门禁 |
 | 本地目录 | `industrial_local_directory_*` | batch、poll、watch、cursor 和位置判定 |
 | PLC / Modbus | `plc_*` | 等待、状态字、TriggerSource 和结果回传 |

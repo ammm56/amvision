@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+
 from backend.nodes.core_nodes.support.logic import build_value_payload
 from backend.nodes.runtime_support import load_image_matrix_from_payload
 from backend.service.application.errors import InvalidRequestError
@@ -10,6 +13,7 @@ from backend.service.application.workflows.graph_executor import (
 )
 from custom_nodes.opencv_nodes.shared.backend.runtime.atomic_ops import (
     read_bool,
+    read_choice,
     read_float,
     read_int,
     read_points,
@@ -19,6 +23,7 @@ from custom_nodes.opencv_nodes.shared.backend.runtime.imports import (
     require_opencv_imports,
 )
 from custom_nodes.opencv_nodes.shared.backend.runtime.payloads import (
+    require_camera_calibration_payload,
     require_image_refs_payload,
 )
 
@@ -40,6 +45,12 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         field_name="square_size",
         default=1.0,
         minimum=1e-9,
+    )
+    object_point_unit = read_choice(
+        request.parameters.get("object_point_unit"),
+        field_name="object_point_unit",
+        choices={"millimeter", "meter", "unitless"},
+        default="millimeter",
     )
     min_views = read_int(
         request.parameters.get("min_views"),
@@ -202,9 +213,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             projected
         )
         per_view_errors.append(float(error))
-    return {
-        "calibration": build_value_payload(
-            {
+    legacy_calibration = {
                 "model": "pinhole",
                 "pattern_kind": pattern_kind,
                 "pattern_size": pattern_size,
@@ -232,8 +241,67 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 "fix_aspect_ratio": fix_aspect_ratio,
                 "input_kind": input_kind,
             }
-        )
+    source_fingerprint = _build_source_fingerprint(
+        object_points=object_points,
+        image_points=image_points,
+        image_size=image_size,
+        camera_model="pinhole",
+        object_point_unit=object_point_unit,
+    )
+    calibration_v1 = require_camera_calibration_payload(
+        {
+            "calibration_id": f"camera-{source_fingerprint[:24]}",
+            "camera_model": "pinhole",
+            "image_size": list(image_size),
+            "camera_matrix": camera_matrix.astype(float).tolist(),
+            "distortion_coefficients": distortion.reshape(-1).astype(float).tolist(),
+            "image_coordinate_space": "source-image-pixels",
+            "camera_coordinate_space": "camera-3d",
+            "object_point_unit": object_point_unit,
+            "observation_count": len(accepted_indices),
+            "rms_reprojection_error": float(rms),
+            "source_fingerprint": source_fingerprint,
+            "diagnostics": {
+                "pattern_kind": pattern_kind,
+                "pattern_size": pattern_size,
+                "pattern_spacing": pattern_spacing,
+                "per_view_errors": per_view_errors,
+                "rotation_vectors": legacy_calibration["rotation_vectors"],
+                "translation_vectors": legacy_calibration["translation_vectors"],
+                "accepted_indices": accepted_indices,
+                "rejected_indices": rejected_indices,
+                "input_kind": input_kind,
+            },
+        }
+    )
+    return {
+        "calibration": build_value_payload(legacy_calibration),
+        "camera_calibration": calibration_v1,
     }
+
+
+def _build_source_fingerprint(
+    *,
+    object_points: list[object],
+    image_points: list[object],
+    image_size: tuple[int, int],
+    camera_model: str,
+    object_point_unit: str,
+) -> str:
+    """按实际参与求解的观察数据生成稳定 fingerprint。"""
+
+    payload = {
+        "camera_model": camera_model,
+        "image_size": list(image_size),
+        "object_point_unit": object_point_unit,
+        "object_points": [item.astype(float).tolist() for item in object_points],
+        "image_points": [
+            item.reshape(-1, 2).astype(float).tolist() for item in image_points
+        ],
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
 
 
 def _read_image_size(raw_value: object, *, index: int) -> tuple[int, int]:

@@ -7,6 +7,19 @@
     "json_schema": {
       "type": "object",
       "properties": {
+        "coordinate_space": {
+          "type": "string",
+          "minLength": 1
+        },
+        "unit": {
+          "type": "string",
+          "enum": [
+            "pixel",
+            "millimeter",
+            "meter",
+            "unitless"
+          ]
+        },
         "source_image": {
           "type": "object",
           "properties": {
@@ -147,6 +160,21 @@
           "items": {
             "type": "object",
             "properties": {
+              "measurement_id": {
+                "type": "string"
+              },
+              "measurement_kind": {
+                "type": "string"
+              },
+              "coordinate_space": {
+                "type": "string"
+              },
+              "unit": {
+                "type": "string"
+              },
+              "values": {
+                "type": "object"
+              },
               "contour_index": {
                 "type": "integer"
               },
@@ -185,11 +213,24 @@
                 "type": "number"
               }
             },
-            "required": [
-              "contour_index",
-              "bbox_xyxy",
-              "area",
-              "perimeter"
+            "oneOf": [
+              {
+                "required": [
+                  "contour_index",
+                  "bbox_xyxy",
+                  "area",
+                  "perimeter"
+                ]
+              },
+              {
+                "required": [
+                  "measurement_id",
+                  "measurement_kind",
+                  "coordinate_space",
+                  "unit",
+                  "values"
+                ]
+              }
             ]
           }
         }
@@ -209,6 +250,14 @@
     "json_schema": {
       "type": "object",
       "properties": {
+        "coordinate_space": {
+          "type": "string",
+          "minLength": 1
+        },
+        "unit": {
+          "type": "string",
+          "enum": ["pixel", "millimeter", "meter", "unitless"]
+        },
         "source_image": {
           "type": "object",
           "properties": {
@@ -433,6 +482,14 @@
     "json_schema": {
       "type": "object",
       "properties": {
+        "coordinate_space": {
+          "type": "string",
+          "minLength": 1
+        },
+        "unit": {
+          "type": "string",
+          "enum": ["pixel", "millimeter", "meter", "unitless"]
+        },
         "source_image": {
           "type": "object",
           "properties": {
@@ -631,6 +688,14 @@
     "json_schema": {
       "type": "object",
       "properties": {
+        "coordinate_space": {
+          "type": "string",
+          "minLength": 1
+        },
+        "unit": {
+          "type": "string",
+          "enum": ["pixel", "millimeter", "meter", "unitless"]
+        },
         "source_image": {
           "type": "object",
           "properties": {

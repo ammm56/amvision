@@ -1,0 +1,24 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.calibration-observation-filter",
+  "display_name": "Calibration Observation Filter",
+  "category": "opencv.calibration.camera",
+  "description": "按点数、覆盖率、中心分布和可选重投影误差筛选标定观察。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [{"name": "observations", "display_name": "Observations", "payload_type_id": "value.v1"}],
+  "output_ports": [
+    {"name": "observations", "display_name": "Filtered Observations", "payload_type_id": "value.v1"},
+    {"name": "diagnostics", "display_name": "Diagnostics", "payload_type_id": "value.v1"}
+  ],
+  "parameter_schema": {"type": "object", "properties": {
+    "minimum_points": {"type": "integer", "minimum": 4, "default": 12},
+    "minimum_coverage_ratio": {"type": "number", "minimum": 0.0, "maximum": 1.0, "default": 0.02},
+    "maximum_reprojection_error": {"type": "number", "minimum": 0.0, "default": 5.0},
+    "minimum_center_distance_ratio": {"type": "number", "minimum": 0.0, "maximum": 1.0, "default": 0.02}
+  }},
+  "capability_tags": ["opencv.calibration-observation-filter", "vision.opencv", "calibration.diagnostics"],
+  "runtime_requirements": {"python_packages": ["opencv-python", "numpy"]},
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.1.3"
+}

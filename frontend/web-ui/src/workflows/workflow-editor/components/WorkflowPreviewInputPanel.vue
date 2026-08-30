@@ -20,7 +20,7 @@
           </StatusBadge>
         </div>
       </div>
-      <template v-if="states[binding.binding_id] && getPayloadTypeId(binding) === 'value.v1' && usesJsonPreviewEditor(binding)">
+      <template v-if="states[binding.binding_id] && (usesJsonPreviewEditor(binding) || usesStructuredJsonPreviewEditor(getPayloadTypeId(binding)))">
         <label class="workflow-graph-preview-field">
           <span>{{ t('workflowEditor.editor.jsonValue') }}</span>
           <textarea
@@ -138,7 +138,7 @@ import FilePicker from '@/shared/ui/components/FilePicker.vue'
 import SelectField from '@/shared/ui/components/Select.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import type { FlowApplicationBinding } from '../types'
-import { usesJsonPreviewEditor, type PreviewInputState, type PreviewSelectOption, type PreviewSelectValue } from '../preview/useWorkflowPreviewInputs'
+import { usesJsonPreviewEditor, usesStructuredJsonPreviewEditor, type PreviewInputState, type PreviewSelectOption, type PreviewSelectValue } from '../preview/useWorkflowPreviewInputs'
 
 const props = defineProps<{
   bindings: FlowApplicationBinding[]

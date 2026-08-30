@@ -17,32 +17,16 @@ from backend.nodes.debug_image_panel import (
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes.opencv_nodes.shared.backend.runtime.geometry import compute_contour_metrics_from_points
-from custom_nodes.opencv_nodes.shared.backend.runtime.payloads import require_contours_payload
+from custom_nodes.opencv_nodes.shared.backend.runtime.payloads import (
+    build_ellipses_payload,
+    require_contours_payload,
+)
 from custom_nodes.opencv_nodes.shared.backend.runtime.imports import require_opencv_imports
 from custom_nodes.opencv_nodes.shared.backend.runtime.performance import read_find_result_limit
 from custom_nodes.opencv_nodes.shared.backend.runtime.validators import require_positive_int
 
 
 NODE_TYPE_ID = "custom.opencv.fit-ellipse"
-
-
-def _build_ellipses_payload(
-    *,
-    items: list[dict[str, object]],
-    source_image: object | None,
-    source_object_key: str | None,
-) -> dict[str, object]:
-    """构建 ellipses.v1 payload。"""
-
-    payload: dict[str, object] = {
-        "items": [dict(item) for item in items],
-        "count": len(items),
-    }
-    if isinstance(source_image, dict):
-        payload["source_image"] = dict(source_image)
-    if isinstance(source_object_key, str) and source_object_key:
-        payload["source_object_key"] = source_object_key
-    return payload
 
 
 def _read_optional_limit(raw_value: object) -> int | None:
@@ -208,8 +192,12 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         else None
     )
     outputs: dict[str, object] = {
-        "ellipses": _build_ellipses_payload(
+        "ellipses": build_ellipses_payload(
             items=ellipse_items,
+            coordinate_space=str(
+                contours_payload.get("coordinate_space", "source-image-pixels")
+            ),
+            unit=str(contours_payload.get("unit", "pixel")),
             source_image=source_image,
             source_object_key=source_object_key,
         ),

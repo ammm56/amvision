@@ -70,6 +70,12 @@ def test_core_payload_contracts_include_image_base64_and_local_buffer_image_refs
     assert image_base64_contract.transport_kind == "inline-json"
     assert image_base64_contract.json_schema["required"] == ["image_base64"]
 
+    detections_contract = payload_contracts["detections.v1"]
+    assert detections_contract.json_schema["properties"]["count"] == {
+        "type": "integer",
+        "minimum": 0,
+    }
+
     image_refs_contract = payload_contracts["image-refs.v1"]
     item_schema = image_refs_contract.json_schema["properties"]["items"]["items"]
     assert item_schema["required"] == ["transport_kind", "media_type"]

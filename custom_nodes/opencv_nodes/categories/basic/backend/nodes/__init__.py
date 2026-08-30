@@ -154,6 +154,13 @@ from custom_nodes.opencv_nodes.categories.basic.backend.nodes.image_arithmetic i
     NODE_TYPE_ID as IMAGE_ARITHMETIC_NODE_TYPE_ID,
     handle_node as image_arithmetic_handler,
 )
+from custom_nodes.opencv_nodes.categories.basic.backend.nodes.image_quality_metrics import (
+    NODE_TYPE_ID as IMAGE_QUALITY_METRICS_NODE_TYPE_ID,
+    handle_node as image_quality_metrics_handler,
+)
+from custom_nodes.opencv_nodes.categories.basic.backend.nodes.industrial_image import (
+    INDUSTRIAL_IMAGE_NODE_HANDLERS,
+)
 from custom_nodes.opencv_nodes.categories.basic.backend.nodes.mask_logic import (
     NODE_TYPE_ID as MASK_LOGIC_NODE_TYPE_ID,
     handle_node as mask_logic_handler,
@@ -210,6 +217,8 @@ NODE_HANDLERS = (
     (ADAPTIVE_THRESHOLD_NODE_TYPE_ID, adaptive_threshold_handler),
     (OTSU_THRESHOLD_NODE_TYPE_ID, otsu_threshold_handler),
     (SOBEL_NODE_TYPE_ID, sobel_handler),
+    *INDUSTRIAL_IMAGE_NODE_HANDLERS,
+    (IMAGE_QUALITY_METRICS_NODE_TYPE_ID, image_quality_metrics_handler),
 )
 
 

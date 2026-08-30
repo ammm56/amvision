@@ -1,0 +1,27 @@
+{
+  "format_id": "amvision.workflow-graph-template.v1",
+  "template_id": "industrial-vision-bead-inspect-template",
+  "template_version": "1.0.0",
+  "display_name": "Industrial Vision Bead Inspect",
+  "description": "沿参考路径检查胶路宽度、缺失、溢出和偏移，并绘制异常区域。",
+  "nodes": [
+    {"node_id": "image_input", "node_type_id": "core.io.template-input.image", "parameters": {}},
+    {"node_id": "inspect", "node_type_id": "custom.opencv.bead-inspect", "parameters": {"threshold": 128, "foreground_polarity": "bright", "expected_width": 10, "width_tolerance": 3, "center_tolerance": 3, "sample_spacing": 2}},
+    {"node_id": "draw", "node_type_id": "custom.opencv.draw-inspection-errors", "parameters": {"draw_labels": true}}
+  ],
+  "edges": [
+    {"edge_id": "edge-image-inspect", "source_node_id": "image_input", "source_port": "image", "target_node_id": "inspect", "target_port": "image"},
+    {"edge_id": "edge-image-draw", "source_node_id": "image_input", "source_port": "image", "target_node_id": "draw", "target_port": "image"},
+    {"edge_id": "edge-errors-draw", "source_node_id": "inspect", "source_port": "error_regions", "target_node_id": "draw", "target_port": "error_regions"}
+  ],
+  "template_inputs": [
+    {"input_id": "image", "display_name": "Bead Image", "payload_type_id": "image-ref.v1", "target_node_id": "image_input", "target_port": "payload"},
+    {"input_id": "reference_path", "display_name": "Reference Path", "payload_type_id": "points.v1", "target_node_id": "inspect", "target_port": "reference_path"}
+  ],
+  "template_outputs": [
+    {"output_id": "error_regions", "display_name": "Error Regions", "payload_type_id": "regions.v1", "source_node_id": "inspect", "source_port": "error_regions"},
+    {"output_id": "measurements", "display_name": "Bead Measurements", "payload_type_id": "measurements.v1", "source_node_id": "inspect", "source_port": "measurements"},
+    {"output_id": "rendered_image", "display_name": "Rendered Image", "payload_type_id": "image-ref.v1", "source_node_id": "draw", "source_port": "image"}
+  ],
+  "metadata": {"example_kind": "industrial-vision-bead-inspect", "node_groups": {"input": ["image_input"], "inspection": ["inspect"], "render": ["draw"]}}
+}

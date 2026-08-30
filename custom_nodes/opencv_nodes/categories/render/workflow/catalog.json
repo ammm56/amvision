@@ -9,6 +9,19 @@
       "json_schema": {
         "type": "object",
         "properties": {
+          "coordinate_space": {
+            "type": "string",
+            "minLength": 1
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "pixel",
+              "millimeter",
+              "meter",
+              "unitless"
+            ]
+          },
           "source_image": {
             "type": "object",
             "properties": {
@@ -149,6 +162,21 @@
             "items": {
               "type": "object",
               "properties": {
+                "measurement_id": {
+                  "type": "string"
+                },
+                "measurement_kind": {
+                  "type": "string"
+                },
+                "coordinate_space": {
+                  "type": "string"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "values": {
+                  "type": "object"
+                },
                 "contour_index": {
                   "type": "integer"
                 },
@@ -187,11 +215,24 @@
                   "type": "number"
                 }
               },
-              "required": [
-                "contour_index",
-                "bbox_xyxy",
-                "area",
-                "perimeter"
+              "oneOf": [
+                {
+                  "required": [
+                    "contour_index",
+                    "bbox_xyxy",
+                    "area",
+                    "perimeter"
+                  ]
+                },
+                {
+                  "required": [
+                    "measurement_id",
+                    "measurement_kind",
+                    "coordinate_space",
+                    "unit",
+                    "values"
+                  ]
+                }
               ]
             }
           }
@@ -211,6 +252,19 @@
       "json_schema": {
         "type": "object",
         "properties": {
+          "coordinate_space": {
+            "type": "string",
+            "minLength": 1
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "pixel",
+              "millimeter",
+              "meter",
+              "unitless"
+            ]
+          },
           "source_image": {
             "type": "object",
             "properties": {
@@ -435,6 +489,19 @@
       "json_schema": {
         "type": "object",
         "properties": {
+          "coordinate_space": {
+            "type": "string",
+            "minLength": 1
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "pixel",
+              "millimeter",
+              "meter",
+              "unitless"
+            ]
+          },
           "source_image": {
             "type": "object",
             "properties": {
@@ -633,6 +700,19 @@
       "json_schema": {
         "type": "object",
         "properties": {
+          "coordinate_space": {
+            "type": "string",
+            "minLength": 1
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "pixel",
+              "millimeter",
+              "meter",
+              "unitless"
+            ]
+          },
           "source_image": {
             "type": "object",
             "properties": {
@@ -2294,6 +2374,82 @@
   "node_definitions": [
     {
       "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.draw-calibration-reprojection",
+      "display_name": "Draw Calibration Reprojection",
+      "category": "opencv.output.render",
+      "description": "绘制标定观察点、重投影点和残差线。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Calibration Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "diagnostics",
+          "display_name": "Calibration Diagnostics",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "observation_index": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1
+          },
+          "line_thickness": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 32,
+            "default": 2
+          },
+          "save_location": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.draw-calibration-reprojection",
+        "vision.render",
+        "calibration.diagnostics"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.draw-circles",
       "display_name": "Draw Circles",
       "category": "opencv.output.render",
@@ -2635,6 +2791,156 @@
     },
     {
       "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.draw-ellipses",
+      "display_name": "Draw Ellipses",
+      "category": "opencv.output.render",
+      "description": "绘制 ellipses.v1 的轮廓、中心和主次轴。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "ellipses",
+          "display_name": "Ellipses",
+          "payload_type_id": "ellipses.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "line_thickness": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 32,
+            "default": 2
+          },
+          "draw_axes": {
+            "type": "boolean",
+            "default": true
+          },
+          "save_location": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.draw-ellipses",
+        "vision.render",
+        "geometry.ellipse"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.draw-inspection-errors",
+      "display_name": "Draw Inspection Errors",
+      "category": "opencv.output.render",
+      "description": "按 error_kind 使用稳定颜色绘制通用检查异常区域。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "error_regions",
+          "display_name": "Error Regions",
+          "payload_type_id": "regions.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "line_thickness": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 32,
+            "default": 2
+          },
+          "draw_labels": {
+            "type": "boolean",
+            "default": true
+          },
+          "save_location": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.draw-inspection-errors",
+        "vision.render",
+        "vision.inspection"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.draw-lines",
       "display_name": "Draw Lines",
       "category": "opencv.output.render",
@@ -2718,6 +3024,86 @@
         "opencv.draw",
         "vision.render",
         "vision.geometry"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.draw-localizations",
+      "display_name": "Draw Localizations",
+      "category": "opencv.output.render",
+      "description": "绘制统一定位结果的区域、中心、角度和 score。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "localizations",
+          "display_name": "Localizations",
+          "payload_type_id": "localizations.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "line_thickness": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 32,
+            "default": 2
+          },
+          "axis_length": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 30
+          },
+          "draw_labels": {
+            "type": "boolean",
+            "default": true
+          },
+          "save_location": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.draw-localizations",
+        "vision.render",
+        "vision.localization"
       ],
       "runtime_requirements": {
         "python_packages": [

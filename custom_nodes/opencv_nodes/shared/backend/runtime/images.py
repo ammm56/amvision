@@ -16,6 +16,7 @@ from backend.nodes.runtime_support import (
     load_image_matrix as load_runtime_image_matrix,
     register_image_matrix,
     register_image_bytes,
+    register_typed_image_matrix,
 )
 from backend.service.application.errors import (
     InvalidRequestError,
@@ -210,6 +211,16 @@ def build_output_image_matrix_payload(
         height=int(image_matrix.shape[0]),
         media_type=media_type,
     )
+
+
+def build_typed_output_image_matrix_payload(
+    request: object,
+    *,
+    image_matrix: Any,
+) -> dict[str, object]:
+    """注册保留 dtype 的执行期图片，不把 typed matrix 隐式降为 uint8。"""
+
+    return register_typed_image_matrix(request, image_matrix=image_matrix)
 
 
 def encode_png_image_bytes(

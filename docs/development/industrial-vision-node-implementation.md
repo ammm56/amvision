@@ -2,7 +2,7 @@
 
 ## 状态与目的
 
-本文记录 [ADR-0011](../decisions/ADR-0011-industrial-vision-node-coverage.md) 已接受的节点补齐计划。阶段 0 已完成，业务节点尚未开始进入 Catalog。当前运行能力仍以 `GET /api/v1/workflows/node-catalog`、Core NodeDefinition 和 `custom_nodes/opencv_nodes/workflow/catalog.json` 为准；本文中的“新增”不得被解释为已进入 Catalog。
+本文记录 [ADR-0011](../decisions/ADR-0011-industrial-vision-node-coverage.md) 已接受并完成的节点补齐范围。十个 Core Node 和四十八个 OpenCV Node 已进入动态 Catalog；OpenCV Catalog 从 133 个增加到 181 个。当前运行能力以 `GET /api/v1/workflows/node-catalog`、Core NodeDefinition 和 `custom_nodes/opencv_nodes/workflow/catalog.json` 为准。
 
 目标是补齐可复用的二维工业视觉基础节点与高频组合工具，减少常用流程的节点数量，同时不引入产品专用节点、Python Script 节点或新的视觉 Node Pack。
 
@@ -11,8 +11,12 @@
 | 阶段 | 状态 | 已完成证据 |
 | --- | --- | --- |
 | 阶段 0：现状与契约 | 已完成 | 审计 133 个现有 OpenCV 节点；48 个规划 OpenCV node type 与现有 Catalog 无冲突；冻结四类 payload fixture、运行时校验和明确的 planar transform 方向。 |
-| 阶段 1：Core 通用能力 | 进行中 | 按本实施基线逐项实现。 |
-| 阶段 2–6 | 未开始 | 前一阶段完成独立门禁后依次进入。 |
+| 阶段 1：Core 通用能力 | 已完成 | 新增 10 个 Core Node；Conditional/Switch 只运行选中分支并支持结构化嵌套；数值、单位、格式化、Delay 和文本保存完成边界测试。 |
+| 阶段 2：二维 payload、几何与图片操作 | 已完成 | 新增 18 个几何/变换/关系 Node 和 6 个图片 Node；typed image 只扩展 Run 内 registry，不改变 LocalBuffer BGR24/GRAY8 协议；Catalog、payload schema、矩阵算法和真实特征拼接门禁通过。 |
+| 阶段 3：质量、量测与定位 | 已完成 | 新增 1 个质量、6 个量测和 2 个 Locate 工具；模糊/噪声单调性、亚像素边缘、圆椭圆矩形、特征与形状定位合成门禁通过。 |
+| 阶段 4：标定链路 | 已完成 | Camera Calibrate 兼容旧输出并新增 canonical payload；观察筛选/诊断、固定内参双目标定、Rectify、四张 ObjectStore map 和运行时 remap 闭环。 |
+| 阶段 5：通用检查与绘制 | 已完成 | Blob、Bead、Contour Deviation、Variation Model 和四个绘制节点完成；缺失/溢出/偏移、外凸/缺口、异常模型和渲染门禁通过。 |
+| 阶段 6：Workflow App 示例与完整门禁 | 已完成 | 七组 Template/Application 示例通过当前 Catalog 与绑定校验；前端 Preview 支持 points、contours、calibration 等结构化 payload 直接 JSON 编辑。 |
 
 ## 不可变边界
 
@@ -106,6 +110,16 @@ Pixel-to-World 和 World-to-Pixel 依赖相机/平面标定，归入 `opencv.nod
 
 现有 Parallel、For Each、Loop Control 和变量节点继续复用。“自动删除”不形成新节点；明确的变量删除使用现有 `core.logic.variable.delete`，文件生命周期由对应存储节点和 Workflow 资源规则管理。
 
+### 阶段 1 已实现契约
+
+- `core.logic.conditional-start/end` 的 `if_true`、`if_false` 必须各自形成一条到 End `result` 的完整路径；运行时只构造和执行命中的分支子图。
+- `core.logic.switch-start/end` 接受 1–8 个互不重复的 JSON scalar `case_values`，按 `case_1` 至 `case_8` 与 `default` 显式连线；boolean 与 number 不混同，未命中时只执行 `default`。
+- Start/End 通过所有显式分支共同到达的最近同类型 End 配对，允许结构化嵌套；交叉连线、共享内部节点、越界输出和缺失分支在任何分支 handler 启动前失败。
+- 未选分支不调用 handler、不产生节点记录、不执行文件或外部调用副作用。选择分支继续消费同一个 Workflow deadline、取消事件、运行时上下文和资源清理作用域。
+- `core.logic.delay` 复用 Workflow 可中断等待，不使用裸 `sleep`；`core.logic.format-string` 只接受简单命名占位符，不执行属性访问、表达式或转换标记。
+- `core.output.text-save-local` 沿用 ObjectStore 相对位置与本机绝对路径双语义；追加操作受跨线程/跨进程路径锁保护，并按节点 invocation journal 避免重复追加。
+- Core 动态 Catalog 当前为 205 个 NodeDefinition；普通参数继续由前端动态 schema 表单渲染，本阶段没有增加节点专用页面。
+
 ## `opencv.nodes` 补齐
 
 ### 图片基础与常用组合
@@ -169,7 +183,7 @@ Pixel-to-World 和 World-to-Pixel 依赖相机/平面标定，归入 `opencv.nod
 
 新增 `localizations.v1`。单项至少包含 `method`、`center`、`angle_degrees`、`scale`、`score`、`coordinate_space`、`transform`、可选 `region/roi` 和 `diagnostics`。
 
-现有 Template Match、Multi-scale Template Match、Rotation-scale Template Match、Phase Correlation、ECC 和 Homography 节点补充或桥接为该统一输出。新增两个高频组合工具：
+新增两个直接输出该统一结果的高频组合工具：
 
 | 目标 node type | category | 说明 |
 | --- | --- | --- |
@@ -177,6 +191,8 @@ Pixel-to-World 和 World-to-Pixel 依赖相机/平面标定，归入 `opencv.nod
 | `custom.opencv.shape-locate` | `opencv.matching.template` | 轮廓/边缘形状建模、搜索、角度/尺度范围和 localization 输出。 |
 
 不新增 Gray Match、Mark Extract 或 Mark Locate 同义节点。灰度定位使用现有 Template Match，Mark 只是 Workflow App 对 Template/Feature/Shape Locate 的场景命名。
+
+统一输出按语义边界实施，不把不同结果强塞进同一 payload：Template Match 和多尺度模板的一对多候选继续输出 `regions.v1`；Phase Correlation、ECC 与 Homography 继续输出变换。Feature Locate 与 Shape Locate 同时具备中心、角度、尺度、score、目标区域和变换，因此输出 `localizations.v1`。现有公开输出没有被删除或改写。
 
 ### 标定完整链路
 
@@ -218,11 +234,30 @@ Bead 与 Contour Deviation 是跨产品通用工具；“胶路检测”“毛�
 
 ## 缓存、性能和执行边界
 
-- shape model、template feature、rectification map 和 variation model 按内容 fingerprint 缓存在常驻 Workflow worker 内。
-- 缓存是可丢失加速，不是事实源；事实源仍是 Workflow Version 参数和 ObjectStore 对象。
+- rectification map 和 variation model 使用来源 fingerprint 与 ObjectStore key 作为事实源；运行时按引用读取，并复用操作系统文件页缓存。
+- Shape Locate 和 Feature Locate 当前不增加独立模型缓存层。只有基准证明重复建模成为瓶颈后，才在常驻 worker 内增加按内容 fingerprint、有容量上限的可丢失缓存，避免提前引入失效和内存治理复杂度。
+- Variation Model 构建使用单遍 Welford 统计，只保留均值、M2 和当前样本，不按样本数保留多份整图矩阵，也不写磁盘中间文件。
+- Image Type Convert 的 identity 路径复用同一 Run 内连续矩阵；Image Composite 的普通 alpha 路径使用 OpenCV 同 dtype 运算，mask 路径使用 `float32` 工作矩阵，避免 `float64` 多份整图副本。
+
+### 本机多分辨率测量
+
+2026-08-30 在 Windows 11、Python 3.12.13 上执行
+`python tests/integration/industrial_vision_image_benchmark.py --warmup 2 --iterations 10`。
+测量范围为同一 Run 内的 identity type-convert 与 1 像素 translate 代表链路；输入注册不计入节点耗时。
+所有输出均为 `memory` transport，未产生 Base64，identity 输出与来源矩阵为同一对象。
+
+| 图片 | BGR24 大小 | P50 | P95 | 测量后 Working Set 增量 |
+| --- | ---: | ---: | ---: | ---: |
+| 640×480 | 0.88 MiB | 1.777 ms | 2.081 ms | 0.31 MiB |
+| 1024×1024 | 3.00 MiB | 5.363 ms | 6.137 ms | 0.81 MiB |
+| 1920×1080 | 5.93 MiB | 10.377 ms | 11.593 ms | 0.04 MiB |
+| 3840×2160 | 23.73 MiB | 37.806 ms | 41.969 ms | 0.16 MiB |
+| 5472×3648 | 57.11 MiB | 90.626 ms | 96.873 ms | 0.36 MiB |
+
+该结果用于证明当前实现没有 Base64、identity 整图复制或随迭代持续增长的 Working Set；机器相关毫秒值不作为 CI 绝对阈值。测量工具的默认报告写入 `.tmp/industrial-vision/image-benchmark.json`。
 - 图片处理保持 ImageRef/LocalBuffer 的本机路径，禁止新增 Base64、完整 ndarray JSON 或无必要的图片复制。
 - 可能阻塞的文件、模型构建或外部调用必须消费 Workflow deadline，并遵守 Node Pack timeout；普通纯 OpenCV 计算不引入每节点新进程。
-- 组合工具不得在一次执行中隐式重复建立可缓存模型。
+- 组合工具不得在一次执行中重复建立相同中间结果。
 - 大 map、model 和 heatmap 原子写入 ObjectStore，成功后才发布 key。
 
 ## 前端边界
@@ -255,13 +290,13 @@ Bead 与 Contour Deviation 是跨产品通用工具；“胶路检测”“毛�
 ### 阶段 3：质量、量测与定位
 
 - 实现 Image Quality Metrics、Line/Ellipse/Rectangle/Edge Pair/Gray Profile/Radial Search。
-- 统一现有定位节点输出并实现 Feature Locate、Shape Locate。
+- 明确候选区域、图像配准与 Locate 姿态的输出边界，并实现 Feature Locate、Shape Locate。
 - 完成亚像素、噪声、遮挡、角度/尺度、低纹理和退化几何测试。
 
 ### 阶段 4：标定链路
 
 - 实现 observation filter、diagnose、stereo calibrate/rectify、map 和 apply。
-- 验证单目重投影误差、双目极线误差、map fingerprint、ObjectStore 原子发布和缓存复用。
+- 验证单目重投影误差、双目极线误差、map fingerprint、ObjectStore 原子发布和运行时 mmap 读取。
 
 ### 阶段 5：通用检查与绘制
 

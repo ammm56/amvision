@@ -9,6 +9,19 @@
       "json_schema": {
         "type": "object",
         "properties": {
+          "coordinate_space": {
+            "type": "string",
+            "minLength": 1
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "pixel",
+              "millimeter",
+              "meter",
+              "unitless"
+            ]
+          },
           "source_image": {
             "type": "object",
             "properties": {
@@ -149,6 +162,21 @@
             "items": {
               "type": "object",
               "properties": {
+                "measurement_id": {
+                  "type": "string"
+                },
+                "measurement_kind": {
+                  "type": "string"
+                },
+                "coordinate_space": {
+                  "type": "string"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "values": {
+                  "type": "object"
+                },
                 "contour_index": {
                   "type": "integer"
                 },
@@ -187,11 +215,24 @@
                   "type": "number"
                 }
               },
-              "required": [
-                "contour_index",
-                "bbox_xyxy",
-                "area",
-                "perimeter"
+              "oneOf": [
+                {
+                  "required": [
+                    "contour_index",
+                    "bbox_xyxy",
+                    "area",
+                    "perimeter"
+                  ]
+                },
+                {
+                  "required": [
+                    "measurement_id",
+                    "measurement_kind",
+                    "coordinate_space",
+                    "unit",
+                    "values"
+                  ]
+                }
               ]
             }
           }
@@ -211,6 +252,19 @@
       "json_schema": {
         "type": "object",
         "properties": {
+          "coordinate_space": {
+            "type": "string",
+            "minLength": 1
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "pixel",
+              "millimeter",
+              "meter",
+              "unitless"
+            ]
+          },
           "source_image": {
             "type": "object",
             "properties": {
@@ -435,6 +489,19 @@
       "json_schema": {
         "type": "object",
         "properties": {
+          "coordinate_space": {
+            "type": "string",
+            "minLength": 1
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "pixel",
+              "millimeter",
+              "meter",
+              "unitless"
+            ]
+          },
           "source_image": {
             "type": "object",
             "properties": {
@@ -633,6 +700,19 @@
       "json_schema": {
         "type": "object",
         "properties": {
+          "coordinate_space": {
+            "type": "string",
+            "minLength": 1
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "pixel",
+              "millimeter",
+              "meter",
+              "unitless"
+            ]
+          },
           "source_image": {
             "type": "object",
             "properties": {
@@ -4304,6 +4384,350 @@
     },
     {
       "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.image-composite",
+      "display_name": "Image Composite",
+      "category": "opencv.image.transform",
+      "description": "按位置、可选 mask 和 alpha 把同 dtype、同通道 overlay 组合到 base 图片。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "base_image",
+          "display_name": "Base Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "overlay_image",
+          "display_name": "Overlay Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "mask",
+          "display_name": "Mask",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "offset_x": {
+            "type": "integer",
+            "default": 0
+          },
+          "offset_y": {
+            "type": "integer",
+            "default": 0
+          },
+          "alpha": {
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 1.0,
+            "default": 1.0
+          },
+          "require_overlap": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.image-composite",
+        "vision.opencv"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.image-concat",
+      "display_name": "Image Concat",
+      "category": "opencv.image.transform",
+      "description": "水平或垂直规则拼接图片集合，并明确对齐、间隔和填充值。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "images",
+          "display_name": "Images",
+          "payload_type_id": "image-refs.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "axis": {
+            "type": "string",
+            "enum": [
+              "horizontal",
+              "vertical"
+            ],
+            "default": "horizontal"
+          },
+          "alignment": {
+            "type": "string",
+            "enum": [
+              "start",
+              "center",
+              "end"
+            ],
+            "default": "center"
+          },
+          "gap": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 65535,
+            "default": 0
+          },
+          "fill_value": {
+            "oneOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 1,
+                "maxItems": 4
+              }
+            ],
+            "default": 0
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.image-concat",
+        "vision.opencv"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.image-create",
+      "display_name": "Image Create",
+      "category": "opencv.image.transform",
+      "description": "按宽、高、通道、dtype 和填充值创建一张执行期图片。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "width": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000000,
+            "default": 640
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000000,
+            "default": 480
+          },
+          "channels": {
+            "type": "integer",
+            "enum": [
+              1,
+              3,
+              4
+            ],
+            "default": 3
+          },
+          "dtype": {
+            "type": "string",
+            "enum": [
+              "uint8",
+              "uint16",
+              "float32"
+            ],
+            "default": "uint8"
+          },
+          "fill_value": {
+            "oneOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 1,
+                "maxItems": 4
+              }
+            ],
+            "default": 0
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.image-create",
+        "vision.opencv"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.image-quality-metrics",
+      "display_name": "Image Quality Metrics",
+      "category": "opencv.inspection.statistics",
+      "description": "一次输出亮度、对比度、清晰度、曝光裁剪、HSV 饱和度和稳健噪声估计，可选 ROI。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "roi",
+          "display_name": "ROI",
+          "payload_type_id": "roi.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "metrics",
+          "display_name": "Metrics",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "low_clip_threshold": {
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 255.0,
+            "default": 1.0
+          },
+          "high_clip_threshold": {
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 255.0,
+            "default": 254.0
+          },
+          "search_roi": {
+            "type": "object"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.image-quality",
+        "vision.opencv",
+        "inspection.statistics"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.image-refs-empty-check",
       "display_name": "Image Refs Empty Check",
       "category": "opencv.inspection.batch",
@@ -4897,6 +5321,266 @@
           }
         }
       }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.image-stitch",
+      "display_name": "Image Stitch",
+      "category": "opencv.matching.registration",
+      "description": "使用特征匹配、几何配准、warp 和 blend 拼接图片集合，并返回诊断信息。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "images",
+          "display_name": "Images",
+          "payload_type_id": "image-refs.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "diagnostics",
+          "display_name": "Diagnostics",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "panorama",
+              "scans"
+            ],
+            "default": "panorama"
+          },
+          "confidence_threshold": {
+            "type": "number",
+            "minimum": 0.0,
+            "default": 1.0
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.image-stitch",
+        "vision.opencv",
+        "vision.registration"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.image-translate",
+      "display_name": "Image Translate",
+      "category": "opencv.image.transform",
+      "description": "按 X/Y 像素偏移平移图片，输出尺寸保持不变。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "offset_x": {
+            "type": "number",
+            "default": 0.0
+          },
+          "offset_y": {
+            "type": "number",
+            "default": 0.0
+          },
+          "interpolation": {
+            "type": "string",
+            "enum": [
+              "nearest",
+              "linear",
+              "cubic",
+              "lanczos"
+            ],
+            "default": "linear"
+          },
+          "border_mode": {
+            "type": "string",
+            "enum": [
+              "constant",
+              "replicate",
+              "reflect",
+              "reflect-101",
+              "wrap"
+            ],
+            "default": "constant"
+          },
+          "border_value": {
+            "oneOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 1,
+                "maxItems": 4
+              }
+            ],
+            "default": 0
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.image-translate",
+        "vision.opencv"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.image-type-convert",
+      "display_name": "Image Type Convert",
+      "category": "opencv.image.color",
+      "description": "显式转换图片 dtype、HW/HWC 通道布局和数值范围；不隐式改变空间尺寸。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "target_dtype": {
+            "type": "string",
+            "enum": [
+              "uint8",
+              "uint16",
+              "float32"
+            ],
+            "default": "uint8"
+          },
+          "channel_layout": {
+            "type": "string",
+            "enum": [
+              "keep",
+              "gray",
+              "bgr",
+              "bgra"
+            ],
+            "default": "keep"
+          },
+          "range_mode": {
+            "type": "string",
+            "enum": [
+              "preserve",
+              "normalize",
+              "scale-offset"
+            ],
+            "default": "preserve"
+          },
+          "scale": {
+            "type": "number",
+            "default": 1.0
+          },
+          "offset": {
+            "type": "number",
+            "default": 0.0
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.image-type-convert",
+        "vision.opencv"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
     },
     {
       "format_id": "amvision.node-definition.v1",
@@ -6060,6 +6744,157 @@
     },
     {
       "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.calibration-diagnose",
+      "display_name": "Calibration Diagnose",
+      "category": "opencv.calibration.camera",
+      "description": "重新计算总体和逐观察重投影误差、异常观察与姿态诊断。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "camera_calibration",
+          "display_name": "Camera Calibration",
+          "payload_type_id": "camera-calibration.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "observations",
+          "display_name": "Observations",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "diagnostics",
+          "display_name": "Diagnostics",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "maximum_reprojection_error": {
+            "type": "number",
+            "minimum": 0.0,
+            "default": 2.0
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.calibration-diagnose",
+        "vision.opencv",
+        "calibration.diagnostics"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.calibration-observation-filter",
+      "display_name": "Calibration Observation Filter",
+      "category": "opencv.calibration.camera",
+      "description": "按点数、覆盖率、中心分布和可选重投影误差筛选标定观察。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "observations",
+          "display_name": "Observations",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "observations",
+          "display_name": "Filtered Observations",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "diagnostics",
+          "display_name": "Diagnostics",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "minimum_points": {
+            "type": "integer",
+            "minimum": 4,
+            "default": 12
+          },
+          "minimum_coverage_ratio": {
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 1.0,
+            "default": 0.02
+          },
+          "maximum_reprojection_error": {
+            "type": "number",
+            "minimum": 0.0,
+            "default": 5.0
+          },
+          "minimum_center_distance_ratio": {
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 1.0,
+            "default": 0.02
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.calibration-observation-filter",
+        "vision.opencv",
+        "calibration.diagnostics"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.camera-calibrate",
       "display_name": "Camera Calibrate",
       "category": "opencv.calibration.camera",
@@ -6097,6 +6932,15 @@
           "required": true,
           "multiple": false,
           "metadata": {}
+        },
+        {
+          "name": "camera_calibration",
+          "display_name": "Camera Calibration",
+          "payload_type_id": "camera-calibration.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
         }
       ],
       "parameter_schema": {
@@ -6116,6 +6960,15 @@
             "type": "number",
             "default": 1.0,
             "minimum": 1e-09
+          },
+          "object_point_unit": {
+            "type": "string",
+            "enum": [
+              "millimeter",
+              "meter",
+              "unitless"
+            ],
+            "default": "millimeter"
           },
           "min_views": {
             "type": "integer",
@@ -6533,6 +7386,94 @@
     },
     {
       "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.image-rectify-stereo",
+      "display_name": "Image Rectify Stereo",
+      "category": "opencv.image.transform",
+      "description": "读取预生成 ObjectStore map 校正左右图片，不在每帧重复计算 map。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "left_image",
+          "display_name": "Left Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "right_image",
+          "display_name": "Right Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "stereo_calibration",
+          "display_name": "Calibration With Maps",
+          "payload_type_id": "stereo-calibration.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "left_image",
+          "display_name": "Rectified Left",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "right_image",
+          "display_name": "Rectified Right",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "diagnostics",
+          "display_name": "Diagnostics",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {}
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.image-rectify-stereo",
+        "vision.opencv",
+        "calibration.stereo"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.project-points",
       "display_name": "Project Points",
       "category": "opencv.calibration.pose",
@@ -6590,6 +7531,81 @@
         "opencv.project-points",
         "vision.opencv",
         "vision.pose"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.rectification-map",
+      "display_name": "Rectification Map",
+      "category": "opencv.calibration.camera",
+      "description": "生成左右 CV_32FC1 校正 map，原子写入 ObjectStore 并返回可追溯 key。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "stereo_calibration",
+          "display_name": "Rectified Calibration",
+          "payload_type_id": "stereo-calibration.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "save_location",
+          "display_name": "Save Location",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "stereo_calibration",
+          "display_name": "Calibration With Maps",
+          "payload_type_id": "stereo-calibration.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "maps",
+          "display_name": "Map Metadata",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "save_location": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.rectification-map",
+        "vision.opencv",
+        "calibration.stereo"
       ],
       "runtime_requirements": {
         "python_packages": [
@@ -6662,6 +7678,141 @@
       "capability_tags": [
         "opencv.solve-pnp",
         "vision.opencv"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.stereo-calibrate",
+      "display_name": "Stereo Calibrate",
+      "category": "opencv.calibration.camera",
+      "description": "使用固定左右内参和配对观察计算双目外参、E、F 与极线误差。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "left_camera",
+          "display_name": "Left Camera",
+          "payload_type_id": "camera-calibration.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "right_camera",
+          "display_name": "Right Camera",
+          "payload_type_id": "camera-calibration.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "observations",
+          "display_name": "Paired Observations",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "stereo_calibration",
+          "display_name": "Stereo Calibration",
+          "payload_type_id": "stereo-calibration.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "minimum_views": {
+            "type": "integer",
+            "minimum": 2,
+            "default": 3
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.stereo-calibrate",
+        "vision.opencv",
+        "calibration.stereo"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.stereo-rectify",
+      "display_name": "Stereo Rectify",
+      "category": "opencv.calibration.camera",
+      "description": "计算双目校正旋转、投影矩阵、Q 和左右有效区域。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "stereo_calibration",
+          "display_name": "Stereo Calibration",
+          "payload_type_id": "stereo-calibration.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "stereo_calibration",
+          "display_name": "Rectified Calibration",
+          "payload_type_id": "stereo-calibration.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "alpha": {
+            "type": "number",
+            "minimum": -1.0,
+            "maximum": 1.0,
+            "default": -1.0
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.stereo-rectify",
+        "vision.opencv",
+        "calibration.stereo"
       ],
       "runtime_requirements": {
         "python_packages": [
@@ -6810,6 +7961,209 @@
         "opencv.absdiff-threshold",
         "vision.filter",
         "vision.diff"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.bead-inspect",
+      "display_name": "Bead Inspect",
+      "category": "opencv.inspection.difference",
+      "description": "沿参考路径检查胶路或焊道宽度、缺失、溢出和位置偏差。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "reference_path",
+          "display_name": "Reference Path",
+          "payload_type_id": "points.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "error_regions",
+          "display_name": "Error Regions",
+          "payload_type_id": "regions.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "measurements",
+          "display_name": "Measurements",
+          "payload_type_id": "measurements.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "threshold": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 255,
+            "default": 128
+          },
+          "foreground_polarity": {
+            "type": "string",
+            "enum": [
+              "bright",
+              "dark"
+            ],
+            "default": "bright"
+          },
+          "expected_width": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "default": 10
+          },
+          "width_tolerance": {
+            "type": "number",
+            "minimum": 0,
+            "default": 3
+          },
+          "center_tolerance": {
+            "type": "number",
+            "minimum": 0,
+            "default": 3
+          },
+          "search_half_width": {
+            "type": "number",
+            "minimum": 1
+          },
+          "sample_spacing": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "default": 2
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.bead-inspect",
+        "vision.inspection",
+        "inspection.difference"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.blob-analysis",
+      "display_name": "Blob Analysis",
+      "category": "opencv.inspection.statistics",
+      "description": "对二值前景执行连通域、形状和可选灰度统计。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "mask",
+          "display_name": "Binary Mask",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "image",
+          "display_name": "Gray Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "regions",
+          "display_name": "Blob Regions",
+          "payload_type_id": "regions.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "measurements",
+          "display_name": "Blob Measurements",
+          "payload_type_id": "measurements.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "threshold": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 255,
+            "default": 0
+          },
+          "connectivity": {
+            "type": "integer",
+            "enum": [
+              4,
+              8
+            ],
+            "default": 8
+          },
+          "minimum_area": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1
+          },
+          "maximum_area": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.blob-analysis",
+        "vision.analysis",
+        "inspection.statistics"
       ],
       "runtime_requirements": {
         "python_packages": [
@@ -6988,6 +8342,87 @@
         "vision.analysis",
         "vision.region",
         "vision.diff"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.contour-deviation-inspect",
+      "display_name": "Contour Deviation Inspect",
+      "category": "opencv.inspection.difference",
+      "description": "计算实测轮廓到参考轮廓的有符号偏差并标记外凸与缺口。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "reference_contours",
+          "display_name": "Reference Contour",
+          "payload_type_id": "contours.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "measured_contours",
+          "display_name": "Measured Contour",
+          "payload_type_id": "contours.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "error_regions",
+          "display_name": "Error Regions",
+          "payload_type_id": "regions.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "measurements",
+          "display_name": "Deviation Measurements",
+          "payload_type_id": "measurements.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "positive_tolerance": {
+            "type": "number",
+            "minimum": 0,
+            "default": 2
+          },
+          "negative_tolerance": {
+            "type": "number",
+            "minimum": 0,
+            "default": 2
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.contour-deviation",
+        "vision.inspection",
+        "inspection.difference"
       ],
       "runtime_requirements": {
         "python_packages": [
@@ -8121,6 +9556,195 @@
     },
     {
       "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.variation-inspect",
+      "display_name": "Variation Inspect",
+      "category": "opencv.inspection.difference",
+      "description": "使用正常样本变化模型输出异常热图、区域和统计。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "model",
+          "display_name": "Variation Model",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "heatmap",
+          "display_name": "Anomaly Heatmap",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "error_regions",
+          "display_name": "Error Regions",
+          "payload_type_id": "regions.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "statistics",
+          "display_name": "Statistics",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "z_score_threshold": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "default": 4
+          },
+          "minimum_area": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 4
+          },
+          "morphology_size": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 31,
+            "default": 3
+          },
+          "heatmap_max_z_score": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "default": 8
+          },
+          "save_location": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.variation-inspect",
+        "vision.inspection",
+        "inspection.difference"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.variation-model-build",
+      "display_name": "Variation Model Build",
+      "category": "opencv.inspection.difference",
+      "description": "从同尺寸正常样本建立逐像素均值与标准差变化模型。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "images",
+          "display_name": "Normal Images",
+          "payload_type_id": "image-refs.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "save_location",
+          "display_name": "ObjectStore Location",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "model",
+          "display_name": "Variation Model",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "statistics",
+          "display_name": "Model Statistics",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "save_location": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minimum_samples": {
+            "type": "integer",
+            "minimum": 2,
+            "default": 3
+          },
+          "standard_deviation_floor": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "default": 2
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.variation-model-build",
+        "vision.inspection",
+        "inspection.difference"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.watershed",
       "display_name": "Watershed",
       "category": "opencv.segmentation.image",
@@ -8491,6 +10115,416 @@
     },
     {
       "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.circle-circle-relation",
+      "display_name": "Circle Circle Relation",
+      "category": "opencv.measurement.geometry",
+      "description": "计算两个圆的中心距、间隙、相交/相切/包含/同心状态和交点。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "first_circles",
+          "display_name": "First Circles",
+          "payload_type_id": "circles.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "second_circles",
+          "display_name": "Second Circles",
+          "payload_type_id": "circles.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "measurements",
+          "display_name": "Measurements",
+          "payload_type_id": "measurements.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "first_index": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1
+          },
+          "second_index": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.measurement",
+        "vision.circles",
+        "geometry.relation"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.circle-create",
+      "display_name": "Circle Create",
+      "category": "opencv.geometry.shape",
+      "description": "从中心和正半径创建规范 circles.v1。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [],
+      "output_ports": [
+        {
+          "name": "circles",
+          "display_name": "Circles",
+          "payload_type_id": "circles.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "center_xy": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "radius": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "coordinate_space": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "pixel",
+              "millimeter",
+              "meter",
+              "unitless"
+            ],
+            "default": "pixel"
+          }
+        },
+        "required": [
+          "center_xy",
+          "radius",
+          "coordinate_space"
+        ]
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.geometry",
+        "vision.circles",
+        "geometry.create"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.circles-select",
+      "display_name": "Circles Select",
+      "category": "opencv.geometry.shape",
+      "description": "按一基位置和可选数值字段范围选择 circles.v1。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "circles",
+          "display_name": "Circles",
+          "payload_type_id": "circles.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "circles",
+          "display_name": "Circles",
+          "payload_type_id": "circles.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "indexes": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "filter_field": {
+            "type": "string"
+          },
+          "minimum": {
+            "type": "number"
+          },
+          "maximum": {
+            "type": "number"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.geometry",
+        "vision.circles",
+        "geometry.select"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.ellipse-create",
+      "display_name": "Ellipse Create",
+      "category": "opencv.geometry.shape",
+      "description": "从中心、长短轴和角度创建规范 ellipses.v1。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [],
+      "output_ports": [
+        {
+          "name": "ellipses",
+          "display_name": "Ellipses",
+          "payload_type_id": "ellipses.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "center_xy": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "major_axis": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "minor_axis": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "angle_deg": {
+            "type": "number",
+            "default": 0
+          },
+          "coordinate_space": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "pixel",
+              "millimeter",
+              "meter",
+              "unitless"
+            ],
+            "default": "pixel"
+          }
+        },
+        "required": [
+          "center_xy",
+          "major_axis",
+          "minor_axis",
+          "coordinate_space"
+        ]
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.geometry",
+        "vision.ellipses",
+        "geometry.create"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.ellipses-select",
+      "display_name": "Ellipses Select",
+      "category": "opencv.geometry.shape",
+      "description": "按一基位置和可选数值字段范围选择 ellipses.v1。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "ellipses",
+          "display_name": "Ellipses",
+          "payload_type_id": "ellipses.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "ellipses",
+          "display_name": "Ellipses",
+          "payload_type_id": "ellipses.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "indexes": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "filter_field": {
+            "type": "string"
+          },
+          "minimum": {
+            "type": "number"
+          },
+          "maximum": {
+            "type": "number"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.geometry",
+        "vision.ellipses",
+        "geometry.select"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.flip",
       "display_name": "Flip",
       "category": "opencv.image.transform",
@@ -8615,6 +10649,178 @@
         "opencv.get-rect-subpix",
         "vision.opencv",
         "vision.geometry"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.line-circle-relation",
+      "display_name": "Line Circle Relation",
+      "category": "opencv.measurement.geometry",
+      "description": "计算无限直线与圆的交点、相切状态和间隙。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "lines",
+          "display_name": "Lines",
+          "payload_type_id": "lines.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "circles",
+          "display_name": "Circles",
+          "payload_type_id": "circles.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "measurements",
+          "display_name": "Measurements",
+          "payload_type_id": "measurements.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "line_index": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1
+          },
+          "circle_index": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.measurement",
+        "vision.circles",
+        "geometry.relation"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.line-create",
+      "display_name": "Line Create",
+      "category": "opencv.geometry.shape",
+      "description": "从两个端点或恰好两个 points.v1 项创建一条规范线段。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "points",
+          "display_name": "Points",
+          "payload_type_id": "points.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "lines",
+          "display_name": "Lines",
+          "payload_type_id": "lines.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "start_xy": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "end_xy": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "coordinate_space": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "pixel",
+              "millimeter",
+              "meter",
+              "unitless"
+            ],
+            "default": "pixel"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.geometry",
+        "vision.lines",
+        "geometry.create"
       ],
       "runtime_requirements": {
         "python_packages": [
@@ -8775,6 +10981,165 @@
         "opencv.geometry",
         "vision.lines",
         "vision.point"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.line-line-relation",
+      "display_name": "Line Line Relation",
+      "category": "opencv.measurement.geometry",
+      "description": "计算两条无限直线的交点、最小夹角、平行或重合状态。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "first_lines",
+          "display_name": "First Lines",
+          "payload_type_id": "lines.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "second_lines",
+          "display_name": "Second Lines",
+          "payload_type_id": "lines.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "measurements",
+          "display_name": "Measurements",
+          "payload_type_id": "measurements.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "first_index": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1
+          },
+          "second_index": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.measurement",
+        "vision.lines",
+        "geometry.relation"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.lines-select",
+      "display_name": "Lines Select",
+      "category": "opencv.geometry.shape",
+      "description": "按一基位置和可选数值字段范围选择 lines.v1。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "lines",
+          "display_name": "Lines",
+          "payload_type_id": "lines.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "lines",
+          "display_name": "Lines",
+          "payload_type_id": "lines.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "indexes": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "filter_field": {
+            "type": "string"
+          },
+          "minimum": {
+            "type": "number"
+          },
+          "maximum": {
+            "type": "number"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.geometry",
+        "vision.lines",
+        "geometry.select"
       ],
       "runtime_requirements": {
         "python_packages": [
@@ -9036,6 +11401,86 @@
     },
     {
       "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.pixel-to-world",
+      "display_name": "Pixel To World",
+      "category": "opencv.calibration.pose",
+      "description": "使用明确的像素到世界平面 planar transform 转换 points.v1；不把相机内参误作平面标定。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "points",
+          "display_name": "Pixel Points",
+          "payload_type_id": "points.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "transform",
+          "display_name": "Plane Transform",
+          "payload_type_id": "planar-transform.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "points",
+          "display_name": "World Points",
+          "payload_type_id": "points.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "world_unit": {
+            "type": "string",
+            "enum": [
+              "millimeter",
+              "meter",
+              "unitless"
+            ],
+            "default": "millimeter"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.calibration",
+        "vision.points",
+        "coordinate.pixel-to-world"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.planar-transform-bridge",
       "display_name": "Planar Transform Bridge",
       "category": "opencv.image.transform",
@@ -9170,6 +11615,253 @@
         "vision.alignment",
         "vision.roi",
         "inspection.pose"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.point-circle-relation",
+      "display_name": "Point Circle Relation",
+      "category": "opencv.measurement.geometry",
+      "description": "计算点相对圆的内外状态、圆心距离、圆周距离和最近点。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "points",
+          "display_name": "Points",
+          "payload_type_id": "points.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "circles",
+          "display_name": "Circles",
+          "payload_type_id": "circles.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "measurements",
+          "display_name": "Measurements",
+          "payload_type_id": "measurements.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "point_index": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1
+          },
+          "circle_index": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.measurement",
+        "vision.circles",
+        "geometry.relation"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.point-create",
+      "display_name": "Point Create",
+      "category": "opencv.geometry.shape",
+      "description": "从显式二维坐标创建带 coordinate space 和 unit 的 points.v1。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "points",
+          "display_name": "Points",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "points",
+          "display_name": "Points",
+          "payload_type_id": "points.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "points": {
+            "type": "array",
+            "default": [
+              [
+                0,
+                0
+              ]
+            ]
+          },
+          "coordinate_space": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "pixel",
+              "millimeter",
+              "meter",
+              "unitless"
+            ],
+            "default": "pixel"
+          }
+        },
+        "required": [
+          "points",
+          "coordinate_space"
+        ]
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.geometry",
+        "vision.points",
+        "geometry.create"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.points-select",
+      "display_name": "Points Select",
+      "category": "opencv.geometry.shape",
+      "description": "按一基位置和可选数值字段范围选择 points.v1。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "points",
+          "display_name": "Points",
+          "payload_type_id": "points.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "points",
+          "display_name": "Points",
+          "payload_type_id": "points.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "indexes": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "filter_field": {
+            "type": "string"
+          },
+          "minimum": {
+            "type": "number"
+          },
+          "maximum": {
+            "type": "number"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.geometry",
+        "vision.points",
+        "geometry.select"
       ],
       "runtime_requirements": {
         "python_packages": [
@@ -9779,6 +12471,303 @@
     },
     {
       "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.transform-2d-compose",
+      "display_name": "Transform 2D Compose",
+      "category": "opencv.image.transform",
+      "description": "按输入顺序组合至少两个坐标空间连续的二维变换。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "transforms",
+          "display_name": "Transforms",
+          "payload_type_id": "planar-transform.v1",
+          "description": "",
+          "required": true,
+          "multiple": true,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "transform",
+          "display_name": "Transform",
+          "payload_type_id": "planar-transform.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {}
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.transform",
+        "geometry.transform",
+        "transform.compose"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.transform-2d-create",
+      "display_name": "Transform 2D Create",
+      "category": "opencv.image.transform",
+      "description": "创建 rigid、similarity、affine 或 homography 的明确方向二维变换。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [],
+      "output_ports": [
+        {
+          "name": "transform",
+          "display_name": "Transform",
+          "payload_type_id": "planar-transform.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "transform_kind": {
+            "type": "string",
+            "enum": [
+              "rigid",
+              "similarity",
+              "affine",
+              "homography"
+            ],
+            "default": "rigid"
+          },
+          "source_coordinate_space": {
+            "type": "string"
+          },
+          "target_coordinate_space": {
+            "type": "string"
+          },
+          "translation_x": {
+            "type": "number",
+            "default": 0
+          },
+          "translation_y": {
+            "type": "number",
+            "default": 0
+          },
+          "angle_degrees": {
+            "type": "number",
+            "default": 0
+          },
+          "scale": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "default": 1
+          },
+          "matrix_2x3": {
+            "type": "array"
+          },
+          "matrix_3x3": {
+            "type": "array"
+          }
+        },
+        "required": [
+          "source_coordinate_space",
+          "target_coordinate_space"
+        ]
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.transform",
+        "geometry.transform",
+        "transform.create"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.transform-2d-invert",
+      "display_name": "Transform 2D Invert",
+      "category": "opencv.image.transform",
+      "description": "反演二维变换并交换 source/target coordinate space，奇异或病态矩阵快速失败。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "transform",
+          "display_name": "Transform",
+          "payload_type_id": "planar-transform.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "transform",
+          "display_name": "Transform",
+          "payload_type_id": "planar-transform.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {}
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.transform",
+        "geometry.transform",
+        "transform.invert"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.transform-points",
+      "display_name": "Transform Points",
+      "category": "opencv.image.transform",
+      "description": "按 planar-transform.v1 的明确方向变换 points.v1，并更新 coordinate space。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "points",
+          "display_name": "Points",
+          "payload_type_id": "points.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "transform",
+          "display_name": "Transform",
+          "payload_type_id": "planar-transform.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "points",
+          "display_name": "Points",
+          "payload_type_id": "points.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "target_unit": {
+            "type": "string",
+            "enum": [
+              "pixel",
+              "millimeter",
+              "meter",
+              "unitless"
+            ]
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.transform",
+        "vision.points",
+        "transform.apply"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.transpose",
       "display_name": "Transpose",
       "category": "opencv.image.transform",
@@ -10118,6 +13107,76 @@
     },
     {
       "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.world-to-pixel",
+      "display_name": "World To Pixel",
+      "category": "opencv.calibration.pose",
+      "description": "使用明确的世界平面到像素 planar transform 投影 points.v1。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "points",
+          "display_name": "World Points",
+          "payload_type_id": "points.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "transform",
+          "display_name": "Plane Transform",
+          "payload_type_id": "planar-transform.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "points",
+          "display_name": "Pixel Points",
+          "payload_type_id": "points.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {}
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.calibration",
+        "vision.points",
+        "coordinate.world-to-pixel"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.akaze-keypoints",
       "display_name": "AKAZE Keypoints",
       "category": "opencv.feature.detection",
@@ -10425,6 +13484,109 @@
         "opencv.fast-corners",
         "vision.opencv",
         "vision.features"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.feature-locate",
+      "display_name": "Feature Locate",
+      "category": "opencv.matching.feature",
+      "description": "完成特征提取、ratio 匹配、RANSAC 几何验证并输出统一 localization 和 transform。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "template_image",
+          "display_name": "Template Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "localizations",
+          "display_name": "Localizations",
+          "payload_type_id": "localizations.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "transform",
+          "display_name": "Transform",
+          "payload_type_id": "planar-transform.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "detector": {
+            "type": "string",
+            "enum": [
+              "orb",
+              "akaze",
+              "sift"
+            ],
+            "default": "orb"
+          },
+          "max_features": {
+            "type": "integer",
+            "minimum": 16,
+            "maximum": 20000,
+            "default": 1500
+          },
+          "ratio_threshold": {
+            "type": "number",
+            "minimum": 0.01,
+            "maximum": 1.0,
+            "default": 0.75
+          },
+          "minimum_matches": {
+            "type": "integer",
+            "minimum": 4,
+            "maximum": 10000,
+            "default": 8
+          },
+          "ransac_reprojection_threshold": {
+            "type": "number",
+            "minimum": 0.01,
+            "default": 3.0
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.feature-locate",
+        "vision.opencv",
+        "vision.localization"
       ],
       "runtime_requirements": {
         "python_packages": [
@@ -11554,6 +14716,123 @@
     },
     {
       "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.shape-locate",
+      "display_name": "Shape Locate",
+      "category": "opencv.matching.template",
+      "description": "在离散角度和尺度范围内搜索边缘形状模板，输出统一 localization 和相似变换。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "template_image",
+          "display_name": "Template Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "localizations",
+          "display_name": "Localizations",
+          "payload_type_id": "localizations.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "transform",
+          "display_name": "Transform",
+          "payload_type_id": "planar-transform.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "canny_low_threshold": {
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 255.0,
+            "default": 50.0
+          },
+          "canny_high_threshold": {
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 255.0,
+            "default": 150.0
+          },
+          "angle_min": {
+            "type": "number",
+            "default": 0.0
+          },
+          "angle_max": {
+            "type": "number",
+            "default": 0.0
+          },
+          "angle_step": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "default": 1.0
+          },
+          "scale_min": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "default": 1.0
+          },
+          "scale_max": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "default": 1.0
+          },
+          "scale_step": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "default": 0.1
+          },
+          "minimum_score": {
+            "type": "number",
+            "minimum": -1.0,
+            "maximum": 1.0,
+            "default": 0.5
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.shape-locate",
+        "vision.opencv",
+        "vision.localization"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.sift-keypoints",
       "display_name": "SIFT Keypoints",
       "category": "opencv.feature.detection",
@@ -12152,6 +15431,321 @@
     },
     {
       "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.edge-pair-measure",
+      "display_name": "Edge Pair Measure",
+      "category": "opencv.measurement.edge",
+      "description": "沿任意方向灰度剖面查找同极性、异极性或任意边缘对并输出间距。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "points",
+          "display_name": "Edge Points",
+          "payload_type_id": "points.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "measurements",
+          "display_name": "Measurements",
+          "payload_type_id": "measurements.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "required": [
+          "start_xy",
+          "end_xy"
+        ],
+        "properties": {
+          "start_xy": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "end_xy": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "sample_count": {
+            "type": "integer",
+            "minimum": 3,
+            "maximum": 65536
+          },
+          "band_width": {
+            "type": "number",
+            "minimum": 1.0,
+            "default": 3.0
+          },
+          "gradient_threshold": {
+            "type": "number",
+            "minimum": 0.0,
+            "default": 5.0
+          },
+          "pair_polarity": {
+            "type": "string",
+            "enum": [
+              "opposite",
+              "same",
+              "any"
+            ],
+            "default": "opposite"
+          },
+          "minimum_spacing": {
+            "type": "number",
+            "minimum": 0.0,
+            "default": 1.0
+          },
+          "maximum_spacing": {
+            "type": "number",
+            "minimum": 0.0
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.edge-pair",
+        "vision.opencv",
+        "measurement.edge"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.ellipse-measure",
+      "display_name": "Ellipse Measure",
+      "category": "opencv.measurement.geometry",
+      "description": "沿名义椭圆法向采样边缘并拟合椭圆，输出覆盖率和残差。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "ellipse",
+          "display_name": "Nominal Ellipse",
+          "payload_type_id": "ellipses.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "points",
+          "display_name": "Edge Points",
+          "payload_type_id": "points.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "ellipses",
+          "display_name": "Ellipses",
+          "payload_type_id": "ellipses.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "measurements",
+          "display_name": "Measurements",
+          "payload_type_id": "measurements.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "sample_count": {
+            "type": "integer",
+            "minimum": 5,
+            "maximum": 4096,
+            "default": 72
+          },
+          "search_length": {
+            "type": "number",
+            "minimum": 2.0,
+            "default": 20.0
+          },
+          "gradient_threshold": {
+            "type": "number",
+            "minimum": 0.0,
+            "default": 5.0
+          },
+          "edge_polarity": {
+            "type": "string",
+            "enum": [
+              "any",
+              "dark-to-bright",
+              "bright-to-dark"
+            ],
+            "default": "any"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.ellipse-measure",
+        "vision.opencv",
+        "measurement.geometry"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.gray-profile-measure",
+      "display_name": "Gray Profile Measure",
+      "category": "opencv.measurement.edge",
+      "description": "沿线或带状区域输出亚像素采样灰度剖面、梯度和峰谷位置。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "profile",
+          "display_name": "Profile",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "required": [
+          "start_xy",
+          "end_xy"
+        ],
+        "properties": {
+          "start_xy": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "end_xy": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "sample_count": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 65536
+          },
+          "band_width": {
+            "type": "number",
+            "minimum": 1.0,
+            "maximum": 4096.0,
+            "default": 1.0
+          },
+          "smooth_sigma": {
+            "type": "number",
+            "minimum": 0.0,
+            "default": 0.0
+          },
+          "peak_count": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 128,
+            "default": 5
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.gray-profile",
+        "vision.opencv",
+        "measurement.edge"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.line-angle",
       "display_name": "Line Angle",
       "category": "opencv.measurement.geometry",
@@ -12225,6 +15819,122 @@
         "opencv.measurement",
         "vision.geometry",
         "inspection.angle"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.line-measure",
+      "display_name": "Line Measure",
+      "category": "opencv.measurement.edge",
+      "description": "沿名义线布置法向卡尺，检测边缘点并拟合直线、残差和有效率。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "points",
+          "display_name": "Edge Points",
+          "payload_type_id": "points.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "lines",
+          "display_name": "Lines",
+          "payload_type_id": "lines.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "measurements",
+          "display_name": "Measurements",
+          "payload_type_id": "measurements.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "required": [
+          "start_xy",
+          "end_xy"
+        ],
+        "properties": {
+          "start_xy": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "end_xy": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "caliper_length": {
+            "type": "number",
+            "minimum": 2.0,
+            "default": 20.0
+          },
+          "caliper_count": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 4096,
+            "default": 20
+          },
+          "gradient_threshold": {
+            "type": "number",
+            "minimum": 0.0,
+            "default": 5.0
+          },
+          "edge_polarity": {
+            "type": "string",
+            "enum": [
+              "any",
+              "dark-to-bright",
+              "bright-to-dark"
+            ],
+            "default": "any"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.line-measure",
+        "vision.opencv",
+        "measurement.edge"
       ],
       "runtime_requirements": {
         "python_packages": [
@@ -12575,6 +16285,239 @@
     },
     {
       "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.radial-line-search",
+      "display_name": "Radial Line Search",
+      "category": "opencv.measurement.circle",
+      "description": "从中心沿多条径向搜索边缘，输出点集、覆盖率和可选圆或椭圆拟合。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "points",
+          "display_name": "Edge Points",
+          "payload_type_id": "points.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "circles",
+          "display_name": "Circles",
+          "payload_type_id": "circles.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "ellipses",
+          "display_name": "Ellipses",
+          "payload_type_id": "ellipses.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "measurements",
+          "display_name": "Measurements",
+          "payload_type_id": "measurements.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "required": [
+          "center_xy",
+          "outer_radius"
+        ],
+        "properties": {
+          "center_xy": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "inner_radius": {
+            "type": "number",
+            "minimum": 0.0,
+            "default": 0.0
+          },
+          "outer_radius": {
+            "type": "number",
+            "minimum": 0.0
+          },
+          "ray_count": {
+            "type": "integer",
+            "minimum": 5,
+            "maximum": 4096,
+            "default": 72
+          },
+          "gradient_threshold": {
+            "type": "number",
+            "minimum": 0.0,
+            "default": 5.0
+          },
+          "edge_polarity": {
+            "type": "string",
+            "enum": [
+              "any",
+              "dark-to-bright",
+              "bright-to-dark"
+            ],
+            "default": "any"
+          },
+          "fit_kind": {
+            "type": "string",
+            "enum": [
+              "none",
+              "circle",
+              "ellipse"
+            ],
+            "default": "circle"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.radial-search",
+        "vision.opencv",
+        "measurement.circle"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.rectangle-measure",
+      "display_name": "Rectangle Measure",
+      "category": "opencv.measurement.geometry",
+      "description": "沿旋转矩形四边量测，输出宽高、角度、平行度、垂直度和矩形度。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "lines",
+          "display_name": "Fitted Lines",
+          "payload_type_id": "lines.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "measurements",
+          "display_name": "Measurements",
+          "payload_type_id": "measurements.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "required": [
+          "center_xy",
+          "width",
+          "height"
+        ],
+        "properties": {
+          "center_xy": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "width": {
+            "type": "number",
+            "minimum": 1.0
+          },
+          "height": {
+            "type": "number",
+            "minimum": 1.0
+          },
+          "angle_degrees": {
+            "type": "number",
+            "default": 0.0
+          },
+          "caliper_length": {
+            "type": "number",
+            "minimum": 2.0,
+            "default": 20.0
+          },
+          "calipers_per_side": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 1024,
+            "default": 12
+          },
+          "gradient_threshold": {
+            "type": "number",
+            "minimum": 0.0,
+            "default": 5.0
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.rectangle-measure",
+        "vision.opencv",
+        "measurement.geometry"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.slot-width",
       "display_name": "Slot Width",
       "category": "opencv.measurement.geometry",
@@ -12659,6 +16602,82 @@
         "opencv.measurement",
         "vision.geometry",
         "inspection.slot-width"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.draw-calibration-reprojection",
+      "display_name": "Draw Calibration Reprojection",
+      "category": "opencv.output.render",
+      "description": "绘制标定观察点、重投影点和残差线。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Calibration Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "diagnostics",
+          "display_name": "Calibration Diagnostics",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "observation_index": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1
+          },
+          "line_thickness": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 32,
+            "default": 2
+          },
+          "save_location": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.draw-calibration-reprojection",
+        "vision.render",
+        "calibration.diagnostics"
       ],
       "runtime_requirements": {
         "python_packages": [
@@ -13013,6 +17032,156 @@
     },
     {
       "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.draw-ellipses",
+      "display_name": "Draw Ellipses",
+      "category": "opencv.output.render",
+      "description": "绘制 ellipses.v1 的轮廓、中心和主次轴。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "ellipses",
+          "display_name": "Ellipses",
+          "payload_type_id": "ellipses.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "line_thickness": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 32,
+            "default": 2
+          },
+          "draw_axes": {
+            "type": "boolean",
+            "default": true
+          },
+          "save_location": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.draw-ellipses",
+        "vision.render",
+        "geometry.ellipse"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.draw-inspection-errors",
+      "display_name": "Draw Inspection Errors",
+      "category": "opencv.output.render",
+      "description": "按 error_kind 使用稳定颜色绘制通用检查异常区域。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "error_regions",
+          "display_name": "Error Regions",
+          "payload_type_id": "regions.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "line_thickness": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 32,
+            "default": 2
+          },
+          "draw_labels": {
+            "type": "boolean",
+            "default": true
+          },
+          "save_location": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.draw-inspection-errors",
+        "vision.render",
+        "vision.inspection"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.draw-lines",
       "display_name": "Draw Lines",
       "category": "opencv.output.render",
@@ -13096,6 +17265,86 @@
         "opencv.draw",
         "vision.render",
         "vision.geometry"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.draw-localizations",
+      "display_name": "Draw Localizations",
+      "category": "opencv.output.render",
+      "description": "绘制统一定位结果的区域、中心、角度和 score。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "localizations",
+          "display_name": "Localizations",
+          "payload_type_id": "localizations.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "line_thickness": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 32,
+            "default": 2
+          },
+          "axis_length": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 30
+          },
+          "draw_labels": {
+            "type": "boolean",
+            "default": true
+          },
+          "save_location": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.draw-localizations",
+        "vision.render",
+        "vision.localization"
       ],
       "runtime_requirements": {
         "python_packages": [

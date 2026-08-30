@@ -36,5 +36,11 @@ def test_opencv_calibration_node_catalog_builder_matches_checked_in_catalog() ->
         "custom.opencv.project-points",
         "custom.opencv.undistort-points",
         "custom.opencv.hand-eye-calibrate",
+        "custom.opencv.calibration-observation-filter",
+        "custom.opencv.calibration-diagnose",
+        "custom.opencv.stereo-calibrate",
+        "custom.opencv.stereo-rectify",
+        "custom.opencv.rectification-map",
+        "custom.opencv.image-rectify-stereo",
     }
     assert {item["node_pack_version"] for item in actual["node_definitions"]} == {"0.1.3"}

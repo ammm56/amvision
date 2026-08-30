@@ -1,0 +1,26 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.variation-model-build",
+  "display_name": "Variation Model Build",
+  "category": "opencv.inspection.difference",
+  "description": "从同尺寸正常样本建立逐像素均值与标准差变化模型。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {"name": "images", "display_name": "Normal Images", "payload_type_id": "image-refs.v1"},
+    {"name": "save_location", "display_name": "ObjectStore Location", "payload_type_id": "value.v1", "required": false}
+  ],
+  "output_ports": [
+    {"name": "model", "display_name": "Variation Model", "payload_type_id": "value.v1"},
+    {"name": "statistics", "display_name": "Model Statistics", "payload_type_id": "value.v1"}
+  ],
+  "parameter_schema": {"type": "object", "properties": {
+    "save_location": {"type": "string", "minLength": 1},
+    "minimum_samples": {"type": "integer", "minimum": 2, "default": 3},
+    "standard_deviation_floor": {"type": "number", "exclusiveMinimum": 0, "default": 2}
+  }},
+  "capability_tags": ["opencv.variation-model-build", "vision.inspection", "inspection.difference"],
+  "runtime_requirements": {"python_packages": ["opencv-python", "numpy"]},
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.1.3"
+}

@@ -1,0 +1,18 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.stereo-rectify",
+  "display_name": "Stereo Rectify",
+  "category": "opencv.calibration.camera",
+  "description": "计算双目校正旋转、投影矩阵、Q 和左右有效区域。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [{"name": "stereo_calibration", "display_name": "Stereo Calibration", "payload_type_id": "stereo-calibration.v1"}],
+  "output_ports": [{"name": "stereo_calibration", "display_name": "Rectified Calibration", "payload_type_id": "stereo-calibration.v1"}],
+  "parameter_schema": {"type": "object", "properties": {
+    "alpha": {"type": "number", "minimum": -1.0, "maximum": 1.0, "default": -1.0}
+  }},
+  "capability_tags": ["opencv.stereo-rectify", "vision.opencv", "calibration.stereo"],
+  "runtime_requirements": {"python_packages": ["opencv-python", "numpy"]},
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.1.3"
+}

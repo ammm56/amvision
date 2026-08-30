@@ -1,0 +1,30 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.bead-inspect",
+  "display_name": "Bead Inspect",
+  "category": "opencv.inspection.difference",
+  "description": "沿参考路径检查胶路或焊道宽度、缺失、溢出和位置偏差。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {"name": "image", "display_name": "Image", "payload_type_id": "image-ref.v1"},
+    {"name": "reference_path", "display_name": "Reference Path", "payload_type_id": "points.v1"}
+  ],
+  "output_ports": [
+    {"name": "error_regions", "display_name": "Error Regions", "payload_type_id": "regions.v1"},
+    {"name": "measurements", "display_name": "Measurements", "payload_type_id": "measurements.v1"}
+  ],
+  "parameter_schema": {"type": "object", "properties": {
+    "threshold": {"type": "number", "minimum": 0, "maximum": 255, "default": 128},
+    "foreground_polarity": {"type": "string", "enum": ["bright", "dark"], "default": "bright"},
+    "expected_width": {"type": "number", "exclusiveMinimum": 0, "default": 10},
+    "width_tolerance": {"type": "number", "minimum": 0, "default": 3},
+    "center_tolerance": {"type": "number", "minimum": 0, "default": 3},
+    "search_half_width": {"type": "number", "minimum": 1},
+    "sample_spacing": {"type": "number", "exclusiveMinimum": 0, "default": 2}
+  }},
+  "capability_tags": ["opencv.bead-inspect", "vision.inspection", "inspection.difference"],
+  "runtime_requirements": {"python_packages": ["opencv-python", "numpy"]},
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.1.3"
+}

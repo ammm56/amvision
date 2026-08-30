@@ -2,7 +2,7 @@
 
 ## 状态
 
-已接受，部分实现。阶段 0 的现状审计、四类 payload 契约和二维变换方向已经冻结；业务节点从阶段 1 开始实施。详细范围、节点清单、实施顺序和门禁见[工业二维视觉节点实施基线](../development/industrial-vision-node-implementation.md)。
+已接受，已实现。阶段 0–6 的现状审计、Core 通用能力、二维几何与图片操作、质量量测与定位、标定、通用检查、绘制和 Workflow App 示例均已完成。详细范围、节点清单、实施顺序和门禁见[工业二维视觉节点实施基线](../development/industrial-vision-node-implementation.md)。
 
 ## 背景
 
@@ -52,7 +52,7 @@ Workflow App / Template
 
 ### 4. 统一二维几何、定位和标定输出
 
-二维几何继续使用 `lines.v1`、`circles.v1`、`ellipses.v1` 和 `planar-transform.v1`，补充 `points.v1`。定位节点统一输出 `localizations.v1`，至少包含：
+二维几何继续使用 `lines.v1`、`circles.v1`、`ellipses.v1` 和 `planar-transform.v1`，补充 `points.v1`。直接表达单一目标姿态的 Locate 工具输出 `localizations.v1`，至少包含：
 
 - 定位方法、中心、角度、尺度和 score；
 - 坐标空间与 `planar-transform.v1`；
@@ -60,6 +60,8 @@ Workflow App / Template
 - 匹配数、内点率、残差、失败原因等诊断信息。
 
 标定节点补充 `camera-calibration.v1` 和 `stereo-calibration.v1`。大型 rectification map 不内联到 Workflow JSON，通过 ObjectStore key 引用。Workflow JSON 只保存参数、对象引用和小型结构化结果。
+
+`localizations.v1` 不替代所有匹配与配准结果。Template Match 的一对多候选继续使用 `regions.v1`；Phase Correlation、ECC 和 Homography 等图像关系计算继续使用 `planar-transform.v1` 或其原有小型 transform 输出。只有同时具备明确目标中心、角度、尺度和目标范围时才构造 localization，禁止为了表面统一推测不存在的姿态字段。
 
 ### 5. 算法输出与规则判定分离
 

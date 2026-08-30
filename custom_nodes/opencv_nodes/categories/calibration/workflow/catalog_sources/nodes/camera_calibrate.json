@@ -25,6 +25,11 @@
       "name": "calibration",
       "display_name": "Calibration",
       "payload_type_id": "value.v1"
+    },
+    {
+      "name": "camera_calibration",
+      "display_name": "Camera Calibration",
+      "payload_type_id": "camera-calibration.v1"
     }
   ],
   "parameter_schema": {
@@ -44,6 +49,11 @@
         "type": "number",
         "default": 1.0,
         "minimum": 1e-09
+      },
+      "object_point_unit": {
+        "type": "string",
+        "enum": ["millimeter", "meter", "unitless"],
+        "default": "millimeter"
       },
       "min_views": {
         "type": "integer",

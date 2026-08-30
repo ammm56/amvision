@@ -1,0 +1,24 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.rectification-map",
+  "display_name": "Rectification Map",
+  "category": "opencv.calibration.camera",
+  "description": "生成左右 CV_32FC1 校正 map，原子写入 ObjectStore 并返回可追溯 key。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {"name": "stereo_calibration", "display_name": "Rectified Calibration", "payload_type_id": "stereo-calibration.v1"},
+    {"name": "save_location", "display_name": "Save Location", "payload_type_id": "value.v1", "required": false}
+  ],
+  "output_ports": [
+    {"name": "stereo_calibration", "display_name": "Calibration With Maps", "payload_type_id": "stereo-calibration.v1"},
+    {"name": "maps", "display_name": "Map Metadata", "payload_type_id": "value.v1"}
+  ],
+  "parameter_schema": {"type": "object", "properties": {
+    "save_location": {"type": "string", "minLength": 1}
+  }},
+  "capability_tags": ["opencv.rectification-map", "vision.opencv", "calibration.stereo"],
+  "runtime_requirements": {"python_packages": ["opencv-python", "numpy"]},
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.1.3"
+}

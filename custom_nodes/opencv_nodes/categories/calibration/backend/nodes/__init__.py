@@ -30,6 +30,9 @@ from custom_nodes.opencv_nodes.categories.calibration.backend.nodes.hand_eye_cal
     NODE_TYPE_ID as HAND_EYE_CALIBRATE_NODE_TYPE_ID,
     handle_node as hand_eye_calibrate_handler,
 )
+from custom_nodes.opencv_nodes.categories.calibration.backend.nodes.industrial_calibration import (
+    INDUSTRIAL_CALIBRATION_NODE_HANDLERS,
+)
 from custom_nodes.opencv_nodes.categories.calibration.backend.nodes.project_points import (
     NODE_TYPE_ID as PROJECT_POINTS_NODE_TYPE_ID,
     handle_node as project_points_handler,
@@ -49,6 +52,7 @@ NODE_HANDLERS = (
     (PROJECT_POINTS_NODE_TYPE_ID, project_points_handler),
     (UNDISTORT_POINTS_NODE_TYPE_ID, undistort_points_handler),
     (HAND_EYE_CALIBRATE_NODE_TYPE_ID, hand_eye_calibrate_handler),
+    *INDUSTRIAL_CALIBRATION_NODE_HANDLERS,
 )
 
 __all__ = ["NODE_HANDLERS"]

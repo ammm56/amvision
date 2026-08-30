@@ -20,6 +20,10 @@ from custom_nodes.opencv_nodes.shared.backend.runtime.payloads.detections import
 from custom_nodes.opencv_nodes.shared.backend.runtime.payloads.images import (
     require_image_refs_payload,
 )
+from custom_nodes.opencv_nodes.shared.backend.runtime.payloads.ellipses import (
+    build_ellipses_payload,
+    require_ellipses_payload,
+)
 from custom_nodes.opencv_nodes.shared.backend.runtime.payloads.lines import (
     build_lines_payload,
     require_lines_payload,
@@ -36,6 +40,7 @@ from custom_nodes.opencv_nodes.shared.backend.runtime.payloads.points import (
 __all__ = [
     "build_circles_payload",
     "build_contours_payload",
+    "build_ellipses_payload",
     "build_localizations_payload",
     "build_detection_label",
     "build_lines_payload",
@@ -44,6 +49,7 @@ __all__ = [
     "require_circles_payload",
     "require_camera_calibration_payload",
     "require_contours_payload",
+    "require_ellipses_payload",
     "require_image_refs_payload",
     "require_lines_payload",
     "require_localizations_payload",

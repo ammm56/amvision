@@ -1,0 +1,25 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.contour-deviation-inspect",
+  "display_name": "Contour Deviation Inspect",
+  "category": "opencv.inspection.difference",
+  "description": "计算实测轮廓到参考轮廓的有符号偏差并标记外凸与缺口。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {"name": "reference_contours", "display_name": "Reference Contour", "payload_type_id": "contours.v1"},
+    {"name": "measured_contours", "display_name": "Measured Contour", "payload_type_id": "contours.v1"}
+  ],
+  "output_ports": [
+    {"name": "error_regions", "display_name": "Error Regions", "payload_type_id": "regions.v1"},
+    {"name": "measurements", "display_name": "Deviation Measurements", "payload_type_id": "measurements.v1"}
+  ],
+  "parameter_schema": {"type": "object", "properties": {
+    "positive_tolerance": {"type": "number", "minimum": 0, "default": 2},
+    "negative_tolerance": {"type": "number", "minimum": 0, "default": 2}
+  }},
+  "capability_tags": ["opencv.contour-deviation", "vision.inspection", "inspection.difference"],
+  "runtime_requirements": {"python_packages": ["opencv-python", "numpy"]},
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.1.3"
+}

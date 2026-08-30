@@ -1,0 +1,23 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.draw-calibration-reprojection",
+  "display_name": "Draw Calibration Reprojection",
+  "category": "opencv.output.render",
+  "description": "绘制标定观察点、重投影点和残差线。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {"name": "image", "display_name": "Calibration Image", "payload_type_id": "image-ref.v1"},
+    {"name": "diagnostics", "display_name": "Calibration Diagnostics", "payload_type_id": "value.v1"}
+  ],
+  "output_ports": [{"name": "image", "display_name": "Image", "payload_type_id": "image-ref.v1"}],
+  "parameter_schema": {"type": "object", "properties": {
+    "observation_index": {"type": "integer", "minimum": 1, "default": 1},
+    "line_thickness": {"type": "integer", "minimum": 1, "maximum": 32, "default": 2},
+    "save_location": {"type": "string"}
+  }},
+  "capability_tags": ["opencv.draw-calibration-reprojection", "vision.render", "calibration.diagnostics"],
+  "runtime_requirements": {"python_packages": ["opencv-python", "numpy"]},
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.1.3"
+}

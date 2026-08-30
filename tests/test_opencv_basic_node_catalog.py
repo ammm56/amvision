@@ -39,6 +39,13 @@ def test_opencv_basic_node_catalog_builder_matches_checked_in_catalog() -> None:
         "custom.opencv.filter-2d",
         "custom.opencv.scharr",
         "custom.opencv.gabor-filter",
+        "custom.opencv.image-create",
+        "custom.opencv.image-type-convert",
+        "custom.opencv.image-translate",
+        "custom.opencv.image-composite",
+        "custom.opencv.image-concat",
+        "custom.opencv.image-stitch",
+        "custom.opencv.image-quality-metrics",
     } <= node_type_ids
     assert {
         item["node_pack_version"] for item in actual_catalog_payload["node_definitions"]

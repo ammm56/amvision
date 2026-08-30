@@ -9,6 +9,19 @@
       "json_schema": {
         "type": "object",
         "properties": {
+          "coordinate_space": {
+            "type": "string",
+            "minLength": 1
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "pixel",
+              "millimeter",
+              "meter",
+              "unitless"
+            ]
+          },
           "source_image": {
             "type": "object",
             "properties": {
@@ -149,6 +162,21 @@
             "items": {
               "type": "object",
               "properties": {
+                "measurement_id": {
+                  "type": "string"
+                },
+                "measurement_kind": {
+                  "type": "string"
+                },
+                "coordinate_space": {
+                  "type": "string"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "values": {
+                  "type": "object"
+                },
                 "contour_index": {
                   "type": "integer"
                 },
@@ -187,11 +215,24 @@
                   "type": "number"
                 }
               },
-              "required": [
-                "contour_index",
-                "bbox_xyxy",
-                "area",
-                "perimeter"
+              "oneOf": [
+                {
+                  "required": [
+                    "contour_index",
+                    "bbox_xyxy",
+                    "area",
+                    "perimeter"
+                  ]
+                },
+                {
+                  "required": [
+                    "measurement_id",
+                    "measurement_kind",
+                    "coordinate_space",
+                    "unit",
+                    "values"
+                  ]
+                }
               ]
             }
           }
@@ -211,6 +252,19 @@
       "json_schema": {
         "type": "object",
         "properties": {
+          "coordinate_space": {
+            "type": "string",
+            "minLength": 1
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "pixel",
+              "millimeter",
+              "meter",
+              "unitless"
+            ]
+          },
           "source_image": {
             "type": "object",
             "properties": {
@@ -435,6 +489,19 @@
       "json_schema": {
         "type": "object",
         "properties": {
+          "coordinate_space": {
+            "type": "string",
+            "minLength": 1
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "pixel",
+              "millimeter",
+              "meter",
+              "unitless"
+            ]
+          },
           "source_image": {
             "type": "object",
             "properties": {
@@ -633,6 +700,19 @@
       "json_schema": {
         "type": "object",
         "properties": {
+          "coordinate_space": {
+            "type": "string",
+            "minLength": 1
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "pixel",
+              "millimeter",
+              "meter",
+              "unitless"
+            ]
+          },
           "source_image": {
             "type": "object",
             "properties": {
@@ -4304,6 +4384,350 @@
     },
     {
       "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.image-composite",
+      "display_name": "Image Composite",
+      "category": "opencv.image.transform",
+      "description": "按位置、可选 mask 和 alpha 把同 dtype、同通道 overlay 组合到 base 图片。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "base_image",
+          "display_name": "Base Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "overlay_image",
+          "display_name": "Overlay Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "mask",
+          "display_name": "Mask",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "offset_x": {
+            "type": "integer",
+            "default": 0
+          },
+          "offset_y": {
+            "type": "integer",
+            "default": 0
+          },
+          "alpha": {
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 1.0,
+            "default": 1.0
+          },
+          "require_overlap": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.image-composite",
+        "vision.opencv"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.image-concat",
+      "display_name": "Image Concat",
+      "category": "opencv.image.transform",
+      "description": "水平或垂直规则拼接图片集合，并明确对齐、间隔和填充值。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "images",
+          "display_name": "Images",
+          "payload_type_id": "image-refs.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "axis": {
+            "type": "string",
+            "enum": [
+              "horizontal",
+              "vertical"
+            ],
+            "default": "horizontal"
+          },
+          "alignment": {
+            "type": "string",
+            "enum": [
+              "start",
+              "center",
+              "end"
+            ],
+            "default": "center"
+          },
+          "gap": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 65535,
+            "default": 0
+          },
+          "fill_value": {
+            "oneOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 1,
+                "maxItems": 4
+              }
+            ],
+            "default": 0
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.image-concat",
+        "vision.opencv"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.image-create",
+      "display_name": "Image Create",
+      "category": "opencv.image.transform",
+      "description": "按宽、高、通道、dtype 和填充值创建一张执行期图片。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "width": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000000,
+            "default": 640
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000000,
+            "default": 480
+          },
+          "channels": {
+            "type": "integer",
+            "enum": [
+              1,
+              3,
+              4
+            ],
+            "default": 3
+          },
+          "dtype": {
+            "type": "string",
+            "enum": [
+              "uint8",
+              "uint16",
+              "float32"
+            ],
+            "default": "uint8"
+          },
+          "fill_value": {
+            "oneOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 1,
+                "maxItems": 4
+              }
+            ],
+            "default": 0
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.image-create",
+        "vision.opencv"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.image-quality-metrics",
+      "display_name": "Image Quality Metrics",
+      "category": "opencv.inspection.statistics",
+      "description": "一次输出亮度、对比度、清晰度、曝光裁剪、HSV 饱和度和稳健噪声估计，可选 ROI。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "roi",
+          "display_name": "ROI",
+          "payload_type_id": "roi.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "metrics",
+          "display_name": "Metrics",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "low_clip_threshold": {
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 255.0,
+            "default": 1.0
+          },
+          "high_clip_threshold": {
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 255.0,
+            "default": 254.0
+          },
+          "search_roi": {
+            "type": "object"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.image-quality",
+        "vision.opencv",
+        "inspection.statistics"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.image-refs-empty-check",
       "display_name": "Image Refs Empty Check",
       "category": "opencv.inspection.batch",
@@ -4897,6 +5321,266 @@
           }
         }
       }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.image-stitch",
+      "display_name": "Image Stitch",
+      "category": "opencv.matching.registration",
+      "description": "使用特征匹配、几何配准、warp 和 blend 拼接图片集合，并返回诊断信息。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "images",
+          "display_name": "Images",
+          "payload_type_id": "image-refs.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "diagnostics",
+          "display_name": "Diagnostics",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "panorama",
+              "scans"
+            ],
+            "default": "panorama"
+          },
+          "confidence_threshold": {
+            "type": "number",
+            "minimum": 0.0,
+            "default": 1.0
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.image-stitch",
+        "vision.opencv",
+        "vision.registration"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.image-translate",
+      "display_name": "Image Translate",
+      "category": "opencv.image.transform",
+      "description": "按 X/Y 像素偏移平移图片，输出尺寸保持不变。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "offset_x": {
+            "type": "number",
+            "default": 0.0
+          },
+          "offset_y": {
+            "type": "number",
+            "default": 0.0
+          },
+          "interpolation": {
+            "type": "string",
+            "enum": [
+              "nearest",
+              "linear",
+              "cubic",
+              "lanczos"
+            ],
+            "default": "linear"
+          },
+          "border_mode": {
+            "type": "string",
+            "enum": [
+              "constant",
+              "replicate",
+              "reflect",
+              "reflect-101",
+              "wrap"
+            ],
+            "default": "constant"
+          },
+          "border_value": {
+            "oneOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 1,
+                "maxItems": 4
+              }
+            ],
+            "default": 0
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.image-translate",
+        "vision.opencv"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.image-type-convert",
+      "display_name": "Image Type Convert",
+      "category": "opencv.image.color",
+      "description": "显式转换图片 dtype、HW/HWC 通道布局和数值范围；不隐式改变空间尺寸。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "target_dtype": {
+            "type": "string",
+            "enum": [
+              "uint8",
+              "uint16",
+              "float32"
+            ],
+            "default": "uint8"
+          },
+          "channel_layout": {
+            "type": "string",
+            "enum": [
+              "keep",
+              "gray",
+              "bgr",
+              "bgra"
+            ],
+            "default": "keep"
+          },
+          "range_mode": {
+            "type": "string",
+            "enum": [
+              "preserve",
+              "normalize",
+              "scale-offset"
+            ],
+            "default": "preserve"
+          },
+          "scale": {
+            "type": "number",
+            "default": 1.0
+          },
+          "offset": {
+            "type": "number",
+            "default": 0.0
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.image-type-convert",
+        "vision.opencv"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
     },
     {
       "format_id": "amvision.node-definition.v1",

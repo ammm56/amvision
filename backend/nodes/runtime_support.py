@@ -363,6 +363,79 @@ class ExecutionImageRegistry:
             self._entries[image_handle] = entry
         return entry
 
+    def register_typed_image_matrix(
+        self,
+        *,
+        matrix: Any,
+        width: int,
+        height: int,
+        created_by_node_id: str | None = None,
+    ) -> ExecutionImageEntry:
+        """注册保留 dtype 的执行期 OpenCV matrix。
+
+        该入口只服务于同一次 Workflow 执行中的数值图片流转。对外 LocalBuffer
+        仍保持 BGR24/GRAY8 契约，避免把任意 NumPy layout 扩散到跨进程协议。
+        """
+
+        import numpy as np  # noqa: PLC0415
+
+        normalized_matrix = np.ascontiguousarray(matrix)
+        matrix_shape = tuple(int(item) for item in normalized_matrix.shape)
+        if not matrix_shape or matrix_shape[:2] != (int(height), int(width)):
+            raise InvalidRequestError(
+                "typed image matrix 的尺寸与 width/height 不一致",
+                details={
+                    "shape": list(matrix_shape),
+                    "width": int(width),
+                    "height": int(height),
+                },
+            )
+        channel_count = 1 if len(matrix_shape) == 2 else (
+            int(matrix_shape[2]) if len(matrix_shape) == 3 else 0
+        )
+        if channel_count not in {1, 3, 4}:
+            raise InvalidRequestError(
+                "typed image matrix 只支持 1、3 或 4 个通道",
+                details={"shape": list(matrix_shape)},
+            )
+        dtype = str(normalized_matrix.dtype)
+        if dtype not in {"uint8", "uint16", "float32"}:
+            raise InvalidRequestError(
+                "typed image matrix 只支持 uint8、uint16 或 float32",
+                details={"dtype": dtype},
+            )
+        layout = IMAGE_LAYOUT_HW if channel_count == 1 else IMAGE_LAYOUT_HWC
+        pixel_format = _typed_matrix_pixel_format(
+            dtype=dtype,
+            channel_count=channel_count,
+        )
+        image_handle = f"img-{uuid4().hex}"
+        content_hasher = hashlib.sha256()
+        content_hasher.update(
+            (
+                f"{pixel_format}:{int(width)}x{int(height)}:{dtype}:{layout}\0"
+            ).encode("ascii")
+        )
+        content_hasher.update(memoryview(normalized_matrix).cast("B"))
+        entry = ExecutionImageEntry(
+            image_handle=image_handle,
+            content=None,
+            matrix=normalized_matrix,
+            media_type=IMAGE_MEDIA_TYPE_RAW,
+            width=_normalize_optional_dimension(width),
+            height=_normalize_optional_dimension(height),
+            byte_length=int(normalized_matrix.nbytes),
+            shape=matrix_shape,
+            dtype=dtype,
+            layout=layout,
+            pixel_format=pixel_format,
+            content_sha256=content_hasher.hexdigest(),
+            created_by_node_id=_normalize_optional_text(created_by_node_id),
+        )
+        with self._lock:
+            self._entries[image_handle] = entry
+        return entry
+
     def get_entry(self, image_handle: str) -> ExecutionImageEntry:
         """按句柄读取一张已注册的内存图片。
 
@@ -1495,6 +1568,42 @@ def register_image_matrix(
     )
 
 
+def register_typed_image_matrix(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    image_matrix: Any,
+    created_by_node_id: str | None = None,
+) -> dict[str, object]:
+    """保留 uint8/uint16/float32 dtype 注册执行期图片。"""
+
+    matrix_shape = tuple(int(item) for item in getattr(image_matrix, "shape", ()))
+    if len(matrix_shape) not in {2, 3}:
+        raise InvalidRequestError(
+            "typed image matrix 必须是二维或 HWC 三维数组",
+            details={"shape": list(matrix_shape)},
+        )
+    height, width = matrix_shape[:2]
+    image_entry = require_execution_image_registry(
+        request
+    ).register_typed_image_matrix(
+        matrix=image_matrix,
+        width=int(width),
+        height=int(height),
+        created_by_node_id=created_by_node_id or request.node_id,
+    )
+    return build_memory_image_payload(
+        image_handle=image_entry.image_handle,
+        media_type=image_entry.media_type,
+        width=image_entry.width,
+        height=image_entry.height,
+        shape=image_entry.shape,
+        dtype=image_entry.dtype,
+        layout=image_entry.layout,
+        pixel_format=image_entry.pixel_format,
+        content_sha256=image_entry.content_sha256,
+    )
+
+
 def load_image_matrix(
     request: WorkflowNodeExecutionRequest,
     *,
@@ -1534,13 +1643,12 @@ def load_image_matrix_from_payload(
     image_access_started_at = _start_workflow_image_access_timing(request)
     if normalized_payload.get("transport_kind") == IMAGE_TRANSPORT_MEMORY:
         image_handle = _normalize_optional_text(normalized_payload.get("image_handle"))
-        if image_handle is not None and (
-            is_raw_bgr24_payload(normalized_payload)
-            or is_raw_gray8_payload(normalized_payload)
-        ):
+        if image_handle is not None and _is_raw_image_payload(normalized_payload):
             image_registry = require_execution_image_registry(request)
             matrix = image_registry.read_matrix(image_handle)
             if matrix is not None:
+                entry = image_registry.get_entry(image_handle)
+                _validate_registry_matrix_payload(entry, normalized_payload)
                 if is_raw_gray8_payload(normalized_payload):
                     matrix = prepare_matrix_for_raw_gray8(
                         cv2_module=cv2_module,
@@ -1549,13 +1657,16 @@ def load_image_matrix_from_payload(
                         copy_matrix=copy_raw,
                     )
                 else:
-                    matrix = prepare_matrix_for_raw_bgr24(
-                        cv2_module=cv2_module,
-                        np_module=np_module,
-                        image_matrix=matrix,
-                        copy_matrix=copy_raw,
-                    )
-                matrix = apply_raw_decode_flags(
+                    if is_raw_bgr24_payload(normalized_payload):
+                        matrix = prepare_matrix_for_raw_bgr24(
+                            cv2_module=cv2_module,
+                            np_module=np_module,
+                            image_matrix=matrix,
+                            copy_matrix=copy_raw,
+                        )
+                    elif copy_raw:
+                        matrix = matrix.copy()
+                matrix = _apply_registry_matrix_decode_flags(
                     cv2_module=cv2_module,
                     matrix=matrix,
                     imdecode_flags=imdecode_flags,
@@ -2356,6 +2467,81 @@ def _is_raw_image_payload(payload: dict[str, object]) -> bool:
     return (
         isinstance(media_type, str)
         and media_type.strip().lower() == IMAGE_MEDIA_TYPE_RAW
+    )
+
+
+def _typed_matrix_pixel_format(*, dtype: str, channel_count: int) -> str:
+    """返回执行期 typed matrix 的稳定像素格式名称。"""
+
+    depth = {"uint8": "8", "uint16": "16", "float32": "32f"}[dtype]
+    prefix = {1: "gray", 3: "bgr", 4: "bgra"}[channel_count]
+    if channel_count == 3 and dtype == "uint8":
+        return IMAGE_PIXEL_FORMAT_BGR24
+    if channel_count == 1 and dtype == "uint8":
+        return IMAGE_PIXEL_FORMAT_GRAY8
+    return f"{prefix}{depth}"
+
+
+def _validate_registry_matrix_payload(
+    entry: ExecutionImageEntry,
+    payload: dict[str, object],
+) -> None:
+    """防止 image_handle 与可见 dtype/shape 元数据被不一致地组合。"""
+
+    metadata = normalize_image_payload_metadata(payload)
+    expected = {
+        "shape": list(entry.shape),
+        "dtype": entry.dtype,
+        "layout": entry.layout,
+        "pixel_format": entry.pixel_format,
+    }
+    actual = {
+        "shape": list(metadata.shape),
+        "dtype": metadata.dtype,
+        "layout": metadata.layout,
+        "pixel_format": metadata.pixel_format,
+    }
+    if expected != actual:
+        raise InvalidRequestError(
+            "memory image-ref 元数据与 execution image registry 不一致",
+            details={"expected": expected, "actual": actual},
+        )
+
+
+def _apply_registry_matrix_decode_flags(
+    *,
+    cv2_module: Any,
+    matrix: Any,
+    imdecode_flags: int | None,
+) -> Any:
+    """对 registry matrix 应用与 OpenCV decode 一致的通道选择。"""
+
+    if imdecode_flags is None or imdecode_flags == getattr(
+        cv2_module,
+        "IMREAD_UNCHANGED",
+        -1,
+    ):
+        return matrix
+    channel_count = 1 if len(matrix.shape) == 2 else int(matrix.shape[2])
+    if imdecode_flags == getattr(cv2_module, "IMREAD_GRAYSCALE", 0):
+        if channel_count == 1:
+            return matrix
+        conversion = (
+            cv2_module.COLOR_BGRA2GRAY
+            if channel_count == 4
+            else cv2_module.COLOR_BGR2GRAY
+        )
+        return cv2_module.cvtColor(matrix, conversion)
+    if imdecode_flags == getattr(cv2_module, "IMREAD_COLOR", 1):
+        if channel_count == 1:
+            return cv2_module.cvtColor(matrix, cv2_module.COLOR_GRAY2BGR)
+        if channel_count == 4:
+            return cv2_module.cvtColor(matrix, cv2_module.COLOR_BGRA2BGR)
+        return matrix
+    return apply_raw_decode_flags(
+        cv2_module=cv2_module,
+        matrix=matrix,
+        imdecode_flags=imdecode_flags,
     )
 
 

@@ -9,6 +9,19 @@
       "json_schema": {
         "type": "object",
         "properties": {
+          "coordinate_space": {
+            "type": "string",
+            "minLength": 1
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "pixel",
+              "millimeter",
+              "meter",
+              "unitless"
+            ]
+          },
           "source_image": {
             "type": "object",
             "properties": {
@@ -149,6 +162,21 @@
             "items": {
               "type": "object",
               "properties": {
+                "measurement_id": {
+                  "type": "string"
+                },
+                "measurement_kind": {
+                  "type": "string"
+                },
+                "coordinate_space": {
+                  "type": "string"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "values": {
+                  "type": "object"
+                },
                 "contour_index": {
                   "type": "integer"
                 },
@@ -187,11 +215,24 @@
                   "type": "number"
                 }
               },
-              "required": [
-                "contour_index",
-                "bbox_xyxy",
-                "area",
-                "perimeter"
+              "oneOf": [
+                {
+                  "required": [
+                    "contour_index",
+                    "bbox_xyxy",
+                    "area",
+                    "perimeter"
+                  ]
+                },
+                {
+                  "required": [
+                    "measurement_id",
+                    "measurement_kind",
+                    "coordinate_space",
+                    "unit",
+                    "values"
+                  ]
+                }
               ]
             }
           }
@@ -211,6 +252,19 @@
       "json_schema": {
         "type": "object",
         "properties": {
+          "coordinate_space": {
+            "type": "string",
+            "minLength": 1
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "pixel",
+              "millimeter",
+              "meter",
+              "unitless"
+            ]
+          },
           "source_image": {
             "type": "object",
             "properties": {
@@ -435,6 +489,19 @@
       "json_schema": {
         "type": "object",
         "properties": {
+          "coordinate_space": {
+            "type": "string",
+            "minLength": 1
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "pixel",
+              "millimeter",
+              "meter",
+              "unitless"
+            ]
+          },
           "source_image": {
             "type": "object",
             "properties": {
@@ -633,6 +700,19 @@
       "json_schema": {
         "type": "object",
         "properties": {
+          "coordinate_space": {
+            "type": "string",
+            "minLength": 1
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "pixel",
+              "millimeter",
+              "meter",
+              "unitless"
+            ]
+          },
           "source_image": {
             "type": "object",
             "properties": {
@@ -2614,6 +2694,109 @@
     },
     {
       "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.feature-locate",
+      "display_name": "Feature Locate",
+      "category": "opencv.matching.feature",
+      "description": "完成特征提取、ratio 匹配、RANSAC 几何验证并输出统一 localization 和 transform。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "template_image",
+          "display_name": "Template Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "localizations",
+          "display_name": "Localizations",
+          "payload_type_id": "localizations.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "transform",
+          "display_name": "Transform",
+          "payload_type_id": "planar-transform.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "detector": {
+            "type": "string",
+            "enum": [
+              "orb",
+              "akaze",
+              "sift"
+            ],
+            "default": "orb"
+          },
+          "max_features": {
+            "type": "integer",
+            "minimum": 16,
+            "maximum": 20000,
+            "default": 1500
+          },
+          "ratio_threshold": {
+            "type": "number",
+            "minimum": 0.01,
+            "maximum": 1.0,
+            "default": 0.75
+          },
+          "minimum_matches": {
+            "type": "integer",
+            "minimum": 4,
+            "maximum": 10000,
+            "default": 8
+          },
+          "ransac_reprojection_threshold": {
+            "type": "number",
+            "minimum": 0.01,
+            "default": 3.0
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.feature-locate",
+        "vision.opencv",
+        "vision.localization"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.flann-match",
       "display_name": "FLANN Match",
       "category": "opencv.matching.feature",
@@ -3717,6 +3900,123 @@
       "capability_tags": [
         "opencv.rotation-scale-template-match",
         "vision.opencv"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.shape-locate",
+      "display_name": "Shape Locate",
+      "category": "opencv.matching.template",
+      "description": "在离散角度和尺度范围内搜索边缘形状模板，输出统一 localization 和相似变换。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "template_image",
+          "display_name": "Template Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "localizations",
+          "display_name": "Localizations",
+          "payload_type_id": "localizations.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "transform",
+          "display_name": "Transform",
+          "payload_type_id": "planar-transform.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "canny_low_threshold": {
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 255.0,
+            "default": 50.0
+          },
+          "canny_high_threshold": {
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 255.0,
+            "default": 150.0
+          },
+          "angle_min": {
+            "type": "number",
+            "default": 0.0
+          },
+          "angle_max": {
+            "type": "number",
+            "default": 0.0
+          },
+          "angle_step": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "default": 1.0
+          },
+          "scale_min": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "default": 1.0
+          },
+          "scale_max": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "default": 1.0
+          },
+          "scale_step": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "default": 0.1
+          },
+          "minimum_score": {
+            "type": "number",
+            "minimum": -1.0,
+            "maximum": 1.0,
+            "default": 0.5
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.shape-locate",
+        "vision.opencv",
+        "vision.localization"
       ],
       "runtime_requirements": {
         "python_packages": [

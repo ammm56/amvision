@@ -1,0 +1,31 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.rectangle-measure",
+  "display_name": "Rectangle Measure",
+  "category": "opencv.measurement.geometry",
+  "description": "沿旋转矩形四边量测，输出宽高、角度、平行度、垂直度和矩形度。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [{"name": "image", "display_name": "Image", "payload_type_id": "image-ref.v1"}],
+  "output_ports": [
+    {"name": "lines", "display_name": "Fitted Lines", "payload_type_id": "lines.v1"},
+    {"name": "measurements", "display_name": "Measurements", "payload_type_id": "measurements.v1"}
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "required": ["center_xy", "width", "height"],
+    "properties": {
+      "center_xy": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2},
+      "width": {"type": "number", "minimum": 1.0},
+      "height": {"type": "number", "minimum": 1.0},
+      "angle_degrees": {"type": "number", "default": 0.0},
+      "caliper_length": {"type": "number", "minimum": 2.0, "default": 20.0},
+      "calipers_per_side": {"type": "integer", "minimum": 2, "maximum": 1024, "default": 12},
+      "gradient_threshold": {"type": "number", "minimum": 0.0, "default": 5.0}
+    }
+  },
+  "capability_tags": ["opencv.rectangle-measure", "vision.opencv", "measurement.geometry"],
+  "runtime_requirements": {"python_packages": ["opencv-python", "numpy"]},
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.1.3"
+}

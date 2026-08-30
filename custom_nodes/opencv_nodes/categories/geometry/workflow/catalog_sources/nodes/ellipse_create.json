@@ -1,0 +1,16 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.ellipse-create",
+  "display_name": "Ellipse Create",
+  "category": "opencv.geometry.shape",
+  "description": "从中心、长短轴和角度创建规范 ellipses.v1。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [],
+  "output_ports": [{"name": "ellipses", "display_name": "Ellipses", "payload_type_id": "ellipses.v1"}, {"name": "summary", "display_name": "Summary", "payload_type_id": "value.v1"}],
+  "parameter_schema": {"type": "object", "properties": {"center_xy": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2}, "major_axis": {"type": "number", "exclusiveMinimum": 0}, "minor_axis": {"type": "number", "exclusiveMinimum": 0}, "angle_deg": {"type": "number", "default": 0}, "coordinate_space": {"type": "string"}, "unit": {"type": "string", "enum": ["pixel", "millimeter", "meter", "unitless"], "default": "pixel"}}, "required": ["center_xy", "major_axis", "minor_axis", "coordinate_space"]},
+  "capability_tags": ["opencv.geometry", "vision.ellipses", "geometry.create"],
+  "runtime_requirements": {"python_packages": ["opencv-python", "numpy"]},
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.1.3"
+}

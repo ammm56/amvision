@@ -1,0 +1,16 @@
+{
+  "format_id": "amvision.flow-application.v1",
+  "application_id": "industrial-vision-stereo-calibration-diagnose-app",
+  "display_name": "Industrial Vision Stereo Calibration Diagnose App",
+  "description": "双目标定、极线误差诊断和校正参数示例。",
+  "template_ref": {"template_id": "industrial-vision-stereo-calibration-diagnose-template", "template_version": "1.0.0", "source_kind": "json-file", "source_uri": "docs/examples/workflows/industrial_vision_stereo_calibration_diagnose.template.json"},
+  "runtime_mode": "python-json-workflow",
+  "bindings": [
+    {"binding_id": "left_camera", "direction": "input", "template_port_id": "left_camera", "binding_kind": "workflow-execute-input", "config": {"payload_type_id": "camera-calibration.v1"}, "metadata": {}},
+    {"binding_id": "right_camera", "direction": "input", "template_port_id": "right_camera", "binding_kind": "workflow-execute-input", "config": {"payload_type_id": "camera-calibration.v1"}, "metadata": {}},
+    {"binding_id": "observations", "direction": "input", "template_port_id": "observations", "binding_kind": "workflow-execute-input", "config": {"payload_type_id": "value.v1", "request_schema": {"type": "object"}, "example_value": {"items": []}}, "metadata": {}},
+    {"binding_id": "calibration", "direction": "output", "template_port_id": "calibration", "binding_kind": "workflow-execute-output", "config": {"payload_type_id": "stereo-calibration.v1"}, "metadata": {}},
+    {"binding_id": "rectified_calibration", "direction": "output", "template_port_id": "rectified_calibration", "binding_kind": "workflow-execute-output", "config": {"payload_type_id": "stereo-calibration.v1"}, "metadata": {}}
+  ],
+  "metadata": {"example_kind": "industrial-vision-stereo-calibration-diagnose"}
+}

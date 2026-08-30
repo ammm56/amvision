@@ -31,6 +31,12 @@ def test_opencv_measurement_node_catalog_builder_matches_checked_in_catalog() ->
         "custom.opencv.slot-width",
         "custom.opencv.parallelism-metrics",
         "custom.opencv.concentricity-metrics",
+        "custom.opencv.line-measure",
+        "custom.opencv.ellipse-measure",
+        "custom.opencv.rectangle-measure",
+        "custom.opencv.edge-pair-measure",
+        "custom.opencv.gray-profile-measure",
+        "custom.opencv.radial-line-search",
     }
     assert {item["node_pack_id"] for item in actual_catalog_payload["node_definitions"]} == {
         "opencv.nodes"

@@ -1,0 +1,17 @@
+{
+  "format_id": "amvision.flow-application.v1",
+  "application_id": "industrial-vision-contour-deviation-app",
+  "display_name": "Industrial Vision Contour Deviation App",
+  "description": "轮廓外凸和缺口检查示例。",
+  "template_ref": {"template_id": "industrial-vision-contour-deviation-template", "template_version": "1.0.0", "source_kind": "json-file", "source_uri": "docs/examples/workflows/industrial_vision_contour_deviation.template.json"},
+  "runtime_mode": "python-json-workflow",
+  "bindings": [
+    {"binding_id": "reference_contours", "direction": "input", "template_port_id": "reference_contours", "binding_kind": "workflow-execute-input", "config": {"payload_type_id": "contours.v1"}, "metadata": {}},
+    {"binding_id": "measured_contours", "direction": "input", "template_port_id": "measured_contours", "binding_kind": "workflow-execute-input", "config": {"payload_type_id": "contours.v1"}, "metadata": {}},
+    {"binding_id": "image", "direction": "input", "template_port_id": "image", "binding_kind": "workflow-execute-input", "config": {"payload_type_id": "image-ref.v1"}, "metadata": {}},
+    {"binding_id": "error_regions", "direction": "output", "template_port_id": "error_regions", "binding_kind": "workflow-execute-output", "config": {"payload_type_id": "regions.v1"}, "metadata": {}},
+    {"binding_id": "measurements", "direction": "output", "template_port_id": "measurements", "binding_kind": "workflow-execute-output", "config": {"payload_type_id": "measurements.v1"}, "metadata": {}},
+    {"binding_id": "rendered_image", "direction": "output", "template_port_id": "rendered_image", "binding_kind": "workflow-execute-output", "config": {"payload_type_id": "image-ref.v1"}, "metadata": {}}
+  ],
+  "metadata": {"example_kind": "industrial-vision-contour-deviation"}
+}

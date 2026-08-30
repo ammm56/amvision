@@ -1,0 +1,35 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.image-translate",
+  "display_name": "Image Translate",
+  "category": "opencv.image.transform",
+  "description": "按 X/Y 像素偏移平移图片，输出尺寸保持不变。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {"name": "image", "display_name": "Image", "payload_type_id": "image-ref.v1"}
+  ],
+  "output_ports": [
+    {"name": "image", "display_name": "Image", "payload_type_id": "image-ref.v1"}
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "offset_x": {"type": "number", "default": 0.0},
+      "offset_y": {"type": "number", "default": 0.0},
+      "interpolation": {"type": "string", "enum": ["nearest", "linear", "cubic", "lanczos"], "default": "linear"},
+      "border_mode": {"type": "string", "enum": ["constant", "replicate", "reflect", "reflect-101", "wrap"], "default": "constant"},
+      "border_value": {
+        "oneOf": [
+          {"type": "number"},
+          {"type": "array", "items": {"type": "number"}, "minItems": 1, "maxItems": 4}
+        ],
+        "default": 0
+      }
+    }
+  },
+  "capability_tags": ["opencv.image-translate", "vision.opencv"],
+  "runtime_requirements": {"python_packages": ["opencv-python", "numpy"]},
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.1.3"
+}

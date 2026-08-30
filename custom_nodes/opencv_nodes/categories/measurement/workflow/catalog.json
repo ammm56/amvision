@@ -9,6 +9,19 @@
       "json_schema": {
         "type": "object",
         "properties": {
+          "coordinate_space": {
+            "type": "string",
+            "minLength": 1
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "pixel",
+              "millimeter",
+              "meter",
+              "unitless"
+            ]
+          },
           "source_image": {
             "type": "object",
             "properties": {
@@ -149,6 +162,21 @@
             "items": {
               "type": "object",
               "properties": {
+                "measurement_id": {
+                  "type": "string"
+                },
+                "measurement_kind": {
+                  "type": "string"
+                },
+                "coordinate_space": {
+                  "type": "string"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "values": {
+                  "type": "object"
+                },
                 "contour_index": {
                   "type": "integer"
                 },
@@ -187,11 +215,24 @@
                   "type": "number"
                 }
               },
-              "required": [
-                "contour_index",
-                "bbox_xyxy",
-                "area",
-                "perimeter"
+              "oneOf": [
+                {
+                  "required": [
+                    "contour_index",
+                    "bbox_xyxy",
+                    "area",
+                    "perimeter"
+                  ]
+                },
+                {
+                  "required": [
+                    "measurement_id",
+                    "measurement_kind",
+                    "coordinate_space",
+                    "unit",
+                    "values"
+                  ]
+                }
               ]
             }
           }
@@ -211,6 +252,19 @@
       "json_schema": {
         "type": "object",
         "properties": {
+          "coordinate_space": {
+            "type": "string",
+            "minLength": 1
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "pixel",
+              "millimeter",
+              "meter",
+              "unitless"
+            ]
+          },
           "source_image": {
             "type": "object",
             "properties": {
@@ -435,6 +489,19 @@
       "json_schema": {
         "type": "object",
         "properties": {
+          "coordinate_space": {
+            "type": "string",
+            "minLength": 1
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "pixel",
+              "millimeter",
+              "meter",
+              "unitless"
+            ]
+          },
           "source_image": {
             "type": "object",
             "properties": {
@@ -633,6 +700,19 @@
       "json_schema": {
         "type": "object",
         "properties": {
+          "coordinate_space": {
+            "type": "string",
+            "minLength": 1
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "pixel",
+              "millimeter",
+              "meter",
+              "unitless"
+            ]
+          },
           "source_image": {
             "type": "object",
             "properties": {
@@ -2637,6 +2717,321 @@
     },
     {
       "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.edge-pair-measure",
+      "display_name": "Edge Pair Measure",
+      "category": "opencv.measurement.edge",
+      "description": "沿任意方向灰度剖面查找同极性、异极性或任意边缘对并输出间距。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "points",
+          "display_name": "Edge Points",
+          "payload_type_id": "points.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "measurements",
+          "display_name": "Measurements",
+          "payload_type_id": "measurements.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "required": [
+          "start_xy",
+          "end_xy"
+        ],
+        "properties": {
+          "start_xy": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "end_xy": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "sample_count": {
+            "type": "integer",
+            "minimum": 3,
+            "maximum": 65536
+          },
+          "band_width": {
+            "type": "number",
+            "minimum": 1.0,
+            "default": 3.0
+          },
+          "gradient_threshold": {
+            "type": "number",
+            "minimum": 0.0,
+            "default": 5.0
+          },
+          "pair_polarity": {
+            "type": "string",
+            "enum": [
+              "opposite",
+              "same",
+              "any"
+            ],
+            "default": "opposite"
+          },
+          "minimum_spacing": {
+            "type": "number",
+            "minimum": 0.0,
+            "default": 1.0
+          },
+          "maximum_spacing": {
+            "type": "number",
+            "minimum": 0.0
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.edge-pair",
+        "vision.opencv",
+        "measurement.edge"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.ellipse-measure",
+      "display_name": "Ellipse Measure",
+      "category": "opencv.measurement.geometry",
+      "description": "沿名义椭圆法向采样边缘并拟合椭圆，输出覆盖率和残差。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "ellipse",
+          "display_name": "Nominal Ellipse",
+          "payload_type_id": "ellipses.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "points",
+          "display_name": "Edge Points",
+          "payload_type_id": "points.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "ellipses",
+          "display_name": "Ellipses",
+          "payload_type_id": "ellipses.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "measurements",
+          "display_name": "Measurements",
+          "payload_type_id": "measurements.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "sample_count": {
+            "type": "integer",
+            "minimum": 5,
+            "maximum": 4096,
+            "default": 72
+          },
+          "search_length": {
+            "type": "number",
+            "minimum": 2.0,
+            "default": 20.0
+          },
+          "gradient_threshold": {
+            "type": "number",
+            "minimum": 0.0,
+            "default": 5.0
+          },
+          "edge_polarity": {
+            "type": "string",
+            "enum": [
+              "any",
+              "dark-to-bright",
+              "bright-to-dark"
+            ],
+            "default": "any"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.ellipse-measure",
+        "vision.opencv",
+        "measurement.geometry"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.gray-profile-measure",
+      "display_name": "Gray Profile Measure",
+      "category": "opencv.measurement.edge",
+      "description": "沿线或带状区域输出亚像素采样灰度剖面、梯度和峰谷位置。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "profile",
+          "display_name": "Profile",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "required": [
+          "start_xy",
+          "end_xy"
+        ],
+        "properties": {
+          "start_xy": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "end_xy": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "sample_count": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 65536
+          },
+          "band_width": {
+            "type": "number",
+            "minimum": 1.0,
+            "maximum": 4096.0,
+            "default": 1.0
+          },
+          "smooth_sigma": {
+            "type": "number",
+            "minimum": 0.0,
+            "default": 0.0
+          },
+          "peak_count": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 128,
+            "default": 5
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.gray-profile",
+        "vision.opencv",
+        "measurement.edge"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.line-angle",
       "display_name": "Line Angle",
       "category": "opencv.measurement.geometry",
@@ -2710,6 +3105,122 @@
         "opencv.measurement",
         "vision.geometry",
         "inspection.angle"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.line-measure",
+      "display_name": "Line Measure",
+      "category": "opencv.measurement.edge",
+      "description": "沿名义线布置法向卡尺，检测边缘点并拟合直线、残差和有效率。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "points",
+          "display_name": "Edge Points",
+          "payload_type_id": "points.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "lines",
+          "display_name": "Lines",
+          "payload_type_id": "lines.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "measurements",
+          "display_name": "Measurements",
+          "payload_type_id": "measurements.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "required": [
+          "start_xy",
+          "end_xy"
+        ],
+        "properties": {
+          "start_xy": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "end_xy": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "caliper_length": {
+            "type": "number",
+            "minimum": 2.0,
+            "default": 20.0
+          },
+          "caliper_count": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 4096,
+            "default": 20
+          },
+          "gradient_threshold": {
+            "type": "number",
+            "minimum": 0.0,
+            "default": 5.0
+          },
+          "edge_polarity": {
+            "type": "string",
+            "enum": [
+              "any",
+              "dark-to-bright",
+              "bright-to-dark"
+            ],
+            "default": "any"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.line-measure",
+        "vision.opencv",
+        "measurement.edge"
       ],
       "runtime_requirements": {
         "python_packages": [
@@ -3047,6 +3558,239 @@
         "opencv.measurement",
         "vision.geometry",
         "inspection.offset"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.radial-line-search",
+      "display_name": "Radial Line Search",
+      "category": "opencv.measurement.circle",
+      "description": "从中心沿多条径向搜索边缘，输出点集、覆盖率和可选圆或椭圆拟合。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "points",
+          "display_name": "Edge Points",
+          "payload_type_id": "points.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "circles",
+          "display_name": "Circles",
+          "payload_type_id": "circles.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "ellipses",
+          "display_name": "Ellipses",
+          "payload_type_id": "ellipses.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "measurements",
+          "display_name": "Measurements",
+          "payload_type_id": "measurements.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "required": [
+          "center_xy",
+          "outer_radius"
+        ],
+        "properties": {
+          "center_xy": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "inner_radius": {
+            "type": "number",
+            "minimum": 0.0,
+            "default": 0.0
+          },
+          "outer_radius": {
+            "type": "number",
+            "minimum": 0.0
+          },
+          "ray_count": {
+            "type": "integer",
+            "minimum": 5,
+            "maximum": 4096,
+            "default": 72
+          },
+          "gradient_threshold": {
+            "type": "number",
+            "minimum": 0.0,
+            "default": 5.0
+          },
+          "edge_polarity": {
+            "type": "string",
+            "enum": [
+              "any",
+              "dark-to-bright",
+              "bright-to-dark"
+            ],
+            "default": "any"
+          },
+          "fit_kind": {
+            "type": "string",
+            "enum": [
+              "none",
+              "circle",
+              "ellipse"
+            ],
+            "default": "circle"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.radial-search",
+        "vision.opencv",
+        "measurement.circle"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.rectangle-measure",
+      "display_name": "Rectangle Measure",
+      "category": "opencv.measurement.geometry",
+      "description": "沿旋转矩形四边量测，输出宽高、角度、平行度、垂直度和矩形度。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "lines",
+          "display_name": "Fitted Lines",
+          "payload_type_id": "lines.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "measurements",
+          "display_name": "Measurements",
+          "payload_type_id": "measurements.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "required": [
+          "center_xy",
+          "width",
+          "height"
+        ],
+        "properties": {
+          "center_xy": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "width": {
+            "type": "number",
+            "minimum": 1.0
+          },
+          "height": {
+            "type": "number",
+            "minimum": 1.0
+          },
+          "angle_degrees": {
+            "type": "number",
+            "default": 0.0
+          },
+          "caliper_length": {
+            "type": "number",
+            "minimum": 2.0,
+            "default": 20.0
+          },
+          "calipers_per_side": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 1024,
+            "default": 12
+          },
+          "gradient_threshold": {
+            "type": "number",
+            "minimum": 0.0,
+            "default": 5.0
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.rectangle-measure",
+        "vision.opencv",
+        "measurement.geometry"
       ],
       "runtime_requirements": {
         "python_packages": [

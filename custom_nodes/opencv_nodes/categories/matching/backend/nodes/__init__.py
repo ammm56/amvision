@@ -18,6 +18,9 @@ from custom_nodes.opencv_nodes.categories.matching.backend.nodes.template_match 
     NODE_TYPE_ID as TEMPLATE_MATCH_NODE_TYPE_ID,
     handle_node as template_match_handler,
 )
+from custom_nodes.opencv_nodes.categories.matching.backend.nodes.industrial_localization import (
+    INDUSTRIAL_LOCALIZATION_NODE_HANDLERS,
+)
 from custom_nodes.opencv_nodes.categories.matching.backend.nodes.ecc_align import (
     NODE_TYPE_ID as ECC_ALIGN_NODE_TYPE_ID,
     handle_node as ecc_align_handler,
@@ -80,6 +83,7 @@ NODE_HANDLERS = (
     (GOOD_FEATURES_TO_TRACK_NODE_TYPE_ID, good_features_to_track_handler),
     (FAST_CORNERS_NODE_TYPE_ID, fast_corners_handler),
     (LINE_SEGMENT_DETECT_NODE_TYPE_ID, line_segment_detect_handler),
+    *INDUSTRIAL_LOCALIZATION_NODE_HANDLERS,
 )
 
 

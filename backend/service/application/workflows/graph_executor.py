@@ -68,6 +68,13 @@ from backend.service.application.workflows.execution.parallel_safety import (
     prepare_parallel_execution_state,
     validate_parallel_node_definition,
 )
+from backend.service.application.workflows.execution.selection import (
+    SELECTION_END_INPUT_PORT,
+    SELECTION_SELECTED_BRANCH_OUTPUT_PORT,
+    WorkflowSelectionBranchPlan,
+    WorkflowSelectionExecutionPlan,
+    build_selection_execution_plans,
+)
 from backend.service.application.workflows.execution.registry import (
     WorkflowNodeRuntimeRegistry,
 )
@@ -286,6 +293,10 @@ class WorkflowGraphExecutor:
             template=template,
             topological_order=topological_order,
         )
+        selection_plans = build_selection_execution_plans(
+            template=template,
+            topological_order=topological_order,
+        )
         managed_loop_internal_node_ids: set[str] = set()
         for plan in for_each_plans.values():
             managed_loop_internal_node_ids.add(plan.start_node_id)
@@ -293,6 +304,11 @@ class WorkflowGraphExecutor:
         managed_parallel_internal_node_ids = {
             node_id
             for plan in parallel_plans.values()
+            for node_id in plan.body_node_ids
+        }
+        managed_selection_internal_node_ids = {
+            node_id
+            for plan in selection_plans.values()
             for node_id in plan.body_node_ids
         }
         execution_metadata_payload = (
@@ -313,8 +329,10 @@ class WorkflowGraphExecutor:
                 continue
             if node_id in managed_parallel_internal_node_ids:
                 continue
+            if node_id in managed_selection_internal_node_ids:
+                continue
             node_definition = node_definitions_by_node_id[node_id]
-            if node_id in parallel_plans:
+            if node_id in parallel_plans or node_id in selection_plans:
                 resolved_inputs: dict[str, object] = {}
             elif node_id in for_each_plans:
                 plan = for_each_plans[node_id]
@@ -351,7 +369,66 @@ class WorkflowGraphExecutor:
                 inputs=resolved_inputs,
             )
             node_started_at = perf_counter()
-            if node_id in parallel_plans:
+            if node_id in selection_plans:
+                try:
+                    raw_outputs, resolved_inputs, selection_node_records = (
+                        self._execute_selection_node(
+                            template=template,
+                            plan=selection_plans[node_id],
+                            input_values=input_values,
+                            execution_metadata=execution_metadata_payload,
+                            runtime_context=runtime_context,
+                            node_output_values=node_output_values,
+                            event_callback=event_callback,
+                        )
+                    )
+                    node_records.extend(selection_node_records)
+                except ServiceError as exc:
+                    duration_ms = _elapsed_ms(node_started_at)
+                    augment_service_error_with_node_context(
+                        exc=exc,
+                        node=node,
+                        node_definition=node_definition,
+                        execution_index=execution_index,
+                    )
+                    emit_node_event(
+                        event_callback=event_callback,
+                        event_type="node.failed",
+                        message="selected branch failed",
+                        node_id=node_id,
+                        node=node,
+                        node_definition=node_definition,
+                        execution_index=execution_index,
+                        inputs=resolved_inputs,
+                        error_details=dict(exc.details),
+                        extra_payload={"duration_ms": duration_ms},
+                    )
+                    raise
+                except Exception as exc:
+                    duration_ms = _elapsed_ms(node_started_at)
+                    failed_node_details = build_failed_node_details(
+                        node=node,
+                        node_definition=node_definition,
+                        execution_index=execution_index,
+                        exc=exc,
+                    )
+                    emit_node_event(
+                        event_callback=event_callback,
+                        event_type="node.failed",
+                        message="selected branch failed",
+                        node_id=node_id,
+                        node=node,
+                        node_definition=node_definition,
+                        execution_index=execution_index,
+                        inputs=resolved_inputs,
+                        error_details=failed_node_details,
+                        extra_payload={"duration_ms": duration_ms},
+                    )
+                    raise ServiceConfigurationError(
+                        "workflow 选择分支执行失败",
+                        details=failed_node_details,
+                    ) from exc
+            elif node_id in parallel_plans:
                 try:
                     raw_outputs, resolved_inputs, parallel_node_records = (
                         self._execute_parallel_node(
@@ -803,6 +880,265 @@ class WorkflowGraphExecutor:
             )
 
         return plans
+
+    def _execute_selection_node(
+        self,
+        *,
+        template: WorkflowGraphTemplate,
+        plan: WorkflowSelectionExecutionPlan,
+        input_values: dict[str, object],
+        execution_metadata: dict[str, object],
+        runtime_context: object | None,
+        node_output_values: dict[tuple[str, str], object],
+        event_callback: Callable[[dict[str, object]], None] | None,
+    ) -> tuple[
+        dict[str, object],
+        dict[str, object],
+        tuple[WorkflowNodeExecutionRecord, ...],
+    ]:
+        """只执行 Start 选择的一条分支并生成 End 输出。"""
+
+        selected_branch_key = (
+            plan.start_node_id,
+            SELECTION_SELECTED_BRANCH_OUTPUT_PORT,
+        )
+        selected_branch_payload = node_output_values.get(selected_branch_key)
+        if not isinstance(selected_branch_payload, dict) or not isinstance(
+            selected_branch_payload.get("value"),
+            str,
+        ):
+            raise ServiceConfigurationError(
+                "选择 Start 未产出有效的 selected_branch",
+                details={"node_id": plan.start_node_id},
+            )
+        selected_branch_name = selected_branch_payload["value"]
+        selected_branch = next(
+            (
+                branch
+                for branch in plan.branches
+                if branch.branch_name == selected_branch_name
+            ),
+            None,
+        )
+        if selected_branch is None:
+            raise InvalidRequestError(
+                "选择 Start 命中的分支没有配置画布路径",
+                details={
+                    "node_id": plan.start_node_id,
+                    "selected_branch": selected_branch_name,
+                },
+            )
+
+        def emit_selection_event(event: dict[str, object]) -> None:
+            if event_callback is None:
+                return
+            normalized_event = dict(event)
+            raw_payload = normalized_event.get("payload")
+            payload = dict(raw_payload) if isinstance(raw_payload, dict) else {}
+            payload.update(
+                {
+                    "selection_branch": selected_branch_name,
+                    "selection_start_node_id": plan.start_node_id,
+                    "selection_end_node_id": plan.end_node_id,
+                }
+            )
+            normalized_event["payload"] = payload
+            event_callback(normalized_event)
+
+        start_output_key = (
+            plan.start_node_id,
+            selected_branch.start_output_port,
+        )
+        if start_output_key not in node_output_values:
+            raise ServiceConfigurationError(
+                "选择 Start 尚未产出选中分支的 Value",
+                details={
+                    "node_id": plan.start_node_id,
+                    "output_port": selected_branch.start_output_port,
+                },
+            )
+        if selected_branch.direct_passthrough:
+            branch_output = node_output_values[start_output_key]
+            branch_node_records: tuple[WorkflowNodeExecutionRecord, ...] = ()
+        else:
+            branch_template, branch_inputs = self._build_selection_branch_template(
+                template=template,
+                plan=plan,
+                branch=selected_branch,
+                input_values=input_values,
+                node_output_values=node_output_values,
+            )
+            try:
+                branch_result = WorkflowGraphExecutor(
+                    registry=self.registry,
+                    node_pack_timeout_policies=self.node_pack_timeout_policies,
+                    node_cancellation_event=self.node_cancellation_event,
+                    node_lifecycle_callback=self.node_lifecycle_callback,
+                ).execute(
+                    template=branch_template,
+                    input_values=branch_inputs,
+                    execution_metadata=execution_metadata,
+                    runtime_context=runtime_context,
+                    event_callback=(
+                        emit_selection_event if event_callback is not None else None
+                    ),
+                )
+            except ServiceError as exc:
+                exc.details.setdefault("selection_branch", selected_branch_name)
+                exc.details.setdefault("selection_start_node_id", plan.start_node_id)
+                exc.details.setdefault("selection_end_node_id", plan.end_node_id)
+                raise
+            branch_output = branch_result.outputs["branch_result"]
+            branch_node_records = branch_result.node_records
+
+        resolved_end_inputs = {SELECTION_END_INPUT_PORT: (branch_output,)}
+        raw_outputs = {
+            "result": branch_output,
+            SELECTION_SELECTED_BRANCH_OUTPUT_PORT: {
+                "value": selected_branch_name,
+            },
+        }
+        return raw_outputs, resolved_end_inputs, branch_node_records
+
+    def _build_selection_branch_template(
+        self,
+        *,
+        template: WorkflowGraphTemplate,
+        plan: WorkflowSelectionExecutionPlan,
+        branch: WorkflowSelectionBranchPlan,
+        input_values: dict[str, object],
+        node_output_values: dict[tuple[str, str], object],
+    ) -> tuple[WorkflowGraphTemplate, dict[str, object]]:
+        """把选中的互斥分支构造成隔离的可执行子图。"""
+
+        body_node_ids = set(branch.body_node_ids)
+        branch_nodes = tuple(
+            node for node in template.nodes if node.node_id in body_node_ids
+        )
+        branch_edges = tuple(
+            edge
+            for edge in template.edges
+            if edge.source_node_id in body_node_ids
+            and edge.target_node_id in body_node_ids
+        )
+        branch_template_inputs: list[WorkflowGraphInput] = []
+        branch_input_values: dict[str, object] = {}
+
+        for template_input in template.template_inputs:
+            if template_input.target_node_id not in body_node_ids:
+                continue
+            if template_input.input_id not in input_values:
+                continue
+            branch_input_id = (
+                f"selection-{branch.branch_name}-template-{template_input.input_id}"
+            )
+            branch_template_inputs.append(
+                WorkflowGraphInput(
+                    input_id=branch_input_id,
+                    display_name=template_input.display_name,
+                    payload_type_id=template_input.payload_type_id,
+                    target_node_id=template_input.target_node_id,
+                    target_port=template_input.target_port,
+                    required=True,
+                )
+            )
+            branch_input_values[branch_input_id] = input_values[
+                template_input.input_id
+            ]
+
+        for edge_index, edge in enumerate(template.edges, start=1):
+            if edge.target_node_id not in body_node_ids:
+                continue
+            if edge.source_node_id in body_node_ids:
+                continue
+            source_key = (edge.source_node_id, edge.source_port)
+            if source_key not in node_output_values:
+                raise InvalidRequestError(
+                    "选择分支的外部依赖尚未产出",
+                    details={
+                        "node_id": plan.start_node_id,
+                        "branch_name": branch.branch_name,
+                        "source_node_id": edge.source_node_id,
+                        "source_port": edge.source_port,
+                    },
+                )
+            target_node = next(
+                node for node in branch_nodes if node.node_id == edge.target_node_id
+            )
+            target_definition = self.registry.get_node_definition(
+                target_node.node_type_id
+            )
+            target_port_definition = _get_input_port_definition(
+                node_definition=target_definition,
+                port_name=edge.target_port,
+            )
+            if target_port_definition is None:
+                raise InvalidRequestError(
+                    "选择分支外部依赖引用了不存在的目标端口",
+                    details={"edge_id": edge.edge_id},
+                )
+            branch_input_id = (
+                f"selection-{branch.branch_name}-edge-{edge_index}"
+            )
+            branch_template_inputs.append(
+                WorkflowGraphInput(
+                    input_id=branch_input_id,
+                    display_name=branch_input_id,
+                    payload_type_id=target_port_definition.payload_type_id,
+                    target_node_id=edge.target_node_id,
+                    target_port=edge.target_port,
+                    required=True,
+                )
+            )
+            branch_input_values[branch_input_id] = node_output_values[source_key]
+
+        result_node = next(
+            node
+            for node in branch_nodes
+            if node.node_id == branch.result_source_node_id
+        )
+        result_definition = self.registry.get_node_definition(
+            result_node.node_type_id
+        )
+        result_port_definition = next(
+            (
+                port
+                for port in result_definition.output_ports
+                if port.name == branch.result_source_port
+            ),
+            None,
+        )
+        if result_port_definition is None:
+            raise InvalidRequestError(
+                "选择分支结果引用了不存在的输出端口",
+                details={
+                    "node_id": result_node.node_id,
+                    "source_port": branch.result_source_port,
+                },
+            )
+        branch_template = WorkflowGraphTemplate(
+            template_id=(
+                f"{template.template_id}-selection-{plan.start_node_id}-"
+                f"{branch.branch_name}"
+            ),
+            template_version=template.template_version,
+            display_name=(
+                f"{template.display_name} / selection branch {branch.branch_name}"
+            ),
+            nodes=branch_nodes,
+            edges=branch_edges,
+            template_inputs=tuple(branch_template_inputs),
+            template_outputs=(
+                WorkflowGraphOutput(
+                    output_id="branch_result",
+                    display_name="Branch Result",
+                    payload_type_id=result_port_definition.payload_type_id,
+                    source_node_id=branch.result_source_node_id,
+                    source_port=branch.result_source_port,
+                ),
+            ),
+        )
+        return branch_template, branch_input_values
 
     def _execute_parallel_node(
         self,

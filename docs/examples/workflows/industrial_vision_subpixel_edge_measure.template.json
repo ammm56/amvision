@@ -1,0 +1,19 @@
+{
+  "format_id": "amvision.workflow-graph-template.v1",
+  "template_id": "industrial-vision-subpixel-edge-measure-template",
+  "template_version": "1.0.0",
+  "display_name": "Industrial Vision Subpixel Edge Measure",
+  "description": "沿带状剖面提取异极性边缘对并输出亚像素间距量测。",
+  "nodes": [
+    {"node_id": "measure", "node_type_id": "custom.opencv.edge-pair-measure", "parameters": {"start_xy": [20, 100], "end_xy": [620, 100], "band_width": 5, "gradient_threshold": 10, "pair_polarity": "opposite", "minimum_spacing": 1}}
+  ],
+  "edges": [],
+  "template_inputs": [
+    {"input_id": "image", "display_name": "Measure Image", "payload_type_id": "image-ref.v1", "target_node_id": "measure", "target_port": "image"}
+  ],
+  "template_outputs": [
+    {"output_id": "points", "display_name": "Edge Points", "payload_type_id": "points.v1", "source_node_id": "measure", "source_port": "points"},
+    {"output_id": "measurements", "display_name": "Measurements", "payload_type_id": "measurements.v1", "source_node_id": "measure", "source_port": "measurements"}
+  ],
+  "metadata": {"example_kind": "industrial-vision-subpixel-edge-measure", "node_groups": {"measurement": ["measure"]}}
+}

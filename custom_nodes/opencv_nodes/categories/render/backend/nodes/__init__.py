@@ -34,6 +34,9 @@ from custom_nodes.opencv_nodes.categories.render.backend.nodes.draw_rois import 
     NODE_TYPE_ID as DRAW_ROIS_NODE_TYPE_ID,
     handle_node as draw_rois_handler,
 )
+from custom_nodes.opencv_nodes.categories.render.backend.nodes.industrial_render import (
+    INDUSTRIAL_RENDER_NODE_HANDLERS,
+)
 
 
 NODE_HANDLERS = (
@@ -45,6 +48,7 @@ NODE_HANDLERS = (
     (DRAW_REGIONS_NODE_TYPE_ID, draw_regions_handler),
     (DRAW_ROI_NODE_TYPE_ID, draw_roi_handler),
     (DRAW_ROIS_NODE_TYPE_ID, draw_rois_handler),
+    *INDUSTRIAL_RENDER_NODE_HANDLERS,
 )
 
 

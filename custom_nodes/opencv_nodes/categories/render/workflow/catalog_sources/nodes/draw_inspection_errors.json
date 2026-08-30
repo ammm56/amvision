@@ -1,0 +1,23 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.draw-inspection-errors",
+  "display_name": "Draw Inspection Errors",
+  "category": "opencv.output.render",
+  "description": "按 error_kind 使用稳定颜色绘制通用检查异常区域。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {"name": "image", "display_name": "Image", "payload_type_id": "image-ref.v1"},
+    {"name": "error_regions", "display_name": "Error Regions", "payload_type_id": "regions.v1"}
+  ],
+  "output_ports": [{"name": "image", "display_name": "Image", "payload_type_id": "image-ref.v1"}],
+  "parameter_schema": {"type": "object", "properties": {
+    "line_thickness": {"type": "integer", "minimum": 1, "maximum": 32, "default": 2},
+    "draw_labels": {"type": "boolean", "default": true},
+    "save_location": {"type": "string"}
+  }},
+  "capability_tags": ["opencv.draw-inspection-errors", "vision.render", "vision.inspection"],
+  "runtime_requirements": {"python_packages": ["opencv-python", "numpy"]},
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.1.3"
+}

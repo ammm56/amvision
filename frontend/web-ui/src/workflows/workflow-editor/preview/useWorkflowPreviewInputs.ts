@@ -2,6 +2,7 @@ import { ref } from 'vue'
 
 import { translate } from '@/platform/i18n'
 import type { FlowApplicationBinding } from '../types'
+import { buildWorkflowRuntimeInputSample } from '../runtime-input-samples'
 
 export type PreviewSelectValue = string | number | boolean | null
 
@@ -66,6 +67,9 @@ export function useWorkflowPreviewInputs(options: WorkflowPreviewInputsOptions) 
     const state = previewInputState.value[binding.binding_id]
     if (!state) return false
     const payloadTypeId = options.getBindingPayloadTypeId(binding)
+    if (usesStructuredJsonPreviewEditor(payloadTypeId)) {
+      return Boolean(state.jsonValue.trim())
+    }
     if (payloadTypeId === 'value.v1') {
       if (usesJsonPreviewEditor(binding)) return Boolean(state.jsonValue.trim())
       return state.valueFields.some((field) => field.key.trim() && field.value.trim())
@@ -104,7 +108,7 @@ export function useWorkflowPreviewInputs(options: WorkflowPreviewInputsOptions) 
       localPath: '',
       imageHandle: '',
       plainValue: '',
-      jsonValue: readPreviewJsonValue(binding),
+      jsonValue: readPreviewJsonValue(binding, payloadTypeId),
       textValue: '',
     }
   }
@@ -230,6 +234,9 @@ export function useWorkflowPreviewInputs(options: WorkflowPreviewInputsOptions) 
     const state = previewInputState.value[binding.binding_id]
     const payloadTypeId = options.getBindingPayloadTypeId(binding)
     if (!state) return null
+    if (usesStructuredJsonPreviewEditor(payloadTypeId)) {
+      return buildStructuredJsonPreviewPayload(state)
+    }
     if (payloadTypeId === 'value.v1') {
       return usesJsonPreviewEditor(binding)
         ? buildJsonValuePreviewPayload(state, binding)
@@ -270,6 +277,25 @@ export function usesJsonPreviewEditor(binding: FlowApplicationBinding): boolean 
   return Boolean(schema && typeof schema === 'object' && !Array.isArray(schema))
 }
 
+const STRUCTURED_JSON_PREVIEW_PAYLOAD_TYPES = new Set([
+  'camera-calibration.v1',
+  'circles.v1',
+  'contours.v1',
+  'ellipses.v1',
+  'lines.v1',
+  'localizations.v1',
+  'measurements.v1',
+  'planar-transform.v1',
+  'points.v1',
+  'regions.v1',
+  'stereo-calibration.v1',
+])
+
+/** 判断输入是否应直接使用结构化 JSON 编辑器，不额外包装 value。 */
+export function usesStructuredJsonPreviewEditor(payloadTypeId: string): boolean {
+  return STRUCTURED_JSON_PREVIEW_PAYLOAD_TYPES.has(payloadTypeId)
+}
+
 function readPreviewValueFields(binding: FlowApplicationBinding): PreviewValueField[] {
   const rawValue = binding.config.default_value ?? binding.config.example_value ?? binding.metadata.default_value ?? binding.metadata.example_value
   const valueObject = normalizePreviewValueObject(rawValue)
@@ -284,17 +310,36 @@ function normalizePreviewValueObject(rawValue: unknown): Record<string, unknown>
   return rawRecord
 }
 
-function readPreviewJsonValue(binding: FlowApplicationBinding): string {
-  if (!usesJsonPreviewEditor(binding)) return ''
+function readPreviewJsonValue(binding: FlowApplicationBinding, payloadTypeId: string): string {
+  if (!usesJsonPreviewEditor(binding) && !usesStructuredJsonPreviewEditor(payloadTypeId)) return ''
   const rawValue = binding.config.default_value
     ?? binding.config.example_value
     ?? binding.metadata.default_value
     ?? binding.metadata.example_value
-  if (rawValue === undefined) return ''
+  if (rawValue === undefined) {
+    if (!usesStructuredJsonPreviewEditor(payloadTypeId)) return ''
+    return JSON.stringify(
+      buildWorkflowRuntimeInputSample(payloadTypeId, binding.binding_id, 'storage'),
+      null,
+      2,
+    )
+  }
   const value = rawValue && typeof rawValue === 'object' && !Array.isArray(rawValue) && 'value' in rawValue
     ? (rawValue as Record<string, unknown>).value
     : rawValue
   return JSON.stringify(value, null, 2)
+}
+
+function buildStructuredJsonPreviewPayload(state: PreviewInputState): unknown {
+  try {
+    const value = JSON.parse(state.jsonValue) as unknown
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      throw new Error('structured payload requires an object')
+    }
+    return value
+  } catch {
+    throw new Error(translate('workflowEditor.feedback.previewJsonInvalid'))
+  }
 }
 
 function buildJsonValuePreviewPayload(

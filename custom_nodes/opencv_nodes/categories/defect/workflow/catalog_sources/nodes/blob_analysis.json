@@ -1,0 +1,27 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.blob-analysis",
+  "display_name": "Blob Analysis",
+  "category": "opencv.inspection.statistics",
+  "description": "对二值前景执行连通域、形状和可选灰度统计。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {"name": "mask", "display_name": "Binary Mask", "payload_type_id": "image-ref.v1"},
+    {"name": "image", "display_name": "Gray Image", "payload_type_id": "image-ref.v1", "required": false}
+  ],
+  "output_ports": [
+    {"name": "regions", "display_name": "Blob Regions", "payload_type_id": "regions.v1"},
+    {"name": "measurements", "display_name": "Blob Measurements", "payload_type_id": "measurements.v1"}
+  ],
+  "parameter_schema": {"type": "object", "properties": {
+    "threshold": {"type": "number", "minimum": 0, "maximum": 255, "default": 0},
+    "connectivity": {"type": "integer", "enum": [4, 8], "default": 8},
+    "minimum_area": {"type": "integer", "minimum": 1, "default": 1},
+    "maximum_area": {"type": "integer", "minimum": 1}
+  }},
+  "capability_tags": ["opencv.blob-analysis", "vision.analysis", "inspection.statistics"],
+  "runtime_requirements": {"python_packages": ["opencv-python", "numpy"]},
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.1.3"
+}

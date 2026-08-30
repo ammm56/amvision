@@ -1,0 +1,27 @@
+{
+  "format_id": "amvision.workflow-graph-template.v1",
+  "template_id": "industrial-vision-shape-locate-template",
+  "template_version": "1.0.0",
+  "display_name": "Industrial Vision Shape Locate",
+  "description": "在明确角度和尺度范围内执行边缘形状定位，并绘制统一定位结果。",
+  "nodes": [
+    {"node_id": "image_input", "node_type_id": "core.io.template-input.image", "parameters": {}},
+    {"node_id": "locate", "node_type_id": "custom.opencv.shape-locate", "parameters": {"canny_low_threshold": 50, "canny_high_threshold": 150, "angle_min": -10, "angle_max": 10, "angle_step": 2, "scale_min": 0.9, "scale_max": 1.1, "scale_step": 0.05, "minimum_score": 0.5}},
+    {"node_id": "draw", "node_type_id": "custom.opencv.draw-localizations", "parameters": {"draw_labels": true, "axis_length": 30}}
+  ],
+  "edges": [
+    {"edge_id": "edge-image-locate", "source_node_id": "image_input", "source_port": "image", "target_node_id": "locate", "target_port": "image"},
+    {"edge_id": "edge-image-draw", "source_node_id": "image_input", "source_port": "image", "target_node_id": "draw", "target_port": "image"},
+    {"edge_id": "edge-locate-localizations-draw", "source_node_id": "locate", "source_port": "localizations", "target_node_id": "draw", "target_port": "localizations"}
+  ],
+  "template_inputs": [
+    {"input_id": "image", "display_name": "Source Image", "payload_type_id": "image-ref.v1", "target_node_id": "image_input", "target_port": "payload"},
+    {"input_id": "template_image", "display_name": "Template Image", "payload_type_id": "image-ref.v1", "target_node_id": "locate", "target_port": "template_image"}
+  ],
+  "template_outputs": [
+    {"output_id": "localizations", "display_name": "Localizations", "payload_type_id": "localizations.v1", "source_node_id": "locate", "source_port": "localizations"},
+    {"output_id": "transform", "display_name": "Planar Transform", "payload_type_id": "planar-transform.v1", "source_node_id": "locate", "source_port": "transform"},
+    {"output_id": "rendered_image", "display_name": "Rendered Image", "payload_type_id": "image-ref.v1", "source_node_id": "draw", "source_port": "image"}
+  ],
+  "metadata": {"example_kind": "industrial-vision-shape-locate", "node_groups": {"input": ["image_input"], "localization": ["locate"], "render": ["draw"]}}
+}

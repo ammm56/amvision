@@ -1,0 +1,25 @@
+{
+  "format_id": "amvision.workflow-graph-template.v1",
+  "template_id": "industrial-vision-contour-deviation-template",
+  "template_version": "1.0.0",
+  "display_name": "Industrial Vision Contour Deviation",
+  "description": "比较参考和实测轮廓，输出外凸、缺口与有符号偏差，并绘制异常区域。",
+  "nodes": [
+    {"node_id": "inspect", "node_type_id": "custom.opencv.contour-deviation-inspect", "parameters": {"positive_tolerance": 2, "negative_tolerance": 2}},
+    {"node_id": "draw", "node_type_id": "custom.opencv.draw-inspection-errors", "parameters": {"draw_labels": true}}
+  ],
+  "edges": [
+    {"edge_id": "edge-errors-draw", "source_node_id": "inspect", "source_port": "error_regions", "target_node_id": "draw", "target_port": "error_regions"}
+  ],
+  "template_inputs": [
+    {"input_id": "reference_contours", "display_name": "Reference Contour", "payload_type_id": "contours.v1", "target_node_id": "inspect", "target_port": "reference_contours"},
+    {"input_id": "measured_contours", "display_name": "Measured Contour", "payload_type_id": "contours.v1", "target_node_id": "inspect", "target_port": "measured_contours"},
+    {"input_id": "image", "display_name": "Draw Source Image", "payload_type_id": "image-ref.v1", "target_node_id": "draw", "target_port": "image"}
+  ],
+  "template_outputs": [
+    {"output_id": "error_regions", "display_name": "Error Regions", "payload_type_id": "regions.v1", "source_node_id": "inspect", "source_port": "error_regions"},
+    {"output_id": "measurements", "display_name": "Deviation Measurements", "payload_type_id": "measurements.v1", "source_node_id": "inspect", "source_port": "measurements"},
+    {"output_id": "rendered_image", "display_name": "Rendered Image", "payload_type_id": "image-ref.v1", "source_node_id": "draw", "source_port": "image"}
+  ],
+  "metadata": {"example_kind": "industrial-vision-contour-deviation", "node_groups": {"inspection": ["inspect"], "render": ["draw"]}}
+}

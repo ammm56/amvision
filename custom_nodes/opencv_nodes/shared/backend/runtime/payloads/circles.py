@@ -11,6 +11,10 @@ from custom_nodes.opencv_nodes.shared.backend.runtime.geometry import (
 from custom_nodes.opencv_nodes.shared.backend.runtime.payloads.common import (
     fill_source_image_fields,
 )
+from custom_nodes.opencv_nodes.shared.backend.runtime.payloads.points import (
+    require_coordinate_space,
+    require_point_unit,
+)
 from custom_nodes.opencv_nodes.shared.backend.runtime.validators import require_number
 
 
@@ -19,12 +23,16 @@ def build_circles_payload(
     items: list[dict[str, object]],
     source_image: object | None,
     source_object_key: str | None,
+    coordinate_space: str = "source-image-pixels",
+    unit: str = "pixel",
 ) -> dict[str, object]:
     """构建规范化后的 circles.v1 payload。"""
 
     payload: dict[str, object] = {
         "items": [dict(item) for item in items],
         "count": len(items),
+        "coordinate_space": require_coordinate_space(coordinate_space),
+        "unit": require_point_unit(unit),
     }
     if isinstance(source_image, dict):
         payload["source_image"] = require_image_payload(source_image)
@@ -68,6 +76,10 @@ def require_circles_payload(payload: object) -> dict[str, object]:
         normalized_items.append(normalized_item)
 
     normalized_payload = dict(payload)
+    normalized_payload["coordinate_space"] = require_coordinate_space(
+        payload.get("coordinate_space", "source-image-pixels")
+    )
+    normalized_payload["unit"] = require_point_unit(payload.get("unit", "pixel"))
     normalized_payload["items"] = normalized_items
     normalized_payload["count"] = int(payload.get("count", len(normalized_items)))
     fill_source_image_fields(normalized_payload)

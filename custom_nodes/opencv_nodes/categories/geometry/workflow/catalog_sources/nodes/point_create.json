@@ -1,0 +1,16 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.point-create",
+  "display_name": "Point Create",
+  "category": "opencv.geometry.shape",
+  "description": "从显式二维坐标创建带 coordinate space 和 unit 的 points.v1。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [{"name": "points", "display_name": "Points", "payload_type_id": "value.v1", "required": false}],
+  "output_ports": [{"name": "points", "display_name": "Points", "payload_type_id": "points.v1"}, {"name": "summary", "display_name": "Summary", "payload_type_id": "value.v1"}],
+  "parameter_schema": {"type": "object", "properties": {"points": {"type": "array", "default": [[0, 0]]}, "coordinate_space": {"type": "string"}, "unit": {"type": "string", "enum": ["pixel", "millimeter", "meter", "unitless"], "default": "pixel"}}, "required": ["points", "coordinate_space"]},
+  "capability_tags": ["opencv.geometry", "vision.points", "geometry.create"],
+  "runtime_requirements": {"python_packages": ["opencv-python", "numpy"]},
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.1.3"
+}

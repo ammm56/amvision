@@ -1,0 +1,28 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.image-quality-metrics",
+  "display_name": "Image Quality Metrics",
+  "category": "opencv.inspection.statistics",
+  "description": "一次输出亮度、对比度、清晰度、曝光裁剪、HSV 饱和度和稳健噪声估计，可选 ROI。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {"name": "image", "display_name": "Image", "payload_type_id": "image-ref.v1"},
+    {"name": "roi", "display_name": "ROI", "payload_type_id": "roi.v1", "required": false}
+  ],
+  "output_ports": [
+    {"name": "metrics", "display_name": "Metrics", "payload_type_id": "value.v1"}
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "low_clip_threshold": {"type": "number", "minimum": 0.0, "maximum": 255.0, "default": 1.0},
+      "high_clip_threshold": {"type": "number", "minimum": 0.0, "maximum": 255.0, "default": 254.0},
+      "search_roi": {"type": "object"}
+    }
+  },
+  "capability_tags": ["opencv.image-quality", "vision.opencv", "inspection.statistics"],
+  "runtime_requirements": {"python_packages": ["opencv-python", "numpy"]},
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.1.3"
+}

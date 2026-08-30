@@ -962,6 +962,7 @@ def get_core_workflow_payload_contracts() -> tuple[WorkflowPayloadContract, ...]
             json_schema={
                 "type": "object",
                 "properties": {
+                    "count": {"type": "integer", "minimum": 0},
                     "items": {
                         "type": "array",
                         "items": {
@@ -1017,6 +1018,11 @@ def get_core_workflow_payload_contracts() -> tuple[WorkflowPayloadContract, ...]
             json_schema={
                 "type": "object",
                 "properties": {
+                    "coordinate_space": {"type": "string", "minLength": 1},
+                    "unit": {
+                        "type": "string",
+                        "enum": ["pixel", "millimeter", "meter", "unitless"],
+                    },
                     "source_image": _build_opencv_shared_image_ref_json_schema(),
                     "source_object_key": {"type": "string"},
                     "count": {"type": "integer"},

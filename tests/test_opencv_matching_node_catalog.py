@@ -37,6 +37,8 @@ def test_opencv_matching_node_catalog_builder_matches_checked_in_catalog() -> No
         "custom.opencv.good-features-to-track",
         "custom.opencv.fast-corners",
         "custom.opencv.line-segment-detect",
+        "custom.opencv.feature-locate",
+        "custom.opencv.shape-locate",
     }
     assert {item["node_pack_id"] for item in actual_catalog_payload["node_definitions"]} == {
         "opencv.nodes"

@@ -1,0 +1,5 @@
+{
+  "format_id": "amvision.node-definition.v1", "node_type_id": "custom.opencv.pixel-to-world", "display_name": "Pixel To World", "category": "opencv.calibration.pose", "description": "使用明确的像素到世界平面 planar transform 转换 points.v1；不把相机内参误作平面标定。", "implementation_kind": "custom-node", "runtime_kind": "python-callable",
+  "input_ports": [{"name": "points", "display_name": "Pixel Points", "payload_type_id": "points.v1"}, {"name": "transform", "display_name": "Plane Transform", "payload_type_id": "planar-transform.v1"}], "output_ports": [{"name": "points", "display_name": "World Points", "payload_type_id": "points.v1"}, {"name": "summary", "display_name": "Summary", "payload_type_id": "value.v1"}],
+  "parameter_schema": {"type": "object", "properties": {"world_unit": {"type": "string", "enum": ["millimeter", "meter", "unitless"], "default": "millimeter"}}}, "capability_tags": ["opencv.calibration", "vision.points", "coordinate.pixel-to-world"], "runtime_requirements": {"python_packages": ["opencv-python", "numpy"]}, "node_pack_id": "opencv.nodes", "node_pack_version": "0.1.3"
+}

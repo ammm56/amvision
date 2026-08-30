@@ -1,0 +1,24 @@
+{
+  "format_id": "amvision.workflow-graph-template.v1",
+  "template_id": "industrial-vision-stereo-calibration-diagnose-template",
+  "template_version": "1.0.0",
+  "display_name": "Industrial Vision Stereo Calibration Diagnose",
+  "description": "使用固定左右内参和配对观察计算双目外参、极线误差与校正参数。",
+  "nodes": [
+    {"node_id": "calibrate", "node_type_id": "custom.opencv.stereo-calibrate", "parameters": {"minimum_views": 3}},
+    {"node_id": "rectify", "node_type_id": "custom.opencv.stereo-rectify", "parameters": {"alpha": -1}}
+  ],
+  "edges": [
+    {"edge_id": "edge-calibrate-rectify", "source_node_id": "calibrate", "source_port": "stereo_calibration", "target_node_id": "rectify", "target_port": "stereo_calibration"}
+  ],
+  "template_inputs": [
+    {"input_id": "left_camera", "display_name": "Left Camera Calibration", "payload_type_id": "camera-calibration.v1", "target_node_id": "calibrate", "target_port": "left_camera"},
+    {"input_id": "right_camera", "display_name": "Right Camera Calibration", "payload_type_id": "camera-calibration.v1", "target_node_id": "calibrate", "target_port": "right_camera"},
+    {"input_id": "observations", "display_name": "Paired Observations", "payload_type_id": "value.v1", "target_node_id": "calibrate", "target_port": "observations"}
+  ],
+  "template_outputs": [
+    {"output_id": "calibration", "display_name": "Stereo Calibration With Diagnostics", "payload_type_id": "stereo-calibration.v1", "source_node_id": "calibrate", "source_port": "stereo_calibration"},
+    {"output_id": "rectified_calibration", "display_name": "Rectified Calibration", "payload_type_id": "stereo-calibration.v1", "source_node_id": "rectify", "source_port": "stereo_calibration"}
+  ],
+  "metadata": {"example_kind": "industrial-vision-stereo-calibration-diagnose", "node_groups": {"calibration": ["calibrate", "rectify"]}}
+}

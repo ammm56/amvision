@@ -344,7 +344,12 @@ def test_preview_run_image_body_returns_raw_inline_base64_but_persists_redacted(
     """验证 image-body 在同步响应返回原始 base64，持久化结果继续脱敏。"""
 
     service, _, _ = _build_runtime_service(tmp_path)
-    service.dataset_storage.write_bytes("inputs/source.png", build_valid_test_png_bytes())
+    source_object_key = service.dataset_storage.write_immutable_object(
+        object_prefix="projects/project-1/inputs/image-body-source",
+        content=build_valid_test_png_bytes(),
+        media_type="image/png",
+        extension=".png",
+    ).metadata.object_key
 
     preview_run = service.create_preview_run(
         WorkflowPreviewRunCreateRequest(
@@ -354,7 +359,7 @@ def test_preview_run_image_body_returns_raw_inline_base64_but_persists_redacted(
             input_bindings={
                 "request_image_base64": {
                     "transport_kind": "storage",
-                    "object_key": "inputs/source.png",
+                    "object_key": source_object_key,
                     "media_type": "image/png",
                 }
             },
@@ -447,7 +452,12 @@ def test_preview_run_response_envelope_can_compose_detections_and_preview_image_
     """验证 payload-to-value 可以组装统一响应，且同步返回 raw 图片 base64。"""
 
     service, _, _ = _build_runtime_service(tmp_path)
-    service.dataset_storage.write_bytes("inputs/source.png", build_valid_test_png_bytes())
+    source_object_key = service.dataset_storage.write_immutable_object(
+        object_prefix="projects/project-1/inputs/payload-composition-source",
+        content=build_valid_test_png_bytes(),
+        media_type="image/png",
+        extension=".png",
+    ).metadata.object_key
 
     preview_run = service.create_preview_run(
         WorkflowPreviewRunCreateRequest(
@@ -457,7 +467,7 @@ def test_preview_run_response_envelope_can_compose_detections_and_preview_image_
             input_bindings={
                 "request_image_base64": {
                     "transport_kind": "storage",
-                    "object_key": "inputs/source.png",
+                    "object_key": source_object_key,
                     "media_type": "image/png",
                 },
                 "yolox_detections": {

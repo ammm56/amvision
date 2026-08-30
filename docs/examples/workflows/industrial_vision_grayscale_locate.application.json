@@ -1,0 +1,16 @@
+{
+  "format_id": "amvision.flow-application.v1",
+  "application_id": "industrial-vision-grayscale-locate-app",
+  "display_name": "Industrial Vision Grayscale Locate App",
+  "description": "灰度模板定位与结果复核示例。",
+  "template_ref": {"template_id": "industrial-vision-grayscale-locate-template", "template_version": "1.0.0", "source_kind": "json-file", "source_uri": "docs/examples/workflows/industrial_vision_grayscale_locate.template.json"},
+  "runtime_mode": "python-json-workflow",
+  "bindings": [
+    {"binding_id": "image", "direction": "input", "template_port_id": "image", "binding_kind": "workflow-execute-input", "config": {"payload_type_id": "image-ref.v1"}, "metadata": {}},
+    {"binding_id": "template_image", "direction": "input", "template_port_id": "template_image", "binding_kind": "workflow-execute-input", "config": {"payload_type_id": "image-ref.v1"}, "metadata": {}},
+    {"binding_id": "regions", "direction": "output", "template_port_id": "regions", "binding_kind": "workflow-execute-output", "config": {"payload_type_id": "regions.v1"}, "metadata": {}},
+    {"binding_id": "summary", "direction": "output", "template_port_id": "summary", "binding_kind": "workflow-execute-output", "config": {"payload_type_id": "value.v1"}, "metadata": {}},
+    {"binding_id": "rendered_image", "direction": "output", "template_port_id": "rendered_image", "binding_kind": "workflow-execute-output", "config": {"payload_type_id": "image-ref.v1"}, "metadata": {}}
+  ],
+  "metadata": {"example_kind": "industrial-vision-grayscale-locate"}
+}

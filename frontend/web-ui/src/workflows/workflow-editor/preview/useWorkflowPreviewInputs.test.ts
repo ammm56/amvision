@@ -82,6 +82,58 @@ describe('workflow Preview image inputs', () => {
       { bindingId: 'request_files', file: second },
     ])
   })
+
+  it('edits industrial structured payloads as direct JSON without value wrapping', async () => {
+    const bindings = [
+      buildBinding('reference_path', 'points.v1'),
+      buildBinding('reference_contours', 'contours.v1'),
+      buildBinding('left_camera', 'camera-calibration.v1'),
+    ]
+    const previewInputs = useWorkflowPreviewInputs({
+      getBindingPayloadTypeId: (binding) => String(binding.config.payload_type_id),
+    })
+    previewInputs.initializePreviewInputs(bindings)
+
+    expect(previewInputs.hasPreviewBindingValue(bindings[0])).toBe(true)
+    const payload = await previewInputs.buildPreviewInputBindings(bindings)
+
+    expect(payload.inputBindings.reference_path).toMatchObject({
+      coordinate_space: 'source-image-pixels',
+      unit: 'pixel',
+      count: 2,
+    })
+    expect(payload.inputBindings.reference_contours).toMatchObject({ count: 1 })
+    expect(payload.inputBindings.left_camera).toMatchObject({
+      camera_model: 'pinhole',
+      image_size: [640, 480],
+    })
+    expect(payload.inputBindings.reference_path).not.toHaveProperty('value')
+  })
+
+  it.each([
+    'camera-calibration.v1',
+    'circles.v1',
+    'contours.v1',
+    'ellipses.v1',
+    'lines.v1',
+    'localizations.v1',
+    'measurements.v1',
+    'planar-transform.v1',
+    'points.v1',
+    'regions.v1',
+    'stereo-calibration.v1',
+  ])('provides an object sample for structured payload %s', async (payloadTypeId) => {
+    const binding = buildBinding('structured_input', payloadTypeId)
+    const previewInputs = useWorkflowPreviewInputs({
+      getBindingPayloadTypeId: item => String(item.config.payload_type_id),
+    })
+    previewInputs.initializePreviewInputs([binding])
+
+    const payload = await previewInputs.buildPreviewInputBindings([binding])
+
+    expect(payload.inputBindings.structured_input).toEqual(expect.any(Object))
+    expect(Array.isArray(payload.inputBindings.structured_input)).toBe(false)
+  })
 })
 
 function buildBinding(

@@ -1,0 +1,22 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.stereo-calibrate",
+  "display_name": "Stereo Calibrate",
+  "category": "opencv.calibration.camera",
+  "description": "使用固定左右内参和配对观察计算双目外参、E、F 与极线误差。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {"name": "left_camera", "display_name": "Left Camera", "payload_type_id": "camera-calibration.v1"},
+    {"name": "right_camera", "display_name": "Right Camera", "payload_type_id": "camera-calibration.v1"},
+    {"name": "observations", "display_name": "Paired Observations", "payload_type_id": "value.v1"}
+  ],
+  "output_ports": [{"name": "stereo_calibration", "display_name": "Stereo Calibration", "payload_type_id": "stereo-calibration.v1"}],
+  "parameter_schema": {"type": "object", "properties": {
+    "minimum_views": {"type": "integer", "minimum": 2, "default": 3}
+  }},
+  "capability_tags": ["opencv.stereo-calibrate", "vision.opencv", "calibration.stereo"],
+  "runtime_requirements": {"python_packages": ["opencv-python", "numpy"]},
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.1.3"
+}

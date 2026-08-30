@@ -40,6 +40,11 @@ def test_opencv_defect_node_catalog_builder_matches_checked_in_catalog() -> None
         "custom.opencv.region-intersection",
         "custom.opencv.region-difference",
         "custom.opencv.morphology-hitmiss",
+        "custom.opencv.blob-analysis",
+        "custom.opencv.bead-inspect",
+        "custom.opencv.contour-deviation-inspect",
+        "custom.opencv.variation-model-build",
+        "custom.opencv.variation-inspect",
     }
     assert {item["node_pack_id"] for item in actual_catalog_payload["node_definitions"]} == {
         "opencv.nodes"

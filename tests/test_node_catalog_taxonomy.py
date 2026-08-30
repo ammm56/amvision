@@ -14,21 +14,22 @@ from custom_nodes.opencv_nodes.workflow.catalog_builder import (
 EXPECTED_CORE_CATEGORY_COUNTS = {
     "core.input.prompt": 8,
     "core.io.image": 8,
-    "core.io.file": 9,
-    "core.io.input": 3,
+    "core.io.file": 13,
+    "core.io.input": 6,
     "core.io.response": 4,
     "core.io.video": 5,
     "core.ui.preview": 4,
     "core.logic.condition": 4,
     "core.logic.collection": 14,
-    "core.logic.branch": 3,
-    "core.logic.iteration": 3,
+    "core.logic.branch": 7,
+    "core.logic.iteration": 4,
     "core.logic.parallel": 2,
     "core.logic.object": 5,
-    "core.logic.transform": 10,
+    "core.logic.transform": 25,
+    "core.logic.value": 4,
     "core.logic.variable": 3,
     "core.logic.rule": 6,
-    "core.model.inference": 8,
+    "core.model.inference": 13,
     "core.model.lifecycle": 5,
     "core.dataset.import": 1,
     "core.dataset.export": 2,
@@ -46,32 +47,32 @@ EXPECTED_CORE_CATEGORY_COUNTS = {
 }
 
 EXPECTED_OPENCV_CATEGORY_COUNTS = {
-    "opencv.image.color": 5,
+    "opencv.image.color": 6,
     "opencv.image.enhancement": 7,
     "opencv.image.filter": 6,
     "opencv.image.edge": 4,
     "opencv.image.threshold": 4,
-    "opencv.image.transform": 13,
+    "opencv.image.transform": 22,
     "opencv.mask.operation": 7,
     "opencv.mask.morphology": 2,
     "opencv.segmentation.image": 4,
     "opencv.segmentation.region": 5,
     "opencv.feature.detection": 6,
-    "opencv.matching.feature": 2,
-    "opencv.matching.template": 3,
-    "opencv.matching.registration": 3,
+    "opencv.matching.feature": 3,
+    "opencv.matching.template": 4,
+    "opencv.matching.registration": 4,
     "opencv.geometry.detection": 7,
     "opencv.geometry.contour": 5,
-    "opencv.geometry.shape": 10,
-    "opencv.calibration.camera": 5,
-    "opencv.calibration.pose": 4,
-    "opencv.measurement.edge": 2,
-    "opencv.measurement.circle": 3,
-    "opencv.measurement.geometry": 5,
-    "opencv.inspection.statistics": 2,
+    "opencv.geometry.shape": 18,
+    "opencv.calibration.camera": 10,
+    "opencv.calibration.pose": 6,
+    "opencv.measurement.edge": 5,
+    "opencv.measurement.circle": 4,
+    "opencv.measurement.geometry": 11,
+    "opencv.inspection.statistics": 4,
     "opencv.inspection.batch": 5,
-    "opencv.inspection.difference": 3,
-    "opencv.output.render": 9,
+    "opencv.inspection.difference": 7,
+    "opencv.output.render": 13,
     "opencv.output.workflow": 2,
 }
 
@@ -82,12 +83,12 @@ _HAN_PATTERN = re.compile(r"[\u3400-\u9fff]")
 
 
 def test_core_catalog_uses_confirmed_two_level_taxonomy() -> None:
-    """验证 169 个 Core 节点完整落入严格两级分类。"""
+    """验证 205 个 Core 节点完整落入严格两级分类。"""
 
     definitions = get_core_workflow_node_definitions()
     category_counts = Counter(item.category for item in definitions)
 
-    assert len(definitions) == 169
+    assert len(definitions) == 205
     assert category_counts == EXPECTED_CORE_CATEGORY_COUNTS
     assert all(
         _TWO_LEVEL_CATEGORY_PATTERN.fullmatch(item.category) for item in definitions
@@ -96,12 +97,12 @@ def test_core_catalog_uses_confirmed_two_level_taxonomy() -> None:
 
 
 def test_opencv_catalog_uses_confirmed_two_level_taxonomy_and_english_names() -> None:
-    """验证 133 个 OpenCV 节点分类完整且节点标题固定为英文。"""
+    """验证 181 个 OpenCV 节点分类完整且节点标题固定为英文。"""
 
     catalog = build_custom_node_catalog_document()
     category_counts = Counter(item.category for item in catalog.node_definitions)
 
-    assert len(catalog.node_definitions) == 133
+    assert len(catalog.node_definitions) == 181
     assert category_counts == EXPECTED_OPENCV_CATEGORY_COUNTS
     assert all(
         _TWO_LEVEL_CATEGORY_PATTERN.fullmatch(item.category)

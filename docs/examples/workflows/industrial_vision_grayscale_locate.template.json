@@ -1,0 +1,27 @@
+{
+  "format_id": "amvision.workflow-graph-template.v1",
+  "template_id": "industrial-vision-grayscale-locate-template",
+  "template_version": "1.0.0",
+  "display_name": "Industrial Vision Grayscale Locate",
+  "description": "使用灰度模板匹配定位目标，并把候选区域绘制到源图。",
+  "nodes": [
+    {"node_id": "image_input", "node_type_id": "core.io.template-input.image", "parameters": {}},
+    {"node_id": "locate", "node_type_id": "custom.opencv.template-match", "parameters": {"method": "ccoeff-normed", "score_threshold": 0.8, "max_matches": 1, "convert_to_grayscale": true}},
+    {"node_id": "draw", "node_type_id": "custom.opencv.draw-regions", "parameters": {"draw_masks": false, "draw_polygons": true, "draw_boxes": true, "draw_labels": true}}
+  ],
+  "edges": [
+    {"edge_id": "edge-image-locate", "source_node_id": "image_input", "source_port": "image", "target_node_id": "locate", "target_port": "image"},
+    {"edge_id": "edge-image-draw", "source_node_id": "image_input", "source_port": "image", "target_node_id": "draw", "target_port": "image"},
+    {"edge_id": "edge-locate-regions-draw", "source_node_id": "locate", "source_port": "regions", "target_node_id": "draw", "target_port": "regions"}
+  ],
+  "template_inputs": [
+    {"input_id": "image", "display_name": "Source Image", "payload_type_id": "image-ref.v1", "target_node_id": "image_input", "target_port": "payload"},
+    {"input_id": "template_image", "display_name": "Template Image", "payload_type_id": "image-ref.v1", "target_node_id": "locate", "target_port": "template_image"}
+  ],
+  "template_outputs": [
+    {"output_id": "regions", "display_name": "Matched Regions", "payload_type_id": "regions.v1", "source_node_id": "locate", "source_port": "regions"},
+    {"output_id": "summary", "display_name": "Match Summary", "payload_type_id": "value.v1", "source_node_id": "locate", "source_port": "summary"},
+    {"output_id": "rendered_image", "display_name": "Rendered Image", "payload_type_id": "image-ref.v1", "source_node_id": "draw", "source_port": "image"}
+  ],
+  "metadata": {"example_kind": "industrial-vision-grayscale-locate", "node_groups": {"input": ["image_input"], "localization": ["locate"], "render": ["draw"]}}
+}

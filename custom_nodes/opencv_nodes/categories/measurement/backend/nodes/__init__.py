@@ -18,6 +18,9 @@ from custom_nodes.opencv_nodes.categories.measurement.backend.nodes.line_angle i
     NODE_TYPE_ID as LINE_ANGLE_NODE_TYPE_ID,
     handle_node as line_angle_handler,
 )
+from custom_nodes.opencv_nodes.categories.measurement.backend.nodes.industrial_measurement import (
+    INDUSTRIAL_MEASUREMENT_NODE_HANDLERS,
+)
 from custom_nodes.opencv_nodes.categories.measurement.backend.nodes.measure import (
     NODE_TYPE_ID as MEASURE_NODE_TYPE_ID,
     handle_node as measure_handler,
@@ -50,6 +53,7 @@ NODE_HANDLERS = (
     (POINT_DISTANCE_NODE_TYPE_ID, point_distance_handler),
     (POINT_TO_LINE_DISTANCE_NODE_TYPE_ID, point_to_line_distance_handler),
     (SLOT_WIDTH_NODE_TYPE_ID, slot_width_handler),
+    *INDUSTRIAL_MEASUREMENT_NODE_HANDLERS,
 )
 
 

@@ -9,6 +9,19 @@
       "json_schema": {
         "type": "object",
         "properties": {
+          "coordinate_space": {
+            "type": "string",
+            "minLength": 1
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "pixel",
+              "millimeter",
+              "meter",
+              "unitless"
+            ]
+          },
           "source_image": {
             "type": "object",
             "properties": {
@@ -149,6 +162,21 @@
             "items": {
               "type": "object",
               "properties": {
+                "measurement_id": {
+                  "type": "string"
+                },
+                "measurement_kind": {
+                  "type": "string"
+                },
+                "coordinate_space": {
+                  "type": "string"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "values": {
+                  "type": "object"
+                },
                 "contour_index": {
                   "type": "integer"
                 },
@@ -187,11 +215,24 @@
                   "type": "number"
                 }
               },
-              "required": [
-                "contour_index",
-                "bbox_xyxy",
-                "area",
-                "perimeter"
+              "oneOf": [
+                {
+                  "required": [
+                    "contour_index",
+                    "bbox_xyxy",
+                    "area",
+                    "perimeter"
+                  ]
+                },
+                {
+                  "required": [
+                    "measurement_id",
+                    "measurement_kind",
+                    "coordinate_space",
+                    "unit",
+                    "values"
+                  ]
+                }
               ]
             }
           }
@@ -211,6 +252,19 @@
       "json_schema": {
         "type": "object",
         "properties": {
+          "coordinate_space": {
+            "type": "string",
+            "minLength": 1
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "pixel",
+              "millimeter",
+              "meter",
+              "unitless"
+            ]
+          },
           "source_image": {
             "type": "object",
             "properties": {
@@ -435,6 +489,19 @@
       "json_schema": {
         "type": "object",
         "properties": {
+          "coordinate_space": {
+            "type": "string",
+            "minLength": 1
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "pixel",
+              "millimeter",
+              "meter",
+              "unitless"
+            ]
+          },
           "source_image": {
             "type": "object",
             "properties": {
@@ -633,6 +700,19 @@
       "json_schema": {
         "type": "object",
         "properties": {
+          "coordinate_space": {
+            "type": "string",
+            "minLength": 1
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "pixel",
+              "millimeter",
+              "meter",
+              "unitless"
+            ]
+          },
           "source_image": {
             "type": "object",
             "properties": {
@@ -2294,6 +2374,157 @@
   "node_definitions": [
     {
       "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.calibration-diagnose",
+      "display_name": "Calibration Diagnose",
+      "category": "opencv.calibration.camera",
+      "description": "重新计算总体和逐观察重投影误差、异常观察与姿态诊断。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "camera_calibration",
+          "display_name": "Camera Calibration",
+          "payload_type_id": "camera-calibration.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "observations",
+          "display_name": "Observations",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "diagnostics",
+          "display_name": "Diagnostics",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "maximum_reprojection_error": {
+            "type": "number",
+            "minimum": 0.0,
+            "default": 2.0
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.calibration-diagnose",
+        "vision.opencv",
+        "calibration.diagnostics"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.calibration-observation-filter",
+      "display_name": "Calibration Observation Filter",
+      "category": "opencv.calibration.camera",
+      "description": "按点数、覆盖率、中心分布和可选重投影误差筛选标定观察。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "observations",
+          "display_name": "Observations",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "observations",
+          "display_name": "Filtered Observations",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "diagnostics",
+          "display_name": "Diagnostics",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "minimum_points": {
+            "type": "integer",
+            "minimum": 4,
+            "default": 12
+          },
+          "minimum_coverage_ratio": {
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 1.0,
+            "default": 0.02
+          },
+          "maximum_reprojection_error": {
+            "type": "number",
+            "minimum": 0.0,
+            "default": 5.0
+          },
+          "minimum_center_distance_ratio": {
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 1.0,
+            "default": 0.02
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.calibration-observation-filter",
+        "vision.opencv",
+        "calibration.diagnostics"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.camera-calibrate",
       "display_name": "Camera Calibrate",
       "category": "opencv.calibration.camera",
@@ -2331,6 +2562,15 @@
           "required": true,
           "multiple": false,
           "metadata": {}
+        },
+        {
+          "name": "camera_calibration",
+          "display_name": "Camera Calibration",
+          "payload_type_id": "camera-calibration.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
         }
       ],
       "parameter_schema": {
@@ -2350,6 +2590,15 @@
             "type": "number",
             "default": 1.0,
             "minimum": 1e-09
+          },
+          "object_point_unit": {
+            "type": "string",
+            "enum": [
+              "millimeter",
+              "meter",
+              "unitless"
+            ],
+            "default": "millimeter"
           },
           "min_views": {
             "type": "integer",
@@ -2767,6 +3016,94 @@
     },
     {
       "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.image-rectify-stereo",
+      "display_name": "Image Rectify Stereo",
+      "category": "opencv.image.transform",
+      "description": "读取预生成 ObjectStore map 校正左右图片，不在每帧重复计算 map。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "left_image",
+          "display_name": "Left Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "right_image",
+          "display_name": "Right Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "stereo_calibration",
+          "display_name": "Calibration With Maps",
+          "payload_type_id": "stereo-calibration.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "left_image",
+          "display_name": "Rectified Left",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "right_image",
+          "display_name": "Rectified Right",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "diagnostics",
+          "display_name": "Diagnostics",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {}
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.image-rectify-stereo",
+        "vision.opencv",
+        "calibration.stereo"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.project-points",
       "display_name": "Project Points",
       "category": "opencv.calibration.pose",
@@ -2824,6 +3161,81 @@
         "opencv.project-points",
         "vision.opencv",
         "vision.pose"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.rectification-map",
+      "display_name": "Rectification Map",
+      "category": "opencv.calibration.camera",
+      "description": "生成左右 CV_32FC1 校正 map，原子写入 ObjectStore 并返回可追溯 key。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "stereo_calibration",
+          "display_name": "Rectified Calibration",
+          "payload_type_id": "stereo-calibration.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "save_location",
+          "display_name": "Save Location",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "stereo_calibration",
+          "display_name": "Calibration With Maps",
+          "payload_type_id": "stereo-calibration.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "maps",
+          "display_name": "Map Metadata",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "save_location": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.rectification-map",
+        "vision.opencv",
+        "calibration.stereo"
       ],
       "runtime_requirements": {
         "python_packages": [
@@ -2896,6 +3308,141 @@
       "capability_tags": [
         "opencv.solve-pnp",
         "vision.opencv"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.stereo-calibrate",
+      "display_name": "Stereo Calibrate",
+      "category": "opencv.calibration.camera",
+      "description": "使用固定左右内参和配对观察计算双目外参、E、F 与极线误差。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "left_camera",
+          "display_name": "Left Camera",
+          "payload_type_id": "camera-calibration.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "right_camera",
+          "display_name": "Right Camera",
+          "payload_type_id": "camera-calibration.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "observations",
+          "display_name": "Paired Observations",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "stereo_calibration",
+          "display_name": "Stereo Calibration",
+          "payload_type_id": "stereo-calibration.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "minimum_views": {
+            "type": "integer",
+            "minimum": 2,
+            "default": 3
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.stereo-calibrate",
+        "vision.opencv",
+        "calibration.stereo"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.stereo-rectify",
+      "display_name": "Stereo Rectify",
+      "category": "opencv.calibration.camera",
+      "description": "计算双目校正旋转、投影矩阵、Q 和左右有效区域。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.4",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "stereo_calibration",
+          "display_name": "Stereo Calibration",
+          "payload_type_id": "stereo-calibration.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "stereo_calibration",
+          "display_name": "Rectified Calibration",
+          "payload_type_id": "stereo-calibration.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "alpha": {
+            "type": "number",
+            "minimum": -1.0,
+            "maximum": 1.0,
+            "default": -1.0
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.stereo-rectify",
+        "vision.opencv",
+        "calibration.stereo"
       ],
       "runtime_requirements": {
         "python_packages": [

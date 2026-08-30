@@ -4,7 +4,7 @@
 
 ## 当前实施基线
 
-- [工业二维视觉节点实施基线](industrial-vision-node-implementation.md)：Core 与现有 `opencv.nodes` 的二维工业视觉补齐范围、统一 payload、实施顺序和验收门禁；阶段 0 契约已经完成，阶段 1 Core 通用能力正在实施。
+- [工业二维视觉节点实施基线](industrial-vision-node-implementation.md)：Core 与现有 `opencv.nodes` 的二维工业视觉补齐范围、统一 payload、实施结果和验收门禁；阶段 0–6 已完成。
 - [Workflow App Entry 多类型输入实施基线](workflow-app-entry-input-implementation.md)：JSON、文本、图片、文件、多文件、multipart、ObjectStore、Trigger、前端和 SDK 的统一待实现边界。
 - [任务执行与运行时可靠性实施基线](task-runtime-reliability-implementation.md)：阶段 1 至阶段 7 已完成，源码真实业务链路与发行基础设施已分别通过验收。该文档是 Task/Attempt、Training Resume、Conversion、完整前端 Task 状态和 Node Pack timeout 的唯一详细实施记录。
 - [共享内存数据面可靠性实施基线](shared-memory-data-plane-reliability-implementation.md)：Workflow Trigger mailbox 正确性修复与 LocalBuffer 固定 arena 重构已经完成，保留源码门禁和发行持续认证边界。

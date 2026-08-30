@@ -1,0 +1,27 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.image-stitch",
+  "display_name": "Image Stitch",
+  "category": "opencv.matching.registration",
+  "description": "使用特征匹配、几何配准、warp 和 blend 拼接图片集合，并返回诊断信息。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {"name": "images", "display_name": "Images", "payload_type_id": "image-refs.v1"}
+  ],
+  "output_ports": [
+    {"name": "image", "display_name": "Image", "payload_type_id": "image-ref.v1"},
+    {"name": "diagnostics", "display_name": "Diagnostics", "payload_type_id": "value.v1"}
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "mode": {"type": "string", "enum": ["panorama", "scans"], "default": "panorama"},
+      "confidence_threshold": {"type": "number", "minimum": 0.0, "default": 1.0}
+    }
+  },
+  "capability_tags": ["opencv.image-stitch", "vision.opencv", "vision.registration"],
+  "runtime_requirements": {"python_packages": ["opencv-python", "numpy"]},
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.1.3"
+}

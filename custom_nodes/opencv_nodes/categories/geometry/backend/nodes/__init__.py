@@ -62,6 +62,9 @@ from custom_nodes.opencv_nodes.categories.geometry.backend.nodes.warp_polar impo
     NODE_TYPE_ID as WARP_POLAR_NODE_TYPE_ID,
     handle_node as warp_polar_handler,
 )
+from custom_nodes.opencv_nodes.categories.geometry.backend.nodes.industrial_geometry import (
+    NODE_HANDLERS as INDUSTRIAL_GEOMETRY_NODE_HANDLERS,
+)
 
 
 NODE_HANDLERS = (
@@ -83,6 +86,7 @@ NODE_HANDLERS = (
     (FLIP_NODE_TYPE_ID, flip_handler),
     (TRANSPOSE_NODE_TYPE_ID, transpose_handler),
     (PAD_BORDER_NODE_TYPE_ID, pad_border_handler),
+    *INDUSTRIAL_GEOMETRY_NODE_HANDLERS,
 )
 
 

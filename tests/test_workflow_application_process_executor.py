@@ -3596,7 +3596,7 @@ def _build_process_echo_template():
             WorkflowGraphInput(
                 input_id="request_text",
                 display_name="Request Text",
-                payload_type_id="text.v1",
+                payload_type_id="test-text.v1",
                 target_node_id="echo",
                 target_port="text",
             ),
@@ -3651,7 +3651,7 @@ def _build_process_cleanup_template():
             WorkflowGraphInput(
                 input_id="request_text",
                 display_name="Request Text",
-                payload_type_id="text.v1",
+                payload_type_id="test-text.v1",
                 target_node_id="cleanup",
                 target_port="text",
             ),
@@ -3767,7 +3767,7 @@ def _build_process_fail_template():
             WorkflowGraphInput(
                 input_id="request_text",
                 display_name="Request Text",
-                payload_type_id="text.v1",
+                payload_type_id="test-text.v1",
                 target_node_id="explode",
                 target_port="text",
             ),
@@ -3846,7 +3846,7 @@ def _build_process_slow_template():
             WorkflowGraphInput(
                 input_id="request_text",
                 display_name="Request Text",
-                payload_type_id="text.v1",
+                payload_type_id="test-text.v1",
                 target_node_id="sleep",
                 target_port="text",
             ),
@@ -4044,7 +4044,7 @@ def register(context):
         "payload_contracts": [
             {
                 "format_id": "amvision.workflow-payload-contract.v1",
-                "payload_type_id": "text.v1",
+                "payload_type_id": "test-text.v1",
                 "display_name": "Text",
                 "transport_kind": "inline-json",
                 "json_schema": {
@@ -4069,7 +4069,7 @@ def register(context):
                     {
                         "name": "text",
                         "display_name": "Text",
-                        "payload_type_id": "text.v1",
+                        "payload_type_id": "test-text.v1",
                     }
                 ],
                 "output_ports": [
@@ -4097,7 +4097,7 @@ def register(context):
                     {
                         "name": "text",
                         "display_name": "Text",
-                        "payload_type_id": "text.v1",
+                        "payload_type_id": "test-text.v1",
                     }
                 ],
                 "output_ports": [
@@ -4125,7 +4125,7 @@ def register(context):
                     {
                         "name": "text",
                         "display_name": "Text",
-                        "payload_type_id": "text.v1",
+                        "payload_type_id": "test-text.v1",
                     }
                 ],
                 "output_ports": [
@@ -4153,7 +4153,7 @@ def register(context):
                     {
                         "name": "text",
                         "display_name": "Text",
-                        "payload_type_id": "text.v1",
+                        "payload_type_id": "test-text.v1",
                     }
                 ],
                 "output_ports": [

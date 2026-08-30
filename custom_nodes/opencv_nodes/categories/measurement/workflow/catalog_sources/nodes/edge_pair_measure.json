@@ -1,0 +1,32 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.edge-pair-measure",
+  "display_name": "Edge Pair Measure",
+  "category": "opencv.measurement.edge",
+  "description": "沿任意方向灰度剖面查找同极性、异极性或任意边缘对并输出间距。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [{"name": "image", "display_name": "Image", "payload_type_id": "image-ref.v1"}],
+  "output_ports": [
+    {"name": "points", "display_name": "Edge Points", "payload_type_id": "points.v1"},
+    {"name": "measurements", "display_name": "Measurements", "payload_type_id": "measurements.v1"}
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "required": ["start_xy", "end_xy"],
+    "properties": {
+      "start_xy": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2},
+      "end_xy": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2},
+      "sample_count": {"type": "integer", "minimum": 3, "maximum": 65536},
+      "band_width": {"type": "number", "minimum": 1.0, "default": 3.0},
+      "gradient_threshold": {"type": "number", "minimum": 0.0, "default": 5.0},
+      "pair_polarity": {"type": "string", "enum": ["opposite", "same", "any"], "default": "opposite"},
+      "minimum_spacing": {"type": "number", "minimum": 0.0, "default": 1.0},
+      "maximum_spacing": {"type": "number", "minimum": 0.0}
+    }
+  },
+  "capability_tags": ["opencv.edge-pair", "vision.opencv", "measurement.edge"],
+  "runtime_requirements": {"python_packages": ["opencv-python", "numpy"]},
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.1.3"
+}

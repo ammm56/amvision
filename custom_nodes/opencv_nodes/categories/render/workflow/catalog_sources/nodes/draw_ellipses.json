@@ -1,0 +1,23 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.draw-ellipses",
+  "display_name": "Draw Ellipses",
+  "category": "opencv.output.render",
+  "description": "绘制 ellipses.v1 的轮廓、中心和主次轴。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {"name": "image", "display_name": "Image", "payload_type_id": "image-ref.v1"},
+    {"name": "ellipses", "display_name": "Ellipses", "payload_type_id": "ellipses.v1"}
+  ],
+  "output_ports": [{"name": "image", "display_name": "Image", "payload_type_id": "image-ref.v1"}],
+  "parameter_schema": {"type": "object", "properties": {
+    "line_thickness": {"type": "integer", "minimum": 1, "maximum": 32, "default": 2},
+    "draw_axes": {"type": "boolean", "default": true},
+    "save_location": {"type": "string"}
+  }},
+  "capability_tags": ["opencv.draw-ellipses", "vision.render", "geometry.ellipse"],
+  "runtime_requirements": {"python_packages": ["opencv-python", "numpy"]},
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.1.3"
+}

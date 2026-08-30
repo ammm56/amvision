@@ -1,0 +1,30 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.image-composite",
+  "display_name": "Image Composite",
+  "category": "opencv.image.transform",
+  "description": "按位置、可选 mask 和 alpha 把同 dtype、同通道 overlay 组合到 base 图片。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {"name": "base_image", "display_name": "Base Image", "payload_type_id": "image-ref.v1"},
+    {"name": "overlay_image", "display_name": "Overlay Image", "payload_type_id": "image-ref.v1"},
+    {"name": "mask", "display_name": "Mask", "payload_type_id": "image-ref.v1", "required": false}
+  ],
+  "output_ports": [
+    {"name": "image", "display_name": "Image", "payload_type_id": "image-ref.v1"}
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "offset_x": {"type": "integer", "default": 0},
+      "offset_y": {"type": "integer", "default": 0},
+      "alpha": {"type": "number", "minimum": 0.0, "maximum": 1.0, "default": 1.0},
+      "require_overlap": {"type": "boolean", "default": true}
+    }
+  },
+  "capability_tags": ["opencv.image-composite", "vision.opencv"],
+  "runtime_requirements": {"python_packages": ["opencv-python", "numpy"]},
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.1.3"
+}
