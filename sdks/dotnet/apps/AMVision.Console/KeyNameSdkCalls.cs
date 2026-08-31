@@ -85,9 +85,13 @@ namespace AMVision.Console
             resultStr = JsonConvert.SerializeObject(invokeBytes, Formatting.Indented);
             //var invokeFile = await runner.CallAsync(api => api.InvokeRuntimeAppResultWithImageFromFileAsync(RuntimeName, ImagePath, ImageMediaType, cancellationToken)).ConfigureAwait(false);
 
-            // 同步调用：image-ref/image-base64/JSON/text/file/files
-            var invokeJsonInputs = await runner.CallAsync(api => api.InvokeRuntimeAppResultAsync(RuntimeName, CreateJsonRuntimeRequest(runner), cancellationToken)).ConfigureAwait(false);
-            var invokeMultipartInputs = await runner.CallAsync(api => api.InvokeRuntimeAppResultAsync(RuntimeName, CreateMultipartRuntimeRequest(runner), cancellationToken)).ConfigureAwait(false);
+            // 同步调用：按实际需要只提交本次使用的 optional binding
+            var invokeImageBase64Inputs = await runner.CallAsync(api => api.InvokeRuntimeAppResultAsync(RuntimeName, CreateImageBase64RuntimeRequest(runner), cancellationToken)).ConfigureAwait(false);
+            var invokeImageBase64JsonInputs = await runner.CallAsync(api => api.InvokeRuntimeAppResultAsync(RuntimeName, CreateImageBase64JsonRuntimeRequest(runner), cancellationToken)).ConfigureAwait(false);
+            resultStr = JsonConvert.SerializeObject(invokeImageBase64JsonInputs, Formatting.Indented);
+
+            // 全输入验证：使用 multipart 上传真实文件，不手工伪造 ObjectStore 引用
+            var invokeAllMultipartInputs = await runner.CallAsync(api => api.InvokeRuntimeAppResultAsync(RuntimeName, CreateAllInputsMultipartRuntimeRequest(runner), cancellationToken)).ConfigureAwait(false);
 
             // 异步调用：默认输入或单图片
             //var run = await runner.CallAsync(api => api.RunRuntimeAsync(RuntimeName, cancellationToken)).ConfigureAwait(false);
@@ -95,9 +99,10 @@ namespace AMVision.Console
             //var runBytes = await runner.CallAsync(api => api.RunRuntimeWithImageBytesAsync(RuntimeName, LoadImageBytes(), ImageMediaType, cancellationToken)).ConfigureAwait(false);
             //var runFile = await runner.CallAsync(api => api.RunRuntimeWithImageFromFileAsync(RuntimeName, ImagePath, ImageMediaType, cancellationToken)).ConfigureAwait(false);
 
-            // 异步调用：image-ref/image-base64/JSON/text/file/files
-            //var runJsonInputs = await runner.CallAsync(api => api.RunRuntimeAsync(RuntimeName, CreateJsonRuntimeRequest(runner), cancellationToken)).ConfigureAwait(false);
-            //var runMultipartInputs = await runner.CallAsync(api => api.RunRuntimeAsync(RuntimeName, CreateMultipartRuntimeRequest(runner), cancellationToken)).ConfigureAwait(false);
+            // 异步调用：部分输入或全输入 multipart
+            //var runImageBase64Inputs = await runner.CallAsync(api => api.RunRuntimeAsync(RuntimeName, CreateImageBase64RuntimeRequest(runner), cancellationToken)).ConfigureAwait(false);
+            //var runImageBase64JsonInputs = await runner.CallAsync(api => api.RunRuntimeAsync(RuntimeName, CreateImageBase64JsonRuntimeRequest(runner), cancellationToken)).ConfigureAwait(false);
+            //var runAllMultipartInputs = await runner.CallAsync(api => api.RunRuntimeAsync(RuntimeName, CreateAllInputsMultipartRuntimeRequest(runner), cancellationToken)).ConfigureAwait(false);
 
             // 异步任务查询与取消
             //var workflowRun = await runner.CallAsync(api => api.GetWorkflowRunAsync(WorkflowRunId, cancellationToken)).ConfigureAwait(false);
@@ -153,22 +158,31 @@ namespace AMVision.Console
             await Task.CompletedTask.ConfigureAwait(false);
         }
 
-        private static WorkflowRuntimeInvokeRequest CreateJsonRuntimeRequest(
+        private static WorkflowRuntimeInvokeRequest CreateImageBase64RuntimeRequest(
             AMVisionOperationRunner runner)
         {
-            var fileReference = CreateWorkflowFileReference();
             return runner.CreateWorkflowRequestBuilder(RuntimeName)
-                .AddImageReference("request_image_ref", CreateWorkflowImageReference())
                 .AddImageBase64("request_image_base64", LoadImageBytes(), ImageMediaType)
-                .AddJson("request_json", new { recipe = "3570", station = 2 })
-                .AddText("request_text", "lot-20260831")
-                .AddFileReference("request_file", fileReference)
-                .AddFileReferences("request_files", new object[] { fileReference, fileReference })
                 .WithTimeoutSeconds(30)
                 .BuildJson();
         }
 
-        private static WorkflowRuntimeMultipartInvokeRequest CreateMultipartRuntimeRequest(
+        private static WorkflowRuntimeInvokeRequest CreateImageBase64JsonRuntimeRequest(
+            AMVisionOperationRunner runner)
+        {
+            return runner.CreateWorkflowRequestBuilder(RuntimeName)
+                .AddImageBase64("request_image_base64", LoadImageBytes(), ImageMediaType)
+                .AddJson("request_json", new
+                {
+                    recipe = "3570",
+                    station = 2,
+                    barqrcode = "abcdefg12345678"
+                })
+                .WithTimeoutSeconds(30)
+                .BuildJson();
+        }
+
+        private static WorkflowRuntimeMultipartInvokeRequest CreateAllInputsMultipartRuntimeRequest(
             AMVisionOperationRunner runner)
         {
             return runner.CreateWorkflowRequestBuilder(RuntimeName)

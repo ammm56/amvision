@@ -21,6 +21,7 @@ from backend.contracts.workflows.workflow_graph import (
     WorkflowGraphTemplate,
 )
 from backend.service.application.errors import (
+    InvalidRequestError,
     OperationTimeoutError,
     ServiceConfigurationError,
 )
@@ -76,6 +77,72 @@ def test_node_pack_handler_receives_deadline_and_emits_lifecycle() -> None:
     ]
     assert lifecycle[0]["node_invocation_id"] == lifecycle[1]["node_invocation_id"]
     assert lifecycle[1]["outcome"] == "succeeded"
+
+
+def test_optional_app_entry_fails_only_when_required_node_consumes_it() -> None:
+    """optional 模板输入可不提交，但实际消费它的必需节点端口必须明确失败。"""
+
+    definition = NodeDefinition(
+        node_type_id="core.test.required-input",
+        display_name="Required Input",
+        category="test",
+        description="验证 optional App Entry 与 required 节点端口的边界。",
+        implementation_kind=NODE_IMPLEMENTATION_CORE,
+        runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
+        input_ports=(
+            NodePortDefinition(
+                name="value",
+                display_name="Value",
+                payload_type_id="value.v1",
+                required=True,
+            ),
+        ),
+        output_ports=(
+            NodePortDefinition(
+                name="result",
+                display_name="Result",
+                payload_type_id="value.v1",
+            ),
+        ),
+        parameter_schema={"type": "object", "properties": {}},
+    )
+    template = WorkflowGraphTemplate(
+        template_id="optional-entry-required-node",
+        template_version="1.0.0",
+        display_name="Optional Entry Required Node",
+        nodes=(
+            WorkflowGraphNode(
+                node_id="required-node",
+                node_type_id=definition.node_type_id,
+            ),
+        ),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="optional_value",
+                display_name="Optional Value",
+                payload_type_id="value.v1",
+                target_node_id="required-node",
+                target_port="value",
+                required=False,
+            ),
+        ),
+    )
+    registry = WorkflowNodeRuntimeRegistry()
+    registry.register_python_callable(
+        definition,
+        lambda request: {"result": request.input_values["value"]},
+    )
+
+    with pytest.raises(InvalidRequestError) as error_info:
+        WorkflowGraphExecutor(registry=registry).execute(
+            template=template,
+            input_values={},
+        )
+
+    assert error_info.value.details == {
+        "node_id": "required-node",
+        "port_name": "value",
+    }
 
 
 def test_preview_node_pack_timeout_is_reported_after_uncooperative_handler_returns() -> None:

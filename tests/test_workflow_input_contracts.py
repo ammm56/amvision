@@ -174,6 +174,57 @@ def test_validator_checks_file_identity_and_project_scope(tmp_path: Path) -> Non
     assert error_info.value.code == "workflow_input_object_reference_invalid"
 
 
+def test_validator_accepts_subset_of_optional_bindings(tmp_path: Path) -> None:
+    """未提交的 optional binding 不生成占位值，也不触发 ObjectStore 校验。"""
+
+    application, template = _build_text_file_application()
+    optional_application = application.model_copy(
+        update={
+            "bindings": tuple(
+                binding.model_copy(update={"required": False})
+                for binding in application.bindings
+            )
+        },
+    )
+    contract = build_workflow_app_public_contract(
+        application=optional_application,
+        template=template,
+        node_catalog_registry=NodeCatalogRegistry(),
+    )
+    storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "objects"))
+    )
+    validator = WorkflowInputValidator(object_store=storage)
+    text_payload = {
+        "request_text": {
+            "text": "hello",
+            "media_type": "text/plain",
+            "charset": "utf-8",
+        }
+    }
+
+    assert validator.validate(
+        application=optional_application,
+        input_bindings=text_payload,
+        public_contract=contract,
+        project_id="project-1",
+    ) == text_payload
+
+    with pytest.raises(WorkflowInputError) as error_info:
+        validator.validate(
+            application=optional_application,
+            input_bindings={
+                **text_payload,
+                "request_file": _file_ref(
+                    object_key="projects/project-1/inputs/missing.txt"
+                ),
+            },
+            public_contract=contract,
+            project_id="project-1",
+        )
+    assert error_info.value.code == "workflow_input_object_reference_invalid"
+
+
 def test_validator_uses_stable_missing_and_unknown_binding_codes() -> None:
     """所有入口共享稳定的缺失和未知 binding 错误码。"""
 

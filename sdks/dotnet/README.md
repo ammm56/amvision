@@ -63,6 +63,10 @@ HTTP Runtime 与高性能 Trigger 是两套独立调用面：
 - ZeroMQ 和 local-shared-memory Trigger 只支持 `request_image_ref`、`request_json` 和 `request_text`。图片通过 binary frame 或 LocalBuffer 生成 `image-ref.v1`，JSON/文本位于小型事件 payload。
 - Trigger 不支持 `request_image_base64`、`request_file` 或 `request_files`，不增加文件 staging、普通文件图片帧、普通文件 LocalBuffer 或自动 HTTP fallback。
 
+App Entry 声明某种输入表示该 Workflow 可以接收这种 binding，不表示每次调用都必须提交。只有公开契约中 `required=true` 的 binding 才是调用级必填项；`required=false` 的 binding 可以省略，Runtime 只校验本次实际提交的数据。如果后续流程把一个未提交的 optional binding 接到节点的必需输入端口，执行会在该节点明确失败。
+
+JSON reference 只接受平台实际写入 ObjectStore 后返回的不可变引用，不能自行拼接 `object_key`、checksum 或 version。普通图片、文件和多文件优先使用 multipart 的 `AddImage`、`AddFile`、`AddFiles` 上传；只调用图片或图片加 JSON 时，只增加对应的 `AddImageBase64` / `AddJson`，不需要为未使用的 binding 构造占位值。
+
 低层 `ImageTriggerRequest.Payload`、`SharedMemoryTriggerRequest.Payload` 和 event request 可以携带 JSON/文本。常用高层 API 通过 `CreateWorkflowTriggerInputsBuilder(triggerSourceName)` 或 `CreateWorkflowTriggerInputsBuilderById(triggerSourceId)` 创建 `WorkflowTriggerInputsBuilder`，只提供 `AddJson`、`AddText` 和 `Build`；生成的 inputs 可传给带 `WithInputs` / `WithInputsById` 后缀的 ZeroMQ/local-shared-memory 图片或 event-only 方法。
 
 `InvokeZeroMqImageBase64` 和 `InvokeSharedMemoryImageBase64` 只表示调用方以 Base64 提供图片来源。SDK 解码后仍通过高性能图片通道绑定 `request_image_ref`，不会向 `request_image_base64` 发送 Base64。需要 Base64 binding、普通文件或多文件时使用 HTTP Runtime。

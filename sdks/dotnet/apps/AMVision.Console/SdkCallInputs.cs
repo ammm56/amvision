@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using Amvar.Vision;
@@ -53,36 +52,6 @@ namespace AMVision.Console
         public static Bitmap LoadBitmap()
         {
             return new Bitmap(ImagePath);
-        }
-
-        /// <summary>构建 HTTP Runtime 的 image-ref.v1 ObjectStore 引用示例。</summary>
-        public static IDictionary<string, object> CreateWorkflowImageReference()
-        {
-            return new Dictionary<string, object>
-            {
-                ["transport_kind"] = "storage",
-                ["object_key"] = "projects/project-1/inputs/example-image.png",
-                ["media_type"] = "image/png"
-            };
-        }
-
-        /// <summary>构建 HTTP Runtime 的 file-ref.v1 ObjectStore 引用示例。</summary>
-        public static IDictionary<string, object> CreateWorkflowFileReference(
-            string fileName = "request.json")
-        {
-            var checksum = new string('a', 64);
-            return new Dictionary<string, object>
-            {
-                ["transport_kind"] = "storage",
-                ["storage_ref"] = "object-store",
-                ["object_key"] = "projects/project-1/inputs/" + fileName,
-                ["file_name"] = fileName,
-                ["media_type"] = "application/json",
-                ["content_length"] = 2,
-                ["checksum_algorithm"] = "sha256",
-                ["checksum"] = checksum,
-                ["immutable_version"] = "sha256:" + checksum
-            };
         }
 
         /// <summary>创建单文件 multipart 上传示例。</summary>

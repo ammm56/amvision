@@ -280,6 +280,26 @@ namespace Amvar.Vision.ContractTests
         private static void VerifyWorkflowHttpSixInputBuilder()
         {
             var contract = BuildSixInputContract();
+            var emptyRequest = new WorkflowRequestBuilder(contract).BuildJson();
+            AssertEqual(0, emptyRequest.InputBindings.Count, "optional HTTP input count");
+
+            var imageOnlyRequest = new WorkflowRequestBuilder(contract)
+                .AddImageBase64(
+                    "request_image_base64",
+                    new byte[] { 1, 2, 3 },
+                    "image/png")
+                .BuildJson();
+            AssertEqual(1, imageOnlyRequest.InputBindings.Count, "image-only input count");
+
+            var imageJsonRequest = new WorkflowRequestBuilder(contract)
+                .AddImageBase64(
+                    "request_image_base64",
+                    new byte[] { 1, 2, 3 },
+                    "image/png")
+                .AddJson("request_json", new { batch_id = "batch-common" })
+                .BuildJson();
+            AssertEqual(2, imageJsonRequest.InputBindings.Count, "image and JSON input count");
+
             var imageReference = new Dictionary<string, object?>
             {
                 ["transport_kind"] = "storage",
