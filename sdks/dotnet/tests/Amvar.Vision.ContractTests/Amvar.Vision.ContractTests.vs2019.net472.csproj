@@ -45,6 +45,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Program.cs" />
+    <Compile Include="WorkflowMultiInputIntegrationProbe.cs" />
     <Compile Include="WorkflowTriggerContractProbe.cs" />
     <Compile Include="WorkflowTriggerBenchmarkProbe.cs" />
     <Compile Include="WorkflowTriggerMailboxV1Fixture.g.cs" />

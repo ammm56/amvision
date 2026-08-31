@@ -118,6 +118,9 @@ def test_sdk_config_package_preview_and_download_include_project_resources(tmp_p
     assert workflow_config_name == "Config/config_workflow-app-sdk-config.json"
     assert workflow_config["trigger_sources"][0]["name"] == "zeromq yolo11m_barqrcode runtime"
     assert workflow_config["trigger_sources"][0]["trigger_source_id"] == "zeromq-sdk-config"
+    assert workflow_config["trigger_sources"][0]["input_binding_mapping"] == {
+        "request_image_ref": {"source": "payload.request_image_ref"}
+    }
     assert workflow_config["trigger_sources"][0]["zero_mq"]["bind_endpoint"] == "tcp://127.0.0.1:5555"
 
     model_config = json.loads(archive.read(model_config_name))
@@ -232,6 +235,9 @@ def test_sdk_config_package_includes_local_shared_memory_trigger(tmp_path: Path)
     local_source = sources["local-shared-sdk-config"]
     assert local_source["trigger_kind"] == "local-shared-memory"
     assert "zero_mq" not in local_source
+    assert local_source["input_binding_mapping"] == {
+        "request_image_ref": {"source": "payload.request_image_ref"}
+    }
     config = local_source["local_shared_memory"]
     assert Path(config["buffers_root"]).is_absolute()
     assert Path(config["buffers_root"]).name == "buffers"

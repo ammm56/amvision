@@ -461,6 +461,7 @@ class _SdkConfigPackageBuilder:
             "name": trigger_key,
             "trigger_source_id": trigger_source.trigger_source_id,
             "trigger_kind": trigger_source.trigger_kind,
+            "input_binding_mapping": dict(trigger_source.input_binding_mapping),
             "zero_mq": {
                 "bind_endpoint": bind_endpoint,
                 "default_input_binding": default_input_binding,
@@ -496,6 +497,7 @@ class _SdkConfigPackageBuilder:
             "name": trigger_key,
             "trigger_source_id": trigger_source.trigger_source_id,
             "trigger_kind": trigger_source.trigger_kind,
+            "input_binding_mapping": dict(trigger_source.input_binding_mapping),
             "local_shared_memory": {
                 "buffers_root": str(self.buffers_root),
                 "route_generation": response_plan.plan_generation,

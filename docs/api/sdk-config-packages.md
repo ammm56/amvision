@@ -79,13 +79,14 @@ README.md
 - 同步/异步调用默认参数；
 - 绑定的 ZeroMQ TriggerSource；
 - 绑定的 local-shared-memory TriggerSource；其配置只包含 `buffers_root`、路由 generation、默认输入 binding 和 timeout，不复制 arena 容量、mmap 路径、reader guard 数或图片上限；
+- 每个 TriggerSource 的 `input_binding_mapping`；SDK 据此把强类型 JSON/文本输入写入确定的 event payload 路径；
 - 空的或实际的模型 Deployment 列表。
 
 模型配置可以只包含 `backend` 与 `model_deployments`；SDK 不要求伪造 Workflow Runtime。
 
-`.NET` HTTP SDK 可把 `runtime.public_contract` 传给 `WorkflowRequestBuilder`。当前 `AddJson`、`AddText`、`AddImage`、`AddFile` 和 `AddFiles` 已用于 JSON/文本与 multipart streaming；后续补齐 `AddImageBase64`、图片/文件引用方法和显式 JSON/multipart build。文件和图片在 HTTP 发送阶段以 stream 读取，不在 SDK 内预先复制完整文件。
+`.NET` HTTP SDK 把 `runtime.public_contract` 传给 `WorkflowRequestBuilder`。Builder 已提供 `AddJson`、`AddText`、`AddImage`、`AddImageBase64`、`AddImageReference`、`AddFile`、`AddFileReference`、`AddFiles`、`AddFileReferences`，并显式区分 `BuildJson()` 与 `BuildMultipart()`。文件和图片在 HTTP 发送阶段以 stream 读取，不在 SDK 内预先复制完整文件。
 
-ZeroMQ 与 local-shared-memory 配置只允许高性能输入 `image-ref.v1`、`value.v1` 和 `text.v1`。后续共用 `WorkflowTriggerInputsBuilder` 只提供 `AddJson` 和 `AddText`；图片由 transport 图片方法提供。配置包需要同时携带 Runtime 固定公开契约、TriggerSource mapping 和 transport 限制，使 SDK 在调用前拒绝未映射 binding、Base64/file/files Trigger 输入和超限 payload。后端仍是完整契约校验的权威入口。
+ZeroMQ 与 local-shared-memory 配置只允许高性能输入 `image-ref.v1`、`value.v1` 和 `text.v1`。共用 `WorkflowTriggerInputsBuilder` 只提供 `AddJson` 和 `AddText`；图片由 transport 图片方法提供。配置包同时携带 Runtime 固定公开契约和 TriggerSource mapping，使 SDK 在调用前拒绝未映射 binding、Base64/file/files Trigger 输入和超限 payload。后端仍是完整契约校验的权威入口。
 
 ## 使用步骤
 

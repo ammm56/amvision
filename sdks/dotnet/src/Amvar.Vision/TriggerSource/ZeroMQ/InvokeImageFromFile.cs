@@ -24,6 +24,22 @@ internal sealed partial class ZeroMqTriggerOperations
         string? mediaType = null,
         CancellationToken cancellationToken = default)
     {
+        return InvokeImageFromFile(
+            triggerSourceName,
+            imagePath,
+            mediaType,
+            inputs: null,
+            cancellationToken);
+    }
+
+    /// <summary>发送图片文件，并在同一 envelope 附带规范 JSON/文本输入。</summary>
+    public TriggerResult InvokeImageFromFile(
+        string triggerSourceName,
+        string imagePath,
+        string? mediaType,
+        WorkflowTriggerInputs? inputs,
+        CancellationToken cancellationToken = default)
+    {
         cancellationToken.ThrowIfCancellationRequested();
         var configuredTriggerSource = GetConfiguredTriggerSource(triggerSourceName);
         var resolvedImagePath = ResolveConfiguredPath(configuredTriggerSource, imagePath);
@@ -31,6 +47,7 @@ internal sealed partial class ZeroMqTriggerOperations
         EnsureImageByteCount(fileInfo.Length, configuredTriggerSource, nameof(imagePath));
         var request = ImageTriggerRequest.FromFile(resolvedImagePath, mediaType);
         ApplyImageDefaults(request, configuredTriggerSource);
+        ApplyTriggerInputs(inputs, request.Payload);
         var client = GetClient(configuredTriggerSource);
         cancellationToken.ThrowIfCancellationRequested();
         var result = client.InvokeImage(request);

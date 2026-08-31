@@ -168,22 +168,23 @@
                   <span>
                     {{ row.payloadTypeId || 'unknown' }} /
                     {{ row.required ? t('triggerSources.values.required') : t('triggerSources.values.optional') }} /
-                    {{ row.inferred ? t('triggerSources.values.inferred') : t('triggerSources.values.manual') }}
+                    {{ !row.supported ? t('triggerSources.values.httpRuntimeOnly') : row.inferred ? t('triggerSources.values.inferred') : t('triggerSources.values.manual') }}
                   </span>
                 </div>
-                <label class="field">
+                <label v-if="row.supported" class="field">
                   <span>{{ t('triggerSources.fields.mappingMode') }}</span>
                   <SelectField :model-value="row.mode" :options="mappingModeOptions" @update:model-value="setMappingMode(row, $event)" />
                 </label>
-                <label v-if="row.mode === 'source'" class="field trigger-mapping-row__source">
+                <label v-if="row.supported && row.mode === 'source'" class="field trigger-mapping-row__source">
                   <span>source path</span>
                   <input v-model="row.sourcePath" placeholder="payload.request_image_ref" />
                 </label>
-                <label v-else-if="row.mode === 'static'" class="field trigger-mapping-row__source">
+                <label v-else-if="row.supported && row.mode === 'static'" class="field trigger-mapping-row__source">
                   <span>{{ t('triggerSources.fields.staticValue') }}</span>
                   <input v-model="row.staticValue" :placeholder="t('triggerSources.placeholders.staticValue')" />
                 </label>
-                <p v-else class="trigger-mapping-row__hint">{{ t('triggerSources.mappingSkipped') }}</p>
+                <p v-else-if="row.supported" class="trigger-mapping-row__hint">{{ t('triggerSources.mappingSkipped') }}</p>
+                <p v-else class="trigger-mapping-row__hint">{{ t('triggerSources.highPerformanceInputUnsupported') }}</p>
               </article>
             </div>
           </div>
@@ -309,6 +310,7 @@ import {
   refreshWorkflowAppRuntimeStatuses,
 } from '@/workflows/workflow-editor/services/workflow-runtime.service'
 import type { FlowApplicationBinding, WorkflowAppRuntime, WorkflowJsonObject } from '@/workflows/workflow-editor/types'
+import { supportsTriggerInputPayloadType } from '../trigger-input-capabilities'
 import {
   createWorkflowTriggerSource,
   deleteWorkflowTriggerSource,
@@ -342,6 +344,7 @@ interface MappingRow {
   sourcePath: string
   staticValue: string
   inferred: boolean
+  supported: boolean
 }
 
 interface ProtocolTemplateOption {
@@ -795,15 +798,22 @@ function isZeroMqTcpWildcardHost(host: string): boolean {
 function buildMappingRows(): void {
   mappingRows.value = appInputBindings.value.map((binding) => {
     const inferred = inferredImageBindings.value.some((item) => item.binding_id === binding.binding_id) || binding.binding_id === inferredRequestBinding.value?.binding_id
-    const binaryBase64Image = usesImageRefTransport(selectedProtocolTemplate.value) && isImageBase64Binding(binding)
+    const payloadTypeId = getBindingPayloadTypeId(binding)
+    const supported = supportsTriggerInputPayloadType(
+      selectedProtocolTemplate.value.triggerKind,
+      payloadTypeId,
+    )
+    const standardHighPerformanceInput = usesImageRefTransport(selectedProtocolTemplate.value)
+      && ['request_image_ref', 'request_json', 'request_text'].includes(binding.binding_id)
     return {
       bindingId: binding.binding_id,
-      payloadTypeId: getBindingPayloadTypeId(binding),
+      payloadTypeId,
       required: binding.required,
-      mode: inferred || (binding.required && !binaryBase64Image) ? 'source' : 'skip',
+      mode: supported && (inferred || standardHighPerformanceInput || binding.required) ? 'source' : 'skip',
       sourcePath: defaultSourcePath(binding),
       staticValue: '',
       inferred,
+      supported,
     }
   })
 }
@@ -934,7 +944,7 @@ function buildMatchRule(): WorkflowJsonObject {
 function buildInputBindingMapping(): Record<string, InputBindingMappingItem> {
   const mapping: Record<string, InputBindingMappingItem> = {}
   for (const row of mappingRows.value) {
-    if (row.mode === 'skip') continue
+    if (!row.supported || row.mode === 'skip') continue
     if (row.mode === 'static') {
       mapping[row.bindingId] = {
         value: parseScalarValue(row.staticValue),

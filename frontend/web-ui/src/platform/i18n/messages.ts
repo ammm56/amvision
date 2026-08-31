@@ -1558,6 +1558,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       emptyTitle: '还没有触发入口',
       emptyDescription: '创建后会显示启停状态、健康状态、最近错误和映射摘要。',
       mappingSkipped: '该绑定不参与当前触发入口。',
+      highPerformanceInputUnsupported: 'ZeroMQ / LocalBuffer 不传输此输入。',
       actions: {
         backToApp: '返回应用',
         create: '创建触发入口',
@@ -1608,6 +1609,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         optional: '可选',
         inferred: '已推断',
         manual: '手动',
+        httpRuntimeOnly: '仅 HTTP Runtime',
         neverTriggered: '未触发',
         enabled: '已启用',
         disabled: '已停用',
@@ -3639,6 +3641,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       emptyTitle: 'No TriggerSource yet',
       emptyDescription: 'Created trigger sources will show enablement, health, last_error, and mapping summaries here.',
       mappingSkipped: 'This binding does not participate in the current TriggerSource.',
+      highPerformanceInputUnsupported: 'ZeroMQ / LocalBuffer does not transport this input.',
       actions: {
         backToApp: 'Back to App',
         create: 'Create TriggerSource',
@@ -3689,6 +3692,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         optional: 'Optional',
         inferred: 'Inferred',
         manual: 'Manual',
+        httpRuntimeOnly: 'HTTP Runtime only',
         neverTriggered: 'Never triggered',
         enabled: 'Enabled',
         disabled: 'Disabled',
@@ -5579,6 +5583,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       emptyTitle: 'TriggerSource はまだありません',
       emptyDescription: '作成後、起動状態、health、last_error、mapping 概要が表示されます。',
       mappingSkipped: 'この binding は現在の TriggerSource に含まれません。',
+      highPerformanceInputUnsupported: 'ZeroMQ / LocalBuffer はこの入力を転送しません。',
       actions: {
         backToApp: 'アプリへ戻る',
         create: 'TriggerSource を作成',
@@ -5629,6 +5634,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         optional: '任意',
         inferred: '推論済み',
         manual: '手動',
+        httpRuntimeOnly: 'HTTP Runtime のみ',
         neverTriggered: '未実行',
         enabled: '有効',
         disabled: '無効',
@@ -7519,6 +7525,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       emptyTitle: 'TriggerSource가 아직 없습니다',
       emptyDescription: '생성 후 활성 상태, health, last_error 및 mapping 요약이 표시됩니다.',
       mappingSkipped: '이 binding은 현재 TriggerSource에 참여하지 않습니다.',
+      highPerformanceInputUnsupported: 'ZeroMQ / LocalBuffer는 이 입력을 전송하지 않습니다.',
       actions: {
         backToApp: '앱으로 돌아가기',
         create: 'TriggerSource 생성',
@@ -7569,6 +7576,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         optional: '선택',
         inferred: '추론됨',
         manual: '수동',
+        httpRuntimeOnly: 'HTTP Runtime 전용',
         neverTriggered: '실행되지 않음',
         enabled: '활성화됨',
         disabled: '비활성화됨',

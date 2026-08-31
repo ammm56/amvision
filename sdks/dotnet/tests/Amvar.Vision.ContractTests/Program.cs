@@ -45,6 +45,8 @@ namespace Amvar.Vision.ContractTests
             VerifyWorkflowTriggerHealthResponse();
             VerifyAutomaticConfigurationRequiresAsyncFactory();
             VerifyWorkflowAppContractV1V2();
+            VerifyWorkflowHttpSixInputBuilder();
+            VerifyWorkflowTriggerInputsBuilder();
             await VerifyWorkflowRequestBuilderStreamingAsync().ConfigureAwait(false);
             await VerifyCreateSelectorAsync().ConfigureAwait(false);
             await VerifySelectVersionRequestAsync().ConfigureAwait(false);
@@ -282,6 +284,145 @@ namespace Amvar.Vision.ContractTests
             {
                 Assert(error.Message.Contains("length changed"), "changed stream length rejection must be explicit");
             }
+        }
+
+        private static void VerifyWorkflowHttpSixInputBuilder()
+        {
+            var contract = BuildSixInputContract();
+            var imageReference = new Dictionary<string, object?>
+            {
+                ["transport_kind"] = "storage",
+                ["object_key"] = "projects/project-1/inputs/image.png",
+                ["media_type"] = "image/png"
+            };
+            var fileReference = new Dictionary<string, object?>
+            {
+                ["transport_kind"] = "storage",
+                ["storage_ref"] = "object-store",
+                ["object_key"] = "projects/project-1/inputs/request.json",
+                ["file_name"] = "request.json",
+                ["media_type"] = "application/json",
+                ["content_length"] = 11,
+                ["checksum_algorithm"] = "sha256",
+                ["checksum"] = new string('a', 64),
+                ["immutable_version"] = "sha256:" + new string('a', 64)
+            };
+            var jsonRequest = new WorkflowRequestBuilder(contract)
+                .AddImageReference("request_image_ref", imageReference)
+                .AddImageBase64("request_image_base64", new byte[] { 1, 2, 3 }, "image/png")
+                .AddJson("request_json", new { batch_id = "batch-1", threshold = 0.5 })
+                .AddText("request_text", "line-1")
+                .AddFileReference("request_file", fileReference)
+                .AddFileReferences("request_files", new object[] { fileReference, fileReference })
+                .WithTimeoutSeconds(30)
+                .BuildJson();
+            AssertEqual(6, jsonRequest.InputBindings.Count, "HTTP JSON builder input count");
+            Assert(jsonRequest.ToJson().Contains("request_image_base64"), "HTTP JSON must include Base64 input");
+
+            var multipartRequest = new WorkflowRequestBuilder(contract)
+                .AddImage(
+                    "request_image_ref",
+                    () => new MemoryStream(new byte[] { 1, 2, 3 }),
+                    "image.png",
+                    "image/png",
+                    3)
+                .AddImageBase64("request_image_base64", new byte[] { 1, 2, 3 }, "image/png")
+                .AddJson("request_json", new { batch_id = "batch-2" })
+                .AddText("request_text", "line-2")
+                .AddFile(
+                    "request_file",
+                    () => new MemoryStream(Encoding.UTF8.GetBytes("{}")),
+                    "request.json",
+                    "application/json",
+                    2)
+                .AddFiles(
+                    "request_files",
+                    new[]
+                    {
+                        WorkflowUploadFile.FromStreamFactory(
+                            () => new MemoryStream(Encoding.UTF8.GetBytes("a")),
+                            "a.txt",
+                            "text/plain",
+                            1),
+                        WorkflowUploadFile.FromStreamFactory(
+                            () => new MemoryStream(Encoding.UTF8.GetBytes("b")),
+                            "b.txt",
+                            "text/plain",
+                            1)
+                    })
+                .BuildMultipart();
+            AssertEqual(4, multipartRequest.Files.Count, "HTTP multipart ordered file part count");
+            AssertEqual(3, multipartRequest.InputBindings.Count, "HTTP multipart inline input count");
+
+            try
+            {
+                new WorkflowRequestBuilder(contract)
+                    .AddFile(
+                        "request_file",
+                        () => new MemoryStream(new byte[] { 1 }),
+                        "a.txt",
+                        "text/plain",
+                        1)
+                    .BuildJson();
+                throw new InvalidOperationException("BuildJson must reject multipart uploads");
+            }
+            catch (InvalidOperationException error)
+            {
+                Assert(error.Message.Contains("BuildMultipart"), "HTTP build mode rejection must be explicit");
+            }
+        }
+
+        private static void VerifyWorkflowTriggerInputsBuilder()
+        {
+            var contract = BuildSixInputContract();
+            var inputs = new WorkflowTriggerInputsBuilder(
+                    contract,
+                    new Dictionary<string, string>
+                    {
+                        ["request_json"] = "payload.request_json",
+                        ["request_text"] = "payload.parameters.request_text"
+                    })
+                .AddJson("request_json", new { batch_id = "trigger-batch", threshold = 0.7 })
+                .AddText("request_text", "station-a")
+                .Build();
+            Assert(inputs.Payload.ContainsKey("request_json"), "Trigger JSON payload path missing");
+            Assert(inputs.Payload.ContainsKey("parameters"), "Trigger nested text payload path missing");
+
+            try
+            {
+                new WorkflowTriggerInputsBuilder(
+                        contract,
+                        new Dictionary<string, string>
+                        {
+                            ["request_file"] = "payload.request_file"
+                        })
+                    .AddJson("request_file", new { object_key = "not-allowed" });
+                throw new InvalidOperationException("Trigger Builder must reject file-ref as JSON");
+            }
+            catch (InvalidOperationException error)
+            {
+                Assert(error.Message.Contains("payload type mismatch"), "Trigger type rejection must be explicit");
+            }
+        }
+
+        private static WorkflowAppContract BuildSixInputContract()
+        {
+            var contract = JsonConvert.DeserializeObject<WorkflowAppContract>(@"{
+                ""format_id"":""amvision.workflow-app-contract.v2"",
+                ""application_id"":""six-input-app"",
+                ""inputs"":[
+                    {""binding_id"":""request_image_ref"",""payload_type_id"":""image-ref.v1"",""payload_schema"":{},""allowed_media_types"":[""image/*""],""max_inline_bytes"":1048576,""max_file_bytes"":1048576,""max_files"":1,""transports"":[""json-reference"",""multipart-upload""]},
+                    {""binding_id"":""request_image_base64"",""payload_type_id"":""image-base64.v1"",""payload_schema"":{},""allowed_media_types"":[""image/*""],""max_inline_bytes"":1048576,""transports"":[""json""]},
+                    {""binding_id"":""request_json"",""payload_type_id"":""value.v1"",""payload_schema"":{},""max_inline_bytes"":1048576,""transports"":[""json""]},
+                    {""binding_id"":""request_text"",""payload_type_id"":""text.v1"",""payload_schema"":{},""allowed_media_types"":[""text/*""],""max_inline_bytes"":1048576,""transports"":[""json""],""charset"":""utf-8""},
+                    {""binding_id"":""request_file"",""payload_type_id"":""file-ref.v1"",""payload_schema"":{},""allowed_media_types"":[""application/json"",""text/plain""],""max_inline_bytes"":1048576,""max_file_bytes"":1048576,""max_files"":1,""transports"":[""json-reference"",""multipart-upload""]},
+                    {""binding_id"":""request_files"",""payload_type_id"":""file-refs.v1"",""payload_schema"":{},""allowed_media_types"":[""application/json"",""text/plain""],""max_inline_bytes"":1048576,""max_file_bytes"":1048576,""max_files"":4,""transports"":[""json-reference"",""multipart-upload""]}
+                ],
+                ""outputs"":[]
+            }");
+            Assert(contract != null, "six-input App Contract must deserialize");
+            contract!.Validate("sixInputContract");
+            return contract;
         }
 
         private static void VerifyZeroMqTriggerResultFrames()

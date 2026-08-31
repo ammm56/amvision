@@ -20,6 +20,18 @@ internal sealed partial class ZeroMqTriggerOperations
         string triggerSourceName,
         CancellationToken cancellationToken = default)
     {
+        return InvokeConfiguredImage(
+            triggerSourceName,
+            inputs: null,
+            cancellationToken);
+    }
+
+    /// <summary>发送配置图片，并附带规范 JSON/文本输入。</summary>
+    public TriggerResult InvokeConfiguredImage(
+        string triggerSourceName,
+        WorkflowTriggerInputs? inputs,
+        CancellationToken cancellationToken = default)
+    {
         cancellationToken.ThrowIfCancellationRequested();
         var configuredTriggerSource = GetConfiguredTriggerSource(triggerSourceName);
         var imagePath = ConfigValidation.NormalizeOptional(catalog.GetRuntime(configuredTriggerSource.Runtime.Name).Invoke.ImagePath);
@@ -32,6 +44,7 @@ internal sealed partial class ZeroMqTriggerOperations
             triggerSourceName,
             imagePath,
             mediaType: null,
+            inputs,
             cancellationToken);
         return result;
     }

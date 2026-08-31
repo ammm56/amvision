@@ -194,6 +194,14 @@ internal sealed partial class ZeroMqTriggerOperations : IDisposable
         request.Payload["request_id"] = request.EventId ?? $"request-{Guid.NewGuid():N}";
     }
 
+    /// <summary>把 typed JSON/文本输入合并到图片或事件 payload。</summary>
+    private static void ApplyTriggerInputs(
+        WorkflowTriggerInputs? inputs,
+        IDictionary<string, object?> payload)
+    {
+        inputs?.CopyTo(payload);
+    }
+
     /// <summary>
     /// 为 ZeroMQ 纯事件请求补齐 runtime name 和 request_id。
     /// </summary>

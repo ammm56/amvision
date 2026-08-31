@@ -49,6 +49,7 @@ from backend.service.application.workflows.input_contracts import (
 from backend.service.application.workflows.preview_display_outputs import is_preview_run_artifact_object_key
 from backend.service.application.workflows.runtime.preview_runs import WorkflowPreviewRunCreateRequest
 from backend.service.api.rest.v1.routes.workflow_runtime_support.uploads import (
+    WORKFLOW_RUNTIME_MULTIPART_CONTROL_PART_MAX_BYTES,
     contract_input_index,
     publish_workflow_upload,
     raise_file_count,
@@ -92,7 +93,9 @@ async def create_workflow_preview_run_multipart(
 ) -> WorkflowPreviewRunContract:
     """按公开 binding 处理图片、单文件和多文件 Preview 上传。"""
 
-    form = await request.form()
+    form = await request.form(
+        max_part_size=WORKFLOW_RUNTIME_MULTIPART_CONTROL_PART_MAX_BYTES
+    )
     dataset_storage = _require_dataset_storage(request)
     preview_upload_id = uuid4().hex
     upload_root = ""

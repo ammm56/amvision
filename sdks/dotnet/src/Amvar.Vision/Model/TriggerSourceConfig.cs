@@ -1,5 +1,6 @@
 using Amvar.Vision;
 using System;
+using System.Collections.Generic;
 using Newtonsoft.Json;
 
 namespace Amvar.Vision.Configuration
@@ -27,6 +28,11 @@ internal sealed class TriggerSourceConfig
     [JsonProperty("trigger_kind")]
     public string TriggerKind { get; set; } = string.Empty;
 
+    /// <summary>TriggerSource 固定的 application input binding mapping。</summary>
+    [JsonProperty("input_binding_mapping")]
+    public Dictionary<string, TriggerSourceInputBindingConfig> InputBindingMapping { get; set; } =
+        new Dictionary<string, TriggerSourceInputBindingConfig>(StringComparer.Ordinal);
+
     /// <summary>
     /// ZeroMQ transport 和调用配置。
     /// </summary>
@@ -48,6 +54,17 @@ internal sealed class TriggerSourceConfig
         Name = ConfigValidation.RequireText(Name, $"{path}.name");
         TriggerSourceId = ConfigValidation.RequireText(TriggerSourceId, $"{path}.trigger_source_id");
         TriggerKind = ConfigValidation.RequireText(TriggerKind, $"{path}.trigger_kind");
+        InputBindingMapping ??= new Dictionary<string, TriggerSourceInputBindingConfig>(StringComparer.Ordinal);
+        foreach (var pair in InputBindingMapping)
+        {
+            var bindingId = ConfigValidation.RequireText(pair.Key, $"{path}.input_binding_mapping binding id");
+            if (pair.Value == null)
+            {
+                throw new InvalidOperationException(
+                    $"{path}.input_binding_mapping.{bindingId} cannot be null.");
+            }
+            pair.Value.Validate($"{path}.input_binding_mapping.{bindingId}");
+        }
         if (string.Equals(TriggerKind, "zeromq-topic", StringComparison.Ordinal))
         {
             if (ZeroMq == null || LocalSharedMemory != null)
@@ -72,6 +89,33 @@ internal sealed class TriggerSourceConfig
         }
 
         throw new InvalidOperationException($"{path}.trigger_kind is not supported by this SDK: {TriggerKind}.");
+    }
+}
+
+/// <summary>SDK 构造 typed Trigger inputs 所需的单个 mapping 规则。</summary>
+internal sealed class TriggerSourceInputBindingConfig
+{
+    [JsonProperty("source")]
+    public string? Source { get; set; }
+
+    [JsonProperty("value")]
+    public object? Value { get; set; }
+
+    [JsonProperty("required")]
+    public bool Required { get; set; } = true;
+
+    [JsonProperty("payload_type_id")]
+    public string? PayloadTypeId { get; set; }
+
+    [JsonProperty("metadata")]
+    public Dictionary<string, object?> Metadata { get; set; } =
+        new Dictionary<string, object?>();
+
+    internal void Validate(string path)
+    {
+        Source = ConfigValidation.NormalizeOptional(Source);
+        PayloadTypeId = ConfigValidation.NormalizeOptional(PayloadTypeId);
+        Metadata ??= new Dictionary<string, object?>();
     }
 }
 }

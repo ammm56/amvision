@@ -120,6 +120,9 @@
     <Compile Include="AMVisionOperationRunner.ModelId.cs" />
     <Compile Include="AMVisionOperationRunner.Selectors.cs" />
     <Compile Include="AMVisionOperationRunner.TriggerId.cs" />
+    <Compile Include="AMVisionOperationRunner.TriggerInputs.cs" />
+    <Compile Include="AMVisionOperationRunner.TypedInputs.cs" />
+    <Compile Include="WorkflowTriggerInputsBuilder.cs" />
     <Compile Include="Http\AMVisionApiException.cs" />
     <Compile Include="Http\AMVisionApiResponse.cs" />
     <Compile Include="Http\AMVisionCallResult.cs" />

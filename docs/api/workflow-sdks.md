@@ -49,11 +49,11 @@ using (var client = AMVisionClient.CreateFromConfig())
 
 | SDK 调用面 | 输入能力 | 当前状态 |
 | --- | --- | --- |
-| HTTP Runtime | `image-ref.v1`、`image-base64.v1`、`value.v1`、`text.v1`、`file-ref.v1`、`file-refs.v1` | Runtime 与 multipart streaming 已实现；统一 Base64/reference Builder 方法和显式 JSON/multipart build 待补齐 |
-| ZeroMQ Trigger | `image-ref.v1`、`value.v1`、`text.v1` | 图片和通用 payload 已实现；高层图片方法附带强类型 JSON/文本 inputs 待补齐 |
-| local-shared-memory Trigger | `image-ref.v1`、`value.v1`、`text.v1` | 图片请求 payload 和 event-only v2 已实现；共用强类型 inputs Builder 待补齐 |
+| HTTP Runtime | `image-ref.v1`、`image-base64.v1`、`value.v1`、`text.v1`、`file-ref.v1`、`file-refs.v1` | `WorkflowRequestBuilder` 已支持六类输入、引用和 streaming multipart |
+| ZeroMQ Trigger | `image-ref.v1`、`value.v1`、`text.v1` | 图片方法可附带 `WorkflowTriggerInputsBuilder` 生成的 JSON/文本，支持 event-only |
+| local-shared-memory Trigger | `image-ref.v1`、`value.v1`、`text.v1` | 图片与 event-only v2 共用 `WorkflowTriggerInputsBuilder` 输入对象 |
 
-HTTP Builder 必须覆盖 JSON、文本、图片上传、图片引用、Base64 图片、单文件、多文件及文件引用。文件路径使用 stream factory / `StreamContent`，不使用 `File.ReadAllBytes`、完整 `MemoryStream` copy、隐藏重试、排队或 transport fallback。调用方显式选择 JSON 或 multipart build，SDK 不根据输入内容猜测 transport。
+HTTP Builder 覆盖 JSON、文本、图片上传、图片引用、Base64 图片、单文件、多文件及文件引用。文件路径使用 stream factory / `StreamContent`，不使用 `File.ReadAllBytes`、完整 `MemoryStream` copy、隐藏重试、排队或 transport fallback。调用方显式选择 `BuildJson()` 或 `BuildMultipart()`，SDK 不根据输入内容猜测 transport；旧 `Build()` 等价于 `BuildMultipart()`。
 
 高性能 Trigger 使用独立 `WorkflowTriggerInputsBuilder`，只允许 `AddJson` 和 `AddText`。图片由 ZeroMQ 或 local-shared-memory 图片调用方法提供并生成 `request_image_ref`；Builder 不接受 Base64 图片、单文件或多文件。SDK 调用前按配置包中的 Runtime App Contract、TriggerSource mapping 和 transport 上限快速失败，后端仍执行权威校验。完整 API 规划和验收规则见 [Workflow App Entry 多类型输入实施基线](../development/workflow-app-entry-input-implementation.md)。
 

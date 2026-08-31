@@ -41,6 +41,10 @@ _MULTIPART_RUNTIME_RESERVED_FIELDS = frozenset(
 _STREAMING_UPLOAD_PAYLOAD_TYPES = frozenset(
     {"image-ref.v1", "file-ref.v1", "file-refs.v1"}
 )
+# Starlette 对普通 multipart part 的默认上限是 1 MiB，无法承载公开契约允许的
+# image-base64.v1。这里仅放宽 multipart 控制字段；文件 part 仍由每个 binding 的
+# max_file_bytes 流式限制，解析后的 inline payload 仍由 App Contract 再次校验。
+WORKFLOW_RUNTIME_MULTIPART_CONTROL_PART_MAX_BYTES = 160 * 1024 * 1024
 
 
 async def build_multipart_runtime_invoke_request(
@@ -51,7 +55,9 @@ async def build_multipart_runtime_invoke_request(
 ) -> WorkflowRuntimeInvokeRequest:
     """把 multipart/form-data 确定性转换为统一 Workflow 输入。"""
 
-    form = await request.form()
+    form = await request.form(
+        max_part_size=WORKFLOW_RUNTIME_MULTIPART_CONTROL_PART_MAX_BYTES
+    )
     dataset_storage = require_dataset_storage(request)
     upload_request_id = uuid4().hex
     upload_root = (

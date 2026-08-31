@@ -23,6 +23,22 @@ internal sealed partial class ZeroMqTriggerOperations
         string mediaType = "image/octet-stream",
         CancellationToken cancellationToken = default)
     {
+        return InvokeImageBytes(
+            triggerSourceName,
+            imageBytes,
+            mediaType,
+            inputs: null,
+            cancellationToken);
+    }
+
+    /// <summary>发送图片 bytes，并在同一 envelope 附带规范 JSON/文本输入。</summary>
+    public TriggerResult InvokeImageBytes(
+        string triggerSourceName,
+        byte[] imageBytes,
+        string mediaType,
+        WorkflowTriggerInputs? inputs,
+        CancellationToken cancellationToken = default)
+    {
         cancellationToken.ThrowIfCancellationRequested();
         var configuredTriggerSource = GetConfiguredTriggerSource(triggerSourceName);
         if (imageBytes == null)
@@ -33,6 +49,7 @@ internal sealed partial class ZeroMqTriggerOperations
         EnsureImageByteCount(imageBytes.LongLength, configuredTriggerSource, nameof(imageBytes));
         var request = ImageTriggerRequest.FromBytes(imageBytes, mediaType);
         ApplyImageDefaults(request, configuredTriggerSource);
+        ApplyTriggerInputs(inputs, request.Payload);
         var client = GetClient(configuredTriggerSource);
         cancellationToken.ThrowIfCancellationRequested();
         var result = client.InvokeImage(request);

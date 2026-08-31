@@ -1,6 +1,6 @@
 # Workflow App Entry 多类型输入实施基线
 
-> 状态：阶段 1—6 的统一 payload/节点/校验、App Contract v2、ObjectStore streaming、Runtime/Preview multipart、App Entry、typed Preview、现有 .NET HTTP 请求、local-shared-memory event-only v2 和真实 Workflow App 验证已完成。阶段 7—9 的高性能 Trigger capability 校验、.NET 双调用面强类型 API 和补充全链验收处于待实现状态。代码、OpenAPI、Catalog 和持续测试是实现状态的最终证据。
+> 状态：阶段 1—9 已完成。HTTP Runtime 已支持六类公开输入；ZeroMQ/local-shared-memory 只支持 `image-ref.v1`、`value.v1`、`text.v1`；.NET SDK 已提供两套明确的 Builder，并通过实际 Workflow App、Runtime、Trigger 和 SDK 组合调用验收。24 小时以上现场 soak 仍属于发布门禁，不由一次开发验收替代。代码、OpenAPI、Catalog 和持续测试是实现状态的最终证据。
 
 不可变架构取舍见 [ADR-0010：Workflow App Entry 多类型输入契约](../decisions/ADR-0010-workflow-app-entry-multi-input-contract.md)。本文只维护实现顺序、具体 contract 和验证门禁。
 
@@ -26,9 +26,9 @@ Workflow 调用不应被限制为每次只提交一张图片。一个公开 App 
 | 4 | .NET HTTP multipart 组合请求与 streaming | 已完成 |
 | 5 | local-shared-memory event-only v2 | 已完成 |
 | 6 | 真实 App 复制、版本切换、HTTP/SDK/LocalBuffer 稳定性审计 | 已完成 |
-| 7 | ZeroMQ/local-shared-memory 高性能输入 capability 固定与配置校验 | 待实现 |
-| 8 | .NET HTTP 全量 Builder 与高性能 Trigger Builder 分层 | 待实现 |
-| 9 | 两套调用面的真实组合、拒绝矩阵和长期稳定性验收 | 待实现 |
+| 7 | ZeroMQ/local-shared-memory 高性能输入 capability 固定与配置校验 | 已完成 |
+| 8 | .NET HTTP 全量 Builder 与高性能 Trigger Builder 分层 | 已完成 |
+| 9 | 两套调用面的真实组合、拒绝矩阵和有界稳定性验收 | 已完成 |
 
 每个阶段只有在代码、迁移、契约测试和真实链路验证同时完成后才能改为已完成。部分代码落地不能提前修改本文顶部的“尚未实现”结论。
 
@@ -391,7 +391,7 @@ Preview 输入组件按 payload type 渲染：结构化 JSON 编辑器、纯文�
 - `AddFiles(bindingId, orderedFiles)`；
 - `AddFileReferences(bindingId, orderedFileRefs)`。
 
-同一输入集合由调用方显式选择 `BuildJson()` 或 `BuildMultipart()`，不由 SDK 猜测 transport。`BuildJson()` 拒绝待上传 stream；`BuildMultipart()` 使用 `input_bindings_json` 携带非文件输入，并流式发送图片和文件。现有 `WorkflowRequestBuilder` 已实现 JSON、文本、图片上传、单文件和多文件上传；Base64/引用类方法和显式双 Build API 属于阶段 8 待实现内容。
+同一输入集合由调用方显式选择 `BuildJson()` 或 `BuildMultipart()`，不由 SDK 猜测 transport。`BuildJson()` 拒绝待上传 stream；`BuildMultipart()` 使用 `input_bindings_json` 携带非文件输入，并流式发送图片和文件。`WorkflowRequestBuilder` 已实现 JSON、文本、图片上传、图片 Base64/引用、单文件/多文件上传和文件引用；旧 `Build()` 只作为等价于 `BuildMultipart()` 的兼容入口保留。
 
 ### 高性能 Trigger Builder
 
@@ -544,6 +544,28 @@ Runtime 首次负载前后存在模块和 OpenCV 工作集加载；第二轮 40 
 - LocalBuffer direct reader/writer 和 Workflow owner view 共用延迟 mmap，消除同进程重复 2 GiB 虚拟映射，同时保留 publication identity 重验与 owner cleanup 边界。
 
 代码门禁结果：最终后端组合回归 288 项通过；前端全量 76 个测试文件、289 项测试通过并完成 production build；.NET net472 x64 Release 零 warning/零 error且契约程序通过；所有改动 Python 文件通过 Ruff，`git diff --check` 通过；浏览器核对两个 App、App Contract、Preview 控件、Parallel/Batch/Hough 节点和 Runtime 状态，控制台无 warning/error。
+
+## Trigger 与 .NET 双调用面补充验证（2026-08-31）
+
+从既有治具空盘应用复制并发布独立验证应用 `workflow-app-20260830233001`，运行实例为 `workflow-runtime-0defddfc09a945528159d1951b77f4fb`。验证应用冻结六个公开输入；创建并启用了 `zeromq-multi-input-sdk-20260830233001` 和 `local-shared-multi-input-sdk-20260830233001`，两者只显式映射 `request_image_ref`、`request_json`、`request_text`。把 `request_file` 映射给 ZeroMQ 的负向请求在创建阶段以 `unsupported_trigger_input_payload_type` 拒绝。
+
+使用生成的真实 SDK 配置包和 net472 x64 SDK，以 59,885,622 bytes BMP 运行三条调用面：
+
+- HTTP multipart 在同一次请求中提交图片上传、图片 Base64、JSON、文本、单文件和两个有序文件；
+- ZeroMQ 在同一次图片调用中提交 JSON 和文本；
+- local-shared-memory 在同一次 LocalBuffer 图片调用中提交 JSON 和文本。
+
+预验收和 15 轮计量共执行 16 次 HTTP、16 次 ZeroMQ 成功调用和 16 次 local-shared-memory 成功调用。后 10 轮平均耗时分别为 3888.70 ms、907.28 ms、771.36 ms；HTTP 结果 hash 始终唯一。HTTP 同时传输约 60 MiB 图片及同图 Base64，耗时不作为高性能 Trigger 基准。
+
+真实调用发现 Starlette multipart 普通字段默认只有 1 MiB，和 App Contract 允许的 128 MiB `image-base64.v1` 冲突。Runtime 与 Preview 现显式使用 160 MiB multipart 控制字段解析上限；之后仍由每个 binding 的 App Contract 和平台上限执行权威校验，文件 part 继续 streaming，不增加完整文件内存复制。
+
+15 轮后 backend handle 保持 1672，Runtime worker handle 保持 339。Runtime worker 首轮 native/OpenCV 高水位增加约 57 MiB，后 10 轮 Private Bytes 只增加约 0.46 MiB；backend 后 10 轮增加约 2.30 MiB。LocalBuffer 为 0 active lease、0 used page、0 pending executor；mailbox 128 个 descriptor 全部 FREE；Runtime 临时输入文件为 0。该结果未发现随调用次数线性增长的 handle、lease、descriptor 或文件残留，但不替代 24 小时以上现场负载 soak。
+
+前端真实创建页显示六个输入，其中 `request_image_ref/json/text` 可生成高性能映射，`request_image_base64/file/files` 固定标记为 `HTTP Runtime only` 且没有映射控件；浏览器控制台无 warning/error。
+
+最终 net472 x64 Release 重新构建后又执行 2 轮三链路实测，6 次调用全部成功；最后一轮 HTTP、ZeroMQ、local-shared-memory 分别为 3806.51 ms、888.27 ms、848.61 ms。第二轮后 backend/Runtime worker handle 为 1682/339，Runtime worker Private Bytes 只增加 4 KiB，ZeroMQ transport registry 为 0 active，LocalBuffer mailbox 为 0 used page、0 active executor，Runtime 输入临时文件为 0。验收结束后停用两个验证 Trigger 并停止验证 Runtime，保留应用和配置记录供复核，避免验证 worker 继续占用常驻内存。
+
+大 Base64 multipart 和前端全量 health 刷新会把开发态 backend 推到较高的 CPython/JSON 解析内存高水位；未发现 `images.mmap` view 或按调用次数线性增长，但进程不会立即把所有已提交页归还 Windows。验收结束的干净重启把 backend Working Set 从约 824 MiB 恢复到约 273 MiB，15 个既有 desired-running Runtime 全部恢复 running，验证 Runtime 保持 stopped。工业调用应优先用 multipart `request_image_ref`、ZeroMQ 或 LocalBuffer 传大图，`request_image_base64` 保留给 HTTP 兼容场景并受固定上限保护。
 
 ## 完成与归档条件
 

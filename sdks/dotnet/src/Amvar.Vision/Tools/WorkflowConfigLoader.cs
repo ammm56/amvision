@@ -42,7 +42,8 @@ namespace Amvar.Vision.Tools
         private static readonly ISet<string> RuntimePropertyNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "name",
-            "workflow_runtime_id"
+            "workflow_runtime_id",
+            "public_contract"
         };
 
         /// <summary>
@@ -69,6 +70,7 @@ namespace Amvar.Vision.Tools
             "name",
             "trigger_source_id",
             "trigger_kind",
+            "input_binding_mapping",
             "zero_mq",
             "local_shared_memory"
         };

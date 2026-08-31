@@ -109,6 +109,8 @@ from backend.contracts.workflows.local_shared_memory_trigger import (
     WorkflowTriggerRequestV1,
 )
 from backend.contracts.workflows.trigger_sources import (
+    HIGH_PERFORMANCE_TRIGGER_INPUT_PAYLOAD_TYPE_IDS,
+    HIGH_PERFORMANCE_TRIGGER_KINDS,
     WORKFLOW_TRIGGER_EVENT_FORMAT,
     WORKFLOW_TRIGGER_RESULT_FORMAT,
     WORKFLOW_TRIGGER_SOURCE_FORMAT,
@@ -117,6 +119,7 @@ from backend.contracts.workflows.trigger_sources import (
     TriggerEventContract,
     TriggerResultContract,
     WorkflowTriggerSourceContract,
+    workflow_trigger_supports_input_payload_type,
 )
 
 __all__ = [
@@ -157,6 +160,8 @@ __all__ = [
     "WORKFLOW_RUNTIME_STORAGE_ROOT",
     "WORKFLOW_RUNTIME_REVISION_FORMAT",
     "WORKFLOW_TRIGGER_EVENT_FORMAT",
+    "HIGH_PERFORMANCE_TRIGGER_INPUT_PAYLOAD_TYPE_IDS",
+    "HIGH_PERFORMANCE_TRIGGER_KINDS",
     "WORKFLOW_TRIGGER_RESULT_FORMAT",
     "WORKFLOW_TRIGGER_SOURCE_FORMAT",
     "WORKFLOW_TRIGGER_ACK_POLICIES",
@@ -228,4 +233,5 @@ __all__ = [
     "validate_flow_application_bindings",
     "validate_node_definition_catalog",
     "validate_workflow_graph_template",
+    "workflow_trigger_supports_input_payload_type",
 ]

@@ -2,7 +2,7 @@
 
 ## 状态
 
-已接受。统一 payload/节点/校验、App Contract v2、ObjectStore streaming、Runtime/Preview multipart、App Entry、typed Preview、现有 .NET HTTP 请求和 local-shared-memory event-only v2 已实施。HTTP Runtime 与高性能 Trigger 的调用面边界已经固定；.NET SDK 的统一强类型调用入口和对应全链验收仍按实施基线推进。实施顺序、payload 形状和验收矩阵见 [Workflow App Entry 多类型输入实施基线](../development/workflow-app-entry-input-implementation.md)。
+已接受并实施。统一 payload/节点/校验、App Contract v2、ObjectStore streaming、Runtime/Preview multipart、App Entry、typed Preview、local-shared-memory event-only v2、高性能 Trigger capability 校验和 .NET 双调用面强类型 API 已完成。HTTP Runtime 与高性能 Trigger 的调用面边界已经固定，并通过实际 Workflow App、Runtime、Trigger 和 SDK 组合调用验收。实施顺序、payload 形状和验收矩阵见 [Workflow App Entry 多类型输入实施基线](../development/workflow-app-entry-input-implementation.md)。
 
 ## 背景
 

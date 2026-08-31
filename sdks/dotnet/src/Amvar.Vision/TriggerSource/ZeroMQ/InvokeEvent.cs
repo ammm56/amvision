@@ -31,5 +31,17 @@ internal sealed partial class ZeroMqTriggerOperations
         var result = client.InvokeEvent(request);
         return result;
     }
+
+    /// <summary>发送由 typed Builder 构造的 JSON/文本 event-only 请求。</summary>
+    public TriggerResult InvokeEvent(
+        string triggerSourceName,
+        WorkflowTriggerInputs inputs,
+        CancellationToken cancellationToken = default)
+    {
+        if (inputs is null) throw new ArgumentNullException(nameof(inputs));
+        var payload = new Dictionary<string, object?>();
+        inputs.CopyTo(payload);
+        return InvokeEvent(triggerSourceName, payload, cancellationToken);
+    }
 }
 }

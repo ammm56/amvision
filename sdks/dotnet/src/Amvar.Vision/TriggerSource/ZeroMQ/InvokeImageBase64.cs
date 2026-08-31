@@ -23,12 +23,29 @@ internal sealed partial class ZeroMqTriggerOperations
         string? mediaType = null,
         CancellationToken cancellationToken = default)
     {
+        return InvokeImageBase64(
+            triggerSourceName,
+            imageBase64,
+            mediaType,
+            inputs: null,
+            cancellationToken);
+    }
+
+    /// <summary>解码图片 Base64 后发送，并附带规范 JSON/文本输入。</summary>
+    public TriggerResult InvokeImageBase64(
+        string triggerSourceName,
+        string imageBase64,
+        string? mediaType,
+        WorkflowTriggerInputs? inputs,
+        CancellationToken cancellationToken = default)
+    {
         cancellationToken.ThrowIfCancellationRequested();
         var configuredTriggerSource = GetConfiguredTriggerSource(triggerSourceName);
         EnsureImageByteCount(EstimateBase64DecodedByteCount(imageBase64), configuredTriggerSource, nameof(imageBase64));
         var request = ImageTriggerRequest.FromBase64(imageBase64, mediaType);
         EnsureImageByteCount(request.ImageBytes.LongLength, configuredTriggerSource, nameof(imageBase64));
         ApplyImageDefaults(request, configuredTriggerSource);
+        ApplyTriggerInputs(inputs, request.Payload);
         var client = GetClient(configuredTriggerSource);
         cancellationToken.ThrowIfCancellationRequested();
         var result = client.InvokeImage(request);

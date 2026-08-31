@@ -24,6 +24,31 @@ WORKFLOW_TRIGGER_SOURCE_FORMAT = "amvision.workflow-trigger-source.v1"
 WORKFLOW_TRIGGER_EVENT_FORMAT = "amvision.workflow-trigger-event.v1"
 WORKFLOW_TRIGGER_RESULT_FORMAT = "amvision.workflow-trigger-result.v1"
 
+# 高性能 Trigger 只传递结构化小参数和 LocalBuffer 图片引用。文件、文件列表与
+# Base64 图片由 HTTP Runtime 负责，避免在常驻 Trigger 数据面引入隐式暂存和复制。
+HIGH_PERFORMANCE_TRIGGER_KINDS = frozenset(
+    {"zeromq-topic", "local-shared-memory"}
+)
+HIGH_PERFORMANCE_TRIGGER_INPUT_PAYLOAD_TYPE_IDS = frozenset(
+    {"image-ref.v1", "value.v1", "text.v1"}
+)
+
+
+def workflow_trigger_supports_input_payload_type(
+    trigger_kind: str,
+    payload_type_id: str,
+) -> bool:
+    """判断 Trigger 类型是否支持公开输入 payload 类型。
+
+    非高性能 Trigger 保持既有协议适配能力；ZeroMQ 和本机共享内存只接受
+    image-ref/value/text 三类稳定输入。
+    """
+
+    return (
+        trigger_kind not in HIGH_PERFORMANCE_TRIGGER_KINDS
+        or payload_type_id in HIGH_PERFORMANCE_TRIGGER_INPUT_PAYLOAD_TYPE_IDS
+    )
+
 
 def _require_stripped_text(value: str, field_name: str) -> str:
     """校验字符串字段非空。

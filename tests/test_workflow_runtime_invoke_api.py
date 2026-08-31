@@ -965,6 +965,69 @@ def test_workflow_app_runtime_invoke_upload_rejects_image_file_for_non_dataset_p
     }
 
 
+def test_workflow_app_runtime_invoke_upload_accepts_large_inline_control_part(
+    tmp_path: Path,
+) -> None:
+    """验证 multipart 控制字段可承载超过 Starlette 默认 1 MiB 的合法 Base64 图片。"""
+
+    import cv2
+    import numpy as np
+
+    client, session_factory, dataset_storage = _create_runtime_api_client(
+        tmp_path,
+        database_name="workflow-runtime-invoke-large-control-part.db",
+        enable_local_buffer_broker=False,
+    )
+    headers = build_test_headers(scopes="workflows:read,workflows:write")
+    image = np.zeros((768, 1024, 3), dtype=np.uint8)
+    image[:, :, 0] = np.arange(1024, dtype=np.uint16).astype(np.uint8)
+    image[:, :, 1] = np.arange(768, dtype=np.uint16).astype(np.uint8)[:, None]
+    image[:, :, 2] = 127
+    encoded_ok, encoded_image = cv2.imencode(".bmp", image)
+    assert encoded_ok is True
+    input_bindings_json = json.dumps(
+        {
+            "request_image_base64": {
+                "image_base64": base64.b64encode(encoded_image.tobytes()).decode(
+                    "ascii"
+                ),
+                "media_type": "image/bmp",
+            }
+        }
+    )
+    assert len(input_bindings_json.encode("utf-8")) > 1024 * 1024
+
+    try:
+        with client:
+            _save_example_documents(
+                client=client,
+                dataset_storage=dataset_storage,
+                example_name="opencv_process_save_image",
+            )
+            workflow_runtime_id = _create_and_start_runtime(
+                client=client,
+                headers=headers,
+                application_id="opencv-process-save-image-app",
+                display_name="Large Multipart Control Part Runtime",
+            )
+            invoke_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke/upload",
+                params={"response_mode": "run"},
+                headers=headers,
+                data={"input_bindings_json": input_bindings_json},
+            )
+            stop_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop",
+                headers=headers,
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert invoke_response.status_code == 200, invoke_response.text
+    assert invoke_response.json()["state"] == "succeeded"
+    assert stop_response.status_code == 200
+
+
 def test_runtime_multipart_streams_single_and_ordered_files_then_cleans_inputs(
     tmp_path: Path,
 ) -> None:

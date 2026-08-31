@@ -28,12 +28,31 @@ internal sealed partial class ZeroMqTriggerOperations
         int height,
         CancellationToken cancellationToken = default)
     {
+        return InvokeBgr24(
+            triggerSourceName,
+            bgr24Bytes,
+            width,
+            height,
+            inputs: null,
+            cancellationToken);
+    }
+
+    /// <summary>发送 BGR24 图片，并附带规范 JSON/文本输入。</summary>
+    public TriggerResult InvokeBgr24(
+        string triggerSourceName,
+        byte[] bgr24Bytes,
+        int width,
+        int height,
+        WorkflowTriggerInputs? inputs,
+        CancellationToken cancellationToken = default)
+    {
         cancellationToken.ThrowIfCancellationRequested();
         var configuredTriggerSource = GetConfiguredTriggerSource(triggerSourceName);
         ImageConversionTools.ValidateBgr24Bytes(bgr24Bytes, width, height, nameof(bgr24Bytes));
         EnsureImageByteCount(bgr24Bytes.LongLength, configuredTriggerSource, nameof(bgr24Bytes));
         var request = ImageTriggerRequest.FromBgr24(bgr24Bytes, width, height);
         ApplyImageDefaults(request, configuredTriggerSource);
+        ApplyTriggerInputs(inputs, request.Payload);
         var client = GetClient(configuredTriggerSource);
         cancellationToken.ThrowIfCancellationRequested();
         var triggerResult = client.InvokeImage(request);
@@ -52,6 +71,20 @@ internal sealed partial class ZeroMqTriggerOperations
         Bitmap bitmap,
         CancellationToken cancellationToken = default)
     {
+        return InvokeBgr24FromBitmap(
+            triggerSourceName,
+            bitmap,
+            inputs: null,
+            cancellationToken);
+    }
+
+    /// <summary>转换 Bitmap 后发送，并附带规范 JSON/文本输入。</summary>
+    public TriggerResult InvokeBgr24FromBitmap(
+        string triggerSourceName,
+        Bitmap bitmap,
+        WorkflowTriggerInputs? inputs,
+        CancellationToken cancellationToken = default)
+    {
         cancellationToken.ThrowIfCancellationRequested();
         var frame = ImageConversionTools.BitmapToBgr24(bitmap);
         var triggerResult = InvokeBgr24(
@@ -59,6 +92,7 @@ internal sealed partial class ZeroMqTriggerOperations
             frame.Bytes,
             frame.Width,
             frame.Height,
+            inputs,
             cancellationToken);
         return triggerResult;
     }
@@ -75,6 +109,20 @@ internal sealed partial class ZeroMqTriggerOperations
         string imagePath,
         CancellationToken cancellationToken = default)
     {
+        return InvokeBgr24FromFile(
+            triggerSourceName,
+            imagePath,
+            inputs: null,
+            cancellationToken);
+    }
+
+    /// <summary>转换图片文件后发送，并附带规范 JSON/文本输入。</summary>
+    public TriggerResult InvokeBgr24FromFile(
+        string triggerSourceName,
+        string imagePath,
+        WorkflowTriggerInputs? inputs,
+        CancellationToken cancellationToken = default)
+    {
         cancellationToken.ThrowIfCancellationRequested();
         var configuredTriggerSource = GetConfiguredTriggerSource(triggerSourceName);
         var resolvedImagePath = ResolveConfiguredPath(configuredTriggerSource, imagePath);
@@ -84,6 +132,7 @@ internal sealed partial class ZeroMqTriggerOperations
             frame.Bytes,
             frame.Width,
             frame.Height,
+            inputs,
             cancellationToken);
         return triggerResult;
     }
@@ -98,6 +147,18 @@ internal sealed partial class ZeroMqTriggerOperations
         string triggerSourceName,
         CancellationToken cancellationToken = default)
     {
+        return InvokeConfiguredBgr24Image(
+            triggerSourceName,
+            inputs: null,
+            cancellationToken);
+    }
+
+    /// <summary>发送配置图片，并附带规范 JSON/文本输入。</summary>
+    public TriggerResult InvokeConfiguredBgr24Image(
+        string triggerSourceName,
+        WorkflowTriggerInputs? inputs,
+        CancellationToken cancellationToken = default)
+    {
         cancellationToken.ThrowIfCancellationRequested();
         var configuredTriggerSource = GetConfiguredTriggerSource(triggerSourceName);
         var imagePath = ConfigValidation.NormalizeOptional(catalog.GetRuntime(configuredTriggerSource.Runtime.Name).Invoke.ImagePath);
@@ -109,6 +170,7 @@ internal sealed partial class ZeroMqTriggerOperations
         var triggerResult = InvokeBgr24FromFile(
             triggerSourceName,
             imagePath,
+            inputs,
             cancellationToken);
         return triggerResult;
     }

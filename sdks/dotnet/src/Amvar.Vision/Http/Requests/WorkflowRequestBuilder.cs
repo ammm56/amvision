@@ -162,6 +162,97 @@ namespace Amvar.Vision
             return this;
         }
 
+        /// <summary>增加 image-base64.v1 JSON 输入。</summary>
+        public WorkflowRequestBuilder AddImageBase64(
+            string bindingId,
+            byte[] imageBytes,
+            string mediaType = "image/octet-stream")
+        {
+            if (imageBytes is null || imageBytes.Length == 0)
+            {
+                throw new ArgumentException("imageBytes cannot be empty.", nameof(imageBytes));
+            }
+            var normalizedBindingId = RequireBindingId(bindingId);
+            var contractInput = RequireContractInput(normalizedBindingId, "image-base64.v1");
+            ValidateMediaType(contractInput, mediaType);
+            ValidateTransport(contractInput, "json");
+            var payload = new Dictionary<string, object?>
+            {
+                ["image_base64"] = Convert.ToBase64String(imageBytes),
+                ["media_type"] = RequireText(mediaType, nameof(mediaType))
+            };
+            ValidateInlineSize(contractInput, payload);
+            ReserveBinding(normalizedBindingId);
+            request.InputBindings[normalizedBindingId] = payload;
+            return this;
+        }
+
+        /// <summary>从 Base64 或 Data URL 增加 image-base64.v1 JSON 输入。</summary>
+        public WorkflowRequestBuilder AddImageBase64(
+            string bindingId,
+            string imageBase64,
+            string? mediaType = null)
+        {
+            var imageRequest = WorkflowRuntimeImageInvokeRequest.FromBase64(
+                imageBase64,
+                mediaType,
+                bindingId);
+            return AddImageBase64(
+                imageRequest.InputBinding,
+                imageRequest.ImageBytes,
+                imageRequest.MediaType);
+        }
+
+        /// <summary>增加 image-ref.v1 JSON reference 输入。</summary>
+        public WorkflowRequestBuilder AddImageReference(
+            string bindingId,
+            object reference)
+        {
+            return AddJsonReference(bindingId, "image-ref.v1", reference);
+        }
+
+        /// <summary>增加 file-ref.v1 JSON reference 输入。</summary>
+        public WorkflowRequestBuilder AddFileReference(
+            string bindingId,
+            object reference)
+        {
+            return AddJsonReference(bindingId, "file-ref.v1", reference);
+        }
+
+        /// <summary>按枚举顺序增加 file-refs.v1 JSON reference 输入。</summary>
+        public WorkflowRequestBuilder AddFileReferences(
+            string bindingId,
+            IEnumerable<object> orderedReferences)
+        {
+            if (orderedReferences is null)
+            {
+                throw new ArgumentNullException(nameof(orderedReferences));
+            }
+            var normalizedBindingId = RequireBindingId(bindingId);
+            var contractInput = RequireContractInput(normalizedBindingId, "file-refs.v1");
+            ValidateTransport(contractInput, "json-reference");
+            var items = orderedReferences.ToList();
+            if (items.Count == 0 || items.Any(item => item is null))
+            {
+                throw new ArgumentException(
+                    "orderedReferences must contain at least one non-null reference.",
+                    nameof(orderedReferences));
+            }
+            if (contractInput?.MaxFiles != null && items.Count > contractInput.MaxFiles.Value)
+            {
+                throw new InvalidOperationException("File count exceeds the published App Contract.");
+            }
+            var payload = new Dictionary<string, object?>
+            {
+                ["items"] = items,
+                ["count"] = items.Count
+            };
+            ValidateInlineSize(contractInput, payload);
+            ReserveBinding(normalizedBindingId);
+            request.InputBindings[normalizedBindingId] = payload;
+            return this;
+        }
+
         /// <summary>增加 image-ref.v1 multipart 图片输入。</summary>
         public WorkflowRequestBuilder AddImage(
             string bindingId,
@@ -238,8 +329,46 @@ namespace Amvar.Vision
             return this;
         }
 
+        /// <summary>返回可交给 AMVisionClient JSON API 的请求。</summary>
+        public WorkflowRuntimeInvokeRequest BuildJson()
+        {
+            ValidateRequiredBindings();
+            if (request.Files.Count > 0)
+            {
+                throw new InvalidOperationException(
+                    "JSON requests cannot contain multipart uploads. Use BuildMultipart().");
+            }
+            var jsonRequest = new WorkflowRuntimeInvokeRequest
+            {
+                TimeoutSeconds = request.TimeoutSeconds
+            };
+            foreach (var pair in request.InputBindings)
+            {
+                jsonRequest.InputBindings[pair.Key] = pair.Value;
+            }
+            foreach (var pair in request.ExecutionMetadata)
+            {
+                jsonRequest.ExecutionMetadata[pair.Key] = pair.Value;
+            }
+            jsonRequest.Validate();
+            return jsonRequest;
+        }
+
         /// <summary>返回可交给 AMVisionClient multipart API 的请求。</summary>
+        public WorkflowRuntimeMultipartInvokeRequest BuildMultipart()
+        {
+            ValidateRequiredBindings();
+            request.Validate();
+            return request;
+        }
+
+        /// <summary>兼容入口；等价于 BuildMultipart()。</summary>
         public WorkflowRuntimeMultipartInvokeRequest Build()
+        {
+            return BuildMultipart();
+        }
+
+        private void ValidateRequiredBindings()
         {
             if (contract != null)
             {
@@ -252,8 +381,21 @@ namespace Amvar.Vision
                     }
                 }
             }
-            request.Validate();
-            return request;
+        }
+
+        private WorkflowRequestBuilder AddJsonReference(
+            string bindingId,
+            string payloadTypeId,
+            object reference)
+        {
+            if (reference is null) throw new ArgumentNullException(nameof(reference));
+            var normalizedBindingId = RequireBindingId(bindingId);
+            var contractInput = RequireContractInput(normalizedBindingId, payloadTypeId);
+            ValidateTransport(contractInput, "json-reference");
+            ValidateInlineSize(contractInput, reference);
+            ReserveBinding(normalizedBindingId);
+            request.InputBindings[normalizedBindingId] = reference;
+            return this;
         }
 
         private WorkflowRequestBuilder AddUpload(

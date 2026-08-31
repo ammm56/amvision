@@ -36,6 +36,8 @@ namespace Amvar.Vision.ContractTests
                     return InvokeSharedMemoryEvent(args);
                 case "--benchmark-workflow-trigger":
                     return WorkflowTriggerBenchmarkProbe.Run(args);
+                case "--invoke-workflow-multi-input":
+                    return WorkflowMultiInputIntegrationProbe.Run(args);
                 default:
                     return null;
             }

@@ -63,7 +63,7 @@ HTTP Runtime 与高性能 Trigger 是两套独立调用面：
 - ZeroMQ 和 local-shared-memory Trigger 只支持 `request_image_ref`、`request_json` 和 `request_text`。图片通过 binary frame 或 LocalBuffer 生成 `image-ref.v1`，JSON/文本位于小型事件 payload。
 - Trigger 不支持 `request_image_base64`、`request_file` 或 `request_files`，不增加文件 staging、普通文件图片帧、普通文件 LocalBuffer 或自动 HTTP fallback。
 
-现有低层 `ImageTriggerRequest.Payload`、`SharedMemoryTriggerRequest.Payload` 和 event request 可以携带 JSON/文本。后续高层 API 使用共用强类型 `WorkflowTriggerInputsBuilder`，并为 ZeroMQ 图片方法补充附加 inputs 参数；在实现完成前，文档和示例不得把规划中的 Builder 写成已交付方法。
+低层 `ImageTriggerRequest.Payload`、`SharedMemoryTriggerRequest.Payload` 和 event request 可以携带 JSON/文本。常用高层 API 通过 `CreateWorkflowTriggerInputsBuilder(triggerSourceName)` 创建 `WorkflowTriggerInputsBuilder`，只提供 `AddJson`、`AddText` 和 `Build`；生成的 inputs 可传给带 `WithInputs` 后缀的 ZeroMQ/local-shared-memory 图片或 event-only 方法。
 
 `InvokeZeroMqImageBase64` 和 `InvokeSharedMemoryImageBase64` 只表示调用方以 Base64 提供图片来源。SDK 解码后仍通过高性能图片通道绑定 `request_image_ref`，不会向 `request_image_base64` 发送 Base64。需要 Base64 binding、普通文件或多文件时使用 HTTP Runtime。
 
@@ -79,7 +79,7 @@ local-shared-memory 配置只保存同机受信 `data/buffers` 根目录、Trigg
 
 新 Runtime 的生成配置会在 `runtime.public_contract` 中携带该 Runtime revision 固定的 App Contract v2。`WorkflowRequestBuilder` 可以用这份契约对 binding、payload type、MIME、单文件大小、文件数量和必填输入进行快速校验；服务端仍执行完整 JSON Schema、ObjectStore identity 和 Project 范围校验。旧 Runtime 没有契约快照时该字段为 `null`，SDK 不使用当前应用草稿补齐。
 
-HTTP Builder 的目标接口还包括 `AddImageBase64`、`AddImageReference`、`AddFileReference`、`AddFileReferences`、`BuildJson` 和 `BuildMultipart`。当前代码尚未全部提供这些统一方法；这是明确的后续实现清单，不允许通过手写隐藏转换、自动选择 transport 或把 HTTP 文件能力塞入 Trigger API 代替。
+HTTP Builder 已提供 `AddImageBase64`、`AddImageReference`、`AddFileReference`、`AddFileReferences`、`BuildJson` 和 `BuildMultipart`。`BuildJson` 拒绝上传 stream，`BuildMultipart` 通过 `input_bindings_json` 传递非文件输入并流式发送文件；不会自动选择 transport，也不会把 HTTP 文件能力塞入 Trigger API。
 
 HTTP multipart 调用示例：
 
@@ -107,7 +107,7 @@ var request = new WorkflowRequestBuilder(runtime.PublicContract)
         WorkflowUploadFile.FromFile(@".\files\b.txt", "text/plain")
     })
     .WithTimeoutSeconds(30)
-    .Build();
+    .BuildMultipart();
 
 var result = await client.InvokeWorkflowAppRuntimeUploadAppResultResponseAsync(
     runtime.WorkflowRuntimeId,

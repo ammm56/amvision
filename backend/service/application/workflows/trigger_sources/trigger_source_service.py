@@ -11,8 +11,10 @@ from typing import TYPE_CHECKING
 from pydantic import ValidationError
 
 from backend.contracts.workflows import (
+    HIGH_PERFORMANCE_TRIGGER_INPUT_PAYLOAD_TYPE_IDS,
     ResultMappingContract,
     WORKFLOW_TRIGGER_KINDS,
+    workflow_trigger_supports_input_payload_type,
 )
 
 from backend.service.application.errors import (
@@ -244,6 +246,7 @@ class WorkflowTriggerSourceService:
             validated_contract = self._validate_runtime_version_contract(
                 unit_of_work=unit_of_work,
                 workflow_runtime=workflow_runtime,
+                trigger_kind=request.trigger_kind,
                 input_binding_mapping=request.input_binding_mapping or {},
                 result_mapping=request.result_mapping or {},
                 result_mode=request.result_mode,
@@ -440,6 +443,7 @@ class WorkflowTriggerSourceService:
             validated_contract = self._validate_runtime_version_contract(
                 unit_of_work=unit_of_work,
                 workflow_runtime=workflow_runtime,
+                trigger_kind=trigger_source.trigger_kind,
                 input_binding_mapping=trigger_source.input_binding_mapping,
                 result_mapping=trigger_source.result_mapping,
                 result_mode=trigger_source.result_mode,
@@ -715,6 +719,7 @@ class WorkflowTriggerSourceService:
                     validated_contract = self._validate_runtime_version_contract(
                         unit_of_work=unit_of_work,
                         workflow_runtime=workflow_runtime,
+                        trigger_kind=current.trigger_kind,
                         input_binding_mapping=current.input_binding_mapping,
                         result_mapping=current.result_mapping,
                         result_mode=current.result_mode,
@@ -1086,6 +1091,7 @@ class WorkflowTriggerSourceService:
         *,
         unit_of_work: SqlAlchemyUnitOfWork,
         workflow_runtime: WorkflowAppRuntime,
+        trigger_kind: str,
         input_binding_mapping: dict[str, object],
         result_mapping: dict[str, object],
         result_mode: str,
@@ -1199,6 +1205,7 @@ class WorkflowTriggerSourceService:
             )
         mapping_issues = _find_trigger_contract_mapping_issues(
             contract=contract,
+            trigger_kind=trigger_kind,
             input_binding_mapping=input_binding_mapping,
             result_mapping=result_mapping,
             result_mode=result_mode,
@@ -1270,6 +1277,7 @@ class WorkflowTriggerSourceService:
 def _find_trigger_contract_mapping_issues(
     *,
     contract: dict[str, object],
+    trigger_kind: str,
     input_binding_mapping: dict[str, object],
     result_mapping: dict[str, object],
     result_mode: str,
@@ -1290,6 +1298,24 @@ def _find_trigger_contract_mapping_issues(
             continue
         if not isinstance(mapping_rule, dict):
             continue
+        expected_payload_type = str(
+            input_contract.get("payload_type_id") or "value.v1"
+        )
+        if not workflow_trigger_supports_input_payload_type(
+            trigger_kind,
+            expected_payload_type,
+        ):
+            issues.append(
+                {
+                    "kind": "unsupported_trigger_input_payload_type",
+                    "binding_id": binding_id,
+                    "trigger_kind": trigger_kind,
+                    "payload_type_id": expected_payload_type,
+                    "supported_payload_type_ids": sorted(
+                        HIGH_PERFORMANCE_TRIGGER_INPUT_PAYLOAD_TYPE_IDS
+                    ),
+                }
+            )
         source_value = mapping_rule.get("source")
         if (
             isinstance(source_value, str)
@@ -1313,7 +1339,6 @@ def _find_trigger_contract_mapping_issues(
                 }
             )
         declared_payload_type = mapping_rule.get("payload_type_id")
-        expected_payload_type = input_contract.get("payload_type_id")
         if (
             isinstance(declared_payload_type, str)
             and declared_payload_type.strip()
