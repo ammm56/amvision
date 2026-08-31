@@ -91,7 +91,7 @@ namespace AMVision.Console
             resultStr = JsonConvert.SerializeObject(invokeImageBase64JsonInputs, Formatting.Indented);
 
             // 全输入验证：使用 multipart 上传真实文件，不手工伪造 ObjectStore 引用
-            var invokeAllMultipartInputs = await runner.CallAsync(api => api.InvokeRuntimeAppResultAsync(RuntimeName, CreateAllInputsMultipartRuntimeRequest(runner), cancellationToken)).ConfigureAwait(false);
+            //var invokeAllMultipartInputs = await runner.CallAsync(api => api.InvokeRuntimeAppResultAsync(RuntimeName, CreateAllInputsMultipartRuntimeRequest(runner), cancellationToken)).ConfigureAwait(false);
 
             // 异步调用：默认输入或单图片
             //var run = await runner.CallAsync(api => api.RunRuntimeAsync(RuntimeName, cancellationToken)).ConfigureAwait(false);
@@ -117,42 +117,55 @@ namespace AMVision.Console
             CancellationToken cancellationToken)
         {
             // 管理与状态
-            //var sources = await runner.CallAsync(api => api.ListTriggerSourcesAsync(RuntimeName, cancellationToken)).ConfigureAwait(false);
-            //var source = await runner.CallAsync(api => api.GetTriggerSourceAsync(ZeroMqTriggerSourceName, cancellationToken)).ConfigureAwait(false);
-            //var enable = await runner.CallAsync(api => api.EnableTriggerSourceAsync(ZeroMqTriggerSourceName, cancellationToken)).ConfigureAwait(false);
+            var sources = await runner.CallAsync(api => api.ListTriggerSourcesAsync(RuntimeName, cancellationToken)).ConfigureAwait(false);
+            var source = await runner.CallAsync(api => api.GetTriggerSourceAsync(ZeroMqTriggerSourceName, cancellationToken)).ConfigureAwait(false);
+            var enable = await runner.CallAsync(api => api.EnableTriggerSourceAsync(ZeroMqTriggerSourceName, cancellationToken)).ConfigureAwait(false);
             //var disable = await runner.CallAsync(api => api.DisableTriggerSourceAsync(ZeroMqTriggerSourceName, cancellationToken)).ConfigureAwait(false);
-            //var triggerHealth = await runner.CallAsync(api => api.GetTriggerSourceHealthAsync(ZeroMqTriggerSourceName, cancellationToken)).ConfigureAwait(false);
+            var health = await runner.CallAsync(api => api.GetTriggerSourceHealthAsync(ZeroMqTriggerSourceName, cancellationToken)).ConfigureAwait(false);
+            string resultStr = JsonConvert.SerializeObject(health, Formatting.Indented);
 
             // ZeroMQ：不带额外 JSON/Text
             //var zeroMqEvent = runner.Call(api => api.InvokeZeroMqEvent(ZeroMqTriggerSourceName, cancellationToken: cancellationToken));
             //var zeroMqConfiguredImage = runner.Call(api => api.InvokeConfiguredZeroMqImage(ZeroMqTriggerSourceName, cancellationToken));
             //var zeroMqImageFile = runner.Call(api => api.InvokeZeroMqImageFromFile(ZeroMqTriggerSourceName, ImagePath, ImageMediaType, cancellationToken));
-            //var zeroMqImageBytes = runner.Call(api => api.InvokeZeroMqImageBytes(ZeroMqTriggerSourceName, LoadImageBytes(), ImageMediaType, cancellationToken));
-            //var zeroMqImageBase64 = runner.Call(api => api.InvokeZeroMqImageBase64(ZeroMqTriggerSourceName, LoadImageBase64(), ImageMediaType, cancellationToken));
-            //var zeroMqBgr24 = runner.Call(api => { var frame = LoadBgr24ImageFrame(); return api.InvokeZeroMqBgr24(ZeroMqTriggerSourceName, frame.Bytes, frame.Width, frame.Height, cancellationToken); });
-            //var zeroMqBgr24File = runner.Call(api => api.InvokeZeroMqBgr24FromFile(ZeroMqTriggerSourceName, ImagePath, cancellationToken));
+            var zeroMqImageBytes = runner.Call(api => api.InvokeZeroMqImageBytes(ZeroMqTriggerSourceName, LoadImageBytes(), ImageMediaType, cancellationToken));
+            var zeroMqImageBase64 = runner.Call(api => api.InvokeZeroMqImageBase64(ZeroMqTriggerSourceName, LoadImageBase64(), ImageMediaType, cancellationToken));
+            resultStr = JsonConvert.SerializeObject(zeroMqImageBase64, Formatting.Indented);
+
+            var frame = LoadBgr24ImageFrame();
+            var zeroMqBgr24 = runner.Call(api => api.InvokeZeroMqBgr24(ZeroMqTriggerSourceName, frame.Bytes, frame.Width, frame.Height, cancellationToken));
+            resultStr = JsonConvert.SerializeObject(zeroMqBgr24, Formatting.Indented);
+            var zeroMqBgr24File = runner.Call(api => api.InvokeZeroMqBgr24FromFile(ZeroMqTriggerSourceName, ImagePath, cancellationToken));
             //var zeroMqConfiguredBgr24 = runner.Call(api => api.InvokeConfiguredZeroMqBgr24Image(ZeroMqTriggerSourceName, cancellationToken));
-            //var zeroMqBgr24Bitmap = runner.Call(api => { using (var bitmap = LoadBitmap()) return api.InvokeZeroMqBgr24FromBitmap(ZeroMqTriggerSourceName, bitmap, cancellationToken); });
+            using (var bitmap = LoadBitmap())
+            {
+                var bgr24Bitmap = runner.Call(api => api.InvokeZeroMqBgr24FromBitmap(ZeroMqTriggerSourceName, bitmap, cancellationToken));
+            }
 
             // ZeroMQ：image-ref + JSON + text
-            //var zeroMqInputs = CreateTriggerInputs(runner, ZeroMqTriggerSourceName);
+            var zeroMqInputs = CreateTriggerInputs(runner, ZeroMqTriggerSourceName);
             //var zeroMqEventWithInputs = runner.Call(api => api.InvokeZeroMqEventWithInputs(ZeroMqTriggerSourceName, zeroMqInputs, cancellationToken));
             //var zeroMqConfiguredImageWithInputs = runner.Call(api => api.InvokeConfiguredZeroMqImageWithInputs(ZeroMqTriggerSourceName, zeroMqInputs, cancellationToken));
             //var zeroMqImageFileWithInputs = runner.Call(api => api.InvokeZeroMqImageFromFileWithInputs(ZeroMqTriggerSourceName, ImagePath, zeroMqInputs, ImageMediaType, cancellationToken));
-            //var zeroMqImageBytesWithInputs = runner.Call(api => api.InvokeZeroMqImageBytesWithInputs(ZeroMqTriggerSourceName, LoadImageBytes(), zeroMqInputs, ImageMediaType, cancellationToken));
-            //var zeroMqImageBase64WithInputs = runner.Call(api => api.InvokeZeroMqImageBase64WithInputs(ZeroMqTriggerSourceName, LoadImageBase64(), zeroMqInputs, ImageMediaType, cancellationToken));
-            //var zeroMqBgr24WithInputs = runner.Call(api => { var frame = LoadBgr24ImageFrame(); return api.InvokeZeroMqBgr24WithInputs(ZeroMqTriggerSourceName, frame.Bytes, frame.Width, frame.Height, zeroMqInputs, cancellationToken); });
+            var zeroMqImageBytesWithInputs = runner.Call(api => api.InvokeZeroMqImageBytesWithInputs(ZeroMqTriggerSourceName, LoadImageBytes(), zeroMqInputs, ImageMediaType, cancellationToken));
+            resultStr = JsonConvert.SerializeObject(zeroMqImageBytesWithInputs, Formatting.Indented);
+            var zeroMqImageBase64WithInputs = runner.Call(api => api.InvokeZeroMqImageBase64WithInputs(ZeroMqTriggerSourceName, LoadImageBase64(), zeroMqInputs, ImageMediaType, cancellationToken));
+            resultStr = JsonConvert.SerializeObject(zeroMqImageBase64WithInputs, Formatting.Indented);
+            var zeroMqBgr24WithInputs = runner.Call(api => api.InvokeZeroMqBgr24WithInputs(ZeroMqTriggerSourceName, frame.Bytes, frame.Width, frame.Height, zeroMqInputs, cancellationToken));
             //var zeroMqBgr24FileWithInputs = runner.Call(api => api.InvokeZeroMqBgr24FromFileWithInputs(ZeroMqTriggerSourceName, ImagePath, zeroMqInputs, cancellationToken));
             //var zeroMqConfiguredBgr24WithInputs = runner.Call(api => api.InvokeConfiguredZeroMqBgr24ImageWithInputs(ZeroMqTriggerSourceName, zeroMqInputs, cancellationToken));
             //var zeroMqBgr24BitmapWithInputs = runner.Call(api => { using (var bitmap = LoadBitmap()) return api.InvokeZeroMqBgr24FromBitmapWithInputs(ZeroMqTriggerSourceName, bitmap, zeroMqInputs, cancellationToken); });
 
             // Local Shared Memory：image-ref + JSON + text；使用后释放 Data
-            //var sharedInputs = CreateTriggerInputs(runner, SharedMemoryTriggerSourceName);
+            var sharedInputs = CreateTriggerInputs(runner, SharedMemoryTriggerSourceName);
             //var sharedEvent = runner.Call(api => api.InvokeSharedMemoryEventWithInputs(SharedMemoryTriggerSourceName, sharedInputs));
             //var sharedImageFile = runner.Call(api => api.InvokeSharedMemoryImageFromFileWithInputs(SharedMemoryTriggerSourceName, ImagePath, sharedInputs, ImageMediaType));
-            //var sharedImageBytes = runner.Call(api => api.InvokeSharedMemoryImageBytesWithInputs(SharedMemoryTriggerSourceName, LoadImageBytes(), ImageMediaType, sharedInputs));
-            //var sharedImageBase64 = runner.Call(api => api.InvokeSharedMemoryImageBase64WithInputs(SharedMemoryTriggerSourceName, LoadImageBase64(), sharedInputs, ImageMediaType));
-            //var sharedBgr24 = runner.Call(api => { var frame = LoadBgr24ImageFrame(); return api.InvokeSharedMemoryBgr24WithInputs(SharedMemoryTriggerSourceName, frame.Bytes, frame.Width, frame.Height, sharedInputs); });
+            var sharedImageBytes = runner.Call(api => api.InvokeSharedMemoryImageBytesWithInputs(SharedMemoryTriggerSourceName, LoadImageBytes(), ImageMediaType, sharedInputs));
+            resultStr = JsonConvert.SerializeObject(sharedImageBytes, Formatting.Indented);
+            var sharedImageBase64 = runner.Call(api => api.InvokeSharedMemoryImageBase64WithInputs(SharedMemoryTriggerSourceName, LoadImageBase64(), sharedInputs, ImageMediaType));
+
+            var sharedBgr24 = runner.Call(api => api.InvokeSharedMemoryBgr24WithInputs(SharedMemoryTriggerSourceName, frame.Bytes, frame.Width, frame.Height, sharedInputs));
+            resultStr = JsonConvert.SerializeObject(sharedBgr24, Formatting.Indented);
             //sharedEvent.Data?.Dispose();
 
             await Task.CompletedTask.ConfigureAwait(false);
@@ -201,7 +214,12 @@ namespace AMVision.Console
             string triggerSourceName)
         {
             return runner.CreateWorkflowTriggerInputsBuilder(triggerSourceName)
-                .AddJson("request_json", new { recipe = "3570", station = 2 })
+                .AddJson("request_json", new
+                {
+                    recipe = "3570",
+                    station = 2,
+                    barqrcode = "abcdefg12345678"
+                })
                 .AddText("request_text", "lot-20260831")
                 .Build();
         }
