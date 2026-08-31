@@ -1,5 +1,7 @@
+using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
+using Amvar.Vision;
 using Amvar.Vision.Tools;
 
 namespace AMVision.Console
@@ -10,10 +12,14 @@ namespace AMVision.Console
     internal static class SdkCallInputs
     {
         // Resources/Img 仅存放开发者自己的本地调试图片，不纳入 Git 管理。
-        public const string ModelImagePath = @"Resources\Img\qrcode50.jpg";
-        public const string ImagePath = @"Resources\Img\Image_20260718144521743.bmp";
-        public const string ModelImageMediaType = "image/jpeg";
+        public const string ModelImagePath = @"Resources\Img\image-crop-20260803140324-012.png";
+        public const string ImagePath = @"Resources\Img\Image_20260721103308382.bmp";
+        public const string ModelImageMediaType = "image/png";
         public const string ImageMediaType = "image/bmp";
+        public const string WorkflowRequestFilePath = @"Resources\Requests\request.json";
+        public const string WorkflowRequestFileMediaType = "application/json";
+        public const string WorkflowFirstListFilePath = @"Resources\Requests\a.txt";
+        public const string WorkflowSecondListFilePath = @"Resources\Requests\b.txt";
         public const string WorkflowRunId = "workflow-run-xxx";
         public const string ModelInferenceTaskId = "inference-task-xxx";
         public const string ModelDeploymentInputUri = "runtime/inputs/image.jpg";
@@ -47,6 +53,54 @@ namespace AMVision.Console
         public static Bitmap LoadBitmap()
         {
             return new Bitmap(ImagePath);
+        }
+
+        /// <summary>构建 HTTP Runtime 的 image-ref.v1 ObjectStore 引用示例。</summary>
+        public static IDictionary<string, object> CreateWorkflowImageReference()
+        {
+            return new Dictionary<string, object>
+            {
+                ["transport_kind"] = "storage",
+                ["object_key"] = "projects/project-1/inputs/example-image.png",
+                ["media_type"] = "image/png"
+            };
+        }
+
+        /// <summary>构建 HTTP Runtime 的 file-ref.v1 ObjectStore 引用示例。</summary>
+        public static IDictionary<string, object> CreateWorkflowFileReference(
+            string fileName = "request.json")
+        {
+            var checksum = new string('a', 64);
+            return new Dictionary<string, object>
+            {
+                ["transport_kind"] = "storage",
+                ["storage_ref"] = "object-store",
+                ["object_key"] = "projects/project-1/inputs/" + fileName,
+                ["file_name"] = fileName,
+                ["media_type"] = "application/json",
+                ["content_length"] = 2,
+                ["checksum_algorithm"] = "sha256",
+                ["checksum"] = checksum,
+                ["immutable_version"] = "sha256:" + checksum
+            };
+        }
+
+        /// <summary>创建单文件 multipart 上传示例。</summary>
+        public static WorkflowUploadFile CreateWorkflowRequestFile()
+        {
+            return WorkflowUploadFile.FromFile(
+                WorkflowRequestFilePath,
+                WorkflowRequestFileMediaType);
+        }
+
+        /// <summary>创建保持顺序的多文件 multipart 上传示例。</summary>
+        public static WorkflowUploadFile[] CreateWorkflowRequestFiles()
+        {
+            return new[]
+            {
+                WorkflowUploadFile.FromFile(WorkflowFirstListFilePath, "text/plain"),
+                WorkflowUploadFile.FromFile(WorkflowSecondListFilePath, "text/plain")
+            };
         }
     }
 }

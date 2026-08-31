@@ -270,6 +270,20 @@ namespace Amvar.Vision
                 contentLength);
         }
 
+        /// <summary>增加一个可重复打开 stream 的 image-ref.v1 multipart 图片。</summary>
+        public WorkflowRequestBuilder AddImage(
+            string bindingId,
+            WorkflowUploadFile image)
+        {
+            if (image is null) throw new ArgumentNullException(nameof(image));
+            return AddImage(
+                bindingId,
+                image.StreamFactory,
+                image.FileName,
+                image.MediaType,
+                image.ContentLength);
+        }
+
         /// <summary>增加 file-ref.v1 multipart 文件输入。</summary>
         public WorkflowRequestBuilder AddFile(
             string bindingId,
@@ -285,6 +299,20 @@ namespace Amvar.Vision
                 fileName,
                 mediaType,
                 contentLength);
+        }
+
+        /// <summary>增加一个可重复打开 stream 的 file-ref.v1 multipart 文件。</summary>
+        public WorkflowRequestBuilder AddFile(
+            string bindingId,
+            WorkflowUploadFile file)
+        {
+            if (file is null) throw new ArgumentNullException(nameof(file));
+            return AddFile(
+                bindingId,
+                file.StreamFactory,
+                file.FileName,
+                file.MediaType,
+                file.ContentLength);
         }
 
         /// <summary>按枚举顺序增加 file-refs.v1 multipart 文件输入。</summary>

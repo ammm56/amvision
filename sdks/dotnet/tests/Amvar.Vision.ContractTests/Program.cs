@@ -313,19 +313,21 @@ namespace Amvar.Vision.ContractTests
             var multipartRequest = new WorkflowRequestBuilder(contract)
                 .AddImage(
                     "request_image_ref",
-                    () => new MemoryStream(new byte[] { 1, 2, 3 }),
-                    "image.png",
-                    "image/png",
-                    3)
+                    WorkflowUploadFile.FromStreamFactory(
+                        () => new MemoryStream(new byte[] { 1, 2, 3 }),
+                        "image.png",
+                        "image/png",
+                        3))
                 .AddImageBase64("request_image_base64", new byte[] { 1, 2, 3 }, "image/png")
                 .AddJson("request_json", new { batch_id = "batch-2" })
                 .AddText("request_text", "line-2")
                 .AddFile(
                     "request_file",
-                    () => new MemoryStream(Encoding.UTF8.GetBytes("{}")),
-                    "request.json",
-                    "application/json",
-                    2)
+                    WorkflowUploadFile.FromStreamFactory(
+                        () => new MemoryStream(Encoding.UTF8.GetBytes("{}")),
+                        "request.json",
+                        "application/json",
+                        2))
                 .AddFiles(
                     "request_files",
                     new[]

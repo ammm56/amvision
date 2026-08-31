@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -8,21 +7,25 @@ using static AMVision.Console.SdkCallInputs;
 namespace AMVision.Console
 {
     /// <summary>
-    /// 稳定兜底调用方式：显式使用 deployment_instance_id、workflow_runtime_id 和 trigger_source_id。
-    /// 不把一个字符串同时解释为 name 或 id，示例顺序与 key name 文件保持一致。
+    /// 使用 Config 中稳定 resource id 的调用清单。按需取消具体调用行的注释。
     /// </summary>
     internal static class ResourceIdSdkCalls
     {
-        private const string DeploymentInstanceId = "deployment-instance-8a186ddbab564e86a1649c16965ffa0f";
-        private const string WorkflowRuntimeId = "workflow-runtime-768e3187953642e9a5a85353ffd96881";
-        private const string TriggerSourceId = "zeromq-workflow-runtime-768e3187953642e9a5a85353ffd96881";
+        private const string ModelDeploymentId =
+            "deployment-instance-bfd0e32dada14b509f023f700fb4c998";
+        private const string RuntimeId =
+            "workflow-runtime-9980d79a4d3744a0841ce07efaf19fc9";
+        private const string ZeroMqTriggerSourceId =
+            "zeromq-workflow-runtime-9980d79a4d3744a0841ce07efaf19fc9";
+        private const string SharedMemoryTriggerSourceId =
+            "local-shared-memory-workflow-runtime-9980d79a4d3744a0841ce07efaf19fc9";
         private const string SyncRuntimeMode = "sync";
 
         public static async Task RunAsync(
             AMVisionOperationRunner runner,
             CancellationToken cancellationToken)
         {
-            // 各分组内默认不发请求。按需取消具体调用行的注释。
+            // 各分类默认不发请求。只取消需要调试的调用行注释。
             await RunModelDeploymentCallsAsync(runner, cancellationToken).ConfigureAwait(false);
             await RunWorkflowRuntimeCallsAsync(runner, cancellationToken).ConfigureAwait(false);
             await RunTriggerSourceCallsAsync(runner, cancellationToken).ConfigureAwait(false);
@@ -32,31 +35,31 @@ namespace AMVision.Console
             AMVisionOperationRunner runner,
             CancellationToken cancellationToken)
         {
-            // 管理与状态需要 runtime_mode，以明确区分同一 deployment id 的 sync/async 配置。
-            //var status = await runner.CallAsync(api => api.GetModelDeploymentRuntimeStatusByIdAsync(DeploymentInstanceId, SyncRuntimeMode, cancellationToken)).ConfigureAwait(false);
-            //var health = await runner.CallAsync(api => api.GetModelDeploymentRuntimeHealthByIdAsync(DeploymentInstanceId, SyncRuntimeMode, cancellationToken)).ConfigureAwait(false);
-            //var start = await runner.CallAsync(api => api.StartModelDeploymentRuntimeByIdAsync(DeploymentInstanceId, SyncRuntimeMode, cancellationToken)).ConfigureAwait(false);
-            //var warmup = await runner.CallAsync(api => api.WarmupModelDeploymentRuntimeByIdAsync(DeploymentInstanceId, SyncRuntimeMode, cancellationToken)).ConfigureAwait(false);
-            //var reset = await runner.CallAsync(api => api.ResetModelDeploymentRuntimeByIdAsync(DeploymentInstanceId, SyncRuntimeMode, cancellationToken)).ConfigureAwait(false);
-            //var stop = await runner.CallAsync(api => api.StopModelDeploymentRuntimeByIdAsync(DeploymentInstanceId, SyncRuntimeMode, cancellationToken)).ConfigureAwait(false);
+            // 管理与状态
+            //var status = await runner.CallAsync(api => api.GetModelDeploymentRuntimeStatusByIdAsync(ModelDeploymentId, SyncRuntimeMode, cancellationToken)).ConfigureAwait(false);
+            //var health = await runner.CallAsync(api => api.GetModelDeploymentRuntimeHealthByIdAsync(ModelDeploymentId, SyncRuntimeMode, cancellationToken)).ConfigureAwait(false);
+            //var start = await runner.CallAsync(api => api.StartModelDeploymentRuntimeByIdAsync(ModelDeploymentId, SyncRuntimeMode, cancellationToken)).ConfigureAwait(false);
+            //var warmup = await runner.CallAsync(api => api.WarmupModelDeploymentRuntimeByIdAsync(ModelDeploymentId, SyncRuntimeMode, cancellationToken)).ConfigureAwait(false);
+            //var reset = await runner.CallAsync(api => api.ResetModelDeploymentRuntimeByIdAsync(ModelDeploymentId, SyncRuntimeMode, cancellationToken)).ConfigureAwait(false);
+            //var stop = await runner.CallAsync(api => api.StopModelDeploymentRuntimeByIdAsync(ModelDeploymentId, SyncRuntimeMode, cancellationToken)).ConfigureAwait(false);
 
-            // 同步推理入口固定匹配 sync 配置。
-            //var invoke = await runner.CallAsync(api => api.InvokeConfiguredModelDeploymentByIdAsync(DeploymentInstanceId, cancellationToken)).ConfigureAwait(false);
-            //var invokeBase64 = await runner.CallAsync(api => api.InvokeModelDeploymentWithImageBase64ByIdAsync(DeploymentInstanceId, LoadModelImageBase64(), cancellationToken)).ConfigureAwait(false);
-            //var invokeBytes = await runner.CallAsync(api => api.InvokeModelDeploymentWithImageBytesByIdAsync(DeploymentInstanceId, LoadModelImageBytes(), Path.GetFileName(ModelImagePath), ModelImageMediaType, cancellationToken)).ConfigureAwait(false);
-            //var invokeFile = await runner.CallAsync(api => api.InvokeModelDeploymentWithImageFromFileByIdAsync(DeploymentInstanceId, ModelImagePath, ModelImageMediaType, cancellationToken)).ConfigureAwait(false);
-            //var invokeFileId = await runner.CallAsync(api => api.InvokeModelDeploymentWithInputFileIdByIdAsync(DeploymentInstanceId, ModelDeploymentInputFileId, cancellationToken)).ConfigureAwait(false);
-            //var invokeUri = await runner.CallAsync(api => api.InvokeModelDeploymentWithInputUriByIdAsync(DeploymentInstanceId, ModelDeploymentInputUri, cancellationToken)).ConfigureAwait(false);
+            // 同步推理
+            //var invoke = await runner.CallAsync(api => api.InvokeConfiguredModelDeploymentByIdAsync(ModelDeploymentId, cancellationToken)).ConfigureAwait(false);
+            //var invokeBase64 = await runner.CallAsync(api => api.InvokeModelDeploymentWithImageBase64ByIdAsync(ModelDeploymentId, LoadModelImageBase64(), cancellationToken)).ConfigureAwait(false);
+            //var invokeBytes = await runner.CallAsync(api => api.InvokeModelDeploymentWithImageBytesByIdAsync(ModelDeploymentId, LoadModelImageBytes(), Path.GetFileName(ModelImagePath), ModelImageMediaType, cancellationToken)).ConfigureAwait(false);
+            //var invokeFile = await runner.CallAsync(api => api.InvokeModelDeploymentWithImageFromFileByIdAsync(ModelDeploymentId, ModelImagePath, ModelImageMediaType, cancellationToken)).ConfigureAwait(false);
+            //var invokeFileId = await runner.CallAsync(api => api.InvokeModelDeploymentWithInputFileIdByIdAsync(ModelDeploymentId, ModelDeploymentInputFileId, cancellationToken)).ConfigureAwait(false);
+            //var invokeUri = await runner.CallAsync(api => api.InvokeModelDeploymentWithInputUriByIdAsync(ModelDeploymentId, ModelDeploymentInputUri, cancellationToken)).ConfigureAwait(false);
 
-            // 异步推理入口固定匹配 async 配置。
-            //var run = await runner.CallAsync(api => api.RunConfiguredModelDeploymentByIdAsync(DeploymentInstanceId, cancellationToken)).ConfigureAwait(false);
-            //var runBase64 = await runner.CallAsync(api => api.RunModelDeploymentWithImageBase64ByIdAsync(DeploymentInstanceId, LoadModelImageBase64(), cancellationToken)).ConfigureAwait(false);
-            //var runBytes = await runner.CallAsync(api => api.RunModelDeploymentWithImageBytesByIdAsync(DeploymentInstanceId, LoadModelImageBytes(), Path.GetFileName(ModelImagePath), ModelImageMediaType, cancellationToken)).ConfigureAwait(false);
-            //var runFile = await runner.CallAsync(api => api.RunModelDeploymentWithImageFromFileByIdAsync(DeploymentInstanceId, ModelImagePath, ModelImageMediaType, cancellationToken)).ConfigureAwait(false);
-            //var runFileId = await runner.CallAsync(api => api.RunModelDeploymentWithInputFileIdByIdAsync(DeploymentInstanceId, ModelDeploymentInputFileId, cancellationToken)).ConfigureAwait(false);
-            //var runUri = await runner.CallAsync(api => api.RunModelDeploymentWithInputUriByIdAsync(DeploymentInstanceId, ModelDeploymentInputUri, cancellationToken)).ConfigureAwait(false);
-            //var task = await runner.CallAsync(api => api.GetModelInferenceTaskByIdAsync(DeploymentInstanceId, ModelInferenceTaskId, includeEvents: true, cancellationToken: cancellationToken)).ConfigureAwait(false);
-            //var taskResult = await runner.CallAsync(api => api.GetModelInferenceTaskResultByIdAsync(DeploymentInstanceId, ModelInferenceTaskId, cancellationToken)).ConfigureAwait(false);
+            // 异步推理任务；需要 Config 中存在同一 deployment id 的 async 配置
+            //var run = await runner.CallAsync(api => api.RunConfiguredModelDeploymentByIdAsync(ModelDeploymentId, cancellationToken)).ConfigureAwait(false);
+            //var runBase64 = await runner.CallAsync(api => api.RunModelDeploymentWithImageBase64ByIdAsync(ModelDeploymentId, LoadModelImageBase64(), cancellationToken)).ConfigureAwait(false);
+            //var runBytes = await runner.CallAsync(api => api.RunModelDeploymentWithImageBytesByIdAsync(ModelDeploymentId, LoadModelImageBytes(), Path.GetFileName(ModelImagePath), ModelImageMediaType, cancellationToken)).ConfigureAwait(false);
+            //var runFile = await runner.CallAsync(api => api.RunModelDeploymentWithImageFromFileByIdAsync(ModelDeploymentId, ModelImagePath, ModelImageMediaType, cancellationToken)).ConfigureAwait(false);
+            //var runFileId = await runner.CallAsync(api => api.RunModelDeploymentWithInputFileIdByIdAsync(ModelDeploymentId, ModelDeploymentInputFileId, cancellationToken)).ConfigureAwait(false);
+            //var runUri = await runner.CallAsync(api => api.RunModelDeploymentWithInputUriByIdAsync(ModelDeploymentId, ModelDeploymentInputUri, cancellationToken)).ConfigureAwait(false);
+            //var task = await runner.CallAsync(api => api.GetModelInferenceTaskByIdAsync(ModelDeploymentId, ModelInferenceTaskId, includeEvents: true, cancellationToken: cancellationToken)).ConfigureAwait(false);
+            //var taskResult = await runner.CallAsync(api => api.GetModelInferenceTaskResultByIdAsync(ModelDeploymentId, ModelInferenceTaskId, cancellationToken)).ConfigureAwait(false);
 
             await Task.CompletedTask.ConfigureAwait(false);
         }
@@ -66,31 +69,39 @@ namespace AMVision.Console
             CancellationToken cancellationToken)
         {
             // 管理与状态
-            //var projectRuntimes = await runner.CallAsync(api => api.ListProjectRuntimesByIdAsync(WorkflowRuntimeId, cancellationToken)).ConfigureAwait(false);
-            //var runtime = await runner.CallAsync(api => api.GetRuntimeByIdAsync(WorkflowRuntimeId, cancellationToken)).ConfigureAwait(false);
-            //var health = await runner.CallAsync(api => api.GetRuntimeHealthByIdAsync(WorkflowRuntimeId, cancellationToken)).ConfigureAwait(false);
-            //var start = await runner.CallAsync(api => api.StartRuntimeByIdAsync(WorkflowRuntimeId, cancellationToken)).ConfigureAwait(false);
-            //var stop = await runner.CallAsync(api => api.StopRuntimeByIdAsync(WorkflowRuntimeId, cancellationToken)).ConfigureAwait(false);
-            //var restart = await runner.CallAsync(api => api.RestartRuntimeByIdAsync(WorkflowRuntimeId, cancellationToken)).ConfigureAwait(false);
-            //var instances = await runner.CallAsync(api => api.ListRuntimeInstancesByIdAsync(WorkflowRuntimeId, cancellationToken)).ConfigureAwait(false);
-            //var events = await runner.CallAsync(api => api.GetRuntimeEventsByIdAsync(WorkflowRuntimeId, cancellationToken)).ConfigureAwait(false);
-            //var flowCheck = await runner.CallAsync(api => api.CheckRuntimeFlowByIdAsync(WorkflowRuntimeId, cancellationToken)).ConfigureAwait(false);
+            //var projectRuntimes = await runner.CallAsync(api => api.ListProjectRuntimesByIdAsync(RuntimeId, cancellationToken)).ConfigureAwait(false);
+            //var runtime = await runner.CallAsync(api => api.GetRuntimeByIdAsync(RuntimeId, cancellationToken)).ConfigureAwait(false);
+            //var health = await runner.CallAsync(api => api.GetRuntimeHealthByIdAsync(RuntimeId, cancellationToken)).ConfigureAwait(false);
+            //var start = await runner.CallAsync(api => api.StartRuntimeByIdAsync(RuntimeId, cancellationToken)).ConfigureAwait(false);
+            //var stop = await runner.CallAsync(api => api.StopRuntimeByIdAsync(RuntimeId, cancellationToken)).ConfigureAwait(false);
+            //var restart = await runner.CallAsync(api => api.RestartRuntimeByIdAsync(RuntimeId, cancellationToken)).ConfigureAwait(false);
+            //var instances = await runner.CallAsync(api => api.ListRuntimeInstancesByIdAsync(RuntimeId, cancellationToken)).ConfigureAwait(false);
+            //var events = await runner.CallAsync(api => api.GetRuntimeEventsByIdAsync(RuntimeId, cancellationToken)).ConfigureAwait(false);
+            //var flowCheck = await runner.CallAsync(api => api.CheckRuntimeFlowByIdAsync(RuntimeId, cancellationToken)).ConfigureAwait(false);
 
-            // 同步调用
-            //var invoke = await runner.CallAsync(api => api.InvokeRuntimeAppResultByIdAsync(WorkflowRuntimeId, cancellationToken)).ConfigureAwait(false);
-            //var invokeBase64 = await runner.CallAsync(api => api.InvokeRuntimeAppResultWithImageBase64ByIdAsync(WorkflowRuntimeId, LoadImageBase64(), ImageMediaType, cancellationToken)).ConfigureAwait(false);
-            //var invokeBytes = await runner.CallAsync(api => api.InvokeRuntimeAppResultWithImageBytesByIdAsync(WorkflowRuntimeId, LoadImageBytes(), ImageMediaType, cancellationToken)).ConfigureAwait(false);
-            //var invokeFile = await runner.CallAsync(api => api.InvokeRuntimeAppResultWithImageFromFileByIdAsync(WorkflowRuntimeId, ImagePath, ImageMediaType, cancellationToken)).ConfigureAwait(false);
+            // 同步调用：默认输入或单图片
+            //var invoke = await runner.CallAsync(api => api.InvokeRuntimeAppResultByIdAsync(RuntimeId, cancellationToken)).ConfigureAwait(false);
+            //var invokeBase64 = await runner.CallAsync(api => api.InvokeRuntimeAppResultWithImageBase64ByIdAsync(RuntimeId, LoadImageBase64(), ImageMediaType, cancellationToken)).ConfigureAwait(false);
+            //var invokeBytes = await runner.CallAsync(api => api.InvokeRuntimeAppResultWithImageBytesByIdAsync(RuntimeId, LoadImageBytes(), ImageMediaType, cancellationToken)).ConfigureAwait(false);
+            //var invokeFile = await runner.CallAsync(api => api.InvokeRuntimeAppResultWithImageFromFileByIdAsync(RuntimeId, ImagePath, ImageMediaType, cancellationToken)).ConfigureAwait(false);
 
-            // 异步任务
-            //var run = await runner.CallAsync(api => api.RunRuntimeByIdAsync(WorkflowRuntimeId, cancellationToken)).ConfigureAwait(false);
-            //var runBase64 = await runner.CallAsync(api => api.RunRuntimeWithImageBase64ByIdAsync(WorkflowRuntimeId, LoadImageBase64(), ImageMediaType, cancellationToken)).ConfigureAwait(false);
-            //var runBytes = await runner.CallAsync(api => api.RunRuntimeWithImageBytesByIdAsync(WorkflowRuntimeId, LoadImageBytes(), ImageMediaType, cancellationToken)).ConfigureAwait(false);
-            //var runFile = await runner.CallAsync(api => api.RunRuntimeWithImageFromFileByIdAsync(WorkflowRuntimeId, ImagePath, ImageMediaType, cancellationToken)).ConfigureAwait(false);
-            //var runEvents = await runner.CallAsync(api => api.GetWorkflowRunEventsByRuntimeIdAsync(WorkflowRuntimeId, WorkflowRunId, cancellationToken)).ConfigureAwait(false);
+            // 同步调用：image-ref/image-base64/JSON/text/file/files
+            //var invokeJsonInputs = await runner.CallAsync(api => api.InvokeRuntimeAppResultByIdAsync(RuntimeId, CreateJsonRuntimeRequest(runner), cancellationToken)).ConfigureAwait(false);
+            //var invokeMultipartInputs = await runner.CallAsync(api => api.InvokeRuntimeAppResultByIdAsync(RuntimeId, CreateMultipartRuntimeRequest(runner), cancellationToken)).ConfigureAwait(false);
 
-            // WorkflowRun 自身已有唯一 id，以下接口不依赖 runtime selector。
+            // 异步调用：默认输入或单图片
+            //var run = await runner.CallAsync(api => api.RunRuntimeByIdAsync(RuntimeId, cancellationToken)).ConfigureAwait(false);
+            //var runBase64 = await runner.CallAsync(api => api.RunRuntimeWithImageBase64ByIdAsync(RuntimeId, LoadImageBase64(), ImageMediaType, cancellationToken)).ConfigureAwait(false);
+            //var runBytes = await runner.CallAsync(api => api.RunRuntimeWithImageBytesByIdAsync(RuntimeId, LoadImageBytes(), ImageMediaType, cancellationToken)).ConfigureAwait(false);
+            //var runFile = await runner.CallAsync(api => api.RunRuntimeWithImageFromFileByIdAsync(RuntimeId, ImagePath, ImageMediaType, cancellationToken)).ConfigureAwait(false);
+
+            // 异步调用：image-ref/image-base64/JSON/text/file/files
+            //var runJsonInputs = await runner.CallAsync(api => api.RunRuntimeByIdAsync(RuntimeId, CreateJsonRuntimeRequest(runner), cancellationToken)).ConfigureAwait(false);
+            //var runMultipartInputs = await runner.CallAsync(api => api.RunRuntimeByIdAsync(RuntimeId, CreateMultipartRuntimeRequest(runner), cancellationToken)).ConfigureAwait(false);
+
+            // 异步任务查询与取消
             //var workflowRun = await runner.CallAsync(api => api.GetWorkflowRunAsync(WorkflowRunId, cancellationToken)).ConfigureAwait(false);
+            //var runEvents = await runner.CallAsync(api => api.GetWorkflowRunEventsByRuntimeIdAsync(RuntimeId, WorkflowRunId, cancellationToken)).ConfigureAwait(false);
             //var cancel = await runner.CallAsync(api => api.CancelWorkflowRunAsync(WorkflowRunId, cancellationToken)).ConfigureAwait(false);
 
             await Task.CompletedTask.ConfigureAwait(false);
@@ -100,31 +111,85 @@ namespace AMVision.Console
             AMVisionOperationRunner runner,
             CancellationToken cancellationToken)
         {
-            // 列表按 workflow_runtime_id；单资源管理按 trigger_source_id。
-            //var sources = await runner.CallAsync(api => api.ListTriggerSourcesByRuntimeIdAsync(WorkflowRuntimeId, cancellationToken)).ConfigureAwait(false);
-            //var source = await runner.CallAsync(api => api.GetTriggerSourceByIdAsync(TriggerSourceId, cancellationToken)).ConfigureAwait(false);
-            //var enable = await runner.CallAsync(api => api.EnableTriggerSourceByIdAsync(TriggerSourceId, cancellationToken)).ConfigureAwait(false);
-            //var disable = await runner.CallAsync(api => api.DisableTriggerSourceByIdAsync(TriggerSourceId, cancellationToken)).ConfigureAwait(false);
-            //var health = await runner.CallAsync(api => api.GetTriggerSourceHealthByIdAsync(TriggerSourceId, cancellationToken)).ConfigureAwait(false);
+            // 管理与状态
+            //var sources = await runner.CallAsync(api => api.ListTriggerSourcesByRuntimeIdAsync(RuntimeId, cancellationToken)).ConfigureAwait(false);
+            //var source = await runner.CallAsync(api => api.GetTriggerSourceByIdAsync(ZeroMqTriggerSourceId, cancellationToken)).ConfigureAwait(false);
+            //var enable = await runner.CallAsync(api => api.EnableTriggerSourceByIdAsync(ZeroMqTriggerSourceId, cancellationToken)).ConfigureAwait(false);
+            //var disable = await runner.CallAsync(api => api.DisableTriggerSourceByIdAsync(ZeroMqTriggerSourceId, cancellationToken)).ConfigureAwait(false);
+            //var triggerHealth = await runner.CallAsync(api => api.GetTriggerSourceHealthByIdAsync(ZeroMqTriggerSourceId, cancellationToken)).ConfigureAwait(false);
 
-            // ZeroMQ 事件与编码图片
-            //var eventResult = runner.Call(api => api.InvokeZeroMqEventById(TriggerSourceId, new Dictionary<string, object?> { { "source", "dotnet-console" } }, cancellationToken));
-            //var configuredImage = runner.Call(api => api.InvokeConfiguredZeroMqImageById(TriggerSourceId, cancellationToken));
-            //var imageFile = runner.Call(api => api.InvokeZeroMqImageFromFileById(TriggerSourceId, ImagePath, ImageMediaType, cancellationToken));
-            //var imageBytes = runner.Call(api => api.InvokeZeroMqImageBytesById(TriggerSourceId, LoadImageBytes(), ImageMediaType, cancellationToken));
-            //var imageBase64 = runner.Call(api => api.InvokeZeroMqImageBase64ById(TriggerSourceId, LoadImageBase64(), ImageMediaType, cancellationToken));
+            // ZeroMQ：不带额外 JSON/Text
+            //var zeroMqEvent = runner.Call(api => api.InvokeZeroMqEventById(ZeroMqTriggerSourceId, cancellationToken: cancellationToken));
+            //var zeroMqConfiguredImage = runner.Call(api => api.InvokeConfiguredZeroMqImageById(ZeroMqTriggerSourceId, cancellationToken));
+            //var zeroMqImageFile = runner.Call(api => api.InvokeZeroMqImageFromFileById(ZeroMqTriggerSourceId, ImagePath, ImageMediaType, cancellationToken));
+            //var zeroMqImageBytes = runner.Call(api => api.InvokeZeroMqImageBytesById(ZeroMqTriggerSourceId, LoadImageBytes(), ImageMediaType, cancellationToken));
+            //var zeroMqImageBase64 = runner.Call(api => api.InvokeZeroMqImageBase64ById(ZeroMqTriggerSourceId, LoadImageBase64(), ImageMediaType, cancellationToken));
+            //var zeroMqBgr24 = runner.Call(api => { var frame = LoadBgr24ImageFrame(); return api.InvokeZeroMqBgr24ById(ZeroMqTriggerSourceId, frame.Bytes, frame.Width, frame.Height, cancellationToken); });
+            //var zeroMqBgr24File = runner.Call(api => api.InvokeZeroMqBgr24FromFileById(ZeroMqTriggerSourceId, ImagePath, cancellationToken));
+            //var zeroMqConfiguredBgr24 = runner.Call(api => api.InvokeConfiguredZeroMqBgr24ImageById(ZeroMqTriggerSourceId, cancellationToken));
+            //var zeroMqBgr24Bitmap = runner.Call(api => { using (var bitmap = LoadBitmap()) return api.InvokeZeroMqBgr24FromBitmapById(ZeroMqTriggerSourceId, bitmap, cancellationToken); });
 
-            // ZeroMQ BGR24 raw 图片
-            //var frame = LoadBgr24ImageFrame();
-            //var bgr24 = runner.Call(api => api.InvokeZeroMqBgr24ById(TriggerSourceId, frame.Bytes, frame.Width, frame.Height, cancellationToken));
-            //var bgr24File = runner.Call(api => api.InvokeZeroMqBgr24FromFileById(TriggerSourceId, ImagePath, cancellationToken));
-            //var configuredBgr24 = runner.Call(api => api.InvokeConfiguredZeroMqBgr24ImageById(TriggerSourceId, cancellationToken));
-            //using (var bitmap = LoadBitmap())
-            //{
-            //    var bgr24Bitmap = runner.Call(api => api.InvokeZeroMqBgr24FromBitmapById(TriggerSourceId, bitmap, cancellationToken));
-            //}
+            // ZeroMQ：image-ref + JSON + text
+            //var zeroMqInputs = CreateTriggerInputs(runner, ZeroMqTriggerSourceId);
+            //var zeroMqEventWithInputs = runner.Call(api => api.InvokeZeroMqEventWithInputsById(ZeroMqTriggerSourceId, zeroMqInputs, cancellationToken));
+            //var zeroMqConfiguredImageWithInputs = runner.Call(api => api.InvokeConfiguredZeroMqImageWithInputsById(ZeroMqTriggerSourceId, zeroMqInputs, cancellationToken));
+            //var zeroMqImageFileWithInputs = runner.Call(api => api.InvokeZeroMqImageFromFileWithInputsById(ZeroMqTriggerSourceId, ImagePath, zeroMqInputs, ImageMediaType, cancellationToken));
+            //var zeroMqImageBytesWithInputs = runner.Call(api => api.InvokeZeroMqImageBytesWithInputsById(ZeroMqTriggerSourceId, LoadImageBytes(), zeroMqInputs, ImageMediaType, cancellationToken));
+            //var zeroMqImageBase64WithInputs = runner.Call(api => api.InvokeZeroMqImageBase64WithInputsById(ZeroMqTriggerSourceId, LoadImageBase64(), zeroMqInputs, ImageMediaType, cancellationToken));
+            //var zeroMqBgr24WithInputs = runner.Call(api => { var frame = LoadBgr24ImageFrame(); return api.InvokeZeroMqBgr24WithInputsById(ZeroMqTriggerSourceId, frame.Bytes, frame.Width, frame.Height, zeroMqInputs, cancellationToken); });
+            //var zeroMqBgr24FileWithInputs = runner.Call(api => api.InvokeZeroMqBgr24FromFileWithInputsById(ZeroMqTriggerSourceId, ImagePath, zeroMqInputs, cancellationToken));
+            //var zeroMqConfiguredBgr24WithInputs = runner.Call(api => api.InvokeConfiguredZeroMqBgr24ImageWithInputsById(ZeroMqTriggerSourceId, zeroMqInputs, cancellationToken));
+            //var zeroMqBgr24BitmapWithInputs = runner.Call(api => { using (var bitmap = LoadBitmap()) return api.InvokeZeroMqBgr24FromBitmapWithInputsById(ZeroMqTriggerSourceId, bitmap, zeroMqInputs, cancellationToken); });
+
+            // Local Shared Memory：image-ref + JSON + text；使用后释放 Data
+            //var sharedInputs = CreateTriggerInputs(runner, SharedMemoryTriggerSourceId);
+            //var sharedEvent = runner.Call(api => api.InvokeSharedMemoryEventWithInputsById(SharedMemoryTriggerSourceId, sharedInputs));
+            //var sharedImageFile = runner.Call(api => api.InvokeSharedMemoryImageFromFileWithInputsById(SharedMemoryTriggerSourceId, ImagePath, sharedInputs, ImageMediaType));
+            //var sharedImageBytes = runner.Call(api => api.InvokeSharedMemoryImageBytesWithInputsById(SharedMemoryTriggerSourceId, LoadImageBytes(), ImageMediaType, sharedInputs));
+            //var sharedImageBase64 = runner.Call(api => api.InvokeSharedMemoryImageBase64WithInputsById(SharedMemoryTriggerSourceId, LoadImageBase64(), sharedInputs, ImageMediaType));
+            //var sharedBgr24 = runner.Call(api => { var frame = LoadBgr24ImageFrame(); return api.InvokeSharedMemoryBgr24WithInputsById(SharedMemoryTriggerSourceId, frame.Bytes, frame.Width, frame.Height, sharedInputs); });
+            //sharedEvent.Data?.Dispose();
 
             await Task.CompletedTask.ConfigureAwait(false);
+        }
+
+        private static WorkflowRuntimeInvokeRequest CreateJsonRuntimeRequest(
+            AMVisionOperationRunner runner)
+        {
+            var fileReference = CreateWorkflowFileReference();
+            return runner.CreateWorkflowRequestBuilderById(RuntimeId)
+                .AddImageReference("request_image_ref", CreateWorkflowImageReference())
+                .AddImageBase64("request_image_base64", LoadImageBytes(), ImageMediaType)
+                .AddJson("request_json", new { recipe = "3570", station = 2 })
+                .AddText("request_text", "lot-20260831")
+                .AddFileReference("request_file", fileReference)
+                .AddFileReferences("request_files", new object[] { fileReference, fileReference })
+                .WithTimeoutSeconds(30)
+                .BuildJson();
+        }
+
+        private static WorkflowRuntimeMultipartInvokeRequest CreateMultipartRuntimeRequest(
+            AMVisionOperationRunner runner)
+        {
+            return runner.CreateWorkflowRequestBuilderById(RuntimeId)
+                .AddImage("request_image_ref", WorkflowUploadFile.FromFile(ImagePath, ImageMediaType))
+                .AddImageBase64("request_image_base64", LoadImageBytes(), ImageMediaType)
+                .AddJson("request_json", new { recipe = "3570", station = 2 })
+                .AddText("request_text", "lot-20260831")
+                .AddFile("request_file", CreateWorkflowRequestFile())
+                .AddFiles("request_files", CreateWorkflowRequestFiles())
+                .WithTimeoutSeconds(30)
+                .BuildMultipart();
+        }
+
+        private static WorkflowTriggerInputs CreateTriggerInputs(
+            AMVisionOperationRunner runner,
+            string triggerSourceId)
+        {
+            return runner.CreateWorkflowTriggerInputsBuilderById(triggerSourceId)
+                .AddJson("request_json", new { recipe = "3570", station = 2 })
+                .AddText("request_text", "lot-20260831")
+                .Build();
         }
     }
 }

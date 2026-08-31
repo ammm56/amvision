@@ -63,7 +63,7 @@ HTTP Runtime 与高性能 Trigger 是两套独立调用面：
 - ZeroMQ 和 local-shared-memory Trigger 只支持 `request_image_ref`、`request_json` 和 `request_text`。图片通过 binary frame 或 LocalBuffer 生成 `image-ref.v1`，JSON/文本位于小型事件 payload。
 - Trigger 不支持 `request_image_base64`、`request_file` 或 `request_files`，不增加文件 staging、普通文件图片帧、普通文件 LocalBuffer 或自动 HTTP fallback。
 
-低层 `ImageTriggerRequest.Payload`、`SharedMemoryTriggerRequest.Payload` 和 event request 可以携带 JSON/文本。常用高层 API 通过 `CreateWorkflowTriggerInputsBuilder(triggerSourceName)` 创建 `WorkflowTriggerInputsBuilder`，只提供 `AddJson`、`AddText` 和 `Build`；生成的 inputs 可传给带 `WithInputs` 后缀的 ZeroMQ/local-shared-memory 图片或 event-only 方法。
+低层 `ImageTriggerRequest.Payload`、`SharedMemoryTriggerRequest.Payload` 和 event request 可以携带 JSON/文本。常用高层 API 通过 `CreateWorkflowTriggerInputsBuilder(triggerSourceName)` 或 `CreateWorkflowTriggerInputsBuilderById(triggerSourceId)` 创建 `WorkflowTriggerInputsBuilder`，只提供 `AddJson`、`AddText` 和 `Build`；生成的 inputs 可传给带 `WithInputs` / `WithInputsById` 后缀的 ZeroMQ/local-shared-memory 图片或 event-only 方法。
 
 `InvokeZeroMqImageBase64` 和 `InvokeSharedMemoryImageBase64` 只表示调用方以 Base64 提供图片来源。SDK 解码后仍通过高性能图片通道绑定 `request_image_ref`，不会向 `request_image_base64` 发送 Base64。需要 Base64 binding、普通文件或多文件时使用 HTTP Runtime。
 
@@ -79,7 +79,7 @@ local-shared-memory 配置只保存同机受信 `data/buffers` 根目录、Trigg
 
 生成配置会在 `runtime.public_contract` 中携带该 Runtime revision 固定的 App Contract v1。`WorkflowRequestBuilder` 可以用这份契约对 binding、payload type、MIME、单文件大小、文件数量和必填输入进行快速校验；服务端仍执行完整 JSON Schema、ObjectStore identity 和 Project 范围校验。Runtime 没有契约快照时该字段为 `null`，SDK 不使用当前应用草稿补齐。
 
-HTTP Builder 已提供 `AddImageBase64`、`AddImageReference`、`AddFileReference`、`AddFileReferences`、`BuildJson` 和 `BuildMultipart`。`BuildJson` 拒绝上传 stream，`BuildMultipart` 通过 `input_bindings_json` 传递非文件输入并流式发送文件；不会自动选择 transport，也不会把 HTTP 文件能力塞入 Trigger API。
+HTTP Builder 已提供 `AddImageBase64`、`AddImageReference`、`AddFileReference`、`AddFileReferences`、`AddImage`、`AddFile`、`AddFiles`、`BuildJson` 和 `BuildMultipart`。Runner 可按 name 使用 `CreateWorkflowRequestBuilder(runtimeName)`，也可按 id 使用 `CreateWorkflowRequestBuilderById(runtimeId)`；构建结果可对称传给同步 `InvokeRuntimeAppResult*Async` 或异步 `RunRuntime*Async`。`BuildJson` 拒绝上传 stream，`BuildMultipart` 通过 `input_bindings_json` 传递非文件输入并流式发送文件；不会自动选择 transport，也不会把 HTTP 文件能力塞入 Trigger API。
 
 HTTP multipart 调用示例：
 
@@ -91,16 +91,10 @@ var request = new WorkflowRequestBuilder(runtime.PublicContract)
     .AddText("request_text", "lot-20260830")
     .AddImage(
         "request_image_ref",
-        image.StreamFactory,
-        image.FileName,
-        image.MediaType,
-        image.ContentLength)
+        image)
     .AddFile(
         "request_file",
-        singleFile.StreamFactory,
-        singleFile.FileName,
-        singleFile.MediaType,
-        singleFile.ContentLength)
+        singleFile)
     .AddFiles("request_files", new[]
     {
         WorkflowUploadFile.FromFile(@".\files\a.txt", "text/plain"),
@@ -219,7 +213,7 @@ Console 示例项目采用代码内手动调试方式，不要求记忆命令行
 - `SdkCallInputs.cs`：两种入口共用的图片、run id、task id 等测试输入
 - `Program.cs`：只负责 Runner 生命周期；注释/启用两行 `RunAsync` 即可切换 name 或 id 语义
 
-两个调用文件都按“Model deployment → Workflow App Runtime → TriggerSource”排列，具体请求默认保持注释，避免启动 Console 时意外启动、停止或触发现场资源。取消需要的调用行注释即可直接调试。
+两个调用文件都按“Model deployment → Workflow App Runtime → TriggerSource”分类，所有具体调用默认逐行注释。开发调试时直接取消需要调用行的注释，不增加执行开关或额外调度层。HTTP Runtime 示例完整覆盖 image-ref、image-base64、JSON、text、file 和 files，Trigger 示例只覆盖其明确支持的 image-ref、JSON 和 text。
 
 ## 后续框架版本
 

@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Threading;
 using System.Threading.Tasks;
+using Amvar.Vision.SharedMemory;
 
 namespace Amvar.Vision
 {
@@ -111,6 +112,313 @@ namespace Amvar.Vision
         {
             return InvokeConfiguredZeroMqBgr24Image(
                 GetTriggerSourceNameById(triggerSourceId), cancellationToken);
+        }
+
+        public SharedMemoryTriggerResult InvokeSharedMemoryImageBytesById(
+            string triggerSourceId,
+            byte[] imageBytes,
+            string mediaType,
+            SharedMemoryTriggerRequest? request = null)
+        {
+            return InvokeSharedMemoryImageBytes(
+                GetTriggerSourceNameById(triggerSourceId),
+                imageBytes,
+                mediaType,
+                request);
+        }
+
+        public SharedMemoryTriggerResult InvokeSharedMemoryBgr24ById(
+            string triggerSourceId,
+            byte[] bgr24Bytes,
+            int width,
+            int height,
+            SharedMemoryTriggerRequest? request = null)
+        {
+            return InvokeSharedMemoryBgr24(
+                GetTriggerSourceNameById(triggerSourceId),
+                bgr24Bytes,
+                width,
+                height,
+                request);
+        }
+
+        public SharedMemoryTriggerResult InvokeSharedMemoryBgr24ById(
+            string triggerSourceId,
+            int width,
+            int height,
+            SharedMemoryTriggerBufferWriter fill,
+            SharedMemoryTriggerRequest? request = null)
+        {
+            return InvokeSharedMemoryBgr24(
+                GetTriggerSourceNameById(triggerSourceId),
+                width,
+                height,
+                fill,
+                request);
+        }
+
+        public SharedMemoryTriggerResult InvokeSharedMemoryBgr24ById(
+            string triggerSourceId,
+            byte[] bgr24Bytes,
+            int width,
+            int height,
+            int rowStride,
+            SharedMemoryTriggerRequest? request = null)
+        {
+            return InvokeSharedMemoryBgr24(
+                GetTriggerSourceNameById(triggerSourceId),
+                bgr24Bytes,
+                width,
+                height,
+                rowStride,
+                request);
+        }
+
+        public SharedMemoryTriggerResult InvokeSharedMemoryMono8ById(
+            string triggerSourceId,
+            byte[] mono8Bytes,
+            int width,
+            int height,
+            int rowStride,
+            SharedMemoryTriggerRequest? request = null)
+        {
+            return InvokeSharedMemoryMono8(
+                GetTriggerSourceNameById(triggerSourceId),
+                mono8Bytes,
+                width,
+                height,
+                rowStride,
+                request);
+        }
+
+        public SharedMemoryTriggerResult InvokeSharedMemoryBitmapById(
+            string triggerSourceId,
+            Bitmap bitmap,
+            SharedMemoryTriggerRequest? request = null)
+        {
+            return InvokeSharedMemoryBitmap(
+                GetTriggerSourceNameById(triggerSourceId),
+                bitmap,
+                request);
+        }
+
+        public SharedMemoryTriggerResult InvokeSharedMemoryImageFromFileById(
+            string triggerSourceId,
+            string imagePath,
+            string? mediaType = null,
+            SharedMemoryTriggerRequest? request = null)
+        {
+            return InvokeSharedMemoryImageFromFile(
+                GetTriggerSourceNameById(triggerSourceId),
+                imagePath,
+                mediaType,
+                request);
+        }
+
+        public SharedMemoryTriggerResult InvokeSharedMemoryImageBase64ById(
+            string triggerSourceId,
+            string imageBase64,
+            string? mediaType = null,
+            SharedMemoryTriggerRequest? request = null)
+        {
+            return InvokeSharedMemoryImageBase64(
+                GetTriggerSourceNameById(triggerSourceId),
+                imageBase64,
+                mediaType,
+                request);
+        }
+
+        public SharedMemoryTriggerResult InvokeSharedMemoryEventById(
+            string triggerSourceId,
+            SharedMemoryTriggerEventRequest request)
+        {
+            return InvokeSharedMemoryEvent(
+                GetTriggerSourceNameById(triggerSourceId),
+                request);
+        }
+
+        public TriggerResult InvokeZeroMqEventWithInputsById(
+            string triggerSourceId,
+            WorkflowTriggerInputs inputs,
+            CancellationToken cancellationToken = default)
+        {
+            return InvokeZeroMqEventWithInputs(
+                GetTriggerSourceNameById(triggerSourceId),
+                inputs,
+                cancellationToken);
+        }
+
+        public TriggerResult InvokeConfiguredZeroMqImageWithInputsById(
+            string triggerSourceId,
+            WorkflowTriggerInputs inputs,
+            CancellationToken cancellationToken = default)
+        {
+            return InvokeConfiguredZeroMqImageWithInputs(
+                GetTriggerSourceNameById(triggerSourceId),
+                inputs,
+                cancellationToken);
+        }
+
+        public TriggerResult InvokeZeroMqImageFromFileWithInputsById(
+            string triggerSourceId,
+            string imagePath,
+            WorkflowTriggerInputs inputs,
+            string? mediaType = null,
+            CancellationToken cancellationToken = default)
+        {
+            return InvokeZeroMqImageFromFileWithInputs(
+                GetTriggerSourceNameById(triggerSourceId),
+                imagePath,
+                inputs,
+                mediaType,
+                cancellationToken);
+        }
+
+        public TriggerResult InvokeZeroMqImageBytesWithInputsById(
+            string triggerSourceId,
+            byte[] imageBytes,
+            WorkflowTriggerInputs inputs,
+            string mediaType = "image/octet-stream",
+            CancellationToken cancellationToken = default)
+        {
+            return InvokeZeroMqImageBytesWithInputs(
+                GetTriggerSourceNameById(triggerSourceId),
+                imageBytes,
+                inputs,
+                mediaType,
+                cancellationToken);
+        }
+
+        public TriggerResult InvokeZeroMqImageBase64WithInputsById(
+            string triggerSourceId,
+            string imageBase64,
+            WorkflowTriggerInputs inputs,
+            string? mediaType = null,
+            CancellationToken cancellationToken = default)
+        {
+            return InvokeZeroMqImageBase64WithInputs(
+                GetTriggerSourceNameById(triggerSourceId),
+                imageBase64,
+                inputs,
+                mediaType,
+                cancellationToken);
+        }
+
+        public TriggerResult InvokeZeroMqBgr24WithInputsById(
+            string triggerSourceId,
+            byte[] bgr24Bytes,
+            int width,
+            int height,
+            WorkflowTriggerInputs inputs,
+            CancellationToken cancellationToken = default)
+        {
+            return InvokeZeroMqBgr24WithInputs(
+                GetTriggerSourceNameById(triggerSourceId),
+                bgr24Bytes,
+                width,
+                height,
+                inputs,
+                cancellationToken);
+        }
+
+        public TriggerResult InvokeZeroMqBgr24FromBitmapWithInputsById(
+            string triggerSourceId,
+            Bitmap bitmap,
+            WorkflowTriggerInputs inputs,
+            CancellationToken cancellationToken = default)
+        {
+            return InvokeZeroMqBgr24FromBitmapWithInputs(
+                GetTriggerSourceNameById(triggerSourceId),
+                bitmap,
+                inputs,
+                cancellationToken);
+        }
+
+        public TriggerResult InvokeZeroMqBgr24FromFileWithInputsById(
+            string triggerSourceId,
+            string imagePath,
+            WorkflowTriggerInputs inputs,
+            CancellationToken cancellationToken = default)
+        {
+            return InvokeZeroMqBgr24FromFileWithInputs(
+                GetTriggerSourceNameById(triggerSourceId),
+                imagePath,
+                inputs,
+                cancellationToken);
+        }
+
+        public TriggerResult InvokeConfiguredZeroMqBgr24ImageWithInputsById(
+            string triggerSourceId,
+            WorkflowTriggerInputs inputs,
+            CancellationToken cancellationToken = default)
+        {
+            return InvokeConfiguredZeroMqBgr24ImageWithInputs(
+                GetTriggerSourceNameById(triggerSourceId),
+                inputs,
+                cancellationToken);
+        }
+
+        public SharedMemoryTriggerResult InvokeSharedMemoryImageBytesWithInputsById(
+            string triggerSourceId,
+            byte[] imageBytes,
+            string mediaType,
+            WorkflowTriggerInputs inputs)
+        {
+            return InvokeSharedMemoryImageBytesWithInputs(
+                GetTriggerSourceNameById(triggerSourceId),
+                imageBytes,
+                mediaType,
+                inputs);
+        }
+
+        public SharedMemoryTriggerResult InvokeSharedMemoryBgr24WithInputsById(
+            string triggerSourceId,
+            byte[] bgr24Bytes,
+            int width,
+            int height,
+            WorkflowTriggerInputs inputs)
+        {
+            return InvokeSharedMemoryBgr24WithInputs(
+                GetTriggerSourceNameById(triggerSourceId),
+                bgr24Bytes,
+                width,
+                height,
+                inputs);
+        }
+
+        public SharedMemoryTriggerResult InvokeSharedMemoryImageFromFileWithInputsById(
+            string triggerSourceId,
+            string imagePath,
+            WorkflowTriggerInputs inputs,
+            string? mediaType = null)
+        {
+            return InvokeSharedMemoryImageFromFileWithInputs(
+                GetTriggerSourceNameById(triggerSourceId),
+                imagePath,
+                inputs,
+                mediaType);
+        }
+
+        public SharedMemoryTriggerResult InvokeSharedMemoryImageBase64WithInputsById(
+            string triggerSourceId,
+            string imageBase64,
+            WorkflowTriggerInputs inputs,
+            string? mediaType = null)
+        {
+            return InvokeSharedMemoryImageBase64WithInputs(
+                GetTriggerSourceNameById(triggerSourceId),
+                imageBase64,
+                inputs,
+                mediaType);
+        }
+
+        public SharedMemoryTriggerResult InvokeSharedMemoryEventWithInputsById(
+            string triggerSourceId,
+            WorkflowTriggerInputs inputs)
+        {
+            return InvokeSharedMemoryEventWithInputs(
+                GetTriggerSourceNameById(triggerSourceId),
+                inputs);
         }
     }
 }
