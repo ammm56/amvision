@@ -34,46 +34,55 @@ namespace Amvar.Vision
         /// <summary>
         /// HTTP 状态码。
         /// </summary>
+        [JsonProperty("statuscode")]
         public HttpStatusCode StatusCode { get; }
 
         /// <summary>
         /// 是否为 2xx 成功响应。
         /// </summary>
+        [JsonProperty("issuccessstatuscode")]
         public bool IsSuccessStatusCode => (int)StatusCode >= 200 && (int)StatusCode <= 299;
 
         /// <summary>
         /// 原始响应文本。
         /// </summary>
+        [JsonProperty("content")]
         public string Content { get; }
 
         /// <summary>
         /// 解析后的 JSON 根元素；非 JSON 响应时为空。
         /// </summary>
+        [JsonProperty("bodyjson")]
         public JToken? BodyJson { get; }
 
         /// <summary>
         /// backend-service 错误码；非错误响应或无法解析时为空。
         /// </summary>
+        [JsonProperty("errorcode")]
         public string? ErrorCode { get; }
 
         /// <summary>
         /// backend-service 错误消息；非错误响应或无法解析时为空。
         /// </summary>
+        [JsonProperty("errormessage")]
         public string? ErrorMessage { get; }
 
         /// <summary>
         /// backend-service 错误详情；非错误响应时为空字典。
         /// </summary>
+        [JsonProperty("errordetails")]
         public IReadOnlyDictionary<string, JToken> ErrorDetails { get; }
 
         /// <summary>
         /// 产生该响应的 HTTP method；非 SDK HTTP 调用构造时为空。
         /// </summary>
+        [JsonProperty("httpmethod")]
         public string? HttpMethod { get; }
 
         /// <summary>
         /// 产生该响应的 HTTP 相对路径；非 SDK HTTP 调用构造时为空。
         /// </summary>
+        [JsonProperty("requestpath")]
         public string? RequestPath { get; }
 
         /// <summary>

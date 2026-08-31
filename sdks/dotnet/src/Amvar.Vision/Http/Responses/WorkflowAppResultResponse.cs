@@ -21,6 +21,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 后端返回的公开结果 JSON 根节点。
         /// </summary>
+        [JsonProperty("bodyjson")]
         public JToken BodyJson { get; }
 
         /// <summary>

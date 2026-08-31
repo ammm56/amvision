@@ -204,6 +204,10 @@ def test_call_result_preserves_data_http_response_or_exception() -> None:
     assert "public T Data" in result_text
     assert "public AMVisionApiResponse? HttpResponse" in result_text
     assert "public Exception? Exception" in result_text
+    assert '[JsonProperty("data")]' in result_text
+    assert '[JsonProperty("httpresponse")]' in result_text
+    assert '[JsonProperty("exception")]' in result_text
+    assert "AMVisionCallExceptionJsonConverter" in result_text
     assert "catch (AMVisionApiException exception)" in boundary_text
     assert "catch (Exception exception)" in boundary_text
 

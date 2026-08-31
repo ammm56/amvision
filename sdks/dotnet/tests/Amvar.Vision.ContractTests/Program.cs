@@ -44,6 +44,7 @@ namespace Amvar.Vision.ContractTests
             LocalMessageChannelV1Fixture.Verify();
             VerifyZeroMqTriggerResultFrames();
             VerifySharedMemoryTriggerResultMaterialization();
+            VerifyPublicResultJsonFieldCasing();
             VerifyRunnerTriggerReturnTypeSymmetry();
             VerifyLocalBufferMappingCache();
             VerifyWorkflowTriggerHealthResponse();
@@ -191,12 +192,13 @@ namespace Amvar.Vision.ContractTests
 
                 var callJson = JObject.Parse(JsonConvert.SerializeObject(
                     AMVisionCallResult<TriggerResult>.FromData(ownedResult)));
-                var data = callJson["Data"] as JObject;
-                Assert(data != null, "unified TriggerResult Data is missing");
+                var data = callJson["data"] as JObject;
+                Assert(data != null, "unified TriggerResult data is missing");
                 AssertEqual(
                     "amvision.workflow-trigger-result.v1",
                     data!["format_id"]?.Value<string>(),
                     "unified TriggerResult format_id");
+                Assert(callJson["Data"] == null, "call result must not expose PascalCase Data");
                 Assert(data["Result"] == null, "unified TriggerResult must not contain Result wrapper");
                 Assert(data["Attachments"] == null, "unified TriggerResult must not expose lease attachments");
                 Assert(data["Timings"] == null, "unified TriggerResult must not expose local timings");
@@ -210,6 +212,95 @@ namespace Amvar.Vision.ContractTests
             finally
             {
                 Directory.Delete(root, true);
+            }
+        }
+
+        private static void VerifyPublicResultJsonFieldCasing()
+        {
+            var successJson = JToken.Parse(JsonConvert.SerializeObject(
+                AMVisionCallResult<TriggerResult>.FromData(new TriggerResult
+                {
+                    FormatId = "amvision.workflow-trigger-result.v1",
+                    State = "succeeded"
+                })));
+            AssertPublicJsonKeysAreLowercase(successJson, "success");
+            Assert(successJson["data"] != null, "success data field is missing");
+            Assert(successJson["httpresponse"]?.Type == JTokenType.Null, "success httpresponse must be null");
+            Assert(successJson["exception"]?.Type == JTokenType.Null, "success exception must be null");
+
+            var response = AMVisionApiResponse.Create(
+                HttpStatusCode.BadRequest,
+                "{\"error_code\":\"invalid_request\",\"error_message\":\"invalid\"}",
+                "POST",
+                "/api/v1/workflows/runtime/app-result");
+            var httpJson = JToken.Parse(JsonConvert.SerializeObject(
+                AMVisionCallResult<TriggerResult>.FromHttpResponse(response)));
+            AssertPublicJsonKeysAreLowercase(httpJson, "httpresponse");
+            AssertEqual(
+                400,
+                httpJson["httpresponse"]?["statuscode"]?.Value<int>(),
+                "HTTP response statuscode");
+            Assert(
+                httpJson["httpresponse"]?["StatusCode"] == null,
+                "HTTP response must not expose PascalCase StatusCode");
+
+            var exceptionJson = JToken.Parse(JsonConvert.SerializeObject(
+                AMVisionCallResult<TriggerResult>.FromException(
+                    new AMVisionTransportException(
+                        "connection failed",
+                        HttpMethod.Post,
+                        "/api/v1/workflows/runtime/app-result",
+                        new InvalidOperationException("socket closed")))));
+            AssertPublicJsonKeysAreLowercase(exceptionJson, "exception");
+            AssertEqual(
+                "POST",
+                exceptionJson["exception"]?["httpmethod"]?.Value<string>(),
+                "exception httpmethod");
+            AssertEqual(
+                "socket closed",
+                exceptionJson["exception"]?["innerexception"]?["message"]?.Value<string>(),
+                "inner exception message");
+
+            var flowJson = JToken.Parse(JsonConvert.SerializeObject(
+                new Amvar.Vision.Configuration.RuntimeFlowCheckResult
+                {
+                    AppResult = new WorkflowAppResultResponse(new JObject
+                    {
+                        ["workflow_run_id"] = "workflow-run-test"
+                    })
+                }));
+            AssertPublicJsonKeysAreLowercase(flowJson, "runtime flow");
+            Assert(flowJson["runtime_health"] != null, "runtime_health is missing");
+            Assert(
+                flowJson["app_result"]?["bodyjson"]?["workflow_run_id"] != null,
+                "app_result bodyjson is missing");
+        }
+
+        private static void AssertPublicJsonKeysAreLowercase(JToken token, string path)
+        {
+            if (token is JObject jsonObject)
+            {
+                foreach (var property in jsonObject.Properties())
+                {
+                    Assert(
+                        property.Name.All(character => !char.IsUpper(character)),
+                        path + " contains mixed-case JSON field: " + property.Name);
+                    AssertPublicJsonKeysAreLowercase(
+                        property.Value,
+                        path + "." + property.Name);
+                }
+
+                return;
+            }
+
+            if (token is JArray jsonArray)
+            {
+                for (var index = 0; index < jsonArray.Count; index++)
+                {
+                    AssertPublicJsonKeysAreLowercase(
+                        jsonArray[index],
+                        path + "[" + index + "]");
+                }
             }
         }
 

@@ -39,8 +39,8 @@ namespace Amvar.Vision.ContractTests
                     format_id = "amvision.workflow-multi-input-sdk-probe.v1",
                     succeeded = false,
                     error_type = error.GetType().FullName,
-                    error.Message,
-                    error.StackTrace,
+                    message = error.Message,
+                    stacktrace = error.StackTrace,
                     inner_type = error.InnerException?.GetType().FullName,
                     inner_message = error.InnerException?.Message
                 });
@@ -73,10 +73,10 @@ namespace Amvar.Vision.ContractTests
             {
                 format_id = "amvision.workflow-multi-input-sdk-probe.v1",
                 succeeded = true,
-                options.RuntimeName,
-                options.ZeroMqTriggerName,
-                options.SharedMemoryTriggerName,
-                options.Iterations,
+                runtime_name = options.RuntimeName,
+                zeromq_trigger_name = options.ZeroMqTriggerName,
+                shared_memory_trigger_name = options.SharedMemoryTriggerName,
+                iterations = options.Iterations,
                 image_path = options.ImagePath,
                 image_size_bytes = imageBytes.LongLength,
                 samples
@@ -211,14 +211,19 @@ namespace Amvar.Vision.ContractTests
                 ? results.ToString(Formatting.None)
                 : "null";
             var callJson = JObject.FromObject(call);
-            var data = (JObject)callJson["Data"]!;
+            var data = (JObject)callJson["data"]!;
+            var uppercaseResponsePaths = new List<string>();
+            CollectUppercasePropertyPaths(
+                JObject.FromObject(result.ResponsePayload),
+                "$",
+                uppercaseResponsePaths);
             return new
             {
                 succeeded = true,
                 elapsed_ms = elapsedMs,
-                result.State,
-                result.TriggerSourceId,
-                result.WorkflowRunId,
+                state = result.State,
+                trigger_source_id = result.TriggerSourceId,
+                workflow_run_id = result.WorkflowRunId,
                 workflow_state = result.ResponsePayload.TryGetValue("workflow_state", out var workflowState)
                     ? workflowState.Value<string>()
                     : null,
@@ -228,11 +233,46 @@ namespace Amvar.Vision.ContractTests
                 results_sha256 = ComputeSha256(resultsJson),
                 results_size_bytes = Encoding.UTF8.GetByteCount(resultsJson),
                 attachment_count = result.ImageAttachments.Count,
+                call_keys = callJson.Properties().Select(property => property.Name).OrderBy(item => item, StringComparer.Ordinal).ToArray(),
                 data_keys = data.Properties().Select(property => property.Name).OrderBy(item => item, StringComparer.Ordinal).ToArray(),
-                has_result_wrapper = data["Result"] != null,
-                has_lease_attachments = data["Attachments"] != null,
-                has_local_timings = data["Timings"] != null
+                uppercase_response_paths = uppercaseResponsePaths,
+                has_result_wrapper = data["result"] != null || data["Result"] != null,
+                has_lease_attachments = data["attachments"] != null || data["Attachments"] != null,
+                has_local_timings = data["timings"] != null || data["Timings"] != null
             };
+        }
+
+        private static void CollectUppercasePropertyPaths(
+            JToken token,
+            string path,
+            ICollection<string> result)
+        {
+            if (token is JObject jsonObject)
+            {
+                foreach (var property in jsonObject.Properties())
+                {
+                    var propertyPath = path + "." + property.Name;
+                    if (property.Name.Any(char.IsUpper))
+                    {
+                        result.Add(propertyPath);
+                    }
+
+                    CollectUppercasePropertyPaths(property.Value, propertyPath, result);
+                }
+
+                return;
+            }
+
+            if (token is JArray jsonArray)
+            {
+                for (var index = 0; index < jsonArray.Count; index++)
+                {
+                    CollectUppercasePropertyPaths(
+                        jsonArray[index],
+                        path + "[" + index.ToString(CultureInfo.InvariantCulture) + "]",
+                        result);
+                }
+            }
         }
 
         private static void RequireSucceeded(

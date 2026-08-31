@@ -71,6 +71,8 @@ JSON reference 只接受平台实际写入 ObjectStore 后返回的不可变引�
 
 `AMVisionOperationRunner` 的 ZeroMQ 和 local-shared-memory Trigger 方法统一返回 `TriggerResult`，因此 `runner.Call(...)` 成功数据均直接位于 `Data.format_id/state/response_payload`，不会因 transport 不同出现 `Data.Result`。local-shared-memory 高层方法在返回前把可选输出图片物化为 `TriggerResult.ImageAttachments` 的 SDK-owned `byte[]`，随后确定性释放 mmap reader 并 ACK；没有图片输出时不产生复制。需要持有零复制输出 view 的高级调用直接使用低层 `SharedMemoryTriggerClient`，其 `SharedMemoryTriggerResult` 必须通过 `using` 或 `Dispose` 释放。
 
+C# 公共属性继续遵循 .NET 的 PascalCase；使用 Newtonsoft.Json 序列化公开结果时，`AMVisionCallResult<T>` 外层固定输出 `data`、`httpresponse`、`exception`，HTTP 错误和异常快照也只使用全小写字段。Workflow、Trigger 和节点业务结果继续使用既有小写 `snake_case`，不会因为 C# 属性命名产生 PascalCase 混搭。
+
 `InvokeZeroMqImageBase64` 和 `InvokeSharedMemoryImageBase64` 只表示调用方以 Base64 提供图片来源。SDK 解码后仍通过高性能图片通道绑定 `request_image_ref`，不会向 `request_image_base64` 发送 Base64。需要 Base64 binding、普通文件或多文件时使用 HTTP Runtime。
 
 下载包同时包含 `Config/sdk-bootstrap.json`。默认 `configuration_sync.enabled=false`，继续使用手工放置的 `config*.json`。需要由 HTTP 检查最新配置时，配置 backend 地址、Project 配置路径和专用 token，启用开关，并使用 `CreateFromConfigAsync` 或 `CreateFromConfigDirectoryAsync`。SDK发送 ETag 条件请求，完整校验 revision、manifest、逐文件 SHA-256和配置语义后，把不可变快照发布到 `Config/.managed/<revision>/`；下载或校验失败时可按 `use_last_known_good` 使用最近有效快照。同步工厂只在 client 创建时执行，不在运行中替换已创建 client。
