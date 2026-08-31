@@ -38,12 +38,13 @@ namespace AMVision.Console
             string resultStr = JsonConvert.SerializeObject(start, Formatting.Indented);
             var warmup = await runner.CallAsync(api => api.WarmupModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken)).ConfigureAwait(false);
             //var reset = await runner.CallAsync(api => api.ResetModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken)).ConfigureAwait(false);
-            var stop = await runner.CallAsync(api => api.StopModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken)).ConfigureAwait(false);
+            //var stop = await runner.CallAsync(api => api.StopModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken)).ConfigureAwait(false);
 
             // 同步推理
             //var invoke = await runner.CallAsync(api => api.InvokeConfiguredModelDeploymentAsync(ModelDeploymentName, cancellationToken)).ConfigureAwait(false);
-            //var invokeBase64 = await runner.CallAsync(api => api.InvokeModelDeploymentWithImageBase64Async(ModelDeploymentName, LoadModelImageBase64(), cancellationToken)).ConfigureAwait(false);
-            //var invokeBytes = await runner.CallAsync(api => api.InvokeModelDeploymentWithImageBytesAsync(ModelDeploymentName, LoadModelImageBytes(), Path.GetFileName(ModelImagePath), ModelImageMediaType, cancellationToken)).ConfigureAwait(false);
+            var invokeBase64 = await runner.CallAsync(api => api.InvokeModelDeploymentWithImageBase64Async(ModelDeploymentName, LoadModelImageBase64(), cancellationToken)).ConfigureAwait(false);
+            var invokeBytes = await runner.CallAsync(api => api.InvokeModelDeploymentWithImageBytesAsync(ModelDeploymentName, LoadModelImageBytes(), Path.GetFileName(ModelImagePath), ModelImageMediaType, cancellationToken)).ConfigureAwait(false);
+            resultStr = JsonConvert.SerializeObject(invokeBytes, Formatting.Indented);
             //var invokeFile = await runner.CallAsync(api => api.InvokeModelDeploymentWithImageFromFileAsync(ModelDeploymentName, ModelImagePath, ModelImageMediaType, cancellationToken)).ConfigureAwait(false);
             //var invokeFileId = await runner.CallAsync(api => api.InvokeModelDeploymentWithInputFileIdAsync(ModelDeploymentName, ModelDeploymentInputFileId, cancellationToken)).ConfigureAwait(false);
             //var invokeUri = await runner.CallAsync(api => api.InvokeModelDeploymentWithInputUriAsync(ModelDeploymentName, ModelDeploymentInputUri, cancellationToken)).ConfigureAwait(false);
@@ -66,10 +67,11 @@ namespace AMVision.Console
             CancellationToken cancellationToken)
         {
             // 管理与状态
-            //var projectRuntimes = await runner.CallAsync(api => api.ListProjectRuntimesAsync(RuntimeName, cancellationToken)).ConfigureAwait(false);
-            //var runtime = await runner.CallAsync(api => api.GetRuntimeAsync(RuntimeName, cancellationToken)).ConfigureAwait(false);
-            //var health = await runner.CallAsync(api => api.GetRuntimeHealthAsync(RuntimeName, cancellationToken)).ConfigureAwait(false);
-            //var start = await runner.CallAsync(api => api.StartRuntimeAsync(RuntimeName, cancellationToken)).ConfigureAwait(false);
+            var projectRuntimes = await runner.CallAsync(api => api.ListProjectRuntimesAsync(RuntimeName, cancellationToken)).ConfigureAwait(false);
+            var runtime = await runner.CallAsync(api => api.GetRuntimeAsync(RuntimeName, cancellationToken)).ConfigureAwait(false);
+            var health = await runner.CallAsync(api => api.GetRuntimeHealthAsync(RuntimeName, cancellationToken)).ConfigureAwait(false);
+            var start = await runner.CallAsync(api => api.StartRuntimeAsync(RuntimeName, cancellationToken)).ConfigureAwait(false);
+            string resultStr = JsonConvert.SerializeObject(start, Formatting.Indented);
             //var stop = await runner.CallAsync(api => api.StopRuntimeAsync(RuntimeName, cancellationToken)).ConfigureAwait(false);
             //var restart = await runner.CallAsync(api => api.RestartRuntimeAsync(RuntimeName, cancellationToken)).ConfigureAwait(false);
             //var instances = await runner.CallAsync(api => api.ListRuntimeInstancesAsync(RuntimeName, cancellationToken)).ConfigureAwait(false);
@@ -78,13 +80,14 @@ namespace AMVision.Console
 
             // 同步调用：默认输入或单图片
             //var invoke = await runner.CallAsync(api => api.InvokeRuntimeAppResultAsync(RuntimeName, cancellationToken)).ConfigureAwait(false);
-            //var invokeBase64 = await runner.CallAsync(api => api.InvokeRuntimeAppResultWithImageBase64Async(RuntimeName, LoadImageBase64(), ImageMediaType, cancellationToken)).ConfigureAwait(false);
-            //var invokeBytes = await runner.CallAsync(api => api.InvokeRuntimeAppResultWithImageBytesAsync(RuntimeName, LoadImageBytes(), ImageMediaType, cancellationToken)).ConfigureAwait(false);
+            var invokeBase64 = await runner.CallAsync(api => api.InvokeRuntimeAppResultWithImageBase64Async(RuntimeName, LoadImageBase64(), ImageMediaType, cancellationToken)).ConfigureAwait(false);
+            var invokeBytes = await runner.CallAsync(api => api.InvokeRuntimeAppResultWithImageBytesAsync(RuntimeName, LoadImageBytes(), ImageMediaType, cancellationToken)).ConfigureAwait(false);
+            resultStr = JsonConvert.SerializeObject(invokeBytes, Formatting.Indented);
             //var invokeFile = await runner.CallAsync(api => api.InvokeRuntimeAppResultWithImageFromFileAsync(RuntimeName, ImagePath, ImageMediaType, cancellationToken)).ConfigureAwait(false);
 
             // 同步调用：image-ref/image-base64/JSON/text/file/files
-            //var invokeJsonInputs = await runner.CallAsync(api => api.InvokeRuntimeAppResultAsync(RuntimeName, CreateJsonRuntimeRequest(runner), cancellationToken)).ConfigureAwait(false);
-            //var invokeMultipartInputs = await runner.CallAsync(api => api.InvokeRuntimeAppResultAsync(RuntimeName, CreateMultipartRuntimeRequest(runner), cancellationToken)).ConfigureAwait(false);
+            var invokeJsonInputs = await runner.CallAsync(api => api.InvokeRuntimeAppResultAsync(RuntimeName, CreateJsonRuntimeRequest(runner), cancellationToken)).ConfigureAwait(false);
+            var invokeMultipartInputs = await runner.CallAsync(api => api.InvokeRuntimeAppResultAsync(RuntimeName, CreateMultipartRuntimeRequest(runner), cancellationToken)).ConfigureAwait(false);
 
             // 异步调用：默认输入或单图片
             //var run = await runner.CallAsync(api => api.RunRuntimeAsync(RuntimeName, cancellationToken)).ConfigureAwait(false);

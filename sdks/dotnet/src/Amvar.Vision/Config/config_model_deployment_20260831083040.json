@@ -1,0 +1,66 @@
+{
+  "backend": {
+    "base_api_url": "http://127.0.0.1:5600",
+    "access_token": "amvision-default-user-token",
+    "project_id": "project-1",
+    "http_timeout_seconds": 300
+  },
+  "model_deployments": [
+    {
+      "name": "yolo11-s-pcbtrayslotsmall3570-20260804085356 model-build-ff706c3bede6",
+      "task_type": "classification",
+      "deployment_instance_id": "deployment-instance-637c2ea77b124e00ae3256813a5d880d",
+      "runtime_mode": "sync",
+      "input_transport_mode": "memory",
+      "score_threshold": 0.3,
+      "save_result_image": false,
+      "return_preview_image_base64": false,
+      "default_image_path": "",
+      "default_file_name": "image.jpg",
+      "default_media_type": "image/jpeg",
+      "top_k": 5
+    },
+    {
+      "name": "yolo11-s-pcbpetslot4570-20260804092556 model-build-4b949f36d23b",
+      "task_type": "classification",
+      "deployment_instance_id": "deployment-instance-cb2737d526af4fb0878d6b41ca404778",
+      "runtime_mode": "sync",
+      "input_transport_mode": "memory",
+      "score_threshold": 0.3,
+      "save_result_image": false,
+      "return_preview_image_base64": false,
+      "default_image_path": "",
+      "default_file_name": "image.jpg",
+      "default_media_type": "image/jpeg",
+      "top_k": 5
+    },
+    {
+      "name": "yolo11-s-pcbpetslot3570-20260803193223 model-build-bba72a7b211b",
+      "task_type": "classification",
+      "deployment_instance_id": "deployment-instance-cf818d59957a4f5bb196d20a5a5731a0",
+      "runtime_mode": "sync",
+      "input_transport_mode": "memory",
+      "score_threshold": 0.3,
+      "save_result_image": false,
+      "return_preview_image_base64": false,
+      "default_image_path": "",
+      "default_file_name": "image.jpg",
+      "default_media_type": "image/jpeg",
+      "top_k": 5
+    },
+    {
+      "name": "yolo11-s-pcbtrayslotsmall4570-20260804192136 model-build-9edf2cee6187",
+      "task_type": "classification",
+      "deployment_instance_id": "deployment-instance-f7ba49a1cc1448a5878896041921ef61",
+      "runtime_mode": "sync",
+      "input_transport_mode": "memory",
+      "score_threshold": 0.3,
+      "save_result_image": false,
+      "return_preview_image_base64": false,
+      "default_image_path": "",
+      "default_file_name": "image.jpg",
+      "default_media_type": "image/jpeg",
+      "top_k": 5
+    }
+  ]
+}
