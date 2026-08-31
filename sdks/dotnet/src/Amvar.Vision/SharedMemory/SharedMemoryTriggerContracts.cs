@@ -336,6 +336,24 @@ namespace Amvar.Vision.SharedMemory
         [JsonProperty("checksum")]
         public string Checksum { get; set; } = string.Empty;
 
+        [JsonProperty("width")]
+        public int? Width { get; set; }
+
+        [JsonProperty("height")]
+        public int? Height { get; set; }
+
+        [JsonProperty("shape")]
+        public List<int> Shape { get; set; } = new List<int>();
+
+        [JsonProperty("dtype")]
+        public string? DType { get; set; }
+
+        [JsonProperty("layout")]
+        public string? Layout { get; set; }
+
+        [JsonProperty("pixel_format")]
+        public string? PixelFormat { get; set; }
+
         [JsonProperty("buffer_ref")]
         public JObject? BufferRef { get; set; }
     }

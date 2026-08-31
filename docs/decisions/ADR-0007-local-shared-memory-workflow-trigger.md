@@ -127,7 +127,7 @@ worker 对需要交付的 lease 执行批量全量校验和 handoff，并返回 
 
 一次响应包含多个图片引用时必须先把全部来源规范化，再批量全量校验、全量 handoff，不能产生部分成功。相同 lease 的重复引用只 handoff 一次。输入图未被返回时可以在图执行结束、输出已经稳定后先行条件释放，以便为新 output lease 让出 slot；任一 staging、分配或 handoff 失败时返回 `local_buffer_output_capacity_exhausted` 或对应结构化错误，并清理全部暂存资源。异步任务或需要长期保存的输出继续在持久化边界复制到 ObjectStore，不持久化短期 `BufferRef`。
 
-Runtime execution token 在图执行和 output handoff 完成后即可释放；TriggerSource 单在途 permit 必须保持到协议责任已经安全结束或原子移交。local-shared-memory 的成功、失败、deadline、busy和capacity等所有可读取RESPONSE都有独立ACK deadline；成功图片结果必须先批量把output lease owner/deadline切到response owner与同一ACK deadline，最后才发布RESPONSE。零复制结果由SDK结果对象持有reader guard，只有`Dispose`/`DisposeAsync`先使view失效并释放全部guard后才发布ACK；JSON-only或已经复制到SDK自有`byte[]`的结果可以提前ACK。显式取消且不发布响应的CANCELLED不需要ACK deadline。ZeroMQ在全部已提交physical frame tracker完成，或未完成Frame已进入adapter进程内的transport-lifetime registry后释放source permit。socket send失败本身不代表lease可复用，不能在发布RESPONSE或关闭socket时直接结束全部生命周期责任。
+Runtime execution token 在图执行和 output handoff 完成后即可释放；TriggerSource 单在途 permit 必须保持到协议责任已经安全结束或原子移交。local-shared-memory 的成功、失败、deadline、busy和capacity等所有可读取RESPONSE都有独立ACK deadline；成功图片结果必须先批量把output lease owner/deadline切到response owner与同一ACK deadline，最后才发布RESPONSE。低层零复制 lease 由 `SharedMemoryTriggerResult` 持有reader guard，只有`Dispose`/`DisposeAsync`先使view失效并释放全部guard后才发布ACK；高层 Runner 把 attachment 物化到统一 `TriggerResult.ImageAttachments` 后在返回前 ACK。JSON-only不复制图片并可提前ACK。显式取消且不发布响应的CANCELLED不需要ACK deadline。ZeroMQ在全部已提交physical frame tracker完成，或未完成Frame已进入adapter进程内的transport-lifetime registry后释放source permit。socket send失败本身不代表lease可复用，不能在发布RESPONSE或关闭socket时直接结束全部生命周期责任。
 
 ### 9. 幂等只重放稳定结果
 
@@ -187,12 +187,12 @@ adapter 逐个提交唯一物理 frame，只登记已经被 socket 成功接受�
 
 TriggerSource 不增加 `reply_protocol`、JSON/multipart mode 或协议协商字段。.NET SDK 始终接收完整 multipart message、解析 Frame 0 并严格校验其声明的后续 frames。当前仍处于开发阶段，Workflow TriggerSource result mapping REST payload 与 `amvision.workflow-trigger-result.v1` 由后端、Alembic 数据迁移、前端、仓库内 SDK、fixture/Postman 和已有数据在同一提交链中整体迁移，随后删除旧字段、“只解析第一帧”、独立 error format 和双读/双协议兼容分支。该声明只适用于本次未发布的 Workflow Trigger 结果契约，不代表其他 REST `/api/v1` 接口不承诺兼容。只有统一 v1 正式冻结并发布后再次发生不兼容变化，才增加新的协议版本。
 
-### 15. SDK 零复制结果由结果对象持有 reader guard
+### 15. SDK 低层零复制 lease 持有 reader guard
 
-`local-shared-memory` 的零复制 attachment 在 `Invoke` 返回后仍由调用方读取，因此 reader guard 不能在首次 checksum 校验完成后释放。SDK 必须在公开结果对象返回前取得所有唯一物理 attachment 的 reader guard，并由结果对象持有到确定性释放：
+`local-shared-memory` 的低层零复制 attachment 在 `Invoke` 返回后仍由调用方读取，因此 reader guard 不能在首次 checksum 校验完成后释放。低层 `SharedMemoryTriggerClient` 必须在 lease 返回前取得所有唯一物理 attachment 的 reader guard，并由 `SharedMemoryTriggerResult` 持有到确定性释放；高层 Runner 不暴露 lease，而是物化后返回统一 `TriggerResult`：
 
 ```text
-Invoke 返回结果
+低层 Invoke 返回 lease
   -> 调用方读取 attachment
   -> Dispose / DisposeAsync 原子禁止新读取
   -> 等待 SDK 内已开始的读取结束并使 view 失效

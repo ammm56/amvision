@@ -164,7 +164,7 @@ workflow-trigger-write
 
 WorkflowRun 建立并取得真实 Runtime/executor permit 后、提交 worker 前执行第一次条件 owner transfer。Run 创建或 admission 失败按 writer receipt 回收；transfer 成功但 worker 提交失败按 Runtime receipt 回收。不能跳过第一次 transfer 后假设输入已属于 Run。
 
-图片输出在 worker cleanup 前完成规范化与批量 handoff。所有可读取 RESPONSE在 publication前生成独立`response_ack_deadline_ns`；成功图片结果必须先以batch CAS把全部输出lease的owner和deadline同时切到response owner与同一ACK deadline，再发布descriptor RESPONSE。失败、deadline、busy和capacity RESPONSE同样有ACK deadline但不携带未完成handoff的图片。local-shared-memory SDK结果对象持有reader guard到`Dispose`/`DisposeAsync`，先使view失效并释放guard，再发布ACK。JSON-only或已复制到SDK自有bytes的结果可提前ACK。
+图片输出在 worker cleanup 前完成规范化与批量 handoff。所有可读取 RESPONSE在 publication前生成独立`response_ack_deadline_ns`；成功图片结果必须先以batch CAS把全部输出lease的owner和deadline同时切到response owner与同一ACK deadline，再发布descriptor RESPONSE。失败、deadline、busy和capacity RESPONSE同样有ACK deadline但不携带未完成handoff的图片。local-shared-memory 低层 SDK lease 持有reader guard到`Dispose`/`DisposeAsync`，先使view失效并释放guard，再发布ACK；高层 Runner 物化为统一 `TriggerResult.ImageAttachments` 后在返回前释放并 ACK。JSON-only 不复制图片并可直接 ACK。
 
 ## 图片格式边界
 

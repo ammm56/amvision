@@ -163,7 +163,7 @@ TriggerSource 创建、enable 和 Runtime 切版校验应按 adapter capability 
 
 Trigger adapter 按能力映射结果：
 
-- `local-shared-memory`：JSON 走 Workflow Trigger mailbox，直接图片走 LocalBuffer BufferRef；SDK 结果对象持有 reader guard 到 Dispose 后 ACK；
+- `local-shared-memory`：JSON 走 Workflow Trigger mailbox，直接图片走 LocalBuffer BufferRef；.NET 高层 Runner 物化输出后返回统一 `TriggerResult` 并 ACK，低层零复制 lease 持有 reader guard 到 Dispose 后 ACK；
 - ZeroMQ Trigger Result v1：Frame 0 是统一 JSON manifest，Frame 1 到 N 传唯一 physical payload 的 raw 或已显式编码图片 bytes；多个逻辑 attachment 可共享 payload/frame，无图片时 N=0；
 - PLC、IO、MQTT、目录和定时等 `event-only` Trigger：明确丢弃输出，不建立图片 handoff；
 - `accepted-then-query`：不能保存短期 BufferRef；临时图片和绝对路径复制到受管理 ObjectStore，只有同时具有不可变 version、checksum、准确长度和 media type 的 ObjectStore 引用可以直接复用。

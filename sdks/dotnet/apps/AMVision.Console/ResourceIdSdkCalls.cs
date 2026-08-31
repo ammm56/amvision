@@ -2,6 +2,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Amvar.Vision;
+using Amvar.Vision.SharedMemory;
 using static AMVision.Console.SdkCallInputs;
 
 namespace AMVision.Console
@@ -145,15 +146,23 @@ namespace AMVision.Console
             //var zeroMqConfiguredBgr24WithInputs = runner.Call(api => api.InvokeConfiguredZeroMqBgr24ImageWithInputsById(ZeroMqTriggerSourceId, zeroMqInputs, cancellationToken));
             //var zeroMqBgr24BitmapWithInputs = runner.Call(api => { using (var bitmap = LoadBitmap()) return api.InvokeZeroMqBgr24FromBitmapWithInputsById(ZeroMqTriggerSourceId, bitmap, zeroMqInputs, cancellationToken); });
 
-            // Local Shared Memory：image-ref + JSON + text；使用后释放 Data
+            // Local Shared Memory：不带额外 JSON/Text；高层 API 返回统一 TriggerResult 并在返回前 ACK
+            //var sharedEvent = runner.Call(api => api.InvokeSharedMemoryEventById(SharedMemoryTriggerSourceId, new SharedMemoryTriggerEventRequest()));
+            //var sharedImageFile = runner.Call(api => api.InvokeSharedMemoryImageFromFileById(SharedMemoryTriggerSourceId, ImagePath, ImageMediaType));
+            //var sharedImageBytes = runner.Call(api => api.InvokeSharedMemoryImageBytesById(SharedMemoryTriggerSourceId, LoadImageBytes(), ImageMediaType));
+            //var sharedImageBase64 = runner.Call(api => api.InvokeSharedMemoryImageBase64ById(SharedMemoryTriggerSourceId, LoadImageBase64(), ImageMediaType));
+            //var sharedBgr24 = runner.Call(api => { var frame = LoadBgr24ImageFrame(); return api.InvokeSharedMemoryBgr24ById(SharedMemoryTriggerSourceId, frame.Bytes, frame.Width, frame.Height); });
+            // byte[] mono8Bytes = ...; int mono8Width = ...; int mono8Height = ...; int mono8RowStride = ...;
+            //var sharedMono8 = runner.Call(api => api.InvokeSharedMemoryMono8ById(SharedMemoryTriggerSourceId, mono8Bytes, mono8Width, mono8Height, mono8RowStride));
+            //var sharedBitmap = runner.Call(api => { using (var bitmap = LoadBitmap()) return api.InvokeSharedMemoryBitmapById(SharedMemoryTriggerSourceId, bitmap); });
+
+            // Local Shared Memory：image-ref + JSON + text
             //var sharedInputs = CreateTriggerInputs(runner, SharedMemoryTriggerSourceId);
             //var sharedEvent = runner.Call(api => api.InvokeSharedMemoryEventWithInputsById(SharedMemoryTriggerSourceId, sharedInputs));
             //var sharedImageFile = runner.Call(api => api.InvokeSharedMemoryImageFromFileWithInputsById(SharedMemoryTriggerSourceId, ImagePath, sharedInputs, ImageMediaType));
             //var sharedImageBytes = runner.Call(api => api.InvokeSharedMemoryImageBytesWithInputsById(SharedMemoryTriggerSourceId, LoadImageBytes(), ImageMediaType, sharedInputs));
             //var sharedImageBase64 = runner.Call(api => api.InvokeSharedMemoryImageBase64WithInputsById(SharedMemoryTriggerSourceId, LoadImageBase64(), sharedInputs, ImageMediaType));
             //var sharedBgr24 = runner.Call(api => { var frame = LoadBgr24ImageFrame(); return api.InvokeSharedMemoryBgr24WithInputsById(SharedMemoryTriggerSourceId, frame.Bytes, frame.Width, frame.Height, sharedInputs); });
-            //sharedEvent.Data?.Dispose();
-
             await Task.CompletedTask.ConfigureAwait(false);
         }
 

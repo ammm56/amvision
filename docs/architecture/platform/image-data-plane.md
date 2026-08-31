@@ -322,7 +322,7 @@ Workflow 节点决定结果语义和图片表示，Trigger adapter 只负责搬�
 
 | Trigger | JSON | 直接图片 |
 | --- | --- | --- |
-| `local-shared-memory` sync | Workflow Trigger mailbox inline/page-chain | LocalBuffer BufferRef；结果对象持有 reader guard 到 Dispose 后 ACK |
+| `local-shared-memory` sync | Workflow Trigger mailbox inline/page-chain | LocalBuffer BufferRef；高层物化为统一 `TriggerResult` 后 ACK，低层 lease 持有 reader guard 到 Dispose 后 ACK |
 | ZeroMQ Trigger Result v1 | Frame 0 JSON manifest | Frame 1 到 N 唯一 physical payload；无图片时 N=0 |
 | PLC/IO/MQTT/目录/定时 `event-only` | 丢弃 | 丢弃，不 handoff |
 | `accepted-then-query` | 状态和 run id | 稳定 ObjectStore locator 查询；临时图片先持久化，或显式丢弃 |
@@ -339,9 +339,9 @@ TriggerSource 和 SDK 配置包不增加 reply protocol 或 JSON/multipart mode�
 
 现有 `local-shared-memory` Trigger 支持把公开输出中的 LocalBuffer 图片引用返回给同机 SDK。公开 BufferRef 只负责定位；服务端私有 `LeaseOwnershipReceipt` 保存 allocator identity、expected owner、epoch、generation、deadline 和 guard identity。SDK 完成精确长度写入后先释放写 view/guard，再发布 REQUEST。WorkflowRun 建立并取得真实 Runtime/执行器 permit 后、worker submit 前，Broker 在 publication/allocator 规则内确认 guard 和 receipt，并原子完成 `WRITING -> ACTIVE` 与 `workflow-trigger-write -> workflow-runtime` owner transfer；trusted-local 输入不做第二次 full-image CRC。每个失败点按当时 receipt 补偿回收。目标 arena/descriptor 字段和锁顺序见 [ADR-0008](../../decisions/ADR-0008-local-buffer-fixed-arena-allocation.md)。
 
-该能力不能在 Workflow Run 结束时直接释放图片 lease；worker 必须在自身 cleanup 前完成来源规范化。当前 Run receipt 对应的 BufferRef 可零复制 handoff，foreign/incomplete BufferRef、memory handle 和 FrameRef 按固定规则复制。storage/local-path 根据目标交付处理：本机 LocalBuffer 返回时物化 output lease；只有具备不可变 version、checksum、准确长度和 media type 的 ObjectStore 结果可以直接返回 locator；临时对象或绝对路径必须复制到受控 LocalBuffer、adapter 自有不可变 bytes 或新的不可变受管理对象。ZeroMQ 从 ObjectStore 发送时持有 `open_read_snapshot()` 到 tracker 完成。整批输出在 RESPONSE 前 transfer 到 `delivery_kind + response_id` owner。local-shared-memory 的 reader guard 由 SDK 结果对象保持到 `Dispose`/`DisposeAsync`，先使 view 失效并释放全部 guard，再发布 ACK；JSON-only 或 SDK-owned copy 可以提前 ACK。详细边界见 [ADR-0007](../../decisions/ADR-0007-local-shared-memory-workflow-trigger.md) 和[实施基线](../../development/local-shared-memory-trigger-implementation.md)。
+该能力不能在 Workflow Run 结束时直接释放图片 lease；worker 必须在自身 cleanup 前完成来源规范化。当前 Run receipt 对应的 BufferRef 可零复制 handoff，foreign/incomplete BufferRef、memory handle 和 FrameRef 按固定规则复制。storage/local-path 根据目标交付处理：本机 LocalBuffer 返回时物化 output lease；只有具备不可变 version、checksum、准确长度和 media type 的 ObjectStore 结果可以直接返回 locator；临时对象或绝对路径必须复制到受控 LocalBuffer、adapter 自有不可变 bytes 或新的不可变受管理对象。ZeroMQ 从 ObjectStore 发送时持有 `open_read_snapshot()` 到 tracker 完成。整批输出在 RESPONSE 前 transfer 到 `delivery_kind + response_id` owner。local-shared-memory 的低层 SDK lease 持有 reader guard 到 `Dispose`/`DisposeAsync`，先使 view 失效并释放全部 guard，再发布 ACK；高层 Runner 把输出物化为 SDK-owned bytes 后在返回统一 `TriggerResult` 前完成同样的释放和 ACK。JSON-only 不复制图片。详细边界见 [ADR-0007](../../decisions/ADR-0007-local-shared-memory-workflow-trigger.md) 和[实施基线](../../development/local-shared-memory-trigger-implementation.md)。
 
-同一 TriggerSource 的单在途 permit 覆盖完整交付：local-shared-memory 到 Dispose/ACK、取消或 deadline 后的安全回收，ZeroMQ 到所有已提交 physical frame tracker 完成，或未完成资源已由发送前预留的 adapter transport registry 持续承担责任。Runtime token 可以在图执行和 handoff 后释放。包含临时 attachment 的幂等结果不重放旧引用；重复请求返回 `idempotent_attachment_result_not_replayable` 和原 run id。只有 JSON-only 或已经 ObjectStore 持久化的稳定结果可重放/查询。
+同一 TriggerSource 的单在途 permit 覆盖完整交付：local-shared-memory 到高层 Runner 物化并 ACK、低层 lease Dispose/ACK、取消或 deadline 后的安全回收，ZeroMQ 到所有已提交 physical frame tracker 完成，或未完成资源已由发送前预留的 adapter transport registry 持续承担责任。Runtime token 可以在图执行和 handoff 后释放。包含临时 attachment 的幂等结果不重放旧引用；重复请求返回 `idempotent_attachment_result_not_replayable` 和原 run id。只有 JSON-only 或已经 ObjectStore 持久化的稳定结果可重放/查询。
 
 ## 运行记录和诊断开关
 

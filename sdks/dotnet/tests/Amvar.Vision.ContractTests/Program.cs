@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Text;
@@ -41,6 +43,8 @@ namespace Amvar.Vision.ContractTests
             WorkflowTriggerMailboxV1Fixture.Verify();
             LocalMessageChannelV1Fixture.Verify();
             VerifyZeroMqTriggerResultFrames();
+            VerifySharedMemoryTriggerResultMaterialization();
+            VerifyRunnerTriggerReturnTypeSymmetry();
             VerifyLocalBufferMappingCache();
             VerifyWorkflowTriggerHealthResponse();
             VerifyAutomaticConfigurationRequiresAsyncFactory();
@@ -95,6 +99,265 @@ namespace Amvar.Vision.ContractTests
             Assert(health.RequestTimeoutCount == 8, "request timeout count mismatch");
             Assert(health.ResponseAckTimeoutCount == 9, "ACK timeout count mismatch");
             Assert(health.CancelCount == 10, "cancel count mismatch");
+        }
+
+        private static void VerifySharedMemoryTriggerResultMaterialization()
+        {
+            var root = Path.Combine(
+                Path.GetTempPath(),
+                "amvision-shared-result-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(root);
+            try
+            {
+                var content = new byte[] { 1, 2, 3, 4, 5, 6 };
+                var arenaPath = Path.Combine(root, "arena.bin");
+                var guardPath = Path.Combine(root, "guard.bin");
+                File.WriteAllBytes(arenaPath, content);
+                File.WriteAllBytes(guardPath, new byte[1]);
+
+                var acknowledgeCount = 0;
+                var readerGuard = ByteRangeGuard.AcquireReader(
+                    guardPath,
+                    0,
+                    1,
+                    Stopwatch.GetTimestamp() + Stopwatch.Frequency * 5L);
+                var reader = new PhysicalPayloadReader(
+                    "physical-1",
+                    "application/octet-stream",
+                    arenaPath,
+                    0,
+                    content.Length,
+                    2,
+                    1,
+                    new[] { 1, 2, 3 },
+                    "uint8",
+                    "HWC",
+                    "BGR24",
+                    readerGuard);
+                var triggerResult = new TriggerResult
+                {
+                    FormatId = "amvision.workflow-trigger-result.v1",
+                    TriggerSourceId = "local-shared-memory-runtime-1",
+                    EventId = "event-1",
+                    State = "succeeded",
+                    WorkflowRunId = "run-1"
+                };
+                var sharedResult = new SharedMemoryTriggerResult(
+                    triggerResult,
+                    new[] { reader },
+                    new[]
+                    {
+                        new PublicLogicalAttachment
+                        {
+                            AttachmentId = "attachment-1",
+                            BindingId = "image-a",
+                            ItemIndex = 0,
+                            PayloadId = "physical-1"
+                        },
+                        new PublicLogicalAttachment
+                        {
+                            AttachmentId = "attachment-2",
+                            BindingId = "image-b",
+                            ItemIndex = 0,
+                            PayloadId = "physical-1"
+                        }
+                    },
+                    () => acknowledgeCount += 1,
+                    timings: null);
+
+                var ownedResult = sharedResult.CopyResultAndRelease();
+                Assert(ReferenceEquals(triggerResult, ownedResult), "shared result identity changed");
+                AssertEqual(1, acknowledgeCount, "shared result ACK count");
+                AssertEqual(2, ownedResult.ImageAttachments.Count, "shared attachment count");
+                Assert(
+                    ReferenceEquals(
+                        ownedResult.ImageAttachments[0].Content,
+                        ownedResult.ImageAttachments[1].Content),
+                    "duplicate logical attachments must share one SDK-owned byte array");
+                Assert(
+                    ownedResult.ImageAttachments[0].Content.SequenceEqual(content),
+                    "shared attachment content mismatch");
+                AssertEqual(2, ownedResult.ImageAttachments[0].Width, "shared attachment width");
+                AssertEqual(1, ownedResult.ImageAttachments[0].Height, "shared attachment height");
+                AssertEqual("uint8", ownedResult.ImageAttachments[0].DType, "shared attachment dtype");
+                AssertEqual("HWC", ownedResult.ImageAttachments[0].Layout, "shared attachment layout");
+                AssertEqual("BGR24", ownedResult.ImageAttachments[0].PixelFormat, "shared attachment pixel format");
+                sharedResult.Dispose();
+                AssertEqual(1, acknowledgeCount, "shared result repeated Dispose ACK count");
+                using (var reacquired = ByteRangeGuard.TryAcquire(guardPath, 0, 1))
+                {
+                    Assert(reacquired != null, "shared result reader guard was not released");
+                }
+
+                var callJson = JObject.Parse(JsonConvert.SerializeObject(
+                    AMVisionCallResult<TriggerResult>.FromData(ownedResult)));
+                var data = callJson["Data"] as JObject;
+                Assert(data != null, "unified TriggerResult Data is missing");
+                AssertEqual(
+                    "amvision.workflow-trigger-result.v1",
+                    data!["format_id"]?.Value<string>(),
+                    "unified TriggerResult format_id");
+                Assert(data["Result"] == null, "unified TriggerResult must not contain Result wrapper");
+                Assert(data["Attachments"] == null, "unified TriggerResult must not expose lease attachments");
+                Assert(data["Timings"] == null, "unified TriggerResult must not expose local timings");
+
+                VerifySharedMemoryAttachmentCopyDeduplicates(
+                    arenaPath,
+                    guardPath,
+                    content);
+                VerifySharedMemoryMaterializationFailureReleasesResources(root, guardPath);
+            }
+            finally
+            {
+                Directory.Delete(root, true);
+            }
+        }
+
+        private static void VerifySharedMemoryAttachmentCopyDeduplicates(
+            string arenaPath,
+            string guardPath,
+            byte[] expectedContent)
+        {
+            var acknowledgeCount = 0;
+            var readerGuard = ByteRangeGuard.AcquireReader(
+                guardPath,
+                0,
+                1,
+                Stopwatch.GetTimestamp() + Stopwatch.Frequency * 5L);
+            var reader = new PhysicalPayloadReader(
+                "copy-physical",
+                "application/octet-stream",
+                arenaPath,
+                0,
+                expectedContent.Length,
+                null,
+                null,
+                Array.Empty<int>(),
+                null,
+                null,
+                null,
+                readerGuard);
+            var sharedResult = new SharedMemoryTriggerResult(
+                new TriggerResult
+                {
+                    FormatId = "amvision.workflow-trigger-result.v1",
+                    State = "succeeded"
+                },
+                new[] { reader },
+                new[]
+                {
+                    new PublicLogicalAttachment
+                    {
+                        AttachmentId = "copy-attachment-1",
+                        BindingId = "image-a",
+                        ItemIndex = 0,
+                        PayloadId = "copy-physical"
+                    },
+                    new PublicLogicalAttachment
+                    {
+                        AttachmentId = "copy-attachment-2",
+                        BindingId = "image-b",
+                        ItemIndex = 0,
+                        PayloadId = "copy-physical"
+                    }
+                },
+                () => acknowledgeCount += 1,
+                timings: null);
+
+            var copies = sharedResult.CopyAttachmentsAndRelease();
+            AssertEqual(2, copies.Count, "low-level copied attachment count");
+            Assert(
+                ReferenceEquals(
+                    copies["copy-attachment-1"],
+                    copies["copy-attachment-2"]),
+                "low-level duplicate attachments must share one copied byte array");
+            Assert(
+                copies["copy-attachment-1"].SequenceEqual(expectedContent),
+                "low-level copied attachment content mismatch");
+            AssertEqual(1, acknowledgeCount, "low-level copied attachment ACK count");
+            using (var reacquired = ByteRangeGuard.TryAcquire(guardPath, 0, 1))
+            {
+                Assert(reacquired != null, "low-level copied attachment guard was not released");
+            }
+        }
+
+        private static void VerifySharedMemoryMaterializationFailureReleasesResources(
+            string root,
+            string guardPath)
+        {
+            var acknowledgeCount = 0;
+            var readerGuard = ByteRangeGuard.AcquireReader(
+                guardPath,
+                0,
+                1,
+                Stopwatch.GetTimestamp() + Stopwatch.Frequency * 5L);
+            var reader = new PhysicalPayloadReader(
+                "missing-physical",
+                "application/octet-stream",
+                Path.Combine(root, "missing.bin"),
+                0,
+                1,
+                null,
+                null,
+                Array.Empty<int>(),
+                null,
+                null,
+                null,
+                readerGuard);
+            var sharedResult = new SharedMemoryTriggerResult(
+                new TriggerResult
+                {
+                    FormatId = "amvision.workflow-trigger-result.v1",
+                    State = "succeeded"
+                },
+                new[] { reader },
+                new[]
+                {
+                    new PublicLogicalAttachment
+                    {
+                        AttachmentId = "missing-attachment",
+                        BindingId = "image",
+                        ItemIndex = 0,
+                        PayloadId = "missing-physical"
+                    }
+                },
+                () => acknowledgeCount += 1,
+                timings: null);
+
+            try
+            {
+                sharedResult.CopyResultAndRelease();
+                throw new InvalidOperationException("missing shared attachment must fail");
+            }
+            catch (FileNotFoundException)
+            {
+            }
+
+            AssertEqual(1, acknowledgeCount, "failed materialization ACK count");
+            using (var reacquired = ByteRangeGuard.TryAcquire(guardPath, 0, 1))
+            {
+                Assert(reacquired != null, "failed materialization reader guard was not released");
+            }
+        }
+
+        private static void VerifyRunnerTriggerReturnTypeSymmetry()
+        {
+            var methods = typeof(AMVisionOperationRunner).GetMethods();
+            var sharedMemoryMethods = methods
+                .Where(method => method.Name.StartsWith("InvokeSharedMemory", StringComparison.Ordinal))
+                .ToArray();
+            var zeroMqMethods = methods
+                .Where(method => method.Name.StartsWith("InvokeZeroMq", StringComparison.Ordinal))
+                .ToArray();
+            Assert(sharedMemoryMethods.Length > 0, "shared-memory Runner methods are missing");
+            Assert(zeroMqMethods.Length > 0, "ZeroMQ Runner methods are missing");
+            foreach (var method in sharedMemoryMethods.Concat(zeroMqMethods))
+            {
+                AssertEqual(
+                    typeof(TriggerResult),
+                    method.ReturnType,
+                    method.Name + " return type");
+            }
         }
 
         private static void VerifyAutomaticConfigurationRequiresAsyncFactory()

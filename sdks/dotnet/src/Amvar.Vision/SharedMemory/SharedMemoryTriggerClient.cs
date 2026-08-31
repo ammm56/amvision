@@ -727,7 +727,19 @@ namespace Amvar.Vision.SharedMemory
                 offset,
                 size,
                 capacity);
-            var reader = new PhysicalPayloadReader(payload.PayloadId, payload.MediaType, mappingCache.ArenaPath, offset, size, guard);
+            var reader = new PhysicalPayloadReader(
+                payload.PayloadId,
+                payload.MediaType,
+                mappingCache.ArenaPath,
+                offset,
+                size,
+                payload.Width,
+                payload.Height,
+                payload.Shape,
+                payload.DType,
+                payload.Layout,
+                payload.PixelFormat,
+                guard);
             try
             {
                 if (!string.Equals(payload.ChecksumAlgorithm, "crc32", StringComparison.OrdinalIgnoreCase))

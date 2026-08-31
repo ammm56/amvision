@@ -72,6 +72,18 @@ EXPECTED_BY_ID_METHODS = {
     "InvokeZeroMqBgr24FromBitmapById",
     "InvokeZeroMqBgr24FromFileById",
     "InvokeConfiguredZeroMqBgr24ImageById",
+    "InvokeSharedMemoryImageBytesById",
+    "InvokeSharedMemoryBgr24ById",
+    "InvokeSharedMemoryMono8ById",
+    "InvokeSharedMemoryBitmapById",
+    "InvokeSharedMemoryImageFromFileById",
+    "InvokeSharedMemoryImageBase64ById",
+    "InvokeSharedMemoryEventById",
+    "InvokeSharedMemoryImageBytesWithInputsById",
+    "InvokeSharedMemoryBgr24WithInputsById",
+    "InvokeSharedMemoryImageFromFileWithInputsById",
+    "InvokeSharedMemoryImageBase64WithInputsById",
+    "InvokeSharedMemoryEventWithInputsById",
 }
 
 

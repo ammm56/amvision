@@ -114,7 +114,7 @@ namespace Amvar.Vision
                 GetTriggerSourceNameById(triggerSourceId), cancellationToken);
         }
 
-        public SharedMemoryTriggerResult InvokeSharedMemoryImageBytesById(
+        public TriggerResult InvokeSharedMemoryImageBytesById(
             string triggerSourceId,
             byte[] imageBytes,
             string mediaType,
@@ -127,7 +127,7 @@ namespace Amvar.Vision
                 request);
         }
 
-        public SharedMemoryTriggerResult InvokeSharedMemoryBgr24ById(
+        public TriggerResult InvokeSharedMemoryBgr24ById(
             string triggerSourceId,
             byte[] bgr24Bytes,
             int width,
@@ -142,7 +142,7 @@ namespace Amvar.Vision
                 request);
         }
 
-        public SharedMemoryTriggerResult InvokeSharedMemoryBgr24ById(
+        public TriggerResult InvokeSharedMemoryBgr24ById(
             string triggerSourceId,
             int width,
             int height,
@@ -157,7 +157,7 @@ namespace Amvar.Vision
                 request);
         }
 
-        public SharedMemoryTriggerResult InvokeSharedMemoryBgr24ById(
+        public TriggerResult InvokeSharedMemoryBgr24ById(
             string triggerSourceId,
             byte[] bgr24Bytes,
             int width,
@@ -174,7 +174,7 @@ namespace Amvar.Vision
                 request);
         }
 
-        public SharedMemoryTriggerResult InvokeSharedMemoryMono8ById(
+        public TriggerResult InvokeSharedMemoryMono8ById(
             string triggerSourceId,
             byte[] mono8Bytes,
             int width,
@@ -191,7 +191,7 @@ namespace Amvar.Vision
                 request);
         }
 
-        public SharedMemoryTriggerResult InvokeSharedMemoryBitmapById(
+        public TriggerResult InvokeSharedMemoryBitmapById(
             string triggerSourceId,
             Bitmap bitmap,
             SharedMemoryTriggerRequest? request = null)
@@ -202,7 +202,7 @@ namespace Amvar.Vision
                 request);
         }
 
-        public SharedMemoryTriggerResult InvokeSharedMemoryImageFromFileById(
+        public TriggerResult InvokeSharedMemoryImageFromFileById(
             string triggerSourceId,
             string imagePath,
             string? mediaType = null,
@@ -215,7 +215,7 @@ namespace Amvar.Vision
                 request);
         }
 
-        public SharedMemoryTriggerResult InvokeSharedMemoryImageBase64ById(
+        public TriggerResult InvokeSharedMemoryImageBase64ById(
             string triggerSourceId,
             string imageBase64,
             string? mediaType = null,
@@ -228,7 +228,7 @@ namespace Amvar.Vision
                 request);
         }
 
-        public SharedMemoryTriggerResult InvokeSharedMemoryEventById(
+        public TriggerResult InvokeSharedMemoryEventById(
             string triggerSourceId,
             SharedMemoryTriggerEventRequest request)
         {
@@ -358,7 +358,7 @@ namespace Amvar.Vision
                 cancellationToken);
         }
 
-        public SharedMemoryTriggerResult InvokeSharedMemoryImageBytesWithInputsById(
+        public TriggerResult InvokeSharedMemoryImageBytesWithInputsById(
             string triggerSourceId,
             byte[] imageBytes,
             string mediaType,
@@ -371,7 +371,7 @@ namespace Amvar.Vision
                 inputs);
         }
 
-        public SharedMemoryTriggerResult InvokeSharedMemoryBgr24WithInputsById(
+        public TriggerResult InvokeSharedMemoryBgr24WithInputsById(
             string triggerSourceId,
             byte[] bgr24Bytes,
             int width,
@@ -386,7 +386,7 @@ namespace Amvar.Vision
                 inputs);
         }
 
-        public SharedMemoryTriggerResult InvokeSharedMemoryImageFromFileWithInputsById(
+        public TriggerResult InvokeSharedMemoryImageFromFileWithInputsById(
             string triggerSourceId,
             string imagePath,
             WorkflowTriggerInputs inputs,
@@ -399,7 +399,7 @@ namespace Amvar.Vision
                 mediaType);
         }
 
-        public SharedMemoryTriggerResult InvokeSharedMemoryImageBase64WithInputsById(
+        public TriggerResult InvokeSharedMemoryImageBase64WithInputsById(
             string triggerSourceId,
             string imageBase64,
             WorkflowTriggerInputs inputs,
@@ -412,7 +412,7 @@ namespace Amvar.Vision
                 mediaType);
         }
 
-        public SharedMemoryTriggerResult InvokeSharedMemoryEventWithInputsById(
+        public TriggerResult InvokeSharedMemoryEventWithInputsById(
             string triggerSourceId,
             WorkflowTriggerInputs inputs)
         {

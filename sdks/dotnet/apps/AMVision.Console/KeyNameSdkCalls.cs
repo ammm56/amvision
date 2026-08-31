@@ -1,4 +1,5 @@
 using Amvar.Vision;
+using Amvar.Vision.SharedMemory;
 using Newtonsoft.Json;
 using System.IO;
 using System.Threading;
@@ -156,17 +157,29 @@ namespace AMVision.Console
             //var zeroMqConfiguredBgr24WithInputs = runner.Call(api => api.InvokeConfiguredZeroMqBgr24ImageWithInputs(ZeroMqTriggerSourceName, zeroMqInputs, cancellationToken));
             //var zeroMqBgr24BitmapWithInputs = runner.Call(api => { using (var bitmap = LoadBitmap()) return api.InvokeZeroMqBgr24FromBitmapWithInputs(ZeroMqTriggerSourceName, bitmap, zeroMqInputs, cancellationToken); });
 
-            // Local Shared Memory：image-ref + JSON + text；使用后释放 Data
+            // Local Shared Memory：不带额外 JSON/Text；高层 API 返回统一 TriggerResult 并在返回前 ACK
+            //var sharedEvent = runner.Call(api => api.InvokeSharedMemoryEvent(SharedMemoryTriggerSourceName, new SharedMemoryTriggerEventRequest()));
+            //var sharedImageFile = runner.Call(api => api.InvokeSharedMemoryImageFromFile(SharedMemoryTriggerSourceName, ImagePath, ImageMediaType));
+            var sharedImageBytes = runner.Call(api => api.InvokeSharedMemoryImageBytes(SharedMemoryTriggerSourceName, LoadImageBytes(), ImageMediaType));
+            var sharedImageBase64 = runner.Call(api => api.InvokeSharedMemoryImageBase64(SharedMemoryTriggerSourceName, LoadImageBase64(), ImageMediaType));
+            resultStr = JsonConvert.SerializeObject(sharedImageBase64, Formatting.Indented);
+
+            var sharedBgr24 = runner.Call(api => api.InvokeSharedMemoryBgr24(SharedMemoryTriggerSourceName, frame.Bytes, frame.Width, frame.Height));
+            resultStr = JsonConvert.SerializeObject(sharedBgr24, Formatting.Indented);
+            // byte[] mono8Bytes = ...; int mono8Width = ...; int mono8Height = ...; int mono8RowStride = ...;
+            //var sharedMono8 = runner.Call(api => api.InvokeSharedMemoryMono8(SharedMemoryTriggerSourceName, mono8Bytes, mono8Width, mono8Height, mono8RowStride));
+            //var sharedBitmap = runner.Call(api => { using (var bitmap = LoadBitmap()) return api.InvokeSharedMemoryBitmap(SharedMemoryTriggerSourceName, bitmap); });
+
+            // Local Shared Memory：image-ref + JSON + text
             var sharedInputs = CreateTriggerInputs(runner, SharedMemoryTriggerSourceName);
             //var sharedEvent = runner.Call(api => api.InvokeSharedMemoryEventWithInputs(SharedMemoryTriggerSourceName, sharedInputs));
             //var sharedImageFile = runner.Call(api => api.InvokeSharedMemoryImageFromFileWithInputs(SharedMemoryTriggerSourceName, ImagePath, sharedInputs, ImageMediaType));
-            var sharedImageBytes = runner.Call(api => api.InvokeSharedMemoryImageBytesWithInputs(SharedMemoryTriggerSourceName, LoadImageBytes(), ImageMediaType, sharedInputs));
-            resultStr = JsonConvert.SerializeObject(sharedImageBytes, Formatting.Indented);
-            var sharedImageBase64 = runner.Call(api => api.InvokeSharedMemoryImageBase64WithInputs(SharedMemoryTriggerSourceName, LoadImageBase64(), sharedInputs, ImageMediaType));
+            var sharedImageBytesWithInputs = runner.Call(api => api.InvokeSharedMemoryImageBytesWithInputs(SharedMemoryTriggerSourceName, LoadImageBytes(), ImageMediaType, sharedInputs));
+            resultStr = JsonConvert.SerializeObject(sharedImageBytesWithInputs, Formatting.Indented);
+            var sharedImageBase64WithInputs = runner.Call(api => api.InvokeSharedMemoryImageBase64WithInputs(SharedMemoryTriggerSourceName, LoadImageBase64(), sharedInputs, ImageMediaType));
 
-            var sharedBgr24 = runner.Call(api => api.InvokeSharedMemoryBgr24WithInputs(SharedMemoryTriggerSourceName, frame.Bytes, frame.Width, frame.Height, sharedInputs));
-            resultStr = JsonConvert.SerializeObject(sharedBgr24, Formatting.Indented);
-            //sharedEvent.Data?.Dispose();
+            var sharedBgr24WithInputs = runner.Call(api => api.InvokeSharedMemoryBgr24WithInputs(SharedMemoryTriggerSourceName, frame.Bytes, frame.Width, frame.Height, sharedInputs));
+            resultStr = JsonConvert.SerializeObject(sharedBgr24WithInputs, Formatting.Indented);
 
             await Task.CompletedTask.ConfigureAwait(false);
         }

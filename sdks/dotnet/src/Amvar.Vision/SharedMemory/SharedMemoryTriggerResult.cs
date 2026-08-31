@@ -21,7 +21,13 @@ namespace Amvar.Vision.SharedMemory
             int itemIndex,
             string payloadId,
             string mediaType,
-            long contentLength)
+            long contentLength,
+            int? width,
+            int? height,
+            IReadOnlyList<int> shape,
+            string? dtype,
+            string? layout,
+            string? pixelFormat)
         {
             this.owner = owner;
             AttachmentId = attachmentId;
@@ -30,6 +36,12 @@ namespace Amvar.Vision.SharedMemory
             PayloadId = payloadId;
             MediaType = mediaType;
             ContentLength = contentLength;
+            Width = width;
+            Height = height;
+            Shape = shape;
+            DType = dtype;
+            Layout = layout;
+            PixelFormat = pixelFormat;
         }
 
         /// <summary>逻辑 attachment id。</summary>
@@ -49,6 +61,24 @@ namespace Amvar.Vision.SharedMemory
 
         /// <summary>有效图片字节数。</summary>
         public long ContentLength { get; }
+
+        /// <summary>图片宽度；encoded 图片无法确定时为空。</summary>
+        public int? Width { get; }
+
+        /// <summary>图片高度；encoded 图片无法确定时为空。</summary>
+        public int? Height { get; }
+
+        /// <summary>raw tensor shape。</summary>
+        public IReadOnlyList<int> Shape { get; }
+
+        /// <summary>raw tensor dtype。</summary>
+        public string? DType { get; }
+
+        /// <summary>raw tensor layout。</summary>
+        public string? Layout { get; }
+
+        /// <summary>raw 图片 pixel format。</summary>
+        public string? PixelFormat { get; }
 
         /// <summary>打开零复制只读共享内存 stream；返回 handle 必须释放。</summary>
         public SharedMemoryAttachmentReadHandle OpenRead()
@@ -138,7 +168,13 @@ namespace Amvar.Vision.SharedMemory
                     item.ItemIndex,
                     item.PayloadId,
                     reader.MediaType,
-                    reader.ContentLength);
+                    reader.ContentLength,
+                    reader.Width,
+                    reader.Height,
+                    reader.Shape,
+                    reader.DType,
+                    reader.Layout,
+                    reader.PixelFormat);
             }).ToArray();
         }
 
@@ -155,14 +191,62 @@ namespace Amvar.Vision.SharedMemory
         public IReadOnlyDictionary<string, byte[]> CopyAttachmentsAndRelease()
         {
             var copies = new Dictionary<string, byte[]>(StringComparer.Ordinal);
+            var contentByPayloadId = new Dictionary<string, byte[]>(StringComparer.Ordinal);
             try
             {
                 foreach (var attachment in Attachments)
                 {
-                    copies[attachment.AttachmentId] = attachment.CopyBytes();
+                    if (!contentByPayloadId.TryGetValue(attachment.PayloadId, out var content))
+                    {
+                        content = attachment.CopyBytes();
+                        contentByPayloadId.Add(attachment.PayloadId, content);
+                    }
+
+                    copies[attachment.AttachmentId] = content;
                 }
 
                 return copies;
+            }
+            finally
+            {
+                Dispose();
+            }
+        }
+
+        /// <summary>物化为与 ZeroMQ 一致的 SDK-owned TriggerResult，并确定性释放全部共享资源。</summary>
+        internal TriggerResult CopyResultAndRelease()
+        {
+            var contentByPayloadId = new Dictionary<string, byte[]>(StringComparer.Ordinal);
+            try
+            {
+                var ownedAttachments = new List<TriggerImageAttachment>(Attachments.Count);
+                foreach (var attachment in Attachments)
+                {
+                    if (!contentByPayloadId.TryGetValue(attachment.PayloadId, out var content))
+                    {
+                        content = attachment.CopyBytes();
+                        contentByPayloadId.Add(attachment.PayloadId, content);
+                    }
+
+                    ownedAttachments.Add(new TriggerImageAttachment
+                    {
+                        AttachmentId = attachment.AttachmentId,
+                        BindingId = attachment.BindingId,
+                        ItemIndex = attachment.ItemIndex,
+                        PayloadId = attachment.PayloadId,
+                        MediaType = attachment.MediaType,
+                        Content = content,
+                        Width = attachment.Width,
+                        Height = attachment.Height,
+                        Shape = attachment.Shape,
+                        DType = attachment.DType,
+                        Layout = attachment.Layout,
+                        PixelFormat = attachment.PixelFormat
+                    });
+                }
+
+                Result.ImageAttachments = ownedAttachments;
+                return Result;
             }
             finally
             {
@@ -301,6 +385,12 @@ namespace Amvar.Vision.SharedMemory
             string path,
             long offset,
             long contentLength,
+            int? width,
+            int? height,
+            IReadOnlyList<int>? shape,
+            string? dtype,
+            string? layout,
+            string? pixelFormat,
             ByteRangeGuard readerGuard)
         {
             PayloadId = payloadId;
@@ -308,12 +398,24 @@ namespace Amvar.Vision.SharedMemory
             this.path = path;
             this.offset = offset;
             ContentLength = contentLength;
+            Width = width;
+            Height = height;
+            Shape = shape?.ToArray() ?? Array.Empty<int>();
+            DType = dtype;
+            Layout = layout;
+            PixelFormat = pixelFormat;
             this.readerGuard = readerGuard;
         }
 
         internal string PayloadId { get; }
         internal string MediaType { get; }
         internal long ContentLength { get; }
+        internal int? Width { get; }
+        internal int? Height { get; }
+        internal IReadOnlyList<int> Shape { get; }
+        internal string? DType { get; }
+        internal string? Layout { get; }
+        internal string? PixelFormat { get; }
 
         internal Stream OpenRead()
         {

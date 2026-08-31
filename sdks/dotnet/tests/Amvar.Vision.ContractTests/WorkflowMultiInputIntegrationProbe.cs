@@ -163,14 +163,14 @@ namespace Amvar.Vision.ContractTests
                     "3570 fixture validation " + sequence.ToString(CultureInfo.InvariantCulture))
                 .Build();
             var startedAt = Stopwatch.GetTimestamp();
-            var result = runner.InvokeZeroMqImageFromFileWithInputs(
+            var call = runner.Call(api => api.InvokeZeroMqImageFromFileWithInputs(
                 options.ZeroMqTriggerName,
                 options.ImagePath,
                 inputs,
-                options.ImageMediaType);
+                options.ImageMediaType));
             var elapsedMs = ElapsedMilliseconds(startedAt);
-            RequireSucceeded("ZeroMQ", result);
-            return BuildTriggerSample(result, elapsedMs, result.ImageAttachments.Count);
+            RequireSucceeded("ZeroMQ", call);
+            return BuildTriggerSample(call, elapsedMs);
         }
 
         private static object InvokeSharedMemory(
@@ -191,39 +191,67 @@ namespace Amvar.Vision.ContractTests
                     "3570 fixture validation " + sequence.ToString(CultureInfo.InvariantCulture))
                 .Build();
             var startedAt = Stopwatch.GetTimestamp();
-            using (var result = runner.InvokeSharedMemoryImageFromFileWithInputs(
+            var call = runner.Call(api => api.InvokeSharedMemoryImageFromFileWithInputs(
                 options.SharedMemoryTriggerName,
                 options.ImagePath,
                 inputs,
-                options.ImageMediaType))
-            {
-                var elapsedMs = ElapsedMilliseconds(startedAt);
-                RequireSucceeded("LocalBuffer", result.Result);
-                return BuildTriggerSample(result.Result, elapsedMs, result.Attachments.Count);
-            }
+                options.ImageMediaType));
+            var elapsedMs = ElapsedMilliseconds(startedAt);
+            RequireSucceeded("LocalBuffer", call);
+            return BuildTriggerSample(call, elapsedMs);
         }
 
         private static object BuildTriggerSample(
-            TriggerResult result,
-            double elapsedMs,
-            int attachmentCount)
+            AMVisionCallResult<TriggerResult> call,
+            double elapsedMs)
         {
+            var result = call.Data;
             var responseJson = JsonConvert.SerializeObject(result.ResponsePayload, Formatting.None);
+            var resultsJson = result.ResponsePayload.TryGetValue("results", out var results)
+                ? results.ToString(Formatting.None)
+                : "null";
+            var callJson = JObject.FromObject(call);
+            var data = (JObject)callJson["Data"]!;
             return new
             {
                 succeeded = true,
                 elapsed_ms = elapsedMs,
+                result.State,
                 result.TriggerSourceId,
                 result.WorkflowRunId,
+                workflow_state = result.ResponsePayload.TryGetValue("workflow_state", out var workflowState)
+                    ? workflowState.Value<string>()
+                    : null,
                 response_keys = result.ResponsePayload.Keys.OrderBy(item => item, StringComparer.Ordinal).ToArray(),
                 response_sha256 = ComputeSha256(responseJson),
                 response_size_bytes = Encoding.UTF8.GetByteCount(responseJson),
-                attachment_count = attachmentCount
+                results_sha256 = ComputeSha256(resultsJson),
+                results_size_bytes = Encoding.UTF8.GetByteCount(resultsJson),
+                attachment_count = result.ImageAttachments.Count,
+                data_keys = data.Properties().Select(property => property.Name).OrderBy(item => item, StringComparer.Ordinal).ToArray(),
+                has_result_wrapper = data["Result"] != null,
+                has_lease_attachments = data["Attachments"] != null,
+                has_local_timings = data["Timings"] != null
             };
         }
 
-        private static void RequireSucceeded(string transport, TriggerResult result)
+        private static void RequireSucceeded(
+            string transport,
+            AMVisionCallResult<TriggerResult> call)
         {
+            if (call.Exception != null)
+            {
+                throw new InvalidOperationException(
+                    transport + " Workflow call raised an exception.",
+                    call.Exception);
+            }
+            if (call.HttpResponse != null)
+            {
+                throw new InvalidOperationException(
+                    transport + " Workflow call returned HTTP " + call.HttpResponse.StatusCode + ".");
+            }
+
+            var result = call.Data;
             if (!string.Equals(result.State, "succeeded", StringComparison.OrdinalIgnoreCase))
             {
                 throw new InvalidOperationException(

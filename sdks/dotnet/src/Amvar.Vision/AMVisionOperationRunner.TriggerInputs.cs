@@ -147,7 +147,7 @@ namespace Amvar.Vision
         }
 
         /// <summary>发送 LocalBuffer 图片 bytes 并附带 JSON/文本输入。</summary>
-        public SharedMemoryTriggerResult InvokeSharedMemoryImageBytesWithInputs(
+        public TriggerResult InvokeSharedMemoryImageBytesWithInputs(
             string triggerSourceName,
             byte[] imageBytes,
             string mediaType,
@@ -161,7 +161,7 @@ namespace Amvar.Vision
         }
 
         /// <summary>发送 LocalBuffer BGR24 图片并附带 JSON/文本输入。</summary>
-        public SharedMemoryTriggerResult InvokeSharedMemoryBgr24WithInputs(
+        public TriggerResult InvokeSharedMemoryBgr24WithInputs(
             string triggerSourceName,
             byte[] bgr24Bytes,
             int width,
@@ -177,7 +177,7 @@ namespace Amvar.Vision
         }
 
         /// <summary>发送 LocalBuffer 图片文件并附带 JSON/文本输入。</summary>
-        public SharedMemoryTriggerResult InvokeSharedMemoryImageFromFileWithInputs(
+        public TriggerResult InvokeSharedMemoryImageFromFileWithInputs(
             string triggerSourceName,
             string imagePath,
             WorkflowTriggerInputs inputs,
@@ -191,7 +191,7 @@ namespace Amvar.Vision
         }
 
         /// <summary>解码 Base64 图片后写入 LocalBuffer，并附带 JSON/文本输入。</summary>
-        public SharedMemoryTriggerResult InvokeSharedMemoryImageBase64WithInputs(
+        public TriggerResult InvokeSharedMemoryImageBase64WithInputs(
             string triggerSourceName,
             string imageBase64,
             WorkflowTriggerInputs inputs,
@@ -205,7 +205,7 @@ namespace Amvar.Vision
         }
 
         /// <summary>发送本机共享内存 JSON/文本 event-only 输入。</summary>
-        public SharedMemoryTriggerResult InvokeSharedMemoryEventWithInputs(
+        public TriggerResult InvokeSharedMemoryEventWithInputs(
             string triggerSourceName,
             WorkflowTriggerInputs inputs)
         {

@@ -411,7 +411,7 @@ TriggerSource 创建、enable、Runtime 切版和实际调用前，根据以下�
 
 | 入口 | JSON | 直接图片 attachment |
 | --- | --- | --- |
-| `local-shared-memory` sync | mailbox inline/page-chain | LocalBuffer BufferRef；结果对象持有 reader guard 到 Dispose 后 ACK |
+| `local-shared-memory` sync | mailbox inline/page-chain | LocalBuffer BufferRef；高层物化为统一 `TriggerResult` 后 ACK，低层 lease 持有 reader guard 到 Dispose 后 ACK |
 | ZeroMQ Trigger Result v1 | Frame 0 JSON manifest | Frame 1 到 N 唯一 physical payload；无图片时 N=0 |
 | `event-only` PLC/IO/MQTT/目录/定时 | 丢弃 | 丢弃，不 handoff |
 | `accepted-then-query` | 状态和 run id | 复制到 ObjectStore 后查询，或显式丢弃 |
@@ -556,9 +556,9 @@ TriggerSource 和 SDK 配置包不增加 `reply_protocol`、JSON/multipart mode 
 - 图执行和 output handoff 完成后释放 Runtime execution token 与 executor permit；未 handoff 的输入/中间 lease由 Run cleanup 条件释放。
 - 小型结构化结果使用 inline response；大型结果使用固定 overflow page-chain；直接图片只返回 LocalBuffer 引用。显式 `image-base64.v1` 作为结构化 JSON 使用同一容量边界。
 - SDK 校验 descriptor、结构化结果 checksum 和每个 output lease locator/guard identity。
-- SDK 在公开结果对象返回前，为所有唯一物理 output lease 取得 reader guard；结果对象持有这些 guard，不能在首次 checksum 校验后释放。
-- 结果对象实现幂等 `Dispose`/`DisposeAsync`：先原子禁止取得新 view，等待 SDK 内已经开始的读取结束并使 owner-backed view 失效，再释放全部 reader guard，最后发布一次 ACK。调用方不得在结果释放后继续使用先前取得的 `Span`/view。
-- JSON-only 结果，或所有 attachment 已明确复制到 SDK 自有 `byte[]` 的结果，不再依赖共享 view，可以在 `Invoke` 返回前发布 ACK。SDK 应提供显式 copy-and-release helper，不能悄悄把零复制结果复制成托管大数组。
+- SDK 在低层零复制 lease 返回前，为所有唯一物理 output lease 取得 reader guard；`SharedMemoryTriggerResult` 持有这些 guard，不能在首次 checksum 校验后释放。高层 Runner 则显式把 attachment 物化为 SDK-owned bytes，再返回统一 `TriggerResult`。
+- 低层 lease 实现幂等 `Dispose`/`DisposeAsync`：先原子禁止取得新 view，等待 SDK 内已经开始的读取结束并使 owner-backed view 失效，再释放全部 reader guard，最后发布一次 ACK。调用方不得在 lease 释放后继续使用先前取得的 `Span`/view。
+- JSON-only 结果，或高层 Runner 已把所有 attachment 明确复制到 SDK 自有 `byte[]` 的结果，不再依赖共享 view，可以在返回前发布 ACK。低层 SDK 提供显式 copy-and-release helper，不能在零复制 API 中悄悄复制成托管大数组。
 - backend-service 收到 ACK 后按 response owner identity 释放全部 output lease、page-chain 和 descriptor，最后释放 TriggerSource 单在途 permit。
 - SDK 未 ACK 时，response deadline sweep 先把 ACTIVE lease 迁移到 REVOKING，再尝试取得 reader guard；取得后条件释放，无法取得时进入 QUARANTINED。deadline 不能使调用方仍在读取的 slot 被复用。
 - 错误、取消和 deadline 路径同样必须在协议结果已交付、资源已安全回收，或未完成 ZeroMQ 资源已由预留 adapter transport registry 持续负责且 lease 已进入 Broker REVOKING/QUARANTINED 回收链后才释放 TriggerSource permit；发布 RESPONSE 或关闭 socket 本身不是 permit 结束点。
@@ -725,9 +725,9 @@ REQUEST 时 route generation 已变化、source 已禁用或 Runtime 已切版�
 
 新增 `SharedMemoryTriggerClient`、External LocalBuffer writer/reader 和职责等价的 helper。SDK配置包提供稳定TriggerSource路由、`buffers_root`和协议参数；arena容量、descriptor/guard几何与layout fingerprint由allocator header自动发现，不复制pool能力和内部文件路径。
 
-`local-shared-memory` v1 只提供同步调用，不复用异步 task handle 语义。公开结果对象实现确定性释放：.NET 使用 `IDisposable`/`IAsyncDisposable` 管理唯一物理 output readers 与 ACK；reader guard 在 `Invoke` 返回后继续由结果对象持有。`Dispose`/`DisposeAsync` 使用原子状态机禁止新读取、等待 SDK 内活动 accessor 结束、使 owner-backed attachment view 失效、释放全部 guard，再发布一次 ACK。重复 Dispose 为幂等 no-op。调用方释放结果前 attachment view 保持有效，释放后不得继续访问或保留先前取得的 `Span`。SDK 终结器只能作为泄漏诊断和最后防线，不能替代显式 dispose。
+`local-shared-memory` v1 只提供同步调用，不复用异步 task handle 语义。`AMVisionOperationRunner` 高层入口与 ZeroMQ 一样统一返回 `TriggerResult`：返回前把可选 LocalBuffer 输出物化为 SDK-owned `ImageAttachments`，确定性释放 reader guard 并 ACK；JSON-only 结果不复制图片。低层 `SharedMemoryTriggerClient` 继续返回 `SharedMemoryTriggerResult` 零复制 lease，并使用 `IDisposable`/`IAsyncDisposable` 管理唯一物理 output readers 与 ACK；reader guard 在低层 `Invoke` 返回后继续由 lease 持有。`Dispose`/`DisposeAsync` 使用原子状态机禁止新读取、等待 SDK 内活动 accessor 结束、使 owner-backed attachment view 失效、释放全部 guard，再发布一次 ACK。重复 Dispose 为幂等 no-op。调用方释放低层 lease 前 attachment view 保持有效，释放后不得继续访问。SDK 终结器只能作为泄漏诊断和最后防线，不能替代显式 dispose。
 
-SDK 可以提供显式 `CopyAttachmentsAndRelease` 或等价 helper：把选中 attachment 复制为 SDK 自有 `byte[]`，完成后按上述顺序释放共享 view 并 ACK。JSON-only 和已经复制为 SDK-owned bytes 的结果允许在 `Invoke` 返回前 ACK；零复制 LocalBuffer view 不允许提前 ACK。同一 TriggerSource 的单在途 permit 因调用方长期不 Dispose 而保持占用属于明确资源背压，SDK 应记录泄漏诊断和 response deadline，但不能用后台线程在调用方可能仍读取时强制释放 guard。
+高层物化和低层 `CopyAttachmentsAndRelease` 都必须按 `payload_id` 去重物理复制，并让同物理 payload 的 logical attachments 共享同一个 SDK-owned `byte[]`；高层 `TriggerResult.ImageAttachments` 还必须保持 logical attachment 顺序和完整图片元数据，低层 helper 继续按 attachment id 返回字节映射。JSON-only 和已经复制为 SDK-owned bytes 的结果允许在返回前 ACK；低层零复制 LocalBuffer view 不允许提前 ACK。同一 TriggerSource 的单在途 permit 因低层调用方长期不 Dispose 而保持占用属于明确资源背压，SDK 应记录泄漏诊断和 response deadline，但不能用后台线程在调用方可能仍读取时强制释放 guard。
 
 ### BGR24 快速路径
 
@@ -785,7 +785,7 @@ Python 数据面同样遵守单映射边界：`LocalBufferBrokerClient` 的纯�
 - 建立 binary schema 单一事实源，生成 Python/.NET layout 与 contract fixture。
 - 固定 header、descriptor、page、状态、错误码、容量、guard、timeout 和 path builder；对真实 1080p/4K/20MP 图片完成 Python/.NET checksum、增量写入和 mmap 校验基准，据此冻结“结构化 mailbox payload 使用 CRC32、trusted-local 输入图片使用 guard publication”的边界。
 - 固定 descriptor 状态迁移的唯一写入方、mailbox owner lock、reload/takeover fencing 和 source permit 生命周期。
-- 明确正式能力包含 output lease handoff，不再保留“只返回小 JSON”未决项；冻结零复制结果对象持有 reader guard 到 Dispose/ACK 的生命周期。
+- 明确正式能力包含 output lease handoff，不再保留“只返回小 JSON”未决项；冻结低层零复制 lease 持有 reader guard 到 Dispose/ACK、高层 Runner 物化后返回统一 `TriggerResult` 的生命周期。
 - 冻结顶层 `result_mode/reply_timeout_seconds/ack_policy`、`result_mapping.result_bindings`、内部 `PreparedTriggerResult/PreparedLogicalAttachment/PreparedPhysicalPayload`、私有 `LeaseOwnershipReceipt`、公开 `WorkflowTriggerResultV1` locator union、`TriggerResponsePlan`、`WorkflowOutputDeliveryPlan`、ObjectStore snapshot/immutable write 端口和结构化 adapter capability 契约。
 - 冻结 ZeroMQ adapter 进程内 transport-lifetime registry 的 entry、容量预留、满载错误和关闭顺序；明确 Broker 不管理 libzmq tracker。
 - 冻结幂等分类：JSON-only 可重放、临时 attachment 不可重放、ObjectStore 稳定结果可查询。
