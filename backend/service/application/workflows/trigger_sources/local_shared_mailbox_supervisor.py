@@ -21,7 +21,7 @@ from backend.contracts.ipc import workflow_trigger_mailbox_v1 as mailbox_contrac
 from backend.contracts.workflows import (
     TriggerEventContract,
     WorkflowTriggerAllocationV1,
-    WorkflowTriggerEventRequestV2,
+    WorkflowTriggerEventRequestV1,
     WorkflowTriggerPrepareV1,
     WorkflowTriggerRequestV1,
 )
@@ -741,13 +741,13 @@ class WorkflowTriggerMailboxSupervisor:
         *,
         request_detect_ms: float,
     ) -> None:
-        """执行 event-only v2，并明确跳过图片 PREPARE、allocation 和 input lease。"""
+        """执行无图片事件请求，并明确跳过 PREPARE、allocation 和 input lease。"""
 
         pending: _PendingMailboxRequest | None = None
         source_id: str | None = None
         request_started_at = perf_counter()
         try:
-            event_request = WorkflowTriggerEventRequestV2.model_validate_json(
+            event_request = WorkflowTriggerEventRequestV1.model_validate_json(
                 request.payload
             )
             source_id = event_request.trigger_source_id

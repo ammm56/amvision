@@ -3,9 +3,9 @@ import { describe, expect, it } from 'vitest'
 import { buildWorkflowAppRequestExamples } from './workflow-app-request-examples'
 
 describe('Workflow App request examples', () => {
-  it('uses the published v2 contract to generate JSON, multipart, and .NET examples', () => {
+  it('uses the published v1 contract to generate JSON, multipart, and .NET examples', () => {
     const result = buildWorkflowAppRequestExamples({
-      format_id: 'amvision.workflow-app-contract.v2',
+      format_id: 'amvision.workflow-app-contract.v1',
       inputs: [
         { binding_id: 'request_json', payload_type_id: 'value.v1' },
         { binding_id: 'request_text', payload_type_id: 'text.v1' },

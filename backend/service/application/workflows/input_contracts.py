@@ -1,4 +1,4 @@
-"""Workflow App v2 公开输入契约构建与统一校验。"""
+"""Workflow App v1 公开输入契约构建与统一校验。"""
 
 from __future__ import annotations
 
@@ -29,8 +29,7 @@ from backend.service.application.errors import (
 from backend.service.application.ports.object_store import ObjectStore
 
 
-WORKFLOW_APP_CONTRACT_V1_FORMAT: Final = "amvision.workflow-app-contract.v1"
-WORKFLOW_APP_CONTRACT_V2_FORMAT: Final = "amvision.workflow-app-contract.v2"
+WORKFLOW_APP_CONTRACT_FORMAT: Final = "amvision.workflow-app-contract.v1"
 DEFAULT_INLINE_MAX_BYTES: Final = 1024 * 1024
 DEFAULT_IMAGE_BASE64_MAX_BYTES: Final = 128 * 1024 * 1024
 DEFAULT_FILE_MAX_BYTES: Final = 512 * 1024 * 1024
@@ -55,7 +54,7 @@ class WorkflowInputValidator:
         allowed_template_input_ids: set[str] | None = None,
         project_id: str | None = None,
     ) -> dict[str, object]:
-        """校验 binding 集合，并在 v2 契约下校验 schema、限制与对象 identity。"""
+        """校验 binding 集合、schema、限制与对象 identity。"""
 
         declared_bindings = {
             binding.binding_id: binding
@@ -86,15 +85,21 @@ class WorkflowInputValidator:
                 code="workflow_input_required_binding_missing",
                 details={"binding_ids": missing_binding_ids},
             )
-        if not _is_v2_contract(public_contract):
+        if public_contract is None:
             return dict(input_bindings)
+        if public_contract.get("format_id") != WORKFLOW_APP_CONTRACT_FORMAT:
+            raise WorkflowInputError(
+                "Workflow App 公开契约格式无效",
+                code="workflow_input_contract_format_invalid",
+                details={"format_id": public_contract.get("format_id")},
+            )
 
         contract_items = _contract_item_index(public_contract.get("inputs"))
         for binding_id, payload in input_bindings.items():
             contract_item = contract_items.get(binding_id)
             if contract_item is None:
                 raise WorkflowInputError(
-                    "Workflow App v2 契约缺少输入 binding",
+                    "Workflow App 公开契约缺少输入 binding",
                     code="workflow_input_unknown_binding",
                     details={"binding_ids": [binding_id]},
                 )
@@ -210,7 +215,7 @@ class WorkflowInputValidator:
         schema = contract_item.get("payload_schema")
         if not isinstance(schema, dict):
             raise ServiceConfigurationError(
-                "Workflow App v2 输入契约缺少 payload_schema",
+                "Workflow App 输入契约缺少 payload_schema",
                 details={"binding_id": binding_id},
             )
         try:
@@ -222,7 +227,7 @@ class WorkflowInputValidator:
             )
         except SchemaError as exc:
             raise ServiceConfigurationError(
-                "Workflow App v2 payload_schema 无效",
+                "Workflow App payload_schema 无效",
                 details={"binding_id": binding_id},
             ) from exc
         if not errors:
@@ -261,7 +266,7 @@ class WorkflowInputValidator:
             )
         except SchemaError as exc:
             raise ServiceConfigurationError(
-                "Workflow App v2 request_schema 无效",
+                "Workflow App request_schema 无效",
                 details={"binding_id": binding_id},
             ) from exc
         if not errors:
@@ -401,13 +406,13 @@ class WorkflowInputValidator:
             )
 
 
-def build_workflow_app_public_contract_v2(
+def build_workflow_app_public_contract(
     *,
     application: FlowApplication,
     template: WorkflowGraphTemplate,
     node_catalog_registry: NodeCatalogRegistry,
 ) -> dict[str, object]:
-    """冻结 payload schema、transport 和显式限制，生成 App Contract v2。"""
+    """冻结 payload schema、transport 和显式限制，生成 App Contract v1。"""
 
     payload_index = {
         item.payload_type_id: item
@@ -440,7 +445,7 @@ def build_workflow_app_public_contract_v2(
             }
         )
     return {
-        "format_id": WORKFLOW_APP_CONTRACT_V2_FORMAT,
+        "format_id": WORKFLOW_APP_CONTRACT_FORMAT,
         "application_id": application.application_id,
         "inputs": inputs,
         "outputs": outputs,
@@ -450,14 +455,7 @@ def build_workflow_app_public_contract_v2(
 def normalize_contract_for_compatibility(
     contract: dict[str, object],
 ) -> dict[str, object]:
-    """把 v1/v2 契约映射到同一兼容性比较 profile。"""
-
-    format_id = contract.get("format_id")
-    if format_id not in {
-        WORKFLOW_APP_CONTRACT_V1_FORMAT,
-        WORKFLOW_APP_CONTRACT_V2_FORMAT,
-    }:
-        return dict(contract)
+    """把公开契约映射到稳定的兼容性比较 profile。"""
     normalized = {
         "application_id": contract.get("application_id"),
         "inputs": [],
@@ -485,11 +483,87 @@ def normalize_contract_for_compatibility(
     return normalized
 
 
+def find_workflow_app_public_contract_issues(
+    contract: object,
+) -> tuple[dict[str, object], ...]:
+    """返回不满足当前 Workflow App v1 公开契约定义的问题。"""
+
+    if not isinstance(contract, dict):
+        return ({"kind": "contract_not_object"},)
+
+    issues: list[dict[str, object]] = []
+    if contract.get("format_id") != WORKFLOW_APP_CONTRACT_FORMAT:
+        issues.append(
+            {
+                "kind": "format_invalid",
+                "format_id": contract.get("format_id"),
+                "required_format_id": WORKFLOW_APP_CONTRACT_FORMAT,
+            }
+        )
+    for direction in ("inputs", "outputs"):
+        items = contract.get(direction)
+        if not isinstance(items, list):
+            issues.append({"kind": "bindings_invalid", "direction": direction})
+            continue
+        seen_binding_ids: set[str] = set()
+        for index, item in enumerate(items):
+            if not isinstance(item, dict):
+                issues.append(
+                    {
+                        "kind": "binding_invalid",
+                        "direction": direction,
+                        "index": index,
+                    }
+                )
+                continue
+            binding_id = item.get("binding_id")
+            if not isinstance(binding_id, str) or not binding_id.strip():
+                issues.append(
+                    {
+                        "kind": "binding_id_invalid",
+                        "direction": direction,
+                        "index": index,
+                    }
+                )
+            elif binding_id in seen_binding_ids:
+                issues.append(
+                    {
+                        "kind": "binding_id_duplicate",
+                        "direction": direction,
+                        "binding_id": binding_id,
+                    }
+                )
+            else:
+                seen_binding_ids.add(binding_id)
+            if not isinstance(item.get("payload_schema"), dict):
+                issues.append(
+                    {
+                        "kind": "payload_schema_missing",
+                        "direction": direction,
+                        "binding_id": binding_id,
+                    }
+                )
+            if direction == "inputs":
+                transports = item.get("transports")
+                if not isinstance(transports, list) or not transports or any(
+                    not isinstance(value, str) or not value.strip()
+                    for value in transports
+                ):
+                    issues.append(
+                        {
+                            "kind": "transports_invalid",
+                            "direction": direction,
+                            "binding_id": binding_id,
+                        }
+                    )
+    return tuple(issues)
+
+
 def _build_input_contract_item(
     binding: FlowApplicationBinding,
     payload_contract: WorkflowPayloadContract,
 ) -> dict[str, object]:
-    """构建一个包含显式 request 限制的 v2 输入 binding。"""
+    """构建一个包含显式 request 限制的输入 binding。"""
 
     payload_type_id = payload_contract.payload_type_id
     defaults = _request_defaults(payload_type_id, payload_contract.transport_kind)
@@ -584,7 +658,7 @@ def _binding_contract_fields(
     binding: FlowApplicationBinding,
     payload_type_id: str,
 ) -> dict[str, object]:
-    """返回 v1/v2 共用的 binding identity 字段。"""
+    """返回公开 binding identity 字段。"""
 
     return {
         "binding_id": binding.binding_id,
@@ -630,15 +704,6 @@ def _contract_item_index(value: object) -> dict[str, dict[str, object]]:
         for item in value
         if isinstance(item, dict) and isinstance(item.get("binding_id"), str)
     }
-
-
-def _is_v2_contract(contract: dict[str, object] | None) -> bool:
-    """判断当前契约是否启用 v2 严格输入语义。"""
-
-    return (
-        isinstance(contract, dict)
-        and contract.get("format_id") == WORKFLOW_APP_CONTRACT_V2_FORMAT
-    )
 
 
 def _read_positive_int(value: object) -> int | None:
@@ -696,9 +761,9 @@ def _normalize_binary_schema_instance(value: object, schema: object) -> object:
 __all__ = [
     "DEFAULT_DATASET_PACKAGE_MAX_BYTES",
     "DEFAULT_FILE_MAX_BYTES",
-    "WORKFLOW_APP_CONTRACT_V1_FORMAT",
-    "WORKFLOW_APP_CONTRACT_V2_FORMAT",
+    "WORKFLOW_APP_CONTRACT_FORMAT",
     "WorkflowInputValidator",
-    "build_workflow_app_public_contract_v2",
+    "build_workflow_app_public_contract",
+    "find_workflow_app_public_contract_issues",
     "normalize_contract_for_compatibility",
 ]

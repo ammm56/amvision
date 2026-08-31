@@ -24,11 +24,8 @@ from backend.service.application.errors import (
     ServiceConfigurationError,
     ServiceError,
 )
-from backend.service.application.workflows.app_version_service import (
-    WORKFLOW_APP_CONTRACT_FORMAT,
-)
 from backend.service.application.workflows.input_contracts import (
-    WORKFLOW_APP_CONTRACT_V1_FORMAT,
+    WORKFLOW_APP_CONTRACT_FORMAT,
 )
 from backend.service.application.workflows.application_lifecycle import (
     WorkflowApplicationLifecycleService,
@@ -1190,8 +1187,7 @@ class WorkflowTriggerSourceService:
         contract = dataset_storage.read_json(version.contract_snapshot_object_key)
         if (
             not isinstance(contract, dict)
-            or contract.get("format_id")
-            not in {WORKFLOW_APP_CONTRACT_V1_FORMAT, WORKFLOW_APP_CONTRACT_FORMAT}
+            or contract.get("format_id") != WORKFLOW_APP_CONTRACT_FORMAT
             or contract.get("application_id") != version.application_id
         ):
             raise ResourceConflictError(

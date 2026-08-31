@@ -72,8 +72,8 @@ def test_binary_contract_schema_python_and_fixture_are_current() -> None:
     assert schema["relative_mmap_path"] == contract.RELATIVE_MMAP_PATH
     assert schema["relative_guard_path"] == contract.RELATIVE_GUARD_PATH
     assert schema["base_contract_id"] == "amvision.local-message-channel.v1"
-    assert schema["schema_ids"]["event_request_v2"] == (
-        "amvision.workflow-trigger.event-request.v2"
+    assert schema["schema_ids"]["event_request_v1"] == (
+        "amvision.workflow-trigger.event-request.v1"
     )
     assert schema["descriptor_extension"]["offset"] == 104
     assert schema["descriptor_extension"]["size"] == 152

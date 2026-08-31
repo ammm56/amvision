@@ -269,7 +269,7 @@ namespace Amvar.Vision.SharedMemory
         }
 
         /// <summary>
-        /// 直接发布不带图片的 event-only v2 请求；不执行 PREPARE 或 LocalBuffer allocation。
+        /// 直接发布不带图片的 event-only 请求；不执行 PREPARE 或 LocalBuffer allocation。
         /// </summary>
         public SharedMemoryTriggerResult InvokeEvent(
             SharedMemoryTriggerEventRequest request)

@@ -540,7 +540,7 @@ class SnapshotExecutionService:
         self,
         request: WorkflowSnapshotExecutionRequest,
     ) -> dict[str, object] | None:
-        """读取请求固定的公开契约；旧 v1 直接执行路径可为空。"""
+        """读取请求固定的公开契约；未发布直接执行路径可为空。"""
 
         if request.public_contract is not None:
             return dict(request.public_contract)

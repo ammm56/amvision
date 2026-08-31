@@ -51,6 +51,9 @@ from backend.service.application.workflows.preview_partial_results import (
 from backend.service.application.workflows.execution_cleanup import (
     WORKFLOW_EXECUTION_TIMEOUT_SECONDS_KEY,
 )
+from backend.service.application.workflows.input_contracts import (
+    find_workflow_app_public_contract_issues,
+)
 from backend.service.application.workflows.model_sessions import (
     WORKFLOW_MODEL_SESSION_SCOPE_ID_METADATA_KEY,
     WORKFLOW_MODEL_SESSION_SCOPE_WAIT_ENABLED_METADATA_KEY,
@@ -154,7 +157,7 @@ from backend.service.application.workflows.app_version_service import (
     WorkflowAppVersionService,
 )
 from backend.service.application.workflows.input_contracts import (
-    build_workflow_app_public_contract_v2,
+    build_workflow_app_public_contract,
 )
 from backend.service.application.workflows.application_lifecycle import (
     WorkflowApplicationLifecycleService,
@@ -435,7 +438,7 @@ class WorkflowRuntimeService:
         _application_id, application, template, _source_kind = (
             self._resolve_preview_source(normalized_request)
         )
-        return application, build_workflow_app_public_contract_v2(
+        return application, build_workflow_app_public_contract(
             application=application,
             template=template,
             node_catalog_registry=self.node_catalog_registry,
@@ -656,7 +659,7 @@ class WorkflowRuntimeService:
                     execution_request.template_snapshot_object_key
                 )
             )
-            preview_public_contract = build_workflow_app_public_contract_v2(
+            preview_public_contract = build_workflow_app_public_contract(
                 application=preview_application,
                 template=preview_template,
                 node_catalog_registry=self.node_catalog_registry,
@@ -1167,6 +1170,7 @@ class WorkflowRuntimeService:
             application_id=app_version.application_id,
             workflow_app_version_id=app_version.workflow_app_version_id,
         )
+        self._require_current_workflow_app_contract(version_detail.contract)
         application = FlowApplication.model_validate(version_detail.application)
         execution_policy = self._resolve_execution_policy_for_project(
             project_id=normalized_request.project_id,
@@ -1716,6 +1720,17 @@ class WorkflowRuntimeService:
                 )
             unit_of_work.commit()
         try:
+            version_service = self._build_workflow_app_version_service()
+            desired_version = version_service.get_version_by_id(
+                project_id=workflow_app_runtime.project_id,
+                workflow_app_version_id=desired_revision.workflow_app_version_id,
+            )
+            desired_detail = version_service.get_version_detail(
+                project_id=desired_version.project_id,
+                application_id=desired_version.application_id,
+                workflow_app_version_id=desired_version.workflow_app_version_id,
+            )
+            self._require_current_workflow_app_contract(desired_detail.contract)
             runtime_state = self.worker_manager.start_runtime(
                 starting_runtime,
                 workflow_runtime_revision_id=(
@@ -3715,6 +3730,7 @@ class WorkflowRuntimeService:
     ) -> None:
         """在选版事务内校验 stopped、活动 run、Trigger 和 generation。"""
 
+        self._require_current_workflow_app_contract(target_contract)
         if workflow_app_runtime.revision_generation != expected_generation:
             raise ResourceConflictError(
                 "WorkflowAppRuntime generation 已发生变化",
@@ -3797,6 +3813,19 @@ class WorkflowRuntimeService:
             raise ResourceConflictError(
                 "目标版本与已有 TriggerSource 映射不兼容",
                 details={"mapping_issues": mapping_issues},
+            )
+
+    @staticmethod
+    def _require_current_workflow_app_contract(
+        contract: object,
+    ) -> None:
+        """拒绝把非当前 v1 公开契约装入正式 Runtime。"""
+
+        contract_issues = find_workflow_app_public_contract_issues(contract)
+        if contract_issues:
+            raise ResourceConflictError(
+                "目标版本不符合当前 Workflow App v1 公开契约",
+                details={"contract_issues": list(contract_issues)},
             )
 
     def _resolve_execution_policy_for_project(

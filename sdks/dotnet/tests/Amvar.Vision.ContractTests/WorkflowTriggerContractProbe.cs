@@ -198,8 +198,8 @@ namespace Amvar.Vision.ContractTests
                 {
                     var request = new SharedMemoryTriggerEventRequest
                     {
-                        EventId = "dotnet-event-only-v2",
-                        TraceId = "dotnet-event-only-v2-trace",
+                        EventId = "dotnet-event-only-v1",
+                        TraceId = "dotnet-event-only-v1-trace",
                         EnableTimings = true
                     };
                     request.Payload["request_json"] = new

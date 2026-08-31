@@ -110,14 +110,16 @@ def test_sdk_config_package_preview_and_download_include_project_resources(tmp_p
     assert workflow_config["runtime"]["name"] == "新建应用yolo11m_barqrcode"
     assert workflow_config["runtime"]["workflow_runtime_id"] == "workflow-runtime-sdk-config"
     assert workflow_config["runtime"]["public_contract"]["format_id"] == (
-        "amvision.workflow-app-contract.v2"
+        "amvision.workflow-app-contract.v1"
     )
     assert workflow_config["runtime"]["public_contract"]["inputs"][0]["binding_id"] == (
         "request_json"
     )
     assert workflow_config_name == "Config/config_workflow-app-sdk-config.json"
     assert workflow_config["trigger_sources"][0]["name"] == "zeromq yolo11m_barqrcode runtime"
-    assert workflow_config["trigger_sources"][0]["trigger_source_id"] == "zeromq-sdk-config"
+    assert workflow_config["trigger_sources"][0]["trigger_source_id"] == (
+        "zeromq-workflow-runtime-sdk-config"
+    )
     assert workflow_config["trigger_sources"][0]["input_binding_mapping"] == {
         "request_image_ref": {"source": "payload.request_image_ref"}
     }
@@ -232,7 +234,7 @@ def test_sdk_config_package_includes_local_shared_memory_trigger(tmp_path: Path)
         item["trigger_source_id"]: item
         for item in workflow_config["trigger_sources"]
     }
-    local_source = sources["local-shared-sdk-config"]
+    local_source = sources["local-shared-memory-workflow-runtime-sdk-config"]
     assert local_source["trigger_kind"] == "local-shared-memory"
     assert "zero_mq" not in local_source
     assert local_source["input_binding_mapping"] == {
@@ -341,6 +343,63 @@ def test_sdk_config_package_disambiguates_multiple_runtimes_for_one_application(
     assert len(archive.namelist()) == len(set(archive.namelist()))
 
 
+def test_sdk_config_package_uses_explicit_file_ids_for_named_runtime_lanes(
+    tmp_path: Path,
+) -> None:
+    """验证多 Runtime 测试通道使用稳定短名称，而不是随机 Runtime id。"""
+
+    client, session_factory, dataset_storage = _create_sdk_config_package_test_client(tmp_path)
+    application_id = "workflow-app-20260831023001"
+    _seed_workflow_runtime(
+        session_factory,
+        dataset_storage,
+        application_id=application_id,
+        application_display_name="Workflow Trigger 传输性能基准（Stage 9）",
+        workflow_runtime_id="workflow-runtime-random-first",
+        runtime_display_name="Workflow Trigger 传输基准 Runtime 01",
+        runtime_metadata={"sdk_config_file_id": "runtime-01"},
+    )
+    _seed_workflow_runtime(
+        session_factory,
+        dataset_storage,
+        application_id=application_id,
+        application_display_name="Workflow Trigger 传输性能基准（Stage 9）",
+        workflow_runtime_id="workflow-runtime-random-second",
+        runtime_display_name="Workflow Trigger 传输基准 Runtime 02",
+        runtime_metadata={"sdk_config_file_id": "runtime-02"},
+    )
+
+    try:
+        with client:
+            response = client.post(
+                "/api/v1/projects/project-1/sdk-config-packages/download",
+                headers=_build_headers(),
+                json={},
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert response.status_code == 200
+    archive = zipfile.ZipFile(BytesIO(response.content))
+    workflow_names = sorted(
+        name
+        for name in archive.namelist()
+        if name.startswith(f"Config/config_{application_id}_")
+    )
+    assert workflow_names == [
+        f"Config/config_{application_id}_runtime-01.json",
+        f"Config/config_{application_id}_runtime-02.json",
+    ]
+    runtime_names = [
+        json.loads(archive.read(name))["runtime"]["name"]
+        for name in workflow_names
+    ]
+    assert runtime_names == [
+        "Workflow Trigger 传输基准 Runtime 01",
+        "Workflow Trigger 传输基准 Runtime 02",
+    ]
+
+
 def test_sdk_config_package_can_skip_current_access_token(tmp_path: Path) -> None:
     """验证明确关闭 token 写入时仍使用占位符。"""
 
@@ -439,7 +498,7 @@ def _seed_workflow_runtime_and_trigger_source(
     dataset_storage.write_json(
         contract_object_key,
         {
-            "format_id": "amvision.workflow-app-contract.v2",
+            "format_id": "amvision.workflow-app-contract.v1",
             "application_id": "workflow-app-sdk-config",
             "inputs": [
                 {
@@ -477,7 +536,7 @@ def _seed_workflow_runtime_and_trigger_source(
         )
         unit_of_work.workflow_trigger_sources.save_trigger_source(
             WorkflowTriggerSource(
-                trigger_source_id="zeromq-sdk-config",
+                trigger_source_id="zeromq-workflow-runtime-sdk-config",
                 project_id="project-1",
                 display_name="zeromq yolo11m_barqrcode runtime",
                 trigger_kind="zeromq-topic",
@@ -509,7 +568,7 @@ def _seed_local_shared_memory_trigger_source(session_factory: object) -> None:
 
     now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     response_plan = build_trigger_response_plan(
-        trigger_source_id="local-shared-sdk-config",
+        trigger_source_id="local-shared-memory-workflow-runtime-sdk-config",
         trigger_kind="local-shared-memory",
         workflow_runtime_id="workflow-runtime-sdk-config",
         workflow_runtime_revision_id="workflow-runtime-revision-sdk-config",
@@ -528,7 +587,7 @@ def _seed_local_shared_memory_trigger_source(session_factory: object) -> None:
     try:
         unit_of_work.workflow_trigger_sources.save_trigger_source(
             WorkflowTriggerSource(
-                trigger_source_id="local-shared-sdk-config",
+                trigger_source_id="local-shared-memory-workflow-runtime-sdk-config",
                 project_id="project-1",
                 display_name="Local shared memory runtime",
                 trigger_kind="local-shared-memory",
@@ -566,6 +625,8 @@ def _seed_workflow_runtime(
     application_id: str,
     application_display_name: str,
     workflow_runtime_id: str,
+    runtime_display_name: str | None = None,
+    runtime_metadata: dict[str, object] | None = None,
 ) -> None:
     """写入一个独立 Workflow app runtime，供文件名回归测试使用。"""
 
@@ -585,7 +646,7 @@ def _seed_workflow_runtime(
                 workflow_runtime_id=workflow_runtime_id,
                 project_id="project-1",
                 application_id=application_id,
-                display_name=f"{application_display_name} runtime",
+                display_name=runtime_display_name or f"{application_display_name} runtime",
                 application_snapshot_object_key=application_object_key,
                 template_snapshot_object_key=(
                     f"projects/project-1/workflows/templates/{application_id}/template.json"
@@ -594,6 +655,7 @@ def _seed_workflow_runtime(
                 observed_state="running",
                 created_at=now,
                 updated_at=now,
+                metadata=dict(runtime_metadata or {}),
             )
         )
         unit_of_work.commit()

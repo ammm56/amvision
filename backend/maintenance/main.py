@@ -41,6 +41,14 @@ from backend.maintenance.development_model_reset import (
     DevelopmentModelResetRequest,
     reset_development_model_state,
 )
+from backend.maintenance.development_workflow_reset import (
+    DEVELOPMENT_WORKFLOW_HISTORY_CLEAR_COMMAND,
+    DEVELOPMENT_WORKFLOW_RESET_COMMAND,
+    DevelopmentWorkflowHistoryClearRequest,
+    DevelopmentWorkflowResetRequest,
+    clear_development_workflow_history,
+    reset_development_workflow_state,
+)
 from backend.contracts.workflows.resource_semantics import (
     WORKFLOW_PREVIEW_RUN_CLEANUP_COMMAND,
     WORKFLOW_PREVIEW_RUN_STORAGE_ROOT,
@@ -113,6 +121,8 @@ def build_argument_parser() -> argparse.ArgumentParser:
             WORKFLOW_PREVIEW_RUN_CLEANUP_COMMAND,
             WORKFLOW_RUNTIME_STORAGE_CLEANUP_COMMAND,
             DEVELOPMENT_MODEL_RESET_COMMAND,
+            DEVELOPMENT_WORKFLOW_RESET_COMMAND,
+            DEVELOPMENT_WORKFLOW_HISTORY_CLEAR_COMMAND,
             WORKFLOW_SAVE_LOCATION_MIGRATION_COMMAND,
             VERIFY_TASK_RUNTIME_UPGRADE_COMMAND,
         ),
@@ -181,6 +191,16 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="确认执行 reset-development-model-state；省略时只输出预览",
     )
     parser.add_argument(
+        "--confirm-workflow-reset",
+        action="store_true",
+        help="确认执行 reset-development-workflow-state；省略时只输出预览",
+    )
+    parser.add_argument(
+        "--confirm-workflow-history-clear",
+        action="store_true",
+        help="确认执行 clear-development-workflow-history；省略时只输出预览",
+    )
+    parser.add_argument(
         "--confirm-migration",
         action="store_true",
         help="确认写入 migrate-workflow-save-locations；省略时只输出预览",
@@ -203,6 +223,8 @@ def run_command(
     compile_only: bool = False,
     backend_service_settings: object | None = None,
     confirm_reset: bool = False,
+    confirm_workflow_reset: bool = False,
+    confirm_workflow_history_clear: bool = False,
     confirm_migration: bool = False,
 ) -> dict[str, object]:
     """执行指定 maintenance 命令。
@@ -437,6 +459,26 @@ def run_command(
 
         return reset_development_model_state(
             request=DevelopmentModelResetRequest(confirm=confirm_reset),
+            backend_service_settings=(
+                backend_service_settings or get_backend_service_settings()
+            ),
+        )
+    if command == DEVELOPMENT_WORKFLOW_RESET_COMMAND:
+        from backend.service.settings import get_backend_service_settings
+
+        return reset_development_workflow_state(
+            request=DevelopmentWorkflowResetRequest(confirm=confirm_workflow_reset),
+            backend_service_settings=(
+                backend_service_settings or get_backend_service_settings()
+            ),
+        )
+    if command == DEVELOPMENT_WORKFLOW_HISTORY_CLEAR_COMMAND:
+        from backend.service.settings import get_backend_service_settings
+
+        return clear_development_workflow_history(
+            request=DevelopmentWorkflowHistoryClearRequest(
+                confirm=confirm_workflow_history_clear
+            ),
             backend_service_settings=(
                 backend_service_settings or get_backend_service_settings()
             ),
@@ -678,6 +720,8 @@ def main(argv: list[str] | None = None) -> int:
         clean_only=args.clean_only,
         compile_only=args.compile_only,
         confirm_reset=args.confirm_reset,
+        confirm_workflow_reset=args.confirm_workflow_reset,
+        confirm_workflow_history_clear=args.confirm_workflow_history_clear,
         confirm_migration=args.confirm_migration,
     )
     if args.output == "text":

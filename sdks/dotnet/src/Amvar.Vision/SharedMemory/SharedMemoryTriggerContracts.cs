@@ -102,7 +102,7 @@ namespace Amvar.Vision.SharedMemory
     }
 
     /// <summary>
-    /// 不携带图片的 local-shared-memory event-only v2 请求。
+    /// 不携带图片的 local-shared-memory event-only 请求。
     /// </summary>
     public sealed class SharedMemoryTriggerEventRequest
     {
@@ -295,7 +295,7 @@ namespace Amvar.Vision.SharedMemory
     internal sealed class WorkflowTriggerEventRequestPayload
     {
         [JsonProperty("format_id")]
-        public string FormatId { get; set; } = "amvision.workflow-trigger-event-request.v2";
+        public string FormatId { get; set; } = "amvision.workflow-trigger-event-request.v1";
 
         [JsonProperty("trigger_source_id")]
         public string TriggerSourceId { get; set; } = string.Empty;

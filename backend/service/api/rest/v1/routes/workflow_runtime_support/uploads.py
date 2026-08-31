@@ -99,7 +99,7 @@ async def build_multipart_runtime_invoke_request(
             for binding in application.bindings
             if binding.direction == "input"
         }
-        # v2 权威类型来自不可变 contract；旧 v1 才回退到 binding metadata。
+        # 权威类型来自不可变 v1 contract；没有契约快照时才回退到 binding metadata。
         for binding_id, item in contract_items.items():
             payload_type_id = item.get("payload_type_id")
             if isinstance(payload_type_id, str):

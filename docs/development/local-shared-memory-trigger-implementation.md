@@ -8,7 +8,7 @@
 
 [共享内存数据面可靠性实施基线](shared-memory-data-plane-reliability-implementation.md)中的 overflow page 并发、总 deadline、ACK deadline、PROCESSING 取消、per-source health 和 [ADR-0008](../decisions/ADR-0008-local-buffer-fixed-arena-allocation.md) 固定 arena 迁移已经完成。后续尚未实现的结构化 mmap 公共 engine 收敛只按 [ADR-0009](../decisions/ADR-0009-local-message-channel.md) 与[本机结构化消息通道实施基线](local-message-channel-implementation.md)执行；本文中的旧目录是历史实现记录，不覆盖新的迁移目标。
 
-App Contract v2 集成验证确认，图片 PREPARE 的调用方 `media_type` 必须同时进入公开 `image-ref.v1` 顶层和底层 `BufferRef`。adapter 不得因为 BufferRef 已携带同名字段而省略公开字段，也不得根据文件扩展名或内容暗中猜测。该规则由 Python mailbox、真实 net472 跨进程和 ZeroMQ adapter 回归共同约束。
+App Contract v1 集成验证确认，图片 PREPARE 的调用方 `media_type` 必须同时进入公开 `image-ref.v1` 顶层和底层 `BufferRef`。adapter 不得因为 BufferRef 已携带同名字段而省略公开字段，也不得根据文件扩展名或内容暗中猜测。该规则由 Python mailbox、真实 net472 跨进程和 ZeroMQ adapter 回归共同约束。
 
 以下表格是已交付基线的历史验证记录，不是下一阶段完成清单：
 
@@ -418,7 +418,7 @@ TriggerSource 创建、enable、Runtime 切版和实际调用前，根据以下�
 
 `event-only` 固定丢弃所有结果，不建立 output handoff。同步 adapter 不支持某个已选择 binding 时，在创建、enable 或 Runtime 切版时拒绝配置；不需要返回的输出直接从 `result_bindings` 省略，不增加 discard 开关。`accepted-then-query` 不能保存短期 BufferRef：临时图片和绝对路径必须复制到受管理 ObjectStore；来源已经具有不可变 version、checksum、准确长度和 media type 时直接复用 locator，不重复物化。
 
-请求侧另有明确的 local-shared-memory event-only v2 操作。它使用 `amvision.workflow-trigger-event-request.v2` 直接进入同一 mailbox 的 REQUEST phase，由 server 建立绝对 deadline 并按 route 收紧；它不经过图片 PREPARE、LocalBuffer allocation、writer guard 或 input lease。该操作与上表的结果侧 `result_mode=event-only` 是两个独立维度，不能混用命名语义，也不能通过把图片 v1 的 `image` 改为可空来模拟。
+请求侧另有明确的 local-shared-memory event-only 操作。它使用 `amvision.workflow-trigger-event-request.v1` 直接进入同一 mailbox 的 REQUEST phase，由 server 建立绝对 deadline 并按 route 收紧；它不经过图片 PREPARE、LocalBuffer allocation、writer guard 或 input lease。该操作与上表的结果侧 `result_mode=event-only` 是两个独立维度，不能混用命名语义，也不能通过把图片请求的 `image` 改为可空来模拟。
 
 ### ZeroMQ Trigger Result v1
 

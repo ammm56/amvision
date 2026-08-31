@@ -9,7 +9,6 @@ namespace Amvar.Vision
     public sealed class WorkflowAppContract
     {
         public const string V1FormatId = "amvision.workflow-app-contract.v1";
-        public const string V2FormatId = "amvision.workflow-app-contract.v2";
 
         [JsonProperty("format_id")]
         public string FormatId { get; set; } = string.Empty;
@@ -23,10 +22,10 @@ namespace Amvar.Vision
         [JsonProperty("outputs")]
         public List<JObject> Outputs { get; set; } = new List<JObject>();
 
-        /// <summary>校验 v1/v2 基础形状；v1 保持 legacy profile。</summary>
+        /// <summary>校验 v1 公开契约的完整形状。</summary>
         public void Validate(string path)
         {
-            if (FormatId != V1FormatId && FormatId != V2FormatId)
+            if (FormatId != V1FormatId)
             {
                 throw new InvalidOperationException(path + ".format_id is unsupported.");
             }
@@ -38,7 +37,7 @@ namespace Amvar.Vision
             var ids = new HashSet<string>(StringComparer.Ordinal);
             for (var index = 0; index < Inputs.Count; index++)
             {
-                Inputs[index].Validate(path + ".inputs[" + index + "]", FormatId == V2FormatId);
+                Inputs[index].Validate(path + ".inputs[" + index + "]");
                 if (!ids.Add(Inputs[index].BindingId))
                 {
                     throw new InvalidOperationException(path + ".inputs contains duplicate binding_id.");
@@ -83,7 +82,7 @@ namespace Amvar.Vision
         [JsonProperty("charset")]
         public string? Charset { get; set; }
 
-        internal void Validate(string path, bool strictV2)
+        internal void Validate(string path)
         {
             if (string.IsNullOrWhiteSpace(BindingId))
             {
@@ -97,10 +96,9 @@ namespace Amvar.Vision
             PayloadTypeId = PayloadTypeId.Trim();
             AllowedMediaTypes ??= new List<string>();
             Transports ??= new List<string>();
-            if (!strictV2) return;
             if (PayloadSchema is null)
             {
-                throw new InvalidOperationException(path + ".payload_schema is required for v2.");
+                throw new InvalidOperationException(path + ".payload_schema is required.");
             }
             ValidatePositive(MaxInlineBytes, path + ".max_inline_bytes");
             ValidatePositive(MaxFileBytes, path + ".max_file_bytes");
@@ -110,7 +108,7 @@ namespace Amvar.Vision
             }
             if (Transports.Count == 0)
             {
-                throw new InvalidOperationException(path + ".transports cannot be empty for v2.");
+                throw new InvalidOperationException(path + ".transports cannot be empty.");
             }
         }
 

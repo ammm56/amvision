@@ -1,0 +1,261 @@
+{
+  "backend": {
+    "base_api_url": "http://127.0.0.1:5600",
+    "access_token": "<replace-with-user-token>",
+    "project_id": "project-1",
+    "http_timeout_seconds": 300
+  },
+  "runtime": {
+    "name": "摆盘分拣4570塑盒满盘检测应用",
+    "workflow_runtime_id": "workflow-runtime-0d544943f24f4fc89be42f9886a02a87",
+    "public_contract": {
+      "format_id": "amvision.workflow-app-contract.v1",
+      "application_id": "workflow-app-20260831130623",
+      "inputs": [
+        {
+          "binding_id": "request_image_base64",
+          "template_port_id": "request_image_base64",
+          "payload_type_id": "image-base64.v1",
+          "binding_kind": "api-request",
+          "required": false,
+          "config": {
+            "payload_type_id": "image-base64.v1"
+          },
+          "payload_schema": {
+            "type": "object",
+            "properties": {
+              "image_base64": {
+                "type": "string",
+                "minLength": 1
+              },
+              "media_type": {
+                "type": "string"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "image_base64"
+            ],
+            "additionalProperties": false
+          },
+          "request_schema": {},
+          "allowed_media_types": [
+            "image/*"
+          ],
+          "max_inline_bytes": 134217728,
+          "max_file_bytes": null,
+          "max_files": null,
+          "transports": [
+            "json"
+          ],
+          "charset": null
+        },
+        {
+          "binding_id": "request_image_ref",
+          "template_port_id": "request_image_ref",
+          "payload_type_id": "image-ref.v1",
+          "binding_kind": "api-request",
+          "required": false,
+          "config": {
+            "payload_type_id": "image-ref.v1"
+          },
+          "payload_schema": {
+            "type": "object",
+            "properties": {
+              "transport_kind": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "storage",
+                  "local-path",
+                  "buffer",
+                  "frame"
+                ]
+              },
+              "object_key": {
+                "type": "string"
+              },
+              "local_path": {
+                "type": "string"
+              },
+              "image_handle": {
+                "type": "string"
+              },
+              "buffer_ref": {
+                "type": "object"
+              },
+              "frame_ref": {
+                "type": "object"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "media_type": {
+                "type": "string"
+              },
+              "shape": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 2,
+                "maxItems": 4
+              },
+              "dtype": {
+                "type": "string"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "pixel_format": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "transport_kind",
+              "media_type"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "storage"
+                  }
+                },
+                "required": [
+                  "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "memory"
+                  }
+                },
+                "required": [
+                  "image_handle"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "local-path"
+                  }
+                },
+                "required": [
+                  "local_path"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "buffer"
+                  }
+                },
+                "required": [
+                  "buffer_ref"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "frame"
+                  }
+                },
+                "required": [
+                  "frame_ref"
+                ]
+              }
+            ],
+            "additionalProperties": false
+          },
+          "request_schema": {},
+          "allowed_media_types": [
+            "image/*"
+          ],
+          "max_inline_bytes": 1048576,
+          "max_file_bytes": 536870912,
+          "max_files": 1,
+          "transports": [
+            "json-reference",
+            "multipart-upload"
+          ],
+          "charset": null
+        }
+      ],
+      "outputs": [
+        {
+          "binding_id": "core_output_response_envelope_body",
+          "template_port_id": "core_output_response_envelope_body",
+          "payload_type_id": "response-body.v1",
+          "binding_kind": "http-response",
+          "required": true,
+          "config": {
+            "payload_type_id": "response-body.v1"
+          },
+          "payload_schema": {
+            "type": "object",
+            "additionalProperties": false
+          }
+        }
+      ]
+    }
+  },
+  "invoke": {
+    "image_path": "",
+    "image_input_binding": "request_image_base64",
+    "timeout_seconds": 30,
+    "event_limit": 20,
+    "event_preview_count": 5,
+    "source": "amvision-workflows-console",
+    "sync_scenario": "sync-invoke",
+    "async_scenario": "async-run",
+    "use_direct_input_bindings": false
+  },
+  "trigger_sources": [
+    {
+      "name": "摆盘分拣4570塑盒满盘检测应用 Local Shared Memory Trigger",
+      "trigger_source_id": "local-shared-memory-workflow-runtime-0d544943f24f4fc89be42f9886a02a87",
+      "trigger_kind": "local-shared-memory",
+      "input_binding_mapping": {
+        "request_image_ref": {
+          "source": "payload.request_image_ref",
+          "required": false,
+          "payload_type_id": "image-ref.v1"
+        }
+      },
+      "local_shared_memory": {
+        "buffers_root": "W:\\workspace\\codex\\python\\amvision\\data\\buffers",
+        "route_generation": 1,
+        "default_input_binding": "request_image_ref",
+        "timeout_seconds": 60
+      }
+    },
+    {
+      "name": "摆盘分拣4570塑盒满盘检测应用 ZeroMQ Trigger",
+      "trigger_source_id": "zeromq-workflow-runtime-0d544943f24f4fc89be42f9886a02a87",
+      "trigger_kind": "zeromq-topic",
+      "input_binding_mapping": {
+        "request_image_ref": {
+          "source": "payload.request_image_ref",
+          "required": false,
+          "payload_type_id": "image-ref.v1"
+        }
+      },
+      "zero_mq": {
+        "bind_endpoint": "tcp://127.0.0.1:5558",
+        "default_input_binding": "request_image_ref",
+        "timeout_seconds": 60
+      }
+    }
+  ],
+  "model_deployments": []
+}

@@ -13,7 +13,7 @@ from backend.service.application.message_channels.codec import (
 PREPARE_SCHEMA_ID = "amvision.workflow-trigger.prepare.v1"
 ALLOCATION_SCHEMA_ID = "amvision.workflow-trigger.allocation.v1"
 REQUEST_SCHEMA_ID = "amvision.workflow-trigger.request.v1"
-EVENT_REQUEST_SCHEMA_ID = "amvision.workflow-trigger.event-request.v2"
+EVENT_REQUEST_SCHEMA_ID = "amvision.workflow-trigger.event-request.v1"
 RESPONSE_SCHEMA_ID = "amvision.workflow-trigger.response.v1"
 
 

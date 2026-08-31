@@ -63,7 +63,8 @@ zip 包含：
 ```text
 Config/
   sdk-bootstrap.json
-  config_<workflow-runtime>.json
+  config_<application-id>.json
+  config_<application-id>_<runtime-file-id>.json
   config_model_deployments.json
 manifest.json
 README.md
@@ -71,11 +72,13 @@ README.md
 
 没有 Workflow Runtime 时不会生成对应文件；没有模型 Deployment 时不会生成模型文件。Project 没有任何可导出资源时，download 返回明确错误。
 
+一个应用只有一个 Runtime 时，文件名固定为 `config_<application-id>.json`。同一应用有多个 Runtime 时追加 Runtime 的 `sdk_config_file_id`；受控测试资源可以在 Runtime metadata 中显式设置该稳定短标识。未设置时回退真实 `workflow_runtime_id`，避免同名覆盖。配置文件中的 Runtime key 对多 Runtime 应用使用各自的 Runtime 展示名称，不能按随机资源 id 排序后生成含义不确定的 `_2`、`_3` 名称。
+
 每个 Workflow 配置文件包含：
 
 - backend API 地址、token 和 HTTP timeout；
 - 稳定的 Workflow Runtime key 与 id；
-- Runtime revision 固定的 `runtime.public_contract`；新版本为 App Contract v2，旧 Runtime 没有契约快照时为 `null`；
+- Runtime revision 固定的 `runtime.public_contract`；当前公开格式为 App Contract v1，没有契约快照时为 `null`；
 - 同步/异步调用默认参数；
 - 绑定的 ZeroMQ TriggerSource；
 - 绑定的 local-shared-memory TriggerSource；其配置只包含 `buffers_root`、路由 generation、默认输入 binding 和 timeout，不复制 arena 容量、mmap 路径、reader guard 数或图片上限；

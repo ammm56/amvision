@@ -1,4 +1,4 @@
-"""Workflow App Contract v2 与统一输入校验测试。"""
+"""Workflow App Contract v1 与统一输入校验测试。"""
 
 from __future__ import annotations
 
@@ -17,10 +17,10 @@ from backend.contracts.workflows.workflow_graph import (
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.service.application.errors import WorkflowInputError
 from backend.service.application.workflows.input_contracts import (
-    WORKFLOW_APP_CONTRACT_V1_FORMAT,
-    WORKFLOW_APP_CONTRACT_V2_FORMAT,
+    WORKFLOW_APP_CONTRACT_FORMAT,
     WorkflowInputValidator,
-    build_workflow_app_public_contract_v2,
+    build_workflow_app_public_contract,
+    find_workflow_app_public_contract_issues,
 )
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
@@ -28,18 +28,18 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 )
 
 
-def test_v2_contract_closes_payload_and_freezes_request_limits() -> None:
+def test_contract_closes_payload_and_freezes_request_limits() -> None:
     """新发布契约必须冻结闭合 schema、transport、限制和 charset。"""
 
     application, template = _build_text_file_application()
-    contract = build_workflow_app_public_contract_v2(
+    contract = build_workflow_app_public_contract(
         application=application,
         template=template,
         node_catalog_registry=NodeCatalogRegistry(),
     )
     inputs = {item["binding_id"]: item for item in contract["inputs"]}
 
-    assert contract["format_id"] == WORKFLOW_APP_CONTRACT_V2_FORMAT
+    assert contract["format_id"] == WORKFLOW_APP_CONTRACT_FORMAT
     assert inputs["request_text"]["payload_schema"]["additionalProperties"] is False
     assert inputs["request_text"]["transports"] == ["json"]
     assert inputs["request_text"]["charset"] == "utf-8"
@@ -50,8 +50,42 @@ def test_v2_contract_closes_payload_and_freezes_request_limits() -> None:
     assert inputs["request_file"]["max_files"] == 1
 
 
-def test_validator_keeps_v1_legacy_but_v2_rejects_extra_fields() -> None:
-    """v1 只检查 binding 集合，v2 才启用闭合 payload schema。"""
+def test_current_v1_contract_definition_rejects_loose_or_unknown_contracts() -> None:
+    """正式 Runtime 只接受结构完整的当前 v1 公开契约。"""
+
+    application, template = _build_text_file_application()
+    contract = build_workflow_app_public_contract(
+        application=application,
+        template=template,
+        node_catalog_registry=NodeCatalogRegistry(),
+    )
+    assert find_workflow_app_public_contract_issues(contract) == ()
+
+    loose_contract = {
+        **contract,
+        "inputs": [
+            {
+                key: value
+                for key, value in item.items()
+                if key not in {"payload_schema", "transports"}
+            }
+            for item in contract["inputs"]
+        ],
+    }
+    loose_issues = find_workflow_app_public_contract_issues(loose_contract)
+    assert {issue["kind"] for issue in loose_issues} == {
+        "payload_schema_missing",
+        "transports_invalid",
+    }
+
+    unknown_format_issues = find_workflow_app_public_contract_issues(
+        {**contract, "format_id": "unknown"}
+    )
+    assert unknown_format_issues[0]["kind"] == "format_invalid"
+
+
+def test_validator_rejects_extra_fields_for_v1_contract() -> None:
+    """v1 公开契约始终启用闭合 payload schema。"""
 
     application, template = _build_text_file_application()
     validator = WorkflowInputValidator()
@@ -64,19 +98,7 @@ def test_validator_keeps_v1_legacy_but_v2_rejects_extra_fields() -> None:
         },
         "request_file": _file_ref(object_key="projects/project-1/files/example.txt"),
     }
-    legacy_contract = {
-        "format_id": WORKFLOW_APP_CONTRACT_V1_FORMAT,
-        "application_id": application.application_id,
-        "inputs": [],
-        "outputs": [],
-    }
-    validator.validate(
-        application=application,
-        input_bindings=payload,
-        public_contract=legacy_contract,
-        project_id="project-1",
-    )
-    v2_contract = build_workflow_app_public_contract_v2(
+    contract = build_workflow_app_public_contract(
         application=application,
         template=template,
         node_catalog_registry=NodeCatalogRegistry(),
@@ -86,7 +108,7 @@ def test_validator_keeps_v1_legacy_but_v2_rejects_extra_fields() -> None:
         validator.validate(
             application=application,
             input_bindings=payload,
-            public_contract=v2_contract,
+            public_contract=contract,
             project_id="project-1",
         )
 
@@ -108,7 +130,7 @@ def test_validator_checks_file_identity_and_project_scope(tmp_path: Path) -> Non
     )
     metadata = receipt.metadata
     application, template = _build_text_file_application()
-    contract = build_workflow_app_public_contract_v2(
+    contract = build_workflow_app_public_contract(
         application=application,
         template=template,
         node_catalog_registry=NodeCatalogRegistry(),

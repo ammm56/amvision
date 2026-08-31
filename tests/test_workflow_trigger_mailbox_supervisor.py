@@ -21,7 +21,7 @@ from backend.contracts.ipc import workflow_trigger_mailbox_v1 as mailbox_contrac
 from backend.contracts.workflows import (
     TriggerResultContract,
     WorkflowTriggerAllocationV1,
-    WorkflowTriggerEventRequestV2,
+    WorkflowTriggerEventRequestV1,
     WorkflowTriggerInputImageSpec,
     WorkflowTriggerPrepareV1,
     WorkflowTriggerRequestV1,
@@ -392,7 +392,7 @@ def test_full_prepare_request_runtime_response_ack_chain(tmp_path: Path) -> None
             supervisor.close()
 
 
-def test_event_only_v2_runtime_chain_has_no_input_local_buffer_lease(
+def test_event_only_v1_runtime_chain_has_no_input_local_buffer_lease(
     tmp_path: Path,
 ) -> None:
     """结构化事件直接映射 binding，整个输入链不分配 LocalBuffer。"""
@@ -403,7 +403,7 @@ def test_event_only_v2_runtime_chain_has_no_input_local_buffer_lease(
         try:
             route = supervisor.register_trigger_source(_event_source("source-event"))
             with WorkflowTriggerMailboxClient(buffers_root=tmp_path) as client:
-                event = WorkflowTriggerEventRequestV2(
+                event = WorkflowTriggerEventRequestV1(
                     trigger_source_id="source-event",
                     event_id="event-json-1",
                     payload={"request_json": {"value": {"station": 2}}},
@@ -993,7 +993,7 @@ def test_dotnet_sdk_runs_real_prepare_write_request_response_ack_chain(
 
 
 @pytest.mark.skipif(os.name != "nt", reason="net472 共享内存门禁仅适用于 Windows")
-def test_dotnet_sdk_event_only_v2_skips_input_local_buffer(
+def test_dotnet_sdk_event_only_v1_skips_input_local_buffer(
     tmp_path: Path,
 ) -> None:
     """真实 net472 SDK 单阶段发布结构化事件，输入侧不产生 lease。"""
@@ -1954,7 +1954,7 @@ def _source(trigger_source_id: str) -> WorkflowTriggerSource:
 
 
 def _event_source(trigger_source_id: str) -> WorkflowTriggerSource:
-    """创建只映射 value.v1 的 event-only v2 本机 source。"""
+    """创建只映射 value.v1 的 event-only 本机 source。"""
 
     source = _source(trigger_source_id)
     return WorkflowTriggerSource(

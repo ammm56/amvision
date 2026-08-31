@@ -2,7 +2,7 @@
 
 ## 状态
 
-已接受并实施。统一 payload/节点/校验、App Contract v2、ObjectStore streaming、Runtime/Preview multipart、App Entry、typed Preview、local-shared-memory event-only v2、高性能 Trigger capability 校验和 .NET 双调用面强类型 API 已完成。HTTP Runtime 与高性能 Trigger 的调用面边界已经固定，并通过实际 Workflow App、Runtime、Trigger 和 SDK 组合调用验收。实施顺序、payload 形状和验收矩阵见 [Workflow App Entry 多类型输入实施基线](../development/workflow-app-entry-input-implementation.md)。
+已接受并实施。统一 payload/节点/校验、App Contract v1、ObjectStore streaming、Runtime/Preview multipart、App Entry、typed Preview、local-shared-memory event-only 请求、高性能 Trigger capability 校验和 .NET 双调用面强类型 API 已完成。HTTP Runtime 与高性能 Trigger 的调用面边界已经固定，并通过实际 Workflow App、Runtime、Trigger 和 SDK 组合调用验收。实施顺序、payload 形状和验收矩阵见 [Workflow App Entry 多类型输入实施基线](../development/workflow-app-entry-input-implementation.md)。
 
 ## 背景
 
@@ -46,9 +46,9 @@ HTTP JSON、HTTP multipart、Preview、Trigger 和 SDK 规范化后的请求共�
 
 ### 5. 新契约显式版本化
 
-现有 `amvision.workflow-app-contract.v1` 保持可读和可运行，不在读取时静默增加严格校验。多类型输入实现发布 `amvision.workflow-app-contract.v2`，冻结外层 payload schema、binding request schema、允许 transport、MIME、inline/file 大小、文件数量和 charset。
+开发阶段只保留 `amvision.workflow-app-contract.v1`。多类型输入直接纳入该当前协议，冻结外层 payload schema、binding request schema、允许 transport、MIME、inline/file 大小、文件数量和 charset；不建立并行协议版本。
 
-v1 到 v2 的比较先规范化旧契约；任何新增拒绝行为按破坏性变化处理。旧 Runtime 不必升级，重新发布和切版继续使用现有显式 breaking override、revision 和 generation CAS。
+同一 v1 协议内的发布版本比较按结构化契约执行；任何新增拒绝行为按破坏性变化处理。Runtime 切换到新的 Workflow App 发布版本时，继续使用显式 breaking override、revision 和 generation CAS。
 
 ### 6. Transport 保持确定性
 
@@ -62,7 +62,7 @@ HTTP Runtime 是通用调用面，支持 `image-ref.v1`、`image-base64.v1`、`v
 
 ZeroMQ 与 local-shared-memory 是高性能 Trigger 调用面，只允许映射 `image-ref.v1`、`value.v1` 和 `text.v1`。调用方图片 bytes 分别通过 ZeroMQ binary frame 或 LocalBuffer 传输，由服务端生成 `image-ref.v1`；JSON 和文本位于小型事件 payload。高性能 Trigger 不映射 `image-base64.v1`、`file-ref.v1` 或 `file-refs.v1`，也不增加文件 staging、普通文件 binary frame 或普通文件 LocalBuffer 语义。
 
-local-shared-memory v1 的必填图片语义保持不变。纯 JSON/文本调用使用显式 event-only v2，跳过图片 PREPARE、LocalBuffer allocation 和 lease 状态机；不能把 v1 image 改成隐式可空或为空事件分配假图片。ZeroMQ 和 local-shared-memory 的 transport 限制必须在 TriggerSource 配置、SDK 调用前校验和 Runtime 权威校验三处保持一致。
+local-shared-memory 图片请求的必填图片语义保持不变。纯 JSON/文本调用使用显式 event-only 请求，跳过图片 PREPARE、LocalBuffer allocation 和 lease 状态机；不能把 image 改成隐式可空或为空事件分配假图片。两种请求均属于当前 v1 协议。ZeroMQ 和 local-shared-memory 的 transport 限制必须在 TriggerSource 配置、SDK 调用前校验和 Runtime 权威校验三处保持一致。
 
 `.NET` SDK 同时覆盖两套调用面，但 API 不混用：HTTP Builder 支持六类输入；高性能 Trigger Builder 只支持 JSON 和文本，图片由对应 transport 的图片调用方法提供。两套 Builder 都不得隐藏排队、重试、等待或 transport fallback。
 
@@ -74,12 +74,12 @@ local-shared-memory v1 的必填图片语义保持不变。纯 JSON/文本调用
 - 用 LocalBuffer 或图片 binary frame 传普通文件：混淆 allocator、lease、解码和生命周期边界。
 - 根据文件名、扩展名、MIME 或内容自动选择解析节点：产生不可见行为和调用差异。
 - 后端或 SDK 先完整缓冲文件再上传：大文件和并发调用下产生额外完整副本，不满足长期稳定运行要求。
-- 为旧 v1 App Version 静默启用 v2 严格校验：会改变不可变发布物的生产行为。
+- 另建 v2 协议再长期双读：开发阶段会制造不必要的分支和隐藏兼容行为。
 
 ## 影响
 
 - Workflow App 可以用通用 binding 组合 JSON、文本、图片、单文件和多文件，不增加应用专用节点；具体调用入口仍受 transport capability 限制。
 - Node Catalog、App Contract、Runtime、Preview、Trigger、ObjectStore、前端和 SDK 必须共享同一 payload 与限制定义。
 - 文件上传增加 staging、流式 checksum、不可变发布、引用保留和启动清理职责，但大文件不进入 Runtime command 或数据库 JSON。
-- App Contract v2 和新 payload 属于显式公开契约变化，需要兼容比较、SDK contract test 和旧 v1 回归门禁。
+- App Contract v1 和新增 payload 属于显式公开契约变化，需要兼容比较、SDK contract test 和回归门禁；开发阶段不建立 v2 分支，能力演进由 Workflow App 发布版本记录。
 - local-shared-memory v1 图片热路径不受影响；纯结构化事件通过单独版本扩展，不向图片状态机加入隐藏分支。ZeroMQ/local-shared-memory 不承担 Base64 图片或普通文件输入。

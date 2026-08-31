@@ -36,11 +36,11 @@ JSON 统一使用 Newtonsoft.Json；ZeroMQ 统一使用 NetMQ。SDK 项目文件
 
 - Workflow App Runtime 查询、启动、停止、重启、健康检查、revision 读取和停机版本选择
 - Workflow App Runtime 同步 invoke、异步 run、run/event 查询
-- Workflow App Contract v2 读取、请求 binding 校验和多类型 multipart 请求构建
+- Workflow App Contract v1 读取、请求 binding 校验和多类型 multipart 请求构建
 - Model Deployment runtime 查询、启动、停止、预热、重置和推理调用
 - TriggerSource 查询、启用、禁用、健康检查
 - ZeroMQ TriggerSource 图片、BGR24、Base64、事件触发调用
-- local-shared-memory 图片 v1 与无图片 event-only v2 调用
+- local-shared-memory 图片与无图片 event-only v1 调用
 - 本地配置文件加载和按 key 调用已配置 runtime / deployment / trigger
 
 Console 示例不是 SDK 边界的一部分，不能把核心封装写到 console 项目中。
@@ -71,13 +71,13 @@ HTTP Runtime 与高性能 Trigger 是两套独立调用面：
 
 local-shared-memory 配置只保存同机受信 `data/buffers` 根目录、TriggerSource id/generation、默认 binding 和 timeout。SDK从 `local-buffer/state.mmap` header自动发现图片共享内存容量、descriptor/reader guard几何、broker epoch和layout fingerprint，因此后端调整容量或guard数量不要求修改SDK配置。该Trigger只适用于同一台机器；远程SDK即使能访问配置HTTP接口，也必须选择HTTP或ZeroMQ调用链路。
 
-无图片的 JSON/文本事件使用 `SharedMemoryTriggerClient.InvokeEvent` 或 `AMVisionOperationRunner.InvokeSharedMemoryEvent`。该方法发布 `amvision.workflow-trigger-event-request.v2`，直接进入 mailbox REQUEST，不执行图片 v1 的 PREPARE、不申请 LocalBuffer、不创建假图片 lease。`Payload` 仍按 TriggerSource 的 `input_binding_mapping` 映射到 Workflow 公开 binding，最终由 Runtime 固定的 App Contract 权威校验；同步结果和 ACK 生命周期与图片调用共用现有 response v1。
+无图片的 JSON/文本事件使用 `SharedMemoryTriggerClient.InvokeEvent` 或 `AMVisionOperationRunner.InvokeSharedMemoryEvent`。该方法发布 `amvision.workflow-trigger-event-request.v1`，直接进入 mailbox REQUEST，不执行图片请求的 PREPARE、不申请 LocalBuffer、不创建假图片 lease。`Payload` 仍按 TriggerSource 的 `input_binding_mapping` 映射到 Workflow 公开 binding，最终由 Runtime 固定的 App Contract 权威校验；同步结果和 ACK 生命周期与图片调用共用 response v1。
 
 `AMVisionOperationRunner` 高层 API 明确区分 name 与 id：原有不带 `ById` 后缀的方法只接收配置中的可读 `name`，对应的 `ById` 方法分别接收 `workflow_runtime_id`、`trigger_source_id` 或 `deployment_instance_id`。SDK 不在同一个字符串参数中猜测 name 或 id；模型 deployment 的管理类 `ById` 方法还要求显式传入 `sync` 或 `async` runtime mode，推理方法则由同步或异步方法语义确定 mode。
 
 生成配置和 .NET SDK 的 HTTP 默认超时统一为 300 秒。Workflow invoke 和 ZeroMQ reply 的业务超时仍由各自配置字段独立控制，不与 HTTP 连接超时混用。
 
-新 Runtime 的生成配置会在 `runtime.public_contract` 中携带该 Runtime revision 固定的 App Contract v2。`WorkflowRequestBuilder` 可以用这份契约对 binding、payload type、MIME、单文件大小、文件数量和必填输入进行快速校验；服务端仍执行完整 JSON Schema、ObjectStore identity 和 Project 范围校验。旧 Runtime 没有契约快照时该字段为 `null`，SDK 不使用当前应用草稿补齐。
+生成配置会在 `runtime.public_contract` 中携带该 Runtime revision 固定的 App Contract v1。`WorkflowRequestBuilder` 可以用这份契约对 binding、payload type、MIME、单文件大小、文件数量和必填输入进行快速校验；服务端仍执行完整 JSON Schema、ObjectStore identity 和 Project 范围校验。Runtime 没有契约快照时该字段为 `null`，SDK 不使用当前应用草稿补齐。
 
 HTTP Builder 已提供 `AddImageBase64`、`AddImageReference`、`AddFileReference`、`AddFileReferences`、`BuildJson` 和 `BuildMultipart`。`BuildJson` 拒绝上传 stream，`BuildMultipart` 通过 `input_bindings_json` 传递非文件输入并流式发送文件；不会自动选择 transport，也不会把 HTTP 文件能力塞入 Trigger API。
 

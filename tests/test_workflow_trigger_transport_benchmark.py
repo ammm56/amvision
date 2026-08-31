@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
+from tests.integration import workflow_trigger_transport_assets as asset_module
 from tests.integration.workflow_trigger_transport_benchmark import (
     _collect_lifecycle_counts,
     _distribution,
@@ -16,6 +18,83 @@ from tests.integration.workflow_trigger_transport_benchmark import (
     evaluate_health_recovery,
     load_settings,
 )
+
+
+def test_transport_assets_use_normalized_resource_and_sdk_config_names(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """基准资产应生成可排序资源 id 和稳定短 SDK 配置名。"""
+
+    posted: list[tuple[str, dict[str, object] | None]] = []
+    runtime_count = 0
+
+    def post_json(
+        _client: object,
+        path: str,
+        payload: dict[str, object] | None,
+        *,
+        expected_status: int,
+    ) -> dict[str, object]:
+        nonlocal runtime_count
+        assert expected_status in {200, 201}
+        posted.append((path, payload))
+        if path == "/workflows/app-runtimes":
+            runtime_count += 1
+            return {"workflow_runtime_id": f"workflow-runtime-random-{runtime_count}"}
+        return {}
+
+    resource_ids = asset_module._build_benchmark_resource_ids(
+        datetime(2026, 8, 31, 2, 30, 1, tzinfo=timezone.utc)
+    )
+    monkeypatch.setattr(asset_module, "_require_clean_benchmark_assets", lambda _client: None)
+    monkeypatch.setattr(
+        asset_module,
+        "_build_benchmark_resource_ids",
+        lambda: resource_ids,
+    )
+    monkeypatch.setattr(
+        asset_module,
+        "_save_benchmark_application",
+        lambda _client, *, resource_ids: {"draft_fingerprint": "fingerprint"},
+    )
+    monkeypatch.setattr(
+        asset_module,
+        "_publish_or_reuse_version",
+        lambda _client, *, application_id, application_document: (
+            "workflow-app-version-benchmark"
+        ),
+    )
+    monkeypatch.setattr(asset_module, "_post_json", post_json)
+    monkeypatch.setattr(asset_module, "_wait_ready", lambda _client, **_kwargs: None)
+
+    report = asset_module.create_assets(
+        object(),
+        pair_count=2,
+        first_zeromq_port=5651,
+        timeout_seconds=60,
+    )
+
+    assert report["application_id"] == "workflow-app-20260831023001"
+    assert report["template_id"] == "workflow-graph-20260831023001"
+    assert report["zeromq_trigger_source_ids"] == [
+        "zeromq-workflow-runtime-random-1",
+        "zeromq-workflow-runtime-random-2",
+    ]
+    assert report["shared_memory_trigger_source_ids"] == [
+        "local-shared-memory-workflow-runtime-random-1",
+        "local-shared-memory-workflow-runtime-random-2",
+    ]
+    runtime_payloads = [
+        payload for path, payload in posted if path == "/workflows/app-runtimes"
+    ]
+    assert [payload["display_name"] for payload in runtime_payloads if payload] == [
+        "Workflow Trigger 传输基准 Runtime 01",
+        "Workflow Trigger 传输基准 Runtime 02",
+    ]
+    assert [payload["metadata"]["sdk_config_file_id"] for payload in runtime_payloads if payload] == [
+        "runtime-01",
+        "runtime-02",
+    ]
 
 
 def test_benchmark_settings_require_exact_raw_bgr24_size(tmp_path: Path) -> None:

@@ -44,7 +44,7 @@ namespace Amvar.Vision.ContractTests
             VerifyLocalBufferMappingCache();
             VerifyWorkflowTriggerHealthResponse();
             VerifyAutomaticConfigurationRequiresAsyncFactory();
-            VerifyWorkflowAppContractV1V2();
+            VerifyWorkflowAppContractV1();
             VerifyWorkflowHttpSixInputBuilder();
             VerifyWorkflowTriggerInputsBuilder();
             await VerifyWorkflowRequestBuilderStreamingAsync().ConfigureAwait(false);
@@ -142,19 +142,10 @@ namespace Amvar.Vision.ContractTests
             }
         }
 
-        private static void VerifyWorkflowAppContractV1V2()
+        private static void VerifyWorkflowAppContractV1()
         {
-            var legacy = JsonConvert.DeserializeObject<WorkflowAppContract>(@"{
-                ""format_id"":""amvision.workflow-app-contract.v1"",
-                ""application_id"":""legacy-app"",
-                ""inputs"":[{""binding_id"":""request_value"",""payload_type_id"":""value.v1""}],
-                ""outputs"":[]
-            }");
-            Assert(legacy != null, "v1 App Contract must deserialize");
-            legacy!.Validate("legacy");
-
             var current = JsonConvert.DeserializeObject<WorkflowAppContract>(@"{
-                ""format_id"":""amvision.workflow-app-contract.v2"",
+                ""format_id"":""amvision.workflow-app-contract.v1"",
                 ""application_id"":""current-app"",
                 ""inputs"":[{
                     ""binding_id"":""request_file"",
@@ -169,15 +160,15 @@ namespace Amvar.Vision.ContractTests
                 }],
                 ""outputs"":[]
             }");
-            Assert(current != null, "v2 App Contract must deserialize");
+            Assert(current != null, "v1 App Contract must deserialize");
             current!.Validate("current");
-            AssertEqual(1024L, current.Inputs[0].MaxFileBytes, "v2 max file bytes");
+            AssertEqual(1024L, current.Inputs[0].MaxFileBytes, "v1 max file bytes");
         }
 
         private static async Task VerifyWorkflowRequestBuilderStreamingAsync()
         {
             var contract = JsonConvert.DeserializeObject<WorkflowAppContract>(@"{
-                ""format_id"":""amvision.workflow-app-contract.v2"",
+                ""format_id"":""amvision.workflow-app-contract.v1"",
                 ""application_id"":""stream-app"",
                 ""inputs"":[{
                     ""binding_id"":""request_file"",
@@ -408,7 +399,7 @@ namespace Amvar.Vision.ContractTests
         private static WorkflowAppContract BuildSixInputContract()
         {
             var contract = JsonConvert.DeserializeObject<WorkflowAppContract>(@"{
-                ""format_id"":""amvision.workflow-app-contract.v2"",
+                ""format_id"":""amvision.workflow-app-contract.v1"",
                 ""application_id"":""six-input-app"",
                 ""inputs"":[
                     {""binding_id"":""request_image_ref"",""payload_type_id"":""image-ref.v1"",""payload_schema"":{},""allowed_media_types"":[""image/*""],""max_inline_bytes"":1048576,""max_file_bytes"":1048576,""max_files"":1,""transports"":[""json-reference"",""multipart-upload""]},

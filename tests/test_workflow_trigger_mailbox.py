@@ -177,14 +177,14 @@ def test_server_authoritative_deadline_returns_readable_terminal(
             assert server.sweep()["released_count"] == 1
 
 
-def test_event_only_v2_claim_skips_prepare_and_gets_server_deadline(
+def test_event_only_v1_claim_skips_prepare_and_gets_server_deadline(
     tmp_path: Path,
 ) -> None:
-    """event-only v2 直接进入 REQUEST，不发布 allocation 或假图片。"""
+    """event-only 请求直接进入 REQUEST，不发布 allocation 或假图片。"""
 
     event_payload = json.dumps(
         {
-            "format_id": "amvision.workflow-trigger-event-request.v2",
+            "format_id": "amvision.workflow-trigger-event-request.v1",
             "trigger_source_id": "source-1",
             "event_id": "event-1",
             "payload": {"request_text": {"text": "hello"}},

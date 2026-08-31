@@ -20,11 +20,11 @@ Workflow 调用不应被限制为每次只提交一张图片。一个公开 App 
 
 | 阶段 | 范围 | 当前状态 |
 | --- | --- | --- |
-| 1 | payload、输入节点、共同校验、App Contract v2 | 已完成 |
+| 1 | payload、输入节点、共同校验、App Contract v1 | 已完成 |
 | 2 | ObjectStore streaming 与 Runtime multipart | 已完成 |
 | 3 | App Entry 前端与 typed Preview | 已完成 |
 | 4 | .NET HTTP multipart 组合请求与 streaming | 已完成 |
-| 5 | local-shared-memory event-only v2 | 已完成 |
+| 5 | local-shared-memory event-only 请求 | 已完成 |
 | 6 | 真实 App 复制、版本切换、HTTP/SDK/LocalBuffer 稳定性审计 | 已完成 |
 | 7 | ZeroMQ/local-shared-memory 高性能输入 capability 固定与配置校验 | 已完成 |
 | 8 | .NET HTTP 全量 Builder 与高性能 Trigger Builder 分层 | 已完成 |
@@ -291,7 +291,7 @@ LocalBuffer 继续只承载图片数据面，不承载 JSON、文本和普通文
 
 ## 公开 App 契约与兼容性
 
-当前 `amvision.workflow-app-contract.v1` 已冻结 binding id、payload type、required 和 config。多类型输入落地时发布 `amvision.workflow-app-contract.v2`，在每个 input 中保存规范化 `request` 策略，至少包括：
+当前 `amvision.workflow-app-contract.v1` 冻结 binding id、payload type、required、config 和规范化 `request` 策略，至少包括：
 
 - 外层 `payload_schema` 和可选的 `request_schema`；
 - `allowed_media_types`；
@@ -299,11 +299,11 @@ LocalBuffer 继续只承载图片数据面，不承载 JSON、文本和普通文
 - 明确的 `transports`，例如 JSON reference、inline JSON 或 multipart upload；
 - 文本 charset 规则。
 
-v2 的公开 input `payload_schema` 使用 closed-object 规则；包括 `value.v1` 外层在内，未声明的外层字段直接失败。该规则只约束 v2 公开请求，不回写或改变旧 v1 App Version 和 Workflow 内部边的 legacy `value.v1` 行为。
+v1 的公开 input `payload_schema` 使用 closed-object 规则；包括 `value.v1` 外层在内，未声明的外层字段直接失败。该规则只约束公开请求，不改变 Workflow 内部边的 `value.v1` 行为。
 
-旧 v1 App Version 保持可读和可运行，不在读取时静默改写为 v2，也不施加 v2 新增的严格 schema 和文件 policy。旧 App 重新发布时明确生成 v2，并使用同一份规范化契约驱动 Runtime、编辑器、OpenAPI 示例和 SDK 配置。正式 Runtime 不在执行时回读当前 Catalog schema，避免 Catalog 更新改变已发布版本的输入行为。
+开发阶段不保留宽松 v1 与严格 v2 两套行为。Workflow App 每次发布都生成唯一的严格 v1 契约快照，并使用同一份规范化契约驱动 Runtime、编辑器、OpenAPI 示例和 SDK 配置。正式 Runtime 不在执行时回读当前 Catalog schema，避免 Catalog 更新改变已发布版本的输入行为。
 
-v1 到 v2 比较先把 v1 binding 映射为 legacy validation profile；如果 v2 schema 或 policy 会拒绝过去可能通过的请求，则报告破坏性变化并要求现有显式 override。契约 `format_id` 变化本身不单独判定为破坏性，实际拒绝集合的变化才是比较依据。现有 Runtime 可以继续固定 v1 revision，不要求批量重发版本。
+同一 v1 协议内比较 Workflow App 发布版本；如果 schema 或 policy 会扩大拒绝集合，则报告破坏性变化并要求现有显式 override。Runtime 固定具体 App Version revision，不从协议格式号推断业务发布版本。
 
 兼容性固定为：
 
@@ -350,7 +350,7 @@ v1 到 v2 比较先把 v1 binding 映射为 legacy validation profile；如果 v
 - TriggerSource mapping 与 HTTP 调用最终必须经过同一个 `WorkflowInputValidator`；
 - Trigger adapter 不根据内容生成未声明 binding，也不自动 fallback transport。
 
-local-shared-memory 图片 v1 的 `WorkflowTriggerPrepareV1.image` 保持必填；`WorkflowTriggerRequestV1.payload` 可在同一次图片调用中同时携带 JSON 和文本。event-only v2 已作为独立操作实现，纯 JSON/文本请求直接进入 REQUEST phase，跳过图片 PREPARE、LocalBuffer allocation 和 lease 状态机。v1 没有把必填 image 改成可空，也不会为空事件分配假图片 slot。
+local-shared-memory 的 `WorkflowTriggerPrepareV1.image` 保持必填；`WorkflowTriggerRequestV1.payload` 可在同一次图片调用中同时携带 JSON 和文本。event-only 请求作为同一 v1 协议内的独立操作，纯 JSON/文本请求直接进入 REQUEST phase，跳过图片 PREPARE、LocalBuffer allocation 和 lease 状态机。实现没有把必填 image 改成可空，也不会为空事件分配假图片 slot。
 
 ZeroMQ JSON 事件继续支持纯结构化 JSON/文本请求。普通文件不得复用图片 binary frame，local-shared-memory 也不得为普通文件分配 LocalBuffer。`Invoke*ImageBase64` 只表示 SDK 接受 Base64 作为图片来源并解码成图片 bytes，最终仍写入 `request_image_ref`；该方法不表示 Trigger 支持 `request_image_base64`。
 
@@ -413,7 +413,7 @@ SDK 配置包固定 Runtime id、公开输入契约和限制，用于调用前�
 - 注册 `text.v1`、`file-ref.v1`、`file-refs.v1`；
 - 实现 Template Text/File/Files Input 和必要 bridge；
 - 实现 `WorkflowInputValidator`；
-- 发布 App Contract v2，并完成 v1 读取兼容与比较测试。
+- 发布唯一的 App Contract v1，并完成严格校验与比较测试。
 
 ### 阶段 2：ObjectStore 与 multipart
 
@@ -433,11 +433,11 @@ SDK 配置包固定 Runtime id、公开输入契约和限制，用于调用前�
 
 - 增加组合 request builder 和真正的 streaming multipart；
 - 删除新文件路径中的 `File.ReadAllBytes` 和完整 `MemoryStream` copy；
-- 增加 v1/v2 App Contract 和 multipart contract harness。
+- 增加 App Contract v1 和 multipart contract harness。
 
 ### 阶段 5：Trigger event-only
 
-- 增加 local-shared-memory event-only v2；
+- 增加 local-shared-memory event-only 请求；
 - 复用 Trigger input mapping 和统一校验器；
 - 保持图片 v1 协议、lease 与 ACK 生命周期不变。
 
@@ -517,7 +517,7 @@ HTTP Runtime 功能与兼容性至少覆盖：
 | 3570 治具空盘 | `workflow-app-20260830050503` | `workflow-graph-20260830050503` | `workflow-runtime-8c257afd0c144890a58592c8a15586e9` | `workflow-app-version-1e3177d397774687a4dc24187d0021e9` |
 | 3570 塑盒满盘 | `workflow-app-20260830050504` | `workflow-graph-20260830050504` | `workflow-runtime-83b9c7644e5e44b58bda402ce84ee889` | `workflow-app-version-2584543191694ec791fc9745924b4cf1` |
 
-两个 App 均冻结 `amvision.workflow-app-contract.v2`，公开 6 个可选 input：`request_image_ref`、`request_image_base64`、`request_json`、`request_text`、`request_file`、`request_files`。新增 Object/Text/File/Files 输入节点保持通用、纯函数和未连接时不执行，不改变原 Hough、Parallel 和 Classification Batch 主链。
+两个 App 均冻结 `amvision.workflow-app-contract.v1`，公开 6 个可选 input：`request_image_ref`、`request_image_base64`、`request_json`、`request_text`、`request_file`、`request_files`。新增 Object/Text/File/Files 输入节点保持通用、纯函数和未连接时不执行，不改变原 Hough、Parallel 和 Classification Batch 主链。
 
 真实 HTTP multipart 调用同时提交 59,885,622 bytes BMP、JSON、文本、单文件和两个有序文件，两条 Workflow 均成功；输入对象在调用结束后清理，LocalBuffer lease 归零。invalid JSON schema、未知 binding、错误 MIME、单文件重复上传和 closed schema 多余字段均按稳定错误码失败。
 
@@ -547,7 +547,7 @@ Runtime 首次负载前后存在模块和 OpenCV 工作集加载；第二轮 40 
 
 ## Trigger 与 .NET 双调用面补充验证（2026-08-31）
 
-从既有治具空盘应用复制并发布独立验证应用 `workflow-app-20260830233001`，运行实例为 `workflow-runtime-0defddfc09a945528159d1951b77f4fb`。验证应用冻结六个公开输入；创建并启用了 `zeromq-multi-input-sdk-20260830233001` 和 `local-shared-multi-input-sdk-20260830233001`，两者只显式映射 `request_image_ref`、`request_json`、`request_text`。把 `request_file` 映射给 ZeroMQ 的负向请求在创建阶段以 `unsupported_trigger_input_payload_type` 拒绝。
+从既有治具空盘应用复制并发布独立验证应用 `workflow-app-20260830233001`，对应 Graph 为 `workflow-graph-20260830233001`，运行实例为 `workflow-runtime-0defddfc09a945528159d1951b77f4fb`。验证应用冻结六个公开输入；创建了 `zeromq-workflow-runtime-0defddfc09a945528159d1951b77f4fb` 和 `local-shared-memory-workflow-runtime-0defddfc09a945528159d1951b77f4fb`，两者只显式映射 `request_image_ref`、`request_json`、`request_text`。把 `request_file` 映射给 ZeroMQ 的负向请求在创建阶段以 `unsupported_trigger_input_payload_type` 拒绝。
 
 使用生成的真实 SDK 配置包和 net472 x64 SDK，以 59,885,622 bytes BMP 运行三条调用面：
 

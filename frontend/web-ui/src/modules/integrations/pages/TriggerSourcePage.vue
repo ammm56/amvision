@@ -827,7 +827,7 @@ function applyProtocolTemplateDefaults(): void {
   const runtimeSuffix = sanitizeIdentifier(runtime?.workflow_runtime_id || runtime?.application_id || 'runtime')
   const templatePrefix = template.templateId === 'webhook-json'
     ? 'webhook'
-    : template.templateId === 'zeromq-image-trigger' ? 'zeromq' : 'local-shared'
+    : template.templateId === 'zeromq-image-trigger' ? 'zeromq' : 'local-shared-memory'
   triggerSourceId.value = `${templatePrefix}-${runtimeSuffix}`
   displayName.value = `${protocolTemplateDisplayName(template)} ${runtime?.display_name || runtime?.application_id || ''}`.trim()
   endpoint.value = buildDefaultEndpoint(template)

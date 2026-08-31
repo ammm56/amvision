@@ -6,12 +6,12 @@ export interface WorkflowAppRequestExamples {
   dotnet: string
 }
 
-/** 只根据已发布 App Contract v2 生成公开请求示例。 */
+/** 只根据已发布 App Contract v1 生成公开请求示例。 */
 export function buildWorkflowAppRequestExamples(
   contract: WorkflowJsonObject | null,
   workflowRuntimeId: string,
 ): WorkflowAppRequestExamples | null {
-  if (contract?.format_id !== 'amvision.workflow-app-contract.v2' || !Array.isArray(contract.inputs)) return null
+  if (contract?.format_id !== 'amvision.workflow-app-contract.v1' || !Array.isArray(contract.inputs)) return null
   const inputs = contract.inputs.filter(isRecord)
   const jsonBindings: WorkflowJsonObject = {}
   const multipartInlineBindings: WorkflowJsonObject = {}

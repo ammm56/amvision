@@ -39,7 +39,7 @@ WorkflowAppRuntime (stable id)
 2. Runtime id 与 Trigger id 是稳定调用标识，版本 id 和 revision id 是不可变来源标识。
 3. revision generation 单调递增，回滚通过创建指向历史版本的新 generation 完成，不回退数字。
 4. 只有 `published` 版本可以创建新 Runtime 或成为新的切换目标。
-5. `archived` 版本仍可支撑已经引用它的 Runtime、Trigger 和历史 Run，但不能新选；恢复为 `published` 后才能再次选择。
+5. `archived` 版本仍可支撑已经引用它的 Runtime、Trigger 和历史 Run，但不能新选；只有使用结构完整的当前 App Contract v1 时才能恢复为 `published` 并再次选择，历史契约快照只保留审计能力。
 6. 切换使用 `expected_generation` CAS；过时请求返回冲突，不隐式重试。
 7. 请求开始后固定 revision、version、generation、snapshot fingerprint 和 worker instance。
 8. 旧 generation、旧 revision 或旧 worker instance 的状态、heartbeat、结果和取消回调都不能更新当前 Runtime。
@@ -85,7 +85,7 @@ publishing → published ⇄ archived
 ```
 
 - archive：`published → archived` 的 expected-state CAS。
-- restore：`archived → published` 的 expected-state CAS。
+- restore：通过当前 App Contract v1 门禁后执行 `archived → published` 的 expected-state CAS。
 - archive/restore 不删除 snapshot、不改 fingerprint、不破坏已有 Runtime。
 
 ## Runtime 创建与切换

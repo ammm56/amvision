@@ -1,0 +1,571 @@
+{
+  "backend": {
+    "base_api_url": "http://127.0.0.1:5600",
+    "access_token": "<replace-with-user-token>",
+    "project_id": "project-1",
+    "http_timeout_seconds": 300
+  },
+  "runtime": {
+    "name": "摆盘分拣3570治具空盘检测应用",
+    "workflow_runtime_id": "workflow-runtime-9980d79a4d3744a0841ce07efaf19fc9",
+    "public_contract": {
+      "format_id": "amvision.workflow-app-contract.v1",
+      "application_id": "workflow-app-20260831130620",
+      "inputs": [
+        {
+          "binding_id": "request_file",
+          "template_port_id": "request_file",
+          "payload_type_id": "file-ref.v1",
+          "binding_kind": "api-request",
+          "required": false,
+          "config": {
+            "payload_type_id": "file-ref.v1",
+            "allowed_media_types": [
+              "application/json",
+              "text/plain"
+            ],
+            "max_file_bytes": 8388608,
+            "max_files": 1
+          },
+          "payload_schema": {
+            "type": "object",
+            "properties": {
+              "transport_kind": {
+                "const": "storage"
+              },
+              "storage_ref": {
+                "const": "object-store"
+              },
+              "object_key": {
+                "type": "string",
+                "minLength": 1
+              },
+              "file_name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "media_type": {
+                "type": "string",
+                "minLength": 1
+              },
+              "content_length": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "checksum_algorithm": {
+                "const": "sha256"
+              },
+              "checksum": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "immutable_version": {
+                "type": "string",
+                "minLength": 1
+              },
+              "metadata": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "transport_kind",
+              "storage_ref",
+              "object_key",
+              "file_name",
+              "media_type",
+              "content_length",
+              "checksum_algorithm",
+              "checksum",
+              "immutable_version"
+            ],
+            "additionalProperties": false
+          },
+          "request_schema": {},
+          "allowed_media_types": [
+            "application/json",
+            "text/plain"
+          ],
+          "max_inline_bytes": 1048576,
+          "max_file_bytes": 8388608,
+          "max_files": 1,
+          "transports": [
+            "json-reference",
+            "multipart-upload"
+          ],
+          "charset": null
+        },
+        {
+          "binding_id": "request_files",
+          "template_port_id": "request_files",
+          "payload_type_id": "file-refs.v1",
+          "binding_kind": "api-request",
+          "required": false,
+          "config": {
+            "payload_type_id": "file-refs.v1",
+            "allowed_media_types": [
+              "application/json",
+              "text/plain"
+            ],
+            "max_file_bytes": 4194304,
+            "max_files": 4
+          },
+          "payload_schema": {
+            "type": "object",
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "transport_kind": {
+                      "const": "storage"
+                    },
+                    "storage_ref": {
+                      "const": "object-store"
+                    },
+                    "object_key": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "file_name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "media_type": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "content_length": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "checksum_algorithm": {
+                      "const": "sha256"
+                    },
+                    "checksum": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{64}$"
+                    },
+                    "immutable_version": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "metadata": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "transport_kind",
+                    "storage_ref",
+                    "object_key",
+                    "file_name",
+                    "media_type",
+                    "content_length",
+                    "checksum_algorithm",
+                    "checksum",
+                    "immutable_version"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "items",
+              "count"
+            ],
+            "additionalProperties": false
+          },
+          "request_schema": {},
+          "allowed_media_types": [
+            "application/json",
+            "text/plain"
+          ],
+          "max_inline_bytes": 1048576,
+          "max_file_bytes": 4194304,
+          "max_files": 4,
+          "transports": [
+            "json-reference",
+            "multipart-upload"
+          ],
+          "charset": null
+        },
+        {
+          "binding_id": "request_image_base64",
+          "template_port_id": "request_image_base64",
+          "payload_type_id": "image-base64.v1",
+          "binding_kind": "api-request",
+          "required": false,
+          "config": {
+            "payload_type_id": "image-base64.v1"
+          },
+          "payload_schema": {
+            "type": "object",
+            "properties": {
+              "image_base64": {
+                "type": "string",
+                "minLength": 1
+              },
+              "media_type": {
+                "type": "string"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "image_base64"
+            ],
+            "additionalProperties": false
+          },
+          "request_schema": {},
+          "allowed_media_types": [
+            "image/*"
+          ],
+          "max_inline_bytes": 134217728,
+          "max_file_bytes": null,
+          "max_files": null,
+          "transports": [
+            "json"
+          ],
+          "charset": null
+        },
+        {
+          "binding_id": "request_image_ref",
+          "template_port_id": "request_image_ref",
+          "payload_type_id": "image-ref.v1",
+          "binding_kind": "api-request",
+          "required": false,
+          "config": {
+            "payload_type_id": "image-ref.v1"
+          },
+          "payload_schema": {
+            "type": "object",
+            "properties": {
+              "transport_kind": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "storage",
+                  "local-path",
+                  "buffer",
+                  "frame"
+                ]
+              },
+              "object_key": {
+                "type": "string"
+              },
+              "local_path": {
+                "type": "string"
+              },
+              "image_handle": {
+                "type": "string"
+              },
+              "buffer_ref": {
+                "type": "object"
+              },
+              "frame_ref": {
+                "type": "object"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "media_type": {
+                "type": "string"
+              },
+              "shape": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 2,
+                "maxItems": 4
+              },
+              "dtype": {
+                "type": "string"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "pixel_format": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "transport_kind",
+              "media_type"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "storage"
+                  }
+                },
+                "required": [
+                  "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "memory"
+                  }
+                },
+                "required": [
+                  "image_handle"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "local-path"
+                  }
+                },
+                "required": [
+                  "local_path"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "buffer"
+                  }
+                },
+                "required": [
+                  "buffer_ref"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "frame"
+                  }
+                },
+                "required": [
+                  "frame_ref"
+                ]
+              }
+            ],
+            "additionalProperties": false
+          },
+          "request_schema": {},
+          "allowed_media_types": [
+            "image/*"
+          ],
+          "max_inline_bytes": 1048576,
+          "max_file_bytes": 536870912,
+          "max_files": 1,
+          "transports": [
+            "json-reference",
+            "multipart-upload"
+          ],
+          "charset": null
+        },
+        {
+          "binding_id": "request_json",
+          "template_port_id": "request_json",
+          "payload_type_id": "value.v1",
+          "binding_kind": "api-request",
+          "required": false,
+          "config": {
+            "payload_type_id": "value.v1",
+            "request_schema": {
+              "type": "object",
+              "properties": {
+                "batch_id": {
+                  "type": "string"
+                },
+                "threshold": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                }
+              },
+              "additionalProperties": true
+            },
+            "max_inline_bytes": 1048576
+          },
+          "payload_schema": {
+            "type": "object",
+            "properties": {
+              "value": {}
+            },
+            "required": [
+              "value"
+            ],
+            "additionalProperties": false
+          },
+          "request_schema": {
+            "type": "object",
+            "properties": {
+              "batch_id": {
+                "type": "string"
+              },
+              "threshold": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "additionalProperties": true
+          },
+          "allowed_media_types": [],
+          "max_inline_bytes": 1048576,
+          "max_file_bytes": null,
+          "max_files": null,
+          "transports": [
+            "json"
+          ],
+          "charset": null
+        },
+        {
+          "binding_id": "request_text",
+          "template_port_id": "request_text",
+          "payload_type_id": "text.v1",
+          "binding_kind": "api-request",
+          "required": false,
+          "config": {
+            "payload_type_id": "text.v1",
+            "charset": "utf-8",
+            "max_inline_bytes": 1048576
+          },
+          "payload_schema": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string"
+              },
+              "media_type": {
+                "type": "string",
+                "minLength": 1
+              },
+              "charset": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "text",
+              "media_type",
+              "charset"
+            ],
+            "additionalProperties": false
+          },
+          "request_schema": {},
+          "allowed_media_types": [
+            "text/*",
+            "application/json"
+          ],
+          "max_inline_bytes": 1048576,
+          "max_file_bytes": null,
+          "max_files": null,
+          "transports": [
+            "json"
+          ],
+          "charset": "utf-8"
+        }
+      ],
+      "outputs": [
+        {
+          "binding_id": "core_logic_payload_to_value_2_value",
+          "template_port_id": "core_logic_payload_to_value_2_value",
+          "payload_type_id": "value.v1",
+          "binding_kind": "http-response",
+          "required": true,
+          "config": {
+            "payload_type_id": "value.v1"
+          },
+          "payload_schema": {
+            "type": "object",
+            "properties": {
+              "value": {}
+            },
+            "required": [
+              "value"
+            ],
+            "additionalProperties": false
+          }
+        }
+      ]
+    }
+  },
+  "invoke": {
+    "image_path": "",
+    "image_input_binding": "request_image_base64",
+    "timeout_seconds": 30,
+    "event_limit": 20,
+    "event_preview_count": 5,
+    "source": "amvision-workflows-console",
+    "sync_scenario": "sync-invoke",
+    "async_scenario": "async-run",
+    "use_direct_input_bindings": false
+  },
+  "trigger_sources": [
+    {
+      "name": "摆盘分拣3570治具空盘检测应用 Local Shared Memory Trigger",
+      "trigger_source_id": "local-shared-memory-workflow-runtime-9980d79a4d3744a0841ce07efaf19fc9",
+      "trigger_kind": "local-shared-memory",
+      "input_binding_mapping": {
+        "request_image_ref": {
+          "source": "payload.request_image_ref",
+          "required": false,
+          "payload_type_id": "image-ref.v1"
+        },
+        "request_json": {
+          "source": "payload.request_json",
+          "required": false,
+          "payload_type_id": "value.v1"
+        },
+        "request_text": {
+          "source": "payload.request_text",
+          "required": false,
+          "payload_type_id": "text.v1"
+        }
+      },
+      "local_shared_memory": {
+        "buffers_root": "W:\\workspace\\codex\\python\\amvision\\data\\buffers",
+        "route_generation": 1,
+        "default_input_binding": "request_image_ref",
+        "timeout_seconds": 60
+      }
+    },
+    {
+      "name": "摆盘分拣3570治具空盘检测应用 ZeroMQ Trigger",
+      "trigger_source_id": "zeromq-workflow-runtime-9980d79a4d3744a0841ce07efaf19fc9",
+      "trigger_kind": "zeromq-topic",
+      "input_binding_mapping": {
+        "request_image_ref": {
+          "source": "payload.request_image_ref",
+          "required": false,
+          "payload_type_id": "image-ref.v1"
+        },
+        "request_json": {
+          "source": "payload.request_json",
+          "required": false,
+          "payload_type_id": "value.v1"
+        },
+        "request_text": {
+          "source": "payload.request_text",
+          "required": false,
+          "payload_type_id": "text.v1"
+        }
+      },
+      "zero_mq": {
+        "bind_endpoint": "tcp://127.0.0.1:5555",
+        "default_input_binding": "request_image_ref",
+        "timeout_seconds": 60
+      }
+    }
+  ],
+  "model_deployments": []
+}

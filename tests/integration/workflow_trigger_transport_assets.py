@@ -1,14 +1,15 @@
 """为 Workflow Trigger 传输性能门禁准备和清理专用开发资产。
 
-该工具只通过公开 REST API 管理带 ``stage9-transport`` 前缀的资源。性能图会
-真实消费输入图片并执行一次 OpenCV grayscale，但只返回小型 JSON，从而把图片
-传输、LocalBuffer 物化和首次消费成本与业务模型推理解耦。业务模型链路由独立 soak
-工具验证。
+该工具只通过公开 REST API 管理带测试资产 metadata 的资源。性能图会真实消费输入图片
+并执行一次 OpenCV grayscale，但只返回小型 JSON，从而把图片传输、LocalBuffer 物化和
+首次消费成本与业务模型推理解耦。业务模型链路由独立 soak 工具验证。
 """
 
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 import time
@@ -25,11 +26,26 @@ ROOT: Final = Path(__file__).resolve().parents[2]
 DEFAULT_BASE_URL: Final = "http://127.0.0.1:5600"
 DEFAULT_TOKEN: Final = "amvision-default-user-token"
 PROJECT_ID: Final = "project-1"
-APPLICATION_ID: Final = "stage9-transport-benchmark-app"
-TEMPLATE_ID: Final = "stage9-transport-benchmark-template"
+LEGACY_APPLICATION_IDS: Final = (
+    "stage9-transport-benchmark-app",
+    "workflow-app-stage9-transport-benchmark",
+)
 TEMPLATE_VERSION: Final = "1.0.0"
 OUTPUT_BINDING_ID: Final = "benchmark_result"
-SOURCE_PREFIX: Final = "stage9-transport"
+LEGACY_SOURCE_PREFIXES: Final = (
+    "stage9-transport",
+    "workflow-trigger-stage9-transport",
+)
+DISPLAY_NAME: Final = "Workflow Trigger 传输性能基准（Stage 9）"
+ASSET_KIND: Final = "workflow-trigger-transport-benchmark"
+
+
+@dataclass(frozen=True)
+class BenchmarkResourceIds:
+    """一次基准资产创建使用的标准 App 与 Graph id。"""
+
+    application_id: str
+    template_id: str
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -85,10 +101,15 @@ def create_assets(
 ) -> dict[str, object]:
     """创建不可变版本、独立 Runtime 和两种成对 TriggerSource。"""
 
-    _require_clean_source_prefix(client)
-    application_document = _save_benchmark_application(client)
+    _require_clean_benchmark_assets(client)
+    resource_ids = _build_benchmark_resource_ids()
+    application_document = _save_benchmark_application(
+        client,
+        resource_ids=resource_ids,
+    )
     workflow_app_version_id = _publish_or_reuse_version(
         client,
+        application_id=resource_ids.application_id,
         application_document=application_document,
     )
     runtimes: list[dict[str, object]] = []
@@ -97,17 +118,19 @@ def create_assets(
     try:
         for index in range(pair_count):
             ordinal = index + 1
+            ordinal_label = f"{ordinal:02d}"
             runtime = _post_json(
                 client,
                 "/workflows/app-runtimes",
                 {
                     "project_id": PROJECT_ID,
                     "workflow_app_version_id": workflow_app_version_id,
-                    "display_name": f"Stage 9 Transport Runtime {ordinal}",
+                    "display_name": f"Workflow Trigger 传输基准 Runtime {ordinal_label}",
                     "request_timeout_seconds": int(timeout_seconds),
                     "metadata": {
                         "test_asset": True,
-                        "asset_kind": "workflow-trigger-transport-benchmark",
+                        "asset_kind": ASSET_KIND,
+                        "sdk_config_file_id": f"runtime-{ordinal_label}",
                     },
                 },
                 expected_status=201,
@@ -120,8 +143,8 @@ def create_assets(
                 None,
                 expected_status=200,
             )
-            zeromq_source_id = f"{SOURCE_PREFIX}-zeromq-{ordinal}"
-            shared_source_id = f"{SOURCE_PREFIX}-shared-{ordinal}"
+            zeromq_source_id = f"zeromq-{runtime_id}"
+            shared_source_id = f"local-shared-memory-{runtime_id}"
             common = _source_common(runtime_id=runtime_id, ordinal=ordinal)
             _post_json(
                 client,
@@ -129,7 +152,7 @@ def create_assets(
                 {
                     **common,
                     "trigger_source_id": zeromq_source_id,
-                    "display_name": f"Stage 9 ZeroMQ Transport {ordinal}",
+                    "display_name": f"Workflow Trigger 传输基准 {ordinal_label}（ZeroMQ）",
                     "trigger_kind": "zeromq-topic",
                     "transport_config": {
                         "bind_endpoint": (
@@ -147,7 +170,9 @@ def create_assets(
                 {
                     **common,
                     "trigger_source_id": shared_source_id,
-                    "display_name": f"Stage 9 Shared Memory Transport {ordinal}",
+                    "display_name": (
+                        f"Workflow Trigger 传输基准 {ordinal_label}（本机共享内存）"
+                    ),
                     "trigger_kind": "local-shared-memory",
                     "transport_config": {},
                 },
@@ -167,7 +192,8 @@ def create_assets(
     return {
         "format_id": "amvision.workflow-trigger-transport-assets.v1",
         "project_id": PROJECT_ID,
-        "application_id": APPLICATION_ID,
+        "application_id": resource_ids.application_id,
+        "template_id": resource_ids.template_id,
         "workflow_app_version_id": workflow_app_version_id,
         "workflow_runtime_ids": [
             _required_text(item, "workflow_runtime_id") for item in runtimes
@@ -178,7 +204,7 @@ def create_assets(
 
 
 def delete_assets(client: httpx.Client) -> dict[str, object]:
-    """只删除本工具创建的 TriggerSource 和 Runtime；保留可复用的不可变版本。"""
+    """只删除本工具创建的 TriggerSource 和 Runtime；保留不可变版本。"""
 
     removed_sources: list[str] = []
     removed_runtimes: list[str] = []
@@ -190,7 +216,10 @@ def delete_assets(client: httpx.Client) -> dict[str, object]:
     runtime_ids: set[str] = set()
     for source in sources:
         source_id = str(source.get("trigger_source_id") or "")
-        if not source_id.startswith(f"{SOURCE_PREFIX}-"):
+        is_legacy_source = any(
+            source_id.startswith(f"{prefix}-") for prefix in LEGACY_SOURCE_PREFIXES
+        )
+        if not _is_benchmark_asset(source) and not is_legacy_source:
             continue
         runtime_id = str(source.get("workflow_runtime_id") or "")
         if runtime_id:
@@ -207,16 +236,16 @@ def delete_assets(client: httpx.Client) -> dict[str, object]:
     runtimes = _get_list(
         client,
         "/workflows/app-runtimes",
-        params={
-            "project_id": PROJECT_ID,
-            "application_id": APPLICATION_ID,
-            "limit": 500,
-        },
+        params={"project_id": PROJECT_ID, "limit": 500},
     )
     runtime_ids.update(
         str(item.get("workflow_runtime_id") or "")
         for item in runtimes
         if str(item.get("workflow_runtime_id") or "")
+        and (
+            _is_benchmark_asset(item)
+            or str(item.get("application_id") or "") in LEGACY_APPLICATION_IDS
+        )
     )
     for runtime_id in sorted(runtime_ids):
         runtime = _get_json(client, f"/workflows/app-runtimes/{runtime_id}")
@@ -236,14 +265,32 @@ def delete_assets(client: httpx.Client) -> dict[str, object]:
     }
 
 
-def _save_benchmark_application(client: httpx.Client) -> dict[str, object]:
+def _build_benchmark_resource_ids(
+    now: datetime | None = None,
+) -> BenchmarkResourceIds:
+    """按前端新建 Workflow App 的 UTC 时间规则生成资源 id。"""
+
+    timestamp = (now or datetime.now(timezone.utc)).astimezone(timezone.utc).strftime(
+        "%Y%m%d%H%M%S"
+    )
+    return BenchmarkResourceIds(
+        application_id=f"workflow-app-{timestamp}",
+        template_id=f"workflow-graph-{timestamp}",
+    )
+
+
+def _save_benchmark_application(
+    client: httpx.Client,
+    *,
+    resource_ids: BenchmarkResourceIds,
+) -> dict[str, object]:
     """保存固定、无文件副作用的轻量传输基准图。"""
 
     template = {
         "format_id": "amvision.workflow-graph-template.v1",
-        "template_id": TEMPLATE_ID,
+        "template_id": resource_ids.template_id,
         "template_version": TEMPLATE_VERSION,
-        "display_name": "Stage 9 Workflow Trigger Transport Benchmark",
+        "display_name": DISPLAY_NAME,
         "description": "消费图片并执行 grayscale；仅返回小型 JSON。",
         "nodes": [
             {
@@ -296,16 +343,16 @@ def _save_benchmark_application(client: httpx.Client) -> dict[str, object]:
         ],
         "metadata": {
             "test_asset": True,
-            "asset_kind": "workflow-trigger-transport-benchmark",
+            "asset_kind": ASSET_KIND,
         },
     }
     application = {
         "format_id": "amvision.flow-application.v1",
-        "application_id": APPLICATION_ID,
-        "display_name": "Stage 9 Workflow Trigger Transport Benchmark",
+        "application_id": resource_ids.application_id,
+        "display_name": DISPLAY_NAME,
         "description": "独立测量 ZeroMQ 与本机共享内存图片传输。",
         "template_ref": {
-            "template_id": TEMPLATE_ID,
+            "template_id": resource_ids.template_id,
             "template_version": TEMPLATE_VERSION,
             "source_kind": "json-file",
             "source_uri": "tests/integration/workflow_trigger_transport_assets.py",
@@ -333,12 +380,12 @@ def _save_benchmark_application(client: httpx.Client) -> dict[str, object]:
         "runtime_mode": "python-json-workflow",
         "metadata": {
             "test_asset": True,
-            "asset_kind": "workflow-trigger-transport-benchmark",
+            "asset_kind": ASSET_KIND,
         },
     }
     return _put_json(
         client,
-        f"/workflows/projects/{PROJECT_ID}/applications/{APPLICATION_ID}",
+        f"/workflows/projects/{PROJECT_ID}/applications/{resource_ids.application_id}",
         {"application": application, "template": template},
         expected_status=201,
     )
@@ -347,6 +394,7 @@ def _save_benchmark_application(client: httpx.Client) -> dict[str, object]:
 def _publish_or_reuse_version(
     client: httpx.Client,
     *,
+    application_id: str,
     application_document: dict[str, object],
 ) -> str:
     """复用相同内容版本；内容变化时发布新的不可变版本。"""
@@ -354,7 +402,7 @@ def _publish_or_reuse_version(
     draft_fingerprint = _required_text(application_document, "draft_fingerprint")
     versions = _get_list(
         client,
-        f"/workflows/projects/{PROJECT_ID}/applications/{APPLICATION_ID}/versions",
+        f"/workflows/projects/{PROJECT_ID}/applications/{application_id}/versions",
         params={"limit": 500},
     )
     matching = [
@@ -368,7 +416,7 @@ def _publish_or_reuse_version(
         return _required_text(matching[-1], "workflow_app_version_id")
     version = _post_json(
         client,
-        f"/workflows/projects/{PROJECT_ID}/applications/{APPLICATION_ID}/versions",
+        f"/workflows/projects/{PROJECT_ID}/applications/{application_id}/versions",
         {
             "expected_draft_fingerprint": draft_fingerprint,
             "release_notes": "Stage 9 transport benchmark contract",
@@ -414,13 +462,24 @@ def _source_common(*, runtime_id: str, ordinal: int) -> dict[str, object]:
         "idempotency_key_path": "payload.idempotency_key",
         "metadata": {
             "test_asset": True,
-            "asset_kind": "workflow-trigger-transport-benchmark",
+            "asset_kind": ASSET_KIND,
             "benchmark_pair": ordinal,
         },
     }
 
 
-def _require_clean_source_prefix(client: httpx.Client) -> None:
+def _is_benchmark_asset(item: dict[str, object]) -> bool:
+    """判断公开资源是否属于本基准测试。"""
+
+    metadata = item.get("metadata")
+    return (
+        isinstance(metadata, dict)
+        and metadata.get("test_asset") is True
+        and metadata.get("asset_kind") == ASSET_KIND
+    )
+
+
+def _require_clean_benchmark_assets(client: httpx.Client) -> None:
     """拒绝覆盖残留资源，要求先显式清理。"""
 
     sources = _get_list(
@@ -431,8 +490,10 @@ def _require_clean_source_prefix(client: httpx.Client) -> None:
     conflicts = sorted(
         str(item.get("trigger_source_id") or "")
         for item in sources
-        if str(item.get("trigger_source_id") or "").startswith(
-            f"{SOURCE_PREFIX}-"
+        if _is_benchmark_asset(item)
+        or any(
+            str(item.get("trigger_source_id") or "").startswith(f"{prefix}-")
+            for prefix in LEGACY_SOURCE_PREFIXES
         )
     )
     if conflicts:

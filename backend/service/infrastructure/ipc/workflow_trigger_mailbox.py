@@ -316,7 +316,7 @@ class WorkflowTriggerMailboxServer:
         self._forget_context(identity)
 
     def poll_request(self) -> WorkflowTriggerMailboxRequest | None:
-        """非阻塞取得图片 v1 最终 REQUEST 或 event-only v2 REQUEST。"""
+        """非阻塞取得图片请求或无图片事件请求。"""
 
         received = self._poll_phase(contract.DESCRIPTOR_STATE_REQUEST)
         if received is None:
@@ -352,7 +352,7 @@ class WorkflowTriggerMailboxServer:
                 self.publish_error(
                     identity=identity,
                     error_code=contract.ERROR_CODE_PROTOCOL_ERROR,
-                    message="event-only v2 不能复用图片 PREPARE 上下文",
+                    message="无图片事件请求不能复用图片 PREPARE 上下文",
                 )
                 return None
             requested_timeout_ms = int(extension[2])
@@ -815,7 +815,7 @@ class WorkflowTriggerMailboxClient:
         event_payload: bytes,
         request_id: UUID | None = None,
     ) -> WorkflowTriggerDescriptorIdentity:
-        """直接发布 event-only v2 REQUEST，不创建图片 allocation。"""
+        """直接发布无图片事件 REQUEST，不创建图片 allocation。"""
 
         return self._claim(
             timeout_ms=timeout_ms,
@@ -824,7 +824,7 @@ class WorkflowTriggerMailboxClient:
             request_id=request_id,
             schema_id=EVENT_REQUEST_SCHEMA_ID,
             phase=contract.DESCRIPTOR_STATE_REQUEST,
-            envelope_name="event-only v2 REQUEST",
+            envelope_name="event-only REQUEST",
         )
 
     def _claim(

@@ -241,7 +241,7 @@ Batch payload 是 inline JSON，不得嵌套 memory image handle、BufferRef、F
 
 ## App Entry 当前输入边界
 
-App Entry 的 `request_*` 名称是 Application 的公开 binding id，不是 payload type。Catalog 已注册 `text.v1`、`file-ref.v1` 和 `file-refs.v1`；App Contract v2 可以同时发布图片引用、Base64 图片、结构化 JSON、文本、单文件和有序多文件输入。Runtime JSON 请求可以提交 inline payload 或已有 ObjectStore 引用，Runtime multipart 请求可以流式上传图片、单文件和多文件，并通过 `input_bindings_json` 同时提交 JSON、文本或 Base64 图片。
+App Entry 的 `request_*` 名称是 Application 的公开 binding id，不是 payload type。Catalog 已注册 `text.v1`、`file-ref.v1` 和 `file-refs.v1`；App Contract v1 可以同时发布图片引用、Base64 图片、结构化 JSON、文本、单文件和有序多文件输入。Runtime JSON 请求可以提交 inline payload 或已有 ObjectStore 引用，Runtime multipart 请求可以流式上传图片、单文件和多文件，并通过 `input_bindings_json` 同时提交 JSON、文本或 Base64 图片。
 
 调用能力按 transport 固定，不要求每一种 transport 承担全部 payload：
 
@@ -249,7 +249,7 @@ App Entry 的 `request_*` 名称是 Application 的公开 binding id，不是 pa
 | --- | --- | --- |
 | HTTP Runtime JSON/multipart | `image-ref.v1`、`image-base64.v1`、`value.v1`、`text.v1`、`file-ref.v1`、`file-refs.v1` | 通用调用面；支持多 binding 组合和文件流式上传 |
 | ZeroMQ Trigger | `image-ref.v1`、`value.v1`、`text.v1` | 图片使用唯一 binary frame，JSON/文本位于 envelope payload |
-| local-shared-memory Trigger | `image-ref.v1`、`value.v1`、`text.v1` | 图片使用 LocalBuffer；纯 JSON/文本使用 event-only v2 |
+| local-shared-memory Trigger | `image-ref.v1`、`value.v1`、`text.v1` | 图片使用 LocalBuffer；纯 JSON/文本使用 event-only 请求，两者均为 v1 |
 
 ZeroMQ 与 local-shared-memory 不映射 `image-base64.v1`、`file-ref.v1` 或 `file-refs.v1`。普通文件不复用图片 binary frame、LocalBuffer 或 mailbox；需要这些输入时使用 HTTP Runtime。完整实现状态、SDK 规划和验收规则见 [Workflow App Entry 多类型输入实施基线](../../development/workflow-app-entry-input-implementation.md)。
 

@@ -42,7 +42,7 @@ namespace Amvar.Vision.SharedMemory
         private const string PrepareSchemaId = "amvision.workflow-trigger.prepare.v1";
         private const string AllocationSchemaId = "amvision.workflow-trigger.allocation.v1";
         private const string RequestSchemaId = "amvision.workflow-trigger.request.v1";
-        private const string EventRequestSchemaId = "amvision.workflow-trigger.event-request.v2";
+        private const string EventRequestSchemaId = "amvision.workflow-trigger.event-request.v1";
         private const string ResponseSchemaId = "amvision.workflow-trigger.response.v1";
         private static readonly byte[] Magic = { 0x41, 0x4d, 0x56, 0x4c, 0x4d, 0x53, 0x47, 0x00 };
 
@@ -172,7 +172,7 @@ namespace Amvar.Vision.SharedMemory
                 requestId,
                 EventRequestSchemaId,
                 WorkflowTriggerMailboxV1.PhaseRequest,
-                "event-only v2 REQUEST");
+                "event-only REQUEST");
         }
 
         private WorkflowTriggerDescriptorIdentity ClaimCore(

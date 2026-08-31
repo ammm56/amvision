@@ -97,9 +97,9 @@ def test_bundle_save_blocks_publish_then_publishes_one_new_consistent_pair(
             shared_fingerprint = shared_save.json()["draft_fingerprint"]
 
             next_template = deepcopy(template_payload)
-            next_template["display_name"] = "Inspection Graph Bundle V2"
+            next_template["display_name"] = "Inspection Graph Bundle Updated"
             next_application = deepcopy(application_payload)
-            next_application["display_name"] = "Inspection App Bundle V2"
+            next_application["display_name"] = "Inspection App Bundle Updated"
             entered_save = Event()
             release_save = Event()
             original_bundle_save = LocalWorkflowJsonService.save_application_bundle
@@ -164,10 +164,10 @@ def test_bundle_save_blocks_publish_then_publishes_one_new_consistent_pair(
             )
             assert detail.status_code == 200
             assert detail.json()["application"]["display_name"] == (
-                "Inspection App Bundle V2"
+                "Inspection App Bundle Updated"
             )
             assert detail.json()["template"]["display_name"] == (
-                "Inspection Graph Bundle V2"
+                "Inspection Graph Bundle Updated"
             )
     finally:
         session_factory.engine.dispose()

@@ -62,7 +62,7 @@ Project 删除使用同表中的保留 sentinel 与 Project 资源写入建立�
 
 ## 归档和恢复
 
-归档只把版本从 `published` 改为 `archived`，不会删除 snapshot、修改 fingerprint 或影响已经引用该版本的 Runtime、Trigger 和 Run。归档版本不再用于新建 Runtime 或切换版本；恢复为 `published` 后才会重新成为候选。
+归档只把版本从 `published` 改为 `archived`，不会删除 snapshot、修改 fingerprint 或影响已经引用该版本的 Runtime、Trigger 和 Run。归档版本不再用于新建 Runtime 或切换版本；只有结构完整且格式为 `amvision.workflow-app-contract.v1` 的归档版本可以恢复为 `published` 并重新成为候选。开发期历史契约快照只用于审计，不提供协议双读或重新激活路径。
 
 两个操作都使用调用方读取到的状态做 compare-and-swap：
 
@@ -78,7 +78,7 @@ Project 删除使用同表中的保留 sentinel 与 Project 资源写入建立�
 
 新建 Runtime 优先传准确的 `workflow_app_version_id`。也可以传 `application_id`，由服务基于当前一致草稿创建不可变初始版本；两个字段必须且只能提供一个。Runtime 升级与回滚统一使用 `select-version`，详见 [WorkflowAppRuntime 接口文档](workflow-app-runtimes.md)。
 
-create 和 `select-version` 会在最终数据库事务内用目标版本行的条件 UPDATE 再确认版本仍为 `published`，随后才写 Runtime/revision。archive 使用同一版本行完成状态 CAS，所以 archive 成功提交后不会再出现指向该 archived 版本的新 Runtime/revision；已经先提交的历史引用继续有效。竞争失败立即返回 409，不排队、不自动重试。restore 只把版本从 `archived` CAS 回 `published`，之后的新引用仍必须经过相同 fence。
+create 和 `select-version` 会先校验目标版本使用结构完整的当前 App Contract v1，再在最终数据库事务内用目标版本行的条件 UPDATE 确认版本仍为 `published`，随后才写 Runtime/revision。archive 使用同一版本行完成状态 CAS，所以 archive 成功提交后不会再出现指向该 archived 版本的新 Runtime/revision；已经先提交的历史引用继续有效。竞争失败立即返回 409，不排队、不自动重试。restore 也先执行相同契约门禁，再把版本从 `archived` CAS 回 `published`；之后的新引用仍必须经过相同 fence。
 
 ## 数据库和迁移
 

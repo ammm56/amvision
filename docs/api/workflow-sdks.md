@@ -51,7 +51,7 @@ using (var client = AMVisionClient.CreateFromConfig())
 | --- | --- | --- |
 | HTTP Runtime | `image-ref.v1`、`image-base64.v1`、`value.v1`、`text.v1`、`file-ref.v1`、`file-refs.v1` | `WorkflowRequestBuilder` 已支持六类输入、引用和 streaming multipart |
 | ZeroMQ Trigger | `image-ref.v1`、`value.v1`、`text.v1` | 图片方法可附带 `WorkflowTriggerInputsBuilder` 生成的 JSON/文本，支持 event-only |
-| local-shared-memory Trigger | `image-ref.v1`、`value.v1`、`text.v1` | 图片与 event-only v2 共用 `WorkflowTriggerInputsBuilder` 输入对象 |
+| local-shared-memory Trigger | `image-ref.v1`、`value.v1`、`text.v1` | 图片与 event-only 请求共用 `WorkflowTriggerInputsBuilder` 输入对象，协议版本均为 v1 |
 
 HTTP Builder 覆盖 JSON、文本、图片上传、图片引用、Base64 图片、单文件、多文件及文件引用。文件路径使用 stream factory / `StreamContent`，不使用 `File.ReadAllBytes`、完整 `MemoryStream` copy、隐藏重试、排队或 transport fallback。调用方显式选择 `BuildJson()` 或 `BuildMultipart()`，SDK 不根据输入内容猜测 transport；旧 `Build()` 等价于 `BuildMultipart()`。
 

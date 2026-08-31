@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 WORKFLOW_TRIGGER_PREPARE_FORMAT = "amvision.workflow-trigger-prepare.v1"
 WORKFLOW_TRIGGER_ALLOCATION_FORMAT = "amvision.workflow-trigger-allocation.v1"
 WORKFLOW_TRIGGER_REQUEST_FORMAT = "amvision.workflow-trigger-request.v1"
-WORKFLOW_TRIGGER_EVENT_REQUEST_FORMAT = "amvision.workflow-trigger-event-request.v2"
+WORKFLOW_TRIGGER_EVENT_REQUEST_FORMAT = "amvision.workflow-trigger-event-request.v1"
 
 
 class WorkflowTriggerInputImageSpec(BaseModel):
@@ -126,7 +126,7 @@ class WorkflowTriggerRequestV1(BaseModel):
         return self
 
 
-class WorkflowTriggerEventRequestV2(BaseModel):
+class WorkflowTriggerEventRequestV1(BaseModel):
     """不携带图片、直接发布到 mailbox REQUEST 阶段的结构化事件。"""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -142,8 +142,8 @@ class WorkflowTriggerEventRequestV2(BaseModel):
     idempotency_key: str | None = None
 
     @model_validator(mode="after")
-    def validate_event_request(self) -> WorkflowTriggerEventRequestV2:
-        """校验 event-only v2 的稳定 identity 与追踪字段。"""
+    def validate_event_request(self) -> WorkflowTriggerEventRequestV1:
+        """校验无图片事件请求的稳定 identity 与追踪字段。"""
 
         _require_text(self.trigger_source_id, "trigger_source_id")
         _require_text(self.event_id, "event_id")

@@ -44,8 +44,8 @@
 
 | 用途 | 原应用 | 验证副本 | 发布版本 |
 | --- | --- | --- | --- |
-| 3570 治具空盘，24 项分类与 4 个圆定位 | `workflow-app-20260804015118` | `workflow-app-20260829184603` | `v2` |
-| 3570 塑盒满盘，80 项分类 | `workflow-app-20260804015507` | `workflow-app-20260829184604` | `v2` |
+| 3570 治具空盘，24 项分类与 4 个圆定位 | `workflow-app-20260804015118` | `workflow-app-20260829184603` | Batch 并行验证 |
+| 3570 塑盒满盘，80 项分类 | `workflow-app-20260804015507` | `workflow-app-20260829184604` | Batch 并行验证 |
 
 实现结果：
 
@@ -70,12 +70,12 @@ Classification Batch 结果与性能：
 
 Trigger、LocalBuffer 与内存结果：
 
-- 为 24 项副本创建并启用 `local-shared-workflow-runtime-c9013239760d4eeca4f5b4f5db5a83d4`。仓库内 .NET Framework SDK 使用 59,885,622 字节 BMP 完成 warmup 2 次和正式 20 次调用，正式调用 20/20 成功；端到端 P50/P95 为 969.113/1080.357 ms，SDK 写 LocalBuffer 平均 4.393 ms。
+- 为 24 项副本创建并启用 `local-shared-memory-workflow-runtime-c9013239760d4eeca4f5b4f5db5a83d4`。仓库内 .NET Framework SDK 使用 59,885,622 字节 BMP 完成 warmup 2 次和正式 20 次调用，正式调用 20/20 成功；端到端 P50/P95 为 969.113/1080.357 ms，SDK 写 LocalBuffer 平均 4.393 ms。
 - Trigger 结束后 mailbox `used_page_count=0`、`pending_request_count=0`、`active_task_count=0`；LocalBuffer `active_lease_count=0`、allocated/published/revoking/quarantined 均为 0，2 GiB arena 全部可用。
 - 30 次正式 Runtime 调用后，24 项 Runtime Working Set 从 223.1 MiB 到 224.2 MiB，未持续单调增长。Trigger 调用后约增加一份 59 MiB 输入映射 Working Set，Private Bytes 只增加约 3.5 MiB；这是受限 mmap page residency，不是未释放 lease。
 - 审计发现 inference daemon 被强制结束时 Windows 会留下 5 个 deployment 孤儿进程，额外占用约 3.9 GiB Working Set。deployment worker 已增加父进程 watchdog；真实故障注入中强制结束 daemon 后，5/5 子进程在 3 秒检查点前全部退出。
 - daemon 重启后的第一个旧 epoch 同步调用明确失败且不重试；epoch 刷新后的 Trigger 连续调用全部成功。这是受控重启边界，不把失败隐藏成排队或自动重试。
-- 完整 backend 冷重载后，两个 `v2` Runtime 均自动恢复为 `running/running`；分别使用现场治具空盘和塑盒满盘 BMP 再执行一次同步调用，两次都为 `succeeded`。24 项输出仍为 `count=24/passed=true`；80 项输出仍保留原业务规则的统计和判定。
+- 完整 backend 冷重载后，两个 Batch 并行验证 Runtime 均自动恢复为 `running/running`；分别使用现场治具空盘和塑盒满盘 BMP 再执行一次同步调用，两次都为 `succeeded`。24 项输出仍为 `count=24/passed=true`；80 项输出仍保留原业务规则的统计和判定。
 - 完成控制面内存修复并再次冷重载后，现场复核运行 `workflow-run-7c361566eb43464d9d2cac9054c44a37` 和 `workflow-run-344dc5e1f50b44faa4bc952b99e59dd0` 均为 `succeeded`。数据库时间戳计算的端到端 wall time 分别为 1019.764 ms 和 990.395 ms；结果仍为 24/24 empty/pass 和 80/80、16 empty、64 abnormal、业务 `ng`。
 - 两个验证 Runtime 冷启动空闲时分别约 100 MiB RSS、78 MiB USS，执行现场大图后约 221 至 228 MiB RSS、195 至 197 MiB USS，均无 PyTorch 映射。开发库中另有 8 个 `desired_state=running` 的 Stage 9 benchmark Runtime，每个空闲约 77 至 78 MiB USS；这些是显式运行资源，不是重复恢复或 lease 泄漏，系统不会用隐藏的空闲休眠改变其状态。
 

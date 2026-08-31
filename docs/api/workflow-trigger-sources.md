@@ -32,17 +32,24 @@ DELETE /api/v1/workflows/trigger-sources/{trigger_source_id}
 
 读取需要 `workflows:read`，创建、启停和删除需要 `workflows:write`；所有操作同时校验 Project 可见性。
 
+高性能 TriggerSource id 使用绑定 Runtime 的完整资源 id，不再使用场景名、测试名或随机短后缀：
+
+- `zeromq-topic`：`zeromq-<workflow-runtime-id>`
+- `local-shared-memory`：`local-shared-memory-<workflow-runtime-id>`
+
+例如 Runtime 为 `workflow-runtime-0123456789abcdef0123456789abcdef` 时，两种 id 分别为 `zeromq-workflow-runtime-0123456789abcdef0123456789abcdef` 和 `local-shared-memory-workflow-runtime-0123456789abcdef0123456789abcdef`。
+
 ## 创建请求
 
 以下是当前可运行 schema。`result_mapping` 只保存有序 `result_bindings`；提交模式、结果模式、回复超时和确认策略只使用顶层字段。
 
 ```json
 {
-  "trigger_source_id": "trigger-source-line-1",
+  "trigger_source_id": "zeromq-workflow-runtime-0123456789abcdef0123456789abcdef",
   "project_id": "project-1",
   "display_name": "Line 1 image trigger",
   "trigger_kind": "zeromq-topic",
-  "workflow_runtime_id": "workflow-runtime-line-1",
+  "workflow_runtime_id": "workflow-runtime-0123456789abcdef0123456789abcdef",
   "submit_mode": "sync",
   "enabled": false,
   "transport_config": {
@@ -110,9 +117,9 @@ ZeroMQ reply 统一使用 `amvision.workflow-trigger-result.v1` multipart：Fram
 local-shared-memory 有两个明确的请求操作，共用同一固定 mailbox layout 和 response v1：
 
 - 图片 v1：`PREPARE → LocalBuffer allocation/write → REQUEST`，`WorkflowTriggerPrepareV1.image` 始终必填。
-- event-only v2：直接发布 `amvision.workflow-trigger-event-request.v2` REQUEST，用于 JSON/文本等无图片事件；不执行 PREPARE，不分配输入 LocalBuffer lease，也不创建假图片。
+- event-only：直接发布 `amvision.workflow-trigger-event-request.v1` REQUEST，用于 JSON/文本等无图片事件；不执行 PREPARE，不分配输入 LocalBuffer lease，也不创建假图片。
 
-两种操作都使用 TriggerSource `input_binding_mapping`，并在 Runtime 入口执行同一份已发布 App Contract 校验。event-only v2 不改变 `result_mode`；`sync-reply`、`accepted-then-query`、`event-only` 仍表示结果交付策略。
+两种操作都使用 TriggerSource `input_binding_mapping`，并在 Runtime 入口执行同一份已发布 App Contract v1 校验。event-only 请求不改变 `result_mode`；`sync-reply`、`accepted-then-query`、`event-only` 仍表示结果交付策略。
 
 ## 多类型输入当前边界
 
@@ -127,7 +134,7 @@ ZeroMQ 与 local-shared-memory 是高性能调用面，输入 capability 固定�
 | `file-ref.v1` | 不支持 | 不支持 | 使用 HTTP Runtime JSON reference 或 multipart upload |
 | `file-refs.v1` | 不支持 | 不支持 | 使用 HTTP Runtime JSON reference 或 multipart upload |
 
-图片调用可以同时附带 JSON 和文本。ZeroMQ 无图片事件以及 local-shared-memory event-only v2 可以提交纯 JSON/文本。`input_binding_mapping` 继续按显式 dotted path 生成 Runtime binding，所有结果进入 Runtime 固定 App Contract 和共同 `WorkflowInputValidator`。
+图片调用可以同时附带 JSON 和文本。ZeroMQ 无图片事件以及 local-shared-memory event-only 请求可以提交纯 JSON/文本。`input_binding_mapping` 继续按显式 dotted path 生成 Runtime binding，所有结果进入 Runtime 固定 App Contract 和共同 `WorkflowInputValidator`。
 
 TriggerSource 创建、enable 和 Runtime 切版校验应按 adapter capability 拒绝不支持的 mapping；前端只展示当前 adapter 可用的公开 binding。当前已配置的 `request_image_ref`、`request_json`、`request_text` 三条 mapping 是目标配置，不自动扩展到 Base64 或文件输入。
 

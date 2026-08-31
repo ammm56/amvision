@@ -334,7 +334,11 @@ class _SdkConfigPackageBuilder:
         """构建单个 WorkflowAppRuntime 对应的配置文件。"""
 
         runtime_key = self._unique_key(
-            _build_runtime_key(runtime, application_display_name=application_display_name),
+            _build_runtime_key(
+                runtime,
+                application_display_name=application_display_name,
+                application_has_multiple_runtimes=application_has_multiple_runtimes,
+            ),
             fallback="workflow_runtime",
         )
         payload = {
@@ -378,7 +382,7 @@ class _SdkConfigPackageBuilder:
         self,
         runtime: WorkflowAppRuntime,
     ) -> dict[str, object] | None:
-        """读取 Runtime revision 固定的 v1/v2 App Contract。"""
+        """读取 Runtime revision 固定的 v1 App Contract。"""
 
         object_key = runtime.metadata.get("contract_snapshot_object_key")
         if not isinstance(object_key, str) or not object_key.strip():
@@ -397,15 +401,20 @@ class _SdkConfigPackageBuilder:
         *,
         include_runtime_id: bool,
     ) -> str:
-        """使用真实资源 id 构建稳定且唯一的 Workflow 配置文件名。
+        """使用应用 id 和稳定 Runtime 文件标识构建配置文件名。
 
         单个应用只有一个 runtime 时直接使用 ``config_<application_id>.json``。
-        同一应用存在多个 runtime 时追加 ``workflow_runtime_id``，避免 zip 内同名覆盖。
+        同一应用存在多个 runtime 时优先追加 metadata 中显式设置的
+        ``sdk_config_file_id``；未设置时回退 ``workflow_runtime_id``，避免 zip 内同名覆盖。
         展示名称只用于配置里的 key，不再参与文件命名。
         """
 
         application_part = _safe_file_part(runtime.application_id, fallback="workflow-app")
-        runtime_part = _safe_file_part(runtime.workflow_runtime_id, fallback="workflow-runtime")
+        runtime_file_id = _read_optional_text(runtime.metadata, "sdk_config_file_id")
+        runtime_part = _safe_file_part(
+            runtime_file_id or runtime.workflow_runtime_id,
+            fallback="workflow-runtime",
+        )
         stem = application_part
         if include_runtime_id:
             stem = f"{application_part}_{runtime_part}"
@@ -770,9 +779,12 @@ def _build_runtime_key(
     runtime: WorkflowAppRuntime,
     *,
     application_display_name: str | None,
+    application_has_multiple_runtimes: bool,
 ) -> str:
-    """优先使用前端维护的 WorkflowAppRuntime 展示名称。"""
+    """构建可读且能区分同一应用多个 Runtime 的配置 key。"""
 
+    if application_has_multiple_runtimes and runtime.display_name and runtime.display_name.strip():
+        return runtime.display_name.strip()
     if application_display_name and application_display_name.strip():
         return application_display_name.strip()
     if runtime.display_name and runtime.display_name.strip():

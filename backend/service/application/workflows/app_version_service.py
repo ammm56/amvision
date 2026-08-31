@@ -27,8 +27,8 @@ from backend.service.application.workflows.workflow_service import (
     LocalWorkflowJsonService,
 )
 from backend.service.application.workflows.input_contracts import (
-    WORKFLOW_APP_CONTRACT_V2_FORMAT,
-    build_workflow_app_public_contract_v2,
+    build_workflow_app_public_contract,
+    find_workflow_app_public_contract_issues,
     normalize_contract_for_compatibility,
 )
 from backend.service.application.workflows.application_lifecycle import (
@@ -49,7 +49,6 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 
 
 WORKFLOW_APP_VERSION_MANIFEST_FORMAT = "amvision.workflow-app-version-manifest.v1"
-WORKFLOW_APP_CONTRACT_FORMAT = WORKFLOW_APP_CONTRACT_V2_FORMAT
 WORKFLOW_APP_DEPENDENCY_MANIFEST_FORMAT = "amvision.workflow-app-dependencies.v1"
 
 
@@ -558,6 +557,19 @@ class WorkflowAppVersionService:
             operation="saving",
             deleted_on_success=False,
         ):
+            detail = self.get_version_detail(
+                project_id=project_id,
+                application_id=application_id,
+                workflow_app_version_id=workflow_app_version_id,
+            )
+            contract_issues = find_workflow_app_public_contract_issues(
+                detail.contract
+            )
+            if contract_issues:
+                raise ResourceConflictError(
+                    "归档版本不符合当前 Workflow App v1 公开契约，不能恢复",
+                    details={"contract_issues": list(contract_issues)},
+                )
             return self._transition_version_state(
                 project_id=project_id,
                 application_id=application_id,
@@ -1209,9 +1221,9 @@ def _build_public_contract(
     template: WorkflowGraphTemplate,
     node_catalog_registry: NodeCatalogRegistry,
 ) -> dict[str, object]:
-    """从统一节点目录冻结 App Contract v2。"""
+    """从统一节点目录冻结 App Contract v1。"""
 
-    return build_workflow_app_public_contract_v2(
+    return build_workflow_app_public_contract(
         application=application,
         template=template,
         node_catalog_registry=node_catalog_registry,
@@ -1463,7 +1475,7 @@ def _compare_contracts(
                             "to": target.get("required"),
                         }
                     )
-    _append_v2_input_rejection_set_changes(
+    _append_input_rejection_set_changes(
         source_contract=source_contract,
         target_contract=target_contract,
         breaking_changes=breaking_changes,
@@ -1477,18 +1489,14 @@ def _compare_contracts(
     }
 
 
-def _append_v2_input_rejection_set_changes(
+def _append_input_rejection_set_changes(
     *,
     source_contract: dict[str, object],
     target_contract: dict[str, object],
     breaking_changes: list[dict[str, object]],
 ) -> None:
-    """把 v2 输入限制变化作为真实拒绝集合变化报告。"""
+    """把输入限制变化作为真实拒绝集合变化报告。"""
 
-    target_is_v2 = target_contract.get("format_id") == WORKFLOW_APP_CONTRACT_FORMAT
-    if not target_is_v2:
-        return
-    source_is_v2 = source_contract.get("format_id") == WORKFLOW_APP_CONTRACT_FORMAT
     source_items = _contract_item_index(source_contract.get("inputs"))
     target_items = _contract_item_index(target_contract.get("inputs"))
     request_fields = (
@@ -1502,18 +1510,6 @@ def _append_v2_input_rejection_set_changes(
         "charset",
     )
     for binding_id in sorted(source_items.keys() & target_items.keys()):
-        if not source_is_v2:
-            breaking_changes.append(
-                {
-                    "kind": "changed",
-                    "direction": "inputs",
-                    "binding_id": binding_id,
-                    "field": "request_rejection_set",
-                    "from": "legacy-permissive",
-                    "to": "contract-v2",
-                }
-            )
-            continue
         source = source_items[binding_id]
         target = target_items[binding_id]
         for field in request_fields:
