@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 import os
 from pathlib import Path, PurePath
 
@@ -19,6 +20,7 @@ from backend.nodes import ExecutionImageRegistry
 from backend.nodes.core_nodes.io.image.image_save import (
     CORE_NODE_SPEC as IMAGE_SAVE_NODE_SPEC,
     _image_save_handler,
+    _resolve_save_directory_template,
 )
 from backend.nodes.runtime_support import register_image_matrix
 from backend.nodes.save_locations import (
@@ -234,6 +236,35 @@ def test_image_save_graph_uses_connected_directory_file_name_and_overwrite(
         "local_path": str(saved_path),
     }
     assert not dataset_storage.resolve("fallback/results/fallback.png").exists()
+
+
+def test_image_save_directory_reuses_common_date_time_template() -> None:
+    """验证保存目录与文件名使用同一套通用日期时间和上下文语法。"""
+
+    current_time = datetime(
+        2026,
+        12,
+        21,
+        15,
+        4,
+        5,
+        123_000,
+        tzinfo=timezone.utc,
+    )
+    request = WorkflowNodeExecutionRequest(
+        node_id="save-image",
+        node_definition=object(),
+        parameters={},
+        input_values={},
+        execution_metadata={},
+    )
+
+    assert _resolve_save_directory_template(
+        request,
+        "results/{YYYY}/{MM}/{D}/{node_id}-{hhmmss}",
+        current_time=current_time,
+        format_context={"node_id": "save-image"},
+    ) == "results/2026/12/1/save-image-150405"
 
 
 @pytest.mark.parametrize("target_kind", ["object-store", "filesystem"])

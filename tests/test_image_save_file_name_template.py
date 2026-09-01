@@ -38,6 +38,27 @@ def test_render_image_file_name_template_supports_fixed_and_time_text() -> None:
         render_image_file_name_template("fixed.jpg", current_time=current_time)
         == "fixed.jpg"
     )
+    assert (
+        render_image_file_name_template(
+            "saveimage-{YYYY}-{MM}-{DD}-{hh}-{mm}-{ss}-{SSS}.jpg",
+            current_time=current_time,
+        )
+        == "saveimage-2026-09-01-15-04-05-123.jpg"
+    )
+
+
+def test_render_image_file_name_template_supports_short_field_widths() -> None:
+    """验证图片文件名复用通用字段宽度规则。"""
+
+    current_time = datetime(2026, 12, 21, 15, 4, 5, tzinfo=timezone.utc)
+
+    assert (
+        render_image_file_name_template(
+            "{Y}-{YY}-{YYY}-{M}-{D}-{DDhh}.png",
+            current_time=current_time,
+        )
+        == "6-26-026-2-1-2115.png"
+    )
 
 
 def test_render_image_file_name_template_uses_one_time_for_all_blocks() -> None:
@@ -61,6 +82,8 @@ def test_render_image_file_name_template_uses_one_time_for_all_blocks() -> None:
         "tray_{YYYYMMDD.png",
         "tray_{}.png",
         "tray_{yyyyMMdd}.png",
+        "tray_{YYYYY}.png",
+        "tray_{DDD}.png",
         "tray_{YYYY/MM/DD}.png",
         "../tray_{YYYYMMDD}.png",
         "CON.png",

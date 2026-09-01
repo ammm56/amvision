@@ -263,7 +263,7 @@ storage 输入属于持久化任务边界。短期 mmap 引用不能跨服务重
 - `Crop Export` 无论保存到哪一种目录，给后续节点的结果都继续使用 raw memory image-ref；落盘位置单独记录在每个图片结果的 `saved_output` 中，避免保存动作把后续推理链路降级为磁盘读取和重复解码。
 - 系统绝对路径依赖 runtime 所在主机的挂载和权限。发布后的 Workflow App 与 Trigger 会在 runtime 主机上解释该路径，不在浏览器所在主机上解释。
 - 一般节点使用 `save_location`。`Image Save` 为了明确区分目录和单文件命名，使用 `save_directory`、`file_name`、`overwrite`；它不改变其他保存节点的参数契约。
-- `Image Save.file_name` 支持固定名称和 `{YYYYMMDDhhmmssSSS}` 时间块。关闭覆盖后发生重名时，节点原子创建 `_001`、`_002` 文件，不排队、不覆盖现有文件。
+- `Image Save.save_directory` 与 `file_name` 复用节点系统的通用日期时间模板；字段可以在一个块中组合或拆成多个块，不使用 Image Save 专用 token。关闭覆盖后发生重名时，节点原子创建 `_001`、`_002` 文件，不排队、不覆盖现有文件。
 
 OpenCV shared runtime、Barcode/QR runtime、SAM3/YOLOE 图片入口、图片预览与保存、regions/ROI/video overlay 和 ZeroMQ 示例均遵守同一规则：中间结果默认走 raw BGR24 memory image-ref，只在 JSON、预览和落盘边界编码。
 

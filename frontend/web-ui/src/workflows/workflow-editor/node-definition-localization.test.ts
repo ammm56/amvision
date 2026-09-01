@@ -94,7 +94,7 @@ describe('image save parameter localization', () => {
           'zh-CN': description,
           'en-US': parameterName === 'save_directory'
             ? 'Relative directory uses ObjectStore.'
-            : 'Supports {YYYYMMDDhhmmssSSS}.',
+            : 'Supports saveimage-{YYYY}-{MM}-{DD}-{hh}-{mm}-{ss}-{SSS}.jpg.',
         },
       },
     },
@@ -102,12 +102,12 @@ describe('image save parameter localization', () => {
 
   it('shows directory and file name as two independent localized fields', () => {
     const directoryField = buildField('save_directory', '保存目录', '相对目录保存到 ObjectStore。')
-    const fileNameField = buildField('file_name', '文件名', '支持 {YYYYMMDDhhmmssSSS}。')
+    const fileNameField = buildField('file_name', '文件名', '支持 {YYYY}-{MM}-{DD}-{hh}-{mm}-{ss}-{SSS}。')
 
     expect(resolveNodeParameterDisplayName(directoryField, 'zh-CN')).toBe('保存目录')
     expect(resolveNodeParameterDisplayName(directoryField, 'en-US')).toBe('Save directory')
     expect(resolveNodeParameterDisplayName(fileNameField, 'zh-CN')).toBe('文件名')
     expect(resolveNodeParameterDisplayName(fileNameField, 'en-US')).toBe('File name')
-    expect(resolveNodeParameterDescription(fileNameField, 'zh-CN')).toContain('{YYYYMMDDhhmmssSSS}')
+    expect(resolveNodeParameterDescription(fileNameField, 'zh-CN')).toContain('{YYYY}-{MM}-{DD}')
   })
 })

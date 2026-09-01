@@ -14,6 +14,7 @@ _EXPORT_MODULES = {
     "NodeCatalogSnapshot": "backend.nodes.node_pack_loader",
     "NodePackLoader": "backend.nodes.node_pack_loader",
     "LocalNodePackLifecycleManager": "backend.nodes.node_pack_lifecycle",
+    "render_date_time_template": "backend.nodes.date_time_template",
 }
 
 _RUNTIME_SUPPORT_EXPORTS = {

@@ -71,7 +71,7 @@ Graph Template 不保存额外绑定状态。参数端口连接仍使用普通 `
 - `file_name`
 - `overwrite`
 
-三个参数端口均为可选 `value.v1`。现有保存目录、时间文件名模板、扩展名检查、原子重名递增和 ObjectStore/绝对目录边界保持不变。
+三个参数端口均为可选 `value.v1`。保存目录和文件名复用节点系统通用日期时间模板；扩展名检查、原子重名递增和 ObjectStore/绝对目录边界保持不变。
 
 第一阶段补充 `String Value`、`Number Value` 和 `Boolean Value` 三个明确的通用节点，统一输出 `value.v1`。对象和数组继续使用 App Entry、File Read JSON、Object Create 和 List Create，不新增自动猜测类型的虚拟 Primitive 节点。
 

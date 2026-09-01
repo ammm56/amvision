@@ -12,6 +12,7 @@ from backend.contracts.workflows.workflow_graph import (
     NodePortDefinition,
 )
 from backend.nodes.core_nodes.support.base import CoreNodeSpec
+from backend.nodes.date_time_template import render_date_time_template
 from backend.nodes.image_file_name_template import (
     image_media_type_for_file_name,
     render_image_file_name_template,
@@ -49,6 +50,7 @@ def _image_save_handler(request: WorkflowNodeExecutionRequest) -> dict[str, obje
     raw_save_directory = _resolve_save_directory_template(
         request,
         request.parameters.get("save_directory"),
+        current_time=current_time,
         format_context=format_context,
     )
     save_location = resolve_optional_save_location(
@@ -107,24 +109,25 @@ def _resolve_save_directory_template(
     request: WorkflowNodeExecutionRequest,
     raw_save_directory: object,
     *,
+    current_time: datetime | None = None,
     format_context: dict[str, str] | None = None,
 ) -> str | None:
-    """解析 Image Save 保存目录中的 workflow 上下文占位符。"""
+    """使用通用日期时间模板解析保存目录和 workflow 上下文。"""
 
     if not isinstance(raw_save_directory, str) or not raw_save_directory.strip():
         return None
 
     normalized_save_directory = raw_save_directory.strip()
     try:
-        return normalized_save_directory.format(
-            **(format_context or _build_image_save_format_context(request))
+        return render_date_time_template(
+            normalized_save_directory,
+            current_time=current_time,
+            context=(format_context or _build_image_save_format_context(request)),
         )
-    except (KeyError, ValueError) as exc:
-        placeholder = exc.args[0] if isinstance(exc, KeyError) and exc.args else None
-        raise InvalidRequestError(
-            "Image Save 保存目录模板不合法",
-            details={"node_id": request.node_id, "placeholder": placeholder},
-        ) from exc
+    except InvalidRequestError as exc:
+        exc.details.setdefault("node_id", request.node_id)
+        exc.details.setdefault("parameter_name", "save_directory")
+        raise
 
 
 def _build_image_save_format_context(
@@ -238,15 +241,15 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 "save_directory": {
                     "type": "string",
                     "title": "保存目录",
-                    "description": "相对目录保存到 ObjectStore，绝对目录保存到 runtime 主机磁盘。",
+                    "description": "相对目录保存到 ObjectStore，绝对目录保存到 runtime 主机磁盘；支持 workflow 上下文和通用日期时间块。",
                     "x-amvision-i18n": {
                         "title": {
                             "zh-CN": "保存目录",
                             "en-US": "Save directory",
                         },
                         "description": {
-                            "zh-CN": "相对目录保存到 ObjectStore，绝对目录保存到 runtime 主机磁盘。",
-                            "en-US": "A relative directory saves to ObjectStore; an absolute directory saves to the runtime host filesystem.",
+                            "zh-CN": "相对目录保存到 ObjectStore，绝对目录保存到 runtime 主机磁盘；支持 workflow 上下文和通用日期时间块。",
+                            "en-US": "A relative directory saves to ObjectStore; an absolute directory saves to the runtime host filesystem. Workflow context and shared date-time blocks are supported.",
                         },
                     },
                     "x-amvision-ui": {"order": 10},
@@ -254,15 +257,15 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 "file_name": {
                     "type": "string",
                     "title": "文件名",
-                    "description": "完整图片文件名；可使用 {YYYYMMDDhhmmssSSS} 时间格式，例如 tray_{YYYYMMDDhhmmssSSS}_OK.jpg。",
+                    "description": "完整图片文件名；支持自由组合的通用日期时间块，例如 saveimage-{YYYY}-{MM}-{DD}-{hh}-{mm}-{ss}-{SSS}.jpg。",
                     "x-amvision-i18n": {
                         "title": {
                             "zh-CN": "文件名",
                             "en-US": "File name",
                         },
                         "description": {
-                            "zh-CN": "完整图片文件名；可使用 {YYYYMMDDhhmmssSSS} 时间格式，例如 tray_{YYYYMMDDhhmmssSSS}_OK.jpg。",
-                            "en-US": "Complete image file name. A time block such as {YYYYMMDDhhmmssSSS} is optional.",
+                            "zh-CN": "完整图片文件名；支持自由组合的通用日期时间块，例如 saveimage-{YYYY}-{MM}-{DD}-{hh}-{mm}-{ss}-{SSS}.jpg。",
+                            "en-US": "Complete image file name. Shared date-time fields can be combined freely, for example saveimage-{YYYY}-{MM}-{DD}-{hh}-{mm}-{ss}-{SSS}.jpg.",
                         },
                     },
                     "x-amvision-ui": {"order": 20},

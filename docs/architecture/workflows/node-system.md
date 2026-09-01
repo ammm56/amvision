@@ -124,9 +124,22 @@ Trigger adapter 负责把外部事件转换成 Workflow Run 请求；业务图�
 
 详细契约、运行时优先级和验收门禁见 [Workflow 动态参数输入实施基线](../../development/workflow-dynamic-parameter-input-implementation.md)。
 
+### 通用日期时间模板
+
+节点需要把运行时本地时间写入文本、目录或文件名时，统一使用 `backend.nodes.render_date_time_template`，不得在各节点内重复实现 `strftime`、正则替换或专用 token。大括号表示一个日期时间格式块，不表示固定字符串；块可以组合，也可以拆成多个块，例如：
+
+- `{YYYYMMDDhh}`
+- `{DDMMYYYY hhmmss}`
+- `{YY}`、`{YYY}`、`{Y}`
+- `saveimage-{YYYY}-{MM}-{DD}-{hh}-{mm}-{ss}-{SSS}.jpg`
+
+字段大小写敏感。`Y` 最多四位，`M`、`D`、`h`、`m`、`s` 最多两位，`S` 最多三位；短字段从固定宽度值右侧取对应位数，例如 2026 年的 `{YY}` 为 `26`，21 日的 `{D}` 为 `1`。因此 `{DDD}`、`{YYYYY}`、`{MMM}` 和 `{SSSS}` 必须明确失败。一个模板中的所有块使用一次性捕获的同一时间点；调用节点可以通过显式 `context` 映射复用 `{node_id}` 等上下文占位符。
+
+通用解析器允许日期时间文本常用的空格、`T`、`-`、`_`、`.`、`:` 和 `/` 分隔符。具体节点仍必须在展开后执行自身边界校验，例如 Image Save 文件名禁止目录分隔符和 Windows 非法字符，保存目录则可以使用 `/` 形成日期层级。
+
 ### Image Save 保存契约
 
-`core.io.image-save` 使用三个边界清晰的参数：`save_directory` 只负责保存目录，`file_name` 负责完整单级图片文件名，`overwrite` 决定覆盖或自动编号。三个参数同时提供显式可选 `value.v1` 输入端口，连接值优先，未连接时使用节点保存的固定值。文件名可以是 `fixed.jpg`，也可以是 `tray_{YYYYMMDDhhmmssSSS}_OK.jpg`。时间块使用 runtime 主机本地时间，并在单次节点执行开始时一次性取值。
+`core.io.image-save` 使用三个边界清晰的参数：`save_directory` 只负责保存目录，`file_name` 负责完整单级图片文件名，`overwrite` 决定覆盖或自动编号。三个参数同时提供显式可选 `value.v1` 输入端口，连接值优先，未连接时使用节点保存的固定值。目录和文件名共用上述通用日期时间模板与同一个时间点；文件名既可以是 `fixed.jpg`，也可以是 `saveimage-{YYYY}-{MM}-{DD}-{hh}-{mm}-{ss}-{SSS}.jpg`。
 
 关闭覆盖时，节点先尝试原名，再依次尝试扩展名前的 `_001`、`_002`。最终创建必须使用原子不覆盖操作，多个 workflow/runtime 同时写入同一目录时不能通过“先 exists、后覆盖写”的竞争窗口丢失图片。该策略不增加 workflow 调用队列或等待，最终实际路径继续通过 `saved_output.object_key` 或 `saved_output.local_path` 返回。
 
