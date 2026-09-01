@@ -17,7 +17,7 @@
   --am-graph-link: #d99018;
   --am-graph-link-hover: #b87300;
   --am-graph-selected: var(--am-brand-primary-deep);
-  --am-graph-link-selected: var(--am-graph-selected);
+  --am-graph-link-selected: var(--am-graph-link-hover);
   --am-graph-control-checked: #087a56;
   --am-graph-control-on-checked: #ffffff;
   --am-graph-input-port: #bd4865;
@@ -52,7 +52,7 @@
   --am-graph-link: #f2b84b;
   --am-graph-link-hover: #ffd166;
   --am-graph-selected: var(--am-brand-primary);
-  --am-graph-link-selected: var(--am-graph-selected);
+  --am-graph-link-selected: var(--am-graph-link-hover);
   --am-graph-control-checked: var(--am-brand-primary);
   --am-graph-control-on-checked: #101010;
   --am-graph-input-port: #d5657b;

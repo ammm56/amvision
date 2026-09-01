@@ -125,7 +125,7 @@ describe('WorkflowNodeParameterWidgets', () => {
         readJsonTextValue: () => '',
         readJsonPlaceholder: () => '',
         isPortConnected: () => true,
-        isSelectedEdgeEndpoint: () => false,
+        isSelectedEdgeEndpoint: () => true,
         isDraftAnchorPort: () => false,
         readInputSourceLabel: () => 'Number Value / value',
       },
@@ -133,6 +133,8 @@ describe('WorkflowNodeParameterWidgets', () => {
 
     const port = wrapper.get('.workflow-graph-parameter-port')
     expect(port.attributes('data-port-name')).toBe('max_concurrency')
+    expect(port.classes()).toContain('is-connected')
+    expect(port.classes()).toContain('is-selected-endpoint')
     expect(wrapper.get('input[type="number"]').attributes('disabled')).toBeDefined()
     expect(wrapper.get('.workflow-graph-node-widget__connection-source').text()).toBe('来自连接')
     expect(wrapper.get('.workflow-graph-node-widget__connection-source').attributes('title')).toContain('Number Value / value')

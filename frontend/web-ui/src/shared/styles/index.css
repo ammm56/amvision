@@ -2177,12 +2177,10 @@ textarea:focus-visible {
 
 .workflow-graph-port.is-selected-endpoint .workflow-graph-port__dot,
 .workflow-graph-port.is-draft-anchor .workflow-graph-port__dot {
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--graph-accent, #10b981) 42%, transparent), 0 0 12px color-mix(in srgb, currentColor 68%, transparent);
-}
-
-.workflow-graph-port.is-draft-anchor .workflow-graph-port__dot {
-  background: var(--graph-accent, #10b981);
-  border-color: var(--graph-accent, #10b981);
+  color: var(--graph-link-selected, #b87300);
+  border-color: var(--graph-link-selected, #b87300);
+  background: var(--graph-link-selected, #b87300);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--graph-link-selected, #b87300) 42%, transparent), 0 0 12px color-mix(in srgb, var(--graph-link-selected, #b87300) 68%, transparent);
 }
 
 .workflow-graph-port:hover {
@@ -3870,7 +3868,7 @@ textarea:focus-visible {
   color: var(--graph-input-port);
 }
 
-.workflow-graph-workbench .workflow-graph-parameter-port .workflow-graph-port__dot {
+.workflow-graph-workbench .workflow-graph-parameter-port:not(:hover):not(.is-connected):not(.is-selected-endpoint):not(.is-draft-anchor) .workflow-graph-port__dot {
   border-color: var(--graph-parameter-port);
   color: var(--graph-parameter-port);
   box-shadow: 0 0 0 1px color-mix(in srgb, currentColor 20%, transparent);
@@ -3883,6 +3881,14 @@ textarea:focus-visible {
 
 .workflow-graph-workbench .workflow-graph-port.is-connected .workflow-graph-port__dot {
   background: currentColor;
+}
+
+.workflow-graph-workbench .workflow-graph-port.is-selected-endpoint .workflow-graph-port__dot,
+.workflow-graph-workbench .workflow-graph-port.is-draft-anchor .workflow-graph-port__dot {
+  color: var(--graph-link-selected);
+  border-color: var(--graph-link-selected);
+  background: var(--graph-link-selected);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--graph-link-selected) 42%, transparent), 0 0 12px color-mix(in srgb, var(--graph-link-selected) 68%, transparent);
 }
 
 .workflow-graph-workbench .workflow-graph-port:hover {
