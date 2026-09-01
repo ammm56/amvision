@@ -22,6 +22,7 @@
   --am-graph-control-on-checked: #ffffff;
   --am-graph-input-port: #bd4865;
   --am-graph-output-port: #287fb8;
+  --am-graph-parameter-port: color-mix(in srgb, var(--am-graph-text-muted) 68%, var(--am-graph-node));
   --am-graph-control-port: #9a6b20;
   --am-graph-invalid: var(--am-danger-icon);
   --am-graph-minimap-node: color-mix(in srgb, var(--am-graph-node) 72%, var(--am-graph-selected));
@@ -56,6 +57,7 @@
   --am-graph-control-on-checked: #101010;
   --am-graph-input-port: #d5657b;
   --am-graph-output-port: #69addf;
+  --am-graph-parameter-port: color-mix(in srgb, var(--am-graph-text-muted) 68%, var(--am-graph-node));
   --am-graph-control-port: #d4a84e;
   --am-graph-invalid: var(--am-danger-icon);
   --am-graph-minimap-node: color-mix(in srgb, var(--am-graph-node) 72%, var(--am-graph-selected));
