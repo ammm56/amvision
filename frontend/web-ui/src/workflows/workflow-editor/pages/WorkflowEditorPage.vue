@@ -106,6 +106,7 @@
           :is-json-parameter="isJsonParameter"
           :read-parameter-json-text-value="readNodeParameterJsonTextValue"
           :read-parameter-json-placeholder="nodeParameterJsonPlaceholder"
+          :read-input-source-label="readInputSourceLabel"
           :read-preview-display="getPreviewNodeDisplay"
           :read-preview-display-tooltip="readPreviewNodeDisplayTooltip"
           :read-preview-duration-ms="readPreviewNodeDurationMs"
@@ -691,6 +692,22 @@ const {
     errorMessage.value = message
   },
 })
+
+function readInputSourceLabel(nodeId: string, portName: string): string {
+  const edge = findInputEdge(nodeId, portName)
+  if (edge) {
+    const sourceNode = graphNodes.value.find((node) => node.node.node_id === edge.source_node_id)
+    const sourcePort = sourceNode?.outputs.find((port) => port.name === edge.source_port)
+    const nodeLabel = sourceNode ? readGraphNodeTitle(sourceNode) : edge.source_node_id
+    const portLabel = sourcePort ? readNodePortLabel(sourcePort) : edge.source_port
+    return `${nodeLabel} / ${portLabel}`
+  }
+  const templateInput = templateInputs.value.find((input) => input.target_node_id === nodeId && input.target_port === portName)
+  if (!templateInput) return ''
+  const binding = appInputBindings.value.find((item) => item.template_port_id === templateInput.input_id)
+  return binding ? bindingDisplayName(binding) : templateInput.display_name || templateInput.input_id
+}
+
 const {
   deleteGraphNode,
   deleteGraphEdge,
@@ -795,6 +812,10 @@ const graphNodePreviewGalleryItemHeight = 72
 const graphNodePreviewGalleryGap = 6
 const imageRefTransportKindOptions = computed(() => getPreviewImageRefTransportKindOptions())
 const graphNodeWidgetRowHeight = 34
+const graphNodeJsonWidgetRowHeight = 126
+const graphNodeWidgetGap = 6
+const graphNodeWidgetPaddingTop = 6
+const graphNodeWidgetPaddingBottom = 10
 
 const selectedProjectId = computed(() => projectStore.selectedProjectId)
 const {
@@ -1021,6 +1042,10 @@ const {
     nodePreviewGalleryItemHeight: graphNodePreviewGalleryItemHeight,
     nodePreviewGalleryGap: graphNodePreviewGalleryGap,
     nodeWidgetRowHeight: graphNodeWidgetRowHeight,
+    nodeJsonWidgetRowHeight: graphNodeJsonWidgetRowHeight,
+    nodeWidgetGap: graphNodeWidgetGap,
+    nodeWidgetPaddingTop: graphNodeWidgetPaddingTop,
+    nodeWidgetPaddingBottom: graphNodeWidgetPaddingBottom,
   },
   clampNumber,
 })

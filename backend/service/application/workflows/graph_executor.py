@@ -68,6 +68,9 @@ from backend.service.application.workflows.execution.parallel_safety import (
     prepare_parallel_execution_state,
     validate_parallel_node_definition,
 )
+from backend.service.application.workflows.execution.parameters import (
+    resolve_node_parameters,
+)
 from backend.service.application.workflows.execution.selection import (
     SELECTION_END_INPUT_PORT,
     SELECTION_SELECTED_BRANCH_OUTPUT_PORT,
@@ -142,10 +145,16 @@ class WorkflowGraphExecutor:
             execution_metadata=execution_metadata,
             policy=policy,
         )
+        effective_parameters = resolve_node_parameters(
+            node_id=node_id,
+            node_definition=node_definition,
+            static_parameters=parameters,
+            input_values=input_values,
+        )
         request = WorkflowNodeExecutionRequest(
             node_id=node_id,
             node_definition=node_definition,
-            parameters=parameters,
+            parameters=effective_parameters,
             input_values=input_values,
             execution_metadata=execution_metadata,
             runtime_context=runtime_context,

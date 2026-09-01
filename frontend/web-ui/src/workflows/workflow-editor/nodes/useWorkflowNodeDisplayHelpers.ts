@@ -3,6 +3,7 @@ import type { ComputedRef } from 'vue'
 import type { SupportedLocale } from '@/platform/i18n'
 
 import { resolveNodeDefinitionDisplayName, resolveNodeParameterDisplayName, resolveNodePortDisplayName } from '../node-definition-localization'
+import { readRegularNodeInputPorts } from '../parameters/parameter-input-bindings'
 import type { NodeDefinition, NodeParameterUiField, NodePortDefinition, WorkflowGraphNode } from '../types'
 
 export interface WorkflowNodeDisplayView {
@@ -37,10 +38,12 @@ export function useWorkflowNodeDisplayHelpers(options: WorkflowNodeDisplayHelper
   }
 
   function nodePortRows(node: WorkflowNodeDisplayView): WorkflowNodePortRowView[] {
-    const rowCount = Math.max(node.inputs.length, node.outputs.length)
+    const fields = node.definition?.parameter_ui_schema?.fields.filter((field) => !field.hidden) ?? []
+    const regularInputs = readRegularNodeInputPorts(node.definition, node.inputs, fields)
+    const rowCount = Math.max(regularInputs.length, node.outputs.length)
     return Array.from({ length: rowCount }, (_, index) => ({
       key: `${node.node.node_id}-port-row-${index}`,
-      input: node.inputs[index] ?? null,
+      input: regularInputs[index] ?? null,
       output: node.outputs[index] ?? null,
     }))
   }

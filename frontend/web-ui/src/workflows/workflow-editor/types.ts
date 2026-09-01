@@ -31,6 +31,11 @@ export interface NodePortDefinition {
   metadata: WorkflowJsonObject
 }
 
+export interface NodeParameterInputBinding {
+  parameter_name: string
+  input_port_name: string
+}
+
 export interface NodeParameterUiGroup {
   group_id: string
   display_name: string
@@ -74,6 +79,7 @@ export interface NodeDefinition {
   input_ports: NodePortDefinition[]
   output_ports: NodePortDefinition[]
   parameter_schema: WorkflowJsonObject
+  parameter_input_bindings?: NodeParameterInputBinding[]
   parameter_ui_schema: NodeParameterUiSchema | null
   capability_tags: string[]
   runtime_requirements: WorkflowJsonObject

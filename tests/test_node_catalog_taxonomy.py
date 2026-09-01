@@ -26,7 +26,7 @@ EXPECTED_CORE_CATEGORY_COUNTS = {
     "core.logic.parallel": 2,
     "core.logic.object": 5,
     "core.logic.transform": 25,
-    "core.logic.value": 4,
+    "core.logic.value": 7,
     "core.logic.variable": 3,
     "core.logic.rule": 6,
     "core.model.inference": 13,
@@ -83,12 +83,12 @@ _HAN_PATTERN = re.compile(r"[\u3400-\u9fff]")
 
 
 def test_core_catalog_uses_confirmed_two_level_taxonomy() -> None:
-    """验证 205 个 Core 节点完整落入严格两级分类。"""
+    """验证 208 个 Core 节点完整落入严格两级分类。"""
 
     definitions = get_core_workflow_node_definitions()
     category_counts = Counter(item.category for item in definitions)
 
-    assert len(definitions) == 205
+    assert len(definitions) == 208
     assert category_counts == EXPECTED_CORE_CATEGORY_COUNTS
     assert all(
         _TWO_LEVEL_CATEGORY_PATTERN.fullmatch(item.category) for item in definitions

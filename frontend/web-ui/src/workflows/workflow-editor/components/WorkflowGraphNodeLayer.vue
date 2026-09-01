@@ -82,6 +82,10 @@
       :is-json="isJsonParameter"
       :read-json-text-value="readParameterJsonTextValue"
       :read-json-placeholder="readParameterJsonPlaceholder"
+      :is-port-connected="isPortConnected"
+      :is-selected-edge-endpoint="isSelectedEdgeEndpoint"
+      :is-draft-anchor-port="isDraftAnchorPort"
+      :read-input-source-label="readInputSourceLabel"
       @update-enum="(targetNode, field, value) => emit('updateEnumParameter', targetNode, field, value)"
       @update-checkbox="(targetNode, field, event) => emit('updateCheckboxParameter', targetNode, field, event)"
       @update-number="(targetNode, field, event) => emit('updateNumberParameter', targetNode, field, event)"
@@ -89,6 +93,9 @@
       @update-json-draft="(targetNode, field, event) => emit('updateJsonParameterDraft', targetNode, field, event)"
       @commit-json-draft="(targetNode, field, event) => emit('commitJsonParameterDraft', targetNode, field, event)"
       @select-deployment-instance="(targetNode) => emit('selectDeploymentInstance', targetNode)"
+      @start-port-connection="(event, targetNode, port, direction) => emit('startPortConnection', event, targetNode, port, direction)"
+      @select-port-endpoint="(targetNode, port, direction) => emit('selectPortEndpoint', targetNode, port, direction)"
+      @open-port-context-menu="(event, targetNode, port, direction) => emit('openPortContextMenu', event, targetNode, port, direction)"
     />
     <WorkflowNodePreviewDisplay
       v-if="hasPreviewDisplay(node)"
@@ -144,6 +151,7 @@ const props = defineProps<{
   isJsonParameter: (field: NodeParameterUiField) => boolean
   readParameterJsonTextValue: (node: WorkflowGraphNodeView, field: NodeParameterUiField) => string
   readParameterJsonPlaceholder: (field: NodeParameterUiField) => string
+  readInputSourceLabel: (nodeId: string, portName: string) => string
   readPreviewDisplay: (nodeId: string) => PreviewNodeDisplay | null
   readPreviewDisplayTooltip: (display: PreviewNodeDisplay | null) => string
   readPreviewDurationMs: (nodeId: string) => number | null

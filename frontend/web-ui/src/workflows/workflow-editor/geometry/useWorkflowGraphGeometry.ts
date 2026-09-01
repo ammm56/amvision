@@ -2,10 +2,12 @@ import { computed, type ComputedRef, type Ref } from 'vue'
 
 import type { WorkflowBoundaryNodeView } from '../bindings/useWorkflowBoundaryNodes'
 import type { WorkflowConnectionDraftState, WorkflowPortDirection } from '../canvas/useWorkflowPortConnections'
-import type { FlowApplicationBinding, NodeParameterUiField, NodePortDefinition, WorkflowGraphEdge, WorkflowGraphInput, WorkflowGraphNode, WorkflowGraphOutput } from '../types'
+import { findNodeParameterInputBindingByPort, readRegularNodeInputPorts } from '../parameters/parameter-input-bindings'
+import type { FlowApplicationBinding, NodeDefinition, NodeParameterUiField, NodePortDefinition, WorkflowGraphEdge, WorkflowGraphInput, WorkflowGraphNode, WorkflowGraphOutput } from '../types'
 
 export interface WorkflowGraphGeometryNodeView {
   node: WorkflowGraphNode
+  definition: NodeDefinition | null
   x: number
   y: number
   width: number
@@ -36,6 +38,10 @@ export interface WorkflowGraphGeometryLayout {
   nodePreviewGalleryItemHeight: number
   nodePreviewGalleryGap: number
   nodeWidgetRowHeight: number
+  nodeJsonWidgetRowHeight: number
+  nodeWidgetGap: number
+  nodeWidgetPaddingTop: number
+  nodeWidgetPaddingBottom: number
 }
 
 interface WorkflowGraphPreviewDisplay {
@@ -68,7 +74,9 @@ export function useWorkflowGraphGeometry<NodeView extends WorkflowGraphGeometryN
   const draftLinkPath = computed(() => options.connectionDraft.value ? linkPath(buildDraftLink(options.connectionDraft.value)) : '')
 
   function nodeVisualHeight(node: NodeView): number {
-    const portRowCount = Math.max(node.inputs.length, node.outputs.length)
+    const fields = options.readParameterFields(node)
+    const regularInputs = readRegularNodeInputPorts(node.definition, node.inputs, fields)
+    const portRowCount = Math.max(regularInputs.length, node.outputs.length)
     const widgetHeight = readNodeWidgetHeight(node)
     const previewHeight = readNodePreviewHeight(node.node.node_id)
     const footerHeight = previewHeight > 0 ? 0 : 22
@@ -76,7 +84,30 @@ export function useWorkflowGraphGeometry<NodeView extends WorkflowGraphGeometryN
   }
 
   function portY(node: NodeView, portName: string, direction: WorkflowPortDirection): number {
-    const ports = direction === 'input' ? node.inputs : node.outputs
+    const fields = options.readParameterFields(node)
+    const parameterBinding = direction === 'input'
+      ? findNodeParameterInputBindingByPort(node.definition, portName)
+      : null
+    const parameterIndex = parameterBinding
+      ? fields.findIndex((field) => field.parameter_name === parameterBinding.parameter_name)
+      : -1
+    if (parameterIndex >= 0) {
+      const regularInputs = readRegularNodeInputPorts(node.definition, node.inputs, fields)
+      const portRowCount = Math.max(regularInputs.length, node.outputs.length)
+      const priorFieldHeight = fields.slice(0, parameterIndex).reduce(
+        (total, field) => total + readParameterFieldHeight(field) + options.layout.nodeWidgetGap,
+        0,
+      )
+      return node.y
+        + options.layout.nodeHeaderHeight
+        + portRowCount * options.layout.portRowHeight
+        + options.layout.nodeWidgetPaddingTop
+        + priorFieldHeight
+        + readParameterFieldHeight(fields[parameterIndex]) / 2
+    }
+    const ports = direction === 'input'
+      ? readRegularNodeInputPorts(node.definition, node.inputs, fields)
+      : node.outputs
     const index = Math.max(ports.findIndex((port) => port.name === portName), 0)
     return node.y + options.layout.nodeHeaderHeight + index * options.layout.portRowHeight + options.layout.portRowHeight / 2
   }
@@ -136,8 +167,17 @@ export function useWorkflowGraphGeometry<NodeView extends WorkflowGraphGeometryN
   function readNodeWidgetHeight(node: NodeView): number {
     const fields = options.readParameterFields(node)
     if (fields.length === 0) return 0
-    const editorsHeight = fields.reduce((total, field) => total + (options.isJsonParameter(field) ? 126 : options.layout.nodeWidgetRowHeight), 0)
-    return 12 + editorsHeight + Math.max(fields.length - 1, 0) * 6
+    const editorsHeight = fields.reduce((total, field) => total + readParameterFieldHeight(field), 0)
+    return options.layout.nodeWidgetPaddingTop
+      + editorsHeight
+      + Math.max(fields.length - 1, 0) * options.layout.nodeWidgetGap
+      + options.layout.nodeWidgetPaddingBottom
+  }
+
+  function readParameterFieldHeight(field: NodeParameterUiField): number {
+    return options.isJsonParameter(field)
+      ? options.layout.nodeJsonWidgetRowHeight
+      : options.layout.nodeWidgetRowHeight
   }
 
   function readNodePreviewHeight(nodeId: string): number {

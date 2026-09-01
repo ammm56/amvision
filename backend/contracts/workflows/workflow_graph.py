@@ -154,6 +154,38 @@ class NodePortDefinition(BaseModel):
         return self
 
 
+class NodeParameterInputBinding(BaseModel):
+    """把节点参数显式绑定到一个可选的 ``value.v1`` 输入端口。
+
+    字段：
+    - parameter_name：``parameter_schema.properties`` 中的参数名称。
+    - input_port_name：为当前参数提供运行时覆盖值的输入端口名称。
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    parameter_name: str
+    input_port_name: str
+
+    @model_validator(mode="after")
+    def validate_binding(self) -> NodeParameterInputBinding:
+        """校验绑定名称非空且不包含两端空白。"""
+
+        parameter_name = _require_stripped_text(
+            self.parameter_name,
+            "parameter_name",
+        )
+        input_port_name = _require_stripped_text(
+            self.input_port_name,
+            "input_port_name",
+        )
+        if parameter_name != self.parameter_name:
+            raise ValueError("parameter_name 不能包含两端空白")
+        if input_port_name != self.input_port_name:
+            raise ValueError("input_port_name 不能包含两端空白")
+        return self
+
+
 class NodeParameterUiGroup(BaseModel):
     """描述节点参数编辑器中的一个稳定分组。"""
 
@@ -250,6 +282,7 @@ class NodeDefinition(BaseModel):
     - input_ports：输入端口列表。
     - output_ports：输出端口列表。
     - parameter_schema：参数 schema。
+    - parameter_input_bindings：允许 ``value.v1`` 输入在运行时覆盖参数的显式绑定。
     - parameter_ui_schema：参数编辑器稳定 UI 规则。
     - capability_tags：能力标签列表。
     - runtime_requirements：运行依赖，例如 opencv-python、numpy 或特定 worker profile。
@@ -281,6 +314,10 @@ class NodeDefinition(BaseModel):
     input_ports: tuple[NodePortDefinition, ...] = ()
     output_ports: tuple[NodePortDefinition, ...] = ()
     parameter_schema: dict[str, object] = Field(default_factory=dict)
+    parameter_input_bindings: tuple[NodeParameterInputBinding, ...] = Field(
+        default=(),
+        exclude_if=lambda value: not value,
+    )
     parameter_ui_schema: NodeParameterUiSchema | None = None
     capability_tags: tuple[str, ...] = ()
     runtime_requirements: dict[str, object] = Field(default_factory=dict)
@@ -302,7 +339,7 @@ class NodeDefinition(BaseModel):
         normalized_category = _require_stripped_text(self.category, "category")
         if "/" in normalized_category:
             raise ValueError("category 不能包含 /，分类层级统一使用 . 分隔")
-        _build_port_index(
+        input_port_index = _build_port_index(
             ports=self.input_ports,
             direction="input",
             node_type_id=self.node_type_id,
@@ -312,6 +349,7 @@ class NodeDefinition(BaseModel):
             direction="output",
             node_type_id=self.node_type_id,
         )
+        self._validate_parameter_input_bindings(input_port_index=input_port_index)
         if self.implementation_kind == NODE_IMPLEMENTATION_CUSTOM:
             if self.node_pack_id is None or self.node_pack_version is None:
                 raise ValueError("custom-node 必须声明 node_pack_id 和 node_pack_version")
@@ -328,6 +366,63 @@ class NodeDefinition(BaseModel):
             if self.node_pack_id is not None or self.node_pack_version is not None:
                 raise ValueError("core-node 不能声明 node_pack_id 或 node_pack_version")
         return self
+
+    def _validate_parameter_input_bindings(
+        self,
+        *,
+        input_port_index: dict[str, NodePortDefinition],
+    ) -> None:
+        """校验动态参数绑定只引用明确的参数和可选 ``value.v1`` 端口。"""
+
+        if not self.parameter_input_bindings:
+            return
+        raw_properties = self.parameter_schema.get("properties")
+        if not isinstance(raw_properties, dict):
+            raise ValueError(
+                f"节点 {self.node_type_id} 声明 parameter_input_bindings 时 "
+                "parameter_schema.properties 必须是对象"
+            )
+        parameter_names = tuple(
+            binding.parameter_name for binding in self.parameter_input_bindings
+        )
+        input_port_names = tuple(
+            binding.input_port_name for binding in self.parameter_input_bindings
+        )
+        _ensure_unique_names(
+            parameter_names,
+            f"节点 {self.node_type_id} 的动态参数绑定参数",
+        )
+        _ensure_unique_names(
+            input_port_names,
+            f"节点 {self.node_type_id} 的动态参数绑定端口",
+        )
+        for binding in self.parameter_input_bindings:
+            if binding.parameter_name not in raw_properties:
+                raise ValueError(
+                    f"节点 {self.node_type_id} 的动态参数绑定引用了不存在的参数 "
+                    f"{binding.parameter_name}"
+                )
+            port = input_port_index.get(binding.input_port_name)
+            if port is None:
+                raise ValueError(
+                    f"节点 {self.node_type_id} 的动态参数绑定引用了不存在的输入端口 "
+                    f"{binding.input_port_name}"
+                )
+            if port.required:
+                raise ValueError(
+                    f"节点 {self.node_type_id} 的动态参数输入端口 "
+                    f"{binding.input_port_name} 必须是可选端口"
+                )
+            if port.multiple:
+                raise ValueError(
+                    f"节点 {self.node_type_id} 的动态参数输入端口 "
+                    f"{binding.input_port_name} 不允许 multiple"
+                )
+            if port.payload_type_id != "value.v1":
+                raise ValueError(
+                    f"节点 {self.node_type_id} 的动态参数输入端口 "
+                    f"{binding.input_port_name} 必须使用 value.v1"
+                )
 
 
 class WorkflowGraphNode(BaseModel):

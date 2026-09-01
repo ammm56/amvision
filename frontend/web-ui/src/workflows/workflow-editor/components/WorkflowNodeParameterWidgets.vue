@@ -1,20 +1,48 @@
 <template>
   <div class="workflow-graph-node-widgets">
-    <label
+    <div
       v-for="field in fields"
       :key="`${node.node.node_id}-${field.parameter_name}`"
       class="workflow-graph-node-widget"
+      :class="{ 'is-connected-input': isParameterInputConnected(node, field) }"
       @mousedown.stop
       @click.stop
     >
-      <div class="workflow-graph-node-widget__label">
-        <span>{{ readLabel(field) }}</span>
+      <div
+        class="workflow-graph-node-widget__label"
+        :class="{ 'has-parameter-input': Boolean(readParameterInputPort(node, field)) }"
+      >
+        <span
+          v-if="readParameterInputPort(node, field)"
+          class="workflow-graph-port workflow-graph-port--input workflow-graph-parameter-port"
+          :class="{
+            'is-connected': isParameterInputConnected(node, field),
+            'is-selected-endpoint': isSelectedEdgeEndpoint(node.node.node_id, requireParameterInputPort(node, field).name, 'input'),
+            'is-draft-anchor': isDraftAnchorPort(node.node.node_id, requireParameterInputPort(node, field).name, 'input'),
+          }"
+          :data-node-id="node.node.node_id"
+          :data-port-name="requireParameterInputPort(node, field).name"
+          :data-payload-type-id="requireParameterInputPort(node, field).payload_type_id"
+          data-port-direction="input"
+          @mousedown.stop.prevent="emit('start-port-connection', $event, node, requireParameterInputPort(node, field), 'input')"
+          @click.stop="emit('select-port-endpoint', node, requireParameterInputPort(node, field), 'input')"
+          @contextmenu.prevent.stop="emit('open-port-context-menu', $event, node, requireParameterInputPort(node, field), 'input')"
+        >
+          <span class="workflow-graph-port__dot" aria-hidden="true" />
+        </span>
+        <span class="workflow-graph-node-widget__label-text">{{ readLabel(field) }}</span>
+        <small
+          v-if="isParameterInputConnected(node, field)"
+          class="workflow-graph-node-widget__connection-source"
+          :title="readParameterInputSourceTitle(node, field)"
+        >{{ t('workflowEditor.feedback.parameterFromConnection') }}</small>
       </div>
       <SelectField
         v-if="field.enum_options.length"
         :model-value="readEnumValue(node, field)"
         :options="readEnumOptions(field)"
-        :disabled="field.readonly"
+        :disabled="isParameterEditorDisabled(node, field)"
+        :aria-label="readLabel(field)"
         @update:model-value="emit('update-enum', node, field, $event)"
       />
       <div
@@ -29,7 +57,7 @@
         >
         <button
           type="button"
-          :disabled="field.readonly"
+          :disabled="isParameterEditorDisabled(node, field)"
           :title="t('workflowEditor.deploymentPicker.selectApplicable')"
           :aria-label="t('workflowEditor.deploymentPicker.selectAria')"
           @mousedown.stop
@@ -42,7 +70,7 @@
       <WorkflowGraphCheckbox
         v-else-if="isBoolean(field)"
         :checked="readBooleanValue(node, field)"
-        :disabled="field.readonly"
+        :disabled="isParameterEditorDisabled(node, field)"
         :aria-label="readLabel(field)"
         @change="emit('update-checkbox', node, field, $event)"
       />
@@ -53,25 +81,28 @@
         :max="readWorkflowNumericParameterInputAttributes(field).max"
         :step="readWorkflowNumericParameterInputAttributes(field).step"
         :value="readTextValue(node, field)"
-        :disabled="field.readonly"
+        :disabled="isParameterEditorDisabled(node, field)"
+        :aria-label="readLabel(field)"
         @input="emit('update-number', node, field, $event)"
       />
       <input
         v-else-if="isString(field)"
         :value="readTextValue(node, field)"
-        :disabled="field.readonly"
+        :disabled="isParameterEditorDisabled(node, field)"
+        :aria-label="readLabel(field)"
         @input="emit('update-text', node, field, $event)"
       />
       <template v-else-if="isJson(field)">
         <textarea
           :value="readJsonTextValue(node, field)"
-          :disabled="field.readonly"
+          :disabled="isParameterEditorDisabled(node, field)"
+          :aria-label="readLabel(field)"
           :placeholder="readJsonPlaceholder(field)"
           @input="emit('update-json-draft', node, field, $event)"
           @change="emit('commit-json-draft', node, field, $event)"
         />
       </template>
-    </label>
+    </div>
   </div>
 </template>
 
@@ -81,6 +112,7 @@ import { useI18n } from 'vue-i18n'
 
 import SelectField from '@/shared/ui/components/Select.vue'
 import WorkflowGraphCheckbox from './WorkflowGraphCheckbox.vue'
+import { readNodeParameterInputPort } from '../parameters/parameter-input-bindings'
 import { isModelInferenceDeploymentField } from '../parameters/useWorkflowDeploymentInstancePicker'
 import { readWorkflowNumericParameterInputAttributes } from '../parameters/numeric-parameter-input'
 import type { NodeDefinition, NodeParameterUiField, NodePortDefinition, WorkflowGraphNode } from '../types'
@@ -106,7 +138,7 @@ interface WorkflowNodeParameterNode {
   outputs: NodePortDefinition[]
 }
 
-defineProps<{
+const props = defineProps<{
   node: WorkflowNodeParameterNode
   fields: NodeParameterUiField[]
   readLabel: (field: NodeParameterUiField) => string
@@ -120,6 +152,10 @@ defineProps<{
   isJson: (field: NodeParameterUiField) => boolean
   readJsonTextValue: (node: WorkflowNodeParameterNode, field: NodeParameterUiField) => string
   readJsonPlaceholder: (field: NodeParameterUiField) => string
+  isPortConnected: (nodeId: string, portName: string, direction: 'input' | 'output') => boolean
+  isSelectedEdgeEndpoint: (nodeId: string, portName: string, direction: 'input' | 'output') => boolean
+  isDraftAnchorPort: (nodeId: string, portName: string, direction: 'input' | 'output') => boolean
+  readInputSourceLabel: (nodeId: string, portName: string) => string
 }>()
 
 const emit = defineEmits<{
@@ -130,5 +166,36 @@ const emit = defineEmits<{
   'update-json-draft': [node: WorkflowNodeParameterNode, field: NodeParameterUiField, event: Event]
   'commit-json-draft': [node: WorkflowNodeParameterNode, field: NodeParameterUiField, event: Event]
   'select-deployment-instance': [node: WorkflowNodeParameterNode]
+  'start-port-connection': [event: MouseEvent, node: WorkflowNodeParameterNode, port: NodePortDefinition, direction: 'input']
+  'select-port-endpoint': [node: WorkflowNodeParameterNode, port: NodePortDefinition, direction: 'input']
+  'open-port-context-menu': [event: MouseEvent, node: WorkflowNodeParameterNode, port: NodePortDefinition, direction: 'input']
 }>()
+
+function readParameterInputPort(node: WorkflowNodeParameterNode, field: NodeParameterUiField): NodePortDefinition | null {
+  return readNodeParameterInputPort(node.definition, field.parameter_name)
+}
+
+function requireParameterInputPort(node: WorkflowNodeParameterNode, field: NodeParameterUiField): NodePortDefinition {
+  const port = readParameterInputPort(node, field)
+  if (!port) throw new Error(`parameter input port missing: ${node.node.node_id}/${field.parameter_name}`)
+  return port
+}
+
+function isParameterInputConnected(node: WorkflowNodeParameterNode, field: NodeParameterUiField): boolean {
+  const port = readParameterInputPort(node, field)
+  return port ? props.isPortConnected(node.node.node_id, port.name, 'input') : false
+}
+
+function isParameterEditorDisabled(node: WorkflowNodeParameterNode, field: NodeParameterUiField): boolean {
+  return field.readonly || isParameterInputConnected(node, field)
+}
+
+function readParameterInputSourceTitle(node: WorkflowNodeParameterNode, field: NodeParameterUiField): string {
+  const port = readParameterInputPort(node, field)
+  if (!port) return ''
+  const source = props.readInputSourceLabel(node.node.node_id, port.name)
+  return source
+    ? t('workflowEditor.feedback.parameterConnectionSource', { source })
+    : t('workflowEditor.feedback.parameterFromConnection')
+}
 </script>

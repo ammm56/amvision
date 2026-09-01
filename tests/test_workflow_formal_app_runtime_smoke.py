@@ -211,7 +211,7 @@ def test_task_native_direct_model_app_runtime_smoke_executes_and_returns_ok_resu
 def test_opencv_process_save_image_app_runtime_smoke_saves_unique_object_key(
     tmp_path: Path,
 ) -> None:
-    """验证第五类正式 app 会真实保存图片，并生成带 workflow_run_id 与时间戳的 object key。"""
+    """验证第五类正式 app 会真实保存图片，并生成带 workflow_run_id 与本地时间的 object key。"""
 
     executor, workflow_service, dataset_storage, _ = _build_example_runtime(
         tmp_path,
@@ -255,7 +255,7 @@ def test_opencv_process_save_image_app_runtime_smoke_saves_unique_object_key(
     )
     assert len(object_key_parts) == 8
     assert re.match(r"^[0-9a-f]{32}$", object_key_parts[6]) is not None
-    assert re.match(r"^save_image-\d{8}T\d{12}Z\.png$", object_key_parts[7]) is not None
+    assert re.match(r"^save_image-\d{17}\.png$", object_key_parts[7]) is not None
     assert dataset_storage.resolve(object_key).is_file()
 
 

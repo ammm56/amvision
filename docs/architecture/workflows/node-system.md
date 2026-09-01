@@ -118,10 +118,15 @@ Trigger adapter 负责把外部事件转换成 Workflow Run 请求；业务图�
 - 输入输出端口必须声明版本化 payload type。
 - 隐式类型转换禁止；需要转换时使用明确 bridge 节点。
 - `node_type_id`、端口或 payload 的破坏性变化必须同步版本、示例、迁移和测试。
+- 需要在运行时由其他节点或 App Entry 赋值的参数必须通过 `parameter_input_bindings` 显式绑定到可选 `value.v1` 输入端口；连接值覆盖固定参数，断开后恢复固定参数。
+- 参数输入框与参数端口在编辑器中共存。未声明绑定的参数保持固定值，不根据名称或 schema 自动暴露端口。
+- Parallel、ForEach、Selection 的执行计划参数以及资源、安全和 timeout 参数默认不得动态绑定。
+
+详细契约、运行时优先级和验收门禁见 [Workflow 动态参数输入实施基线](../../development/workflow-dynamic-parameter-input-implementation.md)。
 
 ### Image Save 保存契约
 
-`core.io.image-save` 使用三个边界清晰的参数：`save_directory` 只负责保存目录，`file_name` 负责完整单级图片文件名，`overwrite` 决定覆盖或自动编号。文件名可以是 `fixed.jpg`，也可以是 `tray_{YYYYMMDDhhmmssSSS}_OK.jpg`。时间块使用 runtime 主机本地时间，并在单次节点执行开始时一次性取值。
+`core.io.image-save` 使用三个边界清晰的参数：`save_directory` 只负责保存目录，`file_name` 负责完整单级图片文件名，`overwrite` 决定覆盖或自动编号。三个参数同时提供显式可选 `value.v1` 输入端口，连接值优先，未连接时使用节点保存的固定值。文件名可以是 `fixed.jpg`，也可以是 `tray_{YYYYMMDDhhmmssSSS}_OK.jpg`。时间块使用 runtime 主机本地时间，并在单次节点执行开始时一次性取值。
 
 关闭覆盖时，节点先尝试原名，再依次尝试扩展名前的 `_001`、`_002`。最终创建必须使用原子不覆盖操作，多个 workflow/runtime 同时写入同一目录时不能通过“先 exists、后覆盖写”的竞争窗口丢失图片。该策略不增加 workflow 调用队列或等待，最终实际路径继续通过 `saved_output.object_key` 或 `saved_output.local_path` 返回。
 

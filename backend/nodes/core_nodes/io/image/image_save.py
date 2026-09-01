@@ -8,6 +8,7 @@ from backend.contracts.workflows.workflow_graph import (
     NODE_IMPLEMENTATION_CORE,
     NODE_RUNTIME_PYTHON_CALLABLE,
     NodeDefinition,
+    NodeParameterInputBinding,
     NodePortDefinition,
 )
 from backend.nodes.core_nodes.support.base import CoreNodeSpec
@@ -205,6 +206,24 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 display_name="Image",
                 payload_type_id="image-ref.v1",
             ),
+            NodePortDefinition(
+                name="save_directory",
+                display_name="Save Directory",
+                payload_type_id="value.v1",
+                required=False,
+            ),
+            NodePortDefinition(
+                name="file_name",
+                display_name="File Name",
+                payload_type_id="value.v1",
+                required=False,
+            ),
+            NodePortDefinition(
+                name="overwrite",
+                display_name="Overwrite",
+                payload_type_id="value.v1",
+                required=False,
+            ),
         ),
         output_ports=(
             NodePortDefinition(
@@ -268,6 +287,20 @@ CORE_NODE_SPEC = CoreNodeSpec(
             },
             "required": ["save_directory", "file_name", "overwrite"],
         },
+        parameter_input_bindings=(
+            NodeParameterInputBinding(
+                parameter_name="save_directory",
+                input_port_name="save_directory",
+            ),
+            NodeParameterInputBinding(
+                parameter_name="file_name",
+                input_port_name="file_name",
+            ),
+            NodeParameterInputBinding(
+                parameter_name="overwrite",
+                input_port_name="overwrite",
+            ),
+        ),
         capability_tags=("io.output", "image.persist"),
     ),
     handler=_image_save_handler,

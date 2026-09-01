@@ -14,6 +14,7 @@ from backend.contracts.workflows.workflow_graph import (
     FlowApplicationBinding,
     FlowTemplateReference,
     NodeDefinition,
+    NodeParameterInputBinding,
     NodePortDefinition,
     WorkflowGraphEdge,
     WorkflowGraphInput,
@@ -194,6 +195,166 @@ def test_node_definition_rejects_slash_category_paths() -> None:
             category="core/logic/branch",
             implementation_kind=NODE_IMPLEMENTATION_CORE,
             runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
+        )
+
+
+def _build_parameter_input_node_definition(
+    *,
+    input_port: NodePortDefinition | None = None,
+    bindings: tuple[NodeParameterInputBinding, ...] | None = None,
+    parameter_schema: dict[str, object] | None = None,
+) -> NodeDefinition:
+    """构造参数输入绑定契约测试使用的最小节点定义。"""
+
+    return NodeDefinition(
+        node_type_id="core.test.parameter-input",
+        display_name="Parameter Input",
+        category="test",
+        implementation_kind=NODE_IMPLEMENTATION_CORE,
+        runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
+        input_ports=(
+            input_port
+            or NodePortDefinition(
+                name="threshold",
+                display_name="Threshold",
+                payload_type_id="value.v1",
+                required=False,
+            ),
+        ),
+        parameter_schema=parameter_schema
+        or {
+            "type": "object",
+            "properties": {"threshold": {"type": "number", "default": 0.5}},
+        },
+        parameter_input_bindings=bindings
+        if bindings is not None
+        else (
+            NodeParameterInputBinding(
+                parameter_name="threshold",
+                input_port_name="threshold",
+            ),
+        ),
+    )
+
+
+def test_node_definition_parameter_input_binding_round_trips_as_v1() -> None:
+    """验证参数输入绑定是当前 NodeDefinition v1 的向后兼容字段。"""
+
+    definition = _build_parameter_input_node_definition()
+    restored = NodeDefinition.model_validate_json(definition.model_dump_json())
+    legacy_payload = definition.model_dump(mode="json")
+    legacy_payload.pop("parameter_input_bindings")
+    legacy_definition = NodeDefinition.model_validate(legacy_payload)
+
+    assert definition.format_id == "amvision.node-definition.v1"
+    assert restored.parameter_input_bindings == definition.parameter_input_bindings
+    assert legacy_definition.parameter_input_bindings == ()
+
+
+@pytest.mark.parametrize(
+    ("input_port", "bindings", "parameter_schema", "expected_message"),
+    (
+        (
+            None,
+            (
+                NodeParameterInputBinding(
+                    parameter_name="missing",
+                    input_port_name="threshold",
+                ),
+            ),
+            None,
+            "不存在的参数",
+        ),
+        (
+            None,
+            (
+                NodeParameterInputBinding(
+                    parameter_name="threshold",
+                    input_port_name="missing",
+                ),
+            ),
+            None,
+            "不存在的输入端口",
+        ),
+        (
+            NodePortDefinition(
+                name="threshold",
+                display_name="Threshold",
+                payload_type_id="value.v1",
+                required=True,
+            ),
+            None,
+            None,
+            "必须是可选端口",
+        ),
+        (
+            NodePortDefinition(
+                name="threshold",
+                display_name="Threshold",
+                payload_type_id="value.v1",
+                required=False,
+                multiple=True,
+            ),
+            None,
+            None,
+            "不允许 multiple",
+        ),
+        (
+            NodePortDefinition(
+                name="threshold",
+                display_name="Threshold",
+                payload_type_id="text.v1",
+                required=False,
+            ),
+            None,
+            None,
+            "必须使用 value.v1",
+        ),
+        (
+            None,
+            None,
+            {"type": "object"},
+            "parameter_schema.properties 必须是对象",
+        ),
+    ),
+)
+def test_node_definition_rejects_invalid_parameter_input_bindings(
+    input_port: NodePortDefinition | None,
+    bindings: tuple[NodeParameterInputBinding, ...] | None,
+    parameter_schema: dict[str, object] | None,
+    expected_message: str,
+) -> None:
+    """验证动态参数绑定不会接受不明确或非 value.v1 的端口。"""
+
+    with pytest.raises(ValueError, match=expected_message):
+        _build_parameter_input_node_definition(
+            input_port=input_port,
+            bindings=bindings,
+            parameter_schema=parameter_schema,
+        )
+
+
+def test_node_definition_rejects_duplicate_parameter_input_bindings() -> None:
+    """验证一个参数不能由多个端口静默覆盖。"""
+
+    with pytest.raises(ValueError, match="动态参数绑定参数 存在重复名称"):
+        _build_parameter_input_node_definition(
+            input_port=NodePortDefinition(
+                name="threshold",
+                display_name="Threshold",
+                payload_type_id="value.v1",
+                required=False,
+            ),
+            bindings=(
+                NodeParameterInputBinding(
+                    parameter_name="threshold",
+                    input_port_name="threshold",
+                ),
+                NodeParameterInputBinding(
+                    parameter_name="threshold",
+                    input_port_name="threshold_backup",
+                ),
+            ),
         )
 
 

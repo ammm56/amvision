@@ -9,8 +9,17 @@ from pathlib import Path, PurePath
 import numpy as np
 import pytest
 
+from backend.contracts.workflows.workflow_graph import (
+    WorkflowGraphInput,
+    WorkflowGraphNode,
+    WorkflowGraphOutput,
+    WorkflowGraphTemplate,
+)
 from backend.nodes import ExecutionImageRegistry
-from backend.nodes.core_nodes.io.image.image_save import _image_save_handler
+from backend.nodes.core_nodes.io.image.image_save import (
+    CORE_NODE_SPEC as IMAGE_SAVE_NODE_SPEC,
+    _image_save_handler,
+)
 from backend.nodes.runtime_support import register_image_matrix
 from backend.nodes.save_locations import (
     SAVE_LOCATION_FILESYSTEM,
@@ -19,7 +28,9 @@ from backend.nodes.save_locations import (
 )
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import (
+    WorkflowGraphExecutor,
     WorkflowNodeExecutionRequest,
+    WorkflowNodeRuntimeRegistry,
 )
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
@@ -127,6 +138,102 @@ def test_image_save_handler_supports_absolute_filesystem_location(
         "kind": "filesystem",
         "local_path": str(output_path),
     }
+
+
+def test_image_save_graph_uses_connected_directory_file_name_and_overwrite(
+    tmp_path: Path,
+) -> None:
+    """验证 Save Image 三个参数端口通过统一执行器覆盖固定回退值。"""
+
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "dataset-files"))
+    )
+    source_bytes = build_valid_test_png_bytes()
+    dataset_storage.write_bytes("inputs/source.png", source_bytes)
+    dynamic_directory = str((tmp_path / "dynamic-results").resolve())
+    registry = WorkflowNodeRuntimeRegistry()
+    registry.register_python_callable(
+        IMAGE_SAVE_NODE_SPEC.node_definition,
+        IMAGE_SAVE_NODE_SPEC.handler,
+    )
+    template = WorkflowGraphTemplate(
+        template_id="image-save-dynamic-parameters",
+        template_version="1.0.0",
+        display_name="Image Save Dynamic Parameters",
+        nodes=(
+            WorkflowGraphNode(
+                node_id="save-image",
+                node_type_id=IMAGE_SAVE_NODE_SPEC.node_definition.node_type_id,
+                parameters={
+                    "save_directory": "fallback/results",
+                    "file_name": "fallback.png",
+                    "overwrite": False,
+                },
+            ),
+        ),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="image",
+                display_name="Image",
+                payload_type_id="image-ref.v1",
+                target_node_id="save-image",
+                target_port="image",
+            ),
+            WorkflowGraphInput(
+                input_id="save_directory",
+                display_name="Save Directory",
+                payload_type_id="value.v1",
+                target_node_id="save-image",
+                target_port="save_directory",
+            ),
+            WorkflowGraphInput(
+                input_id="file_name",
+                display_name="File Name",
+                payload_type_id="value.v1",
+                target_node_id="save-image",
+                target_port="file_name",
+            ),
+            WorkflowGraphInput(
+                input_id="overwrite",
+                display_name="Overwrite",
+                payload_type_id="value.v1",
+                target_node_id="save-image",
+                target_port="overwrite",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="image",
+                display_name="Image",
+                payload_type_id="image-ref.v1",
+                source_node_id="save-image",
+                source_port="image",
+            ),
+        ),
+    )
+
+    result = WorkflowGraphExecutor(registry=registry).execute(
+        template=template,
+        input_values={
+            "image": {
+                "transport_kind": "storage",
+                "object_key": "inputs/source.png",
+                "media_type": "image/png",
+            },
+            "save_directory": {"value": dynamic_directory},
+            "file_name": {"value": "dynamic.png"},
+            "overwrite": {"value": True},
+        },
+        execution_metadata={"dataset_storage": dataset_storage},
+    )
+
+    saved_path = Path(dynamic_directory) / "dynamic.png"
+    assert saved_path.read_bytes() == source_bytes
+    assert result.outputs["image"]["saved_output"] == {
+        "kind": "filesystem",
+        "local_path": str(saved_path),
+    }
+    assert not dataset_storage.resolve("fallback/results/fallback.png").exists()
 
 
 @pytest.mark.parametrize("target_kind", ["object-store", "filesystem"])

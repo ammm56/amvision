@@ -6,10 +6,12 @@
 
 - `node_type_id`、显示名称、分类和版本来源
 - 输入输出端口与 `payload_type_id`
-- 参数 schema 与参数 UI schema
+- 参数 schema、参数 UI schema 与参数输入绑定
 - runtime kind、能力标签和运行要求
 
 画布只保存节点实例、边、分组、参数和 UI state；节点定义不复制进 Template。连线时前端先做端口与 payload 轻量校验，后端 validate 和保存接口执行最终校验。
+
+声明参数输入绑定的字段在参数行同时显示输入框和输入端口。端口未连接时输入框编辑固定回退值；端口已连接时输入框只读并显示来源，断开后恢复固定值。参数端口仍是正式 `input_ports`，不保存前端私有转换状态，也不提供每个节点实例的动态开关。
 
 ## Workflow App 编辑
 
