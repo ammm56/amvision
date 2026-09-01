@@ -333,12 +333,26 @@ v1 的公开 input `payload_schema` 使用 closed-object 规则；包括 `value.
 - `core.logic.text-to-value`：只把 `text` 字符串包装为 `value.v1`，不解析 JSON；
 - `core.logic.json-parse-text`：显式把 JSON 文本解析为 `value.v1`；
 - `core.logic.value-to-json-text`：按明确参数把 `value.v1` 序列化为 `text.v1`；
+- `core.logic.string-concat`：严格拼接两个字符串 `value.v1`，不隐式转换类型或解析日期块；
+- `core.logic.scalar-to-string`：显式把字符串、有限数字或布尔值转换成字符串 `value.v1`；
+- `core.logic.format-date-time`：复用通用日期时间解析器并输出一次性捕获的本地时间字符串；
 - `core.io.file-metadata`：只读取引用元数据；
 - `core.io.file-read-text`：显式 charset 和最大读取长度，输出 `text.v1`；
-- `core.io.file-read-json`：显式 charset、最大读取长度和可选 JSON Schema，输出 `value.v1`；
-- `core.logic.file-refs-get-item`：从 `file-refs.v1` 按索引恢复 `file-ref.v1`。
+- `core.io.file-read-json`：按固定 UTF-8 和最大读取长度解析 JSON，输出 `value.v1`；
+- `core.logic.file-refs-get-item`：从 `file-refs.v1` 按固定或动态索引恢复 `file-ref.v1`；
+- `core.io.file-refs-metadata-list`：按上传顺序输出文件引用元数据列表，不读取文件字节。
 
-文件输入节点只透传引用，不读取、解析或缓存文件内容。`Read JSON File` 输出 `value.v1`，从而直接接入已有逻辑、集合、Parallel、ForEach、HTTP 和模型参数节点。每个正式结构化 payload 都要提供对称 bridge，避免产生只能由一个节点识别的数据孤岛。
+文件输入节点只透传引用，不读取、解析或缓存文件内容。`Read JSON File` 输出 `value.v1`，从而直接接入已有逻辑、集合、Parallel、ForEach、HTTP 和模型参数节点。文件引用不提供从普通 `value.v1` 反向恢复的 bridge，避免请求 JSON 伪造 ObjectStore 引用；多文件需要读取内容时必须先通过受校验的 `File Refs Get Item` 取得正式 `file-ref.v1`。
+
+`request_text` 构造动态保存文件名的标准链路为：
+
+```text
+Template Text Input → Text To Value → Concat Strings.left
+String Value("-{YYYYMMDDhhmmss}.jpg") → Concat Strings.right
+Concat Strings.value → Save Image.file_name
+```
+
+Concat Strings 不处理大括号，日期块由 Save Image 或独立 Format Date Time 节点明确展开。`request_json` 可以直接进入 Extract Value Field、Object/List 节点或 Format String；提取到的数字、布尔值需要参与文本拼接时先经过 Scalar To String。
 
 ## Trigger 与 LocalBuffer
 

@@ -124,6 +124,19 @@ Trigger adapter 负责把外部事件转换成 Workflow Run 请求；业务图�
 
 详细契约、运行时优先级和验收门禁见 [Workflow 动态参数输入实施基线](../../development/workflow-dynamic-parameter-input-implementation.md)。
 
+### 文本、JSON 与文件输入组合
+
+App Entry 输入进入图以后继续使用现有版本化 payload，不创建按 binding id 命名的专用数据类型。通用组合规则如下：
+
+- `text.v1` 通过 `core.logic.text-to-value` 显式取得正文字符串，再进入 `value.v1` 字符串节点；
+- `core.logic.string-concat` 只拼接两个字符串，不解析占位符，也不把数字、布尔、对象或数组隐式转成字符串；
+- `core.logic.scalar-to-string` 只显式转换字符串、有限数字和布尔值，`null`、对象和数组必须选择其他明确节点；
+- `value.v1` 对象通过 Extract Value Field、Object 和 List 节点读取或重组，字段路径和其他运行时参数仍通过显式参数端口覆盖；
+- `file-ref.v1` 只有经过 File Read Text、File Read JSON 等有界节点才读取内容；`file-refs.v1` 可以按动态索引取单项，也可以只导出有序元数据列表；
+- 不提供 `value.v1 → file-ref.v1` 反向转换，避免普通 JSON 伪造 ObjectStore 文件引用。
+
+`String Value`、`Number Value` 和 `Boolean Value` 是无输入的固定值源，不承担转换或拼接。运行时数据处理由独立纯函数节点完成，避免固定参数和连接值优先级重复。
+
 ### 通用日期时间模板
 
 节点需要把运行时本地时间写入文本、目录或文件名时，统一使用 `backend.nodes.render_date_time_template`，不得在各节点内重复实现 `strftime`、正则替换或专用 token。大括号表示一个日期时间格式块，不表示固定字符串；块可以组合，也可以拆成多个块，例如：
@@ -137,6 +150,8 @@ Trigger adapter 负责把外部事件转换成 Workflow Run 请求；业务图�
 
 通用解析器允许日期时间文本常用的空格、`T`、`-`、`_`、`.`、`:` 和 `/` 分隔符。具体节点仍必须在展开后执行自身边界校验，例如 Image Save 文件名禁止目录分隔符和 Windows 非法字符，保存目录则可以使用 `/` 形成日期层级。
 
+`core.logic.format-date-time` 把通用日期时间模板公开为 `value.v1` 字符串节点。节点每次执行只捕获一个 runtime 主机本地时间点；需要多个下游节点使用完全相同的时间文本时，应复用同一个节点输出。`core.logic.string-concat` 会原样保留日期块，因此也可以先拼接，再交给明确支持日期模板的下游节点展开。
+
 ### Image Save 保存契约
 
 `core.io.image-save` 使用三个边界清晰的参数：`save_directory` 只负责保存目录，`file_name` 负责完整单级图片文件名，`overwrite` 决定覆盖或自动编号。三个参数同时提供显式可选 `value.v1` 输入端口，连接值优先，未连接时使用节点保存的固定值。目录和文件名共用上述通用日期时间模板与同一个时间点；文件名既可以是 `fixed.jpg`，也可以是 `saveimage-{YYYY}-{MM}-{DD}-{hh}-{mm}-{ss}-{SSS}.jpg`。
@@ -147,7 +162,7 @@ Trigger adapter 负责把外部事件转换成 Workflow Run 请求；业务图�
 
 App Entry 是公开 binding 边界，不是新的节点执行器。当前 `request_image_ref`、`request_image_base64` 等名称只是可重命名的默认 binding id；节点连线和 Runtime 校验仍由 `image-ref.v1`、`image-base64.v1`、`value.v1` 等版本化 payload 决定。
 
-当前 Runtime JSON 请求可以同时提交多个已声明 binding，结构化值使用 `value.v1`。JSON、文本、图片和文件的后续 payload、multipart、ObjectStore、Trigger、LocalBuffer、前端与 SDK 统一规划见 [Workflow App Entry 多类型输入实施基线](../../development/workflow-app-entry-input-implementation.md)。该文档当前是待实现设计，不能据此把未注册 payload 或未公开上传能力标记为已交付。
+当前 Runtime JSON 请求可以同时提交多个已声明 binding，结构化值使用 `value.v1`。HTTP Runtime、Trigger、LocalBuffer、前端和 .NET SDK 的已交付边界与验证记录见 [Workflow App Entry 多类型输入实施基线](../../development/workflow-app-entry-input-implementation.md)。
 
 ## Parallel、ForEach 与节点组
 

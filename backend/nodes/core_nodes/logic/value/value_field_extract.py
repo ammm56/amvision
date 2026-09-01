@@ -6,6 +6,7 @@ from backend.contracts.workflows.workflow_graph import (
     NODE_IMPLEMENTATION_CORE,
     NODE_RUNTIME_PYTHON_CALLABLE,
     NodeDefinition,
+    NodeParameterInputBinding,
     NodePortDefinition,
 )
 from backend.nodes.core_nodes.support.base import CoreNodeSpec
@@ -86,6 +87,12 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 display_name="Value",
                 payload_type_id="value.v1",
             ),
+            NodePortDefinition(
+                name="path",
+                display_name="Path",
+                payload_type_id="value.v1",
+                required=False,
+            ),
         ),
         output_ports=(
             NodePortDefinition(
@@ -115,7 +122,14 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 },
             },
             "required": ["path"],
+            "additionalProperties": False,
         },
+        parameter_input_bindings=(
+            NodeParameterInputBinding(
+                parameter_name="path",
+                input_port_name="path",
+            ),
+        ),
         capability_tags=("logic.transform", "field.extract"),
     ),
     handler=_value_field_extract_handler,

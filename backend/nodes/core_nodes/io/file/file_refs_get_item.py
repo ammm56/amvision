@@ -6,6 +6,7 @@ from backend.contracts.workflows.workflow_graph import (
     NODE_IMPLEMENTATION_CORE,
     NODE_RUNTIME_PYTHON_CALLABLE,
     NodeDefinition,
+    NodeParameterInputBinding,
     NodePortDefinition,
 )
 from backend.nodes.core_nodes.support.base import CoreNodeSpec
@@ -44,6 +45,12 @@ CORE_NODE_SPEC = CoreNodeSpec(
             NodePortDefinition(
                 name="files", display_name="Files", payload_type_id="file-refs.v1"
             ),
+            NodePortDefinition(
+                name="index",
+                display_name="Index",
+                payload_type_id="value.v1",
+                required=False,
+            ),
         ),
         output_ports=(
             NodePortDefinition(
@@ -55,6 +62,12 @@ CORE_NODE_SPEC = CoreNodeSpec(
             "properties": {"index": {"type": "integer", "minimum": 0, "default": 0}},
             "additionalProperties": False,
         },
+        parameter_input_bindings=(
+            NodeParameterInputBinding(
+                parameter_name="index",
+                input_port_name="index",
+            ),
+        ),
         capability_tags=("logic.list", "file.reference"),
     ),
     handler=_handler,

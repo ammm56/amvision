@@ -9,6 +9,7 @@ from backend.contracts.workflows.workflow_graph import (
     NODE_IMPLEMENTATION_CORE,
     NODE_RUNTIME_PYTHON_CALLABLE,
     NodeDefinition,
+    NodeParameterInputBinding,
     NodePortDefinition,
 )
 from backend.nodes.core_nodes.support.base import CoreNodeSpec
@@ -62,14 +63,9 @@ def _format_string_handler(request: WorkflowNodeExecutionRequest) -> dict[str, o
 
 
 def _read_template(request: WorkflowNodeExecutionRequest) -> str:
-    """从可选输入或参数读取格式模板。"""
+    """读取统一动态参数解析后的格式模板。"""
 
-    raw_template_payload = request.input_values.get("template")
-    raw_template = (
-        require_value_payload(raw_template_payload, field_name="template")["value"]
-        if raw_template_payload is not None
-        else request.parameters.get("template", "{value}")
-    )
+    raw_template = request.parameters.get("template", "{value}")
     if not isinstance(raw_template, str):
         raise InvalidRequestError("Format String 的 template 必须是字符串")
     return raw_template
@@ -104,7 +100,14 @@ CORE_NODE_SPEC = CoreNodeSpec(
                     "title": "Template",
                 }
             },
+            "additionalProperties": False,
         },
+        parameter_input_bindings=(
+            NodeParameterInputBinding(
+                parameter_name="template",
+                input_port_name="template",
+            ),
+        ),
         capability_tags=("logic.text", "string.format", "execution.pure"),
     ),
     handler=_format_string_handler,

@@ -75,6 +75,17 @@ Graph Template 不保存额外绑定状态。参数端口连接仍使用普通 `
 
 第一阶段补充 `String Value`、`Number Value` 和 `Boolean Value` 三个明确的通用节点，统一输出 `value.v1`。对象和数组继续使用 App Entry、File Read JSON、Object Create 和 List Create，不新增自动猜测类型的虚拟 Primitive 节点。
 
+第二阶段按实际 App Entry 数据组合链路补充：
+
+- `core.logic.string-concat`：两个必填字符串输入，输出字符串 `value.v1`；
+- `core.logic.scalar-to-string`：显式转换 JSON 标量，拒绝 `null`、对象和数组；
+- `core.logic.format-date-time.template`：参数输入端口覆盖固定日期时间模板；
+- `core.logic.value-field-extract.path`：参数输入端口覆盖固定字段路径；
+- `core.logic.format-string.template`：迁移到统一参数输入解析，保留原有连线和固定参数语义；
+- `core.logic.file-refs-get-item.index`：参数输入端口覆盖固定文件索引。
+
+以上节点不创建线程、队列或后台任务。字符串拼接不解析日期时间块；需要立即展开时使用 Format Date Time，需要保存图片时也可以保留日期块并由 Image Save 展开。
+
 ## 现有双源节点审计
 
 Core Node Catalog 目前还有 28 个参数具备“可选 `value.v1` 端口 + 固定参数回退”双源行为，分布在目录批处理、文件保存、结果响应、集合索引、数值运算、分支默认值、变量和视频帧等节点。这些节点原本已经通过正式输入端口支持动态赋值，第一阶段不批量改写其 handler 或 UI 布局，原因如下：
@@ -84,7 +95,7 @@ Core Node Catalog 目前还有 28 个参数具备“可选 `value.v1` 端口 + �
 - 输入名与回退参数名不总是一致，例如 `right -> right_value`、`default -> default_value`，不得按名称自动推断。
 - 现有节点的正式输入端口继续可用，不影响本次动态保存路径和文件名能力。
 
-后续迁移必须以单节点或同一能力族为单位，显式增加 `parameter_input_bindings`、删除重复的 handler 双源解析并补兼容测试；不得用目录扫描结果自动写入绑定。首批仅登记 `core.io.image-save` 的三个已完成审计参数。
+后续迁移必须以单节点或同一能力族为单位，显式增加 `parameter_input_bindings`、删除重复的 handler 双源解析并补兼容测试；不得用目录扫描结果自动写入绑定。当前已完成 Image Save、Format Date Time、Extract Value Field、Format String 和 File Refs Get Item 的逐节点审计与登记，其他节点保持原行为。
 
 ## 兼容与发布
 

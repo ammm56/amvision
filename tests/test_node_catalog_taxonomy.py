@@ -14,7 +14,7 @@ from custom_nodes.opencv_nodes.workflow.catalog_builder import (
 EXPECTED_CORE_CATEGORY_COUNTS = {
     "core.input.prompt": 8,
     "core.io.image": 8,
-    "core.io.file": 13,
+    "core.io.file": 14,
     "core.io.input": 6,
     "core.io.response": 4,
     "core.io.video": 5,
@@ -25,7 +25,7 @@ EXPECTED_CORE_CATEGORY_COUNTS = {
     "core.logic.iteration": 4,
     "core.logic.parallel": 2,
     "core.logic.object": 5,
-    "core.logic.transform": 25,
+    "core.logic.transform": 28,
     "core.logic.value": 7,
     "core.logic.variable": 3,
     "core.logic.rule": 6,
@@ -83,12 +83,12 @@ _HAN_PATTERN = re.compile(r"[\u3400-\u9fff]")
 
 
 def test_core_catalog_uses_confirmed_two_level_taxonomy() -> None:
-    """验证 208 个 Core 节点完整落入严格两级分类。"""
+    """验证 212 个 Core 节点完整落入严格两级分类。"""
 
     definitions = get_core_workflow_node_definitions()
     category_counts = Counter(item.category for item in definitions)
 
-    assert len(definitions) == 208
+    assert len(definitions) == 212
     assert category_counts == EXPECTED_CORE_CATEGORY_COUNTS
     assert all(
         _TWO_LEVEL_CATEGORY_PATTERN.fullmatch(item.category) for item in definitions
