@@ -137,6 +137,20 @@ App Entry 输入进入图以后继续使用现有版本化 payload，不创建�
 
 `String Value`、`Number Value` 和 `Boolean Value` 是无输入的固定值源，不承担转换或拼接。运行时数据处理由独立纯函数节点完成，避免固定参数和连接值优先级重复。
 
+### 确定性对象与列表装配
+
+Workflow 不得用多输入端口的数组位置推断字段名、更新路径、覆盖方向或列表序号。节点在画布中的坐标、拖动顺序和 Template JSON 数组顺序都不是业务数据。通用结构节点采用以下显式契约：
+
+- `core.logic.object-field` 把一个顶层字面量 `key` 和一个 `value.v1` 封装为不可拆分的 `object-field.v1`；`key` 可以是固定参数，也可以由可选参数端口动态提供，不把点号解释为嵌套路径。
+- `core.logic.object-build` 只接收 `object-field.v1` 集合和可选静态 `fields`。字段重复时明确失败，不用连线先后决定覆盖结果。
+- `core.logic.object-set-path` 每次只按一个明确 `path` 更新一个值；多个更新通过节点串联表达执行顺序。
+- `core.logic.object-merge-pair` 使用固定的 `Base` 与 `Overlay` 端口表达覆盖方向；冲突策略必须显式选择。
+- `core.logic.list-item` 把一个非负 `index` 和一个 `value.v1` 封装为 `list-item.v1`；`core.logic.list-build` 按显式 index 排序，重复或不连续时明确失败。
+
+`object-field.v1` 和 `list-item.v1` 是通用 Core payload，不属于某个业务节点；两者都可以通过 Payload To Value 显式进入普通 `value.v1` 对象处理链。执行器保存的输入顺序只用于执行既有端口语义，不得作为字段和值等业务关系的表达方式。
+
+旧版 `core.logic.object-create`、`core.logic.object-update`、`core.logic.object-merge` 和 `core.logic.list-create` 只用于既有发布快照兼容执行，在新节点面板中隐藏。新建或重新发布的 Workflow 必须迁移到上述显式节点，不能继续生成位置配对结构。
+
 ### 通用日期时间模板
 
 节点需要把运行时本地时间写入文本、目录或文件名时，统一使用 `backend.nodes.render_date_time_template`，不得在各节点内重复实现 `strftime`、正则替换或专用 token。大括号表示一个日期时间格式块，不表示固定字符串；块可以组合，也可以拆成多个块，例如：

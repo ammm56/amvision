@@ -131,7 +131,9 @@ function normalizeGraphNodeWidth(value: unknown, fallbackWidth: number): number 
 
 export function useWorkflowGraphNodeViews(options: WorkflowGraphNodeViewsOptions) {
   const nodeDefinitionsById = computed(() => new Map((options.nodeCatalog.value?.node_definitions ?? []).map((definition) => [definition.node_type_id, definition])))
-  const nodePickerDefinitions = computed(() => options.nodeCatalog.value?.node_definitions ?? [])
+  const nodePickerDefinitions = computed(() => (
+    options.nodeCatalog.value?.node_definitions ?? []
+  ).filter((definition) => definition.metadata.palette_hidden !== true))
 
   function buildGraphNodeView(
     node: WorkflowGraphNode,

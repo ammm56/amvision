@@ -1039,12 +1039,19 @@ def _build_payload_composition_template() -> WorkflowGraphTemplate:
                 node_type_id="core.logic.payload-to-value",
             ),
             WorkflowGraphNode(
+                node_id="detections_field",
+                node_type_id="core.logic.object-field",
+                parameters={"key": "yolox_detections"},
+            ),
+            WorkflowGraphNode(
+                node_id="image_base64_field",
+                node_type_id="core.logic.object-field",
+                parameters={"key": "input_image_base64"},
+            ),
+            WorkflowGraphNode(
                 node_id="response_data",
-                node_type_id="core.logic.object-create",
-                parameters={
-                    "fields": {"source": "workflow-preview"},
-                    "keys": ["yolox_detections", "input_image_base64"],
-                },
+                node_type_id="core.logic.object-build",
+                parameters={"fields": {"source": "workflow-preview"}},
             ),
             WorkflowGraphNode(
                 node_id="envelope",
@@ -1061,18 +1068,32 @@ def _build_payload_composition_template() -> WorkflowGraphTemplate:
                 target_port="body",
             ),
             WorkflowGraphEdge(
-                edge_id="edge-detections-object",
+                edge_id="edge-detections-field",
                 source_node_id="detections_as_value",
                 source_port="value",
+                target_node_id="detections_field",
+                target_port="value",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-detections-object",
+                source_node_id="detections_field",
+                source_port="field",
                 target_node_id="response_data",
-                target_port="values",
+                target_port="entries",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-image-base64-field",
+                source_node_id="extract_image_base64",
+                source_port="value",
+                target_node_id="image_base64_field",
+                target_port="value",
             ),
             WorkflowGraphEdge(
                 edge_id="edge-image-base64-object",
-                source_node_id="extract_image_base64",
-                source_port="value",
+                source_node_id="image_base64_field",
+                source_port="field",
                 target_node_id="response_data",
-                target_port="values",
+                target_port="entries",
             ),
             WorkflowGraphEdge(
                 edge_id="edge-response-data-envelope",

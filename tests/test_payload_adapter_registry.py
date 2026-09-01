@@ -63,6 +63,38 @@ def test_core_payload_to_value_uses_registered_boolean_adapter() -> None:
     assert output == {"value": {"value": True}}
 
 
+@pytest.mark.parametrize(
+    ("port_name", "payload"),
+    (
+        (
+            "field",
+            {
+                "format_id": "amvision.object-field.v1",
+                "key": "batch_id",
+                "value": "batch-7",
+            },
+        ),
+        (
+            "item",
+            {
+                "format_id": "amvision.list-item.v1",
+                "index": 2,
+                "value": "third",
+            },
+        ),
+    ),
+)
+def test_core_payload_to_value_exposes_structure_items(
+    port_name: str,
+    payload: dict[str, object],
+) -> None:
+    """显式字段和列表项仍可进入通用 value.v1 数据处理链。"""
+
+    output = _payload_to_value_handler(_request(input_values={port_name: payload}))
+
+    assert output == {"value": {"value": payload}}
+
+
 def test_opencv_payload_to_value_uses_registered_object_adapter() -> None:
     """OpenCV 桥接节点应通过同一 registry 复制结构化 payload。"""
 

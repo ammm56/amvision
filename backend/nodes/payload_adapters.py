@@ -12,6 +12,12 @@ from backend.nodes.core_nodes.support.roi import (
     require_roi_list_payload,
     require_roi_payload,
 )
+from backend.nodes.core_nodes.support.structure_items import (
+    LIST_ITEM_FORMAT_ID,
+    OBJECT_FIELD_FORMAT_ID,
+    require_list_item_payload,
+    require_object_field_payload,
+)
 from backend.nodes.core_nodes.support.typed_payload_bridges import (
     require_image_refs_payload,
 )
@@ -136,6 +142,22 @@ def _convert_object(payload: object, request: WorkflowNodeExecutionRequest) -> o
     return dict(payload)
 
 
+def _convert_object_field(payload: object, request: WorkflowNodeExecutionRequest) -> object:
+    """校验并复制显式对象字段 payload。"""
+
+    del request
+    key, value = require_object_field_payload(payload, field_name="field")
+    return {"format_id": OBJECT_FIELD_FORMAT_ID, "key": key, "value": value}
+
+
+def _convert_list_item(payload: object, request: WorkflowNodeExecutionRequest) -> object:
+    """校验并复制显式列表项 payload。"""
+
+    del request
+    index, value = require_list_item_payload(payload, field_name="item")
+    return {"format_id": LIST_ITEM_FORMAT_ID, "index": index, "value": value}
+
+
 def _convert_image_ref(payload: object, request: WorkflowNodeExecutionRequest) -> object:
     """校验并复制 image-ref.v1。"""
 
@@ -159,6 +181,8 @@ def _build_default_registry() -> PayloadAdapterRegistry:
     registry.register("roi-list.v1", "value.v1", _convert_roi_list)
     registry.register("image-ref.v1", "value.v1", _convert_image_ref)
     registry.register("image-refs.v1", "value.v1", _convert_image_refs)
+    registry.register("object-field.v1", "value.v1", _convert_object_field)
+    registry.register("list-item.v1", "value.v1", _convert_list_item)
     object_contracts = (
         "result-record.v1",
         "response-body.v1",

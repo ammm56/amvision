@@ -28,6 +28,8 @@ def _payload_to_value_handler(request: WorkflowNodeExecutionRequest) -> dict[str
     contract_by_port = {
         "value": "value.v1",
         "boolean": "boolean.v1",
+        "field": "object-field.v1",
+        "item": "list-item.v1",
         "roi": "roi.v1",
         "rois": "roi-list.v1",
         "image": "image-ref.v1",
@@ -55,7 +57,7 @@ def _payload_to_value_handler(request: WorkflowNodeExecutionRequest) -> dict[str
 
     if not candidate_values:
         raise InvalidRequestError(
-            "payload-to-value 节点至少需要连接一个 value、boolean、roi、rois、image、images、result、body、prompts、detections、segments、categories、poses、obbs、circles、video、frames、tracks 或 regions 输入",
+            "payload-to-value 节点至少需要连接一个 value、boolean、field、item、roi、rois、image、images、result、body、prompts、detections、segments、categories、poses、obbs、circles、video、frames、tracks 或 regions 输入",
             details={"node_id": request.node_id},
         )
     if len(candidate_values) > 1:
@@ -79,7 +81,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
         node_type_id="core.logic.payload-to-value",
         display_name="Payload To Value",
         category="core.logic.transform",
-        description="把 value、boolean、ROI、图片引用和各类视觉结果显式包装成 value.v1，供 Parallel、For Each、对象组合和结果预览继续使用。",
+        description="把 value、boolean、字段项、列表项、ROI、图片引用和各类视觉结果显式包装成 value.v1，供 Parallel、For Each、对象组合和结果预览继续使用。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,
         runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
         input_ports=(
@@ -117,6 +119,18 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 name="body",
                 display_name="Body",
                 payload_type_id="response-body.v1",
+                required=False,
+            ),
+            NodePortDefinition(
+                name="field",
+                display_name="Object Field",
+                payload_type_id="object-field.v1",
+                required=False,
+            ),
+            NodePortDefinition(
+                name="item",
+                display_name="List Item",
+                payload_type_id="list-item.v1",
                 required=False,
             ),
             NodePortDefinition(

@@ -217,6 +217,36 @@ def get_core_workflow_payload_contracts() -> tuple[WorkflowPayloadContract, ...]
             },
         ),
         WorkflowPayloadContract(
+            payload_type_id="object-field.v1",
+            display_name="Object Field",
+            transport_kind="inline-json",
+            json_schema={
+                "type": "object",
+                "properties": {
+                    "format_id": {"const": "amvision.object-field.v1"},
+                    "key": {"type": "string", "minLength": 1, "maxLength": 256},
+                    "value": {},
+                },
+                "required": ["format_id", "key", "value"],
+                "additionalProperties": False,
+            },
+        ),
+        WorkflowPayloadContract(
+            payload_type_id="list-item.v1",
+            display_name="List Item",
+            transport_kind="inline-json",
+            json_schema={
+                "type": "object",
+                "properties": {
+                    "format_id": {"const": "amvision.list-item.v1"},
+                    "index": {"type": "integer", "minimum": 0},
+                    "value": {},
+                },
+                "required": ["format_id", "index", "value"],
+                "additionalProperties": False,
+            },
+        ),
+        WorkflowPayloadContract(
             payload_type_id="text.v1",
             display_name="Text Payload",
             transport_kind="inline-json",

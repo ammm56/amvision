@@ -418,6 +418,7 @@ const {
   nodePortRows,
 } = useWorkflowNodeDisplayHelpers({
   currentLocale,
+  graphEdges,
 })
 const graphTheme = computed(() => preferencesStore.theme)
 const {

@@ -19,7 +19,7 @@ from tests.test_workflow_runtime_sanitization import _build_runtime_service
 
 
 def test_preview_run_object_field_nodes_support_pick_remove_and_update(tmp_path: Path) -> None:
-    """验证 object-pick、object-remove 与 object-update 可以组成对象字段裁剪和改写链。"""
+    """验证 object-pick、object-remove 与单路径 object-update 可以组成确定性改写链。"""
 
     service, _, _ = _build_runtime_service(tmp_path)
     preview_run = service.create_preview_run(
@@ -64,8 +64,8 @@ def test_preview_run_object_field_nodes_support_pick_remove_and_update(tmp_path:
     }
     assert preview_run.outputs["updated_object"]["value"] == {
         "status": "approved",
-        "meta": {"owner": "ops", "reviewer": "qa-team", "source": "workflow"},
-        "stats": {"passed": 8, "failed": 0},
+        "meta": {"owner": "ops", "reviewer": "qa-team"},
+        "stats": {"passed": 8, "failed": 2},
     }
 
 
@@ -88,23 +88,29 @@ def _build_object_field_template() -> WorkflowGraphTemplate:
                 parameters={"paths": ["debug", "meta.temp"]},
             ),
             WorkflowGraphNode(
-                node_id="update_object",
-                node_type_id="core.logic.object-update",
-                parameters={
-                    "paths": ["status", "meta.reviewer"],
-                    "updates": {
-                        "meta.source": "workflow",
-                        "stats.failed": 0,
-                    },
-                },
+                node_id="update_status",
+                node_type_id="core.logic.object-set-path",
+                parameters={"path": "status"},
+            ),
+            WorkflowGraphNode(
+                node_id="update_reviewer",
+                node_type_id="core.logic.object-set-path",
+                parameters={"path": "meta.reviewer"},
             ),
         ),
         edges=(
             WorkflowGraphEdge(
-                edge_id="edge-remove-object-update-object",
+                edge_id="edge-remove-object-update-status",
                 source_node_id="remove_object",
                 source_port="value",
-                target_node_id="update_object",
+                target_node_id="update_status",
+                target_port="object",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-update-status-update-reviewer",
+                source_node_id="update_status",
+                source_port="value",
+                target_node_id="update_reviewer",
                 target_port="object",
             ),
         ),
@@ -127,15 +133,15 @@ def _build_object_field_template() -> WorkflowGraphTemplate:
                 input_id="new_status",
                 display_name="New Status",
                 payload_type_id="value.v1",
-                target_node_id="update_object",
-                target_port="values",
+                target_node_id="update_status",
+                target_port="value",
             ),
             WorkflowGraphInput(
                 input_id="reviewer",
                 display_name="Reviewer",
                 payload_type_id="value.v1",
-                target_node_id="update_object",
-                target_port="values",
+                target_node_id="update_reviewer",
+                target_port="value",
             ),
         ),
         template_outputs=(
@@ -157,7 +163,7 @@ def _build_object_field_template() -> WorkflowGraphTemplate:
                 output_id="updated_object",
                 display_name="Updated Object",
                 payload_type_id="value.v1",
-                source_node_id="update_object",
+                source_node_id="update_reviewer",
                 source_port="value",
             ),
         ),

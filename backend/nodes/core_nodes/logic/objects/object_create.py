@@ -9,13 +9,14 @@ from backend.contracts.workflows.workflow_graph import (
     NodePortDefinition,
 )
 from backend.nodes.core_nodes.support.base import CoreNodeSpec
-from backend.nodes.core_nodes.support.logic import build_value_payload, require_value_payload
+from backend.nodes.core_nodes.support.logic import build_value_payload
+from backend.nodes.core_nodes.support.structure_items import require_object_field_payload
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 
 
 def _object_create_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
-    """按静态字段和多路值输入组装对象。
+    """按静态字段和显式对象字段项组装对象。
 
     参数：
     - request：当前 workflow 节点执行请求。
@@ -24,80 +25,63 @@ def _object_create_handler(request: WorkflowNodeExecutionRequest) -> dict[str, o
     - dict[str, object]：组装后的对象 value payload。
     """
 
-    result_object = _read_static_fields(request.parameters.get("fields"))
-    value_payloads = request.input_values.get("values")
-    if value_payloads is not None and not isinstance(value_payloads, tuple):
+    if "keys" in request.parameters:
         raise InvalidRequestError(
-            "object-create 节点要求 values 输入必须是多值端口集合",
+            "object-build 不支持 keys 与 values 的位置配对，请使用 Object Field 节点",
+            details={"node_id": request.node_id, "legacy_parameter": "keys"},
+        )
+    result_object = _read_static_fields(request.parameters.get("fields"))
+    entry_payloads = request.input_values.get("entries")
+    if entry_payloads is not None and not isinstance(entry_payloads, tuple):
+        raise InvalidRequestError(
+            "object-build 节点要求 entries 输入必须是多值端口集合",
             details={"node_id": request.node_id},
         )
-    normalized_payloads = tuple(value_payloads or ())
-    object_keys = _read_object_keys(request.parameters.get("keys"), expected_size=len(normalized_payloads))
-    for value_index, (field_name, value_payload) in enumerate(zip(object_keys, normalized_payloads, strict=False), start=1):
-        result_object[field_name] = require_value_payload(value_payload, field_name=f"values[{value_index}]")["value"]
-    return {"value": build_value_payload(result_object)}
+    for entry_index, entry_payload in enumerate(entry_payloads or (), start=1):
+        field_name, field_value = require_object_field_payload(
+            entry_payload,
+            field_name=f"entries[{entry_index}]",
+        )
+        if field_name in result_object:
+            raise InvalidRequestError(
+                "object-build 节点存在重复字段名",
+                details={
+                    "node_id": request.node_id,
+                    "field_name": field_name,
+                    "entry_index": entry_index,
+                },
+            )
+        result_object[field_name] = field_value
+    stable_result = {field_name: result_object[field_name] for field_name in sorted(result_object)}
+    return {"value": build_value_payload(stable_result)}
 
 
 def _read_static_fields(raw_value: object) -> dict[str, object]:
-    """读取 object-create 的静态字段参数。"""
+    """读取 object-build 的静态字段参数。"""
 
     if raw_value is None:
         return {}
     if not isinstance(raw_value, dict):
-        raise InvalidRequestError("object-create 节点的 fields 参数必须是对象")
+        raise InvalidRequestError("object-build 节点的 fields 参数必须是对象")
     normalized_fields = build_value_payload(raw_value)["value"]
     if not isinstance(normalized_fields, dict):
-        raise InvalidRequestError("object-create 节点的 fields 参数必须是对象")
+        raise InvalidRequestError("object-build 节点的 fields 参数必须是对象")
     return dict(normalized_fields)
-
-
-def _read_object_keys(raw_value: object, *, expected_size: int) -> tuple[str, ...]:
-    """读取并校验 object-create 的动态字段名列表。"""
-
-    if expected_size == 0:
-        if raw_value is None:
-            return ()
-        if isinstance(raw_value, list) and not raw_value:
-            return ()
-        raise InvalidRequestError("object-create 节点在未提供 values 输入时不应声明 keys")
-
-    if not isinstance(raw_value, list):
-        raise InvalidRequestError("object-create 节点要求 keys 参数必须是字符串数组")
-    if len(raw_value) != expected_size:
-        raise InvalidRequestError(
-            "object-create 节点的 keys 数量必须与 values 输入数量一致",
-            details={"expected_size": expected_size, "actual_size": len(raw_value)},
-        )
-    normalized_keys: list[str] = []
-    for key_index, raw_key in enumerate(raw_value, start=1):
-        if not isinstance(raw_key, str) or not raw_key.strip():
-            raise InvalidRequestError(
-                "object-create 节点的 keys 每一项都必须是非空字符串",
-                details={"key_index": key_index},
-            )
-        normalized_key = raw_key.strip()
-        if normalized_key in normalized_keys:
-            raise InvalidRequestError(
-                "object-create 节点的 keys 不能包含重复字段名",
-                details={"field_name": normalized_key},
-            )
-        normalized_keys.append(normalized_key)
-    return tuple(normalized_keys)
 
 
 CORE_NODE_SPEC = CoreNodeSpec(
     node_definition=NodeDefinition(
-        node_type_id="core.logic.object-create",
+        node_type_id="core.logic.object-build",
         display_name="Create Object",
         category="core.logic.object",
-        description="按静态 fields 参数和多路 values 输入组装一个对象 value payload。",
+        description="按静态 fields 参数和多个显式 object-field.v1 输入组装对象；字段语义不依赖连线顺序。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,
         runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
         input_ports=(
             NodePortDefinition(
-                name="values",
-                display_name="Values",
-                payload_type_id="value.v1",
+                name="entries",
+                display_name="Fields",
+                payload_type_id="object-field.v1",
                 required=False,
                 multiple=True,
             ),
@@ -112,18 +96,13 @@ CORE_NODE_SPEC = CoreNodeSpec(
         parameter_schema={
             "type": "object",
             "properties": {
-                "keys": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "title": "Keys",
-                    "description": "动态 values 输入对应的字段名数组，顺序必须与 Values 端口上各条输入连线的实际顺序一致；例如 [\"detection_regions\", \"opencv_measurements\", \"preview_image_base64\"]。",
-                },
                 "fields": {
                     "type": "object",
                     "title": "Fields",
                     "description": "静态固定字段对象，会直接写入结果；例如 {\"source\": \"workflow-preview\", \"ok\": true}。",
                 },
             },
+            "additionalProperties": False,
         },
         capability_tags=("logic.structure", "value.object.create"),
     ),

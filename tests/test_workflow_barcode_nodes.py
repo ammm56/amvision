@@ -564,18 +564,30 @@ def test_repository_barcode_results_to_value_node_supports_object_create(tmp_pat
         nodes=(
             WorkflowGraphNode(node_id="to_value", node_type_id="custom.barcode.results-to-value"),
             WorkflowGraphNode(
+                node_id="results_field",
+                node_type_id="core.logic.object-field",
+                parameters={"key": "results"},
+            ),
+            WorkflowGraphNode(
                 node_id="compose",
-                node_type_id="core.logic.object-create",
-                parameters={"fields": {"source": "barcode"}, "keys": ["results"]},
+                node_type_id="core.logic.object-build",
+                parameters={"fields": {"source": "barcode"}},
             ),
         ),
         edges=(
             WorkflowGraphEdge(
-                edge_id="edge-results-value-compose",
+                edge_id="edge-results-value-field",
                 source_node_id="to_value",
                 source_port="value",
+                target_node_id="results_field",
+                target_port="value",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-results-field-compose",
+                source_node_id="results_field",
+                source_port="field",
                 target_node_id="compose",
-                target_port="values",
+                target_port="entries",
             ),
         ),
         template_inputs=(

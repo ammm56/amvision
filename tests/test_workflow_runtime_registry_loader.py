@@ -3645,9 +3645,14 @@ def test_repository_opencv_payload_to_value_node_supports_response_composition(
                 node_id="to_value", node_type_id="custom.opencv.payload-to-value"
             ),
             WorkflowGraphNode(
+                node_id="measurements_field",
+                node_type_id="core.logic.object-field",
+                parameters={"key": "measurements"},
+            ),
+            WorkflowGraphNode(
                 node_id="compose",
-                node_type_id="core.logic.object-create",
-                parameters={"fields": {"source": "opencv"}, "keys": ["measurements"]},
+                node_type_id="core.logic.object-build",
+                parameters={"fields": {"source": "opencv"}},
             ),
             WorkflowGraphNode(
                 node_id="envelope", node_type_id="core.output.response-envelope"
@@ -3676,11 +3681,18 @@ def test_repository_opencv_payload_to_value_node_supports_response_composition(
                 target_port="measurements",
             ),
             WorkflowGraphEdge(
-                edge_id="edge-value-compose",
+                edge_id="edge-value-field",
                 source_node_id="to_value",
                 source_port="value",
+                target_node_id="measurements_field",
+                target_port="value",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-field-compose",
+                source_node_id="measurements_field",
+                source_port="field",
                 target_node_id="compose",
-                target_port="values",
+                target_port="entries",
             ),
             WorkflowGraphEdge(
                 edge_id="edge-compose-envelope",
