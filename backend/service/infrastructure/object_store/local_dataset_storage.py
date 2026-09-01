@@ -19,6 +19,7 @@ from contextlib import contextmanager
 
 from backend.service.application.errors import InvalidRequestError
 from backend.service.infrastructure.filesystem.atomic_files import (
+    publish_path_without_overwrite,
     replace_path_with_retry,
 )
 from backend.service.infrastructure.filesystem.windows_paths import to_filesystem_path
@@ -298,6 +299,39 @@ class LocalDatasetStorage:
         except Exception:
             temporary_path.unlink(missing_ok=True)
             raise
+
+    def write_bytes_if_absent(self, relative_path: str, content: bytes) -> bool:
+        """原子创建新对象，目标已经存在时保持原文件不变。
+
+        参数：
+        - relative_path：目标文件相对路径。
+        - content：要写入的二进制内容。
+
+        返回：
+        - bool：成功创建对象时为 ``True``；目标已存在时为 ``False``。
+        """
+
+        target_path = self.resolve(relative_path)
+        self._reject_immutable_target(target_path)
+        self._mkdir(target_path.parent)
+        filesystem_target_path = to_filesystem_path(target_path)
+        temporary_path = filesystem_target_path.with_name(
+            f".{target_path.name}.{uuid.uuid4().hex[:12]}.tmp"
+        )
+        try:
+            with temporary_path.open("wb") as output_stream:
+                output_stream.write(content)
+                output_stream.flush()
+                os.fsync(output_stream.fileno())
+            published = publish_path_without_overwrite(
+                temporary_path,
+                filesystem_target_path,
+            )
+            if published:
+                _sync_directory_after_replace(filesystem_target_path.parent)
+            return published
+        finally:
+            temporary_path.unlink(missing_ok=True)
 
     def write_stream(
         self,

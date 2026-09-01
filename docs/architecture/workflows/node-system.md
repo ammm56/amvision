@@ -119,6 +119,12 @@ Trigger adapter 负责把外部事件转换成 Workflow Run 请求；业务图�
 - 隐式类型转换禁止；需要转换时使用明确 bridge 节点。
 - `node_type_id`、端口或 payload 的破坏性变化必须同步版本、示例、迁移和测试。
 
+### Image Save 保存契约
+
+`core.io.image-save` 使用三个边界清晰的参数：`save_directory` 只负责保存目录，`file_name` 负责完整单级图片文件名，`overwrite` 决定覆盖或自动编号。文件名可以是 `fixed.jpg`，也可以是 `tray_{YYYYMMDDhhmmssSSS}_OK.jpg`。时间块使用 runtime 主机本地时间，并在单次节点执行开始时一次性取值。
+
+关闭覆盖时，节点先尝试原名，再依次尝试扩展名前的 `_001`、`_002`。最终创建必须使用原子不覆盖操作，多个 workflow/runtime 同时写入同一目录时不能通过“先 exists、后覆盖写”的竞争窗口丢失图片。该策略不增加 workflow 调用队列或等待，最终实际路径继续通过 `saved_output.object_key` 或 `saved_output.local_path` 返回。
+
 ## App Entry 多类型输入
 
 App Entry 是公开 binding 边界，不是新的节点执行器。当前 `request_image_ref`、`request_image_base64` 等名称只是可重命名的默认 binding id；节点连线和 Runtime 校验仍由 `image-ref.v1`、`image-base64.v1`、`value.v1` 等版本化 payload 决定。

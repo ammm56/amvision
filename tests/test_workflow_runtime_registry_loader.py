@@ -325,7 +325,11 @@ def test_runtime_registry_loader_registers_core_basic_nodes(
             WorkflowGraphNode(
                 node_id="save",
                 node_type_id="core.io.image-save",
-                parameters={"save_location": "workflow/previews/saved-source.png"},
+                parameters={
+                    "save_directory": "workflow/previews",
+                    "file_name": "saved-source.png",
+                    "overwrite": False,
+                },
             ),
             WorkflowGraphNode(
                 node_id="preview",

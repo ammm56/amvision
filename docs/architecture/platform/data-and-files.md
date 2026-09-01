@@ -51,7 +51,7 @@ datasets/dataset-1/versions/version-3/manifest.json
 
 ## 保存位置
 
-节点统一使用 `save_location`，页面显示名称为“保存位置”：
+一般保存节点统一使用 `save_location`，页面显示名称为“保存位置”：
 
 - 相对路径：保存到 ObjectStore；
 - 当前系统可解析的绝对路径：保存到本机文件系统；
@@ -64,6 +64,14 @@ T:\temp\roi           -> Windows 磁盘绝对位置
 ```
 
 节点不得再公开 `output_dir`、`output_object_key` 或仅支持 ObjectStore 的 `object_key` 作为同义保存参数。已有保存型节点通过 `backend/nodes/save_locations.py` 解析并使用原子写入。
+
+`core.io.image-save` 是明确的单文件命名例外。该节点把目录与文件名分成三个边界清晰的参数：
+
+- `save_directory`：只表示目录，仍遵守相对 ObjectStore、绝对本机文件系统的双路径规则；
+- `file_name`：只表示单级图片文件名，不允许携带目录；可以包含 `{YYYYMMDDhhmmssSSS}` 形式的时间块；
+- `overwrite=true`：原子替换精确目标；`overwrite=false`：重名时在扩展名前依次追加 `_001`、`_002`，并通过原子不覆盖创建避免并发调用互相覆盖。
+
+时间标记大小写敏感：`YYYY`、`MM`、`DD`、`hh`、`mm`、`ss`、`SSS` 分别表示年、月、日、24 小时制小时、分钟、秒和毫秒。节点在一次执行中只读取一次 runtime 主机本地时间。未知标记、非法文件名和图片编码与扩展名不一致都必须明确失败，不自动改格式或改写路径。
 
 ## 图片引用
 

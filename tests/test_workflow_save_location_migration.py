@@ -63,7 +63,8 @@ def test_migrate_workflow_template_payload_renames_both_old_parameter_kinds() ->
     assert nodes[2]["parameters"] == {"threshold": 0.5}
     assert nodes[3]["parameters"] == {"save_location": r"T:\temp\result.mp4"}
     assert nodes[4]["parameters"] == {
-        "save_location": "workflow/result.png",
+        "save_directory": "workflow",
+        "file_name": "result.png",
         "overwrite": True,
     }
     assert nodes[5]["parameters"] == {"save_location": r"T:\temp\result.json"}
@@ -123,3 +124,30 @@ def test_migrate_workflow_template_payload_rejects_conflicting_new_value() -> No
 
     with pytest.raises(InvalidRequestError, match="冲突"):
         migrate_workflow_template_payload(payload)
+
+
+def test_migrate_image_save_splits_location_and_converts_timestamp() -> None:
+    """验证 Image Save 旧路径模板拆分为目录和文件名时间模板。"""
+
+    payload: dict[str, object] = {
+        "nodes": [
+            {
+                "node_id": "save-image",
+                "node_type_id": "core.io.image-save",
+                "parameters": {
+                    "save_location": (
+                        "{workflow_app_result_dir}/{node_id}-{timestamp}.png"
+                    )
+                },
+            }
+        ]
+    }
+
+    assert migrate_workflow_template_payload(payload) == 1
+    nodes = payload["nodes"]
+    assert isinstance(nodes, list)
+    assert nodes[0]["parameters"] == {
+        "save_directory": "{workflow_app_result_dir}",
+        "file_name": "{node_id}-{YYYYMMDDhhmmssSSS}.png",
+        "overwrite": True,
+    }

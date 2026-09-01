@@ -70,3 +70,44 @@ describe('save location parameter localization', () => {
     expect(resolveNodeParameterDescription(field, 'en-US')).toContain('local filesystem')
   })
 })
+
+describe('image save parameter localization', () => {
+  const buildField = (parameterName: string, title: string, description: string): NodeParameterUiField => ({
+    parameter_name: parameterName,
+    display_name: title,
+    description,
+    group_id: '',
+    order: 0,
+    required: true,
+    hidden: false,
+    readonly: false,
+    default_value: '',
+    enum_options: [],
+    json_schema: {
+      type: 'string',
+      'x-amvision-i18n': {
+        title: {
+          'zh-CN': title,
+          'en-US': parameterName === 'save_directory' ? 'Save directory' : 'File name',
+        },
+        description: {
+          'zh-CN': description,
+          'en-US': parameterName === 'save_directory'
+            ? 'Relative directory uses ObjectStore.'
+            : 'Supports {YYYYMMDDhhmmssSSS}.',
+        },
+      },
+    },
+  })
+
+  it('shows directory and file name as two independent localized fields', () => {
+    const directoryField = buildField('save_directory', '保存目录', '相对目录保存到 ObjectStore。')
+    const fileNameField = buildField('file_name', '文件名', '支持 {YYYYMMDDhhmmssSSS}。')
+
+    expect(resolveNodeParameterDisplayName(directoryField, 'zh-CN')).toBe('保存目录')
+    expect(resolveNodeParameterDisplayName(directoryField, 'en-US')).toBe('Save directory')
+    expect(resolveNodeParameterDisplayName(fileNameField, 'zh-CN')).toBe('文件名')
+    expect(resolveNodeParameterDisplayName(fileNameField, 'en-US')).toBe('File name')
+    expect(resolveNodeParameterDescription(fileNameField, 'zh-CN')).toContain('{YYYYMMDDhhmmssSSS}')
+  })
+})

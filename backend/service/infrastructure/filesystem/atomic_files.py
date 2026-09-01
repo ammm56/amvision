@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from time import monotonic, sleep
 
@@ -38,3 +39,32 @@ def replace_path_with_retry(
                 raise
             sleep(retry_interval_seconds)
             retry_interval_seconds = min(retry_interval_seconds * 2.0, 0.1)
+
+
+def publish_path_without_overwrite(source_path: Path, target_path: Path) -> bool:
+    """把完整临时文件原子发布为新文件，目标已存在时不覆盖。
+
+    参数：
+    - source_path：与目标位于同一文件系统、已经完整写入并 fsync 的临时文件。
+    - target_path：需要创建的最终路径。
+
+    返回：
+    - bool：成功创建目标时为 ``True``；目标已经存在时为 ``False``。
+
+    Windows 的 rename 不覆盖既有目标；POSIX rename 会覆盖，因此使用 hard link
+    原子创建目录项，再移除临时文件。两个分支都不会暴露半截目标文件。
+    """
+
+    if os.name == "nt":
+        try:
+            source_path.rename(target_path)
+        except FileExistsError:
+            return False
+        return True
+
+    try:
+        os.link(source_path, target_path)
+    except FileExistsError:
+        return False
+    source_path.unlink()
+    return True

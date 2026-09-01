@@ -1,9 +1,9 @@
-"""把已保存 Workflow 的旧输出参数迁移到 save_location。"""
+"""迁移已保存 Workflow 的旧输出参数和 Image Save 保存契约。"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from backend.service.application.errors import InvalidRequestError
 from backend.service.infrastructure.object_store.local_dataset_storage import (
@@ -14,7 +14,6 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 WORKFLOW_SAVE_LOCATION_MIGRATION_COMMAND = "migrate-workflow-save-locations"
 _OLD_PARAMETER_NAMES = ("output_dir", "output_object_key")
 _NODE_OLD_PARAMETER_NAMES = {
-    "core.io.image-save": ("object_key",),
     "core.output.json-save-local": ("local_path",),
     "core.output.csv-append-local": ("local_path",),
     "core.io.batch-files-relocate": ("target_directory",),
@@ -102,6 +101,10 @@ def migrate_workflow_template_payload(payload: dict[str, object]) -> int:
                 changed_node_indexes.add(node_index)
             continue
         node_type_id = str(raw_node.get("node_type_id") or "")
+        if node_type_id == "core.io.image-save":
+            if _migrate_image_save_parameters(raw_node, raw_parameters):
+                changed_node_indexes.add(node_index)
+            continue
         old_parameter_names = (
             *_OLD_PARAMETER_NAMES,
             *_NODE_OLD_PARAMETER_NAMES.get(node_type_id, ()),
@@ -140,6 +143,81 @@ def migrate_workflow_template_payload(payload: dict[str, object]) -> int:
             raw_edge["target_port"] = "save_location"
             changed_node_indexes.add(node_indexes_by_id[target_node_id])
     return len(changed_node_indexes)
+
+
+def _migrate_image_save_parameters(
+    raw_node: dict[str, object],
+    parameters: dict[str, object],
+) -> bool:
+    """把 Image Save 的单文件路径拆成保存目录和文件名。"""
+
+    old_parameter_names = (
+        "save_location",
+        "object_key",
+        *_OLD_PARAMETER_NAMES,
+    )
+    old_values = [
+        parameters[name] for name in old_parameter_names if name in parameters
+    ]
+    if not old_values:
+        new_names = ("save_directory", "file_name")
+        if any(name in parameters for name in new_names) and not all(
+            name in parameters for name in new_names
+        ):
+            raise InvalidRequestError(
+                "Workflow Image Save 节点的新保存参数不完整",
+                details={"node_id": raw_node.get("node_id")},
+            )
+        return False
+
+    if len({repr(value) for value in old_values}) > 1:
+        raise InvalidRequestError(
+            "Workflow Image Save 节点包含冲突的旧保存位置参数",
+            details={"node_id": raw_node.get("node_id")},
+        )
+    save_directory, file_name = _split_image_save_location(old_values[0])
+    file_name = file_name.replace("{timestamp}", "{YYYYMMDDhhmmssSSS}")
+
+    existing_directory = parameters.get("save_directory")
+    existing_file_name = parameters.get("file_name")
+    if existing_directory not in (None, save_directory) or existing_file_name not in (
+        None,
+        file_name,
+    ):
+        raise InvalidRequestError(
+            "Workflow Image Save 节点包含冲突的新旧保存参数",
+            details={"node_id": raw_node.get("node_id")},
+        )
+
+    parameters["save_directory"] = save_directory
+    parameters["file_name"] = file_name
+    parameters.setdefault("overwrite", True)
+    for parameter_name in old_parameter_names:
+        parameters.pop(parameter_name, None)
+    return True
+
+
+def _split_image_save_location(value: object) -> tuple[str, str]:
+    """把旧单文件保存位置拆成目录与文件名。"""
+
+    normalized_value = value.strip() if isinstance(value, str) else ""
+    if not normalized_value:
+        raise InvalidRequestError("Workflow Image Save 旧保存位置不能为空")
+
+    windows_path = PureWindowsPath(normalized_value)
+    if windows_path.drive or "\\" in normalized_value:
+        directory = str(windows_path.parent)
+        file_name = windows_path.name
+    else:
+        posix_path = PurePosixPath(normalized_value)
+        directory = posix_path.parent.as_posix()
+        file_name = posix_path.name
+    if directory in {"", "."} or not file_name:
+        raise InvalidRequestError(
+            "Workflow Image Save 旧保存位置必须同时包含目录和文件名",
+            details={"save_location": value},
+        )
+    return directory, file_name
 
 
 def _migrate_video_save_parameters(

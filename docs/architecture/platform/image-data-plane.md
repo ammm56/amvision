@@ -256,13 +256,14 @@ storage 输入属于持久化任务边界。短期 mmap 引用不能跨服务重
 - `Crop Export` 写文件时可以编码输出；给后续节点使用时应优先输出 raw image-ref。
 - `Draw Detections` 给后续节点使用时应优先输出 raw image-ref；给前端预览时才编码。
 
-需要保存文件或目录的 workflow 节点统一使用 `save_location`，并遵循双路径规则：
+需要保存文件或目录的 workflow 节点遵循同一双路径规则：
 
 - 相对路径表示 ObjectStore 目录，例如 `workflow/roi` 会写入默认本地 ObjectStore 根目录下的 `workflow/roi`。
 - 当前系统可解析的绝对路径表示本机文件系统目录，例如 Windows 的 `T:\temp\roi`；绝对路径不得伪装成 object key，也不得写入数据库中的 object key 字段。
 - `Crop Export` 无论保存到哪一种目录，给后续节点的结果都继续使用 raw memory image-ref；落盘位置单独记录在每个图片结果的 `saved_output` 中，避免保存动作把后续推理链路降级为磁盘读取和重复解码。
 - 系统绝对路径依赖 runtime 所在主机的挂载和权限。发布后的 Workflow App 与 Trigger 会在 runtime 主机上解释该路径，不在浏览器所在主机上解释。
-- `save_location` 是节点保存接口的唯一公开参数。
+- 一般节点使用 `save_location`。`Image Save` 为了明确区分目录和单文件命名，使用 `save_directory`、`file_name`、`overwrite`；它不改变其他保存节点的参数契约。
+- `Image Save.file_name` 支持固定名称和 `{YYYYMMDDhhmmssSSS}` 时间块。关闭覆盖后发生重名时，节点原子创建 `_001`、`_002` 文件，不排队、不覆盖现有文件。
 
 OpenCV shared runtime、Barcode/QR runtime、SAM3/YOLOE 图片入口、图片预览与保存、regions/ROI/video overlay 和 ZeroMQ 示例均遵守同一规则：中间结果默认走 raw BGR24 memory image-ref，只在 JSON、预览和落盘边界编码。
 

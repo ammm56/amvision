@@ -49,7 +49,7 @@ BufferRef 和 FrameRef 具有短生命周期并绑定本机 broker/epoch，不�
 - PLC 地址、寄存器、目录和回调地址
 - token、用户名、密码与其他凭据
 
-示例中的 `save_location` 同时演示 ObjectStore 相对位置和明确支持的本机绝对位置；不能把普通 `object_key` 任意解释成磁盘路径。
+一般节点的 `save_location` 同时演示 ObjectStore 相对位置和明确支持的本机绝对位置；不能把普通 `object_key` 任意解释成磁盘路径。`Image Save` 单独使用 `save_directory` 和 `file_name`，目录仍遵循相同双路径规则，文件名可以使用 `{YYYYMMDDhhmmssSSS}` 时间块。
 
 ## 验证
 

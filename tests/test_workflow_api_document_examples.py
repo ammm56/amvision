@@ -1989,7 +1989,10 @@ def test_workflow_postman_directory_contains_ordered_formal_workflow_collections
     assert "buffer_ref" in readme_text
     assert "frame_ref" in readme_text
     assert "不写入当前通用 Postman 请求体" in readme_text
-    assert "当前 multipart 上传入口只支持这类 zip 包文件输入" in readme_text
+    assert (
+        "通用 multipart 当前也支持 `image-ref.v1`、`file-ref.v1` 和 "
+        "`file-refs.v1` 流式上传"
+    ) in readme_text
     assert "编辑器同步 preview 复用 backend-service 已加载的节点 registry" in readme_text
     assert "LocalBufferBroker 的 BufferRef / FrameRef 和 mmap mailbox" in readme_text
     assert "inference daemon 中的常驻 deployment worker" in readme_text
@@ -2760,7 +2763,10 @@ def test_workflow_app_runtimes_document_clarifies_invoke_input_shapes() -> None:
     assert '"object_key": "projects/{project_id}/inputs/source.jpg"' in document_text
     assert '"image_base64": "<base64>"' in document_text
     assert '"value": {...}' in document_text
-    assert "当前 multipart 上传入口只支持这类 zip 包输入" in document_text
+    assert "multipart 文件字段名必须等于 binding id" in document_text
+    assert "`image-ref.v1`、`file-ref.v1` 和 `file-refs.v1` 支持文件 part" in (
+        document_text
+    )
     assert "response_mode=run" in document_text
 
 

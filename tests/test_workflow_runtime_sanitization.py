@@ -1356,7 +1356,9 @@ def _build_image_decode_save_preview_template() -> WorkflowGraphTemplate:
                 node_id="save",
                 node_type_id="core.io.image-save",
                 parameters={
-                    "save_location": "projects/project-1/results/formal-preview-source.png"
+                    "save_directory": "projects/project-1/results",
+                    "file_name": "formal-preview-source.png",
+                    "overwrite": False,
                 },
             ),
             WorkflowGraphNode(

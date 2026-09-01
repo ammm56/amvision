@@ -11,6 +11,7 @@ from uuid import uuid4
 
 from backend.service.application.errors import InvalidRequestError
 from backend.service.infrastructure.filesystem.atomic_files import (
+    publish_path_without_overwrite,
     replace_path_with_retry,
 )
 from backend.service.infrastructure.filesystem.windows_paths import to_filesystem_path
@@ -20,6 +21,7 @@ SAVE_LOCATION_OBJECT_STORE = "object-store"
 SAVE_LOCATION_FILESYSTEM = "filesystem"
 SaveLocationKind = Literal["object-store", "filesystem"]
 SaveLocationScope = Literal["file", "directory"]
+_MAX_INCREMENTED_FILE_SEQUENCE = 999_999
 
 
 @dataclass(frozen=True)
@@ -173,8 +175,16 @@ def save_bytes(
     content: bytes,
     file_name: str | None = None,
     overwrite: bool = True,
+    increment_on_conflict: bool = False,
 ) -> WorkflowSavedFile:
-    """按保存位置类型原子写入文件，并返回对应引用。"""
+    """按保存位置类型原子写入文件，并返回对应引用。
+
+    ``increment_on_conflict`` 只在 ``overwrite=False`` 时生效。它使用原子
+    不覆盖创建保证多个 workflow/runtime 同时写入时不会选中同一个文件名。
+    """
+
+    if overwrite and increment_on_conflict:
+        raise InvalidRequestError("覆盖保存和冲突自动编号不能同时启用")
 
     target_name = _normalize_target_name(
         save_location=save_location, file_name=file_name
@@ -188,6 +198,16 @@ def save_bytes(
             f"{base_key}/{target_name}" if target_name is not None else base_key
         )
         storage = require_dataset_storage(request)
+        if not overwrite and increment_on_conflict:
+            object_key = _write_object_store_bytes_with_incremented_name(
+                storage=storage,
+                object_key=object_key,
+                content=content,
+            )
+            return WorkflowSavedFile(
+                kind=SAVE_LOCATION_OBJECT_STORE,
+                object_key=object_key,
+            )
         if not overwrite and storage.resolve(object_key).exists():
             raise InvalidRequestError(
                 "保存目标已存在，且当前节点未允许覆盖",
@@ -200,6 +220,15 @@ def save_bytes(
     if base_path is None:
         raise InvalidRequestError("系统保存位置缺少有效路径")
     target_path = base_path / target_name if target_name is not None else base_path
+    if not overwrite and increment_on_conflict:
+        target_path = _write_filesystem_bytes_with_incremented_name(
+            target_path,
+            content,
+        )
+        return WorkflowSavedFile(
+            kind=SAVE_LOCATION_FILESYSTEM,
+            local_path=target_path,
+        )
     if not overwrite and target_path.exists():
         raise InvalidRequestError(
             "保存目标已存在，且当前节点未允许覆盖",
@@ -302,6 +331,99 @@ def _write_filesystem_bytes_atomically(target_path: Path, content: bytes) -> Non
             "无法写入系统保存位置",
             details={"local_path": str(target_path)},
         ) from error
+
+
+def _write_object_store_bytes_with_incremented_name(
+    *,
+    storage: object,
+    object_key: str,
+    content: bytes,
+) -> str:
+    """在本地 ObjectStore 中原子选择可用文件名并写入 bytes。"""
+
+    resolve = getattr(storage, "resolve", None)
+    write_if_absent = getattr(storage, "write_bytes_if_absent", None)
+    if not callable(resolve) or not callable(write_if_absent):
+        raise InvalidRequestError("当前 ObjectStore 不支持原子冲突自动编号")
+    object_path = PurePosixPath(object_key)
+    for sequence in range(_MAX_INCREMENTED_FILE_SEQUENCE + 1):
+        candidate_name = _build_incremented_file_name(object_path.name, sequence)
+        candidate_key = (
+            object_path.with_name(candidate_name).as_posix()
+            if str(object_path.parent) != "."
+            else candidate_name
+        )
+        if resolve(candidate_key).exists():
+            continue
+        if write_if_absent(candidate_key, content):
+            return candidate_key
+    raise InvalidRequestError(
+        "保存目标自动编号已达到上限",
+        details={"object_key": object_key},
+    )
+
+
+def _write_filesystem_bytes_with_incremented_name(
+    target_path: Path,
+    content: bytes,
+) -> Path:
+    """在本机目录中原子选择可用文件名并写入 bytes。"""
+
+    for sequence in range(_MAX_INCREMENTED_FILE_SEQUENCE + 1):
+        candidate_path = target_path.with_name(
+            _build_incremented_file_name(target_path.name, sequence)
+        )
+        if candidate_path.exists():
+            continue
+        if _write_filesystem_bytes_atomically_if_absent(candidate_path, content):
+            return candidate_path
+    raise InvalidRequestError(
+        "保存目标自动编号已达到上限",
+        details={"local_path": str(target_path)},
+    )
+
+
+def _build_incremented_file_name(file_name: str, sequence: int) -> str:
+    """构造原名或在最后一个扩展名前插入三位起始的数字序号。"""
+
+    if sequence <= 0:
+        return file_name
+    file_path = PurePosixPath(file_name)
+    suffix = file_path.suffix
+    stem = file_name[: -len(suffix)] if suffix else file_name
+    return f"{stem}_{sequence:03d}{suffix}"
+
+
+def _write_filesystem_bytes_atomically_if_absent(
+    target_path: Path,
+    content: bytes,
+) -> bool:
+    """原子创建本机文件；目标已存在时保持不变并返回 False。"""
+
+    filesystem_target_path = to_filesystem_path(target_path)
+    filesystem_target_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = filesystem_target_path.with_name(
+        f".{target_path.name}.{uuid4().hex[:12]}.tmp"
+    )
+    try:
+        with temporary_path.open("wb") as output_stream:
+            output_stream.write(content)
+            output_stream.flush()
+            os.fsync(output_stream.fileno())
+        published = publish_path_without_overwrite(
+            temporary_path,
+            filesystem_target_path,
+        )
+        if published:
+            _sync_directory_after_replace(filesystem_target_path.parent)
+        return published
+    except OSError as error:
+        raise InvalidRequestError(
+            "无法写入系统保存位置",
+            details={"local_path": str(target_path)},
+        ) from error
+    finally:
+        temporary_path.unlink(missing_ok=True)
 
 
 def _copy_filesystem_file_atomically(source_path: Path, target_path: Path) -> None:

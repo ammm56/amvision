@@ -41,7 +41,8 @@
         "node_id": "save_image",
         "node_type_id": "core.io.image-save",
         "parameters": {
-          "object_key": "{workflow_app_result_dir}/{node_id}-{timestamp}.png",
+          "save_directory": "{workflow_app_result_dir}",
+          "file_name": "{node_id}-{YYYYMMDDhhmmssSSS}.png",
           "overwrite": false
         }
       },
