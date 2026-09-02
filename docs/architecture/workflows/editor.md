@@ -91,6 +91,16 @@ Trigger Source（可选）
 
 文档加载、保存和 preflight 必须校验组 id、尺寸、成员存在性和重复成员。
 
+## 说明节点
+
+说明节点用于在画布中保存流程说明、输入约束、操作步骤、现场注意事项和维护指南。界面上沿用节点卡片交互，但契约上属于 editor artifact，不是可执行 `WorkflowGraphNode`：不注册 NodeDefinition、不连接端口、不进入 DAG、Preview、Runtime、Node Pack 依赖、node record 或耗时统计。
+
+说明节点随 Template 和不可变 Workflow App Version 保存与追溯。第一阶段只提供一种 Markdown 说明节点；纯文本天然兼容。Markdown 必须经过 allowlist 清理，不允许原始 HTML、脚本、iframe、危险链接或自动加载外部图片和视频。说明正文按字面值处理，不展开日期时间、变量或节点输出。
+
+节点组通过明确的 `member_note_ids` 记录说明节点成员。移动组时说明节点随组移动；组启用/禁用只改变可执行节点的最终 `enabled`，不改变说明节点。说明节点还必须进入小地图和 fit view 的画布边界计算。
+
+详细字段、交互、安全限制、实现顺序和验收门禁见 [Workflow 说明节点实施基线](../../development/workflow-note-node-implementation.md)。当前状态为规划完成、代码尚未实现。
+
 ## 图像交互取参
 
 统一 `ImageViewer` 根据节点 `parameter_ui_schema` 提供 bbox、polygon、point、circle、line、template ROI 和 search ROI 等工具。前端不按 `node_type_id` 堆积特例。
