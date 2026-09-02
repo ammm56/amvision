@@ -99,7 +99,7 @@ Trigger Source（可选）
 
 节点组通过明确的 `member_note_ids` 记录说明节点成员。移动组时说明节点随组移动；组启用/禁用只改变可执行节点的最终 `enabled`，不改变说明节点。说明节点还必须进入小地图和 fit view 的画布边界计算。
 
-详细字段、交互、安全限制、实现顺序和验收门禁见 [Workflow 说明节点实施基线](../../development/workflow-note-node-implementation.md)。当前状态为规划完成、代码尚未实现。
+详细字段、交互、安全限制和验收记录见 [Workflow 说明节点实施基线](../../development/workflow-note-node-implementation.md)。当前代码和真实 Workflow App 验收已完成。
 
 ## 图像交互取参
 

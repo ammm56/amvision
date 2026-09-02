@@ -10,6 +10,7 @@ import type {
   WorkflowGraphGroup,
   WorkflowGraphInput,
   WorkflowGraphNode,
+  WorkflowGraphNote,
   WorkflowGraphOutput,
   WorkflowNodeCatalogResponse,
 } from '../types'
@@ -23,6 +24,7 @@ export interface WorkflowDocumentLoaderOptions {
   graphNodes: Ref<WorkflowGraphNodeView[]>
   graphEdges: Ref<WorkflowGraphEdge[]>
   graphGroups: Ref<WorkflowGraphGroup[]>
+  graphNotes: Ref<WorkflowGraphNote[]>
   templateInputs: Ref<WorkflowGraphInput[]>
   templateOutputs: Ref<WorkflowGraphOutput[]>
   applicationBindingsDraft: Ref<FlowApplicationBinding[]>
@@ -68,6 +70,7 @@ export function useWorkflowDocumentLoader(options: WorkflowDocumentLoaderOptions
     options.liteGraphAdapter.value?.loadTemplate(refreshedApp.graphDocument.template)
     options.graphEdges.value = cloneGraphEdges(refreshedApp.graphDocument.template.edges)
     options.graphGroups.value = cloneGraphGroups(refreshedApp.graphDocument.template.groups)
+    options.graphNotes.value = cloneGraphNotes(refreshedApp.graphDocument.template.notes ?? [])
     options.graphNodes.value = options.buildGraphNodeViews(refreshedApp.graphDocument.template.nodes)
     options.restoreSelectionAfterGraphRefresh(previousSelection, options.graphNodes.value[0]?.node.node_id ?? null)
   }
@@ -105,6 +108,7 @@ export function useWorkflowDocumentLoader(options: WorkflowDocumentLoaderOptions
     options.liteGraphAdapter.value?.loadTemplate(loadedApp.graphDocument.template)
     options.graphEdges.value = cloneGraphEdges(loadedApp.graphDocument.template.edges)
     options.graphGroups.value = cloneGraphGroups(loadedApp.graphDocument.template.groups)
+    options.graphNotes.value = cloneGraphNotes(loadedApp.graphDocument.template.notes ?? [])
     options.graphNodes.value = options.buildGraphNodeViews(loadedApp.graphDocument.template.nodes)
     options.setSelection({ nodeId: options.graphNodes.value[0]?.node.node_id ?? null, edgeId: null, boundaryKind: null })
   }
@@ -117,6 +121,7 @@ export function useWorkflowDocumentLoader(options: WorkflowDocumentLoaderOptions
     options.liteGraphAdapter.value?.loadTemplate(draftApp.graphDocument.template)
     options.graphEdges.value = []
     options.graphGroups.value = []
+    options.graphNotes.value = []
     options.graphNodes.value = []
     options.setSelection({ nodeId: null, edgeId: null, boundaryKind: null })
   }
@@ -166,6 +171,15 @@ function cloneGraphGroups(groups: WorkflowGraphGroup[]): WorkflowGraphGroup[] {
     ...group,
     rect: { ...group.rect },
     member_node_ids: [...group.member_node_ids],
+    member_note_ids: [...(group.member_note_ids ?? [])],
     metadata: { ...group.metadata },
+  }))
+}
+
+function cloneGraphNotes(notes: WorkflowGraphNote[]): WorkflowGraphNote[] {
+  return notes.map((note) => ({
+    ...note,
+    rect: { ...note.rect },
+    metadata: { ...note.metadata },
   }))
 }

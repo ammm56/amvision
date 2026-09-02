@@ -31,6 +31,7 @@
         @cancel-title="cancelEditorTitleEdit"
         @refresh="loadPage"
         @toggle-group-create-mode="toggleGroupCreateMode"
+        @add-note="addNoteAtViewportCenter"
         @toggle-inspector="toggleInspector"
         @preview="requestPreviewRun"
         @publish="publishCurrentWorkflowApp"
@@ -58,7 +59,7 @@
           :selected-group-id="selectedGroupId"
           :draft-rect="draftGroupRect"
           :read-group-state="readGroupState"
-          @select-group="selectGroup"
+          @select-group="handleGroupSelection"
           @start-group-drag="startGroupDrag"
           @start-group-resize="startGroupResize"
           @toggle-group-enabled="toggleGroupEnabled"
@@ -66,6 +67,22 @@
           @rename-group="renameGroup"
           @delete-group="deleteGroup"
           @update-group-color="updateGroupColor"
+        />
+
+        <WorkflowGraphNoteLayer
+          :notes="graphNotes"
+          :selected-note-id="selectedNoteId"
+          :editing-note-id="editingNoteId"
+          @select-note="selectNote"
+          @begin-edit="beginNoteEdit"
+          @finish-edit="finishNoteEdit"
+          @cancel-edit="cancelNoteEdit"
+          @start-note-drag="startNoteDrag"
+          @start-note-resize="startNoteResize"
+          @toggle-collapsed="toggleNoteCollapsed"
+          @toggle-locked="toggleNoteLocked"
+          @update-tone="updateNoteTone"
+          @open-note-context-menu="openNoteContextMenu"
         />
 
         <WorkflowBoundaryNodeLayer
@@ -164,6 +181,13 @@
         @add-request-image-base64="addRequestImageBase64Input"
         @update-node-enabled="updateNodeEnabled"
         @delete-selected-edge="deleteSelectedEdge"
+        @update-note-title="updateNoteTitle"
+        @update-note-content="updateNoteContent"
+        @update-note-tone="updateNoteTone"
+        @toggle-note-collapsed="toggleNoteCollapsed"
+        @toggle-note-locked="toggleNoteLocked"
+        @copy-note="copyNote"
+        @delete-note="deleteNote"
         @update-binding-id="updateBindingIdFromEvent"
         @update-binding-display-name="updateBindingDisplayNameFromEvent"
         @update-binding-kind="updateBindingKindFromValue"
@@ -199,6 +223,12 @@
         @start-minimap-navigation="startMinimapNavigation"
         @toggle-minimap="toggleMinimap"
         @open-node-picker="openNodePickerFromContextMenu"
+        @add-note="addNoteFromContextMenu"
+        @edit-note="editContextNote"
+        @copy-note="copyContextNote"
+        @toggle-note-lock="toggleContextNoteLock"
+        @toggle-note-collapse="toggleContextNoteCollapse"
+        @delete-note="deleteContextNote"
         @expose-app-input="exposeContextPortAsAppInput"
         @expose-app-output="exposeContextPortAsAppOutput"
         @delete-binding="deleteContextApplicationBinding"
@@ -250,7 +280,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, shallowRef } from 'vue'
+import { computed, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
@@ -262,6 +292,7 @@ import WorkflowDeploymentInstancePickerDialog from '../components/WorkflowDeploy
 import WorkflowBoundaryNodeLayer from '../components/WorkflowBoundaryNodeLayer.vue'
 import WorkflowGraphGroupLayer from '../components/WorkflowGraphGroupLayer.vue'
 import WorkflowGraphLinksLayer from '../components/WorkflowGraphLinksLayer.vue'
+import WorkflowGraphNoteLayer from '../components/WorkflowGraphNoteLayer.vue'
 import WorkflowGraphNodeLayer from '../components/WorkflowGraphNodeLayer.vue'
 import WorkflowGraphOverlayLayer from '../components/WorkflowGraphOverlayLayer.vue'
 import WorkflowGraphToolbar from '../components/WorkflowGraphToolbar.vue'
@@ -303,6 +334,7 @@ import { useWorkflowBindingEditorActions } from '../bindings/useWorkflowBindingE
 import { useWorkflowBoundaryNodes, type WorkflowBoundaryNodeView } from '../bindings/useWorkflowBoundaryNodes'
 import { useWorkflowGraphDeletion } from '../graph/useWorkflowGraphDeletion'
 import { useWorkflowGraphGroups } from '../graph/useWorkflowGraphGroups'
+import { useWorkflowGraphNotes } from '../notes/useWorkflowGraphNotes'
 import { useWorkflowRequestImageInputs } from '../graph/useWorkflowRequestImageInputs'
 import { useWorkflowNodeDisplayHelpers } from '../nodes/useWorkflowNodeDisplayHelpers'
 import { useWorkflowGraphNodeViews, type WorkflowGraphNodeView } from '../nodes/useWorkflowGraphNodeViews'
@@ -326,7 +358,7 @@ import {
   isAppliedMaskBinding,
   type AppliedMaskBinding,
 } from '../interactions/maskEditorInteraction'
-import type { FlowApplicationBinding, WorkflowGraphEdge, WorkflowGraphGroup, WorkflowGraphInput, WorkflowGraphNode, WorkflowGraphOutput, WorkflowNodeCatalogResponse } from '../types'
+import type { FlowApplicationBinding, WorkflowGraphEdge, WorkflowGraphGroup, WorkflowGraphInput, WorkflowGraphNode, WorkflowGraphNote, WorkflowGraphOutput, WorkflowNodeCatalogResponse } from '../types'
 
 type AppBoundaryKind = WorkflowBoundaryKind
 type SelectValue = WorkflowNodeParameterSelectValue
@@ -369,6 +401,7 @@ const workflowApp = ref<WorkflowAppDocument | null>(null)
 const graphNodes = ref<GraphNodeView[]>([])
 const graphEdges = ref<WorkflowGraphEdge[]>([])
 const graphGroups = ref<WorkflowGraphGroup[]>([])
+const graphNotes = ref<WorkflowGraphNote[]>([])
 const templateInputs = ref<WorkflowGraphInput[]>([])
 const templateOutputs = ref<WorkflowGraphOutput[]>([])
 const contextMenu = ref<ContextMenuState | null>(null)
@@ -396,14 +429,17 @@ function toggleInspector(): void {
 }
 
 function handleGraphNodeSelection(nodeId: string): void {
+  clearNoteSelection()
   handleNodeClick(nodeId)
 }
 
 function handleGraphLinkSelection(link: GraphLinkView): void {
+  clearNoteSelection()
   selectGraphLink(link)
 }
 
 function handleBoundarySelection(boundaryKind: AppBoundaryKind): void {
+  clearNoteSelection()
   selectApplicationBoundary(boundaryKind)
 }
 
@@ -455,6 +491,7 @@ const {
 } = useWorkflowCanvasViewport<GraphNodeView, AppBoundaryNodeView>({
   canvasRef,
   graphNodes,
+  graphNotes,
   readBoundaryNodes: () => appBoundaryNodes.value,
   readNodeId: (node) => node.node.node_id,
   readNodeHeight: (node) => nodeVisualHeight(node),
@@ -652,7 +689,7 @@ const {
 })
 const {
   selectBoundaryBinding,
-  isMinimapNodeSelected,
+  isMinimapNodeSelected: isRegularMinimapNodeSelected,
 } = useWorkflowGraphPanelState({
   selectedNodeId,
   selectedBoundaryKind,
@@ -693,6 +730,128 @@ const {
     errorMessage.value = message
   },
 })
+
+function isMinimapNodeSelected(nodeId: string): boolean {
+  if (nodeId.startsWith('note:')) return selectedNoteId.value === nodeId.slice(5)
+  return isRegularMinimapNodeSelected(nodeId)
+}
+const {
+  selectedNoteId,
+  editingNoteId,
+  createNoteAt,
+  selectNote,
+  clearNoteSelection,
+  beginEdit: beginNoteEdit,
+  finishEdit: finishNoteEdit,
+  cancelEdit: cancelNoteEdit,
+  toggleCollapsed: toggleNoteCollapsed,
+  toggleLocked: toggleNoteLocked,
+  updateTone: updateNoteTone,
+  copyNote,
+  deleteNote,
+  startDrag: startNoteDrag,
+  startResize: startNoteResize,
+} = useWorkflowGraphNotes({
+  graphNotes,
+  graphGroups,
+  screenToWorld,
+  clearOtherSelection: () => {
+    setSelection({ nodeId: null, edgeId: null, boundaryKind: null })
+    clearGroupSelection()
+    contextMenu.value = null
+    nodePicker.value = null
+  },
+})
+
+watch([selectedNodeId, selectedEdgeId, selectedBoundaryKind], ([nodeId, edgeId, boundaryKind]) => {
+  if (nodeId || edgeId || boundaryKind) clearNoteSelection()
+})
+
+function addNoteAtViewportCenter(): void {
+  const bounds = canvasRef.value?.getBoundingClientRect()
+  if (!bounds) return
+  const center = screenToWorld(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2)
+  const note = createNoteAt(center.x - 180, center.y - 120)
+  if (!note) setActionError(t('workflowEditor.feedback.noteLimitReached'))
+}
+
+function openNoteContextMenu(event: MouseEvent, note: WorkflowGraphNote): void {
+  selectNote(note.note_id)
+  const position = screenToWorld(event.clientX, event.clientY)
+  contextMenu.value = {
+    x: event.clientX,
+    y: event.clientY,
+    worldX: position.x,
+    worldY: position.y,
+    nodeId: null,
+    edgeId: null,
+    noteId: note.note_id,
+    port: null,
+  }
+}
+
+function addNoteFromContextMenu(): void {
+  const menu = contextMenu.value
+  if (!menu) return
+  const note = createNoteAt(menu.worldX, menu.worldY)
+  contextMenu.value = null
+  if (!note) setActionError(t('workflowEditor.feedback.noteLimitReached'))
+}
+
+function readContextNote(): WorkflowGraphNote | null {
+  const noteId = contextMenu.value?.noteId ?? selectedNoteId.value
+  return noteId ? graphNotes.value.find((note) => note.note_id === noteId) ?? null : null
+}
+
+function editContextNote(): void {
+  const note = readContextNote()
+  if (note) beginNoteEdit(note.note_id)
+  contextMenu.value = null
+}
+
+function copyContextNote(): void {
+  const note = readContextNote()
+  if (note) copyNote(note.note_id)
+  contextMenu.value = null
+}
+
+function toggleContextNoteLock(): void {
+  const note = readContextNote()
+  if (note) toggleNoteLocked(note)
+  contextMenu.value = null
+}
+
+function toggleContextNoteCollapse(): void {
+  const note = readContextNote()
+  if (note) toggleNoteCollapsed(note)
+  contextMenu.value = null
+}
+
+function deleteContextNote(): void {
+  const note = readContextNote()
+  if (note) deleteNote(note.note_id)
+  contextMenu.value = null
+}
+
+function deleteSelectedNote(): void {
+  if (selectedNoteId.value) deleteNote(selectedNoteId.value)
+}
+
+function updateNoteTitle(note: WorkflowGraphNote, value: string): void {
+  if (note.locked) return
+  note.title = value
+}
+
+function updateNoteContent(note: WorkflowGraphNote, value: string): void {
+  if (note.locked) return
+  note.content = value
+}
+
+function handleGroupSelection(groupId: string): void {
+  clearNoteSelection()
+  setSelection({ nodeId: null, edgeId: null, boundaryKind: null })
+  selectGroup(groupId)
+}
 
 function readInputSourceLabel(nodeId: string, portName: string): string {
   const edge = findInputEdge(nodeId, portName)
@@ -856,6 +1015,9 @@ const {
   isNewApp,
   selectedNode,
   selectedEdge,
+  selectedNote: computed(() => selectedNoteId.value
+    ? graphNotes.value.find((note) => note.note_id === selectedNoteId.value) ?? null
+    : null),
   selectedBoundaryKind,
   selectedBoundaryTitle,
   selectedBoundaryBindings,
@@ -887,6 +1049,7 @@ const {
   graphNodes,
   graphEdges,
   graphGroups,
+  graphNotes,
   templateInputs,
   templateOutputs,
   applicationBindingsDraft,
@@ -1071,6 +1234,7 @@ const {
 } = useWorkflowGraphGroups<GraphNodeView>({
   graphGroups,
   graphNodes,
+  graphNotes,
   screenToWorld,
   readNodeHeight: nodeVisualHeight,
   setStatusMessage: (message) => {
@@ -1162,6 +1326,7 @@ const {
 const { handleKeydown } = useWorkflowEditorKeyboard({
   selectedNodeId,
   selectedEdgeId,
+  selectedNoteId,
   clearConnectionDraft: () => {
     connectionDraft.value = null
   },
@@ -1173,6 +1338,7 @@ const { handleKeydown } = useWorkflowEditorKeyboard({
   },
   deleteSelectedNode,
   deleteSelectedEdge,
+  deleteSelectedNote,
 })
 const {
   refreshSavedWorkflowApp,
@@ -1184,6 +1350,7 @@ const {
   graphNodes,
   graphEdges,
   graphGroups,
+  graphNotes,
   templateInputs,
   templateOutputs,
   applicationBindingsDraft,
@@ -1333,6 +1500,7 @@ function handleStageMouseDown(event: MouseEvent): void {
     nodePicker.value = null
     return
   }
+  clearNoteSelection()
   clearGroupSelection()
   startStagePan(event)
 }

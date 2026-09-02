@@ -1,7 +1,7 @@
 import { ref, type Ref } from 'vue'
 
 import { translate } from '@/platform/i18n'
-import type { WorkflowGraphGroup, WorkflowGraphGroupRect } from '../types'
+import type { WorkflowGraphGroup, WorkflowGraphGroupRect, WorkflowGraphNote } from '../types'
 import { isPrimaryMouseButtonPressed } from '../canvas/workflowMouseDrag'
 import { defaultWorkflowGraphGroupColor } from './workflowGraphPalette'
 
@@ -34,7 +34,9 @@ interface GroupDragState<NodeView extends WorkflowGraphGroupNodeView> {
   start: PointerPosition
   initialRect: WorkflowGraphGroupRect
   memberNodePositions: Map<string, { x: number; y: number }>
+  memberNotePositions: Map<string, { x: number; y: number }>
   nodes: NodeView[]
+  notes: WorkflowGraphNote[]
 }
 
 interface GroupResizeState {
@@ -46,6 +48,7 @@ interface GroupResizeState {
 export interface WorkflowGraphGroupsOptions<NodeView extends WorkflowGraphGroupNodeView> {
   graphGroups: Ref<WorkflowGraphGroup[]>
   graphNodes: Ref<NodeView[]>
+  graphNotes: Ref<WorkflowGraphNote[]>
   screenToWorld: (clientX: number, clientY: number) => PointerPosition
   readNodeHeight: (node: NodeView) => number
   setStatusMessage: (message: string | null) => void
@@ -148,12 +151,16 @@ export function useWorkflowGraphGroups<NodeView extends WorkflowGraphGroupNodeVi
     const start = options.screenToWorld(event.clientX, event.clientY)
     const memberNodeIds = new Set(group.member_node_ids)
     const nodes = options.graphNodes.value.filter((node) => memberNodeIds.has(node.node.node_id))
+    const memberNoteIds = new Set(group.member_note_ids)
+    const notes = options.graphNotes.value.filter((note) => memberNoteIds.has(note.note_id))
     groupDragState.value = {
       groupId: group.group_id,
       start,
       initialRect: { ...group.rect },
       memberNodePositions: new Map(nodes.map((node) => [node.node.node_id, { x: node.x, y: node.y }])),
+      memberNotePositions: new Map(notes.map((note) => [note.note_id, { x: note.rect.x, y: note.rect.y }])),
       nodes,
+      notes,
     }
     selectedGroupId.value = group.group_id
     event.preventDefault()
@@ -188,6 +195,12 @@ export function useWorkflowGraphGroups<NodeView extends WorkflowGraphGroupNodeVi
       node.x = Math.round(initialPosition.x + deltaX)
       node.y = Math.round(initialPosition.y + deltaY)
       node.node.ui_state = { ...node.node.ui_state, x: node.x, y: node.y, width: node.width }
+    }
+    for (const note of dragState.notes) {
+      const initialPosition = dragState.memberNotePositions.get(note.note_id)
+      if (!initialPosition) continue
+      note.rect.x = Math.round(initialPosition.x + deltaX)
+      note.rect.y = Math.round(initialPosition.y + deltaY)
     }
   }
 
@@ -246,6 +259,7 @@ export function useWorkflowGraphGroups<NodeView extends WorkflowGraphGroupNodeVi
   function syncGroupMemberships(preferredGroupId: string | null = selectedGroupId.value): void {
     const orderedGroups = orderGroupsForMembership(preferredGroupId)
     const assignedNodeIds = new Set<string>()
+    const assignedNoteIds = new Set<string>()
     for (const group of orderedGroups) {
       const memberNodeIds = options.graphNodes.value
         .filter((node) => !assignedNodeIds.has(node.node.node_id))
@@ -253,6 +267,12 @@ export function useWorkflowGraphGroups<NodeView extends WorkflowGraphGroupNodeVi
         .map((node) => node.node.node_id)
       memberNodeIds.forEach((nodeId) => assignedNodeIds.add(nodeId))
       group.member_node_ids = memberNodeIds
+      const memberNoteIds = options.graphNotes.value
+        .filter((note) => !assignedNoteIds.has(note.note_id))
+        .filter((note) => isRectFullyInsideGroup(note.rect, group.rect))
+        .map((note) => note.note_id)
+      memberNoteIds.forEach((noteId) => assignedNoteIds.add(noteId))
+      group.member_note_ids = memberNoteIds
     }
   }
 
@@ -365,6 +385,7 @@ export function useWorkflowGraphGroups<NodeView extends WorkflowGraphGroupNodeVi
         height: Math.round(rect.height),
       },
       member_node_ids: [],
+      member_note_ids: [],
       membership_policy: 'full-containment',
       color: defaultWorkflowGraphGroupColor,
       collapsed: false,
@@ -399,6 +420,13 @@ export function useWorkflowGraphGroups<NodeView extends WorkflowGraphGroupNodeVi
     const nodeRight = node.x + node.width
     const nodeBottom = node.y + options.readNodeHeight(node)
     return node.x >= rect.x && node.y >= rect.y && nodeRight <= rect.x + rect.width && nodeBottom <= rect.y + rect.height
+  }
+
+  function isRectFullyInsideGroup(item: WorkflowGraphGroupRect, group: WorkflowGraphGroupRect): boolean {
+    return item.x >= group.x
+      && item.y >= group.y
+      && item.x + item.width <= group.x + group.width
+      && item.y + item.height <= group.y + group.height
   }
 
   function readGroupArea(group: WorkflowGraphGroup): number {

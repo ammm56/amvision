@@ -12,6 +12,7 @@ function createGroup(locked: boolean): WorkflowGraphGroup {
     enabled: true,
     rect: { x: 10, y: 20, width: 640, height: 480 },
     member_node_ids: ['node-1'],
+    member_note_ids: [],
     membership_policy: 'full-containment',
     color: '#22b8cf',
     collapsed: false,

@@ -1,6 +1,31 @@
 <template>
   <div class="workflow-graph-context-menu" :style="menuStyle" @mousedown.stop @contextmenu.prevent>
+    <button v-if="!contextMenu.nodeId && !contextMenu.edgeId && !contextMenu.noteId" type="button" @click="emit('add-note')">
+      <NotebookPen :size="15" />
+      {{ t('workflowEditor.editor.addNote') }}
+    </button>
+    <button v-if="contextMenu.noteId" type="button" @click="emit('edit-note')">
+      <SquarePen :size="15" />
+      {{ t('workflowEditor.editor.editNote') }}
+    </button>
+    <button v-if="contextMenu.noteId" type="button" @click="emit('copy-note')">
+      <Copy :size="15" />
+      {{ t('workflowEditor.editor.copyNote') }}
+    </button>
+    <button v-if="contextMenu.noteId" type="button" @click="emit('toggle-note-lock')">
+      <LockKeyhole :size="15" />
+      {{ t('workflowEditor.editor.toggleNoteLock') }}
+    </button>
+    <button v-if="contextMenu.noteId" type="button" @click="emit('toggle-note-collapse')">
+      <PanelTopClose :size="15" />
+      {{ t('workflowEditor.editor.toggleNoteCollapse') }}
+    </button>
+    <button v-if="contextMenu.noteId" type="button" @click="emit('delete-note')">
+      <Trash2 :size="15" />
+      {{ t('workflowEditor.editor.deleteNote') }}
+    </button>
     <button
+      v-if="!contextMenu.noteId"
       type="button"
       class="workflow-graph-context-menu__submenu-trigger"
       @click="emit('open-node-picker')"
@@ -71,7 +96,7 @@
 </template>
 
 <script setup lang="ts">
-import { ChevronRight, Map as MapIcon, Play, Plus, RefreshCw, Save, Trash2 } from '@lucide/vue'
+import { ChevronRight, Copy, LockKeyhole, Map as MapIcon, NotebookPen, PanelTopClose, Play, Plus, RefreshCw, Save, SquarePen, Trash2 } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 
 type AppBoundaryKind = 'entry' | 'result'
@@ -90,6 +115,7 @@ interface WorkflowGraphContextMenuState {
   worldY: number
   nodeId: string | null
   edgeId: string | null
+  noteId?: string | null
   port: PortReference | null
   boundaryKind?: AppBoundaryKind | null
   bindingId?: string | null
@@ -109,6 +135,12 @@ defineProps<{
 
 const emit = defineEmits<{
   'open-node-picker': []
+  'add-note': []
+  'edit-note': []
+  'copy-note': []
+  'toggle-note-lock': []
+  'toggle-note-collapse': []
+  'delete-note': []
   'expose-app-input': []
   'expose-app-output': []
   'delete-binding': []

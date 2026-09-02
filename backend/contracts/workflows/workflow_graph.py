@@ -35,6 +35,14 @@ FLOW_BINDING_DIRECTION_OUTPUT = "output"
 FLOW_BINDING_KIND_API_REQUEST = "api-request"
 FLOW_BINDING_KIND_HTTP_RESPONSE = "http-response"
 
+WORKFLOW_GRAPH_NOTE_MAX_COUNT = 128
+WORKFLOW_GRAPH_NOTE_MAX_CONTENT_BYTES = 64 * 1024
+WORKFLOW_GRAPH_NOTE_MAX_TOTAL_CONTENT_BYTES = 1024 * 1024
+WORKFLOW_GRAPH_NOTE_MIN_WIDTH = 220
+WORKFLOW_GRAPH_NOTE_MIN_HEIGHT = 120
+WORKFLOW_GRAPH_NOTE_MAX_WIDTH = 1600
+WORKFLOW_GRAPH_NOTE_MAX_HEIGHT = 1200
+
 
 def _require_stripped_text(value: str, field_name: str) -> str:
     """校验字符串字段非空且去除两端空白后仍然有效。
@@ -588,6 +596,90 @@ class WorkflowGraphGroupRect(BaseModel):
         return self
 
 
+class WorkflowGraphNoteRect(BaseModel):
+    """描述 workflow editor 说明节点在画布中的矩形区域。
+
+    字段：
+    - x：说明节点左上角画布 x 坐标。
+    - y：说明节点左上角画布 y 坐标。
+    - width：说明节点宽度。
+    - height：说明节点高度。
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    x: float
+    y: float
+    width: float
+    height: float
+
+    @model_validator(mode="after")
+    def validate_note_rect(self) -> WorkflowGraphNoteRect:
+        """校验说明节点矩形有限且处于可操作尺寸范围。"""
+
+        for field_name in ("x", "y", "width", "height"):
+            field_value = getattr(self, field_name)
+            if not math.isfinite(field_value):
+                raise ValueError(f"说明节点 rect.{field_name} 必须是有限数值")
+        if not WORKFLOW_GRAPH_NOTE_MIN_WIDTH <= self.width <= WORKFLOW_GRAPH_NOTE_MAX_WIDTH:
+            raise ValueError(
+                "说明节点 rect.width 必须处于 "
+                f"{WORKFLOW_GRAPH_NOTE_MIN_WIDTH} 到 {WORKFLOW_GRAPH_NOTE_MAX_WIDTH}"
+            )
+        if not WORKFLOW_GRAPH_NOTE_MIN_HEIGHT <= self.height <= WORKFLOW_GRAPH_NOTE_MAX_HEIGHT:
+            raise ValueError(
+                "说明节点 rect.height 必须处于 "
+                f"{WORKFLOW_GRAPH_NOTE_MIN_HEIGHT} 到 {WORKFLOW_GRAPH_NOTE_MAX_HEIGHT}"
+            )
+        return self
+
+
+class WorkflowGraphNote(BaseModel):
+    """描述 workflow editor 中只用于文档说明的虚拟节点。
+
+    说明节点不是可执行 WorkflowGraphNode，不引用 NodeDefinition，也不参与 DAG。
+
+    字段：
+    - note_id：模板内唯一说明节点 id。
+    - title：说明标题。
+    - content：原始 Markdown 正文。
+    - content_format：正文格式，当前固定为 markdown。
+    - rect：说明节点画布矩形。
+    - tone：受控显示色调。
+    - collapsed：是否折叠显示。
+    - locked：是否锁定编辑、拖动和缩放。
+    - metadata：附加编辑器元数据。
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    note_id: str
+    title: str
+    content: str = ""
+    content_format: Literal["markdown"] = "markdown"
+    rect: WorkflowGraphNoteRect
+    tone: Literal["neutral", "info", "success", "warning", "danger"] = "neutral"
+    collapsed: bool = False
+    locked: bool = False
+    metadata: dict[str, object] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_graph_note(self) -> WorkflowGraphNote:
+        """校验说明节点标识、标题和正文大小。"""
+
+        _require_stripped_text(self.note_id, "note_id")
+        normalized_title = _require_stripped_text(self.title, "title")
+        if len(normalized_title) > 128:
+            raise ValueError("说明节点 title 不能超过 128 个字符")
+        content_size = len(self.content.encode("utf-8"))
+        if content_size > WORKFLOW_GRAPH_NOTE_MAX_CONTENT_BYTES:
+            raise ValueError(
+                "说明节点 content 不能超过 "
+                f"{WORKFLOW_GRAPH_NOTE_MAX_CONTENT_BYTES} 字节"
+            )
+        return self
+
+
 class WorkflowGraphGroup(BaseModel):
     """描述 workflow editor 节点组。
 
@@ -600,6 +692,7 @@ class WorkflowGraphGroup(BaseModel):
     - enabled：组目标启用状态。
     - rect：组框矩形区域。
     - member_node_ids：组成员节点 id。
+    - member_note_ids：组成员说明节点 id。
     - membership_policy：成员判定策略，当前固定为 full-containment。
     - color：组框颜色。
     - collapsed：是否折叠显示。
@@ -614,6 +707,7 @@ class WorkflowGraphGroup(BaseModel):
     enabled: bool = True
     rect: WorkflowGraphGroupRect
     member_node_ids: tuple[str, ...] = ()
+    member_note_ids: tuple[str, ...] = ()
     membership_policy: Literal["full-containment"] = "full-containment"
     color: str | None = None
     collapsed: bool = False
@@ -627,6 +721,7 @@ class WorkflowGraphGroup(BaseModel):
         _require_stripped_text(self.group_id, "group_id")
         _require_stripped_text(self.name, "name")
         _ensure_unique_names(self.member_node_ids, f"节点组 {self.group_id} 成员")
+        _ensure_unique_names(self.member_note_ids, f"节点组 {self.group_id} 说明成员")
         return self
 
 
@@ -644,6 +739,7 @@ class WorkflowGraphTemplate(BaseModel):
     - template_inputs：对外暴露的逻辑输入列表。
     - template_outputs：对外暴露的逻辑输出列表。
     - groups：编辑器节点组列表，只用于画布组织和批量 enabled 状态操作。
+    - notes：编辑器说明节点列表，只用于画布内文档，不参与执行。
     - metadata：附加元数据。
     """
 
@@ -659,6 +755,7 @@ class WorkflowGraphTemplate(BaseModel):
     template_inputs: tuple[WorkflowGraphInput, ...] = ()
     template_outputs: tuple[WorkflowGraphOutput, ...] = ()
     groups: tuple[WorkflowGraphGroup, ...] = ()
+    notes: tuple[WorkflowGraphNote, ...] = ()
     metadata: dict[str, object] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -675,8 +772,22 @@ class WorkflowGraphTemplate(BaseModel):
         _ensure_unique_names(tuple(item.input_id for item in self.template_inputs), "图模板输入")
         _ensure_unique_names(tuple(item.output_id for item in self.template_outputs), "图模板输出")
         _ensure_unique_names(tuple(group.group_id for group in self.groups), "图模板节点组")
+        _ensure_unique_names(tuple(note.note_id for note in self.notes), "图模板说明节点")
+        if len(self.notes) > WORKFLOW_GRAPH_NOTE_MAX_COUNT:
+            raise ValueError(
+                f"图模板说明节点不能超过 {WORKFLOW_GRAPH_NOTE_MAX_COUNT} 个"
+            )
+        total_note_content_size = sum(
+            len(note.content.encode("utf-8")) for note in self.notes
+        )
+        if total_note_content_size > WORKFLOW_GRAPH_NOTE_MAX_TOTAL_CONTENT_BYTES:
+            raise ValueError(
+                "图模板说明正文总量不能超过 "
+                f"{WORKFLOW_GRAPH_NOTE_MAX_TOTAL_CONTENT_BYTES} 字节"
+            )
 
         node_ids = {node.node_id for node in self.nodes}
+        note_ids = {note.note_id for note in self.notes}
         for edge in self.edges:
             if edge.source_node_id not in node_ids:
                 raise ValueError(f"边 {edge.edge_id} 引用了不存在的 source_node_id")
@@ -692,6 +803,9 @@ class WorkflowGraphTemplate(BaseModel):
             for member_node_id in group.member_node_ids:
                 if member_node_id not in node_ids:
                     raise ValueError(f"节点组 {group.group_id} 引用了不存在的 member_node_id")
+            for member_note_id in group.member_note_ids:
+                if member_note_id not in note_ids:
+                    raise ValueError(f"节点组 {group.group_id} 引用了不存在的 member_note_id")
         return self
 
 

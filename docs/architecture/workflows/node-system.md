@@ -190,11 +190,11 @@ App Entry 是公开 binding 边界，不是新的节点执行器。当前 `reque
 
 ## 说明节点与执行边界
 
-规划中的 Workflow 说明节点用于画布内文档，不属于 Core Node 或 Custom Node：不注册 NodeDefinition、不实现 handler、不声明 payload 和 runtime requirements，也不进入拓扑、Parallel、ForEach、Selection、Node Pack 依赖或 node record。
+Workflow 说明节点用于画布内文档，不属于 Core Node 或 Custom Node：不注册 NodeDefinition、不实现 handler、不声明 payload 和 runtime requirements，也不进入拓扑、Parallel、ForEach、Selection、Node Pack 依赖或 node record。
 
 说明节点作为 `WorkflowGraphTemplate.notes` editor artifact 随 App Version 固化。修改说明会改变版本快照 fingerprint，但不会改变公开输入输出契约、Trigger mapping、SDK 调用格式或 Runtime 执行结果。说明内容不允许连接端口，也不能用说明节点替代 String Value、Text To Value 或其他实际文本数据节点。
 
-详细字段、安全渲染、节点组成员关系和验收门禁见 [Workflow 说明节点实施基线](../../development/workflow-note-node-implementation.md)。当前代码尚未实现该能力。
+详细字段、安全渲染、节点组成员关系和验收记录见 [Workflow 说明节点实施基线](../../development/workflow-note-node-implementation.md)。当前代码和真实 Workflow App 验收已完成。
 
 ## 生命周期
 

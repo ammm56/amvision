@@ -23,6 +23,7 @@ export interface WorkflowContextMenuState<BoundaryKind extends WorkflowBoundaryK
   worldY: number
   nodeId: string | null
   edgeId: string | null
+  noteId?: string | null
   port: WorkflowPortReference | null
   boundaryKind?: BoundaryKind | null
   bindingId?: string | null

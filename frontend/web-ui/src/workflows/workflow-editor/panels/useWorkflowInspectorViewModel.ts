@@ -2,11 +2,12 @@ import { computed, type ComputedRef, type Ref } from 'vue'
 
 import type { WorkflowBoundaryKind } from '../bindings/useWorkflowPublicBindings'
 import type { WorkflowAppDocument } from '../services/workflow-app.service'
-import type { FlowApplicationBinding, WorkflowGraphEdge, WorkflowPreviewRun } from '../types'
+import type { FlowApplicationBinding, WorkflowGraphEdge, WorkflowGraphNote, WorkflowPreviewRun } from '../types'
 
 export type WorkflowInspectorDetail<NodeView> =
   | { kind: 'node'; node: NodeView }
   | { kind: 'edge'; edge: WorkflowGraphEdge }
+  | { kind: 'note'; note: WorkflowGraphNote }
   | { kind: 'boundary'; title: string; bindings: FlowApplicationBinding[] }
   | { kind: 'application'; applicationId: string; templateInputText: string; templateOutputText: string; previewRunText: string | null }
   | { kind: 'empty' }
@@ -16,6 +17,7 @@ export interface WorkflowInspectorViewModelOptions<NodeView> {
   isNewApp: ComputedRef<boolean>
   selectedNode: ComputedRef<NodeView | null>
   selectedEdge: ComputedRef<WorkflowGraphEdge | null>
+  selectedNote: ComputedRef<WorkflowGraphNote | null>
   selectedBoundaryKind: Ref<WorkflowBoundaryKind | null>
   selectedBoundaryTitle: ComputedRef<string>
   selectedBoundaryBindings: ComputedRef<FlowApplicationBinding[]>
@@ -32,6 +34,9 @@ export function useWorkflowInspectorViewModel<NodeView>(options: WorkflowInspect
     }
     if (options.selectedEdge.value) {
       return { kind: 'edge', edge: options.selectedEdge.value }
+    }
+    if (options.selectedNote.value) {
+      return { kind: 'note', note: options.selectedNote.value }
     }
     if (options.selectedBoundaryKind.value) {
       return {

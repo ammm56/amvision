@@ -15,6 +15,11 @@ interface WorkflowCanvasViewportBoundaryView {
   width: number
 }
 
+interface WorkflowCanvasViewportNoteView {
+  note_id: string
+  rect: { x: number; y: number; width: number; height: number }
+}
+
 interface WorkflowMinimapNode {
   nodeId: string
   style: Record<string, string>
@@ -23,6 +28,7 @@ interface WorkflowMinimapNode {
 interface WorkflowCanvasViewportOptions<NodeView extends WorkflowCanvasViewportNodeView, BoundaryView extends WorkflowCanvasViewportBoundaryView> {
   canvasRef: Ref<HTMLElement | null>
   graphNodes: Ref<NodeView[]>
+  graphNotes: Ref<WorkflowCanvasViewportNoteView[]>
   readBoundaryNodes: () => BoundaryView[]
   readNodeId: (node: NodeView) => string
   readNodeHeight: (node: NodeView) => number
@@ -82,7 +88,16 @@ export function useWorkflowCanvasViewport<NodeView extends WorkflowCanvasViewpor
         height: `${Math.max(options.readBoundaryHeight(boundary) * scale, 5)}px`,
       },
     }))
-    return [...regularNodes, ...boundaryNodes]
+    const noteNodes = options.graphNotes.value.map((note) => ({
+      nodeId: `note:${note.note_id}`,
+      style: {
+        left: `${minimapPadding + (note.rect.x - bounds.minX) * scale}px`,
+        top: `${minimapPadding + (note.rect.y - bounds.minY) * scale}px`,
+        width: `${Math.max(note.rect.width * scale, 8)}px`,
+        height: `${Math.max(note.rect.height * scale, 5)}px`,
+      },
+    }))
+    return [...regularNodes, ...boundaryNodes, ...noteNodes]
   })
 
   const minimapViewportStyle = computed(() => {
@@ -134,19 +149,20 @@ export function useWorkflowCanvasViewport<NodeView extends WorkflowCanvasViewpor
 
   function calculateWorldBounds(): { minX: number; minY: number; maxX: number; maxY: number; width: number; height: number } {
     const boundaryNodes = options.readBoundaryNodes()
-    if (options.graphNodes.value.length === 0 && boundaryNodes.length === 0) {
+    if (options.graphNodes.value.length === 0 && boundaryNodes.length === 0 && options.graphNotes.value.length === 0) {
       const viewLeft = -viewportX.value / viewportScale.value
       const viewTop = -viewportY.value / viewportScale.value
       const viewWidth = stageSize.value.width / viewportScale.value
       const viewHeight = stageSize.value.height / viewportScale.value
       return { minX: viewLeft, minY: viewTop, maxX: viewLeft + viewWidth, maxY: viewTop + viewHeight, width: viewWidth, height: viewHeight }
     }
-    const minX = Math.min(...options.graphNodes.value.map((node) => node.x), ...boundaryNodes.map((boundary) => boundary.x)) - 160
-    const minY = Math.min(...options.graphNodes.value.map((node) => node.y), ...boundaryNodes.map((boundary) => boundary.y)) - 120
-    const maxX = Math.max(...options.graphNodes.value.map((node) => node.x + node.width), ...boundaryNodes.map((boundary) => boundary.x + boundary.width)) + 160
+    const minX = Math.min(...options.graphNodes.value.map((node) => node.x), ...boundaryNodes.map((boundary) => boundary.x), ...options.graphNotes.value.map((note) => note.rect.x)) - 160
+    const minY = Math.min(...options.graphNodes.value.map((node) => node.y), ...boundaryNodes.map((boundary) => boundary.y), ...options.graphNotes.value.map((note) => note.rect.y)) - 120
+    const maxX = Math.max(...options.graphNodes.value.map((node) => node.x + node.width), ...boundaryNodes.map((boundary) => boundary.x + boundary.width), ...options.graphNotes.value.map((note) => note.rect.x + note.rect.width)) + 160
     const maxY = Math.max(
       ...options.graphNodes.value.map((node) => node.y + options.readNodeHeight(node)),
       ...boundaryNodes.map((boundary) => boundary.y + options.readBoundaryHeight(boundary)),
+      ...options.graphNotes.value.map((note) => note.rect.y + note.rect.height),
     ) + 120
     return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY }
   }

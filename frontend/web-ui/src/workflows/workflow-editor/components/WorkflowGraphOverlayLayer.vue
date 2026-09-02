@@ -32,6 +32,12 @@
     :preview-label="t('workflowEditor.actions.previewRun')"
     :preview-node-label="t('workflowEditor.actions.previewNodeRun')"
     @open-node-picker="emit('openNodePicker')"
+    @add-note="emit('addNote')"
+    @edit-note="emit('editNote')"
+    @copy-note="emit('copyNote')"
+    @toggle-note-lock="emit('toggleNoteLock')"
+    @toggle-note-collapse="emit('toggleNoteCollapse')"
+    @delete-note="emit('deleteNote')"
     @expose-app-input="emit('exposeAppInput')"
     @expose-app-output="emit('exposeAppOutput')"
     @delete-binding="emit('deleteBinding')"
@@ -102,6 +108,12 @@ const emit = defineEmits<{
   startMinimapNavigation: [event: MouseEvent]
   toggleMinimap: []
   openNodePicker: []
+  addNote: []
+  editNote: []
+  copyNote: []
+  toggleNoteLock: []
+  toggleNoteCollapse: []
+  deleteNote: []
   exposeAppInput: []
   exposeAppOutput: []
   deleteBinding: []

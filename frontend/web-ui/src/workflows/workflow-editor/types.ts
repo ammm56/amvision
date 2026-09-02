@@ -146,12 +146,32 @@ export interface WorkflowGraphGroupRect {
   height: number
 }
 
+export interface WorkflowGraphNoteRect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export interface WorkflowGraphNote {
+  note_id: string
+  title: string
+  content: string
+  content_format: 'markdown'
+  rect: WorkflowGraphNoteRect
+  tone: 'neutral' | 'info' | 'success' | 'warning' | 'danger'
+  collapsed: boolean
+  locked: boolean
+  metadata: WorkflowJsonObject
+}
+
 export interface WorkflowGraphGroup {
   group_id: string
   name: string
   enabled: boolean
   rect: WorkflowGraphGroupRect
   member_node_ids: string[]
+  member_note_ids: string[]
   membership_policy: 'full-containment'
   color?: string | null
   collapsed: boolean
@@ -170,6 +190,7 @@ export interface WorkflowGraphTemplate {
   template_inputs: WorkflowGraphInput[]
   template_outputs: WorkflowGraphOutput[]
   groups: WorkflowGraphGroup[]
+  notes: WorkflowGraphNote[]
   metadata: WorkflowJsonObject
 }
 

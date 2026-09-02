@@ -18,7 +18,11 @@ from backend.contracts.workflows.workflow_graph import (
     NodePortDefinition,
     WorkflowGraphEdge,
     WorkflowGraphInput,
+    WorkflowGraphGroup,
+    WorkflowGraphGroupRect,
     WorkflowGraphNode,
+    WorkflowGraphNote,
+    WorkflowGraphNoteRect,
     WorkflowGraphOutput,
     WorkflowGraphTemplate,
     WorkflowPayloadContract,
@@ -26,6 +30,9 @@ from backend.contracts.workflows.workflow_graph import (
     validate_flow_application_bindings,
     validate_node_definition_catalog,
     validate_workflow_graph_template,
+)
+from backend.service.application.workflows.execution.topology import (
+    build_node_execution_scope_template,
 )
 
 
@@ -488,6 +495,154 @@ def test_workflow_contracts_roundtrip_and_binding_validation() -> None:
     assert restored_definition.runtime_requirements["python_packages"] == ["opencv-python", "numpy"]
     assert restored_template.nodes[1].parameters["score_threshold"] == 0.3
     assert restored_application.bindings[0].binding_kind == "api-request"
+
+
+def test_workflow_graph_notes_roundtrip_and_legacy_defaults() -> None:
+    """验证说明节点随 v1 Template 往返，旧文档缺少新字段时使用空集合。"""
+
+    source_payload = _build_graph_template().model_dump(mode="json")
+    source_payload["notes"] = [
+        WorkflowGraphNote(
+            note_id="note-input-guide",
+            title="输入说明",
+            content="## 输入\n\n- request_image_ref：检测图片",
+            rect=WorkflowGraphNoteRect(x=80, y=20, width=420, height=260),
+            tone="info",
+        ).model_dump(mode="json")
+    ]
+    source_payload["groups"] = [
+        WorkflowGraphGroup(
+            group_id="group-input",
+            name="输入",
+            rect=WorkflowGraphGroupRect(x=0, y=0, width=700, height=480),
+            member_node_ids=("input_image",),
+            member_note_ids=("note-input-guide",),
+        ).model_dump(mode="json")
+    ]
+
+    template = WorkflowGraphTemplate.model_validate(source_payload)
+    restored = WorkflowGraphTemplate.model_validate_json(template.model_dump_json())
+
+    assert restored.format_id == "amvision.workflow-graph-template.v1"
+    assert restored.notes[0].note_id == "note-input-guide"
+    assert restored.notes[0].content_format == "markdown"
+    assert restored.groups[0].member_note_ids == ("note-input-guide",)
+
+    legacy_payload = template.model_dump(mode="json")
+    legacy_payload.pop("notes")
+    for group in legacy_payload["groups"]:
+        group.pop("member_note_ids")
+    legacy_template = WorkflowGraphTemplate.model_validate(legacy_payload)
+
+    assert legacy_template.notes == ()
+    assert legacy_template.groups[0].member_note_ids == ()
+
+
+def test_workflow_graph_template_rejects_invalid_note_references() -> None:
+    """验证说明节点 id 和节点组引用必须明确且存在。"""
+
+    payload = _build_graph_template().model_dump(mode="json")
+    note = WorkflowGraphNote(
+        note_id="note-1",
+        title="说明",
+        rect=WorkflowGraphNoteRect(x=0, y=0, width=320, height=180),
+    ).model_dump(mode="json")
+    payload["notes"] = [note, {**note, "title": "重复说明"}]
+    with pytest.raises(ValueError, match="图模板说明节点 存在重复名称"):
+        WorkflowGraphTemplate.model_validate(payload)
+
+    payload["notes"] = [note]
+    payload["groups"] = [
+        WorkflowGraphGroup(
+            group_id="group-1",
+            name="说明组",
+            rect=WorkflowGraphGroupRect(x=0, y=0, width=500, height=300),
+            member_note_ids=("missing-note",),
+        ).model_dump(mode="json")
+    ]
+    with pytest.raises(ValueError, match="不存在的 member_note_id"):
+        WorkflowGraphTemplate.model_validate(payload)
+
+
+def test_node_execution_scope_excludes_editor_notes() -> None:
+    """验证节点级执行域不会携带说明节点和说明分组归属。"""
+
+    payload = _build_graph_template().model_dump(mode="json")
+    payload["notes"] = [
+        WorkflowGraphNote(
+            note_id="note-1",
+            title="仅编辑器可见",
+            rect=WorkflowGraphNoteRect(x=0, y=0, width=320, height=180),
+        ).model_dump(mode="json")
+    ]
+    payload["groups"] = [
+        WorkflowGraphGroup(
+            group_id="group-1",
+            name="执行组",
+            rect=WorkflowGraphGroupRect(x=0, y=0, width=900, height=500),
+            member_node_ids=("input_image", "detect"),
+            member_note_ids=("note-1",),
+        ).model_dump(mode="json")
+    ]
+    template = WorkflowGraphTemplate.model_validate(payload)
+
+    scoped = build_node_execution_scope_template(
+        template=template,
+        target_node_id="detect",
+    )
+
+    assert scoped.notes == ()
+    assert scoped.groups[0].member_node_ids == ("input_image", "detect")
+    assert scoped.groups[0].member_note_ids == ()
+
+def test_workflow_graph_note_rejects_invalid_size_limits() -> None:
+    """验证说明节点正文、矩形、数量和 Template 总正文量都有明确上限。"""
+
+    with pytest.raises(ValueError, match="content 不能超过"):
+        WorkflowGraphNote(
+            note_id="note-large",
+            title="过大正文",
+            content="测" * 21846,
+            rect=WorkflowGraphNoteRect(x=0, y=0, width=320, height=180),
+        )
+
+    with pytest.raises(ValueError, match="rect.width"):
+        WorkflowGraphNoteRect(x=0, y=0, width=219, height=180)
+
+    payload = _build_graph_template().model_dump(mode="json")
+    payload["notes"] = [
+        {
+            "note_id": f"note-{index}",
+            "title": f"说明 {index}",
+            "content": "",
+            "content_format": "markdown",
+            "rect": {"x": 0, "y": 0, "width": 320, "height": 180},
+            "tone": "neutral",
+            "collapsed": False,
+            "locked": False,
+            "metadata": {},
+        }
+        for index in range(129)
+    ]
+    with pytest.raises(ValueError, match="不能超过 128 个"):
+        WorkflowGraphTemplate.model_validate(payload)
+
+    payload["notes"] = [
+        {
+            "note_id": f"note-{index}",
+            "title": f"说明 {index}",
+            "content": "x" * (64 * 1024),
+            "content_format": "markdown",
+            "rect": {"x": 0, "y": 0, "width": 320, "height": 180},
+            "tone": "neutral",
+            "collapsed": False,
+            "locked": False,
+            "metadata": {},
+        }
+        for index in range(17)
+    ]
+    with pytest.raises(ValueError, match="正文总量不能超过"):
+        WorkflowGraphTemplate.model_validate(payload)
 
 
 def test_flow_application_bindings_sync_with_current_template_ports() -> None:

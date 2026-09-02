@@ -66,6 +66,10 @@
     </div>
     <div class="workflow-graph-toolbar__actions">
       <div class="workflow-graph-toolbar__group">
+        <Button variant="secondary" :disabled="loading" @click="emit('addNote')">
+          <NotebookPen :size="16" />
+          {{ t('workflowEditor.editor.note') }}
+        </Button>
         <Button :class="{ 'is-active': groupCreateMode }" variant="secondary" :disabled="loading" @click="emit('toggleGroupCreateMode')">
           <BoxSelect :size="16" />
           {{ t('workflowEditor.editor.nodeGroup') }}
@@ -110,7 +114,7 @@
 
 <script setup lang="ts">
 import { nextTick, ref, watch } from 'vue'
-import { BoxSelect, Check, PanelRightClose, PanelRightOpen, Play, RefreshCw, Save, SquarePen, Upload, X } from '@lucide/vue'
+import { BoxSelect, Check, NotebookPen, PanelRightClose, PanelRightOpen, Play, RefreshCw, Save, SquarePen, Upload, X } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 
 import Button from '@/shared/ui/components/Button.vue'
@@ -141,6 +145,7 @@ const emit = defineEmits<{
   cancelTitle: []
   refresh: []
   toggleGroupCreateMode: []
+  addNote: []
   preview: []
   publish: []
   save: []

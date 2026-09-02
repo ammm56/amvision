@@ -24,6 +24,7 @@ describe('useWorkflowCanvasViewport', () => {
     const viewport = useWorkflowCanvasViewport({
       canvasRef,
       graphNodes,
+      graphNotes: ref([]),
       readBoundaryNodes: () => [],
       readNodeId: (node) => node.id,
       readNodeHeight: (node) => node.height,
@@ -51,6 +52,7 @@ describe('useWorkflowCanvasViewport', () => {
     const viewport = useWorkflowCanvasViewport({
       canvasRef,
       graphNodes,
+      graphNotes: ref([]),
       readBoundaryNodes: () => [],
       readNodeId: (node) => node.id,
       readNodeHeight: (node) => node.height,
@@ -76,6 +78,7 @@ describe('useWorkflowCanvasViewport', () => {
     const viewport = useWorkflowCanvasViewport({
       canvasRef,
       graphNodes: ref<TestNode[]>([{ id: 'node-1', x: 0, y: 0, width: 200, height: 100 }]),
+      graphNotes: ref([]),
       readBoundaryNodes: () => [],
       readNodeId: (node) => node.id,
       readNodeHeight: (node) => node.height,
@@ -102,6 +105,7 @@ describe('useWorkflowCanvasViewport', () => {
         { id: 'node-1', x: 0, y: 0, width: 200, height: 100 },
         { id: 'node-2', x: 12000, y: 8000, width: 200, height: 100 },
       ]),
+      graphNotes: ref([]),
       readBoundaryNodes: () => [],
       readNodeId: (node) => node.id,
       readNodeHeight: (node) => node.height,

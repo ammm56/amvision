@@ -43,6 +43,17 @@
         :edge="inspectorDetail.edge"
         @delete-edge="emit('deleteSelectedEdge')"
       />
+      <WorkflowNoteDetailPanel
+        v-else-if="inspectorDetail.kind === 'note'"
+        :note="inspectorDetail.note"
+        @update-title="emit('updateNoteTitle', inspectorDetail.note, $event)"
+        @update-content="emit('updateNoteContent', inspectorDetail.note, $event)"
+        @update-tone="emit('updateNoteTone', inspectorDetail.note, $event)"
+        @toggle-collapsed="emit('toggleNoteCollapsed', inspectorDetail.note)"
+        @toggle-locked="emit('toggleNoteLocked', inspectorDetail.note)"
+        @copy="emit('copyNote', inspectorDetail.note.note_id)"
+        @delete="emit('deleteNote', inspectorDetail.note.note_id)"
+      />
       <WorkflowPublicBindingEditorPanel
         v-else-if="inspectorDetail.kind === 'boundary'"
         :title="inspectorDetail.title"
@@ -117,6 +128,7 @@ import WorkflowApplicationSummaryPanel from './WorkflowApplicationSummaryPanel.v
 import WorkflowEdgeDetailPanel from './WorkflowEdgeDetailPanel.vue'
 import WorkflowNewAppDraftPanel from './WorkflowNewAppDraftPanel.vue'
 import WorkflowNodeDetailPanel from './WorkflowNodeDetailPanel.vue'
+import WorkflowNoteDetailPanel from './WorkflowNoteDetailPanel.vue'
 import WorkflowPreviewInputPanel from './WorkflowPreviewInputPanel.vue'
 import WorkflowPreviewRunResultPanel from './WorkflowPreviewRunResultPanel.vue'
 import WorkflowPublicBindingEditorPanel from './WorkflowPublicBindingEditorPanel.vue'
@@ -127,6 +139,7 @@ import type { PreviewInputState, PreviewSelectOption, PreviewSelectValue } from 
 import type { WorkflowGraphNodeView } from '../nodes/useWorkflowGraphNodeViews'
 import type {
   FlowApplicationBinding,
+  WorkflowGraphNote,
   WorkflowPreviewRun,
 } from '../types'
 
@@ -169,6 +182,13 @@ const emit = defineEmits<{
   addRequestImageBase64: []
   updateNodeEnabled: [node: WorkflowGraphNodeView, event: Event]
   deleteSelectedEdge: []
+  updateNoteTitle: [note: WorkflowGraphNote, value: string]
+  updateNoteContent: [note: WorkflowGraphNote, value: string]
+  updateNoteTone: [note: WorkflowGraphNote, tone: WorkflowGraphNote['tone']]
+  toggleNoteCollapsed: [note: WorkflowGraphNote]
+  toggleNoteLocked: [note: WorkflowGraphNote]
+  copyNote: [noteId: string]
+  deleteNote: [noteId: string]
   updateBindingId: [binding: FlowApplicationBinding, event: Event]
   updateBindingDisplayName: [binding: FlowApplicationBinding, event: Event]
   updateBindingKind: [binding: FlowApplicationBinding, value: string | number | boolean | null]

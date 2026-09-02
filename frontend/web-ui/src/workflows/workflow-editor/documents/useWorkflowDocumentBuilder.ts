@@ -9,6 +9,7 @@ import type {
   WorkflowGraphEdge,
   WorkflowGraphGroup,
   WorkflowGraphInput,
+  WorkflowGraphNote,
   WorkflowGraphOutput,
   WorkflowGraphTemplate,
   WorkflowJsonObject,
@@ -33,6 +34,7 @@ export interface WorkflowDocumentBuilderOptions<NodeView extends WorkflowDocumen
   graphNodes: Ref<NodeView[]>
   graphEdges: Ref<WorkflowGraphEdge[]>
   graphGroups: Ref<WorkflowGraphGroup[]>
+  graphNotes: Ref<WorkflowGraphNote[]>
   templateInputs: Ref<WorkflowGraphInput[]>
   templateOutputs: Ref<WorkflowGraphOutput[]>
   applicationBindingsDraft: Ref<FlowApplicationBinding[]>
@@ -65,7 +67,13 @@ export function useWorkflowDocumentBuilder<NodeView extends WorkflowDocumentBuil
         ...group,
         rect: { ...group.rect },
         member_node_ids: [...group.member_node_ids],
+        member_note_ids: [...group.member_note_ids],
         metadata: { ...group.metadata },
+      })),
+      notes: options.graphNotes.value.map((note) => ({
+        ...note,
+        rect: { ...note.rect },
+        metadata: { ...note.metadata },
       })),
     }
   }

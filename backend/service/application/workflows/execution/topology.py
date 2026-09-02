@@ -156,7 +156,12 @@ def build_node_execution_scope_template(
         if not member_node_ids:
             continue
         scoped_groups.append(
-            group.model_copy(update={"member_node_ids": member_node_ids})
+            group.model_copy(
+                update={
+                    "member_node_ids": member_node_ids,
+                    "member_note_ids": (),
+                }
+            )
         )
 
     return template.model_copy(
@@ -177,6 +182,7 @@ def build_node_execution_scope_template(
             ),
             "template_outputs": (),
             "groups": tuple(scoped_groups),
+            "notes": (),
             "metadata": {
                 **template.metadata,
                 "preview_execution_scope": {

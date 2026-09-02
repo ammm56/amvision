@@ -73,11 +73,12 @@ WorkflowGraphTemplate 定义“节点怎么连”。
 - template_inputs：模板对外暴露的逻辑输入
 - template_outputs：模板对外暴露的逻辑输出
 - groups：节点组 editor artifact
+- notes：说明节点 editor artifact；缺少字段时按空列表加载
 - nodes[].ui_state：可执行节点的编辑器状态，例如位置和折叠状态
 
 模板保存的是图结构和编辑状态，不保存现场端点。
 
-规划中的说明节点虽然在画布中采用节点卡片交互，但不是 `WorkflowGraphNode`，不引用 NodeDefinition，也不进入执行节点集合。规划契约将增加有默认值的 `WorkflowGraphTemplate.notes`；节点组使用独立的 `member_note_ids` 引用说明节点，不能把说明节点塞进 `member_node_ids` 或依赖数组位置建立关系。详细设计见 [Workflow 说明节点实施基线](../../development/workflow-note-node-implementation.md)。字段当前尚未实现，不能提前写入生产 Template。
+说明节点虽然在画布中采用节点卡片交互，但不是 `WorkflowGraphNode`，不引用 NodeDefinition，也不进入执行节点集合。`WorkflowGraphTemplate.notes` 保存说明节点；节点组使用独立的 `member_note_ids` 引用说明节点，不能把说明节点塞进 `member_node_ids` 或依赖数组位置建立关系。两个字段均有空集合默认值，旧 v1 Template 可以直接加载。详细契约、限制和验收记录见 [Workflow 说明节点实施基线](../../development/workflow-note-node-implementation.md)。
 
 ### 4. FlowApplication
 
@@ -421,7 +422,7 @@ barcode.nodes 当前已经采用这套维护方式，并固定通过 custom_node
 - `WorkflowPayloadContract`、`NodeDefinition`、`WorkflowGraphTemplate` 与 `FlowApplication` 已形成版本化 Python/JSON 契约。
 - NodeCatalogRegistry 合并 Core Node 与 Custom Node Pack，并校验 manifest、端口、payload 和 handler。
 - Template/Application 通过单一 bundle 保存；节点组作为 editor artifact 持久化，不进入执行节点集合。
-- 说明节点已完成 editor artifact 契约规划，但代码尚未实现；实现后只进入版本化 Template 文档，不进入 Node Catalog、执行节点集合或 Runtime 记录。
+- 说明节点已作为 editor artifact 实现并完成真实 App 验收；它只进入版本化 Template 文档，不进入 Node Catalog、执行节点集合或 Runtime 记录。
 - Preview、Workflow App Version、Runtime revision、generation、Run 来源和 Trigger 已形成完整链路。
 - Custom Node 与 Core Node 均视为本地受信代码并同进程执行；长期故障边界由 Workflow Runtime Worker 提供，不为每个节点创建子进程。
 - Custom Node Pack、Catalog 与 manifest 由 `assemble-release` 纳入发行目录。

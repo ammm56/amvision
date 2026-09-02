@@ -2812,6 +2812,10 @@ textarea:focus-visible {
   z-index: 1;
 }
 
+.workflow-graph-stage .workflow-graph-note-layer {
+  z-index: 2;
+}
+
 .workflow-graph-stage .workflow-graph-node,
 .workflow-graph-stage .workflow-graph-boundary-node {
   z-index: 2;
@@ -3305,6 +3309,256 @@ textarea:focus-visible {
   overflow-wrap: anywhere;
   color: var(--graph-muted);
   font-size: 12px;
+}
+
+.workflow-graph-note-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.workflow-graph-note {
+  --workflow-note-accent: var(--graph-text);
+
+  position: absolute;
+  display: grid;
+  grid-template-rows: 40px minmax(0, 1fr);
+  min-width: 220px;
+  min-height: 120px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--workflow-note-accent) 45%, var(--graph-line));
+  border-radius: 8px;
+  color: var(--graph-text);
+  background: color-mix(in srgb, var(--workflow-note-accent) 7%, var(--graph-panel));
+  box-shadow: 0 12px 30px rgb(0 0 0 / 0.22);
+  pointer-events: auto;
+}
+
+.workflow-graph-note--info { --workflow-note-accent: #5b9cff; }
+.workflow-graph-note--success { --workflow-note-accent: #43b581; }
+.workflow-graph-note--warning { --workflow-note-accent: #d8a23a; }
+.workflow-graph-note--danger { --workflow-note-accent: #dc6673; }
+
+.workflow-graph-note.is-selected {
+  border-color: var(--graph-accent);
+  box-shadow:
+    0 12px 30px rgb(0 0 0 / 0.22),
+    0 0 0 3px color-mix(in srgb, var(--graph-accent) 28%, transparent);
+}
+
+.workflow-graph-note.is-collapsed {
+  grid-template-rows: 40px;
+  min-height: 40px;
+}
+
+.workflow-graph-note.is-locked {
+  border-style: dashed;
+}
+
+.workflow-graph-note__header {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 7px;
+  padding: 0 8px 0 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--workflow-note-accent) 24%, var(--graph-line));
+  background: color-mix(in srgb, var(--workflow-note-accent) 12%, var(--graph-panel));
+  cursor: move;
+  user-select: none;
+}
+
+.workflow-graph-note.is-collapsed .workflow-graph-note__header {
+  border-bottom: 0;
+}
+
+.workflow-graph-note.is-locked .workflow-graph-note__header {
+  cursor: default;
+}
+
+.workflow-graph-note__title {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: var(--graph-text-strong);
+  font-size: 13px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workflow-graph-note__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.workflow-graph-note__actions select {
+  max-width: 72px;
+  height: 24px;
+  border: 1px solid var(--graph-line);
+  border-radius: 5px;
+  color: var(--graph-text);
+  background: var(--graph-panel-soft);
+  font-size: 11px;
+}
+
+.workflow-graph-note__actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 5px;
+  color: var(--graph-text);
+  background: transparent;
+}
+
+.workflow-graph-note__actions button:hover {
+  color: var(--graph-text-strong);
+  background: color-mix(in srgb, var(--graph-text-strong) 10%, transparent);
+}
+
+.workflow-graph-note__body {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.workflow-graph-note__markdown {
+  height: 100%;
+  padding: 12px 14px;
+  overflow: auto;
+  font-size: 13px;
+  line-height: 1.55;
+  user-select: text;
+}
+
+.workflow-graph-note__markdown > :first-child { margin-top: 0; }
+.workflow-graph-note__markdown > :last-child { margin-bottom: 0; }
+.workflow-graph-note__markdown h1,
+.workflow-graph-note__markdown h2,
+.workflow-graph-note__markdown h3,
+.workflow-graph-note__markdown h4,
+.workflow-graph-note__markdown h5,
+.workflow-graph-note__markdown h6 {
+  margin: 0.7em 0 0.35em;
+  color: var(--graph-text-strong);
+  line-height: 1.25;
+}
+.workflow-graph-note__markdown p,
+.workflow-graph-note__markdown ul,
+.workflow-graph-note__markdown ol,
+.workflow-graph-note__markdown pre,
+.workflow-graph-note__markdown blockquote { margin: 0.45em 0; }
+.workflow-graph-note__markdown pre,
+.workflow-graph-note__markdown code {
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--graph-bg) 70%, transparent);
+  font-family: var(--am-font-mono);
+}
+.workflow-graph-note__markdown pre { padding: 8px; overflow: auto; }
+.workflow-graph-note__markdown code { padding: 1px 4px; }
+.workflow-graph-note__markdown a { color: var(--graph-accent); }
+
+.workflow-graph-note__editor {
+  display: grid;
+  grid-template-rows: 32px minmax(0, 1fr) auto;
+  height: 100%;
+  gap: 7px;
+  padding: 9px;
+}
+
+.workflow-graph-note__editor input,
+.workflow-graph-note__editor textarea {
+  min-width: 0;
+  border: 1px solid var(--graph-line);
+  border-radius: 6px;
+  padding: 6px 8px;
+  color: var(--graph-text-strong);
+  background: var(--graph-panel-soft);
+  outline: none;
+}
+
+.workflow-graph-note__editor textarea {
+  min-height: 0;
+  resize: none;
+  font-family: var(--am-font-mono);
+  line-height: 1.45;
+}
+
+.workflow-graph-note__editor input:focus,
+.workflow-graph-note__editor textarea:focus { border-color: var(--graph-accent); }
+.workflow-graph-note__editor span { color: var(--graph-text-muted); font-size: 11px; }
+
+.workflow-graph-note__resize {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 14px;
+  height: 14px;
+  border: 0;
+  border-right: 2px solid color-mix(in srgb, var(--workflow-note-accent) 70%, var(--graph-text));
+  border-bottom: 2px solid color-mix(in srgb, var(--workflow-note-accent) 70%, var(--graph-text));
+  background: transparent;
+  cursor: nwse-resize;
+}
+
+.workflow-note-detail-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.workflow-note-detail-panel__boundary {
+  margin: 0;
+  padding: 9px 10px;
+  border: 1px solid color-mix(in srgb, var(--graph-accent) 24%, transparent);
+  border-radius: 6px;
+  color: var(--graph-text-muted);
+  background: color-mix(in srgb, var(--graph-accent) 7%, transparent);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.workflow-note-detail-panel label {
+  display: grid;
+  gap: 5px;
+  color: var(--graph-text);
+  font-size: 12px;
+}
+
+.workflow-note-detail-panel input,
+.workflow-note-detail-panel textarea,
+.workflow-note-detail-panel select {
+  width: 100%;
+  border: 1px solid var(--graph-line);
+  border-radius: 6px;
+  padding: 7px 8px;
+  color: var(--graph-text-strong);
+  background: var(--graph-panel-soft);
+}
+
+.workflow-note-detail-panel textarea {
+  min-height: 160px;
+  resize: vertical;
+  font-family: var(--am-font-mono);
+}
+
+.workflow-note-detail-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.workflow-note-detail-panel__actions button {
+  border: 1px solid var(--graph-line);
+  border-radius: 6px;
+  padding: 6px 9px;
+  color: var(--graph-text);
+  background: var(--graph-panel-soft);
+}
+
+.workflow-note-detail-panel__actions button.is-danger {
+  color: var(--am-danger);
 }
 
 .workflow-graph-node-widgets .workflow-graph-node-widget textarea {

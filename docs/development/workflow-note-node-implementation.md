@@ -2,7 +2,7 @@
 
 ## 状态与目标
 
-> 当前状态：规划完成，代码尚未实现。本文件是后续实现、审查和验收的唯一详细基线；实现过程中不得把说明节点改成可执行 NodeDefinition，或加入 Runtime 特殊执行分支。
+> 当前状态：代码、自动化测试和真实 Workflow App 验收已完成。本文件同时作为实现、审查和验收基线；不得把说明节点改成可执行 NodeDefinition，或加入 Runtime 特殊执行分支。
 
 Workflow 说明节点用于在画布中保存流程说明、输入约束、操作步骤、现场注意事项、维护手册和故障处理指南。界面上继续使用“说明节点”这一直接名称，内部契约使用 `WorkflowGraphNote`。
 
@@ -191,3 +191,13 @@ Template/Application bundle 保存必须原样往返 `notes` 和 `member_note_id
 - [Workflow JSON](../architecture/workflows/json-contracts.md)
 - [节点系统](../architecture/workflows/node-system.md)
 - 前端 Workflow 编辑器交互测试和 API/JSON 示例中涉及 Template 的结构说明
+
+## 实施与验收结果
+
+- 后端已实现 `WorkflowGraphNoteRect`、`WorkflowGraphNote`、`WorkflowGraphTemplate.notes` 和 `WorkflowGraphGroup.member_note_ids`，并校验数量、UTF-8 正文大小、总量、矩形范围、唯一 id 和组成员引用。
+- 前端已实现工具栏与右键创建、Markdown 安全显示、源文本编辑、拖动、缩放、折叠、锁定、复制、删除、属性面板、节点组、小地图和 fit view；Markdown 结果按 `note_id + content` 缓存，位置变化不会重复解析正文。
+- Markdown 只允许本文件列出的标签和 `http`、`https` 链接；原始 HTML、危险协议、相对路径、图片和媒体不会进入最终 DOM。
+- 自动化验收包括后端契约与执行范围、前端文档往返、安全渲染、交互、节点组、视口、preflight、TypeScript 和生产构建。
+- 真实验收应用为 `workflow-app-20260902102430`，已完成创建、保存、刷新、复制、删除、折叠、展开和发布 v1。应用包含一个可执行 String Value 节点和一个说明节点；说明中的 script 与远程图片均未进入 DOM。
+- 正式 Runtime `workflow-runtime-e572bec733a54f598ac652c46c3f7c90` 调用 `workflow-run-6972e4e5213946969402ff82214be101` 成功。回执不包含 `note-1` 或说明内容，说明节点未改变公开输入输出；执行拓扑测试进一步确认节点级执行范围会清空 `notes` 与 `member_note_ids`。
+- 本次验收确认功能和执行隔离边界；长时间生产 soak 仍属于发布前持续认证，不以一次开发态浏览器调用替代。

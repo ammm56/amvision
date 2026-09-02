@@ -58,6 +58,26 @@ export function useWorkflowPreflight<NodeView extends WorkflowPreflightNodeView>
     if (duplicateOutputId) return { message: duplicateIdMessage('appOutput', duplicateOutputId), boundaryKind: 'result', bindingId: duplicateOutputId }
     const duplicateGroupId = findDuplicateValue(template.groups.map((group) => group.group_id))
     if (duplicateGroupId) return { message: duplicateIdMessage('nodeGroup', duplicateGroupId) }
+    const duplicateNoteId = findDuplicateValue(template.notes.map((note) => note.note_id))
+    if (duplicateNoteId) return { message: duplicateIdMessage('note', duplicateNoteId) }
+    if (template.notes.length > 128) return { message: translate('workflowEditor.validation.noteCountLimit') }
+
+    const noteIds = new Set(template.notes.map((note) => note.note_id))
+    let totalNoteBytes = 0
+    for (const note of template.notes) {
+      if (!note.title.trim()) return { message: translate('workflowEditor.validation.noteTitleRequired', { note: note.note_id }) }
+      if (note.title.trim().length > 128) return { message: translate('workflowEditor.validation.noteTitleLimit', { note: note.note_id }) }
+      const contentBytes = new TextEncoder().encode(note.content).byteLength
+      totalNoteBytes += contentBytes
+      if (contentBytes > 64 * 1024) return { message: translate('workflowEditor.validation.noteContentLimit', { note: note.note_id }) }
+      if (!Number.isFinite(note.rect.x) || !Number.isFinite(note.rect.y) || !Number.isFinite(note.rect.width) || !Number.isFinite(note.rect.height)) {
+        return { message: translate('workflowEditor.validation.noteRectInvalid', { note: note.note_id }) }
+      }
+      if (note.rect.width < 220 || note.rect.height < 120 || note.rect.width > 1600 || note.rect.height > 1200) {
+        return { message: translate('workflowEditor.validation.noteSizeInvalid', { note: note.note_id }) }
+      }
+    }
+    if (totalNoteBytes > 1024 * 1024) return { message: translate('workflowEditor.validation.noteTotalContentLimit') }
 
     const nodeViewsById = new Map(options.graphNodes.value.map((node) => [node.node.node_id, node]))
     const inputUsage = new Map<string, string[]>()
@@ -87,6 +107,15 @@ export function useWorkflowPreflight<NodeView extends WorkflowPreflightNodeView>
       for (const memberNodeId of group.member_node_ids) {
         if (!nodeViewsById.has(memberNodeId)) return {
           message: translate('workflowEditor.validation.groupNodeMissing', { group: group.group_id, node: memberNodeId }),
+        }
+      }
+      const duplicateMemberNoteId = findDuplicateValue(group.member_note_ids)
+      if (duplicateMemberNoteId) return {
+        message: translate('workflowEditor.validation.groupNoteDuplicate', { group: group.group_id, note: duplicateMemberNoteId }),
+      }
+      for (const memberNoteId of group.member_note_ids) {
+        if (!noteIds.has(memberNoteId)) return {
+          message: translate('workflowEditor.validation.groupNoteMissing', { group: group.group_id, note: memberNoteId }),
         }
       }
     }
@@ -339,7 +368,7 @@ function findDuplicateValue(values: string[]): string | null {
   return null
 }
 
-function duplicateIdMessage(kind: 'node' | 'edge' | 'appInput' | 'appOutput' | 'nodeGroup' | 'publicBinding', id: string): string {
+function duplicateIdMessage(kind: 'node' | 'edge' | 'appInput' | 'appOutput' | 'nodeGroup' | 'note' | 'publicBinding', id: string): string {
   return translate('workflowEditor.validation.duplicateId', {
     kind: translate(`workflowEditor.validation.kinds.${kind}`),
     id,

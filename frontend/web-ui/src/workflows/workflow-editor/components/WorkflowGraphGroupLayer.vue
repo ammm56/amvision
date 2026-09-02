@@ -57,7 +57,7 @@
           :title="t('workflowEditor.editor.editGroupName')"
           @dblclick.stop="beginNameEdit(group)"
         >{{ group.name }}</span>
-        <span class="workflow-graph-group__count">{{ group.member_node_ids.length }}</span>
+        <span class="workflow-graph-group__count">{{ group.member_node_ids.length + group.member_note_ids.length }}</span>
         <span class="workflow-graph-group__color-picker">
           <button
             type="button"

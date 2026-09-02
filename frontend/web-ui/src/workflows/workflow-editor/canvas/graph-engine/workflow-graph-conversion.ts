@@ -3,6 +3,7 @@ import type {
   WorkflowGraphGroup,
   WorkflowGraphInput,
   WorkflowGraphNode,
+  WorkflowGraphNote,
   WorkflowGraphOutput,
   WorkflowGraphTemplate,
   WorkflowJsonObject,
@@ -26,6 +27,7 @@ export interface WorkflowCanvasGraphSnapshot {
   template_inputs: WorkflowGraphInput[]
   template_outputs: WorkflowGraphOutput[]
   groups: WorkflowGraphGroup[]
+  notes: WorkflowGraphNote[]
 }
 
 function readNumber(value: unknown, fallback: number): number {
@@ -53,7 +55,16 @@ function cloneGraphGroup(group: WorkflowGraphGroup): WorkflowGraphGroup {
     ...group,
     rect: { ...group.rect },
     member_node_ids: [...group.member_node_ids],
+    member_note_ids: [...(group.member_note_ids ?? [])],
     metadata: { ...group.metadata },
+  }
+}
+
+function cloneGraphNote(note: WorkflowGraphNote): WorkflowGraphNote {
+  return {
+    ...note,
+    rect: { ...note.rect },
+    metadata: { ...note.metadata },
   }
 }
 
@@ -73,7 +84,8 @@ export function workflowTemplateToCanvasSnapshot(template: WorkflowGraphTemplate
     edges: template.edges.map((edge) => ({ ...edge, metadata: { ...edge.metadata } })),
     template_inputs: template.template_inputs.map((input) => ({ ...input, metadata: { ...input.metadata } })),
     template_outputs: template.template_outputs.map((output) => ({ ...output, metadata: { ...output.metadata } })),
-    groups: template.groups.map(cloneGraphGroup),
+    groups: (template.groups ?? []).map(cloneGraphGroup),
+    notes: (template.notes ?? []).map(cloneGraphNote),
   }
 }
 
@@ -88,6 +100,7 @@ export function canvasSnapshotToWorkflowTemplate(
     template_inputs: snapshot.template_inputs.map((input) => ({ ...input, metadata: { ...input.metadata } })),
     template_outputs: snapshot.template_outputs.map((output) => ({ ...output, metadata: { ...output.metadata } })),
     groups: snapshot.groups.map(cloneGraphGroup),
+    notes: snapshot.notes.map(cloneGraphNote),
     metadata: { ...sourceTemplate.metadata },
   }
 }
