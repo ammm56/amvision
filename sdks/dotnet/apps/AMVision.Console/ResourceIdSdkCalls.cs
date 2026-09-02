@@ -15,11 +15,11 @@ namespace AMVision.Console
         private const string ModelDeploymentId =
             "deployment-instance-bfd0e32dada14b509f023f700fb4c998";
         private const string RuntimeId =
-            "workflow-runtime-9980d79a4d3744a0841ce07efaf19fc9";
+            "workflow-runtime-76dc515bf8904b648430f289b400b8d9";
         private const string ZeroMqTriggerSourceId =
-            "zeromq-workflow-runtime-9980d79a4d3744a0841ce07efaf19fc9";
+            "zeromq-workflow-runtime-76dc515bf8904b648430f289b400b8d9";
         private const string SharedMemoryTriggerSourceId =
-            "local-shared-memory-workflow-runtime-9980d79a4d3744a0841ce07efaf19fc9";
+            "local-shared-memory-workflow-runtime-76dc515bf8904b648430f289b400b8d9";
         private const string SyncRuntimeMode = "sync";
 
         public static async Task RunAsync(

@@ -1,4 +1,4 @@
-"""模型 Batch 信封到 value.v1 List 的通用桥接实现。"""
+"""模型 Batch 信封到完整关联项 List 的通用实现。"""
 
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ _LOCATOR_FIELDS = frozenset(
 )
 
 
-def build_model_batch_to_value_list_node_spec(
+def build_model_batch_to_items_node_spec(
     *,
     node_type_id: str,
     display_name: str,
@@ -44,10 +44,10 @@ def build_model_batch_to_value_list_node_spec(
     result_payload_type_id: str,
     result_validator: ResultValidator,
 ) -> CoreNodeSpec:
-    """构造一个校验统一 Batch 信封并提取有序 result List 的节点。"""
+    """构造校验统一 Batch 信封并输出完整关联项 List 的节点。"""
 
-    def handle_bridge(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
-        """校验信封字段、顺序与单项结果契约。"""
+    def handle_batch_items(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
+        """校验信封与关联字段，保留 item_id、source 和 result。"""
 
         payload = request.input_values.get(input_name)
         if not isinstance(payload, dict):
@@ -83,7 +83,9 @@ def build_model_batch_to_value_list_node_spec(
                     "item_count": len(raw_items),
                 },
             )
-        results: list[dict[str, object]] = []
+
+        items: list[dict[str, object]] = []
+        item_ids: set[str] = set()
         for item_index, raw_item in enumerate(raw_items):
             if not isinstance(raw_item, dict):
                 _raise_item_error(request.node_id, item_index, "item 必须是 object")
@@ -93,9 +95,14 @@ def build_model_batch_to_value_list_node_spec(
                     item_index,
                     "item_index 必须与数组顺序一致",
                 )
-            item_id = raw_item.get("item_id")
-            if not isinstance(item_id, str) or not item_id.strip():
+            raw_item_id = raw_item.get("item_id")
+            if not isinstance(raw_item_id, str) or not raw_item_id.strip():
                 _raise_item_error(request.node_id, item_index, "item_id 不能为空")
+            item_id = raw_item_id.strip()
+            if item_id in item_ids:
+                _raise_item_error(request.node_id, item_index, "item_id 不能重复")
+            item_ids.add(item_id)
+
             source = raw_item.get("source")
             if not isinstance(source, dict):
                 _raise_item_error(request.node_id, item_index, "source 必须是 object")
@@ -107,12 +114,20 @@ def build_model_batch_to_value_list_node_spec(
                     f"source 不能包含临时图片 locator: {locator_field}",
                 )
             try:
-                results.append(result_validator(raw_item.get("result"), request.node_id))
+                result = result_validator(raw_item.get("result"), request.node_id)
             except InvalidRequestError as error:
                 error.details.setdefault("item_index", item_index)
-                error.details.setdefault("item_id", item_id.strip())
+                error.details.setdefault("item_id", item_id)
                 raise
-        return {"value": build_value_payload(results)}
+            items.append(
+                {
+                    "item_index": item_index,
+                    "item_id": item_id,
+                    "source": dict(source),
+                    "result": result,
+                }
+            )
+        return {"items": build_value_payload(items)}
 
     return CoreNodeSpec(
         node_definition=NodeDefinition(
@@ -120,8 +135,8 @@ def build_model_batch_to_value_list_node_spec(
             display_name=display_name,
             category="core.logic.transform",
             description=(
-                "校验模型 Batch 信封并按 item_index 提取 items[*].result，"
-                "输出可供 Get List Item、For Each 和 Value To typed 节点使用的 value List。"
+                "校验模型 Batch 信封并输出完整的 item_index、item_id、source、result "
+                "关联记录 List；需要纯结果时显式使用 Map List(path=result)。"
             ),
             implementation_kind=NODE_IMPLEMENTATION_CORE,
             runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
@@ -135,19 +150,19 @@ def build_model_batch_to_value_list_node_spec(
             ),
             output_ports=(
                 NodePortDefinition(
-                    name="value",
-                    display_name="Value List",
+                    name="items",
+                    display_name="Items",
                     payload_type_id="value.v1",
                 ),
             ),
             parameter_schema={"type": "object", "properties": {}},
             capability_tags=(
                 "logic.transform",
-                "payload.batch.bridge",
+                "payload.batch.items",
                 task_type,
             ),
         ),
-        handler=handle_bridge,
+        handler=handle_batch_items,
     )
 
 
@@ -157,7 +172,7 @@ def _require_equal(
     expected: str,
     node_id: str,
 ) -> None:
-    """要求信封固定字段与当前 bridge 完全匹配。"""
+    """要求信封固定字段与当前转换节点完全匹配。"""
 
     if payload.get(field_name) != expected:
         raise InvalidRequestError(

@@ -401,6 +401,11 @@ def test_opencv_basic_batch7_crop_export_rois_execute(tmp_path: Path) -> None:
     assert crops["items"][0]["pixel_format"] == "bgr24"
     assert crops["items"][0]["width"] == 24
     assert crops["items"][0]["height"] == 20
+    assert crops["items"][0]["source_image_identity"] == {
+        "format_id": "amvision.image-identity.v1",
+        "width": 128,
+        "height": 128,
+    }
 
 
 def test_opencv_basic_batch7_image_refs_statistics_execute(tmp_path: Path) -> None:

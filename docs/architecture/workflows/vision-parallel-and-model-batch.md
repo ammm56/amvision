@@ -346,17 +346,32 @@ Image Ref(BGR/BGRA/gray8)
 - 外层 `source` 只保存非 locator 的关联信息。图片引用由原 `image-refs.v1` 链或独立 App output 继续传递。
 - 第一版固定 fail-fast；任一项失败使 Batch 节点失败，并返回 `item_index`、`item_id` 和原始错误。不得返回未声明的半成功结构，也不得换实例重试。
 
-### Batch 结果 bridge
+### Batch 完整关联项转换
 
-新增以下 bridge，把有序 `items[*].result` 提取为 `value.v1` List：
+五个转换节点只输出一个 `items / value.v1` 端口，保留每项完整的
+`item_index`、`item_id`、`source`、`result`：
 
-- `Detections Batch To Value List`
-- `Categories Batch To Value List`
-- `Segments Batch To Value List`
-- `Poses Batch To Value List`
-- `OBBs Batch To Value List`
+- `Detections Batch To Items`
+- `Categories Batch To Items`
+- `Segments Batch To Items`
+- `Poses Batch To Items`
+- `OBBs Batch To Items`
 
-需要单项强类型结果时，继续使用通用 `Get List Item` 和 `Value To Detections/Categories/Segments/Poses/OBBs`。Batch 节点不重复输出一份 typed batch 和一份 value list，避免未连接时仍保留两份大型结构化结果。
+转换节点校验 Batch 信封、数组顺序、唯一 `item_id`、单项结果 contract 和 locator
+泄漏，不再默认丢弃关联字段。需要纯结果列表时显式连接 `Map List(path=result)`；需要单项强类型结果时再连接 `Get List Item` 和
+`Value To Detections/Categories/Segments/Poses/OBBs`。这样 Parallel、For Each、汇总与绘制链都能从画布上看出何处保留关联、何处主动投影为纯结果。
+
+`Crop Export` 为每个 crop 保留 `roi_id`、父图坐标 `bbox_xyxy` 和不含 locator 的
+`source_image_identity`。该身份固定使用 `amvision.image-identity.v1`，包含父图
+`width`、`height`，有内容 SHA-256 时同时包含 `content_sha256`。五类 Batch 节点把这些字段复制到 `items[*].source`，不把 memory handle、BufferRef、FrameRef、文件路径或 ObjectStore key 写入 Batch JSON。
+
+分类 crop 需要绘制回父图时使用通用 `Classification Items To Regions`：
+
+- 输入 `items/value.v1`、`rois/roi-list.v1`、`image/image-ref.v1`；
+- 唯一关联键为 `items[*].source.roi_id`，并要求 `item_id == source.roi_id`；
+- 拒绝重复、未知、缺失 ROI、空 `top_item`、父图身份不一致，以及只能按尺寸推断而缺少 `content_sha256` 的不确定关联；
+- 输出顺序固定跟随 ROI 列表，不依赖 Parallel 分支完成顺序或分支内 `item_index`；
+- 几何只取权威 ROI，类别和 score 只取对应分类结果，输出标准 `regions.v1`。
 
 ## 同步 Batch runtime
 
@@ -397,18 +412,28 @@ Crop Export(image-refs.v1)
       |-- Get List Item(0)
       |     -> Value To Image Refs
       |     -> Classification Batch
-      |     -> Categories Batch To Value List
+      |     -> Categories Batch To Items
       `-- Get List Item(1)
             -> Value To Image Refs
             -> Classification Batch
-            -> Categories Batch To Value List
+            -> Categories Batch To Items
   -> Parallel End(mode=concat)
-  -> Classification Results Summary
+      |-> Map List(path=result)
+      |    -> Classification Results Summary
+      `-> Classification Items To Regions(+ ROI Grid.rois + parent image)
+           -> Draw Regions
 ```
 
-该结构只有两个模型节点、两次 gateway Batch 请求和两次实例获取。`Parallel End.concat` 按分支稳定顺序恢复 24 项结果。分类汇总继续消费现有单项 categories 对象，不需要当前 App 专用 Batch Summary。
+该结构只有两个模型节点、两次 gateway Batch 请求和两次实例获取。`Parallel End.concat` 按画布分支稳定顺序合并 24 条完整关联记录。分类汇总通过显式 `Map List(path=result)` 继续消费 categories 对象；绘制链按 `source.roi_id` 连接 ROI，二者都不需要当前 App 专用节点。
 
 按 daemon 单图约 9.9 ms 计算，每条 12 项分支的模型时间约 119 ms；两个实例并行时 Workflow wall time由较慢分支决定。目标是 warm p50 不高于 150 ms、warm p95 低于 200 ms。该目标必须由改造后的真实 Preview、正式 Runtime 和 Trigger 数据验证，不作为未测试的保证值。
+
+2026-09-02 使用现有开发数据完成一次实现验收：
+
+- `workflow-app-20260831130620` 的 24 项两分支 Batch 分别约 232 ms、242 ms，`Parallel End` 约 280 ms；关联节点约 2.3 ms，`Draw Regions` 约 31 ms。24 个 `roi_id`、父图 SHA-256 和结果均一一对应。
+- `workflow-app-20260831130621` 的 80 项两分支 Batch 分别约 1052 ms、1016 ms，`Parallel End` 约 1131 ms；关联节点约 5.7 ms，`Draw Regions` 约 80 ms。80 个结果均按 ROI ID 对应，浮点 ROI 使用权威几何，crop 边界只用于记录实际 `floor/ceil` 裁剪范围。
+- 24 项性能尚未达到上述 200 ms 目标，瓶颈仍在 Batch 模型链路，不在新增关联节点。当前实现不增加队列、自动重试或隐藏并发；后续只有在分段计时证明存在简单、稳定的优化点时再修改。
+- 新 Runtime 上通过 .NET SDK 完成 ZeroMQ 与本机共享内存重复调用，短时累计调用均成功且没有 error、timeout、busy 或 capacity reject。空盘 Runtime worker 的 Private Bytes 约增加 1.4 MB、句柄增加 1；该结果用于排除明显线性增长，不能替代发布前长时间 soak。
 
 ## 实施顺序
 
@@ -418,7 +443,7 @@ Crop Export(image-refs.v1)
 4. 补齐 Value 与 image-refs、circles、五类模型结果的对称 bridge。
 5. 审计并验证 Hough Circles `thread-safe`，再更新 NodeDefinition。
 6. 新增 Batch request/result、gateway action、deployment worker action 和 runtime pool 的单实例 Batch 执行。
-7. 基于同一共享实现注册五类 Batch 节点、五类 Batch payload 和五个 Batch To Value List bridge。
+7. 基于同一共享实现注册五类 Batch 节点、五类 Batch payload 和五个 Batch To Items 转换节点。
 8. 将当前 24 classification 图迁移为两个 Batch 分支。
 9. 执行 Preview、正式 Runtime、Trigger、LocalBuffer、长期 RSS 和错误恢复验收。
 
@@ -439,7 +464,9 @@ Crop Export(image-refs.v1)
 
 - 五类 Batch 的每项结果与对应单图节点逐项比较。
 - 输入顺序、`item_index`、`item_id`、`crop_index` 和 bbox 保持一致。
-- Batch To Value List 后能接现有 For Each、regions、规则、汇总和输出节点。
+- Batch To Items 输出保留完整关联项；`Map List(path=result)` 后能接现有 For Each、规则、汇总和强类型恢复节点。
+- 两个 Classification Batch 分支合并后，`Classification Items To Regions` 按 `source.roi_id` 与 ROI 一一对应，打乱分支完成顺序不改变结果。
+- 任一重复、未知、缺失 ROI 或父图身份不一致都明确失败，不允许按数组位置猜测关联关系。
 - Batch JSON 不包含 memory handle、BufferRef、FrameRef 或 local path 等临时 locator。
 - 任一项失败时 Batch fail-fast，错误定位到具体 item，实例和全部 lease 在 finally 释放。
 

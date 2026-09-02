@@ -226,7 +226,7 @@ Measurement、Inspection、Output 十个一级分类，并在每个一级分类�
 
 ## 模型 Batch payload 设计
 
-> 状态：以下 contract 是已确认的待实现公开设计，当前 Catalog 尚未注册这些 Batch payload；实现状态以[视觉并行与模型批量节点设计](vision-parallel-and-model-batch.md)和实际 Catalog 为准。
+> 状态：以下 contract 已进入当前 Core Catalog；实现状态以[视觉并行与模型批量节点设计](vision-parallel-and-model-batch.md)和实际 Catalog 为准。
 
 五类模型 Batch 节点使用五个强类型 payload，但共享同一个外层信封：
 
@@ -242,7 +242,14 @@ Measurement、Inspection、Output 十个一级分类，并在每个一级分类�
 
 Batch payload 是 inline JSON，不得嵌套 memory image handle、BufferRef、FrameRef 或其他需要 lease 的临时图片引用。需要图片输出时，Workflow App 必须另外公开顶层 `image-ref.v1` 或 `image-refs.v1` binding。
 
-每个 Batch payload 提供对应的 `Batch To Value List` bridge，之后通过 `Get List Item` 和 `Value To Detections/Categories/Segments/Poses/OBBs` 恢复单项强类型结果。`Payload To Value` 已支持的 image-refs、circles 和五类模型 payload 也必须具有对称恢复节点，避免 Parallel 或 ForEach 只能收集而无法继续接入强类型节点。
+每个 Batch payload 提供对应的 `Batch To Items` 转换节点，唯一输出是包含完整
+`item_index/item_id/source/result` 的 `value.v1` List。需要纯结果时显式使用
+`Map List(path=result)`，之后可通过 `Get List Item` 和
+`Value To Detections/Categories/Segments/Poses/OBBs` 恢复单项强类型结果。
+`Payload To Value` 已支持的 image-refs、circles 和五类模型 payload 也必须具有对称恢复节点，避免 Parallel 或 For Each 只能收集而无法继续接入强类型节点。
+
+ROI crop 的 `source` 额外携带 `source_image_identity`，用于跨 Parallel 和模型调用校验父图身份。分类结果绘制回父图时，`Classification Items To Regions` 必须按
+`source.roi_id` 严格一一连接，并要求父图 `content_sha256` 一致；不能按数组位置、拖动后的画布位置、分支完成顺序或仅图片尺寸推断。
 
 第一版 Batch 固定 fail-fast，不在同一个 payload 中混合未声明的 success/error union。完整节点、runtime 和验收规则见[视觉并行与模型批量节点设计](vision-parallel-and-model-batch.md)。
 

@@ -1,7 +1,7 @@
-"""Segments Batch 到 value List 的桥接节点。"""
+"""Segments Batch 到完整关联项 List 的转换节点。"""
 
-from backend.nodes.core_nodes.support.model_batch_bridges import (
-    build_model_batch_to_value_list_node_spec,
+from backend.nodes.core_nodes.support.model_batch_items import (
+    build_model_batch_to_items_node_spec,
 )
 from backend.nodes.core_nodes.vision.regions.segments_to_regions import (
     _require_segments_payload,
@@ -15,9 +15,9 @@ def _require_segments(payload: object, node_id: str) -> dict[str, object]:
     return _require_segments_payload(payload, node_id=node_id)
 
 
-CORE_NODE_SPEC = build_model_batch_to_value_list_node_spec(
-    node_type_id="core.logic.segments-batch-to-value-list",
-    display_name="Segments Batch To Value List",
+CORE_NODE_SPEC = build_model_batch_to_items_node_spec(
+    node_type_id="core.logic.segments-batch-to-items",
+    display_name="Segments Batch To Items",
     input_name="segments_batch",
     input_display_name="Segments Batch",
     input_payload_type_id="segments-batch.v1",

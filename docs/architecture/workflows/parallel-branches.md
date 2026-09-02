@@ -113,9 +113,9 @@ Parallel Start(max_concurrency=M)
 1. `Split List.partition_count = 2`，得到两个保持原始顺序的 12 项 partitions。
 2. `Parallel Start.max_concurrency = 2`。
 3. 使用两个 `Get List Item`，index 分别为 0、1。
-4. 每条分支执行 `Value To Image Refs -> Classification Batch -> Categories Batch To Value List`。
+4. 每条分支执行 `Value To Image Refs -> Classification Batch -> Categories Batch To Items`。
 5. 两条结果连接同一个 `Parallel End.Results`，并设置 `mode = concat`。
-6. Parallel End 输出继续连接通用 Classification Results Summary，后续规则链不变。
+6. Parallel End 的完整关联项一路经 `Map List(path=result)` 连接通用 Classification Results Summary；另一路可按 `source.roi_id` 连接 `Classification Items To Regions` 和 `Draw Regions`。
 
 四个 Hough Circles 使用四条显式分支，但初始 `max_concurrency` 不直接固定为 4。gray8 和 ROI grayscale 落地后按 1、2、4 实测选择，当前验证优先从 2 开始。以上数字只存在于当前 Workflow App 的节点参数和画布连线中，其他应用可以选择不同分支数，也可以在分支内调用 detection、segmentation、pose、OBB、OCR 或非模型节点。
 

@@ -537,6 +537,7 @@ _BATCH_SOURCE_FIELDS = frozenset(
         "pixel_format",
         "media_type",
         "content_sha256",
+        "source_image_identity",
         "label",
         "name",
     }

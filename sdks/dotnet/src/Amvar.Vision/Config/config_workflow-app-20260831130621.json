@@ -7,7 +7,7 @@
   },
   "runtime": {
     "name": "摆盘分拣3570塑盒满盘检测应用",
-    "workflow_runtime_id": "workflow-runtime-107c401e6c43475ea091f76bb4c8ca34",
+    "workflow_runtime_id": "workflow-runtime-914ad9305d8048a0b382137cfa07bf65",
     "public_contract": {
       "format_id": "amvision.workflow-app-contract.v1",
       "application_id": "workflow-app-20260831130621",
@@ -512,58 +512,76 @@
   },
   "trigger_sources": [
     {
-      "name": "摆盘分拣3570塑盒满盘检测应用 Local Shared Memory Trigger",
-      "trigger_source_id": "local-shared-memory-workflow-runtime-107c401e6c43475ea091f76bb4c8ca34",
+      "name": "本机共享内存 摆盘分拣3570塑盒满盘检测应用 runtime",
+      "trigger_source_id": "local-shared-memory-workflow-runtime-914ad9305d8048a0b382137cfa07bf65",
       "trigger_kind": "local-shared-memory",
       "input_binding_mapping": {
         "request_image_ref": {
           "source": "payload.request_image_ref",
           "required": false,
-          "payload_type_id": "image-ref.v1"
+          "payload_type_id": "image-ref.v1",
+          "metadata": {
+            "inferred": true
+          }
         },
         "request_json": {
           "source": "payload.request_json",
           "required": false,
-          "payload_type_id": "value.v1"
+          "payload_type_id": "value.v1",
+          "metadata": {
+            "inferred": false
+          }
         },
         "request_text": {
           "source": "payload.request_text",
           "required": false,
-          "payload_type_id": "text.v1"
+          "payload_type_id": "text.v1",
+          "metadata": {
+            "inferred": false
+          }
         }
       },
       "local_shared_memory": {
         "buffers_root": "W:\\workspace\\codex\\python\\amvision\\data\\buffers",
         "route_generation": 1,
         "default_input_binding": "request_image_ref",
-        "timeout_seconds": 60
+        "timeout_seconds": 30
       }
     },
     {
-      "name": "摆盘分拣3570塑盒满盘检测应用 ZeroMQ Trigger",
-      "trigger_source_id": "zeromq-workflow-runtime-107c401e6c43475ea091f76bb4c8ca34",
+      "name": "ZeroMQ 图片触发 摆盘分拣3570塑盒满盘检测应用 runtime",
+      "trigger_source_id": "zeromq-workflow-runtime-914ad9305d8048a0b382137cfa07bf65",
       "trigger_kind": "zeromq-topic",
       "input_binding_mapping": {
         "request_image_ref": {
           "source": "payload.request_image_ref",
           "required": false,
-          "payload_type_id": "image-ref.v1"
+          "payload_type_id": "image-ref.v1",
+          "metadata": {
+            "inferred": true
+          }
         },
         "request_json": {
           "source": "payload.request_json",
           "required": false,
-          "payload_type_id": "value.v1"
+          "payload_type_id": "value.v1",
+          "metadata": {
+            "inferred": false
+          }
         },
         "request_text": {
           "source": "payload.request_text",
           "required": false,
-          "payload_type_id": "text.v1"
+          "payload_type_id": "text.v1",
+          "metadata": {
+            "inferred": false
+          }
         }
       },
       "zero_mq": {
-        "bind_endpoint": "tcp://127.0.0.1:5556",
+        "bind_endpoint": "tcp://127.0.0.1:5555",
         "default_input_binding": "request_image_ref",
-        "timeout_seconds": 60
+        "timeout_seconds": 30
       }
     }
   ],

@@ -15,8 +15,8 @@ namespace AMVision.Console
     {
         private const string ModelDeploymentName = "yolo11-s-pcbtrayslotsmall3570-20260804085356 model-build-ff706c3bede6";
         private const string RuntimeName = "摆盘分拣3570治具空盘检测应用";
-        private const string ZeroMqTriggerSourceName = "摆盘分拣3570治具空盘检测应用 ZeroMQ Trigger";
-        private const string SharedMemoryTriggerSourceName = "摆盘分拣3570治具空盘检测应用 Local Shared Memory Trigger";
+        private const string ZeroMqTriggerSourceName = "ZeroMQ 图片触发 摆盘分拣3570治具空盘检测应用 runtime";
+        private const string SharedMemoryTriggerSourceName = "本机共享内存 摆盘分拣3570治具空盘检测应用 runtime";
 
         public static async Task RunAsync(
             AMVisionOperationRunner runner,

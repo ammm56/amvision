@@ -60,6 +60,40 @@
         "type": "boolean",
         "default": true
       },
+      "draw_region_id": {
+        "type": "boolean",
+        "default": true,
+        "title": "Draw Region ID"
+      },
+      "draw_class_name": {
+        "type": "boolean",
+        "default": true,
+        "title": "Draw Class Name"
+      },
+      "draw_score": {
+        "type": "boolean",
+        "default": true,
+        "title": "Draw Score"
+      },
+      "color_by": {
+        "type": "string",
+        "enum": [
+          "region-id",
+          "class-name"
+        ],
+        "default": "region-id",
+        "title": "Color By"
+      },
+      "class_colors": {
+        "type": "object",
+        "title": "Class Colors",
+        "description": "可选 class_name 到 #RRGGBB 的颜色表；color_by=class-name 时优先使用。",
+        "additionalProperties": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$"
+        },
+        "default": {}
+      },
       "save_location": {
         "type": "string"
       }

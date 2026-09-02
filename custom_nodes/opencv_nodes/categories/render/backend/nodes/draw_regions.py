@@ -6,7 +6,7 @@ from backend.nodes.core_nodes.support.region import (
     build_region_binary_mask,
     require_regions_payload,
 )
-from backend.nodes.opencv_label_text import build_ascii_overlay_label, choose_ascii_overlay_name
+from backend.nodes.opencv_label_text import build_ascii_overlay_label
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes.opencv_nodes.shared.backend.runtime.images import (
@@ -16,6 +16,7 @@ from custom_nodes.opencv_nodes.shared.backend.runtime.images import (
 )
 from custom_nodes.opencv_nodes.shared.backend.runtime.imports import require_opencv_imports
 from custom_nodes.opencv_nodes.shared.backend.runtime.validators import (
+    require_boolean,
     require_non_negative_float,
     require_positive_int,
 )
@@ -35,10 +36,30 @@ def _read_ratio(raw_value: object, *, field_name: str, default: float) -> float:
     return float(ratio_value)
 
 
-def _pick_overlay_color(item: dict[str, object], *, cv2_module: object, np_module: object) -> tuple[int, int, int]:
-    """根据 region 身份生成稳定颜色。"""
+def _pick_overlay_color(
+    item: dict[str, object],
+    *,
+    cv2_module: object,
+    np_module: object,
+    color_by: str,
+    class_colors: dict[str, tuple[int, int, int]],
+) -> tuple[int, int, int]:
+    """根据显式配色规则生成稳定颜色。"""
 
-    identity_text = str(item.get("region_id") or item.get("prompt_id") or item.get("class_name") or "region")
+    class_name = item.get("class_name")
+    normalized_class_name = (
+        class_name.strip()
+        if isinstance(class_name, str) and class_name.strip()
+        else ""
+    )
+    if color_by == "class-name" and normalized_class_name in class_colors:
+        return class_colors[normalized_class_name]
+    identity_value = (
+        normalized_class_name
+        if color_by == "class-name" and normalized_class_name
+        else item.get("region_id") or item.get("prompt_id") or "region"
+    )
+    identity_text = str(identity_value)
     identity_hash = sum((char_index + 1) * ord(character) for char_index, character in enumerate(identity_text))
     hue_value = identity_hash % 180
     hsv_pixel = np_module.uint8([[[hue_value, 220, 255]]])
@@ -66,21 +87,82 @@ def _blend_mask(
     image_matrix[mask_selector] = blended_matrix[mask_selector]
 
 
-def _build_region_label(region_item: dict[str, object]) -> str:
-    """构建 region 标签文本。"""
+def _build_region_label(
+    region_item: dict[str, object],
+    *,
+    draw_region_id: bool,
+    draw_class_name: bool,
+    draw_score: bool,
+) -> str:
+    """按显式开关构建 region 标签文本。"""
 
     label_parts: list[str] = []
-    label_parts.append(
-        choose_ascii_overlay_name(
-            stable_id=region_item.get("region_id"),
-            display_name=region_item.get("class_name"),
-            fallback="region",
-        )
-    )
-    score = region_item.get("score")
+    if draw_region_id:
+        label_parts.append(str(region_item.get("region_id") or ""))
+    if draw_class_name:
+        label_parts.append(str(region_item.get("class_name") or ""))
+    score = region_item.get("score") if draw_score else None
     if isinstance(score, (int, float)) and not isinstance(score, bool):
         label_parts.append(f"{float(score):.2f}")
     return build_ascii_overlay_label(*label_parts)
+
+
+def _read_boolean_parameter(
+    raw_value: object,
+    *,
+    field_name: str,
+    default: bool,
+) -> bool:
+    """读取可选严格 boolean 参数。"""
+
+    if raw_value is None or raw_value == "":
+        return default
+    return require_boolean(raw_value, field_name=field_name)
+
+
+def _read_color_by(raw_value: object) -> str:
+    """读取稳定配色键。"""
+
+    if raw_value is None or raw_value == "":
+        return "region-id"
+    if not isinstance(raw_value, str):
+        raise InvalidRequestError("color_by 必须是字符串")
+    normalized_value = raw_value.strip().lower()
+    if normalized_value not in {"region-id", "class-name"}:
+        raise InvalidRequestError("color_by 仅支持 region-id 或 class-name")
+    return normalized_value
+
+
+def _read_class_colors(raw_value: object) -> dict[str, tuple[int, int, int]]:
+    """读取 class_name 到 #RRGGBB 的显式颜色表。"""
+
+    if raw_value is None or raw_value == "":
+        return {}
+    if not isinstance(raw_value, dict):
+        raise InvalidRequestError("class_colors 必须是 object")
+    normalized_colors: dict[str, tuple[int, int, int]] = {}
+    for raw_class_name, raw_color in raw_value.items():
+        class_name = str(raw_class_name).strip()
+        if not class_name:
+            raise InvalidRequestError("class_colors 的 class_name 不能为空")
+        if (
+            not isinstance(raw_color, str)
+            or len(raw_color) != 7
+            or not raw_color.startswith("#")
+        ):
+            raise InvalidRequestError(
+                f"class_colors.{class_name} 必须使用 #RRGGBB"
+            )
+        try:
+            red = int(raw_color[1:3], 16)
+            green = int(raw_color[3:5], 16)
+            blue = int(raw_color[5:7], 16)
+        except ValueError as error:
+            raise InvalidRequestError(
+                f"class_colors.{class_name} 必须使用 #RRGGBB"
+            ) from error
+        normalized_colors[class_name] = (blue, green, red)
+    return normalized_colors
 
 
 def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
@@ -102,15 +184,54 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     font_scale = require_non_negative_float(raw_font_scale, field_name="font_scale")
 
     mask_alpha = _read_ratio(request.parameters.get("mask_alpha"), field_name="mask_alpha", default=0.35)
-    draw_masks = True if request.parameters.get("draw_masks") is None else bool(request.parameters.get("draw_masks"))
-    draw_polygons = True if request.parameters.get("draw_polygons") is None else bool(request.parameters.get("draw_polygons"))
-    draw_boxes = True if request.parameters.get("draw_boxes") is None else bool(request.parameters.get("draw_boxes"))
-    draw_labels = True if request.parameters.get("draw_labels") is None else bool(request.parameters.get("draw_labels"))
+    draw_masks = _read_boolean_parameter(
+        request.parameters.get("draw_masks"),
+        field_name="draw_masks",
+        default=True,
+    )
+    draw_polygons = _read_boolean_parameter(
+        request.parameters.get("draw_polygons"),
+        field_name="draw_polygons",
+        default=True,
+    )
+    draw_boxes = _read_boolean_parameter(
+        request.parameters.get("draw_boxes"),
+        field_name="draw_boxes",
+        default=True,
+    )
+    draw_labels = _read_boolean_parameter(
+        request.parameters.get("draw_labels"),
+        field_name="draw_labels",
+        default=True,
+    )
+    draw_region_id = _read_boolean_parameter(
+        request.parameters.get("draw_region_id"),
+        field_name="draw_region_id",
+        default=True,
+    )
+    draw_class_name = _read_boolean_parameter(
+        request.parameters.get("draw_class_name"),
+        field_name="draw_class_name",
+        default=True,
+    )
+    draw_score = _read_boolean_parameter(
+        request.parameters.get("draw_score"),
+        field_name="draw_score",
+        default=True,
+    )
+    color_by = _read_color_by(request.parameters.get("color_by"))
+    class_colors = _read_class_colors(request.parameters.get("class_colors"))
 
     image_width = int(image_matrix.shape[1])
     image_height = int(image_matrix.shape[0])
     for region_item in regions_payload["items"]:
-        color = _pick_overlay_color(region_item, cv2_module=cv2_module, np_module=np_module)
+        color = _pick_overlay_color(
+            region_item,
+            cv2_module=cv2_module,
+            np_module=np_module,
+            color_by=color_by,
+            class_colors=class_colors,
+        )
         if draw_masks:
             binary_mask = build_region_binary_mask(
                 request,
@@ -149,7 +270,12 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 line_thickness,
             )
         if draw_labels:
-            label_text = _build_region_label(region_item)
+            label_text = _build_region_label(
+                region_item,
+                draw_region_id=draw_region_id,
+                draw_class_name=draw_class_name,
+                draw_score=draw_score,
+            )
             if label_text:
                 anchor_x = int(round(float(region_item["bbox_xyxy"][0])))
                 anchor_y = int(round(float(region_item["bbox_xyxy"][1])))

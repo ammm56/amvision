@@ -37,7 +37,7 @@ EXPECTED_CORE_CATEGORY_COUNTS = {
     "core.task.observation": 2,
     "core.inspection.record": 5,
     "core.vision.roi": 6,
-    "core.vision.region": 11,
+    "core.vision.region": 12,
     "core.vision.geometry": 5,
     "core.vision.position": 4,
     "core.vision.assembly": 4,
@@ -83,12 +83,12 @@ _HAN_PATTERN = re.compile(r"[\u3400-\u9fff]")
 
 
 def test_core_catalog_uses_confirmed_two_level_taxonomy() -> None:
-    """验证 218 个 Core 节点完整落入严格两级分类。"""
+    """验证 219 个 Core 节点完整落入严格两级分类。"""
 
     definitions = get_core_workflow_node_definitions()
     category_counts = Counter(item.category for item in definitions)
 
-    assert len(definitions) == 218
+    assert len(definitions) == 219
     assert category_counts == EXPECTED_CORE_CATEGORY_COUNTS
     assert all(
         _TWO_LEVEL_CATEGORY_PATTERN.fullmatch(item.category) for item in definitions

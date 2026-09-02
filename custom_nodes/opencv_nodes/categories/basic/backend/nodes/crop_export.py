@@ -7,6 +7,7 @@ import math
 from backend.nodes.core_nodes.support.roi import iter_roi_payloads
 from backend.nodes.save_locations import resolve_optional_save_location
 from backend.nodes.parameter_utils import is_empty_parameter
+from backend.nodes.image_identity import build_image_identity
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import (
     WorkflowNodeExecutionRequest,
@@ -42,6 +43,11 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     image_payload, image_object_key, image_matrix = load_image_matrix(request)
 
     image_height, image_width = image_matrix.shape[:2]
+    source_image_identity = build_image_identity(
+        image_payload,
+        width=int(image_width),
+        height=int(image_height),
+    )
     raw_box_padding = request.parameters.get("box_padding")
     box_padding = (
         0
@@ -129,6 +135,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         crop_payload["bbox_xyxy"] = [crop_x1, crop_y1, crop_x2, crop_y2]
         crop_payload["crop_index"] = crop_output_index
         crop_payload["crop_source"] = crop_spec["source_kind"]
+        crop_payload["source_image_identity"] = source_image_identity
         if crop_spec["source_kind"] == "roi":
             crop_payload["roi_id"] = crop_spec.get("roi_id")
             crop_payload["roi_kind"] = crop_spec.get("roi_kind")
