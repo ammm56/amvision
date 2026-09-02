@@ -101,6 +101,16 @@ def test_runtime_switches_versions_with_stable_ids_cas_rollback_and_run_provenan
             assert interrupted_runtime["desired_state"] == "stopped"
             assert interrupted_runtime["observed_state"] == "failed"
             assert interrupted_runtime["active_revision_id"] is None
+            interrupted_health = client.get(
+                f"/api/v1/workflows/app-runtimes/{runtime_id}/health",
+                headers=headers,
+            )
+            assert interrupted_health.status_code == 200
+            assert interrupted_health.json()["observed_state"] == "failed"
+            assert (
+                interrupted_health.json()["last_error"]
+                == interrupted_runtime["last_error"]
+            )
 
             start_v1 = client.post(
                 f"/api/v1/workflows/app-runtimes/{runtime_id}/start",

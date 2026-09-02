@@ -134,6 +134,31 @@ def apply_worker_state(
     )
 
 
+def apply_observed_worker_health(
+    workflow_app_runtime: WorkflowAppRuntime,
+    runtime_state: WorkflowRuntimeWorkerState,
+) -> WorkflowAppRuntime:
+    """合并现场 worker 健康状态，并保留无进程启动失败的诊断信息。
+
+    worker manager 在没有活动进程时只能观测到 ``stopped``。如果 Runtime
+    最近一次启动已经以 ``failed`` 落库，直接使用该现场状态会遮蔽失败原因，
+    也会让控制面误以为 Runtime 已完成正常停止。此时保留持久化失败状态；
+    显式 Stop 仍会通过正常状态迁移把记录更新为 ``stopped``。
+    """
+
+    if (
+        workflow_app_runtime.observed_state == "failed"
+        and runtime_state.observed_state == "stopped"
+        and runtime_state.current_run_id is None
+    ):
+        runtime_state = replace(
+            runtime_state,
+            observed_state="failed",
+            last_error=workflow_app_runtime.last_error,
+        )
+    return apply_worker_state(workflow_app_runtime, runtime_state)
+
+
 def _normalize_optional_str(value: str | None) -> str | None:
     """规范化可选字符串字段。"""
 

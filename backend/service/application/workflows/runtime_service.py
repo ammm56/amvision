@@ -112,6 +112,7 @@ from backend.service.application.workflows.runtime.policies import (
 from backend.service.application.workflows.runtime.app_runtimes import (
     WorkflowAppRuntimeCreateRequest,
     WorkflowAppRuntimeSelectVersionRequest,
+    apply_observed_worker_health,
     apply_worker_state,
     normalize_app_runtime_create_request,
     normalize_select_version_request,
@@ -2124,10 +2125,9 @@ class WorkflowRuntimeService:
 
         workflow_app_runtime = self.get_workflow_app_runtime(workflow_runtime_id)
         runtime_state = self.worker_manager.get_runtime_health(workflow_runtime_id)
-        updated_runtime = apply_worker_state(
+        updated_runtime = apply_observed_worker_health(
             replace(
                 workflow_app_runtime,
-                observed_state=runtime_state.observed_state,
                 updated_at=_now_isoformat(),
             ),
             runtime_state,
