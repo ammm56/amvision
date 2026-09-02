@@ -19,6 +19,7 @@
         <div class="workflow-graph-note__actions" @mousedown.stop>
           <SelectField
             class="workflow-graph-note__tone-select"
+            fit-options
             :model-value="note.tone"
             :options="toneOptions"
             :aria-label="t('workflowEditor.editor.noteTone')"

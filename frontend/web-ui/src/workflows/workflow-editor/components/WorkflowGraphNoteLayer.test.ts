@@ -67,6 +67,7 @@ describe('WorkflowGraphNoteLayer', () => {
     })
 
     expect(wrapper.find('select').exists()).toBe(false)
+    expect(wrapper.get('.ui-select').classes()).toContain('ui-select--fit-options')
     await wrapper.get('.ui-select__button').trigger('click')
     expect(wrapper.findAll('.ui-select__option')).toHaveLength(5)
 
