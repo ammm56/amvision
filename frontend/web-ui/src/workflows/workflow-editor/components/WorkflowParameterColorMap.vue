@@ -30,8 +30,6 @@
     <ConfirmDialog
       v-if="editorOpen"
       :title="label"
-      :message="t('workflowEditor.colorMap.description')"
-      :details="t('workflowEditor.colorMap.fallbackHint')"
       :confirm-label="t('workflowEditor.colorMap.apply')"
       :cancel-label="t('common.cancel')"
       confirm-variant="primary"
@@ -428,15 +426,17 @@ function skipWhitespace(source: string, startIndex: number): number {
   min-width: 0;
   min-height: 28px;
   padding: 3px 7px;
-  border: 1px solid var(--graph-border, #536068);
-  border-radius: 5px;
+  border: 1px solid var(--graph-line, #4a5458);
+  border-radius: 7px;
   color: var(--graph-text, #e7ecef);
   background: var(--graph-panel-soft, #24292d);
   cursor: pointer;
 }
 
-.workflow-color-map-summary:hover:not(:disabled) {
-  border-color: var(--graph-accent, #10b981);
+.workflow-color-map-summary:focus-visible {
+  border-color: var(--am-action-primary);
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--am-action-primary);
 }
 
 .workflow-color-map-summary:disabled {

@@ -27,6 +27,25 @@ describe('ConfirmDialog', () => {
     wrapper.unmount()
   })
 
+  it('允许只显示标题和自定义内容，不保留空说明占位', () => {
+    const wrapper = mount(ConfirmDialog, {
+      attachTo: document.body,
+      props: {
+        title: 'Class Colors',
+        confirmLabel: '应用',
+        cancelLabel: '取消',
+      },
+      slots: {
+        default: '<div data-editor-content>颜色编辑器</div>',
+      },
+    })
+
+    expect(wrapper.find('.confirm-dialog__message').exists()).toBe(false)
+    expect(wrapper.get('.confirm-dialog').attributes('aria-describedby')).toBeUndefined()
+    expect(wrapper.get('[data-editor-content]').text()).toBe('颜色编辑器')
+    wrapper.unmount()
+  })
+
   it('危险操作默认聚焦取消按钮', async () => {
     const wrapper = mount(ConfirmDialog, {
       attachTo: document.body,

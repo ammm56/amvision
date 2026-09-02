@@ -6,7 +6,7 @@
       role="dialog"
       aria-modal="true"
       :aria-labelledby="titleId"
-      :aria-describedby="details ? `${messageId} ${detailsId}` : messageId"
+      :aria-describedby="describedBy"
       :aria-busy="busy"
       tabindex="-1"
       @click.stop
@@ -22,7 +22,7 @@
         </button>
       </header>
 
-      <p :id="messageId" class="confirm-dialog__message">{{ message }}</p>
+      <p v-if="message" :id="messageId" class="confirm-dialog__message">{{ message }}</p>
       <p v-if="details" :id="detailsId" class="confirm-dialog__details">{{ details }}</p>
       <div v-if="$slots.default" class="confirm-dialog__content">
         <slot />
@@ -38,14 +38,14 @@
 
 <script setup lang="ts">
 import { X } from '@lucide/vue'
-import { nextTick, onBeforeUnmount, onMounted, ref, useId } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId } from 'vue'
 
 import Button from './Button.vue'
 
 const props = withDefaults(
   defineProps<{
     title: string
-    message: string
+    message?: string
     confirmLabel: string
     cancelLabel: string
     details?: string
@@ -54,6 +54,7 @@ const props = withDefaults(
     confirmVariant?: 'primary' | 'danger'
   }>(),
   {
+    message: '',
     details: '',
     busy: false,
     confirmDisabled: false,
@@ -70,6 +71,10 @@ const componentId = useId()
 const titleId = `${componentId}-title`
 const messageId = `${componentId}-message`
 const detailsId = `${componentId}-details`
+const describedBy = computed(() => {
+  const ids = [props.message ? messageId : '', props.details ? detailsId : ''].filter(Boolean)
+  return ids.join(' ') || undefined
+})
 const dialogRef = ref<HTMLElement | null>(null)
 let previouslyFocusedElement: HTMLElement | null = null
 let previousBodyOverflow = ''

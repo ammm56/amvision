@@ -8450,8 +8450,6 @@ const imageViewerMessages: Record<SupportedLocale, MessageSchema> = {
 const workflowColorMapMessages: Record<SupportedLocale, MessageSchema> = {
   'zh-CN': {
     editAria: '编辑 {label}', configuredCount: '已配置 {count} 项', automatic: '自动颜色', edit: '编辑',
-    description: '按明确的键名配置颜色；修改会在点击“应用”后一次性写入节点。',
-    fallbackHint: '未配置的键继续使用节点定义的稳定自动颜色。行顺序不参与运行时关联。',
     apply: '应用', formEditor: '表单编辑', jsonEditor: '高级 JSON', keyLabel: '键名', valueLabel: '颜色',
     classNamePlaceholder: '输入分类名称', chooseColor: '为 {name} 选择颜色', deleteEntry: '删除 {name}', palette: '颜色面板',
     empty: '当前没有显式颜色，节点将使用稳定自动颜色。', add: '添加颜色', jsonLabel: '颜色映射 JSON',
@@ -8460,8 +8458,6 @@ const workflowColorMapMessages: Record<SupportedLocale, MessageSchema> = {
   },
   'en-US': {
     editAria: 'Edit {label}', configuredCount: '{count} configured', automatic: 'Automatic colors', edit: 'Edit',
-    description: 'Configure colors by explicit key. Changes are written to the node atomically after Apply.',
-    fallbackHint: 'Unconfigured keys keep the node’s stable automatic color. Row order has no runtime meaning.',
     apply: 'Apply', formEditor: 'Form editor', jsonEditor: 'Advanced JSON', keyLabel: 'Key', valueLabel: 'Color',
     classNamePlaceholder: 'Enter class name', chooseColor: 'Choose color for {name}', deleteEntry: 'Delete {name}', palette: 'Color palette',
     empty: 'No explicit colors. The node will use stable automatic colors.', add: 'Add color', jsonLabel: 'Color map JSON',
@@ -8470,8 +8466,6 @@ const workflowColorMapMessages: Record<SupportedLocale, MessageSchema> = {
   },
   'ja-JP': {
     editAria: '{label}を編集', configuredCount: '{count}件設定済み', automatic: '自動カラー', edit: '編集',
-    description: '明示的なキーごとに色を設定します。「適用」を押した時点でノードへ一括反映されます。',
-    fallbackHint: '未設定のキーには安定した自動カラーを使用します。行の順序は実行時の関連付けに影響しません。',
     apply: '適用', formEditor: 'フォーム編集', jsonEditor: '高度なJSON', keyLabel: 'キー', valueLabel: '色',
     classNamePlaceholder: 'クラス名を入力', chooseColor: '{name}の色を選択', deleteEntry: '{name}を削除', palette: 'カラーパレット',
     empty: '明示的な色はありません。安定した自動カラーを使用します。', add: '色を追加', jsonLabel: 'カラーマップJSON',
@@ -8480,8 +8474,6 @@ const workflowColorMapMessages: Record<SupportedLocale, MessageSchema> = {
   },
   'ko-KR': {
     editAria: '{label} 편집', configuredCount: '{count}개 설정됨', automatic: '자동 색상', edit: '편집',
-    description: '명시적인 키별로 색상을 설정합니다. 적용을 누르면 노드에 한 번에 반영됩니다.',
-    fallbackHint: '설정되지 않은 키는 안정적인 자동 색상을 사용합니다. 행 순서는 런타임 연결에 사용되지 않습니다.',
     apply: '적용', formEditor: '폼 편집', jsonEditor: '고급 JSON', keyLabel: '키', valueLabel: '색상',
     classNamePlaceholder: '클래스 이름 입력', chooseColor: '{name} 색상 선택', deleteEntry: '{name} 삭제', palette: '색상 팔레트',
     empty: '명시적인 색상이 없습니다. 안정적인 자동 색상을 사용합니다.', add: '색상 추가', jsonLabel: '색상 맵 JSON',
