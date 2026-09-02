@@ -17,18 +17,14 @@
         <FileText :size="15" />
         <span class="workflow-graph-note__title" @dblclick.stop="emit('beginEdit', note.note_id)">{{ note.title }}</span>
         <div class="workflow-graph-note__actions" @mousedown.stop>
-          <select
-            :value="note.tone"
+          <SelectField
+            class="workflow-graph-note__tone-select"
+            :model-value="note.tone"
+            :options="toneOptions"
             :aria-label="t('workflowEditor.editor.noteTone')"
             :disabled="note.locked"
-            @change="emit('updateTone', note, readTone($event))"
-          >
-            <option value="neutral">{{ t('workflowEditor.editor.noteToneNeutral') }}</option>
-            <option value="info">{{ t('workflowEditor.editor.noteToneInfo') }}</option>
-            <option value="success">{{ t('workflowEditor.editor.noteToneSuccess') }}</option>
-            <option value="warning">{{ t('workflowEditor.editor.noteToneWarning') }}</option>
-            <option value="danger">{{ t('workflowEditor.editor.noteToneDanger') }}</option>
-          </select>
+            @update:model-value="emit('updateTone', note, readTone($event))"
+          />
           <button type="button" :title="collapseLabel(note)" @click="emit('toggleCollapsed', note)">
             <ChevronDown v-if="note.collapsed" :size="14" />
             <ChevronUp v-else :size="14" />
@@ -82,10 +78,11 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, reactive, watch } from 'vue'
+import { computed, nextTick, reactive, watch } from 'vue'
 import { ChevronDown, ChevronUp, FileText, Lock, LockOpen } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 
+import SelectField from '@/shared/ui/components/Select.vue'
 import type { WorkflowGraphNote } from '../types'
 import { renderWorkflowNoteMarkdown } from '../notes/workflowNoteMarkdown'
 
@@ -111,6 +108,14 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const drafts = reactive<Record<string, { title: string; content: string }>>({})
 const markdownCache = new Map<string, { content: string; html: string }>()
+const noteToneValues: WorkflowGraphNote['tone'][] = ['neutral', 'info', 'success', 'warning', 'danger']
+const toneOptions = computed(() => [
+  { value: 'neutral', label: t('workflowEditor.editor.noteToneNeutral') },
+  { value: 'info', label: t('workflowEditor.editor.noteToneInfo') },
+  { value: 'success', label: t('workflowEditor.editor.noteToneSuccess') },
+  { value: 'warning', label: t('workflowEditor.editor.noteToneWarning') },
+  { value: 'danger', label: t('workflowEditor.editor.noteToneDanger') },
+])
 
 watch(
   () => props.editingNoteId,
@@ -153,9 +158,8 @@ function renderMarkdown(note: WorkflowGraphNote): string {
   return html
 }
 
-function readTone(event: Event): WorkflowGraphNote['tone'] {
-  const value = event.target instanceof HTMLSelectElement ? event.target.value : 'neutral'
-  return ['neutral', 'info', 'success', 'warning', 'danger'].includes(value)
+function readTone(value: string | number | boolean | null): WorkflowGraphNote['tone'] {
+  return typeof value === 'string' && noteToneValues.includes(value as WorkflowGraphNote['tone'])
     ? value as WorkflowGraphNote['tone']
     : 'neutral'
 }

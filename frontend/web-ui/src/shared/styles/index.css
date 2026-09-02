@@ -2816,6 +2816,10 @@ textarea:focus-visible {
   z-index: 2;
 }
 
+.workflow-graph-stage .workflow-graph-note-layer:has(.ui-select.is-open) {
+  z-index: 4;
+}
+
 .workflow-graph-stage .workflow-graph-node,
 .workflow-graph-stage .workflow-graph-boundary-node {
   z-index: 2;
@@ -3325,7 +3329,7 @@ textarea:focus-visible {
   grid-template-rows: 40px minmax(0, 1fr);
   min-width: 220px;
   min-height: 120px;
-  overflow: hidden;
+  overflow: visible;
   border: 1px solid color-mix(in srgb, var(--workflow-note-accent) 45%, var(--graph-line));
   border-radius: 8px;
   color: var(--graph-text);
@@ -3346,6 +3350,10 @@ textarea:focus-visible {
     0 0 0 3px color-mix(in srgb, var(--graph-accent) 28%, transparent);
 }
 
+.workflow-graph-note:has(.ui-select.is-open) {
+  z-index: 1;
+}
+
 .workflow-graph-note.is-collapsed {
   grid-template-rows: 40px;
   min-height: 40px;
@@ -3362,6 +3370,7 @@ textarea:focus-visible {
   gap: 7px;
   padding: 0 8px 0 10px;
   border-bottom: 1px solid color-mix(in srgb, var(--workflow-note-accent) 24%, var(--graph-line));
+  border-radius: 7px 7px 0 0;
   background: color-mix(in srgb, var(--workflow-note-accent) 12%, var(--graph-panel));
   cursor: move;
   user-select: none;
@@ -3369,6 +3378,7 @@ textarea:focus-visible {
 
 .workflow-graph-note.is-collapsed .workflow-graph-note__header {
   border-bottom: 0;
+  border-radius: 7px;
 }
 
 .workflow-graph-note.is-locked .workflow-graph-note__header {
@@ -3392,17 +3402,62 @@ textarea:focus-visible {
   gap: 4px;
 }
 
-.workflow-graph-note__actions select {
-  max-width: 72px;
+.workflow-graph-note__tone-select {
+  width: 76px;
+}
+
+.workflow-graph-note__actions .ui-select__button {
+  width: 100%;
+  min-height: 24px;
   height: 24px;
-  border: 1px solid var(--graph-line);
+  gap: 3px;
+  padding: 2px 5px 2px 7px;
+  border-color: var(--graph-line);
   border-radius: 5px;
   color: var(--graph-text);
   background: var(--graph-panel-soft);
   font-size: 11px;
 }
 
-.workflow-graph-note__actions button {
+.workflow-graph-note__actions .ui-select__button svg {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+}
+
+.workflow-graph-note__actions .ui-select__menu {
+  top: calc(100% + 5px);
+  right: 0;
+  left: auto;
+  width: max-content;
+  min-width: 94px;
+  max-height: none;
+  gap: 2px;
+  padding: 4px;
+  border-color: var(--graph-line);
+  border-radius: 7px;
+  color: var(--graph-text);
+  background: var(--graph-panel);
+  box-shadow: 0 12px 28px rgb(0 0 0 / 0.32);
+}
+
+.workflow-graph-note__actions .ui-select__option {
+  min-height: 26px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  color: var(--graph-text);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.workflow-graph-note__actions .ui-select__option:hover,
+.workflow-graph-note__actions .ui-select__option.is-selected,
+.workflow-graph-note__actions .ui-select__option.is-active {
+  color: var(--graph-text-strong);
+  background: color-mix(in srgb, var(--workflow-note-accent) 18%, var(--graph-panel-soft));
+}
+
+.workflow-graph-note__actions > button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -3414,7 +3469,7 @@ textarea:focus-visible {
   background: transparent;
 }
 
-.workflow-graph-note__actions button:hover {
+.workflow-graph-note__actions > button:hover {
   color: var(--graph-text-strong);
   background: color-mix(in srgb, var(--graph-text-strong) 10%, transparent);
 }

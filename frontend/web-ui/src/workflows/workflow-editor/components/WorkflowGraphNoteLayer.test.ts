@@ -55,7 +55,23 @@ describe('WorkflowGraphNoteLayer', () => {
     })
 
     expect(wrapper.get('.workflow-graph-note').classes()).toContain('is-selected')
-    expect(wrapper.get('select').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('.ui-select__button').attributes('disabled')).toBeDefined()
     expect(wrapper.find('.workflow-graph-note__resize').exists()).toBe(false)
+  })
+
+  it('使用统一自定义下拉菜单切换说明色调', async () => {
+    const note = createNote()
+    const wrapper = mount(WorkflowGraphNoteLayer, {
+      global: { plugins: [i18n] },
+      props: { notes: [note], selectedNoteId: null, editingNoteId: null },
+    })
+
+    expect(wrapper.find('select').exists()).toBe(false)
+    await wrapper.get('.ui-select__button').trigger('click')
+    expect(wrapper.findAll('.ui-select__option')).toHaveLength(5)
+
+    await wrapper.findAll('.ui-select__option')[3]!.trigger('pointerdown')
+    expect(wrapper.emitted('updateTone')?.[0]).toEqual([note, 'warning'])
+    expect(wrapper.find('.ui-select__menu').exists()).toBe(false)
   })
 })
