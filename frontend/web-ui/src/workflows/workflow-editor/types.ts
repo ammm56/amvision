@@ -59,6 +59,7 @@ export interface NodeParameterUiField {
   readonly: boolean
   default_value: unknown
   enum_options: NodeParameterUiEnumOption[]
+  widget?: 'auto' | 'color-map'
   json_schema: WorkflowJsonObject
 }
 

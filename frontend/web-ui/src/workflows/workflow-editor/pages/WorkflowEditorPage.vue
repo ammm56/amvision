@@ -120,6 +120,8 @@
           :is-number-parameter="isNumberParameter"
           :read-parameter-text-value="readNodeParameterTextValue"
           :is-string-parameter="isStringParameter"
+          :is-color-map-parameter="isColorMapParameter"
+          :read-parameter-value="readNodeParameterValue"
           :is-json-parameter="isJsonParameter"
           :read-parameter-json-text-value="readNodeParameterJsonTextValue"
           :read-parameter-json-placeholder="nodeParameterJsonPlaceholder"
@@ -137,6 +139,7 @@
           @update-checkbox-parameter="updateNodeParameterFromCheckboxEvent"
           @update-number-parameter="updateNodeParameterFromNumberEvent"
           @update-text-parameter="updateNodeParameterFromTextEvent"
+          @update-value-parameter="updateNodeParameterValue"
           @update-json-parameter-draft="updateNodeParameterJsonDraft"
           @commit-json-parameter-draft="commitNodeParameterJsonDraft"
           @select-deployment-instance="openDeploymentInstancePicker"
@@ -1079,10 +1082,12 @@ const {
 const {
   nodeParameterFieldsForNode,
   isJsonParameter,
+  isColorMapParameter,
   isStringParameter,
   isNumberParameter,
   isBooleanParameter,
   readNodeParameterTextValue,
+  readNodeParameterValue,
   readNodeParameterBooleanValue,
   readNodeParameterEnumIndex,
   nodeParameterEnumOptions,
@@ -1090,6 +1095,7 @@ const {
   updateNodeParameterFromNumberEvent,
   updateNodeParameterFromCheckboxEvent,
   updateNodeParameterFromEnumValue,
+  updateNodeParameterValue,
   updateNodeParametersByName,
   readNodeParameterJsonTextValue,
   updateNodeParameterJsonDraft,

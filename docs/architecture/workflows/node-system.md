@@ -124,6 +124,35 @@ Trigger adapter 负责把外部事件转换成 Workflow Run 请求；业务图�
 
 详细契约、运行时优先级和验收门禁见 [Workflow 动态参数输入实施基线](../../development/workflow-dynamic-parameter-input-implementation.md)。
 
+### 通用参数编辑器
+
+节点不能通过 `node_type_id` 在前端硬编码专用参数面板。需要比基础 string、number、boolean 或 JSON 文本框更明确的编辑方式时，由 parameter schema 的 `x-amvision-ui.widget` 声明受控控件类型，Catalog 编译为稳定 `NodeParameterUiField.widget` 后由编辑器统一渲染。未声明时固定使用 `auto`。
+
+`color-map` 用于 `名称 → #RRGGBB` 的通用颜色映射。参数本身必须继续使用 JSON object，键名是业务关联事实，行位置和画布位置没有运行时语义。schema 应同时声明 `propertyNames` 和 `additionalProperties`，颜色值保留 `^#[0-9A-Fa-f]{6}$` 校验。例如：
+
+```json
+{
+  "type": "object",
+  "propertyNames": {
+    "type": "string",
+    "minLength": 1,
+    "title": "Class Name"
+  },
+  "additionalProperties": {
+    "type": "string",
+    "title": "Color",
+    "format": "color",
+    "pattern": "^#[0-9A-Fa-f]{6}$"
+  },
+  "default": {},
+  "x-amvision-ui": {
+    "widget": "color-map"
+  }
+}
+```
+
+编辑器以紧凑摘要显示颜色数量和色块，在独立编辑层中按键名增删和选色；只有点击应用才原子写回参数。空键、重复键、非字符串值和错误 HEX 必须阻止提交，高级 JSON 编辑也不得静默接受重复键。参数端口连接后控件只读，连接值仍按统一优先级完整覆盖固定 object，不执行隐式合并。Draw Regions、检测框、分割区域、Pose、OBB 和后续状态颜色节点复用同一控件及 object 契约。
+
 ### 文本、JSON 与文件输入组合
 
 App Entry 输入进入图以后继续使用现有版本化 payload，不创建按 binding id 命名的专用数据类型。通用组合规则如下：

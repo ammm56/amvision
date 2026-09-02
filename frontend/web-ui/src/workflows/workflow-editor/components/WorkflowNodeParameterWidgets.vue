@@ -92,6 +92,15 @@
         :aria-label="readLabel(field)"
         @input="emit('update-text', node, field, $event)"
       />
+      <WorkflowParameterColorMap
+        v-else-if="isColorMap(field)"
+        :model-value="readValue(node, field)"
+        :label="readLabel(field)"
+        :key-label="readColorMapSchemaTitle(field, 'propertyNames', t('workflowEditor.colorMap.keyLabel'))"
+        :value-label="readColorMapSchemaTitle(field, 'additionalProperties', t('workflowEditor.colorMap.valueLabel'))"
+        :disabled="isParameterEditorDisabled(node, field)"
+        @update:model-value="emit('update-value', node, field, $event)"
+      />
       <template v-else-if="isJson(field)">
         <textarea
           :value="readJsonTextValue(node, field)"
@@ -112,6 +121,7 @@ import { useI18n } from 'vue-i18n'
 
 import SelectField from '@/shared/ui/components/Select.vue'
 import WorkflowGraphCheckbox from './WorkflowGraphCheckbox.vue'
+import WorkflowParameterColorMap from './WorkflowParameterColorMap.vue'
 import { readNodeParameterInputPort } from '../parameters/parameter-input-bindings'
 import { isModelInferenceDeploymentField } from '../parameters/useWorkflowDeploymentInstancePicker'
 import { readWorkflowNumericParameterInputAttributes } from '../parameters/numeric-parameter-input'
@@ -149,6 +159,8 @@ const props = defineProps<{
   isNumber: (field: NodeParameterUiField) => boolean
   readTextValue: (node: WorkflowNodeParameterNode, field: NodeParameterUiField) => string
   isString: (field: NodeParameterUiField) => boolean
+  isColorMap: (field: NodeParameterUiField) => boolean
+  readValue: (node: WorkflowNodeParameterNode, field: NodeParameterUiField) => unknown
   isJson: (field: NodeParameterUiField) => boolean
   readJsonTextValue: (node: WorkflowNodeParameterNode, field: NodeParameterUiField) => string
   readJsonPlaceholder: (field: NodeParameterUiField) => string
@@ -163,6 +175,7 @@ const emit = defineEmits<{
   'update-checkbox': [node: WorkflowNodeParameterNode, field: NodeParameterUiField, event: Event]
   'update-number': [node: WorkflowNodeParameterNode, field: NodeParameterUiField, event: Event]
   'update-text': [node: WorkflowNodeParameterNode, field: NodeParameterUiField, event: Event]
+  'update-value': [node: WorkflowNodeParameterNode, field: NodeParameterUiField, value: unknown]
   'update-json-draft': [node: WorkflowNodeParameterNode, field: NodeParameterUiField, event: Event]
   'commit-json-draft': [node: WorkflowNodeParameterNode, field: NodeParameterUiField, event: Event]
   'select-deployment-instance': [node: WorkflowNodeParameterNode]
@@ -197,5 +210,16 @@ function readParameterInputSourceTitle(node: WorkflowNodeParameterNode, field: N
   return source
     ? t('workflowEditor.feedback.parameterConnectionSource', { source })
     : t('workflowEditor.feedback.parameterFromConnection')
+}
+
+function readColorMapSchemaTitle(
+  field: NodeParameterUiField,
+  schemaKey: 'propertyNames' | 'additionalProperties',
+  fallback: string,
+): string {
+  const schema = field.json_schema[schemaKey]
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return fallback
+  const title = (schema as Record<string, unknown>).title
+  return typeof title === 'string' && title.trim() ? title.trim() : fallback
 }
 </script>

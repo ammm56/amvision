@@ -31,7 +31,12 @@ export function useWorkflowNodeParameters<NodeView extends WorkflowNodeParameter
   }
 
   function isJsonParameter(field: NodeParameterUiField): boolean {
-    return field.json_schema.type === 'object' || field.json_schema.type === 'array'
+    return (field.widget ?? 'auto') === 'auto'
+      && (field.json_schema.type === 'object' || field.json_schema.type === 'array')
+  }
+
+  function isColorMapParameter(field: NodeParameterUiField): boolean {
+    return field.widget === 'color-map'
   }
 
   function isStringParameter(field: NodeParameterUiField): boolean {
@@ -225,6 +230,7 @@ export function useWorkflowNodeParameters<NodeView extends WorkflowNodeParameter
   return {
     nodeParameterFieldsForNode,
     isJsonParameter,
+    isColorMapParameter,
     isStringParameter,
     isNumberParameter,
     isBooleanParameter,
@@ -236,6 +242,8 @@ export function useWorkflowNodeParameters<NodeView extends WorkflowNodeParameter
     updateNodeParameterFromNumberEvent,
     updateNodeParameterFromCheckboxEvent,
     updateNodeParameterFromEnumValue,
+    readNodeParameterValue,
+    updateNodeParameterValue: updateNodeParameter,
     updateNodeParametersByName,
     readNodeParameterJsonTextValue,
     updateNodeParameterJsonDraft,

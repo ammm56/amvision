@@ -648,6 +648,7 @@ def test_workflow_node_catalog_returns_effective_parameter_ui_schema(tmp_path: P
         assert right_value_field["display_name"] == "Right Value"
         assert right_value_field["hidden"] is False
         assert right_value_field["readonly"] is False
+        assert right_value_field["widget"] == "auto"
     finally:
         session_factory.engine.dispose()
 

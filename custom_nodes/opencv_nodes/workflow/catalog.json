@@ -17544,11 +17544,21 @@
             "type": "object",
             "title": "Class Colors",
             "description": "可选 class_name 到 #RRGGBB 的颜色表；color_by=class-name 时优先使用。",
+            "propertyNames": {
+              "type": "string",
+              "minLength": 1,
+              "title": "Class Name"
+            },
             "additionalProperties": {
               "type": "string",
+              "title": "Color",
+              "format": "color",
               "pattern": "^#[0-9A-Fa-f]{6}$"
             },
-            "default": {}
+            "default": {},
+            "x-amvision-ui": {
+              "widget": "color-map"
+            }
           },
           "save_location": {
             "type": "string"

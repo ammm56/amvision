@@ -79,6 +79,8 @@
       :is-number="isNumberParameter"
       :read-text-value="readParameterTextValue"
       :is-string="isStringParameter"
+      :is-color-map="isColorMapParameter"
+      :read-value="readParameterValue"
       :is-json="isJsonParameter"
       :read-json-text-value="readParameterJsonTextValue"
       :read-json-placeholder="readParameterJsonPlaceholder"
@@ -90,6 +92,7 @@
       @update-checkbox="(targetNode, field, event) => emit('updateCheckboxParameter', targetNode, field, event)"
       @update-number="(targetNode, field, event) => emit('updateNumberParameter', targetNode, field, event)"
       @update-text="(targetNode, field, event) => emit('updateTextParameter', targetNode, field, event)"
+      @update-value="(targetNode, field, value) => emit('updateValueParameter', targetNode, field, value)"
       @update-json-draft="(targetNode, field, event) => emit('updateJsonParameterDraft', targetNode, field, event)"
       @commit-json-draft="(targetNode, field, event) => emit('commitJsonParameterDraft', targetNode, field, event)"
       @select-deployment-instance="(targetNode) => emit('selectDeploymentInstance', targetNode)"
@@ -148,6 +151,8 @@ const props = defineProps<{
   isNumberParameter: (field: NodeParameterUiField) => boolean
   readParameterTextValue: (node: WorkflowGraphNodeView, field: NodeParameterUiField) => string
   isStringParameter: (field: NodeParameterUiField) => boolean
+  isColorMapParameter: (field: NodeParameterUiField) => boolean
+  readParameterValue: (node: WorkflowGraphNodeView, field: NodeParameterUiField) => unknown
   isJsonParameter: (field: NodeParameterUiField) => boolean
   readParameterJsonTextValue: (node: WorkflowGraphNodeView, field: NodeParameterUiField) => string
   readParameterJsonPlaceholder: (field: NodeParameterUiField) => string
@@ -168,6 +173,7 @@ const emit = defineEmits<{
   updateCheckboxParameter: [node: WorkflowGraphNodeView, field: NodeParameterUiField, event: Event]
   updateNumberParameter: [node: WorkflowGraphNodeView, field: NodeParameterUiField, event: Event]
   updateTextParameter: [node: WorkflowGraphNodeView, field: NodeParameterUiField, event: Event]
+  updateValueParameter: [node: WorkflowGraphNodeView, field: NodeParameterUiField, value: unknown]
   updateJsonParameterDraft: [node: WorkflowGraphNodeView, field: NodeParameterUiField, event: Event]
   commitJsonParameterDraft: [node: WorkflowGraphNodeView, field: NodeParameterUiField, event: Event]
   selectDeploymentInstance: [node: WorkflowGraphNodeView]

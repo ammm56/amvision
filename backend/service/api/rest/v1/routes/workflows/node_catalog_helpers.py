@@ -21,6 +21,7 @@ from .schemas import WorkflowNodePaletteGroupResponse
 
 _WORKFLOW_PARAMETER_UI_EXTENSION_KEY = "x-amvision-ui"
 _WORKFLOW_PARAMETER_DEFAULT_GROUP_ID = "default"
+_WORKFLOW_PARAMETER_UI_WIDGETS = {"auto", "color-map"}
 
 
 def _build_workflow_node_palette_groups(
@@ -201,6 +202,7 @@ def _derive_parameter_ui_schema_from_parameter_schema(
                 enum_options=_build_parameter_ui_enum_options(
                     property_schema, property_ui_extension
                 ),
+                widget=_read_parameter_ui_widget(property_ui_extension.get("widget")),
                 json_schema=_sanitize_parameter_schema_fragment(property_schema),
             )
         )
@@ -447,6 +449,18 @@ def _sanitize_parameter_schema_fragment(
         for key, value in property_schema.items()
         if key != _WORKFLOW_PARAMETER_UI_EXTENSION_KEY
     }
+
+
+def _read_parameter_ui_widget(value: object) -> str:
+    """读取受控的通用参数编辑器类型。"""
+
+    if value is None:
+        return "auto"
+    widget = _read_optional_non_empty_text(value)
+    if widget not in _WORKFLOW_PARAMETER_UI_WIDGETS:
+        supported = ", ".join(sorted(_WORKFLOW_PARAMETER_UI_WIDGETS))
+        raise ValueError(f"x-amvision-ui.widget 仅支持: {supported}")
+    return widget
 
 
 def _read_optional_non_empty_text(value: object) -> str | None:

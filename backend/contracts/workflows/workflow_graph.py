@@ -244,6 +244,7 @@ class NodeParameterUiField(BaseModel):
     readonly: bool = False
     default_value: object | None = None
     enum_options: tuple[NodeParameterUiEnumOption, ...] = ()
+    widget: Literal["auto", "color-map"] = "auto"
     json_schema: dict[str, object] = Field(default_factory=dict)
 
     @model_validator(mode="after")
