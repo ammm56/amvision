@@ -355,7 +355,6 @@
         <div v-if="canWriteWorkflows && selectedRuntime" class="runtime-version-switch">
           <div>
             <strong>{{ t('workflowEditor.appDetail.switchVersionTitle') }}</strong>
-            <p class="muted-note">{{ t('workflowEditor.appDetail.switchVersionDescription') }}</p>
           </div>
           <div class="runtime-version-route field--wide">
             <div>
@@ -389,9 +388,6 @@
             <span>{{ t('workflowEditor.appDetail.fields.breakingOverride') }}</span>
             <input v-model="allowBreakingContract" type="checkbox" />
           </label>
-          <p v-if="showBreakingOverride" class="muted-note field--wide">
-            {{ t('workflowEditor.appDetail.hints.breakingOverrideValidation') }}
-          </p>
           <label v-if="allowBreakingContract" class="field field--wide">
             <span>{{ t('workflowEditor.appDetail.fields.breakingReason') }}</span>
             <input v-model="breakingChangeReason" :placeholder="t('workflowEditor.appDetail.placeholders.breakingReason')" />

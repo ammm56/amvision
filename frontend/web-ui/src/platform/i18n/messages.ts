@@ -973,7 +973,6 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         emptyVersionTitle: '还没有已发布版本',
         emptyVersionDescription: '保存并确认草稿后发布第一个不可变版本，才能创建生产 Runtime。',
         switchVersionTitle: '切换当前 Runtime 的版本',
-        switchVersionDescription: '仅停止态可切换；Runtime 和 Trigger ID 保持不变，选择后需显式启动。',
         runtimeTitle: '运行时',
         httpTitle: 'HTTP 调用',
         lastReceiptTitle: '最近调用回执',
@@ -1076,7 +1075,6 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
           stopBeforeDelete: '先停止 runtime 后再删除',
           deleteTriggersFirst: '先删除 {count} 个绑定的触发入口后再删除 runtime',
           deleteRuntime: '删除该 runtime',
-          breakingOverrideValidation: '当前激活版本与目标版本的契约指纹不同。后端会按“当前激活版本 → 目标版本”重新校验；只有确认接受破坏性变化时才启用此项。',
         },
         messages: {
           inputBindingsObject: 'input_bindings 必须是 JSON object',
@@ -3132,7 +3130,6 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         emptyVersionTitle: 'No published versions',
         emptyVersionDescription: 'Save and verify the draft, then publish its first immutable version before creating a production runtime.',
         switchVersionTitle: 'Switch the current Runtime version',
-        switchVersionDescription: 'Switching is stopped-only. Runtime and Trigger IDs stay stable, and startup remains explicit.',
         runtimeTitle: 'Runtimes',
         httpTitle: 'HTTP Calls',
         lastReceiptTitle: 'Latest Call Receipt',
@@ -3235,7 +3232,6 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
           stopBeforeDelete: 'Stop the runtime before deleting it',
           deleteTriggersFirst: 'Delete {count} bound TriggerSource records before deleting the runtime',
           deleteRuntime: 'Delete this runtime',
-          breakingOverrideValidation: 'The active and target contract fingerprints differ. The backend revalidates the active → target contract; enable this only after accepting any breaking changes.',
         },
         messages: {
           inputBindingsObject: 'input_bindings must be a JSON object',
@@ -5284,7 +5280,6 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         emptyVersionTitle: '公開バージョンはありません',
         emptyVersionDescription: '下書きを保存して確認し、最初の不変バージョンを公開してから本番 Runtime を作成します。',
         switchVersionTitle: '現在の Runtime バージョンを切り替え',
-        switchVersionDescription: '停止状態でのみ切り替え可能です。Runtime と Trigger の ID は維持され、起動は明示的に行います。',
         runtimeTitle: 'Runtime',
         httpTitle: 'HTTP 呼び出し',
         lastReceiptTitle: '最新の呼び出し結果',
@@ -5387,7 +5382,6 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
           stopBeforeDelete: '削除前に runtime を停止してください',
           deleteTriggersFirst: '先にバインド済み TriggerSource {count} 件を削除してください',
           deleteRuntime: 'この runtime を削除',
-          breakingOverrideValidation: 'アクティブ版と対象版の契約 fingerprint が異なります。backend は「アクティブ → 対象」を再検証します。破壊的変更を受け入れる場合のみ有効にしてください。',
         },
         messages: {
           inputBindingsObject: 'input_bindings は JSON object である必要があります',
@@ -7291,7 +7285,6 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         emptyVersionTitle: '게시 버전이 없습니다',
         emptyVersionDescription: '초안을 저장하고 확인한 뒤 첫 번째 변경 불가능한 버전을 게시해야 운영 Runtime을 만들 수 있습니다.',
         switchVersionTitle: '현재 Runtime 버전 전환',
-        switchVersionDescription: '중지 상태에서만 전환할 수 있습니다. Runtime과 Trigger ID는 유지되며 시작은 명시적으로 수행합니다.',
         runtimeTitle: 'Runtime',
         httpTitle: 'HTTP 호출',
         lastReceiptTitle: '최근 호출 결과',
@@ -7394,7 +7387,6 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
           stopBeforeDelete: '삭제하기 전에 runtime을 중지하세요',
           deleteTriggersFirst: '먼저 바인딩된 TriggerSource {count}개를 삭제하세요',
           deleteRuntime: '이 runtime 삭제',
-          breakingOverrideValidation: '활성 버전과 대상 버전의 계약 fingerprint가 다릅니다. backend가 “활성 → 대상” 계약을 다시 검증하므로 호환되지 않는 변경을 수락한 경우에만 활성화하세요.',
         },
         messages: {
           inputBindingsObject: 'input_bindings는 JSON object여야 합니다',
