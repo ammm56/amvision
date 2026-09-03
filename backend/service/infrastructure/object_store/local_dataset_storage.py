@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+from collections.abc import Iterator
 from io import BytesIO
 import mimetypes
 import os
@@ -27,6 +28,13 @@ from backend.service.application.ports.object_store import (
     ObjectReadSnapshot,
     ObjectSnapshotMetadata,
     ObjectWriteReceipt,
+    RetentionDeleteState,
+    RetentionObjectPage,
+)
+from backend.service.infrastructure.filesystem.retention_files import (
+    delete_empty_local_retention_directories,
+    delete_local_retention_file_if_version,
+    iter_local_retention_pages,
 )
 
 
@@ -249,6 +257,54 @@ class LocalDatasetStorage:
         """
 
         self._mkdir(self.resolve(object_prefix))
+
+    def iter_retention_object_pages(
+        self,
+        object_prefix: str,
+        *,
+        recursive: bool,
+        page_size: int = 512,
+    ) -> Iterator[RetentionObjectPage]:
+        """分页流式列举 ObjectStore prefix 下的保留清理对象。"""
+
+        normalized_prefix = self._normalize_relative_path(object_prefix).as_posix()
+        yield from iter_local_retention_pages(
+            self.resolve(normalized_prefix),
+            recursive=recursive,
+            page_size=page_size,
+            object_key_prefix=normalized_prefix,
+        )
+
+    def retention_prefix_exists(self, object_prefix: str) -> bool:
+        """判断本地 ObjectStore prefix 是否存在且是普通目录。"""
+
+        return self.resolve(object_prefix).is_dir()
+
+    def delete_retention_object_if_version(
+        self,
+        object_key: str,
+        *,
+        expected_version: str,
+    ) -> RetentionDeleteState:
+        """只在本地对象仍是扫描版本时删除。"""
+
+        return delete_local_retention_file_if_version(
+            self.resolve(object_key),
+            expected_version=expected_version,
+        )
+
+    def delete_empty_retention_prefixes(
+        self,
+        object_prefix: str,
+        *,
+        recursive: bool,
+    ) -> int:
+        """删除 ObjectStore prefix 下的空实现目录并保留 prefix。"""
+
+        return delete_empty_local_retention_directories(
+            self.resolve(object_prefix),
+            recursive=recursive,
+        )
 
     def resolve(self, relative_path: str) -> Path:
         """把相对路径解析为当前本地存储根目录下的绝对路径。

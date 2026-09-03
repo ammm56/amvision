@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import BinaryIO, ContextManager, Protocol, runtime_checkable
+from collections.abc import Iterator
+from typing import BinaryIO, ContextManager, Literal, Protocol, runtime_checkable
 
 
 @dataclass(frozen=True)
@@ -32,6 +33,26 @@ class ObjectWriteReceipt:
     """描述不可变对象原子发布结果。"""
 
     metadata: ObjectSnapshotMetadata
+
+
+@dataclass(frozen=True)
+class RetentionObjectMetadata:
+    """描述保留清理扫描得到的单个对象版本。"""
+
+    object_key: str
+    content_length: int
+    last_modified_epoch_ns: int
+    version: str
+
+
+@dataclass(frozen=True)
+class RetentionObjectPage:
+    """保存一次有界 ObjectStore 保留清理列举结果。"""
+
+    items: tuple[RetentionObjectMetadata, ...]
+
+
+RetentionDeleteState = Literal["deleted", "missing", "changed", "locked"]
 
 
 @runtime_checkable
@@ -142,5 +163,46 @@ class ObjectStore(Protocol):
         media_type: str | None = None,
     ) -> ObjectWriteReceipt:
         """把可变或旧对象物化为新的不可变受管理对象。"""
+
+        ...
+
+
+@runtime_checkable
+class RetentionObjectStore(ObjectStore, Protocol):
+    """ObjectStore 可选的生产结果保留清理能力。"""
+
+    def retention_prefix_exists(self, object_prefix: str) -> bool:
+        """判断保留清理 prefix 是否存在。"""
+
+        ...
+
+    def iter_retention_object_pages(
+        self,
+        object_prefix: str,
+        *,
+        recursive: bool,
+        page_size: int = 512,
+    ) -> Iterator[RetentionObjectPage]:
+        """分页流式列举 prefix 下的普通对象及其可验证版本。"""
+
+        ...
+
+    def delete_retention_object_if_version(
+        self,
+        object_key: str,
+        *,
+        expected_version: str,
+    ) -> RetentionDeleteState:
+        """只在对象版本仍匹配时删除对象。"""
+
+        ...
+
+    def delete_empty_retention_prefixes(
+        self,
+        object_prefix: str,
+        *,
+        recursive: bool,
+    ) -> int:
+        """删除 prefix 下的空实现目录，但永远保留 prefix 自身。"""
 
         ...

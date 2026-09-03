@@ -3,6 +3,7 @@
 from backend.service.application.runtime.io.atomic_files import atomic_write_bytes
 from backend.service.application.runtime.io.path_write_coordinator import (
     acquire_path_write_locks,
+    try_acquire_path_write_locks,
 )
 from backend.service.application.runtime.io.write_journal import (
     WriteJournal,
@@ -14,4 +15,5 @@ __all__ = [
     "acquire_path_write_locks",
     "atomic_write_bytes",
     "build_node_operation_id",
+    "try_acquire_path_write_locks",
 ]

@@ -131,6 +131,7 @@ def _text_save_local_handler(
                 content=output_bytes,
                 file_name=file_name,
                 overwrite=True,
+                coordinate_path_write=False,
             )
             if mode == "append":
                 _commit_text_append(request=request, target_path=target_path)

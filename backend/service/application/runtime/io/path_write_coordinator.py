@@ -31,6 +31,8 @@ from backend.service.application.workflows.service_runtime.context import (
 _PATH_COORDINATOR_RESOURCE_KEY = "runtime.io.path-write-coordinator"
 _DEFAULT_PROCESS_SCOPE = create_process_resource_scope()
 _LOCK_ROOT = Path(gettempdir()) / "amvision-path-locks"
+_LOCK_FILE_PATH = _LOCK_ROOT / "path-locks.v1"
+_MAX_LOCK_OFFSET = (1 << 63) - 1
 atexit.register(_DEFAULT_PROCESS_SCOPE.close)
 
 
@@ -82,6 +84,38 @@ class PathWriteCoordinator:
             for normalized_path, entry in entries:
                 self._release_entry(normalized_path, entry)
 
+    @contextmanager
+    def try_acquire(self, paths: Sequence[Path]) -> Iterator[bool]:
+        """不等待地尝试获取全部路径锁，并返回是否成功。"""
+
+        normalized_paths = tuple(sorted({_normalize_path(path) for path in paths}))
+        entries = [(path, self._retain_entry(path)) for path in normalized_paths]
+        acquired_entries: list[tuple[str, _PathLockEntry]] = []
+        interprocess_locks: list[_InterprocessPathLock] = []
+        try:
+            for normalized_path, entry in entries:
+                if not entry.lock.acquire(blocking=False):
+                    yield False
+                    return
+                acquired_entries.append((normalized_path, entry))
+            for normalized_path, _entry in acquired_entries:
+                path_lock = _InterprocessPathLock(
+                    normalized_path=normalized_path,
+                    control=None,
+                )
+                if not path_lock.try_enter():
+                    yield False
+                    return
+                interprocess_locks.append(path_lock)
+            yield True
+        finally:
+            for path_lock in reversed(interprocess_locks):
+                path_lock.close()
+            for _normalized_path, entry in reversed(acquired_entries):
+                entry.lock.release()
+            for normalized_path, entry in entries:
+                self._release_entry(normalized_path, entry)
+
     def close(self) -> None:
         """清理没有持有者的路径锁表。"""
 
@@ -116,26 +150,35 @@ class PathWriteCoordinator:
 class _InterprocessPathLock:
     """使用 sidecar 文件实现单机跨进程互斥。"""
 
-    def __init__(self, *, normalized_path: str, control: ExecutionControl) -> None:
+    def __init__(
+        self,
+        *,
+        normalized_path: str,
+        control: ExecutionControl | None,
+    ) -> None:
         self.normalized_path = normalized_path
         self.control = control
+        self._lock_offset = (
+            int.from_bytes(
+                sha256(normalized_path.encode("utf-8")).digest()[:8],
+                byteorder="big",
+                signed=False,
+            )
+            & _MAX_LOCK_OFFSET
+        )
         self._file = None
 
     def __enter__(self) -> _InterprocessPathLock:
         """可取消地获取操作系统文件锁。"""
 
-        _LOCK_ROOT.mkdir(parents=True, exist_ok=True)
-        lock_name = sha256(self.normalized_path.encode("utf-8")).hexdigest()
-        self._file = (_LOCK_ROOT / f"{lock_name}.lock").open("a+b")
+        if self.control is None:
+            raise RuntimeError("等待式路径锁缺少 ExecutionControl")
+        self._open_file()
         try:
-            self._file.seek(0)
-            if self._file.read(1) == b"":
-                self._file.write(b"\0")
-                self._file.flush()
             while True:
                 self.control.raise_if_cancelled_or_expired()
                 try:
-                    _try_lock_file(self._file)
+                    _try_lock_file(self._file, offset=self._lock_offset)
                     return self
                 except OSError:
                     self.control.wait_interruptibly(0.05)
@@ -144,16 +187,39 @@ class _InterprocessPathLock:
             self._file = None
             raise
 
+    def try_enter(self) -> bool:
+        """只尝试一次操作系统文件锁，不等待其他写入者。"""
+
+        self._open_file()
+        try:
+            _try_lock_file(self._file, offset=self._lock_offset)
+        except OSError:
+            self._file.close()
+            self._file = None
+            return False
+        return True
+
     def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
         """释放操作系统文件锁。"""
+
+        self.close()
+
+    def close(self) -> None:
+        """释放已获取的操作系统文件锁和 sidecar handle。"""
 
         if self._file is None:
             return
         try:
-            _unlock_file(self._file)
+            _unlock_file(self._file, offset=self._lock_offset)
         finally:
             self._file.close()
             self._file = None
+
+    def _open_file(self) -> None:
+        """打开共享锁文件；锁允许位于 EOF 外，因此文件本身无需扩容。"""
+
+        _LOCK_ROOT.mkdir(parents=True, exist_ok=True)
+        self._file = _LOCK_FILE_PATH.open("a+b")
 
 
 @contextmanager
@@ -172,6 +238,18 @@ def acquire_path_write_locks(
     coordinator = _require_coordinator(_resolve_process_scope(request))
     with coordinator.acquire(paths, control=control):
         yield
+
+
+@contextmanager
+def try_acquire_path_write_locks(
+    request: WorkflowNodeExecutionRequest,
+    paths: Sequence[Path],
+) -> Iterator[bool]:
+    """通过共享协调器不等待地尝试获取路径写锁。"""
+
+    coordinator = _require_coordinator(_resolve_process_scope(request))
+    with coordinator.try_acquire(paths) as acquired:
+        yield acquired
 
 
 def _resolve_process_scope(request: WorkflowNodeExecutionRequest) -> ResourceScope:
@@ -211,32 +289,48 @@ def _acquire_thread_lock(lock: RLock, *, control: ExecutionControl) -> None:
             return
 
 
-def _try_lock_file(file_object: object) -> None:
+def _try_lock_file(file_object: object, *, offset: int) -> None:
     """非阻塞获取当前平台的 1 字节文件锁。"""
 
     if os.name == "nt":
         import msvcrt
 
-        file_object.seek(0)
+        file_object.seek(offset)
         msvcrt.locking(file_object.fileno(), msvcrt.LK_NBLCK, 1)
         return
     import fcntl
 
-    fcntl.flock(file_object.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    fcntl.lockf(
+        file_object.fileno(),
+        fcntl.LOCK_EX | fcntl.LOCK_NB,
+        1,
+        offset,
+        os.SEEK_SET,
+    )
 
 
-def _unlock_file(file_object: object) -> None:
+def _unlock_file(file_object: object, *, offset: int) -> None:
     """释放当前平台的文件锁。"""
 
     if os.name == "nt":
         import msvcrt
 
-        file_object.seek(0)
+        file_object.seek(offset)
         msvcrt.locking(file_object.fileno(), msvcrt.LK_UNLCK, 1)
         return
     import fcntl
 
-    fcntl.flock(file_object.fileno(), fcntl.LOCK_UN)
+    fcntl.lockf(
+        file_object.fileno(),
+        fcntl.LOCK_UN,
+        1,
+        offset,
+        os.SEEK_SET,
+    )
 
 
-__all__ = ["PathWriteCoordinator", "acquire_path_write_locks"]
+__all__ = [
+    "PathWriteCoordinator",
+    "acquire_path_write_locks",
+    "try_acquire_path_write_locks",
+]

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 import os
 from pathlib import Path, PurePosixPath, PureWindowsPath
@@ -37,6 +37,11 @@ class WorkflowSaveLocation:
     scope: SaveLocationScope
     object_key: str | None = None
     filesystem_path: Path | None = None
+    lexical_filesystem_path: Path | None = field(
+        default=None,
+        compare=False,
+        repr=False,
+    )
 
 
 @dataclass(frozen=True)
@@ -222,6 +227,7 @@ def resolve_optional_save_location(
     raw_value = os.path.expanduser(value.strip())
     native_path = Path(raw_value)
     if native_path.is_absolute():
+        lexical_path = Path(os.path.abspath(native_path))
         try:
             resolved_path = native_path.resolve(strict=False)
         except OSError as error:
@@ -233,6 +239,7 @@ def resolve_optional_save_location(
             kind=SAVE_LOCATION_FILESYSTEM,
             scope=scope,
             filesystem_path=resolved_path,
+            lexical_filesystem_path=lexical_path,
         )
 
     windows_path = PureWindowsPath(raw_value)
@@ -290,6 +297,31 @@ def resolve_required_save_location_from_request(
     return save_location
 
 
+def _resolve_local_path_write_coordination_target(
+    request: object,
+    *,
+    save_location: WorkflowSaveLocation,
+    target_name: str | None,
+) -> Path | None:
+    """解析可使用本机锁协调的最终路径；远程 ObjectStore 返回空。"""
+
+    if save_location.kind == SAVE_LOCATION_FILESYSTEM:
+        base_path = save_location.filesystem_path
+        if base_path is None:
+            raise InvalidRequestError("系统保存位置缺少有效路径")
+        return base_path / target_name if target_name is not None else base_path
+
+    from backend.nodes.runtime_support import require_dataset_storage
+
+    storage = require_dataset_storage(request)
+    resolve = getattr(storage, "resolve", None)
+    if not callable(resolve):
+        return None
+    base_key = str(save_location.object_key or "")
+    object_key = f"{base_key}/{target_name}" if target_name is not None else base_key
+    return Path(resolve(object_key))
+
+
 def save_bytes(
     request: object,
     *,
@@ -298,6 +330,7 @@ def save_bytes(
     file_name: str | None = None,
     overwrite: bool = True,
     increment_on_conflict: bool = False,
+    coordinate_path_write: bool = True,
 ) -> WorkflowSavedFile:
     """按保存位置类型原子写入文件，并返回对应引用。
 
@@ -311,6 +344,26 @@ def save_bytes(
     target_name = _normalize_target_name(
         save_location=save_location, file_name=file_name
     )
+
+    if coordinate_path_write:
+        from backend.service.application.runtime.io import acquire_path_write_locks
+
+        target_path = _resolve_local_path_write_coordination_target(
+            request,
+            save_location=save_location,
+            target_name=target_name,
+        )
+        if target_path is not None:
+            with acquire_path_write_locks(request, (target_path,)):
+                return save_bytes(
+                    request,
+                    save_location=save_location,
+                    content=content,
+                    file_name=target_name,
+                    overwrite=overwrite,
+                    increment_on_conflict=increment_on_conflict,
+                    coordinate_path_write=False,
+                )
 
     if save_location.kind == SAVE_LOCATION_OBJECT_STORE:
         from backend.nodes.runtime_support import require_dataset_storage
@@ -368,6 +421,7 @@ def save_file(
     file_name: str | None = None,
     overwrite: bool = True,
     increment_on_conflict: bool = False,
+    coordinate_path_write: bool = True,
 ) -> WorkflowSavedFile:
     """把现有文件流式复制到保存位置，并支持原子冲突自动编号。"""
 
@@ -377,6 +431,26 @@ def save_file(
     target_name = _normalize_target_name(
         save_location=save_location, file_name=file_name
     )
+
+    if coordinate_path_write:
+        from backend.service.application.runtime.io import acquire_path_write_locks
+
+        target_path = _resolve_local_path_write_coordination_target(
+            request,
+            save_location=save_location,
+            target_name=target_name,
+        )
+        if target_path is not None:
+            with acquire_path_write_locks(request, (target_path,)):
+                return save_file(
+                    request,
+                    save_location=save_location,
+                    source_path=source_path,
+                    file_name=target_name,
+                    overwrite=overwrite,
+                    increment_on_conflict=increment_on_conflict,
+                    coordinate_path_write=False,
+                )
 
     if save_location.kind == SAVE_LOCATION_OBJECT_STORE:
         from backend.nodes.runtime_support import require_dataset_storage

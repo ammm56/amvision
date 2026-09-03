@@ -2,7 +2,7 @@
 
 ## 状态
 
-本文定义规划中的 `core.io.storage-retention-cleanup` 节点。该节点尚未实现；实现、节点参数、输出字段和测试必须以本文为边界，不能在 Save 节点或 Runtime 中增加隐式清理行为。
+本文定义已经实现的 `core.io.storage-retention-cleanup` 节点。节点参数、输出字段和测试以本文为边界，不能在 Save 节点或 Runtime 中增加隐式清理行为。
 
 ## 目标
 
@@ -18,18 +18,18 @@
 
 保留期限不加入 Save Image、Save Video、Save JSON 或 Save Text。保存和删除是不同副作用：Save 节点只负责原子写入，清理节点只负责显式删除。该边界避免多个 Save 节点重复扫描同一目录，也避免普通保存操作隐藏触发删除。
 
-## 当前能力边界
+## 实现边界
 
-当前 Core Node 没有生产结果保留期限清理节点：
+实现没有复用以下边界不匹配的旧能力：
 
 - `core.io.directory-scan` 只能列举本地文件、读取修改时间并执行过滤，不负责删除。
 - `backend-maintenance cleanup-runtime-storage` 只清理平台 Runtime、Preview 和临时输入等内部数据，不能用于生产结果目录。
 - `LocalDatasetStorage.delete_tree()` 是基础设施内部的整树删除操作，不具备逐文件期限判断和并发条件删除语义，不能直接暴露为该节点实现。
-- `ObjectStore` 端口尚未定义分页列举、最后修改时间和条件删除能力。
+- `ObjectStore` 基础端口不直接扩大；独立的可选 `RetentionObjectStore` capability 提供分页流式列举、最后修改时间和版本条件删除。
 
 ## 节点定义
 
-| 项目 | 规划值 |
+| 项目 | 实现值 |
 | --- | --- |
 | Node type id | `core.io.storage-retention-cleanup` |
 | Display name | `Storage Retention Cleanup` |
@@ -118,14 +118,14 @@ Retention target:  D:\results
 
 ### 有界内存算法
 
-数量策略采用两次流式扫描，不能把全部 metadata 加载后整体排序：
+数量策略采用一次流式扫描，不能把全部 metadata 加载后整体排序：
 
-1. 第一次扫描计算匹配文件总数、时间过期数量和策略需要清理的候选数量。
-2. 本次实际选择数量为 `min(候选数量, delete_limit)`。
-3. 第二次扫描使用有界 heap 选出该数量的最旧文件。
-4. 对候选重新校验并执行条件删除。
+1. 扫描时计算匹配文件总数和时间过期数量。
+2. 非 dry-run 调用同时使用有界 max-heap 保留不超过 `delete_limit` 个稳定最旧文件。
+3. 扫描完成后计算策略候选数量，本次实际选择数量为 `min(候选数量, delete_limit)`。
+4. 从有界 heap 中取对应数量的最旧文件，重新校验并执行条件删除。
 
-内存复杂度固定为 `O(delete_limit)`，不随目录文件总数增长。`dry_run=true` 时只需完成第一次全量流式统计，不构造或保留完整候选路径列表。两个 Runtime 同时执行相同配置时必须选择同一批最旧文件；一个实例已经删除的文件由另一个实例记入 `skipped_missing_count`，不能转而多删下一批文件。
+内存复杂度固定为 `O(delete_limit)`，不随目录文件总数增长。`dry_run=true` 时只做一次全量流式统计，不构造或保留候选路径列表。一次扫描避免两遍扫描之间的目录变化导致数量策略转而选择下一批文件。
 
 ### 物理文件和执行记录
 
@@ -144,11 +144,13 @@ Retention target:  D:\results
 - `delete_empty_directories=true` 时按最深层优先删除已经为空的子目录；目标根目录和内部控制目录始终保留。
 - 单个文件已被其他实例删除时按预期并发跳过处理，不作为错误。
 - 文件被重新写入、修改或占用时不删除，计入对应 `skipped_*_count`，等待下一次外部调用重新判断。
-- 权限不足、存储损坏或未知 I/O 错误必须使节点失败，并在结构化错误详情中携带有界统计和错误样本。
+- 权限不足、存储损坏或未知 I/O 错误必须使节点失败；结构化错误详情只携带节点、目标目录和错误类型，不返回无界文件路径列表。
 
 ## 并发与原子性
 
 同一个 Workflow App 可以部署多个 Runtime 实例，因此不能依赖单进程锁或“先检查、后删除”。
+
+同一目标目录的完整扫描和删除先获取非等待清理操作锁。另一个 Runtime 已经处理该目标时，本次调用立即返回 `state=target_locked`、`target_lock_conflict=true` 和 `has_more=true`，不排队、不启动第二次扫描，也不删除下一批文件。该目标级锁只协调清理节点，不阻塞 Save 节点写入。
 
 文件系统实现需要新增 Save 与 Retention 共用的目标文件协调机制：
 
@@ -156,16 +158,16 @@ Retention target:  D:\results
 2. Retention 节点对候选文件尝试非等待锁；锁已被占用时立即跳过，不排队等待。
 3. 获得锁后重新读取文件标识、大小和最后修改时间。
 4. 只有文件仍与扫描记录一致且仍早于截止时间时才执行原子删除。
-5. 进程退出后锁由操作系统释放；锁文件位于受控 `.amvision-*` 目录并被清理扫描排除。
+5. 进程退出后 byte-range lock 由操作系统释放；进程间协调统一使用系统临时目录 `amvision-path-locks/path-locks.v1`，锁位置由规范路径的 SHA-256 派生为 63-bit 稀疏偏移。Windows 和 POSIX 都允许锁定位于 EOF 之外的字节，因此共享文件本身不随路径数量增长，也不按目标文件创建 sidecar 文件。
 
-ObjectStore 不能依赖本机路径或 `resolve()` 实现相同语义。需要新增独立的可选 capability port，而不是直接扩大现有 `ObjectStore` 基础端口：
+ObjectStore 的列举和条件删除通过独立可选 capability port 实现，而不是扩大现有 `ObjectStore` 基础端口：
 
 - 分页列举指定 prefix 下的对象。
 - 返回 object key、大小、最后修改时间和不可变版本标识。
 - 按版本标识执行条件删除。
 - 对象已经不存在或版本已变化时返回未删除，不得删除新版本。
 
-本地 `LocalDatasetStorage` 实现该 capability；未来云对象存储 adapter 使用 ETag、version id 或供应商条件删除实现。节点在当前 ObjectStore 不支持该 capability 时明确失败，不能退化为无条件 `delete_tree()`。
+本地 `LocalDatasetStorage` 实现该 capability，并通过 `resolve()` 取得与 Save 节点相同的本机路径锁。当前 v1 只启用这种本地 ObjectStore 协调方式。未来云对象存储 adapter 除了使用 ETag、version id 或供应商条件删除，还必须提供同一 prefix 的非等待分布式 operation lease；在该能力落地前节点必须明确失败，不能退化为无条件 `delete_tree()`，也不能只靠条件删除让两个 Runtime 同时各删一批。
 
 ## 输出契约
 
@@ -229,8 +231,9 @@ ObjectStore 不能依赖本机路径或 `resolve()` 实现相同语义。需要�
 - `target_not_found`：目标目录尚未创建。
 - `completed`：本次清理完成且未达到删除上限。
 - `partial`：达到 `delete_limit`，仍可能存在符合条件的文件。
+- `target_locked`：另一个 Runtime 正在清理同一目标，本次调用未等待且没有扫描或删除。
 
-默认不返回完整删除路径列表，避免结果体和 Workflow 内存随文件数量增长。失败详情只保留有界错误样本。
+默认不返回删除路径列表，避免结果体和 Workflow 内存随文件数量增长。失败详情只返回节点、目标目录和错误类型。
 
 ## Workflow 编排
 
@@ -249,17 +252,14 @@ ObjectStore 不能依赖本机路径或 `resolve()` 实现相同语义。需要�
 
 节点也可以直接加入检测 Workflow。此时每次检测调用都会执行一次完整清理检查，不存在内部间隔判断；到期文件较多时会增加该次 Workflow 耗时，必须根据现场目录规模决定是否采用。
 
-## 实现顺序
+## 实现组成
 
-1. 新增与节点无关的时间、数量和组合保留策略计算服务。
-2. 新增 ObjectStore retention capability 及分页对象 metadata 契约。
-3. 实现本机文件系统和 `LocalDatasetStorage` adapter。
-4. 增加 Save 与 Retention 共用的跨进程、非等待目标文件锁。
-5. 保证所有 Save 文件的最后修改时间代表发布完成时间。
-6. 实现两次流式扫描和 `O(delete_limit)` 的确定性最旧文件选择。
-7. 实现 `core.io.storage-retention-cleanup` 的 NodeDefinition、handler 和参数输入绑定。
-8. 更新节点目录、前端参数显示、Workflow 示例和架构说明。
-9. 使用真实保存结果和多 Runtime 并发完成验收。
+1. `backend/service/application/runtime/io/storage_retention.py` 实现与节点无关的时间、数量和组合策略、一次流式扫描及 `O(delete_limit)` 最旧文件选择。
+2. `backend/service/application/ports/object_store.py` 定义可选 `RetentionObjectStore` capability 和版本化对象 metadata。
+3. `backend/service/infrastructure/filesystem/retention_files.py` 与 `LocalDatasetStorage` 实现本机分页扫描、文件版本重校验、条件删除和空目录清理。
+4. `PathWriteCoordinator` 使用单一共享文件和 63-bit 稀疏 byte-range lock；Save 使用等待式写协调，Retention 使用非等待尝试并在冲突时跳过。
+5. `core.io.storage-retention-cleanup` 负责参数组合校验、绝对路径保护、当前 Workflow App ObjectStore 结果域约束和单一版本化结果输出。
+6. 节点由 Core Node 目录自动发现；前端沿用通用 JSON Schema 参数组件和动态参数输入端口，不增加节点专用界面逻辑。
 
 ## 验收要求
 
@@ -272,8 +272,8 @@ ObjectStore 不能依赖本机路径或 `resolve()` 实现相同语义。需要�
 - 多个 `include_patterns` 共享数量上限，不产生隐式的分类型配额。
 - 目标不存在、目录为空和没有到期文件时幂等成功。
 - 日期分层目录可以从稳定父目录递归清理，并按配置删除空子目录。
-- 两个 Runtime 实例同时清理同一目录时，不重复删除、不误删刚发布或刚覆盖的文件。
+- 两个 Runtime 实例同时清理同一目录时，一个实例执行，另一个立即返回 `target_locked`；不能重复删除或误删下一批文件。
 - 文件被占用、文件已变化和文件已经不存在时按预期跳过；权限和 I/O 错误明确失败。
 - 文件系统与 LocalDatasetStorage 的行为和输出字段一致。
-- 大目录数量策略采用两次流式扫描，额外内存保持 `O(delete_limit)`，结果体有界，执行前后 process handle 和 Private Memory 不持续增长。
+- 大目录数量策略采用一次流式扫描，额外内存保持 `O(delete_limit)`，结果体有界，执行前后 process handle 和 Private Memory 不持续增长。
 - 连续多轮清理、Runtime 重启和异常中断后不遗留无限增长的线程、句柄、锁或临时文件。
