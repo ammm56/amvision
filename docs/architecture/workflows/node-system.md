@@ -203,6 +203,8 @@ Save Image、Save Video 和 Save JSON 还统一公开 `overwrite` 参数及可�
 
 文件格式边界仍由各节点明确校验：Save Image 校验图片编码与扩展名，Save Video 校验 `.mp4`/`.avi` 与 container，Save JSON 只接受 `.json`，Save Text 不限制文本扩展名。最终实际路径通过 `saved_output.object_key` 或 `saved_output.local_path` 返回。该策略不增加 workflow 调用队列、隐藏重试或等待。
 
+生产结果按保存时间、最大文件数量或两者组合执行的清理由规划中的独立 `core.io.storage-retention-cleanup` 节点处理，不向各 Save 节点增加隐式删除配置。清理节点保持普通 Core Node 的调用语义：调用时执行一次，不创建定时线程，不提供内部检查间隔。完整参数、路径安全、跨 Runtime 并发和验收边界见 [保存结果保留清理节点](storage-retention-cleanup.md)。
+
 ## App Entry 多类型输入
 
 App Entry 是公开 binding 边界，不是新的节点执行器。当前 `request_image_ref`、`request_image_base64` 等名称只是可重命名的默认 binding id；节点连线和 Runtime 校验仍由 `image-ref.v1`、`image-base64.v1`、`value.v1` 等版本化 payload 决定。

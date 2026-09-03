@@ -23,6 +23,7 @@
 - [节点分类](node-taxonomy.md)
 - [工业视觉与集成节点](industrial-nodes.md)
 - [视频节点](video-nodes.md)
+- [保存结果保留清理节点](storage-retention-cleanup.md)
 - [YOLOE / SAM3 资产](yoloe-sam3-assets.md)
 
 节点包开发规范见 [节点扩展](../../nodes/README.md)，生产操作见 [运维](../../operations/README.md)。
