@@ -71,43 +71,43 @@
 
         <div class="form-grid">
           <label class="field">
-            <span>trigger_source_id</span>
+            <span>{{ t('triggerSources.fields.triggerSourceId') }}</span>
             <input v-model="triggerSourceId" />
           </label>
           <label class="field">
-            <span>display_name</span>
+            <span>{{ t('triggerSources.fields.displayName') }}</span>
             <input v-model="displayName" />
           </label>
           <label v-if="selectedProtocolTemplate.requiresEndpoint" class="field">
-            <span>{{ selectedProtocolTemplate.endpointLabel }}</span>
+            <span>{{ t(selectedProtocolTemplate.endpointLabelKey) }}</span>
             <input v-model="endpoint" />
           </label>
           <label v-if="isDirectoryWatch" class="field field--wide">
-            <span>directory_path</span>
+            <span>{{ t('triggerSources.fields.directoryPath') }}</span>
             <input v-model="directoryPath" placeholder="W:\\results" />
           </label>
           <label v-if="isDirectoryWatch" class="field">
-            <span>recursive</span>
+            <span>{{ t('triggerSources.fields.recursive') }}</span>
             <SelectField :model-value="directoryRecursive" :options="booleanOptions" @update:model-value="directoryRecursive = selectValueToBooleanString($event)" />
           </label>
           <label v-if="isDirectoryWatch" class="field">
-            <span>include_hidden</span>
+            <span>{{ t('triggerSources.fields.includeHidden') }}</span>
             <SelectField :model-value="directoryIncludeHidden" :options="booleanOptions" @update:model-value="directoryIncludeHidden = selectValueToBooleanString($event)" />
           </label>
           <label v-if="isDirectoryWatch" class="field">
-            <span>glob_pattern</span>
+            <span>{{ t('triggerSources.fields.globPattern') }}</span>
             <input v-model="directoryGlobPattern" placeholder="*" />
           </label>
           <label v-if="isDirectoryWatch" class="field">
-            <span>extensions</span>
+            <span>{{ t('triggerSources.fields.extensions') }}</span>
             <input v-model="directoryExtensions" placeholder=".jpg, .png, .json" />
           </label>
           <label v-if="isDirectoryWatch" class="field field--wide">
-            <span>event_types</span>
+            <span>{{ t('triggerSources.fields.eventTypes') }}</span>
             <MultiSelect :model-value="directoryEventTypes" :options="directoryEventTypeOptions" @update:model-value="directoryEventTypes = $event" />
           </label>
           <label class="field">
-            <span>result_bindings</span>
+            <span>{{ t('triggerSources.fields.resultBindings') }}</span>
             <MultiSelect
               :model-value="resultBindings"
               :options="resultBindingOptions"
@@ -137,7 +137,7 @@
               <strong>{{ resultBindingDeliverySummary || t('triggerSources.values.notFound') }}</strong>
             </div>
             <div>
-              <span>submit / ack</span>
+              <span>{{ t('triggerSources.fields.submitAndAck') }}</span>
               <strong>{{ submitMode }} / {{ ackPolicy }}</strong>
             </div>
           </div>
@@ -149,10 +149,10 @@
             <StatusBadge tone="info">{{ protocolTemplateDisplayName(selectedProtocolTemplate) }}</StatusBadge>
           </div>
           <div class="summary-grid">
-            <div><span>directory</span><strong>{{ directoryPath || '-' }}</strong></div>
-            <div><span>filter</span><strong>{{ directoryGlobPattern }} / {{ directoryExtensions || '*' }}</strong></div>
-            <div><span>event_types</span><strong>{{ directoryEventTypes.join(' / ') }}</strong></div>
-            <div><span>interval / samples</span><strong>{{ directoryMinTriggerIntervalSeconds }}s / {{ directoryEventSampleLimit }}</strong></div>
+            <div><span>{{ t('triggerSources.fields.directory') }}</span><strong>{{ directoryPath || '-' }}</strong></div>
+            <div><span>{{ t('triggerSources.fields.fileFilter') }}</span><strong>{{ directoryGlobPattern }} / {{ directoryExtensions || '*' }}</strong></div>
+            <div><span>{{ t('triggerSources.fields.eventTypes') }}</span><strong>{{ directoryEventTypes.join(' / ') }}</strong></div>
+            <div><span>{{ t('triggerSources.fields.intervalAndSamples') }}</span><strong>{{ directoryMinTriggerIntervalSeconds }}s / {{ directoryEventSampleLimit }}</strong></div>
           </div>
         </div>
 
@@ -165,47 +165,47 @@
           <div class="trigger-source-advanced__content">
             <div class="form-grid">
               <label class="field">
-                <span>submit_mode</span>
+                <span>{{ t('triggerSources.fields.submitMode') }}</span>
                 <SelectField :model-value="submitMode" :options="submitModeOptions" :disabled="selectedProtocolTemplate.triggerKind === 'local-shared-memory' || isDirectoryWatch" @update:model-value="setSubmitMode" />
               </label>
               <label class="field">
-                <span>result_mode</span>
+                <span>{{ t('triggerSources.fields.resultMode') }}</span>
                 <SelectField :model-value="resultMode" :options="resultModeOptions" :disabled="selectedProtocolTemplate.triggerKind === 'local-shared-memory' || isDirectoryWatch" @update:model-value="setResultMode" />
               </label>
               <label class="field">
-                <span>ack_policy</span>
+                <span>{{ t('triggerSources.fields.ackPolicy') }}</span>
                 <SelectField :model-value="ackPolicy" :options="ackPolicyOptions" :disabled="selectedProtocolTemplate.triggerKind === 'local-shared-memory' || isDirectoryWatch" @update:model-value="setAckPolicy" />
               </label>
               <label v-if="!isDirectoryWatch" class="field">
-                <span>reply_timeout_seconds</span>
+                <span>{{ t('triggerSources.fields.replyTimeoutSeconds') }}</span>
                 <input v-model="replyTimeoutSeconds" inputmode="numeric" :placeholder="t('triggerSources.placeholders.emptyDefault')" />
               </label>
               <label v-if="!isDirectoryWatch" class="field">
-                <span>debounce_window_ms</span>
+                <span>{{ t('triggerSources.fields.debounceWindowMs') }}</span>
                 <input v-model="debounceWindowMs" inputmode="numeric" :placeholder="t('triggerSources.placeholders.emptyDisabled')" />
               </label>
               <label v-if="isDirectoryWatch" class="field">
-                <span>min_trigger_interval_seconds</span>
+                <span>{{ t('triggerSources.fields.minTriggerIntervalSeconds') }}</span>
                 <input v-model="directoryMinTriggerIntervalSeconds" inputmode="decimal" />
               </label>
               <label v-if="isDirectoryWatch" class="field">
-                <span>event_sample_limit</span>
+                <span>{{ t('triggerSources.fields.eventSampleLimit') }}</span>
                 <input v-model="directoryEventSampleLimit" inputmode="numeric" />
               </label>
               <label v-if="isDirectoryWatch" class="field">
-                <span>force_polling</span>
+                <span>{{ t('triggerSources.fields.forcePolling') }}</span>
                 <SelectField :model-value="directoryForcePolling" :options="forcePollingOptions" @update:model-value="directoryForcePolling = selectValueToString($event)" />
               </label>
               <label v-if="isDirectoryWatch" class="field">
-                <span>poll_delay_ms</span>
+                <span>{{ t('triggerSources.fields.pollDelayMs') }}</span>
                 <input v-model="directoryPollDelayMs" inputmode="numeric" :disabled="directoryForcePolling !== 'true'" />
               </label>
               <label v-if="isDirectoryWatch" class="field">
-                <span>ignore_permission_denied</span>
+                <span>{{ t('triggerSources.fields.ignorePermissionDenied') }}</span>
                 <SelectField :model-value="directoryIgnorePermissionDenied" :options="booleanOptions" @update:model-value="directoryIgnorePermissionDenied = selectValueToBooleanString($event)" />
               </label>
               <label class="field">
-                <span>idempotency_key_path</span>
+                <span>{{ t('triggerSources.fields.idempotencyKeyPath') }}</span>
                 <input v-model="idempotencyKeyPath" placeholder="payload.request_id" />
               </label>
               <label class="field">
@@ -233,7 +233,7 @@
                   <SelectField :model-value="row.mode" :options="mappingModeOptions" @update:model-value="setMappingMode(row, $event)" />
                 </label>
                 <label v-if="row.supported && row.mode === 'source'" class="field trigger-mapping-row__source">
-                  <span>source path</span>
+                  <span>{{ t('triggerSources.fields.sourcePath') }}</span>
                   <input v-model="row.sourcePath" placeholder="payload.request_image_ref" />
                 </label>
                 <label v-else-if="row.supported && row.mode === 'static'" class="field trigger-mapping-row__source">
@@ -410,7 +410,7 @@ interface ProtocolTemplateOption {
   displayNameKey: string
   triggerKind: string
   defaultEndpoint: string
-  endpointLabel: string
+  endpointLabelKey: string
   requiresEndpoint: boolean
   submitMode: 'async' | 'sync'
   resultMode: string
@@ -432,7 +432,7 @@ const protocolTemplates: ProtocolTemplateOption[] = [
     displayNameKey: 'triggerSources.protocols.localSharedMemory',
     triggerKind: 'local-shared-memory',
     defaultEndpoint: '',
-    endpointLabel: '',
+    endpointLabelKey: 'triggerSources.fields.bindEndpoint',
     requiresEndpoint: false,
     submitMode: 'sync',
     resultMode: 'sync-reply',
@@ -450,7 +450,7 @@ const protocolTemplates: ProtocolTemplateOption[] = [
     displayNameKey: 'triggerSources.protocols.zeromqImage',
     triggerKind: 'zeromq-topic',
     defaultEndpoint: 'tcp://127.0.0.1:5555',
-    endpointLabel: 'bind_endpoint',
+    endpointLabelKey: 'triggerSources.fields.bindEndpoint',
     requiresEndpoint: true,
     submitMode: 'sync',
     resultMode: 'sync-reply',
@@ -468,7 +468,7 @@ const protocolTemplates: ProtocolTemplateOption[] = [
     displayNameKey: 'triggerSources.protocols.webhookJson',
     triggerKind: 'webhook',
     defaultEndpoint: '/workflow-triggers/{trigger_source_id}',
-    endpointLabel: 'webhook path',
+    endpointLabelKey: 'triggerSources.fields.webhookPath',
     requiresEndpoint: true,
     submitMode: 'sync',
     resultMode: 'sync-reply',
@@ -486,7 +486,7 @@ const protocolTemplates: ProtocolTemplateOption[] = [
     displayNameKey: 'triggerSources.protocols.directoryWatch',
     triggerKind: 'directory-watch',
     defaultEndpoint: '',
-    endpointLabel: '',
+    endpointLabelKey: 'triggerSources.fields.bindEndpoint',
     requiresEndpoint: false,
     submitMode: 'async',
     resultMode: 'event-only',
