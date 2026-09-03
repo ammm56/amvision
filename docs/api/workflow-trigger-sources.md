@@ -18,6 +18,8 @@ TriggerSource 绑定稳定 `workflow_runtime_id`。Runtime 通过 revision/gener
 
 schema 可以识别其他预留 kind，但未注册 adapter 的 TriggerSource 无法 enable，并会返回明确配置错误。未注册类型不能写成已支持。
 
+> `directory-watch` 当前仍按稳定文件记录和 `batch_size` 提交，并使用 checkpoint 去重；删除变化不会形成 Workflow 输入。已经确认但尚未实现的下一版设计将其收敛为默认 3 秒的有界目录变化通知和最多 10 个最近变化样本。每个到期非空窗口都沿用 TriggerSource 的统一异步提交链调用 Runtime，不查询或等待上一轮 WorkflowRun；未提交窗口不做重启恢复。目标契约、明确不实现的批次队列和逐阶段门禁见[目录变化 Trigger 实施基线](../development/directory-watch-trigger-implementation.md)。本文在实现完成前不把目标设计写成当前能力。
+
 ## 管理接口
 
 ```text
@@ -180,7 +182,7 @@ Workflow worker 内部使用 `PreparedTriggerResult`，其中 logical attachment
 
 图片在 worker cleanup 前完成规范化：当前 Run receipt 对应的 BufferRef 可零复制 handoff；foreign/incomplete BufferRef、memory handle 和 FrameRef 按规则复制。storage/local-path 根据 delivery kind 选择 LocalBuffer 物化、不可变 ObjectStore locator 复用或受管理持久化。ZeroMQ 只从 LocalBuffer reader guard、ObjectStore `open_read_snapshot()` 或 adapter 自有不可变 bytes 构建 tracked frame；普通绝对路径没有稳定 reader guard，必须先复制到受控来源。`image-refs.v1` 只按 `items` 返回，顺序先按 `result_bindings`、再按 item；`source_image` 不自动加入。
 
-TriggerSource 单在途状态保持到协议责任已经安全转移：本机共享内存保持到结果 Dispose/ACK、取消或 deadline 后的安全回收；ZeroMQ 保持到全部已提交 physical frame tracker 完成，或未完成资源已经由发送前预留的 adapter transport-lifetime registry 持续负责且 lease 进入 Broker 回收链。图执行和 handoff 完成后可以先释放 Runtime token，但不能因 socket send 失败就提前复用仍被 tracker 或 reader guard 持有的 lease。
+TriggerSource 的传输资源责任状态保持到协议责任已经安全转移：本机共享内存保持到结果 Dispose/ACK、取消或 deadline 后的安全回收；ZeroMQ 保持到全部已提交 physical frame tracker 完成，或未完成资源已经由发送前预留的 adapter transport-lifetime registry 持续负责且 lease 进入 Broker 回收链。这里约束的是一次调用的数据资源生命周期，不是禁止后续 Trigger 调用。图执行和 handoff 完成后可以先释放 Runtime token，但不能因 socket send 失败就提前复用仍被 tracker 或 reader guard 持有的 lease。
 
 幂等只重放稳定结果：JSON-only 结果可在 TTL 内重放；带临时 attachment 的重复请求不重跑 Workflow、也不重放旧引用，返回 `idempotent_attachment_result_not_replayable` 和原 `workflow_run_id`；只有 ObjectStore 持久结果可按查询链路重放。
 
