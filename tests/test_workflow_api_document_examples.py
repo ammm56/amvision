@@ -1359,16 +1359,21 @@ def test_directory_watch_trigger_source_api_examples_are_valid() -> None:
     input_binding_ids = {
         binding.binding_id
         for binding in application.bindings
-        if binding.direction == "input" and binding.required
+        if binding.direction == "input"
     }
-    assert input_binding_ids == {
-        "request_trigger_payload",
-        "request_trigger_event",
+    assert input_binding_ids == {"request_json", "deployment_request", "request_roi"}
+    assert set(preview_run_request["input_bindings"]) == {
+        "request_json",
         "deployment_request",
     }
-    assert set(preview_run_request["input_bindings"]) == input_binding_ids
-    assert set(invoke_request["input_bindings"]) == input_binding_ids
-    assert set(run_create_request["input_bindings"]) == input_binding_ids
+    assert set(invoke_request["input_bindings"]) == {
+        "request_json",
+        "deployment_request",
+    }
+    assert set(run_create_request["input_bindings"]) == {
+        "request_json",
+        "deployment_request",
+    }
     assert preview_run_request["application_ref"] == {
         "application_id": application.application_id
     }
@@ -1377,8 +1382,8 @@ def test_directory_watch_trigger_source_api_examples_are_valid() -> None:
     )
     assert preview_run_request["timeout_seconds"] == 30
     assert (
-        preview_run_request["input_bindings"]["request_trigger_payload"]["batch_id"]
-        == "directory-watch-trigger-source-09:1"
+        preview_run_request["input_bindings"]["request_json"]["value"]["format_id"]
+        == "amvision.directory-change-event.v1"
     )
     assert (
         invoke_request["execution_metadata"]["scenario"]
@@ -1387,8 +1392,10 @@ def test_directory_watch_trigger_source_api_examples_are_valid() -> None:
     assert invoke_request["execution_metadata"]["trigger_source"] == "sync-api"
     assert run_create_request["execution_metadata"]["trigger_source"] == "async-api"
     assert (
-        invoke_request["input_bindings"]["request_trigger_event"]["trigger_kind"]
-        == "directory-watch"
+        invoke_request["input_bindings"]["request_json"]["value"]["directory"][
+            "path"
+        ]
+        == "D:/cases/line-c/incoming"
     )
     assert (
         invoke_request["input_bindings"]["deployment_request"]["value"][
@@ -1414,21 +1421,16 @@ def test_directory_watch_trigger_source_api_examples_are_valid() -> None:
         == "directory-watch"
     )
     assert set(trigger_source_request["input_binding_mapping"]) == {
-        "request_trigger_payload",
-        "request_trigger_event",
+        "request_json",
         "deployment_request",
     }
     assert (
-        trigger_source_request["input_binding_mapping"]["request_trigger_payload"][
-            "source"
-        ]
-        == "payload"
+        trigger_source_request["input_binding_mapping"]["request_json"]["source"]
+        == "payload.directory_event_value"
     )
     assert (
-        trigger_source_request["input_binding_mapping"]["request_trigger_event"][
-            "source"
-        ]
-        == "event"
+        trigger_source_request["input_binding_mapping"]["request_json"]["required"]
+        is False
     )
     assert (
         trigger_source_request["input_binding_mapping"]["deployment_request"][
@@ -1442,11 +1444,25 @@ def test_directory_watch_trigger_source_api_examples_are_valid() -> None:
         ]["deployment_instance_id"]
         == "{{deploymentInstanceId}}"
     )
-    assert trigger_source_request["result_mapping"]["result_bindings"] == ["batch_record"]
-    assert trigger_source_request["result_mode"] == "accepted-then-query"
-    assert trigger_source_request["transport_config"]["force_polling"] is True
-    assert trigger_source_request["transport_config"]["min_stable_age_seconds"] == 1.0
-    assert trigger_source_request["idempotency_key_path"] == "payload.batch_id"
+    assert trigger_source_request["result_mapping"]["result_bindings"] == []
+    assert trigger_source_request["result_mode"] == "event-only"
+    assert trigger_source_request["transport_config"] == {
+        "directory_path": "D:/cases/line-c/incoming",
+        "recursive": False,
+        "include_hidden": False,
+        "glob_pattern": "*",
+        "extensions": ["png", "jpg", "jpeg"],
+        "event_types": ["created", "modified", "deleted"],
+        "min_trigger_interval_seconds": 3.0,
+        "event_sample_limit": 10,
+        "force_polling": True,
+        "poll_delay_ms": 200,
+        "ignore_permission_denied": False,
+    }
+    assert (
+        trigger_source_request["idempotency_key_path"]
+        == "payload.directory_event_value.value.event_id"
+    )
 
 
 def test_directory_poll_trigger_source_api_examples_are_valid() -> None:
@@ -1615,7 +1631,10 @@ def test_directory_watch_trigger_source_document_indexes_formal_example() -> Non
         in document_text
     )
     assert "input_binding_mapping.deployment_request.value" in document_text
-    assert 'idempotency_key_path": "payload.batch_id"' in document_text
+    assert (
+        'idempotency_key_path": "payload.directory_event_value.value.event_id"'
+        in document_text
+    )
     assert "force_polling = true" in document_text
     assert "request_roi" in document_text
     assert "11-industrial-local-directory-poll-detection-position-gate" in document_text
@@ -2126,8 +2145,7 @@ def test_workflow_api_examples_are_classified_by_numbered_directories() -> None:
             "industrial-local-directory-watch-detection-position-gate-app",
             "industrial-local-directory-watch-detection-position-gate",
             {
-                "request_trigger_payload",
-                "request_trigger_event",
+                "request_json",
                 "deployment_request",
             },
             "directory-watch-trigger-source-09",
@@ -2262,12 +2280,15 @@ def test_trigger_source_postman_collections_include_runtime_prepare_steps(
         )
     elif expected_trigger_source_input == "directory-watch":
         assert variables["deploymentInstanceId"] == "deployment-instance-1"
-        assert invoke_body["input_bindings"]["request_trigger_payload"]["batch_id"] == (
-            "directory-watch-trigger-source-09:1"
+        assert (
+            invoke_body["input_bindings"]["request_json"]["value"]["format_id"]
+            == "amvision.directory-change-event.v1"
         )
         assert (
-            invoke_body["input_bindings"]["request_trigger_event"]["trigger_kind"]
-            == "directory-watch"
+            invoke_body["input_bindings"]["request_json"]["value"]["directory"][
+                "path"
+            ]
+            == "D:/cases/line-c/incoming"
         )
         assert (
             invoke_body["input_bindings"]["deployment_request"]["value"][

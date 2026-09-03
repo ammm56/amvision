@@ -82,6 +82,30 @@
             <span>{{ selectedProtocolTemplate.endpointLabel }}</span>
             <input v-model="endpoint" />
           </label>
+          <label v-if="isDirectoryWatch" class="field field--wide">
+            <span>directory_path</span>
+            <input v-model="directoryPath" placeholder="W:\\results" />
+          </label>
+          <label v-if="isDirectoryWatch" class="field">
+            <span>recursive</span>
+            <SelectField :model-value="directoryRecursive" :options="booleanOptions" @update:model-value="directoryRecursive = selectValueToBooleanString($event)" />
+          </label>
+          <label v-if="isDirectoryWatch" class="field">
+            <span>include_hidden</span>
+            <SelectField :model-value="directoryIncludeHidden" :options="booleanOptions" @update:model-value="directoryIncludeHidden = selectValueToBooleanString($event)" />
+          </label>
+          <label v-if="isDirectoryWatch" class="field">
+            <span>glob_pattern</span>
+            <input v-model="directoryGlobPattern" placeholder="*" />
+          </label>
+          <label v-if="isDirectoryWatch" class="field">
+            <span>extensions</span>
+            <input v-model="directoryExtensions" placeholder=".jpg, .png, .json" />
+          </label>
+          <label v-if="isDirectoryWatch" class="field field--wide">
+            <span>event_types</span>
+            <MultiSelect :model-value="directoryEventTypes" :options="directoryEventTypeOptions" @update:model-value="directoryEventTypes = $event" />
+          </label>
           <label class="field">
             <span>result_bindings</span>
             <MultiSelect
@@ -92,7 +116,7 @@
           </label>
         </div>
 
-        <div class="trigger-source-inference">
+        <div v-if="!isDirectoryWatch" class="trigger-source-inference">
           <div class="section-heading">
             <div>
               <h2>{{ t('triggerSources.inferenceTitle') }}</h2>
@@ -119,6 +143,19 @@
           </div>
         </div>
 
+        <div v-else class="trigger-source-inference">
+          <div class="section-heading">
+            <div><h2>{{ t('triggerSources.directorySummaryTitle') }}</h2></div>
+            <StatusBadge tone="info">{{ protocolTemplateDisplayName(selectedProtocolTemplate) }}</StatusBadge>
+          </div>
+          <div class="summary-grid">
+            <div><span>directory</span><strong>{{ directoryPath || '-' }}</strong></div>
+            <div><span>filter</span><strong>{{ directoryGlobPattern }} / {{ directoryExtensions || '*' }}</strong></div>
+            <div><span>event_types</span><strong>{{ directoryEventTypes.join(' / ') }}</strong></div>
+            <div><span>interval / samples</span><strong>{{ directoryMinTriggerIntervalSeconds }}s / {{ directoryEventSampleLimit }}</strong></div>
+          </div>
+        </div>
+
         <details class="trigger-source-advanced">
           <summary class="section-heading trigger-source-advanced__summary">
             <strong>{{ t('triggerSources.advancedTitle') }}</strong>
@@ -129,23 +166,43 @@
             <div class="form-grid">
               <label class="field">
                 <span>submit_mode</span>
-                <SelectField :model-value="submitMode" :options="submitModeOptions" :disabled="selectedProtocolTemplate.triggerKind === 'local-shared-memory'" @update:model-value="setSubmitMode" />
+                <SelectField :model-value="submitMode" :options="submitModeOptions" :disabled="selectedProtocolTemplate.triggerKind === 'local-shared-memory' || isDirectoryWatch" @update:model-value="setSubmitMode" />
               </label>
               <label class="field">
                 <span>result_mode</span>
-                <SelectField :model-value="resultMode" :options="resultModeOptions" :disabled="selectedProtocolTemplate.triggerKind === 'local-shared-memory'" @update:model-value="setResultMode" />
+                <SelectField :model-value="resultMode" :options="resultModeOptions" :disabled="selectedProtocolTemplate.triggerKind === 'local-shared-memory' || isDirectoryWatch" @update:model-value="setResultMode" />
               </label>
               <label class="field">
                 <span>ack_policy</span>
-                <SelectField :model-value="ackPolicy" :options="ackPolicyOptions" :disabled="selectedProtocolTemplate.triggerKind === 'local-shared-memory'" @update:model-value="setAckPolicy" />
+                <SelectField :model-value="ackPolicy" :options="ackPolicyOptions" :disabled="selectedProtocolTemplate.triggerKind === 'local-shared-memory' || isDirectoryWatch" @update:model-value="setAckPolicy" />
               </label>
-              <label class="field">
+              <label v-if="!isDirectoryWatch" class="field">
                 <span>reply_timeout_seconds</span>
                 <input v-model="replyTimeoutSeconds" inputmode="numeric" :placeholder="t('triggerSources.placeholders.emptyDefault')" />
               </label>
-              <label class="field">
+              <label v-if="!isDirectoryWatch" class="field">
                 <span>debounce_window_ms</span>
                 <input v-model="debounceWindowMs" inputmode="numeric" :placeholder="t('triggerSources.placeholders.emptyDisabled')" />
+              </label>
+              <label v-if="isDirectoryWatch" class="field">
+                <span>min_trigger_interval_seconds</span>
+                <input v-model="directoryMinTriggerIntervalSeconds" inputmode="decimal" />
+              </label>
+              <label v-if="isDirectoryWatch" class="field">
+                <span>event_sample_limit</span>
+                <input v-model="directoryEventSampleLimit" inputmode="numeric" />
+              </label>
+              <label v-if="isDirectoryWatch" class="field">
+                <span>force_polling</span>
+                <SelectField :model-value="directoryForcePolling" :options="forcePollingOptions" @update:model-value="directoryForcePolling = selectValueToString($event)" />
+              </label>
+              <label v-if="isDirectoryWatch" class="field">
+                <span>poll_delay_ms</span>
+                <input v-model="directoryPollDelayMs" inputmode="numeric" :disabled="directoryForcePolling !== 'true'" />
+              </label>
+              <label v-if="isDirectoryWatch" class="field">
+                <span>ignore_permission_denied</span>
+                <SelectField :model-value="directoryIgnorePermissionDenied" :options="booleanOptions" @update:model-value="directoryIgnorePermissionDenied = selectValueToBooleanString($event)" />
               </label>
               <label class="field">
                 <span>idempotency_key_path</span>
@@ -197,6 +254,7 @@
         <div>
           <h2>{{ t('triggerSources.listTitle') }}</h2>
         </div>
+
         <StatusBadge tone="neutral">{{ totalTriggerSourceCount }}</StatusBadge>
       </div>
       <EmptyState
@@ -325,7 +383,7 @@ import {
 } from '../services/trigger-source.service'
 
 type MappingMode = 'source' | 'static' | 'skip'
-type ProtocolTemplateId = 'local-shared-memory' | 'zeromq-image-trigger' | 'webhook-json'
+type ProtocolTemplateId = 'local-shared-memory' | 'zeromq-image-trigger' | 'webhook-json' | 'directory-watch'
 type WorkflowRunRecordMode = 'full' | 'minimal' | 'none'
 type TriggerSourceAction = 'state' | 'health' | 'delete'
 type SelectValue = string | number | boolean | null
@@ -423,6 +481,24 @@ const protocolTemplates: ProtocolTemplateOption[] = [
     defaultReplyTimeoutSeconds: 30,
     defaultIdempotencyKeyPath: 'payload.idempotency_key',
   },
+  {
+    templateId: 'directory-watch',
+    displayNameKey: 'triggerSources.protocols.directoryWatch',
+    triggerKind: 'directory-watch',
+    defaultEndpoint: '',
+    endpointLabel: '',
+    requiresEndpoint: false,
+    submitMode: 'async',
+    resultMode: 'event-only',
+    ackPolicy: 'ack-after-run-created',
+    imageBase64SourcePath: '',
+    imageRefSourcePath: '',
+    fallbackImageSourcePath: '',
+    requestSourcePath: 'payload.directory_event_value',
+    defaultInputBinding: 'request_json',
+    defaultReplyTimeoutSeconds: 0,
+    defaultIdempotencyKeyPath: 'payload.directory_event_value.value.event_id',
+  },
 ]
 
 const enableAfterCreateOptions = computed<SelectOption[]>(() => [
@@ -433,12 +509,6 @@ const enableAfterCreateOptions = computed<SelectOption[]>(() => [
 const submitModeOptions = computed<SelectOption[]>(() => [
   { label: 'sync', value: 'sync', description: t('triggerSources.options.submitSync') },
   { label: 'async', value: 'async', description: t('triggerSources.options.submitAsync') },
-])
-
-const resultModeOptions = computed<SelectOption[]>(() => [
-  { label: 'sync-reply', value: 'sync-reply', description: t('triggerSources.options.resultSyncReply') },
-  { label: 'accepted-then-query', value: 'accepted-then-query', description: t('triggerSources.options.resultAccepted') },
-  { label: 'event-only', value: 'event-only', description: t('triggerSources.options.resultEventOnly') },
 ])
 
 const ackPolicyOptions = computed<SelectOption[]>(() => [
@@ -455,6 +525,23 @@ const workflowRunRecordModeOptions = computed<SelectOption[]>(() => [
 const returnDiagnosticsOptions = computed<SelectOption[]>(() => [
   { label: t('triggerSources.options.no'), value: 'false', description: t('triggerSources.options.diagnosticsOff') },
   { label: t('triggerSources.options.yes'), value: 'true', description: t('triggerSources.options.diagnosticsOn') },
+])
+
+const booleanOptions = computed<SelectOption[]>(() => [
+  { label: t('triggerSources.options.no'), value: 'false' },
+  { label: t('triggerSources.options.yes'), value: 'true' },
+])
+
+const forcePollingOptions = computed<SelectOption[]>(() => [
+  { label: t('triggerSources.options.automatic'), value: 'auto' },
+  { label: t('triggerSources.options.yes'), value: 'true' },
+  { label: t('triggerSources.options.no'), value: 'false' },
+])
+
+const directoryEventTypeOptions = computed(() => [
+  { label: t('triggerSources.options.directoryCreated'), value: 'created' },
+  { label: t('triggerSources.options.directoryModified'), value: 'modified' },
+  { label: t('triggerSources.options.directoryDeleted'), value: 'deleted' },
 ])
 
 const mappingModeOptions = computed<SelectOption[]>(() => [
@@ -488,6 +575,17 @@ const debounceWindowMs = ref('')
 const idempotencyKeyPath = ref('')
 const workflowRunRecordMode = ref<WorkflowRunRecordMode>('minimal')
 const returnDiagnostics = ref('false')
+const directoryPath = ref('')
+const directoryRecursive = ref('false')
+const directoryIncludeHidden = ref('false')
+const directoryGlobPattern = ref('*')
+const directoryExtensions = ref('')
+const directoryEventTypes = ref<string[]>(['created', 'modified', 'deleted'])
+const directoryMinTriggerIntervalSeconds = ref('3')
+const directoryEventSampleLimit = ref('10')
+const directoryForcePolling = ref('auto')
+const directoryPollDelayMs = ref('300')
+const directoryIgnorePermissionDenied = ref('false')
 const enableAfterCreate = ref('false')
 const mappingRows = ref<MappingRow[]>([])
 const busyTriggerSourceId = ref<string | null>(null)
@@ -497,6 +595,16 @@ const healthByTriggerSourceId = ref<Record<string, WorkflowTriggerSourceHealth>>
 
 const selectedProjectId = computed(() => projectStore.selectedProjectId)
 const selectedProtocolTemplate = computed(() => protocolTemplates.find((template) => template.templateId === protocolTemplateId.value) ?? protocolTemplates[0])
+const isDirectoryWatch = computed(() => selectedProtocolTemplate.value.templateId === 'directory-watch')
+const resultModeOptions = computed<SelectOption[]>(() => isDirectoryWatch.value
+  ? [
+      { label: 'event-only', value: 'event-only', description: t('triggerSources.options.resultEventOnly') },
+    ]
+  : [
+      { label: 'sync-reply', value: 'sync-reply', description: t('triggerSources.options.resultSyncReply') },
+      { label: 'accepted-then-query', value: 'accepted-then-query', description: t('triggerSources.options.resultAccepted') },
+      { label: 'event-only', value: 'event-only', description: t('triggerSources.options.resultEventOnly') },
+    ])
 const selectedRuntime = computed(() => runtimes.value.find((runtime) => runtime.workflow_runtime_id === selectedRuntimeId.value) ?? null)
 const appDetailPath = computed(() => selectedRuntime.value ? `/workflows/apps/${encodeURIComponent(selectedRuntime.value.application_id)}?runtime_id=${encodeURIComponent(selectedRuntime.value.workflow_runtime_id)}` : '/workflows/apps')
 const application = computed(() => workflowApp.value?.applicationDocument.application ?? null)
@@ -546,6 +654,7 @@ function protocolTemplateDisplayName(template: ProtocolTemplateOption): string {
 function protocolTemplateDescription(template: ProtocolTemplateOption): string {
   if (template.triggerKind === 'local-shared-memory') return t('triggerSources.protocols.localSharedMemoryDescription')
   if (template.triggerKind === 'zeromq-topic') return t('triggerSources.protocols.zeromqImageDescription')
+  if (template.triggerKind === 'directory-watch') return t('triggerSources.protocols.directoryWatchDescription')
   return t('triggerSources.protocols.webhookJsonDescription')
 }
 
@@ -570,7 +679,7 @@ async function selectRuntime(value: SelectValue): Promise<void> {
 
 function selectProtocolTemplate(value: SelectValue): void {
   const nextValue = selectValueToString(value)
-  protocolTemplateId.value = nextValue === 'webhook-json' || nextValue === 'zeromq-image-trigger'
+  protocolTemplateId.value = nextValue === 'webhook-json' || nextValue === 'zeromq-image-trigger' || nextValue === 'directory-watch'
     ? nextValue
     : 'local-shared-memory'
   applyProtocolTemplateDefaults()
@@ -585,7 +694,7 @@ function setResultBindings(value: string[]): void {
 }
 
 function setSubmitMode(value: SelectValue): void {
-  if (selectedProtocolTemplate.value.triggerKind === 'local-shared-memory') return
+  if (selectedProtocolTemplate.value.triggerKind === 'local-shared-memory' || isDirectoryWatch.value) return
   submitMode.value = selectValueToString(value) === 'async' ? 'async' : 'sync'
   resultMode.value = submitMode.value === 'sync' ? 'sync-reply' : 'accepted-then-query'
   ackPolicy.value = submitMode.value === 'sync' ? 'ack-after-run-finished' : 'ack-after-run-created'
@@ -595,11 +704,22 @@ function setSubmitMode(value: SelectValue): void {
 }
 
 function setResultMode(value: SelectValue): void {
-  resultMode.value = selectValueToString(value) || 'sync-reply'
+  const nextValue = selectValueToString(value)
+  if (isDirectoryWatch.value) {
+    resultMode.value = 'event-only'
+    resultBindings.value = []
+    return
+  }
+  resultMode.value = nextValue || 'sync-reply'
 }
 
 function setAckPolicy(value: SelectValue): void {
+  if (isDirectoryWatch.value) return
   ackPolicy.value = selectValueToString(value) || 'ack-after-run-finished'
+}
+
+function selectValueToBooleanString(value: SelectValue): string {
+  return selectValueToString(value) === 'true' ? 'true' : 'false'
 }
 
 function setWorkflowRunRecordMode(value: SelectValue): void {
@@ -733,6 +853,9 @@ function findDefaultResultBindings(): string[] {
 }
 
 function defaultSourcePath(binding: FlowApplicationBinding): string {
+  if (isDirectoryWatch.value && binding.binding_id === 'request_json' && getBindingPayloadTypeId(binding) === 'value.v1') {
+    return 'payload.directory_event_value'
+  }
   if (isImageBase64Binding(binding)) return selectedProtocolTemplate.value.imageBase64SourcePath
   if (isImageRefBinding(binding)) return selectedProtocolTemplate.value.imageRefSourcePath
   if (inferredImageBindings.value.some((item) => item.binding_id === binding.binding_id)) return selectedProtocolTemplate.value.fallbackImageSourcePath
@@ -805,11 +928,14 @@ function buildMappingRows(): void {
     )
     const standardHighPerformanceInput = usesImageRefTransport(selectedProtocolTemplate.value)
       && ['request_image_ref', 'request_json', 'request_text'].includes(binding.binding_id)
+    const standardDirectoryInput = isDirectoryWatch.value
+      && binding.binding_id === 'request_json'
+      && payloadTypeId === 'value.v1'
     return {
       bindingId: binding.binding_id,
       payloadTypeId,
       required: binding.required,
-      mode: supported && (inferred || standardHighPerformanceInput || binding.required) ? 'source' : 'skip',
+      mode: supported && (standardDirectoryInput || (!isDirectoryWatch.value && (inferred || standardHighPerformanceInput || binding.required))) ? 'source' : 'skip',
       sourcePath: defaultSourcePath(binding),
       staticValue: '',
       inferred,
@@ -827,16 +953,36 @@ function applyProtocolTemplateDefaults(): void {
   const runtimeSuffix = sanitizeIdentifier(runtime?.workflow_runtime_id || runtime?.application_id || 'runtime')
   const templatePrefix = template.templateId === 'webhook-json'
     ? 'webhook'
-    : template.templateId === 'zeromq-image-trigger' ? 'zeromq' : 'local-shared-memory'
-  triggerSourceId.value = `${templatePrefix}-${runtimeSuffix}`
+    : template.templateId === 'zeromq-image-trigger'
+      ? 'zeromq'
+      : template.templateId === 'directory-watch' ? 'directory-watch' : 'local-shared-memory'
+  triggerSourceId.value = template.templateId === 'directory-watch'
+    ? `${templatePrefix}-${runtimeSuffix}-${createShortUuid()}`
+    : `${templatePrefix}-${runtimeSuffix}`
   displayName.value = `${protocolTemplateDisplayName(template)} ${runtime?.display_name || runtime?.application_id || ''}`.trim()
   endpoint.value = buildDefaultEndpoint(template)
   resultBindings.value = findDefaultResultBindings()
-  replyTimeoutSeconds.value = String(template.defaultReplyTimeoutSeconds)
+  replyTimeoutSeconds.value = template.defaultReplyTimeoutSeconds > 0 ? String(template.defaultReplyTimeoutSeconds) : ''
+  debounceWindowMs.value = ''
   idempotencyKeyPath.value = template.defaultIdempotencyKeyPath
   workflowRunRecordMode.value = 'minimal'
   returnDiagnostics.value = 'false'
+  directoryPath.value = ''
+  directoryRecursive.value = 'false'
+  directoryIncludeHidden.value = 'false'
+  directoryGlobPattern.value = '*'
+  directoryExtensions.value = ''
+  directoryEventTypes.value = ['created', 'modified', 'deleted']
+  directoryMinTriggerIntervalSeconds.value = '3'
+  directoryEventSampleLimit.value = '10'
+  directoryForcePolling.value = 'auto'
+  directoryPollDelayMs.value = '300'
+  directoryIgnorePermissionDenied.value = 'false'
   buildMappingRows()
+}
+
+function createShortUuid(): string {
+  return crypto.randomUUID().replaceAll('-', '').slice(0, 8)
 }
 
 async function loadSelectedRuntimeApp(): Promise<void> {
@@ -904,6 +1050,24 @@ async function loadPage(options: { triggerSourceOffset?: number; resetTriggerSou
 
 function buildTransportConfig(): WorkflowJsonObject {
   const normalizedEndpoint = endpoint.value.trim().replace('{trigger_source_id}', triggerSourceId.value.trim())
+  if (isDirectoryWatch.value) {
+    const forcePolling = directoryForcePolling.value === 'auto'
+      ? null
+      : directoryForcePolling.value === 'true'
+    return {
+      directory_path: directoryPath.value.trim(),
+      recursive: directoryRecursive.value === 'true',
+      include_hidden: directoryIncludeHidden.value === 'true',
+      glob_pattern: directoryGlobPattern.value.trim(),
+      extensions: parseDirectoryExtensions(directoryExtensions.value),
+      event_types: [...directoryEventTypes.value],
+      min_trigger_interval_seconds: Number(directoryMinTriggerIntervalSeconds.value),
+      event_sample_limit: Number(directoryEventSampleLimit.value),
+      force_polling: forcePolling,
+      poll_delay_ms: Number(directoryPollDelayMs.value),
+      ignore_permission_denied: directoryIgnorePermissionDenied.value === 'true',
+    }
+  }
   if (selectedProtocolTemplate.value.triggerKind === 'local-shared-memory') {
     return {
       default_input_binding: selectedProtocolTemplate.value.defaultInputBinding,
@@ -928,12 +1092,14 @@ function buildDefaultExecutionMetadata(): WorkflowJsonObject {
     retain_trace_enabled: false,
     retain_node_records_enabled: false,
   }
-  if (selectedProtocolTemplate.value.triggerKind === 'webhook') return metadata
-  return {
-    ...metadata,
-    retain_input_payload_enabled: false,
-    retain_outputs_enabled: false,
+  if (selectedProtocolTemplate.value.triggerKind === 'local-shared-memory' || selectedProtocolTemplate.value.triggerKind === 'zeromq-topic') {
+    return {
+      ...metadata,
+      retain_input_payload_enabled: false,
+      retain_outputs_enabled: false,
+    }
   }
+  return metadata
 }
 
 function buildMatchRule(): WorkflowJsonObject {
@@ -1047,6 +1213,7 @@ async function submitTriggerSource(): Promise<void> {
   try {
     const normalizedTriggerSourceId = triggerSourceId.value.trim()
     if (!normalizedTriggerSourceId) throw new Error(t('triggerSources.messages.idRequired'))
+    if (isDirectoryWatch.value) validateDirectoryWatchForm()
     if (submitMode.value === 'async' && workflowRunRecordMode.value === 'none') {
       throw new Error(t('triggerSources.messages.asyncRecordNone'))
     }
@@ -1068,7 +1235,7 @@ async function submitTriggerSource(): Promise<void> {
       ackPolicy: ackPolicy.value,
       resultMode: resultMode.value,
       replyTimeoutSeconds: parseOptionalNumber(replyTimeoutSeconds.value),
-      debounceWindowMs: parseOptionalNumber(debounceWindowMs.value),
+      debounceWindowMs: isDirectoryWatch.value ? null : parseOptionalNumber(debounceWindowMs.value),
       idempotencyKeyPath: idempotencyKeyPath.value.trim() || null,
       metadata: {
         source: 'web-ui-trigger-source-wizard',
@@ -1077,7 +1244,9 @@ async function submitTriggerSource(): Promise<void> {
         default_input_binding: selectedProtocolTemplate.value.defaultInputBinding,
         image_transport: selectedProtocolTemplate.value.triggerKind === 'local-shared-memory'
           ? 'local-buffer-arena'
-          : selectedProtocolTemplate.value.triggerKind === 'zeromq-topic' ? 'zeromq-multipart' : 'json',
+          : selectedProtocolTemplate.value.triggerKind === 'zeromq-topic'
+            ? 'zeromq-multipart'
+            : isDirectoryWatch.value ? 'none' : 'json',
         inferred_image_binding: inferredImageBinding.value?.binding_id ?? null,
         inferred_image_bindings: inferredImageBindings.value.map((binding) => binding.binding_id),
         inferred_request_binding: inferredRequestBinding.value?.binding_id ?? null,
@@ -1112,6 +1281,28 @@ async function setTriggerSourceEnabled(source: WorkflowTriggerSource, enabled: b
     busyTriggerSourceId.value = null
     busyTriggerSourceAction.value = null
   }
+}
+
+function validateDirectoryWatchForm(): void {
+  const interval = Number(directoryMinTriggerIntervalSeconds.value)
+  const sampleLimit = Number(directoryEventSampleLimit.value)
+  const pollDelay = Number(directoryPollDelayMs.value)
+  if (!directoryPath.value.trim()) throw new Error(t('triggerSources.messages.directoryPathRequired'))
+  if (!directoryGlobPattern.value.trim()) throw new Error(t('triggerSources.messages.directoryGlobRequired'))
+  if (directoryEventTypes.value.length === 0) throw new Error(t('triggerSources.messages.directoryEventTypeRequired'))
+  if (!Number.isFinite(interval) || interval < 1 || interval > 3600) {
+    throw new Error(t('triggerSources.messages.directoryIntervalInvalid'))
+  }
+  if (!Number.isInteger(sampleLimit) || sampleLimit < 0 || sampleLimit > 100) {
+    throw new Error(t('triggerSources.messages.directorySampleLimitInvalid'))
+  }
+  if (!Number.isInteger(pollDelay) || pollDelay < 50 || pollDelay > 60000) {
+    throw new Error(t('triggerSources.messages.directoryPollDelayInvalid'))
+  }
+}
+
+function parseDirectoryExtensions(value: string): string[] {
+  return [...new Set(value.split(',').map((item) => item.trim()).filter(Boolean))]
 }
 
 async function refreshTriggerSourceHealth(source: WorkflowTriggerSource): Promise<void> {

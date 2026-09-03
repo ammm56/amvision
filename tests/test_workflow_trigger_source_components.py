@@ -1570,25 +1570,27 @@ def test_directory_poll_trigger_adapter_rejects_sync_submit_mode(
     assert error_info.value.details["submit_mode"] == "sync"
 
 
-def test_directory_watch_trigger_adapter_watches_new_files_and_writes_checkpoint(
+def test_directory_watch_trigger_adapter_submits_bounded_change_event(
     tmp_path: Path,
 ) -> None:
-    """验证 directory-watch adapter 会监听新文件、提交事件并落 checkpoint。"""
+    """验证 directory-watch adapter 会按固定窗口提交有界变化事件。"""
 
     incoming_dir = tmp_path / "incoming"
     incoming_dir.mkdir()
 
     trigger_source = _build_trigger_source(
         trigger_kind="directory-watch",
-        input_binding_mapping={"request_batch": {"source": "payload.files"}},
+        input_binding_mapping={
+            "request_json": {
+                "source": "payload.directory_event_value",
+                "required": False,
+            }
+        },
         transport_config={
             "directory_path": str(incoming_dir),
-            "batch_size": 2,
-            "min_stable_age_seconds": 0.0,
             "extensions": ["png"],
-            "force_polling": True,
-            "poll_delay_ms": 20,
-            "watch_timeout_ms": 100,
+            "min_trigger_interval_seconds": 1.0,
+            "event_sample_limit": 10,
         },
     )
     adapter = DirectoryWatchTriggerAdapter(
@@ -1616,18 +1618,20 @@ def test_directory_watch_trigger_adapter_watches_new_files_and_writes_checkpoint
 
     assert submitter.last_request is not None
     payload = submitter.last_request.trigger_event.payload
-    assert payload["file_count"] == 1
-    assert payload["files"][0]["file_name"] == "sample-a.png"
-    assert payload["primary_file_path"] == str(first_file.resolve())
+    event_value = payload["directory_event_value"]["value"]
+    assert event_value["format_id"] == "amvision.directory-change-event.v1"
+    assert event_value["change_counts"]["created"] >= 1
+    assert event_value["samples"][0]["path"] == str(first_file.resolve())
     assert health["running"] is True
     assert health["submitted_count"] == 1
-    assert Path(health["checkpoint_path"]).is_file()
+    assert health["window_sample_count"] <= 10
+    assert "checkpoint_path" not in health
 
 
-def test_directory_watch_trigger_adapter_uses_checkpoint_to_avoid_reprocessing(
+def test_directory_watch_trigger_adapter_restart_waits_for_new_change(
     tmp_path: Path,
 ) -> None:
-    """验证 directory-watch adapter 重启后不会重复处理同一路径文件。"""
+    """验证重启不扫描旧文件，但后续真实修改仍会触发。"""
 
     incoming_dir = tmp_path / "incoming"
     incoming_dir.mkdir()
@@ -1635,15 +1639,17 @@ def test_directory_watch_trigger_adapter_uses_checkpoint_to_avoid_reprocessing(
 
     trigger_source = _build_trigger_source(
         trigger_kind="directory-watch",
-        input_binding_mapping={"request_batch": {"source": "payload.files"}},
+        input_binding_mapping={
+            "request_json": {
+                "source": "payload.directory_event_value",
+                "required": False,
+            }
+        },
         transport_config={
             "directory_path": str(incoming_dir),
-            "batch_size": 1,
-            "min_stable_age_seconds": 0.0,
             "extensions": ["png"],
-            "force_polling": True,
-            "poll_delay_ms": 20,
-            "watch_timeout_ms": 100,
+            "min_trigger_interval_seconds": 1.0,
+            "event_sample_limit": 10,
         },
     )
     first_adapter = DirectoryWatchTriggerAdapter(
@@ -1683,17 +1689,20 @@ def test_directory_watch_trigger_adapter_uses_checkpoint_to_avoid_reprocessing(
     second_adapter.start(trigger_source=trigger_source, event_handler=second_supervisor)
     try:
         _wait_for_directory_watch_adapter_running(second_adapter, "trigger-source-1")
-        time.sleep(0.1)
+        time.sleep(0.2)
+        assert second_submitter.last_request is None
         first_file.write_bytes(b"image-a-updated")
-        time.sleep(0.4)
+        deadline = time.monotonic() + 2.5
+        while time.monotonic() < deadline and second_submitter.last_request is None:
+            time.sleep(0.01)
         health = second_adapter.get_health(trigger_source_id="trigger-source-1")
     finally:
         second_adapter.stop(trigger_source_id="trigger-source-1")
 
-    assert second_submitter.last_request is None
-    assert health["known_identity_count"] == 1
-    assert health["pending_path_count"] == 0
-    assert health["submitted_count"] == 0
+    assert second_submitter.last_request is not None
+    assert health["submitted_count"] == 1
+    assert "known_identity_count" not in health
+    assert "pending_path_count" not in health
 
 
 def test_directory_watch_trigger_adapter_rejects_sync_submit_mode(

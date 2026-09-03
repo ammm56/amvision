@@ -4,11 +4,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+import os
 from pathlib import Path
 from pathlib import PurePosixPath
 from typing import Literal
 
-from backend.contracts.workflows import build_workflow_trigger_source_storage_dir
+from pydantic import ValidationError
+
+from backend.contracts.workflows import (
+    DirectoryWatchTransportConfigContract,
+    build_workflow_trigger_source_storage_dir,
+)
 from backend.service.application.errors import InvalidRequestError
 from backend.service.domain.workflows.workflow_trigger_source_records import (
     WorkflowTriggerSource,
@@ -42,10 +48,14 @@ class DirectoryPollTriggerConfig:
 class DirectoryWatchTriggerConfig:
     """描述 directory-watch TriggerSource 的最终运行配置。"""
 
-    scan_config: DirectoryPollTriggerConfig
-    watch_debounce_ms: int
-    watch_step_ms: int
-    watch_timeout_ms: int
+    directory_path: Path
+    recursive: bool
+    include_hidden: bool
+    glob_pattern: str
+    extensions: tuple[str, ...]
+    event_types: tuple[str, ...]
+    min_trigger_interval_seconds: float
+    event_sample_limit: int
     force_polling: bool | None
     poll_delay_ms: int
     ignore_permission_denied: bool
@@ -124,60 +134,42 @@ def parse_directory_watch_trigger_config(
 ) -> DirectoryWatchTriggerConfig:
     """把 TriggerSource 配置解析为目录监听运行配置。"""
 
-    transport_config = dict(trigger_source.transport_config)
-    base_scan_config = parse_directory_poll_trigger_config(
-        trigger_source=trigger_source,
-        dataset_storage_root_dir=dataset_storage_root_dir,
-    )
-    scan_config = DirectoryPollTriggerConfig(
-        directory_path=base_scan_config.directory_path,
-        recursive=base_scan_config.recursive,
-        include_hidden=base_scan_config.include_hidden,
-        glob_pattern=base_scan_config.glob_pattern,
-        extensions=base_scan_config.extensions,
-        sort_by=base_scan_config.sort_by,
-        descending=base_scan_config.descending,
-        dedupe_by=base_scan_config.dedupe_by,
-        batch_size=base_scan_config.batch_size,
-        scan_interval_seconds=base_scan_config.scan_interval_seconds,
-        min_stable_age_seconds=base_scan_config.min_stable_age_seconds,
-        checkpoint_path=build_directory_watch_checkpoint_path(
-            dataset_storage_root_dir=dataset_storage_root_dir,
-            trigger_source_id=trigger_source.trigger_source_id,
-        ),
-        persist_checkpoint=base_scan_config.persist_checkpoint,
-    )
+    _ = dataset_storage_root_dir
+    try:
+        contract = DirectoryWatchTransportConfigContract.model_validate(
+            trigger_source.transport_config
+        )
+    except ValidationError as error:
+        raise InvalidRequestError(
+            "directory-watch transport_config 格式无效",
+            details={"errors": error.errors(include_url=False)},
+        ) from error
+    directory_path = Path(contract.directory_path).resolve()
+    if not directory_path.is_dir():
+        raise InvalidRequestError(
+            "transport_config.directory_path 指向的目录不存在",
+            details={"directory_path": str(directory_path)},
+        )
+    try:
+        directory_stream = os.scandir(directory_path)
+        directory_stream.close()
+    except OSError as error:
+        raise InvalidRequestError(
+            "transport_config.directory_path 不可读取",
+            details={"directory_path": str(directory_path), "error": str(error)},
+        ) from error
     return DirectoryWatchTriggerConfig(
-        scan_config=scan_config,
-        watch_debounce_ms=_read_positive_int(
-            transport_config.get("watch_debounce_ms"),
-            "transport_config.watch_debounce_ms",
-            default_value=200,
-        ),
-        watch_step_ms=_read_positive_int(
-            transport_config.get("watch_step_ms"),
-            "transport_config.watch_step_ms",
-            default_value=50,
-        ),
-        watch_timeout_ms=_read_positive_int(
-            transport_config.get("watch_timeout_ms"),
-            "transport_config.watch_timeout_ms",
-            default_value=500,
-        ),
-        force_polling=_read_optional_bool(
-            transport_config.get("force_polling"),
-            "transport_config.force_polling",
-        ),
-        poll_delay_ms=_read_positive_int(
-            transport_config.get("poll_delay_ms"),
-            "transport_config.poll_delay_ms",
-            default_value=300,
-        ),
-        ignore_permission_denied=_read_bool(
-            transport_config.get("ignore_permission_denied"),
-            "transport_config.ignore_permission_denied",
-            default_value=True,
-        ),
+        directory_path=directory_path,
+        recursive=contract.recursive,
+        include_hidden=contract.include_hidden,
+        glob_pattern=contract.glob_pattern,
+        extensions=contract.extensions,
+        event_types=contract.event_types,
+        min_trigger_interval_seconds=contract.min_trigger_interval_seconds,
+        event_sample_limit=contract.event_sample_limit,
+        force_polling=contract.force_polling,
+        poll_delay_ms=contract.poll_delay_ms,
+        ignore_permission_denied=contract.ignore_permission_denied,
     )
 
 
@@ -266,19 +258,6 @@ def build_checkpoint_path(
     )
 
 
-def build_directory_watch_checkpoint_path(
-    dataset_storage_root_dir: Path,
-    trigger_source_id: str,
-) -> Path:
-    """构造 directory-watch 默认 checkpoint 文件路径。"""
-
-    return _build_default_checkpoint_path(
-        dataset_storage_root_dir=dataset_storage_root_dir,
-        trigger_source_id=trigger_source_id,
-        checkpoint_file_name="directory-watch-checkpoint.json",
-    )
-
-
 def matches_directory_candidate_path(
     file_path: Path,
     *,
@@ -287,13 +266,23 @@ def matches_directory_candidate_path(
     include_hidden: bool,
     glob_pattern: str,
     extensions: tuple[str, ...],
+    resolve_existing_path: bool = True,
 ) -> bool:
     """判断一个路径是否满足目录触发配置的静态筛选条件。"""
 
     try:
-        normalized_path = file_path.resolve()
-        relative_path = normalized_path.relative_to(directory_path)
-    except ValueError:
+        normalized_path = (
+            file_path.resolve()
+            if resolve_existing_path
+            else Path(os.path.abspath(file_path))
+        )
+        normalized_root = directory_path.resolve()
+        normalized_path_text = os.path.normcase(str(normalized_path))
+        normalized_root_text = os.path.normcase(str(normalized_root))
+        if os.path.commonpath((normalized_root_text, normalized_path_text)) != normalized_root_text:
+            return False
+        relative_path = Path(os.path.relpath(normalized_path, normalized_root))
+    except (OSError, ValueError):
         return False
     if not recursive and len(relative_path.parts) > 1:
         return False
@@ -301,7 +290,12 @@ def matches_directory_candidate_path(
         return False
     if extensions and normalized_path.suffix.lower() not in extensions:
         return False
-    return PurePosixPath(relative_path.as_posix()).match(glob_pattern)
+    relative_text = relative_path.as_posix()
+    normalized_pattern = glob_pattern
+    if os.name == "nt":
+        relative_text = relative_text.lower()
+        normalized_pattern = normalized_pattern.lower()
+    return PurePosixPath(relative_text).match(normalized_pattern)
 
 
 def _build_default_checkpoint_path(

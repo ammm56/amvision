@@ -768,6 +768,23 @@ def test_workflow_trigger_source_api_controls_directory_watch_adapter(
     try:
         with context.client:
             _save_runtime(context.session_factory, observed_state="running")
+            invalid_delivery_response = context.client.post(
+                "/api/v1/workflows/trigger-sources",
+                headers=headers,
+                json={
+                    "trigger_source_id": "directory-watch-trigger-invalid-delivery",
+                    "project_id": "project-1",
+                    "display_name": "Directory Watch Invalid Delivery",
+                    "trigger_kind": "directory-watch",
+                    "workflow_runtime_id": "workflow-runtime-1",
+                    "submit_mode": "async",
+                    "ack_policy": "ack-after-run-created",
+                    "result_mode": "accepted-then-query",
+                    "transport_config": {
+                        "directory_path": str(incoming_dir),
+                    },
+                },
+            )
             create_response = context.client.post(
                 "/api/v1/workflows/trigger-sources",
                 headers=headers,
@@ -778,21 +795,16 @@ def test_workflow_trigger_source_api_controls_directory_watch_adapter(
                     "trigger_kind": "directory-watch",
                     "workflow_runtime_id": "workflow-runtime-1",
                     "submit_mode": "async",
+                    "ack_policy": "ack-after-run-created",
+                    "result_mode": "event-only",
                     "transport_config": {
                         "directory_path": str(incoming_dir),
-                        "batch_size": 1,
-                        "min_stable_age_seconds": 0.0,
                         "extensions": ["png"],
-                        "force_polling": True,
-                        "poll_delay_ms": 20,
-                        "watch_timeout_ms": 100,
+                        "min_trigger_interval_seconds": 1.0,
+                        "event_sample_limit": 10,
                     },
-                    "input_binding_mapping": {
-                        "request_batch": {"source": "payload.files_value"},
-                    },
-                    "result_mapping": {
-                        "result_bindings": ["workflow_result"],
-                    },
+                    "input_binding_mapping": {},
+                    "result_mapping": {"result_bindings": []},
                 },
             )
             enable_response = context.client.post(
@@ -810,6 +822,11 @@ def test_workflow_trigger_source_api_controls_directory_watch_adapter(
     finally:
         context.session_factory.engine.dispose()
 
+    assert invalid_delivery_response.status_code == 400
+    assert (
+        invalid_delivery_response.json()["error"]["message"]
+        == "directory-watch 必须使用 event-only result_mode"
+    )
     assert create_response.status_code == 201
 
     assert enable_response.status_code == 200

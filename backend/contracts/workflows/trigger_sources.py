@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+import math
+import os
+from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -23,6 +27,8 @@ from backend.contracts.workflows.resource_semantics import (
 WORKFLOW_TRIGGER_SOURCE_FORMAT = "amvision.workflow-trigger-source.v1"
 WORKFLOW_TRIGGER_EVENT_FORMAT = "amvision.workflow-trigger-event.v1"
 WORKFLOW_TRIGGER_RESULT_FORMAT = "amvision.workflow-trigger-result.v1"
+DIRECTORY_CHANGE_EVENT_FORMAT = "amvision.directory-change-event.v1"
+DIRECTORY_CHANGE_EVENT_TYPES = ("created", "modified", "deleted")
 
 # 高性能 Trigger 只传递结构化小参数和 LocalBuffer 图片引用。文件、文件列表与
 # Base64 图片由 HTTP Runtime 负责，避免在常驻 Trigger 数据面引入隐式暂存和复制。
@@ -65,6 +71,251 @@ def _require_stripped_text(value: str, field_name: str) -> str:
     if not normalized_value:
         raise ValueError(f"{field_name} 不能为空")
     return normalized_value
+
+
+class DirectoryWatchTransportConfigContract(BaseModel):
+    """描述 directory-watch TriggerSource 的公开 transport 配置。"""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    directory_path: str
+    recursive: bool = False
+    include_hidden: bool = False
+    glob_pattern: str = "*"
+    extensions: tuple[str, ...] = ()
+    event_types: tuple[Literal["created", "modified", "deleted"], ...] = (
+        "created",
+        "modified",
+        "deleted",
+    )
+    min_trigger_interval_seconds: float = Field(default=3.0, ge=1.0, le=3600.0)
+    event_sample_limit: int = Field(default=10, ge=0, le=100)
+    force_polling: bool | None = None
+    poll_delay_ms: int = Field(default=300, ge=50, le=60000)
+    ignore_permission_denied: bool = False
+
+    @field_validator("directory_path", mode="before")
+    @classmethod
+    def normalize_directory_path(cls, value: object) -> object:
+        """规范化并校验 backend-service 本机绝对目录路径。"""
+
+        if not isinstance(value, str):
+            return value
+        normalized = value.strip()
+        if not normalized or len(normalized) > 4096 or "\x00" in normalized:
+            raise ValueError("directory_path 必须是长度 1 至 4096 的非空路径")
+        if normalized.startswith("~") or not Path(normalized).is_absolute():
+            raise ValueError("directory_path 必须是 backend-service 本机绝对路径")
+        return str(Path(normalized).absolute())
+
+    @field_validator("glob_pattern", mode="before")
+    @classmethod
+    def normalize_glob_pattern(cls, value: object) -> object:
+        """规范化相对 Glob 表达式。"""
+
+        if not isinstance(value, str):
+            return value
+        normalized = value.strip()
+        if not normalized or len(normalized) > 256 or "\x00" in normalized:
+            raise ValueError("glob_pattern 必须是长度 1 至 256 的非空字符串")
+        slash_value = normalized.replace("\\", "/")
+        if (
+            Path(normalized).is_absolute()
+            or slash_value.startswith("/")
+            or any(part == ".." for part in slash_value.split("/"))
+        ):
+            raise ValueError("glob_pattern 必须是监控根目录内的相对模式")
+        return slash_value
+
+    @field_validator("extensions", mode="before")
+    @classmethod
+    def normalize_extensions(cls, value: object) -> object:
+        """规范化扩展名过滤列表。"""
+
+        if value is None:
+            return ()
+        if not isinstance(value, list | tuple):
+            return value
+        if len(value) > 32:
+            raise ValueError("extensions 最多允许 32 项")
+        normalized_values: set[str] = set()
+        for item in value:
+            if not isinstance(item, str) or not item.strip():
+                raise ValueError("extensions 必须全部是非空字符串")
+            normalized = item.strip().lower()
+            if not normalized.startswith("."):
+                normalized = f".{normalized}"
+            if (
+                not 2 <= len(normalized) <= 32
+                or normalized.count(".") != 1
+                or any(
+                    character in normalized
+                    for character in ("/", "\\", "\x00", "*", "?")
+                )
+            ):
+                raise ValueError("extension 必须是长度 2 至 32 且只有一个前导点的文件扩展名")
+            normalized_values.add(normalized)
+        return tuple(sorted(normalized_values))
+
+    @field_validator("event_types", mode="before")
+    @classmethod
+    def normalize_event_types(cls, value: object) -> object:
+        """按固定顺序规范化目录变化类型。"""
+
+        if not isinstance(value, list | tuple | set | frozenset):
+            return value
+        raw_values = list(value)
+        if not raw_values:
+            raise ValueError("event_types 至少选择一项")
+        if any(not isinstance(item, str) for item in raw_values):
+            return value
+        unknown_values = set(raw_values) - set(DIRECTORY_CHANGE_EVENT_TYPES)
+        if unknown_values:
+            raise ValueError("event_types 只支持 created、modified、deleted")
+        return tuple(
+            item for item in DIRECTORY_CHANGE_EVENT_TYPES if item in raw_values
+        )
+
+    @field_validator("min_trigger_interval_seconds")
+    @classmethod
+    def validate_finite_interval(cls, value: float) -> float:
+        """拒绝 NaN 和 Infinity。"""
+
+        if not math.isfinite(value):
+            raise ValueError("min_trigger_interval_seconds 必须是有限数值")
+        return value
+
+    @field_validator("min_trigger_interval_seconds", mode="before")
+    @classmethod
+    def reject_non_numeric_interval(cls, value: object) -> object:
+        """拒绝 bool、字符串和其他隐式数值转换。"""
+
+        if isinstance(value, bool) or not isinstance(value, int | float):
+            raise ValueError("min_trigger_interval_seconds 必须是数值")
+        return value
+
+    @field_validator("event_sample_limit", "poll_delay_ms", mode="before")
+    @classmethod
+    def reject_non_integer_fields(cls, value: object) -> object:
+        """拒绝 bool、字符串和浮点数隐式转换为整数。"""
+
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValueError("event_sample_limit 和 poll_delay_ms 必须是整数")
+        return value
+
+    @model_validator(mode="after")
+    def validate_contract(self) -> DirectoryWatchTransportConfigContract:
+        """校验跨字段目录监听规则。"""
+
+        if not self.recursive and "**" in self.glob_pattern:
+            raise ValueError("recursive=false 时 glob_pattern 不能包含 **")
+        return self
+
+
+class DirectoryChangeSampleContract(BaseModel):
+    """描述目录变化事件中的一条有界诊断样本。"""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    observed_change_types: tuple[Literal["created", "modified", "deleted"], ...]
+    path: str
+    relative_path: str
+    observed_at: str
+    observed_sequence: int = Field(ge=1)
+
+    @model_validator(mode="after")
+    def validate_contract(self) -> DirectoryChangeSampleContract:
+        """校验样本路径、时间和变化类型。"""
+
+        _require_stripped_text(self.path, "path")
+        _require_stripped_text(self.relative_path, "relative_path")
+        _require_timezone_timestamp(self.observed_at, "observed_at")
+        if not self.observed_change_types:
+            raise ValueError("observed_change_types 不能为空")
+        expected = tuple(
+            item for item in DIRECTORY_CHANGE_EVENT_TYPES if item in self.observed_change_types
+        )
+        if expected != self.observed_change_types or len(expected) != len(set(expected)):
+            raise ValueError("observed_change_types 必须去重并按固定顺序排列")
+        return self
+
+
+class DirectoryChangeCountsContract(BaseModel):
+    """描述目录变化事件的观察计数。"""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    created: int = Field(ge=0)
+    modified: int = Field(ge=0)
+    deleted: int = Field(ge=0)
+    total: int = Field(ge=1)
+
+    @model_validator(mode="after")
+    def validate_contract(self) -> DirectoryChangeCountsContract:
+        """确保总数等于三类变化计数之和。"""
+
+        if self.total != self.created + self.modified + self.deleted:
+            raise ValueError("change_counts.total 必须等于三类变化计数之和")
+        return self
+
+
+class DirectoryChangeSourceContract(BaseModel):
+    """描述产生目录变化事件的监控范围。"""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    path: str
+    recursive: bool
+    glob_pattern: str
+    extensions: tuple[str, ...] = ()
+
+
+class DirectoryChangeEventContract(BaseModel):
+    """描述目录变化 Trigger 提交给 Workflow App 的稳定 value。"""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    format_id: Literal[DIRECTORY_CHANGE_EVENT_FORMAT] = DIRECTORY_CHANGE_EVENT_FORMAT
+    event_id: str
+    trigger_source_id: str
+    workflow_runtime_id: str
+    window_started_at: str
+    window_finished_at: str
+    min_trigger_interval_seconds: float = Field(ge=1.0, le=3600.0)
+    directory: DirectoryChangeSourceContract
+    change_counts: DirectoryChangeCountsContract
+    samples: tuple[DirectoryChangeSampleContract, ...] = ()
+    sample_limit: int = Field(ge=0, le=100)
+    sample_count: int = Field(ge=0, le=100)
+    samples_truncated: bool
+
+    @model_validator(mode="after")
+    def validate_contract(self) -> DirectoryChangeEventContract:
+        """校验事件标识、时间和样本集合一致性。"""
+
+        _require_stripped_text(self.event_id, "event_id")
+        _require_stripped_text(self.trigger_source_id, "trigger_source_id")
+        _require_stripped_text(self.workflow_runtime_id, "workflow_runtime_id")
+        _require_timezone_timestamp(self.window_started_at, "window_started_at")
+        _require_timezone_timestamp(self.window_finished_at, "window_finished_at")
+        if self.sample_count != len(self.samples) or self.sample_count > self.sample_limit:
+            raise ValueError("sample_count 必须等于 samples 数量且不能超过 sample_limit")
+        normalized_paths = [os.path.normcase(item.path) for item in self.samples]
+        if len(normalized_paths) != len(set(normalized_paths)):
+            raise ValueError("samples 不能包含重复路径")
+        sequences = [item.observed_sequence for item in self.samples]
+        if sequences != sorted(sequences, reverse=True):
+            raise ValueError("samples 必须按 observed_sequence 倒序排列")
+        return self
+
+
+def _require_timezone_timestamp(value: str, field_name: str) -> None:
+    """校验 ISO 8601 时间包含时区。"""
+
+    normalized = _require_stripped_text(value, field_name).replace("Z", "+00:00")
+    parsed = datetime.fromisoformat(normalized)
+    if parsed.tzinfo is None:
+        raise ValueError(f"{field_name} 必须包含时区")
 
 
 class InputBindingMappingItemContract(BaseModel):

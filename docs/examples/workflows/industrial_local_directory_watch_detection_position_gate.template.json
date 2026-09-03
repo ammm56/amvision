@@ -3,7 +3,7 @@
   "template_id": "industrial-local-directory-watch-detection-position-gate-template",
   "template_version": "1.0.0",
   "display_name": "Industrial Local Directory Watch Detection Position Gate",
-  "description": "面向工业现场本地目录事件触发的检测到规则闭环样例。输入 directory-watch TriggerSource 标准化后的 payload 与 event、已发布 deployment 请求，以及可选运行时 ROI；按触发批次逐图执行检测，桥接为 regions.v1 后完成存在性、落位和偏移判定，并把单图结果持续追加到 CSV，再把整个批次收成统一 batch-record、JSON 归档和 HTTP 回传。",
+  "description": "面向工业现场本地目录变化通知的检测到规则闭环样例。可选 request_json 接收 directory-watch 标准事件，Workflow 内显式提取目录并扫描当前稳定文件，再逐图执行检测、规则判定、归档和回传。",
   "nodes": [
     {
       "node_id": "iterate_batch_start",
@@ -12,12 +12,7 @@
     },
     {
       "node_id": "wrap_trigger_payload",
-      "node_type_id": "core.logic.payload-to-value",
-      "parameters": {}
-    },
-    {
-      "node_id": "wrap_trigger_event",
-      "node_type_id": "core.logic.payload-to-value",
+      "node_type_id": "core.io.template-input.value",
       "parameters": {}
     },
     {
@@ -27,9 +22,21 @@
     },
     {
       "node_id": "extract_batch_files",
-      "node_type_id": "core.logic.value-field-extract",
+      "node_type_id": "core.io.directory-scan",
       "parameters": {
-        "path": "files"
+        "recursive": false,
+        "include_hidden": false,
+        "glob_pattern": "*",
+        "extensions": [
+          "png",
+          "jpg",
+          "jpeg"
+        ],
+        "sort_by": "modified_time",
+        "descending": true,
+        "limit": 4,
+        "min_stable_age_seconds": 1.0,
+        "dedupe_by": "path"
       }
     },
     {
@@ -40,17 +47,10 @@
       }
     },
     {
-      "node_id": "extract_scan_summary",
-      "node_type_id": "core.logic.value-field-extract",
-      "parameters": {
-        "path": "scan_summary"
-      }
-    },
-    {
       "node_id": "extract_directory_path",
       "node_type_id": "core.logic.value-field-extract",
       "parameters": {
-        "path": "directory_path"
+        "path": "directory.path"
       }
     },
     {
@@ -254,24 +254,17 @@
   ],
   "edges": [
     {
-      "edge_id": "edge-wrap-trigger-payload-extract-files",
-      "source_node_id": "wrap_trigger_payload",
+      "edge_id": "edge-directory-path-scan-files",
+      "source_node_id": "extract_directory_path",
       "source_port": "value",
       "target_node_id": "extract_batch_files",
-      "target_port": "value"
+      "target_port": "path"
     },
     {
       "edge_id": "edge-wrap-trigger-payload-extract-batch-id",
       "source_node_id": "wrap_trigger_payload",
       "source_port": "value",
       "target_node_id": "extract_batch_id",
-      "target_port": "value"
-    },
-    {
-      "edge_id": "edge-wrap-trigger-payload-extract-scan-summary",
-      "source_node_id": "wrap_trigger_payload",
-      "source_port": "value",
-      "target_node_id": "extract_scan_summary",
       "target_port": "value"
     },
     {
@@ -284,7 +277,7 @@
     {
       "edge_id": "edge-extract-batch-files-iterate-batch",
       "source_node_id": "extract_batch_files",
-      "source_port": "value",
+      "source_port": "files",
       "target_node_id": "iterate_batch_start",
       "target_port": "items"
     },
@@ -401,8 +394,8 @@
       "target_port": "values"
     },
     {
-      "edge_id": "edge-wrap-trigger-event-item-metadata",
-      "source_node_id": "wrap_trigger_event",
+      "edge_id": "edge-directory-event-item-metadata",
+      "source_node_id": "wrap_trigger_payload",
       "source_port": "value",
       "target_node_id": "item_metadata_object",
       "target_port": "values"
@@ -499,8 +492,8 @@
       "target_port": "result"
     },
     {
-      "edge_id": "edge-wrap-trigger-event-batch-metadata",
-      "source_node_id": "wrap_trigger_event",
+      "edge_id": "edge-directory-event-batch-metadata",
+      "source_node_id": "wrap_trigger_payload",
       "source_port": "value",
       "target_node_id": "batch_metadata_object",
       "target_port": "values"
@@ -535,15 +528,15 @@
     },
     {
       "edge_id": "edge-scan-summary-batch-record",
-      "source_node_id": "extract_scan_summary",
-      "source_port": "value",
+      "source_node_id": "extract_batch_files",
+      "source_port": "summary",
       "target_node_id": "batch_record",
       "target_port": "scan_summary"
     },
     {
       "edge_id": "edge-extract-batch-files-batch-record",
       "source_node_id": "extract_batch_files",
-      "source_port": "value",
+      "source_port": "files",
       "target_node_id": "batch_record",
       "target_port": "files"
     },
@@ -592,18 +585,12 @@
   ],
   "template_inputs": [
     {
-      "input_id": "request_trigger_payload",
-      "display_name": "Request Trigger Payload",
-      "payload_type_id": "response-body.v1",
+      "input_id": "request_json",
+      "display_name": "Request JSON",
+      "payload_type_id": "value.v1",
       "target_node_id": "wrap_trigger_payload",
-      "target_port": "body"
-    },
-    {
-      "input_id": "request_trigger_event",
-      "display_name": "Request Trigger Event",
-      "payload_type_id": "response-body.v1",
-      "target_node_id": "wrap_trigger_event",
-      "target_port": "body"
+      "target_port": "payload",
+      "required": false
     },
     {
       "input_id": "deployment_request",
@@ -627,7 +614,7 @@
       "display_name": "Batch Files",
       "payload_type_id": "value.v1",
       "source_node_id": "extract_batch_files",
-      "source_port": "value"
+      "source_port": "files"
     },
     {
       "output_id": "inspection_results",
@@ -693,17 +680,15 @@
     "uses_existing_deployment_instance": true,
     "dynamic_roi_input_binding": "request_roi",
     "callback_url_edit_required": true,
-    "input_boundary_note": "TriggerSource 当前只负责映射原始 payload/event 对象；workflow 内使用 payload-to-value 显式桥接，并从 payload.files 读取当前批次文件记录。",
+    "input_boundary_note": "directory-watch 只提交有界目录变化事件；Workflow 从可选 request_json 显式读取 directory.path，再由 Directory Scan 获取执行时目录事实。",
     "node_groups": {
       "input": [
         "wrap_trigger_payload",
-        "wrap_trigger_event",
         "deployment_request_input"
       ],
       "trigger_batch": [
         "extract_batch_files",
         "extract_batch_id",
-        "extract_scan_summary",
         "extract_directory_path",
         "create_roi"
       ],

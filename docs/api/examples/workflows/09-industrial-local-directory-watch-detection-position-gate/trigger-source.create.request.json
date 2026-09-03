@@ -16,27 +16,22 @@
       "jpg",
       "jpeg"
     ],
-    "sort_by": "modified_time",
-    "descending": false,
-    "dedupe_by": "path",
-    "batch_size": 4,
-    "min_stable_age_seconds": 1.0,
-    "persist_checkpoint": true,
-    "watch_debounce_ms": 300,
-    "watch_step_ms": 50,
-    "watch_timeout_ms": 1000,
+    "event_types": [
+      "created",
+      "modified",
+      "deleted"
+    ],
+    "min_trigger_interval_seconds": 3.0,
+    "event_sample_limit": 10,
     "force_polling": true,
     "poll_delay_ms": 200,
-    "ignore_permission_denied": true
+    "ignore_permission_denied": false
   },
   "input_binding_mapping": {
-    "request_trigger_payload": {
-      "source": "payload",
-      "payload_type_id": "response-body.v1"
-    },
-    "request_trigger_event": {
-      "source": "event",
-      "payload_type_id": "response-body.v1"
+    "request_json": {
+      "source": "payload.directory_event_value",
+      "required": false,
+      "payload_type_id": "value.v1"
     },
     "deployment_request": {
       "value": {
@@ -48,7 +43,7 @@
     }
   },
   "result_mapping": {
-    "result_bindings": ["batch_record"]
+    "result_bindings": []
   },
   "default_execution_metadata": {
     "scenario": "industrial-local-directory-watch-detection-position-gate",
@@ -58,9 +53,9 @@
     "retain_node_records_enabled": false
   },
   "ack_policy": "ack-after-run-created",
-  "result_mode": "accepted-then-query",
+  "result_mode": "event-only",
   "debounce_window_ms": 0,
-  "idempotency_key_path": "payload.batch_id",
+  "idempotency_key_path": "payload.directory_event_value.value.event_id",
   "metadata": {
     "example_kind": "industrial-local-directory-watch-detection-position-gate",
     "station_id": "line-c-01",

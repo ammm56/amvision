@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from pydantic import ValidationError
 
 from backend.contracts.workflows import (
+    DirectoryWatchTransportConfigContract,
     HIGH_PERFORMANCE_TRIGGER_INPUT_PAYLOAD_TYPE_IDS,
     ResultMappingContract,
     WORKFLOW_TRIGGER_KINDS,
@@ -69,6 +70,7 @@ _ACK_POLICIES = {
 }
 _RESULT_MODES = {"sync-reply", "accepted-then-query", "event-only"}
 _ZEROMQ_TRIGGER_KIND = "zeromq-topic"
+_DIRECTORY_WATCH_TRIGGER_KIND = "directory-watch"
 _ZEROMQ_BIND_ENDPOINT_KEY = "bind_endpoint"
 _ZEROMQ_PROCESS_CONFIG_KEYS = frozenset(
     {
@@ -240,11 +242,12 @@ class WorkflowTriggerSourceService:
                         "observed_state": workflow_runtime.observed_state,
                     },
                 )
+            input_binding_mapping = dict(request.input_binding_mapping or {})
             validated_contract = self._validate_runtime_version_contract(
                 unit_of_work=unit_of_work,
                 workflow_runtime=workflow_runtime,
                 trigger_kind=request.trigger_kind,
-                input_binding_mapping=request.input_binding_mapping or {},
+                input_binding_mapping=input_binding_mapping,
                 result_mapping=request.result_mapping or {},
                 result_mode=request.result_mode,
                 require_active=request.enabled,
@@ -269,7 +272,7 @@ class WorkflowTriggerSourceService:
                 observed_state="stopped",
                 transport_config=dict(request.transport_config or {}),
                 match_rule=dict(request.match_rule or {}),
-                input_binding_mapping=dict(request.input_binding_mapping or {}),
+                input_binding_mapping=input_binding_mapping,
                 result_mapping=dict(request.result_mapping or {}),
                 default_execution_metadata=dict(
                     request.default_execution_metadata or {}
@@ -441,7 +444,7 @@ class WorkflowTriggerSourceService:
                 unit_of_work=unit_of_work,
                 workflow_runtime=workflow_runtime,
                 trigger_kind=trigger_source.trigger_kind,
-                input_binding_mapping=trigger_source.input_binding_mapping,
+                input_binding_mapping=dict(trigger_source.input_binding_mapping),
                 result_mapping=trigger_source.result_mapping,
                 result_mode=trigger_source.result_mode,
                 require_active=True,
@@ -717,7 +720,7 @@ class WorkflowTriggerSourceService:
                         unit_of_work=unit_of_work,
                         workflow_runtime=workflow_runtime,
                         trigger_kind=current.trigger_kind,
-                        input_binding_mapping=current.input_binding_mapping,
+                        input_binding_mapping=dict(current.input_binding_mapping),
                         result_mapping=current.result_mapping,
                         result_mode=current.result_mode,
                         require_active=require_active,
@@ -784,7 +787,13 @@ class WorkflowTriggerSourceService:
             else "ack-after-run-created"
         )
         default_result_mode = (
-            "sync-reply" if submit_mode == "sync" else "accepted-then-query"
+            "sync-reply"
+            if submit_mode == "sync"
+            else (
+                "event-only"
+                if trigger_kind == _DIRECTORY_WATCH_TRIGGER_KIND
+                else "accepted-then-query"
+            )
         )
         ack_policy = _require_choice(
             request.ack_policy or default_ack_policy,
@@ -813,6 +822,26 @@ class WorkflowTriggerSourceService:
             )
         if request.debounce_window_ms is not None and request.debounce_window_ms < 0:
             raise InvalidRequestError("debounce_window_ms 不能小于 0")
+        debounce_window_ms = request.debounce_window_ms
+        if trigger_kind == _DIRECTORY_WATCH_TRIGGER_KIND:
+            if submit_mode != "async":
+                raise InvalidRequestError("directory-watch 只支持 async submit_mode")
+            if ack_policy != "ack-after-run-created":
+                raise InvalidRequestError(
+                    "directory-watch 必须使用 ack-after-run-created"
+                )
+            if result_mode != "event-only":
+                raise InvalidRequestError("directory-watch 必须使用 event-only result_mode")
+            if reply_timeout_seconds is not None:
+                raise InvalidRequestError(
+                    "directory-watch 不使用 reply_timeout_seconds"
+                )
+            if debounce_window_ms not in {None, 0}:
+                raise InvalidRequestError(
+                    "directory-watch 不使用 debounce_window_ms，"
+                    "请配置 transport_config.min_trigger_interval_seconds"
+                )
+            debounce_window_ms = None
         idempotency_key_path = _normalize_optional_str(request.idempotency_key_path)
         if not isinstance(request.transport_config or {}, dict):
             raise InvalidRequestError("transport_config 必须是对象")
@@ -859,7 +888,7 @@ class WorkflowTriggerSourceService:
             ack_policy=ack_policy,
             result_mode=result_mode,
             reply_timeout_seconds=reply_timeout_seconds,
-            debounce_window_ms=request.debounce_window_ms,
+            debounce_window_ms=debounce_window_ms,
             idempotency_key_path=idempotency_key_path,
             metadata=dict(request.metadata or {}),
         )
@@ -1199,6 +1228,11 @@ class WorkflowTriggerSourceService:
                     ),
                 },
             )
+        _apply_directory_watch_default_mapping(
+            contract=contract,
+            trigger_kind=trigger_kind,
+            input_binding_mapping=input_binding_mapping,
+        )
         mapping_issues = _find_trigger_contract_mapping_issues(
             contract=contract,
             trigger_kind=trigger_kind,
@@ -1642,6 +1676,16 @@ def _normalize_transport_config_for_kind(
     """按 TriggerSource 类型规范化协议配置。"""
 
     normalized_config = dict(transport_config)
+    if trigger_kind == _DIRECTORY_WATCH_TRIGGER_KIND:
+        try:
+            return DirectoryWatchTransportConfigContract.model_validate(
+                normalized_config
+            ).model_dump(mode="json")
+        except ValidationError as error:
+            raise InvalidRequestError(
+                "directory-watch transport_config 格式无效",
+                details={"errors": error.errors(include_url=False)},
+            ) from error
     if trigger_kind != _ZEROMQ_TRIGGER_KIND:
         return normalized_config
     normalized_config[_ZEROMQ_BIND_ENDPOINT_KEY] = _read_zeromq_bind_endpoint(
@@ -1653,6 +1697,37 @@ def _normalize_transport_config_for_kind(
     for key in _ZEROMQ_PROCESS_CONFIG_KEYS:
         normalized_config.pop(key, None)
     return normalized_config
+
+
+def _apply_directory_watch_default_mapping(
+    *,
+    contract: dict[str, object],
+    trigger_kind: str,
+    input_binding_mapping: dict[str, object],
+) -> None:
+    """为可选 request_json 增加目录事件默认映射且不覆盖手动规则。"""
+
+    if (
+        trigger_kind != _DIRECTORY_WATCH_TRIGGER_KIND
+        or "request_json" in input_binding_mapping
+    ):
+        return
+    request_json_contract = _index_contract_bindings(contract.get("inputs")).get(
+        "request_json"
+    )
+    if (
+        request_json_contract is None
+        or bool(request_json_contract.get("required", True))
+        or str(request_json_contract.get("payload_type_id") or "value.v1")
+        != "value.v1"
+    ):
+        return
+    input_binding_mapping["request_json"] = {
+        "source": "payload.directory_event_value",
+        "required": False,
+        "payload_type_id": "value.v1",
+        "metadata": {"inferred": True, "source": "directory-watch"},
+    }
 
 
 def _read_zeromq_bind_endpoint(transport_config: dict[str, object] | None) -> str:

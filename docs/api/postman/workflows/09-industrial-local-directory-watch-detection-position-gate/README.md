@@ -26,7 +26,7 @@
 以下字段通常需要按现场机器改成真实值：
 
 - `trigger-source.create.request.json` 里的 `transport_config.directory_path`
-- `trigger-source.create.request.json` 里的 `extensions`、`batch_size`、`min_stable_age_seconds`
+- `trigger-source.create.request.json` 里的 `extensions`、`event_types`、`min_trigger_interval_seconds`、`event_sample_limit`
 - `app-runtime.invoke.request.json` 里的 `request_trigger_payload.directory_path`
 - `app-runtime.invoke.request.json` 里的 `files[*].path`
 - `app-runtime.invoke.request.json` 里的 `file_paths[*]`

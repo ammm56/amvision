@@ -14,11 +14,11 @@ TriggerSource 绑定稳定 `workflow_runtime_id`。Runtime 通过 revision/gener
 | `local-shared-memory` | 同机 .NET SDK 通过 LocalBuffer + 全局 mailbox 进行低复制同步图片调用 |
 | `plc-register` | Modbus TCP 寄存器轮询、条件匹配和 Workflow 提交 |
 | `directory-poll` | 周期目录扫描、稳定期过滤、checkpoint 和批量提交 |
-| `directory-watch` | 本地目录事件监听、稳定期过滤、checkpoint 和受控 polling fallback |
+| `directory-watch` | 本地目录新增、修改、删除变化的固定窗口有界通知 |
 
 schema 可以识别其他预留 kind，但未注册 adapter 的 TriggerSource 无法 enable，并会返回明确配置错误。未注册类型不能写成已支持。
 
-> `directory-watch` 当前仍按稳定文件记录和 `batch_size` 提交，并使用 checkpoint 去重；删除变化不会形成 Workflow 输入。已经确认但尚未实现的下一版设计将其收敛为默认 3 秒的有界目录变化通知和最多 10 个最近变化样本。每个到期非空窗口都沿用 TriggerSource 的统一异步提交链调用 Runtime，不查询或等待上一轮 WorkflowRun；未提交窗口不做重启恢复。目标契约、明确不实现的批次队列和逐阶段门禁见[目录变化 Trigger 实施基线](../development/directory-watch-trigger-implementation.md)。本文在实现完成前不把目标设计写成当前能力。
+`directory-watch` 默认按首次匹配变化锚定 3 秒固定窗口，每个到期非空窗口提交一次普通异步 Trigger 调用。事件最多携带 10 个最近变化路径样本，并受 64 KiB JSON 硬上限保护。它不维护文件批次、checkpoint 或待处理队列，不查询和等待上一轮 WorkflowRun。样本只用于诊断，Workflow 必须通过 `Directory Latest File` 或 `Directory Scan` 读取执行时的真实目录状态。完整契约和边界见[目录变化 Trigger 实施基线](../development/directory-watch-trigger-implementation.md)。
 
 ## 管理接口
 
@@ -96,7 +96,7 @@ DELETE /api/v1/workflows/trigger-sources/{trigger_source_id}
 | `submit_mode` | `ack_policy` | `result_mode` |
 | --- | --- | --- |
 | `sync` | `ack-after-run-finished` | `sync-reply` |
-| `async` | `ack-after-run-created` | `accepted-then-query` 或 `event-only` |
+| `async` | `ack-after-run-created` | 普通异步 Trigger 可使用 `accepted-then-query` 或 `event-only`；`directory-watch` 固定使用 `event-only` |
 
 不支持的组合在创建或 enable 时拒绝。同步调用不排队、不自动重试；Runtime 满载、停止、版本不一致或超时直接返回结构化错误。
 
@@ -204,8 +204,12 @@ ZeroMQ 的 frame send、tracker cleanup 和后续 lease reclaim 发生在 transp
 
 两个正式 Postman 场景覆盖本地目录接入：
 
-- `09-industrial-local-directory-watch-detection-position-gate/`：事件监听，应用文件为 `industrial_local_directory_watch_detection_position_gate.application.json`。示例包含 `request_roi`、`input_binding_mapping.deployment_request.value`、`idempotency_key_path": "payload.batch_id"` 和 `force_polling = true`。
+- `09-industrial-local-directory-watch-detection-position-gate/`：目录变化通知，应用文件为 `industrial_local_directory_watch_detection_position_gate.application.json`；示例配置 `event_types`、3 秒固定窗口、10 个最近样本和以目录事件 id 为来源的幂等键。事件通过可选 `request_json` 输入，Workflow 内显式执行 `Directory Scan`，目录事件不承担稳定文件批次输入。
 - `11-industrial-local-directory-poll-detection-position-gate/`：周期扫描，应用文件为 `industrial_local_directory_poll_detection_position_gate.application.json`，并显式配置 `scan_interval_seconds`。
+
+目录检测示例继续通过 `input_binding_mapping.deployment_request.value` 注入固定 Deployment 请求；目录变化本身只映射到 `request_json`。
+
+目录变化事件使用自身唯一 id 去重：`"idempotency_key_path": "payload.directory_event_value.value.event_id"`。不再以文件批次或路径列表构造幂等键。Postman 在 Windows 本地验证中显式使用 `force_polling = true`；生产配置可以保留自动 watcher。可选 `request_roi` 仍由调用方按需要提供。
 
 完整请求、环境变量和现场占位值见 [Workflow Postman](postman/workflows/README.md)。示例中的目录、Deployment id 和 token 必须替换为当前环境值。
 

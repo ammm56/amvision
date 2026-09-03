@@ -2,7 +2,7 @@
 
 ## 状态与用途
 
-本文定义 `directory-watch` 从现有“稳定文件批次提交”收敛为“目录变化有界合并通知”的目标设计和实施门禁。该设计尚未完成代码实现；当前 API 行为仍以 [Workflow TriggerSource API](../api/workflow-trigger-sources.md) 和现有自动化测试为准。
+本文定义并记录 `directory-watch` 从“稳定文件批次提交”收敛为“目录变化有界合并通知”的实现基线。后端契约、固定窗口聚合器、Adapter、创建校验、health 和集成页面已经按本文完成；持续 24 小时以上的现场 soak 仍属于发布验收门禁。
 
 目标场景是本地生产结果目录的变化通知、监视 Workflow 唤醒和维护 Workflow 调用。设计优先保证 Trigger 内部没有无界路径集合、文件批次队列和隐式后台恢复，不把每个文件可靠投递、目录导入队列或文件内容传输混入 `directory-watch`。WorkflowRun 的接纳、排队、拒绝和执行容量统一由 Workflow Runtime 负责，目录 Trigger 不另设执行调度规则。
 
@@ -369,7 +369,7 @@ directory-watch
 - 不显示 `batch_size`、sort、dedupe、批次并发、待处理队列和 checkpoint 恢复字段。
 - 有 `request_json` 且 payload type 为 `value.v1` 时，新建表单默认映射 `payload.directory_event_value`；该 mapping 保持 `required=false`，重新选择模板或 Runtime 时不得覆盖已经存在的手动 mapping。
 - 没有 `request_json` 时不猜测其他 binding，不把路径塞入 `request_text`。
-- `result_mode=event-only` 时不选择输出；需要后续页面查询 App Result 时显式选择 `accepted-then-query` 和公开结果 bindings。
+- `result_mode` 固定为 `event-only`，不选择输出。目录 Trigger 没有等待结果的调用方；WorkflowRun 的状态与结果由现有 Runtime 查询接口负责，不在 Trigger 内建立额外结果交付计划。
 - 只有 ZeroMQ 和本机共享内存高速模板默认关闭 outputs retention；不能因为目录模板不是 Webhook 就错误关闭结果保留。
 - 创建前校验数字范围、事件类型、Glob、扩展名和 App Contract mapping；enable 时显示目录可用性错误。
 
@@ -437,7 +437,7 @@ health 不返回完整样本路径，避免状态接口泄漏生产文件名和�
 | 后端行为测试 | `tests/test_workflow_trigger_source_components.py`、`tests/test_workflow_trigger_sources_api.py` |
 | 示例与文档测试 | `docs/api/examples/workflows/09-industrial-local-directory-watch-detection-position-gate/`、对应 Postman collection、`tests/test_workflow_api_document_examples.py` |
 
-### 阶段 1：冻结契约与当前行为测试
+### 阶段 1：冻结契约与当前行为测试（已完成）
 
 1. 为当前 `directory-watch` 文件批次行为补充特征测试，锁定迁移前事实，包括批次切分、删除忽略、checkpoint 和通用 debounce 抑制行为。
 2. 在 `backend/contracts/workflows` 增加 `amvision.directory-change-event.v1` Pydantic contract，固定字段、计数一致性、样本上限、时间和变化类型。
@@ -446,7 +446,7 @@ health 不返回完整样本路径，避免状态接口泄漏生产文件名和�
 
 门禁：contract 单元测试覆盖合法事件、计数不一致、重复路径、非法或重复 `observed_change_types`、超量样本和 JSON 容量收敛。
 
-### 阶段 2：有界聚合器
+### 阶段 2：有界聚合器（已完成）
 
 1. 新建与 watcher 无关的纯 Python 聚合器，例如 `DirectoryChangeWindowAccumulator`。
 2. 使用 monotonic time 判断窗口，使用 wall-clock ISO 时间写公开事件。
@@ -459,7 +459,7 @@ health 不返回完整样本路径，避免状态接口泄漏生产文件名和�
 
 门禁：模拟 1、10、20、10,000 和同一路径 100 次变化，验证聚合器长期保留内存与样本数量恒定；覆盖创建后修改、创建后删除、混合事件和无序输入。
 
-### 阶段 3：Directory Watch Adapter
+### 阶段 3：Directory Watch Adapter（已完成）
 
 1. `DirectoryWatchTriggerAdapter` 只把匹配的 watcher 事件写入聚合器，不再扫描全目录并构建 `ready_records`。
 2. 调用 `watchfiles.watch(..., watch_filter=None)`，所有过滤统一进入 Adapter 的公开配置逻辑。
@@ -475,31 +475,31 @@ health 不返回完整样本路径，避免状态接口泄漏生产文件名和�
 
 门禁：用可控时钟验证 3 秒内 100 次只提交一次、连续 9 秒产生三次提交；即使测试桩返回的上一轮 Run 一直未完成，后续到期窗口仍照常调用，且 Adapter 从未读取 Run 状态。
 
-### 阶段 4：应用层校验与 API
+### 阶段 4：应用层校验与 API（已完成）
 
 1. 在 TriggerSource create 规范化阶段增加 `directory-watch` transport_config 专用校验，不能只等 Adapter enable 时失败；本阶段不新增 TriggerSource update API。
-2. 固定 `submit_mode=async` 和 `ack_policy=ack-after-run-created`；允许 `event-only` 或 `accepted-then-query`。
+2. 固定 `submit_mode=async`、`ack_policy=ack-after-run-created` 和 `result_mode=event-only`。
 3. 校验 `min_trigger_interval_seconds`、`event_sample_limit`、`event_types`、Glob、extensions 和 poll 参数范围，并固定 Glob/extension AND 关系、长度上限、去重和大小写规则；数值字段拒绝 bool、NaN 和 Infinity。
 4. enable 时校验目录存在、类型为目录、访问权限和 watcher 初始化结果。
 5. 明确顶层 `debounce_window_ms` 对目录模板必须为空或零；同时传入非零值时直接拒绝，避免两套时间语义。
 6. 更新 TriggerSource response/health contract 和 OpenAPI 描述。
 
-门禁：REST 测试覆盖创建、非法范围、相对目录、错误同步模式、enable 时目录不存在或无权限、没有 `request_json` 时不生成 mapping、存在 `request_json` 时生成可选 mapping，以及 `accepted-then-query` 结果保留。
+门禁：REST 测试覆盖创建、非法范围、相对目录、错误同步模式、错误结果模式、enable 时目录不存在或无权限、没有 `request_json` 时不生成 mapping，以及存在 `request_json` 时生成可选 mapping。
 
-### 阶段 5：集成页面
+### 阶段 5：集成页面（已完成）
 
 1. 在 `TriggerSourcePage.vue` 增加 Directory Watch 协议模板和本地化文本。
 2. 将模板默认值设置为 async、ack-after-run-created、3 秒间隔、10 个样本。
 3. 增加目录基本设置和条件化高级设置；不展示文件批次字段。
 4. 选择目录模板时隐藏通用 debounce、reply timeout 和同步回执设置中的无效组合。
 5. 自动识别可选 `request_json:value.v1` 并在新建表单初始化时生成 `payload.directory_event_value` mapping；没有匹配 binding 时保持未映射，已有手动 mapping 不被模板默认值覆盖。
-6. 修复执行 metadata 默认逻辑，只对 ZeroMQ 和本机共享内存关闭输入、输出和 trace 保留；目录 accepted-then-query 可以保留显式结果。
+6. 修复执行 metadata 默认逻辑，只对 ZeroMQ 和本机共享内存关闭输入、输出和 trace 保留；目录 Trigger 保持普通异步 WorkflowRun 记录，但固定丢弃 Trigger 结果交付。
 7. 创建前显示配置摘要：目录、过滤规则、事件类型、最小触发间隔和样本上限。
 8. 每条目录 Trigger 生成 `directory-watch-<workflow-runtime-id>-<8位十六进制UUID>`；只处理 id 唯一冲突，不分析多 Trigger 配置重叠和 Save 节点路径。
 
-门禁：Vue 单元测试覆盖模板切换、默认值、短 UUID id、多 Trigger 创建、条件字段、手动 mapping 保留、event-only/accepted-then-query 和提交 payload。
+门禁：Vue 单元测试覆盖模板切换、默认值、短 UUID id、多 Trigger 创建、条件字段、手动 mapping 保留、固定 event-only 和提交 payload。
 
-### 阶段 6：文档示例迁移
+### 阶段 6：文档示例迁移（已完成）
 
 1. 更新 `docs/api/workflow-trigger-sources.md`，把本文已经实现的部分从“规划”改为当前能力。
 2. 更新目录 watch Postman 创建请求、Preview 输入、Application、Template 和断言测试，删除旧文件批次字段。

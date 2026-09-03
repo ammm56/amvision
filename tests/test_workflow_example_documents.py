@@ -3330,11 +3330,9 @@ def test_industrial_local_directory_watch_detection_position_gate_documents_are_
     assert [node.node_id for node in template.nodes] == [
         "iterate_batch_start",
         "wrap_trigger_payload",
-        "wrap_trigger_event",
         "deployment_request_input",
         "extract_batch_files",
         "extract_batch_id",
-        "extract_scan_summary",
         "extract_directory_path",
         "create_roi",
         "iterate_batch",
@@ -3370,20 +3368,19 @@ def test_industrial_local_directory_watch_detection_position_gate_documents_are_
     assert template.metadata["dynamic_roi_input_binding"] == "request_roi"
     assert template.metadata["callback_url_edit_required"] is True
     assert [template_input.input_id for template_input in template.template_inputs] == [
-        "request_trigger_payload",
-        "request_trigger_event",
+        "request_json",
         "deployment_request",
         "request_roi",
     ]
     assert [
         template_input.payload_type_id for template_input in template.template_inputs
     ] == [
-        "response-body.v1",
-        "response-body.v1",
+        "value.v1",
         "value.v1",
         "value.v1",
     ]
-    assert template.template_inputs[3].required is False
+    assert template.template_inputs[0].required is False
+    assert template.template_inputs[2].required is False
     assert [
         template_output.output_id for template_output in template.template_outputs
     ] == [
@@ -3402,8 +3399,7 @@ def test_industrial_local_directory_watch_detection_position_gate_documents_are_
     )
     assert application.runtime_mode == "python-json-workflow"
     assert [binding.binding_id for binding in application.bindings] == [
-        "request_trigger_payload",
-        "request_trigger_event",
+        "request_json",
         "deployment_request",
         "request_roi",
         "batch_files",
@@ -3416,10 +3412,13 @@ def test_industrial_local_directory_watch_detection_position_gate_documents_are_
         "json_summary",
         "callback_response",
     ]
-    assert application.bindings[0].metadata["source_path"] == "payload"
-    assert application.bindings[1].metadata["source_path"] == "event"
-    assert application.bindings[3].required is False
-    assert application.bindings[7].config["payload_type_id"] == "boolean.v1"
+    assert (
+        application.bindings[0].metadata["source_path"]
+        == "payload.directory_event_value"
+    )
+    assert application.bindings[0].required is False
+    assert application.bindings[2].required is False
+    assert application.bindings[6].config["payload_type_id"] == "boolean.v1"
 
 
 def test_industrial_local_directory_poll_detection_position_gate_documents_are_valid() -> (

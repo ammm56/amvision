@@ -112,6 +112,13 @@ from backend.contracts.workflows.local_shared_memory_trigger import (
     WorkflowTriggerRequestV1,
 )
 from backend.contracts.workflows.trigger_sources import (
+    DIRECTORY_CHANGE_EVENT_FORMAT,
+    DIRECTORY_CHANGE_EVENT_TYPES,
+    DirectoryChangeCountsContract,
+    DirectoryChangeEventContract,
+    DirectoryChangeSampleContract,
+    DirectoryChangeSourceContract,
+    DirectoryWatchTransportConfigContract,
     HIGH_PERFORMANCE_TRIGGER_INPUT_PAYLOAD_TYPE_IDS,
     HIGH_PERFORMANCE_TRIGGER_KINDS,
     WORKFLOW_TRIGGER_EVENT_FORMAT,
@@ -126,6 +133,13 @@ from backend.contracts.workflows.trigger_sources import (
 )
 
 __all__ = [
+    "DIRECTORY_CHANGE_EVENT_FORMAT",
+    "DIRECTORY_CHANGE_EVENT_TYPES",
+    "DirectoryChangeCountsContract",
+    "DirectoryChangeEventContract",
+    "DirectoryChangeSampleContract",
+    "DirectoryChangeSourceContract",
+    "DirectoryWatchTransportConfigContract",
     "FLOW_APPLICATION_FORMAT",
     "FLOW_APPLICATION_RUNTIME_PYTHON_JSON",
     "FLOW_BINDING_DIRECTION_INPUT",
