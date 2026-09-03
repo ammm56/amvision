@@ -59,7 +59,7 @@ App Contract v1 集成验证确认，图片 PREPARE 的调用方 `media_type` �
 | Workflow 解码复用 | 单次执行按引用、generation、元数据和 decode flags 做有界只读缓存 | 保持 |
 | Workflow cleanup | worker finally、父进程 owner sweep 和发布失败补偿均按 receipt 条件释放；owner 已转移时 no-op | 阶段 6–7 继续复用该边界 |
 | Workflow Runtime | 唯一 execution token 已封装真实 handle gate，并支持 wait/reject | 所有后续 adapter 继续复用，不另建容量事实 |
-| 高速策略 | `_is_high_speed_trigger_source()` 已同时识别 ZeroMQ 和 `local-shared-memory` | 保持 minimal 记录策略 |
+| 高速策略 | `_is_high_speed_trigger_source()` 已同时识别 ZeroMQ 和 `local-shared-memory` | 默认 none，不写每次调用记录 |
 
 新实现不得删除或悄然修改当前 ZeroMQ 公开方法。`local-shared-memory` 是新的明确 trigger kind，不是旧入口兼容分支。
 
@@ -711,7 +711,7 @@ REQUEST 时 route generation 已变化、source 已禁用或 Runtime 已切版�
 
 `local-shared-memory` 纳入显式高速 trigger kind 集合，默认：
 
-- `workflow_run_record_mode=minimal`；
+- `workflow_run_record_mode=none`；
 - `trace_level=none`；
 - `retain_trace_enabled=false`；
 - `retain_node_records_enabled=false`；
@@ -719,7 +719,7 @@ REQUEST 时 route generation 已变化、source 已禁用或 Runtime 已切版�
 - `retain_outputs_enabled=false`；
 - timing/node timing 只在显式诊断开关打开时返回。
 
-必须保留必要 WorkflowRun 生命周期和最终 SQLite commit。性能报告单列数据库 commit 与事件追加耗时，不能通过默认 `record_mode=none` 隐藏成本。
+默认不写 WorkflowRun 生命周期和 SQLite commit，避免长期高频调用使数据库持续增长。需要运行历史时显式切换为 `minimal` 或 `full`，性能报告必须注明所使用的记录模式。
 
 ## .NET SDK 实现边界
 

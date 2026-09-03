@@ -68,6 +68,7 @@ describe('TriggerSource 页面字段本地化', () => {
     const localeMessages = messages[locale] as Record<string, unknown>
     const triggerSources = localeMessages.triggerSources as Record<string, unknown>
     const fields = triggerSources.fields as Record<string, unknown>
+    const values = triggerSources.values as Record<string, unknown>
 
     expect(fields).toMatchObject(expected)
     expect(Object.keys(fields)).toEqual(expect.arrayContaining([...localizedFieldKeys]))
@@ -75,5 +76,7 @@ describe('TriggerSource 页面字段本地化', () => {
       expect(fields[fieldKey]).toEqual(expect.any(String))
       expect((fields[fieldKey] as string).trim()).not.toBe('')
     }
+    expect(values.none).toEqual(expect.any(String))
+    expect((values.none as string).trim()).not.toBe('')
   })
 })

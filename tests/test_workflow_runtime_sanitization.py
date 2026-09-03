@@ -67,6 +67,7 @@ from backend.service.application.workflows.worker.health import (
     WorkflowRuntimeWorkerState,
 )
 from backend.service.application.workflows.worker.messages import (
+    WorkflowRuntimeAsyncRunCallbacks,
     WorkflowRuntimeWorkerRunResult,
 )
 from backend.service.application.workflows.workflow_service import (
@@ -539,6 +540,78 @@ def test_invoke_workflow_run_none_record_mode_skips_database_record(
     assert workflow_run.state == "succeeded"
     with pytest.raises(ResourceNotFoundError):
         service.get_workflow_run(workflow_run.workflow_run_id)
+
+
+def test_transient_async_workflow_run_none_mode_skips_database_record(
+    tmp_path: Path,
+) -> None:
+    """验证 event-only 瞬时异步运行登记 worker 后不写 WorkflowRun 数据库。"""
+
+    worker_result = WorkflowRuntimeWorkerRunResult(
+        state="succeeded",
+        worker_state=WorkflowRuntimeWorkerState(observed_state="running"),
+    )
+    worker_manager = _FakeWorkerManager(worker_result=worker_result)
+    service, workflow_service, _ = _build_runtime_service(
+        tmp_path,
+        worker_manager=worker_manager,
+    )
+    workflow_service.save_template(
+        project_id="project-1",
+        template=_build_image_decode_preview_template(),
+    )
+    workflow_service.save_application(
+        project_id="project-1",
+        application=_build_image_decode_preview_application(),
+    )
+    runtime = service.create_workflow_app_runtime(
+        WorkflowAppRuntimeCreateRequest(
+            project_id="project-1",
+            application_id="image-decode-preview-app",
+        ),
+        created_by="workflow-user",
+    )
+    service.start_workflow_app_runtime(
+        runtime.workflow_runtime_id,
+        updated_by="workflow-user",
+    )
+
+    workflow_run = service.create_workflow_run(
+        runtime.workflow_runtime_id,
+        WorkflowRuntimeInvokeRequest(
+            input_bindings={},
+            execution_metadata={"workflow_run_record_mode": "none"},
+        ),
+        created_by="workflow-user",
+        transient=True,
+    )
+
+    assert workflow_run.state == "queued"
+    callbacks = worker_manager.last_invoke_kwargs["callbacks"]
+    assert isinstance(callbacks, WorkflowRuntimeAsyncRunCallbacks)
+    callbacks.on_started()
+    callbacks.on_completed(worker_result)
+    assert (
+        service.get_workflow_app_runtime(runtime.workflow_runtime_id).observed_state
+        == "running"
+    )
+    callbacks.on_failed(
+        ServiceConfigurationError(
+            "transient worker failed",
+            details={"worker_instance_id": worker_manager.runtime_state.instance_id},
+        )
+    )
+    assert (
+        service.get_workflow_app_runtime(runtime.workflow_runtime_id).observed_state
+        == "failed"
+    )
+    with pytest.raises(ResourceNotFoundError):
+        service.get_workflow_run(workflow_run.workflow_run_id)
+    with service._open_unit_of_work() as unit_of_work:
+        persisted_runs = unit_of_work.workflow_runtime.list_workflow_runs_by_runtime(
+            runtime.workflow_runtime_id
+        )
+    assert persisted_runs == ()
 
 
 @pytest.mark.parametrize(
@@ -1577,6 +1650,20 @@ class _FakeWorkerManager:
                     ).values()
                 )
             )
+
+    def list_async_run_ids(self, workflow_runtime_id: str) -> tuple[str, ...]:
+        """测试 manager 不模拟真实异步线程，仅返回已登记调用。"""
+
+        workflow_app_runtime = self.last_invoke_kwargs.get("workflow_app_runtime")
+        workflow_run_id = self.last_invoke_kwargs.get("workflow_run_id")
+        if (
+            workflow_app_runtime is None
+            or workflow_run_id is None
+            or workflow_app_runtime.workflow_runtime_id != workflow_runtime_id
+            or "callbacks" not in self.last_invoke_kwargs
+        ):
+            return ()
+        return (str(workflow_run_id),)
 
     def start_runtime(
         self,

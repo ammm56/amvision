@@ -48,7 +48,7 @@ File system
 
 | 层 | 职责 | 不承担的职责 |
 | --- | --- | --- |
-| File system watcher | 接收新增、修改和删除通知 | 创建 WorkflowRun、读取业务文件 |
+| File system watcher | 接收新增、修改和删除通知 | 执行 Workflow、读取业务文件 |
 | Directory Trigger adapter | 过滤路径、合并窗口、维护有界样本、按窗口提交事件 | 文件内容解析、逐文件可靠队列、查询 Runtime 执行状态 |
 | TriggerSource mapping | 把事件显式映射到已发布 App Contract | 猜测 App Entry binding |
 | Workflow Runtime | 创建和执行 WorkflowRun | 常驻扫描业务目录 |
@@ -102,10 +102,10 @@ window_deadline = first_change_monotonic + min_trigger_interval_seconds
 
 `handle_trigger_event()` 的本地提交调用和后续 WorkflowRun 执行是两件事。目录 Trigger 不等待 WorkflowRun，但当前 Adapter 线程仍需等待本地提交调用返回。为保持实现简单，不为目录 Trigger 增加额外 dispatcher、提交线程池或内部提交队列。
 
-- 正常 async 提交只负责创建 WorkflowRun，应快速返回 accepted 或结构化失败。
+- 正常 async 提交只负责登记执行；默认 none 使用内存句柄，minimal/full 才创建 WorkflowRun 数据库记录。提交应快速返回 accepted 或结构化失败。
 - 如果本地提交调用本身阻塞超过触发间隔，后续 watcher 观察和窗口提交可能延迟；不能伪造仍然按时触发。health 必须记录提交耗时和延迟窗口次数。
 - 提交调用返回后继续处理 watcher 已收集的变化，不因上一轮 WorkflowRun 仍在执行而停止后续提交。
-- stop 标记和 `submit_call_in_progress` 必须在同一状态锁内更新，二者先获得锁的一方确定停止线性化顺序。stop 之前已经登记开始的提交允许完成，已经创建的 WorkflowRun 不取消；stop 先登记后不得开始新的提交。
+- stop 标记和 `submit_call_in_progress` 必须在同一状态锁内更新，二者先获得锁的一方确定停止线性化顺序。stop 之前已经登记开始的提交允许完成，已经登记的执行不取消；stop 先登记后不得开始新的提交。
 - disable/delete 必须等待 watcher 线程完全退出后才能移除 Adapter 状态。等待超时应返回明确失败并保留 stopping/failed 状态，不能留下不可管理的后台线程。
 
 ### 与现有 debounce 的关系
@@ -330,7 +330,7 @@ directory-watch
 
 - 文件系统 watcher 错误：TriggerSource health 进入 degraded/failed，记录最近错误；不伪造 WorkflowRun。
 - 事件提交被 Runtime 拒绝或提交调用抛出异常：当前不可变快照结束并记录失败，不在没有新变化时隐藏重试；异常必须被提交边界吸收，不能直接终止仍然健康的 watcher 主循环。
-- WorkflowRun 后续执行失败：由 Workflow Runtime 按统一机制记录；目录 Trigger 不查询该状态，也不自动重跑。
+- WorkflowRun 后续执行失败：默认 none 模式不保留单次执行记录；worker 失效仍由 Workflow Runtime 更新 Runtime 故障状态。需要审计单次业务失败时显式改用 minimal/full；目录 Trigger 不查询该状态，也不自动重跑。
 - backend-service 重启：enabled TriggerSource 按现有 Supervisor 生命周期重新启动 watcher，但不恢复退出前的窗口或未提交快照，也不扫描既有文件。
 - 下一次真实目录变化：重新开启窗口；监视/维护 Workflow 通过目录节点读取当前状态，因此可以自然收敛到最新事实。
 
@@ -369,8 +369,8 @@ directory-watch
 - 不显示 `batch_size`、sort、dedupe、批次并发、待处理队列和 checkpoint 恢复字段。
 - 有 `request_json` 且 payload type 为 `value.v1` 时，新建表单默认映射 `payload.directory_event_value`；该 mapping 保持 `required=false`，重新选择模板或 Runtime 时不得覆盖已经存在的手动 mapping。
 - 没有 `request_json` 时不猜测其他 binding，不把路径塞入 `request_text`。
-- `result_mode` 固定为 `event-only`，不选择输出。目录 Trigger 没有等待结果的调用方；WorkflowRun 的状态与结果由现有 Runtime 查询接口负责，不在 Trigger 内建立额外结果交付计划。
-- 只有 ZeroMQ 和本机共享内存高速模板默认关闭 outputs retention；不能因为目录模板不是 Webhook 就错误关闭结果保留。
+- `result_mode` 固定为 `event-only`，不选择输出。目录 Trigger 没有等待结果的调用方；默认使用 none 瞬时异步执行，回执中的 run id 只用于本次事件关联，不能后续查询，也不在 Trigger 内建立额外结果交付计划。需要查询历史时显式改用 minimal/full。
+- none 模式统一关闭输入和输出持久化；minimal/full 再按 Trigger 类型与显式 retention 配置决定保留范围。
 - 创建前校验数字范围、事件类型、Glob、扩展名和 App Contract mapping；enable 时显示目录可用性错误。
 
 ## Health
@@ -493,7 +493,7 @@ health 不返回完整样本路径，避免状态接口泄漏生产文件名和�
 3. 增加目录基本设置和条件化高级设置；不展示文件批次字段。
 4. 选择目录模板时隐藏通用 debounce、reply timeout 和同步回执设置中的无效组合。
 5. 自动识别可选 `request_json:value.v1` 并在新建表单初始化时生成 `payload.directory_event_value` mapping；没有匹配 binding 时保持未映射，已有手动 mapping 不被模板默认值覆盖。
-6. 修复执行 metadata 默认逻辑，只对 ZeroMQ 和本机共享内存关闭输入、输出和 trace 保留；目录 Trigger 保持普通异步 WorkflowRun 记录，但固定丢弃 Trigger 结果交付。
+6. TriggerSource 默认 `workflow_run_record_mode=none`。目录 Trigger 以 `async + event-only` 登记受统一 worker manager 管理的瞬时执行句柄，不写 WorkflowRun；它仍按每个到期窗口提交，且不读取上一轮执行状态。
 7. 创建前显示配置摘要：目录、过滤规则、事件类型、最小触发间隔和样本上限。
 8. 每条目录 Trigger 生成 `directory-watch-<workflow-runtime-id>-<8位十六进制UUID>`；只处理 id 唯一冲突，不分析多 Trigger 配置重叠和 Save 节点路径。
 

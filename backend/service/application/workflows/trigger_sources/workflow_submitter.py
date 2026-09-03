@@ -6,10 +6,12 @@ from dataclasses import dataclass
 from time import monotonic_ns, perf_counter
 
 from backend.contracts.workflows import TriggerEventContract, TriggerResultContract
-from backend.service.application.errors import ServiceError
+from backend.service.application.errors import InvalidRequestError, ServiceError
 from backend.service.application.workflows.runtime.invokes import WorkflowRuntimeInvokeRequest
 from backend.service.application.workflows.runtime.policies import (
     WORKFLOW_RUN_RECORD_MODE_MINIMAL,
+    WORKFLOW_RUN_RECORD_MODE_NONE,
+    resolve_workflow_run_record_mode,
     should_return_workflow_node_timings,
     should_return_workflow_timing_metadata,
 )
@@ -113,10 +115,19 @@ class WorkflowSubmitter:
                 response_outputs = dict(invoke_result.raw_outputs)
             else:
                 runtime_submit_started_at = perf_counter()
+                record_mode = resolve_workflow_run_record_mode(
+                    execution_request.execution_metadata
+                )
+                transient = record_mode == WORKFLOW_RUN_RECORD_MODE_NONE
+                if transient and request.trigger_source.result_mode != "event-only":
+                    raise InvalidRequestError(
+                        "异步 none 记录模式只适用于 event-only TriggerSource"
+                    )
                 workflow_run = self.runtime_service.create_workflow_run(
                     request.trigger_source.workflow_runtime_id,
                     execution_request,
                     created_by=request.created_by,
+                    transient=transient,
                 )
                 timings["trigger_runtime_submit_ms"] = _elapsed_ms(runtime_submit_started_at)
         except ServiceError as error:
@@ -186,13 +197,21 @@ def build_trigger_execution_metadata(
     """构造传入 WorkflowRuntime 的执行元数据。"""
 
     metadata = dict(request.trigger_source.default_execution_metadata)
+    metadata.setdefault(
+        "workflow_run_record_mode",
+        (
+            WORKFLOW_RUN_RECORD_MODE_NONE
+            if request.trigger_source.submit_mode == "sync"
+            or request.trigger_source.result_mode == "event-only"
+            else WORKFLOW_RUN_RECORD_MODE_MINIMAL
+        ),
+    )
     if _is_high_speed_trigger_source(request.trigger_source):
         metadata.setdefault("trace_level", "none")
         metadata.setdefault("retain_trace_enabled", False)
         metadata.setdefault("retain_node_records_enabled", False)
         metadata.setdefault("retain_input_payload_enabled", False)
         metadata.setdefault("retain_outputs_enabled", False)
-        metadata.setdefault("workflow_run_record_mode", WORKFLOW_RUN_RECORD_MODE_MINIMAL)
         metadata.setdefault("return_timing_metadata_enabled", False)
         metadata.setdefault("return_node_timings_enabled", False)
     metadata.update(

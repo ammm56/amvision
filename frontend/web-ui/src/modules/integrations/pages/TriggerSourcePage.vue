@@ -111,6 +111,8 @@
             <MultiSelect
               :model-value="resultBindings"
               :options="resultBindingOptions"
+              :placeholder="resultBindingOptions.length === 0 ? t('triggerSources.values.none') : undefined"
+              :disabled="resultBindingOptions.length === 0"
               @update:model-value="setResultBindings"
             />
           </label>
@@ -516,11 +518,16 @@ const ackPolicyOptions = computed<SelectOption[]>(() => [
   { label: 'ack-after-run-created', value: 'ack-after-run-created', description: t('triggerSources.options.ackCreated') },
 ])
 
-const workflowRunRecordModeOptions = computed<SelectOption[]>(() => [
-  { label: 'minimal', value: 'minimal', description: t('triggerSources.options.recordMinimal') },
-  { label: 'full', value: 'full', description: t('triggerSources.options.recordFull') },
-  { label: 'none', value: 'none', description: t('triggerSources.options.recordNone') },
-])
+const workflowRunRecordModeOptions = computed<SelectOption[]>(() => {
+  const options: SelectOption[] = [
+    { label: 'none', value: 'none', description: t('triggerSources.options.recordNone') },
+    { label: 'minimal', value: 'minimal', description: t('triggerSources.options.recordMinimal') },
+    { label: 'full', value: 'full', description: t('triggerSources.options.recordFull') },
+  ]
+  return submitMode.value === 'async' && resultMode.value !== 'event-only'
+    ? options.filter((option) => option.value !== 'none')
+    : options
+})
 
 const returnDiagnosticsOptions = computed<SelectOption[]>(() => [
   { label: t('triggerSources.options.no'), value: 'false', description: t('triggerSources.options.diagnosticsOff') },
@@ -573,7 +580,7 @@ const ackPolicy = ref('ack-after-run-finished')
 const replyTimeoutSeconds = ref('30')
 const debounceWindowMs = ref('')
 const idempotencyKeyPath = ref('')
-const workflowRunRecordMode = ref<WorkflowRunRecordMode>('minimal')
+const workflowRunRecordMode = ref<WorkflowRunRecordMode>('none')
 const returnDiagnostics = ref('false')
 const directoryPath = ref('')
 const directoryRecursive = ref('false')
@@ -711,6 +718,9 @@ function setResultMode(value: SelectValue): void {
     return
   }
   resultMode.value = nextValue || 'sync-reply'
+  if (submitMode.value === 'async' && resultMode.value !== 'event-only' && workflowRunRecordMode.value === 'none') {
+    workflowRunRecordMode.value = 'minimal'
+  }
 }
 
 function setAckPolicy(value: SelectValue): void {
@@ -725,9 +735,6 @@ function selectValueToBooleanString(value: SelectValue): string {
 function setWorkflowRunRecordMode(value: SelectValue): void {
   const nextValue = selectValueToString(value)
   workflowRunRecordMode.value = nextValue === 'full' || nextValue === 'none' ? nextValue : 'minimal'
-  if (submitMode.value === 'async' && workflowRunRecordMode.value === 'none') {
-    workflowRunRecordMode.value = 'minimal'
-  }
 }
 
 function setReturnDiagnostics(value: SelectValue): void {
@@ -965,7 +972,7 @@ function applyProtocolTemplateDefaults(): void {
   replyTimeoutSeconds.value = template.defaultReplyTimeoutSeconds > 0 ? String(template.defaultReplyTimeoutSeconds) : ''
   debounceWindowMs.value = ''
   idempotencyKeyPath.value = template.defaultIdempotencyKeyPath
-  workflowRunRecordMode.value = 'minimal'
+  workflowRunRecordMode.value = 'none'
   returnDiagnostics.value = 'false'
   directoryPath.value = ''
   directoryRecursive.value = 'false'
@@ -1214,8 +1221,8 @@ async function submitTriggerSource(): Promise<void> {
     const normalizedTriggerSourceId = triggerSourceId.value.trim()
     if (!normalizedTriggerSourceId) throw new Error(t('triggerSources.messages.idRequired'))
     if (isDirectoryWatch.value) validateDirectoryWatchForm()
-    if (submitMode.value === 'async' && workflowRunRecordMode.value === 'none') {
-      throw new Error(t('triggerSources.messages.asyncRecordNone'))
+    if (submitMode.value === 'async' && resultMode.value !== 'event-only' && workflowRunRecordMode.value === 'none') {
+      throw new Error(t('triggerSources.messages.asyncQueryableRecordNone'))
     }
     const triggerSource = await createWorkflowTriggerSource({
       projectId: selectedProjectId.value,
@@ -1402,7 +1409,7 @@ watch(
 }
 
 .trigger-source-advanced {
-  overflow: hidden;
+  overflow: visible;
   border: 1px solid var(--am-border);
   border-radius: 8px;
   background: var(--am-surface-soft);

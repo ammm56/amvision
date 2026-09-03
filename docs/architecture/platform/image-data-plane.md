@@ -349,15 +349,15 @@ TriggerSource 和 SDK 配置包不增加 reply protocol 或 JSON/multipart mode�
 高帧率 Trigger 不应每帧都走完整 WorkflowRun 持久化和完整 diagnostics 返回。当前执行元数据使用以下字段控制：
 
 - `workflow_run_record_mode=full`：完整记录，保留 dispatch/final 事件，并按 retention 开关保留 input、outputs 和 node_records。
-- `workflow_run_record_mode=minimal`：高速触发默认值；同步调用完成后只写一条轻量 WorkflowRun 状态记录。普通 minimal 会保留公开 outputs；ZeroMQ 高速图片入口同时设置 `retain_input_payload_enabled=false` 和 `retain_outputs_enabled=false`，因此不持久化输入、输出、template_outputs 和 node_records，结果直接通过当前同步 reply 返回。
-- `workflow_run_record_mode=none`：同步调用不写 WorkflowRun 数据库记录，仅返回当前调用结果；不适用于 async run。
+- `workflow_run_record_mode=minimal`：同步调用完成后写一条轻量 WorkflowRun 状态记录。普通 minimal 会保留公开 outputs；高速图片入口同时设置 `retain_input_payload_enabled=false` 和 `retain_outputs_enabled=false` 时，不持久化输入、输出、template_outputs 和 node_records。
+- `workflow_run_record_mode=none`：TriggerSource 的生产默认值。同步调用只返回当前结果，不写 WorkflowRun；`async + event-only` 只登记受 worker manager 管理的瞬时执行句柄，结束后同样不写 WorkflowRun。需要 `accepted-then-query` 的异步调用不能使用 none。
 - `return_timing_metadata_enabled=false`：生产默认值；关闭外层 `metadata.timings`，同时清理模型节点业务输出里的 `metadata.timings`。
 - `return_node_timings_enabled=false`：生产默认值；关闭 `metadata.node_timings`。
 
 前端设置位置：
 
 - Workflow App 详情页的 Runtime 栏：设置新建 WorkflowAppRuntime 的默认记录模式和诊断返回策略。
-- 集成页 TriggerSource 的高级设置：按触发入口覆盖记录模式和诊断返回策略；ZeroMQ 图片触发默认 `minimal + 不返回诊断数据`。
+- 集成页 TriggerSource 的高级设置：按触发入口覆盖记录模式和诊断返回策略；默认 `none + 不返回诊断数据`，避免长期生产调用使数据库持续增长。
 
 调试性能时再临时打开 `return_timing_metadata_enabled` 和 `return_node_timings_enabled`。需要历史事件、节点输入输出或完整追踪时，再把 `workflow_run_record_mode` 调整为 `full`，并打开 `retain_trace_enabled`、`retain_node_records_enabled` 和非 `none` 的 `trace_level`。
 

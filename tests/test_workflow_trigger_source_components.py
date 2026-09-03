@@ -452,7 +452,7 @@ def test_workflow_submitter_allows_trigger_source_without_external_inputs() -> N
 
 
 def test_workflow_submitter_zeromq_defaults_to_no_trace() -> None:
-    """验证 ZeroMQ TriggerSource 默认关闭 trace、诊断返回并使用最小记录模式。"""
+    """验证 ZeroMQ TriggerSource 默认关闭 trace、诊断返回且不写运行记录。"""
 
     trigger_source = _build_trigger_source(
         trigger_kind="zeromq-topic",
@@ -486,10 +486,65 @@ def test_workflow_submitter_zeromq_defaults_to_no_trace() -> None:
     assert execution_metadata["trace_level"] == "none"
     assert execution_metadata["retain_trace_enabled"] is False
     assert execution_metadata["retain_node_records_enabled"] is False
-    assert execution_metadata["workflow_run_record_mode"] == "minimal"
+    assert execution_metadata["workflow_run_record_mode"] == "none"
     assert execution_metadata["return_timing_metadata_enabled"] is False
     assert execution_metadata["return_node_timings_enabled"] is False
     assert runtime_service.last_execution_acquisition_mode == "reject"
+
+
+def test_workflow_submitter_directory_event_only_uses_transient_async_run() -> None:
+    """验证目录 Trigger 默认提交不写数据库的瞬时异步运行。"""
+
+    trigger_source = _build_trigger_source(
+        trigger_kind="directory-watch",
+        submit_mode="async",
+        result_mode="event-only",
+        input_binding_mapping={},
+    )
+    trigger_event = TriggerEventNormalizer().normalize(
+        trigger_source,
+        RawTriggerEvent(event_id="directory-event-1", payload={}),
+    )
+    runtime_service = _CapturingAsyncRuntimeService()
+
+    trigger_result = WorkflowSubmitter(runtime_service=runtime_service).submit_event(
+        WorkflowTriggerSubmitRequest(
+            trigger_source=trigger_source,
+            trigger_event=trigger_event,
+        )
+    )
+
+    assert trigger_result.state == "accepted"
+    assert runtime_service.last_request is not None
+    assert runtime_service.last_request.execution_metadata["workflow_run_record_mode"] == "none"
+    assert runtime_service.last_transient is True
+
+
+def test_workflow_submitter_queryable_async_run_keeps_minimal_record() -> None:
+    """验证需要后续查询的异步 Trigger 仍持久化最小运行记录。"""
+
+    trigger_source = _build_trigger_source(
+        submit_mode="async",
+        input_binding_mapping={},
+        result_payload_type_id="image-ref.v1",
+    )
+    trigger_event = TriggerEventNormalizer().normalize(
+        trigger_source,
+        RawTriggerEvent(event_id="async-event-1", payload={}),
+    )
+    runtime_service = _CapturingAsyncRuntimeService()
+
+    trigger_result = WorkflowSubmitter(runtime_service=runtime_service).submit_event(
+        WorkflowTriggerSubmitRequest(
+            trigger_source=trigger_source,
+            trigger_event=trigger_event,
+        )
+    )
+
+    assert trigger_result.state == "accepted"
+    assert runtime_service.last_request is not None
+    assert runtime_service.last_request.execution_metadata["workflow_run_record_mode"] == "minimal"
+    assert runtime_service.last_transient is False
 
 
 def test_workflow_submitter_omits_diagnostics_by_default() -> None:
@@ -1745,10 +1800,14 @@ def _build_trigger_source(
     transport_config: dict[str, object] | None = None,
     match_rule: dict[str, object] | None = None,
     default_execution_metadata: dict[str, object] | None = None,
+    result_mode: str | None = None,
+    result_payload_type_id: str = "response-body.v1",
 ) -> WorkflowTriggerSource:
     """构建测试使用的 WorkflowTriggerSource。"""
 
-    result_mode = "sync-reply" if submit_mode == "sync" else "accepted-then-query"
+    resolved_result_mode = result_mode or (
+        "sync-reply" if submit_mode == "sync" else "accepted-then-query"
+    )
     ack_policy = (
         "ack-after-run-finished"
         if submit_mode == "sync"
@@ -1764,13 +1823,17 @@ def _build_trigger_source(
         expected_snapshot_fingerprint="snapshot-1",
         contract_fingerprint="contract-1",
         submit_mode=submit_mode,
-        result_mode=result_mode,
+        result_mode=resolved_result_mode,
         ack_policy=ack_policy,
         reply_timeout_seconds=(30 if trigger_kind == "local-shared-memory" else None),
         response_ack_timeout_seconds=(
             30.0 if trigger_kind == "local-shared-memory" else None
         ),
-        selected_output_payload_types={"http_response": "response-body.v1"},
+        selected_output_payload_types=(
+            {}
+            if resolved_result_mode == "event-only"
+            else {"http_response": result_payload_type_id}
+        ),
     )
 
     return WorkflowTriggerSource(
@@ -1790,10 +1853,14 @@ def _build_trigger_source(
                 "static_mode": {"value": "inspect"},
             }
         ),
-        result_mapping={"result_bindings": ["http_response"]},
+        result_mapping={
+            "result_bindings": (
+                [] if resolved_result_mode == "event-only" else ["http_response"]
+            )
+        },
         default_execution_metadata=dict(default_execution_metadata or {}),
         ack_policy=ack_policy,
-        result_mode=result_mode,
+        result_mode=resolved_result_mode,
         idempotency_key_path="payload.request.id",
         metadata={
             TRIGGER_RESPONSE_PLAN_METADATA_KEY: response_plan.model_dump(mode="json")
@@ -2352,6 +2419,36 @@ class _RejectingWorkflowSubmitter:
                 state="failed",
                 error_message="runtime not running",
             )
+        )
+
+
+class _CapturingAsyncRuntimeService:
+    """记录异步 Trigger 提交是否采用瞬时运行。"""
+
+    def __init__(self) -> None:
+        self.last_request = None
+        self.last_transient: bool | None = None
+
+    def create_workflow_run(
+        self,
+        workflow_runtime_id: str,
+        request,
+        *,
+        created_by: str | None,
+        transient: bool = False,
+    ) -> WorkflowRun:
+        """记录提交参数并返回 queued 运行对象。"""
+
+        _ = created_by
+        self.last_request = request
+        self.last_transient = transient
+        return WorkflowRun(
+            workflow_run_id="workflow-run-async-1",
+            workflow_runtime_id=workflow_runtime_id,
+            project_id="project-1",
+            application_id="app-1",
+            state="queued",
+            metadata=dict(request.execution_metadata),
         )
 
 

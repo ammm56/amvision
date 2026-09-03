@@ -156,7 +156,7 @@ SDK 只提交相对 `timeout_ms`。backend-service 根据已启用 TriggerSource
 
 SDK 请求只提交 `trigger_source_id`、事件 identity、业务参数和图片 lease。project、Runtime、revision、generation、input mapping、默认 metadata 和 timeout 上限全部来自服务端已启用的 TriggerSource 快照。PREPARE 后路由 generation 发生变化时返回 `trigger_route_changed`，不能悄悄执行不同 revision。
 
-`local-shared-memory` 与 `zeromq-topic` 同属高速入口，默认使用 `workflow_run_record_mode=minimal`，关闭 trace、node records、input payload 和 output retention，保留必要生命周期记录与最终数据库提交。诊断 timing 由显式开关控制，不以 `none` 作为默认记录模式。
+`local-shared-memory` 与 `zeromq-topic` 同属高速入口，默认使用 `workflow_run_record_mode=none`，关闭 trace、node records、input payload 和 output retention，不为每次生产调用写 WorkflowRun。诊断 timing 和持久化记录只通过显式开关启用。
 
 ### 13. 不支持结果的 Trigger 使用显式交付策略
 

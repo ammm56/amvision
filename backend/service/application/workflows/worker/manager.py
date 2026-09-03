@@ -765,6 +765,19 @@ class WorkflowRuntimeWorkerManager:
         async_handle.cancel_event.set()
         return async_handle.completion_event.wait(timeout=max(0.1, timeout_seconds))
 
+    def list_async_run_ids(self, workflow_runtime_id: str) -> tuple[str, ...]:
+        """返回已经登记且尚未结束的异步 Run id。"""
+
+        with self._lock:
+            return tuple(
+                sorted(
+                    handle.workflow_run_id
+                    for handle in self._async_runs.values()
+                    if handle.workflow_app_runtime.workflow_runtime_id
+                    == workflow_runtime_id
+                )
+            )
+
     def invoke_runtime(
         self,
         *,

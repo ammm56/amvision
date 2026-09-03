@@ -1992,6 +1992,7 @@ class WorkflowRuntimeService:
         execution_token_run_ids = self.worker_manager.list_execution_token_run_ids(
             workflow_runtime_id
         )
+        async_run_ids = self.worker_manager.list_async_run_ids(workflow_runtime_id)
         with self._open_unit_of_work() as unit_of_work:
             bound_trigger_sources = (
                 unit_of_work.workflow_trigger_sources.list_trigger_sources_by_runtime(
@@ -2018,6 +2019,7 @@ class WorkflowRuntimeService:
                 {
                     *(item.workflow_run_id for item in active_runs),
                     *execution_token_run_ids,
+                    *async_run_ids,
                 }
             )
         )
@@ -2027,6 +2029,8 @@ class WorkflowRuntimeService:
             }
             for workflow_run_id in execution_token_run_ids:
                 workflow_run_states.setdefault(workflow_run_id, "execution-token")
+            for workflow_run_id in async_run_ids:
+                workflow_run_states.setdefault(workflow_run_id, "async-handle")
             raise ResourceConflictError(
                 "WorkflowAppRuntime 仍有活动 WorkflowRun，不能删除",
                 details={
@@ -2182,6 +2186,7 @@ class WorkflowRuntimeService:
         request: WorkflowRuntimeInvokeRequest,
         *,
         created_by: str | None,
+        transient: bool = False,
     ) -> WorkflowRun:
         """为已启动的 runtime 创建一条异步 WorkflowRun。
 
@@ -2189,9 +2194,10 @@ class WorkflowRuntimeService:
         - workflow_runtime_id：目标 WorkflowAppRuntime id。
         - request：异步运行请求。
         - created_by：创建主体 id。
+        - transient：是否只在内存中登记执行，不写 WorkflowRun 数据库记录。
 
         返回：
-        - WorkflowRun：已持久化的异步 WorkflowRun，创建返回时通常为 queued。
+        - WorkflowRun：创建返回时通常为 queued；transient=true 时仅作为当前提交回执。
         """
 
         with self.worker_manager.runtime_lifecycle_guard(workflow_runtime_id):
@@ -2199,6 +2205,7 @@ class WorkflowRuntimeService:
                 workflow_runtime_id,
                 request,
                 created_by=created_by,
+                transient=transient,
             )
 
     def _create_workflow_run(
@@ -2207,8 +2214,9 @@ class WorkflowRuntimeService:
         request: WorkflowRuntimeInvokeRequest,
         *,
         created_by: str | None,
+        transient: bool,
     ) -> WorkflowRun:
-        """在生命周期锁内固定版本、持久化 queued 并登记异步执行句柄。"""
+        """在生命周期锁内固定版本并登记持久化或瞬时异步执行句柄。"""
 
         workflow_app_runtime = self.get_workflow_app_runtime(workflow_runtime_id)
         if (
@@ -2238,8 +2246,11 @@ class WorkflowRuntimeService:
             metadata,
             execution_policy=execution_policy,
         )
-        if resolve_workflow_run_record_mode(metadata) == WORKFLOW_RUN_RECORD_MODE_NONE:
+        record_mode = resolve_workflow_run_record_mode(metadata)
+        if record_mode == WORKFLOW_RUN_RECORD_MODE_NONE and not transient:
             raise InvalidRequestError("异步 WorkflowRun 不能使用 none 记录模式")
+        if transient and record_mode != WORKFLOW_RUN_RECORD_MODE_NONE:
+            raise InvalidRequestError("瞬时异步 WorkflowRun 必须使用 none 记录模式")
         now = _now_isoformat()
         workflow_run = WorkflowRun(
             workflow_run_id=f"workflow-run-{uuid4().hex}",
@@ -2269,14 +2280,15 @@ class WorkflowRuntimeService:
             ),
             metadata=metadata,
         )
-        with self._open_unit_of_work() as unit_of_work:
-            unit_of_work.workflow_runtime.save_workflow_run(workflow_run)
-            unit_of_work.commit()
-        self._append_workflow_run_event(
-            workflow_run,
-            event_type="run.queued",
-            message="workflow run 已进入队列",
-        )
+        if not transient:
+            with self._open_unit_of_work() as unit_of_work:
+                unit_of_work.workflow_runtime.save_workflow_run(workflow_run)
+                unit_of_work.commit()
+            self._append_workflow_run_event(
+                workflow_run,
+                event_type="run.queued",
+                message="workflow run 已进入队列",
+            )
 
         worker_execution_metadata = with_input_buffer_ref_cleanups(
             metadata,
@@ -2294,9 +2306,16 @@ class WorkflowRuntimeService:
                 expected_snapshot_fingerprint=(
                     active_revision.expected_snapshot_fingerprint
                 ),
-                callbacks=self._build_async_run_callbacks(
-                    workflow_app_runtime.workflow_runtime_id,
-                    workflow_run.workflow_run_id,
+                callbacks=(
+                    self._build_transient_async_run_callbacks(
+                        workflow_app_runtime,
+                        active_revision,
+                    )
+                    if transient
+                    else self._build_async_run_callbacks(
+                        workflow_app_runtime.workflow_runtime_id,
+                        workflow_run.workflow_run_id,
+                    )
                 ),
             )
         except ServiceError as error:
@@ -2309,14 +2328,15 @@ class WorkflowRuntimeService:
                 finished_at=_now_isoformat(),
                 error_message=error.message,
             )
-            with self._open_unit_of_work() as unit_of_work:
-                unit_of_work.workflow_runtime.save_workflow_run(workflow_run)
-                unit_of_work.commit()
-            self._append_workflow_run_event(
-                workflow_run,
-                event_type="run.failed",
-                message="workflow run 入队失败",
-            )
+            if not transient:
+                with self._open_unit_of_work() as unit_of_work:
+                    unit_of_work.workflow_runtime.save_workflow_run(workflow_run)
+                    unit_of_work.commit()
+                self._append_workflow_run_event(
+                    workflow_run,
+                    event_type="run.failed",
+                    message="workflow run 入队失败",
+                )
         return workflow_run
 
     def invoke_workflow_app_runtime(
@@ -3024,6 +3044,153 @@ class WorkflowRuntimeService:
                 error,
             ),
         )
+
+    def _build_transient_async_run_callbacks(
+        self,
+        workflow_app_runtime: WorkflowAppRuntime,
+        active_revision: WorkflowRuntimeRevision,
+    ) -> WorkflowRuntimeAsyncRunCallbacks:
+        """构造不写 WorkflowRun 记录的 event-only 异步执行回调。"""
+
+        return WorkflowRuntimeAsyncRunCallbacks(
+            on_started=lambda: None,
+            on_completed=lambda worker_result: (
+                self._finish_transient_async_run_with_result(
+                    workflow_app_runtime,
+                    active_revision,
+                    worker_result,
+                )
+            ),
+            on_cancelled=lambda _runtime_state: None,
+            on_failed=lambda error: self._finish_transient_async_run_failed(
+                workflow_app_runtime,
+                active_revision,
+                error,
+            ),
+            on_timed_out=lambda error: self._finish_transient_async_run_timed_out(
+                workflow_app_runtime,
+                active_revision,
+                error,
+            ),
+        )
+
+    def _finish_transient_async_run_with_result(
+        self,
+        workflow_app_runtime: WorkflowAppRuntime,
+        active_revision: WorkflowRuntimeRevision,
+        worker_result: WorkflowRuntimeWorkerRunResult,
+    ) -> None:
+        """瞬时异步执行只在 worker 失效时更新 Runtime，不保存运行结果。"""
+
+        updated_runtime = apply_worker_state(
+            replace(workflow_app_runtime, updated_at=_now_isoformat()),
+            worker_result.worker_state,
+        )
+        if updated_runtime.observed_state != "failed":
+            return
+        self._persist_transient_async_runtime_failure(
+            updated_runtime,
+            active_revision=active_revision,
+            expected_worker_instance_id=(
+                worker_result.worker_state.instance_id
+                or workflow_app_runtime.worker_instance_id
+            ),
+            reason="transient-run.failed",
+        )
+
+    def _finish_transient_async_run_failed(
+        self,
+        workflow_app_runtime: WorkflowAppRuntime,
+        active_revision: WorkflowRuntimeRevision,
+        error: ServiceError,
+    ) -> None:
+        """瞬时异步执行异常时仅保留 Runtime 故障状态。"""
+
+        if isinstance(error, ResourceConflictError):
+            return
+        error_worker_instance_id = error.details.get("worker_instance_id")
+        expected_worker_instance_id = (
+            error_worker_instance_id
+            if isinstance(error_worker_instance_id, str) and error_worker_instance_id
+            else workflow_app_runtime.worker_instance_id
+        )
+        self._persist_transient_async_runtime_failure(
+            replace(
+                workflow_app_runtime,
+                observed_state="failed",
+                updated_at=_now_isoformat(),
+                last_error=error.message,
+                health_summary={
+                    "mode": "single-instance-sync",
+                    "worker_state": "failed",
+                    "last_error": error.message,
+                },
+            ),
+            active_revision=active_revision,
+            expected_worker_instance_id=expected_worker_instance_id,
+            reason="transient-run.failed",
+        )
+
+    def _finish_transient_async_run_timed_out(
+        self,
+        workflow_app_runtime: WorkflowAppRuntime,
+        active_revision: WorkflowRuntimeRevision,
+        error: OperationTimeoutError,
+    ) -> None:
+        """瞬时异步执行超时时更新仍属于本次 worker 代的 Runtime。"""
+
+        with self._open_unit_of_work() as unit_of_work:
+            current_runtime = unit_of_work.workflow_runtime.get_workflow_app_runtime(
+                workflow_app_runtime.workflow_runtime_id
+            )
+        if current_runtime is None:
+            return
+        updated_runtime = self._apply_worker_failure_unless_recovered(
+            current_runtime,
+            error=error,
+        )
+        if updated_runtime.observed_state != "failed":
+            return
+        timeout_worker_instance_id = error.details.get("worker_instance_id")
+        expected_worker_instance_id = (
+            timeout_worker_instance_id
+            if isinstance(timeout_worker_instance_id, str)
+            and timeout_worker_instance_id
+            else workflow_app_runtime.worker_instance_id
+        )
+        self._persist_transient_async_runtime_failure(
+            updated_runtime,
+            active_revision=active_revision,
+            expected_worker_instance_id=expected_worker_instance_id,
+            reason="transient-run.timed-out",
+        )
+
+    def _persist_transient_async_runtime_failure(
+        self,
+        updated_runtime: WorkflowAppRuntime,
+        *,
+        active_revision: WorkflowRuntimeRevision,
+        expected_worker_instance_id: str | None,
+        reason: str,
+    ) -> None:
+        """以 revision/generation/worker CAS 保存瞬时执行造成的 Runtime 故障。"""
+
+        with self._open_unit_of_work() as unit_of_work:
+            runtime_updated = unit_of_work.workflow_runtime.update_workflow_app_runtime_state_if_current(
+                updated_runtime,
+                expected_generation=active_revision.generation,
+                expected_revision_id=active_revision.workflow_runtime_revision_id,
+                expected_worker_instance_id=expected_worker_instance_id,
+                expected_desired_state="running",
+            )
+            unit_of_work.commit()
+        if runtime_updated:
+            self._append_workflow_app_runtime_event(
+                updated_runtime,
+                event_type="runtime.failed",
+                message="workflow app runtime 已进入 failed 状态",
+                payload={"reason": reason},
+            )
 
     def _mark_async_workflow_run_started(self, workflow_run_id: str) -> None:
         """把异步 WorkflowRun 从 queued 推进到 running。"""

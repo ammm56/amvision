@@ -209,7 +209,9 @@ ZeroMQ 的 frame send、tracker cleanup 和后续 lease reclaim 发生在 transp
 
 目录检测示例继续通过 `input_binding_mapping.deployment_request.value` 注入固定 Deployment 请求；目录变化本身只映射到 `request_json`。
 
-目录变化事件使用自身唯一 id 去重：`"idempotency_key_path": "payload.directory_event_value.value.event_id"`。不再以文件批次或路径列表构造幂等键。Postman 在 Windows 本地验证中显式使用 `force_polling = true`；生产配置可以保留自动 watcher。可选 `request_roi` 仍由调用方按需要提供。
+目录变化事件使用自身唯一 id 去重：`"idempotency_key_path": "payload.directory_event_value.value.event_id"`。该字段是事件 JSON 的取值路径，不是磁盘路径；它读取当前目录变化批次的 `event_id`，只用于在短期内复用同一事件的重复提交结果。不同窗口生成不同 id，仍会分别触发执行。不再以文件批次或路径列表构造幂等键。Postman 在 Windows 本地验证中显式使用 `force_polling = true`；生产配置可以保留自动 watcher。可选 `request_roi` 仍由调用方按需要提供。
+
+TriggerSource 默认使用 `workflow_run_record_mode=none`，避免长期运行持续增加 WorkflowRun 数据。目录变化的 `async + event-only` 调用使用瞬时异步执行，不提供后续 run 查询；需要执行历史时显式切换为 `minimal` 或 `full`。
 
 完整请求、环境变量和现场占位值见 [Workflow Postman](postman/workflows/README.md)。示例中的目录、Deployment id 和 token 必须替换为当前环境值。
 
