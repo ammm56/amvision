@@ -60,7 +60,8 @@
       "node_id": "save_video",
       "node_type_id": "core.io.video-save",
       "parameters": {
-        "output_transport_kind": "storage",
+        "save_directory": "{workflow_app_result_dir}/sam3-video-multiplex-review",
+        "file_name": "result-{YYYYMMDDhhmmssSSS}.mp4",
         "container": "mp4",
         "overwrite": true
       }

@@ -20,12 +20,12 @@ from backend.nodes import ExecutionImageRegistry
 from backend.nodes.core_nodes.io.image.image_save import (
     CORE_NODE_SPEC as IMAGE_SAVE_NODE_SPEC,
     _image_save_handler,
-    _resolve_save_directory_template,
 )
 from backend.nodes.runtime_support import register_image_matrix
 from backend.nodes.save_locations import (
     SAVE_LOCATION_FILESYSTEM,
     SAVE_LOCATION_OBJECT_STORE,
+    render_save_directory_template,
     resolve_optional_save_location,
 )
 from backend.service.application.errors import InvalidRequestError
@@ -259,12 +259,16 @@ def test_image_save_directory_reuses_common_date_time_template() -> None:
         execution_metadata={},
     )
 
-    assert _resolve_save_directory_template(
-        request,
-        "results/{YYYY}/{MM}/{D}/{node_id}-{hhmmss}",
-        current_time=current_time,
-        format_context={"node_id": "save-image"},
-    ) == "results/2026/12/1/save-image-150405"
+    assert (
+        render_save_directory_template(
+            request,
+            "results/{YYYY}/{MM}/{D}/{node_id}-{hhmmss}",
+            node_label="Image Save",
+            current_time=current_time,
+            context={"node_id": "save-image"},
+        )
+        == "results/2026/12/1/save-image-150405"
+    )
 
 
 @pytest.mark.parametrize("target_kind", ["object-store", "filesystem"])

@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 import os
 from pathlib import Path, PurePosixPath, PureWindowsPath
 import shutil
 from typing import Literal
 from uuid import uuid4
 
+from backend.nodes.date_time_template import render_date_time_template
 from backend.service.application.errors import InvalidRequestError
+from backend.service.infrastructure.object_store.object_key_layout import (
+    build_project_workflow_application_results_dir,
+)
 from backend.service.infrastructure.filesystem.atomic_files import (
     publish_path_without_overwrite,
     replace_path_with_retry,
@@ -54,6 +59,123 @@ class WorkflowSavedFile:
             "kind": SAVE_LOCATION_FILESYSTEM,
             "local_path": str(self.local_path or ""),
         }
+
+
+def build_save_template_context(
+    request: object,
+    *,
+    current_time: datetime | None = None,
+) -> dict[str, str]:
+    """构建所有 Save 节点共用的日期时间和 Workflow 上下文。"""
+
+    execution_metadata = getattr(request, "execution_metadata", {})
+    if not isinstance(execution_metadata, dict):
+        execution_metadata = {}
+    resolved_time = current_time or datetime.now().astimezone()
+    workflow_run_id = str(execution_metadata.get("workflow_run_id") or "default-run")
+    context = {
+        "workflow_run_id": workflow_run_id,
+        "timestamp": resolved_time.strftime("%Y%m%dT%H%M%S%f%z"),
+        "node_id": str(getattr(request, "node_id", "") or "unknown-node"),
+    }
+    project_id = _read_optional_execution_metadata_text(
+        execution_metadata,
+        key="project_id",
+    )
+    application_id = _read_optional_execution_metadata_text(
+        execution_metadata,
+        key="application_id",
+    )
+    if project_id is not None:
+        context["project_id"] = project_id
+    if application_id is not None:
+        context["application_id"] = application_id
+    if project_id is not None and application_id is not None:
+        context["workflow_app_result_dir"] = (
+            build_project_workflow_application_results_dir(
+                project_id=project_id,
+                application_id=application_id,
+                workflow_run_id=workflow_run_id,
+            )
+        )
+    return context
+
+
+def render_save_directory_template(
+    request: object,
+    value: object,
+    *,
+    node_label: str,
+    current_time: datetime | None = None,
+    context: dict[str, str] | None = None,
+) -> str:
+    """展开并校验 Save 节点的目录模板。"""
+
+    template = value.strip() if isinstance(value, str) else ""
+    if not template:
+        raise InvalidRequestError(
+            f"{node_label} 保存目录不能为空",
+            details={
+                "node_id": getattr(request, "node_id", None),
+                "parameter_name": "save_directory",
+            },
+        )
+    try:
+        return render_date_time_template(
+            template,
+            current_time=current_time,
+            context=context or build_save_template_context(request),
+        )
+    except InvalidRequestError as exc:
+        exc.details.setdefault("node_id", getattr(request, "node_id", None))
+        exc.details.setdefault("parameter_name", "save_directory")
+        raise
+
+
+def resolve_required_save_directory(
+    request: object,
+    value: object,
+    *,
+    node_label: str,
+    current_time: datetime | None = None,
+    context: dict[str, str] | None = None,
+) -> tuple[str, WorkflowSaveLocation]:
+    """展开目录模板并解析成 ObjectStore 或本机目录。"""
+
+    rendered_directory = render_save_directory_template(
+        request,
+        value,
+        node_label=node_label,
+        current_time=current_time,
+        context=context,
+    )
+    save_location = resolve_optional_save_location(
+        rendered_directory,
+        scope="directory",
+    )
+    if save_location is None:
+        raise InvalidRequestError(
+            f"{node_label} 保存目录不能为空",
+            details={
+                "node_id": getattr(request, "node_id", None),
+                "parameter_name": "save_directory",
+            },
+        )
+    return rendered_directory, save_location
+
+
+def _read_optional_execution_metadata_text(
+    execution_metadata: dict[str, object],
+    *,
+    key: str,
+) -> str | None:
+    """读取 execution_metadata 中的可选非空文本。"""
+
+    raw_value = execution_metadata.get(key)
+    if not isinstance(raw_value, str):
+        return None
+    normalized_value = raw_value.strip()
+    return normalized_value or None
 
 
 def resolve_save_location_path(
@@ -245,8 +367,12 @@ def save_file(
     source_path: Path,
     file_name: str | None = None,
     overwrite: bool = True,
+    increment_on_conflict: bool = False,
 ) -> WorkflowSavedFile:
-    """把现有文件流式复制到保存位置，避免大文件整体读入内存。"""
+    """把现有文件流式复制到保存位置，并支持原子冲突自动编号。"""
+
+    if overwrite and increment_on_conflict:
+        raise InvalidRequestError("覆盖保存和冲突自动编号不能同时启用")
 
     target_name = _normalize_target_name(
         save_location=save_location, file_name=file_name
@@ -260,6 +386,16 @@ def save_file(
             f"{base_key}/{target_name}" if target_name is not None else base_key
         )
         storage = require_dataset_storage(request)
+        if not overwrite and increment_on_conflict:
+            object_key = _copy_object_store_file_with_incremented_name(
+                storage=storage,
+                object_key=object_key,
+                source_path=source_path,
+            )
+            return WorkflowSavedFile(
+                kind=SAVE_LOCATION_OBJECT_STORE,
+                object_key=object_key,
+            )
         if not overwrite and storage.resolve(object_key).exists():
             raise InvalidRequestError(
                 "保存目标已存在，且当前节点未允许覆盖",
@@ -272,6 +408,15 @@ def save_file(
     if base_path is None:
         raise InvalidRequestError("系统保存位置缺少有效路径")
     target_path = base_path / target_name if target_name is not None else base_path
+    if not overwrite and increment_on_conflict:
+        target_path = _copy_filesystem_file_with_incremented_name(
+            source_path=source_path,
+            target_path=target_path,
+        )
+        return WorkflowSavedFile(
+            kind=SAVE_LOCATION_FILESYSTEM,
+            local_path=target_path,
+        )
     if not overwrite and target_path.exists():
         raise InvalidRequestError(
             "保存目标已存在，且当前节点未允许覆盖",
@@ -383,6 +528,60 @@ def _write_filesystem_bytes_with_incremented_name(
     )
 
 
+def _copy_object_store_file_with_incremented_name(
+    *,
+    storage: object,
+    object_key: str,
+    source_path: Path,
+) -> str:
+    """在 ObjectStore 中原子选择可用文件名并流式复制文件。"""
+
+    resolve = getattr(storage, "resolve", None)
+    copy_if_absent = getattr(storage, "copy_file_if_absent", None)
+    if not callable(resolve) or not callable(copy_if_absent):
+        raise InvalidRequestError("当前 ObjectStore 不支持原子文件冲突自动编号")
+    object_path = PurePosixPath(object_key)
+    for sequence in range(_MAX_INCREMENTED_FILE_SEQUENCE + 1):
+        candidate_name = _build_incremented_file_name(object_path.name, sequence)
+        candidate_key = (
+            object_path.with_name(candidate_name).as_posix()
+            if str(object_path.parent) != "."
+            else candidate_name
+        )
+        if resolve(candidate_key).exists():
+            continue
+        if copy_if_absent(source_path, candidate_key):
+            return candidate_key
+    raise InvalidRequestError(
+        "保存目标自动编号已达到上限",
+        details={"object_key": object_key},
+    )
+
+
+def _copy_filesystem_file_with_incremented_name(
+    *,
+    source_path: Path,
+    target_path: Path,
+) -> Path:
+    """在本机目录中原子选择可用文件名并流式复制文件。"""
+
+    for sequence in range(_MAX_INCREMENTED_FILE_SEQUENCE + 1):
+        candidate_path = target_path.with_name(
+            _build_incremented_file_name(target_path.name, sequence)
+        )
+        if candidate_path.exists():
+            continue
+        if _copy_filesystem_file_atomically_if_absent(
+            source_path=source_path,
+            target_path=candidate_path,
+        ):
+            return candidate_path
+    raise InvalidRequestError(
+        "保存目标自动编号已达到上限",
+        details={"local_path": str(target_path)},
+    )
+
+
 def _build_incremented_file_name(file_name: str, sequence: int) -> str:
     """构造原名或在最后一个扩展名前插入三位起始的数字序号。"""
 
@@ -450,6 +649,42 @@ def _copy_filesystem_file_atomically(source_path: Path, target_path: Path) -> No
             "无法写入系统保存位置",
             details={"local_path": str(target_path)},
         ) from error
+
+
+def _copy_filesystem_file_atomically_if_absent(
+    *,
+    source_path: Path,
+    target_path: Path,
+) -> bool:
+    """流式复制并原子创建本机文件，目标已存在时保持不变。"""
+
+    filesystem_target_path = to_filesystem_path(target_path)
+    filesystem_target_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = filesystem_target_path.with_name(
+        f".{target_path.name}.{uuid4().hex[:12]}.tmp"
+    )
+    try:
+        with (
+            source_path.open("rb") as source_stream,
+            temporary_path.open("wb") as output_stream,
+        ):
+            shutil.copyfileobj(source_stream, output_stream, length=1024 * 1024)
+            output_stream.flush()
+            os.fsync(output_stream.fileno())
+        published = publish_path_without_overwrite(
+            temporary_path,
+            filesystem_target_path,
+        )
+        if published:
+            _sync_directory_after_replace(filesystem_target_path.parent)
+        return published
+    except OSError as error:
+        raise InvalidRequestError(
+            "无法写入系统保存位置",
+            details={"local_path": str(target_path)},
+        ) from error
+    finally:
+        temporary_path.unlink(missing_ok=True)
 
 
 def _sync_directory_after_replace(directory: Path) -> None:

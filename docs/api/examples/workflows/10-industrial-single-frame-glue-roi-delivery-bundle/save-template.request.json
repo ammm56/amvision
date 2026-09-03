@@ -171,7 +171,8 @@
         "node_id": "save_result_json",
         "node_type_id": "core.output.json-save-local",
         "parameters": {
-          "local_path": "{workflow_app_result_dir}/glue-roi-delivery-bundle/result-{timestamp}.json",
+          "save_directory": "{workflow_app_result_dir}/glue-roi-delivery-bundle",
+          "file_name": "result-{YYYYMMDDhhmmssSSS}.json",
           "overwrite": true,
           "indent": 2
         }

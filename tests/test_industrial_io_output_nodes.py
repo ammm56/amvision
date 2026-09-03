@@ -177,7 +177,12 @@ def test_json_save_local_handler_writes_result_record(tmp_path: Path) -> None:
         WorkflowNodeExecutionRequest(
             node_id="json-save-local",
             node_definition=object(),
-            parameters={"save_location": str(output_path), "indent": 2},
+            parameters={
+                "save_directory": str(output_path.parent),
+                "file_name": output_path.name,
+                "overwrite": True,
+                "indent": 2,
+            },
             input_values={
                 "result": {
                     "ok_ng": "NG",
@@ -193,6 +198,51 @@ def test_json_save_local_handler_writes_result_record(tmp_path: Path) -> None:
     assert output_path.is_file()
     assert '"ok_ng": "NG"' in output_path.read_text(encoding="utf-8")
     assert output["summary"]["value"]["record_kind"] == "result-record"
+
+
+def test_json_save_local_numbers_conflicts_and_requires_json_suffix(
+    tmp_path: Path,
+) -> None:
+    """验证 Save JSON 复用自动编号，并明确拒绝非 JSON 文件名。"""
+
+    request = WorkflowNodeExecutionRequest(
+        node_id="json-save-local",
+        node_definition=object(),
+        parameters={
+            "save_directory": str(tmp_path),
+            "file_name": "inspection.json",
+            "overwrite": False,
+        },
+        input_values={"value": {"value": {"ok": True}}},
+        execution_metadata={},
+    )
+
+    first_output = _json_save_local_handler(request)
+    second_output = _json_save_local_handler(request)
+
+    assert (tmp_path / "inspection.json").is_file()
+    assert (tmp_path / "inspection_001.json").is_file()
+    assert first_output["summary"]["value"]["saved_output"]["local_path"].endswith(
+        "inspection.json"
+    )
+    assert second_output["summary"]["value"]["saved_output"]["local_path"].endswith(
+        "inspection_001.json"
+    )
+
+    with pytest.raises(InvalidRequestError, match="文件扩展名不受支持"):
+        _json_save_local_handler(
+            WorkflowNodeExecutionRequest(
+                node_id="json-save-local",
+                node_definition=object(),
+                parameters={
+                    "save_directory": str(tmp_path),
+                    "file_name": "inspection.txt",
+                    "overwrite": False,
+                },
+                input_values={"value": {"value": {"ok": True}}},
+                execution_metadata={},
+            )
+        )
 
 
 def test_csv_append_local_handler_appends_alarm_record(tmp_path: Path) -> None:
@@ -236,7 +286,11 @@ def test_json_and_csv_save_handlers_support_object_store_relative_locations(
         WorkflowNodeExecutionRequest(
             node_id="json-save-object-store",
             node_definition=object(),
-            parameters={"save_location": "workflow/results/result.json"},
+            parameters={
+                "save_directory": "workflow/results",
+                "file_name": "result.json",
+                "overwrite": True,
+            },
             input_values={"value": {"value": {"ok": True}}},
             execution_metadata=execution_metadata,
         )

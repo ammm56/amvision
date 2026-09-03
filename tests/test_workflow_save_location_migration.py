@@ -61,21 +61,27 @@ def test_migrate_workflow_template_payload_renames_both_old_parameter_kinds() ->
     assert nodes[0]["parameters"] == {"save_location": "workflow/roi"}
     assert nodes[1]["parameters"] == {"save_location": r"T:\temp\draw.png"}
     assert nodes[2]["parameters"] == {"threshold": 0.5}
-    assert nodes[3]["parameters"] == {"save_location": r"T:\temp\result.mp4"}
+    assert nodes[3]["parameters"] == {
+        "save_directory": r"T:\temp",
+        "file_name": "result.mp4",
+        "overwrite": True,
+    }
     assert nodes[4]["parameters"] == {
         "save_directory": "workflow",
         "file_name": "result.png",
         "overwrite": True,
     }
-    assert nodes[5]["parameters"] == {"save_location": r"T:\temp\result.json"}
+    assert nodes[5]["parameters"] == {
+        "save_directory": r"T:\temp",
+        "file_name": "result.json",
+        "overwrite": True,
+    }
     assert nodes[6]["parameters"] == {"save_location": "workflow/result.csv"}
     assert nodes[7]["parameters"] == {"save_location": "workflow/archive"}
 
 
-def test_migrate_workflow_template_payload_updates_dynamic_save_location_edges() -> (
-    None
-):
-    """旧 Path 动态输入连线同步改为 save_location。"""
+def test_migrate_workflow_template_payload_rejects_unsplittable_dynamic_path() -> None:
+    """旧完整文件路径动态输入不能被静默映射成目录或文件名。"""
 
     payload: dict[str, object] = {
         "nodes": [
@@ -101,10 +107,8 @@ def test_migrate_workflow_template_payload_updates_dynamic_save_location_edges()
         ],
     }
 
-    assert migrate_workflow_template_payload(payload) == 1
-    edges = payload["edges"]
-    assert isinstance(edges, list)
-    assert edges[0]["target_port"] == "save_location"
+    with pytest.raises(InvalidRequestError, match="不能自动拆分"):
+        migrate_workflow_template_payload(payload)
 
 
 def test_migrate_workflow_template_payload_rejects_conflicting_new_value() -> None:
@@ -126,8 +130,8 @@ def test_migrate_workflow_template_payload_rejects_conflicting_new_value() -> No
         migrate_workflow_template_payload(payload)
 
 
-def test_migrate_image_save_splits_location_and_converts_timestamp() -> None:
-    """验证 Image Save 旧路径模板拆分为目录和文件名时间模板。"""
+def test_migrate_save_nodes_split_location_and_convert_timestamp() -> None:
+    """验证所有 Save 节点把旧路径拆成目录和文件名时间模板。"""
 
     payload: dict[str, object] = {
         "nodes": [
@@ -139,15 +143,42 @@ def test_migrate_image_save_splits_location_and_converts_timestamp() -> None:
                         "{workflow_app_result_dir}/{node_id}-{timestamp}.png"
                     )
                 },
-            }
+            },
+            {
+                "node_id": "save-json",
+                "node_type_id": "core.output.json-save-local",
+                "parameters": {
+                    "save_location": "workflow/results/result-{timestamp}.json"
+                },
+            },
+            {
+                "node_id": "save-text",
+                "node_type_id": "core.output.text-save-local",
+                "parameters": {
+                    "save_location": (
+                        "workflow/{timestamp}/results/log-{timestamp}.txt"
+                    ),
+                    "mode": "append",
+                },
+            },
         ]
     }
 
-    assert migrate_workflow_template_payload(payload) == 1
+    assert migrate_workflow_template_payload(payload) == 3
     nodes = payload["nodes"]
     assert isinstance(nodes, list)
     assert nodes[0]["parameters"] == {
         "save_directory": "{workflow_app_result_dir}",
         "file_name": "{node_id}-{YYYYMMDDhhmmssSSS}.png",
         "overwrite": True,
+    }
+    assert nodes[1]["parameters"] == {
+        "save_directory": "workflow/results",
+        "file_name": "result-{YYYYMMDDhhmmssSSS}.json",
+        "overwrite": True,
+    }
+    assert nodes[2]["parameters"] == {
+        "save_directory": "workflow/{YYYYMMDDhhmmssSSS}/results",
+        "file_name": "log-{YYYYMMDDhhmmssSSS}.txt",
+        "mode": "append",
     }

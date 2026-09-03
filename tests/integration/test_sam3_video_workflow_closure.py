@@ -144,6 +144,8 @@ def test_sam3_video_semantic_closure_smoke(
             node_id="video-save",
             node_definition=object(),
             parameters={
+                "save_directory": "workflow/videos",
+                "file_name": "sam3-semantic.mp4",
                 "container": "mp4",
                 "overwrite": True,
             },
@@ -164,8 +166,7 @@ def test_sam3_video_semantic_closure_smoke(
     assert tracked_output["summary"]["project_native"] is True
     assert tracked_output["summary"]["inference_mode"] == "video-semantic-segment"
     assert (
-        tracked_output["summary"]["frame_prompt_mode"]
-        == "sam3.1-multiplex-propagation"
+        tracked_output["summary"]["frame_prompt_mode"] == "sam3.1-multiplex-propagation"
     )
     assert tracked_output["summary"]["processed_frame_count"] == 4
     assert rendered_frames["summary"]["value"]["frame_count"] == 4
@@ -268,6 +269,8 @@ def test_sam3_video_interactive_closure_smoke(
             node_id="video-save",
             node_definition=object(),
             parameters={
+                "save_directory": "workflow/videos",
+                "file_name": "sam3-interactive.mp4",
                 "container": "mp4",
                 "overwrite": True,
             },
@@ -288,8 +291,7 @@ def test_sam3_video_interactive_closure_smoke(
     assert tracked_output["summary"]["project_native"] is True
     assert tracked_output["summary"]["inference_mode"] == "video-interactive-segment"
     assert (
-        tracked_output["summary"]["frame_prompt_mode"]
-        == "sam3.1-multiplex-propagation"
+        tracked_output["summary"]["frame_prompt_mode"] == "sam3.1-multiplex-propagation"
     )
     assert tracked_output["summary"]["processed_frame_count"] == 4
     assert rendered_frames["summary"]["value"]["frame_count"] == 4

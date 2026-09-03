@@ -6,17 +6,28 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import pytest
 
 from backend.nodes import ExecutionImageRegistry
 from backend.nodes.core_catalog import get_core_workflow_payload_contracts
 from backend.nodes.core_nodes.video.tracks.tracks_filter import _tracks_filter_handler
-from backend.nodes.core_nodes.video.tracks.tracks_to_regions import _tracks_to_regions_handler
-from backend.nodes.core_nodes.video.windows.video_decode_frames import _video_decode_frames_handler
+from backend.nodes.core_nodes.video.tracks.tracks_to_regions import (
+    _tracks_to_regions_handler,
+)
+from backend.nodes.core_nodes.video.windows.video_decode_frames import (
+    _video_decode_frames_handler,
+)
 from backend.nodes.core_nodes.io.output.response.video_body import _video_body_handler
-from backend.nodes.core_nodes.video.windows.video_frame_window_item_get import _video_frame_window_item_get_handler
-from backend.nodes.core_nodes.video.windows.frame_window_preview import _frame_window_preview_handler
+from backend.nodes.core_nodes.video.windows.video_frame_window_item_get import (
+    _video_frame_window_item_get_handler,
+)
+from backend.nodes.core_nodes.video.windows.frame_window_preview import (
+    _frame_window_preview_handler,
+)
 from backend.nodes.core_nodes.video.io.video_load_local import _video_load_local_handler
-from backend.nodes.core_nodes.video.tracks.video_overlay_render import _video_overlay_render_handler
+from backend.nodes.core_nodes.video.tracks.video_overlay_render import (
+    _video_overlay_render_handler,
+)
 from backend.nodes.core_nodes.video.io.video_save import _video_save_handler
 from backend.nodes.runtime_support import build_memory_image_payload
 from backend.nodes.video_runtime_support import (
@@ -27,7 +38,10 @@ from backend.nodes.video_runtime_support import (
     require_video_payload,
     resolve_video_tool_path,
 )
-from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
+from backend.service.application.errors import InvalidRequestError
+from backend.service.application.workflows.graph_executor import (
+    WorkflowNodeExecutionRequest,
+)
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
     LocalDatasetStorage,
@@ -37,7 +51,9 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 def test_core_catalog_contains_video_payload_contracts() -> None:
     """验证 core catalog 已公开视频相关 payload 规则。"""
 
-    payload_type_ids = {contract.payload_type_id for contract in get_core_workflow_payload_contracts()}
+    payload_type_ids = {
+        contract.payload_type_id for contract in get_core_workflow_payload_contracts()
+    }
 
     assert "video-ref.v1" in payload_type_ids
     assert "frame-window.v1" in payload_type_ids
@@ -45,7 +61,9 @@ def test_core_catalog_contains_video_payload_contracts() -> None:
     assert "regions.v1" in payload_type_ids
 
 
-def test_require_video_payload_accepts_local_path_and_backfills_transport_kind(tmp_path: Path) -> None:
+def test_require_video_payload_accepts_local_path_and_backfills_transport_kind(
+    tmp_path: Path,
+) -> None:
     """验证 video-ref 会接受 local_path 并补 transport_kind。"""
 
     video_path = _build_test_video_file(tmp_path / "sample.avi", frame_count=3)
@@ -77,12 +95,16 @@ def test_video_load_local_handler_returns_video_ref_and_summary(tmp_path: Path) 
     assert output["video"]["local_path"] == str(video_path.resolve())
     assert output["video"]["frame_count"] == 4
     assert output["summary"]["value"]["frame_count"] == 4
-    assert output["summary"]["value"]["ffprobe_path"] == (str(ffprobe_path) if ffprobe_path is not None else None)
+    assert output["summary"]["value"]["ffprobe_path"] == (
+        str(ffprobe_path) if ffprobe_path is not None else None
+    )
     if ffprobe_path is not None:
         assert output["summary"]["value"]["probe_backend"] == "ffprobe"
 
 
-def test_video_decode_frames_handler_returns_frame_window_with_memory_images(tmp_path: Path) -> None:
+def test_video_decode_frames_handler_returns_frame_window_with_memory_images(
+    tmp_path: Path,
+) -> None:
     """验证视频解码节点会返回 frame-window，并把帧注册成 image-ref。"""
 
     video_path = _build_test_video_file(tmp_path / "sample.avi", frame_count=5)
@@ -94,7 +116,13 @@ def test_video_decode_frames_handler_returns_frame_window_with_memory_images(tmp
         WorkflowNodeExecutionRequest(
             node_id="video-decode",
             node_definition=object(),
-            parameters={"start_frame": 1, "end_frame": 3, "step": 1, "max_frames": 8, "encode_format": "png"},
+            parameters={
+                "start_frame": 1,
+                "end_frame": 3,
+                "step": 1,
+                "max_frames": 8,
+                "encode_format": "png",
+            },
             input_values={
                 "video": {
                     "transport_kind": VIDEO_TRANSPORT_LOCAL_PATH,
@@ -117,12 +145,16 @@ def test_video_decode_frames_handler_returns_frame_window_with_memory_images(tmp
     assert first_frame["image"]["width"] == metadata["width"]
     assert first_frame["image"]["height"] == metadata["height"]
     assert output["summary"]["value"]["decoded_count"] == 3
-    assert output["summary"]["value"]["ffmpeg_path"] == (str(ffmpeg_path) if ffmpeg_path is not None else None)
+    assert output["summary"]["value"]["ffmpeg_path"] == (
+        str(ffmpeg_path) if ffmpeg_path is not None else None
+    )
     if ffmpeg_path is not None:
         assert output["summary"]["value"]["decode_backend"] == "ffmpeg"
 
 
-def test_video_frame_window_item_get_returns_selected_frame_and_meta(tmp_path: Path) -> None:
+def test_video_frame_window_item_get_returns_selected_frame_and_meta(
+    tmp_path: Path,
+) -> None:
     """验证 frame-window-item-get 会返回单帧 image-ref 与帧元数据。"""
 
     video_path = _build_test_video_file(tmp_path / "sample.avi", frame_count=5)
@@ -133,7 +165,13 @@ def test_video_frame_window_item_get_returns_selected_frame_and_meta(tmp_path: P
         WorkflowNodeExecutionRequest(
             node_id="video-decode",
             node_definition=object(),
-            parameters={"start_frame": 1, "end_frame": 3, "step": 1, "max_frames": 8, "encode_format": "png"},
+            parameters={
+                "start_frame": 1,
+                "end_frame": 3,
+                "step": 1,
+                "max_frames": 8,
+                "encode_format": "png",
+            },
             input_values={
                 "video": {
                     "transport_kind": VIDEO_TRANSPORT_LOCAL_PATH,
@@ -160,10 +198,15 @@ def test_video_frame_window_item_get_returns_selected_frame_and_meta(tmp_path: P
     assert output["frame_meta"]["value"]["frame_index"] == 3
     assert output["frame_meta"]["value"]["timestamp_ms"] >= 0
     assert output["frame_meta"]["value"]["selected_index"] == 2
-    assert output["frame_meta"]["value"]["source_video"]["transport_kind"] == VIDEO_TRANSPORT_LOCAL_PATH
+    assert (
+        output["frame_meta"]["value"]["source_video"]["transport_kind"]
+        == VIDEO_TRANSPORT_LOCAL_PATH
+    )
 
 
-def test_frame_window_preview_handler_returns_gallery_preview_body(tmp_path: Path) -> None:
+def test_frame_window_preview_handler_returns_gallery_preview_body(
+    tmp_path: Path,
+) -> None:
     """验证 frame-window-preview 会把帧窗口整理成 gallery-preview body。"""
 
     video_path = _build_test_video_file(tmp_path / "sample.avi", frame_count=5)
@@ -173,7 +216,13 @@ def test_frame_window_preview_handler_returns_gallery_preview_body(tmp_path: Pat
         WorkflowNodeExecutionRequest(
             node_id="video-decode",
             node_definition=object(),
-            parameters={"start_frame": 0, "end_frame": 4, "step": 1, "max_frames": 8, "encode_format": "png"},
+            parameters={
+                "start_frame": 0,
+                "end_frame": 4,
+                "step": 1,
+                "max_frames": 8,
+                "encode_format": "png",
+            },
             input_values={
                 "video": {
                     "transport_kind": VIDEO_TRANSPORT_LOCAL_PATH,
@@ -190,7 +239,11 @@ def test_frame_window_preview_handler_returns_gallery_preview_body(tmp_path: Pat
         WorkflowNodeExecutionRequest(
             node_id="frame-window-preview",
             node_definition=object(),
-            parameters={"title": "Decoded Frames", "sample_mode": "uniform", "max_items": 3},
+            parameters={
+                "title": "Decoded Frames",
+                "sample_mode": "uniform",
+                "max_items": 3,
+            },
             input_values={"frames": decoded_output["frames"]},
             execution_metadata={"execution_image_registry": image_registry},
         )
@@ -211,7 +264,9 @@ def test_video_body_handler_returns_storage_ref_response_body(tmp_path: Path) ->
     """验证 video-body 会把 video-ref 转成正式可播放响应结构。"""
 
     video_path = _build_test_video_file(tmp_path / "sample.avi", frame_count=4)
-    dataset_storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "dataset-storage")))
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "dataset-storage"))
+    )
 
     output = _video_body_handler(
         WorkflowNodeExecutionRequest(
@@ -241,7 +296,9 @@ def test_video_body_handler_returns_storage_ref_response_body(tmp_path: Path) ->
     assert body["type"] == "video"
     assert body["title"] == "Saved Video"
     assert body["video"]["transport_kind"] == "storage-ref"
-    assert body["video"]["object_key"].startswith("workflows/runtime/run-video-body/video-body/")
+    assert body["video"]["object_key"].startswith(
+        "workflows/runtime/run-video-body/video-body/"
+    )
     assert dataset_storage.resolve(body["video"]["object_key"]).is_file() is True
 
 
@@ -321,11 +378,16 @@ def test_tracks_to_regions_handler_accepts_explicit_frame_index_input() -> None:
     regions_payload = output["regions"]
     assert regions_payload["count"] == 2
     assert regions_payload["selected_frame_index"] == 7
-    assert {item["track_id"] for item in regions_payload["items"]} == {"track-1", "track-2"}
+    assert {item["track_id"] for item in regions_payload["items"]} == {
+        "track-1",
+        "track-2",
+    }
     assert output["summary"]["value"]["selection_mode"] == "explicit-frame"
 
 
-def test_video_overlay_render_handler_renders_tracks_back_to_frame_window(tmp_path: Path) -> None:
+def test_video_overlay_render_handler_renders_tracks_back_to_frame_window(
+    tmp_path: Path,
+) -> None:
     """验证 video-overlay-render 会把 tracks 渲染回新 frame-window。"""
 
     video_path = _build_test_video_file(tmp_path / "sample.avi", frame_count=2)
@@ -347,14 +409,22 @@ def test_video_overlay_render_handler_renders_tracks_back_to_frame_window(tmp_pa
             execution_metadata={"execution_image_registry": image_registry},
         )
     )
-    mask_payload_0 = _register_test_mask_payload(image_registry, width=48, height=32, x1=4, y1=4, x2=18, y2=18)
-    mask_payload_1 = _register_test_mask_payload(image_registry, width=48, height=32, x1=6, y1=6, x2=22, y2=22)
+    mask_payload_0 = _register_test_mask_payload(
+        image_registry, width=48, height=32, x1=4, y1=4, x2=18, y2=18
+    )
+    mask_payload_1 = _register_test_mask_payload(
+        image_registry, width=48, height=32, x1=6, y1=6, x2=22, y2=22
+    )
 
     output = _video_overlay_render_handler(
         WorkflowNodeExecutionRequest(
             node_id="video-overlay",
             node_definition=object(),
-            parameters={"draw_masks": True, "draw_labels": True, "output_format": "png"},
+            parameters={
+                "draw_masks": True,
+                "draw_labels": True,
+                "output_format": "png",
+            },
             input_values={
                 "frames": decoded_output["frames"],
                 "tracks": {
@@ -369,7 +439,12 @@ def test_video_overlay_render_handler_renders_tracks_back_to_frame_window(tmp_pa
                             "class_id": 1,
                             "class_name": "part-a",
                             "bbox_xyxy": [4.0, 4.0, 18.0, 18.0],
-                            "polygon_xy": [[4.0, 4.0], [18.0, 4.0], [18.0, 18.0], [4.0, 18.0]],
+                            "polygon_xy": [
+                                [4.0, 4.0],
+                                [18.0, 4.0],
+                                [18.0, 18.0],
+                                [4.0, 18.0],
+                            ],
                             "mask_image": mask_payload_0,
                             "region_id": "region-a0",
                             "state": "tracked",
@@ -383,7 +458,12 @@ def test_video_overlay_render_handler_renders_tracks_back_to_frame_window(tmp_pa
                             "class_id": 1,
                             "class_name": "part-a",
                             "bbox_xyxy": [6.0, 6.0, 22.0, 22.0],
-                            "polygon_xy": [[6.0, 6.0], [22.0, 6.0], [22.0, 22.0], [6.0, 22.0]],
+                            "polygon_xy": [
+                                [6.0, 6.0],
+                                [22.0, 6.0],
+                                [22.0, 22.0],
+                                [6.0, 22.0],
+                            ],
                             "mask_image": mask_payload_1,
                             "region_id": "region-a1",
                             "state": "tracked",
@@ -401,7 +481,9 @@ def test_video_overlay_render_handler_renders_tracks_back_to_frame_window(tmp_pa
     assert output["summary"]["value"]["overlay_item_count"] == 2
     first_source_handle = decoded_output["frames"]["items"][0]["image"]["image_handle"]
     first_rendered_handle = rendered_frames["items"][0]["image"]["image_handle"]
-    assert image_registry.read_bytes(first_source_handle) != image_registry.read_bytes(first_rendered_handle)
+    assert image_registry.read_bytes(first_source_handle) != image_registry.read_bytes(
+        first_rendered_handle
+    )
 
 
 def test_video_save_handler_writes_local_video_file(tmp_path: Path) -> None:
@@ -433,7 +515,8 @@ def test_video_save_handler_writes_local_video_file(tmp_path: Path) -> None:
             node_id="video-save",
             node_definition=object(),
             parameters={
-                "save_location": str(output_path),
+                "save_directory": str(output_path.parent),
+                "file_name": output_path.name,
                 "container": "mp4",
                 "overwrite": True,
             },
@@ -444,8 +527,25 @@ def test_video_save_handler_writes_local_video_file(tmp_path: Path) -> None:
 
     assert output_path.is_file() is True
     assert output["video"]["transport_kind"] == VIDEO_TRANSPORT_LOCAL_PATH
-    assert output["summary"]["value"]["save_location"] == str(output_path)
+    assert output["summary"]["value"]["save_directory"] == str(output_path.parent)
+    assert output["summary"]["value"]["file_name"] == output_path.name
     assert output["video"]["frame_count"] >= 1
+
+    with pytest.raises(InvalidRequestError, match="扩展名与 container 不一致"):
+        _video_save_handler(
+            WorkflowNodeExecutionRequest(
+                node_id="video-save",
+                node_definition=object(),
+                parameters={
+                    "save_directory": str(output_path.parent),
+                    "file_name": "wrong.avi",
+                    "container": "mp4",
+                    "overwrite": False,
+                },
+                input_values={"frames": decoded_output["frames"]},
+                execution_metadata={"execution_image_registry": image_registry},
+            )
+        )
 
 
 def test_video_save_handler_writes_storage_video_ref(tmp_path: Path) -> None:
@@ -454,7 +554,9 @@ def test_video_save_handler_writes_storage_video_ref(tmp_path: Path) -> None:
     video_path = _build_test_video_file(tmp_path / "sample.avi", frame_count=3)
     metadata = probe_video_metadata(video_path)
     image_registry = ExecutionImageRegistry()
-    dataset_storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "dataset-storage")))
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "dataset-storage"))
+    )
     decoded_output = _video_decode_frames_handler(
         WorkflowNodeExecutionRequest(
             node_id="video-decode",
@@ -476,7 +578,12 @@ def test_video_save_handler_writes_storage_video_ref(tmp_path: Path) -> None:
         WorkflowNodeExecutionRequest(
             node_id="video-save",
             node_definition=object(),
-            parameters={"save_location": "workflow/videos/rendered.avi", "container": "avi"},
+            parameters={
+                "save_directory": "workflow/videos",
+                "file_name": "rendered.avi",
+                "container": "avi",
+                "overwrite": True,
+            },
             input_values={"frames": decoded_output["frames"]},
             execution_metadata={
                 "execution_image_registry": image_registry,
@@ -489,7 +596,8 @@ def test_video_save_handler_writes_storage_video_ref(tmp_path: Path) -> None:
     assert output["video"]["transport_kind"] == VIDEO_TRANSPORT_STORAGE
     object_key = output["video"]["object_key"]
     assert dataset_storage.resolve(object_key).is_file() is True
-    assert output["summary"]["value"]["save_location"] == "workflow/videos/rendered.avi"
+    assert output["summary"]["value"]["save_directory"] == "workflow/videos"
+    assert output["summary"]["value"]["file_name"] == "rendered.avi"
 
 
 def _build_test_video_file(video_path: Path, *, frame_count: int) -> Path:

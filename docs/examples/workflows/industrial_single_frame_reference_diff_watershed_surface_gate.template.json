@@ -231,7 +231,8 @@
       "node_id": "save_result_json",
       "node_type_id": "core.output.json-save-local",
       "parameters": {
-        "save_location": "{workflow_app_result_dir}/reference-diff-surface/result-{timestamp}.json",
+        "save_directory": "{workflow_app_result_dir}/reference-diff-surface",
+        "file_name": "result-{YYYYMMDDhhmmssSSS}.json",
         "overwrite": true,
         "indent": 2
       }

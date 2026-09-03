@@ -8,11 +8,9 @@ from backend.contracts.workflows.workflow_graph import (
     NODE_IMPLEMENTATION_CORE,
     NODE_RUNTIME_PYTHON_CALLABLE,
     NodeDefinition,
-    NodeParameterInputBinding,
     NodePortDefinition,
 )
 from backend.nodes.core_nodes.support.base import CoreNodeSpec
-from backend.nodes.date_time_template import render_date_time_template
 from backend.nodes.image_file_name_template import (
     image_media_type_for_file_name,
     render_image_file_name_template,
@@ -23,45 +21,45 @@ from backend.nodes.runtime_support import (
     load_encoded_image_bytes_from_payload,
     require_image_payload,
 )
+from backend.nodes.save_node_contracts import (
+    build_save_target_input_ports,
+    build_save_target_parameter_input_bindings,
+    build_save_target_parameter_properties,
+    build_save_target_required_parameters,
+    read_save_overwrite,
+)
 from backend.nodes.save_locations import (
     SAVE_LOCATION_OBJECT_STORE,
-    resolve_optional_save_location,
+    build_save_template_context,
+    resolve_required_save_directory,
     save_bytes,
 )
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import (
     WorkflowNodeExecutionRequest,
 )
-from backend.service.infrastructure.object_store.object_key_layout import (
-    build_project_workflow_application_results_dir,
-)
 
 
 def _image_save_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     """按明确目录和文件名把图片保存到 ObjectStore 或系统绝对路径。"""
 
-    overwrite = bool(request.parameters.get("overwrite", False))
+    overwrite = read_save_overwrite(
+        request.parameters.get("overwrite"),
+        node_label="Save Image",
+    )
     source_payload = require_image_payload(request.input_values.get("image"))
     current_time = datetime.now().astimezone()
-    format_context = _build_image_save_format_context(
+    format_context = build_save_template_context(
         request,
         current_time=current_time,
     )
-    raw_save_directory = _resolve_save_directory_template(
+    _, save_location = resolve_required_save_directory(
         request,
         request.parameters.get("save_directory"),
+        node_label="Image Save",
         current_time=current_time,
-        format_context=format_context,
+        context=format_context,
     )
-    save_location = resolve_optional_save_location(
-        raw_save_directory,
-        scope="directory",
-    )
-    if save_location is None:
-        raise InvalidRequestError(
-            "Image Save 保存目录不能为空",
-            details={"node_id": request.node_id, "parameter_name": "save_directory"},
-        )
     file_name = render_image_file_name_template(
         request.parameters.get("file_name"),
         current_time=current_time,
@@ -105,96 +103,6 @@ def _image_save_handler(request: WorkflowNodeExecutionRequest) -> dict[str, obje
     return {"image": saved_payload}
 
 
-def _resolve_save_directory_template(
-    request: WorkflowNodeExecutionRequest,
-    raw_save_directory: object,
-    *,
-    current_time: datetime | None = None,
-    format_context: dict[str, str] | None = None,
-) -> str | None:
-    """使用通用日期时间模板解析保存目录和 workflow 上下文。"""
-
-    if not isinstance(raw_save_directory, str) or not raw_save_directory.strip():
-        return None
-
-    normalized_save_directory = raw_save_directory.strip()
-    try:
-        return render_date_time_template(
-            normalized_save_directory,
-            current_time=current_time,
-            context=(format_context or _build_image_save_format_context(request)),
-        )
-    except InvalidRequestError as exc:
-        exc.details.setdefault("node_id", request.node_id)
-        exc.details.setdefault("parameter_name", "save_directory")
-        raise
-
-
-def _build_image_save_format_context(
-    request: WorkflowNodeExecutionRequest,
-    *,
-    current_time: datetime | None = None,
-) -> dict[str, str]:
-    """构建 Image Save 保存目录和文件名可用的占位符上下文。
-
-    参数：
-    - request：当前节点执行请求。
-
-    返回：
-    - dict[str, str]：可用于 format 的占位符映射。
-    """
-
-    workflow_run_id = str(
-        request.execution_metadata.get("workflow_run_id") or "default-run"
-    )
-    context = {
-        "workflow_run_id": workflow_run_id,
-        "timestamp": (current_time or datetime.now().astimezone()).strftime(
-            "%Y%m%dT%H%M%S%f%z"
-        ),
-        "node_id": request.node_id,
-    }
-    project_id = _read_optional_execution_metadata_text(request, key="project_id")
-    if project_id is not None:
-        context["project_id"] = project_id
-    application_id = _read_optional_execution_metadata_text(
-        request, key="application_id"
-    )
-    if application_id is not None:
-        context["application_id"] = application_id
-    if project_id is not None and application_id is not None:
-        context["workflow_app_result_dir"] = (
-            build_project_workflow_application_results_dir(
-                project_id=project_id,
-                application_id=application_id,
-                workflow_run_id=workflow_run_id,
-            )
-        )
-    return context
-
-
-def _read_optional_execution_metadata_text(
-    request: WorkflowNodeExecutionRequest,
-    *,
-    key: str,
-) -> str | None:
-    """读取 execution_metadata 中的可选文本字段。
-
-    参数：
-    - request：当前节点执行请求。
-    - key：目标字段名称。
-
-    返回：
-    - str | None：规范化后的文本值；缺失或为空时返回 None。
-    """
-
-    raw_value = request.execution_metadata.get(key)
-    if not isinstance(raw_value, str):
-        return None
-    normalized_value = raw_value.strip()
-    return normalized_value or None
-
-
 CORE_NODE_SPEC = CoreNodeSpec(
     node_definition=NodeDefinition(
         node_type_id="core.io.image-save",
@@ -209,24 +117,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 display_name="Image",
                 payload_type_id="image-ref.v1",
             ),
-            NodePortDefinition(
-                name="save_directory",
-                display_name="Save Directory",
-                payload_type_id="value.v1",
-                required=False,
-            ),
-            NodePortDefinition(
-                name="file_name",
-                display_name="File Name",
-                payload_type_id="value.v1",
-                required=False,
-            ),
-            NodePortDefinition(
-                name="overwrite",
-                display_name="Overwrite",
-                payload_type_id="value.v1",
-                required=False,
-            ),
+            *build_save_target_input_ports(include_overwrite=True),
         ),
         output_ports=(
             NodePortDefinition(
@@ -237,72 +128,18 @@ CORE_NODE_SPEC = CoreNodeSpec(
         ),
         parameter_schema={
             "type": "object",
-            "properties": {
-                "save_directory": {
-                    "type": "string",
-                    "title": "保存目录",
-                    "description": "相对目录保存到 ObjectStore，绝对目录保存到 runtime 主机磁盘；支持 workflow 上下文和通用日期时间块。",
-                    "x-amvision-i18n": {
-                        "title": {
-                            "zh-CN": "保存目录",
-                            "en-US": "Save directory",
-                        },
-                        "description": {
-                            "zh-CN": "相对目录保存到 ObjectStore，绝对目录保存到 runtime 主机磁盘；支持 workflow 上下文和通用日期时间块。",
-                            "en-US": "A relative directory saves to ObjectStore; an absolute directory saves to the runtime host filesystem. Workflow context and shared date-time blocks are supported.",
-                        },
-                    },
-                    "x-amvision-ui": {"order": 10},
-                },
-                "file_name": {
-                    "type": "string",
-                    "title": "文件名",
-                    "description": "完整图片文件名；支持自由组合的通用日期时间块，例如 saveimage-{YYYY}-{MM}-{DD}-{hh}-{mm}-{ss}-{SSS}.jpg。",
-                    "x-amvision-i18n": {
-                        "title": {
-                            "zh-CN": "文件名",
-                            "en-US": "File name",
-                        },
-                        "description": {
-                            "zh-CN": "完整图片文件名；支持自由组合的通用日期时间块，例如 saveimage-{YYYY}-{MM}-{DD}-{hh}-{mm}-{ss}-{SSS}.jpg。",
-                            "en-US": "Complete image file name. Shared date-time fields can be combined freely, for example saveimage-{YYYY}-{MM}-{DD}-{hh}-{mm}-{ss}-{SSS}.jpg.",
-                        },
-                    },
-                    "x-amvision-ui": {"order": 20},
-                },
-                "overwrite": {
-                    "type": "boolean",
-                    "title": "覆盖已有文件",
-                    "description": "启用时覆盖精确文件名；关闭时在重名文件后自动追加 _001、_002。",
-                    "default": False,
-                    "x-amvision-i18n": {
-                        "title": {
-                            "zh-CN": "覆盖已有文件",
-                            "en-US": "Overwrite existing file",
-                        },
-                        "description": {
-                            "zh-CN": "启用时覆盖精确文件名；关闭时在重名文件后自动追加 _001、_002。",
-                            "en-US": "Overwrite the exact name when enabled; otherwise append _001, _002 on conflicts.",
-                        },
-                    },
-                    "x-amvision-ui": {"order": 30},
-                },
-            },
-            "required": ["save_directory", "file_name", "overwrite"],
+            "properties": build_save_target_parameter_properties(
+                overwrite_default=False,
+                file_name_example=(
+                    "saveimage-{YYYY}-{MM}-{DD}-{hh}-{mm}-{ss}-{SSS}.jpg"
+                ),
+            ),
+            "required": build_save_target_required_parameters(
+                include_overwrite=True,
+            ),
         },
-        parameter_input_bindings=(
-            NodeParameterInputBinding(
-                parameter_name="save_directory",
-                input_port_name="save_directory",
-            ),
-            NodeParameterInputBinding(
-                parameter_name="file_name",
-                input_port_name="file_name",
-            ),
-            NodeParameterInputBinding(
-                parameter_name="overwrite",
-                input_port_name="overwrite",
-            ),
+        parameter_input_bindings=build_save_target_parameter_input_bindings(
+            include_overwrite=True,
         ),
         capability_tags=("io.output", "image.persist"),
     ),

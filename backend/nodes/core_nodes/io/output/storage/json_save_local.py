@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 import json
 
 from backend.contracts.workflows.workflow_graph import (
@@ -13,8 +14,20 @@ from backend.contracts.workflows.workflow_graph import (
 from backend.nodes.core_nodes.support.base import CoreNodeSpec
 from backend.nodes.core_nodes.support.local_io import resolve_value_or_result_input
 from backend.nodes.core_nodes.support.logic import build_value_payload
+from backend.nodes.file_name_template import (
+    render_file_name_template,
+    require_file_name_suffix,
+)
+from backend.nodes.save_node_contracts import (
+    build_save_target_input_ports,
+    build_save_target_parameter_input_bindings,
+    build_save_target_parameter_properties,
+    build_save_target_required_parameters,
+    read_save_overwrite,
+)
 from backend.nodes.save_locations import (
-    resolve_required_save_location_from_request,
+    build_save_template_context,
+    resolve_required_save_directory,
     save_bytes,
 )
 from backend.service.application.errors import InvalidRequestError
@@ -28,10 +41,32 @@ def _json_save_local_handler(
 ) -> dict[str, object]:
     """把结果对象或 value 内容保存到 ObjectStore 或系统文件。"""
 
-    overwrite = _read_overwrite(request.parameters.get("overwrite"))
-    save_location = resolve_required_save_location_from_request(
+    overwrite = read_save_overwrite(
+        request.parameters.get("overwrite"),
+        node_label="Save JSON",
+    )
+    current_time = datetime.now().astimezone()
+    format_context = build_save_template_context(
         request,
-        scope="file",
+        current_time=current_time,
+    )
+    rendered_directory, save_location = resolve_required_save_directory(
+        request,
+        request.parameters.get("save_directory"),
+        node_label="Save JSON",
+        current_time=current_time,
+        context=format_context,
+    )
+    file_name = render_file_name_template(
+        request.parameters.get("file_name"),
+        node_label="Save JSON",
+        current_time=current_time,
+        context=format_context,
+    )
+    require_file_name_suffix(
+        file_name,
+        node_label="Save JSON",
+        supported_suffixes={".json"},
     )
     payload_value, source_kind = resolve_value_or_result_input(request)
     indent = _read_indent(request.parameters.get("indent"))
@@ -42,28 +77,22 @@ def _json_save_local_handler(
         request,
         save_location=save_location,
         content=output_bytes,
+        file_name=file_name,
         overwrite=overwrite,
+        increment_on_conflict=not overwrite,
     )
     return {
         "summary": build_value_payload(
             {
                 "saved_output": saved_file.to_payload(),
+                "save_directory": rendered_directory,
+                "file_name": file_name,
                 "size_bytes": len(output_bytes),
                 "record_kind": source_kind,
                 "indent": indent,
             }
         )
     }
-
-
-def _read_overwrite(raw_value: object) -> bool:
-    """读取覆盖参数。"""
-
-    if raw_value is None:
-        return True
-    if not isinstance(raw_value, bool):
-        raise InvalidRequestError("json-save-local 的 overwrite 必须是布尔值")
-    return raw_value
 
 
 def _read_indent(raw_value: object) -> int:
@@ -105,12 +134,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 payload_type_id="value.v1",
                 required=False,
             ),
-            NodePortDefinition(
-                name="save_location",
-                display_name="保存位置",
-                payload_type_id="value.v1",
-                required=False,
-            ),
+            *build_save_target_input_ports(include_overwrite=True),
         ),
         output_ports=(
             NodePortDefinition(
@@ -122,8 +146,12 @@ CORE_NODE_SPEC = CoreNodeSpec(
         parameter_schema={
             "type": "object",
             "properties": {
-                "save_location": {"type": "string", "title": "保存位置"},
-                "overwrite": {"type": "boolean", "title": "允许覆盖", "default": True},
+                **build_save_target_parameter_properties(
+                    overwrite_default=False,
+                    file_name_example=(
+                        "result-{YYYY}-{MM}-{DD}-{hh}-{mm}-{ss}-{SSS}.json"
+                    ),
+                ),
                 "indent": {
                     "type": "integer",
                     "title": "JSON 缩进",
@@ -131,7 +159,13 @@ CORE_NODE_SPEC = CoreNodeSpec(
                     "minimum": 0,
                 },
             },
+            "required": build_save_target_required_parameters(
+                include_overwrite=True,
+            ),
         },
+        parameter_input_bindings=build_save_target_parameter_input_bindings(
+            include_overwrite=True,
+        ),
         capability_tags=("io.output", "inspection.result.persist", "json.save"),
     ),
     handler=_json_save_local_handler,

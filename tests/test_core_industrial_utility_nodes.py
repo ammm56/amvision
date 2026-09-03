@@ -131,12 +131,8 @@ def test_numeric_and_format_nodes_apply_catalog_defaults_at_runtime() -> None:
             input_values={"left": {"value": 2}, "right": {"value": 3}},
         )
     )
-    absolute = _number_function_handler(
-        _request(input_values={"value": {"value": -4}})
-    )
-    converted = _unit_convert_handler(
-        _request(input_values={"value": {"value": 1000}})
-    )
+    absolute = _number_function_handler(_request(input_values={"value": {"value": -4}}))
+    converted = _unit_convert_handler(_request(input_values={"value": {"value": 1000}}))
     formatted = _format_string_handler(
         _request(input_values={"values": {"value": {"value": "ok"}}})
     )
@@ -206,14 +202,19 @@ def test_text_save_supports_overwrite_append_and_idempotent_replay(
 
     output_path = tmp_path / "result.txt"
     overwrite_request = _request(
-        parameters={"save_location": str(output_path), "mode": "overwrite"},
+        parameters={
+            "save_directory": str(output_path.parent),
+            "file_name": output_path.name,
+            "mode": "overwrite",
+        },
         input_values={"value": {"value": "first"}},
         node_invocation_id="overwrite-1",
     )
     _text_save_local_handler(overwrite_request)
     append_request = _request(
         parameters={
-            "save_location": str(output_path),
+            "save_directory": str(output_path.parent),
+            "file_name": output_path.name,
             "mode": "append",
             "ensure_trailing_newline": True,
         },
@@ -237,7 +238,8 @@ def test_text_save_supports_object_store_relative_location(tmp_path: Path) -> No
     output = _text_save_local_handler(
         _request(
             parameters={
-                "save_location": "workflow/results/result.txt",
+                "save_directory": "workflow/results",
+                "file_name": "result.txt",
                 "mode": "overwrite",
             },
             input_values={"value": {"value": "结果"}},
@@ -245,9 +247,10 @@ def test_text_save_supports_object_store_relative_location(tmp_path: Path) -> No
         )
     )
 
-    assert storage.resolve("workflow/results/result.txt").read_text(
-        encoding="utf-8"
-    ) == "结果"
+    assert (
+        storage.resolve("workflow/results/result.txt").read_text(encoding="utf-8")
+        == "结果"
+    )
     assert output["summary"]["value"]["saved_output"] == {
         "kind": "object-store",
         "object_key": "workflow/results/result.txt",

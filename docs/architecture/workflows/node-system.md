@@ -191,15 +191,17 @@ Workflow 不得用多输入端口的数组位置推断字段名、更新路径�
 
 字段大小写敏感。`Y` 最多四位，`M`、`D`、`h`、`m`、`s` 最多两位，`S` 最多三位；短字段从固定宽度值右侧取对应位数，例如 2026 年的 `{YY}` 为 `26`，21 日的 `{D}` 为 `1`。因此 `{DDD}`、`{YYYYY}`、`{MMM}` 和 `{SSSS}` 必须明确失败。一个模板中的所有块使用一次性捕获的同一时间点；调用节点可以通过显式 `context` 映射复用 `{node_id}` 等上下文占位符。
 
-通用解析器允许日期时间文本常用的空格、`T`、`-`、`_`、`.`、`:` 和 `/` 分隔符。具体节点仍必须在展开后执行自身边界校验，例如 Image Save 文件名禁止目录分隔符和 Windows 非法字符，保存目录则可以使用 `/` 形成日期层级。
+通用解析器允许日期时间文本常用的空格、`T`、`-`、`_`、`.`、`:` 和 `/` 分隔符。具体节点仍必须在展开后执行自身边界校验，例如 Save 节点文件名禁止目录分隔符和 Windows 非法字符，保存目录则可以使用 `/` 形成日期层级。
 
 `core.logic.format-date-time` 把通用日期时间模板公开为 `value.v1` 字符串节点。节点每次执行只捕获一个 runtime 主机本地时间点；需要多个下游节点使用完全相同的时间文本时，应复用同一个节点输出。`core.logic.string-concat` 会原样保留日期块，因此也可以先拼接，再交给明确支持日期模板的下游节点展开。
 
-### Image Save 保存契约
+### Save 节点保存契约
 
-`core.io.image-save` 使用三个边界清晰的参数：`save_directory` 只负责保存目录，`file_name` 负责完整单级图片文件名，`overwrite` 决定覆盖或自动编号。三个参数同时提供显式可选 `value.v1` 输入端口，连接值优先，未连接时使用节点保存的固定值。目录和文件名共用上述通用日期时间模板与同一个时间点；文件名既可以是 `fixed.jpg`，也可以是 `saveimage-{YYYY}-{MM}-{DD}-{hh}-{mm}-{ss}-{SSS}.jpg`。
+`core.io.image-save`、`core.io.video-save`、`core.output.json-save-local` 和 `core.output.text-save-local` 统一使用 `save_directory` 与 `file_name`：前者只表示保存目录，后者只表示完整单级文件名。两个参数都提供显式可选 `value.v1` 输入端口，连接值优先，未连接时使用节点保存的固定值。目录和文件名在一次节点执行中共用同一个时间点与上述通用日期时间模板；固定名称和 `result-{YYYY}-{MM}-{DD}-{hh}-{mm}-{ss}-{SSS}.json` 这类组合名称使用同一套规则。
 
-关闭覆盖时，节点先尝试原名，再依次尝试扩展名前的 `_001`、`_002`。最终创建必须使用原子不覆盖操作，多个 workflow/runtime 同时写入同一目录时不能通过“先 exists、后覆盖写”的竞争窗口丢失图片。该策略不增加 workflow 调用队列或等待，最终实际路径继续通过 `saved_output.object_key` 或 `saved_output.local_path` 返回。
+Save Image、Save Video 和 Save JSON 还统一公开 `overwrite` 参数及可选动态输入。关闭覆盖时先尝试原名，再依次尝试扩展名前的 `_001`、`_002`；最终创建使用原子不覆盖操作，多个 workflow/runtime 同时写入同一目录时不能通过“先 exists、后覆盖写”的竞争窗口丢失文件。视频文件始终按 1 MiB 分块流式复制，不因冲突编号把完整视频加载进内存。Save Text 保留文本特有的 `overwrite`、`append`、`fail-if-exists` mode 和追加幂等 journal，不引入第二套目录或文件名规则。
+
+文件格式边界仍由各节点明确校验：Save Image 校验图片编码与扩展名，Save Video 校验 `.mp4`/`.avi` 与 container，Save JSON 只接受 `.json`，Save Text 不限制文本扩展名。最终实际路径通过 `saved_output.object_key` 或 `saved_output.local_path` 返回。该策略不增加 workflow 调用队列、隐藏重试或等待。
 
 ## App Entry 多类型输入
 

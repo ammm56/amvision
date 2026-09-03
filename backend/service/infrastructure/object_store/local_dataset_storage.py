@@ -446,7 +446,7 @@ class LocalDatasetStorage:
             raise
 
     def copy_file(self, source_path: Path, destination_path: str) -> None:
-        """把一个已存在文件复制到本地文件存储目录。
+        """把一个已存在文件流式复制并原子替换到本地文件存储目录。
 
         参数：
         - source_path：源文件绝对路径。
@@ -456,7 +456,74 @@ class LocalDatasetStorage:
         target_path = self.resolve(destination_path)
         self._reject_immutable_target(target_path)
         self._mkdir(target_path.parent)
-        shutil.copy2(to_filesystem_path(source_path), to_filesystem_path(target_path))
+        filesystem_target_path = to_filesystem_path(target_path)
+        temporary_path = filesystem_target_path.with_name(
+            f".{target_path.name}.{uuid.uuid4().hex[:12]}.tmp"
+        )
+        try:
+            self._copy_file_to_temporary_path(
+                source_path=source_path,
+                temporary_path=temporary_path,
+            )
+            replace_path_with_retry(temporary_path, filesystem_target_path)
+            _sync_directory_after_replace(filesystem_target_path.parent)
+        except Exception:
+            temporary_path.unlink(missing_ok=True)
+            raise
+
+    def copy_file_if_absent(
+        self,
+        source_path: Path,
+        destination_path: str,
+    ) -> bool:
+        """流式复制并原子创建对象，目标存在时保持不变。"""
+
+        target_path = self.resolve(destination_path)
+        self._reject_immutable_target(target_path)
+        self._mkdir(target_path.parent)
+        filesystem_target_path = to_filesystem_path(target_path)
+        temporary_path = filesystem_target_path.with_name(
+            f".{target_path.name}.{uuid.uuid4().hex[:12]}.tmp"
+        )
+        try:
+            self._copy_file_to_temporary_path(
+                source_path=source_path,
+                temporary_path=temporary_path,
+            )
+            published = publish_path_without_overwrite(
+                temporary_path,
+                filesystem_target_path,
+            )
+            if published:
+                _sync_directory_after_replace(filesystem_target_path.parent)
+            return published
+        except Exception:
+            temporary_path.unlink(missing_ok=True)
+            raise
+        finally:
+            temporary_path.unlink(missing_ok=True)
+
+    @staticmethod
+    def _copy_file_to_temporary_path(
+        *,
+        source_path: Path,
+        temporary_path: Path,
+    ) -> None:
+        """把源文件按块完整写入同目录临时文件并持久化。"""
+
+        filesystem_source_path = to_filesystem_path(source_path)
+        with (
+            filesystem_source_path.open("rb") as source_stream,
+            temporary_path.open("wb") as output_stream,
+        ):
+            shutil.copyfileobj(
+                source_stream,
+                output_stream,
+                length=1024 * 1024,
+            )
+            output_stream.flush()
+            os.fsync(output_stream.fileno())
+        shutil.copystat(filesystem_source_path, temporary_path)
 
     def copy_relative_file(
         self, source_relative_path: str, destination_path: str

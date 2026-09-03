@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 
 from backend.contracts.workflows.workflow_graph import (
@@ -11,9 +12,20 @@ from backend.contracts.workflows.workflow_graph import (
     NodePortDefinition,
 )
 from backend.nodes.core_nodes.support.base import CoreNodeSpec
-from backend.nodes.core_nodes.support.logic import build_value_payload, require_value_payload
+from backend.nodes.core_nodes.support.logic import (
+    build_value_payload,
+    require_value_payload,
+)
+from backend.nodes.file_name_template import render_file_name_template
+from backend.nodes.save_node_contracts import (
+    build_save_target_input_ports,
+    build_save_target_parameter_input_bindings,
+    build_save_target_parameter_properties,
+    build_save_target_required_parameters,
+)
 from backend.nodes.save_locations import (
-    resolve_required_save_location_from_request,
+    build_save_template_context,
+    resolve_required_save_directory,
     resolve_save_location_path,
     save_bytes,
 )
@@ -24,14 +36,18 @@ from backend.service.application.runtime.io import (
     build_node_operation_id,
 )
 from backend.service.application.runtime.io.write_journal import sha256_bytes
-from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
+from backend.service.application.workflows.graph_executor import (
+    WorkflowNodeExecutionRequest,
+)
 
 
 SUPPORTED_MODES = {"overwrite", "append", "fail-if-exists"}
 SUPPORTED_ENCODINGS = {"utf-8", "utf-8-sig"}
 
 
-def _text_save_local_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
+def _text_save_local_handler(
+    request: WorkflowNodeExecutionRequest,
+) -> dict[str, object]:
     """把字符串保存到 ObjectStore 相对位置或本机绝对路径。"""
 
     text_value = require_value_payload(
@@ -59,10 +75,28 @@ def _text_save_local_handler(request: WorkflowNodeExecutionRequest) -> dict[str,
         else text_value
     )
 
-    save_location = resolve_required_save_location_from_request(request, scope="file")
+    current_time = datetime.now().astimezone()
+    format_context = build_save_template_context(
+        request,
+        current_time=current_time,
+    )
+    rendered_directory, save_location = resolve_required_save_directory(
+        request,
+        request.parameters.get("save_directory"),
+        node_label="Save Text",
+        current_time=current_time,
+        context=format_context,
+    )
+    file_name = render_file_name_template(
+        request.parameters.get("file_name"),
+        node_label="Save Text",
+        current_time=current_time,
+        context=format_context,
+    )
     target_path, _ = resolve_save_location_path(
         request,
         save_location=save_location,
+        file_name=file_name,
     )
     with acquire_path_write_locks(request, (target_path,)):
         target_exists = target_path.exists()
@@ -95,6 +129,7 @@ def _text_save_local_handler(request: WorkflowNodeExecutionRequest) -> dict[str,
                 request,
                 save_location=save_location,
                 content=output_bytes,
+                file_name=file_name,
                 overwrite=True,
             )
             if mode == "append":
@@ -103,11 +138,14 @@ def _text_save_local_handler(request: WorkflowNodeExecutionRequest) -> dict[str,
             _, saved_file = resolve_save_location_path(
                 request,
                 save_location=save_location,
+                file_name=file_name,
             )
     return {
         "summary": build_value_payload(
             {
                 "saved_output": saved_file.to_payload(),
+                "save_directory": rendered_directory,
+                "file_name": file_name,
                 "mode": mode,
                 "encoding": encoding,
                 "appended_size_bytes": len(appended_bytes),
@@ -245,13 +283,10 @@ CORE_NODE_SPEC = CoreNodeSpec(
         implementation_kind=NODE_IMPLEMENTATION_CORE,
         runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
         input_ports=(
-            NodePortDefinition(name="value", display_name="Value", payload_type_id="value.v1"),
             NodePortDefinition(
-                name="save_location",
-                display_name="保存位置",
-                payload_type_id="value.v1",
-                required=False,
+                name="value", display_name="Value", payload_type_id="value.v1"
             ),
+            *build_save_target_input_ports(include_overwrite=False),
         ),
         output_ports=(
             NodePortDefinition(
@@ -263,7 +298,10 @@ CORE_NODE_SPEC = CoreNodeSpec(
         parameter_schema={
             "type": "object",
             "properties": {
-                "save_location": {"type": "string", "title": "保存位置"},
+                **build_save_target_parameter_properties(
+                    overwrite_default=None,
+                    file_name_example=("log-{YYYY}-{MM}-{DD}-{hh}-{mm}-{ss}-{SSS}.txt"),
+                ),
                 "mode": {
                     "type": "string",
                     "enum": sorted(SUPPORTED_MODES),
@@ -279,7 +317,13 @@ CORE_NODE_SPEC = CoreNodeSpec(
                     "default": False,
                 },
             },
+            "required": build_save_target_required_parameters(
+                include_overwrite=False,
+            ),
         },
+        parameter_input_bindings=build_save_target_parameter_input_bindings(
+            include_overwrite=False,
+        ),
         capability_tags=("io.output", "text.save", "storage.local"),
     ),
     handler=_text_save_local_handler,

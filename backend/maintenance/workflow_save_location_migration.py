@@ -1,4 +1,4 @@
-"""迁移已保存 Workflow 的旧输出参数和 Image Save 保存契约。"""
+"""迁移已保存 Workflow 的旧输出参数和 Save 节点保存契约。"""
 
 from __future__ import annotations
 
@@ -18,9 +18,16 @@ _NODE_OLD_PARAMETER_NAMES = {
     "core.output.csv-append-local": ("local_path",),
     "core.io.batch-files-relocate": ("target_directory",),
 }
+_SPLIT_SAVE_TARGET_NODE_TYPES = frozenset(
+    {
+        "core.io.image-save",
+        "core.io.video-save",
+        "core.output.json-save-local",
+        "core.output.text-save-local",
+    }
+)
 _SAVE_LOCATION_INPUT_NODE_TYPES = frozenset(
     {
-        "core.output.json-save-local",
         "core.output.csv-append-local",
         "core.io.batch-files-relocate",
     }
@@ -77,6 +84,31 @@ def migrate_workflow_template_payload(payload: dict[str, object]) -> int:
     raw_nodes = payload.get("nodes")
     if not isinstance(raw_nodes, list):
         raise InvalidRequestError("Workflow 模板缺少 nodes 数组")
+    raw_edges = payload.get("edges")
+    if raw_edges is not None and not isinstance(raw_edges, list):
+        raise InvalidRequestError("Workflow 模板 edges 必须是 JSON 数组")
+
+    split_save_target_node_ids = {
+        str(raw_node.get("node_id") or "")
+        for raw_node in raw_nodes
+        if isinstance(raw_node, dict)
+        and raw_node.get("node_type_id") in _SPLIT_SAVE_TARGET_NODE_TYPES
+        and raw_node.get("node_id")
+    }
+    for raw_edge in raw_edges or []:
+        if not isinstance(raw_edge, dict):
+            raise InvalidRequestError("Workflow edge 必须是 JSON 对象")
+        if str(
+            raw_edge.get("target_node_id") or ""
+        ) in split_save_target_node_ids and raw_edge.get("target_port") in {
+            "path",
+            "save_location",
+        }:
+            raise InvalidRequestError(
+                "旧动态保存位置不能自动拆分为保存目录和文件名",
+                details={"edge_id": raw_edge.get("edge_id")},
+            )
+
     changed_node_indexes: set[int] = set()
     node_indexes_by_id: dict[str, int] = {}
     save_location_input_node_ids: set[str] = set()
@@ -96,13 +128,20 @@ def migrate_workflow_template_payload(payload: dict[str, object]) -> int:
                 "Workflow 节点 parameters 必须是 JSON 对象",
                 details={"node_id": raw_node.get("node_id")},
             )
-        if raw_node.get("node_type_id") == "core.io.video-save":
-            if _migrate_video_save_parameters(raw_node, raw_parameters):
-                changed_node_indexes.add(node_index)
-            continue
         node_type_id = str(raw_node.get("node_type_id") or "")
-        if node_type_id == "core.io.image-save":
-            if _migrate_image_save_parameters(raw_node, raw_parameters):
+        legacy_video_changed = False
+        if node_type_id == "core.io.video-save":
+            legacy_video_changed = _migrate_video_save_parameters(
+                raw_node,
+                raw_parameters,
+            )
+        if node_type_id in _SPLIT_SAVE_TARGET_NODE_TYPES:
+            split_target_changed = _migrate_split_save_target_parameters(
+                raw_node,
+                raw_parameters,
+                node_type_id=node_type_id,
+            )
+            if legacy_video_changed or split_target_changed:
                 changed_node_indexes.add(node_index)
             continue
         old_parameter_names = (
@@ -129,12 +168,7 @@ def migrate_workflow_template_payload(payload: dict[str, object]) -> int:
             raw_parameters.pop(parameter_name, None)
         changed_node_indexes.add(node_index)
 
-    raw_edges = payload.get("edges")
-    if raw_edges is not None and not isinstance(raw_edges, list):
-        raise InvalidRequestError("Workflow 模板 edges 必须是 JSON 数组")
     for raw_edge in raw_edges or []:
-        if not isinstance(raw_edge, dict):
-            raise InvalidRequestError("Workflow edge 必须是 JSON 对象")
         target_node_id = str(raw_edge.get("target_node_id") or "")
         if (
             target_node_id in save_location_input_node_ids
@@ -145,16 +179,19 @@ def migrate_workflow_template_payload(payload: dict[str, object]) -> int:
     return len(changed_node_indexes)
 
 
-def _migrate_image_save_parameters(
+def _migrate_split_save_target_parameters(
     raw_node: dict[str, object],
     parameters: dict[str, object],
+    *,
+    node_type_id: str,
 ) -> bool:
-    """把 Image Save 的单文件路径拆成保存目录和文件名。"""
+    """把 Save 节点的单文件路径拆成保存目录和文件名。"""
 
     old_parameter_names = (
         "save_location",
         "object_key",
         *_OLD_PARAMETER_NAMES,
+        *_NODE_OLD_PARAMETER_NAMES.get(node_type_id, ()),
     )
     old_values = [
         parameters[name] for name in old_parameter_names if name in parameters
@@ -165,17 +202,21 @@ def _migrate_image_save_parameters(
             name in parameters for name in new_names
         ):
             raise InvalidRequestError(
-                "Workflow Image Save 节点的新保存参数不完整",
+                "Workflow Save 节点的新保存参数不完整",
                 details={"node_id": raw_node.get("node_id")},
             )
         return False
 
     if len({repr(value) for value in old_values}) > 1:
         raise InvalidRequestError(
-            "Workflow Image Save 节点包含冲突的旧保存位置参数",
+            "Workflow Save 节点包含冲突的旧保存位置参数",
             details={"node_id": raw_node.get("node_id")},
         )
-    save_directory, file_name = _split_image_save_location(old_values[0])
+    save_directory, file_name = _split_save_location(old_values[0])
+    save_directory = save_directory.replace(
+        "{timestamp}",
+        "{YYYYMMDDhhmmssSSS}",
+    )
     file_name = file_name.replace("{timestamp}", "{YYYYMMDDhhmmssSSS}")
 
     existing_directory = parameters.get("save_directory")
@@ -185,24 +226,25 @@ def _migrate_image_save_parameters(
         file_name,
     ):
         raise InvalidRequestError(
-            "Workflow Image Save 节点包含冲突的新旧保存参数",
+            "Workflow Save 节点包含冲突的新旧保存参数",
             details={"node_id": raw_node.get("node_id")},
         )
 
     parameters["save_directory"] = save_directory
     parameters["file_name"] = file_name
-    parameters.setdefault("overwrite", True)
+    if node_type_id != "core.output.text-save-local":
+        parameters.setdefault("overwrite", True)
     for parameter_name in old_parameter_names:
         parameters.pop(parameter_name, None)
     return True
 
 
-def _split_image_save_location(value: object) -> tuple[str, str]:
+def _split_save_location(value: object) -> tuple[str, str]:
     """把旧单文件保存位置拆成目录与文件名。"""
 
     normalized_value = value.strip() if isinstance(value, str) else ""
     if not normalized_value:
-        raise InvalidRequestError("Workflow Image Save 旧保存位置不能为空")
+        raise InvalidRequestError("Workflow Save 旧保存位置不能为空")
 
     windows_path = PureWindowsPath(normalized_value)
     if windows_path.drive or "\\" in normalized_value:
@@ -214,7 +256,7 @@ def _split_image_save_location(value: object) -> tuple[str, str]:
         file_name = posix_path.name
     if directory in {"", "."} or not file_name:
         raise InvalidRequestError(
-            "Workflow Image Save 旧保存位置必须同时包含目录和文件名",
+            "Workflow Save 旧保存位置必须同时包含目录和文件名",
             details={"save_location": value},
         )
     return directory, file_name

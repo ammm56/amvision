@@ -191,7 +191,8 @@
       "node_id": "save_batch_json",
       "node_type_id": "core.output.json-save-local",
       "parameters": {
-        "save_location": "{workflow_app_result_dir}/industrial-local-directory-batch-regions-continuity-gate/result-{timestamp}.json",
+        "save_directory": "{workflow_app_result_dir}/industrial-local-directory-batch-regions-continuity-gate",
+        "file_name": "result-{YYYYMMDDhhmmssSSS}.json",
         "overwrite": true,
         "indent": 2
       }
