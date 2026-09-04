@@ -47,6 +47,10 @@ App Runtime 的 JSON、文本、图片、文件和多文件统一输入规划见
 
 revision、generation、worker epoch 和稳定 id 的内部设计见 [Workflow App 版本管理](../architecture/workflows/app-versioning.md)。
 
+## 待实现的应用与运行界面
+
+amvar app 组成、命名来源、运行入口、显示快照、Workflow JSON 导入导出和应用打包恢复的接口边界统一见[实施基线](../development/workflow-views-and-app-packages-implementation.md)。其中新增字段与路径是待实现草案，不代表当前 OpenAPI 已提供接口；前端改称“工作流”不重命名既有 Workflow API、资源 ID 或 SDK。
+
 ## 示例与调试
 
 - `docs/api/examples/workflows/`：可直接提交的请求体。

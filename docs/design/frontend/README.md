@@ -11,7 +11,7 @@
 
 ## 已接受、待实现的扩展
 
-独立运行界面的组件、布局、主题、四语言、公开输入输出绑定及人工/模型共用文档设计，统一见[运行界面与 App 应用包实施基线](../../development/workflow-views-and-app-packages-implementation.md)。取舍依据见 [ADR-0012](../../decisions/ADR-0012-workflow-views-and-app-packages.md)。通过实现和验收前，不将这些规划写成现有页面规格。
+amvar app 与独立运行界面的组件、布局、主题、四语言名称、命名来源与公开绑定、运行入口及人工/模型共用文档设计，统一见[amvar app 实施基线](../../development/workflow-views-and-app-packages-implementation.md)。取舍依据见 [ADR-0012](../../decisions/ADR-0012-workflow-views-and-app-packages.md)。通过实现和验收前，不将这些规划写成现有页面规格。
 
 ## 设计方向
 

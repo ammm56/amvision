@@ -15,7 +15,7 @@ ADR 记录已经接受的关键取舍及未采用方案。ADR 可以处于待实
 - [ADR-0009：本机结构化消息共享内存通道](ADR-0009-local-message-channel.md)
 - [ADR-0010：Workflow App Entry 多类型输入契约](ADR-0010-workflow-app-entry-multi-input-contract.md)
 - [ADR-0011：工业二维视觉节点覆盖与节点粒度](ADR-0011-industrial-vision-node-coverage.md)
-- [ADR-0012：独立运行界面与 Workflow App 应用包](ADR-0012-workflow-views-and-app-packages.md)：已接受，待实现。
+- [ADR-0012：amvar app 应用组成、独立运行界面与打包恢复](ADR-0012-workflow-views-and-app-packages.md)：已接受，待实现。
 
 ## 规则
 

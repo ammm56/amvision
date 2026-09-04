@@ -10,4 +10,4 @@
 
 ## 已接受、待实现的扩展
 
-独立运行界面的公开输入输出绑定、Vue 文档渲染、独立版本和模型生成边界见 [ADR-0012](../../decisions/ADR-0012-workflow-views-and-app-packages.md)。详细设计与阶段门禁统一维护在[运行界面与 App 应用包实施基线](../../development/workflow-views-and-app-packages-implementation.md)，不作为当前页面能力说明。
+amvar app 与独立运行界面的多来源公开输入输出绑定、Vue 文档渲染、独立版本和模型生成边界见 [ADR-0012](../../decisions/ADR-0012-workflow-views-and-app-packages.md)。前端“应用/工作流”术语、详细设计与阶段门禁统一维护在[amvar app 实施基线](../../development/workflow-views-and-app-packages-implementation.md)，不作为当前页面能力说明。

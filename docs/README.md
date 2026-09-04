@@ -17,7 +17,7 @@ AMVision 是面向本地工作站、工控机和边缘设备的工业视觉服�
 | 排查日志、服务和现场集成 | [运维与排障](operations/README.md) |
 | 查看关键设计取舍 | [架构决策记录](decisions/README.md) |
 | 查看已接受但尚未落地的跨子系统实施基线 | [源码开发](development/README.md) |
-| 实施运行界面、Workflow 导入导出和 App 打包恢复 | [统一实施基线（已接受，待实现）](development/workflow-views-and-app-packages-implementation.md) |
+| 实施 amvar app 组成、运行界面、Workflow 导入导出和应用打包恢复 | [统一实施基线（已接受，待实现）](development/workflow-views-and-app-packages-implementation.md) |
 | 查看前端产品和界面规范 | [前端设计](design/frontend/README.md) |
 
 ## 信息架构
