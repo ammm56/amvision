@@ -18,11 +18,6 @@
 - [Workflow 编辑器](editor.md)
 - [Visual Prompt](visual-prompt.md)
 
-## 已接受、待实现的扩展
-
-- [amvar app 与独立运行界面决策](../../decisions/ADR-0012-workflow-views-and-app-packages.md)：多 Workflow/Runtime/Trigger 应用组成、命名来源、运行入口和交付包的职责边界；既有技术资源命名不变。
-- [唯一详细实施基线](../../development/workflow-views-and-app-packages-implementation.md)：运行界面、Workflow 文件交换、App 打包恢复、模型生成界面及逐阶段验收；不表示现有功能已经交付。
-
 ## 节点
 
 - [节点系统](node-system.md)
