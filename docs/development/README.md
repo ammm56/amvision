@@ -4,6 +4,7 @@
 
 ## 当前实施基线
 
+- [运行界面与 App 应用包实施基线](workflow-views-and-app-packages-implementation.md)：已接受，待实现；独立运行界面、公开输入输出绑定、显示数据生命周期、Workflow JSON 导入导出、完整 App 打包恢复和模型生成界面的唯一详细设计与阶段门禁。
 - [工业二维视觉节点实施基线](industrial-vision-node-implementation.md)：Core 与现有 `opencv.nodes` 的二维工业视觉补齐范围、统一 payload、实施结果和验收门禁；阶段 0–6 已完成。
 - [Workflow App Entry 多类型输入实施基线](workflow-app-entry-input-implementation.md)：JSON、文本、图片、文件、多文件、multipart、ObjectStore、Trigger、前端和 SDK 的统一待实现边界。
 - [Workflow 动态参数输入实施基线](workflow-dynamic-parameter-input-implementation.md)：节点参数输入框与 `value.v1` 输入端口共存、运行时覆盖、前端连线和 Save Image 首批实施边界。

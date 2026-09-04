@@ -42,6 +42,7 @@
 - [Workflow App Entry 多类型输入实施基线](../development/workflow-app-entry-input-implementation.md)：JSON、文本、图片、文件、多文件、multipart、Trigger 和 SDK 的待实现统一输入边界。
 - [Workflow JSON](workflows/json-contracts.md)：图、节点、端口、参数和应用契约。
 - [Workflow 编辑器](workflows/editor.md)：App 保存、Preview、节点组、ROI 与图像交互取参。
+- [独立运行界面与 App 应用包 ADR](../decisions/ADR-0012-workflow-views-and-app-packages.md)及[实施基线](../development/workflow-views-and-app-packages-implementation.md)：已接受、待实现的公开输入输出界面、Workflow 文件交换、完整 App 打包恢复与模型生成方案。
 - [模型 Session Runtime](workflows/model-session-runtime.md)
 - [Parallel 分支](workflows/parallel-branches.md)
 - [节点系统](workflows/node-system.md) 与 [节点分类](workflows/node-taxonomy.md)

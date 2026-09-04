@@ -9,6 +9,10 @@
 3. [设计系统](design-system.md)：色彩、字体、密度、组件、状态和响应式规则。
 4. [页面规格](page-specifications.md)：项目、数据集、模型、Deployment、Workflow、集成和设置页面。
 
+## 已接受、待实现的扩展
+
+独立运行界面的组件、布局、主题、四语言、公开输入输出绑定及人工/模型共用文档设计，统一见[运行界面与 App 应用包实施基线](../../development/workflow-views-and-app-packages-implementation.md)。取舍依据见 [ADR-0012](../../decisions/ADR-0012-workflow-views-and-app-packages.md)。通过实现和验收前，不将这些规划写成现有页面规格。
+
 ## 设计方向
 
 - 专业、清晰、克制，适合长时间使用的工业视觉工作台。
