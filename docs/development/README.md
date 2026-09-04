@@ -38,6 +38,8 @@ Set-Location ../..
 
 ## 后端检查
 
+目录文件节点的边界和可重复执行的真实数据验证命令见 [Workflow 本地文件选择与读取](../architecture/workflows/local-file-reading.md)。
+
 ```powershell
 python -m ruff check backend custom_nodes tests
 python -m pytest --collect-only -q

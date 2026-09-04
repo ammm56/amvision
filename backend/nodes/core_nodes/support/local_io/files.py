@@ -4,12 +4,15 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 import io
+import os
 from pathlib import Path
 
 from PIL import Image
 
-from backend.nodes.core_nodes.support.logic import build_value_payload, require_value_payload
-from backend.nodes.runtime_support import infer_media_type, infer_media_type_from_image_bytes
+from backend.nodes.core_nodes.support.logic import (
+    build_value_payload,
+    require_value_payload,
+)
 from backend.service.application.errors import InvalidRequestError
 
 
@@ -17,6 +20,7 @@ def build_local_file_summary(
     *,
     local_path: Path,
     extra_fields: dict[str, object] | None = None,
+    file_record: dict[str, object] | None = None,
 ) -> dict[str, object]:
     """构造本地文件输出摘要。"""
 
@@ -24,7 +28,9 @@ def build_local_file_summary(
         "local_path": str(local_path),
         "file_name": local_path.name,
     }
-    if local_path.exists():
+    if file_record is not None:
+        summary.update(file_record)
+    elif local_path.exists():
         stat_result = local_path.stat()
         summary["size_bytes"] = stat_result.st_size
         summary["modified_time_iso"] = _build_iso_timestamp(stat_result.st_mtime)
@@ -33,17 +39,27 @@ def build_local_file_summary(
     return build_value_payload(summary)
 
 
-def build_directory_file_record(file_path: Path) -> dict[str, object]:
+def build_directory_file_record(
+    file_path: Path, *, stat_result: os.stat_result | None = None
+) -> dict[str, object]:
     """把文件路径规范化为目录扫描记录。"""
 
-    stat_result = file_path.stat()
+    stat_result = stat_result if stat_result is not None else file_path.stat()
     return {
+        "format_id": "amvision.local-file-record.v1",
         "path": str(file_path),
         "file_name": file_path.name,
         "extension": file_path.suffix.lower(),
         "size_bytes": stat_result.st_size,
         "modified_time_epoch_ms": int(round(stat_result.st_mtime * 1000)),
+        "modified_time_epoch_ns": str(stat_result.st_mtime_ns),
         "modified_time_iso": _build_iso_timestamp(stat_result.st_mtime),
+        "observed_version": {
+            "device": str(stat_result.st_dev),
+            "inode": str(stat_result.st_ino),
+            "size_bytes": stat_result.st_size,
+            "modified_time_ns": str(stat_result.st_mtime_ns),
+        },
     }
 
 
@@ -65,7 +81,9 @@ def require_file_record_list(
     for item_index, raw_item in enumerate(raw_items, start=1):
         if isinstance(raw_item, str) and raw_item.strip():
             file_path = Path(raw_item.strip()).expanduser().resolve()
-            normalized_records.append({"path": str(file_path), "file_name": file_path.name})
+            normalized_records.append(
+                {"path": str(file_path), "file_name": file_path.name}
+            )
             continue
         if isinstance(raw_item, dict):
             raw_path = raw_item.get("path")
@@ -79,15 +97,19 @@ def require_file_record_list(
                 continue
         raise InvalidRequestError(
             f"{field_name} 数组项必须是路径字符串或包含 path 的对象",
-            details={"node_id": node_id, "field_name": field_name, "item_index": item_index},
+            details={
+                "node_id": node_id,
+                "field_name": field_name,
+                "item_index": item_index,
+            },
         )
     return normalized_records
 
 
-def read_local_image_file(file_path: Path) -> tuple[bytes, str, int, int]:
-    """读取本地图像文件并返回字节、媒体类型和尺寸。"""
-
-    image_bytes = file_path.read_bytes()
+def decode_local_image_header(
+    file_path: Path, image_bytes: bytes, *, max_pixels: int = 100_000_000
+) -> tuple[bytes, str, int, int]:
+    """校验图片头和像素上限，不进行重复整图解码。"""
     if not image_bytes:
         raise InvalidRequestError(
             "本地图像文件不能为空",
@@ -96,6 +118,7 @@ def read_local_image_file(file_path: Path) -> tuple[bytes, str, int, int]:
     try:
         with Image.open(io.BytesIO(image_bytes)) as image:
             width, height = image.size
+            media_type = Image.MIME.get(image.format)
     except Exception as exc:  # noqa: BLE001
         raise InvalidRequestError(
             "本地图像文件不是有效图片",
@@ -106,9 +129,14 @@ def read_local_image_file(file_path: Path) -> tuple[bytes, str, int, int]:
             "本地图像文件宽高无效",
             details={"local_path": str(file_path)},
         )
-    media_type = infer_media_type_from_image_bytes(image_bytes)
-    if media_type == "image/png":
-        media_type = infer_media_type(file_path.name)
+    if width * height > max_pixels:
+        raise InvalidRequestError(
+            "本地图像超过 max_pixels", details={"local_path": str(file_path)}
+        )
+    if not isinstance(media_type, str) or not media_type.startswith("image/"):
+        raise InvalidRequestError(
+            "本地图像格式没有受支持的媒体类型", details={"local_path": str(file_path)}
+        )
     return image_bytes, media_type, width, height
 
 

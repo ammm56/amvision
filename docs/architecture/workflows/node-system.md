@@ -8,6 +8,8 @@
 
 节点分类和一级 pack 拆分见 [节点分类](node-taxonomy.md)，manifest 字段见 [Node Pack manifest](../../nodes/node-pack-manifest.md)。
 
+目录最新文件、变化样本、本地文件记录和有界读取规则见 [本地文件选择与读取](local-file-reading.md)。
+
 ## 组成
 
 | 组成 | 职责 |

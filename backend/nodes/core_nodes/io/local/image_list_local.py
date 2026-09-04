@@ -12,23 +12,58 @@ from backend.contracts.workflows.workflow_graph import (
 )
 from backend.nodes.core_nodes.support.base import CoreNodeSpec
 from backend.nodes.core_nodes.support.local_io import (
-    read_local_image_file,
     require_file_record_list,
+)
+from backend.nodes.core_nodes.support.local_io.files import decode_local_image_header
+from backend.nodes.core_nodes.support.local_io.reading import (
+    DEFAULT_IMAGE_MAX_BYTES,
+    DEFAULT_IMAGE_MAX_PIXELS,
+    read_local_bytes,
+    read_positive_limit,
+    require_local_file_record,
 )
 from backend.nodes.core_nodes.support.logic import build_value_payload
 from backend.nodes.core_nodes.support.service import get_optional_str_tuple_parameter
 from backend.nodes.runtime_support import register_image_bytes
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
+from backend.service.application.workflows.graph_executor import (
+    WorkflowNodeExecutionRequest,
+)
 
 
-def _image_list_local_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
+def _image_list_local_handler(
+    request: WorkflowNodeExecutionRequest,
+) -> dict[str, object]:
     """把一组本地图像路径载入为 image-refs.v1。"""
 
-    file_paths = _resolve_file_paths(request)
+    file_records = _resolve_file_records(request)
+    max_bytes = read_positive_limit(
+        request.parameters, "max_bytes", DEFAULT_IMAGE_MAX_BYTES
+    )
+    max_pixels = read_positive_limit(
+        request.parameters, "max_pixels", DEFAULT_IMAGE_MAX_PIXELS
+    )
+    max_total_bytes = read_positive_limit(
+        request.parameters, "max_total_bytes", DEFAULT_IMAGE_MAX_BYTES
+    )
+    total_bytes = 0
     image_items: list[dict[str, object]] = []
-    for file_path in file_paths:
-        image_bytes, media_type, width, height = read_local_image_file(file_path)
+    sources = []
+    for file_record in file_records:
+        file_path = Path(file_record["path"])
+        expected = None
+        if "format_id" in file_record:
+            file_path, expected = require_local_file_record(file_record)
+        content, record = read_local_bytes(
+            file_path,
+            expected_record=expected,
+            max_bytes=min(max_bytes, max_total_bytes - total_bytes),
+        )
+        total_bytes += len(content)
+        image_bytes, media_type, width, height = decode_local_image_header(
+            file_path, content, max_pixels=max_pixels
+        )
+        sources.append(record)
         image_items.append(
             register_image_bytes(
                 request,
@@ -46,24 +81,40 @@ def _image_list_local_handler(request: WorkflowNodeExecutionRequest) -> dict[str
         "summary": build_value_payload(
             {
                 "count": len(image_items),
-                "paths": [str(file_path) for file_path in file_paths],
+                "paths": [record["path"] for record in sources],
+                "files": sources,
+                "total_bytes": total_bytes,
             }
         ),
     }
 
 
-def _resolve_file_paths(request: WorkflowNodeExecutionRequest) -> list[Path]:
+def _resolve_file_records(
+    request: WorkflowNodeExecutionRequest,
+) -> list[dict[str, object]]:
     """解析 image-list-local 的输入路径列表。"""
 
     files_input = request.input_values.get("files")
     parameter_paths = get_optional_str_tuple_parameter(request, "paths")
-    if (files_input is None and parameter_paths is None) or (files_input is not None and parameter_paths is not None):
-        raise InvalidRequestError("image-list-local 节点要求二选一提供 files 输入或 paths 参数")
+    if (files_input is None and parameter_paths is None) or (
+        files_input is not None and parameter_paths is not None
+    ):
+        raise InvalidRequestError(
+            "image-list-local 节点要求二选一提供 files 输入或 paths 参数"
+        )
     if files_input is not None:
-        file_records = require_file_record_list(files_input, field_name="files", node_id=request.node_id)
-        return _validate_local_image_paths(Path(record["path"]) for record in file_records)
+        file_records = require_file_record_list(
+            files_input, field_name="files", node_id=request.node_id
+        )
+        _validate_local_image_paths(Path(record["path"]) for record in file_records)
+        return file_records
     assert parameter_paths is not None
-    return _validate_local_image_paths(Path(item).expanduser().resolve() for item in parameter_paths)
+    return [
+        {"path": str(path)}
+        for path in _validate_local_image_paths(
+            Path(item).expanduser().resolve() for item in parameter_paths
+        )
+    ]
 
 
 def _validate_local_image_paths(file_paths: object) -> list[Path]:
@@ -122,7 +173,25 @@ CORE_NODE_SPEC = CoreNodeSpec(
                     "type": "array",
                     "title": "本地图像路径列表",
                     "items": {"type": "string"},
-                }
+                },
+                "max_bytes": {
+                    "type": "integer",
+                    "title": "单文件最大字节数",
+                    "minimum": 1,
+                    "default": DEFAULT_IMAGE_MAX_BYTES,
+                },
+                "max_total_bytes": {
+                    "type": "integer",
+                    "title": "文件总字节上限",
+                    "minimum": 1,
+                    "default": DEFAULT_IMAGE_MAX_BYTES,
+                },
+                "max_pixels": {
+                    "type": "integer",
+                    "title": "单图最大像素数",
+                    "minimum": 1,
+                    "default": DEFAULT_IMAGE_MAX_PIXELS,
+                },
             },
         },
         capability_tags=("io.input", "image.batch-input", "image.refs.create"),
