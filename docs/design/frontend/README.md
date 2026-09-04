@@ -9,6 +9,10 @@
 3. [设计系统](design-system.md)：色彩、字体、密度、组件、状态和响应式规则。
 4. [页面规格](page-specifications.md)：项目、数据集、模型、Deployment、Workflow、集成和设置页面。
 
+## 已接受、待实现
+
+[Workflow Runtime 预览显示与应用模式](../../development/workflow-runtime-preview-and-app-mode.md)：同一 Workflow 的编辑、只读监视和应用视图；复用图片/JSON/表格/图库显示，应用模式只选公开输入及预览区域。显示选择随原 Workflow 发布，不建设独立页面设计器或界面版本体系。详细使用流程和阶段验收只在该实施基线维护，未实现前不作为现有页面能力说明。
+
 ## 设计方向
 
 - 专业、清晰、克制，适合长时间使用的工业视觉工作台。

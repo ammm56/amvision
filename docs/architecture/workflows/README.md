@@ -16,6 +16,7 @@
 
 - [Workflow JSON](json-contracts.md)
 - [Workflow 编辑器](editor.md)
+- [Runtime 预览显示与应用模式实施基线](../../development/workflow-runtime-preview-and-app-mode.md)：已接受、待实现；同一 Workflow 的运行视图，不新增独立应用或页面设计器。
 - [Visual Prompt](visual-prompt.md)
 
 ## 节点
