@@ -4,7 +4,8 @@
 
 ## 当前实施基线
 
-- [amvar app 统一实施基线](workflow-views-and-app-packages-implementation.md)：已接受，待实现；应用组成清单、命名数据源、运行入口映射、四语言前端重命名、多来源设计/试运行/发布/生产显示、Workflow JSON 导入导出、选择式打包恢复和模型生成界面的唯一详细设计；包含范围索引、跨页面使用流程、实施核对与验收门禁。
+- [amvar app 统一实施基线](workflow-views-and-app-packages-implementation.md)：已接受，待实现；核心 Workflow/Runtime/Trigger 优先，页面仅辅助公开输入与非硬实时在线显示，不建设结果队列、缓存或补发；WS Base64 图片与 64MB 整消息限制、类型解析、第三方独立前端、应用组成、命名来源、运行入口、设计/试运行/发布、四语言重命名、Workflow JSON 交换、选择式打包恢复和模型生成的唯一详细设计，先验证最小通信与执行隔离再展开设计器。
+
 - [工业二维视觉节点实施基线](industrial-vision-node-implementation.md)：Core 与现有 `opencv.nodes` 的二维工业视觉补齐范围、统一 payload、实施结果和验收门禁；阶段 0–6 已完成。
 - [Workflow App Entry 多类型输入实施基线](workflow-app-entry-input-implementation.md)：JSON、文本、图片、文件、多文件、multipart、ObjectStore、Trigger、前端和 SDK 的统一待实现边界。
 - [Workflow 动态参数输入实施基线](workflow-dynamic-parameter-input-implementation.md)：节点参数输入框与 `value.v1` 输入端口共存、运行时覆盖、前端连线和 Save Image 首批实施边界。
@@ -15,6 +16,8 @@
 - [本机共享内存 Trigger 实施基线](local-shared-memory-trigger-implementation.md)：保留已交付 Trigger 协议、SDK、结果生命周期和历史性能证据；当前可靠性与 allocator 完成状态以共享内存数据面可靠性实施基线为准。
 - [本机结构化消息通道实施基线](local-message-channel-implementation.md)：LocalMessageChannel 原子迁移顺序；阶段 0、阶段 1 已完成，业务 transport 尚未迁移。
 - [LocalMessage Channel 阶段 0 基线](local-message-channel-stage0-baseline.md)：Trigger、Inference、Training Telemetry 和 Queue 的可复现实测证据，以及三个已冻结的默认 profile。
+
+amvar app 基线已补齐全部同步/异步终态交接、完整公开输出消息、页面现有 response_mode=run 以及各阶段 Schema/资源限制的验证要求；权限统一使用现有默认全权限用户与永久 token，不新增角色或分级授权。可以按阶段 0 开始最小链路实现，尚不能据文档宣称新接口或长期性能已通过验收。
 
 ## 环境
 

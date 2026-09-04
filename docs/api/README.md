@@ -49,7 +49,9 @@ revision、generation、worker epoch 和稳定 id 的内部设计见 [Workflow A
 
 ## 待实现的应用与运行界面
 
-amvar app 组成、命名来源、运行入口、显示快照、Workflow JSON 导入导出和应用打包恢复的接口边界统一见[实施基线](../development/workflow-views-and-app-packages-implementation.md)。其中新增字段与路径是待实现草案，不代表当前 OpenAPI 已提供接口；前端改称“工作流”不重命名既有 Workflow API、资源 ID 或 SDK。
+amvar app 组成、命名来源、运行入口、在线结果、Workflow JSON 导入导出和应用打包恢复的接口边界统一见[实施基线](../development/workflow-views-and-app-packages-implementation.md)。页面仅辅助公开输入与非硬实时显示，不规划结果队列、缓存或补发接口。新增 WS 结果流允许 Base64 图片，整条 UTF-8 JSON 消息上限为 64MB（67,108,864 字节），与文本/JSON/资源引用共同按公开 payload 解析；内置与第三方独立前端使用同一 HTTP/WS 标准，不影响核心执行或扩大现有协议限制。其中新增字段与路径是待实现草案，不代表当前 OpenAPI 已提供接口；前端改称“工作流”不重命名既有 Workflow API、资源 ID 或 SDK。
+
+结果流路径与消息语义在实施基线第 6.5 节固定：发送 Runtime 完整公开输出，覆盖同步、持久化异步及 none + event-only 终态；内置页面手动调用选择已有 `response_mode=run`，不改变记录模式或 SDK 默认响应。认证沿用现有默认全权限用户的永久 token，与 SDK 相同；登录用户拥有全部操作权限，不新增角色或分级 scope。HTTP 使用 Bearer，浏览器 WS 使用已有 access_token 参数；登录 session 与永久 user-token 的期限仍按[本地认证](local-auth.md)区分。以上新结果流待实现，既有认证接口不由规划修改。
 
 ## 示例与调试
 

@@ -11,7 +11,9 @@
 
 ## 已接受、待实现的扩展
 
-amvar app 与独立运行界面的组件、布局、主题、四语言名称、命名来源与公开绑定、运行入口及人工/模型共用文档设计，统一见[amvar app 实施基线](../../development/workflow-views-and-app-packages-implementation.md)。取舍依据见 [ADR-0012](../../decisions/ADR-0012-workflow-views-and-app-packages.md)。通过实现和验收前，不将这些规划写成现有页面规格。
+amvar app 与独立运行界面的组件、布局、主题、四语言名称、命名来源与公开绑定、运行入口及人工/模型共用文档设计，统一见[amvar app 实施基线](../../development/workflow-views-and-app-packages-implementation.md)。设计预览只用标记的示例数据；生产页只展示在线收到的当前结果，不要求硬实时，不建设历史、固定结果或暂停恢复模式。按公开类型显示文本/JSON、WS Base64 图片或 HTTP 引用图片；新 WS 整条消息上限 64MB，显示失败不改变业务结果。独立前端可替换内置页面而不修改核心 Workflow/Runtime/Trigger。取舍依据见 [ADR-0012](../../decisions/ADR-0012-workflow-views-and-app-packages.md)。通过实现和验收前，不将这些规划写成现有页面规格。
+
+登录用户拥有全部操作权限，沿用默认用户永久 token 与现有登录态，不增加角色/授权表单；monitor/interactive 只决定页面是否配置输入和执行控件。控件从完整公开结果选字段；手动请求通过既有 run 响应确认身份和状态，不覆盖后续 WS 画面，也不把图片失效或 token 失效显示成 Workflow 业务失败。
 
 ## 设计方向
 
