@@ -54,8 +54,11 @@ export function useWorkflowNodeParameters<NodeView extends WorkflowNodeParameter
   }
 
   function readNodeParameterValue(node: NodeView, field: NodeParameterUiField): unknown {
-    const value = node.node.parameters[field.parameter_name]
-    return value ?? field.default_value ?? ''
+    if (Object.hasOwn(node.node.parameters, field.parameter_name)) return node.node.parameters[field.parameter_name]
+    const schema = node.definition
+      ? readParameterSchema(node.definition, field.parameter_name)
+      : field.json_schema
+    return schema && Object.hasOwn(schema, 'default') ? cloneWorkflowJsonValue(schema.default) : undefined
   }
 
   function readNodeParameterTextValue(node: NodeView, field: NodeParameterUiField): string {
@@ -91,7 +94,7 @@ export function useWorkflowNodeParameters<NodeView extends WorkflowNodeParameter
     const target = event.target
     if (!(target instanceof HTMLInputElement)) return
     const value = target.value.trim()
-    updateNodeParameter(node, field, value ? Number(value) : '')
+    updateNodeParameter(node, field, value ? Number(value) : undefined)
   }
 
   function updateNodeParameterFromCheckboxEvent(node: NodeView, field: NodeParameterUiField, event: Event): void {
@@ -101,12 +104,13 @@ export function useWorkflowNodeParameters<NodeView extends WorkflowNodeParameter
   }
 
   function updateNodeParameterFromEnumValue(node: NodeView, field: NodeParameterUiField, value: WorkflowNodeParameterSelectValue): void {
-    const optionIndex = Number(selectValueToString(value))
+    const selectedIndex = selectValueToString(value)
+    const optionIndex = selectedIndex === '' ? -1 : Number(selectedIndex)
     if (!Number.isInteger(optionIndex) || optionIndex < 0) {
-      updateNodeParameter(node, field, '')
+      updateNodeParameter(node, field, undefined)
       return
     }
-    updateNodeParameter(node, field, field.enum_options[optionIndex]?.value ?? '')
+    updateNodeParameter(node, field, field.enum_options[optionIndex]?.value)
   }
 
   function readNodeParameterJsonTextValue(node: NodeView, field: NodeParameterUiField): string {
@@ -143,7 +147,7 @@ export function useWorkflowNodeParameters<NodeView extends WorkflowNodeParameter
         }))
         return
       }
-      updateNodeParameter(node, field, '')
+      updateNodeParameter(node, field, undefined)
       const draftKey = buildComplexParameterDraftKey(node, field)
       options.complexParameterDrafts.value = { ...options.complexParameterDrafts.value, [draftKey]: '' }
       options.setErrorMessage(null)
@@ -182,7 +186,8 @@ export function useWorkflowNodeParameters<NodeView extends WorkflowNodeParameter
 
   function updateNodeParameter(node: NodeView, field: NodeParameterUiField, value: unknown): void {
     const nextParameters = { ...node.node.parameters }
-    if (!field.required && (value === '' || value === null || value === undefined)) {
+    // undefined 表示取消设置；null 和空字符串都是明确的 JSON 值。
+    if (value === undefined) {
       delete nextParameters[field.parameter_name]
     } else {
       nextParameters[field.parameter_name] = value
@@ -254,7 +259,7 @@ export function useWorkflowNodeParameters<NodeView extends WorkflowNodeParameter
 
 export function applyMissingNodeParameterDefaults(node: WorkflowGraphNode, definition: NodeDefinition): WorkflowGraphNode {
   const defaultParameters = buildInitialNodeParameters(definition)
-  const missingParameterNames = Object.keys(defaultParameters).filter((parameterName) => !(parameterName in node.parameters) || node.parameters[parameterName] === null)
+  const missingParameterNames = Object.keys(defaultParameters).filter((parameterName) => !Object.hasOwn(node.parameters, parameterName))
   if (missingParameterNames.length === 0) return node
   const normalizedParameters = { ...node.parameters }
   for (const parameterName of missingParameterNames) {
@@ -268,20 +273,22 @@ export function applyMissingNodeParameterDefaults(node: WorkflowGraphNode, defin
 
 export function buildInitialNodeParameters(definition: NodeDefinition): WorkflowJsonObject {
   const nextParameters: WorkflowJsonObject = {}
-  for (const field of definition.parameter_ui_schema?.fields ?? []) {
-    if (field.default_value !== undefined) {
-      nextParameters[field.parameter_name] = cloneWorkflowJsonValue(field.default_value)
-    }
-  }
+  // 执行 Schema 是默认值的唯一来源；UI 元数据的 null 不能表示存在默认值。
   const schemaProperties = isWorkflowJsonObject(definition.parameter_schema) && isWorkflowJsonObject(definition.parameter_schema.properties)
     ? definition.parameter_schema.properties
     : null
   for (const [parameterName, propertySchema] of Object.entries(schemaProperties ?? {})) {
-    if (parameterName in nextParameters) continue
-    if (!isWorkflowJsonObject(propertySchema) || !('default' in propertySchema)) continue
+    if (!isWorkflowJsonObject(propertySchema) || !Object.hasOwn(propertySchema, 'default')) continue
     nextParameters[parameterName] = cloneWorkflowJsonValue(propertySchema.default)
   }
   return nextParameters
+}
+
+function readParameterSchema(definition: NodeDefinition, parameterName: string): WorkflowJsonObject | undefined {
+  const properties = definition.parameter_schema.properties
+  if (!isWorkflowJsonObject(properties)) return undefined
+  const schema = properties[parameterName]
+  return isWorkflowJsonObject(schema) ? schema : undefined
 }
 
 function buildComplexParameterDraftKey(node: WorkflowNodeParameterView, field: NodeParameterUiField): string {

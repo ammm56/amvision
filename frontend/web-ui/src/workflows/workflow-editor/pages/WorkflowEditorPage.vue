@@ -9,6 +9,7 @@
       @contextmenu.prevent="openStageContextMenu"
     >
       <WorkflowGraphToolbar
+        ref="toolbarRef"
         :editor-title="editorTitle"
         :title-draft="editorTitleDraft"
         :title-editing="editorTitleEditing"
@@ -413,6 +414,7 @@ const editorTitleEditing = ref(false)
 const editorTitleSaving = ref(false)
 const editorTitleDraft = ref('')
 const canvasRef = ref<HTMLElement | null>(null)
+const toolbarRef = ref<{ $el: HTMLElement } | null>(null)
 const {
   shouldIgnoreStagePointer,
   shouldIgnoreStageWheelTarget,
@@ -1990,6 +1992,7 @@ function roundInteractionNumber(value: number): number {
 
 useWorkflowEditorLifecycle({
   canvasRef,
+  toolbarRef,
   loadPage,
   handleKeydown,
   updateStageSize,

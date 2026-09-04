@@ -872,10 +872,10 @@ def test_sync_invoke_api_preserves_worker_error_and_terminalizes_dispatch_record
     assert delete_response.status_code == 204
 
 
-def test_workflow_runtime_service_builder_reads_local_buffer_channel_only_when_requested(
+def test_workflow_runtime_service_builder_never_allocates_local_buffer_channel(
     tmp_path: Path,
 ) -> None:
-    """验证 workflow runtime 路由只在显式需要时才读取 broker event channel。"""
+    """控制面服务装配不申请没有资源所有者的 Broker 通道。"""
 
     client, session_factory, _ = _create_runtime_api_client(
         tmp_path,
@@ -895,18 +895,15 @@ def test_workflow_runtime_service_builder_reads_local_buffer_channel_only_when_r
         supervisor.get_event_channel = counting_get_event_channel
         try:
             default_service = _build_workflow_runtime_service(request)
-            preview_service = _build_workflow_runtime_service(
-                request,
-                include_local_buffer_broker_event_channel=True,
-            )
+            preview_service = _build_workflow_runtime_service(request)
         finally:
             supervisor.get_event_channel = original_get_event_channel
     finally:
         session_factory.engine.dispose()
 
-    assert default_service.local_buffer_broker_event_channel is None
-    assert preview_service.local_buffer_broker_event_channel is None
-    assert channel_read_count == 1
+    assert not hasattr(default_service, "local_buffer_broker_event_channel")
+    assert not hasattr(preview_service, "local_buffer_broker_event_channel")
+    assert channel_read_count == 0
 
 
 def test_workflow_app_runtime_invoke_upload_rejects_image_file_for_non_dataset_package_binding(

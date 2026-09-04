@@ -54,6 +54,8 @@ Directory Scan 复用同一记录与选择实现，保留 Files/Summary。普通
 
 三个节点统一支持可选 File 记录输入和 Path 字符串参数输入，File 与 Path 连线互斥；均未连接才使用固定 local_path。连接 File 后即使为空也报错，不退回固定参数。
 
+`local_path` 没有隐式 null 默认值。编辑器未配置固定路径时保持参数键缺省，不能因 UI 字段的空白展示而写入 `local_path: null`。连接 File 的图无需增加空路径参数即可执行；显式提交非法 null 仍由通用参数 Schema 拒绝。该规则复用所有节点的默认值处理，不在本地读取节点中增加例外。
+
 File 在打开后检查 observed_version；Path 表示读取执行时该路径的当前文件。从同一文件句柄限量读取后，再核对句柄/路径身份、大小和 mtime；变化、删除、超限均明确失败，不重试。Summary 保留 local_path 并附实际读取记录，业务输出继续使用 image-ref.v1、value.v1、text.v1，不增加业务结果包装。
 
 | 节点 | 公开参数 | 默认值 |
@@ -81,8 +83,11 @@ python -m pytest tests/test_workflow_local_file_reading.py tests/test_industrial
 python -m tests.integration.local_file_reading_benchmark
 python -m tests.integration.local_file_reading_live --image <已有结果图片路径> --json <已有结果JSON路径>
 python -m tests.integration.local_file_reading_live_audit <validation-report.json路径> --backend-pid <当前backend工作进程PID>
+python -m tests.integration.local_file_reading_live_audit <validation-report.json路径> --backend-pid <当前backend工作进程PID> --calls 1000 --soak-seconds 3600 --soak-interval-seconds 3
 ```
 
 规模测试自动创建/清理 1,000/10,000 个临时文件，真实执行图并测量时间、内存、句柄。真实链路测试在 data/validation/ 下保存生产结果副本、新建 App/发布 v1/Runtime/目录 Trigger，验证 Preview、可选空输入、同步调用、20 文件有界样本与删除通知。退出时只停用新建 Trigger/Runtime，保留小型可继续使用的验证 App/输入/报告，不改原业务资源。
+
+重复审计要求专用验证 Runtime 处于停止态、Trigger 处于禁用态。长测按顺序完成每次调用，再等待配置间隔，不制造并发或改变生产调度；按相同 PID 和进程创建时间核对身份，同时采样私有内存、句柄、线程、Broker 通道和 lease。审计脚本中的等待只属于测试负载，不是节点或 Trigger 的后台定时逻辑。
 
 短时回归和重复调用不能替代现场长期 soak，不据此宣称已满足多年连续运行认证。

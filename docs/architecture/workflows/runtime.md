@@ -32,6 +32,18 @@ Preview 用于编辑态验证，不创建逐节点隔离进程，也不启动临
 
 Preview 图片优先上传到 LocalBuffer，再以 `image-ref.v1` 引用进入执行器。节点事件追加写入本次 Preview 的 `events.jsonl`，不会在每个节点完成时读取并覆盖整个事件文件。
 
+### Preview 资源所有权
+
+控制面 `WorkflowRuntimeService` 装配不申请 Broker 通道，也不保存未使用的通道引用。JSON Preview 和 multipart 输入契约解析都不提前创建 client。只有实际上传图片时，路由才使用 supervisor 的同进程 `create_client()`；本次上传独占该 client，不能借用 worker 的跨进程通道。
+
+Preview 固定同步执行。上传图片 lease 保留到执行结束，再由路由 finally 逐项释放 lease、关闭 client 和上传文件。普通 file/files 只使用 ObjectStore 上传资源，不要求 Broker。任一清理失败不跳过剩余资源；已有执行异常优先传播，同时记录清理异常；执行原本成功但清理失败时明确报告错误，不静默判为全部成功。文件输入的执行期清理和路由 finally 均只针对本次上传目录；即使首个上传文件发布失败也执行目录清理，并核对删除后不存在残留，不以“尚无发布成功文件”跳过。
+
+图执行过程中按现有执行资源作用域管理 client、mmap view 和输出 lease；生产 worker 的通道所有权不变。这里不增加通道池、后台回收线程、调用排队或自动重试。
+
+Runtime worker 管理器已有的父进程 cleanup client 按管理器生命周期复用，首次运行后可保留一个通道；停止单个 Runtime 不关闭其他 Runtime 共用的清理通道。生命周期验收应区分该固定管理器资源、活跃 worker 资源和每次 Preview 的临时资源，不能把“全部通道归零”当成运行中服务的验收条件。
+
+验证生命周期时，应在固定 backend/worker 进程和预热基线下观察 Broker 活跃通道、转发线程、lease、原生句柄类型和私有内存。成功与失败 Preview 都必须纳入；异步注销应在有限收敛窗口内回到基线。进程重启后归零或短时间句柄波动不能作为释放正确或长期稳定的证据。
+
 Preview 结果包含以下阶段耗时：
 
 - `request_parse_ms`

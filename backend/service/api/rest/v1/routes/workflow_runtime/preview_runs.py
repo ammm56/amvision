@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import mimetypes
+import logging
+import sys
+from functools import partial
 from time import perf_counter
 from typing import Annotated
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 from fastapi.responses import FileResponse
-from starlette.datastructures import UploadFile
+from starlette.datastructures import FormData, UploadFile
 
 from backend.contracts.workflows import (
     WorkflowPreviewRunContract,
@@ -28,7 +31,7 @@ from backend.service.api.rest.v1.routes.workflow_runtime_support.services import
     build_workflow_runtime_service as _build_workflow_runtime_service,
     ensure_project_visible as _ensure_project_visible,
     require_dataset_storage as _require_dataset_storage,
-    read_local_buffer_broker_event_channel as _read_local_buffer_broker_event_channel,
+    create_local_buffer_broker_client as _create_local_buffer_broker_client,
     with_created_by as _with_created_by,
 )
 from backend.service.application.errors import (
@@ -38,6 +41,7 @@ from backend.service.application.errors import (
     WorkflowInputError,
 )
 from backend.service.application.local_buffers import LocalBufferBrokerClient
+from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.service.application.workflows.execution_cleanup import (
     WORKFLOW_EXECUTION_CLEANUP_ITEMS_KEY,
     WORKFLOW_EXECUTION_CLEANUP_KIND_DATASET_STORAGE_TREE,
@@ -59,6 +63,7 @@ from backend.service.api.rest.v1.routes.workflow_runtime_support.uploads import 
 
 
 workflow_runtime_preview_runs_router = APIRouter()
+LOGGER = logging.getLogger(__name__)
 
 @workflow_runtime_preview_runs_router.post(
     "/preview-runs",
@@ -96,13 +101,14 @@ async def create_workflow_preview_run_multipart(
     form = await request.form(
         max_part_size=WORKFLOW_RUNTIME_MULTIPART_CONTROL_PART_MAX_BYTES
     )
-    dataset_storage = _require_dataset_storage(request)
+    dataset_storage: LocalDatasetStorage | None = None
     preview_upload_id = uuid4().hex
     upload_root = ""
     lease_ids: list[str] = []
     client: LocalBufferBrokerClient | None = None
     published_any = False
     try:
+        dataset_storage = _require_dataset_storage(request)
         raw_request_body = form.get("request")
         if not isinstance(raw_request_body, str) or not raw_request_body.strip():
             raise InvalidRequestError("multipart Preview 缺少 request JSON")
@@ -120,10 +126,7 @@ async def create_workflow_preview_run_multipart(
             f"{preview_upload_id}"
         )
 
-        runtime_service = _build_workflow_runtime_service(
-            request,
-            include_local_buffer_broker_event_channel=True,
-        )
+        runtime_service = _build_workflow_runtime_service(request)
         preview_request = _build_preview_run_create_request(
             body=body,
             input_bindings=dict(body.input_bindings),
@@ -253,12 +256,11 @@ async def create_workflow_preview_run_multipart(
             )
 
         if image_uploads:
-            channel = _read_local_buffer_broker_event_channel(request)
-            if channel is None:
+            client = _create_local_buffer_broker_client(request)
+            if client is None:
                 raise ServiceConfigurationError(
                     "LocalBufferBroker 未启用，无法执行图片 Preview"
                 )
-            client = LocalBufferBrokerClient(channel)
             owner_id = f"preview-upload-{preview_upload_id}"
             for binding_id, image_file, contract_item in image_uploads:
                 input_bindings[binding_id] = await _write_preview_image_upload(
@@ -298,17 +300,62 @@ async def create_workflow_preview_run_multipart(
         )
         return _build_preview_run_contract(preview_run)
     finally:
-        if published_any and upload_root:
-            dataset_storage.delete_tree(upload_root)
-        for lease_id in lease_ids:
-            try:
-                if client is not None:
-                    client.release(lease_id)
-            except Exception:
-                pass
-        if client is not None:
-            client.close()
-        await form.close()
+        await _cleanup_preview_uploads(
+            dataset_storage=dataset_storage,
+            upload_root=upload_root,
+            lease_ids=lease_ids,
+            client=client,
+            form=form,
+            execution_failed=sys.exception() is not None,
+        )
+
+
+async def _cleanup_preview_uploads(
+    *,
+    dataset_storage: LocalDatasetStorage | None,
+    upload_root: str,
+    lease_ids: list[str],
+    client: LocalBufferBrokerClient | None,
+    form: FormData,
+    execution_failed: bool,
+) -> None:
+    """逐项释放本次上传资源；清理失败不跳过后续释放或覆盖原始执行异常。"""
+
+    cleanup_actions = []
+    if dataset_storage is not None and upload_root:
+        cleanup_actions.append(partial(_delete_preview_upload_root, dataset_storage, upload_root))
+    if client is not None:
+        cleanup_actions.extend(partial(client.release, lease_id) for lease_id in lease_ids)
+        cleanup_actions.append(client.close)
+    first_error: Exception | None = None
+    for cleanup in cleanup_actions:
+        try:
+            cleanup()
+        except Exception as exc:
+            first_error = first_error or exc
+            LOGGER.exception("Preview 上传资源清理失败")
+    # FormData.close 在首个文件关闭异常时会中断，逐项关闭确保其余文件仍被释放。
+    for _name, upload in form.multi_items():
+        if not isinstance(upload, UploadFile):
+            continue
+        try:
+            await upload.close()
+        except Exception as exc:
+            first_error = first_error or exc
+            LOGGER.exception("Preview 上传文件关闭失败")
+    if first_error is not None and not execution_failed:
+        raise first_error
+
+
+def _delete_preview_upload_root(dataset_storage: LocalDatasetStorage, upload_root: str) -> None:
+    """删除本次请求的上传目录，并检查底层忽略删除错误后是否仍有残留。"""
+
+    dataset_storage.delete_tree(upload_root)
+    try:
+        dataset_storage.resolve_filesystem_path(upload_root).stat()
+    except FileNotFoundError:
+        return
+    raise OSError(f"Preview 上传目录未完全删除: {upload_root}")
 
 
 async def _write_preview_image_upload(
@@ -399,10 +446,7 @@ def _create_preview_run(
             3,
         )
     execution_metadata["timings"] = timing_payload
-    return _build_workflow_runtime_service(
-        request,
-        include_local_buffer_broker_event_channel=True,
-    ).create_preview_run(
+    return _build_workflow_runtime_service(request).create_preview_run(
         _build_preview_run_create_request(
             body=body,
             input_bindings=input_bindings,

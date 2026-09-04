@@ -8,7 +8,7 @@ from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.service.api.deps.auth import AuthenticatedPrincipal
 from backend.service.application.deployments import PublishedInferenceGateway
 from backend.service.application.errors import PermissionDeniedError, ServiceConfigurationError
-from backend.service.application.local_buffers import LocalBufferBrokerEventChannel, LocalBufferBrokerProcessSupervisor
+from backend.service.application.local_buffers import LocalBufferBrokerClient, LocalBufferBrokerProcessSupervisor
 from backend.service.application.workflows.preview_run_manager import WorkflowPreviewRunManager
 from backend.service.application.workflows.graph_executor import WorkflowNodeRuntimeRegistry
 from backend.service.application.workflows.runtime_service import WorkflowRuntimeService
@@ -22,8 +22,6 @@ from backend.service.settings import BackendServiceSettings
 
 def build_workflow_runtime_service(
     request: Request,
-    *,
-    include_local_buffer_broker_event_channel: bool = False,
 ) -> WorkflowRuntimeService:
     """基于 application.state 构建 workflow runtime 控制面服务。"""
 
@@ -36,11 +34,6 @@ def build_workflow_runtime_service(
         workflow_service_node_runtime_context=require_workflow_service_node_runtime_context(request),
         worker_manager=require_workflow_runtime_worker_manager(request),
         preview_run_manager=read_workflow_preview_run_manager(request),
-        local_buffer_broker_event_channel=(
-            read_local_buffer_broker_event_channel(request)
-            if include_local_buffer_broker_event_channel
-            else None
-        ),
         published_inference_gateway=read_published_inference_gateway(request),
     )
 
@@ -119,15 +112,15 @@ def read_workflow_preview_run_manager(request: Request) -> WorkflowPreviewRunMan
     return preview_run_manager
 
 
-def read_local_buffer_broker_event_channel(request: Request) -> LocalBufferBrokerEventChannel | None:
-    """从 application.state 中读取 LocalBufferBroker 事件通道。"""
+def create_local_buffer_broker_client(request: Request) -> LocalBufferBrokerClient | None:
+    """按需创建同进程独占 client；调用方必须在 finally 中关闭。"""
 
     supervisor = getattr(request.app.state, "local_buffer_broker_supervisor", None)
     if supervisor is None:
         return None
     if not isinstance(supervisor, LocalBufferBrokerProcessSupervisor):
         raise ServiceConfigurationError("当前服务 local_buffer_broker_supervisor 装配无效")
-    return supervisor.get_event_channel()
+    return supervisor.create_client()
 
 
 def read_published_inference_gateway(request: Request) -> PublishedInferenceGateway | None:

@@ -4,6 +4,16 @@ import { describe, expect, it } from 'vitest'
 import WorkflowGraphCheckbox from './WorkflowGraphCheckbox.vue'
 
 describe('WorkflowGraphCheckbox', () => {
+  it('只在选中时渲染勾号，避免通用文字颜色使 false 看起来已选中', async () => {
+    const wrapper = mount(WorkflowGraphCheckbox, { props: { checked: false } })
+
+    expect(wrapper.find('.workflow-graph-checkbox__control svg').exists()).toBe(false)
+    await wrapper.setProps({ checked: true })
+    expect(wrapper.find('.workflow-graph-checkbox__control svg').exists()).toBe(true)
+    await wrapper.setProps({ checked: false })
+    expect(wrapper.find('.workflow-graph-checkbox__control svg').exists()).toBe(false)
+  })
+
   it('将受控选中状态和可访问名称传递给原生输入', () => {
     const wrapper = mount(WorkflowGraphCheckbox, {
       props: {

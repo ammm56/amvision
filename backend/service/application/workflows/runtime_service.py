@@ -37,7 +37,6 @@ from backend.service.application.errors import (
     ServiceConfigurationError,
     ServiceError,
 )
-from backend.service.application.local_buffers import LocalBufferBrokerEventChannel
 from backend.service.application.workflows.preview_run_manager import (
     WorkflowPreviewRunExecutionRequest,
     WorkflowPreviewRunManager,
@@ -295,7 +294,6 @@ class WorkflowRuntimeService:
         workflow_service_node_runtime_context: WorkflowServiceNodeRuntimeContext
         | None = None,
         preview_run_manager: WorkflowPreviewRunManager | None = None,
-        local_buffer_broker_event_channel: LocalBufferBrokerEventChannel | None = None,
         published_inference_gateway: PublishedInferenceGateway | None = None,
     ) -> None:
         """初始化 workflow runtime 控制面服务。"""
@@ -310,7 +308,6 @@ class WorkflowRuntimeService:
         )
         self.worker_manager = worker_manager
         self.preview_run_manager = preview_run_manager
-        self.local_buffer_broker_event_channel = local_buffer_broker_event_channel
         self.published_inference_gateway = published_inference_gateway
         self.service_event_bus = getattr(session_factory, "service_event_bus", None)
         self.application_lifecycle = WorkflowApplicationLifecycleService(

@@ -2796,7 +2796,7 @@ textarea:focus-visible {
 
 .workflow-graph-error {
   position: absolute;
-  top: 70px;
+  top: var(--workflow-toolbar-bottom, 70px);
   left: 50%;
   z-index: 6;
   width: min(720px, calc(100% - 520px));
@@ -3041,7 +3041,7 @@ textarea:focus-visible {
 }
 
 .workflow-graph-inspector-panel {
-  top: 70px;
+  top: var(--workflow-toolbar-bottom, 70px);
   right: 14px;
   bottom: 64px;
   grid-template-rows: auto minmax(0, 1fr);
@@ -3078,14 +3078,14 @@ textarea:focus-visible {
 
 @media (max-width: 720px) {
   .workflow-graph-inspector-panel {
-    top: 116px;
+    top: var(--workflow-toolbar-bottom, 116px);
     right: 10px;
     bottom: 60px;
     width: min(360px, calc(100% - 20px));
   }
 
   .workflow-graph-error {
-    top: 116px;
+    top: var(--workflow-toolbar-bottom, 116px);
     width: calc(100% - 20px);
   }
 }

@@ -15,15 +15,19 @@ import psutil
 from tests.integration.local_file_reading_live import LiveValidation
 
 
-def process_sample(pid):
+def process_sample(pid, expected_created_at):
     """采样已确认的 backend/runtime 进程，不控制生产进程。"""
     process = psutil.Process(pid)
+    if process.create_time() != expected_created_at:
+        raise RuntimeError("验证期间进程已重启，不能沿用原内存基线")
     memory = process.memory_info()
     return {
         "pid": pid,
+        "created_at": expected_created_at,
         "private_bytes": getattr(memory, "private", None),
         "rss_bytes": memory.rss,
         "handles": process.num_handles(),
+        "threads": process.num_threads(),
     }
 
 
@@ -32,7 +36,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("report", type=Path)
     parser.add_argument("--backend-pid", type=int, required=True)
+    parser.add_argument("--calls", type=int, default=300)
+    parser.add_argument("--soak-seconds", type=float, default=0)
+    parser.add_argument("--soak-interval-seconds", type=float, default=3)
     args = parser.parse_args()
+    if args.calls < 1 or args.soak_seconds < 0 or args.soak_interval_seconds <= 0:
+        parser.error("calls 必须为正数，soak-seconds 非负，soak-interval-seconds 为正数")
+    backend_created_at = psutil.Process(args.backend_pid).create_time()
     original = json.loads(args.report.read_text(encoding="utf-8"))
     root = Path(original["fixture_root"]).resolve()
     allowed = Path(__file__).resolve().parents[2] / "data" / "validation"
@@ -52,6 +62,14 @@ def main():
             )
             if runtime["metadata"].get("asset_kind") != "local-file-reading-validation":
                 raise ValueError("非本次验证资产")
+            runtime_health = live.api(
+                "GET", f"/workflows/app-runtimes/{resource['workflow_runtime_id']}/health"
+            )
+            trigger_health = live.api(
+                "GET", f"/workflows/trigger-sources/{resource['trigger_source_id']}/health"
+            )
+            if runtime_health["observed_state"] != "stopped" or trigger_health["enabled"]:
+                raise ValueError("验证资源必须先处于 Runtime 停止、Trigger 禁用状态")
         live.resources = report["resources"]
         latest, event = live.resources
         try:
@@ -73,32 +91,55 @@ def main():
                 "GET", f"/workflows/app-runtimes/{latest['workflow_runtime_id']}/health"
             )
             worker_pid = health["worker_process_id"]
+            worker_created_at = psutil.Process(worker_pid).create_time()
             for _ in range(20):
                 live.invoke(latest)
 
-            def sample(calls):
+            def sample(calls, phase="calls"):
                 """同一 PID 分阶段采样，避免重启被误认为内存稳定。"""
+                broker = live.api("GET", "/system/health")["local_buffer_broker"]
                 snapshot = {
+                    "phase": phase,
                     "calls": calls,
-                    "backend": process_sample(args.backend_pid),
-                    "worker": process_sample(worker_pid),
+                    "backend": process_sample(args.backend_pid, backend_created_at),
+                    "worker": process_sample(worker_pid, worker_created_at),
+                    "broker_router": broker["router"],
+                    "broker_active_leases": broker["status"]["active_lease_count"],
                 }
                 report["samples"].append(snapshot)
                 print(json.dumps(snapshot), flush=True)
 
             sample(0)
             timings = []
-            for index in range(300):
+            for index in range(args.calls):
                 start = time.perf_counter()
                 live.invoke(latest)
                 timings.append((time.perf_counter() - start) * 1000)
                 if (index + 1) % 100 == 0:
                     sample(index + 1)
             report["calls"] = {
-                "count": 300,
+                "count": args.calls,
                 "median_ms": statistics.median(timings),
-                "p95_ms": sorted(timings)[284],
+                "p95_ms": sorted(timings)[max(0, int(len(timings) * 0.95) - 1)],
             }
+
+            soak_start = time.monotonic()
+            soak_calls = 0
+            next_sample = soak_start + 60
+            while time.monotonic() - soak_start < args.soak_seconds:
+                live.invoke(latest)
+                soak_calls += 1
+                if time.monotonic() >= next_sample:
+                    sample(soak_calls, "soak")
+                    next_sample = time.monotonic() + 60
+                time.sleep(args.soak_interval_seconds)
+            if args.soak_seconds:
+                sample(soak_calls, "soak_finished")
+                report["soak"] = {
+                    "calls": soak_calls,
+                    "seconds": time.monotonic() - soak_start,
+                    "interval_seconds": args.soak_interval_seconds,
+                }
 
             assert live.invoke(event)["outputs"]["results"]["value"] == []
             bad = live.api(

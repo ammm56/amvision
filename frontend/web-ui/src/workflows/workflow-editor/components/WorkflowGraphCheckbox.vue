@@ -9,7 +9,7 @@
       @change="emit('change', $event)"
     >
     <span class="workflow-graph-checkbox__control" aria-hidden="true">
-      <Check :size="13" :stroke-width="3" />
+      <Check v-if="checked" :size="13" :stroke-width="3" />
     </span>
   </span>
 </template>
