@@ -6,6 +6,11 @@ const WorkflowAppDetailPage = () => import('./pages/WorkflowAppDetailPage.vue')
 
 export const workflowEditorRoutes: RouteRecordRaw[] = [
   {
+    path: '/workflows/runtime/:workflowRuntimeId/monitor',
+    component: () => import('./pages/WorkflowRuntimeMonitorPage.vue'),
+    meta: { requiredScopes: ['workflows:read'], graphWorkbench: true },
+  },
+  {
     path: '/workflows',
     redirect: '/workflows/apps',
   },

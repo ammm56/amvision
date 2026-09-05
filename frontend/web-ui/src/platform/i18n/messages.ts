@@ -8654,6 +8654,16 @@ for (const locale of ['zh-CN', 'en-US', 'ja-JP', 'ko-KR'] as const) {
   baseMessages[locale].imageViewer = imageViewerMessages[locale]
 }
 
+const runtimePreviewMessages: Record<SupportedLocale, MessageSchema> = {
+  'zh-CN': { title: 'Runtime 监视', readonly: '只读发布画布', back: '应用详情', parameters: '参数（只读）', disconnected: '已断开 · 画面非实时', stopped: 'Runtime 未运行', connecting: '正在连接', waiting: '等待下次执行', live: '已显示执行结果', authUnavailable: 'WebSocket 认证不可用' },
+  'en-US': { title: 'Runtime monitor', readonly: 'Read-only published graph', back: 'App details', parameters: 'Parameters (read-only)', disconnected: 'Disconnected · stale display', stopped: 'Runtime not running', connecting: 'Connecting', waiting: 'Waiting for next run', live: 'Run result displayed', authUnavailable: 'WebSocket authentication unavailable' },
+  'ja-JP': { title: 'Runtime モニター', readonly: '公開グラフ（読み取り専用）', back: 'アプリ詳細', parameters: 'パラメーター（読み取り専用）', disconnected: '切断 · 表示は最新ではありません', stopped: 'Runtime 停止中', connecting: '接続中', waiting: '次の実行を待機', live: '実行結果を表示中', authUnavailable: 'WebSocket 認証を利用できません' },
+  'ko-KR': { title: 'Runtime 모니터', readonly: '게시 그래프 (읽기 전용)', back: '앱 상세', parameters: '매개변수 (읽기 전용)', disconnected: '연결 끊김 · 이전 화면', stopped: 'Runtime 실행 안 됨', connecting: '연결 중', waiting: '다음 실행 대기 중', live: '실행 결과 표시', authUnavailable: 'WebSocket 인증을 사용할 수 없음' },
+}
+for (const locale of ['zh-CN', 'en-US', 'ja-JP', 'ko-KR'] as const) {
+  (baseMessages[locale].workflowEditor as MessageSchema).runtimePreview = runtimePreviewMessages[locale]
+}
+
 export const messages: Record<string, MessageSchema> = {
   ...baseMessages,
   zh: baseMessages['zh-CN'],

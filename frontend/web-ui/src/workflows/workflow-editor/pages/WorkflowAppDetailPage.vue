@@ -199,6 +199,9 @@
             <h2>{{ t('workflowEditor.appDetail.runtimeTitle') }}</h2>
           </div>
           <div class="table-actions table-actions--wrap">
+            <Button variant="secondary" :disabled="!selectedRuntime" @click="selectedRuntime && router.push(`/workflows/runtime/${selectedRuntime.workflow_runtime_id}/monitor`)">
+              {{ t('workflowEditor.runtimePreview.title') }}
+            </Button>
             <Button v-if="canWriteWorkflows" variant="primary" :disabled="runtimeActionBusy || !runtimeCreateVersionSelectable" @click="createRuntime">
               <Plus :size="16" />
               {{ t('workflowEditor.appDetail.actions.createRuntime') }}

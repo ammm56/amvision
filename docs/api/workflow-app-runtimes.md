@@ -28,6 +28,10 @@ Runtime 通过不可变 `WorkflowRuntimeRevision` 选择准确的 `WorkflowAppVe
 - GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}/revisions/{workflow_runtime_revision_id}
 - POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/select-version
 - /ws/v1/workflows/app-runtimes/events
+- GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}/preview-snapshot
+- /ws/v1/workflows/app-runtimes/preview
+
+预览观察通道与业务调用独立，使用实际发布图、仅显示后续执行结果。消息、客户端确认和容量边界见 [Runtime 预览监视](workflow-runtime-preview.md)。
 
 ## 资源定位
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import multiprocessing
 import os
+import socket
 from multiprocessing.queues import Queue
 from queue import Empty
 from threading import Event, Lock, Thread
@@ -33,6 +34,10 @@ from backend.service.application.workflows.model_sessions import (
 )
 from backend.service.application.workflows.process_threads import (
     configure_workflow_process_threads,
+)
+from backend.service.application.workflows.runtime_preview import (
+    PREVIEW_CAPTURE_KEY,
+    RuntimePreviewSender,
 )
 from backend.service.application.workflows.runtime_registry_loader import (
     WorkflowNodeRuntimeRegistryLoader,
@@ -92,6 +97,8 @@ def run_workflow_runtime_worker_process(
     request_queue: Queue[Any],
     response_queue: Queue[Any],
     run_cancellation_event: Any,
+    preview_socket: socket.socket | None = None,
+    preview_observed: Any = None,
     local_buffer_broker_event_channel: LocalBufferBrokerEventChannel | None = None,
     published_inference_gateway_event_channel: PublishedInferenceGatewayEventChannel
     | None = None,
@@ -105,6 +112,11 @@ def run_workflow_runtime_worker_process(
     published_inference_gateway: PublishedInferenceGatewayClient | None = None
     model_session_manager: WorkflowModelSessionManager | None = None
     storage_image_cache: ExecutionImageRegistry | None = None
+    preview_sender = (
+        RuntimePreviewSender(preview_socket, preview_observed)
+        if preview_socket is not None else None
+    )
+    preview_sequence = 0
     try:
         supervisor_process = multiprocessing.parent_process()
         settings = BackendServiceSettings.model_validate(settings_payload)
@@ -544,6 +556,13 @@ def run_workflow_runtime_worker_process(
             )
             with state_lock:
                 current_run_id = workflow_run_id
+            preview_sequence += 1
+            execution_metadata.pop(PREVIEW_CAPTURE_KEY, None)
+            preview_capture = preview_sender.begin() if preview_sender is not None else None
+            if preview_capture is not None:
+                execution_metadata[PREVIEW_CAPTURE_KEY] = preview_capture
+            preview_state = "failed"
+            preview_error: str | None = None
             try:
                 worker_execute_started_at = perf_counter()
                 execution_result = snapshot_execution_service.execute(
@@ -558,6 +577,7 @@ def run_workflow_runtime_worker_process(
                     )
                 )
                 worker_execute_ms = _elapsed_ms(worker_execute_started_at)
+                preview_state = "succeeded"
                 with state_lock:
                     current_observed_state = "running"
                     current_last_error = None
@@ -611,6 +631,7 @@ def run_workflow_runtime_worker_process(
                     )
                 )
             except InvalidRequestError as exc:
+                preview_error = exc.message
                 with state_lock:
                     current_observed_state = "running"
                     current_last_error = None
@@ -635,6 +656,7 @@ def run_workflow_runtime_worker_process(
                     )
                 )
             except ServiceError as exc:
+                preview_error = exc.message
                 with state_lock:
                     # 单次 Workflow Run 的领域/依赖错误不代表 worker 进程失效；
                     # worker 仍可继续接收下一条请求，健康状态保持 running。
@@ -661,6 +683,7 @@ def run_workflow_runtime_worker_process(
                     )
                 )
             except Exception as exc:  # pragma: no cover - 子进程兜底错误封装
+                preview_error = str(exc)
                 with state_lock:
                     current_observed_state = "failed"
                     current_last_error = "workflow runtime worker 执行失败"
@@ -685,7 +708,30 @@ def run_workflow_runtime_worker_process(
                         )
                     )
                 )
+            finally:
+                if preview_capture is not None and preview_sender is not None:
+                    # 原响应已入业务通道；显示编码和发送在独立线程进行。
+                    preview_sender.finish(preview_capture, {
+                        "workflow_runtime_id": workflow_runtime_id,
+                        "workflow_runtime_revision_id": workflow_runtime_revision_id,
+                        "workflow_app_version_id": workflow_app_version_id,
+                        "runtime_generation": runtime_generation,
+                        "worker_instance_id": runtime_instance_id,
+                        "snapshot_fingerprint": snapshot_fingerprint,
+                        "project_id": snapshot_project_id,
+                        "application_id": application_id,
+                        "workflow_run_id": workflow_run_id,
+                        "sequence": preview_sequence,
+                        "state": preview_state,
+                        "error_message": preview_error,
+                        "finished_at": now_isoformat(),
+                    })
+                    preview_capture.records.clear()
+                execution_metadata.pop(PREVIEW_CAPTURE_KEY, None)
+                preview_capture = None
     finally:
+        if preview_sender is not None:
+            preview_sender.close()
         if "heartbeat_stop_event" in locals():
             heartbeat_stop_event.set()
         if "heartbeat_thread" in locals():

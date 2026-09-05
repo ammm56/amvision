@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
+from starlette.concurrency import run_in_threadpool
+
 from datetime import datetime, timezone
 from time import monotonic
 
@@ -56,6 +59,77 @@ ws_v1_router = APIRouter(prefix="/ws/v1")
 
 TASK_EVENT_DATABASE_POLL_INTERVAL_SECONDS = 1.0
 TASK_EVENT_HEARTBEAT_INTERVAL_SECONDS = 15.0
+
+
+@ws_v1_router.websocket("/workflows/app-runtimes/preview")
+async def subscribe_runtime_preview(socket: WebSocket) -> None:
+    """实时显示订阅：无重放/队列，慢客户端不影响 Runtime 调用。"""
+    principal = _get_socket_principal(socket)
+    if principal is None:
+        await socket.close(code=4401)
+        return
+    if not _scope_granted(principal.scopes, "workflows:read"):
+        await socket.close(code=4403)
+        return
+    service = _build_socket_workflow_runtime_service(socket)
+    manager = _get_socket_workflow_runtime_worker_manager(socket)
+    if service is None or manager is None:
+        await socket.close(code=1011)
+        return
+    try:
+        runtime_id = socket.query_params["workflow_runtime_id"]
+        await run_in_threadpool(
+            service.get_visible_workflow_app_runtime, runtime_id,
+            visible_project_ids=principal.project_ids,
+        )
+        channel = manager.get_preview_channel(
+            runtime_id,
+            revision_id=socket.query_params["workflow_runtime_revision_id"],
+            generation=int(socket.query_params["runtime_generation"]),
+            worker_instance_id=socket.query_params["worker_instance_id"],
+        )
+        subscription = channel.subscribe()
+    except Exception:
+        await socket.close(code=4409, reason="runtime_preview_unavailable")
+        return
+
+    client_ready = asyncio.Event()
+
+    async def send_frames() -> None:
+        """只有发送完成才接收下一帧；每连接最多一份在途正文。"""
+        while (text := await subscription.receive()) is not None:
+            client_ready.clear()
+            await asyncio.wait_for(socket.send_text(text), timeout=10.0)
+            del text
+            # 浏览器确认本帧已处理后才接下一帧；不是业务 ACK，不缓存下一帧。
+            await asyncio.wait_for(client_ready.wait(), timeout=10.0)
+
+    async def receive_disconnect() -> None:
+        """检测浏览器关闭；此通道不接受执行或编辑命令。"""
+        while True:
+            message = await socket.receive()
+            if message["type"] == "websocket.disconnect":
+                return
+            if message.get("text") == "ready":
+                client_ready.set()
+
+    tasks: list[asyncio.Task] = []
+    try:
+        await socket.accept()
+        tasks = [asyncio.create_task(send_frames()), asyncio.create_task(receive_disconnect())]
+        await socket.send_json({"format_id": "amvision.workflow-runtime-preview.v1", "state": "connected"})
+        await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+    except (WebSocketDisconnect, OSError, RuntimeError):
+        pass
+    finally:
+        channel.unsubscribe(subscription)
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        try:
+            await socket.close()
+        except RuntimeError:
+            pass
 
 
 @ws_v1_router.websocket("/system/events")

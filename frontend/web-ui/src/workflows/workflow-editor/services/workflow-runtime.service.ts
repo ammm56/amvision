@@ -181,17 +181,19 @@ export async function getWorkflowPreviewRunEvents(previewRunId: string, afterSeq
   })
 }
 
-export async function readWorkflowPreviewRunArtifactBlob(previewRunId: string, objectKey: string): Promise<Blob> {
+export async function readWorkflowPreviewRunArtifactBlob(previewRunId: string, objectKey: string, signal?: AbortSignal): Promise<Blob> {
   return apiRequest<Blob>(`/workflows/preview-runs/${encodePathPart(previewRunId)}/artifacts/content`, {
     query: { object_key: objectKey },
     responseType: 'blob',
+    signal,
   })
 }
 
-export async function readProjectObjectContentBlob(projectId: string, objectKey: string): Promise<Blob> {
+export async function readProjectObjectContentBlob(projectId: string, objectKey: string, signal?: AbortSignal): Promise<Blob> {
   return apiRequest<Blob>(`/projects/${encodePathPart(projectId)}/files/content`, {
     query: { object_key: objectKey },
     responseType: 'blob',
+    signal,
   })
 }
 

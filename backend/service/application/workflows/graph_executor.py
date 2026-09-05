@@ -8,6 +8,8 @@ from time import monotonic, perf_counter
 from typing import Callable, Mapping
 from uuid import uuid4
 
+from backend.service.application.workflows.runtime_preview import PREVIEW_CAPTURE_KEY, RuntimePreviewCapture
+
 from backend.contracts.workflows.workflow_graph import (
     NodeDefinition,
     NodePortDefinition,
@@ -602,6 +604,12 @@ class WorkflowGraphExecutor:
                         },
                     )
                 node_output_values[(node_id, output_name)] = output_value
+            preview_capture = execution_metadata_payload.get(PREVIEW_CAPTURE_KEY)
+            if isinstance(preview_capture, RuntimePreviewCapture):
+                preview_capture.capture(
+                    node_id=node_id, definition=node_definition, outputs=raw_outputs,
+                    invocation_id=node_id, duration_ms=duration_ms,
+                )
             node_records.append(
                 WorkflowNodeExecutionRecord(
                     node_id=node_id,
@@ -1766,6 +1774,12 @@ class WorkflowGraphExecutor:
                     )
                 local_output_values[(body_node_id, output_name)] = output_value
             duration_ms = _elapsed_ms(node_started_at)
+            preview_capture = execution_metadata.get(PREVIEW_CAPTURE_KEY)
+            if isinstance(preview_capture, RuntimePreviewCapture):
+                preview_capture.capture(
+                    node_id=body_node_id, definition=body_node_definition, outputs=raw_outputs,
+                    invocation_id=iteration_node_id, duration_ms=duration_ms,
+                )
             node_records.append(
                 WorkflowNodeExecutionRecord(
                     node_id=iteration_node_id,

@@ -42,6 +42,17 @@ from backend.service.application.workflows.runtime.app_runtimes import (
 workflow_app_runtimes_router = APIRouter()
 
 
+@workflow_app_runtimes_router.get("/app-runtimes/{workflow_runtime_id}/preview-snapshot")
+def get_runtime_preview_snapshot(
+    workflow_runtime_id: str, request: Request,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:read"))],
+) -> dict[str, object]:
+    """返回 Runtime 发布快照，不读取或修改编辑草稿。"""
+    service = _build_workflow_runtime_service(request)
+    service.get_visible_workflow_app_runtime(workflow_runtime_id, visible_project_ids=principal.project_ids)
+    return service.get_runtime_preview_snapshot(workflow_runtime_id)
+
+
 @workflow_app_runtimes_router.post(
     "/app-runtimes",
     response_model=WorkflowAppRuntimeContract,

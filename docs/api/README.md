@@ -38,6 +38,7 @@
 | 编辑态执行 | [Preview Run](workflow-preview-runs.md) |
 | 不可变发布物 | [App Version](workflow-app-versions.md) |
 | 稳定生产实例 | [App Runtime](workflow-app-runtimes.md) |
+| Runtime 只读画布显示 | [Runtime 预览监视](workflow-runtime-preview.md) |
 | 同步和异步执行 | [Workflow Run](workflow-runs.md) |
 | 执行默认值 | [Execution Policy](workflow-execution-policies.md) |
 | 外部触发 | [Trigger Source](workflow-trigger-sources.md) |

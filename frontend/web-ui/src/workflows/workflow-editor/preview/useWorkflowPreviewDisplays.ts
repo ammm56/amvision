@@ -4,6 +4,13 @@ import { translate } from '@/platform/i18n'
 import { readProjectObjectContentBlob, readWorkflowPreviewRunArtifactBlob } from '../services/workflow-runtime.service'
 import type { WorkflowJsonObject, WorkflowPreviewRun } from '../types'
 
+export interface PreviewDisplayContext {
+  project_id: string
+  preview_run_id?: string
+  signal?: AbortSignal
+  readonly?: boolean
+}
+
 export interface PreviewImageCircleOverlay {
   centerX: number
   centerY: number
@@ -149,6 +156,7 @@ interface PreviewNodeOutput {
 
 export interface PreviewNodeDisplayRefreshOptions {
   reopenImageViewerNodeId?: string | null
+  keyByOutput?: boolean
 }
 
 interface PreviewImageObjectUrlRevokeOptions {
@@ -180,27 +188,47 @@ export function useWorkflowPreviewDisplays() {
   const activePreviewTable = ref<PreviewTableViewerState | null>(null)
   const activePreviewJson = ref<PreviewJsonViewerState | null>(null)
   let previewImageObjectUrls: string[] = []
-
-  const hasPreviewNodeDisplays = computed(() => Object.keys(previewNodeDisplays.value).length > 0)
+  let displayGeneration = 0
+  let imageRequestController: AbortController | null = null
   const registerPreviewImageObjectUrl = (objectUrl: string): void => {
     previewImageObjectUrls.push(objectUrl)
   }
+
+  const hasPreviewNodeDisplays = computed(() => Object.keys(previewNodeDisplays.value).length > 0)
 
   async function refreshPreviewNodeDisplays(
     previewRun: WorkflowPreviewRun,
     options: PreviewNodeDisplayRefreshOptions = {},
   ): Promise<void> {
+    await refreshDisplayOutputs(previewRun, readPreviewDisplayOutputs(previewRun), options)
+  }
+
+  async function refreshDisplayOutputs(
+    context: PreviewDisplayContext,
+    outputs: PreviewNodeOutput[],
+    options: PreviewNodeDisplayRefreshOptions = {},
+  ): Promise<void> {
     const reopenImageViewerNodeId = readDisplayText(options.reopenImageViewerNodeId)
     revokePreviewImageObjectUrls({ closeImageViewer: !reopenImageViewerNodeId })
+    imageRequestController = new AbortController()
+    const displayContext = { ...context, signal: imageRequestController.signal }
+    const generation = displayGeneration
+    const nextUrls: string[] = []
     const nextDisplays: Record<string, PreviewNodeDisplay> = {}
     const previewDisplays = await Promise.all(
-      readPreviewDisplayOutputs(previewRun).map((displayOutput) => (
-        buildPreviewNodeDisplay(previewRun, displayOutput, registerPreviewImageObjectUrl)
+      outputs.map((displayOutput) => (
+        buildPreviewNodeDisplay(displayContext, displayOutput, (url) => nextUrls.push(url))
       )),
     )
+    if (generation !== displayGeneration) {
+      nextUrls.forEach((url) => URL.revokeObjectURL(url))
+      return
+    }
+    previewImageObjectUrls = nextUrls
     for (const previewDisplay of previewDisplays) {
       if (previewDisplay) {
-        nextDisplays[previewDisplay.nodeId] = previewDisplay
+        const key = options.keyByOutput ? JSON.stringify([previewDisplay.nodeId, previewDisplay.outputName]) : previewDisplay.nodeId
+        nextDisplays[key] = previewDisplay
       }
     }
     previewNodeDisplays.value = nextDisplays
@@ -210,12 +238,21 @@ export function useWorkflowPreviewDisplays() {
     }
   }
 
+  function cancelPendingDisplayRefresh(): void {
+    displayGeneration += 1
+    imageRequestController?.abort()
+    imageRequestController = null
+  }
+
   function revokePreviewImageObjectUrls(options: PreviewImageObjectUrlRevokeOptions = {}): void {
+    cancelPendingDisplayRefresh()
     for (const objectUrl of previewImageObjectUrls) {
       URL.revokeObjectURL(objectUrl)
     }
     previewImageObjectUrls = []
     previewNodeDisplays.value = {}
+    closePreviewTableViewer()
+    closePreviewJsonViewer()
     if (options.closeImageViewer !== false) closeImageViewer()
   }
 
@@ -345,6 +382,8 @@ export function useWorkflowPreviewDisplays() {
     activePreviewJson,
     hasPreviewNodeDisplays,
     refreshPreviewNodeDisplays,
+    refreshDisplayOutputs,
+    cancelPendingDisplayRefresh,
     revokePreviewImageObjectUrls,
     getPreviewNodeDisplay,
     readPreviewNodeDisplayTooltip,
@@ -445,7 +484,7 @@ function readPreviewDisplayOutputs(previewRun: WorkflowPreviewRun): PreviewNodeO
 }
 
 async function buildPreviewNodeDisplay(
-  previewRun: WorkflowPreviewRun,
+  previewRun: PreviewDisplayContext,
   displayOutput: PreviewNodeOutput,
   registerObjectUrl: (objectUrl: string) => void,
 ): Promise<PreviewNodeDisplay | null> {
@@ -459,7 +498,7 @@ async function buildPreviewNodeDisplay(
 }
 
 async function buildImagePreviewNodeDisplay(
-  previewRun: WorkflowPreviewRun,
+  previewRun: PreviewDisplayContext,
   displayOutput: PreviewNodeOutput,
   registerObjectUrl: (objectUrl: string) => void,
 ): Promise<PreviewNodeDisplay | null> {
@@ -521,7 +560,7 @@ function buildTablePreviewNodeDisplay(displayOutput: PreviewNodeOutput): Preview
 }
 
 async function buildGalleryPreviewNodeDisplay(
-  previewRun: WorkflowPreviewRun,
+  previewRun: PreviewDisplayContext,
   displayOutput: PreviewNodeOutput,
   registerObjectUrl: (objectUrl: string) => void,
 ): Promise<PreviewNodeDisplay> {
@@ -585,7 +624,7 @@ function buildValuePreviewNodeDisplay(displayOutput: PreviewNodeOutput): Preview
 }
 
 async function buildPreviewViewerImage(
-  previewRun: WorkflowPreviewRun,
+  previewRun: PreviewDisplayContext,
   imagePayload: WorkflowJsonObject,
   title: string,
   nodeId: string,
@@ -595,7 +634,7 @@ async function buildPreviewViewerImage(
   const displayPayload = isPreviewJsonObject(imagePayload.display_image) ? imagePayload.display_image : imagePayload
   const sourcePayload = isPreviewJsonObject(imagePayload.source_image) ? imagePayload.source_image : imagePayload
   const displayImage = await resolvePreviewImagePayload(previewRun, displayPayload, registerObjectUrl)
-  const sourceImage = await resolvePreviewImagePayload(previewRun, sourcePayload, registerObjectUrl)
+  const sourceImage = sourcePayload === displayPayload ? displayImage : await resolvePreviewImagePayload(previewRun, sourcePayload, registerObjectUrl)
   const sourceWidth = readDisplayNumber(imagePayload.source_width)
     ?? sourceImage.width
     ?? readDisplayNumber(imagePayload.width)
@@ -608,7 +647,7 @@ async function buildPreviewViewerImage(
   const displayHeight = readDisplayNumber(imagePayload.display_height)
     ?? displayImage.height
     ?? sourceHeight
-  const interaction = readPreviewImageInteraction(previewPayload?.interaction)
+  const interaction = previewRun.readonly ? null : readPreviewImageInteraction(previewPayload?.interaction)
   if (interaction) {
     await Promise.all(interaction.tools.map(async (tool) => {
       if (!tool.maskObjectKey) return
@@ -647,7 +686,7 @@ async function buildPreviewViewerImage(
 }
 
 async function resolvePreviewImagePayload(
-  previewRun: WorkflowPreviewRun,
+  previewRun: PreviewDisplayContext,
   imagePayload: WorkflowJsonObject,
   registerObjectUrl: (objectUrl: string) => void,
 ): Promise<{
@@ -676,7 +715,7 @@ async function resolvePreviewImagePayload(
 }
 
 async function resolveStoragePreviewImageSrc(
-  previewRun: WorkflowPreviewRun,
+  previewRun: PreviewDisplayContext,
   objectKey: string | null,
   registerObjectUrl: (objectUrl: string) => void,
 ): Promise<string | null> {
@@ -688,17 +727,18 @@ async function resolveStoragePreviewImageSrc(
     registerObjectUrl(objectUrl)
     return objectUrl
   } catch (error) {
+    if (previewRun.signal?.aborted) return null
     console.warn(translate('workflowEditor.feedback.readPreviewImageFailed'), error)
     return null
   }
 }
 
-async function readPreviewImageBlob(previewRun: WorkflowPreviewRun, objectKey: string): Promise<Blob | null> {
-  if (objectKey.startsWith(`workflows/runtime/preview-runs/${previewRun.preview_run_id}/artifacts/`)) {
-    return readWorkflowPreviewRunArtifactBlob(previewRun.preview_run_id, objectKey)
+async function readPreviewImageBlob(previewRun: PreviewDisplayContext, objectKey: string): Promise<Blob | null> {
+  if (previewRun.preview_run_id && objectKey.startsWith(`workflows/runtime/preview-runs/${previewRun.preview_run_id}/artifacts/`)) {
+    return readWorkflowPreviewRunArtifactBlob(previewRun.preview_run_id, objectKey, previewRun.signal)
   }
   if (objectKey.startsWith(`projects/${previewRun.project_id}/`)) {
-    return readProjectObjectContentBlob(previewRun.project_id, objectKey)
+    return readProjectObjectContentBlob(previewRun.project_id, objectKey, previewRun.signal)
   }
   return null
 }

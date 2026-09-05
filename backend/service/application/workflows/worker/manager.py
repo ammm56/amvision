@@ -13,6 +13,9 @@ from uuid import uuid4
 import logging
 import math
 import multiprocessing
+import socket
+
+from backend.service.application.workflows.runtime_preview import RuntimePreviewChannel
 
 from backend.contracts.buffers.lease_ownership import LeaseOwnershipReceipt
 from backend.service.application.errors import (
@@ -119,6 +122,7 @@ class _WorkflowRuntimeProcessHandle:
     latest_runtime_state_monotonic: float | None = None
     expected_shutdown: bool = False
     cleanup_completed: bool = False
+    preview_channel: RuntimePreviewChannel | None = None
     heartbeat_timeout_reported: bool = False
     background_failure_reported: bool = False
 
@@ -238,6 +242,23 @@ class WorkflowRuntimeWorkerManager:
         self._runtime_lifecycle_locks = tuple(RLock() for _ in range(64))
         self._cleanup_client_lock = Lock()
         self._cleanup_local_buffer_client: LocalBufferBrokerClient | None = None
+
+    def get_preview_channel(
+        self, workflow_runtime_id: str, *, revision_id: str, generation: int,
+        worker_instance_id: str,
+    ) -> RuntimePreviewChannel:
+        """只返回匹配实际 worker 身份的显示通道，不触发任何生命周期操作。"""
+        with self._lock:
+            handle = self._handles.get(workflow_runtime_id)
+            if (
+                handle is None or handle.preview_channel is None
+                or handle.workflow_runtime_revision_id != revision_id
+                or handle.runtime_generation != generation
+                or handle.worker_instance_id != worker_instance_id
+                or handle.cleanup_completed or handle.expected_shutdown
+            ):
+                raise ResourceConflictError("Runtime 已停止或版本身份已变化")
+            return handle.preview_channel
 
     def start(self) -> None:
         """启动管理器本身。
@@ -426,6 +447,8 @@ class WorkflowRuntimeWorkerManager:
             request_queue = self._context.Queue()
             response_queue = self._context.Queue()
             run_cancellation_event = self._context.Event()
+            preview_observed = self._context.Event()
+            preview_parent_socket, preview_child_socket = socket.socketpair()
             local_buffer_broker_event_channel = (
                 self._resolve_local_buffer_broker_event_channel()
             )
@@ -464,11 +487,19 @@ class WorkflowRuntimeWorkerManager:
                     "request_queue": request_queue,
                     "response_queue": response_queue,
                     "run_cancellation_event": run_cancellation_event,
+                    "preview_socket": preview_child_socket,
+                    "preview_observed": preview_observed,
                 },
                 name=f"workflow-runtime-{workflow_app_runtime.workflow_runtime_id}",
                 daemon=False,
             )
-            process.start()
+            try:
+                process.start()
+            except Exception:
+                preview_parent_socket.close()
+                raise
+            finally:
+                preview_child_socket.close()
             handle = _WorkflowRuntimeProcessHandle(
                 workflow_runtime_id=workflow_app_runtime.workflow_runtime_id,
                 process=process,
@@ -484,6 +515,7 @@ class WorkflowRuntimeWorkerManager:
                 published_inference_gateway_dispatcher=gateway_dispatcher,
                 heartbeat_interval_seconds=workflow_app_runtime.heartbeat_interval_seconds,
                 heartbeat_timeout_seconds=workflow_app_runtime.heartbeat_timeout_seconds,
+                preview_channel=RuntimePreviewChannel(preview_parent_socket, preview_observed),
             )
             handle.response_thread = Thread(
                 target=self._run_response_loop,
@@ -1531,6 +1563,8 @@ class WorkflowRuntimeWorkerManager:
                 handle.expected_shutdown = True
 
             handle.response_stop_event.set()
+            if handle.preview_channel is not None:
+                handle.preview_channel.close()
             if handle.process.is_alive():
                 handle.process.terminate()
                 handle.process.join(timeout=1.0)

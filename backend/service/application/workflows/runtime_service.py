@@ -1316,6 +1316,33 @@ class WorkflowRuntimeService:
             )
         return workflow_app_runtime
 
+    def get_runtime_preview_snapshot(self, workflow_runtime_id: str) -> dict[str, object]:
+        """读取实际激活版本的只读图；未激活时仅展示选定版本，不启动 Runtime。"""
+        runtime = self.get_workflow_app_runtime(workflow_runtime_id)
+        revision_id = runtime.active_revision_id or runtime.desired_revision_id
+        if revision_id is None:
+            raise InvalidRequestError("Runtime 尚未选择发布版本")
+        revision = self.get_workflow_runtime_revision(workflow_runtime_id, revision_id)
+        version = self._build_workflow_app_version_service().get_version_by_id(
+            project_id=runtime.project_id, workflow_app_version_id=revision.workflow_app_version_id,
+        )
+        return {
+            "format_id": "amvision.workflow-runtime-preview-snapshot.v1",
+            "workflow_runtime_id": workflow_runtime_id,
+            "workflow_runtime_revision_id": revision_id,
+            "workflow_app_version_id": version.workflow_app_version_id,
+            "runtime_generation": revision.generation,
+            "worker_instance_id": runtime.worker_instance_id,
+            "snapshot_fingerprint": revision.expected_snapshot_fingerprint,
+            "observed_state": runtime.observed_state,
+            "active": runtime.active_revision_id == revision_id,
+            "project_id": runtime.project_id,
+            "application_id": runtime.application_id,
+            "display_name": runtime.display_name,
+            "application": self.dataset_storage.read_json(version.application_snapshot_object_key),
+            "template": self.dataset_storage.read_json(version.template_snapshot_object_key),
+        }
+
     def get_visible_workflow_app_runtime(
         self,
         workflow_runtime_id: str,
