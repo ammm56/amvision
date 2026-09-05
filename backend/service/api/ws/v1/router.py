@@ -59,6 +59,7 @@ ws_v1_router = APIRouter(prefix="/ws/v1")
 
 TASK_EVENT_DATABASE_POLL_INTERVAL_SECONDS = 1.0
 TASK_EVENT_HEARTBEAT_INTERVAL_SECONDS = 15.0
+RUNTIME_PREVIEW_FRAME_TIMEOUT_SECONDS = 30.0
 
 
 @ws_v1_router.websocket("/workflows/app-runtimes/preview")
@@ -99,10 +100,16 @@ async def subscribe_runtime_preview(socket: WebSocket) -> None:
         """只有发送完成才接收下一帧；每连接最多一份在途正文。"""
         while (text := await subscription.receive()) is not None:
             client_ready.clear()
-            await asyncio.wait_for(socket.send_text(text), timeout=10.0)
+            await asyncio.wait_for(
+                socket.send_text(text),
+                timeout=RUNTIME_PREVIEW_FRAME_TIMEOUT_SECONDS,
+            )
             del text
             # 浏览器确认本帧已处理后才接下一帧；不是业务 ACK，不缓存下一帧。
-            await asyncio.wait_for(client_ready.wait(), timeout=10.0)
+            await asyncio.wait_for(
+                client_ready.wait(),
+                timeout=RUNTIME_PREVIEW_FRAME_TIMEOUT_SECONDS,
+            )
 
     async def receive_disconnect() -> None:
         """检测浏览器关闭；此通道不接受执行或编辑命令。"""

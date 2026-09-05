@@ -11,7 +11,7 @@
 
 ## 已接受、待实现
 
-[Workflow Runtime 预览显示与应用模式](../../development/workflow-runtime-preview-and-app-mode.md)：同一 Workflow 的编辑、只读监视和应用视图；复用图片/JSON/表格/图库显示，应用模式只选公开输入及预览区域。显示选择随原 Workflow 发布，不建设独立页面设计器或界面版本体系。详细使用流程和阶段验收只在该实施基线维护，未实现前不作为现有页面能力说明。
+[Workflow Runtime 预览显示与应用模式](../../development/workflow-runtime-preview-and-app-mode.md)：同一 Workflow 的编辑、只读监视和应用视图；Runtime 完成后只读监视已实现，App Mode 尚未实现。复用图片/JSON/表格/图库显示，应用模式只选公开输入及预览区域。显示选择随原 Workflow 发布，不建设独立页面设计器或界面版本体系。详细使用流程和阶段验收只在该实施基线维护。
 
 ## 设计方向
 

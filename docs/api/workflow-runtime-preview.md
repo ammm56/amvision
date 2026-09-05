@@ -72,7 +72,7 @@ WebSocket 使用现有鉴权：第三方客户端可传 `Authorization: Bearer <
 
 客户端处理完一个执行消息后发送一条文本消息 `ready`。`connected` 不需要确认。`ready` 仅表示显示接收方可接收下一帧，不是执行命令，也不是业务 ACK。
 
-每个连接最多一份在途显示；发送或等待 `ready` 期间产生的新帧直接略过，没有“下一帧队列”。首次订阅、断开后重连和刷新均不补发历史。超过 10 秒未完成发送或处理确认则关闭该显示连接，业务继续执行。页面不能依赖这一观察通道逐条消费所有生产结果。
+每个连接最多一份在途显示；发送或等待 `ready` 期间产生的新帧直接略过，没有“下一帧队列”。首次订阅、断开后重连和刷新均不补发历史。超过 30 秒未完成发送或处理确认则关闭该显示连接，业务继续执行。该超时只约束单个显示连接，不进入 Workflow、HTTP、SDK 或 Trigger 的响应等待。页面不能依赖这一观察通道逐条消费所有生产结果。
 
 ## 容量和生命周期
 
@@ -100,7 +100,11 @@ WebSocket 使用现有鉴权：第三方客户端可传 `Authorization: Bearer <
 - `tests/test_workflow_runtime_preview.py`：有界捕获、失败前结果、只接下一帧、连接上限、线程/socket 释放。
 - `tests/test_workflow_runtime_preview_api.py`：实际 spawn Worker，sync/async、none/minimal/full、临时异步及失败；none 不产生 WorkflowRun 记录。
 - `python -m tests.integration.workflow_runtime_preview_validation --runtime-id <专用验证-runtime-id> --cycles 250`：实际图片/JSON 的无页面与有页面交替对照，输出延迟、Private/RSS 和原生句柄。
+- `python -m tests.integration.workflow_runtime_preview_validation --runtime-id <专用验证-runtime-id> --soak-seconds 3600 --interval-seconds 3 --subscribers 16 --output .tmp/runtime-preview-soak-1h.json`：一小时、16 个大图客户端、顺序调用的稳定性门禁；调用在上一次完成后等待 3 秒，不追赶或补发。
 - 同一工具的 `--validate-triggers`：只允许专用验证 App，创建或复用明确停用的测试 ZeroMQ/本机共享内存 Trigger，核对业务与显示身份，结束后停用测试 Trigger。
+- 同一工具的 `--validate-directory-trigger`：在临时目录创建实际 Directory Trigger，核对事件、样本、Runtime 结果与显示身份，结束后停用并删除测试 Trigger，同时删除临时目录。
 - `frontend/web-ui/e2e/runtime-preview.spec.ts`：需显式传入验证 App/Runtime ID；实际页面、图片查看器、只读边界、刷新不执行、桌面/窄视口及浏览器短测。
 
-这些自动化与短测不是多年运行认证。原有模型推理、SDK、目录 Trigger 及工业现场长期负载仍按各自门禁验收。
+2026-09-05 的一小时实测共顺序调用 1,115 次，16 个客户端收到 17,840/17,840 个 2,628,481-byte 消息，失败、丢帧和客户端错误均为 0；Runtime Worker 原生句柄净增 0。调用耗时 p50 101.143 ms、p95 1,775.461 ms、p99 2,048.877 ms、最大 4,775.529 ms。相同内容和节拍的单客户端 3 分钟对照为 58/58 成功，p50 94.801 ms、p95 230.403 ms、p99 236.021 ms、最大 247.644 ms，资源无增长。这把尾延迟定位到同一 Backend 上的 16 路大图发送竞争，不是单客户端显示或 Runtime Worker 泄漏。资源释放门禁通过，但 16 个大图客户端下的尾延迟门禁未通过，因此当前不据此推进 App Mode 或宣称工业长期认证。
+
+实际生产 Workflow 的 HTTP、ZeroMQ、本机共享内存 .NET SDK 调用均已验证成功，ZeroMQ 与本机共享内存业务结果一致；临时 Directory Trigger 也已验证能触发同一显示链路。另以开发环境 4 个实际 YOLO11 classification Deployment 各执行 20 次有界同步调用，每个 Deployment 同时发起 2 个请求；4 组均由 `instance-0`/`instance-1` 各完成 10 次，错误计数与原生句柄增量均为 0。该项只验证不同实际模型的双实例路由、正确性与请求后资源回落，不把 4 个模型同时承压的 HTTP base64 延迟作为单 Workflow 的生产性能指标，也不代替现场硬件和更长运行周期的独立门禁。
