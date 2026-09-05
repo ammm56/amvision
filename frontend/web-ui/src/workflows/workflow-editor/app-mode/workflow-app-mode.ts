@@ -146,7 +146,7 @@ export function buildWorkflowAppModeDisplayCandidates(
       candidates.push({
         node_id: node.node_id,
         output_port: output.name,
-        title: '',
+        title: 'Node',
         size: 'medium',
         node_title: definition.display_name || node.node_type_id,
         output_title: output.display_name || output.name,

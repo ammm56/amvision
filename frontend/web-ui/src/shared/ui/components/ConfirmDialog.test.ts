@@ -62,6 +62,26 @@ describe('ConfirmDialog', () => {
     wrapper.unmount()
   })
 
+  it('表单确认弹窗可以聚焦第一个输入字段', async () => {
+    const wrapper = mount(ConfirmDialog, {
+      attachTo: document.body,
+      props: {
+        title: '发布工作流',
+        confirmLabel: '发布',
+        cancelLabel: '取消',
+        confirmVariant: 'primary',
+        initialFocus: 'first-field',
+      },
+      slots: {
+        default: '<textarea data-dialog-initial-focus />',
+      },
+    })
+
+    await flushPromises()
+    expect(document.activeElement).toBe(wrapper.get('textarea').element)
+    wrapper.unmount()
+  })
+
   it('busy 状态阻止关闭并显示确认加载状态', async () => {
     const wrapper = mount(ConfirmDialog, {
       attachTo: document.body,

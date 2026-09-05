@@ -63,26 +63,10 @@
         <div class="section-heading">
           <div>
             <h2>{{ t('workflowEditor.appDetail.versionTitle') }}</h2>
-            <p class="muted-note">{{ t('workflowEditor.appDetail.versionDescription') }}</p>
           </div>
           <StatusBadge :tone="latestVersion ? 'success' : 'neutral'">
             {{ latestVersion?.display_version ?? t('workflowEditor.appDetail.noPublishedVersion') }}
           </StatusBadge>
-        </div>
-        <div v-if="canWriteWorkflows" class="form-grid workflow-version-publish-form">
-          <label class="field">
-            <span>{{ t('workflowEditor.appDetail.fields.displayVersion') }}</span>
-            <input v-model="publishDisplayVersion" :placeholder="t('workflowEditor.appDetail.placeholders.autoVersion')" />
-          </label>
-          <label class="field field--wide">
-            <span>{{ t('workflowEditor.appDetail.fields.releaseNotes') }}</span>
-            <textarea v-model="publishReleaseNotes" rows="3" :placeholder="t('workflowEditor.appDetail.placeholders.releaseNotes')" />
-          </label>
-          <div class="table-actions field--wide">
-            <Button variant="primary" :disabled="publishingVersion || !workflowApp.applicationDocument.draft_fingerprint" :loading="publishingVersion" @click="publishVersion">
-              {{ t('workflowEditor.appDetail.actions.publishVersion') }}
-            </Button>
-          </div>
         </div>
         <EmptyState
           v-if="versions.length === 0"
@@ -205,7 +189,7 @@
             <Button variant="secondary" :disabled="!selectedRuntime" @click="selectedRuntime && router.push(`/workflows/runtime/${selectedRuntime.workflow_runtime_id}/app-mode`)">
               {{ t('workflowEditor.appMode.action') }}
             </Button>
-            <Button v-if="canWriteWorkflows" variant="primary" :disabled="runtimeActionBusy || !runtimeCreateVersionSelectable" @click="createRuntime">
+            <Button v-if="canWriteWorkflows" variant="primary" :disabled="runtimeActionBusy || publishedVersions.length === 0" @click="openRuntimeCreateDialog">
               <Plus :size="16" />
               {{ t('workflowEditor.appDetail.actions.createRuntime') }}
             </Button>
@@ -220,20 +204,6 @@
               {{ t('workflowEditor.appDetail.actions.addTriggerSource') }}
             </Button>
           </div>
-        </div>
-        <div v-if="canWriteWorkflows" class="form-grid workflow-runtime-defaults">
-          <label class="field field--wide">
-            <span>{{ t('workflowEditor.appDetail.fields.createFromVersion') }}</span>
-            <SelectField :model-value="runtimeCreateVersionId" :options="versionOptions" @update:model-value="setRuntimeCreateVersion" />
-          </label>
-          <label class="field">
-            <span>{{ t('workflowEditor.appDetail.fields.workflowRunRecord') }}</span>
-            <SelectField :model-value="runtimeWorkflowRunRecordMode" :options="workflowRunRecordModeOptions" @update:model-value="setRuntimeWorkflowRunRecordMode" />
-          </label>
-          <label class="field">
-            <span>{{ t('workflowEditor.appDetail.fields.returnDiagnostics') }}</span>
-            <SelectField :model-value="runtimeReturnDiagnostics" :options="returnDiagnosticsOptions" @update:model-value="setRuntimeReturnDiagnostics" />
-          </label>
         </div>
         <EmptyState
           v-if="runtimes.length === 0"
@@ -333,6 +303,16 @@
                       v-if="canWriteWorkflows"
                       size="sm"
                       variant="secondary"
+                      :disabled="!canOpenRuntimeVersionDialog(runtime)"
+                      :title="runtimeVersionActionTitle(runtime)"
+                      @click="openRuntimeVersionDialog(runtime)"
+                    >
+                      {{ t('workflowEditor.appDetail.actions.switchVersion') }}
+                    </Button>
+                    <Button
+                      v-if="canWriteWorkflows"
+                      size="sm"
+                      variant="secondary"
                       :disabled="!canAddTriggerSource(runtime)"
                       :title="addTriggerTitle(runtime)"
                       @click="openTriggerSourceCreate(runtime.workflow_runtime_id)"
@@ -358,55 +338,6 @@
             </tbody>
           </table>
         </div>
-        <div v-if="canWriteWorkflows && selectedRuntime" class="runtime-version-switch">
-          <div>
-            <strong>{{ t('workflowEditor.appDetail.switchVersionTitle') }}</strong>
-          </div>
-          <div class="runtime-version-route field--wide">
-            <div>
-              <span>{{ t('workflowEditor.appDetail.fields.activeVersion') }}</span>
-              <strong>{{ selectedActiveRevision
-                ? versionLabel(selectedActiveRevision.workflow_app_version_id)
-                : selectedRuntime.active_revision_id ? shortId(selectedRuntime.active_revision_id) : t('workflowEditor.appDetail.noActiveVersion') }}</strong>
-            </div>
-            <span aria-hidden="true">→</span>
-            <div>
-              <span>{{ t('workflowEditor.appDetail.fields.targetVersion') }}</span>
-              <strong>{{ versionLabel(runtimeTargetVersionId) }}</strong>
-            </div>
-          </div>
-          <p
-            v-if="loadingRevisionIds.has(selectedRuntime.active_revision_id ?? '') || loadingRevisionIds.has(selectedRuntime.desired_revision_id ?? '')"
-            class="muted-note field--wide"
-          >
-            {{ t('workflowEditor.appDetail.messages.loadingRevisionSummary') }}
-          </p>
-          <InlineError
-            v-else-if="revisionLoadErrorsByRuntimeId[selectedRuntime.workflow_runtime_id]"
-            class="field--wide"
-            :message="t('workflowEditor.appDetail.messages.revisionSummaryPartial', { message: revisionLoadErrorsByRuntimeId[selectedRuntime.workflow_runtime_id] })"
-          />
-          <label class="field">
-            <span>{{ t('workflowEditor.appDetail.fields.targetVersion') }}</span>
-            <SelectField :model-value="runtimeTargetVersionId" :options="versionOptions" @update:model-value="setRuntimeTargetVersion" />
-          </label>
-          <label v-if="showBreakingOverride" class="field workflow-version-override">
-            <span>{{ t('workflowEditor.appDetail.fields.breakingOverride') }}</span>
-            <input v-model="allowBreakingContract" type="checkbox" />
-          </label>
-          <label v-if="allowBreakingContract" class="field field--wide">
-            <span>{{ t('workflowEditor.appDetail.fields.breakingReason') }}</span>
-            <input v-model="breakingChangeReason" :placeholder="t('workflowEditor.appDetail.placeholders.breakingReason')" />
-          </label>
-          <div class="table-actions field--wide">
-            <Button variant="secondary" :disabled="!canSwitchRuntimeVersion(selectedRuntime)" @click="switchRuntimeVersion(selectedRuntime)">
-              {{ t('workflowEditor.appDetail.actions.selectVersion') }}
-            </Button>
-            <Button v-if="hasMoreVersions" variant="secondary" :disabled="loadingMoreVersions" :loading="loadingMoreVersions" @click="loadMoreVersions">
-              {{ t('workflowEditor.appDetail.actions.loadOlderVersions') }}
-            </Button>
-          </div>
-        </div>
       </section>
 
       <section class="resource-section">
@@ -414,7 +345,12 @@
           <div>
             <h2>{{ t('workflowEditor.appDetail.httpTitle') }}</h2>
           </div>
-          <StatusBadge :tone="selectedRuntime ? 'info' : 'neutral'">{{ selectedRuntime?.workflow_runtime_id ?? 'select-runtime' }}</StatusBadge>
+          <div class="table-actions table-actions--wrap">
+            <Button variant="secondary" :disabled="!requestExamples" @click="requestExamplesDrawerOpen = true">
+              {{ t('workflowEditor.appDetail.actions.examples') }}
+            </Button>
+            <StatusBadge :tone="selectedRuntime ? 'info' : 'neutral'">{{ selectedRuntime?.workflow_runtime_id ?? 'select-runtime' }}</StatusBadge>
+          </div>
         </div>
         <div v-if="selectedRuntime" class="form-grid">
           <div class="field field--wide">
@@ -449,21 +385,6 @@ GET /api/v1/workflows/runs/{workflow_run_id}?response_mode=run</pre>
               <Zap :size="16" />
               {{ t('workflowEditor.appDetail.actions.syncInvoke') }}
             </Button>
-          </div>
-          <div v-if="requestExamples" class="field field--wide">
-            <span>{{ t('workflowEditor.appDetail.fields.requestExamples') }}</span>
-            <details class="result-details" open>
-              <summary>JSON · direct top-level bindings</summary>
-              <pre class="json-view">{{ requestExamples.json }}</pre>
-            </details>
-            <details class="result-details">
-              <summary>multipart / curl</summary>
-              <pre class="json-view">{{ requestExamples.multipartCurl }}</pre>
-            </details>
-            <details class="result-details">
-              <summary>.NET SDK</summary>
-              <pre class="json-view">{{ requestExamples.dotnet }}</pre>
-            </details>
           </div>
         </div>
         <EmptyState
@@ -571,6 +492,39 @@ GET /api/v1/workflows/runs/{workflow_run_id}?response_mode=run</pre>
       </section>
     </template>
 
+    <WorkflowRuntimeCreateDialog
+      :open="runtimeCreateDialogOpen"
+      :busy="busyRuntimeId === 'new'"
+      :default-version-id="latestVersion?.workflow_app_version_id ?? ''"
+      :version-options="versionOptions"
+      :error-message="runtimeDialogError"
+      @cancel="closeRuntimeCreateDialog"
+      @create="createRuntime"
+    />
+    <WorkflowRuntimeVersionDialog
+      :open="Boolean(runtimeVersionDialogRuntime)"
+      :busy="Boolean(runtimeVersionDialogRuntime && busyRuntimeId === runtimeVersionDialogRuntime.workflow_runtime_id)"
+      :confirm-disabled="!runtimeVersionDialogRuntime || !canSwitchRuntimeVersion(runtimeVersionDialogRuntime)"
+      :current-version-label="runtimeVersionDialogCurrentLabel"
+      :target-version-id="runtimeTargetVersionId"
+      :target-version-label="versionLabel(runtimeTargetVersionId)"
+      :version-options="versionOptions"
+      :show-breaking-override="showBreakingOverride"
+      :allow-breaking-contract="allowBreakingContract"
+      :breaking-change-reason="breakingChangeReason"
+      :error-message="runtimeDialogError"
+      @cancel="closeRuntimeVersionDialog"
+      @confirm="runtimeVersionDialogRuntime && switchRuntimeVersion(runtimeVersionDialogRuntime)"
+      @update:target-version-id="setRuntimeTargetVersion"
+      @update:allow-breaking-contract="allowBreakingContract = $event"
+      @update:breaking-change-reason="breakingChangeReason = $event"
+    />
+    <WorkflowRequestExamplesDrawer
+      :open="requestExamplesDrawerOpen"
+      :examples="requestExamples"
+      @close="requestExamplesDrawerOpen = false"
+    />
+
     <ConfirmDialog
       v-if="pendingDeleteRuntime"
       :title="t('common.confirmDelete')"
@@ -623,6 +577,9 @@ import {
   type WorkflowTriggerSource,
 } from '@/modules/integrations/services/trigger-source.service'
 import WorkflowRuntimeBodyViewer from '../components/WorkflowRuntimeBodyViewer.vue'
+import WorkflowRequestExamplesDrawer from '../components/WorkflowRequestExamplesDrawer.vue'
+import WorkflowRuntimeCreateDialog from '../components/WorkflowRuntimeCreateDialog.vue'
+import WorkflowRuntimeVersionDialog from '../components/WorkflowRuntimeVersionDialog.vue'
 import { useWorkflowResourceStream } from '../composables/useWorkflowResourceStream'
 import {
   getWorkflowApp,
@@ -633,7 +590,6 @@ import {
   compareWorkflowAppVersionToDraft,
   getWorkflowAppVersion,
   listWorkflowAppVersions,
-  publishWorkflowAppVersion,
   transitionWorkflowAppVersionState,
   type WorkflowAppVersionStateTransition,
 } from '../services/workflow-application.service'
@@ -683,22 +639,17 @@ interface SelectOption {
   description?: string
 }
 
+interface WorkflowRuntimeCreateDialogValue {
+  workflowAppVersionId: string
+  workflowRunRecordMode: WorkflowRunRecordMode
+  returnDiagnostics: boolean
+}
+
 const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
 const projectStore = useProjectStore()
 const sessionStore = useSessionStore()
-
-const workflowRunRecordModeOptions = computed<SelectOption[]>(() => [
-  { label: 'minimal', value: 'minimal', description: t('workflowEditor.appDetail.options.recordMinimal') },
-  { label: 'full', value: 'full', description: t('workflowEditor.appDetail.options.recordFull') },
-  { label: 'none', value: 'none', description: t('workflowEditor.appDetail.options.recordNone') },
-])
-
-const returnDiagnosticsOptions = computed<SelectOption[]>(() => [
-  { label: t('workflowEditor.appDetail.options.no'), value: 'false', description: t('workflowEditor.appDetail.options.diagnosticsOff') },
-  { label: t('workflowEditor.appDetail.options.yes'), value: 'true', description: t('workflowEditor.appDetail.options.diagnosticsOn') },
-])
 
 const imageRefSampleTransportOptions = computed<SelectOption[]>(() => [
   {
@@ -726,19 +677,17 @@ const runtimePayloadText = ref('{}')
 const imageRefSampleTransportKind = ref<ImageRefSampleTransportKind>('storage')
 const lastRun = ref<WorkflowRun | null>(null)
 const fetchingLastRun = ref(false)
-const runtimeWorkflowRunRecordMode = ref<WorkflowRunRecordMode>('minimal')
-const runtimeReturnDiagnostics = ref('false')
-const publishingVersion = ref(false)
 const loadingMoreVersions = ref(false)
 const comparingVersionId = ref<string | null>(null)
 const changingVersionStateId = ref<string | null>(null)
-const publishDisplayVersion = ref('')
-const publishReleaseNotes = ref('')
 const versionComparison = ref<WorkflowAppVersionComparison | null>(null)
-const runtimeCreateVersionId = ref('')
 const runtimeTargetVersionId = ref('')
 const allowBreakingContract = ref(false)
 const breakingChangeReason = ref('')
+const runtimeCreateDialogOpen = ref(false)
+const runtimeVersionDialogRuntimeId = ref('')
+const runtimeDialogError = ref<string | null>(null)
+const requestExamplesDrawerOpen = ref(false)
 const revisionsByRuntimeId = ref<Record<string, WorkflowRuntimeRevision[]>>({})
 const revisionLoadErrorsByRuntimeId = ref<Record<string, string>>({})
 const loadingRevisionIds = ref<Set<string>>(new Set())
@@ -770,26 +719,35 @@ const versionOptions = computed<SelectOption[]>(() => publishedVersions.value.ma
   value: version.workflow_app_version_id,
   description: version.release_notes || version.workflow_app_version_id,
 })))
-const runtimeCreateVersionSelectable = computed(() => publishedVersions.value.some(
-  (version) => version.workflow_app_version_id === runtimeCreateVersionId.value,
-))
 const selectedRuntime = computed(() => runtimes.value.find((runtime) => runtime.workflow_runtime_id === selectedRuntimeId.value) ?? workflowApp.value?.primaryRuntime ?? runtimes.value[0] ?? null)
 const requestExamples = computed(() => buildWorkflowAppRequestExamples(
   latestVersionDetail.value?.contract ?? null,
   selectedRuntime.value?.workflow_runtime_id ?? '',
 ))
-const selectedActiveRevision = computed(() => {
-  const runtime = selectedRuntime.value
+const runtimeVersionDialogRuntime = computed(() => runtimes.value.find(
+  (runtime) => runtime.workflow_runtime_id === runtimeVersionDialogRuntimeId.value,
+) ?? null)
+const runtimeVersionDialogActiveRevision = computed(() => {
+  const runtime = runtimeVersionDialogRuntime.value
   return runtime ? runtimeRevision(runtime, runtime.active_revision_id) : null
 })
-const selectedActiveVersionId = computed(() => selectedActiveRevision.value?.workflow_app_version_id ?? '')
-const selectedActiveVersion = computed(() => versions.value.find((version) => version.workflow_app_version_id === selectedActiveVersionId.value) ?? null)
+const runtimeVersionDialogActiveVersionId = computed(() => runtimeVersionDialogActiveRevision.value?.workflow_app_version_id ?? '')
+const runtimeVersionDialogActiveVersion = computed(() => versions.value.find(
+  (version) => version.workflow_app_version_id === runtimeVersionDialogActiveVersionId.value,
+) ?? null)
 const selectedTargetVersion = computed(() => versions.value.find((version) => version.workflow_app_version_id === runtimeTargetVersionId.value) ?? null)
 const switchingContractFingerprintChanged = computed(() => {
-  if (!selectedActiveVersion.value || !selectedTargetVersion.value) return false
-  return selectedActiveVersion.value.contract_fingerprint !== selectedTargetVersion.value.contract_fingerprint
+  if (!runtimeVersionDialogActiveVersion.value || !selectedTargetVersion.value) return false
+  return runtimeVersionDialogActiveVersion.value.contract_fingerprint !== selectedTargetVersion.value.contract_fingerprint
 })
-const showBreakingOverride = computed(() => Boolean(selectedActiveVersionId.value) && switchingContractFingerprintChanged.value)
+const showBreakingOverride = computed(() => Boolean(runtimeVersionDialogActiveVersionId.value) && switchingContractFingerprintChanged.value)
+const runtimeVersionDialogCurrentLabel = computed(() => {
+  const runtime = runtimeVersionDialogRuntime.value
+  if (!runtime) return '-'
+  const activeRevision = runtimeVersionDialogActiveRevision.value
+  if (activeRevision) return versionLabel(activeRevision.workflow_app_version_id)
+  return runtime.active_revision_id ? shortId(runtime.active_revision_id) : t('workflowEditor.appDetail.noActiveVersion')
+})
 const runtimeActionBusy = computed(() => busyRuntimeId.value !== null || loading.value)
 const graphEditorPath = computed(() => `/workflows/graph/apps/${encodeURIComponent(applicationId.value)}`)
 const templateInputById = computed(() => new Map((graph.value?.template_inputs ?? []).map((input) => [input.input_id, input])))
@@ -957,10 +915,6 @@ function runtimeDesiredVersionId(runtime: WorkflowAppRuntime): string {
   return runtimeRevision(runtime, runtime.desired_revision_id)?.workflow_app_version_id ?? ''
 }
 
-function setRuntimeCreateVersion(value: SelectValue): void {
-  runtimeCreateVersionId.value = selectValueToString(value)
-}
-
 function setRuntimeTargetVersion(value: SelectValue): void {
   runtimeTargetVersionId.value = selectValueToString(value)
   allowBreakingContract.value = false
@@ -1069,46 +1023,6 @@ async function loadMoreVersions(): Promise<void> {
   }
 }
 
-async function publishVersion(): Promise<void> {
-  const app = workflowApp.value
-  if (!app || !canWriteWorkflows.value || publishingVersion.value) return
-  publishingVersion.value = true
-  errorMessage.value = null
-  versionComparison.value = null
-  try {
-    const version = await publishWorkflowAppVersion(
-      selectedProjectId.value,
-      applicationId.value,
-      {
-        expectedDraftFingerprint: app.applicationDocument.draft_fingerprint,
-        displayVersion: publishDisplayVersion.value.trim() || null,
-        releaseNotes: publishReleaseNotes.value.trim(),
-      },
-    )
-    app.versions = [version, ...app.versions.filter((item) => item.workflow_app_version_id !== version.workflow_app_version_id)]
-    app.latestVersion = version
-    latestVersionDetail.value = await getWorkflowAppVersion(
-      selectedProjectId.value,
-      applicationId.value,
-      version.workflow_app_version_id,
-    )
-    app.versionPagination = {
-      ...app.versionPagination,
-      totalCount: app.versionPagination.totalCount === null ? null : app.versionPagination.totalCount + 1,
-      nextOffset: app.versionPagination.nextOffset === null ? null : app.versionPagination.nextOffset + 1,
-    }
-    publishDisplayVersion.value = ''
-    publishReleaseNotes.value = ''
-    runtimeCreateVersionId.value = version.workflow_app_version_id
-    runtimeTargetVersionId.value = version.workflow_app_version_id
-    statusMessage.value = t('workflowEditor.appDetail.messages.versionPublished', { version: version.display_version })
-  } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : t('workflowEditor.appDetail.messages.publishVersionFailed')
-  } finally {
-    publishingVersion.value = false
-  }
-}
-
 async function compareVersion(workflowAppVersionId: string): Promise<void> {
   if (comparingVersionId.value) return
   comparingVersionId.value = workflowAppVersionId
@@ -1151,7 +1065,6 @@ async function refreshLatestVersionAfterStateChange(app: WorkflowAppDocument): P
     (version) => version.workflow_app_version_id,
   ))
   const fallbackVersionId = latestPublishedVersion?.workflow_app_version_id ?? ''
-  if (!candidateIds.has(runtimeCreateVersionId.value)) runtimeCreateVersionId.value = fallbackVersionId
   if (!candidateIds.has(runtimeTargetVersionId.value)) runtimeTargetVersionId.value = fallbackVersionId
 }
 
@@ -1179,7 +1092,6 @@ async function changeVersionState(
       updatedVersion,
     ].sort((left, right) => right.version_number - left.version_number)
     if (updatedVersion.state !== 'published') {
-      if (runtimeCreateVersionId.value === updatedVersion.workflow_app_version_id) runtimeCreateVersionId.value = ''
       if (runtimeTargetVersionId.value === updatedVersion.workflow_app_version_id) runtimeTargetVersionId.value = ''
     }
     await refreshLatestVersionAfterStateChange(app)
@@ -1263,13 +1175,7 @@ async function selectRuntime(runtimeId: string): Promise<void> {
   const runtime = runtimes.value.find((item) => item.workflow_runtime_id === runtimeId)
   if (!runtime || !canSelectRuntime(runtime)) return
   selectedRuntimeId.value = runtimeId
-  runtimeTargetVersionId.value = latestVersion.value?.workflow_app_version_id || ''
-  allowBreakingContract.value = false
-  breakingChangeReason.value = ''
   await loadRuntimeRevisionSummaries(runtime)
-  if (selectedRuntimeId.value === runtimeId) {
-    runtimeTargetVersionId.value = runtimeDesiredVersionId(runtime) || latestVersion.value?.workflow_app_version_id || ''
-  }
 }
 
 function isRuntimeStarting(runtime: WorkflowAppRuntime): boolean {
@@ -1316,6 +1222,42 @@ function canRefreshRuntimeHealth(_runtime: WorkflowAppRuntime): boolean {
   return !isRuntimeBusy()
 }
 
+function canOpenRuntimeVersionDialog(runtime: WorkflowAppRuntime): boolean {
+  if (!canWriteWorkflows.value || isRuntimeBusy() || publishedVersions.value.length === 0) return false
+  if (runtime.desired_state !== 'stopped' || runtime.observed_state !== 'stopped') return false
+  return !triggerSources.value.some((source) => (
+    source.workflow_runtime_id === runtime.workflow_runtime_id
+    && (source.enabled || source.desired_state !== 'stopped' || source.observed_state !== 'stopped')
+  ))
+}
+
+function runtimeVersionActionTitle(runtime: WorkflowAppRuntime): string {
+  return canOpenRuntimeVersionDialog(runtime)
+    ? t('workflowEditor.appDetail.actions.switchVersion')
+    : t('workflowEditor.appDetail.hints.stopRuntimeAndTriggersBeforeSwitch')
+}
+
+async function openRuntimeVersionDialog(runtime: WorkflowAppRuntime): Promise<void> {
+  if (!canOpenRuntimeVersionDialog(runtime)) return
+  runtimeDialogError.value = null
+  allowBreakingContract.value = false
+  breakingChangeReason.value = ''
+  runtimeVersionDialogRuntimeId.value = runtime.workflow_runtime_id
+  await loadRuntimeRevisionSummaries(runtime)
+  if (runtimeVersionDialogRuntimeId.value !== runtime.workflow_runtime_id) return
+  runtimeTargetVersionId.value = runtimeDesiredVersionId(runtime) || latestVersion.value?.workflow_app_version_id || ''
+}
+
+function closeRuntimeVersionDialog(): void {
+  const runtime = runtimeVersionDialogRuntime.value
+  if (runtime && busyRuntimeId.value === runtime.workflow_runtime_id) return
+  runtimeVersionDialogRuntimeId.value = ''
+  runtimeTargetVersionId.value = ''
+  allowBreakingContract.value = false
+  breakingChangeReason.value = ''
+  runtimeDialogError.value = null
+}
+
 function canSwitchRuntimeVersion(runtime: WorkflowAppRuntime): boolean {
   if (!publishedVersions.value.some(
     (version) => version.workflow_app_version_id === runtimeTargetVersionId.value,
@@ -1334,31 +1276,36 @@ function canSwitchRuntimeVersion(runtime: WorkflowAppRuntime): boolean {
 
 async function switchRuntimeVersion(runtime: WorkflowAppRuntime): Promise<void> {
   if (!canSwitchRuntimeVersion(runtime)) return
+  const targetVersionId = runtimeTargetVersionId.value
+  let switched = false
   busyRuntimeId.value = runtime.workflow_runtime_id
   errorMessage.value = null
+  runtimeDialogError.value = null
   try {
     const updatedRuntime = await selectWorkflowAppRuntimeVersion(
       runtime.workflow_runtime_id,
       buildRuntimeVersionSelectionInput({
         runtime,
-        targetVersionId: runtimeTargetVersionId.value,
+        targetVersionId,
         allowBreakingContract: allowBreakingContract.value,
         breakingChangeReason: breakingChangeReason.value,
       }),
     )
     replaceRuntime(updatedRuntime)
     await loadRuntimeRevisionSummaries(updatedRuntime, true)
-    allowBreakingContract.value = false
-    breakingChangeReason.value = ''
     statusMessage.value = t('workflowEditor.appDetail.messages.versionSelected', {
-      version: versionLabel(runtimeTargetVersionId.value),
+      version: versionLabel(targetVersionId),
       generation: updatedRuntime.revision_generation,
     })
+    switched = true
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : t('workflowEditor.appDetail.messages.selectVersionFailed')
+    const message = error instanceof Error ? error.message : t('workflowEditor.appDetail.messages.selectVersionFailed')
+    runtimeDialogError.value = message
+    errorMessage.value = message
   } finally {
     busyRuntimeId.value = null
   }
+  if (switched) closeRuntimeVersionDialog()
 }
 
 function canAddTriggerSource(runtime: WorkflowAppRuntime): boolean {
@@ -1457,20 +1404,11 @@ function selectValueToString(value: SelectValue): string {
   return typeof value === 'string' ? value : String(value ?? '')
 }
 
-function setRuntimeWorkflowRunRecordMode(value: SelectValue): void {
-  const nextValue = selectValueToString(value)
-  runtimeWorkflowRunRecordMode.value = nextValue === 'full' || nextValue === 'none' ? nextValue : 'minimal'
-}
-
-function setRuntimeReturnDiagnostics(value: SelectValue): void {
-  runtimeReturnDiagnostics.value = selectValueToString(value) === 'true' ? 'true' : 'false'
-}
-
-function buildRuntimeDefaultExecutionMetadata(): WorkflowJsonObject {
+function buildRuntimeDefaultExecutionMetadata(value: WorkflowRuntimeCreateDialogValue): WorkflowJsonObject {
   return {
-    workflow_run_record_mode: runtimeWorkflowRunRecordMode.value,
-    return_timing_metadata_enabled: runtimeReturnDiagnostics.value === 'true',
-    return_node_timings_enabled: runtimeReturnDiagnostics.value === 'true',
+    workflow_run_record_mode: value.workflowRunRecordMode,
+    return_timing_metadata_enabled: value.returnDiagnostics,
+    return_node_timings_enabled: value.returnDiagnostics,
     trace_level: 'none',
     retain_trace_enabled: false,
     retain_node_records_enabled: false,
@@ -1529,12 +1467,13 @@ async function loadPage(): Promise<void> {
       : appDocument.primaryRuntime?.workflow_runtime_id ?? appDocument.runtimes[0]?.workflow_runtime_id ?? ''
     const currentRuntime = appDocument.runtimes.find((runtime) => runtime.workflow_runtime_id === selectedRuntimeId.value)
     if (currentRuntime) await loadRuntimeRevisionSummaries(currentRuntime)
-    runtimeCreateVersionId.value = latestVersion.value?.workflow_app_version_id ?? ''
-    runtimeTargetVersionId.value = currentRuntime
-      ? runtimeDesiredVersionId(currentRuntime) || latestVersion.value?.workflow_app_version_id || ''
-      : latestVersion.value?.workflow_app_version_id ?? ''
+    runtimeTargetVersionId.value = ''
     allowBreakingContract.value = false
     breakingChangeReason.value = ''
+    runtimeCreateDialogOpen.value = false
+    runtimeVersionDialogRuntimeId.value = ''
+    runtimeDialogError.value = null
+    requestExamplesDrawerOpen.value = false
     versionComparison.value = null
     resetSamplePayload()
     const failedIds = [...runtimeStatusResult.failedRuntimeIds, ...triggerStatusResult.failedTriggerSourceIds]
@@ -1548,27 +1487,43 @@ async function loadPage(): Promise<void> {
   }
 }
 
-async function createRuntime(): Promise<void> {
-  if (!application.value || !canWriteWorkflows.value || !runtimeCreateVersionSelectable.value) return
+function openRuntimeCreateDialog(): void {
+  if (!canWriteWorkflows.value || isRuntimeBusy() || publishedVersions.value.length === 0) return
+  runtimeDialogError.value = null
+  runtimeCreateDialogOpen.value = true
+}
+
+function closeRuntimeCreateDialog(): void {
+  if (busyRuntimeId.value === 'new') return
+  runtimeCreateDialogOpen.value = false
+  runtimeDialogError.value = null
+}
+
+async function createRuntime(value: WorkflowRuntimeCreateDialogValue): Promise<void> {
+  if (!application.value || !canWriteWorkflows.value) return
+  if (!publishedVersions.value.some((version) => version.workflow_app_version_id === value.workflowAppVersionId)) return
   busyRuntimeId.value = 'new'
   errorMessage.value = null
+  runtimeDialogError.value = null
   try {
     const runtime = await createWorkflowAppRuntime({
       projectId: selectedProjectId.value,
-      workflowAppVersionId: runtimeCreateVersionId.value,
+      workflowAppVersionId: value.workflowAppVersionId,
       displayName: `${application.value.display_name || application.value.application_id} runtime`,
       metadata: {
         source: 'web-ui-app-detail',
-        default_execution_metadata: buildRuntimeDefaultExecutionMetadata(),
+        default_execution_metadata: buildRuntimeDefaultExecutionMetadata(value),
       },
     })
     replaceRuntime(runtime)
     selectedRuntimeId.value = runtime.workflow_runtime_id
     await loadRuntimeRevisionSummaries(runtime)
-    runtimeTargetVersionId.value = runtimeCreateVersionId.value
     statusMessage.value = t('workflowEditor.appDetail.messages.runtimeCreated', { runtimeId: runtime.workflow_runtime_id })
+    runtimeCreateDialogOpen.value = false
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : t('workflowEditor.appDetail.messages.createRuntimeFailed')
+    const message = error instanceof Error ? error.message : t('workflowEditor.appDetail.messages.createRuntimeFailed')
+    runtimeDialogError.value = message
+    errorMessage.value = message
   } finally {
     busyRuntimeId.value = null
   }
@@ -1737,18 +1692,12 @@ onMounted(loadPage)
   margin-top: 12px;
 }
 
-.workflow-version-publish-form,
-.runtime-version-switch {
-  margin-bottom: 16px;
-}
-
 .workflow-version-load-more {
   justify-content: center;
   margin-top: 12px;
 }
 
-.version-comparison,
-.runtime-version-switch {
+.version-comparison {
   display: grid;
   gap: 10px;
   margin-top: 16px;
@@ -1766,45 +1715,11 @@ onMounted(loadPage)
   color: var(--am-text-muted);
 }
 
-.workflow-version-override {
-  align-content: end;
-}
-
-.workflow-version-override input {
-  width: 18px;
-  height: 18px;
-}
-
-.runtime-version-route {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
-  border: 1px solid var(--am-border);
-  border-radius: var(--am-radius-sm);
-  background: var(--am-surface);
-}
-
-.runtime-version-route > div {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-}
-
-.runtime-version-route span,
-.runtime-recovery-hint {
-  color: var(--am-text-muted);
-  font-size: 0.82rem;
-}
-
-.runtime-version-route strong {
-  overflow-wrap: anywhere;
-}
-
 .runtime-recovery-hint {
   display: block;
   margin-top: 6px;
   max-width: 260px;
+  color: var(--am-text-muted);
+  font-size: 0.82rem;
 }
 </style>

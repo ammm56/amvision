@@ -52,6 +52,7 @@ const props = withDefaults(
     busy?: boolean
     confirmDisabled?: boolean
     confirmVariant?: 'primary' | 'danger'
+    initialFocus?: 'cancel' | 'first-field'
   }>(),
   {
     message: '',
@@ -59,6 +60,7 @@ const props = withDefaults(
     busy: false,
     confirmDisabled: false,
     confirmVariant: 'danger',
+    initialFocus: 'cancel',
   },
 )
 
@@ -114,7 +116,11 @@ onMounted(() => {
   document.body.style.overflow = 'hidden'
   void nextTick(() => {
     const cancelButton = dialogRef.value?.querySelector<HTMLElement>('[data-confirm-cancel]')
-    ;(cancelButton ?? dialogRef.value)?.focus({ preventScroll: true })
+    const firstField = dialogRef.value?.querySelector<HTMLElement>(
+      '[data-dialog-initial-focus], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [aria-haspopup="listbox"]:not(:disabled)',
+    )
+    const initialElement = props.initialFocus === 'first-field' ? firstField : cancelButton
+    ;(initialElement ?? cancelButton ?? dialogRef.value)?.focus({ preventScroll: true })
   })
 })
 

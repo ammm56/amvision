@@ -331,11 +331,17 @@ test('workflow app 详情使用不可变版本创建 Runtime 并以 generation C
     if (path === '/projects') return fulfillJson(route, bootstrap.visible_projects)
     if (path === '/workflows/projects/project-1/applications/app-e2e') return fulfillJson(route, applicationDocument)
     if (path === '/workflows/projects/project-1/applications/app-e2e/versions') return fulfillJson(route, [versionV2, versionV1])
+    if (path === '/workflows/projects/project-1/applications/app-e2e/versions/workflow-app-version-v1') return fulfillJson(route, versionV1)
+    if (path === '/workflows/projects/project-1/applications/app-e2e/versions/workflow-app-version-v2') return fulfillJson(route, versionV2)
     if (path === '/workflows/projects/project-1/templates/template-e2e/versions/1.0.0') return fulfillJson(route, templateDocument)
     if (path === '/workflows/trigger-sources') return fulfillJson(route, [])
     if (path === '/workflows/app-runtimes' && request.method() === 'GET') return fulfillJson(route, [runtimeState])
     if (path === '/workflows/app-runtimes/runtime-e2e/health') return fulfillJson(route, runtimeState)
     if (path === '/workflows/app-runtimes/runtime-e2e/revisions') return fulfillJson(route, revisions)
+    if (path.startsWith('/workflows/app-runtimes/runtime-e2e/revisions/')) {
+      const revisionId = path.split('/').at(-1)
+      return fulfillJson(route, revisions.find((revision) => revision.workflow_runtime_revision_id === revisionId) ?? revisions[0])
+    }
     if (path === '/workflows/app-runtimes/runtime-e2e/select-version') {
       const body = request.postDataJSON() as Record<string, unknown>
       selectVersionBodies.push(body)
@@ -371,6 +377,14 @@ test('workflow app 详情使用不可变版本创建 Runtime 并以 generation C
     if (path === '/workflows/app-runtimes/runtime-created-from-v2/revisions') {
       return fulfillJson(route, [{ ...revisions[0], workflow_runtime_id: 'runtime-created-from-v2' }])
     }
+    if (path === '/workflows/app-runtimes/runtime-created-from-v2/revisions/workflow-runtime-revision-created') {
+      return fulfillJson(route, {
+        ...revisions[0],
+        workflow_runtime_revision_id: 'workflow-runtime-revision-created',
+        workflow_runtime_id: 'runtime-created-from-v2',
+        workflow_app_version_id: 'workflow-app-version-v2',
+      })
+    }
     await route.fulfill({
       status: 404,
       headers: responseHeaders(),
@@ -380,13 +394,16 @@ test('workflow app 详情使用不可变版本创建 Runtime 并以 generation C
 
   await page.goto('/workflows/apps/app-e2e')
 
-  await expect(page.getByRole('heading', { level: 2, name: '发布版本' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 2, name: '版本记录' })).toBeVisible()
   await expect(page.getByText('v2', { exact: true }).first()).toBeVisible()
   await expect(page.getByText('generation 1', { exact: true })).toBeVisible()
 
-  await page.locator('.runtime-version-switch .ui-select__button').click()
-  await page.getByRole('option', { name: /v2 \(#2\)/ }).click()
-  await page.getByRole('button', { name: '选择此版本' }).click()
+  await page.getByRole('button', { name: '切换版本', exact: true }).click()
+  const versionDialog = page.getByRole('dialog', { name: '切换版本' })
+  await expect(versionDialog.getByText('v1', { exact: true }).first()).toBeVisible()
+  await versionDialog.locator('.ui-select__button').click()
+  await versionDialog.getByRole('option', { name: /v2 \(#2\)/ }).click()
+  await versionDialog.getByRole('button', { name: '切换版本', exact: true }).click()
   await expect.poll(() => selectVersionBodies.length).toBe(1)
   expect(selectVersionBodies[0]).toEqual({
     workflow_app_version_id: 'workflow-app-version-v2',
@@ -397,10 +414,20 @@ test('workflow app 详情使用不可变版本创建 Runtime 并以 generation C
   await expect(page.getByText('generation 2', { exact: true })).toBeVisible()
 
   await page.getByRole('button', { name: '创建 runtime' }).click()
+  const createDialog = page.getByRole('dialog', { name: '创建 runtime' })
+  await expect(createDialog.locator('.ui-select__value')).toHaveText(['v2 (#2)', 'none', '否'])
+  await createDialog.getByRole('button', { name: '创建 runtime', exact: true }).click()
   await expect.poll(() => createRuntimeBodies.length).toBe(1)
   expect(createRuntimeBodies[0]).toMatchObject({
     project_id: 'project-1',
     application_id: null,
     workflow_app_version_id: 'workflow-app-version-v2',
+    metadata: {
+      default_execution_metadata: {
+        workflow_run_record_mode: 'none',
+        return_timing_metadata_enabled: false,
+        return_node_timings_enabled: false,
+      },
+    },
   })
 })

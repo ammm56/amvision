@@ -14,25 +14,27 @@
       <div class="app-mode-dialog__outputs">
         <strong>{{ t('workflowEditor.appMode.displays') }}</strong>
         <p v-if="rows.length === 0">{{ t('workflowEditor.appMode.noPreviewOutputs') }}</p>
-        <div
-          v-for="row in rows"
-          :key="identity(row)"
-          class="app-mode-dialog__row"
-          :class="{ 'app-mode-dialog__row--invalid': row.invalid }"
-        >
-          <input v-model="row.selected" type="checkbox" :aria-label="row.node_title" />
-          <span class="app-mode-dialog__identity">
-            <strong>{{ row.node_title }}</strong>
-            <small>{{ row.node_id }} · {{ row.output_title }}</small>
-            <small v-if="row.invalid">{{ t('workflowEditor.appMode.invalidReference') }}</small>
-          </span>
-          <input v-model="row.title" type="text" maxlength="128" :placeholder="row.output_title" :disabled="!row.selected" />
-          <Select v-model="row.size" :options="sizeOptions" :disabled="!row.selected" fit-options />
-          <span class="app-mode-dialog__order">
-            <button type="button" :aria-label="t('workflowEditor.appMode.moveUp')" :disabled="!row.selected || isFirstSelected(row)" @click="moveSelected(row, -1)">↑</button>
-            <button type="button" :aria-label="t('workflowEditor.appMode.moveDown')" :disabled="!row.selected || isLastSelected(row)" @click="moveSelected(row, 1)">↓</button>
-          </span>
-        </div>
+        <TransitionGroup name="app-mode-display-list" tag="div" class="app-mode-dialog__row-list">
+          <div
+            v-for="row in rows"
+            :key="identity(row)"
+            class="app-mode-dialog__row"
+            :class="{ 'app-mode-dialog__row--invalid': row.invalid }"
+          >
+            <input v-model="row.selected" type="checkbox" :aria-label="row.node_title" />
+            <span class="app-mode-dialog__identity">
+              <strong>{{ row.node_title }}</strong>
+              <small>{{ row.node_id }} · {{ row.output_title }}</small>
+              <small v-if="row.invalid">{{ t('workflowEditor.appMode.invalidReference') }}</small>
+            </span>
+            <input v-model="row.title" type="text" maxlength="128" placeholder="Node" :disabled="!row.selected" />
+            <Select v-model="row.size" :options="sizeOptions" :disabled="!row.selected" fit-options />
+            <span class="app-mode-dialog__order">
+              <button type="button" :aria-label="t('workflowEditor.appMode.moveUp')" :disabled="!row.selected || isFirstSelected(row)" @click="moveSelected(row, -1)">↑</button>
+              <button type="button" :aria-label="t('workflowEditor.appMode.moveDown')" :disabled="!row.selected || isLastSelected(row)" @click="moveSelected(row, 1)">↓</button>
+            </span>
+          </div>
+        </TransitionGroup>
       </div>
 
       <footer>
@@ -162,6 +164,7 @@ function moveSelected(row: EditableDisplay, direction: -1 | 1): void {
 .app-mode-dialog input[type='text']:focus-visible { border-color: var(--am-focus-ring); box-shadow: 0 0 0 2px color-mix(in srgb, var(--am-focus-ring) 22%, transparent); }
 .app-mode-dialog__outputs { display: grid; gap: var(--am-space-md); padding: 0 var(--am-space-xl) var(--am-space-xl); }
 .app-mode-dialog__outputs > p { margin: 0; padding: var(--am-space-xl); border-radius: var(--am-radius-md); background: var(--am-surface-muted); color: var(--am-text-muted); }
+.app-mode-dialog__row-list { display: grid; gap: var(--am-space-md); }
 .app-mode-dialog__row { display: grid; grid-template-columns: auto minmax(170px, 1fr) minmax(150px, 1fr) auto auto; align-items: center; gap: var(--am-space-md); padding: var(--am-space-md); border: 1px solid var(--am-border); border-radius: var(--am-radius-md); background: var(--am-surface); }
 .app-mode-dialog__row--invalid { border-color: var(--am-danger-border); background: var(--am-danger-surface); }
 .app-mode-dialog__identity { min-width: 0; }
@@ -174,5 +177,7 @@ function moveSelected(row: EditableDisplay, direction: -1 | 1): void {
 .app-mode-dialog__order button:disabled { opacity: .35; cursor: default; }
 .app-mode-dialog footer { border-top: 1px solid var(--am-border); }
 .app-mode-dialog footer > span { flex: 1; }
+.app-mode-display-list-move { transition: transform 160ms cubic-bezier(.2, 0, 0, 1); }
 @media (max-width: 720px) { .app-mode-dialog__row { grid-template-columns: auto 1fr auto; } .app-mode-dialog__row > input[type='text'], .app-mode-dialog__row > :nth-child(4) { grid-column: 2 / -1; width: 100%; } }
+@media (prefers-reduced-motion: reduce) { .app-mode-display-list-move { transition: none; } }
 </style>

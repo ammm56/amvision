@@ -1,0 +1,63 @@
+<template>
+  <SideDrawer
+    :open="open"
+    :title="t('workflowEditor.appDetail.fields.requestExamples')"
+    :close-label="t('common.close')"
+    @close="emit('close')"
+  >
+    <div v-if="examples" class="workflow-request-examples">
+      <details open>
+        <summary>JSON</summary>
+        <pre class="json-view">{{ examples.json }}</pre>
+      </details>
+      <details>
+        <summary>multipart / curl</summary>
+        <pre class="json-view">{{ examples.multipartCurl }}</pre>
+      </details>
+      <details>
+        <summary>.NET SDK</summary>
+        <pre class="json-view">{{ examples.dotnet }}</pre>
+      </details>
+    </div>
+  </SideDrawer>
+</template>
+
+<script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+
+import SideDrawer from '@/shared/ui/components/SideDrawer.vue'
+import type { WorkflowAppRequestExamples } from '../workflow-app-request-examples'
+
+defineProps<{
+  open: boolean
+  examples: WorkflowAppRequestExamples | null
+}>()
+
+const emit = defineEmits<{ close: [] }>()
+const { t } = useI18n()
+</script>
+
+<style scoped>
+.workflow-request-examples {
+  display: grid;
+  gap: var(--am-space-md);
+}
+
+.workflow-request-examples details {
+  border: 1px solid var(--am-border);
+  border-radius: var(--am-radius-md);
+  padding: var(--am-space-md);
+  background: var(--am-surface-soft);
+}
+
+.workflow-request-examples summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.workflow-request-examples .json-view {
+  margin-top: var(--am-space-md);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+</style>

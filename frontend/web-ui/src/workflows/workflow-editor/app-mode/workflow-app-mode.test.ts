@@ -73,7 +73,7 @@ describe('workflow app mode metadata', () => {
     expect(buildWorkflowAppModeDisplayCandidates(nodes, new Map([
       ['preview', previewDefinition], ['logic', logicDefinition],
     ]))).toEqual([{
-      node_id: 'preview-1', output_port: 'preview', title: '', size: 'medium',
+      node_id: 'preview-1', output_port: 'preview', title: 'Node', size: 'medium',
       node_title: 'Image Preview', output_title: 'Preview',
     }])
   })

@@ -36,7 +36,7 @@
         @configure-app-mode="appModeConfigDialogOpen = true"
         @toggle-inspector="toggleInspector"
         @preview="requestPreviewRun"
-        @publish="publishCurrentWorkflowApp"
+        @publish="openPublishDialog"
         @save="saveCurrentWorkflowApp"
       />
 
@@ -290,6 +290,13 @@
       @remove="removeAppModeConfig"
       @apply="applyAppModeConfig"
     />
+    <WorkflowPublishDialog
+      :open="publishDialogOpen"
+      :busy="publishingVersion"
+      :error-message="publishDialogError"
+      @cancel="closePublishDialog"
+      @publish="publishCurrentWorkflowApp"
+    />
   </section>
 </template>
 
@@ -303,6 +310,7 @@ import { useProjectStore } from '@/app/stores/project.store'
 import type { SupportedLocale } from '@/platform/i18n'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import WorkflowAppModeConfigDialog from '../components/WorkflowAppModeConfigDialog.vue'
+import WorkflowPublishDialog from '../components/WorkflowPublishDialog.vue'
 import WorkflowDeploymentInstancePickerDialog from '../components/WorkflowDeploymentInstancePickerDialog.vue'
 import WorkflowBoundaryNodeLayer from '../components/WorkflowBoundaryNodeLayer.vue'
 import WorkflowGraphGroupLayer from '../components/WorkflowGraphGroupLayer.vue'
@@ -416,6 +424,8 @@ const currentLocale = computed<SupportedLocale>(() => {
 
 const loading = ref(false)
 const publishingVersion = ref(false)
+const publishDialogOpen = ref(false)
+const publishDialogError = ref<string | null>(null)
 const imageInteractionApplying = ref(false)
 const nodeCatalog = ref<WorkflowNodeCatalogResponse | null>(null)
 const workflowApp = ref<WorkflowAppDocument | null>(null)
@@ -1508,27 +1518,47 @@ const {
   clearContextMenu,
 })
 
-async function publishCurrentWorkflowApp(): Promise<void> {
+function openPublishDialog(): void {
+  if (publishDisabled.value) return
+  publishDialogError.value = null
+  clearActionMessages()
+  publishDialogOpen.value = true
+}
+
+function closePublishDialog(): void {
+  if (publishingVersion.value) return
+  publishDialogOpen.value = false
+  publishDialogError.value = null
+}
+
+async function publishCurrentWorkflowApp(releaseNotes: string): Promise<void> {
   if (publishDisabled.value) return
   publishingVersion.value = true
   clearActionMessages()
+  publishDialogError.value = null
   try {
     await saveCurrentWorkflowApp()
     const app = workflowApp.value
-    if (!app || errorMessage.value || !app.applicationDocument.draft_fingerprint) return
+    if (!app || errorMessage.value || !app.applicationDocument.draft_fingerprint) {
+      publishDialogError.value = errorMessage.value || t('workflowEditor.feedback.publishFailed')
+      return
+    }
     const version = await publishWorkflowAppVersion(
       selectedProjectId.value,
       app.applicationDocument.application_id,
       {
         expectedDraftFingerprint: app.applicationDocument.draft_fingerprint,
-        releaseNotes: '',
+        releaseNotes,
       },
     )
     app.versions = [version, ...app.versions.filter((item) => item.workflow_app_version_id !== version.workflow_app_version_id)]
     app.latestVersion = version
     setActionStatus(t('workflowEditor.feedback.published', { version: version.display_version }))
+    publishDialogOpen.value = false
   } catch (error) {
-    setActionError(error instanceof Error ? error.message : t('workflowEditor.feedback.publishFailed'))
+    const message = error instanceof Error ? error.message : t('workflowEditor.feedback.publishFailed')
+    publishDialogError.value = message
+    setActionError(message)
   } finally {
     publishingVersion.value = false
   }
