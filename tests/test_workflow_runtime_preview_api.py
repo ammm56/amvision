@@ -18,7 +18,10 @@ from tests.test_workflow_runtime_invoke_api import (
 )
 
 
-def test_runtime_preview_spawn_sync_async_none_and_failure(tmp_path: Path) -> None:
+def test_runtime_preview_spawn_sync_async_none_and_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """观察链路独立于记录模式；覆盖同步、持久化/临时异步和失败。"""
     client, factory, storage = _create_runtime_api_client(
         tmp_path, database_name="runtime-preview.db", enable_local_buffer_broker=False,
@@ -35,6 +38,13 @@ def test_runtime_preview_spawn_sync_async_none_and_failure(tmp_path: Path) -> No
             snapshot = snapshot_response.json()
             assert snapshot["active"] is True
             assert snapshot["template"]["template_id"] == "barcode-result-display-template"
+            referenced_node_type_ids = {
+                node["node_type_id"] for node in snapshot["template"]["nodes"]
+            }
+            assert {
+                definition["node_type_id"] for definition in snapshot["node_definitions"]
+            } == referenced_node_type_ids
+            assert snapshot["node_definition_warnings"] == []
             query = urlencode({key: snapshot[key] for key in (
                 "workflow_runtime_id", "workflow_runtime_revision_id", "runtime_generation", "worker_instance_id",
             )})
@@ -55,11 +65,39 @@ def test_runtime_preview_spawn_sync_async_none_and_failure(tmp_path: Path) -> No
                 with client.websocket_connect(f"/ws/v1/workflows/app-runtimes/preview?{stale_query}", headers=headers):
                     pass
             assert stale.value.code == 4409
-            inputs = {"request_image_base64": _build_image_base64_payload(build_valid_test_png_bytes())}
             manager = client.app.state.workflow_runtime_worker_manager
-            channel = manager.get_preview_channel(runtime_id,
-                revision_id=snapshot["workflow_runtime_revision_id"], generation=snapshot["runtime_generation"],
-                worker_instance_id=snapshot["worker_instance_id"])
+            channel = manager.get_preview_channel(
+                runtime_id,
+                revision_id=snapshot["workflow_runtime_revision_id"],
+                generation=snapshot["runtime_generation"],
+                worker_instance_id=snapshot["worker_instance_id"],
+            )
+            from backend.service.application.workflows.runtime_preview import (
+                RuntimePreviewCapacityError,
+            )
+
+            original_subscribe = channel.subscribe
+
+            def reject_capacity():
+                """模拟固定连接容量已经用尽。"""
+
+                raise RuntimePreviewCapacityError(
+                    "runtime_preview_capacity_exceeded"
+                )
+
+            monkeypatch.setattr(
+                channel,
+                "subscribe",
+                reject_capacity,
+            )
+            try:
+                with client.websocket_connect(path, headers=headers) as capacity_socket:
+                    with pytest.raises(WebSocketDisconnect) as capacity:
+                        capacity_socket.receive_json()
+                assert capacity.value.code == 4429
+            finally:
+                monkeypatch.setattr(channel, "subscribe", original_subscribe)
+            inputs = {"request_image_base64": _build_image_base64_payload(build_valid_test_png_bytes())}
             with client.websocket_connect(path, headers=headers) as ws:
                 assert ws.receive_json()["state"] == "connected"
                 assert channel.observed.is_set()

@@ -6,9 +6,9 @@ Runtime 监视显示实际发布图中 Image、Value、Table、Gallery Preview �
 
 在 Workflow App 详情的 Runtime 区域选择实例，点击“Runtime 监视”，进入 `/workflows/runtime/{workflow_runtime_id}/monitor`。画布可平移、缩放和打开图片/JSON/表格查看器；节点、参数和公开输入输出只读。说明节点复用安全 Markdown 渲染。打开、刷新或关闭页面不执行 Workflow，不启停 Runtime/Trigger。
 
-监视页读取节点目录时使用 `resolve_parameter_ui=false`，只取得只读画布需要的节点定义，不解析编辑器动态参数枚举。编辑画布仍使用默认值 `true`。因此打开监视页不会仅为设备/精度下拉选项在 Backend 中加载 Torch/CUDA。
+监视快照只附带当前发布图实际引用、且定义摘要与该发布版本依赖清单一致的节点定义，不读取全量节点目录，也不解析编辑器动态参数枚举。定义已变化或缺失时不把当前目录静默套到旧发布图上，画布改用 Template 连线和 App binding 回退显示并给出提示。编辑画布仍按原方式读取当前目录，因此打开监视页不会仅为设备/精度下拉选项在 Backend 中加载 Torch/CUDA。
 
-页面初始等待下一次实际执行，没有历史回放。停止、重启、异常恢复或短暂断线期间，仍打开的监视页面每 2 秒重新读取一次权威 Runtime 快照；Runtime 恢复正常后按新的 Worker 身份自动连接。Worker 身份或发布版本变化时清除旧代显示并重置消息序号，普通网络重连保留最近一次完成画面。页面关闭后立即停止重连。该过程不补发历史、不调用 Workflow，也不进入 Runtime 或 Trigger 的业务路径。
+页面初始等待下一次实际执行，没有历史回放。停止、重启、异常恢复或短暂断线期间，仍打开的监视页面按 2、4、8、10 秒封顶退避重新读取权威 Runtime 快照；连接成功后重置退避。Runtime 恢复正常后按新的 Worker 身份自动连接。Worker 身份或发布版本变化时清除旧代显示并重置消息序号，普通网络重连和同一 Worker 的手动刷新保留最近一次完成画面。页面关闭后立即停止重连。连接超过 10 秒没有收到 `connected` 确认时主动断开并重试。该过程不补发历史、不调用 Workflow，也不进入 Runtime 或 Trigger 的业务路径。
 
 轻量 App Mode、输入表单、显示选择及节点执行中更新尚未实现，实施顺序见[实施基线](../development/workflow-runtime-preview-and-app-mode.md)。
 
@@ -18,9 +18,9 @@ Runtime 监视显示实际发布图中 Image、Value、Table、Gallery Preview �
 2. 读取返回的 `application`、`template`，它们来自实际 active revision 对应的发布版本，不能替换成编辑草稿。未激活时使用 desired revision，并通过 `active`、`observed_state` 区分。
 3. 连接 `/ws/v1/workflows/app-runtimes/preview`，query 参数为快照中的 `workflow_runtime_id`、`workflow_runtime_revision_id`、`runtime_generation`、`worker_instance_id`。
 
-快照格式为 `amvision.workflow-runtime-preview-snapshot.v1`，还包含 `workflow_app_version_id`、`snapshot_fingerprint`、`project_id`、`application_id`、`display_name`。重复获取快照不启动 Runtime。
+快照格式为 `amvision.workflow-runtime-preview-snapshot.v1`，还包含 `workflow_app_version_id`、`snapshot_fingerprint`、`project_id`、`application_id`、`display_name`、`node_definitions` 和 `node_definition_warnings`。重复获取快照不启动 Runtime。
 
-WebSocket 使用现有鉴权：第三方客户端可传 `Authorization: Bearer <token>`；浏览器沿用已启用的 query token 能力。不得把 token 写入显示内容或文档示例。身份失效或没有权限拒绝连接；worker 身份变化、停止或连接名额用尽拒绝本次订阅，不启动新 worker。
+WebSocket 使用现有鉴权：第三方客户端可传 `Authorization: Bearer <token>`；浏览器沿用已启用的 query token 能力。不得把 token 写入显示内容或文档示例。身份失效或没有权限拒绝连接；worker 身份变化或停止以 `4409` 拒绝，16 个连接名额用尽以 `4429` 拒绝。页面对 `4429` 不自动重试，避免额外页面持续轮询；用户手动刷新可重新尝试。两类拒绝均不启动新 worker。
 
 ## 显示消息 v1
 
@@ -91,7 +91,7 @@ WebSocket 使用现有鉴权：第三方客户端可传 `Authorization: Bearer <
 
 每个 Runtime 固定增加独立 socket 对、共享观察信号和 backend 接收线程；Worker 发送线程在首次观察执行时创建。无页面时不捕获、不编码和发送新增显示副本，但图中原有 Preview 节点仍按正常逻辑执行。资源在 Runtime 停止或换代时释放，不为每次调用创建线程。显示通道异常只终止观察能力，不改变 Runtime 业务状态。
 
-浏览器只保存当前画面；替换、刷新或离开时释放 Object URL、监听器和在途图片请求，旧异步回调不能恢复已关闭的画面。相同图片源不重复读取。慢页面不会延长核心图片 lease。
+浏览器只保存当前画面；新结果替换、Worker/版本换代或离开时释放 Object URL、监听器和在途图片请求，旧异步回调不能恢复已关闭的画面。同一 Worker 的手动刷新保留当前画面，因为服务端没有历史回放。相同图片源不重复读取。慢页面不会延长核心图片 lease。
 
 逻辑隔离不等于零 CPU、内存或网络成本。大图 JSON 编码、WebSocket 发送仍与服务其他工作共享机器资源。性能门禁必须比较关闭/开启页面的原调用耗时和下一次调用延迟，不能只测页面显示速度。
 

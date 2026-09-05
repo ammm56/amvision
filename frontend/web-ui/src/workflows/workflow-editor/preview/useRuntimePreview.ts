@@ -3,10 +3,17 @@ import { useSessionStore } from '@/app/stores/session.store'
 import { getRuntimeConfig } from '@/platform/runtime/runtime-config'
 import { apiRequest } from '@/shared/api/http-client'
 import { ApiError } from '@/shared/api/error'
-import type { FlowApplication, WorkflowGraphTemplate, WorkflowJsonObject } from '../types'
+import type { FlowApplication, NodeDefinition, WorkflowGraphTemplate, WorkflowJsonObject } from '../types'
 import { useWorkflowPreviewDisplays } from './useWorkflowPreviewDisplays'
 
-const RUNTIME_PREVIEW_RECONNECT_DELAY_MS = 2_000
+const RUNTIME_PREVIEW_RECONNECT_DELAYS_MS = [2_000, 4_000, 8_000, 10_000] as const
+const RUNTIME_PREVIEW_CONNECT_TIMEOUT_MS = 10_000
+const RUNTIME_PREVIEW_CAPACITY_CLOSE_CODE = 4_429
+
+export interface RuntimePreviewNodeDefinitionWarning {
+  node_type_id: string
+  reason: 'definition_missing' | 'definition_changed'
+}
 
 export interface RuntimePreviewSnapshot {
   workflow_runtime_id: string
@@ -22,6 +29,8 @@ export interface RuntimePreviewSnapshot {
   display_name: string
   application: FlowApplication
   template: WorkflowGraphTemplate
+  node_definitions?: NodeDefinition[]
+  node_definition_warnings?: RuntimePreviewNodeDefinitionWarning[]
 }
 
 export interface RuntimePreviewFrame {
@@ -88,11 +97,19 @@ export function useRuntimePreview() {
   let rendering = false
   let monitoredRuntimeId = ''
   let reconnectTimer: ReturnType<typeof globalThis.setTimeout> | null = null
+  let connectTimer: ReturnType<typeof globalThis.setTimeout> | null = null
+  let reconnectAttempt = 0
 
   function cancelReconnect() {
     if (reconnectTimer === null) return
     globalThis.clearTimeout(reconnectTimer)
     reconnectTimer = null
+  }
+
+  function cancelConnectTimeout() {
+    if (connectTimer === null) return
+    globalThis.clearTimeout(connectTimer)
+    connectTimer = null
   }
 
   function clearDisplay() {
@@ -108,16 +125,20 @@ export function useRuntimePreview() {
       || generation !== requestGeneration
       || monitoredRuntimeId !== runtimeId
     ) return
+    const delay = RUNTIME_PREVIEW_RECONNECT_DELAYS_MS[
+      Math.min(reconnectAttempt, RUNTIME_PREVIEW_RECONNECT_DELAYS_MS.length - 1)
+    ]
+    reconnectAttempt += 1
     reconnectTimer = globalThis.setTimeout(() => {
       reconnectTimer = null
       void connect(runtimeId, requestGeneration)
-    }, RUNTIME_PREVIEW_RECONNECT_DELAY_MS)
+    }, delay)
   }
 
-  function close() {
-    monitoredRuntimeId = ''
+  function disconnectSocket() {
     generation += 1
     cancelReconnect()
+    cancelConnectTimeout()
     const oldSocket = socket
     socket = null
     if (oldSocket) {
@@ -127,9 +148,18 @@ export function useRuntimePreview() {
       oldSocket.close()
     }
     status.value = 'disconnected'
-    clearDisplay()
+    displays.cancelPendingDisplayRefresh()
     rendering = false
     loading.value = false
+  }
+
+  function close() {
+    disconnectSocket()
+    monitoredRuntimeId = ''
+    reconnectAttempt = 0
+    snapshot.value = null
+    error.value = ''
+    clearDisplay()
   }
 
   async function connect(runtimeId: string, requestGeneration: number) {
@@ -158,12 +188,19 @@ export function useRuntimePreview() {
       const activeSocket = new WebSocket(url)
       socket = activeSocket
       status.value = 'connecting'
+      connectTimer = globalThis.setTimeout(() => {
+        if (generation !== requestGeneration || socket !== activeSocket) return
+        status.value = 'disconnected'
+        activeSocket.close()
+      }, RUNTIME_PREVIEW_CONNECT_TIMEOUT_MS)
       activeSocket.onmessage = async (event: MessageEvent<string>) => {
         if (generation !== requestGeneration || socket !== activeSocket || rendering) return
         let receivedDisplay = false
         try {
           const frame = JSON.parse(event.data) as RuntimePreviewFrame
           if (frame.state === 'connected') {
+            cancelConnectTimeout()
+            reconnectAttempt = 0
             status.value = 'waiting'
             return
           }
@@ -192,18 +229,25 @@ export function useRuntimePreview() {
           }
         }
       }
-      activeSocket.onclose = () => {
+      activeSocket.onclose = (event) => {
         if (generation !== requestGeneration || socket !== activeSocket) return
+        cancelConnectTimeout()
         socket = null
         generation += 1
         const reconnectGeneration = generation
         displays.cancelPendingDisplayRefresh()
         rendering = false
+        if (event.code === RUNTIME_PREVIEW_CAPACITY_CLOSE_CODE) {
+          status.value = 'capacityExceeded'
+          return
+        }
         status.value = 'disconnected'
         scheduleReconnect(runtimeId, reconnectGeneration)
       }
       activeSocket.onerror = () => {
-        if (generation === requestGeneration && socket === activeSocket) status.value = 'disconnected'
+        if (generation !== requestGeneration || socket !== activeSocket) return
+        status.value = 'disconnected'
+        activeSocket.close()
       }
     } catch (cause) {
       if (generation === requestGeneration && monitoredRuntimeId === runtimeId) {
@@ -217,12 +261,18 @@ export function useRuntimePreview() {
   }
 
   async function load(runtimeId: string) {
-    close()
     const normalizedRuntimeId = runtimeId.trim()
-    snapshot.value = null
+    const preserveDisplay = Boolean(normalizedRuntimeId)
+      && monitoredRuntimeId === normalizedRuntimeId
+    disconnectSocket()
+    reconnectAttempt = 0
     error.value = ''
-    if (!normalizedRuntimeId) return
+    if (!preserveDisplay) {
+      snapshot.value = null
+      clearDisplay()
+    }
     monitoredRuntimeId = normalizedRuntimeId
+    if (!normalizedRuntimeId) return
     await connect(normalizedRuntimeId, generation)
   }
 

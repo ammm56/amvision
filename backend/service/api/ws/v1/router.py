@@ -43,6 +43,10 @@ from backend.service.application.runtime.deployment.deployment_events import (
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService, TaskEventQueryFilters
 from backend.service.application.workflows.preview_run_manager import WorkflowPreviewRunManager
 from backend.service.application.workflows.runtime_service import WorkflowRuntimeService
+from backend.service.application.workflows.runtime_preview import (
+    RuntimePreviewCapacityError,
+    RuntimePreviewUnavailableError,
+)
 from backend.service.application.workflows.worker.manager import WorkflowRuntimeWorkerManager
 from backend.service.domain.tasks.task_records import TaskEvent
 from backend.service.domain.workflows.workflow_runtime_records import (
@@ -60,6 +64,7 @@ ws_v1_router = APIRouter(prefix="/ws/v1")
 TASK_EVENT_DATABASE_POLL_INTERVAL_SECONDS = 1.0
 TASK_EVENT_HEARTBEAT_INTERVAL_SECONDS = 15.0
 RUNTIME_PREVIEW_FRAME_TIMEOUT_SECONDS = 30.0
+RUNTIME_PREVIEW_CAPACITY_CLOSE_CODE = 4429
 
 
 @ws_v1_router.websocket("/workflows/app-runtimes/preview")
@@ -89,7 +94,22 @@ async def subscribe_runtime_preview(socket: WebSocket) -> None:
             generation=int(socket.query_params["runtime_generation"]),
             worker_instance_id=socket.query_params["worker_instance_id"],
         )
+    except Exception:
+        await socket.close(code=4409, reason="runtime_preview_unavailable")
+        return
+
+    await socket.accept()
+    try:
         subscription = channel.subscribe()
+    except RuntimePreviewCapacityError:
+        await socket.close(
+            code=RUNTIME_PREVIEW_CAPACITY_CLOSE_CODE,
+            reason="runtime_preview_capacity_exceeded",
+        )
+        return
+    except RuntimePreviewUnavailableError:
+        await socket.close(code=4409, reason="runtime_preview_unavailable")
+        return
     except Exception:
         await socket.close(code=4409, reason="runtime_preview_unavailable")
         return
@@ -122,7 +142,6 @@ async def subscribe_runtime_preview(socket: WebSocket) -> None:
 
     tasks: list[asyncio.Task] = []
     try:
-        await socket.accept()
         tasks = [asyncio.create_task(send_frames()), asyncio.create_task(receive_disconnect())]
         await socket.send_json({"format_id": "amvision.workflow-runtime-preview.v1", "state": "connected"})
         await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)

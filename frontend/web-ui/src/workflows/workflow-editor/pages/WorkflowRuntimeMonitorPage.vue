@@ -13,8 +13,9 @@
       </div>
     </header>
     <p v-if="error" role="alert" class="runtime-monitor__error">{{ error }}</p>
+    <p v-if="nodeDefinitionWarning" class="runtime-monitor__warning">{{ nodeDefinitionWarning }}</p>
     <small v-if="snapshot" class="runtime-monitor__version">{{ t('workflowEditor.runtimePreview.readonly') }} · {{ snapshot.workflow_app_version_id }} · generation {{ snapshot.runtime_generation }}</small>
-    <WorkflowRuntimeCanvas v-if="snapshot && definitionsReady" :template="snapshot.template" :application="snapshot.application" :definitions="definitions" :zoom="zoom"
+    <WorkflowRuntimeCanvas v-if="snapshot" :template="snapshot.template" :application="snapshot.application" :definitions="definitions" :zoom="zoom"
       :displays="displays.previewNodeDisplays.value" :invocations="invocations"
       @open-display="displays.openPreviewDisplayViewer" @open-image="displays.openImageViewer" />
     <WorkflowPreviewViewers :image="displays.activeImageViewer.value" :table="displays.activePreviewTable.value" :json="displays.activePreviewJson.value" preview-disabled
@@ -23,27 +24,22 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, computed, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTranslation } from '@/platform/i18n'
 import Button from '@/shared/ui/components/Button.vue'
 import WorkflowRuntimeCanvas from '../components/WorkflowRuntimeCanvas.vue'
 import WorkflowPreviewViewers from '../components/WorkflowPreviewViewers.vue'
-import { getWorkflowNodeCatalog } from '../services/node-catalog.service'
 import { useRuntimePreview } from '../preview/useRuntimePreview'
-import type { NodeDefinition } from '../types'
 
 const route = useRoute(), router = useRouter(), { t } = useTranslation()
 const runtimeId = computed(() => String(route.params.workflowRuntimeId || ''))
 const { snapshot, status, error, loading, lastRun, invocations, displays, load } = useRuntimePreview()
-const definitions = ref<NodeDefinition[]>([])
-const definitionsReady = ref(false)
+const definitions = computed(() => snapshot.value?.node_definitions ?? [])
+const nodeDefinitionWarning = computed(() => (snapshot.value?.node_definition_warnings ?? []).length
+  ? t('workflowEditor.runtimePreview.nodeDefinitionWarning')
+  : '')
 const zoom = ref(.8)
-onMounted(async () => {
-  try { definitions.value = (await getWorkflowNodeCatalog({ resolveParameterUi: false })).node_definitions }
-  catch (cause) { error.value = String(cause) }
-  finally { definitionsReady.value = true }
-})
 watch(runtimeId, (id) => load(id), { immediate: true })
 </script>
 
@@ -55,4 +51,5 @@ watch(runtimeId, (id) => load(id), { immediate: true })
 .runtime-monitor__actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-left: auto; }
 .runtime-monitor__version { color: var(--text-secondary, #69776e); overflow-wrap: anywhere; }
 .runtime-monitor__error { color: #b83232; margin: 0; }
+.runtime-monitor__warning { color: #8a5b00; margin: 0; }
 </style>

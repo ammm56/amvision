@@ -19,6 +19,14 @@ MAX_PREVIEW_VALUES = 100_000
 PREVIEW_TYPES = frozenset({"image-preview", "value-preview", "table-preview", "gallery-preview"})
 
 
+class RuntimePreviewUnavailableError(ValueError):
+    """当前 Worker 的预览通道不可用。"""
+
+
+class RuntimePreviewCapacityError(ValueError):
+    """当前 Worker 的预览连接已经达到固定上限。"""
+
+
 class _DisplayLimit(ValueError):
     """显示副本超过限制，不影响业务执行。"""
 
@@ -255,8 +263,10 @@ class RuntimePreviewChannel:
     def subscribe(self) -> RuntimePreviewSubscription:
         """只订阅当前 worker，最多 16 个连接，不启动或重启 Runtime。"""
         with self.lock:
-            if self.closed or len(self.subscriptions) >= 16:
-                raise ValueError("runtime_preview_unavailable")
+            if self.closed:
+                raise RuntimePreviewUnavailableError("runtime_preview_unavailable")
+            if len(self.subscriptions) >= 16:
+                raise RuntimePreviewCapacityError("runtime_preview_capacity_exceeded")
             subscription = RuntimePreviewSubscription()
             self.subscriptions.add(subscription)
             self.observed.set()

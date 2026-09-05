@@ -155,6 +155,7 @@ from backend.service.application.workflows.workflow_service import (
 )
 from backend.service.application.workflows.app_version_service import (
     WorkflowAppVersionService,
+    build_node_definition_sha256,
 )
 from backend.service.application.workflows.input_contracts import (
     build_workflow_app_public_contract,
@@ -1326,6 +1327,19 @@ class WorkflowRuntimeService:
         version = self._build_workflow_app_version_service().get_version_by_id(
             project_id=runtime.project_id, workflow_app_version_id=revision.workflow_app_version_id,
         )
+        application = self.dataset_storage.read_json(
+            version.application_snapshot_object_key
+        )
+        template = self.dataset_storage.read_json(version.template_snapshot_object_key)
+        dependencies = self.dataset_storage.read_json(
+            version.dependency_manifest_object_key
+        )
+        node_definitions, node_definition_warnings = (
+            self._build_runtime_preview_node_definitions(
+                template=template,
+                dependencies=dependencies,
+            )
+        )
         return {
             "format_id": "amvision.workflow-runtime-preview-snapshot.v1",
             "workflow_runtime_id": workflow_runtime_id,
@@ -1339,9 +1353,64 @@ class WorkflowRuntimeService:
             "project_id": runtime.project_id,
             "application_id": runtime.application_id,
             "display_name": runtime.display_name,
-            "application": self.dataset_storage.read_json(version.application_snapshot_object_key),
-            "template": self.dataset_storage.read_json(version.template_snapshot_object_key),
+            "application": application,
+            "template": template,
+            "node_definitions": node_definitions,
+            "node_definition_warnings": node_definition_warnings,
         }
+
+    def _build_runtime_preview_node_definitions(
+        self,
+        *,
+        template: object,
+        dependencies: object,
+    ) -> tuple[list[dict[str, object]], list[dict[str, str]]]:
+        """只返回与发布摘要一致的在用节点定义，避免只读画布套用新目录。"""
+
+        template_nodes = template.get("nodes") if isinstance(template, dict) else None
+        referenced_type_ids = sorted(
+            {
+                str(node.get("node_type_id"))
+                for node in template_nodes or ()
+                if isinstance(node, dict) and node.get("node_type_id")
+            }
+        )
+        dependency_nodes = (
+            dependencies.get("nodes") if isinstance(dependencies, dict) else None
+        )
+        dependency_index = {
+            str(item.get("node_type_id")): item
+            for item in dependency_nodes or ()
+            if isinstance(item, dict) and item.get("node_type_id")
+        }
+        current_index = {
+            definition.node_type_id: definition
+            for definition in self.node_catalog_registry.get_workflow_node_definitions()
+        }
+        matched: list[dict[str, object]] = []
+        warnings: list[dict[str, str]] = []
+        for node_type_id in referenced_type_ids:
+            definition = current_index.get(node_type_id)
+            dependency = dependency_index.get(node_type_id)
+            expected_sha256 = (
+                dependency.get("definition_sha256")
+                if isinstance(dependency, dict)
+                else None
+            )
+            if definition is None:
+                warnings.append(
+                    {"node_type_id": node_type_id, "reason": "definition_missing"}
+                )
+                continue
+            if not isinstance(expected_sha256, str) or (
+                build_node_definition_sha256(definition) != expected_sha256
+            ):
+                warnings.append(
+                    {"node_type_id": node_type_id, "reason": "definition_changed"}
+                )
+                continue
+            matched.append(definition.model_dump(mode="json"))
+        return matched, warnings
 
     def get_visible_workflow_app_runtime(
         self,

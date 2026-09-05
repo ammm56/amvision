@@ -1327,7 +1327,6 @@ def _node_dependency_payload(
 ) -> dict[str, object]:
     """构建单个节点实现依赖摘要。"""
 
-    payload = definition.model_dump(mode="json")
     if definition.node_pack_id is None:
         implementation_identity: dict[str, object] = {
             "source": "node-definition-version",
@@ -1356,9 +1355,17 @@ def _node_dependency_payload(
         "runtime_kind": definition.runtime_kind,
         "node_pack_id": definition.node_pack_id,
         "node_pack_version": definition.node_pack_version,
-        "definition_sha256": hashlib.sha256(_canonical_json_bytes(payload)).hexdigest(),
+        "definition_sha256": build_node_definition_sha256(definition),
         "implementation_identity": implementation_identity,
     }
+
+
+def build_node_definition_sha256(definition: NodeDefinition) -> str:
+    """计算发布依赖使用的稳定节点定义摘要。"""
+
+    return hashlib.sha256(
+        _canonical_json_bytes(definition.model_dump(mode="json"))
+    ).hexdigest()
 
 
 def _collect_stable_resource_references(

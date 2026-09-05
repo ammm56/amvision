@@ -12,10 +12,15 @@ from types import SimpleNamespace
 from backend.contracts.workflows.workflow_graph import NodeDefinition, NodePortDefinition, WorkflowGraphTemplate, WorkflowGraphNode, WorkflowGraphEdge
 from backend.service.application.workflows.graph_executor import WorkflowGraphExecutor, WorkflowNodeRuntimeRegistry
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.workflows.app_version_service import (
+    build_node_definition_sha256,
+)
+from backend.service.application.workflows.runtime_service import WorkflowRuntimeService
 
 from backend.service.application.workflows.runtime_preview import (
     MAX_PREVIEW_BYTES, RuntimePreviewCapture, RuntimePreviewChannel,
     RuntimePreviewSender, RuntimePreviewSubscription,
+    RuntimePreviewCapacityError, RuntimePreviewUnavailableError,
     PREVIEW_CAPTURE_KEY,
 )
 
@@ -61,17 +66,61 @@ def test_subscription_limit_and_disconnect_release() -> None:
         channel = RuntimePreviewChannel(parent, observed)
         try:
             subscriptions = [channel.subscribe() for _ in range(16)]
-            with pytest.raises(ValueError, match="unavailable"):
+            with pytest.raises(RuntimePreviewCapacityError, match="capacity"):
                 channel.subscribe()
             for subscription in subscriptions[:-1]:
                 channel.unsubscribe(subscription)
             assert observed.is_set()
             channel.unsubscribe(subscriptions[-1])
             assert not channel.subscriptions and not observed.is_set()
+            channel.close()
+            with pytest.raises(RuntimePreviewUnavailableError, match="unavailable"):
+                channel.subscribe()
         finally:
             channel.close()
             child.close()
     asyncio.run(check())
+
+
+def test_readonly_node_definitions_require_published_definition_identity() -> None:
+    """监视画布只使用与发布依赖摘要一致的当前节点定义。"""
+    definition = NodeDefinition(
+        node_type_id="core.test.preview-definition",
+        display_name="Preview",
+        category="core.test.preview",
+        implementation_kind="core-node",
+        runtime_kind="python-callable",
+    )
+    service = object.__new__(WorkflowRuntimeService)
+    service.node_catalog_registry = SimpleNamespace(
+        get_workflow_node_definitions=lambda: (definition,)
+    )
+    template = {"nodes": [{"node_type_id": definition.node_type_id}]}
+    dependencies = {
+        "nodes": [
+            {
+                "node_type_id": definition.node_type_id,
+                "definition_sha256": build_node_definition_sha256(definition),
+            }
+        ]
+    }
+
+    matched, warnings = service._build_runtime_preview_node_definitions(
+        template=template,
+        dependencies=dependencies,
+    )
+    assert [item["node_type_id"] for item in matched] == [definition.node_type_id]
+    assert warnings == []
+
+    dependencies["nodes"][0]["definition_sha256"] = "changed"
+    matched, warnings = service._build_runtime_preview_node_definitions(
+        template=template,
+        dependencies=dependencies,
+    )
+    assert matched == []
+    assert warnings == [
+        {"node_type_id": definition.node_type_id, "reason": "definition_changed"}
+    ]
 
 
 def test_graph_failure_preserves_only_finished_preview_without_node_records() -> None:

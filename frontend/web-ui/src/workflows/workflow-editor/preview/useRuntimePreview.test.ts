@@ -20,6 +20,7 @@ vi.mock('@/platform/runtime/runtime-config', () => ({
 }))
 
 class FakeWebSocket {
+  static readonly CONNECTING = 0
   static readonly OPEN = 1
   static readonly CLOSED = 3
   static instances: FakeWebSocket[] = []
@@ -42,15 +43,16 @@ class FakeWebSocket {
 
   close(): void {
     this.readyState = FakeWebSocket.CLOSED
+    this.onclose?.(new CloseEvent('close', { code: 1_000 }))
   }
 
   emitMessage(value: object): void {
     this.onmessage?.({ data: JSON.stringify(value) } as MessageEvent<string>)
   }
 
-  emitClose(): void {
+  emitClose(code = 1_006): void {
     this.readyState = FakeWebSocket.CLOSED
-    this.onclose?.(new CloseEvent('close'))
+    this.onclose?.(new CloseEvent('close', { code }))
   }
 }
 
@@ -111,7 +113,7 @@ describe('runtime preview reconnect', () => {
 
     oldSocket.emitClose()
     expect(preview!.status.value).toBe('disconnected')
-    await vi.advanceTimersByTimeAsync(2_000)
+    await vi.advanceTimersByTimeAsync(4_000)
     await flushPromises()
     expect(preview!.status.value).toBe('stopped')
     expect(FakeWebSocket.instances).toHaveLength(1)
@@ -151,6 +153,97 @@ describe('runtime preview reconnect', () => {
     expect(preview!.status.value).toBe('disconnected')
     wrapper.unmount()
   })
+
+  it('preserves the last display when the same runtime is refreshed', async () => {
+    const current = buildSnapshot('worker-1', 'running')
+    previewMocks.apiRequest.mockResolvedValue(current)
+    let preview: ReturnType<typeof useRuntimePreview> | null = null
+    const wrapper = mount(defineComponent({
+      setup() {
+        preview = useRuntimePreview()
+        return () => h('div')
+      },
+    }))
+
+    await preview!.load(current.workflow_runtime_id)
+    FakeWebSocket.instances[0]!.emitMessage(buildFrame(current, 1, 'run-current'))
+    await flushPromises()
+    await preview!.load(current.workflow_runtime_id)
+
+    expect(preview!.lastRun.value?.workflow_run_id).toBe('run-current')
+    expect(FakeWebSocket.instances).toHaveLength(2)
+    wrapper.unmount()
+  })
+
+  it('clears the last display when refresh detects a replacement worker', async () => {
+    const current = buildSnapshot('worker-1', 'running')
+    const replacement = {
+      ...current,
+      runtime_generation: 2,
+      worker_instance_id: 'worker-2',
+      snapshot_fingerprint: 'fingerprint-2',
+    }
+    previewMocks.apiRequest
+      .mockResolvedValueOnce(current)
+      .mockResolvedValueOnce(replacement)
+    let preview: ReturnType<typeof useRuntimePreview> | null = null
+    const wrapper = mount(defineComponent({
+      setup() {
+        preview = useRuntimePreview()
+        return () => h('div')
+      },
+    }))
+
+    await preview!.load(current.workflow_runtime_id)
+    FakeWebSocket.instances[0]!.emitMessage(buildFrame(current, 1, 'run-old'))
+    await flushPromises()
+    await preview!.load(current.workflow_runtime_id)
+
+    expect(preview!.lastRun.value).toBeNull()
+    wrapper.unmount()
+  })
+
+  it('does not retry automatically after the fixed connection limit is reached', async () => {
+    const current = buildSnapshot('worker-1', 'running')
+    previewMocks.apiRequest.mockResolvedValue(current)
+    let preview: ReturnType<typeof useRuntimePreview> | null = null
+    const wrapper = mount(defineComponent({
+      setup() {
+        preview = useRuntimePreview()
+        return () => h('div')
+      },
+    }))
+
+    await preview!.load(current.workflow_runtime_id)
+    FakeWebSocket.instances[0]!.emitClose(4_429)
+    await vi.advanceTimersByTimeAsync(30_000)
+
+    expect(preview!.status.value).toBe('capacityExceeded')
+    expect(previewMocks.apiRequest).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+  })
+
+  it('retries a WebSocket that never acknowledges the connection', async () => {
+    const current = buildSnapshot('worker-1', 'running')
+    previewMocks.apiRequest.mockResolvedValue(current)
+    let preview: ReturnType<typeof useRuntimePreview> | null = null
+    const wrapper = mount(defineComponent({
+      setup() {
+        preview = useRuntimePreview()
+        return () => h('div')
+      },
+    }))
+
+    await preview!.load(current.workflow_runtime_id)
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(preview!.status.value).toBe('disconnected')
+    await vi.advanceTimersByTimeAsync(2_000)
+    await flushPromises()
+
+    expect(previewMocks.apiRequest).toHaveBeenCalledTimes(2)
+    expect(FakeWebSocket.instances).toHaveLength(2)
+    wrapper.unmount()
+  })
 })
 
 function buildSnapshot(
@@ -171,6 +264,8 @@ function buildSnapshot(
     display_name: 'Runtime',
     application: { format_id: 'amvision.flow-application.v1' } as RuntimePreviewSnapshot['application'],
     template: { format_id: 'amvision.workflow-graph-template.v1', nodes: [] } as unknown as RuntimePreviewSnapshot['template'],
+    node_definitions: [],
+    node_definition_warnings: [],
   }
 }
 

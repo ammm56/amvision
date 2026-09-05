@@ -25,7 +25,7 @@ test('published readonly graph displays actual Runtime image and JSON without ex
   await expect(page.locator('[data-node-id="image_preview"] header strong')).toHaveText('Image Preview', { timeout: 15000 })
   await expect(page.locator('[data-node-id="image_preview"] .runtime-canvas__ports')).toContainText('image')
   await expect(page.locator('[data-node-id="app-entry-boundary"]')).toContainText('request_json')
-  expect(nodeCatalogRequests.some((url) => new URL(url).searchParams.get('resolve_parameter_ui') === 'false')).toBe(true)
+  expect(nodeCatalogRequests).toEqual([])
   expect(invocations).toEqual([])
   expect(await page.locator('vite-error-overlay').count()).toBe(0)
   const invoke = async (sequence: number) => {
@@ -56,7 +56,7 @@ test('published readonly graph displays actual Runtime image and JSON without ex
   await expect(json).not.toContainText('"sequence": 1')
   await page.getByRole('button', { name: '刷新', exact: true }).click()
   await expect(page.getByRole('status')).toHaveText('等待下次执行')
-  expect(await page.locator('.workflow-graph-node-preview').count()).toBe(0)
+  await expect(json).toContainText('"sequence": 2')
   expect(invocations).toEqual([])
   await invoke(3)
   const runtimeApi = `http://127.0.0.1:5600/api/v1/workflows/app-runtimes/${runtimeId}`
