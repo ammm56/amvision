@@ -1,39 +1,41 @@
 <template>
-  <div class="confirm-dialog-backdrop" @click="cancelDialog">
-    <section
-      ref="dialogRef"
-      class="confirm-dialog"
-      role="dialog"
-      aria-modal="true"
-      :aria-labelledby="titleId"
-      :aria-describedby="describedBy"
-      :aria-busy="busy"
-      tabindex="-1"
-      @click.stop
-      @keydown.esc.prevent="cancelDialog"
-      @keydown.tab="trapFocus"
-    >
-      <header class="confirm-dialog__header">
-        <div>
-          <h2 :id="titleId">{{ title }}</h2>
+  <Transition name="confirm-dialog" appear>
+    <div class="confirm-dialog-backdrop" @click="cancelDialog">
+      <section
+        ref="dialogRef"
+        class="confirm-dialog"
+        role="dialog"
+        aria-modal="true"
+        :aria-labelledby="titleId"
+        :aria-describedby="describedBy"
+        :aria-busy="busy"
+        tabindex="-1"
+        @click.stop
+        @keydown.esc.prevent="cancelDialog"
+        @keydown.tab="trapFocus"
+      >
+        <header class="confirm-dialog__header">
+          <div>
+            <h2 :id="titleId">{{ title }}</h2>
+          </div>
+          <button type="button" class="confirm-dialog__close" :aria-label="cancelLabel" :disabled="busy" @click="cancelDialog">
+            <X :size="16" />
+          </button>
+        </header>
+
+        <p v-if="message" :id="messageId" class="confirm-dialog__message">{{ message }}</p>
+        <p v-if="details" :id="detailsId" class="confirm-dialog__details">{{ details }}</p>
+        <div v-if="$slots.default" class="confirm-dialog__content">
+          <slot />
         </div>
-        <button type="button" class="confirm-dialog__close" :aria-label="cancelLabel" :disabled="busy" @click="cancelDialog">
-          <X :size="16" />
-        </button>
-      </header>
 
-      <p v-if="message" :id="messageId" class="confirm-dialog__message">{{ message }}</p>
-      <p v-if="details" :id="detailsId" class="confirm-dialog__details">{{ details }}</p>
-      <div v-if="$slots.default" class="confirm-dialog__content">
-        <slot />
-      </div>
-
-      <footer class="confirm-dialog__actions">
-        <Button data-confirm-cancel variant="secondary" :disabled="busy" @click="cancelDialog">{{ cancelLabel }}</Button>
-        <Button :variant="confirmVariant" :disabled="busy || confirmDisabled" :loading="busy" @click="emit('confirm')">{{ confirmLabel }}</Button>
-      </footer>
-    </section>
-  </div>
+        <footer class="confirm-dialog__actions">
+          <Button data-confirm-cancel variant="secondary" :disabled="busy" @click="cancelDialog">{{ cancelLabel }}</Button>
+          <Button :variant="confirmVariant" :disabled="busy || confirmDisabled" :loading="busy" @click="emit('confirm')">{{ confirmLabel }}</Button>
+        </footer>
+      </section>
+    </div>
+  </Transition>
 </template>
 
 <script setup lang="ts">
@@ -208,5 +210,38 @@ onBeforeUnmount(() => {
   justify-content: flex-end;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.confirm-dialog-enter-active,
+.confirm-dialog-leave-active {
+  transition: opacity 160ms ease;
+}
+
+.confirm-dialog-enter-active .confirm-dialog,
+.confirm-dialog-leave-active .confirm-dialog {
+  transition:
+    opacity 160ms ease,
+    transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.confirm-dialog-enter-from,
+.confirm-dialog-leave-to,
+.confirm-dialog-enter-from .confirm-dialog,
+.confirm-dialog-leave-to .confirm-dialog {
+  opacity: 0;
+}
+
+.confirm-dialog-enter-from .confirm-dialog,
+.confirm-dialog-leave-to .confirm-dialog {
+  transform: translateY(8px) scale(0.985);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .confirm-dialog-enter-active,
+  .confirm-dialog-leave-active,
+  .confirm-dialog-enter-active .confirm-dialog,
+  .confirm-dialog-leave-active .confirm-dialog {
+    transition-duration: 0.01ms;
+  }
 }
 </style>

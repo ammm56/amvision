@@ -15,6 +15,7 @@ describe('WorkflowPublishDialog', () => {
     })
 
     expect(wrapper.find('input').exists()).toBe(false)
+    expect(wrapper.get('label').classes()).toContain('field')
     await wrapper.get('textarea').setValue('  修复现场流程  ')
     await wrapper.get('.ui-button--primary').trigger('click')
 

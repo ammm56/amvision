@@ -1308,7 +1308,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         application: '应用',
         applicationInputs: '应用输入',
         applicationOutputs: '应用输出',
-        previewInputs: 'Preview 输入',
+        previewInputs: '预览输入',
         missingInputs: '缺少输入',
         fieldName: '字段名',
         fieldValue: '字段值',
@@ -5707,7 +5707,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         application: 'アプリ',
         applicationInputs: 'アプリ入力',
         applicationOutputs: 'アプリ出力',
-        previewInputs: 'Preview 入力',
+        previewInputs: 'プレビュー入力',
         missingInputs: '入力不足',
         fieldName: 'フィールド名',
         fieldValue: 'フィールド値',
@@ -7758,7 +7758,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         application: '앱',
         applicationInputs: '앱 입력',
         applicationOutputs: '앱 출력',
-        previewInputs: 'Preview 입력',
+        previewInputs: '미리보기 입력',
         missingInputs: '입력 누락',
         fieldName: '필드 이름',
         fieldValue: '필드 값',
@@ -8889,6 +8889,20 @@ const workflowAppModeMessages: Record<SupportedLocale, MessageSchema> = {
 }
 for (const locale of ['zh-CN', 'en-US', 'ja-JP', 'ko-KR'] as const) {
   (baseMessages[locale].workflowEditor as MessageSchema).appMode = workflowAppModeMessages[locale]
+}
+
+const workflowPreviewInputMessages: Record<SupportedLocale, MessageSchema> = {
+  'zh-CN': { previewRequiredBindings: '预览运行需要填写：{bindings}', previewAlternativeGroup: '至少填写一个图片入口：{bindings}', orSeparator: ' 或 ', listSeparator: '、' },
+  'en-US': { previewRequiredBindings: 'Preview run requires: {bindings}', previewAlternativeGroup: 'Provide at least one image input: {bindings}', orSeparator: ' or ', listSeparator: ', ' },
+  'ja-JP': { previewRequiredBindings: 'プレビュー実行には次の入力が必要です：{bindings}', previewAlternativeGroup: '画像入力を少なくとも 1 つ指定してください：{bindings}', orSeparator: ' または ', listSeparator: '、' },
+  'ko-KR': { previewRequiredBindings: '미리보기 실행에 필요한 입력: {bindings}', previewAlternativeGroup: '이미지 입력을 하나 이상 제공하세요: {bindings}', orSeparator: ' 또는 ', listSeparator: ', ' },
+}
+for (const locale of ['zh-CN', 'en-US', 'ja-JP', 'ko-KR'] as const) {
+  const workflowEditorMessages = baseMessages[locale].workflowEditor as MessageSchema
+  workflowEditorMessages.feedback = {
+    ...(workflowEditorMessages.feedback as MessageSchema),
+    ...workflowPreviewInputMessages[locale],
+  }
 }
 
 export const messages: Record<string, MessageSchema> = {

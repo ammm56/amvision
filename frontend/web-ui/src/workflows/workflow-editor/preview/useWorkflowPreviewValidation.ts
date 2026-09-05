@@ -2,6 +2,7 @@ import { computed, type ComputedRef, type Ref } from 'vue'
 
 import { translate } from '@/platform/i18n'
 import type { FlowApplicationBinding, WorkflowJsonObject, WorkflowPreviewRun } from '../types'
+import { readWorkflowInputBindingLabel } from './workflow-input-labels'
 
 export interface WorkflowPreviewValidationOptions {
   lastPreviewRun: Ref<WorkflowPreviewRun | null>
@@ -101,14 +102,24 @@ export function useWorkflowPreviewValidation(options: WorkflowPreviewValidationO
 
   const previewBlockingMessages = computed(() => {
     const messages: string[] = []
+    const readBindingLabel = (bindingId: string): string => {
+      const binding = options.previewInputBindings.value.find((item) => item.binding_id === bindingId)
+      return binding
+        ? readWorkflowInputBindingLabel(binding, translate)
+        : bindingId.replace(/[_-]+/g, ' ')
+    }
     if (missingRequiredPreviewBindingIds.value.length > 0) {
       messages.push(translate('workflowEditor.feedback.previewRequiredBindings', {
-        bindings: missingRequiredPreviewBindingIds.value.join(', '),
+        bindings: missingRequiredPreviewBindingIds.value
+          .map(readBindingLabel)
+          .join(translate('workflowEditor.feedback.listSeparator')),
       }))
     }
     for (const group of missingAlternativePreviewBindingGroups.value) {
       messages.push(translate('workflowEditor.feedback.previewAlternativeGroup', {
-        bindings: group.join(translate('workflowEditor.feedback.orSeparator')),
+        bindings: group
+          .map(readBindingLabel)
+          .join(translate('workflowEditor.feedback.orSeparator')),
       }))
     }
     return messages

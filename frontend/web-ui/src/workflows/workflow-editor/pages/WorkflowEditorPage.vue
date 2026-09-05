@@ -281,15 +281,17 @@
       @select="selectDeploymentInstance"
       @apply="applySelectedDeploymentInstance"
     />
-    <WorkflowAppModeConfigDialog
-      v-if="appModeConfigDialogOpen"
-      :application-title="editorTitle"
-      :config="appModeConfig"
-      :candidates="appModeDisplayCandidates"
-      @close="appModeConfigDialogOpen = false"
-      @remove="removeAppModeConfig"
-      @apply="applyAppModeConfig"
-    />
+    <Transition name="workflow-modal" appear>
+      <WorkflowAppModeConfigDialog
+        v-if="appModeConfigDialogOpen"
+        :application-title="editorTitle"
+        :config="appModeConfig"
+        :candidates="appModeDisplayCandidates"
+        @close="appModeConfigDialogOpen = false"
+        @remove="removeAppModeConfig"
+        @apply="applyAppModeConfig"
+      />
+    </Transition>
     <WorkflowPublishDialog
       :open="publishDialogOpen"
       :busy="publishingVersion"

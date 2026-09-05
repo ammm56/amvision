@@ -64,6 +64,7 @@ import WorkflowAppModeInputPanel from '../components/WorkflowAppModeInputPanel.v
 import WorkflowPreviewViewers from '../components/WorkflowPreviewViewers.vue'
 import { useWorkflowAppModeInputs } from '../app-mode/useWorkflowAppModeInputs'
 import { useRuntimePreview } from '../preview/useRuntimePreview'
+import { readWorkflowInputLabel } from '../preview/workflow-input-labels'
 import { invokeWorkflowAppRuntime } from '../services/workflow-runtime.service'
 import { orderWorkflowAppContractInputs } from '../app-mode/workflow-app-mode'
 import type { WorkflowGraphNode } from '../types'
@@ -71,15 +72,6 @@ import type { WorkflowGraphNode } from '../types'
 const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
-
-const STANDARD_INPUT_LABEL_KEYS: Record<string, string> = {
-  request_image_ref: 'workflowEditor.appMode.inputImage',
-  request_image_base64: 'workflowEditor.appMode.inputImageBase64',
-  request_json: 'workflowEditor.appMode.inputJson',
-  request_text: 'workflowEditor.appMode.inputText',
-  request_file: 'workflowEditor.appMode.inputFile',
-  request_files: 'workflowEditor.appMode.inputFiles',
-}
 
 const PREVIEW_NODE_LABELS: Record<string, { key: string; defaultTitle: string }> = {
   'core.io.image-preview': { key: 'workflowEditor.appMode.previewImage', defaultTitle: 'Image Preview' },
@@ -120,11 +112,8 @@ watch(
 )
 
 function resolveInputLabel(bindingId: string, templatePortId: string): string {
-  const standardKey = STANDARD_INPUT_LABEL_KEYS[bindingId]
-  if (standardKey) return t(standardKey)
   const templateInput = snapshot.value?.template.template_inputs.find((input) => input.input_id === templatePortId)
-  const configuredLabel = readText(templateInput?.display_name)
-  return configuredLabel && configuredLabel !== bindingId ? configuredLabel : humanizeIdentifier(bindingId)
+  return readWorkflowInputLabel(bindingId, templateInput?.display_name, (key) => t(key))
 }
 
 function resolveNodeTitle(node: WorkflowGraphNode): string {

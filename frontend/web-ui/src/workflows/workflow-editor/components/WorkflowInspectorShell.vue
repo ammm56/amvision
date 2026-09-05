@@ -1,5 +1,6 @@
 <template>
-  <aside v-if="!collapsed" class="workflow-graph-floating-panel workflow-graph-inspector-panel" @mousedown.stop @contextmenu.stop>
+  <Transition name="workflow-inspector">
+    <aside v-if="!collapsed" class="workflow-graph-floating-panel workflow-graph-inspector-panel" @mousedown.stop @contextmenu.stop>
     <div class="workflow-graph-panel__header">
       <div>
         <h2>{{ t('workflowEditor.editor.inspectorTitle') }}</h2>
@@ -115,7 +116,8 @@
         @open-json="(title, value, statusText) => emit('openPreviewJson', title, value, statusText)"
       />
     </div>
-  </aside>
+    </aside>
+  </Transition>
 </template>
 
 <script setup lang="ts">

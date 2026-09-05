@@ -12,7 +12,7 @@
     <section v-for="binding in bindings" :key="binding.binding_id" class="workflow-graph-preview-binding">
       <div class="workflow-graph-preview-binding__header">
         <span class="workflow-graph-preview-binding__summary">
-          <strong>{{ binding.binding_id }}</strong>
+          <strong>{{ readBindingLabel(binding) }}</strong>
         </span>
         <div class="workflow-graph-preview-binding__tools">
           <StatusBadge :tone="binding.required ? 'warning' : 'neutral'">
@@ -22,12 +22,12 @@
       </div>
       <template v-if="states[binding.binding_id] && (usesJsonPreviewEditor(binding) || usesStructuredJsonPreviewEditor(getPayloadTypeId(binding)))">
         <label class="workflow-graph-preview-field">
-          <span>{{ t('workflowEditor.editor.jsonValue') }}</span>
           <textarea
             v-model="states[binding.binding_id].jsonValue"
             rows="8"
             placeholder="{}"
             spellcheck="false"
+            :aria-label="t('workflowEditor.editor.jsonValue')"
           />
         </label>
       </template>
@@ -52,6 +52,7 @@
           icon="image"
           accept="image/*"
           :label="t('workflowEditor.editor.imageFile')"
+          :show-label="false"
         />
         <label class="workflow-graph-preview-field">
           <span>{{ t('workflowEditor.editor.mediaType') }}</span>
@@ -73,6 +74,7 @@
           icon="image"
           accept="image/*"
           :label="t('workflowEditor.editor.imageFile')"
+          :show-label="false"
         />
         <label v-else-if="states[binding.binding_id].imageRefTransportKind === 'storage'" class="workflow-graph-preview-field">
           <span>{{ t('workflowEditor.editor.storagePath') }}</span>
@@ -93,8 +95,11 @@
       </template>
       <template v-else-if="states[binding.binding_id] && getPayloadTypeId(binding) === 'text.v1'">
         <label class="workflow-graph-preview-field">
-          <span>{{ t('workflowEditor.editor.textValue') }}</span>
-          <textarea v-model="states[binding.binding_id].textValue" rows="5" />
+          <textarea
+            v-model="states[binding.binding_id].textValue"
+            rows="5"
+            :aria-label="t('workflowEditor.editor.textValue')"
+          />
         </label>
         <label class="workflow-graph-preview-field">
           <span>{{ t('workflowEditor.editor.mediaType') }}</span>
@@ -107,6 +112,7 @@
           icon="upload"
           :accept="readBindingAccept(binding)"
           :label="t('workflowEditor.editor.file')"
+          :show-label="false"
         />
       </template>
       <template v-else-if="states[binding.binding_id] && getPayloadTypeId(binding) === 'file-refs.v1'">
@@ -116,6 +122,7 @@
           multiple
           :accept="readBindingAccept(binding)"
           :label="t('workflowEditor.editor.files')"
+          :show-label="false"
           @update:model-value="setMultipleFiles(binding.binding_id, $event)"
         />
       </template>
@@ -137,6 +144,7 @@ import Button from '@/shared/ui/components/Button.vue'
 import FilePicker from '@/shared/ui/components/FilePicker.vue'
 import SelectField from '@/shared/ui/components/Select.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
+import { readWorkflowInputBindingLabel } from '../preview/workflow-input-labels'
 import type { FlowApplicationBinding } from '../types'
 import { usesJsonPreviewEditor, usesStructuredJsonPreviewEditor, type PreviewInputState, type PreviewSelectOption, type PreviewSelectValue } from '../preview/useWorkflowPreviewInputs'
 
@@ -155,6 +163,10 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+
+function readBindingLabel(binding: FlowApplicationBinding): string {
+  return readWorkflowInputBindingLabel(binding, (key) => t(key))
+}
 
 function readBindingAccept(binding: FlowApplicationBinding): string {
   const allowedMediaTypes = binding.config.allowed_media_types

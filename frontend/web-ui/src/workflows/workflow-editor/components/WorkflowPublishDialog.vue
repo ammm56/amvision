@@ -10,7 +10,7 @@
     @cancel="emit('cancel')"
     @confirm="emit('publish', releaseNotes.trim())"
   >
-    <label class="workflow-dialog-field">
+    <label class="field workflow-dialog-field">
       <span>{{ t('workflowEditor.publishDialog.releaseNotes') }}</span>
       <textarea
         v-model="releaseNotes"
