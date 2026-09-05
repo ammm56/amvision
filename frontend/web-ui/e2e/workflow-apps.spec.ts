@@ -237,6 +237,16 @@ test('workflow app 详情使用不可变版本创建 Runtime 并以 generation C
     created_at: '2026-08-19T01:00:00+08:00',
     completed_at: '2026-08-19T01:00:01+08:00',
   }
+  const publishedContract = {
+    format_id: 'amvision.workflow-app-contract.v1',
+    inputs: [
+      {
+        binding_id: 'request_json',
+        payload_type_id: 'value.v1',
+      },
+    ],
+    outputs: [],
+  }
   const applicationDocument = {
     ...application,
     valid: true,
@@ -331,8 +341,12 @@ test('workflow app 详情使用不可变版本创建 Runtime 并以 generation C
     if (path === '/projects') return fulfillJson(route, bootstrap.visible_projects)
     if (path === '/workflows/projects/project-1/applications/app-e2e') return fulfillJson(route, applicationDocument)
     if (path === '/workflows/projects/project-1/applications/app-e2e/versions') return fulfillJson(route, [versionV2, versionV1])
-    if (path === '/workflows/projects/project-1/applications/app-e2e/versions/workflow-app-version-v1') return fulfillJson(route, versionV1)
-    if (path === '/workflows/projects/project-1/applications/app-e2e/versions/workflow-app-version-v2') return fulfillJson(route, versionV2)
+    if (path === '/workflows/projects/project-1/applications/app-e2e/versions/workflow-app-version-v1') {
+      return fulfillJson(route, { ...versionV1, contract: publishedContract })
+    }
+    if (path === '/workflows/projects/project-1/applications/app-e2e/versions/workflow-app-version-v2') {
+      return fulfillJson(route, { ...versionV2, contract: publishedContract })
+    }
     if (path === '/workflows/projects/project-1/templates/template-e2e/versions/1.0.0') return fulfillJson(route, templateDocument)
     if (path === '/workflows/trigger-sources') return fulfillJson(route, [])
     if (path === '/workflows/app-runtimes' && request.method() === 'GET') return fulfillJson(route, [runtimeState])
@@ -396,7 +410,33 @@ test('workflow app 详情使用不可变版本创建 Runtime 并以 generation C
 
   await expect(page.getByRole('heading', { level: 2, name: '版本记录' })).toBeVisible()
   await expect(page.getByText('v2', { exact: true }).first()).toBeVisible()
-  await expect(page.getByText('generation 1', { exact: true })).toBeVisible()
+
+  const runtimeSection = page.locator('.resource-section').filter({
+    has: page.getByRole('heading', { level: 2, name: '运行时' }),
+  })
+  await expect(runtimeSection).toContainText('E2E Runtime')
+  await expect(runtimeSection).not.toContainText('runtime-e2e')
+  await expect(runtimeSection).not.toContainText('generation 1')
+  await expect(runtimeSection).not.toContainText('{"ready":true}')
+
+  await runtimeSection.getByRole('button', { name: '详情', exact: true }).click()
+  const runtimeDetailsDrawer = page.getByRole('dialog', { name: '运行时详情' })
+  await expect(runtimeDetailsDrawer).toContainText('runtime-e2e')
+  await expect(runtimeDetailsDrawer).toContainText('Generation')
+  await expect(runtimeDetailsDrawer).toContainText('1')
+  await expect(runtimeDetailsDrawer).toContainText('"ready": true')
+  await runtimeDetailsDrawer.getByRole('button', { name: '关闭' }).click()
+
+  const httpSection = page.locator('.resource-section').filter({
+    has: page.getByRole('heading', { level: 2, name: 'HTTP 调用' }),
+  })
+  await expect(httpSection).not.toContainText('runtime-e2e')
+  await expect(httpSection).not.toContainText('/app-runtimes/runtime-e2e/runs')
+  await httpSection.getByRole('button', { name: '示例', exact: true }).click()
+  const requestExamplesDrawer = page.getByRole('dialog', { name: '公开请求示例' })
+  await expect(requestExamplesDrawer).toContainText('/app-runtimes/runtime-e2e/runs')
+  await expect(requestExamplesDrawer).toContainText('/app-runtimes/runtime-e2e/invoke')
+  await requestExamplesDrawer.getByRole('button', { name: '关闭' }).click()
 
   await page.getByRole('button', { name: '切换版本', exact: true }).click()
   const versionDialog = page.getByRole('dialog', { name: '切换版本' })
@@ -411,7 +451,9 @@ test('workflow app 详情使用不可变版本创建 Runtime 并以 generation C
     allow_breaking_contract: false,
     breaking_change_reason: null,
   })
-  await expect(page.getByText('generation 2', { exact: true })).toBeVisible()
+  await runtimeSection.getByRole('button', { name: '详情', exact: true }).click()
+  await expect(page.getByRole('dialog', { name: '运行时详情' })).toContainText('2')
+  await page.getByRole('dialog', { name: '运行时详情' }).getByRole('button', { name: '关闭' }).click()
 
   await page.getByRole('button', { name: '创建 runtime' }).click()
   const createDialog = page.getByRole('dialog', { name: '创建 runtime' })

@@ -6,6 +6,10 @@
     @close="emit('close')"
   >
     <div v-if="examples" class="workflow-request-examples">
+      <section class="workflow-request-examples__endpoints">
+        <h3>{{ t('workflowEditor.appDetail.fields.endpoint') }}</h3>
+        <pre class="json-view">{{ endpoints.join('\n') }}</pre>
+      </section>
       <details open>
         <summary>JSON</summary>
         <pre class="json-view">{{ examples.json }}</pre>
@@ -31,6 +35,7 @@ import type { WorkflowAppRequestExamples } from '../workflow-app-request-example
 defineProps<{
   open: boolean
   examples: WorkflowAppRequestExamples | null
+  endpoints: string[]
 }>()
 
 const emit = defineEmits<{ close: [] }>()
@@ -43,6 +48,7 @@ const { t } = useI18n()
   gap: var(--am-space-md);
 }
 
+.workflow-request-examples__endpoints,
 .workflow-request-examples details {
   border: 1px solid var(--am-border);
   border-radius: var(--am-radius-md);
@@ -50,13 +56,23 @@ const { t } = useI18n()
   background: var(--am-surface-soft);
 }
 
+.workflow-request-examples__endpoints h3 {
+  margin: 0 0 var(--am-space-md);
+  color: var(--am-text-strong);
+  font-size: 14px;
+}
+
 .workflow-request-examples summary {
   cursor: pointer;
   font-weight: 700;
 }
 
-.workflow-request-examples .json-view {
+.workflow-request-examples details .json-view {
   margin-top: var(--am-space-md);
+}
+
+.workflow-request-examples .json-view {
+  margin-bottom: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }

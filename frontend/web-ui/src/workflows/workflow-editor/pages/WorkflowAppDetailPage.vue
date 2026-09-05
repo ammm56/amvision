@@ -41,19 +41,19 @@
         </div>
         <div class="summary-grid">
           <div>
-            <span>application_id</span>
+            <span>{{ t('workflowEditor.appDetail.fields.applicationId') }}</span>
             <strong>{{ application?.application_id }}</strong>
           </div>
           <div>
-            <span>template</span>
+            <span>{{ t('workflowEditor.appDetail.fields.template') }}</span>
             <strong>{{ application?.template_ref.template_id }} / {{ application?.template_ref.template_version }}</strong>
           </div>
           <div>
-            <span>input / output</span>
+            <span>{{ t('workflowEditor.appDetail.fields.inputOutput') }}</span>
             <strong>{{ inputBindings.length }} / {{ outputBindings.length }}</strong>
           </div>
           <div>
-            <span>runtimes / triggers</span>
+            <span>{{ t('workflowEditor.appDetail.fields.runtimeTrigger') }}</span>
             <strong>{{ runtimes.length }} / {{ relatedTriggerSources.length }}</strong>
           </div>
         </div>
@@ -144,20 +144,20 @@
       <section class="resource-section">
         <div class="section-heading">
           <div>
-            <h2>App Contract</h2>
+            <h2>{{ t('workflowEditor.appDetail.appContractTitle') }}</h2>
           </div>
-          <StatusBadge tone="neutral">{{ bindings.length }} bindings</StatusBadge>
+          <StatusBadge tone="neutral">{{ t('workflowEditor.appDetail.bindingCount', { count: bindings.length }) }}</StatusBadge>
         </div>
         <div class="resource-table">
           <table>
             <thead>
               <tr>
                 <th>{{ t('workflowEditor.appDetail.fields.direction') }}</th>
-                <th>binding</th>
-                <th>payload type</th>
-                <th>required</th>
-                <th>template port</th>
-                <th>kind</th>
+                <th>{{ t('workflowEditor.appDetail.fields.binding') }}</th>
+                <th>{{ t('workflowEditor.appDetail.fields.payloadType') }}</th>
+                <th>{{ t('workflowEditor.appDetail.fields.required') }}</th>
+                <th>{{ t('workflowEditor.appDetail.fields.templatePort') }}</th>
+                <th>{{ t('workflowEditor.appDetail.fields.kind') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -214,19 +214,18 @@
           <table>
             <thead>
               <tr>
-                <th>runtime</th>
-                <th>state</th>
+                <th>{{ t('workflowEditor.appDetail.fields.runtime') }}</th>
+                <th>{{ t('workflowEditor.appDetail.fields.state') }}</th>
                 <th>{{ t('workflowEditor.appDetail.fields.version') }}</th>
-                <th>health / error</th>
-                <th>updated</th>
+                <th>{{ t('workflowEditor.appDetail.fields.healthError') }}</th>
+                <th>{{ t('workflowEditor.appDetail.fields.updatedAt') }}</th>
                 <th>{{ t('workflowEditor.columns.actions') }}</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="runtime in runtimes" :key="runtime.workflow_runtime_id" :class="{ 'is-selected': runtime.workflow_runtime_id === selectedRuntimeId }">
                 <td>
-                  <strong>{{ runtime.display_name || runtime.workflow_runtime_id }}</strong>
-                  <span>{{ runtime.workflow_runtime_id }}</span>
+                  <strong>{{ runtime.display_name || t('workflowEditor.appDetail.unnamedRuntime') }}</strong>
                 </td>
                 <td>
                   <StatusBadge :tone="runtimeTone(runtime.observed_state)">{{ runtime.desired_state }} / {{ runtime.observed_state }}</StatusBadge>
@@ -236,11 +235,11 @@
                 </td>
                 <td>
                   <strong>{{ runtimeVersionLabel(runtime) }}</strong>
-                  <span>generation {{ runtime.revision_generation }}</span>
                 </td>
                 <td>
-                  <strong>{{ runtime.heartbeat_at ? `heartbeat ${formatSystemDateTime(runtime.heartbeat_at)}` : 'no heartbeat' }}</strong>
-                  <span>{{ formatError(runtime.last_error) || formatSummary(runtime.health_summary) || '-' }}</span>
+                  <StatusBadge :tone="runtimeHealthTone(runtime)">
+                    {{ runtimeHealthLabel(runtime) }}
+                  </StatusBadge>
                 </td>
                 <td>{{ formatSystemDateTime(runtime.updated_at) }}</td>
                 <td>
@@ -255,6 +254,9 @@
                       <CheckCircle2 v-if="runtime.workflow_runtime_id === selectedRuntimeId" :size="14" />
                       <MousePointer2 v-else :size="14" />
                       {{ runtime.workflow_runtime_id === selectedRuntimeId ? t('workflowEditor.appDetail.actions.current') : t('workflowEditor.appDetail.actions.setCurrent') }}
+                    </Button>
+                    <Button size="sm" variant="secondary" @click="openRuntimeDetails(runtime)">
+                      {{ t('workflowEditor.appDetail.actions.details') }}
                     </Button>
                     <Button
                       v-if="canWriteWorkflows"
@@ -345,21 +347,11 @@
           <div>
             <h2>{{ t('workflowEditor.appDetail.httpTitle') }}</h2>
           </div>
-          <div class="table-actions table-actions--wrap">
-            <Button variant="secondary" :disabled="!requestExamples" @click="requestExamplesDrawerOpen = true">
-              {{ t('workflowEditor.appDetail.actions.examples') }}
-            </Button>
-            <StatusBadge :tone="selectedRuntime ? 'info' : 'neutral'">{{ selectedRuntime?.workflow_runtime_id ?? 'select-runtime' }}</StatusBadge>
-          </div>
+          <Button variant="secondary" :disabled="!requestExamples" @click="requestExamplesDrawerOpen = true">
+            {{ t('workflowEditor.appDetail.actions.examples') }}
+          </Button>
         </div>
         <div v-if="selectedRuntime" class="form-grid">
-          <div class="field field--wide">
-            <span>{{ t('workflowEditor.appDetail.fields.endpoint') }}</span>
-            <pre class="json-view">POST /api/v1/workflows/app-runtimes/{{ selectedRuntime.workflow_runtime_id }}/runs
-POST /api/v1/workflows/app-runtimes/{{ selectedRuntime.workflow_runtime_id }}/invoke
-GET /api/v1/workflows/runs/{workflow_run_id}
-GET /api/v1/workflows/runs/{workflow_run_id}?response_mode=run</pre>
-          </div>
           <label v-if="hasImageRefInput" class="field">
             <span>{{ t('workflowEditor.appDetail.fields.imageRefSampleTransport') }}</span>
             <SelectField
@@ -369,7 +361,7 @@ GET /api/v1/workflows/runs/{workflow_run_id}?response_mode=run</pre>
             />
           </label>
           <label class="field field--wide">
-            <span>input_bindings JSON</span>
+            <span>{{ t('workflowEditor.appDetail.fields.inputBindings') }}</span>
             <textarea v-model="runtimePayloadText" rows="8" spellcheck="false" />
           </label>
           <div class="table-actions table-actions--wrap field--wide">
@@ -414,19 +406,19 @@ GET /api/v1/workflows/runs/{workflow_run_id}?response_mode=run</pre>
         />
         <div v-else class="summary-grid">
           <div>
-            <span>workflow_run_id</span>
+            <span>{{ t('workflowEditor.appDetail.fields.workflowRunId') }}</span>
             <strong>{{ lastRun.workflow_run_id }}</strong>
           </div>
           <div>
-            <span>state</span>
+            <span>{{ t('workflowEditor.appDetail.fields.state') }}</span>
             <strong>{{ lastRun.state }}</strong>
           </div>
           <div>
-            <span>runtime</span>
+            <span>{{ t('workflowEditor.appDetail.fields.runtime') }}</span>
             <strong>{{ lastRun.workflow_runtime_id }}</strong>
           </div>
           <div>
-            <span>finished</span>
+            <span>{{ t('workflowEditor.appDetail.fields.finishedAt') }}</span>
             <strong>{{ lastRun.finished_at ? formatSystemDateTime(lastRun.finished_at) : '-' }}</strong>
           </div>
         </div>
@@ -468,11 +460,11 @@ GET /api/v1/workflows/runs/{workflow_run_id}?response_mode=run</pre>
           <table>
             <thead>
               <tr>
-                <th>TriggerSource</th>
-                <th>runtime</th>
-                <th>state</th>
-                <th>health</th>
-                <th>last_error</th>
+                <th>{{ t('workflowEditor.appDetail.fields.triggerSource') }}</th>
+                <th>{{ t('workflowEditor.appDetail.fields.runtime') }}</th>
+                <th>{{ t('workflowEditor.appDetail.fields.state') }}</th>
+                <th>{{ t('workflowEditor.appDetail.fields.health') }}</th>
+                <th>{{ t('workflowEditor.appDetail.fields.lastError') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -481,7 +473,7 @@ GET /api/v1/workflows/runs/{workflow_run_id}?response_mode=run</pre>
                   <strong>{{ source.display_name || source.trigger_source_id }}</strong>
                   <span>{{ source.trigger_kind }} / {{ Object.keys(source.input_binding_mapping).join(', ') || '-' }}</span>
                 </td>
-                <td>{{ source.workflow_runtime_id }}</td>
+                <td>{{ runtimeDisplayName(source.workflow_runtime_id) }}</td>
                 <td><StatusBadge :tone="source.observed_state === 'running' ? 'success' : 'neutral'">{{ source.enabled ? 'enabled' : 'disabled' }} / {{ source.observed_state }}</StatusBadge></td>
                 <td>{{ formatSummary(source.health_summary) || '-' }}</td>
                 <td>{{ formatError(source.last_error) || '-' }}</td>
@@ -522,7 +514,15 @@ GET /api/v1/workflows/runs/{workflow_run_id}?response_mode=run</pre>
     <WorkflowRequestExamplesDrawer
       :open="requestExamplesDrawerOpen"
       :examples="requestExamples"
+      :endpoints="requestEndpoints"
       @close="requestExamplesDrawerOpen = false"
+    />
+    <WorkflowRuntimeDetailsDrawer
+      :open="Boolean(runtimeDetailsRuntime)"
+      :runtime="runtimeDetailsRuntime"
+      :version-label="runtimeDetailsRuntime ? runtimeVersionLabel(runtimeDetailsRuntime) : '-'"
+      :trigger-source-count="runtimeDetailsRuntime ? runtimeTriggerSourceCount(runtimeDetailsRuntime) : 0"
+      @close="runtimeDetailsRuntimeId = ''"
     />
 
     <ConfirmDialog
@@ -579,6 +579,7 @@ import {
 import WorkflowRuntimeBodyViewer from '../components/WorkflowRuntimeBodyViewer.vue'
 import WorkflowRequestExamplesDrawer from '../components/WorkflowRequestExamplesDrawer.vue'
 import WorkflowRuntimeCreateDialog from '../components/WorkflowRuntimeCreateDialog.vue'
+import WorkflowRuntimeDetailsDrawer from '../components/WorkflowRuntimeDetailsDrawer.vue'
 import WorkflowRuntimeVersionDialog from '../components/WorkflowRuntimeVersionDialog.vue'
 import { useWorkflowResourceStream } from '../composables/useWorkflowResourceStream'
 import {
@@ -688,6 +689,7 @@ const runtimeCreateDialogOpen = ref(false)
 const runtimeVersionDialogRuntimeId = ref('')
 const runtimeDialogError = ref<string | null>(null)
 const requestExamplesDrawerOpen = ref(false)
+const runtimeDetailsRuntimeId = ref('')
 const revisionsByRuntimeId = ref<Record<string, WorkflowRuntimeRevision[]>>({})
 const revisionLoadErrorsByRuntimeId = ref<Record<string, string>>({})
 const loadingRevisionIds = ref<Set<string>>(new Set())
@@ -724,8 +726,21 @@ const requestExamples = computed(() => buildWorkflowAppRequestExamples(
   latestVersionDetail.value?.contract ?? null,
   selectedRuntime.value?.workflow_runtime_id ?? '',
 ))
+const requestEndpoints = computed(() => {
+  const runtimeId = selectedRuntime.value?.workflow_runtime_id
+  if (!runtimeId) return []
+  return [
+    `POST /api/v1/workflows/app-runtimes/${runtimeId}/runs`,
+    `POST /api/v1/workflows/app-runtimes/${runtimeId}/invoke`,
+    'GET /api/v1/workflows/runs/{workflow_run_id}',
+    'GET /api/v1/workflows/runs/{workflow_run_id}?response_mode=run',
+  ]
+})
 const runtimeVersionDialogRuntime = computed(() => runtimes.value.find(
   (runtime) => runtime.workflow_runtime_id === runtimeVersionDialogRuntimeId.value,
+) ?? null)
+const runtimeDetailsRuntime = computed(() => runtimes.value.find(
+  (runtime) => runtime.workflow_runtime_id === runtimeDetailsRuntimeId.value,
 ) ?? null)
 const runtimeVersionDialogActiveRevision = computed(() => {
   const runtime = runtimeVersionDialogRuntime.value
@@ -872,6 +887,17 @@ function parseInputBindings(): WorkflowJsonObject {
   }
   validateInputBindingPayloads(parsedValue)
   return parsedValue
+}
+
+function runtimeHealthTone(runtime: WorkflowAppRuntime): 'success' | 'danger' | 'neutral' {
+  if (runtime.last_error || runtime.observed_state === 'failed') return 'danger'
+  return runtime.observed_state === 'running' ? 'success' : 'neutral'
+}
+
+function runtimeHealthLabel(runtime: WorkflowAppRuntime): string {
+  return runtime.last_error || runtime.observed_state === 'failed'
+    ? t('workflowEditor.appDetail.statuses.healthError')
+    : t('workflowEditor.appDetail.statuses.healthNormal')
 }
 
 function setImageRefSampleTransport(value: SelectValue): void {
@@ -1198,6 +1224,15 @@ function runtimeTriggerSourceCount(runtime: WorkflowAppRuntime): number {
   return triggerSources.value.filter((source) => source.workflow_runtime_id === runtime.workflow_runtime_id).length
 }
 
+function runtimeDisplayName(runtimeId: string): string {
+  const runtime = runtimes.value.find((item) => item.workflow_runtime_id === runtimeId)
+  return runtime?.display_name || runtimeId
+}
+
+function openRuntimeDetails(runtime: WorkflowAppRuntime): void {
+  runtimeDetailsRuntimeId.value = runtime.workflow_runtime_id
+}
+
 function canSelectRuntime(runtime: WorkflowAppRuntime): boolean {
   return !loading.value && runtime.workflow_runtime_id !== selectedRuntimeId.value
 }
@@ -1474,6 +1509,7 @@ async function loadPage(): Promise<void> {
     runtimeVersionDialogRuntimeId.value = ''
     runtimeDialogError.value = null
     requestExamplesDrawerOpen.value = false
+    runtimeDetailsRuntimeId.value = ''
     versionComparison.value = null
     resetSamplePayload()
     const failedIds = [...runtimeStatusResult.failedRuntimeIds, ...triggerStatusResult.failedTriggerSourceIds]
@@ -1585,6 +1621,7 @@ async function deleteRuntime(): Promise<void> {
   try {
     await deleteWorkflowAppRuntime(runtime.workflow_runtime_id)
     workflowApp.value.runtimes = workflowApp.value.runtimes.filter((item) => item.workflow_runtime_id !== runtime.workflow_runtime_id)
+    if (runtimeDetailsRuntimeId.value === runtime.workflow_runtime_id) runtimeDetailsRuntimeId.value = ''
     const nextRevisions = { ...revisionsByRuntimeId.value }
     delete nextRevisions[runtime.workflow_runtime_id]
     revisionsByRuntimeId.value = nextRevisions
