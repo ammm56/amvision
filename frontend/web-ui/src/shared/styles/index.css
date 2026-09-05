@@ -873,8 +873,9 @@ textarea:focus-visible {
 }
 
 .ui-button--secondary:hover:not(:disabled) {
-  border-color: var(--am-focus-ring);
-  background: var(--am-surface-muted);
+  border-color: var(--am-action-primary);
+  background: var(--am-action-soft);
+  color: var(--am-action-primary-strong);
 }
 
 .ui-button--ghost {
@@ -884,7 +885,7 @@ textarea:focus-visible {
 
 .ui-button--ghost:hover:not(:disabled) {
   color: var(--am-action-primary-strong);
-  background: var(--am-surface-muted);
+  background: var(--am-action-soft);
 }
 
 .ui-button--danger {

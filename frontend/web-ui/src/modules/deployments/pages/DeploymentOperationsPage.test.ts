@@ -1,4 +1,4 @@
-import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
+import { enableAutoUnmount, flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createPinia, type Pinia } from 'pinia'
 import { nextTick } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -30,6 +30,8 @@ import {
   type TaskDeploymentProcessStatus,
   type TaskDeploymentRuntimeHealth,
 } from '../services/deployment.service'
+
+enableAutoUnmount(afterEach)
 
 vi.mock('../services/deployment.service', () => ({
   createTaskDeployment: vi.fn(),
@@ -478,6 +480,8 @@ describe('DeploymentOperationsPage', () => {
 
   afterEach(() => {
     vi.clearAllMocks()
+    document.body.innerHTML = ''
+    document.body.style.overflow = ''
   })
 
   it('omits redundant section kicker labels from the deployment page', async () => {
@@ -517,6 +521,71 @@ describe('DeploymentOperationsPage', () => {
     ])
   })
 
+  it('renders four deterministic deployment status indicators with localized accessible details', async () => {
+    const wrapper = mount(DeploymentOperationsPage, {
+      global: {
+        plugins: [pinia, i18n],
+      },
+    })
+    await flushPromises()
+
+    const statusGroup = () => wrapper.find('[data-deployment-id="deployment-1"] .deployment-instance-card__states')
+    const indicators = statusGroup().findAll('.deployment-status-indicator__block')
+    expect(indicators).toHaveLength(4)
+    expect(indicators.map((item) => item.attributes('data-status-channel'))).toEqual([
+      'deployment',
+      'process',
+      'desired',
+      'observed',
+    ])
+    expect(indicators.map((item) => item.attributes('data-status-value'))).toEqual([
+      'created',
+      'running',
+      'running',
+      'running',
+    ])
+    expect(indicators.map((item) => item.attributes('data-status-tone'))).toEqual([
+      'warning',
+      'success',
+      'success',
+      'success',
+    ])
+
+    for (const locale of ['zh-CN', 'en-US', 'ja-JP', 'ko-KR'] as const) {
+      setI18nLocale(locale)
+      await nextTick()
+      expect(statusGroup().attributes('aria-label')).toBe([
+        `${i18n.global.t('deploymentOps.columns.status')}：created`,
+        `${i18n.global.t('deploymentOps.fields.processState')}：running`,
+        `${i18n.global.t('deploymentOps.fields.desiredState')}：running`,
+        `${i18n.global.t('deploymentOps.fields.observedState')}：running`,
+      ].join(' · '))
+    }
+  })
+
+  it('uses operational override colors for failed and stopped runtime states', async () => {
+    vi.mocked(runTaskDeploymentStatusAction).mockResolvedValue({
+      ...status,
+      process_state: 'crashed',
+      desired_state: 'stopped',
+      observed_state: 'failed',
+    })
+    const wrapper = mount(DeploymentOperationsPage, {
+      global: {
+        plugins: [pinia, i18n],
+      },
+    })
+    await flushPromises()
+
+    const indicators = wrapper.findAll('[data-deployment-id="deployment-1"] .deployment-status-indicator__block')
+    expect(indicators.map((item) => item.attributes('data-status-tone'))).toEqual([
+      'warning',
+      'danger',
+      'neutral',
+      'danger',
+    ])
+  })
+
   it('renders deployment runtime health and dispatches runtime actions', async () => {
     const wrapper = mount(DeploymentOperationsPage, {
       global: {
@@ -526,11 +595,32 @@ describe('DeploymentOperationsPage', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('Barcode sync deployment')
-    expect(wrapper.text()).toContain('running')
-    expect(wrapper.text()).toContain('2048')
-    expect(wrapper.text()).toContain('runtime.started')
+    expect(wrapper.text()).not.toContain('运行中')
+    expect(wrapper.text()).not.toContain('running / running / running')
+    expect(wrapper.text()).not.toContain('2048')
+    expect(wrapper.text()).not.toContain('runtime.started')
+    const deploymentCard = wrapper.find('[data-deployment-id="deployment-1"]')
+    expect(deploymentCard.text()).not.toContain('deployment-1')
+    expect(deploymentCard.text()).not.toContain('model-version-1')
+    expect(deploymentCard.text()).not.toContain('model-build-1')
+    expect(deploymentCard.text()).toContain('tensorrt fp16 / cuda')
+    expect(deploymentCard.text()).toContain('640 x 640')
+    expect(deploymentCard.findAll('[data-deployment-action]').slice(-2).map((item) => item.attributes('data-deployment-action'))).toEqual([
+      'delete',
+      'status-details',
+    ])
     expect(runTaskDeploymentStatusAction).toHaveBeenCalledWith('detection', 'deployment-1', 'sync', 'status')
     expect(runTaskDeploymentHealthAction).toHaveBeenCalledWith('detection', 'deployment-1', 'sync', 'health')
+
+    await findDeploymentActionButton(wrapper, 'deployment-1', 'status-details').trigger('click')
+    await flushPromises()
+    const drawerText = document.body.textContent ?? ''
+    expect(drawerText).toContain('状态信息')
+    expect(drawerText).toContain('deployment-1')
+    expect(drawerText).toContain('model-version-1')
+    expect(drawerText).toContain('model-build-1')
+    expect(drawerText).toContain('2048')
+    expect(drawerText).toContain('runtime.started')
 
     await clickButtonByText(wrapper, '预热')
     await flushPromises()
@@ -556,16 +646,17 @@ describe('DeploymentOperationsPage', () => {
     })
     await flushPromises()
 
-    await wrapper.find('[data-deployment-id="deployment-2"]').trigger('click')
+    await findDeploymentActionButton(wrapper, 'deployment-2', 'status-details').trigger('click')
     await flushPromises()
 
-    expect(wrapper.text()).toContain('当前部署线程容量 / 物理核心')
-    expect(wrapper.text()).toContain('6 / 8')
-    expect(wrapper.text()).toContain('每实例有效线程')
-    expect(wrapper.text()).toContain('按部署共享 CPU')
+    const drawerText = document.body.textContent ?? ''
+    expect(drawerText).toContain('当前部署线程容量 / 物理核心')
+    expect(drawerText).toContain('6 / 8')
+    expect(drawerText).toContain('每实例有效线程')
+    expect(drawerText).toContain('按部署共享 CPU')
   })
 
-  it('shows configured or default keep-warm intervals only on enabled deployment cards', async () => {
+  it('moves keep-warm details out of deployment cards and into the status drawer', async () => {
     const explicitIntervalDeployment: TaskDeploymentInstance = {
       ...secondDeployment,
       deployment_instance_id: 'deployment-3',
@@ -587,9 +678,13 @@ describe('DeploymentOperationsPage', () => {
     const enabledCard = wrapper.find('[data-deployment-id="deployment-2"]')
     const explicitIntervalCard = wrapper.find('[data-deployment-id="deployment-3"]')
     const disabledCard = wrapper.find('[data-deployment-id="deployment-1"]')
-    expect(enabledCard.find('.deployment-instance-card__keep-warm').text()).toBe('保持设备活跃 · 0.1 s')
-    expect(explicitIntervalCard.find('.deployment-instance-card__keep-warm').text()).toBe('保持设备活跃 · 0.02 s')
+    expect(enabledCard.text()).not.toContain('保持设备活跃')
+    expect(explicitIntervalCard.text()).not.toContain('保持设备活跃')
     expect(disabledCard.find('.deployment-instance-card__keep-warm').exists()).toBe(false)
+
+    await findDeploymentActionButton(wrapper, 'deployment-2', 'status-details').trigger('click')
+    await flushPromises()
+    expect(document.body.textContent).toContain('启用 · 0.1 s')
   })
 
   it('keeps warmup available when sessions are loaded but device keep-warm is inactive', async () => {
@@ -629,10 +724,12 @@ describe('DeploymentOperationsPage', () => {
     })
     await flushPromises()
 
-    const renderedEvents = wrapper.findAll('.deployment-events-panel li')
+    await findDeploymentActionButton(wrapper, 'deployment-1', 'status-details').trigger('click')
+    await flushPromises()
+    const renderedEvents = [...document.querySelectorAll('.deployment-event-timeline li')]
     expect(renderedEvents).toHaveLength(2)
-    expect(renderedEvents[0]?.text()).toContain('runtime.warmup.completed')
-    expect(renderedEvents[1]?.text()).toContain('runtime.started')
+    expect(renderedEvents[0]?.textContent).toContain('runtime.warmup.completed')
+    expect(renderedEvents[1]?.textContent).toContain('runtime.started')
   })
 
   it('refreshes all runtime states and scopes busy buttons to the operated deployment', async () => {
@@ -726,9 +823,7 @@ describe('DeploymentOperationsPage', () => {
       },
     )
 
-    const secondCard = wrapper.find('[data-deployment-id="deployment-2"]')
-    expect(secondCard.exists(), 'deployment-2 card exists').toBe(true)
-    await secondCard.trigger('click')
+    await findDeploymentActionButton(wrapper, 'deployment-2', 'status-details').trigger('click')
     await nextTick()
 
     expect(runTaskDeploymentStatusAction).toHaveBeenCalledWith('detection', 'deployment-2', 'sync', 'status')
@@ -801,7 +896,7 @@ describe('DeploymentOperationsPage', () => {
     await clickButtonByText(wrapper, '用于部署')
     await flushPromises()
 
-    const initialDeviceField = findFieldByText(wrapper, 'Device')
+    const initialDeviceField = findFieldByText(wrapper, '设备')
     expect(initialDeviceField.find('.ui-select__button').text()).toContain('OpenVINO AUTO（默认）')
     expect(wrapper.text()).not.toContain('OpenVINO streams')
 
@@ -817,7 +912,7 @@ describe('DeploymentOperationsPage', () => {
     expect(requestsField.find('input').attributes('type')).toBe('number')
     expect(requestsField.find('input').attributes('min')).toBe('1')
 
-    const deviceField = findFieldByText(wrapper, 'Device')
+    const deviceField = findFieldByText(wrapper, '设备')
     await deviceField.find('.ui-select__button').trigger('click')
     await nextTick()
     const cpuOption = deviceField.findAll('.ui-select__option').find((item) => item.text().includes('OpenVINO CPU'))
@@ -939,7 +1034,7 @@ describe('DeploymentOperationsPage', () => {
     expect(sourcePrecision, 'model artifact precision exists').toBeTruthy()
     expect(sourcePrecision!.text()).toContain('fp32')
 
-    const deviceField = findFieldByText(wrapper, 'Device')
+    const deviceField = findFieldByText(wrapper, '设备')
     await deviceField.find('.ui-select__button').trigger('click')
     await nextTick()
     const gpuOption = deviceField.findAll('.ui-select__option')
@@ -999,7 +1094,7 @@ describe('DeploymentOperationsPage', () => {
     await clickButtonByText(wrapper, '用于部署')
     await flushPromises()
 
-    const deviceField = findFieldByText(wrapper, 'Device')
+    const deviceField = findFieldByText(wrapper, '设备')
     await deviceField.find('.ui-select__button').trigger('click')
     await nextTick()
     const npuOption = deviceField.findAll('.ui-select__option').find((item) => item.text().includes('OpenVINO NPU'))

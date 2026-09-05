@@ -267,42 +267,49 @@
             v-for="item in deployments"
             :key="item.deployment_instance_id"
             class="deployment-instance-card"
-            :class="{ 'deployment-instance-card--selected': item.deployment_instance_id === selectedDeploymentId }"
             :data-deployment-id="item.deployment_instance_id"
-            @click="selectDeployment(item.deployment_instance_id)"
           >
             <header class="deployment-instance-card__header">
               <div class="deployment-instance-card__title">
-                <strong>{{ item.display_name || item.deployment_instance_id }}</strong>
-                <span>{{ item.deployment_instance_id }}</span>
+                <strong>{{ deploymentCardTitle(item) }}</strong>
               </div>
-              <div class="deployment-instance-card__states">
-                <StatusBadge
-                  v-if="item.runtime_configuration?.lifecycle?.keep_warm_enabled === true"
-                  class="deployment-instance-card__keep-warm"
-                  tone="info"
-                >
-                  {{ deploymentKeepWarmLabel(item) }}
-                </StatusBadge>
-                <StatusBadge :tone="statusTone(item.status)">{{ item.status }}</StatusBadge>
-                <StatusBadge :tone="runtimeProcessTone(item)">{{ runtimeProcessLabel(item) }}</StatusBadge>
+              <div
+                class="deployment-instance-card__states"
+                role="img"
+                :title="deploymentStatusIndicatorLabel(item)"
+                :aria-label="deploymentStatusIndicatorLabel(item)"
+              >
+                <span
+                  v-for="indicator in deploymentStatusIndicators(item)"
+                  :key="indicator.channel"
+                  class="deployment-status-indicator__block"
+                  :class="[
+                    `deployment-status-indicator__block--${indicator.channel}`,
+                    `deployment-status-indicator__block--${indicator.tone}`,
+                  ]"
+                  :data-status-channel="indicator.channel"
+                  :data-status-value="indicator.value"
+                  :data-status-tone="indicator.tone"
+                  aria-hidden="true"
+                />
               </div>
             </header>
             <div class="deployment-instance-card__details">
-              <div>
+              <div v-if="item.model_name !== deploymentCardTitle(item)">
                 <span>{{ t('deploymentOps.columns.model') }}</span>
                 <strong>{{ item.model_name }}</strong>
-                <small>{{ item.model_version_id }} / {{ item.model_build_id || '-' }}</small>
               </div>
               <div>
-                <span>Runtime</span>
+                <span>{{ t('deploymentOps.columns.runtime') }}</span>
                 <strong>{{ formatRuntimeLabel(item) }}</strong>
-                <small>{{ item.runtime_execution_mode }} · {{ item.source_kind }}</small>
+              </div>
+              <div>
+                <span>{{ t('deploymentOps.fields.inputSize') }}</span>
+                <strong>{{ formatInputSize(item) }}</strong>
               </div>
               <div>
                 <span>{{ t('deploymentOps.columns.instances') }}</span>
                 <strong>{{ getDeploymentInstanceCount(item) }}</strong>
-                <small>{{ formatInputSize(item.input_size) }}</small>
               </div>
             </div>
             <div class="deployment-instance-card__actions" @click.stop>
@@ -363,6 +370,16 @@
                 <Trash2 :size="14" />
                 {{ t('deploymentOps.actions.delete') }}
               </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                data-deployment-action="status-details"
+                @click="openDeploymentStatusDrawer(item.deployment_instance_id)"
+              >
+                <Info :size="14" />
+                {{ t('deploymentOps.actions.statusDetails') }}
+              </Button>
             </div>
           </article>
         </div>
@@ -403,127 +420,25 @@
       @confirm="confirmDeleteDeployment"
     />
 
-    <div v-if="selectedDeployment" class="operation-grid deployment-runtime-grid">
-      <section class="resource-section deployment-runtime-panel">
-        <div class="section-heading">
-          <div>
-            <h2>{{ t('deploymentOps.runtimeTitle') }}</h2>
-          </div>
-        </div>
-        <div class="summary-grid deployment-runtime-summary">
-          <div>
-            <span>{{ t('deploymentOps.fields.deploymentId') }}</span>
-            <strong>{{ selectedDeployment.deployment_instance_id }}</strong>
-          </div>
-          <div>
-            <span>{{ t('deploymentOps.fields.runtimeMode') }}</span>
-            <strong>{{ selectedRuntimeStatus?.runtime_mode || selectedDeployment.runtime_execution_mode }}</strong>
-          </div>
-          <div>
-            <span>{{ t('deploymentOps.fields.processState') }}</span>
-            <strong>{{ selectedRuntimeStatus?.process_state || t('deploymentOps.states.notInspected') }}</strong>
-          </div>
-          <div>
-            <span>{{ t('deploymentOps.fields.desiredState') }}</span>
-            <strong>{{ selectedRuntimeStatus?.desired_state || '-' }}</strong>
-          </div>
-          <div>
-            <span>{{ t('deploymentOps.fields.observedState') }}</span>
-            <strong>{{ selectedRuntimeStatus?.observed_state || '-' }}</strong>
-          </div>
-          <div>
-            <span>{{ t('deploymentOps.fields.generation') }}</span>
-            <strong>{{ selectedRuntimeStatus?.generation ?? '-' }}</strong>
-          </div>
-          <div>
-            <span>{{ t('deploymentOps.fields.processId') }}</span>
-            <strong>{{ selectedRuntimeStatus?.process_id ?? '-' }}</strong>
-          </div>
-          <div>
-            <span>{{ t('deploymentOps.fields.healthyInstances') }}</span>
-            <strong>{{ selectedRuntimeHealth?.healthy_instance_count ?? '-' }}</strong>
-          </div>
-          <div>
-            <span>{{ t('deploymentOps.fields.warmedInstances') }}</span>
-            <strong>{{ selectedRuntimeHealth?.warmed_instance_count ?? '-' }}</strong>
-          </div>
-          <div v-if="selectedCpuResourceSummary">
-            <span>{{ t('deploymentOps.fields.cpuDeploymentThreadCapacity') }}</span>
-            <strong>
-              {{ selectedCpuResourceSummary.deploymentThreadCapacity }} /
-              {{ selectedCpuResourceSummary.physicalCoreCount }}
-            </strong>
-          </div>
-          <div v-if="selectedCpuResourceSummary">
-            <span>{{ t('deploymentOps.fields.cpuThreadsPerInstance') }}</span>
-            <strong>{{ selectedCpuResourceSummary.threadsPerInstance }}</strong>
-          </div>
-          <div v-if="selectedCpuResourceSummary">
-            <span>{{ t('deploymentOps.fields.cpuSchedulingPolicy') }}</span>
-            <strong>{{ t('deploymentOps.fields.cpuSchedulingPolicyShared') }}</strong>
-          </div>
-          <div>
-            <span>{{ t('deploymentOps.fields.pinnedBytes') }}</span>
-            <strong>{{ selectedRuntimeHealth?.pinned_output_total_bytes ?? '-' }}</strong>
-          </div>
-          <div>
-            <span>{{ t('deploymentOps.fields.lastError') }}</span>
-            <strong>{{ selectedRuntimeHealth?.last_error || selectedRuntimeStatus?.last_error || '-' }}</strong>
-          </div>
-        </div>
-        <div
-          v-if="selectedRuntimeHealth?.configuration_warnings.length"
-          class="runtime-configuration-warnings"
-        >
-          <strong>{{ t('deploymentOps.runtimeDiagnostics.warnings') }}</strong>
-          <ul>
-            <li
-              v-for="warning in selectedRuntimeHealth.configuration_warnings"
-              :key="warning"
-            >
-              {{ warning }}
-            </li>
-          </ul>
-        </div>
-        <div v-if="selectedRuntimeHealth" class="runtime-configuration-diagnostics">
-          <details>
-            <summary>{{ t('deploymentOps.runtimeDiagnostics.requested') }}</summary>
-            <pre>{{ formatRuntimeConfiguration(selectedRuntimeHealth.requested_runtime_configuration) }}</pre>
-          </details>
-          <details>
-            <summary>{{ t('deploymentOps.runtimeDiagnostics.effective') }}</summary>
-            <pre>{{ formatRuntimeConfiguration(selectedRuntimeHealth.effective_runtime_configuration) }}</pre>
-          </details>
-        </div>
-      </section>
-
-      <section class="resource-section deployment-events-panel">
-        <div class="section-heading">
-          <div>
-            <h2>{{ t('deploymentOps.eventsTitle') }}</h2>
-          </div>
-        </div>
-        <EmptyState v-if="deploymentEvents.length === 0" :title="t('deploymentOps.emptyEventsTitle')" :description="t('deploymentOps.emptyEventsDescription')" />
-        <ol v-else class="deployment-event-timeline">
-          <li v-for="event in sortedDeploymentEvents" :key="`${event.runtime_mode}-${event.sequence}`">
-            <span class="deployment-event-timeline__marker" aria-hidden="true" />
-            <div class="deployment-event-timeline__content">
-              <div>
-                <strong>{{ event.event_type }}</strong>
-                <time>{{ formatSystemDateTime(event.created_at) }}</time>
-              </div>
-              <p>{{ event.message }}</p>
-            </div>
-          </li>
-        </ol>
-      </section>
-    </div>
+    <DeploymentStatusDrawer
+      :open="statusDrawerOpen"
+      :deployment="selectedDeployment"
+      :status="selectedRuntimeStatus"
+      :health="selectedRuntimeHealth"
+      :cpu-resource-summary="selectedCpuResourceSummary"
+      :events="deploymentEvents"
+      :events-loading="eventsLoading"
+      :display-name="selectedDeployment ? deploymentCardTitle(selectedDeployment) : ''"
+      :summary-label="selectedDeployment ? deploymentSummaryLabel(selectedDeployment) : ''"
+      :summary-tone="selectedDeployment ? deploymentSummaryTone(selectedDeployment) : 'neutral'"
+      @close="closeDeploymentStatusDrawer"
+    />
   </section>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { Play, RefreshCw, RotateCcw, Square, Trash2, Zap } from '@lucide/vue'
+import { Info, Play, RefreshCw, RotateCcw, Square, Trash2, Zap } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 
 import {
@@ -548,6 +463,7 @@ import {
   type TaskDeploymentRuntimeHealth,
 } from '../services/deployment.service'
 import DeploymentSourcePickerDialog from '../components/DeploymentSourcePickerDialog.vue'
+import DeploymentStatusDrawer from '../components/DeploymentStatusDrawer.vue'
 import type { DeploymentSourceSelection } from '../components/deployment-source.types'
 import { buildDeploymentDeviceOptions, hasCudaDevice } from '../deployment-device-support'
 import {
@@ -563,7 +479,6 @@ import {
 } from '@/modules/models/services/model.service'
 import { useProjectStore } from '@/app/stores/project.store'
 import { useSessionStore } from '@/app/stores/session.store'
-import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import Button from '@/shared/ui/components/Button.vue'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import SelectField from '@/shared/ui/components/Select.vue'
@@ -601,7 +516,6 @@ const taskTypeOptions = TASK_TYPES.map((taskType) => ({ label: taskType, value: 
 
 const deployments = ref<TaskDeploymentInstance[]>([])
 const deploymentEvents = ref<TaskDeploymentProcessEvent[]>([])
-const sortedDeploymentEvents = computed(() => [...deploymentEvents.value].sort(compareDeploymentEventsNewestFirst))
 const loading = ref(false)
 const creating = ref(false)
 const eventsLoading = ref(false)
@@ -610,6 +524,7 @@ const lastCreatedDeployment = ref<TaskDeploymentInstance | null>(null)
 const runtimeSnapshotsByDeployment = ref<Record<string, DeploymentRuntimeSnapshot>>({})
 const runningActionByDeployment = ref<Record<string, string>>({})
 const selectedDeploymentId = ref('')
+const statusDrawerOpen = ref(false)
 const selectedTaskType = ref<ModelTaskType>('detection')
 const deploymentSourcePickerOpen = ref(false)
 const sourceModelsLoading = ref(false)
@@ -619,18 +534,6 @@ const selectedSourceModelId = ref('')
 const selectedSourceModelDetail = ref<DeploymentSourceModelDetail | null>(null)
 const selectedDeploymentSource = ref<DeploymentSourceSelection | null>(null)
 const pendingDeleteDeploymentId = ref<string | null>(null)
-
-function compareDeploymentEventsNewestFirst(
-  left: TaskDeploymentProcessEvent,
-  right: TaskDeploymentProcessEvent,
-): number {
-  const leftTimestamp = Date.parse(left.created_at)
-  const rightTimestamp = Date.parse(right.created_at)
-  if (Number.isFinite(leftTimestamp) && Number.isFinite(rightTimestamp) && leftTimestamp !== rightTimestamp) {
-    return rightTimestamp - leftTimestamp
-  }
-  return right.sequence - left.sequence
-}
 
 const modelType = ref('')
 const modelVersionId = ref('')
@@ -717,9 +620,6 @@ function readNonNegativeInteger(record: Record<string, unknown>, key: string): n
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : null
 }
 
-function formatRuntimeConfiguration(value: Record<string, unknown>): string {
-  return JSON.stringify(value, null, 2)
-}
 const pendingDeleteDeployment = computed(() => {
   const deploymentId = pendingDeleteDeploymentId.value
   return deploymentId ? deployments.value.find((item) => item.deployment_instance_id === deploymentId) ?? null : null
@@ -1344,11 +1244,110 @@ function readDeviceRecord(
     : null
 }
 
-function statusTone(status: string | null | undefined): 'neutral' | 'success' | 'warning' | 'danger' | 'info' {
-  const normalized = String(status ?? '').toLowerCase()
-  if (normalized.includes('running') || normalized.includes('active') || normalized.includes('ready')) return 'success'
-  if (normalized.includes('crash') || normalized.includes('error') || normalized.includes('fail')) return 'danger'
-  if (normalized.includes('start') || normalized.includes('created') || normalized.includes('stopped')) return 'warning'
+type DeploymentSummaryState = 'active' | 'running' | 'starting' | 'stopped' | 'degraded' | 'failed' | 'unavailable' | 'created' | 'unknown'
+type DeploymentStatusChannel = 'deployment' | 'process' | 'desired' | 'observed'
+type DeploymentStatusIndicatorTone = 'success' | 'warning' | 'danger' | 'neutral' | 'unknown'
+
+interface DeploymentStatusIndicator {
+  channel: DeploymentStatusChannel
+  value: string
+  tone: DeploymentStatusIndicatorTone
+}
+
+function deploymentCardTitle(item: TaskDeploymentInstance): string {
+  const displayName = item.display_name.trim()
+  const generatedSourceId = item.model_build_id || item.model_version_id
+  const generatedName = `${item.model_name} ${generatedSourceId}`.trim()
+  if (!displayName || displayName === item.deployment_instance_id || displayName === generatedName) {
+    return item.model_name || item.deployment_instance_id
+  }
+  return displayName
+}
+
+function formatRuntimeLabel(item: TaskDeploymentInstance): string {
+  const backend = item.runtime_backend || 'pytorch'
+  const precision = item.runtime_precision || 'fp32'
+  const device = item.device_name ? ` / ${item.device_name}` : ''
+  return `${backend} ${precision}${device}`
+}
+
+function formatInputSize(item: TaskDeploymentInstance): string {
+  return item.input_size ? `${item.input_size.width} x ${item.input_size.height}` : '-'
+}
+
+function deploymentStatusIndicatorTone(value: string): DeploymentStatusIndicatorTone {
+  const normalized = value.trim().toLowerCase()
+  if (!normalized || normalized === 'unknown' || normalized === 'unloaded') return 'unknown'
+  if (['fail', 'crash', 'error', 'unavailable', 'unhealthy', 'offline'].some((token) => normalized.includes(token))) {
+    return 'danger'
+  }
+  if (['stopped', 'inactive', 'idle', 'disabled'].some((token) => normalized.includes(token))) {
+    return 'neutral'
+  }
+  if (['starting', 'stopping', 'warming', 'pending', 'queued', 'created', 'degraded'].some((token) => normalized.includes(token))) {
+    return 'warning'
+  }
+  if (['active', 'running', 'ready', 'healthy', 'succeeded', 'success'].some((token) => normalized.includes(token))) {
+    return 'success'
+  }
+  return 'unknown'
+}
+
+function deploymentStatusIndicators(item: TaskDeploymentInstance): DeploymentStatusIndicator[] {
+  const runtimeStatus = deploymentRuntimeStatus(item.deployment_instance_id)
+  const values: Array<[DeploymentStatusChannel, unknown]> = [
+    ['deployment', item.status],
+    ['process', runtimeStatus?.process_state],
+    ['desired', runtimeStatus?.desired_state],
+    ['observed', runtimeStatus?.observed_state],
+  ]
+  return values.map(([channel, rawValue]) => {
+    const value = String(rawValue ?? '').trim()
+    return { channel, value, tone: deploymentStatusIndicatorTone(value) }
+  })
+}
+
+function deploymentStatusIndicatorLabel(item: TaskDeploymentInstance): string {
+  const labels: Record<DeploymentStatusChannel, string> = {
+    deployment: t('deploymentOps.columns.status'),
+    process: t('deploymentOps.fields.processState'),
+    desired: t('deploymentOps.fields.desiredState'),
+    observed: t('deploymentOps.fields.observedState'),
+  }
+  return deploymentStatusIndicators(item)
+    .map((indicator) => `${labels[indicator.channel]}：${indicator.value || '-'}`)
+    .join(' · ')
+}
+
+function deploymentSummaryState(item: TaskDeploymentInstance): DeploymentSummaryState {
+  const runtimeStatus = deploymentRuntimeStatus(item.deployment_instance_id)
+  const processState = String(runtimeStatus?.process_state ?? '').trim().toLowerCase()
+  const observedState = String(runtimeStatus?.observed_state ?? '').trim().toLowerCase()
+  const desiredState = String(runtimeStatus?.desired_state ?? '').trim().toLowerCase()
+  const itemState = String(item.status ?? '').trim().toLowerCase()
+  const states = [processState, observedState, desiredState, itemState]
+
+  if (states.some((state) => state.includes('fail') || state.includes('crash') || state.includes('error'))) return 'failed'
+  if (observedState.includes('degraded')) return 'degraded'
+  if (processState.includes('unavailable')) return 'unavailable'
+  if (processState.includes('running') || observedState.includes('running')) return 'running'
+  if (processState.includes('start') || observedState.includes('start')) return 'starting'
+  if (processState.includes('stop') || observedState.includes('stop')) return 'stopped'
+  if (itemState.includes('active') || itemState.includes('ready')) return 'active'
+  if (itemState.includes('created')) return 'created'
+  return 'unknown'
+}
+
+function deploymentSummaryLabel(item: TaskDeploymentInstance): string {
+  return t(`deploymentOps.states.${deploymentSummaryState(item)}`)
+}
+
+function deploymentSummaryTone(item: TaskDeploymentInstance): 'neutral' | 'success' | 'warning' | 'danger' | 'info' {
+  const state = deploymentSummaryState(item)
+  if (state === 'running' || state === 'active') return 'success'
+  if (state === 'failed') return 'danger'
+  if (state === 'degraded' || state === 'unavailable') return 'warning'
+  if (state === 'starting' || state === 'created') return 'info'
   return 'neutral'
 }
 
@@ -1462,31 +1461,6 @@ function taskTypeForDeployment(item: TaskDeploymentInstance): ModelTaskType {
   return normalizeModelTaskType(item.task_type)
 }
 
-function runtimeProcessTone(item: TaskDeploymentInstance): 'neutral' | 'success' | 'warning' | 'danger' | 'info' {
-  const status = deploymentRuntimeStatus(item.deployment_instance_id)
-  if (!status) return 'neutral'
-  if (status.observed_state === 'failed' || status.process_state === 'crashed') return 'danger'
-  if (status.process_state === 'unavailable' || status.observed_state === 'starting' || status.observed_state === 'degraded') return 'warning'
-  return statusTone(status.process_state)
-}
-
-function runtimeProcessLabel(item: TaskDeploymentInstance): string {
-  const status = deploymentRuntimeStatus(item.deployment_instance_id)
-  if (!status) return t('deploymentOps.states.notInspected')
-  return `${status.desired_state} / ${status.observed_state} / ${status.process_state}`
-}
-
-function deploymentKeepWarmLabel(item: TaskDeploymentInstance): string {
-  const configuredInterval = item.runtime_configuration?.lifecycle?.keep_warm_interval_seconds
-  const interval = typeof configuredInterval === 'number'
-    && Number.isFinite(configuredInterval)
-    && configuredInterval >= 0.01
-    ? configuredInterval
-    : DEFAULT_KEEP_WARM_INTERVAL_SECONDS
-  const label = t('deploymentOps.runtimeConfig.keepWarm')
-  return `${label} · ${interval} s`
-}
-
 function setDeploymentRunningAction(deploymentId: string, action: string | null): void {
   const nextActions = { ...runningActionByDeployment.value }
   if (action) {
@@ -1575,18 +1549,6 @@ function canResetDeployment(item: TaskDeploymentInstance): boolean {
   return canWriteModels.value && !isRuntimeActionBusy(item)
 }
 
-function formatRuntimeLabel(item: TaskDeploymentInstance): string {
-  const backend = item.runtime_backend || 'pytorch'
-  const precision = item.runtime_precision || 'fp32'
-  const device = item.device_name ? ` / ${item.device_name}` : ''
-  return `${backend} ${precision}${device}`
-}
-
-function formatInputSize(inputSize: { width: number; height: number } | null | undefined): string {
-  if (!inputSize) return '-'
-  return `${inputSize.width} x ${inputSize.height}`
-}
-
 async function refreshPage(): Promise<void> {
   loading.value = true
   errorMessage.value = null
@@ -1594,6 +1556,7 @@ async function refreshPage(): Promise<void> {
     deployments.value = await listAllTaskDeployments()
     if (!deployments.value.some((item) => item.deployment_instance_id === selectedDeploymentId.value)) {
       selectedDeploymentId.value = deployments.value[0]?.deployment_instance_id ?? ''
+      statusDrawerOpen.value = false
     }
     await refreshRuntimeSnapshotsAndEvents()
   } catch (error) {
@@ -1643,12 +1606,24 @@ function shouldPreferDeploymentCandidate(next: DeploymentListCandidate, current:
 }
 
 async function selectDeployment(deploymentId: string): Promise<void> {
+  if (selectedDeploymentId.value !== deploymentId) {
+    deploymentEvents.value = []
+  }
   selectedDeploymentId.value = deploymentId
   const deployment = selectedDeployment.value
   await Promise.all([
     deployment ? refreshDeploymentRuntimeSnapshot(deployment, { showError: true }) : Promise.resolve(null),
     loadDeploymentEvents(),
   ])
+}
+
+function openDeploymentStatusDrawer(deploymentId: string): void {
+  statusDrawerOpen.value = true
+  void selectDeployment(deploymentId)
+}
+
+function closeDeploymentStatusDrawer(): void {
+  statusDrawerOpen.value = false
 }
 
 async function loadDeploymentEvents(): Promise<void> {
@@ -1955,9 +1930,7 @@ async function loadDeploymentRuntimeHealthBeforeWarmup(
   font-weight: 500;
 }
 
-.deployment-instances-panel,
-.deployment-runtime-panel,
-.deployment-events-panel {
+.deployment-instances-panel {
   min-width: 0;
 }
 
@@ -1973,12 +1946,6 @@ async function loadDeploymentRuntimeHealthBeforeWarmup(
   border: 1px solid var(--am-border);
   border-radius: 8px;
   background: var(--am-surface);
-  cursor: pointer;
-}
-
-.deployment-instance-card--selected {
-  border-color: var(--am-action-primary);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--am-action-primary) 45%, transparent);
 }
 
 .deployment-instance-card__header {
@@ -1995,28 +1962,57 @@ async function loadDeploymentRuntimeHealthBeforeWarmup(
 }
 
 .deployment-instance-card__title strong,
-.deployment-instance-card__title span,
-.deployment-instance-card__details strong,
-.deployment-instance-card__details small {
+.deployment-instance-card__details strong {
   overflow-wrap: anywhere;
 }
 
-.deployment-instance-card__title span,
-.deployment-instance-card__details span,
-.deployment-instance-card__details small {
+.deployment-instance-card__details span {
   color: var(--am-text-muted);
 }
 
 .deployment-instance-card__states {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  align-items: center;
+  gap: 4px;
   justify-content: flex-end;
+  min-height: 24px;
+  flex: 0 0 auto;
+}
+
+.deployment-status-indicator__block {
+  --deployment-status-color: var(--am-neutral-icon);
+
+  display: block;
+  width: 14px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 2px;
+  background: var(--deployment-status-color);
+}
+
+.deployment-status-indicator__block--success {
+  --deployment-status-color: var(--am-action-primary);
+}
+
+.deployment-status-indicator__block--warning {
+  --deployment-status-color: var(--am-warning-icon);
+}
+
+.deployment-status-indicator__block--danger {
+  --deployment-status-color: var(--am-danger-icon);
+}
+
+.deployment-status-indicator__block--neutral {
+  --deployment-status-color: var(--am-neutral-icon);
+}
+
+.deployment-status-indicator__block--unknown {
+  --deployment-status-color: var(--am-neutral-icon);
 }
 
 .deployment-instance-card__details {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 8px;
 }
 
@@ -2032,133 +2028,8 @@ async function loadDeploymentRuntimeHealthBeforeWarmup(
   gap: 6px;
 }
 
-.deployment-runtime-grid {
-  grid-template-columns: 1fr;
-  align-items: start;
-}
-
-.deployment-runtime-summary {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.deployment-runtime-summary div {
-  padding: 10px;
-}
-
-.runtime-configuration-warnings {
-  display: grid;
-  gap: 8px;
-  margin-top: 12px;
-  padding: 12px;
-  border: 1px solid var(--am-warning-border);
-  border-radius: 8px;
-  background: var(--am-warning-surface);
-}
-
-.runtime-configuration-warnings ul {
-  margin: 0;
-  padding-left: 20px;
-}
-
-.runtime-configuration-diagnostics {
-  display: grid;
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.runtime-configuration-diagnostics details {
-  border: 1px solid var(--am-border);
-  border-radius: 8px;
-  background: var(--am-surface);
-}
-
-.runtime-configuration-diagnostics summary {
-  padding: 10px 12px;
-  cursor: pointer;
-  font-weight: 600;
-}
-
-.runtime-configuration-diagnostics pre {
-  max-height: 320px;
-  margin: 0;
-  padding: 12px;
-  overflow: auto;
-  border-top: 1px solid var(--am-border);
-  font-size: 12px;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-.deployment-event-timeline {
-  display: grid;
-  gap: 0;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.deployment-event-timeline li {
-  position: relative;
-  display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
-  gap: var(--am-space-sm);
-  padding-bottom: var(--am-space-lg);
-}
-
-.deployment-event-timeline li:not(:last-child)::before {
-  position: absolute;
-  top: 12px;
-  bottom: 0;
-  left: 5px;
-  width: 1px;
-  content: '';
-  background: var(--am-border);
-}
-
-.deployment-event-timeline__marker {
-  position: relative;
-  z-index: 1;
-  width: 11px;
-  height: 11px;
-  margin-top: 4px;
-  border: 2px solid var(--am-info-text);
-  border-radius: 50%;
-  background: var(--am-surface);
-}
-
-.deployment-event-timeline__content,
-.deployment-event-timeline__content div {
-  min-width: 0;
-}
-
-.deployment-event-timeline__content div {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--am-space-md);
-}
-
-.deployment-event-timeline__content strong,
-.deployment-event-timeline__content time,
-.deployment-event-timeline__content p {
-  overflow-wrap: anywhere;
-}
-
-.deployment-event-timeline__content time,
-.deployment-event-timeline__content p {
-  color: var(--am-text-muted);
-  font-size: 12px;
-}
-
-.deployment-event-timeline__content p {
-  margin: 3px 0 0;
-  line-height: 1.5;
-}
-
 @media (max-width: 900px) {
-  .deployment-workspace-grid,
-  .deployment-runtime-grid {
+  .deployment-workspace-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -2176,14 +2047,8 @@ async function loadDeploymentRuntimeHealthBeforeWarmup(
     grid-template-columns: 1fr;
   }
 
-  .deployment-source-summary__grid,
-  .deployment-runtime-summary {
+  .deployment-source-summary__grid {
     grid-template-columns: 1fr;
-  }
-
-  .deployment-event-timeline__content div {
-    display: grid;
-    gap: 2px;
   }
 }
 </style>
