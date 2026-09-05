@@ -126,7 +126,7 @@ async def subscribe_runtime_preview(socket: WebSocket) -> None:
         tasks = [asyncio.create_task(send_frames()), asyncio.create_task(receive_disconnect())]
         await socket.send_json({"format_id": "amvision.workflow-runtime-preview.v1", "state": "connected"})
         await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-    except (WebSocketDisconnect, OSError, RuntimeError):
+    except (WebSocketDisconnect, OSError, RuntimeError, TimeoutError):
         pass
     finally:
         channel.unsubscribe(subscription)

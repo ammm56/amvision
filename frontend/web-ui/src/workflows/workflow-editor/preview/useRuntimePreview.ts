@@ -2,8 +2,11 @@ import { onBeforeUnmount, ref, shallowRef } from 'vue'
 import { useSessionStore } from '@/app/stores/session.store'
 import { getRuntimeConfig } from '@/platform/runtime/runtime-config'
 import { apiRequest } from '@/shared/api/http-client'
+import { ApiError } from '@/shared/api/error'
 import type { FlowApplication, WorkflowGraphTemplate, WorkflowJsonObject } from '../types'
 import { useWorkflowPreviewDisplays } from './useWorkflowPreviewDisplays'
+
+const RUNTIME_PREVIEW_RECONNECT_DELAY_MS = 2_000
 
 export interface RuntimePreviewSnapshot {
   workflow_runtime_id: string
@@ -53,6 +56,22 @@ export function matchesRuntimePreview(snapshot: RuntimePreviewSnapshot, frame: R
     && typeof frame.workflow_run_id === 'string' && Array.isArray(frame.displays)
 }
 
+function matchesRuntimeWorker(
+  current: RuntimePreviewSnapshot,
+  next: RuntimePreviewSnapshot,
+): boolean {
+  return current.workflow_runtime_id === next.workflow_runtime_id
+    && current.workflow_runtime_revision_id === next.workflow_runtime_revision_id
+    && current.workflow_app_version_id === next.workflow_app_version_id
+    && current.runtime_generation === next.runtime_generation
+    && current.worker_instance_id === next.worker_instance_id
+    && current.snapshot_fingerprint === next.snapshot_fingerprint
+}
+
+function shouldRetrySnapshot(error: unknown): boolean {
+  return !(error instanceof ApiError) || error.status === 429 || error.status >= 500
+}
+
 /** Runtime 只读观察；只接后续结果，不创建 Preview、不回放或自动调用。 */
 export function useRuntimePreview() {
   const session = useSessionStore()
@@ -67,9 +86,38 @@ export function useRuntimePreview() {
   let generation = 0
   let sequence = 0
   let rendering = false
+  let monitoredRuntimeId = ''
+  let reconnectTimer: ReturnType<typeof globalThis.setTimeout> | null = null
+
+  function cancelReconnect() {
+    if (reconnectTimer === null) return
+    globalThis.clearTimeout(reconnectTimer)
+    reconnectTimer = null
+  }
+
+  function clearDisplay() {
+    displays.revokePreviewImageObjectUrls()
+    lastRun.value = null
+    invocations.value = {}
+    sequence = 0
+  }
+
+  function scheduleReconnect(runtimeId: string, requestGeneration: number) {
+    if (
+      reconnectTimer !== null
+      || generation !== requestGeneration
+      || monitoredRuntimeId !== runtimeId
+    ) return
+    reconnectTimer = globalThis.setTimeout(() => {
+      reconnectTimer = null
+      void connect(runtimeId, requestGeneration)
+    }, RUNTIME_PREVIEW_RECONNECT_DELAY_MS)
+  }
 
   function close() {
+    monitoredRuntimeId = ''
     generation += 1
+    cancelReconnect()
     const oldSocket = socket
     socket = null
     if (oldSocket) {
@@ -79,25 +127,23 @@ export function useRuntimePreview() {
       oldSocket.close()
     }
     status.value = 'disconnected'
-    displays.revokePreviewImageObjectUrls()
-    lastRun.value = null
-    invocations.value = {}
+    clearDisplay()
     rendering = false
+    loading.value = false
   }
 
-  async function load(runtimeId: string) {
-    close()
-    const requestGeneration = generation
+  async function connect(runtimeId: string, requestGeneration: number) {
+    if (generation !== requestGeneration || monitoredRuntimeId !== runtimeId) return
     loading.value = true
-    snapshot.value = null
-    sequence = 0
-    error.value = ''
     try {
       const next = await apiRequest<RuntimePreviewSnapshot>(`/workflows/app-runtimes/${encodeURIComponent(runtimeId)}/preview-snapshot`)
-      if (generation !== requestGeneration) return
+      if (generation !== requestGeneration || monitoredRuntimeId !== runtimeId) return
+      if (snapshot.value && !matchesRuntimeWorker(snapshot.value, next)) clearDisplay()
       snapshot.value = next
+      error.value = ''
       if (next.observed_state !== 'running' || !next.active || !next.worker_instance_id) {
         status.value = 'stopped'
+        scheduleReconnect(runtimeId, requestGeneration)
         return
       }
       if (!session.websocketQueryTokenEnabled || !session.accessToken) {
@@ -113,7 +159,7 @@ export function useRuntimePreview() {
       socket = activeSocket
       status.value = 'connecting'
       activeSocket.onmessage = async (event: MessageEvent<string>) => {
-        if (generation !== requestGeneration || rendering) return
+        if (generation !== requestGeneration || socket !== activeSocket || rendering) return
         let receivedDisplay = false
         try {
           const frame = JSON.parse(event.data) as RuntimePreviewFrame
@@ -133,35 +179,51 @@ export function useRuntimePreview() {
           await displays.refreshDisplayOutputs({ project_id: next.project_id, readonly: true }, items.map((item) => ({
             nodeId: item.node_id, nodeTypeId: item.node_type_id, outputName: item.output_port, payload: item.payload,
           })), { keyByOutput: true })
-          if (generation === requestGeneration) {
+          if (generation === requestGeneration && socket === activeSocket) {
             status.value = 'live'
             error.value = frame.error_message || frame.display_error || ''
           }
         } catch (cause) {
-          if (generation === requestGeneration) error.value = String(cause)
+          if (generation === requestGeneration && socket === activeSocket) error.value = String(cause)
         } finally {
-          if (generation === requestGeneration) {
+          if (generation === requestGeneration && socket === activeSocket) {
             rendering = false
             if (receivedDisplay && activeSocket.readyState === WebSocket.OPEN) activeSocket.send('ready')
           }
         }
       }
       activeSocket.onclose = () => {
-        if (generation !== requestGeneration) return
-        // 保留已完成画面并明确标记旧数据；刷新时重新读取实际部署快照。
+        if (generation !== requestGeneration || socket !== activeSocket) return
+        socket = null
         generation += 1
+        const reconnectGeneration = generation
         displays.cancelPendingDisplayRefresh()
         rendering = false
         status.value = 'disconnected'
+        scheduleReconnect(runtimeId, reconnectGeneration)
       }
       activeSocket.onerror = () => {
-        if (generation === requestGeneration) status.value = 'disconnected'
+        if (generation === requestGeneration && socket === activeSocket) status.value = 'disconnected'
       }
     } catch (cause) {
-      if (generation === requestGeneration) error.value = String(cause)
+      if (generation === requestGeneration && monitoredRuntimeId === runtimeId) {
+        error.value = String(cause)
+        status.value = 'disconnected'
+        if (shouldRetrySnapshot(cause)) scheduleReconnect(runtimeId, requestGeneration)
+      }
     } finally {
       if (generation === requestGeneration) loading.value = false
     }
+  }
+
+  async function load(runtimeId: string) {
+    close()
+    const normalizedRuntimeId = runtimeId.trim()
+    snapshot.value = null
+    error.value = ''
+    if (!normalizedRuntimeId) return
+    monitoredRuntimeId = normalizedRuntimeId
+    await connect(normalizedRuntimeId, generation)
   }
 
   onBeforeUnmount(close)

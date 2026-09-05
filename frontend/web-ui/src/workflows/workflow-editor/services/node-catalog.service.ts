@@ -6,6 +6,7 @@ export interface WorkflowNodeCatalogQuery {
   nodePackId?: string
   payloadTypeId?: string
   keyword?: string
+  resolveParameterUi?: boolean
 }
 
 export async function getWorkflowNodeCatalog(query: WorkflowNodeCatalogQuery = {}): Promise<WorkflowNodeCatalogResponse> {
@@ -15,6 +16,7 @@ export async function getWorkflowNodeCatalog(query: WorkflowNodeCatalogQuery = {
       node_pack_id: query.nodePackId,
       payload_type_id: query.payloadTypeId,
       q: query.keyword,
+      resolve_parameter_ui: query.resolveParameterUi,
     },
   })
 }

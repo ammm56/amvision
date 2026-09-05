@@ -6,7 +6,9 @@ Runtime 监视显示实际发布图中 Image、Value、Table、Gallery Preview �
 
 在 Workflow App 详情的 Runtime 区域选择实例，点击“Runtime 监视”，进入 `/workflows/runtime/{workflow_runtime_id}/monitor`。画布可平移、缩放和打开图片/JSON/表格查看器；节点、参数和公开输入输出只读。说明节点复用安全 Markdown 渲染。打开、刷新或关闭页面不执行 Workflow，不启停 Runtime/Trigger。
 
-页面初始等待下一次实际执行，没有历史回放。停止态只显示所选发布图；重启、切版或断线后点击“刷新”重新取得实际快照并连接。断开连接后保留的已完成画面标记为断开状态，不代表当前生产数据。
+监视页读取节点目录时使用 `resolve_parameter_ui=false`，只取得只读画布需要的节点定义，不解析编辑器动态参数枚举。编辑画布仍使用默认值 `true`。因此打开监视页不会仅为设备/精度下拉选项在 Backend 中加载 Torch/CUDA。
+
+页面初始等待下一次实际执行，没有历史回放。停止、重启、异常恢复或短暂断线期间，仍打开的监视页面每 2 秒重新读取一次权威 Runtime 快照；Runtime 恢复正常后按新的 Worker 身份自动连接。Worker 身份或发布版本变化时清除旧代显示并重置消息序号，普通网络重连保留最近一次完成画面。页面关闭后立即停止重连。该过程不补发历史、不调用 Workflow，也不进入 Runtime 或 Trigger 的业务路径。
 
 轻量 App Mode、输入表单、显示选择及节点执行中更新尚未实现，实施顺序见[实施基线](../development/workflow-runtime-preview-and-app-mode.md)。
 
@@ -106,5 +108,7 @@ WebSocket 使用现有鉴权：第三方客户端可传 `Authorization: Bearer <
 - `frontend/web-ui/e2e/runtime-preview.spec.ts`：需显式传入验证 App/Runtime ID；实际页面、图片查看器、只读边界、刷新不执行、桌面/窄视口及浏览器短测。
 
 2026-09-05 的一小时实测共顺序调用 1,115 次，16 个客户端收到 17,840/17,840 个 2,628,481-byte 消息，失败、丢帧和客户端错误均为 0；Runtime Worker 原生句柄净增 0。调用耗时 p50 101.143 ms、p95 1,775.461 ms、p99 2,048.877 ms、最大 4,775.529 ms。相同内容和节拍的单客户端 3 分钟对照为 58/58 成功，p50 94.801 ms、p95 230.403 ms、p99 236.021 ms、最大 247.644 ms，资源无增长。这把尾延迟定位到同一 Backend 上的 16 路大图发送竞争，不是单客户端显示或 Runtime Worker 泄漏。资源释放门禁通过，但 16 个大图客户端下的尾延迟门禁未通过，因此当前不据此推进 App Mode 或宣称工业长期认证。
+
+只读监视页跳过编辑器动态参数解析后又完成一轮 3 分钟、16 客户端对照：57/57 次调用和 912/912 个 2,628,477-byte 消息成功，零丢帧/错误，Backend Private/RSS 分别净增 0.04/0.08 MiB，Runtime Worker 句柄净增 0；p50 89.479 ms、p95 206.727 ms，p99 1,744.649 ms、最大 1,757.144 ms。该结果确认内存修复有效，但不能覆盖一小时门禁，约 1.7 秒的偶发尾延迟仍存在。
 
 实际生产 Workflow 的 HTTP、ZeroMQ、本机共享内存 .NET SDK 调用均已验证成功，ZeroMQ 与本机共享内存业务结果一致；临时 Directory Trigger 也已验证能触发同一显示链路。另以开发环境 4 个实际 YOLO11 classification Deployment 各执行 20 次有界同步调用，每个 Deployment 同时发起 2 个请求；4 组均由 `instance-0`/`instance-1` 各完成 10 次，错误计数与原生句柄增量均为 0。该项只验证不同实际模型的双实例路由、正确性与请求后资源回落，不把 4 个模型同时承压的 HTTP base64 延迟作为单 Workflow 的生产性能指标，也不代替现场硬件和更长运行周期的独立门禁。

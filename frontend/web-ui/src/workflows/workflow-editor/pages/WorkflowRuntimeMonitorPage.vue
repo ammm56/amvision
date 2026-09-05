@@ -40,7 +40,7 @@ const definitions = ref<NodeDefinition[]>([])
 const definitionsReady = ref(false)
 const zoom = ref(.8)
 onMounted(async () => {
-  try { definitions.value = (await getWorkflowNodeCatalog()).node_definitions }
+  try { definitions.value = (await getWorkflowNodeCatalog({ resolveParameterUi: false })).node_definitions }
   catch (cause) { error.value = String(cause) }
   finally { definitionsReady.value = true }
 })

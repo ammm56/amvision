@@ -15,7 +15,9 @@ test('published readonly graph displays actual Runtime image and JSON without ex
   const section = Object.values(config).find((value) => value && typeof value === 'object' && 'access_token' in value) as { access_token: string }
   const headers = { Authorization: `Bearer ${section.access_token}` }
   const invocations: string[] = []
+  const nodeCatalogRequests: string[] = []
   page.on('request', (request) => { if (/\/(invoke|runs|preview-runs)(\?|$)/.test(request.url()) && request.method() === 'POST') invocations.push(request.url()) })
+  page.on('request', (request) => { if (request.url().includes('/workflows/node-catalog')) nodeCatalogRequests.push(request.url()) })
   await page.goto(`/workflows/apps/${appId}`)
   await page.getByRole('button', { name: 'Runtime 监视', exact: true }).click()
   await expect(page).toHaveURL(new RegExp(`/workflows/runtime/${runtimeId}/monitor$`))
@@ -23,6 +25,7 @@ test('published readonly graph displays actual Runtime image and JSON without ex
   await expect(page.locator('[data-node-id="image_preview"] header strong')).toHaveText('Image Preview', { timeout: 15000 })
   await expect(page.locator('[data-node-id="image_preview"] .runtime-canvas__ports')).toContainText('image')
   await expect(page.locator('[data-node-id="app-entry-boundary"]')).toContainText('request_json')
+  expect(nodeCatalogRequests.some((url) => new URL(url).searchParams.get('resolve_parameter_ui') === 'false')).toBe(true)
   expect(invocations).toEqual([])
   expect(await page.locator('vite-error-overlay').count()).toBe(0)
   const invoke = async (sequence: number) => {
@@ -56,6 +59,28 @@ test('published readonly graph displays actual Runtime image and JSON without ex
   expect(await page.locator('.workflow-graph-node-preview').count()).toBe(0)
   expect(invocations).toEqual([])
   await invoke(3)
+  const runtimeApi = `http://127.0.0.1:5600/api/v1/workflows/app-runtimes/${runtimeId}`
+  const beforeRestart = await (await page.request.get(`${runtimeApi}/preview-snapshot`, { headers })).json()
+  let runtimeStarted = false
+  try {
+    const stopResponse = await page.request.post(`${runtimeApi}/stop`, { headers })
+    expect(stopResponse.ok()).toBe(true)
+    await expect(page.getByRole('status')).toHaveText(/已断开|Runtime 未运行/, { timeout: 30_000 })
+    const startResponse = await page.request.post(`${runtimeApi}/start`, { headers })
+    expect(startResponse.ok()).toBe(true)
+    runtimeStarted = true
+    await expect.poll(async () => {
+      const response = await page.request.get(`${runtimeApi}/preview-snapshot`, { headers })
+      const current = await response.json()
+      return current.observed_state === 'running'
+        && current.worker_instance_id !== beforeRestart.worker_instance_id
+    }, { timeout: 60_000 }).toBe(true)
+    await expect(page.getByRole('status')).toHaveText('等待下次执行', { timeout: 30_000 })
+    await invoke(4)
+    if (screenshotDir) await page.screenshot({ path: resolve(screenshotDir, 'runtime-preview-reconnected.png') })
+  } finally {
+    if (!runtimeStarted) await page.request.post(`${runtimeApi}/start`, { headers })
+  }
   const cdp = await page.context().newCDPSession(page)
   await cdp.send('Performance.enable')
   const sample = async () => {

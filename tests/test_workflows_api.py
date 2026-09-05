@@ -653,6 +653,35 @@ def test_workflow_node_catalog_returns_effective_parameter_ui_schema(tmp_path: P
         session_factory.engine.dispose()
 
 
+def test_workflow_node_catalog_can_skip_editor_parameter_ui_resolution(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """只读显示读取节点定义时不加载编辑器动态参数运行时。"""
+
+    client, session_factory, _ = _create_test_client(tmp_path)
+
+    def fail_if_resolved(_node_definitions):
+        raise AssertionError("只读节点目录不应补齐编辑器参数 UI")
+
+    monkeypatch.setattr(
+        "backend.service.api.rest.v1.routes.workflows.node_catalog._build_effective_node_definitions",
+        fail_if_resolved,
+    )
+    try:
+        with client:
+            response = client.get(
+                "/api/v1/workflows/node-catalog",
+                params={"resolve_parameter_ui": "false"},
+                headers=_build_workflow_read_headers(),
+            )
+
+        assert response.status_code == 200
+        assert response.json()["node_definitions"]
+    finally:
+        session_factory.engine.dispose()
+
+
 def test_publish_list_get_and_compare_workflow_app_versions(tmp_path: Path) -> None:
     """验证草稿可以发布为不可变版本，并执行 CAS、去重和契约比较。"""
 

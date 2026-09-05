@@ -31,6 +31,10 @@ def get_workflow_node_catalog(
     node_pack_id: Annotated[str | None, Query(description="按节点包 id 过滤")] = None,
     payload_type_id: Annotated[str | None, Query(description="按端口 payload 类型过滤")] = None,
     q: Annotated[str | None, Query(description="按节点类型 id、显示名称或说明搜索")] = None,
+    resolve_parameter_ui: Annotated[
+        bool,
+        Query(description="是否补齐编辑器参数 UI 和动态枚举选项"),
+    ] = True,
 ) -> WorkflowNodeCatalogResponse:
     """按查询条件读取当前 workflow 节点目录快照。
 
@@ -39,6 +43,7 @@ def get_workflow_node_catalog(
     - node_pack_id：可选节点包 id 过滤条件。
     - payload_type_id：可选端口 payload 类型过滤条件。
     - q：可选关键词搜索条件。
+    - resolve_parameter_ui：是否补齐编辑器参数 UI；只读显示页面不需要补齐。
     - principal：当前认证主体。
     - node_catalog_registry：统一节点目录注册表。
 
@@ -67,7 +72,11 @@ def get_workflow_node_catalog(
         node_pack_id=node_pack_id,
         filters_active=any(item is not None and item.strip() for item in (category, node_pack_id, payload_type_id, q)),
     )
-    effective_node_definitions = _build_effective_node_definitions(filtered_node_definitions)
+    effective_node_definitions = (
+        _build_effective_node_definitions(filtered_node_definitions)
+        if resolve_parameter_ui
+        else filtered_node_definitions
+    )
     return WorkflowNodeCatalogResponse(
         node_pack_manifests=filtered_node_pack_manifests,
         payload_contracts=filtered_payload_contracts,
