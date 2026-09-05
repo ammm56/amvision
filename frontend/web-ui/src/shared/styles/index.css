@@ -691,6 +691,19 @@ textarea:focus-visible {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  min-width: 0;
+}
+
+.file-picker__file-name {
+  min-width: 0;
+  overflow: hidden;
+  overflow-wrap: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-picker__file-size {
+  flex: 0 0 auto;
 }
 
 .file-picker__actions {

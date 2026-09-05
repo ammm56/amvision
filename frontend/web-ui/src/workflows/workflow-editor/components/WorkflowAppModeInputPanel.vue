@@ -1,7 +1,6 @@
 <template>
-  <form class="app-mode-inputs" @submit.prevent="emit('run')">
+  <form class="app-mode-inputs" :aria-label="t('workflowEditor.appMode.inputs')" @submit.prevent="emit('run')">
     <header>
-      <h2>{{ t('workflowEditor.appMode.inputs') }}</h2>
       <Button type="submit" variant="primary" :loading="running" :disabled="disabled">
         <Play :size="16" />
         {{ t('workflowEditor.appMode.run') }}
@@ -128,14 +127,8 @@ function label(input: WorkflowAppContractInput): string {
 .app-mode-inputs > header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: var(--am-space-md);
-}
-
-.app-mode-inputs h2 {
-  margin: 0;
-  color: var(--am-text-strong);
-  font-size: 17px;
 }
 
 .app-mode-inputs__empty {
@@ -177,6 +170,15 @@ function label(input: WorkflowAppContractInput): string {
 
 .app-mode-inputs :deep(.file-picker__dropzone) {
   grid-template-columns: auto minmax(0, 1fr);
+  min-width: 0;
+}
+
+.app-mode-inputs :deep(.file-picker),
+.app-mode-inputs :deep(.file-picker__content),
+.app-mode-inputs :deep(.file-picker__files),
+.app-mode-inputs :deep(.file-picker__files li) {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .app-mode-inputs :deep(.file-picker__actions) {

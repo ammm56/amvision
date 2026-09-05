@@ -8655,10 +8655,10 @@ for (const locale of ['zh-CN', 'en-US', 'ja-JP', 'ko-KR'] as const) {
 }
 
 const runtimePreviewMessages: Record<SupportedLocale, MessageSchema> = {
-  'zh-CN': { title: 'Runtime 监视', readonly: '只读发布画布', back: '应用详情', parameters: '参数（只读）', disconnected: '已断开 · 画面非实时', stopped: 'Runtime 未运行', connecting: '正在连接', waiting: '等待下次执行', live: '已显示执行结果', authUnavailable: 'WebSocket 认证不可用', capacityExceeded: '监视连接已满', nodeDefinitionWarning: '部分节点定义与发布版本不一致，已使用只读回退显示' },
+  'zh-CN': { title: '运行时监视', readonly: '只读发布画布', back: '应用详情', parameters: '参数（只读）', disconnected: '已断开 · 画面非实时', stopped: 'Runtime 未运行', connecting: '正在连接', waiting: '等待下次执行', live: '已显示执行结果', authUnavailable: 'WebSocket 认证不可用', capacityExceeded: '监视连接已满', nodeDefinitionWarning: '部分节点定义与发布版本不一致，已使用只读回退显示' },
   'en-US': { title: 'Runtime monitor', readonly: 'Read-only published graph', back: 'App details', parameters: 'Parameters (read-only)', disconnected: 'Disconnected · stale display', stopped: 'Runtime not running', connecting: 'Connecting', waiting: 'Waiting for next run', live: 'Run result displayed', authUnavailable: 'WebSocket authentication unavailable', capacityExceeded: 'Monitor connection limit reached', nodeDefinitionWarning: 'Some node definitions differ from the published version; read-only fallback is active' },
-  'ja-JP': { title: 'Runtime モニター', readonly: '公開グラフ（読み取り専用）', back: 'アプリ詳細', parameters: 'パラメーター（読み取り専用）', disconnected: '切断 · 表示は最新ではありません', stopped: 'Runtime 停止中', connecting: '接続中', waiting: '次の実行を待機', live: '実行結果を表示中', authUnavailable: 'WebSocket 認証を利用できません', capacityExceeded: 'モニター接続数が上限に達しました', nodeDefinitionWarning: '一部のノード定義が公開版と異なるため、読み取り専用の代替表示を使用しています' },
-  'ko-KR': { title: 'Runtime 모니터', readonly: '게시 그래프 (읽기 전용)', back: '앱 상세', parameters: '매개변수 (읽기 전용)', disconnected: '연결 끊김 · 이전 화면', stopped: 'Runtime 실행 안 됨', connecting: '연결 중', waiting: '다음 실행 대기 중', live: '실행 결과 표시', authUnavailable: 'WebSocket 인증을 사용할 수 없음', capacityExceeded: '모니터 연결 한도에 도달했습니다', nodeDefinitionWarning: '일부 노드 정의가 게시 버전과 달라 읽기 전용 대체 표시를 사용합니다' },
+  'ja-JP': { title: 'ランタイム監視', readonly: '公開グラフ（読み取り専用）', back: 'アプリ詳細', parameters: 'パラメーター（読み取り専用）', disconnected: '切断 · 表示は最新ではありません', stopped: 'Runtime 停止中', connecting: '接続中', waiting: '次の実行を待機', live: '実行結果を表示中', authUnavailable: 'WebSocket 認証を利用できません', capacityExceeded: 'モニター接続数が上限に達しました', nodeDefinitionWarning: '一部のノード定義が公開版と異なるため、読み取り専用の代替表示を使用しています' },
+  'ko-KR': { title: '런타임 모니터링', readonly: '게시 그래프 (읽기 전용)', back: '앱 상세', parameters: '매개변수 (읽기 전용)', disconnected: '연결 끊김 · 이전 화면', stopped: 'Runtime 실행 안 됨', connecting: '연결 중', waiting: '다음 실행 대기 중', live: '실행 결과 표시', authUnavailable: 'WebSocket 인증을 사용할 수 없음', capacityExceeded: '모니터 연결 한도에 도달했습니다', nodeDefinitionWarning: '일부 노드 정의가 게시 버전과 달라 읽기 전용 대체 표시를 사용합니다' },
 }
 for (const locale of ['zh-CN', 'en-US', 'ja-JP', 'ko-KR'] as const) {
   (baseMessages[locale].workflowEditor as MessageSchema).runtimePreview = runtimePreviewMessages[locale]
@@ -8666,13 +8666,13 @@ for (const locale of ['zh-CN', 'en-US', 'ja-JP', 'ko-KR'] as const) {
 
 const workflowAppModeMessages: Record<SupportedLocale, MessageSchema> = {
   'zh-CN': {
-    action: 'App Mode', title: 'Workflow App', configTitle: 'App Mode 配置', pageTitle: '页面标题', displays: '显示输出',
-    noPreviewOutputs: '当前画布没有可用的 Preview 输出', apply: '应用', remove: '移除配置', configured: 'App Mode 配置已更新，保存并发布后生效', removed: 'App Mode 配置已移除，保存并发布后生效', invalidReference: '引用已失效，取消选择后可保存', moveUp: '上移', moveDown: '下移',
+    action: '应用模式', title: 'Workflow App', configTitle: '应用模式配置', pageTitle: '页面标题', displays: '显示输出',
+    noPreviewOutputs: '当前画布没有可用的 Preview 输出', apply: '应用', remove: '移除配置', configured: '应用模式配置已更新，保存并发布后生效', removed: '应用模式配置已移除，保存并发布后生效', invalidReference: '引用已失效，取消选择后可保存', moveUp: '上移', moveDown: '下移',
     sizeSmall: '小', sizeMedium: '中', sizeLarge: '大', inputs: '输入', noInputs: '此 Workflow 没有输入', run: '运行',
     inputImage: '图像', inputImageBase64: 'Base64 图像', inputJson: 'JSON', inputText: '文本', inputFile: '文件', inputFiles: '多个文件',
     previewImage: '图像预览', previewValue: '值预览', previewTable: '表格预览', previewFrameWindow: '帧窗口预览',
     upload: '上传', reference: '图像引用', imageReferencePlaceholder: '输入图像引用 JSON', textPlaceholder: '输入文本', jsonPlaceholder: '输入 JSON 值',
-    waitingOutput: '等待 Runtime 执行结果', noCurrentOutput: '本次执行没有此输出', notConfigured: '当前发布版本未配置 App Mode', runtimeResult: '运行结果', monitor: '只读画布',
+    waitingOutput: '等待 Runtime 执行结果', noCurrentOutput: '本次执行没有此输出', notConfigured: '当前发布版本未配置应用模式', runtimeResult: '运行结果',
   },
   'en-US': {
     action: 'App Mode', title: 'Workflow App', configTitle: 'App Mode settings', pageTitle: 'Page title', displays: 'Display outputs',
@@ -8681,26 +8681,26 @@ const workflowAppModeMessages: Record<SupportedLocale, MessageSchema> = {
     inputImage: 'Image', inputImageBase64: 'Base64 image', inputJson: 'JSON', inputText: 'Text', inputFile: 'File', inputFiles: 'Files',
     previewImage: 'Image preview', previewValue: 'Value preview', previewTable: 'Table preview', previewFrameWindow: 'Frame window preview',
     upload: 'Upload', reference: 'Image reference', imageReferencePlaceholder: 'Enter an image reference in JSON', textPlaceholder: 'Enter text', jsonPlaceholder: 'Enter a JSON value',
-    waitingOutput: 'Waiting for a Runtime result', noCurrentOutput: 'No output for this run', notConfigured: 'The published version has no App Mode settings', runtimeResult: 'Run result', monitor: 'Read-only graph',
+    waitingOutput: 'Waiting for a Runtime result', noCurrentOutput: 'No output for this run', notConfigured: 'The published version has no App Mode settings', runtimeResult: 'Run result',
   },
   'ja-JP': {
-    action: 'App Mode', title: 'Workflow App', configTitle: 'App Mode 設定', pageTitle: 'ページタイトル', displays: '表示出力',
-    noPreviewOutputs: '現在のグラフに使用可能な Preview 出力がありません', apply: '適用', remove: '設定を削除', configured: 'App Mode 設定を更新しました。保存して公開すると反映されます', removed: 'App Mode 設定を削除しました。保存して公開すると反映されます', invalidReference: '参照は無効です。選択を解除してから保存してください', moveUp: '上へ移動', moveDown: '下へ移動',
+    action: 'アプリモード', title: 'Workflow App', configTitle: 'アプリモード設定', pageTitle: 'ページタイトル', displays: '表示出力',
+    noPreviewOutputs: '現在のグラフに使用可能な Preview 出力がありません', apply: '適用', remove: '設定を削除', configured: 'アプリモード設定を更新しました。保存して公開すると反映されます', removed: 'アプリモード設定を削除しました。保存して公開すると反映されます', invalidReference: '参照は無効です。選択を解除してから保存してください', moveUp: '上へ移動', moveDown: '下へ移動',
     sizeSmall: '小', sizeMedium: '中', sizeLarge: '大', inputs: '入力', noInputs: 'この Workflow には入力がありません', run: '実行',
     inputImage: '画像', inputImageBase64: 'Base64 画像', inputJson: 'JSON', inputText: 'テキスト', inputFile: 'ファイル', inputFiles: '複数ファイル',
     previewImage: '画像プレビュー', previewValue: '値プレビュー', previewTable: 'テーブルプレビュー', previewFrameWindow: 'フレームウィンドウプレビュー',
     upload: 'アップロード', reference: '画像参照', imageReferencePlaceholder: '画像参照を JSON で入力', textPlaceholder: 'テキストを入力', jsonPlaceholder: 'JSON 値を入力',
-    waitingOutput: 'Runtime の実行結果を待機中', noCurrentOutput: '今回の実行にはこの出力がありません', notConfigured: '現在の公開バージョンには App Mode 設定がありません', runtimeResult: '実行結果', monitor: '読み取り専用グラフ',
+    waitingOutput: 'Runtime の実行結果を待機中', noCurrentOutput: '今回の実行にはこの出力がありません', notConfigured: '現在の公開バージョンにはアプリモード設定がありません', runtimeResult: '実行結果',
   },
   'ko-KR': {
     runtimeResult: '실행 결과',
-    action: 'App Mode', title: 'Workflow App', configTitle: 'App Mode 설정', pageTitle: '페이지 제목', displays: '표시 출력',
-    noPreviewOutputs: '현재 그래프에 사용할 수 있는 Preview 출력이 없습니다', apply: '적용', remove: '설정 제거', configured: 'App Mode 설정이 업데이트되었습니다. 저장 및 게시 후 적용됩니다', removed: 'App Mode 설정이 제거되었습니다. 저장 및 게시 후 적용됩니다', invalidReference: '참조가 유효하지 않습니다. 선택을 해제한 후 저장하세요', moveUp: '위로 이동', moveDown: '아래로 이동',
+    action: '앱 모드', title: 'Workflow App', configTitle: '앱 모드 설정', pageTitle: '페이지 제목', displays: '표시 출력',
+    noPreviewOutputs: '현재 그래프에 사용할 수 있는 Preview 출력이 없습니다', apply: '적용', remove: '설정 제거', configured: '앱 모드 설정이 업데이트되었습니다. 저장 및 게시 후 적용됩니다', removed: '앱 모드 설정이 제거되었습니다. 저장 및 게시 후 적용됩니다', invalidReference: '참조가 유효하지 않습니다. 선택을 해제한 후 저장하세요', moveUp: '위로 이동', moveDown: '아래로 이동',
     sizeSmall: '작게', sizeMedium: '중간', sizeLarge: '크게', inputs: '입력', noInputs: '이 Workflow에는 입력이 없습니다', run: '실행',
     inputImage: '이미지', inputImageBase64: 'Base64 이미지', inputJson: 'JSON', inputText: '텍스트', inputFile: '파일', inputFiles: '여러 파일',
     previewImage: '이미지 미리보기', previewValue: '값 미리보기', previewTable: '표 미리보기', previewFrameWindow: '프레임 창 미리보기',
     upload: '업로드', reference: '이미지 참조', imageReferencePlaceholder: '이미지 참조를 JSON으로 입력', textPlaceholder: '텍스트 입력', jsonPlaceholder: 'JSON 값 입력',
-    waitingOutput: 'Runtime 실행 결과 대기 중', noCurrentOutput: '이번 실행에는 이 출력이 없습니다', notConfigured: '현재 게시 버전에 App Mode 설정이 없습니다', monitor: '읽기 전용 그래프',
+    waitingOutput: 'Runtime 실행 결과 대기 중', noCurrentOutput: '이번 실행에는 이 출력이 없습니다', notConfigured: '현재 게시 버전에 앱 모드 설정이 없습니다',
   },
 }
 for (const locale of ['zh-CN', 'en-US', 'ja-JP', 'ko-KR'] as const) {

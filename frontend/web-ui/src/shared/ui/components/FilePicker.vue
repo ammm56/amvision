@@ -31,11 +31,11 @@
         <component :is="iconComponent" :size="22" />
       </div>
       <div class="file-picker__content">
-        <strong>{{ selectedSummary }}</strong>
-        <span>{{ description || t('common.filePicker.dropHint') }}</span>
+        <strong v-if="selectedFiles.length === 0">{{ t('common.filePicker.noFile') }}</strong>
+        <span v-if="selectedFiles.length === 0">{{ description || t('common.filePicker.dropHint') }}</span>
         <ul v-if="selectedFiles.length > 0" class="file-picker__files">
           <li v-for="file in selectedFiles" :key="`${file.name}-${file.size}-${file.lastModified}`">
-            <span class="file-picker__file-name">{{ file.name }}</span>
+            <span class="file-picker__file-name" :title="file.name">{{ file.name }}</span>
             <span class="file-picker__file-size">{{ formatFileSize(file.size) }}</span>
           </li>
         </ul>
@@ -102,11 +102,6 @@ const inputId = computed(() => props.id || generatedInputId)
 const selectedFiles = computed(() => {
   if (Array.isArray(props.modelValue)) return props.modelValue
   return props.modelValue ? [props.modelValue] : []
-})
-const selectedSummary = computed(() => {
-  if (selectedFiles.value.length === 0) return t('common.filePicker.noFile')
-  if (selectedFiles.value.length === 1) return selectedFiles.value[0].name
-  return t('common.filePicker.fileCount', { count: selectedFiles.value.length })
 })
 const iconComponent = computed(() => {
   if (props.icon === 'image') return ImageUp

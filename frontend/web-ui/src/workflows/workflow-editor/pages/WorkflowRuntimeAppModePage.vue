@@ -11,7 +11,7 @@
       </span>
       <div class="runtime-app-mode__actions">
         <Button variant="secondary" :disabled="loading" @click="load(runtimeId)">{{ t('common.refresh') }}</Button>
-        <Button v-if="snapshot" variant="secondary" @click="router.push(`/workflows/runtime/${encodeURIComponent(runtimeId)}/monitor`)">{{ t('workflowEditor.appMode.monitor') }}</Button>
+        <Button v-if="snapshot" variant="secondary" @click="router.push(`/workflows/runtime/${encodeURIComponent(runtimeId)}/monitor`)">{{ t('workflowEditor.runtimePreview.title') }}</Button>
         <Button v-if="snapshot" variant="secondary" @click="router.push(`/workflows/apps/${snapshot.application_id}`)">{{ t('workflowEditor.runtimePreview.back') }}</Button>
       </div>
     </header>

@@ -6,10 +6,10 @@ const runtimeId = process.env.AMVISION_RUNTIME_APP_MODE_ID
 test.skip(!runtimeId, 'Requires an explicitly selected development App Mode Runtime')
 
 const localeExpectations = [
-  { locale: 'zh-CN', inputs: '输入', labels: ['图像', 'Base64 图像', 'JSON', '文本', '文件', '多个文件'], displays: ['图像预览', '值预览'] },
-  { locale: 'en-US', inputs: 'Inputs', labels: ['Image', 'Base64 image', 'JSON', 'Text', 'File', 'Files'], displays: ['Image preview', 'Value preview'] },
-  { locale: 'ja-JP', inputs: '入力', labels: ['画像', 'Base64 画像', 'JSON', 'テキスト', 'ファイル', '複数ファイル'], displays: ['画像プレビュー', '値プレビュー'] },
-  { locale: 'ko-KR', inputs: '입력', labels: ['이미지', 'Base64 이미지', 'JSON', '텍스트', '파일', '여러 파일'], displays: ['이미지 미리보기', '값 미리보기'] },
+  { locale: 'zh-CN', inputs: '输入', monitor: '运行时监视', labels: ['图像', 'Base64 图像', 'JSON', '文本', '文件', '多个文件'], displays: ['图像预览', '值预览'] },
+  { locale: 'en-US', inputs: 'Inputs', monitor: 'Runtime monitor', labels: ['Image', 'Base64 image', 'JSON', 'Text', 'File', 'Files'], displays: ['Image preview', 'Value preview'] },
+  { locale: 'ja-JP', inputs: '入力', monitor: 'ランタイム監視', labels: ['画像', 'Base64 画像', 'JSON', 'テキスト', 'ファイル', '複数ファイル'], displays: ['画像プレビュー', '値プレビュー'] },
+  { locale: 'ko-KR', inputs: '입력', monitor: '런타임 모니터링', labels: ['이미지', 'Base64 이미지', 'JSON', '텍스트', '파일', '여러 파일'], displays: ['이미지 미리보기', '값 미리보기'] },
 ] as const
 
 async function selectLocale(page: Page, locale: string): Promise<void> {
@@ -34,13 +34,16 @@ test('App Mode submits real public inputs and displays the matching Runtime resu
   await page.goto(`/workflows/runtime/${runtimeId}/app-mode`)
   for (const expectation of localeExpectations) {
     await selectLocale(page, expectation.locale)
-    await expect(page.getByRole('heading', { name: expectation.inputs, exact: true })).toBeVisible({ timeout: 30_000 })
+    await expect(page.locator('.app-mode-inputs')).toHaveAttribute('aria-label', expectation.inputs, { timeout: 30_000 })
+    await expect(page.getByText(expectation.inputs, { exact: true })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: expectation.monitor, exact: true })).toBeVisible()
     await expect(page.locator('.app-mode-inputs__label strong')).toHaveText([...expectation.labels])
     await expect(page.locator('.app-mode-displays__slot > header strong')).toHaveText([...expectation.displays])
     await expect(page.getByText('body', { exact: true })).toHaveCount(0)
   }
   await selectLocale(page, 'zh-CN')
-  await expect(page.getByRole('heading', { name: '输入', exact: true })).toBeVisible({ timeout: 30_000 })
+  await expect(page.locator('.app-mode-inputs')).toHaveAttribute('aria-label', '输入', { timeout: 30_000 })
+  await expect(page.getByText('输入', { exact: true })).toHaveCount(0)
   await expect(page.locator('.app-mode-inputs__label strong')).toHaveText([
     '图像',
     'Base64 图像',
@@ -63,6 +66,12 @@ test('App Mode submits real public inputs and displays the matching Runtime resu
   const imagePath = resolve('../../sdks/dotnet/apps/AMVision.Console/Resources/Img/Image_20260721103308382.bmp')
   const imageReferenceField = page.locator('.app-mode-inputs__field').first()
   await imageReferenceField.locator('input[type="file"]').setInputFiles(imagePath)
+  await expect(imageReferenceField.getByText('点击选择或拖拽文件到这里', { exact: true })).toHaveCount(0)
+  await expect(imageReferenceField.locator('.file-picker__file-name')).toHaveText('Image_20260721103308382.bmp')
+  expect(await imageReferenceField.locator('.file-picker__dropzone').evaluate((dropzone) => {
+    const elements = [dropzone, ...dropzone.querySelectorAll('.file-picker__content, .file-picker__files, .file-picker__files li')]
+    return elements.every((element) => element.scrollWidth <= element.clientWidth + 1)
+  })).toBe(true)
   await page.getByPlaceholder('输入 JSON 值').fill('{"barqrcode":"app-mode-e2e"}')
 
   const responsePromise = page.waitForResponse((response) => (
@@ -115,4 +124,9 @@ test('App Mode submits real public inputs and displays the matching Runtime resu
     ))).toBe(1)
     await page.screenshot({ path: resolve(screenshotDir, 'runtime-app-mode-compact-dark.png'), fullPage: true })
   }
+
+  await page.getByRole('button', { name: '应用详情', exact: true }).click()
+  await expect(page).toHaveURL(/\/workflows\/apps\/workflow-app-/)
+  await expect(page.getByRole('button', { name: '运行时监视', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '应用模式', exact: true })).toBeVisible()
 })
