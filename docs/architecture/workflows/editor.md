@@ -55,9 +55,9 @@ Preview 使用编辑态快照，不创建生产 Runtime：
 
 Node Preview 只执行目标节点的祖先闭包。图像取参面板必须先完成上传与参数写回，再生成同一份 inline snapshot 发起 Preview。
 
-### 待实现：Runtime 画布监视与应用模式
+### Runtime 画布监视与待实现的应用模式
 
-已接受的扩展是让同一 Workflow App 提供只读 Runtime 画布监视和轻量应用模式，复用图中预览节点的显示内容与组件，观察实际 Runtime，而非重新执行编辑态 Preview。预览显示输出与 App 公开业务返回分开，不依赖 full record；运行视图使用实际激活版本，不使用最新草稿。实现顺序、通信/资源边界和验收统一见 [Runtime 预览显示与应用模式实施基线](../../development/workflow-runtime-preview-and-app-mode.md)。本节仅标记待实现方向，下文现有状态流和历史恢复行为不自动适用于新增显示链路。
+同一 Workflow App 的只读 Runtime 画布监视已经实现，轻量应用模式待实现。两种运行视图复用图中 Preview 节点的显示内容与组件，观察实际 Runtime，而非重新执行编辑态 Preview。应用模式自动呈现当前发布版 App Entry 的全部公开输入，只配置 Preview 显示区域；不实现逐节点进度或强制终止终态。预览显示输出与 App 公开业务返回分开，不依赖 full record；运行视图使用实际激活版本，不使用最新草稿。实现顺序、通信/资源边界和验收统一见 [Runtime 预览显示与应用模式实施基线](../../development/workflow-runtime-preview-and-app-mode.md)。
 
 ## 发布与版本
 

@@ -2,7 +2,7 @@
 
 ## 1. 状态与目标
 
-状态：设计已接受；第一阶段“Runtime 完成后显示到只读画布”已实现，已覆盖实际图片/JSON、同步/异步、ZeroMQ/本机共享内存、Directory Trigger、.NET SDK 和浏览器验证。一小时、16 个大图客户端的资源稳定性门禁已完成，但调用 p95/p99 尾延迟未通过；单客户端对照已把问题定位到多客户端大图广播竞争。不据此宣称工业长期认证。执行中显示、轻量 App Mode 及其配置尚未实现。当前页面和协议见 [Runtime 预览监视](../api/workflow-runtime-preview.md)。
+状态：设计已接受；“Runtime 完成后显示到只读画布”已实现，已覆盖实际图片/JSON、同步/异步、ZeroMQ/本机共享内存、Directory Trigger、.NET SDK 和浏览器验证。一小时、16 个大图客户端的资源稳定性门禁已完成，但调用 p95/p99 尾延迟未通过；单客户端对照已把问题定位到多客户端大图广播竞争。当前接受这一已知性能边界，不为多客户端大图广播增加队列、缓存、协议分支或独立服务，也不据此宣称工业长期认证。逐节点进度和强制终止终态不再纳入实现范围，下一步只实现轻量 App Mode。当前页面和协议见 [Runtime 预览监视](../api/workflow-runtime-preview.md)。
 
 项目核心仍是 Workflow 节点编排、长期 Runtime 和 Trigger。新增能力主要用于查看生产执行产生的图片、JSON、文本等信息，直接复用图中的预览节点和已有显示组件，不复制执行逻辑。
 
@@ -14,10 +14,10 @@
 
 | 部分 | 当前事实 | 待补齐能力 |
 | --- | --- | --- |
-| 预览节点 | Image、Value、Table、Gallery 等节点已有结构化显示输出，已接入完成后显示 | 后续逐节点显示仍待实施 |
+| 预览节点 | Image、Value、Table、Gallery 等节点已有结构化显示输出，已接入完成后显示 | 保持每次执行完成后一次性交接，不实现逐节点进度 |
 | 编辑画布 | 从同步 Preview 返回的 `node_records` 识别 `*-preview` 内容；显示适配已与 Preview Run 解耦 | 共用显示组件，后续再扩展轻量 App Mode |
-| 高性能 Runtime | none 等模式不保留完整节点输入输出载荷，显示走独立单次交接 | 继续完成实际负载、尾延迟及长时资源门禁 |
-| 节点过程信息 | 已有事件会清理载荷；Worker 部分节点消息用于超时控制 | 可承载预览内容且不阻塞业务的观察链路 |
+| 高性能 Runtime | none 等模式不保留完整节点输入输出载荷，显示走独立单次交接 | 保持现有业务链路和有界观察通道，不扩大数据面 |
+| 节点过程信息 | 已有事件会清理载荷；Worker 部分节点消息用于超时控制 | 不复用为逐节点显示，不增加过程消息协议 |
 | 自定义节点 | 可生成已有标准 payload，Catalog/Node Pack 已有注册体系 | 全新前端渲染组件的受控扩展尚需单独实现 |
 
 不能只增加一个应用模式按钮就宣称 Runtime 已能显示，也不能直接复用现有事件里的脱敏正文作为完整图片。已有 Node Pack 超时控制通道不是图片发送通道，不向其中无条件塞入大图。
@@ -28,7 +28,7 @@
 | --- | --- | --- |
 | 节点编辑 | 编辑节点、参数、连线；使用原有调试功能 | 编辑态快照与 Preview Run |
 | Runtime 画布监视 | 只读查看实际部署图，在预览节点位置显示内容 | 明确选中的 Runtime 实际执行 |
-| 应用模式 | 隐藏连线和无关节点参数，只显示公开输入及选中的预览区域 | 与画布监视相同的 Runtime 显示数据 |
+| 应用模式 | 隐藏连线和无关节点参数，显示 App Entry 的全部公开输入及选中的预览区域 | 与画布监视相同的 Runtime 显示数据 |
 
 两个运行视图共用显示适配器和当前显示状态，不各自创建执行会话。Runtime 监视不是把 Runtime 改成 Preview Run，也不为了显示重新执行一遍图。
 
@@ -72,8 +72,9 @@ HTTP / SDK / ZeroMQ / 本机共享内存 / 目录 Trigger
 
 ### 显示时机
 
-1. **先实现执行完成后显示。** 只保留本次执行所需的预览内容，核对原有清理后交接；失败时能够显示失败前已经形成且可安全交付的预览结果。不把全部 node_records 打包返回，也不建立跨执行的服务端结果缓存。
-2. **再实现预览节点完成即显示。** 节点产生内容后交付，后续节点继续执行；整次 Workflow 终态独立更新。节点完成不是整次成功，后续节点失败或清理失败仍显示真实失败状态。
+只在 Worker 完成本次执行及资源清理后一次性交接显示结果；失败时能够显示失败前已经形成且可安全交付的预览结果。不把全部 `node_records` 打包返回，也不建立跨执行的服务端结果缓存。
+
+不实现预览节点完成即显示的逐节点进度。该能力需要额外处理 Parallel、ForEach、迭代身份、后续失败、迟到回调和图片资源生命周期，与当前查看生产最终结果的目标不匹配。Runtime 被强制停止、Worker 被强制终止或进程异常退出时可能只有连接断开，不补造本次 Run 的成功、失败或取消终态；业务结果仍以原 HTTP、SDK、Trigger 响应及启用的 WorkflowRun 记录为准。
 
 同步、持久化异步以及 none + event-only 临时异步都要覆盖，不能只在 HTTP 成功响应处接入。尚未受理的请求不能伪造执行结果。现有超时、取消及资源清理规则保持原样。
 
@@ -83,7 +84,7 @@ HTTP / SDK / ZeroMQ / 本机共享内存 / 目录 Trigger
 - 图片、JSON、表格等按同次执行关联。新执行中未到达、跳过或失败前未执行的预览节点显示相应状态，不能把上次值拼入本次结果。
 - 循环内同一节点多次执行须区分调用/迭代身份，不按消息到达顺序拼成数组。首版节点卡片展示有明确身份的一次结果；完整批次由 Workflow 聚合后交给 Gallery/Table Preview。
 - 页面只保存当前画面和必要在途数据，不追加历史结果列表。迟到的图片加载和旧运行回调不得覆盖更新后的画面；断线保留的画面明确标记为旧数据。
-- 正在执行、节点已完成、整次成功/失败、图片失效和连接断开分开表达。业务产品合格与 Workflow 执行成功不是同一状态。
+- 页面区分等待下次执行、最近一次完成的成功/失败、图片失效、连接断开和 Runtime 停止。业务产品合格与 Workflow 执行成功不是同一状态。
 
 ### 性能和资源边界
 
@@ -99,23 +100,83 @@ HTTP / SDK / ZeroMQ / 本机共享内存 / 目录 Trigger
 
 ## 6. 轻量应用模式配置与使用
 
-首版仅配置现有 App Entry 输入、预览节点/显示端口、显示顺序、标题和简单尺寸，提供画布/应用模式切换及全屏。选择界面不是通用页面设计器，不提供任意脚本、外部 API 编排或第二套节点参数编辑。
+首版自动读取当前发布版本 App Entry 配置的全部公开输入，只配置预览节点/显示端口、显示顺序、标题和简单尺寸，提供画布/应用模式切换及全屏。配置界面不是通用页面设计器，不提供公开输入筛选、任意脚本、外部 API 编排或第二套节点参数编辑。
 
-- 输入只来自已有 App Entry 公开 binding；图片引用、Base64、JSON、文本、file/files 按实际调用选择，全部保持可选。缺少消费节点实际需要的数据由正常执行报错，不补齐空值或隐式业务默认值。
+- 输入只来自当前发布版本已有的 App Entry 公开 binding，并按发布版 App Contract 的 `payload_type_id`、`transports`、媒体类型和容量限制渲染，不按 `binding_id` 名称猜测类型。页面不保存输入选择，不增加 App Mode 专用必填规则，只提交本次实际填写的数据。现有 `binding.required` 和 Runtime 输入校验仍是公开调用契约；需要保持可选的 App Entry binding 应在编辑画布中配置为 `required=false`，App Mode 不绕过后端校验。
 - 内部节点参数只能在编辑模式修改；应用模式表单只构造本次公开请求，不改变草稿、发布快照或下一次 Trigger 的输入。
-- 显示选择配置随现有 Workflow 文档保存并进入现有发布快照，不新增独立界面资源、数据库表或版本体系。可利用既有 Template metadata 的独立字段；字段位置、类型和校验在实施时确定，不混入节点执行参数。
+- 显示选择配置保存在 `application.metadata.app_mode`，随现有 Workflow 文档进入发布快照，不新增独立界面资源、数据库表或版本体系。配置使用 `amvision.workflow-app-mode.v1`；每个显示项以 `node_id + output_port` 确定性引用 Preview 输出，并可配置标题及 `small/medium/large` 简单尺寸。数组顺序只表示界面显示顺序，不参与运行时数据关联。
 - 首版正式显示配置变更沿用 Workflow 发布/选版流程；浏览器临时视口缩放不修改发布文档。不能为只改外观绕过不可变版本管理，也不另造外观热更新服务。
+
+### 配置契约
+
+首版配置固定为以下结构：
+
+```json
+{
+  "format_id": "amvision.workflow-app-mode.v1",
+  "title": "3570 治具检测",
+  "displays": [
+    {
+      "node_id": "image_preview_1",
+      "output_port": "body",
+      "title": "检测图片",
+      "size": "large"
+    },
+    {
+      "node_id": "value_preview_1",
+      "output_port": "body",
+      "title": "检测结果",
+      "size": "medium"
+    }
+  ]
+}
+```
+
+- `application.metadata.app_mode` 不存在表示尚未配置，不再增加含义重复的 `enabled` 状态。
+- `app_mode` 不保存输入列表。Runtime 预览快照后续按只读方式新增 `contract` 和规范化后的 `app_mode`；App Mode 按 Application binding 顺序与 Contract binding identity 合并，生成全部公开输入。该加法不创建新执行接口，也不改变现有 WebSocket 消息。
+- `displays` 至少包含一个显示项；`node_id + output_port` 在配置内唯一。引用节点必须存在、启用并声明 `ui.preview`，输出端口必须真实存在；`size` 仅支持 `small`、`medium`、`large`。
+- 首次创建配置时，编辑器可以明确展示并选中当时已有的全部 Preview 输出；保存后新增 Preview 节点不得自动进入既有配置。删除节点、禁用节点或改变端口时不静默删除配置，编辑器显示失效项并阻止保存或发布。
+- 纯 App Mode 配置变化进入 Workflow App 内容指纹和不可变发布快照，但不改变 App Contract 指纹，不应被判断为公开输入输出的破坏性变化。应用复制、现有 Workflow 文档导入导出和版本快照自然携带 metadata；读取和导入后仍执行相同校验。
+- 运行时遇到历史无效数据或发布节点定义缺失时忽略对应显示项并明确提示，不按名称、节点位置、数组下标或消息到达顺序回退关联。
+
+### 全部公开输入与提交
+
+不能直接把编辑态 Preview 输入面板原样用于 App Mode。Preview 支持的 execution-scoped memory handle、本地路径和把 Base64 图片改投其他 binding 等行为，不属于生产 Runtime 表单的默认语义。应提取共用的字段渲染基础，再分别保留 Preview 与 Runtime transport 策略。
+
+| App Contract payload | App Mode 行为 |
+| --- | --- |
+| `image-ref.v1` | 默认使用契约允许的 multipart 图片上传；只有契约允许 JSON reference 时才显示 ObjectStore reference，不暴露 Preview 专用 memory/local-path |
+| `image-base64.v1` | 读取所选图片并实际构建该 binding 的 Base64 payload，不改投 `image-ref` |
+| `value.v1` 及结构化 JSON | 使用 JSON/value 编辑器，按现有 payload schema 构建请求 |
+| `text.v1` | 提交文本、媒体类型和 charset |
+| `file-ref.v1` | 单文件 multipart |
+| `file-refs.v1` | 多文件 multipart，并遵守 `max_files` 和单文件容量 |
+| 其他类型 | 只按发布版 JSON Schema 和 transport 生成基础输入，不增加场景专用组件 |
+
+前端 Runtime service 补齐同一 `POST /workflows/app-runtimes/{runtime_id}/invoke?response_mode=run` 的 multipart 封装，根据实际已填写字段选择 JSON 或 multipart；后端继续使用现有入口。一次页面手动请求尚未完成时禁用提交按钮以防重复点击，但不建立请求队列，也不影响 ZeroMQ、本机共享内存或 Directory Trigger 的并行调用。
+
+表单值默认保留，方便现场重复执行；离开页面时释放文件引用和临时 Base64。Runtime 未运行时禁用手动提交并显示实际状态。后端错误原样进入本次手动请求状态，不改写成 Preview 或产品判定。
+
+### 固定显示槽与运行身份
+
+App Mode 在收到结果前就按配置创建固定显示槽，避免布局随消息跳动：
+
+- 尚未执行时显示等待状态；本次 Run 有对应输出时显示结果。
+- 本次 Run 没有配置输出时清除该槽上一次内容并显示“本次无结果”，不能把不同 Run 的图片、JSON 或表格拼在一起。
+- 图片引用失效时显示不可用；普通断线保留最近画面并标记非实时，Worker、generation 或发布版本换代时清除旧代画面。
+- App Mode 复用现有 `useRuntimePreview`、显示适配器和 WebSocket；从 Runtime 监视切换到 App Mode 时关闭旧页面订阅，不能为同一页面创建第二条显示连接。
+- 客户端按 `node_id + output_port` 过滤已经收到的完整显示帧。首版不为每个订阅增加后端字段过滤、第二套消息格式或单独缓存。
+
+页面手动 HTTP 请求状态和 Runtime 观察画面是两个明确区域。手动响应显示其返回的 `workflow_run_id` 和状态；WebSocket 区域始终显示该 Runtime 最新实际执行结果，不能把“下一条消息”猜成页面刚提交的 Run。外部 Trigger 的结果按相同方式正常更新显示区，原 SDK/Trigger 返回保持不变。
 
 实际使用顺序：
 
 1. 在原画布编排 Workflow，并接好需要的预览节点，使用原 Preview 验证。
-2. 选择应用模式的公开输入和显示区域，保存并按原流程发布。
+2. 配置应用模式标题和需要显示的 Preview 区域；全部 App Entry 公开输入自动进入表单，保存后按原流程发布。
 3. 为 Runtime 选择并启动相应版本，Trigger 仍按原流程配置与启用。
 4. 从现有 App/Runtime 入口进入运行视图，明确选择目标 Runtime，等待后续执行结果；打开页面不产生试跑。
 5. 外部 Trigger 调用自动反映到当前观察页面；手动运行通过目标 Runtime 的既有 HTTP 接口提交公开输入，不改用编辑器 Preview。
 6. 需要修改逻辑时返回编辑模式；运行视图继续使用激活版本，直到显式切版。
-
-手动 HTTP 请求状态和观察到的运行画面分开，不凭“下一条消息”猜测其属于手动请求。需要确认执行身份时使用现有可携带 run/版本身份的返回方式，不改变 SDK/Trigger 默认业务返回。
 
 ## 7. 自定义节点扩展边界
 
@@ -127,22 +188,26 @@ HTTP / SDK / ZeroMQ / 本机共享内存 / 目录 Trigger
 
 ## 8. 实施顺序与验证
 
-每阶段完成后先核对行为和边界，再做链路审计及验证，通过后继续下一步。不因界面可见就认定性能和长期稳定已通过。
+每阶段完成后先核对行为和边界，再做链路审计及验证，通过后继续下一步。不因界面可见就认定性能和长期稳定已通过。阶段 0、1 已完成；App Mode 按以下顺序继续。
 
-| 阶段 | 内容 | 必须核对 |
+| 阶段 | 实现内容 | 阶段门禁 |
 | --- | --- | --- |
-| 0：最小链路准备 | 核对预览 payload、Runtime 同步/异步出口、Worker 清理、前端适配；定义显示消息和有界交接 | 明确哪些端口可显示；旧业务返回不变；不依赖 full record；记录相同输入的性能与资源基线 |
-| 1：Runtime 完成后显示 | 在实际发布版本的只读画布上复用预览组件 | HTTP/各 Trigger 来源一致；成功及失败前预览；none 临时异步；版本和 run 关联；资源释放；不重跑 Preview |
-| 2：执行中显示 | 预览节点完成即交付，整次终态独立更新 | 并行和 ForEach 身份、后续失败、取消/超时、迟到回调；显示消息不阻塞业务响应和超时控制 |
-| 3：轻量应用模式 | 共用显示组件，隐藏图并配置公开输入、显示区域和简单布局 | 两种运行视图结果一致；配置保存/发布/选版；表单按需提交；不编辑内部参数、不创建新应用资源 |
-| 4：实际数据与稳定性验收 | 开发环境模型、Workflow、Runtime、Trigger 和 SDK 对照；桌面与长时间运行验证 | 结果正确性、双实例合理负载、慢页面/断线/多页面、核心与 Preview 性能、内存及句柄是否稳定 |
+| 2.1：冻结配置契约 | 增加独立的 App Mode v1 配置模型和解析函数；统一 `output_port` 并删除 `enabled` | 合法、重复、未知节点、禁用节点、非 Preview、未知端口和非法尺寸测试；无数据库迁移 |
+| 2.2：接入保存和发布校验 | Workflow Application 保存、bundle 保存、导入读取和发布前均校验 `application.metadata.app_mode` | 失效引用不能落盘或发布；配置进入内容指纹但不改变 App Contract 指纹；复制和版本快照保持一致 |
+| 2.3：扩展只读 Runtime 快照 | 从同一发布版本读取 `contract`，返回规范化 `app_mode`；不存在时返回 `null` | 停止态、运行态、切版和历史无配置版本正确；不启动 Runtime、不读取草稿、不解析动态节点参数 |
+| 2.4：编辑器配置面板 | 加载 App Mode draft，列出 `ui.preview` 节点输出，配置标题、顺序和简单尺寸，并写回 Application metadata | 全部 App Entry 输入只显示数量和自动使用说明、不出现输入勾选；dirty/save/preflight/发布一致；四语言通过 |
+| 2.5：通用输入表单与 Runtime invoke | 从 Preview 输入实现提取共用字段渲染，增加 Runtime transport builder 和 JSON/multipart 调用 | 六类输入单独及混合调用；空字段不提交；Base64 不改投 binding；文件限制和后端错误保持原契约 |
+| 2.6：App Mode 运行页 | 新增 `/workflows/runtime/{runtime_id}/app-mode`，显示全部公开输入、手动请求状态和固定 Preview 槽 | 明确 Runtime 身份；不显示节点图、不编辑内部参数；手动 Run 与外部 Trigger 结果不混淆；只有一个 WebSocket |
+| 2.7：入口与回归 | App 详情中对选定 Runtime 增加 App Mode 入口，复用查看器和重连状态机 | 未配置时不猜测页面；Runtime 停止、重启、切版、容量已满、离页释放和四语言浏览器测试通过 |
+| 3：实际数据与稳定性验收 | 开发环境模型、Workflow、Runtime、Trigger 和 SDK 对照；桌面与一小时运行验证 | 结果正确性、双实例合理负载、慢页面/断线/多页面、核心与 Preview 性能、浏览器/Backend/Worker 内存及句柄稳定 |
 
 测试至少包括：
 
 - 无页面、单页面、多个页面和慢连接；不新增显示结果持久化或无界积压。
 - 图片/JSON/文本/表格/图库、空值、缺失输出、大图、引用失效、失败前部分显示；不串用不同 run 内容。
-- Runtime 停止、重启、切版；编辑草稿与激活版不同；界面选节点不改变图执行。
-- 手动调用与 ZeroMQ、本机共享内存、目录 Trigger；输入可选性及原响应不变。
+- Runtime 停止、重启、切版及强制终止只断开不补造终态；编辑草稿与激活版不同；界面选显示项不改变图执行。
+- 手动调用与 ZeroMQ、本机共享内存、目录 Trigger；App Entry 全部输入自动显示，前端不增加必填规则，原 Runtime 校验及原响应不变。
+- 配置输出缺失时固定槽清除旧内容；手动调用和 Trigger 交错时按真实 run identity 显示，不根据到达顺序关联。
 - p50/p95/p99、下一次核心调用延迟、CPU、Private/Working Set、原生句柄、LocalBuffer lease、发送任务数和浏览器内存；区分节点编码与新增传输成本。
 - 原编辑器 Preview、节点取参及默认值行为回归；四语言和桌面工作站显示，未测移动端时明确标注。
 
@@ -164,7 +229,7 @@ Runtime 停止/启动和异常退出自动恢复均已按“监视页面保持�
 
 开发环境 4 个实际 YOLO11 classification Deployment 已完成双实例有界对照：每个 Deployment 同时发起 2 个请求并执行 20 次，`instance-0`/`instance-1` 各完成 10 次，80 次总调用全部成功，4 个模型进程的错误、句柄和线程净增均为 0。该项验证路由和资源回落，不把 4 模型同时承压的 HTTP base64 延迟当作单 Workflow 性能门禁。
 
-下一步是确认现场实际显示客户端数量，并完成现场硬件对照；在此之前不继续执行中显示或轻量 App Mode，不增加页面配置和发布字段。
+多客户端大图广播尾延迟作为已知边界保留，当前实现已经满足简洁、有界且不影响业务正确性的阶段目标，不再以增加队列、缓存、协议分支或独立显示服务的方式优化。下一步直接实现轻量 App Mode；它复用现有完成后显示通道，不实现逐节点进度或强制终止终态，也不能把既有 16 客户端大图尾延迟解释为已经通过高性能认证。
 
 短测不能替代长期稳定认证。测试使用明确选择或独立创建的开发资源，不为页面验收隐式执行真实生产清理；临时产物只在 `.tmp/<task-name>` 中使用，确认本次进程停止后清理，不作为长期文档资产。
 
@@ -175,4 +240,4 @@ Runtime 停止/启动和异常退出自动恢复均已按“监视页面保持�
 - [图执行器](../../backend/service/application/workflows/graph_executor.py)、[节点事件](../../backend/service/application/workflows/execution/events.py)、[执行清理](../../backend/service/application/workflows/snapshot_execution.py)：载荷保留、事件清理与资源生命周期。
 - [Runtime 服务](../../backend/service/application/workflows/runtime_service.py)、[Worker](../../backend/service/application/workflows/worker/process.py)：同步/异步出口及现有超时控制消息，不视为已实现显示数据面。
 - [Node Pack 规范](../nodes/node-pack-manifest.md)：区分能力声明与真正的前端扩展实现。
-- [ComfyUI App Mode 文档](https://docs.comfy.org/interface/app-mode)、[本地参考 appModeStore](../../projectsrc/ComfyUI_frontend/src/stores/appModeStore.ts)：借鉴同一 Workflow 选择输入/输出并切换视图，不复制其执行、队列或分享体系；参考仓库不是本项目运行时依赖。
+- [ComfyUI App Mode 文档](https://docs.comfy.org/interface/app-mode)、[本地参考 appModeStore](../../projectsrc/ComfyUI_frontend/src/stores/appModeStore.ts)：只借鉴同一 Workflow 在编辑视图与应用视图间切换的思路；本项目输入固定来自全部 App Entry，显示项按 Preview 端口显式配置，不复制其执行、队列或分享体系，参考仓库也不是本项目运行时依赖。

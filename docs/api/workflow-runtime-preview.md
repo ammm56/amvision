@@ -10,7 +10,7 @@ Runtime 监视显示实际发布图中 Image、Value、Table、Gallery Preview �
 
 页面初始等待下一次实际执行，没有历史回放。停止、重启、异常恢复或短暂断线期间，仍打开的监视页面按 2、4、8、10 秒封顶退避重新读取权威 Runtime 快照；连接成功后重置退避。Runtime 恢复正常后按新的 Worker 身份自动连接。Worker 身份或发布版本变化时清除旧代显示并重置消息序号，普通网络重连和同一 Worker 的手动刷新保留最近一次完成画面。页面关闭后立即停止重连。连接超过 10 秒没有收到 `connected` 确认时主动断开并重试。该过程不补发历史、不调用 Workflow，也不进入 Runtime 或 Trigger 的业务路径。
 
-轻量 App Mode、输入表单、显示选择及节点执行中更新尚未实现，实施顺序见[实施基线](../development/workflow-runtime-preview-and-app-mode.md)。
+轻量 App Mode、自动 App Entry 输入表单和显示选择尚未实现。逐节点进度与强制终止终态明确不纳入当前范围，实施顺序见[实施基线](../development/workflow-runtime-preview-and-app-mode.md)。
 
 ## 快照与连接
 
@@ -62,7 +62,7 @@ WebSocket 使用现有鉴权：第三方客户端可传 `Authorization: Bearer <
 }
 ```
 
-- `state` 是 Worker 本次执行及清理结果，`succeeded` 或 `failed`；不是产品合格判定，也不是控制面的持久化/Trigger ACK 回执。业务结果仍以原调用协议为准。强制终止 worker 时可能只有连接断开，没有终态显示消息，不能补造成功或失败帧。
+- `state` 是 Worker 本次执行及清理结果，`succeeded` 或 `failed`；不是产品合格判定，也不是控制面的持久化/Trigger ACK 回执。业务结果仍以原调用协议为准。强制终止 Worker 时可能只有连接断开，没有终态显示消息；当前明确不补造成功、失败或取消帧。
 - `sequence` 在同一 worker 内递增，允许跳号。客户端同时核对 Runtime、revision、版本、generation、worker、指纹和 sequence，不能只按 run 到达顺序更新。
 - `displays` 是本次完整显示集合，替换旧画面；未执行或失败前未到达的节点没有条目，不能沿用上次值。失败前已完成的预览仍可显示。
 - 按 `node_id + output_port` 关联，不依赖名称、位置或列表顺序。ForEach 的 `invocation_id` 标识实际迭代；同节点同端口只保留本次最后完成的一次预览。完整批次应由 Workflow 聚合后交给 Gallery/Table。
@@ -107,7 +107,7 @@ WebSocket 使用现有鉴权：第三方客户端可传 `Authorization: Bearer <
 - 同一工具的 `--validate-directory-trigger`：在临时目录创建实际 Directory Trigger，核对事件、样本、Runtime 结果与显示身份，结束后停用并删除测试 Trigger，同时删除临时目录。
 - `frontend/web-ui/e2e/runtime-preview.spec.ts`：需显式传入验证 App/Runtime ID；实际页面、图片查看器、只读边界、刷新不执行、桌面/窄视口及浏览器短测。
 
-2026-09-05 的一小时实测共顺序调用 1,115 次，16 个客户端收到 17,840/17,840 个 2,628,481-byte 消息，失败、丢帧和客户端错误均为 0；Runtime Worker 原生句柄净增 0。调用耗时 p50 101.143 ms、p95 1,775.461 ms、p99 2,048.877 ms、最大 4,775.529 ms。相同内容和节拍的单客户端 3 分钟对照为 58/58 成功，p50 94.801 ms、p95 230.403 ms、p99 236.021 ms、最大 247.644 ms，资源无增长。这把尾延迟定位到同一 Backend 上的 16 路大图发送竞争，不是单客户端显示或 Runtime Worker 泄漏。资源释放门禁通过，但 16 个大图客户端下的尾延迟门禁未通过，因此当前不据此推进 App Mode 或宣称工业长期认证。
+2026-09-05 的一小时实测共顺序调用 1,115 次，16 个客户端收到 17,840/17,840 个 2,628,481-byte 消息，失败、丢帧和客户端错误均为 0；Runtime Worker 原生句柄净增 0。调用耗时 p50 101.143 ms、p95 1,775.461 ms、p99 2,048.877 ms、最大 4,775.529 ms。相同内容和节拍的单客户端 3 分钟对照为 58/58 成功，p50 94.801 ms、p95 230.403 ms、p99 236.021 ms、最大 247.644 ms，资源无增长。这把尾延迟定位到同一 Backend 上的 16 路大图发送竞争，不是单客户端显示或 Runtime Worker 泄漏。资源释放门禁通过，16 个大图客户端下的尾延迟门禁未通过；当前接受这一边界并保持简单实现，不继续增加广播优化，也不据此宣称工业长期认证。App Mode 复用现有通道，不改变该结论。
 
 只读监视页跳过编辑器动态参数解析后又完成一轮 3 分钟、16 客户端对照：57/57 次调用和 912/912 个 2,628,477-byte 消息成功，零丢帧/错误，Backend Private/RSS 分别净增 0.04/0.08 MiB，Runtime Worker 句柄净增 0；p50 89.479 ms、p95 206.727 ms，p99 1,744.649 ms、最大 1,757.144 ms。该结果确认内存修复有效，但不能覆盖一小时门禁，约 1.7 秒的偶发尾延迟仍存在。
 
