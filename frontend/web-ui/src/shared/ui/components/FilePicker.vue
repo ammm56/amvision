@@ -7,7 +7,11 @@
     @dragleave.prevent="deactivateDrag"
     @drop.prevent="handleDrop"
   >
-    <Label class="file-picker__label" :for="inputId">{{ label }}</Label>
+    <Label
+      class="file-picker__label"
+      :class="{ 'file-picker__label--visually-hidden': !showLabel }"
+      :for="inputId"
+    >{{ label }}</Label>
     <VisuallyHidden>
       <input
         :id="inputId"
@@ -70,6 +74,7 @@ const props = withDefaults(
     multiple?: boolean
     disabled?: boolean
     icon?: FilePickerIcon
+    showLabel?: boolean
   }>(),
   {
     modelValue: null,
@@ -79,6 +84,7 @@ const props = withDefaults(
     multiple: false,
     disabled: false,
     icon: 'upload',
+    showLabel: true,
   },
 )
 
@@ -165,3 +171,17 @@ function formatFileSize(size: number): string {
   return `${(size / 1024 / 1024).toFixed(1)} MB`
 }
 </script>
+
+<style scoped>
+.file-picker__label--visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+</style>
