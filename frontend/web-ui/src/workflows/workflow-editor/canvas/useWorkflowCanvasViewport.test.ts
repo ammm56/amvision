@@ -71,7 +71,7 @@ describe('useWorkflowCanvasViewport', () => {
     expect(viewport.viewportScale.value).toBe(1)
   })
 
-  it('连续缩小时不低于 15%', () => {
+  it('连续缩小时不低于 10%', () => {
     const canvasRef = ref({
       getBoundingClientRect: () => ({ left: 0, top: 0, width: 800, height: 600 }),
     } as HTMLElement)
@@ -91,11 +91,11 @@ describe('useWorkflowCanvasViewport', () => {
     viewport.updateStageSize()
     for (let index = 0; index < 24; index += 1) viewport.zoomOut()
 
-    expect(viewport.viewportScale.value).toBeCloseTo(0.15)
-    expect(viewport.viewportScalePercent.value).toBe(15)
+    expect(viewport.viewportScale.value).toBeCloseTo(0.1)
+    expect(viewport.viewportScalePercent.value).toBe(10)
   })
 
-  it('定位超大流程时将缩放限制在 15%', () => {
+  it('定位超大流程时将缩放限制在 10%', () => {
     const canvasRef = ref({
       getBoundingClientRect: () => ({ left: 0, top: 0, width: 800, height: 600 }),
     } as HTMLElement)
@@ -118,7 +118,7 @@ describe('useWorkflowCanvasViewport', () => {
     viewport.updateStageSize()
     viewport.fitView()
 
-    expect(viewport.viewportScale.value).toBeCloseTo(0.15)
-    expect(viewport.viewportScalePercent.value).toBe(15)
+    expect(viewport.viewportScale.value).toBeCloseTo(0.1)
+    expect(viewport.viewportScalePercent.value).toBe(10)
   })
 })

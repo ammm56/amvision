@@ -8,6 +8,17 @@ vi.mock('@/platform/i18n', () => ({
 }))
 
 describe('workflow Preview image inputs', () => {
+  it('defaults image-ref preview inputs to image upload', () => {
+    const binding = buildBinding('request_image_ref', 'image-ref.v1')
+    const previewInputs = useWorkflowPreviewInputs({
+      getBindingPayloadTypeId: item => String(item.config.payload_type_id),
+    })
+
+    previewInputs.initializePreviewInputs([binding])
+
+    expect(previewInputs.previewInputState.value.request_image_ref.imageRefTransportKind).toBe('upload')
+  })
+
   it('maps an image-base64 file picker to its image-ref multipart binding', async () => {
     const bindings = [
       buildBinding('request_image_ref', 'image-ref.v1'),

@@ -4284,6 +4284,20 @@ textarea:focus-visible {
   cursor: grab;
 }
 
+.workflow-minimap-enter-active,
+.workflow-minimap-leave-active {
+  transform-origin: right bottom;
+  transition:
+    opacity 160ms ease,
+    transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.workflow-minimap-enter-from,
+.workflow-minimap-leave-to {
+  opacity: 0;
+  transform: translateY(8px) scale(0.985);
+}
+
 .workflow-graph-minimap:active {
   cursor: grabbing;
 }

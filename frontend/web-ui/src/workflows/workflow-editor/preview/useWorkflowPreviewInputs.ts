@@ -103,7 +103,7 @@ export function useWorkflowPreviewInputs(options: WorkflowPreviewInputsOptions) 
       file: null,
       files: [],
       mediaType: '',
-      imageRefTransportKind: 'storage',
+      imageRefTransportKind: 'upload',
       objectKey: '',
       localPath: '',
       imageHandle: '',
