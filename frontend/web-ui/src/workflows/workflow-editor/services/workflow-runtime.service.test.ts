@@ -4,6 +4,7 @@ import { apiRequest, apiRequestWithHeaders } from '@/shared/api/http-client'
 import {
   createWorkflowAppRuntime,
   createWorkflowPreviewRun,
+  invokeWorkflowAppRuntime,
   listWorkflowAppRuntimes,
   selectWorkflowAppRuntimeVersion,
 } from './workflow-runtime.service'
@@ -62,6 +63,27 @@ describe('workflow Preview runtime service', () => {
     const [path, options] = vi.mocked(apiRequest).mock.calls[0]
     expect(path).toBe('/workflows/preview-runs')
     expect(options?.body).not.toBeInstanceOf(FormData)
+  })
+
+  it('invokes a Runtime with public file bindings through its existing multipart endpoint', async () => {
+    const imageFile = new File(['png-bytes'], 'tray.png', { type: 'image/png' })
+
+    await invokeWorkflowAppRuntime('runtime-1', {
+      inputBindings: { request_json: { value: { station: 2 } } },
+      fileUploads: [{ bindingId: 'request_image_ref', file: imageFile }],
+      executionMetadata: { workflow_run_record_mode: 'none' },
+      timeoutSeconds: 30,
+    })
+
+    const [path, options] = vi.mocked(apiRequest).mock.calls[0]
+    expect(path).toBe('/workflows/app-runtimes/runtime-1/invoke/upload')
+    expect(options?.query).toEqual({ response_mode: 'run' })
+    expect(options?.body).toBeInstanceOf(FormData)
+    const form = options?.body as FormData
+    expect(JSON.parse(String(form.get('input_bindings_json')))).toEqual({ request_json: { value: { station: 2 } } })
+    expect(JSON.parse(String(form.get('execution_metadata_json')))).toEqual({ workflow_run_record_mode: 'none' })
+    expect(form.get('timeout_seconds')).toBe('30')
+    expect((form.get('request_image_ref') as File).name).toBe('tray.png')
   })
 
   it('creates new runtimes from an explicit immutable app version', async () => {

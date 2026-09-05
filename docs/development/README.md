@@ -4,7 +4,7 @@
 
 ## 当前实施基线
 
-- [Workflow Runtime 预览显示与应用模式](workflow-runtime-preview-and-app-mode.md)：Runtime 完成后只读画布已实现，轻量 App Mode 待实现；自动呈现全部 App Entry 公开输入并复用预览节点，不实现逐节点进度、强制终止终态或独立页面设计器。
+- [Workflow Runtime 预览显示与应用模式](workflow-runtime-preview-and-app-mode.md)：Runtime 完成后只读画布与轻量 App Mode 已实现；自动呈现全部 App Entry 公开输入并复用预览节点，不实现逐节点进度、强制终止终态或独立页面设计器。
 - [工业二维视觉节点实施基线](industrial-vision-node-implementation.md)：Core 与现有 `opencv.nodes` 的二维工业视觉补齐范围、统一 payload、实施结果和验收门禁；阶段 0–6 已完成。
 - [Workflow App Entry 多类型输入实施基线](workflow-app-entry-input-implementation.md)：JSON、文本、图片、文件、多文件、multipart、ObjectStore、Trigger、前端和 SDK 的统一待实现边界。
 - [Workflow 动态参数输入实施基线](workflow-dynamic-parameter-input-implementation.md)：节点参数输入框与 `value.v1` 输入端口共存、运行时覆盖、前端连线和 Save Image 首批实施边界。

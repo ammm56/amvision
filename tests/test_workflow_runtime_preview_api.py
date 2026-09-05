@@ -13,9 +13,10 @@ from backend.service.api.rest.v1.routes.workflow_runtime_support.services import
 from starlette.requests import Request
 from tests.api_test_support import build_test_headers, build_valid_test_png_bytes
 from tests.test_workflow_runtime_invoke_api import (
-    _create_runtime_api_client, _save_example_documents, _create_and_start_runtime,
+    _create_runtime_api_client, _load_example_documents, _save_example_documents, _create_and_start_runtime,
     _build_image_base64_payload,
 )
+from backend.service.application.workflows.workflow_service import LocalWorkflowJsonService
 
 
 def test_runtime_preview_spawn_sync_async_none_and_failure(
@@ -38,6 +39,8 @@ def test_runtime_preview_spawn_sync_async_none_and_failure(
             snapshot = snapshot_response.json()
             assert snapshot["active"] is True
             assert snapshot["template"]["template_id"] == "barcode-result-display-template"
+            assert snapshot["contract"]["format_id"] == "amvision.workflow-app-contract.v1"
+            assert snapshot["app_mode"] is None
             referenced_node_type_ids = {
                 node["node_type_id"] for node in snapshot["template"]["nodes"]
             }
@@ -140,5 +143,81 @@ def test_runtime_preview_spawn_sync_async_none_and_failure(
             assert not channel.observed.is_set()
             assert client.post(f"{base}/stop", headers=headers).status_code == 200
             assert not channel.thread.is_alive()
+    finally:
+        factory.engine.dispose()
+
+
+def test_runtime_preview_snapshot_exposes_published_app_mode_and_contract(
+    tmp_path: Path,
+) -> None:
+    """Runtime 快照返回同一发布版本的 App Mode 配置与公开输入契约。"""
+
+    client, factory, storage = _create_runtime_api_client(
+        tmp_path,
+        database_name="runtime-app-mode-snapshot.db",
+        enable_local_buffer_broker=False,
+    )
+    headers = build_test_headers(scopes="workflows:read,workflows:write")
+    try:
+        with client:
+            template, application = _load_example_documents("barcode_result_display")
+            application = application.model_copy(
+                update={
+                    "metadata": {
+                        **application.metadata,
+                        "app_mode": {
+                            "format_id": "amvision.workflow-app-mode.v1",
+                            "title": "Barcode station",
+                            "displays": [
+                                {
+                                    "node_id": "image_preview",
+                                    "output_port": "body",
+                                    "title": "Result image",
+                                    "size": "large",
+                                }
+                            ],
+                        },
+                    }
+                }
+            )
+            service = LocalWorkflowJsonService(
+                dataset_storage=storage,
+                node_catalog_registry=client.app.state.node_catalog_registry,
+            )
+            service.save_template(project_id="project-1", template=template)
+            service.save_application(project_id="project-1", application=application)
+            create_response = client.post(
+                "/api/v1/workflows/app-runtimes",
+                headers=headers,
+                json={
+                    "project_id": "project-1",
+                    "application_id": application.application_id,
+                    "display_name": "App Mode snapshot",
+                },
+            )
+            assert create_response.status_code == 201, create_response.text
+            runtime_id = create_response.json()["workflow_runtime_id"]
+
+            snapshot_response = client.get(
+                f"/api/v1/workflows/app-runtimes/{runtime_id}/preview-snapshot",
+                headers=headers,
+            )
+
+            assert snapshot_response.status_code == 200, snapshot_response.text
+            snapshot = snapshot_response.json()
+            assert snapshot["contract"]["application_id"] == application.application_id
+            assert snapshot["contract"]["inputs"][0]["binding_id"] == "request_image_base64"
+            assert snapshot["app_mode"] == {
+                "format_id": "amvision.workflow-app-mode.v1",
+                "title": "Barcode station",
+                "displays": [
+                    {
+                        "node_id": "image_preview",
+                        "output_port": "body",
+                        "title": "Result image",
+                        "size": "large",
+                    }
+                ],
+            }
     finally:
         factory.engine.dispose()

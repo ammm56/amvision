@@ -76,6 +76,7 @@ class LocalWorkflowJsonService:
         self.application_documents = WorkflowApplicationDocumentStore(
             dataset_storage=self.dataset_storage,
             template_documents=self.template_documents,
+            node_definitions=self.node_definitions,
         )
         self.application_bundle_journals = WorkflowApplicationBundleJournalService(
             dataset_storage=self.dataset_storage,

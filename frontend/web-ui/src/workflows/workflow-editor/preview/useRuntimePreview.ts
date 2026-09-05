@@ -4,6 +4,7 @@ import { getRuntimeConfig } from '@/platform/runtime/runtime-config'
 import { apiRequest } from '@/shared/api/http-client'
 import { ApiError } from '@/shared/api/error'
 import type { FlowApplication, NodeDefinition, WorkflowGraphTemplate, WorkflowJsonObject } from '../types'
+import type { WorkflowAppContract, WorkflowAppModeConfig } from '../app-mode/workflow-app-mode'
 import { useWorkflowPreviewDisplays } from './useWorkflowPreviewDisplays'
 
 const RUNTIME_PREVIEW_RECONNECT_DELAYS_MS = [2_000, 4_000, 8_000, 10_000] as const
@@ -28,6 +29,8 @@ export interface RuntimePreviewSnapshot {
   active: boolean
   display_name: string
   application: FlowApplication
+  contract: WorkflowAppContract
+  app_mode: WorkflowAppModeConfig | null
   template: WorkflowGraphTemplate
   node_definitions?: NodeDefinition[]
   node_definition_warnings?: RuntimePreviewNodeDefinitionWarning[]

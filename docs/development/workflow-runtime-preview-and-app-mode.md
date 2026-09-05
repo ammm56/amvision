@@ -2,7 +2,7 @@
 
 ## 1. 状态与目标
 
-状态：设计已接受；“Runtime 完成后显示到只读画布”已实现，已覆盖实际图片/JSON、同步/异步、ZeroMQ/本机共享内存、Directory Trigger、.NET SDK 和浏览器验证。一小时、16 个大图客户端的资源稳定性门禁已完成，但调用 p95/p99 尾延迟未通过；单客户端对照已把问题定位到多客户端大图广播竞争。当前接受这一已知性能边界，不为多客户端大图广播增加队列、缓存、协议分支或独立服务，也不据此宣称工业长期认证。逐节点进度和强制终止终态不再纳入实现范围，下一步只实现轻量 App Mode。当前页面和协议见 [Runtime 预览监视](../api/workflow-runtime-preview.md)。
+状态：设计与首版实现已完成。“Runtime 完成后显示到只读画布”和轻量 App Mode 已共用同一观察通道；实际图片/JSON、同步/异步、ZeroMQ/本机共享内存、Directory Trigger、.NET SDK、Runtime 停止/重启恢复和浏览器调用均已覆盖。一小时、16 个大图客户端的资源稳定性门禁已完成，但调用 p95/p99 尾延迟未通过；单客户端对照已把问题定位到多客户端大图广播竞争。当前接受这一已知性能边界，不为多客户端大图广播增加队列、缓存、协议分支或独立服务，也不据此宣称工业长期认证。逐节点进度和强制终止终态不纳入实现范围。当前页面和协议见 [Runtime 预览监视](../api/workflow-runtime-preview.md)。
 
 项目核心仍是 Workflow 节点编排、长期 Runtime 和 Trigger。新增能力主要用于查看生产执行产生的图片、JSON、文本等信息，直接复用图中的预览节点和已有显示组件，不复制执行逻辑。
 
@@ -15,7 +15,7 @@
 | 部分 | 当前事实 | 待补齐能力 |
 | --- | --- | --- |
 | 预览节点 | Image、Value、Table、Gallery 等节点已有结构化显示输出，已接入完成后显示 | 保持每次执行完成后一次性交接，不实现逐节点进度 |
-| 编辑画布 | 从同步 Preview 返回的 `node_records` 识别 `*-preview` 内容；显示适配已与 Preview Run 解耦 | 共用显示组件，后续再扩展轻量 App Mode |
+| 编辑画布 | 从同步 Preview 返回的 `node_records` 识别 `*-preview` 内容；显示适配已与 Preview Run 解耦 | 与只读画布、App Mode 共用显示组件 |
 | 高性能 Runtime | none 等模式不保留完整节点输入输出载荷，显示走独立单次交接 | 保持现有业务链路和有界观察通道，不扩大数据面 |
 | 节点过程信息 | 已有事件会清理载荷；Worker 部分节点消息用于超时控制 | 不复用为逐节点显示，不增加过程消息协议 |
 | 自定义节点 | 可生成已有标准 payload，Catalog/Node Pack 已有注册体系 | 全新前端渲染组件的受控扩展尚需单独实现 |
@@ -135,7 +135,7 @@ HTTP / SDK / ZeroMQ / 本机共享内存 / 目录 Trigger
 - `application.metadata.app_mode` 不存在表示尚未配置，不再增加含义重复的 `enabled` 状态。
 - `app_mode` 不保存输入列表。Runtime 预览快照后续按只读方式新增 `contract` 和规范化后的 `app_mode`；App Mode 按 Application binding 顺序与 Contract binding identity 合并，生成全部公开输入。该加法不创建新执行接口，也不改变现有 WebSocket 消息。
 - `displays` 至少包含一个显示项；`node_id + output_port` 在配置内唯一。引用节点必须存在、启用并声明 `ui.preview`，输出端口必须真实存在；`size` 仅支持 `small`、`medium`、`large`。
-- 首次创建配置时，编辑器可以明确展示并选中当时已有的全部 Preview 输出；保存后新增 Preview 节点不得自动进入既有配置。删除节点、禁用节点或改变端口时不静默删除配置，编辑器显示失效项并阻止保存或发布。
+- 首次创建配置时，编辑器明确列出当时已有的全部 Preview 输出，由使用者选择需要展示的输出；保存后新增 Preview 节点不得自动进入既有配置。删除节点、禁用节点或改变端口时不静默删除配置，编辑器显示失效项并阻止保存或发布。
 - 纯 App Mode 配置变化进入 Workflow App 内容指纹和不可变发布快照，但不改变 App Contract 指纹，不应被判断为公开输入输出的破坏性变化。应用复制、现有 Workflow 文档导入导出和版本快照自然携带 metadata；读取和导入后仍执行相同校验。
 - 运行时遇到历史无效数据或发布节点定义缺失时忽略对应显示项并明确提示，不按名称、节点位置、数组下标或消息到达顺序回退关联。
 
@@ -153,7 +153,7 @@ HTTP / SDK / ZeroMQ / 本机共享内存 / 目录 Trigger
 | `file-refs.v1` | 多文件 multipart，并遵守 `max_files` 和单文件容量 |
 | 其他类型 | 只按发布版 JSON Schema 和 transport 生成基础输入，不增加场景专用组件 |
 
-前端 Runtime service 补齐同一 `POST /workflows/app-runtimes/{runtime_id}/invoke?response_mode=run` 的 multipart 封装，根据实际已填写字段选择 JSON 或 multipart；后端继续使用现有入口。一次页面手动请求尚未完成时禁用提交按钮以防重复点击，但不建立请求队列，也不影响 ZeroMQ、本机共享内存或 Directory Trigger 的并行调用。
+前端 Runtime service 根据实际已填写字段选择现有 JSON `POST /workflows/app-runtimes/{runtime_id}/invoke?response_mode=run` 或 multipart `POST /workflows/app-runtimes/{runtime_id}/invoke/upload?response_mode=run`。一次页面手动请求尚未完成时禁用提交按钮以防重复点击，但不建立请求队列，也不影响 ZeroMQ、本机共享内存或 Directory Trigger 的并行调用。
 
 表单值默认保留，方便现场重复执行；离开页面时释放文件引用和临时 Base64。Runtime 未运行时禁用手动提交并显示实际状态。后端错误原样进入本次手动请求状态，不改写成 Preview 或产品判定。
 
@@ -188,7 +188,7 @@ App Mode 在收到结果前就按配置创建固定显示槽，避免布局随�
 
 ## 8. 实施顺序与验证
 
-每阶段完成后先核对行为和边界，再做链路审计及验证，通过后继续下一步。不因界面可见就认定性能和长期稳定已通过。阶段 0、1 已完成；App Mode 按以下顺序继续。
+每阶段完成后先核对行为和边界，再做链路审计及验证，通过后继续下一步。不因界面可见就认定性能和长期稳定已通过。阶段 0、1 和 2.1–2.7 已完成；阶段 3 保留长期现场门禁。
 
 | 阶段 | 实现内容 | 阶段门禁 |
 | --- | --- | --- |
@@ -229,7 +229,11 @@ Runtime 停止/启动和异常退出自动恢复均已按“监视页面保持�
 
 开发环境 4 个实际 YOLO11 classification Deployment 已完成双实例有界对照：每个 Deployment 同时发起 2 个请求并执行 20 次，`instance-0`/`instance-1` 各完成 10 次，80 次总调用全部成功，4 个模型进程的错误、句柄和线程净增均为 0。该项验证路由和资源回落，不把 4 模型同时承压的 HTTP base64 延迟当作单 Workflow 性能门禁。
 
-多客户端大图广播尾延迟作为已知边界保留，当前实现已经满足简洁、有界且不影响业务正确性的阶段目标，不再以增加队列、缓存、协议分支或独立显示服务的方式优化。下一步直接实现轻量 App Mode；它复用现有完成后显示通道，不实现逐节点进度或强制终止终态，也不能把既有 16 客户端大图尾延迟解释为已经通过高性能认证。
+2026-09-05 的 App Mode 实际验收使用 `workflow-app-20260831130620` 发布版 v3、新建 Runtime 和 SDK 随附的 59,885,622-byte BMP。页面按 App Entry 顺序呈现 6 个可选公开输入；从 1440×1000 浏览器页面选择 `request_image_ref`、填写 `request_json` 并执行后，multipart 请求进入既有 `/invoke/upload`，Workflow 返回 24/24 空盘分类，固定槽显示绘制图片和相同 run 的 JSON，页面调用状态与 Runtime 观察状态分离，控制台和 Vite error overlay 均无错误。保持页面打开期间停止并重启 Runtime 后，页面自动取得新 Worker 身份并继续显示下一次真实结果；未回放旧结果或触发额外运行。
+
+同一真实大图 Workflow 做了两轮各 6 次的顺序 A/B：单 App Mode 连接的 12 次调用 p50/p95 为 1,839.6/2,085.7 ms，无连接的 12 次为 1,785.2/2,053.6 ms，24 次全部成功；小样本差异没有显示新增热路径回归，不能替代长期统计。新增快照字段连续读取 400 次的两轮 p50 为 24.44/25.80 ms、p95 为 32.65/42.85 ms；Backend Private/Working Set 无增长，原生句柄从 1,579 经短暂高水位 1,582 回落到 1,576，线程不变。App Mode 没有修改 Worker 执行、Trigger、业务响应或既有 WebSocket 消息协议，之前 16 客户端大图尾延迟结论保持不变。
+
+多客户端大图广播尾延迟作为已知边界保留，当前实现已经满足简洁、有界且不影响业务正确性的阶段目标，不再以增加队列、缓存、协议分支或独立显示服务的方式优化。轻量 App Mode 已复用现有完成后显示通道实现，不包含逐节点进度或强制终止终态，也不能把既有 16 客户端大图尾延迟解释为已经通过高性能认证。
 
 短测不能替代长期稳定认证。测试使用明确选择或独立创建的开发资源，不为页面验收隐式执行真实生产清理；临时产物只在 `.tmp/<task-name>` 中使用，确认本次进程停止后清理，不作为长期文档资产。
 

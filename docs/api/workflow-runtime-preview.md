@@ -10,7 +10,7 @@ Runtime 监视显示实际发布图中 Image、Value、Table、Gallery Preview �
 
 页面初始等待下一次实际执行，没有历史回放。停止、重启、异常恢复或短暂断线期间，仍打开的监视页面按 2、4、8、10 秒封顶退避重新读取权威 Runtime 快照；连接成功后重置退避。Runtime 恢复正常后按新的 Worker 身份自动连接。Worker 身份或发布版本变化时清除旧代显示并重置消息序号，普通网络重连和同一 Worker 的手动刷新保留最近一次完成画面。页面关闭后立即停止重连。连接超过 10 秒没有收到 `connected` 确认时主动断开并重试。该过程不补发历史、不调用 Workflow，也不进入 Runtime 或 Trigger 的业务路径。
 
-轻量 App Mode、自动 App Entry 输入表单和显示选择尚未实现。逐节点进度与强制终止终态明确不纳入当前范围，实施顺序见[实施基线](../development/workflow-runtime-preview-and-app-mode.md)。
+轻量 App Mode 已实现：编辑画布配置需要显示的 Preview 输出，发布后从选定 Runtime 进入 `/workflows/runtime/{workflow_runtime_id}/app-mode`。页面自动呈现当前发布版 App Entry 的全部公开输入，并复用本页描述的观察连接显示实际 Runtime 结果；不创建第二条消息协议。逐节点进度与强制终止终态明确不纳入当前范围，实施和验收见[实施基线](../development/workflow-runtime-preview-and-app-mode.md)。
 
 ## 快照与连接
 
@@ -18,7 +18,7 @@ Runtime 监视显示实际发布图中 Image、Value、Table、Gallery Preview �
 2. 读取返回的 `application`、`template`，它们来自实际 active revision 对应的发布版本，不能替换成编辑草稿。未激活时使用 desired revision，并通过 `active`、`observed_state` 区分。
 3. 连接 `/ws/v1/workflows/app-runtimes/preview`，query 参数为快照中的 `workflow_runtime_id`、`workflow_runtime_revision_id`、`runtime_generation`、`worker_instance_id`。
 
-快照格式为 `amvision.workflow-runtime-preview-snapshot.v1`，还包含 `workflow_app_version_id`、`snapshot_fingerprint`、`project_id`、`application_id`、`display_name`、`node_definitions` 和 `node_definition_warnings`。重复获取快照不启动 Runtime。
+快照格式为 `amvision.workflow-runtime-preview-snapshot.v1`，还包含 `workflow_app_version_id`、`snapshot_fingerprint`、`project_id`、`application_id`、`display_name`、当前发布版本的 `contract`、规范化后的 `app_mode`、`node_definitions` 和 `node_definition_warnings`。未配置 App Mode 时 `app_mode` 为 `null`。重复获取快照不启动 Runtime。
 
 WebSocket 使用现有鉴权：第三方客户端可传 `Authorization: Bearer <token>`；浏览器沿用已启用的 query token 能力。不得把 token 写入显示内容或文档示例。身份失效或没有权限拒绝连接；worker 身份变化或停止以 `4409` 拒绝，16 个连接名额用尽以 `4429` 拒绝。页面对 `4429` 不自动重试，避免额外页面持续轮询；用户手动刷新可重新尝试。两类拒绝均不启动新 worker。
 
@@ -106,6 +106,7 @@ WebSocket 使用现有鉴权：第三方客户端可传 `Authorization: Bearer <
 - 同一工具的 `--validate-triggers`：只允许专用验证 App，创建或复用明确停用的测试 ZeroMQ/本机共享内存 Trigger，核对业务与显示身份，结束后停用测试 Trigger。
 - 同一工具的 `--validate-directory-trigger`：在临时目录创建实际 Directory Trigger，核对事件、样本、Runtime 结果与显示身份，结束后停用并删除测试 Trigger，同时删除临时目录。
 - `frontend/web-ui/e2e/runtime-preview.spec.ts`：需显式传入验证 App/Runtime ID；实际页面、图片查看器、只读边界、刷新不执行、桌面/窄视口及浏览器短测。
+- `frontend/web-ui/e2e/runtime-app-mode.spec.ts`：需显式传入已发布 App Mode 的 Runtime ID；在 1440×1000 页面通过现有 multipart 端点提交真实图片和 JSON，核对公开输入顺序、手动状态、Runtime run identity、图片/JSON 显示和浏览器错误。
 
 2026-09-05 的一小时实测共顺序调用 1,115 次，16 个客户端收到 17,840/17,840 个 2,628,481-byte 消息，失败、丢帧和客户端错误均为 0；Runtime Worker 原生句柄净增 0。调用耗时 p50 101.143 ms、p95 1,775.461 ms、p99 2,048.877 ms、最大 4,775.529 ms。相同内容和节拍的单客户端 3 分钟对照为 58/58 成功，p50 94.801 ms、p95 230.403 ms、p99 236.021 ms、最大 247.644 ms，资源无增长。这把尾延迟定位到同一 Backend 上的 16 路大图发送竞争，不是单客户端显示或 Runtime Worker 泄漏。资源释放门禁通过，16 个大图客户端下的尾延迟门禁未通过；当前接受这一边界并保持简单实现，不继续增加广播优化，也不据此宣称工业长期认证。App Mode 复用现有通道，不改变该结论。
 

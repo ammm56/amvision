@@ -33,6 +33,7 @@
         @refresh="loadPage"
         @toggle-group-create-mode="toggleGroupCreateMode"
         @add-note="addNoteAtViewportCenter"
+        @configure-app-mode="appModeConfigDialogOpen = true"
         @toggle-inspector="toggleInspector"
         @preview="requestPreviewRun"
         @publish="publishCurrentWorkflowApp"
@@ -280,6 +281,15 @@
       @select="selectDeploymentInstance"
       @apply="applySelectedDeploymentInstance"
     />
+    <WorkflowAppModeConfigDialog
+      v-if="appModeConfigDialogOpen"
+      :application-title="editorTitle"
+      :config="appModeConfig"
+      :candidates="appModeDisplayCandidates"
+      @close="appModeConfigDialogOpen = false"
+      @remove="removeAppModeConfig"
+      @apply="applyAppModeConfig"
+    />
   </section>
 </template>
 
@@ -292,6 +302,7 @@ import { usePreferencesStore } from '@/app/stores/preferences.store'
 import { useProjectStore } from '@/app/stores/project.store'
 import type { SupportedLocale } from '@/platform/i18n'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
+import WorkflowAppModeConfigDialog from '../components/WorkflowAppModeConfigDialog.vue'
 import WorkflowDeploymentInstancePickerDialog from '../components/WorkflowDeploymentInstancePickerDialog.vue'
 import WorkflowBoundaryNodeLayer from '../components/WorkflowBoundaryNodeLayer.vue'
 import WorkflowGraphGroupLayer from '../components/WorkflowGraphGroupLayer.vue'
@@ -350,6 +361,12 @@ import {
 } from '../parameters/useWorkflowNodeParameters'
 import { useWorkflowDeploymentInstancePicker } from '../parameters/useWorkflowDeploymentInstancePicker'
 import { useWorkflowPreflight } from '../validation/useWorkflowPreflight'
+import {
+  buildWorkflowAppModeDisplayCandidates,
+  readWorkflowAppModeConfig,
+  writeWorkflowAppModeConfig,
+  type WorkflowAppModeConfig,
+} from '../app-mode/workflow-app-mode'
 import { useWorkflowEditorActions } from '../actions/useWorkflowEditorActions'
 import { useWorkflowSaveRunFeedback } from '../actions/useWorkflowSaveRunFeedback'
 import { useWorkflowSaveRunOrchestration } from '../actions/useWorkflowSaveRunOrchestration'
@@ -402,6 +419,8 @@ const publishingVersion = ref(false)
 const imageInteractionApplying = ref(false)
 const nodeCatalog = ref<WorkflowNodeCatalogResponse | null>(null)
 const workflowApp = ref<WorkflowAppDocument | null>(null)
+const appModeConfig = ref<WorkflowAppModeConfig | null>(null)
+const appModeConfigDialogOpen = ref(false)
 const graphNodes = ref<GraphNodeView[]>([])
 const graphEdges = ref<WorkflowGraphEdge[]>([])
 const graphGroups = ref<WorkflowGraphGroup[]>([])
@@ -735,6 +754,30 @@ const {
     errorMessage.value = message
   },
 })
+const appModeDisplayCandidates = computed(() => buildWorkflowAppModeDisplayCandidates(
+  graphNodes.value.map((item) => item.node),
+  nodeDefinitionsById.value,
+))
+
+watch(
+  () => workflowApp.value?.applicationDocument.application.metadata,
+  (metadata) => {
+    appModeConfig.value = metadata ? readWorkflowAppModeConfig(metadata) : null
+  },
+  { immediate: true },
+)
+
+function applyAppModeConfig(config: WorkflowAppModeConfig): void {
+  appModeConfig.value = config
+  appModeConfigDialogOpen.value = false
+  statusMessage.value = t('workflowEditor.appMode.configured')
+}
+
+function removeAppModeConfig(): void {
+  appModeConfig.value = null
+  appModeConfigDialogOpen.value = false
+  statusMessage.value = t('workflowEditor.appMode.removed')
+}
 
 function isMinimapNodeSelected(nodeId: string): boolean {
   if (nodeId.startsWith('note:')) return selectedNoteId.value === nodeId.slice(5)
@@ -1061,7 +1104,10 @@ const {
   liteGraphAdapter,
   applyNewWorkflowTemplateSettings,
   buildNewWorkflowApplicationPatch,
-  writeBoundaryPositionsToMetadata,
+  writeBoundaryPositionsToMetadata: (metadata) => writeWorkflowAppModeConfig(
+    writeBoundaryPositionsToMetadata(metadata),
+    appModeConfig.value,
+  ),
 })
 const {
   runWorkflowPreflight,

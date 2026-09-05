@@ -5,9 +5,13 @@ from __future__ import annotations
 from backend.contracts.workflows.workflow_graph import (
     FlowApplication,
     FlowTemplateReference,
+    NodeDefinition,
     WorkflowGraphTemplate,
     synchronize_flow_application_bindings,
     validate_flow_application_bindings,
+)
+from backend.contracts.workflows.workflow_app_mode import (
+    validate_workflow_app_mode_config,
 )
 from backend.service.application.errors import (
     InvalidRequestError,
@@ -51,11 +55,13 @@ class WorkflowApplicationDocumentStore:
         *,
         dataset_storage: LocalDatasetStorage,
         template_documents: WorkflowTemplateDocumentStore,
+        node_definitions: tuple[NodeDefinition, ...] = (),
     ) -> None:
         """初始化流程应用文档存储服务。"""
 
         self.dataset_storage = dataset_storage
         self.template_documents = template_documents
+        self.node_definitions = node_definitions
 
     def validate_application(
         self,
@@ -64,7 +70,7 @@ class WorkflowApplicationDocumentStore:
         application: FlowApplication,
         template_override: WorkflowGraphTemplate | None = None,
     ) -> WorkflowApplicationValidationSummary:
-        """校验流程应用与图模板绑定关系。"""
+        """校验流程应用、图模板绑定关系和 App Mode 配置。"""
 
         normalized_project_id = normalize_identifier(project_id, "project_id")
         normalize_application_identifier(application.application_id, "application_id")
@@ -85,9 +91,14 @@ class WorkflowApplicationDocumentStore:
             validate_flow_application_bindings(
                 template=template, application=synchronized_application
             )
+            validate_workflow_app_mode_config(
+                application=synchronized_application,
+                template=template,
+                node_definitions=self.node_definitions,
+            )
         except ValueError as exc:
             raise InvalidRequestError(
-                "workflow application 绑定校验失败",
+                "workflow application 校验失败",
                 details={
                     "application_id": application.application_id,
                     "template_id": application.template_ref.template_id,

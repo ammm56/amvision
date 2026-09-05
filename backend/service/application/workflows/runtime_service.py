@@ -22,6 +22,9 @@ from backend.contracts.workflows.workflow_graph import (
     FlowApplication,
     WorkflowGraphTemplate,
 )
+from backend.contracts.workflows.workflow_app_mode import (
+    read_workflow_app_mode_config,
+)
 from backend.contracts.workflows.resource_semantics import (
     WorkflowPreviewRunState,
     build_workflow_app_runtime_storage_dir,
@@ -1327,10 +1330,14 @@ class WorkflowRuntimeService:
         version = self._build_workflow_app_version_service().get_version_by_id(
             project_id=runtime.project_id, workflow_app_version_id=revision.workflow_app_version_id,
         )
-        application = self.dataset_storage.read_json(
+        application_payload = self.dataset_storage.read_json(
             version.application_snapshot_object_key
         )
+        application = FlowApplication.model_validate(application_payload)
         template = self.dataset_storage.read_json(version.template_snapshot_object_key)
+        contract = self.dataset_storage.read_json(version.contract_snapshot_object_key)
+        self._require_current_workflow_app_contract(contract)
+        app_mode = read_workflow_app_mode_config(application)
         dependencies = self.dataset_storage.read_json(
             version.dependency_manifest_object_key
         )
@@ -1353,7 +1360,11 @@ class WorkflowRuntimeService:
             "project_id": runtime.project_id,
             "application_id": runtime.application_id,
             "display_name": runtime.display_name,
-            "application": application,
+            "application": application_payload,
+            "contract": contract,
+            "app_mode": (
+                app_mode.model_dump(mode="json") if app_mode is not None else None
+            ),
             "template": template,
             "node_definitions": node_definitions,
             "node_definition_warnings": node_definition_warnings,

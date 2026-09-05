@@ -4514,6 +4514,8 @@ def _run_test_runtime_worker_without_heartbeat(
     request_queue,
     response_queue,
     run_cancellation_event=None,
+    preview_socket=None,
+    preview_observed=None,
     local_buffer_broker_event_channel=None,
     published_inference_gateway_event_channel=None,
 ) -> None:
@@ -4521,6 +4523,9 @@ def _run_test_runtime_worker_without_heartbeat(
 
     del local_buffer_broker_event_channel
     del published_inference_gateway_event_channel
+    del preview_observed
+    if preview_socket is not None:
+        preview_socket.close()
     del run_cancellation_event
     workflow_runtime_id = str(runtime_payload.get("workflow_runtime_id") or "")
     if not workflow_runtime_id:

@@ -263,6 +263,13 @@ function buildSnapshot(
     active: observedState === 'running',
     display_name: 'Runtime',
     application: { format_id: 'amvision.flow-application.v1' } as RuntimePreviewSnapshot['application'],
+    contract: {
+      format_id: 'amvision.workflow-app-contract.v1',
+      application_id: 'app-1',
+      inputs: [],
+      outputs: [],
+    },
+    app_mode: null,
     template: { format_id: 'amvision.workflow-graph-template.v1', nodes: [] } as unknown as RuntimePreviewSnapshot['template'],
     node_definitions: [],
     node_definition_warnings: [],

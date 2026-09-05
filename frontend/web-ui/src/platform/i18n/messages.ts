@@ -8664,6 +8664,40 @@ for (const locale of ['zh-CN', 'en-US', 'ja-JP', 'ko-KR'] as const) {
   (baseMessages[locale].workflowEditor as MessageSchema).runtimePreview = runtimePreviewMessages[locale]
 }
 
+const workflowAppModeMessages: Record<SupportedLocale, MessageSchema> = {
+  'zh-CN': {
+    action: 'App Mode', title: 'Workflow App', configTitle: 'App Mode 配置', pageTitle: '页面标题', displays: '显示输出',
+    noPreviewOutputs: '当前画布没有可用的 Preview 输出', apply: '应用', remove: '移除配置', configured: 'App Mode 配置已更新，保存并发布后生效', removed: 'App Mode 配置已移除，保存并发布后生效', invalidReference: '引用已失效，取消选择后可保存', moveUp: '上移', moveDown: '下移',
+    sizeSmall: '小', sizeMedium: '中', sizeLarge: '大', inputs: '公开输入', emptyInputsOmitted: '空输入不会发送', noInputs: '此 Workflow 没有公开输入', run: '运行',
+    upload: '上传', reference: 'JSON 引用', imageReferencePlaceholder: '输入完整的 image-ref.v1 JSON 引用', textPlaceholder: '输入文本', jsonPlaceholder: '输入 JSON 值',
+    waitingOutput: '等待 Runtime 执行结果', noCurrentOutput: '本次执行没有此输出', notConfigured: '当前发布版本未配置 App Mode', latestRuntimeResult: '最新 Runtime 结果', manualRequest: '本页调用', monitor: '只读画布',
+  },
+  'en-US': {
+    action: 'App Mode', title: 'Workflow App', configTitle: 'App Mode settings', pageTitle: 'Page title', displays: 'Display outputs',
+    noPreviewOutputs: 'No Preview outputs are available on this graph', apply: 'Apply', remove: 'Remove settings', configured: 'App Mode settings updated; save and publish to apply', removed: 'App Mode settings removed; save and publish to apply', invalidReference: 'This reference is no longer valid; deselect it before saving', moveUp: 'Move up', moveDown: 'Move down',
+    sizeSmall: 'Small', sizeMedium: 'Medium', sizeLarge: 'Large', inputs: 'Public inputs', emptyInputsOmitted: 'Empty inputs are omitted', noInputs: 'This Workflow has no public inputs', run: 'Run',
+    upload: 'Upload', reference: 'JSON reference', imageReferencePlaceholder: 'Enter a complete image-ref.v1 JSON reference', textPlaceholder: 'Enter text', jsonPlaceholder: 'Enter a JSON value',
+    waitingOutput: 'Waiting for a Runtime result', noCurrentOutput: 'No output for this run', notConfigured: 'The published version has no App Mode settings', latestRuntimeResult: 'Latest Runtime result', manualRequest: 'Page request', monitor: 'Read-only graph',
+  },
+  'ja-JP': {
+    action: 'App Mode', title: 'Workflow App', configTitle: 'App Mode 設定', pageTitle: 'ページタイトル', displays: '表示出力',
+    noPreviewOutputs: '現在のグラフに使用可能な Preview 出力がありません', apply: '適用', remove: '設定を削除', configured: 'App Mode 設定を更新しました。保存して公開すると反映されます', removed: 'App Mode 設定を削除しました。保存して公開すると反映されます', invalidReference: '参照は無効です。選択を解除してから保存してください', moveUp: '上へ移動', moveDown: '下へ移動',
+    sizeSmall: '小', sizeMedium: '中', sizeLarge: '大', inputs: '公開入力', emptyInputsOmitted: '空の入力は送信されません', noInputs: 'この Workflow には公開入力がありません', run: '実行',
+    upload: 'アップロード', reference: 'JSON 参照', imageReferencePlaceholder: '完全な image-ref.v1 JSON 参照を入力', textPlaceholder: 'テキストを入力', jsonPlaceholder: 'JSON 値を入力',
+    waitingOutput: 'Runtime の実行結果を待機中', noCurrentOutput: '今回の実行にはこの出力がありません', notConfigured: '現在の公開バージョンには App Mode 設定がありません', latestRuntimeResult: '最新 Runtime 結果', manualRequest: 'このページの呼び出し', monitor: '読み取り専用グラフ',
+  },
+  'ko-KR': {
+    action: 'App Mode', title: 'Workflow App', configTitle: 'App Mode 설정', pageTitle: '페이지 제목', displays: '표시 출력',
+    noPreviewOutputs: '현재 그래프에 사용할 수 있는 Preview 출력이 없습니다', apply: '적용', remove: '설정 제거', configured: 'App Mode 설정이 업데이트되었습니다. 저장 및 게시 후 적용됩니다', removed: 'App Mode 설정이 제거되었습니다. 저장 및 게시 후 적용됩니다', invalidReference: '참조가 유효하지 않습니다. 선택을 해제한 후 저장하세요', moveUp: '위로 이동', moveDown: '아래로 이동',
+    sizeSmall: '작게', sizeMedium: '중간', sizeLarge: '크게', inputs: '공개 입력', emptyInputsOmitted: '빈 입력은 전송하지 않습니다', noInputs: '이 Workflow에는 공개 입력이 없습니다', run: '실행',
+    upload: '업로드', reference: 'JSON 참조', imageReferencePlaceholder: '완전한 image-ref.v1 JSON 참조 입력', textPlaceholder: '텍스트 입력', jsonPlaceholder: 'JSON 값 입력',
+    waitingOutput: 'Runtime 실행 결과 대기 중', noCurrentOutput: '이번 실행에는 이 출력이 없습니다', notConfigured: '현재 게시 버전에 App Mode 설정이 없습니다', latestRuntimeResult: '최신 Runtime 결과', manualRequest: '이 페이지 호출', monitor: '읽기 전용 그래프',
+  },
+}
+for (const locale of ['zh-CN', 'en-US', 'ja-JP', 'ko-KR'] as const) {
+  (baseMessages[locale].workflowEditor as MessageSchema).appMode = workflowAppModeMessages[locale]
+}
+
 export const messages: Record<string, MessageSchema> = {
   ...baseMessages,
   zh: baseMessages['zh-CN'],

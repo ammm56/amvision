@@ -68,6 +68,7 @@ export interface WorkflowAppRuntimeSelectVersionInput {
 
 export interface WorkflowRuntimeInvokeInput {
   inputBindings?: WorkflowJsonObject
+  fileUploads?: WorkflowPreviewFileUpload[]
   executionMetadata?: WorkflowJsonObject
   timeoutSeconds?: number | null
 }
@@ -359,6 +360,22 @@ export async function createWorkflowRun(workflowRuntimeId: string, input: Workfl
 }
 
 export async function invokeWorkflowAppRuntime(workflowRuntimeId: string, input: WorkflowRuntimeInvokeInput = {}): Promise<WorkflowRun> {
+  if (input.fileUploads?.length) {
+    const form = new FormData()
+    form.append('input_bindings_json', JSON.stringify(input.inputBindings ?? {}))
+    form.append('execution_metadata_json', JSON.stringify(input.executionMetadata ?? {}))
+    if (input.timeoutSeconds !== null && input.timeoutSeconds !== undefined) {
+      form.append('timeout_seconds', String(input.timeoutSeconds))
+    }
+    for (const upload of input.fileUploads) {
+      form.append(upload.bindingId, upload.file, upload.file.name)
+    }
+    return apiRequest<WorkflowRun>(`/workflows/app-runtimes/${encodePathPart(workflowRuntimeId)}/invoke/upload`, {
+      method: 'POST',
+      query: { response_mode: 'run' },
+      body: form,
+    })
+  }
   return apiRequest<WorkflowRun>(`/workflows/app-runtimes/${encodePathPart(workflowRuntimeId)}/invoke`, {
     method: 'POST',
     query: { response_mode: 'run' },
