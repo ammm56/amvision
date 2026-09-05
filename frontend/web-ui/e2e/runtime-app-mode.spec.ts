@@ -92,6 +92,36 @@ test('App Mode submits real public inputs and displays the matching Runtime resu
   await expect(image).toBeVisible()
   await expect.poll(() => image.evaluate((element) => (element as HTMLImageElement).naturalWidth)).toBeGreaterThan(0)
   await expect(page.locator('.app-mode-displays')).toContainText('"count": 24')
+  const displayGeometry = await page.locator('.app-mode-displays').evaluate((grid) => {
+    const imageFrame = grid.querySelector<HTMLElement>('.workflow-graph-node-preview__image-frame')
+    const image = imageFrame?.querySelector<HTMLImageElement>('img')
+    const imagePreview = grid.querySelector<HTMLElement>('.app-mode-displays__slot--image .workflow-graph-node-preview')
+    const valuePreview = grid.querySelector<HTMLElement>('.app-mode-displays__slot--value .workflow-graph-node-preview')
+    const value = grid.querySelector<HTMLElement>('.workflow-graph-node-preview__json')
+    if (!imageFrame || !image || !imagePreview || !valuePreview || !value) return null
+    const imageFrameRect = imageFrame.getBoundingClientRect()
+    const imagePreviewRect = imagePreview.getBoundingClientRect()
+    const valuePreviewRect = valuePreview.getBoundingClientRect()
+    const valueRect = value.getBoundingClientRect()
+    return {
+      imageAspectRatio: imageFrameRect.width / imageFrameRect.height,
+      naturalImageAspectRatio: image.naturalWidth / image.naturalHeight,
+      previewHeightDifference: Math.abs(imagePreviewRect.height - valuePreviewRect.height),
+      valueHeight: valueRect.height,
+      bottomGap: valuePreviewRect.bottom - valueRect.bottom,
+      valueHasVerticalScroll: value.scrollHeight > value.clientHeight,
+      inlineHeight: value.style.height,
+      maxHeight: getComputedStyle(value).maxHeight,
+    }
+  })
+  expect(displayGeometry).not.toBeNull()
+  expect(displayGeometry!.imageAspectRatio).toBeCloseTo(displayGeometry!.naturalImageAspectRatio, 2)
+  expect(displayGeometry!.previewHeightDifference).toBeLessThanOrEqual(1)
+  expect(displayGeometry!.valueHeight).toBeGreaterThan(148)
+  expect(displayGeometry!.bottomGap).toBeLessThanOrEqual(8)
+  expect(displayGeometry!.valueHasVerticalScroll).toBe(true)
+  expect(displayGeometry!.inlineHeight).toBe('')
+  expect(displayGeometry!.maxHeight).toBe('none')
   expect(invokeUrls).toEqual([
     `http://127.0.0.1:5600/api/v1/workflows/app-runtimes/${runtimeId}/invoke/upload?response_mode=run`,
   ])
