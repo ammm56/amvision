@@ -532,6 +532,16 @@ const {
   readNodeId: (node) => node.node.node_id,
   readNodeHeight: (node) => nodeVisualHeight(node),
   readBoundaryHeight: (boundary) => boundaryNodeHeight(boundary),
+  readResetTarget: () => {
+    const entryBoundary = appBoundaryNodes.value.find((boundary) => boundary.kind === 'entry')
+    if (!entryBoundary) return null
+    return {
+      x: entryBoundary.x,
+      y: entryBoundary.y,
+      width: entryBoundary.width,
+      height: boundaryNodeHeight(entryBoundary),
+    }
+  },
   selectNode: (nodeId) => {
     selectNode(nodeId)
   },

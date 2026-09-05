@@ -25,6 +25,13 @@ interface WorkflowMinimapNode {
   style: Record<string, string>
 }
 
+interface WorkflowViewportTarget {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 interface WorkflowCanvasViewportOptions<NodeView extends WorkflowCanvasViewportNodeView, BoundaryView extends WorkflowCanvasViewportBoundaryView> {
   canvasRef: Ref<HTMLElement | null>
   graphNodes: Ref<NodeView[]>
@@ -33,6 +40,7 @@ interface WorkflowCanvasViewportOptions<NodeView extends WorkflowCanvasViewportN
   readNodeId: (node: NodeView) => string
   readNodeHeight: (node: NodeView) => number
   readBoundaryHeight: (boundary: BoundaryView) => number
+  readResetTarget?: () => WorkflowViewportTarget | null
   selectNode: (nodeId: string) => void
   shouldIgnoreWheelTarget: (target: EventTarget | null) => boolean
   clearTransientUi: () => void
@@ -242,9 +250,15 @@ export function useWorkflowCanvasViewport<NodeView extends WorkflowCanvasViewpor
   }
 
   function resetView(): void {
-    viewportX.value = 0
-    viewportY.value = 0
     viewportScale.value = 1
+    const target = options.readResetTarget?.()
+    if (target) {
+      viewportX.value = stageSize.value.width / 2 - (target.x + target.width / 2)
+      viewportY.value = stageSize.value.height / 2 - (target.y + target.height / 2)
+    } else {
+      viewportX.value = 0
+      viewportY.value = 0
+    }
     options.clearTransientUi()
   }
 

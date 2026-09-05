@@ -71,6 +71,32 @@ describe('useWorkflowCanvasViewport', () => {
     expect(viewport.viewportScale.value).toBe(1)
   })
 
+  it('重置时以 100% 居中定位指定的入口节点', () => {
+    const canvasRef = ref({
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: 800, height: 600 }),
+    } as HTMLElement)
+    const viewport = useWorkflowCanvasViewport({
+      canvasRef,
+      graphNodes: ref<TestNode[]>([{ id: 'node-1', x: 0, y: 0, width: 200, height: 100 }]),
+      graphNotes: ref([]),
+      readBoundaryNodes: () => [],
+      readNodeId: (node) => node.id,
+      readNodeHeight: (node) => node.height,
+      readBoundaryHeight: () => 0,
+      readResetTarget: () => ({ x: 1200, y: 800, width: 250, height: 180 }),
+      selectNode: vi.fn(),
+      shouldIgnoreWheelTarget: () => false,
+      clearTransientUi: vi.fn(),
+    })
+
+    viewport.updateStageSize()
+    viewport.resetView()
+
+    expect(viewport.viewportScalePercent.value).toBe(100)
+    expect(viewport.viewportX.value).toBe(400 - 1325)
+    expect(viewport.viewportY.value).toBe(300 - 890)
+  })
+
   it('连续缩小时不低于 10%', () => {
     const canvasRef = ref({
       getBoundingClientRect: () => ({ left: 0, top: 0, width: 800, height: 600 }),
