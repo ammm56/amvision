@@ -1,5 +1,10 @@
 <template>
-  <form class="app-mode-inputs" :aria-label="t('workflowEditor.appMode.inputs')" @submit.prevent="emit('run')">
+  <form
+    class="app-mode-inputs"
+    :class="{ 'app-mode-inputs--empty': inputs.length === 0 }"
+    :aria-label="t('workflowEditor.appMode.inputs')"
+    @submit.prevent="emit('run')"
+  >
     <header>
       <Button type="submit" variant="primary" :loading="running" :disabled="disabled">
         <Play :size="16" />
@@ -117,11 +122,25 @@ function label(input: WorkflowAppContractInput): string {
   align-content: start;
   gap: var(--am-space-lg);
   min-width: 300px;
+  max-height: 100%;
   padding: var(--am-space-xl);
+  overflow-y: auto;
   border: 1px solid var(--am-border);
   border-radius: var(--am-radius-md);
   background: var(--am-surface);
   color: var(--am-text);
+}
+
+.app-mode-inputs--empty {
+  display: flex;
+  align-items: center;
+  align-self: start;
+  width: fit-content;
+  min-width: 0;
+  max-width: 100%;
+  gap: var(--am-space-md);
+  padding: var(--am-space-md) var(--am-space-lg);
+  overflow: hidden;
 }
 
 .app-mode-inputs > header {

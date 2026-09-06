@@ -19,7 +19,11 @@
     <p v-if="error || invokeError" role="alert" class="runtime-app-mode__error">{{ invokeError || error }}</p>
     <p v-if="snapshot && !appMode" class="runtime-app-mode__empty">{{ t('workflowEditor.appMode.notConfigured') }}</p>
 
-    <div v-if="snapshot && appMode" class="runtime-app-mode__body">
+    <div
+      v-if="snapshot && appMode"
+      class="runtime-app-mode__body"
+      :class="{ 'runtime-app-mode__body--without-inputs': inputs.length === 0 }"
+    >
       <WorkflowAppModeInputPanel
         :inputs="inputs"
         :labels="inputLabels"
@@ -169,15 +173,18 @@ async function invoke(): Promise<void> {
 
   display: flex;
   flex-direction: column;
-  min-height: calc(100dvh - 32px);
+  height: 100%;
+  min-height: 0;
   gap: var(--am-space-md);
   padding: var(--am-space-lg);
+  overflow: hidden;
   background: var(--am-page);
   color: var(--am-text);
 }
 
 .runtime-app-mode__toolbar {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   flex-wrap: wrap;
   gap: var(--am-space-xl);
@@ -222,15 +229,26 @@ async function invoke(): Promise<void> {
 
 .runtime-app-mode__body {
   display: grid;
+  flex: 1 1 auto;
   grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: var(--am-space-lg);
-  align-items: start;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.runtime-app-mode__body--without-inputs {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 .runtime-app-mode__body > main {
   display: grid;
   gap: var(--am-space-md);
+  height: 100%;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .runtime-app-mode__error,
@@ -255,6 +273,11 @@ async function invoke(): Promise<void> {
 @media (max-width: 960px) {
   .runtime-app-mode__body {
     grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .runtime-app-mode__body:not(.runtime-app-mode__body--without-inputs) > .app-mode-inputs {
+    max-height: min(32dvh, 280px);
   }
 }
 </style>
