@@ -18,7 +18,13 @@ from typing import Callable
 from uuid import uuid4
 
 
-LAUNCHERS_ROOT = Path(__file__).resolve().parent / "launchers"
+SCRIPT_FILE = Path(__file__).resolve()
+RELEASE_LAUNCHERS_ROOT = SCRIPT_FILE.parent / "launchers"
+LAUNCHERS_ROOT = (
+    RELEASE_LAUNCHERS_ROOT
+    if (RELEASE_LAUNCHERS_ROOT / "common.py").is_file()
+    else SCRIPT_FILE.parents[1]
+)
 if str(LAUNCHERS_ROOT) not in sys.path:
     sys.path.insert(0, str(LAUNCHERS_ROOT))
 
@@ -860,8 +866,8 @@ def _wait_for_inference_daemon_ready(
                     [*probe_command, "--probe"],
                     cwd=str(app_root),
                     env=_build_child_process_environment(),
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
                     check=False,
                     timeout=min(30.0, max(1.0, deadline - time.monotonic())),
                 )
@@ -872,7 +878,7 @@ def _wait_for_inference_daemon_ready(
             if probe_result.returncode == 0:
                 print("inference-daemon mmap 热路径探测成功。", flush=True)
                 return
-            last_probe_error = f"probe returncode={probe_result.returncode}"
+            last_probe_error = _format_probe_error(probe_result)
         if return_code is not None:
             raise RuntimeError(
                 f"inference-daemon 初始化失败，returncode={return_code}，"
@@ -1103,8 +1109,8 @@ def _wait_for_local_buffer_ready(
                 [*probe_command, "--probe-local-buffer"],
                 cwd=str(app_root),
                 env=_build_child_process_environment(),
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
                 check=False,
                 timeout=min(10.0, max(1.0, deadline - time.monotonic())),
             )
@@ -1114,12 +1120,24 @@ def _wait_for_local_buffer_ready(
             if probe_result.returncode == 0:
                 print("backend-service 主 LocalBuffer 已就绪。", flush=True)
                 return
-            last_error = f"probe returncode={probe_result.returncode}"
+            last_error = _format_probe_error(probe_result)
         time.sleep(0.2)
     raise TimeoutError(
         f"backend-service 主 LocalBuffer 未在 {timeout_seconds:.0f}s 内就绪："
         f"{last_error}"
     )
+
+
+def _format_probe_error(result: subprocess.CompletedProcess[bytes]) -> str:
+    """返回有界的探针失败信息，避免启动错误只剩退出码。"""
+
+    output = result.stdout or b""
+    if isinstance(output, bytes):
+        output_text = output[-4096:].decode("utf-8", errors="replace").strip()
+    else:
+        output_text = str(output)[-4096:].strip()
+    suffix = f"，output={output_text}" if output_text else ""
+    return f"probe returncode={result.returncode}{suffix}"
 
 
 def main(argv: list[str] | None = None) -> int:

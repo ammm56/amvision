@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import socket
 import subprocess
 import time
 from dataclasses import dataclass
@@ -37,9 +38,10 @@ def test_release_full_stack_start_health_openapi_and_stop() -> None:
     start_script = release_root / "start_amvision_full.py"
     stop_script = release_root / "stop_amvision_full.py"
     if not start_script.is_file() or not stop_script.is_file():
-        pytest.skip("release/full 尚未组装，跳过发布目录真实启动验收")
+        pytest.fail(f"发行目录缺少完整启动或停止脚本: {release_root}")
 
     port = int(os.environ.get("AMVISION_RELEASE_FULL_PORT", "5600"))
+    _assert_tcp_port_available("127.0.0.1", port)
     logs_subdir = os.environ.get(
         "AMVISION_RELEASE_FULL_LOGS_SUBDIR",
         f"integration-full-stack-{int(time.time())}",
@@ -48,11 +50,16 @@ def test_release_full_stack_start_health_openapi_and_stop() -> None:
     sample_interval_seconds = _resolve_resource_sample_interval(soak_seconds)
     state_file = release_root / "logs" / logs_subdir / "runtime-state.json"
     resource_baseline_file = state_file.parent / "resource-baseline.json"
+    supervisor_log_file = state_file.parent / "full-supervisor.log"
     component_resource_refs: list[tuple[int, float]] = []
     base_url = f"http://127.0.0.1:{port}"
     workload_process: _SoakWorkloadProcess | None = None
 
     state_file.parent.mkdir(parents=True, exist_ok=True)
+    _assert_release_layout_valid(
+        release_root=release_root,
+        python_executable=python_executable,
+    )
     state_file.write_text(
         json.dumps(
             {
@@ -73,27 +80,32 @@ def test_release_full_stack_start_health_openapi_and_stop() -> None:
         encoding="utf-8",
     )
 
-    start_process = subprocess.Popen(
-        [
-            str(python_executable),
-            str(start_script),
-            "--app-root",
-            str(release_root),
-            "--python-executable",
-            str(python_executable),
-            "--host",
-            "127.0.0.1",
-            "--port",
-            str(port),
-            "--logs-subdir",
-            logs_subdir,
-            "--startup-delay-seconds",
-            "0.5",
-        ],
-        cwd=release_root,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.STDOUT,
-    )
+    supervisor_log_handle = supervisor_log_file.open("wb")
+    try:
+        start_process = subprocess.Popen(
+            [
+                str(python_executable),
+                str(start_script),
+                "--app-root",
+                str(release_root),
+                "--python-executable",
+                str(python_executable),
+                "--host",
+                "127.0.0.1",
+                "--port",
+                str(port),
+                "--logs-subdir",
+                logs_subdir,
+                "--startup-delay-seconds",
+                "0.5",
+            ],
+            cwd=release_root,
+            stdout=supervisor_log_handle,
+            stderr=subprocess.STDOUT,
+        )
+    except BaseException:
+        supervisor_log_handle.close()
+        raise
 
     try:
         _wait_for_http_json(f"{base_url}/api/v1/system/health", timeout_seconds=90)
@@ -150,7 +162,9 @@ def test_release_full_stack_start_health_openapi_and_stop() -> None:
             port=port,
         )
         component_resource_refs = [
-            (int(item["pid"]), float(item["create_time"])) for item in initial_resources
+            (int(process_ref["pid"]), float(process_ref["create_time"]))
+            for item in initial_resources
+            for process_ref in item["process_refs"]
         ]
         resource_samples: list[dict[str, object]] = [
             {
@@ -241,6 +255,7 @@ def test_release_full_stack_start_health_openapi_and_stop() -> None:
             except subprocess.TimeoutExpired:
                 start_process.kill()
                 start_process.wait(timeout=15)
+        supervisor_log_handle.close()
         assert stop_result.returncode == 0, stop_result.stdout
         assert not state_file.exists()
         _assert_process_refs_stopped(component_resource_refs)
@@ -251,9 +266,14 @@ def _resolve_release_root() -> Path:
     """解析本次要验收的 release/full 根目录。"""
 
     configured = os.environ.get("AMVISION_RELEASE_FULL_ROOT")
-    if configured:
-        return Path(configured).resolve()
-    return (Path(__file__).resolve().parents[2] / "release" / "full").resolve()
+    if not configured or not configured.strip():
+        pytest.fail(
+            "必须通过 AMVISION_RELEASE_FULL_ROOT 显式指定待验收的 CPU 或 NVIDIA 发行目录"
+        )
+    release_root = Path(configured).resolve()
+    if not release_root.is_dir():
+        pytest.fail(f"待验收发行目录不存在: {release_root}")
+    return release_root
 
 
 def _resolve_release_python(release_root: Path) -> Path:
@@ -266,8 +286,58 @@ def _resolve_release_python(release_root: Path) -> Path:
         release_root / "python" / ("python.exe" if os.name == "nt" else "bin/python")
     )
     if not candidate.is_file():
-        pytest.skip("release/full/python 不存在，跳过发布目录真实启动验收")
+        pytest.fail(f"发行目录缺少 bundled Python: {candidate}")
     return candidate
+
+
+def _assert_tcp_port_available(host: str, port: int) -> None:
+    """在启动前确认测试端口没有被其他 Backend 占用。"""
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe_socket:
+        probe_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            probe_socket.bind((host, port))
+        except OSError as error:
+            pytest.fail(f"发行验收端口已被占用: {host}:{port}: {error}")
+
+
+def _assert_release_layout_valid(
+    *,
+    release_root: Path,
+    python_executable: Path,
+) -> None:
+    """使用待验收发行包自己的 Python 执行完整布局与运行环境校验。"""
+
+    maintenance_launcher = (
+        release_root / "launchers" / "maintenance" / "invoke_backend_maintenance.py"
+    )
+    if not maintenance_launcher.is_file():
+        pytest.fail(f"发行目录缺少 maintenance launcher: {maintenance_launcher}")
+    completed = subprocess.run(
+        [
+            str(python_executable),
+            str(maintenance_launcher),
+            "--app-root",
+            str(release_root),
+            "--python-executable",
+            str(python_executable),
+            "--",
+            "validate-layout",
+            "--output",
+            "json",
+        ],
+        cwd=release_root,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=180,
+        check=False,
+    )
+    assert completed.returncode == 0, (
+        "发行目录 validate-layout 失败:\n" + completed.stdout[-16_384:]
+    )
 
 
 def _wait_for_state_payload(
@@ -672,7 +742,7 @@ def _read_log_tail(log_file: Path, *, max_chars: int = 2000) -> str:
 
 
 def _collect_process_resources(components: list[object]) -> list[dict[str, object]]:
-    """采集 full stack 组件进程的资源快照。"""
+    """按 launcher 及其实际子进程树采集 full stack 组件资源。"""
 
     rows: list[dict[str, object]] = []
     for component in components:
@@ -684,21 +754,70 @@ def _collect_process_resources(components: list[object]) -> list[dict[str, objec
         assert isinstance(name, str) and name
         assert isinstance(pid, int) and pid > 0
         try:
-            process = psutil.Process(pid)
-            with process.oneshot():
-                memory_info = process.memory_info()
-                cpu_times = process.cpu_times()
-                status = process.status()
-                row = {
-                    "name": name,
-                    "pid": pid,
-                    "create_time": process.create_time(),
-                    "status": status,
-                    "rss_bytes": memory_info.rss,
-                    "num_threads": process.num_threads(),
-                    "user_cpu_seconds": cpu_times.user,
-                    "system_cpu_seconds": cpu_times.system,
-                }
+            root_process = psutil.Process(pid)
+            processes = [root_process, *root_process.children(recursive=True)]
+            process_rows: list[dict[str, object]] = []
+            for process in processes:
+                try:
+                    with process.oneshot():
+                        memory_info = process.memory_info()
+                        cpu_times = process.cpu_times()
+                        process_rows.append(
+                            {
+                                "pid": process.pid,
+                                "create_time": process.create_time(),
+                                "status": process.status(),
+                                "rss_bytes": memory_info.rss,
+                                "private_bytes": int(
+                                    getattr(memory_info, "private", memory_info.rss)
+                                ),
+                                "num_handles": (
+                                    process.num_handles()
+                                    if hasattr(process, "num_handles")
+                                    else 0
+                                ),
+                                "num_threads": process.num_threads(),
+                                "user_cpu_seconds": cpu_times.user,
+                                "system_cpu_seconds": cpu_times.system,
+                            }
+                        )
+                except psutil.NoSuchProcess:
+                    if process.pid == pid:
+                        raise
+                    # Worker 负载可能创建极短生命周期的任务子进程；恰好在
+                    # 枚举后退出不代表组件异常，下一采样会自然反映新进程树。
+                    continue
+            root_row = process_rows[0]
+            row = {
+                "name": name,
+                "pid": pid,
+                "create_time": root_row["create_time"],
+                "status": root_row["status"],
+                "process_count": len(process_rows),
+                "process_refs": [
+                    {
+                        "pid": process_row["pid"],
+                        "create_time": process_row["create_time"],
+                    }
+                    for process_row in process_rows
+                ],
+                "rss_bytes": sum(int(item["rss_bytes"]) for item in process_rows),
+                "private_bytes": sum(
+                    int(item["private_bytes"]) for item in process_rows
+                ),
+                "num_handles": sum(
+                    int(item["num_handles"]) for item in process_rows
+                ),
+                "num_threads": sum(
+                    int(item["num_threads"]) for item in process_rows
+                ),
+                "user_cpu_seconds": sum(
+                    float(item["user_cpu_seconds"]) for item in process_rows
+                ),
+                "system_cpu_seconds": sum(
+                    float(item["system_cpu_seconds"]) for item in process_rows
+                ),
+            }
         except psutil.Error as exc:
             raise AssertionError(
                 f"无法读取组件进程资源: name={name}, pid={pid}"
@@ -732,21 +851,13 @@ def _assert_process_refs_stopped(process_refs: list[tuple[int, float]]) -> None:
 def _process_ref_is_alive(pid: int, create_time: float) -> bool:
     """按 pid 和 create_time 判断是否仍是同一个进程。"""
 
-    if os.name == "nt":
-        result = subprocess.run(
-            ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            timeout=10,
-            check=False,
-        )
-        return f'"{pid}"' in result.stdout
     try:
         process = psutil.Process(pid)
-        return abs(process.create_time() - create_time) < 1.0 and process.is_running()
+        return (
+            abs(process.create_time() - create_time) < 1.0
+            and process.is_running()
+            and process.status() != psutil.STATUS_ZOMBIE
+        )
     except psutil.Error:
         return False
 
@@ -793,6 +904,8 @@ def _summarize_resource_drift(
             continue
         initial_rss = int(initial_item["rss_bytes"])
         final_rss = int(final_item["rss_bytes"])
+        initial_private = int(initial_item["private_bytes"])
+        final_private = int(final_item["private_bytes"])
         initial_cpu = float(initial_item["user_cpu_seconds"]) + float(
             initial_item["system_cpu_seconds"]
         )
@@ -806,11 +919,20 @@ def _summarize_resource_drift(
                 "initial_rss_bytes": initial_rss,
                 "final_rss_bytes": final_rss,
                 "rss_delta_bytes": final_rss - initial_rss,
+                "initial_private_bytes": initial_private,
+                "final_private_bytes": final_private,
+                "private_delta_bytes": final_private - initial_private,
                 "initial_cpu_seconds": round(initial_cpu, 6),
                 "final_cpu_seconds": round(final_cpu, 6),
                 "cpu_delta_seconds": round(final_cpu - initial_cpu, 6),
                 "initial_num_threads": initial_item["num_threads"],
                 "final_num_threads": final_item["num_threads"],
+                "initial_num_handles": initial_item["num_handles"],
+                "final_num_handles": final_item["num_handles"],
+                "handle_delta": int(final_item["num_handles"])
+                - int(initial_item["num_handles"]),
+                "initial_process_count": initial_item["process_count"],
+                "final_process_count": final_item["process_count"],
             }
         )
     return rows

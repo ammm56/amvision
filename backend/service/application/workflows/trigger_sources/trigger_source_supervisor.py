@@ -146,8 +146,14 @@ class TriggerSourceSupervisor(WorkflowTriggerEventHandler):
 
         with self._lock:
             trigger_source_ids = tuple(self._states.keys())
+        first_error: Exception | None = None
         for trigger_source_id in trigger_source_ids:
-            self.stop_trigger_source(trigger_source_id)
+            try:
+                self.stop_trigger_source(trigger_source_id)
+            except Exception as error:  # noqa: BLE001 - 必须继续清理其他 Trigger
+                first_error = first_error or error
+        if first_error is not None:
+            raise first_error
 
     def supports_trigger_source(self, trigger_source: WorkflowTriggerSource) -> bool:
         """判断当前 supervisor 是否支持指定 TriggerSource 类型。

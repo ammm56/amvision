@@ -173,6 +173,10 @@ def test_assemble_release_materializes_windows_x64_nvidia_layout(
         ).read_text(encoding="utf-8")
     )
     assert release_manifest["profile_id"] == "full-windows-x64-nvidia"
+    assert release_manifest["provenance"]["product_version"] == "0.1.4"
+    assert release_manifest["provenance"]["assembled_at_utc"].endswith("Z")
+    assert "source_revision" in release_manifest["provenance"]
+    assert "source_dirty" in release_manifest["provenance"]
     assert release_manifest["target"] == {
         "os": "windows",
         "arch": "x64",
@@ -377,19 +381,28 @@ def test_validate_layout_reports_target_specific_required_and_forbidden_paths(
 
 def test_assemble_release_requires_force_to_overwrite_existing_directory(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """验证 release 目录已存在时必须显式允许覆盖。"""
+    """已有目录未允许覆盖时应立即失败，且不执行无意义的前端构建。"""
 
     release_dir = tmp_path / "full-windows-x64-nvidia"
     release_dir.mkdir(parents=True, exist_ok=True)
+    build_calls: list[bool] = []
+    monkeypatch.setattr(
+        release_assembly,
+        "_build_frontend_assets",
+        lambda: build_calls.append(True),
+    )
 
     with pytest.raises(FileExistsError):
         assemble_release(
             ReleaseAssemblyRequest(
                 profile_id="full-windows-x64-nvidia",
                 output_root=tmp_path,
+                build_frontend=True,
             )
         )
+    assert build_calls == []
 
 
 def test_assemble_release_preserves_existing_python_dir_when_overwriting(
@@ -462,6 +475,61 @@ def test_assemble_release_marks_preserved_python_with_executable_as_included(
     )
     assert result.bundled_python_mode == "preserved-existing"
     assert release_manifest["bundled_python"]["included"] is True
+
+
+def test_assemble_release_excludes_backend_python_cache(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证 backend 与 custom nodes 都不会把 Python 缓存复制进发行包。"""
+
+    _patch_release_runtime_asset_sources(monkeypatch, tmp_path)
+    source_backend_dir = tmp_path / "source-backend"
+    (source_backend_dir / "service" / "__pycache__").mkdir(parents=True)
+    (source_backend_dir / "service" / "app.py").write_text(
+        '"""backend"""\n', encoding="utf-8"
+    )
+    (source_backend_dir / "service" / "__pycache__" / "app.pyc").write_bytes(
+        b"cache"
+    )
+    monkeypatch.setattr(release_assembly, "SOURCE_BACKEND_DIR", source_backend_dir)
+
+    result = assemble_release(
+        ReleaseAssemblyRequest(
+            profile_id="full-windows-x64-cpu",
+            output_root=tmp_path,
+        )
+    )
+
+    assert (result.release_dir / "app" / "backend" / "service" / "app.py").is_file()
+    assert not list((result.release_dir / "app" / "backend").rglob("__pycache__"))
+    assert not list((result.release_dir / "app" / "backend").rglob("*.pyc"))
+    assert not list(result.release_dir.rglob("*.pyo"))
+
+
+def test_assemble_release_builds_frontend_when_requested(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证正式 CLI 组装会先执行前端构建，再复制静态资源。"""
+
+    _patch_release_runtime_asset_sources(monkeypatch, tmp_path)
+    build_calls: list[bool] = []
+    monkeypatch.setattr(
+        release_assembly,
+        "_build_frontend_assets",
+        lambda: build_calls.append(True),
+    )
+
+    assemble_release(
+        ReleaseAssemblyRequest(
+            profile_id="full-windows-x64-cpu",
+            output_root=tmp_path,
+            build_frontend=True,
+        )
+    )
+
+    assert build_calls == [True]
 
 
 def test_assemble_release_recovers_existing_python_dir_when_overwrite_fails(

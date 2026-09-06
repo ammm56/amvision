@@ -16,11 +16,11 @@ conda activate amvision
 python -c "import sys; print(sys.version); print(sys.executable)"
 Set-Location frontend/web-ui
 npm ci
-npm run build
 Set-Location ../..
 ```
 
 Python 要求 3.12+，Node.js 要求以 `frontend/web-ui/package.json` 为准。
+`assemble-release` 会执行正式 `npm run build`，不需要预先手工生成 `dist/`；这里的 `npm ci` 只负责按 lockfile 准备构建依赖。
 
 ## 2. 组装发行目录
 
@@ -36,7 +36,7 @@ NVIDIA：
 python -m backend.maintenance.main assemble-release --profile-id full-windows-x64-nvidia --release-root .\release --force --output text
 ```
 
-组装会复制当前 backend、config 模板、Node Pack、前端 `dist`、launcher、manifest 和对应 runtime 工具。`release/<profile-id>/app/` 是生成结果，不能直接修改。
+组装会先构建前端，再复制当前 backend、config 模板、Node Pack、前端 `dist`、launcher、manifest 和对应 runtime 工具。`release/<profile-id>/app/` 是生成结果，不能直接修改。前端构建失败时不会进入本轮发行目录覆盖步骤。
 
 `--force` 会保留既有 `python/` 后重新组装其他内容。首次生成只创建 Python 占位目录，不复制当前 conda 环境。
 
@@ -70,6 +70,8 @@ Set-Location release/full-windows-x64-cpu
 
 NVIDIA 环境替换为对应目录。布局校验失败必须修正发行资产，不能通过删除 manifest 或绕过 launcher 启动。
 
+该命令不仅检查目录，还会用当前发行包自己的 Python 校验 Python 3.12/Windows x64、requirements 直接依赖和目标 accelerator。CPU 包必须是 CPU-only PyTorch；NVIDIA 包必须能访问 CUDA/cuDNN，且 TensorRT Python 与 `trtexec` 版本一致。失败时退出码为非零。
+
 ## 5. 启动完整服务
 
 ```powershell
@@ -77,6 +79,8 @@ NVIDIA 环境替换为对应目录。布局校验失败必须修正发行资产�
 ```
 
 默认监听地址为 `0.0.0.0`，默认端口为 `5600`。只有需要改变监听范围或端口时才传 `--host`、`--port`。
+
+发行前端的 API/WebSocket 地址由 `frontend/runtime-config.json` 独立配置，默认同样指向 `127.0.0.1:5600`。修改 Backend `--port` 不会隐式改写静态前端文件；使用其他端口时必须在组装前提供匹配的 runtime config。该边界避免启动过程修改发行内容，也避免浏览器误连到另一套实例。
 
 启动器按顺序：
 

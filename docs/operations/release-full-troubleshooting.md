@@ -42,6 +42,9 @@
 - 发行目录只有一个 `manifests/release-profiles/*.json`。
 - 六个 `manifests/worker-profiles/*.json` 与 release manifest 一致。
 - 端口未被其他实例占用。
+- `runtime.issues` 为空，且 requirements 和目标 accelerator 校验通过。
+
+`validate-layout` 返回非零时不能因为已经输出 JSON 而继续启动。CPU 包出现 CUDA PyTorch，或 NVIDIA 包无法访问 CUDA/cuDNN、TensorRT Python 与 `trtexec` 版本不一致，都属于发行环境错误。
 
 迁移失败时只看 migration 日志并恢复数据库问题；不能跳过 migration 强行启动服务。
 
@@ -59,6 +62,7 @@ Invoke-WebRequest http://127.0.0.1:5600/openapi.json
 - 查看浏览器 Network/Console。
 - 核对 `frontend/runtime-config.json` 的 API base URL。
 - 确认当前访问的是这份发行目录对应的 service。
+- 如果启动时传入了非默认 `--port`，同步核对 runtime config；启动器不会自动改写前端连接地址。
 
 如果 API 随后退出，检查 Supervisor 终端和各 Profile 日志；某组件首次启动失败会使完整 stack 回收，不能只看曾经短暂成功的 service health。
 

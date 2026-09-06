@@ -53,8 +53,10 @@ python -m backend.maintenance.main assemble-release --profile-id full-windows-x6
 - 发布根目录会复制仓库根 `README.md` 和授权文件，便于发布包独立交付和核对。
 - 当前 Windows 包只生成 `.bat` wrapper，不复制 Linux `.sh` launcher 或 Linux FFmpeg。
 - `python/` 默认只创建空目录，完整 bundled Python 由发布人员手工复制；`--force` 覆盖同一 profile 时会保留已有 `python/`。
+- CLI 组装会先执行正式前端构建，禁止静默复用未知新旧状态的 `dist/`；前端构建失败时发行目录不进入本轮覆盖步骤。
 - 发布目录保留 maintenance launcher，用于版本输出、配置查看、布局校验和 release 组装。
 - 发布目录复制完整后端源码；不同硬件环境通过 release profile 区分，不通过手工修改发行目录区分。
+- release manifest 的 `provenance` 记录产品版本、组装时间、Git revision 和源码 dirty 状态；正式交付应使用 `source_dirty=false` 的构建。
 
 ## worker profile 一览
 
@@ -134,6 +136,8 @@ CPU profile 不应包含 `tools/tensorrt/` 和 `tools/cudnn/`，`app/requirement
 2. 在对应发行目录根目录执行 `start-amvision-full.bat`
 3. 检查 health、OpenAPI 文档和目标业务 smoke test
 4. Worker 排障通过设置页 Topology 明细、当前日期日志和 Supervisor 恢复记录完成，不脱离 Topology 单独启动
+
+`validate-layout` 必须在目标发行目录中通过 bundled Python launcher 执行。它同时验证 Python/依赖与 profile 硬件身份：CPU 包拒绝 CUDA PyTorch，NVIDIA 包要求 CUDA、cuDNN、TensorRT Python 和 `trtexec` 可用且版本一致。失败时命令返回非零。
 
 ## 运维重点
 

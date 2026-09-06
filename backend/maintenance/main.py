@@ -19,6 +19,7 @@ from backend.maintenance.release_assembly import (
     ReleaseAssemblyRequest,
     assemble_release,
 )
+from backend.maintenance.release_runtime_validation import validate_release_runtime
 from backend.maintenance.task_runtime_upgrade import (
     VERIFY_TASK_RUNTIME_UPGRADE_COMMAND,
     verify_task_runtime_upgrade,
@@ -349,31 +350,47 @@ def run_command(
                         "cpu_cudnn_tools": app_root / "tools" / "cudnn",
                     }
                 )
+        path_results = {
+            name: {
+                "path": str(next((path for path in paths if path.exists()), paths[0])),
+                "exists": any(path.exists() for path in paths),
+                "candidates": [str(path) for path in paths],
+            }
+            for name, paths in expected_paths.items()
+        }
+        forbidden_path_results = {
+            name: {
+                "path": str(path),
+                "exists": path.exists(),
+                "valid": not path.exists(),
+            }
+            for name, path in forbidden_paths.items()
+        }
+        runtime_validation: dict[str, object] | None = None
+        if layout_kind == "release":
+            runtime_validation = validate_release_runtime(
+                app_root=app_root,
+                release_manifest=release_manifest,
+            )
+        is_valid = (
+            all(bool(item["exists"]) for item in path_results.values())
+            and all(bool(item["valid"]) for item in forbidden_path_results.values())
+            and bool(release_manifest or layout_kind == "source")
+            and bool(
+                runtime_validation is None or runtime_validation.get("valid") is True
+            )
+        )
         return {
             "command": command,
+            "valid": is_valid,
             "app_root": str(app_root),
             "layout_kind": layout_kind,
             "target": release_manifest.get("target", {}),
             "accelerator": release_manifest.get("accelerator"),
             "workspace_dir": str(runtime.workspace_dir),
-            "paths": {
-                name: {
-                    "path": str(
-                        next((path for path in paths if path.exists()), paths[0])
-                    ),
-                    "exists": any(path.exists() for path in paths),
-                    "candidates": [str(path) for path in paths],
-                }
-                for name, paths in expected_paths.items()
-            },
-            "forbidden_paths": {
-                name: {
-                    "path": str(path),
-                    "exists": path.exists(),
-                    "valid": not path.exists(),
-                }
-                for name, path in forbidden_paths.items()
-            },
+            "paths": path_results,
+            "forbidden_paths": forbidden_path_results,
+            "runtime": runtime_validation,
         }
     if command == "assemble-release":
         resolved_profile_id = (
@@ -395,6 +412,7 @@ def run_command(
                 frontend_runtime_config_template_file=Path(
                     runtime.settings.release.frontend.runtime_config_template_file
                 ),
+                build_frontend=True,
             )
         )
         return {
@@ -728,6 +746,8 @@ def main(argv: list[str] | None = None) -> int:
         print(format_text_output(payload))
     else:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
+    if args.command == "validate-layout" and payload.get("valid") is not True:
+        return 1
     return 0
 
 

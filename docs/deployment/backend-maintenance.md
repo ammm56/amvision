@@ -35,6 +35,9 @@
 - 校验 `manifests/worker-profiles` 或 `runtimes/manifests/worker-profiles`
 - 发布目录中会按 manifest 校验目标平台、`README.md`、Windows bundled Python、Windows FFmpeg 和根 launcher
 - CPU 发布会把 TensorRT/cuDNN 目录视为非法混入；Windows 发布会把 Linux launcher、Linux FFmpeg 和 Linux Python 布局视为非法混入
+- 发布目录必须由自身的 `python/python.exe` 执行校验；命令会检查 Python 3.12、Windows x64、`app/requirements.txt` 直接依赖及版本约束
+- CPU profile 必须使用 CPU-only PyTorch；NVIDIA profile 必须可访问 CUDA/cuDNN，并要求 TensorRT Python 与发行包 `trtexec` 主版本一致
+- 任一校验不通过时输出 `valid=false` 并返回非零退出码，不能把诊断 JSON 输出成功误判为发行包有效
 
 ### assemble-release
 
@@ -51,7 +54,10 @@
 - 如果当前发布目录没有可执行的 Python，会创建或保留占位目录并在 manifest 中标记 `placeholder-empty`；仅存在目录或标记文件不会被误报为已包含
 - full 启动器只接受显式 `--python-executable` 或发布目录中的 `python/python.exe`，不会回退到系统 Python
 - 当 release profile 要求包含前端时，自动复制 `frontend/web-ui/dist/` 到发行目录里的 `frontend/`
+- maintenance CLI 会在复制前执行一次正式 `npm run build`；构建失败时禁止继续覆盖组装
 - 如果前端构建结果里没有 `runtime-config.json`，当前会优先使用 `runtime-config.local.json`，否则回退到 `runtime-config.template.json` 自动生成
+- backend 与 Custom Node 源码复制时排除 `__pycache__`、`.pyc`、`.pyo`，并在组装结束前复核
+- 发行 manifest 记录产品版本、组装 UTC 时间、Git revision 和源码工作区是否有未提交修改
 - 自动生成发行目录内可直接使用的 `manifests/release-profiles/<profile_id>.json`
 
 ### migrate-database

@@ -69,9 +69,6 @@ NVIDIA profile 额外包含 `tools/tensorrt/` 和 `tools/cudnn/`。CPU profile �
 
 ```powershell
 conda activate amvision
-Set-Location frontend/web-ui
-npm run build
-Set-Location ../..
 python -m backend.maintenance.main assemble-release --profile-id full-windows-x64-cpu --release-root .\release --force --output text
 ```
 
@@ -79,11 +76,14 @@ NVIDIA 机器把 profile 替换为 `full-windows-x64-nvidia`。
 
 组装器：
 
+- 先执行正式前端构建，构建失败时不进入本轮发行目录覆盖步骤。
 - 复制当前 backend、Custom Node、配置和 launcher。
 - 只复制与目标 profile 匹配的 FFmpeg/GPU 资产。
 - 复制 `frontend/web-ui/dist/`，并生成或校验 `runtime-config.json`。
 - 生成发行态 release manifest，其中包含六个 Worker Profile 和日期日志模式。
+- manifest 同时记录产品版本、组装 UTC 时间、Git revision 和源码 dirty 状态。
 - `--force` 重建目录时临时保留并回迁已有 `python/`。
+- 排除并复核 backend、Custom Node 中的 Python 字节码缓存。
 - 不复制开发数据库、Workflow 业务数据、数据集、预训练权重或其他 `data/` 内容。
 
 ## bundled Python

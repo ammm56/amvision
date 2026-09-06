@@ -406,6 +406,10 @@ def run_python_module(
     runtime_env = build_python_module_environment(app_root, extra_env=extra_env)
 
     resolved_python_executable = python_executable
+    if resolved_python_executable is not None:
+        # subprocess 的 cwd 会切换到 app_root。显式相对路径必须先按调用方当前
+        # 目录归一化，否则子进程会把发行目录前缀重复拼接到 sys.executable。
+        resolved_python_executable = str(Path(resolved_python_executable).resolve())
     if resolved_python_executable is None:
         bundled_python_executable = app_root / "python" / "python.exe"
         is_release_layout = (app_root / "manifests" / "release-profiles").is_dir()
@@ -419,12 +423,17 @@ def run_python_module(
             resolved_python_executable = sys.executable
 
     command = [resolved_python_executable, "-m", module_name, *module_args]
-    completed = subprocess.run(
-        command,
-        cwd=str(app_root),
-        env=runtime_env,
-        check=False,
-    )
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=str(app_root),
+            env=runtime_env,
+            check=False,
+        )
+    except KeyboardInterrupt:
+        # 交互式 Ctrl+C 会同时传递给前台子进程。外层 launcher 只返回
+        # 标准中断码，避免在正常运维停止时打印误导性的 Python 堆栈。
+        return 130
     return completed.returncode
 
 

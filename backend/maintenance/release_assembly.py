@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
+import subprocess
 import tempfile
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 import re
 from typing import Callable
+
+from backend.version import BACKEND_VERSION
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -16,6 +21,7 @@ SOURCE_BACKEND_DIR = REPOSITORY_ROOT / "backend"
 SOURCE_CONFIG_DIR = REPOSITORY_ROOT / "config"
 SOURCE_CUSTOM_NODES_DIR = REPOSITORY_ROOT / "custom_nodes"
 SOURCE_FRONTEND_DIST_DIR = REPOSITORY_ROOT / "frontend" / "web-ui" / "dist"
+SOURCE_FRONTEND_PROJECT_DIR = REPOSITORY_ROOT / "frontend" / "web-ui"
 SOURCE_FRONTEND_RUNTIME_CONFIG_LOCAL_FILE = (
     REPOSITORY_ROOT / "frontend" / "web-ui" / "public" / "runtime-config.local.json"
 )
@@ -64,6 +70,7 @@ class ReleaseAssemblyRequest:
     - frontend_dist_dir：可选的前端构建产物目录。
     - frontend_runtime_config_source_file：优先复制为 runtime-config.json 的配置文件。
     - frontend_runtime_config_template_file：找不到 source_file 时使用的模板文件。
+    - build_frontend：是否在复制前执行正式前端构建。
     """
 
     profile_id: str
@@ -72,6 +79,7 @@ class ReleaseAssemblyRequest:
     frontend_dist_dir: Path | None = None
     frontend_runtime_config_source_file: Path | None = None
     frontend_runtime_config_template_file: Path | None = None
+    build_frontend: bool = False
 
     def resolve_release_dir(self) -> Path:
         """返回当前 profile 的发行目录。"""
@@ -150,8 +158,8 @@ def _copy_directory_tree(
     target_dir.mkdir(parents=True, exist_ok=True)
 
 
-def _ignore_custom_nodes_copy(directory: str, names: list[str]) -> set[str]:
-    """返回复制 custom_nodes 时需要忽略的目录和文件名。
+def _ignore_python_cache_copy(directory: str, names: list[str]) -> set[str]:
+    """返回复制 Python 源码时需要忽略的缓存目录和文件名。
 
     参数：
     - directory：当前正在复制的目录。
@@ -161,11 +169,10 @@ def _ignore_custom_nodes_copy(directory: str, names: list[str]) -> set[str]:
     - set[str]：需要忽略的名称集合。
     """
 
-    ignored_names = {"__pycache__"}
     return {
         name
         for name in names
-        if name in ignored_names or name.endswith(".pyc") or name.endswith(".pyo")
+        if name == "__pycache__" or name.endswith(".pyc") or name.endswith(".pyo")
     }
 
 
@@ -374,7 +381,10 @@ def _copy_application_sources(
     """复制后端源码和基础配置到发行目录。"""
 
     shutil.copytree(
-        SOURCE_BACKEND_DIR, release_dir / "app" / "backend", dirs_exist_ok=True
+        SOURCE_BACKEND_DIR,
+        release_dir / "app" / "backend",
+        dirs_exist_ok=True,
+        ignore=_ignore_python_cache_copy,
     )
     shutil.copytree(SOURCE_CONFIG_DIR, release_dir / "config", dirs_exist_ok=True)
     requirements_source_file = _resolve_requirements_source_file(artifacts_section)
@@ -405,7 +415,7 @@ def _copy_runtime_assets(
     _copy_directory_tree(
         SOURCE_CUSTOM_NODES_DIR,
         release_dir / "custom_nodes",
-        ignore=_ignore_custom_nodes_copy,
+        ignore=_ignore_python_cache_copy,
     )
     ffmpeg_platform = str(
         artifacts_section.get("ffmpeg_platform") or platform_tag
@@ -423,7 +433,7 @@ def _copy_runtime_assets(
     _copy_directory_tree(
         source_ffmpeg_platform_dir,
         release_dir / "tools" / "ffmpeg" / ffmpeg_platform,
-        ignore=_ignore_custom_nodes_copy,
+        ignore=_ignore_python_cache_copy,
     )
     if bool(artifacts_section.get("include_tensorrt_runtime", False)):
         _copy_tensorrt_runtime_assets(release_dir)
@@ -489,7 +499,7 @@ def _copy_tensorrt_runtime_assets(release_dir: Path) -> None:
         _copy_directory_tree(
             source_subdir,
             target_root_dir / subdir_name,
-            ignore=_ignore_custom_nodes_copy,
+            ignore=_ignore_python_cache_copy,
         )
 
 
@@ -508,7 +518,7 @@ def _copy_cudnn_runtime_assets(release_dir: Path) -> None:
         _copy_directory_tree(
             source_subdir,
             target_root_dir / subdir_name,
-            ignore=_ignore_custom_nodes_copy,
+            ignore=_ignore_python_cache_copy,
         )
 
     source_license_file = SOURCE_CUDNN_RUNTIME_DIR / "LICENSE"
@@ -588,6 +598,91 @@ def _copy_frontend_assets(
             f"{runtime_config_template_file}"
         )
     _copy_file(runtime_config_template_file, runtime_config_target_path)
+
+
+def _build_frontend_assets() -> None:
+    """执行正式前端构建，禁止发行组装复用未知新旧状态的 dist。"""
+
+    package_file = SOURCE_FRONTEND_PROJECT_DIR / "package.json"
+    if not package_file.is_file():
+        raise FileNotFoundError(f"前端 package.json 不存在: {package_file}")
+    npm_command = "npm.cmd" if os.name == "nt" else "npm"
+    try:
+        completed = subprocess.run(
+            [npm_command, "run", "build"],
+            cwd=str(SOURCE_FRONTEND_PROJECT_DIR),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+            timeout=600,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise RuntimeError(f"前端正式构建无法执行: {error}") from error
+    if completed.returncode != 0:
+        output = completed.stdout.decode("utf-8", errors="replace")[-16_384:]
+        raise RuntimeError(
+            "前端正式构建失败，禁止继续组装发行目录: "
+            f"returncode={completed.returncode}\n{output}"
+        )
+
+
+def _validate_release_has_no_python_cache(release_dir: Path) -> None:
+    """确认发行源码中没有混入 Python 字节码缓存。"""
+
+    invalid_paths: list[str] = []
+    for root_dir in (
+        release_dir / "app" / "backend",
+        release_dir / "custom_nodes",
+    ):
+        if not root_dir.is_dir():
+            continue
+        for path in root_dir.rglob("*"):
+            if path.name == "__pycache__" or path.suffix.lower() in {".pyc", ".pyo"}:
+                invalid_paths.append(path.relative_to(release_dir).as_posix())
+                if len(invalid_paths) >= 20:
+                    break
+    if invalid_paths:
+        raise ValueError(
+            "发行目录混入 Python 缓存文件: " + ", ".join(invalid_paths)
+        )
+
+
+def _read_source_provenance() -> dict[str, object]:
+    """读取本次组装的产品版本、Git revision 和工作区状态。"""
+
+    revision: str | None = None
+    dirty: bool | None = None
+    try:
+        revision_result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=str(REPOSITORY_ROOT),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=10,
+        )
+        if revision_result.returncode == 0:
+            revision = revision_result.stdout.decode("utf-8", errors="replace").strip()
+        status_result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=str(REPOSITORY_ROOT),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=10,
+        )
+        if status_result.returncode == 0:
+            dirty = bool(status_result.stdout.strip())
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    return {
+        "product_version": BACKEND_VERSION,
+        "assembled_at_utc": datetime.now(timezone.utc).isoformat().replace(
+            "+00:00", "Z"
+        ),
+        "source_revision": revision,
+        "source_dirty": dirty,
+    }
 
 
 def _stash_existing_python_dir(release_dir: Path) -> Path | None:
@@ -798,10 +893,14 @@ def assemble_release(request: ReleaseAssemblyRequest) -> ReleaseAssemblyResult:
     artifacts_section = source_release_profile["artifacts"]
     assert isinstance(artifacts_section, dict)
     release_dir = request.resolve_release_dir()
+    if release_dir.exists() and not request.overwrite:
+        raise FileExistsError(f"release 目录已存在: {release_dir}")
+    if request.build_frontend and bool(
+        artifacts_section.get("include_frontend", False)
+    ):
+        _build_frontend_assets()
     preserved_python_temp_dir: Path | None = None
     if release_dir.exists():
-        if not request.overwrite:
-            raise FileExistsError(f"release 目录已存在: {release_dir}")
         preserved_python_temp_dir = _stash_existing_python_dir(release_dir)
         try:
             shutil.rmtree(release_dir)
@@ -877,6 +976,7 @@ def assemble_release(request: ReleaseAssemblyRequest) -> ReleaseAssemblyResult:
 
         if bool(artifacts_section.get("include_frontend", False)):
             _copy_frontend_assets(release_dir, request=request)
+        _validate_release_has_no_python_cache(release_dir)
 
         bundled_python_dir, bundled_python_mode = _materialize_bundled_python_dir(
             release_dir,
@@ -889,6 +989,7 @@ def assemble_release(request: ReleaseAssemblyRequest) -> ReleaseAssemblyResult:
 
         release_manifest = {
             "profile_id": requested_profile_id,
+            "provenance": _read_source_provenance(),
             "display_name": source_release_profile["display_name"],
             "description": source_release_profile["description"],
             "target": {

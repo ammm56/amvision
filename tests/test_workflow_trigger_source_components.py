@@ -642,6 +642,38 @@ def test_trigger_source_supervisor_submits_normalized_event() -> None:
     assert adapter.stopped_trigger_source_id == "trigger-source-1"
 
 
+def test_trigger_source_supervisor_stop_all_continues_after_one_failure() -> None:
+    """一个 Trigger 停止超时后仍必须继续停止其余 Trigger。"""
+
+    first_trigger = _build_trigger_source(trigger_kind="first")
+    second_trigger = replace(
+        _build_trigger_source(trigger_kind="second"),
+        trigger_source_id="trigger-source-2",
+    )
+
+    class _FailingStopAdapter(_FakeProtocolAdapter):
+        def stop(self, *, trigger_source_id: str) -> None:
+            self.stopped_trigger_source_id = trigger_source_id
+            raise OperationTimeoutError("injected stop timeout")
+
+    first_adapter = _FailingStopAdapter(adapter_kind="first")
+    second_adapter = _FakeProtocolAdapter(adapter_kind="second")
+    supervisor = TriggerSourceSupervisor(
+        adapters={"first": first_adapter, "second": second_adapter},
+        workflow_submitter=_FakeWorkflowSubmitter(),
+    )
+    supervisor.start_trigger_source(first_trigger)
+    supervisor.start_trigger_source(second_trigger)
+
+    with pytest.raises(OperationTimeoutError, match="injected stop timeout"):
+        supervisor.stop_all()
+
+    assert first_adapter.stopped_trigger_source_id == "trigger-source-1"
+    assert second_adapter.stopped_trigger_source_id == "trigger-source-2"
+    assert supervisor.is_trigger_source_managed("trigger-source-1") is True
+    assert supervisor.is_trigger_source_managed("trigger-source-2") is False
+
+
 def test_zeromq_trigger_adapter_maps_content_frame_to_buffer_ref_payload() -> None:
     """验证 ZeroMQ adapter 可以把 multipart 图片帧转换成 BufferRef payload。"""
 

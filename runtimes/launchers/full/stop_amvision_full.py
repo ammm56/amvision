@@ -13,7 +13,13 @@ import time
 from pathlib import Path
 
 
-LAUNCHERS_ROOT = Path(__file__).resolve().parent / "launchers"
+SCRIPT_FILE = Path(__file__).resolve()
+RELEASE_LAUNCHERS_ROOT = SCRIPT_FILE.parent / "launchers"
+LAUNCHERS_ROOT = (
+    RELEASE_LAUNCHERS_ROOT
+    if (RELEASE_LAUNCHERS_ROOT / "common.py").is_file()
+    else SCRIPT_FILE.parents[1]
+)
 if str(LAUNCHERS_ROOT) not in sys.path:
     sys.path.insert(0, str(LAUNCHERS_ROOT))
 

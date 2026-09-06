@@ -30,6 +30,11 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--python-executable", help="用于启动 daemon 的 Python 解释器路径")
     parser.add_argument("--check", action="store_true", help="只校验 daemon 运行配置")
     parser.add_argument("--probe", action="store_true", help="探测已经运行的 daemon")
+    parser.add_argument(
+        "--probe-local-buffer",
+        action="store_true",
+        help="探测 backend 主 LocalBuffer owner 与 layout",
+    )
     return parser
 
 
@@ -46,7 +51,7 @@ def main(argv: list[str] | None = None) -> int:
     module_args: list[str] = []
     if args.check:
         module_args.append("--check")
-    if args.probe:
+    if args.probe or args.probe_local_buffer:
         # probe 必须在当前 launcher 进程内执行。若再派生一层 Python，Windows
         # 超时终止只能杀掉外层 wrapper，容易留下孤儿探针进程并误判 daemon 就绪。
         runtime_env = build_python_module_environment(app_root)
@@ -56,7 +61,8 @@ def main(argv: list[str] | None = None) -> int:
             sys.path.insert(0, str(code_root))
         from backend.inference_daemon.main import main as daemon_main
 
-        return daemon_main(["--probe"])
+        probe_argument = "--probe-local-buffer" if args.probe_local_buffer else "--probe"
+        return daemon_main([probe_argument])
     return run_python_module(
         app_root=app_root,
         module_name="backend.inference_daemon.main",

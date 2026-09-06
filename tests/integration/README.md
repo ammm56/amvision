@@ -16,7 +16,7 @@
 - 当前 non-detection runtime backend 组合验证会覆盖 YOLOv8、YOLO11、YOLO26 在 classification、segmentation、pose、obb 四类任务下的真实 conversion -> runtime predict；RF-DETR segmentation 保持在独立测试文件中验证。
 - RF-DETR full core 短时 smoke / benchmark 放在 `test_rfdetr_full_core_soak_benchmark.py`，默认跳过，必须通过环境变量显式打开。
 - RF-DETR 真实本地 checkpoint 覆盖率 smoke 也放在 `test_rfdetr_full_core_soak_benchmark.py`，默认跳过，只在显式指定环境变量时读取 `data/files/models/pretrained/rfdetr`。默认清单覆盖 detection `nano / s / m / l` 和 segmentation `nano / s / m / l / x`，并同时输出 raw coverage 与真实加载路径 coverage。
-- `release/full` 真实启停验收也放在本目录，默认只做短时驻留；需要更长 soak 时通过环境变量显式调大时长。该测试会检查陈旧状态文件恢复、组件日志、资源快照和 stop 后进程回收，并在本次 logs 子目录写出 `resource-baseline.json`。
+- CPU/NVIDIA 真实发行目录启停验收也放在本目录。测试要求通过 `AMVISION_RELEASE_FULL_ROOT` 显式选择一个具体 profile，不再默认猜测 `release/full`；默认只做短时驻留，需要更长 soak 时通过环境变量显式调大时长。该测试会先运行目标发行包的强布局/依赖/accelerator 校验，再检查陈旧状态文件恢复、组件日志、资源快照和 stop 后进程回收，并在本次 logs 子目录写出 `resource-baseline.json` 与 `full-supervisor.log`。资源快照按每个 launcher 及其实际 Backend/Worker 子进程树汇总 RSS、Private、线程、句柄和 CPU，不能只统计外层 launcher。
 - `deployment_workflow_trigger_soak.py` 对已经启动的真实资源持续施加 sync/async deployment、WorkflowAppRuntime invoke 和 ZeroMQ TriggerSource 负载；它不创建或停止现场资源，结果持续写入独立的 `result.json`。
 - `--start-processes` 会按发布态顺序启动 backend-service、使用本轮唯一 service id 的 inference daemon 和 backend-worker；停止时按相反顺序回收。这样既避免 worker 早于数据库 schema 和 seeder 初始化，也不依赖桌面里已有的 daemon 或共享它的 mmap mailbox。
 
@@ -124,11 +124,16 @@ python -m pytest --basetemp .tmp/pytest_non_detection_full_matrix tests/integrat
 ```
 
 ```powershell
-python -m pytest --basetemp .tmp/pytest_release_full_acceptance tests/integration/test_release_full_stack_acceptance.py -q
+$env:AMVISION_RELEASE_FULL_ROOT=(Resolve-Path release/full-windows-x64-cpu)
+$env:AMVISION_RELEASE_FULL_PORT="5701"
+python -m pytest --basetemp .tmp/pytest_release_full_acceptance_cpu tests/integration/test_release_full_stack_acceptance.py -q
 ```
 
 ```powershell
-$env:AMVISION_RELEASE_FULL_SOAK_SECONDS="600"; python -m pytest --basetemp .tmp/pytest_release_full_soak tests/integration/test_release_full_stack_acceptance.py -q
+$env:AMVISION_RELEASE_FULL_ROOT=(Resolve-Path release/full-windows-x64-nvidia)
+$env:AMVISION_RELEASE_FULL_PORT="5702"
+$env:AMVISION_RELEASE_FULL_SOAK_SECONDS="600"
+python -m pytest --basetemp .tmp/pytest_release_full_soak_nvidia tests/integration/test_release_full_stack_acceptance.py -q
 ```
 
 真实 deployment、workflow runtime 和 ZeroMQ TriggerSource 都已经启动后，可以单独执行负载。业务链路验收优先使用源码开发环境 `data/` 中已经登记的真实模型、Deployment、Workflow Runtime、TriggerSource 和图片；发行包另行通过 `test_release_full_stack_acceptance.py` 验证同一源码生成物的布局、依赖、启停和资源回收，不要求把开发数据库复制进发行目录。`workflow-request.json` 使用正式 invoke 请求体，`trigger-envelope.json` 使用 ZeroMQ envelope；涉及 deployment 的 workflow 应在两份 JSON 中写入对应 deployment binding。

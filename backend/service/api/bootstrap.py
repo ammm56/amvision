@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 
 from fastapi import FastAPI
 
@@ -11,6 +12,7 @@ from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.nodes.node_pack_loader import NodePackLoader
 from backend.nodes.runtime_support import ExecutionImageRegistry
+from backend.service.application.errors import OperationTimeoutError
 from backend.service.api.seeders import BackendServiceSeeder, BackendServiceSeederRunner
 from backend.service.application.auth.default_local_auth_seeder import (
     DefaultLocalAuthSeeder,
@@ -162,6 +164,9 @@ from backend.service.settings import (
     BackendServiceSettings,
     get_backend_service_settings,
 )
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -1019,7 +1024,12 @@ class BackendServiceBootstrap(
         if runtime.training_telemetry_receiver is not None:
             runtime.training_telemetry_receiver.stop()
         runtime.training_telemetry_broker.close()
-        runtime.trigger_source_supervisor.stop_all()
+        try:
+            runtime.trigger_source_supervisor.stop_all()
+        except OperationTimeoutError as error:
+            # 单个协议 listener 的有界停止超时不能阻断其余进程、mmap 和数据库资源清理。
+            # 显式 Trigger 停止仍保留原错误语义；这里仅用于整个 Backend 进程退出。
+            LOGGER.warning("Backend 退出时 TriggerSource 停止超时：%s", error)
         if runtime.workflow_trigger_mailbox_supervisor is not None:
             runtime.workflow_trigger_mailbox_supervisor.stop()
         runtime.deployment_runtime_reconciler.stop()

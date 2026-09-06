@@ -59,12 +59,16 @@
 
 - `config`、`data`、`launchers`、`manifests/release-profiles`、`manifests/worker-profiles` 都能被识别
 - 不出现缺目录、缺 manifest 或 Python 入口找不到的报错
+- `valid=true`，命令退出码为 0
+- `runtime.requirements_valid=true`
+- CPU 包的 PyTorch 不带 CUDA；NVIDIA 包能访问 CUDA/cuDNN，且 TensorRT Python 与 `trtexec` 版本一致
 
 如果这一步失败，优先检查：
 
 - 当前终端工作目录是否就是实际发行目录
 - `python/` 是否已经放到正确位置
 - `launchers/`、`manifests/` 是否来自同一次 `assemble-release`
+- 当前命令是否确实由这份发行目录的 `python/python.exe` 执行
 
 ## 2. 启动 backend-service
 
