@@ -1,6 +1,6 @@
 {
   "name": "@amvision/web-ui",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "private": true,
   "type": "module",
   "packageManager": "npm@11.12.1",
