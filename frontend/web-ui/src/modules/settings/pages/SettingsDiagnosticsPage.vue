@@ -15,6 +15,15 @@
         <button
           type="button"
           class="settings-workspace-nav__item"
+          :class="{ 'is-active': activeCategory === 'startup' }"
+          @click="selectCategory('startup')"
+        >
+          <MonitorPlay :size="16" />
+          <span>{{ t('settingsDiagnostics.tabs.startup') }}</span>
+        </button>
+        <button
+          type="button"
+          class="settings-workspace-nav__item"
           :class="{ 'is-active': activeCategory === 'services' }"
           @click="selectCategory('services')"
         >
@@ -128,6 +137,8 @@
         </div>
       </div>
     </section>
+
+    <SettingsStartupPagePanel v-else-if="activeCategory === 'startup'" />
 
     <section v-else-if="activeCategory === 'services'" class="settings-category-panel">
       <section class="settings-panel">
@@ -362,7 +373,7 @@
 
 <script setup lang="ts">
 import { computed, defineComponent, h, onMounted, ref, watch } from 'vue'
-import { Cpu, HardDrive, Info, Moon, ServerCog, Settings2, ShieldCheck, Sun, UsersRound, Wrench } from '@lucide/vue'
+import { Cpu, HardDrive, Info, MonitorPlay, Moon, ServerCog, Settings2, ShieldCheck, Sun, UsersRound, Wrench } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -379,6 +390,7 @@ import PageHeader from '@/shared/ui/layout/PageHeader.vue'
 import TabList from '@/shared/ui/navigation/TabList.vue'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import SettingsAccountsPanel from '../components/SettingsAccountsPanel.vue'
+import SettingsStartupPagePanel from '../components/SettingsStartupPagePanel.vue'
 import { parseBackendWorkerDiagnostics } from '../backend-worker-diagnostics'
 import { getSystemDiagnostics, type SystemDiagnosticsResponse } from '../services/settings-diagnostics.service'
 
@@ -405,7 +417,7 @@ interface SectionItem {
 }
 
 type SelectValue = string | number | boolean | null
-type SettingsCategoryId = 'preferences' | 'services' | 'system' | 'security'
+type SettingsCategoryId = 'preferences' | 'startup' | 'services' | 'system' | 'security'
 
 interface SettingsCategoryTab {
   id: SettingsCategoryId
@@ -441,6 +453,7 @@ const activeAccessSection = ref<AccessSectionId>('session')
 const localeOptions = supportedLocaleOptions.map((item) => ({ label: item.label, value: item.locale }))
 const categoryTabs = computed<SettingsCategoryTab[]>(() => [
   { id: 'preferences', label: t('settingsDiagnostics.tabs.preferences'), icon: Settings2 },
+  { id: 'startup', label: t('settingsDiagnostics.tabs.startup'), icon: MonitorPlay },
   { id: 'services', label: t('settingsDiagnostics.tabs.services'), icon: ServerCog },
   { id: 'system', label: t('settingsDiagnostics.tabs.system'), icon: HardDrive },
   { id: 'security', label: t('settingsDiagnostics.tabs.security'), icon: ShieldCheck },
@@ -517,7 +530,7 @@ const serviceRows = computed(() => [
 ])
 
 function selectCategory(categoryId: string): void {
-  if (categoryId === 'preferences' || categoryId === 'services' || categoryId === 'system' || categoryId === 'security') {
+  if (categoryId === 'preferences' || categoryId === 'startup' || categoryId === 'services' || categoryId === 'system' || categoryId === 'security') {
     activeCategory.value = categoryId
     void replaceSettingsLocation()
   }
@@ -548,7 +561,7 @@ function selectAccessSection(sectionId: string): void {
 
 function restoreSettingsLocation(): void {
   const category = typeof route.query.category === 'string' ? route.query.category : ''
-  if (category === 'preferences' || category === 'services' || category === 'system' || category === 'security') {
+  if (category === 'preferences' || category === 'startup' || category === 'services' || category === 'system' || category === 'security') {
     activeCategory.value = category
   }
 

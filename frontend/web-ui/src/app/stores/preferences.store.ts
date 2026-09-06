@@ -3,6 +3,12 @@ import { defineStore } from 'pinia'
 import { defaultLocale, isSupportedLocale, setI18nLocale, type SupportedLocale } from '@/platform/i18n'
 import { readStorageValue, writeStorageValue } from '@/platform/storage/browser-storage'
 import type { BrowserStorageKind } from '@/shared/contracts'
+import {
+  createDefaultStartupPagePreference,
+  readStartupPagePreference,
+  type StartupPagePreference,
+  writeStartupPagePreference,
+} from '../startup/startup-page-preference'
 
 export type ThemeMode = 'light' | 'dark'
 
@@ -37,6 +43,7 @@ export const usePreferencesStore = defineStore('preferences', {
   state: () => ({
     locale: defaultLocale as SupportedLocale,
     theme: 'light' as ThemeMode,
+    startupPage: createDefaultStartupPagePreference(),
   }),
   actions: {
     initializePreferences(): void {
@@ -44,6 +51,7 @@ export const usePreferencesStore = defineStore('preferences', {
       const storedTheme = readStoredValue(THEME_STORAGE_KEY)
       this.locale = isSupportedLocale(storedLocale) ? storedLocale : defaultLocale
       this.theme = isThemeMode(storedTheme) ? storedTheme : 'light'
+      this.startupPage = readStartupPagePreference()
       setI18nLocale(this.locale)
       applyDocumentLocale(this.locale)
       applyDocumentTheme(this.theme)
@@ -58,6 +66,13 @@ export const usePreferencesStore = defineStore('preferences', {
       this.theme = theme
       applyDocumentTheme(theme)
       writeStoredValue(THEME_STORAGE_KEY, theme)
+    },
+    setStartupPage(preference: StartupPagePreference): void {
+      this.startupPage = preference
+      writeStartupPagePreference(preference)
+    },
+    resetStartupPage(): void {
+      this.setStartupPage(createDefaultStartupPagePreference())
     },
   },
 })

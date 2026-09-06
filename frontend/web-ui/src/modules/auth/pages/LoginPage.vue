@@ -30,7 +30,10 @@ import { LogIn } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 
 import { useProjectStore } from '@/app/stores/project.store'
+import { useFeedbackStore } from '@/app/stores/feedback.store'
+import { usePreferencesStore } from '@/app/stores/preferences.store'
 import { useSessionStore } from '@/app/stores/session.store'
+import { resolvePostAuthenticationRoute } from '@/app/startup/startup-route'
 import { getRuntimeConfig } from '@/platform/runtime/runtime-config'
 import Button from '@/shared/ui/components/Button.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
@@ -39,6 +42,8 @@ const route = useRoute()
 const router = useRouter()
 const sessionStore = useSessionStore()
 const projectStore = useProjectStore()
+const preferencesStore = usePreferencesStore()
+const feedbackStore = useFeedbackStore()
 const { t } = useI18n()
 
 const username = ref(getRuntimeConfig().auth.defaultUsername)
@@ -52,8 +57,15 @@ async function submitLogin(): Promise<void> {
   try {
     await sessionStore.login({ username: username.value, password: password.value })
     await projectStore.loadProjects()
-    const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/projects'
-    await router.replace(redirect)
+    const destination = await resolvePostAuthenticationRoute({
+      explicitRedirect: route.query.redirect,
+      preference: preferencesStore.startupPage,
+    })
+    if (destination.resetPreference) {
+      preferencesStore.resetStartupPage()
+      feedbackStore.warning(t('startupPage.targetReset'))
+    }
+    await router.replace(destination.path)
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('auth.loginFailed')
   } finally {

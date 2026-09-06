@@ -1,40 +1,22 @@
 import { onBeforeUnmount, ref, shallowRef } from 'vue'
 import { useSessionStore } from '@/app/stores/session.store'
 import { getRuntimeConfig } from '@/platform/runtime/runtime-config'
-import { apiRequest } from '@/shared/api/http-client'
 import { ApiError } from '@/shared/api/error'
-import type { FlowApplication, NodeDefinition, WorkflowGraphTemplate, WorkflowJsonObject } from '../types'
-import type { WorkflowAppContract, WorkflowAppModeConfig } from '../app-mode/workflow-app-mode'
+import type { WorkflowJsonObject } from '../types'
+import {
+  getWorkflowRuntimePreviewSnapshot,
+  type RuntimePreviewSnapshot,
+} from '../services/workflow-runtime-preview.service'
 import { useWorkflowPreviewDisplays } from './useWorkflowPreviewDisplays'
+
+export type {
+  RuntimePreviewNodeDefinitionWarning,
+  RuntimePreviewSnapshot,
+} from '../services/workflow-runtime-preview.service'
 
 const RUNTIME_PREVIEW_RECONNECT_DELAYS_MS = [2_000, 4_000, 8_000, 10_000] as const
 const RUNTIME_PREVIEW_CONNECT_TIMEOUT_MS = 10_000
 const RUNTIME_PREVIEW_CAPACITY_CLOSE_CODE = 4_429
-
-export interface RuntimePreviewNodeDefinitionWarning {
-  node_type_id: string
-  reason: 'definition_missing' | 'definition_changed'
-}
-
-export interface RuntimePreviewSnapshot {
-  workflow_runtime_id: string
-  workflow_runtime_revision_id: string
-  workflow_app_version_id: string
-  runtime_generation: number
-  worker_instance_id: string | null
-  snapshot_fingerprint: string
-  project_id: string
-  application_id: string
-  observed_state: string
-  active: boolean
-  display_name: string
-  application: FlowApplication
-  contract: WorkflowAppContract
-  app_mode: WorkflowAppModeConfig | null
-  template: WorkflowGraphTemplate
-  node_definitions?: NodeDefinition[]
-  node_definition_warnings?: RuntimePreviewNodeDefinitionWarning[]
-}
 
 export interface RuntimePreviewFrame {
   format_id: string
@@ -169,7 +151,7 @@ export function useRuntimePreview() {
     if (generation !== requestGeneration || monitoredRuntimeId !== runtimeId) return
     loading.value = true
     try {
-      const next = await apiRequest<RuntimePreviewSnapshot>(`/workflows/app-runtimes/${encodeURIComponent(runtimeId)}/preview-snapshot`)
+      const next = await getWorkflowRuntimePreviewSnapshot(runtimeId)
       if (generation !== requestGeneration || monitoredRuntimeId !== runtimeId) return
       if (snapshot.value && !matchesRuntimeWorker(snapshot.value, next)) clearDisplay()
       snapshot.value = next
