@@ -26,6 +26,7 @@ from backend.nodes.core_nodes.io.local.json_load_local import CORE_NODE_SPEC as 
 from backend.nodes.core_nodes.io.local.text_load_local import CORE_NODE_SPEC as TEXT
 from backend.nodes.core_nodes.support.local_io.files import build_directory_file_record
 from backend.nodes.core_nodes.support.local_io.reading import read_local_bytes
+from backend.nodes.runtime_support import require_execution_image_registry
 from backend.service.application.errors import (
     InvalidRequestError,
     OperationTimeoutError,
@@ -114,6 +115,87 @@ def test_record_input_cannot_silently_fall_back(spec, tmp_path):
     ):
         with pytest.raises(InvalidRequestError):
             call(spec, {"local_path": str(tmp_path)}, inputs)
+
+
+def test_image_blank_fallback_is_explicit_and_bounded(tmp_path):
+    """只有显式启用时才把空 File 转为有界黑色 PNG。"""
+
+    request = WorkflowNodeExecutionRequest(
+        node_id="test",
+        node_definition=IMAGE.node_definition,
+        parameters={
+            "use_blank_image_when_empty": True,
+            "blank_image_width": 12,
+            "blank_image_height": 8,
+            "max_pixels": 96,
+        },
+        input_values={"file": {"value": None}},
+        execution_metadata={},
+    )
+    output = IMAGE.handler(request)
+    assert output["image"]["media_type"] == "image/png"
+    assert output["image"]["width"] == 12
+    assert output["image"]["height"] == 8
+    assert output["summary"]["value"] == {
+        "source_kind": "generated-blank",
+        "generated_blank": True,
+        "blank_reason": "empty-file-input",
+        "local_path": None,
+        "file_name": None,
+        "media_type": "image/png",
+        "width": 12,
+        "height": 8,
+    }
+    registry = require_execution_image_registry(request)
+    with Image.open(io.BytesIO(registry.read_bytes(output["image"]["image_handle"]))) as image:
+        assert image.mode == "RGB"
+        assert image.size == (12, 8)
+        assert image.getextrema() == ((0, 0), (0, 0), (0, 0))
+
+    missing_output = call(
+        IMAGE,
+        {"use_blank_image_when_empty": True},
+        metadata={},
+    )
+    assert missing_output["summary"]["value"]["blank_reason"] == "missing-source"
+    assert missing_output["image"]["width"] == 640
+    assert missing_output["image"]["height"] == 480
+
+    with pytest.raises(InvalidRequestError, match="max_pixels"):
+        call(
+            IMAGE,
+            {
+                "use_blank_image_when_empty": True,
+                "blank_image_width": 12,
+                "blank_image_height": 8,
+                "max_pixels": 95,
+            },
+            {"file": {"value": None}},
+        )
+
+
+def test_image_blank_fallback_does_not_hide_invalid_or_real_sources(tmp_path):
+    """事件样本继续失败，真实文件继续按原链路读取。"""
+
+    with pytest.raises(InvalidRequestError, match="本地文件记录"):
+        call(
+            IMAGE,
+            {"use_blank_image_when_empty": True},
+            {"file": {"value": {"path": str(tmp_path), "change_type": "created"}}},
+        )
+
+    path = tmp_path / "real.png"
+    Image.new("RGB", (7, 5), color=(12, 34, 56)).save(path)
+    output = call(
+        IMAGE,
+        {"use_blank_image_when_empty": True},
+        {"file": {"value": build_directory_file_record(path)}},
+    )
+    assert output["image"]["width"] == 7
+    assert output["image"]["height"] == 5
+    assert output["summary"]["value"]["source_kind"] == "local-file"
+    assert output["summary"]["value"]["generated_blank"] is False
+    assert output["summary"]["value"]["blank_reason"] is None
 
 
 def test_json_text_and_image_records_keep_source(tmp_path):
@@ -280,3 +362,67 @@ def test_real_graph_latest_to_loader_and_dynamic_path(tmp_path):
             {"directory_path": str(tmp_path)},
             metadata={"_workflow_execution_deadline_monotonic": 1.0},
         )
+
+
+def test_real_graph_empty_latest_to_blank_image(tmp_path):
+    """验证空目录记录经过显式回退后仍输出标准 image-ref。"""
+
+    registry = WorkflowNodeRuntimeRegistry()
+    for spec in (LATEST, IMAGE):
+        registry.register_python_callable(spec.node_definition, spec.handler)
+    template = WorkflowGraphTemplate(
+        template_id="empty-directory-blank-image-test",
+        template_version="1.0.0",
+        display_name="Empty Directory Blank Image Test",
+        nodes=(
+            WorkflowGraphNode(
+                node_id="latest",
+                node_type_id=LATEST.node_definition.node_type_id,
+                parameters={"directory_path": str(tmp_path), "extensions": ["png"]},
+            ),
+            WorkflowGraphNode(
+                node_id="load",
+                node_type_id=IMAGE.node_definition.node_type_id,
+                parameters={
+                    "use_blank_image_when_empty": True,
+                    "blank_image_width": 16,
+                    "blank_image_height": 9,
+                },
+            ),
+        ),
+        edges=(
+            WorkflowGraphEdge(
+                edge_id="latest-file-to-image",
+                source_node_id="latest",
+                source_port="file",
+                target_node_id="load",
+                target_port="file",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="image",
+                display_name="Image",
+                payload_type_id="image-ref.v1",
+                source_node_id="load",
+                source_port="image",
+            ),
+            WorkflowGraphOutput(
+                output_id="summary",
+                display_name="Summary",
+                payload_type_id="value.v1",
+                source_node_id="load",
+                source_port="summary",
+            ),
+        ),
+    )
+    result = WorkflowGraphExecutor(registry=registry).execute(
+        template=template,
+        input_values={},
+        execution_metadata={},
+    )
+    assert result.outputs["image"]["transport_kind"] == "memory"
+    assert result.outputs["image"]["width"] == 16
+    assert result.outputs["image"]["height"] == 9
+    assert result.outputs["summary"]["value"]["source_kind"] == "generated-blank"
+    assert result.outputs["summary"]["value"]["blank_reason"] == "empty-file-input"

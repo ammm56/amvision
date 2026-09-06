@@ -18,7 +18,7 @@
 - 最新按文件修改时间 mtime 纳秒排序，不按文件名、创建时间或 Trigger 观察顺序。同时间按规范化绝对路径倒序，最后使用原路径作为平局键；Windows 路径比较不区分大小写。
 - File 输出是 value.v1 包装的完整文件记录；空目录或过滤后无匹配输出 null。
 - Summary 包含 `state=found/no_files`、目录和过滤设置、`raw_count/count/unstable_skipped_count/missing_skipped_count`。
-- 目录不存在、不可读、配置非法时报错，不当作空目录。File=null 必须用显式条件/列表编排决定是否继续读取。
+- 目录不存在、不可读、配置非法时报错，不当作空目录。File=null 默认由下游读取节点明确报错；仅 Load Local Image 可以显式启用空白图像回退，JSON/Text 仍须用条件或列表编排决定是否继续读取。
 - 最小文件年龄只过滤 mtime，不保证写入已经完成；0 表示不等待。生产写入应采用原子完整发布，现有 Save 节点已使用该方式。
 
 Directory Scan 复用同一记录与选择实现，保留 Files/Summary。普通文件名 Glob（例如 `*.json`）采用流式 scandir；`limit=K,dedupe_by=none` 的候选存储为 O(K)，Latest 固定 K=1，扫描时间仍为 O(N)。相对路径 Glob（例如 `sub/*.json`、`**/*.json`）保留 pathlib 匹配语义，其枚举内存不承诺 O(K)。未设 limit 或显式去重时仍可能保留全量结果/去重信息。
@@ -52,7 +52,9 @@ Directory Scan 复用同一记录与选择实现，保留 Files/Summary。普通
 
 ## Load Local Image / JSON / Text
 
-三个节点统一支持可选 File 记录输入和 Path 字符串参数输入，File 与 Path 连线互斥；均未连接才使用固定 local_path。连接 File 后即使为空也报错，不退回固定参数。
+三个节点统一支持可选 File 记录输入和 Path 字符串参数输入，File 与 Path 连线互斥；均未连接才使用固定 local_path。连接 File 后不退回固定参数。JSON/Text 的 File 为空时始终报错；Load Local Image 默认同样报错，但可显式启用 `use_blank_image_when_empty`，把 File 的 `value=null` 或完全未提供来源转换为黑色 PNG 空白图像。
+
+空白图像回退默认关闭，不是通用容错或错误吞并。事件样本、错误文件记录、File 与 Path 双输入、文件消失或变化、坏图片、超限图片和非法 Path 仍然报错。空白图像宽高由 `blank_image_width/blank_image_height` 明确配置，默认 640×480，并继续受 `max_pixels` 限制；输出仍为标准 `image-ref.v1`，不写磁盘、不伪造 `amvision.local-file-record.v1`。Summary 使用 `source_kind=local-file/generated-blank`、`generated_blank` 和 `blank_reason` 区分真实文件与占位图。
 
 `local_path` 没有隐式 null 默认值。编辑器未配置固定路径时保持参数键缺省，不能因 UI 字段的空白展示而写入 `local_path: null`。连接 File 的图无需增加空路径参数即可执行；显式提交非法 null 仍由通用参数 Schema 拒绝。该规则复用所有节点的默认值处理，不在本地读取节点中增加例外。
 
@@ -60,7 +62,7 @@ File 在打开后检查 observed_version；Path 表示读取执行时该路径�
 
 | 节点 | 公开参数 | 默认值 |
 | --- | --- | --- |
-| Load Local Image | max_bytes / max_pixels | 64 MiB / 100,000,000 像素 |
+| Load Local Image | use_blank_image_when_empty / blank_image_width / blank_image_height / max_bytes / max_pixels | false / 640 / 480 / 64 MiB / 100,000,000 像素 |
 | Load Local JSON | max_bytes；固定 UTF-8 | 1 MiB |
 | Load Local Text | max_bytes / charset | 1 MiB / utf-8 |
 | Load Local Image List | max_bytes / max_total_bytes / max_pixels | 单文件 64 MiB / 总计 64 MiB / 单图 100,000,000 像素 |
