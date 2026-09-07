@@ -2,7 +2,7 @@
 
 ## 状态
 
-已接受，已实现。阶段 0–6 的现状审计、Core 通用能力、二维几何与图片操作、质量量测与定位、标定、通用检查、绘制和 Workflow App 示例均已完成。详细范围、节点清单、实施顺序和门禁见[工业二维视觉节点实施基线](../development/industrial-vision-node-implementation.md)。
+已接受，已实现。阶段 0–6 的现状审计、Core 通用能力、二维几何与图片操作、质量量测与定位、标定、通用检查、绘制和 Workflow App 示例均已完成。当前能力范围、术语映射和验证规则见[工业视觉与集成节点](../architecture/workflows/industrial-nodes.md)。
 
 ## 背景
 

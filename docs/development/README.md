@@ -2,19 +2,25 @@
 
 本目录保存可重复执行的开发、检查和迁移门禁。系统设计见 [架构](../architecture/README.md)，完整启动顺序见 [开发环境](../deployment/development-environment.md)。
 
-## 当前实施基线
+## 验收与基准
 
-- [Workflow Runtime 预览显示与应用模式](workflow-runtime-preview-and-app-mode.md)：Runtime 完成后只读画布与轻量 App Mode 已实现；自动呈现全部 App Entry 公开输入并复用预览节点，不实现逐节点进度、强制终止终态或独立页面设计器。
-- [工业二维视觉节点实施基线](industrial-vision-node-implementation.md)：Core 与现有 `opencv.nodes` 的二维工业视觉补齐范围、统一 payload、实施结果和验收门禁；阶段 0–6 已完成。
-- [Workflow App Entry 多类型输入实施基线](workflow-app-entry-input-implementation.md)：JSON、文本、图片、文件、多文件、multipart、ObjectStore、Trigger、前端和 SDK 的统一待实现边界。
-- [Workflow 动态参数输入实施基线](workflow-dynamic-parameter-input-implementation.md)：节点参数输入框与 `value.v1` 输入端口共存、运行时覆盖、前端连线和 Save Image 首批实施边界。
-- [Workflow 说明节点实施基线](workflow-note-node-implementation.md)：画布说明、Markdown 安全渲染、editor artifact 契约、节点组关联和 Runtime 非执行边界；代码、自动化测试和真实 Workflow App 验收已完成。
-- [目录变化 Trigger 实施基线](directory-watch-trigger-implementation.md)：`directory-watch` 的 3 秒有界合并窗口、有界诊断样本、同一 Runtime 多 Trigger、统一异步提交、可选 App Entry 输入、无批次队列与无重启恢复边界。
-- [任务执行与运行时可靠性实施基线](task-runtime-reliability-implementation.md)：阶段 1 至阶段 7 已完成，源码真实业务链路与发行基础设施已分别通过验收。该文档是 Task/Attempt、Training Resume、Conversion、完整前端 Task 状态和 Node Pack timeout 的唯一详细实施记录。
-- [共享内存数据面可靠性实施基线](shared-memory-data-plane-reliability-implementation.md)：Workflow Trigger mailbox 正确性修复与 LocalBuffer 固定 arena 重构已经完成，保留源码门禁和发行持续认证边界。
-- [本机共享内存 Trigger 实施基线](local-shared-memory-trigger-implementation.md)：保留已交付 Trigger 协议、SDK、结果生命周期和历史性能证据；当前可靠性与 allocator 完成状态以共享内存数据面可靠性实施基线为准。
-- [本机结构化消息通道实施基线](local-message-channel-implementation.md)：LocalMessageChannel 原子迁移顺序；阶段 0、阶段 1 已完成，业务 transport 尚未迁移。
-- [LocalMessage Channel 阶段 0 基线](local-message-channel-stage0-baseline.md)：Trigger、Inference、Training Telemetry 和 Queue 的可复现实测证据，以及三个已冻结的默认 profile。
+- [LocalMessage 通道验收](local-message-channel-implementation.md)：三条结构化链路已迁移，本机压力与发行装配已完成；目标发行 24 小时混合 soak 待验收。
+- [LocalBuffer 与 Trigger 数据面验收](shared-memory-data-plane-reliability-implementation.md)：固定 arena、guard/owner 与真实图片链路的故障、容量和持续认证。
+- [LocalMessage 阶段 0 基线](local-message-channel-stage0-baseline.md)：迁移前历史测量、冻结 profile 与复测方法，不代表当前运行拓扑。
+- [模型验证](model-validation.md)：真实模型、训练、转换和部署矩阵。
+
+## 已实现能力的正式说明
+
+已完成计划的稳定内容已整理到架构专题，不在本目录重复维护实施顺序：
+
+- [Task 执行、暂停与终态](../architecture/platform/task-execution.md)
+- [Workflow App 输入契约](../architecture/workflows/app-inputs.md)
+- [Workflow 参数输入](../architecture/workflows/parameter-inputs.md)
+- [Workflow 说明节点](../architecture/workflows/note-nodes.md)
+- [Runtime 显示与 App Mode](../architecture/workflows/runtime-display.md)
+- [目录变化 Trigger](../architecture/workflows/directory-watch-trigger.md)
+- [本机共享内存 Trigger](../architecture/workflows/local-shared-memory-trigger.md)
+- [工业视觉与集成节点](../architecture/workflows/industrial-nodes.md)
 
 ## 环境
 

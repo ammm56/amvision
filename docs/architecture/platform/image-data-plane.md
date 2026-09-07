@@ -10,7 +10,7 @@
 
 LocalBuffer raw/encoded 输入、ZeroMQ 图片请求、Workflow 单次解码复用、多 `result_bindings`、固定 `TriggerResponsePlan`、输出规范化、ObjectStore 稳定快照、output lease handoff、`Image Encode`、统一 ZeroMQ binary attachments、SDK 返回生命周期和 `local-shared-memory` Trigger 主体已经交付，并保留过往性能与 soak 证据。
 
-Workflow Trigger mailbox 的共享 overflow page、总 deadline、独立 ACK deadline、PROCESSING 取消和 per-source health 已闭环；LocalBuffer 也已原子迁移为固定总容量 arena + buddy allocator。External writer publication 会重新取得 writer guard，批量 owner handoff 的普通中途异常会回滚，回滚失败的 lease 进入 `REVOKING`。SDK 只配置 `data/buffers` 根目录，arena 容量、descriptor/guard 几何和 layout fingerprint 从 allocator header 自动发现。发行重组后的长期 soak 仍按[共享内存数据面可靠性实施基线](../../development/shared-memory-data-plane-reliability-implementation.md)执行。
+Workflow Trigger mailbox 的共享 overflow page、总 deadline、独立 ACK deadline、PROCESSING 取消和 per-source health 已闭环；LocalBuffer 也已原子迁移为固定总容量 arena + buddy allocator。External writer publication 会重新取得 writer guard，批量 owner handoff 的普通中途异常会回滚，回滚失败的 lease 进入 `REVOKING`。SDK 只配置 `data/buffers` 根目录，arena 容量、descriptor/guard 几何和 layout fingerprint 从 allocator header 自动发现。发行重组后的长期 soak 仍按[LocalBuffer 与 Trigger 数据面验收](../../development/shared-memory-data-plane-reliability-implementation.md)执行。
 
 ## 现场目标
 
@@ -29,14 +29,15 @@ HTTP JSON 内联 Base64 主要用于远程调用、调试和结果查看，不�
 
 ## 全项目统一图片边界
 
-LocalBuffer 是所有本机短期内存图片跨模块、跨节点和跨进程交接的统一基础，不只是 local-shared-memory Trigger 的实现细节：
+LocalBuffer 是本机跨进程短期图片的共享数据面；当前实现同时保留执行上下文内的 `memory image-ref` 和持久 `storage image-ref`，并非每个节点输出都会立即分配 arena。
 
-- HTTP Base64、ZeroMQ multipart、SDK raw/encoded bytes 和 storage/local-path 图片进入同步 Workflow 后都收敛为主 arena 的 BufferRef/FrameRef；
-- Workflow 输入、节点间图片输出、OpenCV/Barcode/ROI处理结果、模型输入、同步结果图片和 Preview运行期图片都使用同一引用契约；
-- 节点只读时借用 mmap view，节点产生新像素时申请新 extent并发布不可变输出，不修改已经发布的输入；
-- inference mailbox、Workflow Trigger mailbox和节点结构化输出只携带引用与小型JSON，不携带图片主体；
-- 跨重启异步任务和长期保存始终使用 ObjectStore，deployment worker 直接读取稳定 key，不物化到短期 arena；
-- 节点内部短生命周期的OpenCV/NumPy矩阵和模型tensor可以按算法需要存在，但不能作为公开节点输出或跨进程契约。
+- `ExecutionImageRegistry` 在一次 Workflow 执行内保存 encoded bytes 或 raw NumPy matrix，节点间传递 `image_handle`，不把矩阵本体放进 JSON。`register_image_bytes()` / `register_image_matrix()` 仍会生成 `transport_kind=memory`。
+- `BufferRef` / `FrameRef` 用于 LocalBuffer 的跨进程交接。正式同步模型节点把 memory 输入写入临时 LocalBuffer lease 后调用 PublishedInferenceGateway；已有 buffer/frame 引用可直接交接。
+- Trigger 输出交付在执行 registry 清理前解析图片，按已冻结的响应计划生成稳定 storage 快照或 LocalBuffer 输出，并完成 lease handoff。`image_handle` 不能原样发送给另一个进程或外部 SDK。
+- registry 的解码缓存避免同一执行内反复解码；可选 Runtime 级缓存只复用受 scope 管理的磁盘图片解码结果，不使执行级 memory handle 跨 Run 有效。
+- 跨重启异步任务与长期保存使用 ObjectStore。LocalBuffer、执行级 registry 与持久文件具有不同生命周期，不能相互替代。
+
+对应代码为 [图片 registry 与 loader](../../../backend/nodes/runtime_support.py)、[同步模型图片桥接](../../../backend/nodes/core_nodes/support/deployment_model.py)和 [Trigger 输出交付](../../../backend/service/application/workflows/trigger_sources/output_delivery.py)。
 
 主arena容量由所有实际在途图片动态共享，不按已创建的Runtime、Deployment、TriggerSource或节点数量预留。避免传输副本不等于禁止算法本身必要的decode、颜色转换、crop、draw或preprocess写入；性能审计需要把协议复制、arena写入、算法转换和模型计算分别计时。
 
@@ -48,6 +49,7 @@ LocalBuffer 是所有本机短期内存图片跨模块、跨节点和跨进程�
 | --- | --- | --- |
 | `image-base64.v1` | HTTP 调试、低频远程调用、小图片集成 | 可用但不是高频默认路径 |
 | encoded image bytes | JPEG/PNG/BMP bytes、文件、Base64 还原结果 | 正式支持；首次矩阵消费时需要解码 |
+| memory `image-ref.v1` | 单次 Workflow 执行内的 bytes/matrix | 由执行 registry 管理，不能直接跨进程或跨 Run 使用 |
 | storage `image-ref.v1` | 已落盘图片、长期文件引用 | 用于可复现和审计，不代表内存高速 |
 | buffer/frame `image-ref.v1` | 本机高速 TriggerSource、workflow runtime、deployment worker | 默认高性能路径 |
 | raw BGR24 BufferRef | SDK 已有或转换后的连续 BGR24 | 默认高速图片格式 |
@@ -103,7 +105,7 @@ Grayscale、mask 和明确要求灰度输入的算法可以继续使用同一 `i
 - 默认要求彩色输入的节点继续显式请求 BGR；要求保留输入真实通道的节点使用 unchanged 语义。
 - Grayscale 输入已经为 gray8 且没有显式 `save_location` 时直接透传，不创建重复像素主体；显式保存仍按保存契约执行。
 - Hough Circles 的可选灰度转换必须先解析 Search ROI，再只转换 ROI。默认启用以接受 BGR/BGRA 输入；显式关闭时彩色输入明确报错，不执行隐藏整图转换。
-- Hough、gray8、Parallel 和五类模型 Batch 的完整实施基线见[视觉并行与模型批量节点设计](../workflows/vision-parallel-and-model-batch.md)。
+- Hough、gray8、Parallel 和五类模型 Batch 的当前实现与性能边界见[视觉并行与模型批量节点设计](../workflows/vision-parallel-and-model-batch.md)。
 
 ## 推荐高速调用链
 
@@ -340,7 +342,7 @@ TriggerSource 和 SDK 配置包不增加 reply protocol 或 JSON/multipart mode�
 
 现有 `local-shared-memory` Trigger 支持把公开输出中的 LocalBuffer 图片引用返回给同机 SDK。公开 BufferRef 只负责定位；服务端私有 `LeaseOwnershipReceipt` 保存 allocator identity、expected owner、epoch、generation、deadline 和 guard identity。SDK 完成精确长度写入后先释放写 view/guard，再发布 REQUEST。WorkflowRun 建立并取得真实 Runtime/执行器 permit 后、worker submit 前，Broker 在 publication/allocator 规则内确认 guard 和 receipt，并原子完成 `WRITING -> ACTIVE` 与 `workflow-trigger-write -> workflow-runtime` owner transfer；trusted-local 输入不做第二次 full-image CRC。每个失败点按当时 receipt 补偿回收。目标 arena/descriptor 字段和锁顺序见 [ADR-0008](../../decisions/ADR-0008-local-buffer-fixed-arena-allocation.md)。
 
-该能力不能在 Workflow Run 结束时直接释放图片 lease；worker 必须在自身 cleanup 前完成来源规范化。当前 Run receipt 对应的 BufferRef 可零复制 handoff，foreign/incomplete BufferRef、memory handle 和 FrameRef 按固定规则复制。storage/local-path 根据目标交付处理：本机 LocalBuffer 返回时物化 output lease；只有具备不可变 version、checksum、准确长度和 media type 的 ObjectStore 结果可以直接返回 locator；临时对象或绝对路径必须复制到受控 LocalBuffer、adapter 自有不可变 bytes 或新的不可变受管理对象。ZeroMQ 从 ObjectStore 发送时持有 `open_read_snapshot()` 到 tracker 完成。整批输出在 RESPONSE 前 transfer 到 `delivery_kind + response_id` owner。local-shared-memory 的低层 SDK lease 持有 reader guard 到 `Dispose`/`DisposeAsync`，先使 view 失效并释放全部 guard，再发布 ACK；高层 Runner 把输出物化为 SDK-owned bytes 后在返回统一 `TriggerResult` 前完成同样的释放和 ACK。JSON-only 不复制图片。详细边界见 [ADR-0007](../../decisions/ADR-0007-local-shared-memory-workflow-trigger.md) 和[实施基线](../../development/local-shared-memory-trigger-implementation.md)。
+该能力不能在 Workflow Run 结束时直接释放图片 lease；worker 必须在自身 cleanup 前完成来源规范化。当前 Run receipt 对应的 BufferRef 可零复制 handoff，foreign/incomplete BufferRef、memory handle 和 FrameRef 按固定规则复制。storage/local-path 根据目标交付处理：本机 LocalBuffer 返回时物化 output lease；只有具备不可变 version、checksum、准确长度和 media type 的 ObjectStore 结果可以直接返回 locator；临时对象或绝对路径必须复制到受控 LocalBuffer、adapter 自有不可变 bytes 或新的不可变受管理对象。ZeroMQ 从 ObjectStore 发送时持有 `open_read_snapshot()` 到 tracker 完成。整批输出在 RESPONSE 前 transfer 到 `delivery_kind + response_id` owner。local-shared-memory 的低层 SDK lease 持有 reader guard 到 `Dispose`/`DisposeAsync`，先使 view 失效并释放全部 guard，再发布 ACK；高层 Runner 把输出物化为 SDK-owned bytes 后在返回统一 `TriggerResult` 前完成同样的释放和 ACK。JSON-only 不复制图片。详细边界见 [ADR-0007](../../decisions/ADR-0007-local-shared-memory-workflow-trigger.md) 和[本机共享内存 Trigger](../workflows/local-shared-memory-trigger.md)。
 
 同一 TriggerSource 的单在途 permit 覆盖完整交付：local-shared-memory 到高层 Runner 物化并 ACK、低层 lease Dispose/ACK、取消或 deadline 后的安全回收，ZeroMQ 到所有已提交 physical frame tracker 完成，或未完成资源已由发送前预留的 adapter transport registry 持续承担责任。Runtime token 可以在图执行和 handoff 后释放。包含临时 attachment 的幂等结果不重放旧引用；重复请求返回 `idempotent_attachment_result_not_replayable` 和原 run id。只有 JSON-only 或已经 ObjectStore 持久化的稳定结果可重放/查询。
 

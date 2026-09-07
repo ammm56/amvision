@@ -1,10 +1,10 @@
 # 统一任务系统
 
-> 当前状态：命令级 Task 状态机、取消 CAS、Attempt owner/heartbeat/Queue lease fencing、统一 finalizer、Training Resume Outbox 与完整前后端状态契约均已落地。剩余仓库级发行和真实模型门禁见 [任务执行与运行时可靠性实施基线](../../development/task-runtime-reliability-implementation.md)。
+> 当前状态：命令级 Task 状态机、取消 CAS、Attempt owner/heartbeat/Queue lease fencing、统一 finalizer、Training Resume Outbox 与完整前后端状态契约均已落地。详细状态机、暂停恢复与持续验证见 [Task 执行、暂停与终态](task-execution.md)。
 
 ## 定位
 
-任务系统把数据集导入导出、训练、验证、转换和批量推理等重任务从 HTTP 请求进程隔离出去，并统一保存状态、尝试、事件、取消和结果。
+任务系统把数据集导入导出、训练、评估、转换和批量推理等重任务从 HTTP 请求进程隔离出去，并统一保存状态、尝试、事件、取消和结果。
 
 它不是 Kubernetes、Ray、Slurm 或通用硬件调度器；GPU、输入尺寸和模型参数属于具体任务规格，不进入通用 TaskRecord。
 
@@ -57,14 +57,14 @@ TaskRecord 使用 `queued`、`running`、`paused`、`succeeded`、`failed`、`ti
 
 ## Worker Profiles
 
-full Supervisor 启动六类 Worker Profile：
+源码 Worker Supervisor 与生产 full Supervisor 启动六类 Worker Profile：
 
 | Profile | 任务 |
 |---|---|
 | dataset-import | zip 落盘后的解析、校验、版本写入 |
 | dataset-export | 统一 DatasetVersion 导出 |
-| training | YOLOX、Ultralytics、RF-DETR 训练 |
-| validation | 评估和验证 |
+| training | YOLOX、YOLOv8/11/26、RF-DETR 训练 |
+| evaluation | 数据集级评估；单图 ValidationSession 不属于该任务池 |
 | conversion | ONNX、OpenVINO、TensorRT 等转换 |
 | batch-inference | 离线批量推理 |
 

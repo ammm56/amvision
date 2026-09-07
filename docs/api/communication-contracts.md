@@ -19,14 +19,14 @@
 - 浏览器前端默认使用 REST API 和 WebSocket
 - 外部系统按当前能力使用 REST API、WebSocket、ZeroMQ、PLC 或目录触发入口；未实现的协议不进入公开 capability
 - ZeroMQ 可作为 workstation 或 standalone 场景下的高速外部触发和图像提交入口之一
-- LocalBufferBroker 用于本机内部隔离进程之间的大图和帧数据交换，不作为外部公开接口
+- LocalBufferBroker 用于本机内部隔离进程之间的大图和帧数据交换，包括同机服务、Worker 与受信任 SDK 的图片数据；SDK 通过正式 Trigger 和配置包契约访问，不是浏览器或跨主机文件接口
 - 触发入口负责把外部协议事件转换为 WorkflowRun 输入，结果回执负责把 workflow 输出转换回对应协议
 - backend-service 是公开状态与资源视图的统一入口
 - 任何对外可见状态都应可被 REST 查询或通过 WebSocket 订阅获得
 - ZeroMQ 传输的消息不能替代公开接口的版本规则与审计要求
 - LocalBufferBroker 传递的是短期本机数据引用，不能替代 ObjectStore 的正式文件保存规则
 
-## 三类通信边界的职责拆分
+## 通信边界的职责拆分
 
 ### REST API
 
@@ -91,10 +91,10 @@ LocalBufferBroker 用来做本机内部隔离进程之间的图片与视频帧�
 
 #### 适合做的事
 
-- workflow preview 进程、workflow runtime worker 和发布推理 worker 之间传递图片引用
-- 用固定容量 mmap pool 承载单张图片和短生命周期结果图片
-- 用 ring buffer channel 承载连续帧和高速输入源
-- 通过租约、TTL、引用计数和清理机制管理短期数据
+- backend-service 内的 Preview、Workflow Runtime、同步 Deployment 与本机 SDK 之间传递图片引用
+- 用固定总容量 mmap arena 和 buddy allocator 动态分配连续图片 extent
+- frame channel 以 frame_count 和单帧最大长度一次预留多块 extent，全部成功才发布
+- 通过 owner receipt、epoch/generation、deadline 和 reader/writer guard 管理短期数据与回收
 
 #### 不适合做的事
 
@@ -109,7 +109,12 @@ LocalBufferBroker 用来做本机内部隔离进程之间的图片与视频帧�
 - WebSocket：状态订阅、日志流、实时事件推送
 - ZeroMQ：本地或受控网络里的高速触发、图片提交和消息转发
 - LocalBufferBroker：本机内部隔离进程之间的大图和帧数据引用
-- inference mmap v1 mailbox：backend-service 与 inference daemon 之间的 infer、ping、status、health、控制元数据和结构化结果
+- Inference Mailbox：backend-service 与 inference daemon 之间的 infer、ping、status、health、参数和结构化结果
+- Workflow Trigger Mailbox：本机 SDK 的同步 Trigger 请求与回执；图片只传引用
+- Training EventRing：worker 高频遥测，经 backend receiver 和 WebSocket 送到页面
+- Workflow Runtime Queue：命令、主动事件与异步结果；不强制迁移到 mmap
+
+三类 LocalMessage 通道共用实现但独立拥有文件、epoch 和容量，见[本机结构化消息通道](../architecture/platform/local-message-channel.md)。
 
 Mailbox 只定义内部传输，不改变公开 REST 结果契约。固定 descriptor、overflow page chain、压缩、ACK 和恢复规则见 [Inference mailbox v1](../architecture/platform/inference-mailbox-v1.md)。
 

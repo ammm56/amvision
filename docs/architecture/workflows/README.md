@@ -6,8 +6,9 @@
 
 - [Workflow Runtime](runtime.md)
 - [Workflow App 版本管理](app-versioning.md)
-- [Workflow App Entry 多类型输入实施基线](../../development/workflow-app-entry-input-implementation.md)
-- [目录变化 Trigger 实施基线](../../development/directory-watch-trigger-implementation.md)
+- [Workflow App 输入契约](app-inputs.md)
+- [目录变化 Trigger](directory-watch-trigger.md)
+- [本机共享内存 Trigger](local-shared-memory-trigger.md)
 - [模型 Session Runtime](model-session-runtime.md)
 - [Parallel 分支](parallel-branches.md)
 - [视觉并行与模型批量节点设计](vision-parallel-and-model-batch.md)
@@ -16,7 +17,9 @@
 
 - [Workflow JSON](json-contracts.md)
 - [Workflow 编辑器](editor.md)
-- [Runtime 预览显示与应用模式实施基线](../../development/workflow-runtime-preview-and-app-mode.md)：Runtime 完成后只读画布与 App Mode 已实现；自动呈现全部 App Entry 公开输入，不实现逐节点进度、强制终止终态、独立应用或页面设计器。
+- [参数输入](parameter-inputs.md)
+- [说明节点](note-nodes.md)
+- [Runtime 显示与 App Mode](runtime-display.md)：Runtime 完成后只读画布与 App Mode 已实现；自动呈现全部 App Entry 公开输入，不实现逐节点进度、强制终止终态、独立应用或页面设计器。
 - [Visual Prompt](visual-prompt.md)
 
 ## 节点

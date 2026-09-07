@@ -55,7 +55,7 @@ using (var client = AMVisionClient.CreateFromConfig())
 
 HTTP Builder 覆盖 JSON、文本、图片上传、图片引用、Base64 图片、单文件、多文件及文件引用。文件路径使用 stream factory / `StreamContent`，不使用 `File.ReadAllBytes`、完整 `MemoryStream` copy、隐藏重试、排队或 transport fallback。调用方显式选择 `BuildJson()` 或 `BuildMultipart()`，SDK 不根据输入内容猜测 transport；旧 `Build()` 等价于 `BuildMultipart()`。
 
-高性能 Trigger 使用独立 `WorkflowTriggerInputsBuilder`，只允许 `AddJson` 和 `AddText`。图片由 ZeroMQ 或 local-shared-memory 图片调用方法提供并生成 `request_image_ref`；Builder 不接受 Base64 图片、单文件或多文件。SDK 调用前按配置包中的 Runtime App Contract、TriggerSource mapping 和 transport 上限快速失败，后端仍执行权威校验。完整 API 规划和验收规则见 [Workflow App Entry 多类型输入实施基线](../development/workflow-app-entry-input-implementation.md)。
+高性能 Trigger 使用独立 `WorkflowTriggerInputsBuilder`，只允许 `AddJson` 和 `AddText`。图片由 ZeroMQ 或 local-shared-memory 图片调用方法提供并生成 `request_image_ref`；Builder 不接受 Base64 图片、单文件或多文件。SDK 调用前按配置包中的 Runtime App Contract、TriggerSource mapping 和 transport 上限快速失败，后端仍执行权威校验。完整 API 契约和验收规则见 [Workflow App 输入契约](../architecture/workflows/app-inputs.md)。
 
 ## 高速图片调用
 
@@ -84,7 +84,7 @@ ZeroMQ SDK 不直接操作 mmap 文件或 slot。timeout、transport error 和�
 
 独立 `local-shared-memory` TriggerSource 的 binary protocol、External LocalBuffer Writer Lease、全局 Workflow Trigger mailbox、结果 reader 生命周期和 .NET SDK 已实现，并已通过性能矩阵、10,000 次混合 soak、真实 Workflow/Deployment/Trigger 业务链和故障恢复门禁。它与 ZeroMQ API 并列，不改变或替代 ZeroMQ。
 
-现有实现已完成每 lease writer/reader guard、异常 writer 隔离、真实 Runtime execution token、公开输出图片 owner handoff、ACK/deadline 回收和 Python/.NET binary contract 门禁。设计边界见 [ADR-0007](../decisions/ADR-0007-local-shared-memory-workflow-trigger.md)，完整门禁见[本机共享内存 Trigger 实施基线](../development/local-shared-memory-trigger-implementation.md)。SDK 不在两种 transport 之间自动 fallback。
+现有实现已完成每 lease writer/reader guard、异常 writer 隔离、真实 Runtime execution token、公开输出图片 owner handoff、ACK/deadline 回收和 Python/.NET binary contract 门禁。设计边界见 [ADR-0007](../decisions/ADR-0007-local-shared-memory-workflow-trigger.md)，完整门禁见[本机共享内存 Trigger](../architecture/workflows/local-shared-memory-trigger.md)。SDK 不在两种 transport 之间自动 fallback。
 
 `SharedMemoryTriggerRequest.EnableTimings` 默认是 `false`。显式开启后，返回结果的 `Timings` 提供 `SdkConvertToBgr24Ms`、`SdkBase64DecodeMs`、`SdkWriteLocalBufferMs`、`SdkChecksumMs`、`InvokeReturnMs`、`AttachmentAccessMs` 和 `DisposeAckMs`。`SdkChecksumMs` 只记录结果 attachment 校验；trusted-local 输入通过 writer guard 与 descriptor publication 保证一致性，不做 full-image CRC。`InvokeReturnMs` 截止结果对象可返回；零复制 attachment 的读取持有耗时与最终 ACK 只有在结果 `Dispose`/`DisposeAsync` 后才完整。诊断关闭时不为图片写入热路径创建这些计时。
 

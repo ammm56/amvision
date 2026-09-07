@@ -72,6 +72,10 @@ Workflow App 草稿发布为不可变 Version。稳定 Runtime id 通过 revisio
 
 Preview 在 backend-service 进程内直接执行；生产 Workflow 在独立常驻进程执行。请求固定 version/revision/generation/fingerprint/worker epoch，旧进程事件不能污染当前状态。
 
+### Runtime 显示与 App Mode
+
+Runtime 完成后通过独立有界观察通道交接预览节点结果，backend 经 WebSocket 发送到只读画布和 App Mode。App Mode 使用发布版 App Entry 的全部公开输入，显示配置随 App Version 保存；打开页面不执行 Workflow、不启停 Runtime。多客户端大图广播的 P95/P99 尾延迟仍是已知未通过项，见[Runtime 显示](workflows/runtime-display.md)。
+
 ### LocalBufferBroker
 
 同机大图片和视频帧使用 mmap 与 BufferRef/FrameRef 传输。JSON/ZeroMQ 控制消息不复制整张图片。需要持久化的输入输出使用 ObjectStore 或显式磁盘保存位置。
@@ -80,7 +84,7 @@ Preview 在 backend-service 进程内直接执行；生产 Workflow 在独立常
 
 训练遥测已经迁移到通用 LocalMessage EventRing，Inference daemon 与 Workflow Trigger 已分别迁移到通用 LocalMessage Mailbox；三者仍各自持有独立文件、owner epoch、容量和故障边界。Workflow Runtime 使用 `multiprocessing.Queue`，自身没有独立 mmap mailbox。[ADR-0009](../decisions/ADR-0009-local-message-channel.md) 已按链路原子迁移公共 header、CRC、Mailbox guard/page-chain、恢复和 health 基础设施，不合并物理 Channel 的 owner 或容量。
 
-目标 LocalMessageChannel 只传 JSON、UTF-8 文本、控制元数据、结构化结果和 BufferRef/FrameRef。图片 bytes 继续由 LocalBuffer 承担；数据库、Outbox、LocalFileQueue 和 ObjectStore 继续承担持久状态。详细阶段与门禁只在[本机结构化消息通道实施基线](../development/local-message-channel-implementation.md)维护。Workflow Runtime Queue 是否迁移必须由真实 P95/P99、CPU、清理和故障恢复基准裁决，不能为形式统一强制替换。
+LocalMessageChannel 只传 JSON、UTF-8 文本、控制元数据、结构化结果和 BufferRef/FrameRef。图片 bytes 继续由 LocalBuffer 承担；数据库、Outbox、LocalFileQueue 和 ObjectStore 继续承担持久状态。详细阶段与门禁只在[LocalMessage 通道验收](../development/local-message-channel-implementation.md)维护。基准已裁决保留 Workflow Runtime Queue 及 Gateway/Broker 的现有 Queue/pipe；不为形式统一强制替换。完整分工见[本机结构化消息通道](platform/local-message-channel.md)。
 
 ### Node Pack
 
@@ -131,7 +135,7 @@ Workflow 节点可调用已发布 Deployment，也可执行 OpenCV、逻辑、�
 
 ### 外部系统
 
-当前公开入口包括 REST、WebSocket、ZeroMQ Trigger、Modbus TCP polling、directory-poll 与 directory-watch。未实现的 MQTT、gRPC、其他 PLC driver 或相机直连不进入 capability；需要时通过新的 Trigger adapter 或 Node Pack 实现。
+当前公开入口包括 REST、WebSocket、ZeroMQ Trigger、本机共享内存 Trigger、Modbus TCP polling、directory-poll 与 directory-watch。未实现的 MQTT、gRPC、其他 PLC driver 或相机直连不进入 capability；需要时通过新的 Trigger adapter 或 Node Pack 实现。
 
 ## 数据与追溯
 
@@ -155,6 +159,12 @@ Workflow 节点可调用已发布 Deployment，也可执行 OpenCV、逻辑、�
 - schema 只由 Alembic 演进；
 - 发行目录由 assemble-release 生成，不手工修改；
 - `projectsrc/` 只用于参考审计，不进入运行时。
+
+## 当前实现与验收边界
+
+模型主链包含 18 个公开模型/任务组合；YOLOX 仅 detection，RF-DETR 为 detection/segmentation，YOLOv8/11/26 覆盖五类任务。各组合验证深度见支持矩阵，不用代码路径存在推断目标设备精度已经验收。CoreML、ARM NPU 与在线形态属于长期方向。
+
+Task 可靠性、App Entry、节点参数输入、说明节点、二维工业节点、Runtime 显示与 App Mode 已实现。LocalMessage 代码迁移、本机故障/压力与发行装配已经完成，真实目标发行环境 24 小时混合 soak 仍待验收。已完成设计进入正式专题，持续门禁进入 development；不保留相互矛盾的旧实施计划。
 
 ## 文档入口
 

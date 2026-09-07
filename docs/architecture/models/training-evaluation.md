@@ -123,13 +123,13 @@ test 结果不得反向影响 best checkpoint、学习率或训练轮数。
   和 `mask_map50_95` 明确区分两类指标；v1 中的 `map50`、`map50_95` 只作为
   bbox 指标兼容别名，训练收尾与端到端验收不得依赖这个别名推断指标语义。
 - pose 使用与实际关键点数量等长的 OKS sigma。COCO person 17 点使用官方
-  sigma，其他拓扑使用显式配置或 `1 / num_keypoints` 等权值。训练与数据集级
+  sigma，其他拓扑使用显式配置或 `1 / num_keypoints` 等权值。训练与 pose 数据集级
   评估都使用真实 pycocotools keypoints evaluator。关键点置信度阈值只控制
   推理结果显示，不能把低置信坐标清零后再计算 OKS。
 - OBB 使用旋转框 IoU，平台统一 `xywhr` 的角度单位为弧度，禁止按数值大小猜测
   角度单位，也不能用水平框 IoU 代替。数据集级评估只读取一个独立 test split；
   缺 test 时才读取 validation。没有 GT 的背景图片仍必须推理并计入误检。
-- bbox、segmentation 和 keypoints 的 COCO 指标必须有真实 pycocotools 回归；
+- 训练 Core 的 bbox、segmentation 和 keypoints COCO 指标使用真实 pycocotools 回归；
   AP50 和 AP50-95 从同一个目标 `maxDets` precision 切片读取，不直接依赖
   `COCOeval.stats` 的固定 `maxDets=100` 摘要位置。
 - segmentation 训练期评估逐图生成实例 mask 后必须立即压缩为 COCO RLE。

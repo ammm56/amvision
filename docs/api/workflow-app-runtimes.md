@@ -395,9 +395,9 @@ Runtime 通过不可变 `WorkflowRuntimeRevision` 选择准确的 `WorkflowAppVe
 
 HTTP Runtime 是通用调用面，当前支持 `image-ref.v1`、`image-base64.v1`、`value.v1`、`text.v1`、`file-ref.v1` 和 `file-refs.v1`。JSON 与 multipart 最终进入同一个输入规范化和 `WorkflowInputValidator`，不根据 binding 名称、扩展名或内容执行隐藏转换。
 
-ZeroMQ 与 local-shared-memory Trigger 是独立的高性能调用面，只映射 `image-ref.v1`、`value.v1` 和 `text.v1`。App 可以同时发布六类输入，但 Trigger capability 不因此扩张。详细矩阵和 .NET SDK 分层计划见 [Workflow App Entry 多类型输入实施基线](../development/workflow-app-entry-input-implementation.md)。
+ZeroMQ 与 local-shared-memory Trigger 是独立的高性能调用面，只映射 `image-ref.v1`、`value.v1` 和 `text.v1`。App 可以同时发布六类输入，但 Trigger capability 不因此扩张。详细矩阵和 .NET SDK 调用边界见 [Workflow App 输入契约](../architecture/workflows/app-inputs.md)。
 
-详细的多类型 binding、wire 形状、streaming ObjectStore、错误、兼容性和后续 SDK/Trigger 验收规划见 [Workflow App Entry 多类型输入实施基线](../development/workflow-app-entry-input-implementation.md)。
+详细的多类型 binding、wire 形状、streaming ObjectStore、错误、兼容性和 SDK/Trigger 验收规则见 [Workflow App 输入契约](../architecture/workflows/app-inputs.md)。
 
 ## 相关文档
 

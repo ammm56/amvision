@@ -4,7 +4,7 @@
 
 已接受并实现。阶段 1 至阶段 7 已完成；源码开发环境真实 Deployment、Workflow Runtime、TriggerSource 业务负载与发行基础设施已分别通过验收。目标机器的长时硬件 soak 继续作为部署验收执行。
 
-详细实施顺序、迁移边界、已完成阶段和剩余验收门禁见 [任务执行与运行时可靠性实施基线](../development/task-runtime-reliability-implementation.md)。
+当前 Task 协议、暂停恢复和持续验证见 [Task 执行、暂停与终态](../architecture/platform/task-execution.md)。
 
 ## 背景
 

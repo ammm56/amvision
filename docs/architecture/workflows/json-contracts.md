@@ -78,7 +78,7 @@ WorkflowGraphTemplate 定义“节点怎么连”。
 
 模板保存的是图结构和编辑状态，不保存现场端点。
 
-说明节点虽然在画布中采用节点卡片交互，但不是 `WorkflowGraphNode`，不引用 NodeDefinition，也不进入执行节点集合。`WorkflowGraphTemplate.notes` 保存说明节点；节点组使用独立的 `member_note_ids` 引用说明节点，不能把说明节点塞进 `member_node_ids` 或依赖数组位置建立关系。两个字段均有空集合默认值，旧 v1 Template 可以直接加载。详细契约、限制和验收记录见 [Workflow 说明节点实施基线](../../development/workflow-note-node-implementation.md)。
+说明节点虽然在画布中采用节点卡片交互，但不是 `WorkflowGraphNode`，不引用 NodeDefinition，也不进入执行节点集合。`WorkflowGraphTemplate.notes` 保存说明节点；节点组使用独立的 `member_note_ids` 引用说明节点，不能把说明节点塞进 `member_node_ids` 或依赖数组位置建立关系。两个字段均有空集合默认值，旧 v1 Template 可以直接加载。详细契约、限制和验收记录见 [Workflow 说明节点](note-nodes.md)。
 
 ### 4. FlowApplication
 
@@ -265,7 +265,7 @@ App Entry 的 `request_*` 名称是 Application 的公开 binding id，不是 pa
 | ZeroMQ Trigger | `image-ref.v1`、`value.v1`、`text.v1` | 图片使用唯一 binary frame，JSON/文本位于 envelope payload |
 | local-shared-memory Trigger | `image-ref.v1`、`value.v1`、`text.v1` | 图片使用 LocalBuffer；纯 JSON/文本使用 event-only 请求，两者均为 v1 |
 
-ZeroMQ 与 local-shared-memory 不映射 `image-base64.v1`、`file-ref.v1` 或 `file-refs.v1`。普通文件不复用图片 binary frame、LocalBuffer 或 mailbox；需要这些输入时使用 HTTP Runtime。完整实现状态、SDK 规划和验收规则见 [Workflow App Entry 多类型输入实施基线](../../development/workflow-app-entry-input-implementation.md)。
+ZeroMQ 与 local-shared-memory 不映射 `image-base64.v1`、`file-ref.v1` 或 `file-refs.v1`。普通文件不复用图片 binary frame、LocalBuffer 或 mailbox；需要这些输入时使用 HTTP Runtime。完整实现状态、SDK 调用边界和验收规则见 [Workflow App 输入契约](app-inputs.md)。
 
 ## 最小 JSON 例子
 
@@ -436,5 +436,3 @@ barcode.nodes 当前已经采用这套维护方式，并固定通过 custom_node
 - 图执行结果通过同步响应、Run 详情和事件接口公开；是否保留详细 trace 由 execution policy 控制。
 
 版本与运行来源规则见 [Workflow App 版本管理](app-versioning.md)。
-
-

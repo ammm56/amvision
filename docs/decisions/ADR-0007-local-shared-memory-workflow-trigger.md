@@ -4,7 +4,7 @@
 
 已接受并完成阶段0–9实现。Workflow Trigger mailbox 的共享 overflow page 并发、单一总 deadline、独立 ACK deadline、PROCESSING 取消、per-source health，以及 ADR-0008 固定 arena 数据面均已接入正式链路；完整故障、容量、性能和业务 soak 仍在执行。这些实现完整性修正没有改变本 ADR 的 Trigger 产品边界。
 
-本 ADR 固定本机高频 Workflow Trigger 的架构边界和关键取舍。协议细节与性能边界见[本机共享内存 Trigger 实施基线](../development/local-shared-memory-trigger-implementation.md)；当前完成状态和剩余门禁见[共享内存数据面可靠性实施基线](../development/shared-memory-data-plane-reliability-implementation.md)和 [ADR-0008](ADR-0008-local-buffer-fixed-arena-allocation.md)。[ADR-0009](ADR-0009-local-message-channel.md) 只把 Trigger 与 Inference 的重复底层实现收敛到公共 engine，不改变本文独立物理 Channel、单 owner、独立 epoch 和容量隔离。`local-shared-memory` 与 `zeromq-topic` 仍是并列的正式 adapter；发布目录只能由当前源码按目标 profile 重新 assemble，不能手工覆盖。
+本 ADR 固定本机高频 Workflow Trigger 的架构边界和关键取舍。协议细节与性能边界见[本机共享内存 Trigger](../architecture/workflows/local-shared-memory-trigger.md)；当前完成状态和剩余门禁见[LocalBuffer 与 Trigger 数据面验收](../development/shared-memory-data-plane-reliability-implementation.md)和 [ADR-0008](ADR-0008-local-buffer-fixed-arena-allocation.md)。[ADR-0009](ADR-0009-local-message-channel.md) 只把 Trigger 与 Inference 的重复底层实现收敛到公共 engine，不改变本文独立物理 Channel、单 owner、独立 epoch 和容量隔离。`local-shared-memory` 与 `zeromq-topic` 仍是并列的正式 adapter；发布目录只能由当前源码按目标 profile 重新 assemble，不能手工覆盖。
 
 ## 背景
 

@@ -10,7 +10,7 @@ Runtime 监视显示实际发布图中 Image、Value、Table、Gallery Preview �
 
 页面初始等待下一次实际执行，没有历史回放。停止、重启、异常恢复或短暂断线期间，仍打开的监视页面按 2、4、8、10 秒封顶退避重新读取权威 Runtime 快照；连接成功后重置退避。Runtime 恢复正常后按新的 Worker 身份自动连接。Worker 身份或发布版本变化时清除旧代显示并重置消息序号，普通网络重连和同一 Worker 的手动刷新保留最近一次完成画面。页面关闭后立即停止重连。连接超过 10 秒没有收到 `connected` 确认时主动断开并重试。该过程不补发历史、不调用 Workflow，也不进入 Runtime 或 Trigger 的业务路径。
 
-轻量 App Mode 已实现：编辑画布配置需要显示的 Preview 输出，发布后从选定 Runtime 进入 `/workflows/runtime/{workflow_runtime_id}/app-mode`。页面自动呈现当前发布版 App Entry 的全部公开输入，并复用本页描述的观察连接显示实际 Runtime 结果；不创建第二条消息协议。逐节点进度与强制终止终态明确不纳入当前范围，实施和验收见[实施基线](../development/workflow-runtime-preview-and-app-mode.md)。
+轻量 App Mode 已实现：编辑画布配置需要显示的 Preview 输出，发布后从选定 Runtime 进入 `/workflows/runtime/{workflow_runtime_id}/app-mode`。页面自动呈现当前发布版 App Entry 的全部公开输入，并复用本页描述的观察连接显示实际 Runtime 结果；不创建第二条消息协议。逐节点进度与强制终止终态明确不纳入当前范围，当前实现和验收边界见 [Runtime 显示与 App Mode](../architecture/workflows/runtime-display.md)。
 
 ## 快照与连接
 

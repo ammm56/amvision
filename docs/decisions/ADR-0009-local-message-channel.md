@@ -2,7 +2,7 @@
 
 ## 状态
 
-已接受，部分实现。阶段 0–6、阶段 7 源码门禁、本机 10,000 次压力和独立发行装配验证均已完成；Training Telemetry、Inference Mailbox、Workflow Trigger 三条正式链路已原子迁移。阶段 5 基准已裁决保留 Workflow Runtime、PublishedInferenceGateway 和 LocalBuffer Broker 的现有 Queue/pipe 传输，不创建对应 mmap Channel。真实目标发行环境 24 小时混合 soak 尚未执行，因此本 ADR 暂不标记为“已实现”。实现顺序与验证门禁见[本机结构化消息通道实施基线](../development/local-message-channel-implementation.md)。
+已接受，部分实现。阶段 0–6、阶段 7 源码门禁、本机 10,000 次压力和独立发行装配验证均已完成；Training Telemetry、Inference Mailbox、Workflow Trigger 三条正式链路已原子迁移。阶段 5 基准已裁决保留 Workflow Runtime、PublishedInferenceGateway 和 LocalBuffer Broker 的现有 Queue/pipe 传输，不创建对应 mmap Channel。真实目标发行环境 24 小时混合 soak 尚未执行，因此本 ADR 暂不标记为“已实现”。当前通道分工见[本机结构化消息通道](../architecture/platform/local-message-channel.md)，剩余验证门禁见[LocalMessage 通道验收](../development/local-message-channel-implementation.md)。
 
 ## 背景
 

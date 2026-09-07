@@ -28,7 +28,7 @@
 | `deployments` | DeploymentInstance 创建、启停、预热、健康和重置 |
 | `inference` | 同步推理、异步推理任务和结果 |
 | `integrations` | Trigger、协议集成和外部系统配置 |
-| `workflows/workflow-editor` | Workflow App 列表、详情、图编辑、Preview、版本、Runtime 和 Trigger |
+| `workflows/workflow-editor` | Workflow App 列表、详情、图编辑、Preview、版本、Runtime、Trigger、只读监视和 App Mode |
 | `custom-nodes` | Node Pack 和节点目录视图 |
 | `settings` | 系统、服务、用户和运行参数 |
 
@@ -49,7 +49,9 @@
 - 页面兼顾大图、长列表、高信息密度、离线和局域网环境。
 - 破坏性动作必须显示明确对象、状态和后果。
 - 异步任务必须保留快照读取、错误详情和重新进入后的恢复能力。
-- Workflow Preview 展示节点耗时只用于调试；正式 Runtime 使用生产高性能链路。
+- 编辑态 Preview 展示节点耗时用于调试；Runtime 只读监视和 App Mode 观察实际发布版本的执行结果。
+- App Mode 自动呈现全部 App Entry 公开输入，显示配置随 App Version 发布，不增加独立应用资源或页面设计器。
+- 生产显示通过有界观察通道交接到 WebSocket，慢客户端允许跳过更新；多客户端大图尾延迟限制见[Runtime 显示](../workflows/runtime-display.md)。
 
 ## 相关文档
 

@@ -1,14 +1,14 @@
-# Workflow 动态参数输入实施基线
+# Workflow 参数输入
 
-## 目标
+## 当前实现
 
-本实施基线用于把节点参数输入框扩展为可由其他节点输出或 App Entry 输入赋值的正式 Workflow 数据链路。实现参考 ComfyUI 的“输入框与输入端口共存”交互，但继续使用 AMVision 自己的 `NodeDefinition`、版本化 payload、DAG 校验和 Workflow Runtime，不依赖 `projectsrc/` 运行时代码。
+节点参数输入框已支持可由其他节点输出或 App Entry 输入赋值的正式 Workflow 数据链路。实现参考 ComfyUI 的“输入框与输入端口共存”交互，但继续使用 AMVision 自己的 `NodeDefinition`、版本化 payload、DAG 校验和 Workflow Runtime，不依赖 `projectsrc/` 运行时代码。
 
 ## 不可变边界
 
 - 参数输入必须由 `NodeDefinition.parameter_input_bindings` 显式声明，不根据参数名称或 JSON Schema 自动生成。
 - 参数端口是正式 `input_ports`，Graph Edge、Template Input、拓扑、循环检测和 payload 类型校验继续使用现有规则。
-- 第一版参数端口只接受 `value.v1`，不执行 `text.v1`、数字、布尔或其他 payload 的隐式转换。
+- 参数端口只接受 `value.v1`，不执行 `text.v1`、数字、布尔或其他 payload 的隐式转换。
 - 连接值覆盖节点实例中的固定参数；没有连接时依次使用固定参数和 JSON Schema `default`。
 - 连接传入的 `{"value": null}` 是真实动态值，不等同于没有连接。
 - 断开连线只移除 Graph Edge 或 Template Input，不删除节点实例中保留的固定回退值。
@@ -21,7 +21,7 @@
 
 ## 公开契约
 
-`NodeDefinition` 增加以下绑定：
+`NodeDefinition` 使用以下显式绑定：
 
 ```json
 {
@@ -63,39 +63,54 @@ Graph Template 不保存额外绑定状态。参数端口连接仍使用普通 `
 - 参数端口继续使用现有端口拖线、右键、选择和 `payload_type_id` 校验。
 - 参数行坐标和节点高度由同一布局函数计算，端口与连线不能因 JSON 编辑框高度产生偏移。
 
-## 首批节点
+## 已登记的节点
 
-`core.io.image-save` 首批开放：
+当前 Core Catalog 有 17 个节点显式声明 `parameter_input_bindings`。
 
-- `save_directory`
-- `file_name`
-- `overwrite`
+保存与存储节点：
 
-三个参数端口均为可选 `value.v1`。保存目录和文件名复用节点系统通用日期时间模板；扩展名检查、原子重名递增和 ObjectStore/绝对目录边界保持不变。
+- `core.io.image-save`、`core.output.json-save-local` 和 `core.io.video-save`：`save_directory`、`file_name`、`overwrite`；
+- `core.output.text-save-local`：`save_directory`、`file_name`；
+- `core.io.storage-retention-cleanup`：`target_directory`。
 
-第一阶段补充 `String Value`、`Number Value` 和 `Boolean Value` 三个明确的通用节点，统一输出 `value.v1`。对象和数组继续使用 App Entry、File Read JSON、Object Create 和 List Create，不新增自动猜测类型的虚拟 Primitive 节点。
+目录与本地文件节点：
 
-第二阶段按实际 App Entry 数据组合链路补充：
+- `core.io.directory-latest-file`、`core.io.directory-scan`：`directory_path`；
+- `core.io.image-load-local`、`core.io.json-load-local`、`core.io.text-load-local`：`local_path`。
+
+逻辑与集合节点：
+
+- `core.logic.file-refs-get-item`、`core.logic.list-item`：`index`；
+- `core.logic.object-field`：`key`；
+- `core.logic.object-set-path`：`path`；
+- `core.logic.format-date-time`、`core.logic.format-string`：`template`；
+- `core.logic.value-field-extract`：`path`。
+
+这些参数端口均为可选 `value.v1`。保存目录和文件名复用节点系统通用日期时间模板；扩展名检查、原子重名递增和 ObjectStore/绝对目录边界保持不变。
+
+固定值输入使用 `String Value`、`Number Value` 和 `Boolean Value` 三个明确的通用节点，统一输出 `value.v1`。对象和数组继续使用 App Entry、File Read JSON、Object Build 和 List Build，不新增自动猜测类型的虚拟 Primitive 节点。
+
+App Entry 数据组合还可以使用以下配套节点：
 
 - `core.logic.string-concat`：两个必填字符串输入，输出字符串 `value.v1`；
 - `core.logic.scalar-to-string`：显式转换 JSON 标量，拒绝 `null`、对象和数组；
-- `core.logic.format-date-time.template`：参数输入端口覆盖固定日期时间模板；
-- `core.logic.value-field-extract.path`：参数输入端口覆盖固定字段路径；
-- `core.logic.format-string.template`：迁移到统一参数输入解析，保留原有连线和固定参数语义；
-- `core.logic.file-refs-get-item.index`：参数输入端口覆盖固定文件索引。
+- `core.logic.format-date-time`：`template` 参数端口覆盖固定日期时间模板；
+- `core.logic.value-field-extract`：`path` 参数端口覆盖固定字段路径；
+- `core.logic.format-string`：`template` 参数端口使用统一参数输入解析；
+- `core.logic.file-refs-get-item`：`index` 参数端口覆盖固定文件索引。
 
 以上节点不创建线程、队列或后台任务。字符串拼接不解析日期时间块；需要立即展开时使用 Format Date Time，需要保存图片时也可以保留日期块并由 Image Save 展开。
 
 ## 现有双源节点审计
 
-Core Node Catalog 目前还有 28 个参数具备“可选 `value.v1` 端口 + 固定参数回退”双源行为，分布在目录批处理、文件保存、结果响应、集合索引、数值运算、分支默认值、变量和视频帧等节点。这些节点原本已经通过正式输入端口支持动态赋值，第一阶段不批量改写其 handler 或 UI 布局，原因如下：
+部分 Core Node 参数仍具备“可选 `value.v1` 端口 + 固定参数回退”双源行为，分布在目录批处理、文件保存、结果响应、集合索引、数值运算、分支默认值、变量和视频帧等节点。这些节点原本已经通过正式输入端口支持动态赋值，不能批量改写其 handler 或 UI 布局，原因如下：
 
 - 批量登记绑定会立即改变现有编辑器端口位置，属于可见行为变更。
 - 统一解析器会按参数 JSON Schema 校验连接值，部分旧节点当前在 handler 中使用更窄或带上下文的校验规则，必须逐节点核对后迁移。
 - 输入名与回退参数名不总是一致，例如 `right -> right_value`、`default -> default_value`，不得按名称自动推断。
 - 现有节点的正式输入端口继续可用，不影响本次动态保存路径和文件名能力。
 
-后续迁移必须以单节点或同一能力族为单位，显式增加 `parameter_input_bindings`、删除重复的 handler 双源解析并补兼容测试；不得用目录扫描结果自动写入绑定。当前已完成 Image Save、Format Date Time、Extract Value Field、Format String 和 File Refs Get Item 的逐节点审计与登记，其他节点保持原行为。
+统一参数解析当前只作用于上述 17 个已登记节点。其余双源节点保持原有 handler 行为；后续迁移必须以单节点或同一能力族为单位，显式增加 `parameter_input_bindings`、删除重复的 handler 双源解析并补兼容测试，不得按名称推断绑定，也不得用目录扫描结果自动写入绑定。
 
 ## 兼容与发布
 

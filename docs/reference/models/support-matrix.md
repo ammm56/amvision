@@ -72,7 +72,9 @@ RF-DETR classification、pose 和 OBB 不属于当前公开能力。YOLOE、SAM3
 
 ## 评估边界
 
-平台通用评估使用项目内 COCO-style AP、mask IoU、OKS 和 rotated IoU。它不宣称逐字段等同于 `pycocotools.COCOeval` 或每个参考仓库 validator 的全部 stats、area range、crowd/ignore 语义。训练期 best checkpoint 选择继续使用各模型 Core validator 的明确指标。
+评估按任务和入口区分。平台独立 segmentation 评估当前使用项目内 COCO-style AP 与 mask IoU，OBB 使用 rotated IoU；pose 独立评估使用真实 pycocotools bbox/keypoints AP。训练 Core 的检测、分割和姿态评估另有 pycocotools 路径，不能据此把全部平台评估都描述成同一实现。
+
+公开指标不是参考 validator 全部 stats 的逐字段复制；应同时核对 checkpoint、split、阈值、预处理、maxDets 与类别/关键点映射。训练期 best checkpoint 使用各 Core 的明确指标，segmentation 的 bbox 与 mask 指标分开比较。实现入口为 `backend/service/application/models/evaluation/` 下的 `segmentation_evaluation.py`、`pose_evaluation.py`、`obb_evaluation.py`、`coco_style_metrics.py` 和 `pycocotools_metrics.py`。
 
 RF-DETR 当前不公开 LoRA/PEFT，不接受任意 Python optimizer callable。配置必须可序列化、可复现、可审计。
 

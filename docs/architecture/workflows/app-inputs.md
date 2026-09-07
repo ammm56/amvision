@@ -1,8 +1,8 @@
-# Workflow App Entry 多类型输入实施基线
+# Workflow App 输入契约
 
-> 状态：阶段 1—9 已完成。HTTP Runtime 已支持六类公开输入；ZeroMQ/local-shared-memory 只支持 `image-ref.v1`、`value.v1`、`text.v1`；.NET SDK 已提供两套明确的 Builder，并通过实际 Workflow App、Runtime、Trigger 和 SDK 组合调用验收。24 小时以上现场 soak 仍属于发布门禁，不由一次开发验收替代。代码、OpenAPI、Catalog 和持续测试是实现状态的最终证据。
+> 当前实现：HTTP Runtime 已支持六类公开输入；ZeroMQ/local-shared-memory 只支持 `image-ref.v1`、`value.v1`、`text.v1`；.NET SDK 已提供两套明确的 Builder，并通过实际 Workflow App、Runtime、Trigger 和 SDK 组合调用验收。24 小时以上现场 soak 仍属于发布门禁，不由一次开发验收替代。代码、OpenAPI、Catalog 和持续测试是实现状态的最终证据。
 
-不可变架构取舍见 [ADR-0010：Workflow App Entry 多类型输入契约](../decisions/ADR-0010-workflow-app-entry-multi-input-contract.md)。本文只维护实现顺序、具体 contract 和验证门禁。
+不可变架构取舍见 [ADR-0010：Workflow App Entry 多类型输入契约](../../decisions/ADR-0010-workflow-app-entry-multi-input-contract.md)。本文维护当前输入契约、调用面分工与持续验证规则。
 
 ## 文档目的
 
@@ -15,22 +15,6 @@ Workflow 调用不应被限制为每次只提交一张图片。一个公开 App 
 - JSON 与 multipart 请求的确定性解析、校验和 ObjectStore 生命周期；
 - Runtime、Preview、Trigger、LocalBuffer、SDK 和前端使用同一输入契约的方式；
 - 兼容性、内存、错误和验收规则。
-
-## 阶段状态
-
-| 阶段 | 范围 | 当前状态 |
-| --- | --- | --- |
-| 1 | payload、输入节点、共同校验、App Contract v1 | 已完成 |
-| 2 | ObjectStore streaming 与 Runtime multipart | 已完成 |
-| 3 | App Entry 前端与 typed Preview | 已完成 |
-| 4 | .NET HTTP multipart 组合请求与 streaming | 已完成 |
-| 5 | local-shared-memory event-only 请求 | 已完成 |
-| 6 | 真实 App 复制、版本切换、HTTP/SDK/LocalBuffer 稳定性审计 | 已完成 |
-| 7 | ZeroMQ/local-shared-memory 高性能输入 capability 固定与配置校验 | 已完成 |
-| 8 | .NET HTTP 全量 Builder 与高性能 Trigger Builder 分层 | 已完成 |
-| 9 | 两套调用面的真实组合、拒绝矩阵和有界稳定性验收 | 已完成 |
-
-每个阶段只有在代码、迁移、契约测试和真实链路验证同时完成后才能改为已完成。部分代码落地不能提前修改本文顶部的“尚未实现”结论。
 
 ## 核心结论
 
@@ -72,7 +56,7 @@ App 可以同时公开六类输入，但 transport 不需要具有相同能力�
 
 需要解析 JSON 文本、读取 JSON 文件或解码图片时，Workflow 必须连接显式 bridge 节点。
 
-## 当前能力与目标矩阵
+## 当前输入能力
 
 | 默认 binding id | payload type | App Entry 节点或后续节点 | 状态 |
 | --- | --- | --- | --- |
@@ -110,7 +94,7 @@ App 可以同时公开六类输入，但 transport 不需要具有相同能力�
 
 ### 文本
 
-新增 `text.v1`，第一版固定为 inline JSON：
+`text.v1` 当前使用 inline JSON：
 
 ```json
 {
@@ -126,7 +110,7 @@ App 可以同时公开六类输入，但 transport 不需要具有相同能力�
 
 ### 单文件引用
 
-新增 `file-ref.v1`。公开 Runtime 中的规范形状固定为受管理的不可变 ObjectStore 引用：
+`file-ref.v1` 用于文件输入。公开 Runtime 中的规范形状固定为受管理的不可变 ObjectStore 引用：
 
 ```json
 {
@@ -147,7 +131,7 @@ App 可以同时公开六类输入，但 transport 不需要具有相同能力�
 
 ### 多文件引用
 
-新增 `file-refs.v1`：
+`file-refs.v1` 用于文件列表：
 
 ```json
 {
@@ -194,7 +178,7 @@ Runtime 继续支持 `input_bindings` 包装形态和公开 binding 顶层形态
 }
 ```
 
-实现后，如果调用方已经持有受管理对象，可以在 JSON body 中直接提交 `image-ref.v1` 或 `file-ref.v1`。服务端仍校验 Project、不可变版本、长度和 checksum，不把任意 object key 当作可信输入。
+调用方已经持有受管理对象时，可以在 JSON body 中直接提交 `image-ref.v1` 或 `file-ref.v1`。服务端仍校验 Project、不可变版本、长度和 checksum，不把任意 object key 当作可信输入。
 
 ### multipart/form-data
 
@@ -265,7 +249,7 @@ LocalBuffer 继续只承载图片数据面，不承载 JSON、文本和普通文
 
 ## 统一输入校验
 
-新增应用层 `WorkflowInputValidator`，由 HTTP JSON、HTTP multipart、Preview、Trigger、SDK 转换后的 Runtime 请求共同调用。校验顺序固定为：
+应用层 `WorkflowInputValidator`，由 HTTP JSON、HTTP multipart、Preview、Trigger、SDK 转换后的 Runtime 请求共同调用。校验顺序固定为：
 
 1. 拒绝未知 binding，并检查 required binding；
 2. 按不可变 App Version 检查 `payload_type_id`；
@@ -275,9 +259,9 @@ LocalBuffer 继续只承载图片数据面，不承载 JSON、文本和普通文
 6. 校验 storage ref 的 Project、不可变版本、长度和 checksum；
 7. 全部通过后才把规范 `input_bindings` 交给 Runtime。
 
-不得通过字符串转数字、scalar 包装、扩展名推断、自动 JSON parse 或丢弃未知字段来“修复”请求。错误详情至少包含 `binding_id`、`payload_type_id`、JSON Pointer 和失败的 schema keyword，但不回显 base64、文件内容或敏感 JSON 值。
+不得通过字符串转数字、scalar 包装、扩展名推断、自动 JSON parse 或丢弃未知字段来“修复”请求。Schema 校验错误详情使用 `binding_id`、`payload_path`、`schema_path` 和 `reason`；容量、数量、MIME 与 ObjectStore 引用错误携带对应的限制值或对象标识。错误不回显 base64、文件内容或敏感 JSON 值。
 
-计划采用以下稳定错误码，并同时写入 OpenAPI、SDK contract test 和 API 文档：
+当前使用以下稳定错误码，并由输入契约、Runtime/Preview API 和自动化测试共同约束：
 
 - `workflow_input_unknown_binding`；
 - `workflow_input_required_binding_missing`；
@@ -286,7 +270,7 @@ LocalBuffer 继续只承载图片数据面，不承载 JSON、文本和普通文
 - `workflow_input_file_count_exceeded`；
 - `workflow_input_file_size_exceeded`；
 - `workflow_input_file_media_type_rejected`；
-- `workflow_input_object_reference_invalid`，通过 details 区分 missing、stale、version 或 checksum；
+- `workflow_input_object_reference_invalid`，`details` 携带 `binding_id` 和 `object_key`，具体失败原因由错误消息说明；
 - `workflow_input_upload_failed`。
 
 ## 公开 App 契约与兼容性
@@ -325,7 +309,7 @@ v1 的公开 input `payload_schema` 使用 closed-object 规则；包括 `value.
 - `core.io.template-input.image`；
 - 现有 Image Base64 Decode 和 typed value bridge。
 
-新增通用节点：
+当前通用节点：
 
 - `core.io.template-input.text`：`text.v1 → text.v1`；
 - `core.io.template-input.file`：`file-ref.v1 → file-ref.v1`；
@@ -370,7 +354,7 @@ ZeroMQ JSON 事件继续支持纯结构化 JSON/文本请求。普通文件不�
 
 ## 前端编辑器与 Preview
 
-App Contract 面板新增以下通用快捷入口：
+App Contract 面板提供以下通用快捷入口：
 
 - JSON Parameters；
 - Value；
@@ -389,7 +373,7 @@ App Contract 面板新增以下通用快捷入口：
 
 Preview 输入组件按 payload type 渲染：结构化 JSON 编辑器、纯文本输入、多行文本、单文件选择、多文件选择和图片选择。生成请求示例时同时给出 JSON、multipart、curl 和 .NET SDK 形态。前端只消费已发布契约，不复制后端 payload schema。
 
-## SDK 设计
+## SDK 调用面
 
 ### HTTP Runtime Builder
 
@@ -419,63 +403,6 @@ ZeroMQ 与 local-shared-memory 共用只包含 JSON/文本的 `WorkflowTriggerIn
 方法名表示调用方意图，但最终仍按 Runtime 公开契约校验。SDK 不缓存整文件、不隐藏排队、等待、自动重试或 transport fallback；重试和幂等策略由调用方显式决定。stream 必须由每次发送独立创建，并在 HTTP content 释放时关闭。
 
 SDK 配置包固定 Runtime id、公开输入契约和限制，用于调用前快速失败；后端仍执行权威校验。Python、Go 和 C SDK 在实现前继续标记为未交付。
-
-## 实施顺序
-
-### 阶段 1：契约和共同校验
-
-- 注册 `text.v1`、`file-ref.v1`、`file-refs.v1`；
-- 实现 Template Text/File/Files Input 和必要 bridge；
-- 实现 `WorkflowInputValidator`；
-- 发布唯一的 App Contract v1，并完成严格校验与比较测试。
-
-### 阶段 2：ObjectStore 与 multipart
-
-- 增加 ObjectStore 流式不可变写入、staging 和原子发布；
-- 把同步 invoke 和异步 runs 的 multipart 入口收敛到同一实现；
-- 支持图片、单文件和多文件字段；
-- 验证取消、超时、异常和服务重启后的 staging 清理。
-
-### 阶段 3：前端与 Preview
-
-- 增加 App Entry 快捷入口和 binding policy 编辑；
-- 增加 typed Preview 输入组件；
-- 生成准确的 JSON、multipart 和 SDK 请求示例；
-- 保证旧图片 App 打开、保存、Preview 和发布行为不变。
-
-### 阶段 4：.NET SDK
-
-- 增加组合 request builder 和真正的 streaming multipart；
-- 删除新文件路径中的 `File.ReadAllBytes` 和完整 `MemoryStream` copy；
-- 增加 App Contract v1 和 multipart contract harness。
-
-### 阶段 5：Trigger event-only
-
-- 增加 local-shared-memory event-only 请求；
-- 复用 Trigger input mapping 和统一校验器；
-- 保持图片 v1 协议、lease 与 ACK 生命周期不变。
-
-### 阶段 7：高性能 Trigger capability
-
-- 为 ZeroMQ/local-shared-memory 固定 `image-ref.v1`、`value.v1`、`text.v1` capability；
-- TriggerSource 创建、enable 和 Runtime 切版时拒绝 `image-base64.v1`、`file-ref.v1`、`file-refs.v1` mapping；
-- 前端 mapping 面板只展示当前 transport 可用的公开 binding，并明确标记其余输入为 HTTP Runtime only；
-- 保持当前 `request_image_ref/request_json/request_text` 三条映射，不自动补 binding。
-
-### 阶段 8：.NET 双调用面 API
-
-- 补齐 HTTP Builder 的 Base64 和 ObjectStore reference 方法，并显式区分 JSON/multipart build；
-- 增加共用 `WorkflowTriggerInputsBuilder`；
-- 为 ZeroMQ 图片高层方法增加可选 JSON/文本 inputs；
-- 让 local-shared-memory 图片和 event-only 调用复用相同 inputs 校验；
-- 保留低层 Dictionary API，不把它作为常用调用示例。
-
-### 阶段 9：真实链路验收
-
-- HTTP 同步 invoke、异步 run 和 .NET SDK 覆盖六类输入及组合；
-- ZeroMQ/local-shared-memory 覆盖 image、image+JSON、image+text、image+JSON+text、JSON+text event-only；
-- 在 SDK、TriggerSource 配置和后端分别验证高性能 Trigger 对 Base64/file/files 的确定性拒绝；
-- 完成长时间资源、handle、LocalBuffer lease、mailbox descriptor 和进程内存审计。
 
 ## 验收矩阵
 
@@ -510,7 +437,7 @@ HTTP Runtime 功能与兼容性至少覆盖：
 
 ## 实现落点
 
-实现已落在以下源目录；后续修改仍必须同步契约、测试和本文状态：
+实现位于以下源目录；修改时同步契约、测试和对应 API 文档：
 
 - `backend/nodes/core_catalog.py` 与 `backend/nodes/core_nodes/io/templates/`；
 - `backend/service/application/workflows/` 的共同输入校验；
@@ -521,66 +448,3 @@ HTTP Runtime 功能与兼容性至少覆盖：
 - Runtime、Preview、Trigger 和 SDK API 文档。
 
 任何实现阶段都不得通过新增组合专用节点、隐藏转换或全文件内存复制绕开上述边界。
-
-## 真实验证记录（2026-08-30）
-
-基于两个既有 Batch 并行验证应用创建了独立副本；源应用、源 Template 和既有 Runtime 未修改：
-
-| 场景 | 新 Application | 新 Template | Runtime | 当前发布版本 |
-| --- | --- | --- | --- | --- |
-| 3570 治具空盘 | `workflow-app-20260830050503` | `workflow-graph-20260830050503` | `workflow-runtime-8c257afd0c144890a58592c8a15586e9` | `workflow-app-version-1e3177d397774687a4dc24187d0021e9` |
-| 3570 塑盒满盘 | `workflow-app-20260830050504` | `workflow-graph-20260830050504` | `workflow-runtime-83b9c7644e5e44b58bda402ce84ee889` | `workflow-app-version-2584543191694ec791fc9745924b4cf1` |
-
-两个 App 均冻结 `amvision.workflow-app-contract.v1`，公开 6 个可选 input：`request_image_ref`、`request_image_base64`、`request_json`、`request_text`、`request_file`、`request_files`。新增 Object/Text/File/Files 输入节点保持通用、纯函数和未连接时不执行，不改变原 Hough、Parallel 和 Classification Batch 主链。
-
-真实 HTTP multipart 调用同时提交 59,885,622 bytes BMP、JSON、文本、单文件和两个有序文件，两条 Workflow 均成功；输入对象在调用结束后清理，LocalBuffer lease 归零。invalid JSON schema、未知 binding、错误 MIME、单文件重复上传和 closed schema 多余字段均按稳定错误码失败。
-
-真实 net472 SDK 通过 local-shared-memory 同时提交 59,885,622 bytes BMP、JSON 和文本。每条链路执行 4 次预热和 40 次计量，合计 `88/88` 成功：
-
-| 场景 | 轮次 | mean | P50 | P95 | max | mmap 写入均值 |
-| --- | --- | --- | --- | --- | --- | --- |
-| 治具空盘 | 1 | 877 ms | 875 ms | 1002 ms | 1031 ms | 4.49 ms |
-| 治具空盘 | 2 | 931 ms | 922 ms | 1039 ms | 1184 ms | 4.52 ms |
-| 塑盒满盘 | 1 | 1051 ms | 1017 ms | 1248 ms | 1250 ms | 4.41 ms |
-| 塑盒满盘 | 2 | 991 ms | 970 ms | 1172 ms | 1187 ms | 4.58 ms |
-
-两轮后每个 Trigger 的 request/success 为 `44/44`，error、timeout、busy 和 capacity reject 均为 0；mailbox page 为 `512 free / 0 used`。2 GiB LocalBuffer 的 active lease、allocated/published bytes、WRITING、ACTIVE、REVOKING、QUARANTINED 和 pending response route 全部归零。
-
-Runtime 首次负载前后存在模块和 OpenCV 工作集加载；第二轮 40 次调用后，治具 Runtime Working Set 仅从 176.12 MiB 到 176.38 MiB，塑盒 Runtime 从 180.91 MiB 到 181.12 MiB，未发现随调用次数线性增长。项目当前较大的常驻内存来源是显式 desired-running 的多个独立 Runtime worker 和模型部署进程，不是单次请求残留；验证副本在验收结束后停止，既有用户 Runtime 保持原状态。
-
-内存审计还发现 direct reader、direct writer 和 Workflow owner view 曾分别打开同一个 2 GiB `images.mmap`。现已改为控制面 client 延迟打开数据面、同一 client 的 reader/writer 共用一个 `MmapBufferArenaExternalAccess`、独立 Deployment worker 的 reader/writer 复用同一 access，Workflow 已持有所有权的解码 view 也从该 access 取得，不再经旧文件 cache 建立第二个映射。修复后进行真实 net472 回归：治具 `20/20` 成功，mean 998 ms、P95 1370 ms；塑盒连续两轮均 `20/20` 成功，mean 1111/1051 ms、P95 1289/1165 ms。第二轮后塑盒 Runtime Working Set 仅从 180.77 MiB 到 180.92 MiB。每个活跃 Workflow worker、模型 Deployment worker 和 Broker owner 均只有一个 `images.mmap` view，Backend 与 inference daemon 控制进程为 0；LocalBuffer 最终为 0 active lease、0 allocated bytes、2 GiB free、0 pending response route。验证副本停止后，Backend 进程树共 16 个进程（主服务、Broker 和 14 个既有 desired-running Runtime），Working Set/USS 合计约 2329.5/1747.3 MiB；inference daemon 进程树共 6 个进程，主要为既有已加载模型 worker，合计约 4036.6/2698.2 MiB。Windows 对 file-backed mmap 的逐 mapping `rss` 可能显示完整文件长度，常驻判断使用进程 Working Set/USS 和 view 数，不把虚拟映射长度误报为物理占用。
-
-真实链路验证额外发现并修复三项边界错误：
-
-- worker 不再用当前 Node Catalog 重算旧 Runtime 指纹，而是从不可变 App Version 的 Application、Template、Contract 和 dependency manifest 计算；
-- optional Template Input 节点声明为 pure，未连接输入不再被当成可观察副作用而隐藏执行；
-- local-shared-memory、ZeroMQ 和 Preview 生成的 buffer `image-ref.v1` 显式保留顶层 `media_type`，不依赖 BufferRef 内部重复字段，也不按扩展名猜测。
-- LocalBuffer direct reader/writer 和 Workflow owner view 共用延迟 mmap，消除同进程重复 2 GiB 虚拟映射，同时保留 publication identity 重验与 owner cleanup 边界。
-
-代码门禁结果：最终后端组合回归 288 项通过；前端全量 76 个测试文件、289 项测试通过并完成 production build；.NET net472 x64 Release 零 warning/零 error且契约程序通过；所有改动 Python 文件通过 Ruff，`git diff --check` 通过；浏览器核对两个 App、App Contract、Preview 控件、Parallel/Batch/Hough 节点和 Runtime 状态，控制台无 warning/error。
-
-## Trigger 与 .NET 双调用面补充验证（2026-08-31）
-
-从既有治具空盘应用复制并发布独立验证应用 `workflow-app-20260830233001`，对应 Graph 为 `workflow-graph-20260830233001`，运行实例为 `workflow-runtime-0defddfc09a945528159d1951b77f4fb`。验证应用冻结六个公开输入；创建了 `zeromq-workflow-runtime-0defddfc09a945528159d1951b77f4fb` 和 `local-shared-memory-workflow-runtime-0defddfc09a945528159d1951b77f4fb`，两者只显式映射 `request_image_ref`、`request_json`、`request_text`。把 `request_file` 映射给 ZeroMQ 的负向请求在创建阶段以 `unsupported_trigger_input_payload_type` 拒绝。
-
-使用生成的真实 SDK 配置包和 net472 x64 SDK，以 59,885,622 bytes BMP 运行三条调用面：
-
-- HTTP multipart 在同一次请求中提交图片上传、图片 Base64、JSON、文本、单文件和两个有序文件；
-- ZeroMQ 在同一次图片调用中提交 JSON 和文本；
-- local-shared-memory 在同一次 LocalBuffer 图片调用中提交 JSON 和文本。
-
-预验收和 15 轮计量共执行 16 次 HTTP、16 次 ZeroMQ 成功调用和 16 次 local-shared-memory 成功调用。后 10 轮平均耗时分别为 3888.70 ms、907.28 ms、771.36 ms；HTTP 结果 hash 始终唯一。HTTP 同时传输约 60 MiB 图片及同图 Base64，耗时不作为高性能 Trigger 基准。
-
-真实调用发现 Starlette multipart 普通字段默认只有 1 MiB，和 App Contract 允许的 128 MiB `image-base64.v1` 冲突。Runtime 与 Preview 现显式使用 160 MiB multipart 控制字段解析上限；之后仍由每个 binding 的 App Contract 和平台上限执行权威校验，文件 part 继续 streaming，不增加完整文件内存复制。
-
-15 轮后 backend handle 保持 1672，Runtime worker handle 保持 339。Runtime worker 首轮 native/OpenCV 高水位增加约 57 MiB，后 10 轮 Private Bytes 只增加约 0.46 MiB；backend 后 10 轮增加约 2.30 MiB。LocalBuffer 为 0 active lease、0 used page、0 pending executor；mailbox 128 个 descriptor 全部 FREE；Runtime 临时输入文件为 0。该结果未发现随调用次数线性增长的 handle、lease、descriptor 或文件残留，但不替代 24 小时以上现场负载 soak。
-
-前端真实创建页显示六个输入，其中 `request_image_ref/json/text` 可生成高性能映射，`request_image_base64/file/files` 固定标记为 `HTTP Runtime only` 且没有映射控件；浏览器控制台无 warning/error。
-
-最终 net472 x64 Release 重新构建后又执行 2 轮三链路实测，6 次调用全部成功；最后一轮 HTTP、ZeroMQ、local-shared-memory 分别为 3806.51 ms、888.27 ms、848.61 ms。第二轮后 backend/Runtime worker handle 为 1682/339，Runtime worker Private Bytes 只增加 4 KiB，ZeroMQ transport registry 为 0 active，LocalBuffer mailbox 为 0 used page、0 active executor，Runtime 输入临时文件为 0。验收结束后停用两个验证 Trigger 并停止验证 Runtime，保留应用和配置记录供复核，避免验证 worker 继续占用常驻内存。
-
-大 Base64 multipart 和前端全量 health 刷新会把开发态 backend 推到较高的 CPython/JSON 解析内存高水位；未发现 `images.mmap` view 或按调用次数线性增长，但进程不会立即把所有已提交页归还 Windows。验收结束的干净重启把 backend Working Set 从约 824 MiB 恢复到约 273 MiB，15 个既有 desired-running Runtime 全部恢复 running，验证 Runtime 保持 stopped。工业调用应优先用 multipart `request_image_ref`、ZeroMQ 或 LocalBuffer 传大图，`request_image_base64` 保留给 HTTP 兼容场景并受固定上限保护。
-
-## 完成与归档条件
-
-全部阶段完成并通过验收矩阵后，稳定不变量分别迁入 Workflow JSON、节点系统、Runtime API、Trigger API 和 SDK 正式文档，本文顶部状态改为已完成。完成后的历史阶段清单和一次性验证数据不作为长期架构重复保留；当正式文档、代码和持续门禁已能独立说明行为时，从 `docs/development/README.md` 移除本实施基线并删除或归档本文。

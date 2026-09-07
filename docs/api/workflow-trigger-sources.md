@@ -18,7 +18,7 @@ TriggerSource 绑定稳定 `workflow_runtime_id`。Runtime 通过 revision/gener
 
 schema 可以识别其他预留 kind，但未注册 adapter 的 TriggerSource 无法 enable，并会返回明确配置错误。未注册类型不能写成已支持。
 
-`directory-watch` 默认按首次匹配变化锚定 3 秒固定窗口，每个到期非空窗口提交一次普通异步 Trigger 调用。事件最多携带 10 个最近变化路径样本，并受 64 KiB JSON 硬上限保护。它不维护文件批次、checkpoint 或待处理队列，不查询和等待上一轮 WorkflowRun。样本只用于诊断，Workflow 必须通过 `Directory Latest File` 或 `Directory Scan` 读取执行时的真实目录状态。完整契约和边界见[目录变化 Trigger 实施基线](../development/directory-watch-trigger-implementation.md)。
+`directory-watch` 默认按首次匹配变化锚定 3 秒固定窗口，每个到期非空窗口提交一次普通异步 Trigger 调用。事件最多携带 10 个最近变化路径样本，并受 64 KiB JSON 硬上限保护。它不维护文件批次、checkpoint 或待处理队列，不查询和等待上一轮 WorkflowRun。样本只用于诊断，Workflow 必须通过 `Directory Latest File` 或 `Directory Scan` 读取执行时的真实目录状态。完整契约和边界见[目录变化 Trigger](../architecture/workflows/directory-watch-trigger.md)。
 
 ## 管理接口
 
@@ -114,7 +114,7 @@ ZeroMQ adapter 接收 envelope 与图片 bytes，把图片写入 LocalBufferBrok
 
 大图热路径不得把图片转成 Base64 JSON。BGR24、mmap、owner/generation/deadline 与槽位回收规则见 [高性能图片数据面](../architecture/platform/image-data-plane.md)。
 
-ZeroMQ reply 统一使用 `amvision.workflow-trigger-result.v1` multipart：Frame 0 是 JSON manifest，后续 0 到 N 帧是按完整物理 identity 去重后的 raw 或 encoded 图片 bytes。当前 .NET SDK 会读取完整 multipart、严格校验帧集合、长度和 checksum，并允许多个逻辑 attachment 共享同一物理帧。本机共享内存 Trigger 仍需通过故障注入、性能和发行门禁后才对外宣称正式可用。
+ZeroMQ reply 统一使用 `amvision.workflow-trigger-result.v1` multipart：Frame 0 是 JSON manifest，后续 0 到 N 帧是按完整物理 identity 去重后的 raw 或 encoded 图片 bytes。当前 .NET SDK 会读取完整 multipart、严格校验帧集合、长度和 checksum，并允许多个逻辑 attachment 共享同一物理帧。本机共享内存 Trigger 已完成源码故障、性能、10,000 次压力和真实业务链验收；真实目标发行环境 24 小时混合 soak 仍是发布门禁。
 
 local-shared-memory 有两个明确的请求操作，共用同一固定 mailbox layout 和 response v1：
 
@@ -138,9 +138,9 @@ ZeroMQ 与 local-shared-memory 是高性能调用面，输入 capability 固定�
 
 图片调用可以同时附带 JSON 和文本。ZeroMQ 无图片事件以及 local-shared-memory event-only 请求可以提交纯 JSON/文本。`input_binding_mapping` 继续按显式 dotted path 生成 Runtime binding，所有结果进入 Runtime 固定 App Contract 和共同 `WorkflowInputValidator`。
 
-TriggerSource 创建、enable 和 Runtime 切版校验应按 adapter capability 拒绝不支持的 mapping；前端只展示当前 adapter 可用的公开 binding。当前已配置的 `request_image_ref`、`request_json`、`request_text` 三条 mapping 是目标配置，不自动扩展到 Base64 或文件输入。
+TriggerSource 创建、enable 和 Runtime 切版时均按 adapter capability 拒绝不支持的 mapping；前端只展示当前 adapter 可用的公开 binding。`request_image_ref`、`request_json`、`request_text` 是当前高性能 Trigger 的正式 mapping，不自动扩展到 Base64 或文件输入。
 
-普通文件不得复用图片 frame 或 LocalBuffer。高性能 Trigger 不增加文件 staging、额外输入 frame、自动 HTTP fallback 或 payload 类型转换。完整实施阶段和 .NET SDK 规划见 [Workflow App Entry 多类型输入实施基线](../development/workflow-app-entry-input-implementation.md)。
+普通文件不得复用图片 frame 或 LocalBuffer。高性能 Trigger 不增加文件 staging、额外输入 frame、自动 HTTP fallback 或 payload 类型转换。完整输入契约、.NET SDK 调用边界和验收规则见 [Workflow App 输入契约](../architecture/workflows/app-inputs.md)。
 
 ## 结果返回设计与实现边界
 
@@ -186,7 +186,7 @@ TriggerSource 的传输资源责任状态保持到协议责任已经安全转移
 
 幂等只重放稳定结果：JSON-only 结果可在 TTL 内重放；带临时 attachment 的重复请求不重跑 Workflow、也不重放旧引用，返回 `idempotent_attachment_result_not_replayable` 和原 `workflow_run_id`；只有 ObjectStore 持久结果可按查询链路重放。
 
-图中直接图片输出表示 attachment；`Image Base64 Encode` 表示受响应容量限制的 JSON；新增 `Image Encode` 决定 JPEG/PNG/BMP/WebP 等编码表示。adapter 不暗中改变图片格式。完整决策见 [ADR-0007](../decisions/ADR-0007-local-shared-memory-workflow-trigger.md)，实施顺序见[本机共享内存 Trigger 实施基线](../development/local-shared-memory-trigger-implementation.md)。
+图中直接图片输出表示 attachment；`Image Base64 Encode` 表示受响应容量限制的 JSON；`Image Encode` 决定 JPEG/PNG/BMP/WebP 等编码表示。adapter 不暗中改变图片格式。完整决策见 [ADR-0007](../decisions/ADR-0007-local-shared-memory-workflow-trigger.md)，当前协议见[本机共享内存 Trigger](../architecture/workflows/local-shared-memory-trigger.md)。
 
 ZeroMQ 不增加 `reply_protocol` 或 JSON/multipart mode。统一 format id 为 `amvision.workflow-trigger-result.v1`，成功、失败和 adapter 错误使用相同 manifest；删除独立 error envelope、只解析第一帧和双协议兼容分支。每个唯一物理 payload 使用 tracked frame，多个逻辑 attachment 可以共享同一 frame index。adapter 在发送 Frame 0 前预留有界 transport-lifetime registry 容量；发送受 reply deadline、`SNDTIMEO`、单物理 payload/逻辑 attachment/物理 frame/总容量和 registry entry/bytes 限制。失败时先以 `linger=0` 关闭 REP socket，再确认全部已提交 tracker；未完成 Frame/view/snapshot/guard 继续由 adapter registry 持有，lease 进入 REVOKING/QUARANTINED，不能立即释放。Broker 不管理 libzmq tracker。
 

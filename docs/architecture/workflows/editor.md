@@ -55,9 +55,9 @@ Preview 使用编辑态快照，不创建生产 Runtime：
 
 Node Preview 只执行目标节点的祖先闭包。图像取参面板必须先完成上传与参数写回，再生成同一份 inline snapshot 发起 Preview。
 
-### Runtime 画布监视与待实现的应用模式
+### Runtime 画布监视与 App Mode
 
-同一 Workflow App 的只读 Runtime 画布监视已经实现，轻量应用模式待实现。两种运行视图复用图中 Preview 节点的显示内容与组件，观察实际 Runtime，而非重新执行编辑态 Preview。应用模式自动呈现当前发布版 App Entry 的全部公开输入，只配置 Preview 显示区域；不实现逐节点进度或强制终止终态。预览显示输出与 App 公开业务返回分开，不依赖 full record；运行视图使用实际激活版本，不使用最新草稿。实现顺序、通信/资源边界和验收统一见 [Runtime 预览显示与应用模式实施基线](../../development/workflow-runtime-preview-and-app-mode.md)。
+同一 Workflow App 的只读 Runtime 画布监视和轻量 App Mode 均已实现。两种运行视图复用图中 Preview 节点的显示内容与组件，观察实际 Runtime，而非重新执行编辑态 Preview。应用模式自动呈现当前发布版 App Entry 的全部公开输入，只配置 Preview 显示区域；不实现逐节点进度或强制终止终态。预览显示输出与 App 公开业务返回分开，不依赖 full record；运行视图使用实际激活版本，不使用最新草稿。配置、通信/资源边界和已知多客户端大图尾延迟限制见 [Runtime 显示与 App Mode](runtime-display.md)。
 
 ## 发布与版本
 
@@ -116,11 +116,11 @@ Trigger Source（可选）
 
 说明节点用于在画布中保存流程说明、输入约束、操作步骤、现场注意事项和维护指南。界面上沿用节点卡片交互，但契约上属于 editor artifact，不是可执行 `WorkflowGraphNode`：不注册 NodeDefinition、不连接端口、不进入 DAG、Preview、Runtime、Node Pack 依赖、node record 或耗时统计。
 
-说明节点随 Template 和不可变 Workflow App Version 保存与追溯。第一阶段只提供一种 Markdown 说明节点；纯文本天然兼容。Markdown 必须经过 allowlist 清理，不允许原始 HTML、脚本、iframe、危险链接或自动加载外部图片和视频。说明正文按字面值处理，不展开日期时间、变量或节点输出。
+说明节点随 Template 和不可变 Workflow App Version 保存与追溯。当前只提供一种 Markdown 说明节点；纯文本天然兼容。Markdown 必须经过 allowlist 清理，不允许原始 HTML、脚本、iframe、危险链接或自动加载外部图片和视频。说明正文按字面值处理，不展开日期时间、变量或节点输出。
 
 节点组通过明确的 `member_note_ids` 记录说明节点成员。移动组时说明节点随组移动；组启用/禁用只改变可执行节点的最终 `enabled`，不改变说明节点。说明节点还必须进入小地图和 fit view 的画布边界计算。
 
-详细字段、交互、安全限制和验收记录见 [Workflow 说明节点实施基线](../../development/workflow-note-node-implementation.md)。当前代码和真实 Workflow App 验收已完成。
+详细字段、交互、安全限制和验收记录见 [Workflow 说明节点](note-nodes.md)。当前代码和真实 Workflow App 验收已完成。
 
 ## 图像交互取参
 

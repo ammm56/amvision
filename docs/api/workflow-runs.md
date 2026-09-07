@@ -163,7 +163,7 @@
 - 单文件 binding 只允许一个 part；`file-refs.v1` 通过重复同名 part 保留顺序；同一 binding 不能同时出现在 JSON 和文件 part
 - 返回完整 WorkflowRun 规则
 
-六类 App Entry 输入、HTTP 与高性能 Trigger 的能力边界见 [Workflow App Entry 多类型输入实施基线](../development/workflow-app-entry-input-implementation.md)。
+六类 App Entry 输入、HTTP 与高性能 Trigger 的能力边界见 [Workflow App 输入契约](../architecture/workflows/app-inputs.md)。
 
 ### 最小响应 JSON
 
@@ -268,7 +268,7 @@
 - 单文件 binding 只允许一个 part；`file-refs.v1` 通过重复同名 part 保留顺序；同一 binding 不能同时出现在 JSON 和文件 part
 - 响应模式与 JSON `invoke` 一致，默认只返回公开 App Result；需要运行回执或完整 trace 时显式传 `response_mode=run` 或 `response_mode=debug`
 
-六类 App Entry 输入、HTTP 与高性能 Trigger 的能力边界见 [Workflow App Entry 多类型输入实施基线](../development/workflow-app-entry-input-implementation.md)。
+六类 App Entry 输入、HTTP 与高性能 Trigger 的能力边界见 [Workflow App 输入契约](../architecture/workflows/app-inputs.md)。
 
 ### 默认最小响应 JSON
 

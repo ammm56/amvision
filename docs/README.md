@@ -16,7 +16,7 @@ AMVision 是面向本地工作站、工控机和边缘设备的工业视觉服�
 | 配置 YOLOE / SAM3 Node Pack 与本地模型资产 | [YOLOE / SAM3 资产](architecture/workflows/yoloe-sam3-assets.md) |
 | 排查日志、服务和现场集成 | [运维与排障](operations/README.md) |
 | 查看关键设计取舍 | [架构决策记录](decisions/README.md) |
-| 查看已接受但尚未落地的跨子系统实施基线 | [源码开发](development/README.md) |
+| 查看开发检查、基准与剩余验收门禁 | [源码开发](development/README.md) |
 | 查看前端产品和界面规范 | [前端设计](design/frontend/README.md) |
 
 ## 信息架构
@@ -56,10 +56,12 @@ docs/
 
 - `backend-service` 提供 REST、WebSocket、前端静态资源和控制面，不消费后台任务队列。
 - `inference daemon` 独立托管 DeploymentInstance 与推理进程。
-- Worker Supervisor 启动数据集导入、导出、训练、转换、评估和异步推理六个 Profile。
+- Worker Supervisor 启动 dataset-import、dataset-export、training、conversion、evaluation 和 batch-inference 六个 Profile；在线异步 Deployment 另由 daemon gateway 管理。
 - Workflow App 发布为不可变版本；稳定 Runtime/Trigger id 通过 revision 与 generation 切换实现。
 - LocalBufferBroker、mmap 和 ZeroMQ 构成本机高性能图片数据面；大图不在进程间反复复制 Base64 JSON。
-- 训练遥测已迁移到通用 LocalMessage EventRing，Inference daemon 已迁移到通用 LocalMessage Mailbox；Workflow Trigger 的后续原子迁移边界见 [ADR-0009](decisions/ADR-0009-local-message-channel.md)。
+- 训练遥测已使用通用 LocalMessage EventRing，Inference 与 Workflow Trigger 已使用独立 LocalMessage Mailbox；Workflow Runtime 内部保留 Queue。完整分工见[本机结构化消息通道](architecture/platform/local-message-channel.md)。
+- Runtime 只读监视和 App Mode 已实现；多客户端大图广播尾延迟仍是已知边界，见[Runtime 显示](architecture/workflows/runtime-display.md)。
+- LocalMessage 目标发行环境 24 小时混合 soak 尚待验收，代码完成不等于持续负载认证完成。
 - 生产日志按本地日期写入 `*-YYYYMMDD.log`，避免单文件无限增长。
 
 可复用 Workflow 清单见 [docs/examples/workflows/README.md](examples/workflows/README.md)。

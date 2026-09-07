@@ -2,7 +2,7 @@
 
 ## 状态
 
-已接受并完成阶段0–9实现。固定 arena、buddy allocator、持久 descriptor、guard/reclaim、BufferRef、Python/.NET SDK、frame channel、配置和正式调用点已原子迁移；阶段10源码开发环境的故障、容量、完整回归、真实图片传输与有界 soak 已通过，发行重组后的10,000次和24小时持续认证仍按[共享内存数据面可靠性实施基线](../development/shared-memory-data-plane-reliability-implementation.md)执行。本文关于 LocalBuffer 连续图片 allocator 的决策继续有效；结构化 mailbox 与训练遥测的后续目录和公共 engine 收敛由 [ADR-0009](ADR-0009-local-message-channel.md)更新。
+已接受并完成阶段0–9实现。固定 arena、buddy allocator、持久 descriptor、guard/reclaim、BufferRef、Python/.NET SDK、frame channel、配置和正式调用点已原子迁移；阶段10源码开发环境的故障、容量、完整回归、真实图片传输与有界 soak 已通过，发行重组后的10,000次和24小时持续认证仍按[LocalBuffer 与 Trigger 数据面验收](../development/shared-memory-data-plane-reliability-implementation.md)执行。本文关于 LocalBuffer 连续图片 allocator 的决策继续有效；结构化 mailbox 与训练遥测已完成的目录和公共 engine 迁移由 [ADR-0009](ADR-0009-local-message-channel.md)更新。
 
 ## 背景
 
@@ -16,7 +16,7 @@
 
 LocalBuffer 承担图片 bytes 和短期生命周期，不承担图片格式识别、解码、业务排队或持久化。分配策略应只依据精确 `content_length`，不依据分辨率名称或 media type。
 
-主 LocalBuffer 是 HTTP/ZeroMQ/local-shared-memory 输入进入同步处理后的统一图片数据面，也承载 Workflow 节点间图片、同步 Deployment 输入与结果图、Preview运行期图片和节点新生成的图片。跨边界公开值使用 BufferRef/FrameRef；节点内部一次调用内的临时矩阵和模型tensor不属于公开传输契约。异步跨重启与长期保存仍使用ObjectStore。
+主 LocalBuffer 统一承载本机跨进程的短期图片，跨进程使用 BufferRef/FrameRef。当前 Workflow 执行内仍通过 ExecutionImageRegistry 保存 bytes/matrix 并传递 memory image-ref，在同步模型调用或 Trigger 输出交付边界转换；不应把固定 arena 迁移完成解读为所有进程内节点已统一使用 BufferRef。异步跨重启与长期保存仍使用 ObjectStore。
 
 ## 决策
 
@@ -165,4 +165,4 @@ ADR-0009 阶段 1 已把共享路径所有权提升为中立 `local_memory.root_
 - `MmapBufferPool` 被 arena allocator 取代；普通 lease、External lease、frame channel、output handoff 和 direct reader 统一使用 descriptor/extent。
 - Python、.NET SDK、配置包、fixture、前端状态页和所有测试资产必须原子迁移。
 - 旧固定 pool 文件不能在线转换。开发期升级时先停止所有 owner/SDK、确认 guard 释放，再离线移走或删除 `data/buffers/local-buffer/` 中的短期 arena 文件，由下一次启动按当前 layout 重建；新服务发现旧 layout 或 fingerprint 不一致时拒绝启动，不能自动 truncate。当前 maintenance CLI 不提供 LocalBuffer 重建命令，不能把更宽范围的开发模型重置命令当作替代。
-- 该变更只替换图片 LocalBuffer 分配模型，不改变 Workflow Trigger mailbox、inference mailbox、ObjectStore 或训练遥测的数据职责；结构化 mmap 的后续公共 engine 收敛属于 [ADR-0009](ADR-0009-local-message-channel.md) 的独立原子迁移。
+- 该变更只替换图片 LocalBuffer 分配模型，不改变 Workflow Trigger mailbox、inference mailbox、ObjectStore 或训练遥测的数据职责；结构化 mmap 已完成的公共 engine 迁移属于 [ADR-0009](ADR-0009-local-message-channel.md) 的独立原子迁移。

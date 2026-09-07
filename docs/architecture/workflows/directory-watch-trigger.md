@@ -1,14 +1,14 @@
-# 目录变化 Trigger 实施基线
+# 目录变化 Trigger
 
 ## 状态与用途
 
-本文定义并记录 `directory-watch` 从“稳定文件批次提交”收敛为“目录变化有界合并通知”的实现基线。后端契约、固定窗口聚合器、Adapter、创建校验、health 和集成页面已经按本文完成；持续 24 小时以上的现场 soak 仍属于发布验收门禁。
+`directory-watch` 提供目录变化有界合并通知。后端契约、固定窗口聚合器、Adapter、创建校验、health 和集成页面已经按本文完成；持续 24 小时以上的现场 soak 仍属于发布验收门禁。
 
 目标场景是本地生产结果目录的变化通知、监视 Workflow 唤醒和维护 Workflow 调用。设计优先保证 Trigger 内部没有无界路径集合、文件批次队列和隐式后台恢复，不把每个文件可靠投递、目录导入队列或文件内容传输混入 `directory-watch`。WorkflowRun 的接纳、排队、拒绝和执行容量统一由 Workflow Runtime 负责，目录 Trigger 不另设执行调度规则。
 
 `directory-poll` 保留现有周期扫描、文件批次和 checkpoint 语义。逐文件导入、每个文件必须处理和断点恢复属于 `directory-poll` 或独立持久导入队列的范围，不属于本文。
 
-## 已确认结论
+## 执行规则
 
 1. 目录变化是 TriggerSource 的一种外部事件源，与 ZeroMQ、本机共享内存和 PLC Trigger 位于同一层，不是常驻 Workflow Node。
 2. Workflow Node 只在 WorkflowRun 已经开始后执行，不能通过常驻等待目录变化来触发自身运行。
@@ -422,115 +422,9 @@ health 不返回完整样本路径，避免状态接口泄漏生产文件名和�
 - 不让目录 Trigger 暗中执行 `Directory Latest File` 或 `Directory Scan`。
 - 不改变 ZeroMQ 和本机共享内存的同步高性能调用行为。
 
-## 详细实施步骤
 
-主要落点固定如下，避免实施时把目录协议逻辑散入 Runtime 或 Workflow Node：
+## 验证与实现入口
 
-| 范围 | 主要文件 |
-| --- | --- |
-| 公开事件契约 | `backend/contracts/workflows/trigger_sources.py`，必要时拆分同目录 contract 文件并从现有入口导出 |
-| 配置解析与路径过滤 | `backend/service/infrastructure/integrations/directory/_directory_trigger_support.py` |
-| 目录聚合与 watcher 生命周期 | `backend/service/infrastructure/integrations/directory/directory_watch_trigger_adapter.py` |
-| 协议中立提交 | 复用 `backend/service/application/workflows/trigger_sources/protocol_adapter.py`、`trigger_source_supervisor.py`、`workflow_submitter.py` 的现有单向提交链路，不新增 Run 状态接口 |
-| Create/Enable/Health API | `backend/service/api/rest/v1/routes/workflow_trigger_sources/`、`backend/service/application/workflows/trigger_sources/trigger_source_service.py` |
-| 集成页面 | `frontend/web-ui/src/modules/integrations/pages/TriggerSourcePage.vue` 及其测试与本地化资源 |
-| 后端行为测试 | `tests/test_workflow_trigger_source_components.py`、`tests/test_workflow_trigger_sources_api.py` |
-| 示例与文档测试 | `docs/api/examples/workflows/09-industrial-local-directory-watch-detection-position-gate/`、对应 Postman collection、`tests/test_workflow_api_document_examples.py` |
+后端固定窗口聚合、过滤、有界样本、JSON 容量、提交和停用边界由目录 Trigger 测试覆盖；前端使用同一公开配置与 health。真实目录验证应覆盖新增、修改、删除、持续变化、多 Trigger 绑定同一 Runtime、Runtime 忙与停止、停用后不再提交和无重启补偿。24 小时以上目标现场 soak 仍属于发布门禁。
 
-### 阶段 1：冻结契约与当前行为测试（已完成）
-
-1. 为当前 `directory-watch` 文件批次行为补充特征测试，锁定迁移前事实，包括批次切分、删除忽略、checkpoint 和通用 debounce 抑制行为。
-2. 在 `backend/contracts/workflows` 增加 `amvision.directory-change-event.v1` Pydantic contract，固定字段、计数一致性、样本上限、时间和变化类型。
-3. 冻结目标 `DirectoryWatchTriggerConfig` 字段，删除从 `DirectoryPollTriggerConfig` 继承的不相关 batch、sort、dedupe、scan interval 和 checkpoint 恢复语义。
-4. 明确开发期迁移策略：删除旧 `directory-watch` TriggerSource 后按新 schema 重新创建；不增加 update API、自动迁移、静默双读或旧字段兼容。
-
-门禁：contract 单元测试覆盖合法事件、计数不一致、重复路径、非法或重复 `observed_change_types`、超量样本和 JSON 容量收敛。
-
-### 阶段 2：有界聚合器（已完成）
-
-1. 新建与 watcher 无关的纯 Python 聚合器，例如 `DirectoryChangeWindowAccumulator`。
-2. 使用 monotonic time 判断窗口，使用 wall-clock ISO 时间写公开事件。
-3. 计数使用现有安全计数器规则，长期运行允许受控 rollover，不允许 Python 容器无界增长。
-4. 样本使用容量固定的最近不同路径结构；重复路径移动到最新位置并使用最近 watcher batch 的固定三种 `observed_change_types` 覆盖旧值。
-5. 单次遍历 watcher batch，以容量固定的选择结构完成同批次确定性样本选择；禁止把完整变化集合复制为 list 或再次完整排序，只对最终入选样本排序并分配观察序号。
-6. 使用窄锁实现原子 snapshot-and-swap，JSON 构造和 Runtime 提交不得持有 watcher 状态锁。
-7. 实现 `snapshot_and_reset()`，快照完成后不能被后续文件事件修改。
-8. 实现从最旧样本开始缩减的 64 KiB JSON 容量保护。
-
-门禁：模拟 1、10、20、10,000 和同一路径 100 次变化，验证聚合器长期保留内存与样本数量恒定；覆盖创建后修改、创建后删除、混合事件和无序输入。
-
-### 阶段 3：Directory Watch Adapter（已完成）
-
-1. `DirectoryWatchTriggerAdapter` 只把匹配的 watcher 事件写入聚合器，不再扫描全目录并构建 `ready_records`。
-2. 调用 `watchfiles.watch(..., watch_filter=None)`，所有过滤统一进入 Adapter 的公开配置逻辑。
-3. 增加 3 秒默认窗口调度；持续变化不得推迟已确定的窗口截止时间。
-4. 每个到期且非空的窗口直接调用一次现有 `WorkflowTriggerEventHandler.handle_trigger_event()`；不得读取上一轮 WorkflowRun 状态或增加 completion callback。
-5. 快照提交前原子换入新的空窗口，使提交期间观察到的变化进入下一窗口；不为 Runtime 忙闲维护 pending dirty 分支。
-6. 构造 `payload.directory_event_value` 和 TriggerEvent metadata，idempotency key 使用实际提交 event id，不使用文件路径列表。
-7. 删除 directory-watch checkpoint、known identity 和 restart replay 路径；保留 TriggerSource enabled/revision/generation 的现有恢复流程。
-8. submit 失败只记录 health，不增加自动业务重试；单次提交异常不得让 watcher 线程退出，后续新的目录变化仍能开启正常窗口。
-9. 保持协议中立提交链不变，不在 Supervisor、WorkflowSubmitter、RuntimeService 或 Repository 增加目录 Trigger 专用状态读取和调度分支。
-10. 记录提交调用耗时和延迟窗口；提交调用阻塞不得派生额外线程、内部队列或并发提交策略。
-11. stop 和 `submit_call_in_progress` 在同一锁内确定先后；stop 前已登记开始的提交允许完成，stop 后不再开始提交。只有 watcher 线程完全退出后才从 Adapter 状态表移除，join 超时必须作为停用失败返回。
-
-门禁：用可控时钟验证 3 秒内 100 次只提交一次、连续 9 秒产生三次提交；即使测试桩返回的上一轮 Run 一直未完成，后续到期窗口仍照常调用，且 Adapter 从未读取 Run 状态。
-
-### 阶段 4：应用层校验与 API（已完成）
-
-1. 在 TriggerSource create 规范化阶段增加 `directory-watch` transport_config 专用校验，不能只等 Adapter enable 时失败；本阶段不新增 TriggerSource update API。
-2. 固定 `submit_mode=async`、`ack_policy=ack-after-run-created` 和 `result_mode=event-only`。
-3. 校验 `min_trigger_interval_seconds`、`event_sample_limit`、`event_types`、Glob、extensions 和 poll 参数范围，并固定 Glob/extension AND 关系、长度上限、去重和大小写规则；数值字段拒绝 bool、NaN 和 Infinity。
-4. enable 时校验目录存在、类型为目录、访问权限和 watcher 初始化结果。
-5. 明确顶层 `debounce_window_ms` 对目录模板必须为空或零；同时传入非零值时直接拒绝，避免两套时间语义。
-6. 更新 TriggerSource response/health contract 和 OpenAPI 描述。
-
-门禁：REST 测试覆盖创建、非法范围、相对目录、错误同步模式、错误结果模式、enable 时目录不存在或无权限、没有 `request_json` 时不生成 mapping，以及存在 `request_json` 时生成可选 mapping。
-
-### 阶段 5：集成页面（已完成）
-
-1. 在 `TriggerSourcePage.vue` 增加 Directory Watch 协议模板和本地化文本。
-2. 将模板默认值设置为 async、ack-after-run-created、3 秒间隔、10 个样本。
-3. 增加目录基本设置和条件化高级设置；不展示文件批次字段。
-4. 选择目录模板时隐藏通用 debounce、reply timeout 和同步回执设置中的无效组合。
-5. 自动识别可选 `request_json:value.v1` 并在新建表单初始化时生成 `payload.directory_event_value` mapping；没有匹配 binding 时保持未映射，已有手动 mapping 不被模板默认值覆盖。
-6. TriggerSource 默认 `workflow_run_record_mode=none`。目录 Trigger 以 `async + event-only` 登记受统一 worker manager 管理的瞬时执行句柄，不写 WorkflowRun；它仍按每个到期窗口提交，且不读取上一轮执行状态。
-7. 创建前显示配置摘要：目录、过滤规则、事件类型、最小触发间隔和样本上限。
-8. 每条目录 Trigger 生成 `directory-watch-<workflow-runtime-id>-<8位十六进制UUID>`；只处理 id 唯一冲突，不分析多 Trigger 配置重叠和 Save 节点路径。
-
-门禁：Vue 单元测试覆盖模板切换、默认值、短 UUID id、多 Trigger 创建、条件字段、手动 mapping 保留、固定 event-only 和提交 payload。
-
-### 阶段 6：文档示例迁移（已完成）
-
-1. 更新 `docs/api/workflow-trigger-sources.md`，把本文已经实现的部分从“规划”改为当前能力。
-2. 更新目录 watch Postman 创建请求、Preview 输入、Application、Template 和断言测试，删除旧文件批次字段。
-3. 示例 Workflow 使用可选 `request_json`；监视类示例显式接 `Directory Latest File` 或 `Directory Scan`，不把样本当完整文件列表。
-4. 更新 health、错误码和 UI 截图说明。
-
-门禁：文档 JSON、Postman collection、Application/Template contract 和示例测试全部通过。
-
-### 阶段 7：真实目录验证
-
-1. 使用临时本地目录分别创建、修改、删除 1、10、20、1,000 和 10,000 个小文件。
-2. 验证 3 秒窗口内只产生一次 Run；10,000 次变化的 request JSON 固定有界，Adapter 不再复制完整 watcher batch，处理完成后的 RSS 回落且长期保留状态不随文件数增长。瞬时 watcher batch 内存单独记录，不宣称与变化数无关。
-3. 验证样本为最近观察到的 10 个不同路径且倒序，删除样本按观察顺序，不读取已删除文件 metadata；同一路径同批多事件必须合并 `observed_change_types`，不能推断最终状态；同时覆盖 Windows 路径大小写和超长路径容量收敛。
-4. 连续写入 30 分钟，验证 Adapter 内部只有当前有界窗口，没有文件批次队列；每个到期非空窗口都有且只有一次提交尝试。
-5. 模拟 Workflow 执行时间 1 秒、3 秒和 10 秒，验证 Trigger 调用频率只由目录变化和配置间隔决定，不读取或等待 WorkflowRun 状态；Runtime 的 accepted、queued 或 rejected 结果按现有统一策略记录。
-6. 重启 backend-service，确认未提交窗口不恢复、现有文件不自动触发，下一次真实变化可以正常调用。
-7. 验证 force polling、权限错误、目录被移除、Runtime 停止和版本切换时 health 收敛。
-8. 至少执行 24 小时 soak，记录 backend/runtime RSS、handle/thread、提交次数、合并次数、截断次数和错误数。
-9. 同一 Runtime 启用两条及以上目录 Trigger，验证窗口、事件、health 和停用生命周期彼此独立；允许完全相同配置产生独立调用。
-10. 在提交调用延迟和 disable 并发条件下验证 `submit_call_in_progress`/stop 的锁内线性化点、join 超时错误和无孤儿 watcher 线程。
-11. 验证 `watch_filter=None` 后只应用公开配置的过滤条件，不继承 `watchfiles` 对临时文件、`.git` 等名称的隐藏忽略规则。
-
-通过条件：无无界 pending 路径、无 Adapter 批次队列、每个到期非空窗口恰好一次提交尝试、无 Runtime 状态反向依赖、无超限 request JSON、无隐式重试，停止和重启后线程与 watcher 句柄全部释放。
-
-## 完成条件
-
-以下条件全部满足后，本文状态才能从“待实现”改为“已实现”：
-
-- 后端契约、Adapter、应用层校验、health 和前端配置全部完成。
-- 旧 directory-watch 文件批次实现、checkpoint 和相关双读已经删除。
-- `directory-poll` 的独立批次语义没有被破坏。
-- 自动化测试、真实目录压力测试和长期 soak 通过。
-- API 文档、架构索引、Postman 和示例 Workflow 已同步。
-- 生产 ZeroMQ、本机共享内存 Trigger 的同步调用与性能无回归。
+实现位于 `backend/service/application/workflows/trigger_sources/`、`backend/service/infrastructure/integrations/` 和前端 integrations 模块。公开配置和回执见 [TriggerSource API](../../api/workflow-trigger-sources.md)。

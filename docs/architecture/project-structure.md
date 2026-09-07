@@ -113,7 +113,7 @@ predictor 不包含训练循环、loss 或模型核心结构；model core 不依
 
 ## Workers 与 Daemon
 
-- `backend/workers/`：dataset-import、dataset-export、training、validation、conversion、batch-inference Profile；
+- `backend/workers/`：dataset-import、dataset-export、training、evaluation、conversion、batch-inference Profile；
 - `backend/inference_daemon/`：独立 deployment 控制/推理进程入口；
 - Workflow Runtime worker 位于 `backend/service/application/workflows/worker/`，由 backend-service manager 管理；
 - full Supervisor 位于 `runtimes/launchers/full/start_amvision_full.py`。

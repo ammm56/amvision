@@ -32,7 +32,7 @@ API 路由不直接执行训练、转换或模型推理，也不直接拼写数�
 
 - 用户、Project membership、service token 和 scope 校验；
 - 数据集、任务、模型、构建、部署、Workflow、Trigger 等资源 API；
-- QueueBackend 任务提交、取消和状态查询；
+- 同一 UoW 写业务记录、Task/Event 与 Outbox，由 Dispatcher 投递 QueueBackend，并提供取消和状态查询；
 - deployment 与 Workflow Runtime 的控制面；
 - WebSocket/事件查询和健康状态；
 - ObjectStore、LocalBufferBroker 与本地文件链路装配；
@@ -79,14 +79,14 @@ API 路由不直接执行训练、转换或模型推理，也不直接拼写数�
 
 - REST API 统一位于 `/api/v1`；
 - OpenAPI 由 FastAPI 契约生成；
-- WebSocket 只分发状态和事件，不承载大图片主数据面；
+- WebSocket 分发状态、事件和有界 Runtime 显示；图片业务主数据面仍由 LocalBuffer/ObjectStore 承担，浏览器显示不直接访问 mmap；
 - 业务错误映射为稳定 `error_code`、message 和 details；
 - Project 资源详情、输出和控制接口都必须校验 `project_id` 归属；
 - 对外字段和协议一旦公开，通过版本化契约演进。
 
 ## 运行与发布
 
-开发时可单独启动 backend-service 进行 API/UI 调试；完整 Worker、推理、Workflow Runtime 链路必须使用 full Supervisor，它会注入进程 topology identity 并统一管理日志、重启和停止。
+开发时可单独启动 backend-service 进行 API/UI 调试；完整源码链路分别启动 inference daemon、backend-service、`python -m backend.workers.supervisor` 和 Vite；生产发行由 full Supervisor 统一启动并管理迁移、topology identity、日志、恢复和停止。不能直接运行低层 Worker launcher。
 
 发行模式日志写入 `logs/full-stack/`，文件名带 `YYYYMMDD`，同一天追加写入当天文件。完整步骤见：
 

@@ -429,13 +429,11 @@ OpenVINO stream：自动（当前实际 1）
 - FastAPI 路由只登记控制面 schema 和 service descriptor。训练、validation session、conversion、evaluation 和 RF-DETR core 必须在实际提交或执行时按需导入；自定义 SAM3/YOLOE entrypoint 只登记线程安全的惰性 handler/provider 代理，节点首次执行或 model session 首次准备时才加载 PyTorch。
 - RF-DETR 预训练登记所需的 task/scale 默认输入尺寸属于领域元数据规则，统一由无 PyTorch 依赖的 `model_input_spec` 解析；model core factory 复用同一规则，不允许 seeder 为读取尺寸加载完整模型工厂。
 
-2026-08-29 Windows 开发机的冷启动审计结果：
+当前运行与回归边界：
 
-- 单纯导入 FastAPI 应用由约 798.5 MiB RSS / 596.1 MiB USS 降到 219.6 MiB RSS / 186.5 MiB USS，`torch` 未进入模块表。
-- 使用现有 RF-DETR 资产、deployment、Trigger 和 Workflow Runtime 数据完成完整 lifespan 启动后，API server 进程由约 863.4 MiB RSS / 656.1 MiB USS 降到 272.4 MiB RSS / 235.2 MiB USS，进程不再映射 PyTorch/CUDA DLL。
-- `--reload` 只用于源码开发。reloader 管理进程约 11.5 MiB USS，但会映射 2 GiB LocalBuffer arena；Private Bytes 或映射容量不能当成常驻物理内存相加。
-- 当前数据库显式要求 10 个 Workflow Runtime 保持 running，其中 8 个是 Stage 9 benchmark、2 个是本次验证副本。空闲 Runtime 每个约 100 MiB RSS / 77 至 78 MiB USS；生产部署应显式停止不需要的 Runtime，不实现自动休眠、隐式回收或下次调用时隐藏冷启动。
-- 控制面导入、完整空数据 lifespan 和 RF-DETR 预训练登记均有独立子进程测试，防止后续路由、节点包或 seeder 再次提前加载 `torch`。
+- `--reload` 只用于源码开发；映射容量、RSS、Private Bytes 和 USS 含义不同，不能把多个进程的共享映射重复算作独占物理内存。
+- 空闲 Workflow Runtime 仍持有常驻进程和资源。生产部署显式停止不需要的 Runtime，当前没有自动休眠、隐式回收或下次调用时隐藏冷启动。
+- 控制面导入、空数据 lifespan 和 RF-DETR 预训练登记有独立子进程回归测试，防止路由、节点包或 seeder 提前加载模型依赖。
 
 ## 同步调用和 workflow 边界
 

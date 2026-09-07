@@ -100,7 +100,7 @@ Preview 保持最低开销：
 5. 到期时 manager 设置共享 Event，取消整个 Run。`killGraceSeconds` 到期仍无结果时终止该 generation，持久化 `timed_out` 和 `runtime.node_timed_out`，再按 Runtime 的 `desired_state` 自动拉起新 worker。
 6. 超时 Run 不自动重放，避免重复执行文件写入、PLC、HTTP 回调等有副作用节点。旧 generation 的生命周期消息和 Event 不能作用于新 generation。
 
-生命周期消息只属于控制面，不进入节点 payload。图片继续走 LocalBuffer，timeout 协议不会复制图片或改变节点公开输入输出。
+生命周期消息只属于控制面，不进入节点 payload。跨进程图片继续走 LocalBuffer，执行内 memory image-ref 由 registry 管理；timeout 协议不会复制图片或改变节点公开输入输出。
 
 ## 外部调用
 
@@ -124,7 +124,7 @@ Trigger adapter 负责把外部事件转换成 Workflow Run 请求；业务图�
 - 参数输入框与参数端口在编辑器中共存。未声明绑定的参数保持固定值，不根据名称或 schema 自动暴露端口。
 - Parallel、ForEach、Selection 的执行计划参数以及资源、安全和 timeout 参数默认不得动态绑定。
 
-详细契约、运行时优先级和验收门禁见 [Workflow 动态参数输入实施基线](../../development/workflow-dynamic-parameter-input-implementation.md)。
+详细契约、运行时优先级和验收门禁见 [Workflow 参数输入](parameter-inputs.md)。
 
 ### 通用参数编辑器
 
@@ -211,7 +211,7 @@ Save Image、Save Video 和 Save JSON 还统一公开 `overwrite` 参数及可�
 
 App Entry 是公开 binding 边界，不是新的节点执行器。当前 `request_image_ref`、`request_image_base64` 等名称只是可重命名的默认 binding id；节点连线和 Runtime 校验仍由 `image-ref.v1`、`image-base64.v1`、`value.v1` 等版本化 payload 决定。
 
-当前 Runtime JSON 请求可以同时提交多个已声明 binding，结构化值使用 `value.v1`。HTTP Runtime、Trigger、LocalBuffer、前端和 .NET SDK 的已交付边界与验证记录见 [Workflow App Entry 多类型输入实施基线](../../development/workflow-app-entry-input-implementation.md)。
+当前 Runtime JSON 请求可以同时提交多个已声明 binding，结构化值使用 `value.v1`。HTTP Runtime、Trigger、LocalBuffer、前端和 .NET SDK 的已交付边界与验证记录见 [Workflow App 输入契约](app-inputs.md)。
 
 ## Parallel、ForEach 与节点组
 
@@ -229,7 +229,7 @@ Workflow 说明节点用于画布内文档，不属于 Core Node 或 Custom Node
 
 说明节点作为 `WorkflowGraphTemplate.notes` editor artifact 随 App Version 固化。修改说明会改变版本快照 fingerprint，但不会改变公开输入输出契约、Trigger mapping、SDK 调用格式或 Runtime 执行结果。说明内容不允许连接端口，也不能用说明节点替代 String Value、Text To Value 或其他实际文本数据节点。
 
-详细字段、安全渲染、节点组成员关系和验收记录见 [Workflow 说明节点实施基线](../../development/workflow-note-node-implementation.md)。当前代码和真实 Workflow App 验收已完成。
+详细字段、安全渲染、节点组成员关系和验收记录见 [Workflow 说明节点](note-nodes.md)。当前代码和真实 Workflow App 验收已完成。
 
 ## 生命周期
 

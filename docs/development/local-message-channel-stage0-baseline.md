@@ -1,14 +1,14 @@
 # LocalMessage Channel 阶段 0 基线
 
-## 状态
+## 历史测量范围
 
 - 结论：阶段 0 通过，三个稳定默认 profile 已冻结
-- 运行行为：未改变 composition root、正式配置、业务 transport 或正式 mmap 文件
+- 测量时点：迁移前的阶段 0；当时没有修改正式 transport。当前三条业务链路均已迁移，不能把本页旧基准拓扑当作当前实现。
 - 原始报告：`.tmp/local-message-channel-stage0/baseline.json`
 - 原始报告 SHA-256：`f98c11c3445b525c734ecbe4d09fb845f212d269a76caac68520647d8bd69271`
 - 可提交证据：[local_message_channel_profiles.v1.fixture.json](../../tests/fixtures/local_message_channel_profiles.v1.fixture.json)
 
-原始报告包含本机绝对路径和完整逐轮资源数据，因此保留在被 Git 忽略的 `.tmp/`。可提交 fixture 只保留 profile 裁决所需的长度、延迟、容量拒绝和最终常量，不复制业务 JSON。
+原始报告路径仅表示当时的输出位置，不保证文件仍存在，也不作为长期交付物保留。复测结束并停止相关进程后应清理 `.tmp/`。可提交 fixture 保存 profile 裁决所需的长度、延迟、容量拒绝和最终常量；当前实现见[本机结构化消息通道](../architecture/platform/local-message-channel.md)。
 
 ## 复现命令
 
@@ -80,7 +80,7 @@ Cold-create、Cold-reopen 和 Steady 分开采集。资源记录包含 CPU time�
 
 当前开发数据库另有 259 条 Workflow Preview 输出长度样本：P99 为 10,823.36 B，最大 33,678 B。由此为 Trigger 选择 64 KiB inline response，为常规结果保留接近两倍余量。
 
-## 当前实现基线
+## 迁移前测量基线
 
 ### Cold
 
@@ -90,7 +90,7 @@ Cold-create、Cold-reopen 和 Steady 分开采集。资源记录包含 CPU time�
 | Inference | 361.30 ms | 25.98 ms |
 | Training Telemetry | 10.72 ms | 0.84 ms |
 
-Trigger 与 Inference 当前固定文件均约 256 MiB。profile 收缩 inline 区并保持 128 MiB 独立 page pool，目标是减少逻辑文件、首次初始化和 descriptor 私有容量，同时不合并不同 Channel 的故障域。
+迁移前被测 Trigger 与 Inference 固定文件均约 256 MiB；这不是当前通用 Mailbox 的文件容量。profile 收缩 inline 区并保持 128 MiB 独立 page pool，目标是减少逻辑文件、首次初始化和 descriptor 私有容量，同时不合并不同 Channel 的故障域。
 
 ### 大响应与容量
 
@@ -131,7 +131,7 @@ Trigger 与 Inference 当前固定文件均约 256 MiB。profile 收缩 inline �
 
 ### Queue 三路裁决
 
-当前开发文件队列观测到 3,952 条消息，最大文件为 5,846 B。正式比较保留三路：
+阶段 0 采样时开发文件队列观测到 3,952 条消息，最大文件为 5,846 B。正式比较保留三路：
 
 1. 当前 Python object/pickle Queue；
 2. `pydantic-core` JSON bytes Queue；
@@ -160,11 +160,11 @@ Trigger 与 Inference 当前固定文件均约 256 MiB。profile 收缩 inline �
 
 `max_concurrent_inference_requests`、Workflow Trigger executor 并发、reply timeout、ACK timeout 和训练发布节流不属于 profile。
 
-## 阶段 0 裁决
+## 阶段 0 历史裁决与后续结果
 
-- 三个 profile 已冻结，可以进入阶段 1 的未接业务 engine 实现。
-- `local_memory.root_dir` 迁移必须是独立原子提交，不能与 engine 混合。
-- 阶段 1 不修改 composition root，不读取正式 LocalMessage 文件，不迁移 Trigger、Inference 或 Telemetry。
+- 当时冻结三个候选 profile，随后完成 engine 与三条业务通道迁移。表内几何保留为历史基线；当前 envelope 预留与 page 上限以[本机结构化消息通道](../architecture/platform/local-message-channel.md)为准。
+- `local_memory.root_dir` 先独立迁移，再接入 engine。
+- 阶段 1 当时只验证未接业务 engine；Trigger、Inference 和 Telemetry 在后续阶段接入，不能继续把该阶段约束当作当前状态。
 - EventRing 的 owner lock/epoch/session 是异常退出权威依据；PID 只作为诊断元数据。
 - `.NET` SDK 只提交 timeout duration；Python owner 在入口建立自身 clock domain 的绝对 monotonic deadline。
-- 阶段 5 已按同一 `MailboxPort`、envelope/bytes 和跨进程拓扑完成候选基准，裁决为保留 Workflow Runtime、PublishedInferenceGateway 与 LocalBuffer Broker 的现有 Queue/pipe 传输；详细结果见[实施基线阶段 5](local-message-channel-implementation.md#阶段-5窄-port-与-queue-基准)。
+- 阶段 5 已按同一 `MailboxPort`、envelope/bytes 和跨进程拓扑完成候选基准，裁决为保留 Workflow Runtime、PublishedInferenceGateway 与 LocalBuffer Broker 的现有 Queue/pipe 传输；详细结果见[Queue 保留裁决](local-message-channel-implementation.md#queue-保留裁决)。

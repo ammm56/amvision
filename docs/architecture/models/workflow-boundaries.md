@@ -496,7 +496,7 @@ TriggerSource 和 SDK 只负责协议入口。
 - 训练任务不得直接读取原始导入 zip 或 `projectsrc` 目录结构。
 - 评估任务不得以 DeploymentInstance 代替 ModelVersion 或 DatasetExport。
 - DeploymentInstance 不得直接读取 DatasetVersion 或 DatasetExport。
-- workflow runtime 不得长期持有 deployment supervisor 之外的私有模型会话。
+- 正式 ModelVersion/ModelBuild 的推理节点通过 PublishedInferenceGateway 调用 Deployment；SAM3/YOLOE 等 Node Pack loader 使用显式注册的 WorkflowModelSessionProvider，由 Runtime 按 scope/generation 管理独立 lease，不建立私有全局模型池。
 - TriggerSource 不得直接调用模型推理实现。
 - custom node 不得替代核心模型资源管理对象。
 - 图编辑器不得保存模型内部运行态。

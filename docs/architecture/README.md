@@ -19,7 +19,7 @@
 - [运行时与打包](platform/runtime-packaging.md)：源码运行、bundled Python 和发行目录。
 - [WebSocket](platform/websocket.md)：消息版本、订阅、游标和恢复。
 - [LocalBufferBroker](platform/local-buffer-broker.md)、[Inference mailbox v1](platform/inference-mailbox-v1.md) 与 [高性能图片数据面](platform/image-data-plane.md)：当前共享图片、结构化推理结果、ZeroMQ 和引用边界。
-- [本机结构化消息通道 ADR](../decisions/ADR-0009-local-message-channel.md)与[实施基线](../development/local-message-channel-implementation.md)：已接受但尚未实现的结构化 mmap 统一框架；共享底层 engine，不合并物理 Channel、owner、epoch 或容量。
+- [本机结构化消息通道](platform/local-message-channel.md)：三条业务链路已迁移，Workflow Runtime 保留 Queue；目标发行 24 小时混合 soak 待验收。
 
 ## 模型平台
 
@@ -39,7 +39,7 @@
 
 - [Workflow Runtime](workflows/runtime.md)：Preview、正式 Runtime、Run 和进程边界。
 - [Workflow App 版本管理](workflows/app-versioning.md)：不可变版本、稳定 id、revision、generation 和回滚。
-- [Workflow App Entry 多类型输入实施基线](../development/workflow-app-entry-input-implementation.md)：JSON、文本、图片、文件、多文件、multipart、Trigger 和 SDK 的待实现统一输入边界。
+- [Workflow App 输入契约](workflows/app-inputs.md)：HTTP 六类输入、Trigger 三类高性能输入、multipart 与 .NET 双调用面已实现。
 - [Workflow JSON](workflows/json-contracts.md)：图、节点、端口、参数和应用契约。
 - [Workflow 编辑器](workflows/editor.md)：App 保存、Preview、节点组、ROI 与图像交互取参。
 - [模型 Session Runtime](workflows/model-session-runtime.md)

@@ -4,11 +4,11 @@
 
 LocalBufferBroker 是同一主机内 backend-service、deployment runtime、Workflow Runtime 和其他 Worker 之间传递大图片与视频帧的共享内存数据面。控制消息只携带引用和元数据，像素字节由消费者直接读取 mmap，避免 Base64、JSON 和重复整图复制。
 
-当前实现使用固定总容量 arena、动态 extent、lease 和控制协议，并由 buddy allocator 依据精确 `content_length` 分配最小可容纳的连续 extent。实现与验证顺序见[共享内存数据面可靠性实施基线](../../development/shared-memory-data-plane-reliability-implementation.md)，架构决策见 [ADR-0008](../../decisions/ADR-0008-local-buffer-fixed-arena-allocation.md)。
+当前实现使用固定总容量 arena、动态 extent、lease 和控制协议，并由 buddy allocator 依据精确 `content_length` 分配最小可容纳的连续 extent。持续验证条件见[LocalBuffer 与 Trigger 数据面验收](../../development/shared-memory-data-plane-reliability-implementation.md)，架构决策见 [ADR-0008](../../decisions/ADR-0008-local-buffer-fixed-arena-allocation.md)。
 
 LocalBuffer 不是持久化存储、任务队列、图片 codec、跨主机协议或 Workflow Trigger mailbox。
 
-LocalBuffer 是全项目短期内存图片的统一数据面。HTTP/ZeroMQ/local-shared-memory 输入进入本机同步处理链后、Workflow 节点间图片、同步 Deployment 输入与结果图、Preview运行期图片和节点生成的新图片都通过 BufferRef/FrameRef 交接。只有跨重启异步队列、长期保存和审计使用 ObjectStore/文件。节点内部仅在一次 handler 调用期间存在的 OpenCV/NumPy矩阵或模型 tensor不属于公开传输契约，不能作为节点输出跨边界泄漏。
+LocalBuffer 是本机跨进程短期图片的共享数据面。当前 Workflow 执行内仍通过 `ExecutionImageRegistry` 保存 bytes/matrix 并传递 `memory image-ref`，在同步模型调用或 Trigger 输出交付边界转换；并非每个节点输出都会立即分配 arena。执行级 memory handle、BufferRef/FrameRef 与持久 ObjectStore key 的生命周期见[图片数据面](image-data-plane.md#全项目统一图片边界)。
 
 ## 进程与 owner
 
@@ -18,7 +18,7 @@ LocalBuffer 是全项目短期内存图片的统一数据面。HTTP/ZeroMQ/local
 - Python direct reader/writer 和 .NET SDK 只通过受限 locator、guard 和精确 mmap view 访问图片 bytes；
 - backend-service takeover 只在验证旧 owner 后接管，不允许同一 root 出现两个 allocator owner。
 
-唯一主 arena 由 backend-service、Workflow Runtime、各种节点、同步 Deployment 和本机 Trigger 共享，按实际在途图片动态占用；不按 Runtime、Deployment、TriggerSource 或节点数量静态预留。持久异步 deployment 使用 ObjectStore，不创建独立图片 arena。只读消费者借用 mmap view，产生新像素的节点申请新 extent并在写完后发布不可变引用。零整图复制指消除协议和模块桥接中的可避免副本，不包括解码、颜色转换、裁剪、绘制和模型预处理必需的算法写入。
+唯一主 arena 由 backend-service、Workflow Runtime、各种节点、同步 Deployment 和本机 Trigger 共享，按实际在途图片动态占用；不按 Runtime、Deployment、TriggerSource 或节点数量静态预留。持久异步 deployment 使用 ObjectStore，不创建独立图片 arena。LocalBuffer 消费者借用只读 mmap view；需要跨进程发布新像素时申请新 extent 并发布不可变引用。进程内节点也可以先把新矩阵登记到执行级 registry。零整图复制指消除协议和模块桥接中的可避免副本，不包括解码、颜色转换、裁剪、绘制和模型预处理必需的算法写入。
 
 实现位于 `backend/service/application/local_buffers/` 和 `backend/service/infrastructure/local_buffers/`。
 
@@ -230,4 +230,4 @@ health 必须直接校验容量守恒：`general_total = general_free + general_
 - 不把图片放入 inference/workflow mailbox 的结构化 JSON page chain。
 - 不把 GPU IPC、RDMA 或恶意本地进程隔离写入当前 capability。
 
-相关文档：[高性能图片数据面](image-data-plane.md)、[本机结构化消息通道 ADR](../../decisions/ADR-0009-local-message-channel.md)、[本机共享内存 Workflow Trigger ADR](../../decisions/ADR-0007-local-shared-memory-workflow-trigger.md)、[LocalBuffer 固定 arena ADR](../../decisions/ADR-0008-local-buffer-fixed-arena-allocation.md)、[共享内存数据面可靠性实施基线](../../development/shared-memory-data-plane-reliability-implementation.md)。
+相关文档：[高性能图片数据面](image-data-plane.md)、[本机结构化消息通道 ADR](../../decisions/ADR-0009-local-message-channel.md)、[本机共享内存 Workflow Trigger ADR](../../decisions/ADR-0007-local-shared-memory-workflow-trigger.md)、[LocalBuffer 固定 arena ADR](../../decisions/ADR-0008-local-buffer-fixed-arena-allocation.md)、[LocalBuffer 与 Trigger 数据面验收](../../development/shared-memory-data-plane-reliability-implementation.md)。
