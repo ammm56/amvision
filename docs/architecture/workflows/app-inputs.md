@@ -259,7 +259,7 @@ LocalBuffer 继续只承载图片数据面，不承载 JSON、文本和普通文
 6. 校验 storage ref 的 Project、不可变版本、长度和 checksum；
 7. 全部通过后才把规范 `input_bindings` 交给 Runtime。
 
-不得通过字符串转数字、scalar 包装、扩展名推断、自动 JSON parse 或丢弃未知字段来“修复”请求。Schema 校验错误详情使用 `binding_id`、`payload_path`、`schema_path` 和 `reason`；容量、数量、MIME 与 ObjectStore 引用错误携带对应的限制值或对象标识。错误不回显 base64、文件内容或敏感 JSON 值。
+不得通过字符串转数字、scalar 包装、扩展名推断、自动 JSON parse 或丢弃未知字段来“修复”请求。当前 Schema 校验错误详情使用 `binding_id`、`payload_path`、`schema_path` 和 `reason`，但 `reason` 仍直接来自 `jsonschema.ValidationError.message`，可能包含输入字符串；FastAPI/Pydantic 校验详情也可能携带非 bytes 原始 `input`。因此“不回显敏感 JSON 值”尚不是已经满足的实现保证。收紧脱敏并统一 HTTP、Runtime、Preview、Trigger 和 SDK 错误结构的步骤见 [Workflow 公开错误契约实施基线](../../development/workflow-public-error-contract-implementation.md)。容量、数量、MIME 与 ObjectStore 引用错误当前携带对应的限制值或对象标识。
 
 当前使用以下稳定错误码，并由输入契约、Runtime/Preview API 和自动化测试共同约束：
 

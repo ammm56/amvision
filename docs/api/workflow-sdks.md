@@ -102,7 +102,7 @@ Workflow 节点决定返回表示：
 
 ZeroMQ 统一使用 `amvision.workflow-trigger-result.v1`：Frame 0 为 JSON manifest，后续第 1 到第 N 帧为唯一物理图片 payload bytes；无图片时 N=0。SDK 根据 manifest 校验 logical attachment 到 physical frame 的映射、frame count/index、length、checksum、media type、shape、dtype、layout 和 pixel format；多个逻辑 attachment 可以共享同一帧，raw BGR24 不被暗中编码。配置包不增加 reply protocol 或 JSON/multipart mode，SDK 始终读取完整 multipart message，不忽略未声明的额外帧。
 
-成功、业务失败和 adapter 错误由同一个 result schema 表达，`error` 为空或包含 code、message 和 details。实现时删除独立 ZeroMQ error model、只解析第一帧和双协议兼容逻辑。
+成功、业务失败和 adapter 错误当前使用同一个 `amvision.workflow-trigger-result.v1` manifest，但错误内容仍分散在 `error_message`、`metadata.error_code` 和 `metadata.error_details`，尚未收敛为单一 `error` 对象。HTTP WorkflowRun、Preview 和 Runtime 显示也存在其他错误层级。整体迁移步骤见 [Workflow 公开错误契约实施基线](../development/workflow-public-error-contract-implementation.md)；该计划完成前，不能把 `error.code/message/details` 视为已实现协议。
 
 同一个高层结果可以同时包含结构化 JSON、单图和多图，但底层生命周期不同：ZeroMQ attachment 在 SDK 收包后由 SDK 自己持有；LocalBuffer attachment 依赖 response lease，必须在 reader guard 与 ACK 闭环后释放。
 
