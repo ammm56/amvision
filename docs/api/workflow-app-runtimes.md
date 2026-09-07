@@ -389,7 +389,7 @@ Runtime 通过不可变 `WorkflowRuntimeRevision` 选择准确的 `WorkflowAppVe
 - `file-ref.v1` 和 `file-refs.v1` 可以在 JSON 中提交经过 Project、checksum 和 immutable version 校验的 ObjectStore 引用，也可以通过 multipart 流式上传。`file-refs.v1` 使用重复同名文件字段保留顺序。
 - multipart 文件字段名必须等于 binding id；`image-ref.v1`、`file-ref.v1` 和 `file-refs.v1` 支持文件 part。`image-base64.v1` 仍放入 JSON 或 `input_bindings_json`，不会把上传图片暗中转换为 Base64。
 - `dataset-package.v1` 保留现有 zip 上传兼容入口，不改变六类 App Entry 输入的规则。
-- invoke 默认返回公开 App Result：单个输出直接返回该输出值，多个输出按 application output binding_id 返回对象。需要平台运行回执时传 `response_mode=run`，需要完整 template_outputs 和 node_records 调试信息时传 `response_mode=debug`。
+- invoke 默认返回稳定的 `amvision.workflow-app-result.v1`：`results` 始终按 application output binding_id 组织，成功时 `error=null`，失败时 `results={}` 并返回完整 error。需要平台运行回执时传 `response_mode=run`，需要完整 template_outputs 和 node_records 调试信息时传 `response_mode=debug`。
 
 ## 多类型输入当前边界
 

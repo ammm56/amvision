@@ -183,13 +183,17 @@ def test_workflow_app_runtime_invoke_api_default_response_returns_public_app_res
     assert stop_response.status_code == 200
 
     result_payload = invoke_response.json()
-    assert "workflow_run_id" not in result_payload
+    assert result_payload["format_id"] == "amvision.workflow-app-result.v1"
+    assert result_payload["workflow_run_id"]
+    assert result_payload["state"] == "succeeded"
+    assert result_payload["error"] is None
     assert "outputs" not in result_payload
     assert "template_outputs" not in result_payload
     assert "node_records" not in result_payload
-    assert result_payload["status_code"] == 200
-    assert result_payload["body"]["code"] == 0
-    assert result_payload["body"]["message"] == "decoded"
+    public_result = result_payload["results"]["http_response"]
+    assert public_result["status_code"] == 200
+    assert public_result["body"]["code"] == 0
+    assert public_result["body"]["message"] == "decoded"
 
 
 def test_workflow_app_runtime_run_query_default_response_returns_public_app_result_only(
@@ -256,13 +260,17 @@ def test_workflow_app_runtime_run_query_default_response_returns_public_app_resu
     assert stop_response.status_code == 200
 
     result_payload = result_response.json()
-    assert "workflow_run_id" not in result_payload
+    assert result_payload["format_id"] == "amvision.workflow-app-result.v1"
+    assert result_payload["workflow_run_id"] == workflow_run_id
+    assert result_payload["state"] == "succeeded"
+    assert result_payload["error"] is None
     assert "outputs" not in result_payload
     assert "template_outputs" not in result_payload
     assert "node_records" not in result_payload
-    assert result_payload["status_code"] == 200
-    assert result_payload["body"]["code"] == 0
-    assert result_payload["body"]["message"] == "decoded"
+    public_result = result_payload["results"]["http_response"]
+    assert public_result["status_code"] == 200
+    assert public_result["body"]["code"] == 0
+    assert public_result["body"]["message"] == "decoded"
 
     run_payload = run_response.json()
     assert run_payload["workflow_run_id"] == workflow_run_id
@@ -340,12 +348,16 @@ def test_workflow_app_runtime_async_run_query_returns_raw_public_image_without_p
     assert persisted_run_payload["state"] == "succeeded"
 
     result_payload = result_response.json()
-    assert "workflow_run_id" not in result_payload
+    assert result_payload["format_id"] == "amvision.workflow-app-result.v1"
+    assert result_payload["workflow_run_id"] == workflow_run_id
+    assert result_payload["state"] == "succeeded"
+    assert result_payload["error"] is None
     assert "outputs" not in result_payload
     assert "template_outputs" not in result_payload
     assert "node_records" not in result_payload
-    assert result_payload["status_code"] == 200
-    annotated_image = result_payload["body"]["data"]["annotated_image"]["image"]
+    public_result = result_payload["results"]["http_response"]
+    assert public_result["status_code"] == 200
+    annotated_image = public_result["body"]["data"]["annotated_image"]["image"]
     assert annotated_image["transport_kind"] == "inline-base64"
     assert isinstance(annotated_image["image_base64"], str)
     assert annotated_image["image_base64"]
@@ -425,7 +437,9 @@ def test_workflow_app_runtime_async_run_query_uses_persisted_result_when_raw_cac
     assert persisted_run_payload["state"] == "succeeded"
 
     result_payload = result_response.json()
-    annotated_image = result_payload["body"]["data"]["annotated_image"]["image"]
+    annotated_image = result_payload["results"]["http_response"]["body"]["data"][
+        "annotated_image"
+    ]["image"]
     assert annotated_image["transport_kind"] == "inline-base64"
     assert annotated_image["image_base64_redacted"] is True
     assert "image_base64" not in annotated_image

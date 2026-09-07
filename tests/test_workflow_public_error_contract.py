@@ -8,15 +8,20 @@ import pytest
 from pydantic import ValidationError
 
 from backend.contracts.errors import ErrorContract
+from backend.contracts.workflows import WorkflowAppResultContract
 from backend.service.application.public_errors import (
     build_error_contract,
     build_workflow_error_contract,
     without_public_error_metadata,
 )
 from backend.service.api.rest.v1.routes.workflow_runtime_support.responses import (
+    build_workflow_app_invoke_result_payload,
     build_workflow_run_event_contract,
 )
-from backend.service.domain.workflows.workflow_runtime_records import WorkflowRunEvent
+from backend.service.domain.workflows.workflow_runtime_records import (
+    WorkflowRun,
+    WorkflowRunEvent,
+)
 
 
 def test_error_contract_requires_complete_fixed_shape() -> None:
@@ -138,6 +143,99 @@ def test_non_error_workflow_state_never_exposes_error() -> None:
         )
         is None
     )
+
+
+def test_workflow_app_result_uses_one_stable_success_and_failure_shape() -> None:
+    """App Result 始终保留相同字段，并按 binding id 组织结果。"""
+
+    succeeded = WorkflowAppResultContract(
+        workflow_run_id="workflow-run-succeeded",
+        state="succeeded",
+        results={"inspection": {"passed": True}},
+    )
+    failed = WorkflowAppResultContract(
+        workflow_run_id="workflow-run-failed",
+        state="failed",
+        error=ErrorContract(
+            code="workflow_execution_failed",
+            message="Workflow 执行失败",
+            details={},
+        ),
+    )
+
+    success_payload = succeeded.model_dump(mode="json")
+    failed_payload = failed.model_dump(mode="json")
+    assert tuple(success_payload) == tuple(failed_payload)
+    assert success_payload == {
+        "format_id": "amvision.workflow-app-result.v1",
+        "workflow_run_id": "workflow-run-succeeded",
+        "state": "succeeded",
+        "results": {"inspection": {"passed": True}},
+        "error": None,
+    }
+    assert failed_payload["results"] == {}
+    assert failed_payload["error"] == {
+        "code": "workflow_execution_failed",
+        "message": "Workflow 执行失败",
+        "details": {},
+    }
+
+    with pytest.raises(ValidationError):
+        WorkflowAppResultContract(
+            workflow_run_id="workflow-run-invalid",
+            state="failed",
+            results={"partial": True},
+            error=ErrorContract(
+                code="workflow_execution_failed",
+                message="Workflow 执行失败",
+                details={},
+            ),
+        )
+
+
+def test_workflow_app_result_builder_never_collapses_single_output() -> None:
+    """单输出和失败结果也必须保留公开 envelope 与 binding id。"""
+
+    succeeded_run = WorkflowRun(
+        workflow_run_id="workflow-run-succeeded",
+        workflow_runtime_id="workflow-runtime-1",
+        project_id="project-1",
+        application_id="workflow-app-1",
+        state="succeeded",
+    )
+    failed_run = WorkflowRun(
+        workflow_run_id="workflow-run-failed",
+        workflow_runtime_id="workflow-runtime-1",
+        project_id="project-1",
+        application_id="workflow-app-1",
+        state="failed",
+        error_message="输入无效",
+        metadata={
+            "error_details": {
+                "error_code": "workflow_input_invalid",
+                "binding_id": "request_json",
+            }
+        },
+    )
+
+    succeeded = build_workflow_app_invoke_result_payload(
+        succeeded_run,
+        outputs={"inspection_result": {"passed": True}},
+    ).model_dump(mode="json")
+    failed = build_workflow_app_invoke_result_payload(
+        failed_run,
+        outputs={"partial_result": {"unsafe": True}},
+    ).model_dump(mode="json")
+
+    assert succeeded["results"] == {"inspection_result": {"passed": True}}
+    assert succeeded["error"] is None
+    assert failed["results"] == {}
+    assert failed["error"] == {
+        "code": "workflow_input_invalid",
+        "message": "输入无效",
+        "details": {"binding_id": "request_json"},
+    }
+    assert tuple(succeeded) == tuple(failed)
 
 
 def test_workflow_event_converts_legacy_internal_error_fields_once() -> None:

@@ -22,6 +22,7 @@ WORKFLOW_APP_RUNTIME_FORMAT = "amvision.workflow-app-runtime.v1"
 WORKFLOW_APP_RUNTIME_INSTANCE_FORMAT = "amvision.workflow-app-runtime-instance.v1"
 WORKFLOW_APP_RUNTIME_EVENT_FORMAT = "amvision.workflow-app-runtime-event.v1"
 WORKFLOW_RUNTIME_REVISION_FORMAT = "amvision.workflow-runtime-revision.v1"
+WORKFLOW_APP_RESULT_FORMAT = "amvision.workflow-app-result.v1"
 WORKFLOW_RUN_FORMAT = "amvision.workflow-run.v1"
 WORKFLOW_RUN_EVENT_FORMAT = "amvision.workflow-run-event.v1"
 WORKFLOW_EXECUTION_POLICY_FORMAT = "amvision.workflow-execution-policy.v1"
@@ -377,6 +378,36 @@ class WorkflowAppRuntimeInstanceContract(BaseModel):
         _require_stripped_text(self.instance_id, "instance_id")
         _require_stripped_text(self.workflow_runtime_id, "workflow_runtime_id")
         _require_stripped_text(self.state, "state")
+        return self
+
+
+class WorkflowAppResultContract(BaseModel):
+    """描述 Workflow App 面向调用方的稳定结果规则。
+
+    字段：
+    - format_id：结果格式 id。
+    - workflow_run_id：本次执行 id。
+    - state：本次执行状态。
+    - results：始终按 App Result binding id 组织的结果集合。
+    - error：失败、超时或取消时的错误对象；其他状态固定为 null。
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    format_id: Literal[WORKFLOW_APP_RESULT_FORMAT] = WORKFLOW_APP_RESULT_FORMAT
+    workflow_run_id: str
+    state: WorkflowRunState
+    results: dict[str, object] = Field(default_factory=dict)
+    error: ErrorContract | None = None
+
+    @model_validator(mode="after")
+    def validate_contract(self) -> WorkflowAppResultContract:
+        """校验 App Result 状态、结果与错误字段的一致性。"""
+
+        _require_stripped_text(self.workflow_run_id, "workflow_run_id")
+        _validate_execution_error(state=self.state, error=self.error)
+        if self.state != "succeeded" and self.results:
+            raise ValueError("非成功状态不得提供 results")
         return self
 
 

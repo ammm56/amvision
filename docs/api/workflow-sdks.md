@@ -104,6 +104,8 @@ ZeroMQ 统一使用 `amvision.workflow-trigger-result.v1`：Frame 0 为 JSON man
 
 成功、业务失败和 adapter 错误使用同一个 `amvision.workflow-trigger-result.v1` manifest。HTTP WorkflowRun、Preview、Runtime 显示、ZeroMQ 和本机共享内存均以 `error.code/message/details` 表示业务错误；成功状态固定为 `error: null`。SDK 不再读取旧的根字段或 metadata 错误字段。
 
+HTTP `app-result` 固定使用 `amvision.workflow-app-result.v1`。`.NET SDK` 的 `WorkflowAppResultResponse.Results` 保留按 binding id 组织的完整结果对象；`ReadAs<T>()` 读取该对象，`ReadBindingAs<T>(bindingId)` 按明确键名读取单项结果，不根据输出数量隐式改变解析规则。
+
 同一个高层结果可以同时包含结构化 JSON、单图和多图，但底层生命周期不同：ZeroMQ attachment 在 SDK 收包后由 SDK 自己持有；LocalBuffer attachment 依赖 response lease，必须在 reader guard 与 ACK 闭环后释放。
 
 统一 wire result 包含有序 logical `attachments` 和按完整物理 representation identity 去重的 physical `payloads`。attachment 只保存 binding/item 与 payload 引用；checksum 只用于完整性校验，不能单独作为去重或所有权依据。payload locator 使用 `kind` discriminator：`local-buffer` 包含现有 BufferRef 定位/代次字段和 reader guard locator，`zeromq-frame` 包含物理 frame index，`object-store` 必须包含稳定 object key、media type、content length、checksum algorithm/value 和 immutable version。权威 owner、pool、deadline 只保存在服务端私有 handoff receipt，不公开给 SDK 作为清理授权。SDK 对未知 locator、缺字段、越界 frame、长度或 checksum 不一致一律拒绝，不猜测 transport。

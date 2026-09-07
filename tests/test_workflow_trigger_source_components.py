@@ -399,6 +399,9 @@ def test_workflow_result_dispatcher_preserves_failed_run_root_error() -> None:
     assert trigger_result.response_payload == {
         "workflow_run_id": "workflow-run-failed",
         "workflow_state": "failed",
+        "results": {},
+        "attachments": [],
+        "payloads": [],
     }
 
 

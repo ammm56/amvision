@@ -146,6 +146,7 @@ Mailbox 只定义内部传输，不改变公开 REST 结果契约。固定 descr
 - 长任务接口优先返回 accepted 或 queued 语义，而不是同步阻塞到底
 - Workflow 公开错误统一为 `error: {code, message, details}`；无错误时固定为 `error: null`
 - `code` 是稳定机器错误码，`message` 是可显示摘要，`details` 是不含输入值和内部异常信息的结构化数据
+- 公开 App Result 固定使用 `amvision.workflow-app-result.v1`，字段为 `format_id/workflow_run_id/state/results/error`；`results` 始终按 App Result binding id 组织，不再按输出数量改变根层级
 - HTTP 非 2xx 使用 `{"error":{"code":"...","message":"...","details":{}}}`；request id 只通过 `x-request-id` Header 返回
 - 不公开平行的 error_message、error_code、error_details 或 metadata 错误字段
 - 幂等性要求应明确标注在创建、回调和重试相关接口上

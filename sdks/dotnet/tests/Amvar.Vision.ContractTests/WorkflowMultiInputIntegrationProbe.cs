@@ -135,16 +135,10 @@ namespace Amvar.Vision.ContractTests
                 .GetAwaiter()
                 .GetResult();
             var elapsedMs = ElapsedMilliseconds(startedAt);
-            var state = result.BodyJson["state"]?.Value<string>()
-                ?? result.BodyJson["workflow_state"]?.Value<string>();
-            var outputCode = result.BodyJson["value"]?["code"]?.Value<int?>();
-            if (state == null && outputCode >= 200 && outputCode < 300)
-            {
-                state = "succeeded";
-            }
+            var state = result.State;
             if (!string.Equals(state, "succeeded", StringComparison.OrdinalIgnoreCase))
             {
-                var errorMessage = result.BodyJson["error"]?["message"]?.Value<string>()
+                var errorMessage = result.Error?.Message
                     ?? "Workflow output does not contain a successful state or code.";
                 throw new InvalidOperationException(
                     "HTTP Workflow result failed: " + errorMessage);
@@ -155,7 +149,10 @@ namespace Amvar.Vision.ContractTests
                 succeeded = true,
                 elapsed_ms = elapsedMs,
                 state,
-                output_code = outputCode,
+                result_bindings = result.Results.Properties()
+                    .Select(item => item.Name)
+                    .OrderBy(item => item, StringComparer.Ordinal)
+                    .ToArray(),
                 result_token_type = result.BodyJson.Type.ToString(),
                 result_sha256 = ComputeSha256(resultJson),
                 result_size_bytes = Encoding.UTF8.GetByteCount(resultJson)

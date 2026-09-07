@@ -233,9 +233,43 @@
 
 | response_mode | 用途 | 返回内容 |
 | --- | --- | --- |
-| app-result | 外部系统和 Postman 正式调用默认值 | 单个 App Result 直接返回；多个 App Result 按 binding_id 返回对象；失败时返回 workflow_run_id、state 和统一 error 对象 |
+| app-result | 外部系统和 Postman 正式调用默认值 | 固定返回 `format_id/workflow_run_id/state/results/error`；`results` 始终按 binding_id 组织 |
 | run | 平台前端运行回执 | WorkflowRunContract；只带公开 outputs，不带底层 template_outputs 和 node_records |
 | debug | 平台排查问题 | WorkflowRunContract；带完整 outputs、template_outputs 和 node_records |
+
+### App Result 稳定响应
+
+`app-result` 的成功、失败、超时和取消响应都使用相同字段。`error: null` 表示没有错误；空对象只用于表示零项 `results` 集合，不能作为不完整错误对象。
+
+```json
+{
+  "format_id": "amvision.workflow-app-result.v1",
+  "workflow_run_id": "workflow-run-2",
+  "state": "succeeded",
+  "results": {
+    "inspection_result": {
+      "passed": true
+    }
+  },
+  "error": null
+}
+```
+
+失败时仅字段值变化，层级不变：
+
+```json
+{
+  "format_id": "amvision.workflow-app-result.v1",
+  "workflow_run_id": "workflow-run-2",
+  "state": "failed",
+  "results": {},
+  "error": {
+    "code": "workflow_execution_failed",
+    "message": "Workflow 执行失败",
+    "details": {}
+  }
+}
+```
 
 ### 最小请求 JSON
 

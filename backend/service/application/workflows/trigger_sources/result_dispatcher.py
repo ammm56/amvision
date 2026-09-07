@@ -104,6 +104,9 @@ class WorkflowResultDispatcher:
         response_payload: dict[str, object] = {
             "workflow_run_id": workflow_run.workflow_run_id,
             "workflow_state": workflow_run.state,
+            "results": {},
+            "attachments": [],
+            "payloads": [],
         }
         # 失败、取消和超时没有成功态输出契约。此处必须保留 WorkflowRun 的
         # 原始终态与 error，不能再用“结果 binding 不存在”覆盖根因。

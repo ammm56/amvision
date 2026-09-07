@@ -266,14 +266,54 @@ namespace Amvar.Vision.ContractTests
                 {
                     AppResult = new WorkflowAppResultResponse(new JObject
                     {
-                        ["workflow_run_id"] = "workflow-run-test"
+                        ["format_id"] = "amvision.workflow-app-result.v1",
+                        ["workflow_run_id"] = "workflow-run-test",
+                        ["state"] = "succeeded",
+                        ["results"] = new JObject
+                        {
+                            ["inspection"] = new JObject { ["passed"] = true }
+                        },
+                        ["error"] = JValue.CreateNull()
                     })
                 }));
             AssertPublicJsonKeysAreLowercase(flowJson, "runtime flow");
             Assert(flowJson["runtime_health"] != null, "runtime_health is missing");
             Assert(
-                flowJson["app_result"]?["bodyjson"]?["workflow_run_id"] != null,
-                "app_result bodyjson is missing");
+                flowJson["app_result"]?["workflow_run_id"]?.Value<string>() == "workflow-run-test",
+                "app_result workflow_run_id is missing");
+            Assert(
+                flowJson["app_result"]?["results"]?["inspection"]?["passed"]?.Value<bool>() == true,
+                "app_result results are missing");
+
+            AssertThrows<JsonException>(() => new WorkflowAppResultResponse(new JObject
+            {
+                ["format_id"] = "amvision.workflow-app-result.v1",
+                ["workflow_run_id"] = "workflow-run-empty-error",
+                ["state"] = "succeeded",
+                ["results"] = new JObject(),
+                ["error"] = new JObject()
+            }));
+            AssertThrows<JsonException>(() => new WorkflowAppResultResponse(new JObject
+            {
+                ["format_id"] = "amvision.workflow-app-result.v1",
+                ["workflow_run_id"] = "workflow-run-missing-error",
+                ["state"] = "failed",
+                ["results"] = new JObject(),
+                ["error"] = JValue.CreateNull()
+            }));
+            AssertThrows<JsonException>(() => new WorkflowAppResultResponse(new JObject
+            {
+                ["format_id"] = "amvision.workflow-app-result.v1",
+                ["workflow_run_id"] = "workflow-run-partial-result",
+                ["state"] = "failed",
+                ["results"] = new JObject { ["inspection"] = new JObject() },
+                ["error"] = new JObject
+                {
+                    ["code"] = "workflow_failed",
+                    ["message"] = "failed",
+                    ["details"] = new JObject()
+                }
+            }));
         }
 
         private static void AssertPublicJsonKeysAreLowercase(JToken token, string path)
@@ -1373,6 +1413,21 @@ namespace Amvar.Vision.ContractTests
             try
             {
                 await action().ConfigureAwait(false);
+            }
+            catch (TException)
+            {
+                return;
+            }
+
+            throw new InvalidOperationException("Expected exception: " + typeof(TException).Name);
+        }
+
+        private static void AssertThrows<TException>(Action action)
+            where TException : Exception
+        {
+            try
+            {
+                action();
             }
             catch (TException)
             {

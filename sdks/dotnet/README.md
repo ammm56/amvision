@@ -89,6 +89,8 @@ local-shared-memory 配置只保存同机受信 `data/buffers` 根目录、Trigg
 
 HTTP Builder 已提供 `AddImageBase64`、`AddImageReference`、`AddFileReference`、`AddFileReferences`、`AddImage`、`AddFile`、`AddFiles`、`BuildJson` 和 `BuildMultipart`。Runner 可按 name 使用 `CreateWorkflowRequestBuilder(runtimeName)`，也可按 id 使用 `CreateWorkflowRequestBuilderById(runtimeId)`；构建结果可对称传给同步 `InvokeRuntimeAppResult*Async` 或异步 `RunRuntime*Async`。`BuildJson` 拒绝上传 stream，`BuildMultipart` 通过 `input_bindings_json` 传递非文件输入并流式发送文件；不会自动选择 transport，也不会把 HTTP 文件能力塞入 Trigger API。
 
+HTTP `app-result` 使用固定的 `amvision.workflow-app-result.v1` 响应。结果始终位于 `WorkflowAppResultResponse.Results` 并按 App Result binding id 组织；可用 `ReadAs<T>()` 读取完整结果对象，或用 `ReadBindingAs<T>(bindingId)` 按明确键名读取单项结果。成功时 `Error` 为 `null`，失败时 `Results` 为空对象且 `Error` 包含 `code/message/details`。
+
 HTTP multipart 调用示例：
 
 ```csharp

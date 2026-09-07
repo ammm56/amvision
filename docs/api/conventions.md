@@ -27,7 +27,7 @@ Bearer token 可以是登录会话 access token 或长期 user token。用户、
 
 ## 请求标识
 
-客户端可以发送 `x-request-id`；未发送时服务生成 UUID。服务在响应头回传 `x-request-id`，统一错误体也包含 `request_id`。日志、Task、Run 和外部调用排障应优先记录该值。
+客户端可以发送 `x-request-id`；未发送时服务生成 UUID。服务只在响应头回传 `x-request-id`，不在错误体重复。日志、Task、Run 和外部调用排障应优先记录该值。
 
 ## 列表分页
 
@@ -55,8 +55,7 @@ Bearer token 可以是登录会话 access token 或长期 user token。用户、
   "error": {
     "code": "resource_conflict",
     "message": "资源状态不允许当前操作",
-    "details": {},
-    "request_id": "..."
+    "details": {}
   }
 }
 ```

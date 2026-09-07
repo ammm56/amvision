@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from backend.contracts.workflows import (
     ErrorContract,
+    WorkflowAppResultContract,
     WorkflowAppRuntimeEventContract,
     WorkflowAppRuntimeInstanceContract,
     WorkflowAppRuntimeContract,
@@ -321,29 +322,24 @@ def build_workflow_app_invoke_result_payload(
     workflow_run: WorkflowRun,
     *,
     outputs: dict[str, object],
-) -> object:
+) -> WorkflowAppResultContract:
     """构建 Workflow App 对外同步调用结果。
 
     App invoke 是外部系统调用面，默认只返回公开 App Result；WorkflowRun、
     template_outputs 和 node_records 属于平台调试/追踪信息，需要显式请求。
     """
 
-    if workflow_run.state != "succeeded":
-        error = _build_record_error(
+    succeeded = workflow_run.state == "succeeded"
+    return WorkflowAppResultContract(
+        workflow_run_id=workflow_run.workflow_run_id,
+        state=workflow_run.state,
+        results=dict(outputs) if succeeded else {},
+        error=_build_record_error(
             state=workflow_run.state,
             error_message=workflow_run.error_message,
             metadata=workflow_run.metadata,
-        )
-        payload: dict[str, object] = {
-            "workflow_run_id": workflow_run.workflow_run_id,
-            "state": workflow_run.state,
-            "error": error.model_dump(mode="json") if error is not None else None,
-        }
-        return payload
-
-    if len(outputs) == 1:
-        return next(iter(outputs.values()))
-    return dict(outputs)
+        ),
+    )
 
 
 def build_workflow_run_event_contract(

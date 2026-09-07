@@ -36,6 +36,7 @@ from backend.contracts.workflows.workflow_graph import (
     validate_workflow_graph_template,
 )
 from backend.contracts.workflows.runtime import (
+    WORKFLOW_APP_RESULT_FORMAT,
     WORKFLOW_APP_RUNTIME_EVENT_FORMAT,
     WORKFLOW_APP_RUNTIME_INSTANCE_FORMAT,
     WORKFLOW_APP_RUNTIME_FORMAT,
@@ -47,6 +48,7 @@ from backend.contracts.workflows.runtime import (
     WORKFLOW_RUN_FORMAT,
     WORKFLOW_RUNTIME_REVISION_FORMAT,
     WorkflowApplicationReferenceSummaryContract,
+    WorkflowAppResultContract,
     WorkflowAppRuntimeEventContract,
     WorkflowAppRuntimeInstanceContract,
     WorkflowAppRuntimeContract,
@@ -155,6 +157,7 @@ __all__ = [
     "NODE_RUNTIME_SERVICE_CALL",
     "NODE_RUNTIME_WORKER_TASK",
     "WORKFLOW_GRAPH_TEMPLATE_FORMAT",
+    "WORKFLOW_APP_RESULT_FORMAT",
     "WORKFLOW_APP_RUNTIME_EVENT_FORMAT",
     "WORKFLOW_APP_RUNTIME_INSTANCE_FORMAT",
     "WORKFLOW_APP_RUNTIME_FORMAT",
@@ -208,6 +211,7 @@ __all__ = [
     "TriggerEventContract",
     "TriggerResultContract",
     "WorkflowApplicationReferenceSummaryContract",
+    "WorkflowAppResultContract",
     "WorkflowAppRuntimeEventContract",
     "WorkflowAppRuntimeInstanceContract",
     "WorkflowAppRuntimeContract",
