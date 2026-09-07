@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
@@ -114,6 +115,61 @@ def test_validator_rejects_extra_fields_for_v1_contract() -> None:
 
     assert error_info.value.code == "workflow_input_payload_schema_invalid"
     assert error_info.value.details["binding_id"] == "request_text"
+    assert error_info.value.details["reason"] == (
+        "JSON Schema additionalProperties 校验失败"
+    )
+    assert "hidden" not in str(error_info.value.details)
+
+
+@pytest.mark.parametrize(
+    ("validator_name", "schema_rule"),
+    [
+        ("type", {"type": "integer"}),
+        ("enum", {"enum": ["allowed"]}),
+        ("pattern", {"pattern": "^allowed$"}),
+    ],
+)
+def test_payload_schema_error_does_not_echo_input_value(
+    validator_name: str,
+    schema_rule: dict[str, object],
+) -> None:
+    """常见 JSON Schema 错误只公开规则名，不回显输入字符串。"""
+
+    marker = "private-input-marker"
+    application, template = _build_text_file_application()
+    contract = deepcopy(
+        build_workflow_app_public_contract(
+            application=application,
+            template=template,
+            node_catalog_registry=NodeCatalogRegistry(),
+        )
+    )
+    request_text_contract = next(
+        item for item in contract["inputs"] if item["binding_id"] == "request_text"
+    )
+    request_text_contract["payload_schema"]["properties"]["text"] = schema_rule
+
+    with pytest.raises(WorkflowInputError) as error_info:
+        WorkflowInputValidator().validate(
+            application=application,
+            input_bindings={
+                "request_text": {
+                    "text": marker,
+                    "media_type": "text/plain",
+                    "charset": "utf-8",
+                },
+                "request_file": _file_ref(
+                    object_key="projects/project-1/files/example.txt"
+                ),
+            },
+            public_contract=contract,
+            project_id="project-1",
+        )
+
+    assert error_info.value.details["reason"] == (
+        f"JSON Schema {validator_name} 校验失败"
+    )
+    assert marker not in str(error_info.value.details)
 
 
 def test_validator_checks_file_identity_and_project_scope(tmp_path: Path) -> None:
@@ -203,12 +259,15 @@ def test_validator_accepts_subset_of_optional_bindings(tmp_path: Path) -> None:
         }
     }
 
-    assert validator.validate(
-        application=optional_application,
-        input_bindings=text_payload,
-        public_contract=contract,
-        project_id="project-1",
-    ) == text_payload
+    assert (
+        validator.validate(
+            application=optional_application,
+            input_bindings=text_payload,
+            public_contract=contract,
+            project_id="project-1",
+        )
+        == text_payload
+    )
 
     with pytest.raises(WorkflowInputError) as error_info:
         validator.validate(

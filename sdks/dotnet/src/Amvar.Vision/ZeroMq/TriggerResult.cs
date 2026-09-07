@@ -47,10 +47,10 @@ namespace Amvar.Vision
         public Dictionary<string, JToken> ResponsePayload { get; set; } = new Dictionary<string, JToken>();
 
         /// <summary>
-        /// 失败时的错误消息。
+        /// 失败时的统一错误对象。
         /// </summary>
-        [JsonProperty("error_message")]
-        public string? ErrorMessage { get; set; }
+        [JsonProperty("error")]
+        public AMVisionErrorContract? Error { get; set; }
 
         /// <summary>
         /// backend-service 返回的附加元数据。

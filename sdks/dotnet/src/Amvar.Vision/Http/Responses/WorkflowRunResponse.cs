@@ -55,8 +55,8 @@ namespace Amvar.Vision
         [JsonProperty("node_records")]
         public IList<JToken> NodeRecords { get; set; } = new List<JToken>();
 
-        [JsonProperty("error_message")]
-        public string? ErrorMessage { get; set; }
+        [JsonProperty("error")]
+        public AMVisionErrorContract? Error { get; set; }
 
         [JsonProperty("metadata")]
         public IDictionary<string, JToken> Metadata { get; set; } = new Dictionary<string, JToken>();

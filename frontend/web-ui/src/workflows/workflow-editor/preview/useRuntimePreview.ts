@@ -2,7 +2,7 @@ import { onBeforeUnmount, ref, shallowRef } from 'vue'
 import { useSessionStore } from '@/app/stores/session.store'
 import { getRuntimeConfig } from '@/platform/runtime/runtime-config'
 import { ApiError } from '@/shared/api/error'
-import type { WorkflowJsonObject } from '../types'
+import type { WorkflowError, WorkflowJsonObject } from '../types'
 import {
   getWorkflowRuntimePreviewSnapshot,
   type RuntimePreviewSnapshot,
@@ -30,8 +30,8 @@ export interface RuntimePreviewFrame {
   sequence: number
   state: string
   finished_at: string
-  error_message: string | null
-  display_error: string | null
+  error: WorkflowError | null
+  display_error: WorkflowError | null
   displays: Array<{
     node_id: string; node_type_id: string; output_port: string
     invocation_id: string; duration_ms: number; payload: WorkflowJsonObject
@@ -203,7 +203,7 @@ export function useRuntimePreview() {
           })), { keyByOutput: true })
           if (generation === requestGeneration && socket === activeSocket) {
             status.value = 'live'
-            error.value = frame.error_message || frame.display_error || ''
+            error.value = frame.error?.message || frame.display_error?.message || ''
           }
         } catch (cause) {
           if (generation === requestGeneration && socket === activeSocket) error.value = String(cause)

@@ -23,6 +23,7 @@ describe('WorkflowPreviewRunResultPanel', () => {
       outputs: { result: { ok: true } },
       template_outputs: {},
       node_records: [{ node_id: 'node-1', duration_ms: 12.34 }],
+      error: null,
       metadata: { timings: { graph_execute_ms: 12.34 } },
     }
     const wrapper = mount(WorkflowPreviewRunResultPanel, {

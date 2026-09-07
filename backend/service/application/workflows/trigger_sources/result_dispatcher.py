@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from backend.contracts.workflows import TriggerEventContract, TriggerResultContract
+from backend.service.application.public_errors import build_workflow_error_contract
 from backend.service.domain.workflows.workflow_runtime_records import WorkflowRun
 from backend.service.domain.workflows.workflow_trigger_source_records import (
     WorkflowTriggerSource,
@@ -43,16 +44,10 @@ class WorkflowResultDispatcher:
             "ack_policy": trigger_source.ack_policy,
             "result_mode": trigger_source.result_mode,
         }
-        if workflow_run.state != "succeeded":
-            raw_error_details = workflow_run.metadata.get("error_details")
-            if isinstance(raw_error_details, dict):
-                error_details = dict(raw_error_details)
-                metadata["error_details"] = error_details
-                error_code = error_details.get("error_code")
-                if isinstance(error_code, str) and error_code.strip():
-                    metadata["error_code"] = error_code.strip()
-            elif workflow_run.state == "timed_out":
-                metadata["error_code"] = "operation_timeout"
+        raw_error_details = workflow_run.metadata.get("error_details")
+        error_details = (
+            raw_error_details if isinstance(raw_error_details, dict) else None
+        )
 
         return TriggerResultContract(
             trigger_source_id=trigger_source.trigger_source_id,
@@ -65,7 +60,11 @@ class WorkflowResultDispatcher:
                 response_outputs=response_outputs,
                 prepared_trigger_result=prepared_trigger_result,
             ),
-            error_message=workflow_run.error_message,
+            error=build_workflow_error_contract(
+                state=workflow_run.state,
+                error_message=workflow_run.error_message,
+                error_details=error_details,
+            ),
             metadata=metadata,
         )
 
@@ -107,7 +106,7 @@ class WorkflowResultDispatcher:
             "workflow_state": workflow_run.state,
         }
         # 失败、取消和超时没有成功态输出契约。此处必须保留 WorkflowRun 的
-        # 原始终态与 error_message，不能再用“结果 binding 不存在”覆盖根因。
+        # 原始终态与 error，不能再用“结果 binding 不存在”覆盖根因。
         if workflow_run.state != "succeeded":
             return response_payload
         missing_bindings = [
@@ -123,8 +122,7 @@ class WorkflowResultDispatcher:
                 details={"missing_output_binding_ids": missing_bindings},
             )
         response_payload["results"] = {
-            binding_id: effective_outputs[binding_id]
-            for binding_id in result_bindings
+            binding_id: effective_outputs[binding_id] for binding_id in result_bindings
         }
         if prepared_trigger_result is not None:
             prepared = PreparedTriggerResult.model_validate(prepared_trigger_result)

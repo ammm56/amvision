@@ -342,10 +342,9 @@ def _parse_zeromq_result_frames(reply_frames: list[bytes]) -> dict[str, object]:
 
     state = str(payload.get("state") or "").lower()
     if state in {"failed", "timed_out", "timeout", "cancelled"}:
-        raise RuntimeError(
-            "ZeroMQ trigger failed: "
-            f"{payload.get('error_code') or payload.get('error_message') or state}"
-        )
+        error = payload.get("error")
+        error_code = error.get("code") if isinstance(error, dict) else None
+        raise RuntimeError(f"ZeroMQ trigger failed: {error_code or state}")
     return payload
 
 
@@ -486,9 +485,7 @@ def build_config(args: argparse.Namespace) -> RuntimeSoakConfig:
         args.deployment_image, "deployment image"
     )
     trigger_binary_path = _resolve_existing_file(args.trigger_binary, "trigger binary")
-    workflow_image_path = _resolve_existing_file(
-        args.workflow_image, "workflow image"
-    )
+    workflow_image_path = _resolve_existing_file(args.workflow_image, "workflow image")
     return RuntimeSoakConfig(
         base_url=str(args.base_url).rstrip("/"),
         token=str(args.token),
@@ -592,9 +589,7 @@ def run_soak(config: RuntimeSoakConfig) -> int:
                     )
 
             # 所有 lane 完成 client 和输入资产准备后，再统一开始正式负载窗口。
-            ready_barrier.wait(
-                timeout=max(10.0, config.http_timeout_seconds + 5.0)
-            )
+            ready_barrier.wait(timeout=max(10.0, config.http_timeout_seconds + 5.0))
             deadline = deadline_holder[0]
             next_sample_at = time.monotonic()
             while time.monotonic() < deadline:
@@ -1020,8 +1015,10 @@ def _execute_workflow_invoke(
     )
     state = str(response.get("state") or "").lower()
     if state != "succeeded":
-        error_message = response.get("error_message") or response.get("message")
-        error_details = response.get("error_details")
+        error = response.get("error")
+        error_payload = error if isinstance(error, dict) else {}
+        error_message = error_payload.get("message")
+        error_details = error_payload.get("details")
         details_text = (
             json.dumps(error_details, ensure_ascii=False, sort_keys=True)[:2000]
             if error_details is not None
@@ -1254,15 +1251,11 @@ def _require_running_state(payload: dict[str, object], label: str) -> None:
         raise RuntimeError(f"{label} 未运行: states={sorted(states)}")
 
 
-def _require_deployment_soak_ready(
-    payload: dict[str, object], label: str
-) -> None:
+def _require_deployment_soak_ready(payload: dict[str, object], label: str) -> None:
     """要求 Deployment 全部实例健康且完成预热，避免把冷启动计入 soak。"""
 
     instance_count = _read_non_negative_int(payload, "instance_count", label)
-    healthy_count = _read_non_negative_int(
-        payload, "healthy_instance_count", label
-    )
+    healthy_count = _read_non_negative_int(payload, "healthy_instance_count", label)
     warmed_count = _read_non_negative_int(payload, "warmed_instance_count", label)
     if (
         instance_count <= 0
@@ -1277,9 +1270,7 @@ def _require_deployment_soak_ready(
         )
 
 
-def _read_non_negative_int(
-    payload: dict[str, object], key: str, label: str
-) -> int:
+def _read_non_negative_int(payload: dict[str, object], key: str, label: str) -> int:
     """读取健康响应中的非负整数计数。"""
 
     value = payload.get(key)

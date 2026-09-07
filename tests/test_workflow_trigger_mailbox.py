@@ -111,9 +111,11 @@ def test_public_response_keeps_exact_32_mib_boundary_after_envelope(
 
     prefix = b'{"state":"succeeded","data":"'
     suffix = b'"}'
-    payload = prefix + b"A" * (
-        MAILBOX_PUBLIC_RESPONSE_CAPACITY_BYTES - len(prefix) - len(suffix)
-    ) + suffix
+    payload = (
+        prefix
+        + b"A" * (MAILBOX_PUBLIC_RESPONSE_CAPACITY_BYTES - len(prefix) - len(suffix))
+        + suffix
+    )
     assert len(payload) == MAILBOX_PUBLIC_RESPONSE_CAPACITY_BYTES
     with WorkflowTriggerMailboxServer(buffers_root=tmp_path) as server:
         with WorkflowTriggerMailboxClient(buffers_root=tmp_path) as client:
@@ -149,9 +151,16 @@ def test_oversized_public_response_returns_readable_business_error(
             response = client.read_response(identity=identity)
             assert response is not None
             assert response.error_code == contract.ERROR_CODE_TRIGGER_RESPONSE_TOO_LARGE
-            assert response.json_payload()["error_code"] == (
-                contract.ERROR_CODE_TRIGGER_RESPONSE_TOO_LARGE
-            )
+            public_result = response.json_payload()
+            assert public_result["format_id"] == "amvision.workflow-trigger-result.v1"
+            assert public_result["state"] == "failed"
+            assert public_result["error"] == {
+                "code": "trigger_response_too_large",
+                "message": "Workflow Trigger response 超过 32 MiB 公开正文上限",
+                "details": {},
+            }
+            assert "error_code" not in public_result
+            assert "error_message" not in public_result
             client.acknowledge(identity=identity)
             assert server.sweep()["released_count"] == 1
 
@@ -356,9 +365,12 @@ def test_frozen_path_and_file_size_use_neutral_local_message_root(
     """正式 Trigger 文件不再依赖旧 workflow-trigger 私有目录。"""
 
     with WorkflowTriggerMailboxServer(buffers_root=tmp_path) as server:
-        assert server.path == (
-            tmp_path / "local-message" / "workflow-trigger" / "mailbox.mmap"
-        ).resolve()
+        assert (
+            server.path
+            == (
+                tmp_path / "local-message" / "workflow-trigger" / "mailbox.mmap"
+            ).resolve()
+        )
         assert server.path.stat().st_size == MAILBOX_FILE_SIZE_BYTES
         with server.path.open("rb") as handle:
             assert handle.read(8) == b"AMVLMSG\0"

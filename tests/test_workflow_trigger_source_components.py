@@ -19,6 +19,7 @@ import zmq
 from backend.contracts.buffers.buffer_ref import BufferRef
 from backend.contracts.buffers.lease_ownership import LeaseOwnershipReceipt
 from backend.contracts.workflows import (
+    ErrorContract,
     InputBindingMappingItemContract,
     TriggerResultContract,
 )
@@ -210,7 +211,9 @@ def test_input_binding_mapper_rejects_ambiguous_source_and_static_value() -> Non
         )
 
 
-def test_input_binding_mapping_contract_distinguishes_static_null_from_missing() -> None:
+def test_input_binding_mapping_contract_distinguishes_static_null_from_missing() -> (
+    None
+):
     """验证显式静态 null 与完全缺少映射值具有不同契约语义。"""
 
     static_null = InputBindingMappingItemContract.model_validate({"value": None})
@@ -387,9 +390,12 @@ def test_workflow_result_dispatcher_preserves_failed_run_root_error() -> None:
     )
 
     assert trigger_result.state == "failed"
-    assert trigger_result.error_message == "原始节点执行错误"
-    assert trigger_result.metadata["error_code"] == "deployment_inference_busy"
-    assert trigger_result.metadata["error_details"]["instance_count"] == 2
+    assert trigger_result.error is not None
+    assert trigger_result.error.message == "原始节点执行错误"
+    assert trigger_result.error.code == "deployment_inference_busy"
+    assert trigger_result.error.details["instance_count"] == 2
+    assert "error_code" not in trigger_result.metadata
+    assert "error_details" not in trigger_result.metadata
     assert trigger_result.response_payload == {
         "workflow_run_id": "workflow-run-failed",
         "workflow_state": "failed",
@@ -516,7 +522,10 @@ def test_workflow_submitter_directory_event_only_uses_transient_async_run() -> N
 
     assert trigger_result.state == "accepted"
     assert runtime_service.last_request is not None
-    assert runtime_service.last_request.execution_metadata["workflow_run_record_mode"] == "none"
+    assert (
+        runtime_service.last_request.execution_metadata["workflow_run_record_mode"]
+        == "none"
+    )
     assert runtime_service.last_transient is True
 
 
@@ -543,7 +552,10 @@ def test_workflow_submitter_queryable_async_run_keeps_minimal_record() -> None:
 
     assert trigger_result.state == "accepted"
     assert runtime_service.last_request is not None
-    assert runtime_service.last_request.execution_metadata["workflow_run_record_mode"] == "minimal"
+    assert (
+        runtime_service.last_request.execution_metadata["workflow_run_record_mode"]
+        == "minimal"
+    )
     assert runtime_service.last_transient is False
 
 
@@ -1038,10 +1050,12 @@ def test_zeromq_error_reply_uses_unified_trigger_result_contract() -> None:
 
     assert payload["format_id"] == "amvision.workflow-trigger-result.v1"
     assert payload["state"] == "failed"
-    assert payload["metadata"] == {
-        "error_code": "invalid_request",
-        "error_details": {"field": "payload"},
+    assert payload["error"] == {
+        "code": "invalid_request",
+        "message": "bad envelope",
+        "details": {"field": "payload"},
     }
+    assert payload["metadata"] == {}
     assert "amvision.zeromq-trigger-error.v1" not in json.dumps(payload)
 
 
@@ -1064,8 +1078,11 @@ def test_zeromq_health_classifies_workflow_deployment_busy_result() -> None:
                     trigger_source_id=trigger_source.trigger_source_id,
                     event_id=raw_event.event_id or "event-busy",
                     state="failed",
-                    error_message="当前 deployment 推理实例已满载",
-                    metadata={"error_code": "deployment_inference_busy"},
+                    error=ErrorContract(
+                        code="deployment_inference_busy",
+                        message="当前 deployment 推理实例已满载",
+                        details={},
+                    ),
                 )
             )
 
@@ -1076,9 +1093,7 @@ def test_zeromq_health_classifies_workflow_deployment_busy_result() -> None:
             frames=[b'{"event_id":"event-busy"}'],
             event_handler=_BusyResultHandler(),
         )
-        health = adapter.get_health(
-            trigger_source_id=trigger_source.trigger_source_id
-        )
+        health = adapter.get_health(trigger_source_id=trigger_source.trigger_source_id)
     finally:
         adapter.stop(trigger_source_id=trigger_source.trigger_source_id)
 
@@ -1136,7 +1151,7 @@ def test_zeromq_image_reply_rejects_capacity_before_first_frame() -> None:
     assert len(reply_frames) == 1
     assert reply["format_id"] == "amvision.workflow-trigger-result.v1"
     assert reply["state"] == "failed"
-    assert reply["metadata"]["error_code"] == "zeromq_transport_capacity_exhausted"
+    assert reply["error"]["code"] == "zeromq_transport_capacity_exhausted"
     assert buffer_writer.guard_enter_count == 0
     assert len(buffer_writer.released_receipts) == 1
 
@@ -1201,9 +1216,9 @@ def test_zeromq_send_failure_closes_socket_before_tracker_cleanup() -> None:
     assert buffer_writer.guard_enter_count == 1
     assert buffer_writer.guard_exit_count == 1
     assert len(buffer_writer.released_receipts) == 1
-    assert adapter._transport_registry.snapshot()[
-        "transport_registry_active_count"
-    ] == 0
+    assert (
+        adapter._transport_registry.snapshot()["transport_registry_active_count"] == 0
+    )
     assert adapter._transport_registry.wait_until_idle(timeout_seconds=1.0) is True
 
 
@@ -1841,9 +1856,7 @@ def _build_trigger_source(
         "sync-reply" if submit_mode == "sync" else "accepted-then-query"
     )
     ack_policy = (
-        "ack-after-run-finished"
-        if submit_mode == "sync"
-        else "ack-after-run-created"
+        "ack-after-run-finished" if submit_mode == "sync" else "ack-after-run-created"
     )
     response_plan = build_trigger_response_plan(
         trigger_source_id="trigger-source-1",
@@ -2449,7 +2462,11 @@ class _RejectingWorkflowSubmitter:
                 trigger_source_id=request.trigger_source.trigger_source_id,
                 event_id=request.trigger_event.event_id,
                 state="failed",
-                error_message="runtime not running",
+                error=ErrorContract(
+                    code="workflow_runtime_not_running",
+                    message="runtime not running",
+                    details={},
+                ),
             )
         )
 

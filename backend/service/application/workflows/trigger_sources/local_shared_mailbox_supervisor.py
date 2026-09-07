@@ -1157,7 +1157,8 @@ class WorkflowTriggerMailboxSupervisor:
     ) -> None:
         """发布稳定 inline 错误；无法发布时立即结束本 descriptor 的责任。"""
 
-        message = error.message if isinstance(error, ServiceError) else str(error)
+        is_service_error = isinstance(error, ServiceError)
+        message = error.message if is_service_error else "Workflow Trigger 内部错误"
         requested_error_code = _map_error_code(
             error,
             capacity_error_code=capacity_error_code,
@@ -1168,7 +1169,10 @@ class WorkflowTriggerMailboxSupervisor:
             published_error_code = self.mailbox.publish_error(
                 identity=identity,
                 error_code=requested_error_code,
-                message=message or type(error).__name__,
+                message=message,
+                public_error_code=(
+                    error.code if isinstance(error, ServiceError) else "internal_error"
+                ),
             )
         except Exception:
             if pending is not None:
@@ -1363,17 +1367,25 @@ class WorkflowTriggerMailboxSupervisor:
 
             self._failed_request_count += 1
             source.error_count += 1
-            if published_error_code in {
-                mailbox_contract.ERROR_CODE_TRIGGER_SOURCE_BUSY,
-                mailbox_contract.ERROR_CODE_WORKFLOW_RUNTIME_BUSY,
-                mailbox_contract.ERROR_CODE_WORKFLOW_EXECUTOR_BUSY,
-            } or workflow_error_code in BUSY_ERROR_CODES:
+            if (
+                published_error_code
+                in {
+                    mailbox_contract.ERROR_CODE_TRIGGER_SOURCE_BUSY,
+                    mailbox_contract.ERROR_CODE_WORKFLOW_RUNTIME_BUSY,
+                    mailbox_contract.ERROR_CODE_WORKFLOW_EXECUTOR_BUSY,
+                }
+                or workflow_error_code in BUSY_ERROR_CODES
+            ):
                 source.busy_count += 1
-            if published_error_code in {
-                mailbox_contract.ERROR_CODE_LOCAL_BUFFER_CAPACITY_EXHAUSTED,
-                mailbox_contract.ERROR_CODE_LOCAL_BUFFER_OUTPUT_CAPACITY_EXHAUSTED,
-                mailbox_contract.ERROR_CODE_TRIGGER_RESPONSE_CAPACITY_EXHAUSTED,
-            } or workflow_error_code in CAPACITY_ERROR_CODES:
+            if (
+                published_error_code
+                in {
+                    mailbox_contract.ERROR_CODE_LOCAL_BUFFER_CAPACITY_EXHAUSTED,
+                    mailbox_contract.ERROR_CODE_LOCAL_BUFFER_OUTPUT_CAPACITY_EXHAUSTED,
+                    mailbox_contract.ERROR_CODE_TRIGGER_RESPONSE_CAPACITY_EXHAUSTED,
+                }
+                or workflow_error_code in CAPACITY_ERROR_CODES
+            ):
                 source.capacity_reject_count += 1
             if (
                 workflow_state == "timed_out"

@@ -152,6 +152,7 @@
     <Compile Include="Http\Requests\WorkflowRequestBuilder.cs" />
     <Compile Include="Http\Requests\WorkflowTriggerSourceCreateRequest.cs" />
     <Compile Include="Http\Responses\ModelDeploymentRuntimeResponse.cs" />
+    <Compile Include="Http\Responses\AMVisionErrorContract.cs" />
     <Compile Include="Http\Responses\ModelInferenceResponse.cs" />
     <Compile Include="Http\Responses\SystemConfigResponse.cs" />
     <Compile Include="Http\Responses\WorkflowAppResultResponse.cs" />

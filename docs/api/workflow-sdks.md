@@ -102,7 +102,7 @@ Workflow 节点决定返回表示：
 
 ZeroMQ 统一使用 `amvision.workflow-trigger-result.v1`：Frame 0 为 JSON manifest，后续第 1 到第 N 帧为唯一物理图片 payload bytes；无图片时 N=0。SDK 根据 manifest 校验 logical attachment 到 physical frame 的映射、frame count/index、length、checksum、media type、shape、dtype、layout 和 pixel format；多个逻辑 attachment 可以共享同一帧，raw BGR24 不被暗中编码。配置包不增加 reply protocol 或 JSON/multipart mode，SDK 始终读取完整 multipart message，不忽略未声明的额外帧。
 
-成功、业务失败和 adapter 错误当前使用同一个 `amvision.workflow-trigger-result.v1` manifest，但错误内容仍分散在 `error_message`、`metadata.error_code` 和 `metadata.error_details`，尚未收敛为单一 `error` 对象。HTTP WorkflowRun、Preview 和 Runtime 显示也存在其他错误层级。整体迁移步骤见 [Workflow 公开错误契约实施基线](../development/workflow-public-error-contract-implementation.md)；该计划完成前，不能把 `error.code/message/details` 视为已实现协议。
+成功、业务失败和 adapter 错误使用同一个 `amvision.workflow-trigger-result.v1` manifest。HTTP WorkflowRun、Preview、Runtime 显示、ZeroMQ 和本机共享内存均以 `error.code/message/details` 表示业务错误；成功状态固定为 `error: null`。SDK 不再读取旧的根字段或 metadata 错误字段。
 
 同一个高层结果可以同时包含结构化 JSON、单图和多图，但底层生命周期不同：ZeroMQ attachment 在 SDK 收包后由 SDK 自己持有；LocalBuffer attachment 依赖 response lease，必须在 reader guard 与 ACK 闭环后释放。
 
@@ -114,7 +114,7 @@ attachment 顺序固定为 TriggerSource `result_bindings` 顺序，再按 `imag
 
 ZeroMQ 后端按唯一物理 payload 跟踪 frame 生命周期，多个逻辑 attachment 可以共享同一 frame index。adapter 在发送 Frame 0 前为全部唯一 physical frame 预留进程内有界 transport-lifetime registry 容量，并取得 reader guard/ObjectStore read snapshot；满载时在任何 multipart frame 发出前返回 `zeromq_transport_capacity_exhausted`。发送失败时先关闭 socket；全部 tracker 完成后 adapter 销毁 Frame/view、关闭 snapshot、释放 guard，再调用 Broker 条件释放。未完成资源继续由 adapter registry 持有，lease 进入 REVOKING/QUARANTINED；Broker 不保存或等待 `MessageTracker`。SDK 侧校验唯一物理 frame 集合与逻辑映射，在完整 multipart 收包后管理自己的内存；发送超时不会触发自动 fallback 或业务重试。
 
-Workflow TriggerSource result mapping REST payload 与 `amvision.workflow-trigger-result.v1` 当前属于发布前开发契约，迁移时后端、前端、.NET SDK、fixture 和已有数据整体升级并删除旧字段及双读代码。该规则不扩大到其他 REST `/api/v1` 契约。
+Workflow TriggerSource result mapping REST payload 与 `amvision.workflow-trigger-result.v1` 当前属于发布前开发契约。后端、前端和 .NET SDK 已统一使用单一 error 对象；内部历史记录由公开响应构造器转换，不保留旧公开字段或双读代码。该规则不扩大到其他 REST `/api/v1` 契约。
 
 ## 门禁
 

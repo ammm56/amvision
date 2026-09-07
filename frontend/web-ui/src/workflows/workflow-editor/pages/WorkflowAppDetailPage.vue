@@ -779,7 +779,7 @@ const lastRunReceiptText = computed(() => {
       state: lastRun.value.state,
       outputs: lastRun.value.outputs,
       template_outputs: lastRun.value.template_outputs,
-      error_message: lastRun.value.error_message,
+      error: lastRun.value.error,
       metadata: lastRun.value.metadata,
     },
     null,

@@ -192,6 +192,7 @@ function buildRun(state: WorkflowRun['state']): WorkflowRun {
     outputs: {},
     template_outputs: {},
     node_records: [],
+    error: null,
     metadata: {},
   }
 }

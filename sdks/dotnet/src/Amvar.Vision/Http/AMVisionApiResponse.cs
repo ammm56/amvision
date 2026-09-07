@@ -15,18 +15,14 @@ namespace Amvar.Vision
             HttpStatusCode statusCode,
             string content,
             JToken? bodyJson,
-            string? errorCode,
-            string? errorMessage,
-            IReadOnlyDictionary<string, JToken> errorDetails,
+            AMVisionErrorContract? error,
             string? httpMethod,
             string? requestPath)
         {
             StatusCode = statusCode;
             Content = content;
             BodyJson = bodyJson;
-            ErrorCode = errorCode;
-            ErrorMessage = errorMessage;
-            ErrorDetails = errorDetails;
+            Error = error;
             HttpMethod = httpMethod;
             RequestPath = requestPath;
         }
@@ -56,22 +52,24 @@ namespace Amvar.Vision
         public JToken? BodyJson { get; }
 
         /// <summary>
-        /// backend-service 错误码；非错误响应或无法解析时为空。
+        /// backend-service 统一错误对象；非错误响应或无法解析时为空。
         /// </summary>
-        [JsonProperty("errorcode")]
-        public string? ErrorCode { get; }
+        [JsonProperty("error")]
+        public AMVisionErrorContract? Error { get; }
 
-        /// <summary>
-        /// backend-service 错误消息；非错误响应或无法解析时为空。
-        /// </summary>
-        [JsonProperty("errormessage")]
-        public string? ErrorMessage { get; }
+        /// <summary>统一错误对象中的稳定错误码。</summary>
+        [JsonIgnore]
+        public string? ErrorCode => Error?.Code;
 
-        /// <summary>
-        /// backend-service 错误详情；非错误响应时为空字典。
-        /// </summary>
-        [JsonProperty("errordetails")]
-        public IReadOnlyDictionary<string, JToken> ErrorDetails { get; }
+        /// <summary>统一错误对象中的错误摘要。</summary>
+        [JsonIgnore]
+        public string? ErrorMessage => Error?.Message;
+
+        /// <summary>统一错误对象中的结构化详情。</summary>
+        [JsonIgnore]
+        public IReadOnlyDictionary<string, JToken> ErrorDetails =>
+            Error?.Details as IReadOnlyDictionary<string, JToken>
+            ?? new Dictionary<string, JToken>();
 
         /// <summary>
         /// 产生该响应的 HTTP method；非 SDK HTTP 调用构造时为空。
@@ -163,9 +161,7 @@ namespace Amvar.Vision
             string? requestPath)
         {
             JToken? bodyJson = null;
-            string? errorCode = null;
-            string? errorMessage = null;
-            var errorDetails = new Dictionary<string, JToken>();
+            AMVisionErrorContract? error = null;
 
             if (!string.IsNullOrWhiteSpace(content))
             {
@@ -176,8 +172,7 @@ namespace Amvar.Vision
                     {
                         if (root["error"] is JObject errorElement)
                         {
-                            errorCode = TryReadStringProperty(errorElement, "code");
-                            errorMessage = TryReadStringProperty(errorElement, "message");
+                            var errorDetails = new Dictionary<string, JToken>();
                             if (errorElement["details"] is JObject detailsElement)
                             {
                                 foreach (var property in detailsElement.Properties())
@@ -185,11 +180,12 @@ namespace Amvar.Vision
                                     errorDetails[property.Name] = property.Value.DeepClone();
                                 }
                             }
-                        }
-                        else if (root["error_code"] != null)
-                        {
-                            errorCode = TryReadStringProperty(root, "error_code");
-                            errorMessage = TryReadStringProperty(root, "error_message");
+                            error = new AMVisionErrorContract
+                            {
+                                Code = TryReadStringProperty(errorElement, "code") ?? string.Empty,
+                                Message = TryReadStringProperty(errorElement, "message") ?? string.Empty,
+                                Details = errorDetails
+                            };
                         }
                     }
                 }
@@ -202,9 +198,7 @@ namespace Amvar.Vision
                 statusCode,
                 content,
                 bodyJson,
-                errorCode,
-                errorMessage,
-                errorDetails,
+                error,
                 httpMethod,
                 requestPath
             );

@@ -389,6 +389,12 @@ export type WorkflowRunState =
   | 'timed_out'
 export type WorkflowAppRuntimeState = 'created' | 'starting' | 'running' | 'stopping' | 'stopped' | 'failed' | string
 
+export interface WorkflowError {
+  code: string
+  message: string
+  details: WorkflowJsonObject
+}
+
 export interface WorkflowPreviewRun {
   format_id: string
   preview_run_id: string
@@ -406,7 +412,7 @@ export interface WorkflowPreviewRun {
   outputs: WorkflowJsonObject
   template_outputs: WorkflowJsonObject
   node_records: WorkflowJsonObject[]
-  error_message?: string | null
+  error: WorkflowError | null
   retention_until?: string | null
   metadata: WorkflowJsonObject
 }
@@ -423,7 +429,7 @@ export interface WorkflowPreviewRunSummary {
   finished_at?: string | null
   created_by?: string | null
   timeout_seconds: number
-  error_message?: string | null
+  error: WorkflowError | null
   retention_until?: string | null
 }
 
@@ -536,7 +542,7 @@ export interface WorkflowRun {
   outputs: WorkflowJsonObject
   template_outputs: WorkflowJsonObject
   node_records: WorkflowJsonObject[]
-  error_message?: string | null
+  error: WorkflowError | null
   metadata: WorkflowJsonObject
 }
 

@@ -9,8 +9,17 @@ import pytest
 from threading import Event
 from types import SimpleNamespace
 
-from backend.contracts.workflows.workflow_graph import NodeDefinition, NodePortDefinition, WorkflowGraphTemplate, WorkflowGraphNode, WorkflowGraphEdge
-from backend.service.application.workflows.graph_executor import WorkflowGraphExecutor, WorkflowNodeRuntimeRegistry
+from backend.contracts.workflows.workflow_graph import (
+    NodeDefinition,
+    NodePortDefinition,
+    WorkflowGraphTemplate,
+    WorkflowGraphNode,
+    WorkflowGraphEdge,
+)
+from backend.service.application.workflows.graph_executor import (
+    WorkflowGraphExecutor,
+    WorkflowNodeRuntimeRegistry,
+)
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.app_version_service import (
     build_node_definition_sha256,
@@ -18,20 +27,32 @@ from backend.service.application.workflows.app_version_service import (
 from backend.service.application.workflows.runtime_service import WorkflowRuntimeService
 
 from backend.service.application.workflows.runtime_preview import (
-    MAX_PREVIEW_BYTES, RuntimePreviewCapture, RuntimePreviewChannel,
-    RuntimePreviewSender, RuntimePreviewSubscription,
-    RuntimePreviewCapacityError, RuntimePreviewUnavailableError,
+    MAX_PREVIEW_BYTES,
+    RuntimePreviewCapture,
+    RuntimePreviewChannel,
+    RuntimePreviewSender,
+    RuntimePreviewSubscription,
+    RuntimePreviewCapacityError,
+    RuntimePreviewUnavailableError,
     PREVIEW_CAPTURE_KEY,
 )
 
 
-def _capture(capture: RuntimePreviewCapture, value: object, invocation: str = "preview") -> None:
+def _capture(
+    capture: RuntimePreviewCapture, value: object, invocation: str = "preview"
+) -> None:
     """模拟明确声明的预览端口。"""
-    capture.capture(node_id="preview", definition=SimpleNamespace(
-        capability_tags=("ui.preview",), node_type_id="core.io.value-preview",
-        output_ports=(SimpleNamespace(name="body"),),
-    ), outputs={"body": {"type": "value-preview", "value": value}},
-        invocation_id=invocation, duration_ms=1.2)
+    capture.capture(
+        node_id="preview",
+        definition=SimpleNamespace(
+            capability_tags=("ui.preview",),
+            node_type_id="core.io.value-preview",
+            output_ports=(SimpleNamespace(name="body"),),
+        ),
+        outputs={"body": {"type": "value-preview", "value": value}},
+        invocation_id=invocation,
+        duration_ms=1.2,
+    )
 
 
 def test_capture_isolated_bounded_and_iteration_identity() -> None:
@@ -46,7 +67,8 @@ def test_capture_isolated_bounded_and_iteration_identity() -> None:
     assert capture.records[("preview", "body")]["invocation_id"] == "loop[2].preview"
     capture.budget[0] = 3
     _capture(capture, "too large")
-    assert capture.error == "preview_size_limit"
+    assert capture.error is not None
+    assert capture.error.code == "preview_size_limit"
     assert capture.records == {}
 
 
@@ -54,12 +76,14 @@ def test_capture_never_reads_runtime_image_objects() -> None:
     """不读取 mmap/矩阵或调用对象的自定义序列化方法。"""
     capture = RuntimePreviewCapture()
     _capture(capture, object())
-    assert capture.error == "preview_not_json"
+    assert capture.error is not None
+    assert capture.error.code == "preview_not_json"
     assert capture.records == {}
 
 
 def test_subscription_limit_and_disconnect_release() -> None:
     """连接上限显式拒绝，第一个到最后一个页面的观察信号必须正确。"""
+
     async def check():
         parent, child = socket.socketpair()
         observed = Event()
@@ -79,6 +103,7 @@ def test_subscription_limit_and_disconnect_release() -> None:
         finally:
             channel.close()
             child.close()
+
     asyncio.run(check())
 
 
@@ -126,28 +151,80 @@ def test_readonly_node_definitions_require_published_definition_identity() -> No
 def test_graph_failure_preserves_only_finished_preview_without_node_records() -> None:
     """节点产生预览后后续业务失败，副本仍可交接，不依赖 full records。"""
     registry = WorkflowNodeRuntimeRegistry()
-    definition = NodeDefinition(node_type_id="core.test.preview", display_name="Preview", category="test",
-        implementation_kind="core-node", runtime_kind="python-callable", capability_tags=("ui.preview",),
-        output_ports=(NodePortDefinition(name="body", display_name="Body", payload_type_id="value.v1"),))
-    registry.register_python_callable(definition, lambda request: {"body": {"type": "value-preview", "value": {"zero": 0, "flag": False}}})
-    fail = NodeDefinition(node_type_id="core.test.fail", display_name="Fail", category="test",
-        implementation_kind="core-node", runtime_kind="python-callable",
-        input_ports=(NodePortDefinition(name="value", display_name="Value", payload_type_id="value.v1"),))
+    definition = NodeDefinition(
+        node_type_id="core.test.preview",
+        display_name="Preview",
+        category="test",
+        implementation_kind="core-node",
+        runtime_kind="python-callable",
+        capability_tags=("ui.preview",),
+        output_ports=(
+            NodePortDefinition(
+                name="body", display_name="Body", payload_type_id="value.v1"
+            ),
+        ),
+    )
+    registry.register_python_callable(
+        definition,
+        lambda request: {
+            "body": {"type": "value-preview", "value": {"zero": 0, "flag": False}}
+        },
+    )
+    fail = NodeDefinition(
+        node_type_id="core.test.fail",
+        display_name="Fail",
+        category="test",
+        implementation_kind="core-node",
+        runtime_kind="python-callable",
+        input_ports=(
+            NodePortDefinition(
+                name="value", display_name="Value", payload_type_id="value.v1"
+            ),
+        ),
+    )
+
     def fail_handler(request):
         raise InvalidRequestError("after preview")
+
     registry.register_python_callable(fail, fail_handler)
-    template = WorkflowGraphTemplate(template_id="preview-test", template_version="1.0.0", display_name="Preview Test",
-        nodes=(WorkflowGraphNode(node_id="preview", node_type_id=definition.node_type_id), WorkflowGraphNode(node_id="fail", node_type_id=fail.node_type_id)),
-        edges=(WorkflowGraphEdge(edge_id="dependency", source_node_id="preview", source_port="body", target_node_id="fail", target_port="value"),))
+    template = WorkflowGraphTemplate(
+        template_id="preview-test",
+        template_version="1.0.0",
+        display_name="Preview Test",
+        nodes=(
+            WorkflowGraphNode(node_id="preview", node_type_id=definition.node_type_id),
+            WorkflowGraphNode(node_id="fail", node_type_id=fail.node_type_id),
+        ),
+        edges=(
+            WorkflowGraphEdge(
+                edge_id="dependency",
+                source_node_id="preview",
+                source_port="body",
+                target_node_id="fail",
+                target_port="value",
+            ),
+        ),
+    )
     capture = RuntimePreviewCapture()
     with pytest.raises(InvalidRequestError, match="after preview"):
-        WorkflowGraphExecutor(registry=registry).execute(template=template, input_values={},
-            execution_metadata={PREVIEW_CAPTURE_KEY: capture, "retain_node_records_enabled": False, "workflow_run_record_mode": "none"})
-    assert capture.records[("preview", "body")]["payload"]["value"] == {"zero": 0, "flag": False}
+        WorkflowGraphExecutor(registry=registry).execute(
+            template=template,
+            input_values={},
+            execution_metadata={
+                PREVIEW_CAPTURE_KEY: capture,
+                "retain_node_records_enabled": False,
+                "workflow_run_record_mode": "none",
+            },
+        )
+    assert capture.records[("preview", "body")]["payload"]["value"] == {
+        "zero": 0,
+        "flag": False,
+    }
 
 
 def test_subscription_drops_when_sending_and_has_no_replay() -> None:
     """未就绪和正在发送时直接略过，不追加下一条结果。"""
+
     async def check() -> None:
         subscription = RuntimePreviewSubscription()
         subscription.offer("before subscribe")
@@ -166,11 +243,13 @@ def test_subscription_drops_when_sending_and_has_no_replay() -> None:
         await asyncio.sleep(0)
         subscription.close()
         assert await third is None
+
     asyncio.run(check())
 
 
 def test_separate_channel_no_subscriber_no_capture_and_cleanup() -> None:
     """线程/socket 成对回收；无页面不捕获，发送槽忙时不创建新副本。"""
+
     async def check() -> None:
         parent, child = socket.socketpair()
         observed = Event()
@@ -199,11 +278,13 @@ def test_separate_channel_no_subscriber_no_capture_and_cleanup() -> None:
         assert not channel.thread.is_alive()
         assert sender.thread is None or not sender.thread.is_alive()
         assert parent.fileno() == child.fileno() == -1
+
     asyncio.run(check())
 
 
 def test_worker_epoch_channel_close_wakes_waiter() -> None:
     """Runtime 停止/换代必须断开旧观察，不能将旧帧带入新代。"""
+
     async def check() -> None:
         parent, child = socket.socketpair()
         channel = RuntimePreviewChannel(parent, Event())
@@ -214,10 +295,13 @@ def test_worker_epoch_channel_close_wakes_waiter() -> None:
         child.close()
         assert await asyncio.wait_for(waiter, 1) is None
         assert not channel.subscriptions
+
     asyncio.run(check())
 
 
-def test_observation_thread_failure_closes_socket_without_failing_runtime(monkeypatch) -> None:
+def test_observation_thread_failure_closes_socket_without_failing_runtime(
+    monkeypatch,
+) -> None:
     """显示基础资源不可用时只拒绝订阅；关闭未启动线程也必须幂等。"""
     from threading import Thread
 

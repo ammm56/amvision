@@ -82,7 +82,7 @@
 | outputs | 按 application output binding_id 组织的输出；sync create 返回原始值，详情接口返回持久化脱敏副本 |
 | template_outputs | 按 template output id 组织的底层输出；sync create 返回原始值，详情接口返回持久化脱敏副本 |
 | node_records | 节点执行记录列表；sync create 返回原始 outputs，详情接口返回持久化脱敏副本 |
-| error_message | 失败或超时时的摘要信息，可为空 |
+| error | 统一错误对象；成功或进行中为 null，失败、超时或取消时包含 code、message、details |
 | retention_until | 建议清理时间，可为空 |
 | metadata | 调用附加元数据；接口层会补写 created_by；当绑定 execution policy 时还会补写 metadata.execution_policy 摘要 |
 
@@ -215,7 +215,7 @@ Preview 使用与正式 Runtime 相同的已注册 payload。前端为 `value.v1
     }
   },
   "node_records": [],
-  "error_message": null,
+  "error": null,
   "retention_until": "2026-05-09T12:00:00Z",
   "metadata": {
     "trigger_source": "editor-preview",
@@ -236,7 +236,7 @@ Preview 使用与正式 Runtime 相同的已注册 payload。前端为 `value.v1
 
 - 返回单条 WorkflowPreviewRun 的当前持久化结果
 - 返回字段与 create 接口一致
-- 典型用途：在 create 请求执行期间回查 running，或在返回后再次读取 outputs、node_records 和 error_message
+- 典型用途：在 create 请求执行期间回查 running，或在返回后再次读取 outputs、node_records 和 error
 - 详情接口返回持久化脱敏副本；如果 sync create 响应里出现原始 base64 或 memory image-ref，这里会改成 redacted 摘要
 
 ## GET /api/v1/workflows/preview-runs
@@ -260,7 +260,7 @@ Preview 使用与正式 Runtime 相同的已注册 payload。前端为 `value.v1
   - finished_at
   - created_by
   - timeout_seconds
-  - error_message
+  - error
   - retention_until
 
 ## DELETE /api/v1/workflows/preview-runs/{preview_run_id}

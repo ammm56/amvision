@@ -10,6 +10,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from backend.contracts.errors import ErrorContract
 from backend.contracts.workflows.runtime import (
     WorkflowApplicationReferenceSummaryContract,
     WorkflowRuntimeReferenceSummaryContract,
@@ -32,9 +33,7 @@ DIRECTORY_CHANGE_EVENT_TYPES = ("created", "modified", "deleted")
 
 # 高性能 Trigger 只传递结构化小参数和 LocalBuffer 图片引用。文件、文件列表与
 # Base64 图片由 HTTP Runtime 负责，避免在常驻 Trigger 数据面引入隐式暂存和复制。
-HIGH_PERFORMANCE_TRIGGER_KINDS = frozenset(
-    {"zeromq-topic", "local-shared-memory"}
-)
+HIGH_PERFORMANCE_TRIGGER_KINDS = frozenset({"zeromq-topic", "local-shared-memory"})
 HIGH_PERFORMANCE_TRIGGER_INPUT_PAYLOAD_TYPE_IDS = frozenset(
     {"image-ref.v1", "value.v1", "text.v1"}
 )
@@ -153,7 +152,9 @@ class DirectoryWatchTransportConfigContract(BaseModel):
                     for character in ("/", "\\", "\x00", "*", "?")
                 )
             ):
-                raise ValueError("extension 必须是长度 2 至 32 且只有一个前导点的文件扩展名")
+                raise ValueError(
+                    "extension 必须是长度 2 至 32 且只有一个前导点的文件扩展名"
+                )
             normalized_values.add(normalized)
         return tuple(sorted(normalized_values))
 
@@ -233,9 +234,13 @@ class DirectoryChangeSampleContract(BaseModel):
         if not self.observed_change_types:
             raise ValueError("observed_change_types 不能为空")
         expected = tuple(
-            item for item in DIRECTORY_CHANGE_EVENT_TYPES if item in self.observed_change_types
+            item
+            for item in DIRECTORY_CHANGE_EVENT_TYPES
+            if item in self.observed_change_types
         )
-        if expected != self.observed_change_types or len(expected) != len(set(expected)):
+        if expected != self.observed_change_types or len(expected) != len(
+            set(expected)
+        ):
             raise ValueError("observed_change_types 必须去重并按固定顺序排列")
         return self
 
@@ -298,8 +303,13 @@ class DirectoryChangeEventContract(BaseModel):
         _require_stripped_text(self.workflow_runtime_id, "workflow_runtime_id")
         _require_timezone_timestamp(self.window_started_at, "window_started_at")
         _require_timezone_timestamp(self.window_finished_at, "window_finished_at")
-        if self.sample_count != len(self.samples) or self.sample_count > self.sample_limit:
-            raise ValueError("sample_count 必须等于 samples 数量且不能超过 sample_limit")
+        if (
+            self.sample_count != len(self.samples)
+            or self.sample_count > self.sample_limit
+        ):
+            raise ValueError(
+                "sample_count 必须等于 samples 数量且不能超过 sample_limit"
+            )
         normalized_paths = [os.path.normcase(item.path) for item in self.samples]
         if len(normalized_paths) != len(set(normalized_paths)):
             raise ValueError("samples 不能包含重复路径")
@@ -375,9 +385,7 @@ class ResultMappingContract(BaseModel):
 
         if not isinstance(value, list | tuple):
             return value
-        return tuple(
-            item.strip() if isinstance(item, str) else item for item in value
-        )
+        return tuple(item.strip() if isinstance(item, str) else item for item in value)
 
     @model_validator(mode="after")
     def validate_contract(self) -> ResultMappingContract:
@@ -529,7 +537,7 @@ class TriggerResultContract(BaseModel):
     - state：触发提交或执行结果状态。
     - workflow_run_id：创建出的 WorkflowRun id。
     - response_payload：协议中立响应内容。
-    - error_message：错误消息。
+    - error：错误对象。
     - metadata：附加元数据。
     """
 
@@ -541,7 +549,7 @@ class TriggerResultContract(BaseModel):
     state: WorkflowTriggerResultState
     workflow_run_id: str | None = None
     response_payload: dict[str, object] = Field(default_factory=dict)
-    error_message: str | None = None
+    error: ErrorContract | None = None
     metadata: dict[str, object] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -550,6 +558,8 @@ class TriggerResultContract(BaseModel):
 
         _require_stripped_text(self.trigger_source_id, "trigger_source_id")
         _require_stripped_text(self.event_id, "event_id")
-        if self.error_message is not None:
-            _require_stripped_text(self.error_message, "error_message")
+        if self.state in {"failed", "timed_out"} and self.error is None:
+            raise ValueError("失败或超时状态必须提供 error")
+        if self.state not in {"failed", "timed_out"} and self.error is not None:
+            raise ValueError("非错误状态不得提供 error")
         return self

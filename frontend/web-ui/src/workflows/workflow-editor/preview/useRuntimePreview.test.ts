@@ -293,7 +293,7 @@ function buildFrame(
     sequence,
     state: 'succeeded',
     finished_at: '2026-09-05T00:00:00Z',
-    error_message: null,
+    error: null,
     display_error: null,
     displays: [],
   }

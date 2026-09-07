@@ -1,5 +1,6 @@
 """workflows contracts 包。"""
 
+from backend.contracts.errors import ErrorContract
 from backend.contracts.workflows.workflow_graph import (
     FLOW_APPLICATION_FORMAT,
     FLOW_APPLICATION_RUNTIME_PYTHON_JSON,
@@ -133,6 +134,7 @@ from backend.contracts.workflows.trigger_sources import (
 )
 
 __all__ = [
+    "ErrorContract",
     "DIRECTORY_CHANGE_EVENT_FORMAT",
     "DIRECTORY_CHANGE_EVENT_TYPES",
     "DirectoryChangeCountsContract",

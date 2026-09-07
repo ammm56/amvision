@@ -495,9 +495,8 @@ namespace Amvar.Vision.SharedMemory
                     {
                         businessError = BusinessErrorFromTransport(transportError);
                         payload = new ArraySegment<byte>(Encoding.UTF8.GetBytes(
-                            "{\"state\":\"failed\",\"error_code\":"
-                            + businessError.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                            + "}"));
+                            "{\"state\":\"failed\",\"error\":{\"code\":\"transport_error\","
+                            + "\"message\":\"Workflow Trigger transport failed.\",\"details\":{}}}"));
                     }
                     else
                     {

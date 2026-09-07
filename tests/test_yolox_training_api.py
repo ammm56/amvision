@@ -402,8 +402,14 @@ def test_create_yolox_training_task_rejects_non_positive_input_size(
         payload = response.json()
         assert payload["error"]["code"] == "request_validation_failed"
         validation_error = payload["error"]["details"]["errors"][0]
-        assert validation_error["loc"][-3:] == ["execution", "input_size", "height"]
-        assert validation_error["type"] == "greater_than"
+        assert validation_error["path"][-3:] == [
+            "execution",
+            "input_size",
+            "height",
+        ]
+        assert set(validation_error) == {"path", "rule", "reason"}
+        assert "input" not in validation_error
+        assert validation_error["rule"] == "greater_than"
     finally:
         session_factory.engine.dispose()
 
@@ -1813,11 +1819,11 @@ def test_register_latest_checkpoint_model_version_supports_rfdetr_detection_task
 
     try:
         created_task = task_service.create_task(
-                CreateTaskRequest(
-                    project_id="project-1",
-                    task_kind=RFDETR_TRAINING_TASK_KIND,
-                    display_name="rfdetr register latest",
-                    state="running",
+            CreateTaskRequest(
+                project_id="project-1",
+                task_kind=RFDETR_TRAINING_TASK_KIND,
+                display_name="rfdetr register latest",
+                state="running",
                 task_spec={
                     "project_id": "project-1",
                     "recipe_id": "default",

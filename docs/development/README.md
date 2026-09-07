@@ -4,7 +4,6 @@
 
 ## 验收与基准
 
-- [Workflow 公开错误契约实施基线](workflow-public-error-contract-implementation.md)：统一 HTTP、Runtime、Preview、Trigger、Runtime 显示和 .NET SDK 的公开错误对象，并收紧输入校验敏感信息回显；尚未实现。
 - [LocalMessage 通道验收](local-message-channel-implementation.md)：三条结构化链路已迁移，本机压力与发行装配已完成；目标发行 24 小时混合 soak 待验收。
 - [LocalBuffer 与 Trigger 数据面验收](shared-memory-data-plane-reliability-implementation.md)：固定 arena、guard/owner 与真实图片链路的故障、容量和持续认证。
 - [LocalMessage 阶段 0 基线](local-message-channel-stage0-baseline.md)：迁移前历史测量、冻结 profile 与复测方法，不代表当前运行拓扑。

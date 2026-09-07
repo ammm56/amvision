@@ -29,16 +29,6 @@ CAPACITY_ERROR_CODES = frozenset(
 
 
 def read_trigger_result_error_code(result: TriggerResultContract) -> str | None:
-    """从统一 TriggerResult metadata 读取最具体的稳定错误码。"""
+    """从统一 TriggerResult error 读取稳定错误码。"""
 
-    metadata = result.metadata
-    error_code = metadata.get("error_code")
-    if isinstance(error_code, str) and error_code.strip():
-        return error_code.strip()
-    error_details = metadata.get("error_details")
-    if not isinstance(error_details, dict):
-        return None
-    nested_error_code = error_details.get("error_code")
-    if isinstance(nested_error_code, str) and nested_error_code.strip():
-        return nested_error_code.strip()
-    return None
+    return result.error.code if result.error is not None else None

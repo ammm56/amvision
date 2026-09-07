@@ -110,8 +110,8 @@
 | outputs | 按 application output binding_id 组织的公开 App Result；详情接口与 async run 返回持久化脱敏副本 |
 | template_outputs | 按 template output id 组织的底层输出，仅用于平台调试、trace 和内部回查 |
 | node_records | 节点执行记录列表，仅用于平台调试、trace 和内部回查 |
-| error_message | 失败或超时时的摘要信息，可为空 |
-| metadata | 调用附加元数据；当 runtime 绑定 execution policy 时会补充 metadata.execution_policy；失败时会补充 error_details，取消时会补充 cancel_requested_at 和 cancelled_by |
+| error | 统一错误对象；成功或进行中为 null，失败、超时或取消时包含 code、message、details |
+| metadata | 调用附加元数据；当 runtime 绑定 execution policy 时会补充 metadata.execution_policy，取消时会补充 cancel_requested_at 和 cancelled_by |
 
 补充说明：
 
@@ -195,7 +195,7 @@
   "outputs": {},
   "template_outputs": {},
   "node_records": [],
-  "error_message": null,
+  "error": null,
   "metadata": {
     "trigger_source": "async-invoke",
     "created_by": "operator-1",
@@ -233,7 +233,7 @@
 
 | response_mode | 用途 | 返回内容 |
 | --- | --- | --- |
-| app-result | 外部系统和 Postman 正式调用默认值 | 单个 App Result 直接返回；多个 App Result 按 binding_id 返回对象；失败时返回 state、error_message 和 error_details |
+| app-result | 外部系统和 Postman 正式调用默认值 | 单个 App Result 直接返回；多个 App Result 按 binding_id 返回对象；失败时返回 workflow_run_id、state 和统一 error 对象 |
 | run | 平台前端运行回执 | WorkflowRunContract；只带公开 outputs，不带底层 template_outputs 和 node_records |
 | debug | 平台排查问题 | WorkflowRunContract；带完整 outputs、template_outputs 和 node_records |
 
@@ -283,17 +283,17 @@
 
 ### 失败返回规则
 
-- worker 执行失败时，state 返回 failed，error_message 返回摘要信息。
-- worker 返回的详细错误会写入 metadata.error_details，例如 node_id、node_type_id、runtime_kind、error_type 和 error_message。
-- worker 等待超时时，state 返回 timed_out，error_message 返回超时摘要。
-- async run 在 queued 或 running 期间被取消时，state 返回 cancelled，error_message 返回 workflow run 已取消。
+- worker 执行失败时，state 返回 failed，error 返回包含稳定 code、摘要 message 和结构化 details 的对象。
+- worker 内部诊断字段在公开边界转换；异常类型、堆栈和重复错误字段不会写入公开 error.details。
+- worker 等待超时时，state 返回 timed_out，error.code 返回 operation_timeout。
+- async run 在 queued 或 running 期间被取消时，state 返回 cancelled，error.code 返回 operation_cancelled。
 
 ## GET /api/v1/workflows/runs/{workflow_run_id}
 
 - 默认 `response_mode=app-result`，返回公开 App Result，不返回 WorkflowRun、template_outputs 或 node_records
 - `response_mode=run` 返回 WorkflowRun 运行回执；其中 `outputs` 保留公开 App Result，`template_outputs={}`，`node_records=[]`
 - `response_mode=debug` 返回完整 WorkflowRun 调试视图；包含原始 outputs、template_outputs 和 node_records
-- 适合异步 run 完成后获取外部调用结果；平台页面如需状态、assigned_process_id、error_message 和 metadata.error_details，应显式使用 `response_mode=run`
+- 适合异步 run 完成后获取外部调用结果；平台页面如需状态、assigned_process_id 和统一 error，应显式使用 `response_mode=run`
 
 ## GET /api/v1/workflows/runs/{workflow_run_id}/events
 
@@ -319,7 +319,7 @@
 - event_type：事件类型
 - created_at：事件写入时间
 - message：面向人读的摘要信息
-- payload：结构化摘要；当前至少包含 state 和 workflow_runtime_id，必要时补 assigned_process_id、error_message、started_at、finished_at
+- payload：结构化摘要；当前至少包含 state 和 workflow_runtime_id，必要时补 assigned_process_id、error、started_at、finished_at
 - `/ws/v1/workflows/runs/events` 的 replay 和 live 事件与 REST 共用同一套平铺 payload，不再额外包一层 `payload.data`
 
 ## /ws/v1/workflows/runs/events
@@ -347,7 +347,7 @@
 ### 最小响应语义
 
 - state：cancelled
-- error_message：workflow run 已取消
+- error：code 为 operation_cancelled 的统一错误对象
 - metadata.cancel_requested_at：取消请求时间
 - metadata.cancelled_by：取消主体 id
 

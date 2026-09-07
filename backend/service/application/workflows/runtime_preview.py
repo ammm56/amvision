@@ -10,13 +10,17 @@ import struct
 from threading import Event, Lock, Thread
 from typing import Any
 
+from backend.contracts.errors import ErrorContract
 from backend.contracts.workflows.workflow_graph import NodeDefinition
+from backend.service.application.public_errors import build_error_contract
 
 PREVIEW_CAPTURE_KEY = "_runtime_preview_capture"
 PREVIEW_FORMAT = "amvision.workflow-runtime-preview.v1"
 MAX_PREVIEW_BYTES = 64 * 1024 * 1024
 MAX_PREVIEW_VALUES = 100_000
-PREVIEW_TYPES = frozenset({"image-preview", "value-preview", "table-preview", "gallery-preview"})
+PREVIEW_TYPES = frozenset(
+    {"image-preview", "value-preview", "table-preview", "gallery-preview"}
+)
 
 
 class RuntimePreviewUnavailableError(ValueError):
@@ -51,7 +55,9 @@ def _copy_json(value: object, budget: list[int], depth: int = 0) -> object:
         for key, item in value.items():
             if not isinstance(key, str):
                 raise _DisplayLimit("preview_not_json")
-            result[_copy_json(key, budget, depth + 1)] = _copy_json(item, budget, depth + 1)
+            result[_copy_json(key, budget, depth + 1)] = _copy_json(
+                item, budget, depth + 1
+            )
     elif isinstance(value, list | tuple):
         result = [_copy_json(item, budget, depth + 1) for item in value]
     else:
@@ -68,12 +74,18 @@ class RuntimePreviewCapture:
         """初始化当前 Run 的记录、容量预算和并行节点互斥锁。"""
         self.records: dict[tuple[str, str], dict[str, object]] = {}
         self.budget = [MAX_PREVIEW_BYTES - 16_384, MAX_PREVIEW_VALUES]
-        self.error: str | None = None
+        self.error: ErrorContract | None = None
         self.lock = Lock()
 
-    def capture(self, *, node_id: str, definition: NodeDefinition,
-                outputs: dict[str, object], invocation_id: str,
-                duration_ms: float) -> None:
+    def capture(
+        self,
+        *,
+        node_id: str,
+        definition: NodeDefinition,
+        outputs: dict[str, object],
+        invocation_id: str,
+        duration_ms: float,
+    ) -> None:
         """仅复制声明 ui.preview 的显示端口，不读取图片源或修改节点输出。"""
         if "ui.preview" not in definition.capability_tags:
             return
@@ -83,23 +95,36 @@ class RuntimePreviewCapture:
             try:
                 for port in definition.output_ports:
                     payload = outputs.get(port.name)
-                    if not isinstance(payload, dict) or payload.get("type") not in PREVIEW_TYPES:
+                    if (
+                        not isinstance(payload, dict)
+                        or payload.get("type") not in PREVIEW_TYPES
+                    ):
                         continue
                     copied = _copy_json(payload, self.budget)
                     # 图像交互编辑仅属于编辑画布；运行画布不能改参数。
                     copied.pop("interaction", None)
-                    if copied.get("type") == "gallery-preview" and isinstance(copied.get("items"), list):
+                    if copied.get("type") == "gallery-preview" and isinstance(
+                        copied.get("items"), list
+                    ):
                         for item in copied["items"]:
                             if isinstance(item, dict):
                                 item.pop("interaction", None)
                     self.records[(node_id, port.name)] = {
-                        "node_id": node_id, "node_type_id": definition.node_type_id,
-                        "output_port": port.name, "invocation_id": invocation_id,
-                        "duration_ms": duration_ms, "payload": copied,
+                        "node_id": node_id,
+                        "node_type_id": definition.node_type_id,
+                        "output_port": port.name,
+                        "invocation_id": invocation_id,
+                        "duration_ms": duration_ms,
+                        "payload": copied,
                     }
             except Exception as exc:
                 self.records.clear()
-                self.error = str(exc) if isinstance(exc, _DisplayLimit) else "preview_copy_failed"
+                code = (
+                    str(exc)
+                    if isinstance(exc, _DisplayLimit)
+                    else "preview_copy_failed"
+                )
+                self.error = _build_display_error(code)
 
 
 class RuntimePreviewSender:
@@ -126,7 +151,9 @@ class RuntimePreviewSender:
                 return None
             self.busy = True
             if self.thread is None:
-                self.thread = Thread(target=self._run, name="runtime-preview-send", daemon=True)
+                self.thread = Thread(
+                    target=self._run, name="runtime-preview-send", daemon=True
+                )
                 try:
                     self.thread.start()
                 except RuntimeError:
@@ -136,15 +163,23 @@ class RuntimePreviewSender:
                     return None
         return RuntimePreviewCapture()
 
-    def finish(self, capture: RuntimePreviewCapture, identity: dict[str, object]) -> None:
+    def finish(
+        self, capture: RuntimePreviewCapture, identity: dict[str, object]
+    ) -> None:
         """业务响应已交接后移交本次副本，不进行 JSON 编码或网络等待。"""
         with self.lock:
             if not self.observed.is_set() or self.stopped.is_set():
                 self.busy = False
                 return
             self.payload = {
-                "format_id": PREVIEW_FORMAT, **identity,
-                "displays": list(capture.records.values()), "display_error": capture.error,
+                "format_id": PREVIEW_FORMAT,
+                **identity,
+                "displays": list(capture.records.values()),
+                "display_error": (
+                    capture.error.model_dump(mode="json")
+                    if capture.error is not None
+                    else None
+                ),
             }
             self.wake.set()
 
@@ -160,11 +195,20 @@ class RuntimePreviewSender:
                     continue
                 try:
                     if self.observed.is_set():
-                        data = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8")
+                        data = json.dumps(
+                            payload,
+                            ensure_ascii=False,
+                            separators=(",", ":"),
+                            allow_nan=False,
+                        ).encode("utf-8")
                         if len(data) > MAX_PREVIEW_BYTES:
                             payload["displays"] = []
-                            payload["display_error"] = "preview_size_limit"
-                            data = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+                            payload["display_error"] = _build_display_error(
+                                "preview_size_limit"
+                            ).model_dump(mode="json")
+                            data = json.dumps(payload, separators=(",", ":")).encode(
+                                "utf-8"
+                            )
                         self.channel.sendall(struct.pack("!I", len(data)))
                         self.channel.sendall(data)
                         del data
@@ -252,7 +296,9 @@ class RuntimePreviewChannel:
         self.lock = Lock()
         self.subscriptions: set[RuntimePreviewSubscription] = set()
         self.closed = False
-        self.thread = Thread(target=self._run, name="runtime-preview-receive", daemon=True)
+        self.thread = Thread(
+            target=self._run, name="runtime-preview-receive", daemon=True
+        )
         try:
             self.thread.start()
         except RuntimeError:
@@ -332,3 +378,18 @@ class RuntimePreviewChannel:
         self.channel.close()
         if self.thread.ident is not None:
             self.thread.join(timeout=3.0)
+
+
+def _build_display_error(code: str) -> ErrorContract:
+    """按稳定错误码构造显示通道错误。"""
+
+    messages = {
+        "preview_copy_failed": "预览数据复制失败",
+        "preview_not_json": "预览数据不是有效 JSON",
+        "preview_size_limit": "预览数据超过 64 MB 限制",
+        "preview_structure_limit": "预览数据结构超过限制",
+    }
+    return build_error_contract(
+        code=code if code in messages else "preview_copy_failed",
+        message=messages.get(code, messages["preview_copy_failed"]),
+    )

@@ -43,11 +43,7 @@ export function readPreviewRunBadgeTone(state: WorkflowPreviewRun['state']): 'su
 }
 
 export function readPreviewRunFailureDetails(previewRun: WorkflowPreviewRun | null): WorkflowJsonObject | null {
-  if (!previewRun) return null
-  const lastError = previewRun.metadata.last_error
-  if (!isWorkflowJsonObject(lastError)) return null
-  const details = lastError.details
-  return isWorkflowJsonObject(details) ? details : null
+  return previewRun?.error?.details ?? null
 }
 
 export function formatPreviewRunFailureNodeLabel(details: WorkflowJsonObject | null): string {
@@ -60,30 +56,24 @@ export function formatPreviewRunFailureNodeLabel(details: WorkflowJsonObject | n
 export function formatPreviewRunFailureLocation(details: WorkflowJsonObject | null): string {
   if (!details) return ''
   const runtimeKind = readDisplayText(details.runtime_kind)
-  const errorType = readDisplayText(details.error_type)
   const executionIndex = readDisplayNumber(details.execution_index)
   const sequenceIndex = readDisplayNumber(details.sequence_index)
   const parts = [
     runtimeKind,
     executionIndex === null ? '' : `execution #${executionIndex}`,
     sequenceIndex === null ? '' : `sequence #${sequenceIndex}`,
-    errorType,
   ].filter(Boolean)
   return parts.join(' / ')
 }
 
 export function formatPreviewRunFailureMessage(previewRun: WorkflowPreviewRun | null): string {
   if (!previewRun) return ''
-  const errorMessage = readDisplayText(previewRun.error_message)
-  const detailMessage = readDisplayText(readPreviewRunFailureDetails(previewRun)?.error_message)
+  const errorMessage = readDisplayText(previewRun.error?.message)
   const nodeLabel = formatPreviewRunFailureNodeLabel(readPreviewRunFailureDetails(previewRun))
-  if (detailMessage && (!errorMessage || isGenericPreviewRunFailureMessage(errorMessage))) {
-    return nodeLabel ? `${nodeLabel}：${detailMessage}` : detailMessage
-  }
   if (errorMessage) {
     return nodeLabel && isGenericPreviewRunFailureMessage(errorMessage) ? `${nodeLabel}：${errorMessage}` : errorMessage
   }
-  return detailMessage || 'Preview run failed'
+  return 'Preview run failed'
 }
 
 export function useWorkflowPreviewValidation(options: WorkflowPreviewValidationOptions) {
@@ -144,7 +134,6 @@ export function useWorkflowPreviewValidation(options: WorkflowPreviewValidationO
   const lastPreviewFailureDetails = computed(() => readPreviewRunFailureDetails(options.lastPreviewRun.value))
   const lastPreviewFailureNodeId = computed(() => readDisplayText(lastPreviewFailureDetails.value?.node_id))
   const lastPreviewFailureMessage = computed(() => formatPreviewRunFailureMessage(options.lastPreviewRun.value))
-  const lastPreviewFailureDetailMessage = computed(() => readDisplayText(lastPreviewFailureDetails.value?.error_message))
   const lastPreviewFailureNodeLabel = computed(() => formatPreviewRunFailureNodeLabel(lastPreviewFailureDetails.value))
   const lastPreviewFailureLocation = computed(() => formatPreviewRunFailureLocation(lastPreviewFailureDetails.value))
   const lastPreviewFailureDetailsJson = computed(() => lastPreviewFailureDetails.value ? formatWorkflowJson(lastPreviewFailureDetails.value) : '')
@@ -161,7 +150,6 @@ export function useWorkflowPreviewValidation(options: WorkflowPreviewValidationO
     lastPreviewFailureDetails,
     lastPreviewFailureNodeId,
     lastPreviewFailureMessage,
-    lastPreviewFailureDetailMessage,
     lastPreviewFailureNodeLabel,
     lastPreviewFailureLocation,
     lastPreviewFailureDetailsJson,

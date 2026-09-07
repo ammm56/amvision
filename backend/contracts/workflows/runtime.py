@@ -6,6 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from backend.contracts.errors import ErrorContract
 from backend.contracts.workflows.resource_semantics import (
     WorkflowAppRuntimeState,
     WorkflowExecutionPolicyKind,
@@ -43,6 +44,16 @@ def _require_stripped_text(value: str, field_name: str) -> str:
     return normalized_value
 
 
+def _validate_execution_error(*, state: str, error: ErrorContract | None) -> None:
+    """校验执行状态与公开错误对象的一致性。"""
+
+    error_states = {"failed", "timed_out", "cancelled"}
+    if state in error_states and error is None:
+        raise ValueError("失败、超时或取消状态必须提供 error")
+    if state not in error_states and error is not None:
+        raise ValueError("非错误状态不得提供 error")
+
+
 class WorkflowPreviewRunContract(BaseModel):
     """描述 WorkflowPreviewRun 的稳定 JSON 规则。"""
 
@@ -64,7 +75,7 @@ class WorkflowPreviewRunContract(BaseModel):
     outputs: dict[str, object] = Field(default_factory=dict)
     template_outputs: dict[str, object] = Field(default_factory=dict)
     node_records: list[dict[str, object]] = Field(default_factory=list)
-    error_message: str | None = None
+    error: ErrorContract | None = None
     retention_until: str | None = None
     metadata: dict[str, object] = Field(default_factory=dict)
 
@@ -76,10 +87,15 @@ class WorkflowPreviewRunContract(BaseModel):
         _require_stripped_text(self.project_id, "project_id")
         _require_stripped_text(self.application_id, "application_id")
         _require_stripped_text(self.source_kind, "source_kind")
-        _require_stripped_text(self.application_snapshot_object_key, "application_snapshot_object_key")
-        _require_stripped_text(self.template_snapshot_object_key, "template_snapshot_object_key")
+        _require_stripped_text(
+            self.application_snapshot_object_key, "application_snapshot_object_key"
+        )
+        _require_stripped_text(
+            self.template_snapshot_object_key, "template_snapshot_object_key"
+        )
         _require_stripped_text(self.state, "state")
         _require_stripped_text(self.created_at, "created_at")
+        _validate_execution_error(state=self.state, error=self.error)
         return self
 
 
@@ -98,13 +114,15 @@ class WorkflowPreviewRunSummaryContract(BaseModel):
     - finished_at：结束时间。
     - created_by：创建主体 id。
     - timeout_seconds：请求超时秒数。
-    - error_message：失败或超时错误信息。
+    - error：失败或超时错误对象。
     - retention_until：保留截止时间。
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    format_id: Literal[WORKFLOW_PREVIEW_RUN_SUMMARY_FORMAT] = WORKFLOW_PREVIEW_RUN_SUMMARY_FORMAT
+    format_id: Literal[WORKFLOW_PREVIEW_RUN_SUMMARY_FORMAT] = (
+        WORKFLOW_PREVIEW_RUN_SUMMARY_FORMAT
+    )
     preview_run_id: str
     project_id: str
     application_id: str
@@ -115,7 +133,7 @@ class WorkflowPreviewRunSummaryContract(BaseModel):
     finished_at: str | None = None
     created_by: str | None = None
     timeout_seconds: int = 30
-    error_message: str | None = None
+    error: ErrorContract | None = None
     retention_until: str | None = None
 
     @model_validator(mode="after")
@@ -128,6 +146,7 @@ class WorkflowPreviewRunSummaryContract(BaseModel):
         _require_stripped_text(self.source_kind, "source_kind")
         _require_stripped_text(self.state, "state")
         _require_stripped_text(self.created_at, "created_at")
+        _validate_execution_error(state=self.state, error=self.error)
         return self
 
 
@@ -136,7 +155,9 @@ class WorkflowPreviewRunEventContract(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    format_id: Literal[WORKFLOW_PREVIEW_RUN_EVENT_FORMAT] = WORKFLOW_PREVIEW_RUN_EVENT_FORMAT
+    format_id: Literal[WORKFLOW_PREVIEW_RUN_EVENT_FORMAT] = (
+        WORKFLOW_PREVIEW_RUN_EVENT_FORMAT
+    )
     preview_run_id: str
     sequence: int = Field(ge=1)
     event_type: str
@@ -160,7 +181,9 @@ class WorkflowAppRuntimeEventContract(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    format_id: Literal[WORKFLOW_APP_RUNTIME_EVENT_FORMAT] = WORKFLOW_APP_RUNTIME_EVENT_FORMAT
+    format_id: Literal[WORKFLOW_APP_RUNTIME_EVENT_FORMAT] = (
+        WORKFLOW_APP_RUNTIME_EVENT_FORMAT
+    )
     workflow_runtime_id: str
     sequence: int = Field(ge=1)
     event_type: str
@@ -309,8 +332,12 @@ class WorkflowAppRuntimeContract(BaseModel):
         _require_stripped_text(self.workflow_runtime_id, "workflow_runtime_id")
         _require_stripped_text(self.project_id, "project_id")
         _require_stripped_text(self.application_id, "application_id")
-        _require_stripped_text(self.application_snapshot_object_key, "application_snapshot_object_key")
-        _require_stripped_text(self.template_snapshot_object_key, "template_snapshot_object_key")
+        _require_stripped_text(
+            self.application_snapshot_object_key, "application_snapshot_object_key"
+        )
+        _require_stripped_text(
+            self.template_snapshot_object_key, "template_snapshot_object_key"
+        )
         _require_stripped_text(self.desired_state, "desired_state")
         _require_stripped_text(self.observed_state, "observed_state")
         _require_stripped_text(self.created_at, "created_at")
@@ -318,7 +345,9 @@ class WorkflowAppRuntimeContract(BaseModel):
         if self.heartbeat_interval_seconds <= 0:
             raise ValueError("heartbeat_interval_seconds 必须大于 0")
         if self.heartbeat_timeout_seconds <= self.heartbeat_interval_seconds:
-            raise ValueError("heartbeat_timeout_seconds 必须大于 heartbeat_interval_seconds")
+            raise ValueError(
+                "heartbeat_timeout_seconds 必须大于 heartbeat_interval_seconds"
+            )
         return self
 
 
@@ -327,7 +356,9 @@ class WorkflowAppRuntimeInstanceContract(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    format_id: Literal[WORKFLOW_APP_RUNTIME_INSTANCE_FORMAT] = WORKFLOW_APP_RUNTIME_INSTANCE_FORMAT
+    format_id: Literal[WORKFLOW_APP_RUNTIME_INSTANCE_FORMAT] = (
+        WORKFLOW_APP_RUNTIME_INSTANCE_FORMAT
+    )
     instance_id: str
     workflow_runtime_id: str
     state: WorkflowAppRuntimeState
@@ -375,7 +406,7 @@ class WorkflowRunContract(BaseModel):
     outputs: dict[str, object] = Field(default_factory=dict)
     template_outputs: dict[str, object] = Field(default_factory=dict)
     node_records: list[dict[str, object]] = Field(default_factory=list)
-    error_message: str | None = None
+    error: ErrorContract | None = None
     metadata: dict[str, object] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -388,6 +419,7 @@ class WorkflowRunContract(BaseModel):
         _require_stripped_text(self.application_id, "application_id")
         _require_stripped_text(self.state, "state")
         _require_stripped_text(self.created_at, "created_at")
+        _validate_execution_error(state=self.state, error=self.error)
         return self
 
 
@@ -422,7 +454,9 @@ class WorkflowExecutionPolicyContract(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    format_id: Literal[WORKFLOW_EXECUTION_POLICY_FORMAT] = WORKFLOW_EXECUTION_POLICY_FORMAT
+    format_id: Literal[WORKFLOW_EXECUTION_POLICY_FORMAT] = (
+        WORKFLOW_EXECUTION_POLICY_FORMAT
+    )
     execution_policy_id: str
     project_id: str
     display_name: str
@@ -456,7 +490,9 @@ class WorkflowRuntimeRevisionContract(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    format_id: Literal[WORKFLOW_RUNTIME_REVISION_FORMAT] = WORKFLOW_RUNTIME_REVISION_FORMAT
+    format_id: Literal[WORKFLOW_RUNTIME_REVISION_FORMAT] = (
+        WORKFLOW_RUNTIME_REVISION_FORMAT
+    )
     workflow_runtime_revision_id: str
     workflow_runtime_id: str
     generation: int = Field(ge=1)

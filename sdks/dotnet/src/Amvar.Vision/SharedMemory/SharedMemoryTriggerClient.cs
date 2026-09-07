@@ -790,7 +790,7 @@ namespace Amvar.Vision.SharedMemory
             try
             {
                 var root = JObject.Parse(DecodeUtf8(response.Payload));
-                message = root.Value<string>("error_message") ?? message;
+                message = root["error"]?.Value<string>("message") ?? message;
             }
             finally
             {

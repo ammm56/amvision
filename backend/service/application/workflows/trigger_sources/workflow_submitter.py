@@ -7,7 +7,10 @@ from time import monotonic_ns, perf_counter
 
 from backend.contracts.workflows import TriggerEventContract, TriggerResultContract
 from backend.service.application.errors import InvalidRequestError, ServiceError
-from backend.service.application.workflows.runtime.invokes import WorkflowRuntimeInvokeRequest
+from backend.service.application.public_errors import build_service_error_contract
+from backend.service.application.workflows.runtime.invokes import (
+    WorkflowRuntimeInvokeRequest,
+)
 from backend.service.application.workflows.runtime.policies import (
     WORKFLOW_RUN_RECORD_MODE_MINIMAL,
     WORKFLOW_RUN_RECORD_MODE_NONE,
@@ -104,13 +107,17 @@ class WorkflowSubmitter:
         try:
             if request.trigger_source.submit_mode == "sync":
                 runtime_submit_started_at = perf_counter()
-                invoke_result = self.runtime_service.invoke_workflow_app_runtime_with_response(
-                    request.trigger_source.workflow_runtime_id,
-                    execution_request,
-                    created_by=request.created_by,
-                    execution_acquisition_mode="reject",
+                invoke_result = (
+                    self.runtime_service.invoke_workflow_app_runtime_with_response(
+                        request.trigger_source.workflow_runtime_id,
+                        execution_request,
+                        created_by=request.created_by,
+                        execution_acquisition_mode="reject",
+                    )
                 )
-                timings["trigger_runtime_submit_ms"] = _elapsed_ms(runtime_submit_started_at)
+                timings["trigger_runtime_submit_ms"] = _elapsed_ms(
+                    runtime_submit_started_at
+                )
                 workflow_run = invoke_result.workflow_run
                 response_outputs = dict(invoke_result.raw_outputs)
             else:
@@ -129,13 +136,14 @@ class WorkflowSubmitter:
                     created_by=request.created_by,
                     transient=transient,
                 )
-                timings["trigger_runtime_submit_ms"] = _elapsed_ms(runtime_submit_started_at)
+                timings["trigger_runtime_submit_ms"] = _elapsed_ms(
+                    runtime_submit_started_at
+                )
         except ServiceError as error:
-            metadata: dict[str, object] = {
-                "error_code": error.code,
-                "error_details": dict(error.details),
-            }
-            if should_return_workflow_timing_metadata(execution_request.execution_metadata):
+            metadata: dict[str, object] = {}
+            if should_return_workflow_timing_metadata(
+                execution_request.execution_metadata
+            ):
                 metadata["timings"] = {
                     **timings,
                     "trigger_submit_total_ms": _elapsed_ms(submit_started_at),
@@ -145,7 +153,7 @@ class WorkflowSubmitter:
                     trigger_source_id=request.trigger_source.trigger_source_id,
                     event_id=request.trigger_event.event_id,
                     state="failed",
-                    error_message=error.message,
+                    error=build_service_error_contract(error),
                     metadata=metadata,
                 )
             )
@@ -169,7 +177,9 @@ class WorkflowSubmitter:
             update={
                 "metadata": _merge_trigger_result_diagnostics(
                     result.metadata,
-                    timings if should_return_workflow_timing_metadata(workflow_run.metadata) else {},
+                    timings
+                    if should_return_workflow_timing_metadata(workflow_run.metadata)
+                    else {},
                     node_timings=(
                         _read_workflow_run_node_timings(workflow_run.metadata)
                         if should_return_workflow_node_timings(workflow_run.metadata)
@@ -255,9 +265,7 @@ def _require_current_trigger_response_plan(
     raw_bindings = trigger_source.result_mapping.get("result_bindings")
     configured_bindings = tuple(
         item.strip()
-        for item in (
-            raw_bindings if isinstance(raw_bindings, list | tuple) else ()
-        )
+        for item in (raw_bindings if isinstance(raw_bindings, list | tuple) else ())
         if isinstance(item, str) and item.strip()
     )
     actual_bindings = tuple(item.binding_id for item in plan.result_bindings)
@@ -303,7 +311,9 @@ def _merge_trigger_result_timings(
     """把 TriggerSource 提交计时合并进结果 metadata。"""
 
     payload = dict(metadata)
-    timings = dict(payload.get("timings")) if isinstance(payload.get("timings"), dict) else {}
+    timings = (
+        dict(payload.get("timings")) if isinstance(payload.get("timings"), dict) else {}
+    )
     for key, value in timing_payload.items():
         if isinstance(value, bool):
             timings[str(key)] = value
@@ -338,10 +348,15 @@ def _read_workflow_run_timings(metadata: dict[str, object]) -> dict[str, object]
     raw_timings = metadata.get("timings")
     if not isinstance(raw_timings, dict):
         return {}
-    return {f"workflow_{key}" if not str(key).startswith("workflow_") else str(key): value for key, value in raw_timings.items()}
+    return {
+        f"workflow_{key}" if not str(key).startswith("workflow_") else str(key): value
+        for key, value in raw_timings.items()
+    }
 
 
-def _read_workflow_run_node_timings(metadata: dict[str, object]) -> tuple[dict[str, object], ...]:
+def _read_workflow_run_node_timings(
+    metadata: dict[str, object],
+) -> tuple[dict[str, object], ...]:
     """读取 WorkflowRun metadata 中可向协议结果返回的节点耗时摘要。"""
 
     raw_items = metadata.get("node_timings")

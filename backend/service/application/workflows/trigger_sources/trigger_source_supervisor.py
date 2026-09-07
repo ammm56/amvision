@@ -8,6 +8,7 @@ from time import monotonic
 
 from backend.contracts.workflows import TriggerResultContract
 from backend.service.application.errors import InvalidRequestError, ServiceError
+from backend.service.application.public_errors import build_error_contract
 from backend.service.application.runtime.support.safe_counter import (
     SafeCounterState,
     increment_safe_counter,
@@ -302,13 +303,19 @@ class TriggerSourceSupervisor(WorkflowTriggerEventHandler):
         """等待同一幂等键的首个请求完成并返回缓存结果。"""
 
         timeout_seconds = float(trigger_source.reply_timeout_seconds or 30)
-        if not entry.completion_event.wait(timeout=timeout_seconds) or entry.result is None:
+        if (
+            not entry.completion_event.wait(timeout=timeout_seconds)
+            or entry.result is None
+        ):
             return WorkflowTriggerDispatchResult(
                 trigger_result=TriggerResultContract(
                     trigger_source_id=trigger_source.trigger_source_id,
                     event_id=trigger_event_id,
                     state="timed_out",
-                    error_message="等待相同 idempotency_key 的请求结果超时",
+                    error=build_error_contract(
+                        code="operation_timeout",
+                        message="等待相同 idempotency_key 的请求结果超时",
+                    ),
                     metadata={"idempotent_replay": True},
                 )
             )
@@ -322,11 +329,11 @@ class TriggerSourceSupervisor(WorkflowTriggerEventHandler):
                     event_id=trigger_event_id,
                     state="failed",
                     workflow_run_id=entry.result.workflow_run_id,
-                    error_message="临时图片附件不能通过幂等缓存重放",
-                    metadata={
-                        "error_code": "ephemeral_attachment_replay_forbidden",
-                        "idempotent_replay": True,
-                    },
+                    error=build_error_contract(
+                        code="ephemeral_attachment_replay_forbidden",
+                        message="临时图片附件不能通过幂等缓存重放",
+                    ),
+                    metadata={"idempotent_replay": True},
                 )
             )
         return WorkflowTriggerDispatchResult(
@@ -459,11 +466,19 @@ class TriggerSourceSupervisor(WorkflowTriggerEventHandler):
 
         if trigger_result.state == "timed_out":
             increment_safe_counter(state.timeout_count)
-            state.last_error = trigger_result.error_message
+            state.last_error = (
+                trigger_result.error.message
+                if trigger_result.error is not None
+                else None
+            )
             return
         if trigger_result.state == "failed":
             increment_safe_counter(state.error_count)
-            state.last_error = trigger_result.error_message
+            state.last_error = (
+                trigger_result.error.message
+                if trigger_result.error is not None
+                else None
+            )
             return
         increment_safe_counter(state.success_count)
         state.last_error = None

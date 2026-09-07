@@ -240,7 +240,7 @@ class WorkflowInputValidator:
                 "binding_id": binding_id,
                 "payload_path": [str(item) for item in error.absolute_path],
                 "schema_path": [str(item) for item in error.absolute_schema_path],
-                "reason": error.message,
+                "reason": _build_schema_validation_reason(error),
             },
         )
 
@@ -282,7 +282,7 @@ class WorkflowInputValidator:
                     *[str(item) for item in error.absolute_path],
                 ],
                 "schema_path": [str(item) for item in error.absolute_schema_path],
-                "reason": error.message,
+                "reason": _build_schema_validation_reason(error),
             },
         )
 
@@ -545,9 +545,13 @@ def find_workflow_app_public_contract_issues(
                 )
             if direction == "inputs":
                 transports = item.get("transports")
-                if not isinstance(transports, list) or not transports or any(
-                    not isinstance(value, str) or not value.strip()
-                    for value in transports
+                if (
+                    not isinstance(transports, list)
+                    or not transports
+                    or any(
+                        not isinstance(value, str) or not value.strip()
+                        for value in transports
+                    )
                 ):
                     issues.append(
                         {
@@ -704,6 +708,14 @@ def _contract_item_index(value: object) -> dict[str, dict[str, object]]:
         for item in value
         if isinstance(item, dict) and isinstance(item.get("binding_id"), str)
     }
+
+
+def _build_schema_validation_reason(error: ValidationError) -> str:
+    """返回不包含 instance 或 validator value 的稳定校验摘要。"""
+
+    validator = error.validator
+    keyword = validator.strip() if isinstance(validator, str) else "schema"
+    return f"JSON Schema {keyword or 'schema'} 校验失败"
 
 
 def _read_positive_int(value: object) -> int | None:

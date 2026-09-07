@@ -230,7 +230,7 @@ namespace Amvar.Vision.ContractTests
 
             var response = AMVisionApiResponse.Create(
                 HttpStatusCode.BadRequest,
-                "{\"error_code\":\"invalid_request\",\"error_message\":\"invalid\"}",
+                "{\"error\":{\"code\":\"invalid_request\",\"message\":\"invalid\",\"details\":{}}}",
                 "POST",
                 "/api/v1/workflows/runtime/app-result");
             var httpJson = JToken.Parse(JsonConvert.SerializeObject(
@@ -839,12 +839,12 @@ namespace Amvar.Vision.ContractTests
                     ""trigger_source_id"":""trigger-source-1"",
                     ""event_id"":""event-error"",
                     ""state"":""failed"",
-                    ""error_message"":""bad envelope"",
-                    ""metadata"":{""error_code"":""invalid_request"",""error_details"":{}}
+                    ""error"":{""code"":""invalid_request"",""message"":""bad envelope"",""details"":{}},
+                    ""metadata"":{}
                 }")
             });
             AssertEqual("failed", failed.State, "unified failed result state");
-            AssertEqual("invalid_request", failed.Metadata["error_code"].Value<string>(), "unified failed result code");
+            AssertEqual("invalid_request", failed.Error?.Code, "unified failed result code");
         }
 
         private static void VerifyLocalBufferMappingCache()

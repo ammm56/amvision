@@ -438,11 +438,11 @@ def test_workflow_preview_run_api_marks_timed_out_when_direct_node_exceeds_deadl
     assert get_response.status_code == 200
     preview_payload = create_response.json()
     assert preview_payload["state"] == "timed_out"
-    assert preview_payload["error_message"] == "Workflow 执行超过 deadline"
+    assert preview_payload["error"]["message"] == "Workflow 执行超过 deadline"
     assert preview_payload["outputs"] == {}
     assert preview_payload["template_outputs"] == {}
     assert get_response.json()["state"] == "timed_out"
-    assert get_response.json()["error_message"] == "Workflow 执行超过 deadline"
+    assert get_response.json()["error"]["message"] == "Workflow 执行超过 deadline"
 
 
 def test_workflow_preview_run_api_returns_sync_result_and_append_only_events(
@@ -2500,7 +2500,8 @@ def test_workflow_app_runtime_api_marks_run_timed_out_when_worker_exceeds_timeou
     runtime_payload = get_runtime_response.json()
     assert run_payload["state"] == "timed_out"
     assert (
-        run_payload["error_message"] == "等待 workflow runtime worker 同步调用结果超时"
+        run_payload["error"]["message"]
+        == "等待 workflow runtime worker 同步调用结果超时"
     )
     assert run_payload["outputs"] == {}
     assert get_run_response.json()["state"] == "timed_out"
@@ -2570,9 +2571,7 @@ def test_workflow_app_runtime_node_pack_timeout_kills_generation_and_recovers(
                     "request_timeout_seconds": 10,
                 },
             )
-            workflow_runtime_id = create_runtime_response.json()[
-                "workflow_runtime_id"
-            ]
+            workflow_runtime_id = create_runtime_response.json()["workflow_runtime_id"]
             start_response = client.post(
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/start",
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
@@ -2583,9 +2582,7 @@ def test_workflow_app_runtime_node_pack_timeout_kills_generation_and_recovers(
                 params={"response_mode": "run"},
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
                 json={
-                    "input_bindings": {
-                        "request_text": {"value": "node pack timeout"}
-                    },
+                    "input_bindings": {"request_text": {"value": "node pack timeout"}},
                     "execution_metadata": {"marker": "node-pack-timeout"},
                     "timeout_seconds": 10,
                 },
@@ -2621,10 +2618,10 @@ def test_workflow_app_runtime_node_pack_timeout_kills_generation_and_recovers(
     assert get_run_response.status_code == 200
     assert stop_response.status_code == 200
     run_payload = invoke_response.json()
-    error_details = run_payload["metadata"]["error_details"]
+    error_details = run_payload["error"]["details"]
     assert run_payload["state"] == "timed_out"
-    assert run_payload["error_message"] == "Workflow Node Pack 节点执行超时"
-    assert error_details["error_code"] == "operation_timeout"
+    assert run_payload["error"]["message"] == "Workflow Node Pack 节点执行超时"
+    assert run_payload["error"]["code"] == "operation_timeout"
     assert error_details["timeout_phase"] == "node_pack"
     assert error_details["node_id"] == "sleep"
     assert error_details["node_pack_id"] == "test.process-nodes"
@@ -2729,18 +2726,18 @@ def test_workflow_app_runtime_api_persists_failed_invoke_details(
     assert health_response.status_code == 200
     assert stop_response.status_code == 200
     run_payload = invoke_response.json()
-    error_details = run_payload["metadata"]["error_details"]
+    error_details = run_payload["error"]["details"]
     assert run_payload["state"] == "failed"
-    assert run_payload["error_message"] == "workflow 节点执行失败"
+    assert run_payload["error"]["message"] == "workflow 节点执行失败"
     assert error_details["node_id"] == "explode"
     assert error_details["node_type_id"] == "custom.test.process-fail"
     assert error_details["runtime_kind"] == "python-callable"
     assert error_details["execution_index"] == 1
     assert error_details["sequence_index"] == 1
-    assert error_details["error_type"] == "AssertionError"
-    assert error_details["error_message"] == "process fail"
+    assert "error_type" not in error_details
+    assert "error_message" not in error_details
     assert get_run_response.json()["state"] == "failed"
-    assert get_run_response.json()["metadata"]["error_details"]["node_id"] == "explode"
+    assert get_run_response.json()["error"]["details"]["node_id"] == "explode"
     # 单次 Workflow Run 失败必须返回失败详情，但不能把仍可服务的 worker
     # 误标为 failed；后续调用和显式 restart 都应继续可用。
     assert health_response.json()["observed_state"] == "running"
@@ -3196,9 +3193,9 @@ def test_workflow_app_runtime_async_run_api_can_cancel_running_and_queued_runs(
     assert stop_response.status_code == 200
     assert queued_run_response.json()["state"] == "queued"
     assert queued_final_response.json()["state"] == "cancelled"
-    assert queued_final_response.json()["error_message"] == "workflow run 已取消"
+    assert queued_final_response.json()["error"]["message"] == "workflow run 已取消"
     assert running_final_response.json()["state"] == "cancelled"
-    assert running_final_response.json()["error_message"] == "workflow run 已取消"
+    assert running_final_response.json()["error"]["message"] == "workflow run 已取消"
     assert (
         running_final_response.json()["metadata"]["cancelled_by"]
         == default_principal_id
@@ -3303,15 +3300,15 @@ def test_workflow_app_runtime_async_run_api_persists_failed_state_and_error_deta
     assert stop_response.status_code == 200
 
     final_payload = final_run_response.json()
-    error_details = final_payload["metadata"]["error_details"]
+    error_details = final_payload["error"]["details"]
     assert create_run_response.json()["state"] == "queued"
     assert final_payload["state"] == "failed"
-    assert final_payload["error_message"] == "workflow 节点执行失败"
+    assert final_payload["error"]["message"] == "workflow 节点执行失败"
     assert error_details["node_id"] == "explode"
     assert error_details["node_type_id"] == "custom.test.process-fail"
     assert error_details["runtime_kind"] == "python-callable"
-    assert error_details["error_type"] == "AssertionError"
-    assert error_details["error_message"] == "process fail"
+    assert "error_type" not in error_details
+    assert "error_message" not in error_details
     assert health_response.json()["observed_state"] == "running"
     assert restart_response.json()["observed_state"] == "running"
     assert stop_response.json()["observed_state"] == "stopped"
@@ -3435,7 +3432,7 @@ def test_workflow_app_runtime_async_run_api_marks_timed_out_and_allows_restart(
     assert create_run_response.json()["state"] == "queued"
     assert final_run_response.json()["state"] == "timed_out"
     assert (
-        final_run_response.json()["error_message"]
+        final_run_response.json()["error"]["message"]
         == "等待 workflow runtime worker 同步调用结果超时"
     )
     runtime_event_types = [

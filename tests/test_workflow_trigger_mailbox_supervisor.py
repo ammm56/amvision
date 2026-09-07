@@ -980,7 +980,9 @@ def test_dotnet_sdk_runs_real_prepare_write_request_response_ack_chain(
             assert payload["AttachmentCount"] == 0
             image_payload = runtime.admitted_input_bindings[0]["request_image_ref"]
             assert image_payload["media_type"] == "application/octet-stream"
-            assert image_payload["buffer_ref"]["media_type"] == image_payload["media_type"]
+            assert (
+                image_payload["buffer_ref"]["media_type"] == image_payload["media_type"]
+            )
             deadline = monotonic_ns() + 2_000_000_000
             while (
                 pool.build_status()["active_lease_count"] != 0
@@ -1025,7 +1027,9 @@ def test_dotnet_sdk_event_only_v1_skips_input_local_buffer(
     with _build_pool(tmp_path) as pool:
         supervisor = _build_supervisor(tmp_path, pool, runtime)
         try:
-            route = supervisor.register_trigger_source(_event_source("source-dotnet-event"))
+            route = supervisor.register_trigger_source(
+                _event_source("source-dotnet-event")
+            )
             supervisor.start()
             result_path = tmp_path / "sdk-event-result.json"
             invoke = subprocess.run(
@@ -1055,11 +1059,7 @@ def test_dotnet_sdk_event_only_v1_skips_input_local_buffer(
             assert payload["State"] == "succeeded"
             assert payload["AttachmentCount"] == 0
             assert runtime.admitted_input_bindings == [
-                {
-                    "request_json": {
-                        "value": {"station": 2, "recipe": "3570"}
-                    }
-                }
+                {"request_json": {"value": {"station": 2, "recipe": "3570"}}}
             ]
             assert pool.build_status()["active_lease_count"] == 0
         finally:
@@ -1374,7 +1374,12 @@ def test_same_source_second_prepare_is_immediate_busy(tmp_path: Path) -> None:
                 response = client.read_response(identity=second)
                 assert response is not None
                 assert response.error_code != 0
-                assert response.json_payload()["error_code"] == 4
+                response_payload = response.json_payload()
+                assert (
+                    response_payload["format_id"]
+                    == "amvision.workflow-trigger-result.v1"
+                )
+                assert response_payload["error"]["code"] == "trigger_source_busy"
                 assert pool.build_status()["active_lease_count"] == 1
                 health = supervisor.build_source_status("source-1")
                 assert health["request_count"] == 2
@@ -1823,10 +1828,7 @@ def test_provider_backed_supervisor_can_restart_after_lifespan_stop(
             assert len(created) == 2
             assert supervisor.build_status()["running"] is True
             assert supervisor.executor.build_status()["closed"] is False
-            assert (
-                supervisor.executor.submit(lambda: "ok").result(timeout=1.0)
-                == "ok"
-            )
+            assert supervisor.executor.submit(lambda: "ok").result(timeout=1.0) == "ok"
         finally:
             supervisor.close()
 

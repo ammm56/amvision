@@ -174,9 +174,7 @@ class WorkflowTriggerMailboxServer:
                 "Workflow Trigger response ACK timeout 必须大于 0"
             )
         reject_legacy_workflow_trigger_layout(buffers_root=buffers_root)
-        self.paths = build_workflow_trigger_mailbox_paths(
-            buffers_root=buffers_root
-        )
+        self.paths = build_workflow_trigger_mailbox_paths(buffers_root=buffers_root)
         self.path = self.paths.mmap_path
         self.max_request_timeout_ms = max_request_timeout_ms
         self.response_ack_timeout_ms = response_ack_timeout_ms
@@ -189,8 +187,12 @@ class WorkflowTriggerMailboxServer:
         self._contexts: dict[tuple[int, ...], MailboxRequestContext] = {}
         self._identities: dict[tuple[int, ...], WorkflowTriggerDescriptorIdentity] = {}
         self._extensions: dict[tuple[int, ...], tuple[int, ...]] = {}
-        self._prepare_queue: deque[tuple[MailboxRequestContext, tuple[int, ...]]] = deque()
-        self._request_queue: deque[tuple[MailboxRequestContext, tuple[int, ...]]] = deque()
+        self._prepare_queue: deque[tuple[MailboxRequestContext, tuple[int, ...]]] = (
+            deque()
+        )
+        self._request_queue: deque[tuple[MailboxRequestContext, tuple[int, ...]]] = (
+            deque()
+        )
         self._lock = Lock()
         self._last_timeout_diagnostic: dict[str, int] | None = None
 
@@ -265,10 +267,10 @@ class WorkflowTriggerMailboxServer:
         accepted_timeout_ms = min(current_timeout_ms, timeout_ms)
         accepted_at_ns = identity.deadline_ns - current_timeout_ms * 1_000_000
         updated_extension = contract.pack_descriptor_extension(
-                phase=int(extension[0]),
-                requested_timeout_ms=int(extension[2]),
-                accepted_timeout_ms=accepted_timeout_ms,
-                route_generation=int(extension[4]),
+            phase=int(extension[0]),
+            requested_timeout_ms=int(extension[2]),
+            accepted_timeout_ms=accepted_timeout_ms,
+            route_generation=int(extension[4]),
         )
         context = self._mailbox.update_processing_deadline(
             context,
@@ -297,16 +299,19 @@ class WorkflowTriggerMailboxServer:
             payload=allocation_payload,
             request_id=identity.request_id,
         )
-        if len(wire_bytes) > WORKFLOW_TRIGGER_MAILBOX_PROFILE_V1.inline_response_capacity_bytes:
+        if (
+            len(wire_bytes)
+            > WORKFLOW_TRIGGER_MAILBOX_PROFILE_V1.inline_response_capacity_bytes
+        ):
             raise InvalidRequestError(
                 "Workflow Trigger allocation envelope 超过 64 KiB inline 上限"
             )
         extension = self._require_extension(identity)
         updated_extension = contract.pack_descriptor_extension(
-                phase=contract.DESCRIPTOR_STATE_WRITING,
-                requested_timeout_ms=int(extension[2]),
-                accepted_timeout_ms=int(extension[3]),
-                route_generation=int(extension[4]),
+            phase=contract.DESCRIPTOR_STATE_WRITING,
+            requested_timeout_ms=int(extension[2]),
+            accepted_timeout_ms=int(extension[3]),
+            route_generation=int(extension[4]),
         )
         self._mailbox.publish_response(
             context,
@@ -424,11 +429,11 @@ class WorkflowTriggerMailboxServer:
             wire_segments = self._encode_segments(
                 schema_id=RESPONSE_SCHEMA_ID,
                 payload=json.dumps(
-                    {
-                        "state": "failed",
-                        "error_code": error_code,
-                        "error_message": "Workflow Trigger response 超过 32 MiB 公开正文上限",
-                    },
+                    _build_public_trigger_error_payload(
+                        fallback_event_id=f"trigger-error-{identity.request_id.hex}",
+                        code="trigger_response_too_large",
+                        message="Workflow Trigger response 超过 32 MiB 公开正文上限",
+                    ),
                     ensure_ascii=False,
                     separators=(",", ":"),
                 ).encode("utf-8"),
@@ -436,14 +441,14 @@ class WorkflowTriggerMailboxServer:
             )
         extension = self._require_extension(identity)
         updated_extension = contract.pack_descriptor_extension(
-                phase=contract.DESCRIPTOR_STATE_RESPONSE,
-                cancel_reason=int(extension[1]),
-                requested_timeout_ms=int(extension[2]),
-                accepted_timeout_ms=int(extension[3]),
-                route_generation=int(extension[4]),
-                error_code=error_code,
-                response_output_lease_count=response_output_lease_count,
-                handoff_state=handoff_state,
+            phase=contract.DESCRIPTOR_STATE_RESPONSE,
+            cancel_reason=int(extension[1]),
+            requested_timeout_ms=int(extension[2]),
+            accepted_timeout_ms=int(extension[3]),
+            route_generation=int(extension[4]),
+            error_code=error_code,
+            response_output_lease_count=response_output_lease_count,
+            handoff_state=handoff_state,
         )
         try:
             self._mailbox.publish_response_segments_with_receipt(
@@ -491,6 +496,7 @@ class WorkflowTriggerMailboxServer:
         identity: WorkflowTriggerDescriptorIdentity,
         error_code: int,
         message: str,
+        public_error_code: str | None = None,
         expected_states: set[int] | None = None,
     ) -> int:
         """发布不包含图片 locator 的稳定 JSON 错误。"""
@@ -498,11 +504,11 @@ class WorkflowTriggerMailboxServer:
         del expected_states
         return self.publish_json_response(
             identity=identity,
-            payload={
-                "state": "failed",
-                "error_code": error_code,
-                "error_message": message,
-            },
+            payload=_build_public_trigger_error_payload(
+                fallback_event_id=f"trigger-error-{identity.request_id.hex}",
+                code=public_error_code or _mailbox_public_error_code(error_code),
+                message=message,
+            ),
             error_code=error_code,
         )
 
@@ -669,7 +675,9 @@ class WorkflowTriggerMailboxServer:
 
         return _unpack_extension(self._mailbox.read_processing_extension(context))
 
-    def _identity(self, context: MailboxRequestContext) -> WorkflowTriggerDescriptorIdentity:
+    def _identity(
+        self, context: MailboxRequestContext
+    ) -> WorkflowTriggerDescriptorIdentity:
         """从通用 request context 构造业务 identity。"""
 
         transport = self._mailbox.transport_identity(context)
@@ -759,15 +767,14 @@ class WorkflowTriggerMailboxServer:
         except ChannelInvalidMessageError as error:
             raise InvalidRequestError(str(error)) from error
 
+
 class WorkflowTriggerMailboxClient:
     """Python SDK harness；.NET SDK 使用相同 common/Mailbox/extension contract。"""
 
     def __init__(self, *, buffers_root: str | Path) -> None:
         """连接全局 Trigger Mailbox owner。"""
 
-        self.paths = build_workflow_trigger_mailbox_paths(
-            buffers_root=buffers_root
-        )
+        self.paths = build_workflow_trigger_mailbox_paths(buffers_root=buffers_root)
         self.path = self.paths.mmap_path
         try:
             self._mailbox = MmapMailboxClient(
@@ -1041,7 +1048,9 @@ class WorkflowTriggerMailboxClient:
                 descriptor_extension=extension,
             )
         except (LocalMessageChannelError, ValueError) as error:
-            raise InvalidRequestError("Workflow Trigger descriptor identity 已失效") from error
+            raise InvalidRequestError(
+                "Workflow Trigger descriptor identity 已失效"
+            ) from error
 
     def close(self) -> None:
         """关闭 client view。"""
@@ -1136,6 +1145,52 @@ def _business_error_from_transport(error_code: int) -> int:
         ),
         MAILBOX_ERROR_SERVER_FAILURE: contract.ERROR_CODE_PROTOCOL_ERROR,
     }.get(error_code, contract.ERROR_CODE_PROTOCOL_ERROR)
+
+
+def _build_public_trigger_error_payload(
+    *,
+    fallback_event_id: str,
+    code: str,
+    message: str,
+) -> dict[str, object]:
+    """构造与 ZeroMQ 同形的无附件底层 Trigger 错误结果。"""
+    return {
+        "format_id": "amvision.workflow-trigger-result.v1",
+        "trigger_source_id": "local-shared-memory",
+        "event_id": fallback_event_id,
+        "state": "failed",
+        "workflow_run_id": None,
+        "response_payload": {},
+        "error": {"code": code, "message": message, "details": {}},
+        "metadata": {},
+    }
+
+
+def _mailbox_public_error_code(error_code: int) -> str:
+    """把 mailbox 整数状态映射为公开稳定错误码。"""
+
+    names = {
+        contract.ERROR_CODE_INVALID_REQUEST: "invalid_request",
+        contract.ERROR_CODE_TRIGGER_SOURCE_NOT_FOUND: "trigger_source_not_found",
+        contract.ERROR_CODE_ROUTE_GENERATION_MISMATCH: "route_generation_mismatch",
+        contract.ERROR_CODE_TRIGGER_SOURCE_BUSY: "trigger_source_busy",
+        contract.ERROR_CODE_WORKFLOW_RUNTIME_BUSY: "workflow_runtime_busy",
+        contract.ERROR_CODE_WORKFLOW_EXECUTOR_BUSY: "workflow_executor_busy",
+        contract.ERROR_CODE_LOCAL_BUFFER_CAPACITY_EXHAUSTED: "local_buffer_capacity_exhausted",
+        contract.ERROR_CODE_LOCAL_BUFFER_OUTPUT_CAPACITY_EXHAUSTED: "local_buffer_output_capacity_exhausted",
+        contract.ERROR_CODE_TRIGGER_REQUEST_TOO_LARGE: "trigger_request_too_large",
+        contract.ERROR_CODE_TRIGGER_RESPONSE_TOO_LARGE: "trigger_response_too_large",
+        contract.ERROR_CODE_TRIGGER_RESPONSE_CAPACITY_EXHAUSTED: "trigger_response_capacity_exhausted",
+        contract.ERROR_CODE_CHECKSUM_MISMATCH: "checksum_mismatch",
+        contract.ERROR_CODE_IDENTITY_MISMATCH: "identity_mismatch",
+        contract.ERROR_CODE_DEADLINE_EXCEEDED: "deadline_exceeded",
+        contract.ERROR_CODE_CANCELLED: "cancelled",
+        contract.ERROR_CODE_WORKFLOW_EXECUTION_FAILED: "workflow_execution_failed",
+        contract.ERROR_CODE_OUTPUT_HANDOFF_FAILED: "output_handoff_failed",
+        contract.ERROR_CODE_PROTOCOL_ERROR: "protocol_error",
+        contract.ERROR_CODE_SERVER_UNAVAILABLE: "server_unavailable",
+    }
+    return names.get(error_code, "protocol_error")
 
 
 __all__ = [

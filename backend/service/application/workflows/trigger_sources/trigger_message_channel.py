@@ -10,6 +10,7 @@ from backend.service.application.message_channels.codec import (
     decode_raw_json_object_envelope,
     encode_raw_json_object_envelope,
 )
+
 PREPARE_SCHEMA_ID = "amvision.workflow-trigger.prepare.v1"
 ALLOCATION_SCHEMA_ID = "amvision.workflow-trigger.allocation.v1"
 REQUEST_SCHEMA_ID = "amvision.workflow-trigger.request.v1"
@@ -93,6 +94,7 @@ class WorkflowTriggerMailboxServerPort(Protocol):
         identity: WorkflowTriggerDescriptorIdentity,
         error_code: int,
         message: str,
+        public_error_code: str | None = None,
         expected_states: set[int] | None = None,
     ) -> int:
         """发布稳定错误。"""

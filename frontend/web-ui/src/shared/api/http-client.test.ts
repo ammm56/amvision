@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { ApiError } from './error'
 import { apiRequest, apiRequestWithHeaders } from './http-client'
 
 function jsonResponse(payload: unknown, status = 200, headers?: HeadersInit): Response {
@@ -74,5 +75,28 @@ describe('http client transient read retries', () => {
       }),
     ).rejects.toMatchObject({ name: 'AbortError' })
     expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('reads only the unified public error object and request id header', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({
+      error: {
+        code: 'invalid_request',
+        message: 'invalid payload',
+        details: { binding_id: 'request_json' },
+      },
+    }, 400, { 'x-request-id': 'request-error-1' }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const failure = await apiRequest('/invalid', { transientRetryBaseDelayMs: 0 })
+      .then(() => null, (error: unknown) => error)
+
+    expect(failure).toBeInstanceOf(ApiError)
+    expect(failure).toMatchObject({
+      status: 400,
+      code: 'invalid_request',
+      message: 'invalid payload',
+      details: { binding_id: 'request_json' },
+      requestId: 'request-error-1',
+    })
   })
 })

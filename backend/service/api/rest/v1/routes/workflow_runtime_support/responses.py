@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from backend.contracts.workflows import (
+    ErrorContract,
     WorkflowAppRuntimeEventContract,
     WorkflowAppRuntimeInstanceContract,
     WorkflowAppRuntimeContract,
@@ -15,7 +16,13 @@ from backend.contracts.workflows import (
     WorkflowRuntimeRevisionContract,
 )
 from backend.service.application.errors import ResourceNotFoundError
-from backend.service.application.workflows.workflow_service import LocalWorkflowJsonService
+from backend.service.application.public_errors import (
+    build_workflow_error_contract,
+    without_public_error_metadata,
+)
+from backend.service.application.workflows.workflow_service import (
+    LocalWorkflowJsonService,
+)
 from backend.service.domain.workflows.workflow_runtime_records import (
     WorkflowAppRuntime,
     WorkflowAppRuntimeEvent,
@@ -28,7 +35,9 @@ from backend.service.domain.workflows.workflow_runtime_records import (
 )
 
 
-def build_preview_run_contract(preview_run: WorkflowPreviewRun) -> WorkflowPreviewRunContract:
+def build_preview_run_contract(
+    preview_run: WorkflowPreviewRun,
+) -> WorkflowPreviewRunContract:
     """把 WorkflowPreviewRun 领域对象转换为公开规则。"""
 
     return WorkflowPreviewRunContract(
@@ -47,9 +56,13 @@ def build_preview_run_contract(preview_run: WorkflowPreviewRun) -> WorkflowPrevi
         outputs=dict(preview_run.outputs),
         template_outputs=dict(preview_run.template_outputs),
         node_records=[dict(item) for item in preview_run.node_records],
-        error_message=preview_run.error_message,
+        error=_build_record_error(
+            state=preview_run.state,
+            error_message=preview_run.error_message,
+            metadata=preview_run.metadata,
+        ),
         retention_until=preview_run.retention_until,
-        metadata=dict(preview_run.metadata),
+        metadata=without_public_error_metadata(preview_run.metadata),
     )
 
 
@@ -69,7 +82,11 @@ def build_preview_run_summary_contract(
         finished_at=preview_run.finished_at,
         created_by=preview_run.created_by,
         timeout_seconds=preview_run.timeout_seconds,
-        error_message=preview_run.error_message,
+        error=_build_record_error(
+            state=preview_run.state,
+            error_message=preview_run.error_message,
+            metadata=preview_run.metadata,
+        ),
         retention_until=preview_run.retention_until,
     )
 
@@ -85,7 +102,7 @@ def build_preview_run_event_contract(
         event_type=preview_run_event.event_type,
         created_at=preview_run_event.created_at,
         message=preview_run_event.message,
-        payload=dict(preview_run_event.payload),
+        payload=_build_public_event_payload(preview_run_event.payload),
     )
 
 
@@ -230,7 +247,9 @@ def read_resource_updated_by(metadata: dict[str, object]) -> str | None:
     return normalized_updated_by or None
 
 
-def build_execution_policy_contract(execution_policy: WorkflowExecutionPolicy) -> WorkflowExecutionPolicyContract:
+def build_execution_policy_contract(
+    execution_policy: WorkflowExecutionPolicy,
+) -> WorkflowExecutionPolicyContract:
     """把 WorkflowExecutionPolicy 领域对象转换为公开规则。"""
 
     return WorkflowExecutionPolicyContract(
@@ -283,9 +302,18 @@ def build_workflow_run_contract(
             if template_outputs is not None
             else dict(workflow_run.template_outputs)
         ),
-        node_records=[dict(item) for item in (node_records if node_records is not None else workflow_run.node_records)],
-        error_message=workflow_run.error_message,
-        metadata=dict(workflow_run.metadata),
+        node_records=[
+            dict(item)
+            for item in (
+                node_records if node_records is not None else workflow_run.node_records
+            )
+        ],
+        error=_build_record_error(
+            state=workflow_run.state,
+            error_message=workflow_run.error_message,
+            metadata=workflow_run.metadata,
+        ),
+        metadata=without_public_error_metadata(workflow_run.metadata),
     )
 
 
@@ -301,14 +329,16 @@ def build_workflow_app_invoke_result_payload(
     """
 
     if workflow_run.state != "succeeded":
+        error = _build_record_error(
+            state=workflow_run.state,
+            error_message=workflow_run.error_message,
+            metadata=workflow_run.metadata,
+        )
         payload: dict[str, object] = {
             "workflow_run_id": workflow_run.workflow_run_id,
             "state": workflow_run.state,
-            "error_message": workflow_run.error_message,
+            "error": error.model_dump(mode="json") if error is not None else None,
         }
-        error_details = dict(workflow_run.metadata).get("error_details")
-        if error_details is not None:
-            payload["error_details"] = error_details
         return payload
 
     if len(outputs) == 1:
@@ -316,7 +346,9 @@ def build_workflow_app_invoke_result_payload(
     return dict(outputs)
 
 
-def build_workflow_run_event_contract(workflow_run_event: WorkflowRunEvent) -> WorkflowRunEventContract:
+def build_workflow_run_event_contract(
+    workflow_run_event: WorkflowRunEvent,
+) -> WorkflowRunEventContract:
     """把 WorkflowRun 事件转换为公开规则。"""
 
     return WorkflowRunEventContract(
@@ -326,8 +358,48 @@ def build_workflow_run_event_contract(workflow_run_event: WorkflowRunEvent) -> W
         event_type=workflow_run_event.event_type,
         created_at=workflow_run_event.created_at,
         message=workflow_run_event.message,
-        payload=dict(workflow_run_event.payload),
+        payload=_build_public_event_payload(workflow_run_event.payload),
     )
+
+
+def _build_record_error(
+    *,
+    state: str,
+    error_message: str | None,
+    metadata: dict[str, object],
+) -> ErrorContract | None:
+    """把持久化记录中的内部错误字段映射为公开错误对象。"""
+
+    raw_error_details = metadata.get("error_details")
+    error_details = raw_error_details if isinstance(raw_error_details, dict) else None
+    return build_workflow_error_contract(
+        state=state,
+        error_message=error_message,
+        error_details=error_details,
+    )
+
+
+def _build_public_event_payload(payload: dict[str, object]) -> dict[str, object]:
+    """移除事件中的平行错误字段，并输出统一 error 对象。"""
+
+    result = dict(payload)
+    raw_error_message = result.pop("error_message", None)
+    raw_error_details = result.pop("error_details", None)
+    if raw_error_message is None and raw_error_details is None:
+        return result
+    raw_state = result.get("state")
+    state = raw_state if isinstance(raw_state, str) else "failed"
+    if state not in {"failed", "timed_out", "cancelled"}:
+        state = "failed"
+    error = build_workflow_error_contract(
+        state=state,
+        error_message=raw_error_message if isinstance(raw_error_message, str) else None,
+        error_details=raw_error_details
+        if isinstance(raw_error_details, dict)
+        else None,
+    )
+    result["error"] = error.model_dump(mode="json") if error is not None else None
+    return result
 
 
 def build_workflow_app_runtime_instance_contract(
@@ -343,7 +415,9 @@ def build_workflow_app_runtime_instance_contract(
         current_run_id=getattr(runtime_instance, "current_run_id", None),
         started_at=getattr(runtime_instance, "started_at", None),
         heartbeat_at=getattr(runtime_instance, "heartbeat_at", None),
-        loaded_snapshot_fingerprint=getattr(runtime_instance, "loaded_snapshot_fingerprint", None),
+        loaded_snapshot_fingerprint=getattr(
+            runtime_instance, "loaded_snapshot_fingerprint", None
+        ),
         last_error=getattr(runtime_instance, "last_error", None),
         health_summary=dict(getattr(runtime_instance, "health_summary", {}) or {}),
     )

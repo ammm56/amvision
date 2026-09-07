@@ -620,9 +620,12 @@ def test_workflow_app_runtime_invoke_api_invalid_image_base64_keeps_runtime_runn
 
     run_payload = invoke_response.json()
     assert run_payload["state"] == "failed"
-    assert run_payload["error_message"] == "image-base64 payload 不是有效的 base64 图片"
-    assert run_payload["metadata"]["error_details"]["error_code"] == "invalid_request"
-    assert run_payload["metadata"]["error_details"]["node_id"] == "decode_request_image"
+    assert (
+        run_payload["error"]["message"] == "image-base64 payload 不是有效的 base64 图片"
+    )
+    assert run_payload["error"]["code"] == "invalid_request"
+    assert run_payload["error"]["details"]["node_id"] == "decode_request_image"
+    assert "error_details" not in run_payload["metadata"]
 
     health_payload = health_response.json()
     assert health_payload["observed_state"] == "running"
@@ -692,9 +695,9 @@ def test_workflow_app_runtime_invoke_api_invalid_image_content_keeps_runtime_run
 
     run_payload = invoke_response.json()
     assert run_payload["state"] == "failed"
-    assert run_payload["error_message"] == "图片节点无法读取输入图片"
-    error_details = run_payload["metadata"]["error_details"]
-    assert error_details["error_code"] == "invalid_request"
+    assert run_payload["error"]["message"] == "图片节点无法读取输入图片"
+    assert run_payload["error"]["code"] == "invalid_request"
+    error_details = run_payload["error"]["details"]
     assert error_details["node_id"] == "blur_image"
     assert error_details["transport_kind"] == "memory"
     assert error_details["media_type"] == "image/png"
@@ -761,9 +764,9 @@ def test_workflow_app_runtime_invoke_api_invalid_image_content_keeps_runtime_run
 
     run_payload = invoke_response.json()
     assert run_payload["state"] == "failed"
-    assert run_payload["error_message"] == "图片节点无法读取输入图片"
-    error_details = run_payload["metadata"]["error_details"]
-    assert error_details["error_code"] == "invalid_request"
+    assert run_payload["error"]["message"] == "图片节点无法读取输入图片"
+    assert run_payload["error"]["code"] == "invalid_request"
+    error_details = run_payload["error"]["details"]
     assert error_details["transport_kind"] == "memory"
     assert error_details["media_type"] == "image/png"
 
@@ -856,17 +859,20 @@ def test_sync_invoke_api_preserves_worker_error_and_terminalizes_dispatch_record
         "code": "service_configuration_error",
         "message": "worker 返回的运行配置无效",
         "details": {"reason": "deterministic-worker-error"},
-        "request_id": invoke_response.json()["error"]["request_id"],
     }
+    assert invoke_response.headers["x-request-id"]
     assert get_run_response.status_code == 200
     run_payload = get_run_response.json()
     assert run_payload["state"] == "failed"
     assert run_payload["finished_at"] is not None
-    assert run_payload["error_message"] == "worker 返回的运行配置无效"
-    assert run_payload["metadata"]["error_details"] == {
-        "error_code": "service_configuration_error",
-        "reason": "deterministic-worker-error",
+    assert run_payload["error"] == {
+        "code": "service_configuration_error",
+        "message": "worker 返回的运行配置无效",
+        "details": {
+            "reason": "deterministic-worker-error",
+        },
     }
+    assert "error_details" not in run_payload["metadata"]
     assert active_runs == ()
     assert stop_response.status_code == 200
     assert delete_response.status_code == 204
@@ -1194,9 +1200,7 @@ def test_preview_multipart_streams_ordered_files_and_cleans_inputs(
     )
     template, application = _build_file_metadata_application(multiple=True)
     workflow_service.save_template(project_id="project-1", template=template)
-    workflow_service.save_application(
-        project_id="project-1", application=application
-    )
+    workflow_service.save_application(project_id="project-1", application=application)
     try:
         with client:
             response = client.post(
@@ -1210,9 +1214,7 @@ def test_preview_multipart_streams_ordered_files_and_cleans_inputs(
                                 "application_id": application.application_id
                             },
                             "input_bindings": {},
-                            "execution_metadata": {
-                                "scenario": "typed-preview-files"
-                            },
+                            "execution_metadata": {"scenario": "typed-preview-files"},
                         }
                     )
                 },

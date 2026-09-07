@@ -20,6 +20,10 @@ from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.nodes.runtime_support import ExecutionImageRegistry
 from backend.runtime.processes import configure_managed_child_signals
 from backend.service.application.errors import InvalidRequestError, ServiceError
+from backend.service.application.public_errors import (
+    build_error_contract,
+    build_service_error_contract,
+)
 from backend.service.application.local_buffers import (
     LocalBufferBrokerClient,
     LocalBufferBrokerEventChannel,
@@ -114,7 +118,8 @@ def run_workflow_runtime_worker_process(
     storage_image_cache: ExecutionImageRegistry | None = None
     preview_sender = (
         RuntimePreviewSender(preview_socket, preview_observed)
-        if preview_socket is not None else None
+        if preview_socket is not None
+        else None
     )
     preview_sequence = 0
     try:
@@ -289,9 +294,7 @@ def run_workflow_runtime_worker_process(
                 compute_workflow_app_content_fingerprint_from_artifacts(
                     application=snapshot_application_payload,
                     template=snapshot_template_payload,
-                    contract=dataset_storage.read_json(
-                        contract_snapshot_object_key
-                    ),
+                    contract=dataset_storage.read_json(contract_snapshot_object_key),
                     dependencies=dataset_storage.read_json(
                         dependency_manifest_object_key
                     ),
@@ -305,9 +308,7 @@ def run_workflow_runtime_worker_process(
                     "workflow runtime worker 缺少冻结版本文件引用",
                     details={
                         "workflow_app_version_id": workflow_app_version_id,
-                        "contract_snapshot_object_key": (
-                            contract_snapshot_object_key
-                        ),
+                        "contract_snapshot_object_key": (contract_snapshot_object_key),
                         "dependency_manifest_object_key": (
                             dependency_manifest_object_key
                         ),
@@ -558,11 +559,13 @@ def run_workflow_runtime_worker_process(
                 current_run_id = workflow_run_id
             preview_sequence += 1
             execution_metadata.pop(PREVIEW_CAPTURE_KEY, None)
-            preview_capture = preview_sender.begin() if preview_sender is not None else None
+            preview_capture = (
+                preview_sender.begin() if preview_sender is not None else None
+            )
             if preview_capture is not None:
                 execution_metadata[PREVIEW_CAPTURE_KEY] = preview_capture
             preview_state = "failed"
-            preview_error: str | None = None
+            preview_error: dict[str, object] | None = None
             try:
                 worker_execute_started_at = perf_counter()
                 execution_result = snapshot_execution_service.execute(
@@ -631,7 +634,10 @@ def run_workflow_runtime_worker_process(
                     )
                 )
             except InvalidRequestError as exc:
-                preview_error = exc.message
+                if preview_capture is not None:
+                    preview_error = build_service_error_contract(exc).model_dump(
+                        mode="json"
+                    )
                 with state_lock:
                     current_observed_state = "running"
                     current_last_error = None
@@ -656,7 +662,10 @@ def run_workflow_runtime_worker_process(
                     )
                 )
             except ServiceError as exc:
-                preview_error = exc.message
+                if preview_capture is not None:
+                    preview_error = build_service_error_contract(exc).model_dump(
+                        mode="json"
+                    )
                 with state_lock:
                     # 单次 Workflow Run 的领域/依赖错误不代表 worker 进程失效；
                     # worker 仍可继续接收下一条请求，健康状态保持 running。
@@ -683,7 +692,11 @@ def run_workflow_runtime_worker_process(
                     )
                 )
             except Exception as exc:  # pragma: no cover - 子进程兜底错误封装
-                preview_error = str(exc)
+                if preview_capture is not None:
+                    preview_error = build_error_contract(
+                        code="workflow_execution_failed",
+                        message="Workflow 执行失败",
+                    ).model_dump(mode="json")
                 with state_lock:
                     current_observed_state = "failed"
                     current_last_error = "workflow runtime worker 执行失败"
@@ -711,21 +724,24 @@ def run_workflow_runtime_worker_process(
             finally:
                 if preview_capture is not None and preview_sender is not None:
                     # 原响应已入业务通道；显示编码和发送在独立线程进行。
-                    preview_sender.finish(preview_capture, {
-                        "workflow_runtime_id": workflow_runtime_id,
-                        "workflow_runtime_revision_id": workflow_runtime_revision_id,
-                        "workflow_app_version_id": workflow_app_version_id,
-                        "runtime_generation": runtime_generation,
-                        "worker_instance_id": runtime_instance_id,
-                        "snapshot_fingerprint": snapshot_fingerprint,
-                        "project_id": snapshot_project_id,
-                        "application_id": application_id,
-                        "workflow_run_id": workflow_run_id,
-                        "sequence": preview_sequence,
-                        "state": preview_state,
-                        "error_message": preview_error,
-                        "finished_at": now_isoformat(),
-                    })
+                    preview_sender.finish(
+                        preview_capture,
+                        {
+                            "workflow_runtime_id": workflow_runtime_id,
+                            "workflow_runtime_revision_id": workflow_runtime_revision_id,
+                            "workflow_app_version_id": workflow_app_version_id,
+                            "runtime_generation": runtime_generation,
+                            "worker_instance_id": runtime_instance_id,
+                            "snapshot_fingerprint": snapshot_fingerprint,
+                            "project_id": snapshot_project_id,
+                            "application_id": application_id,
+                            "workflow_run_id": workflow_run_id,
+                            "sequence": preview_sequence,
+                            "state": preview_state,
+                            "error": preview_error,
+                            "finished_at": now_isoformat(),
+                        },
+                    )
                     preview_capture.records.clear()
                 execution_metadata.pop(PREVIEW_CAPTURE_KEY, None)
                 preview_capture = None

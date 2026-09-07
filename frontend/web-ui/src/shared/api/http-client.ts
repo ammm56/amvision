@@ -78,19 +78,7 @@ async function parseErrorPayload(response: Response): Promise<{ message: string;
         details: errorRecord.details,
       }
     }
-    const detail = payload.detail
-    if (typeof detail === 'string') {
-      return { message: detail }
-    }
-    if (detail && typeof detail === 'object') {
-      const detailRecord = detail as Record<string, unknown>
-      return {
-        message: String(detailRecord.message ?? payload.message ?? response.statusText),
-        code: typeof detailRecord.code === 'string' ? detailRecord.code : undefined,
-        details: detailRecord.details,
-      }
-    }
-    return { message: String(payload.message ?? response.statusText) }
+    return { message: response.statusText || translate('errors.requestFailed') }
   } catch {
     return { message: response.statusText || translate('errors.requestFailed') }
   }

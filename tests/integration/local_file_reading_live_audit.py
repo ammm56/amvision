@@ -41,7 +41,9 @@ def main():
     parser.add_argument("--soak-interval-seconds", type=float, default=3)
     args = parser.parse_args()
     if args.calls < 1 or args.soak_seconds < 0 or args.soak_interval_seconds <= 0:
-        parser.error("calls 必须为正数，soak-seconds 非负，soak-interval-seconds 为正数")
+        parser.error(
+            "calls 必须为正数，soak-seconds 非负，soak-interval-seconds 为正数"
+        )
     backend_created_at = psutil.Process(args.backend_pid).create_time()
     original = json.loads(args.report.read_text(encoding="utf-8"))
     root = Path(original["fixture_root"]).resolve()
@@ -63,12 +65,17 @@ def main():
             if runtime["metadata"].get("asset_kind") != "local-file-reading-validation":
                 raise ValueError("非本次验证资产")
             runtime_health = live.api(
-                "GET", f"/workflows/app-runtimes/{resource['workflow_runtime_id']}/health"
+                "GET",
+                f"/workflows/app-runtimes/{resource['workflow_runtime_id']}/health",
             )
             trigger_health = live.api(
-                "GET", f"/workflows/trigger-sources/{resource['trigger_source_id']}/health"
+                "GET",
+                f"/workflows/trigger-sources/{resource['trigger_source_id']}/health",
             )
-            if runtime_health["observed_state"] != "stopped" or trigger_health["enabled"]:
+            if (
+                runtime_health["observed_state"] != "stopped"
+                or trigger_health["enabled"]
+            ):
                 raise ValueError("验证资源必须先处于 Runtime 停止、Trigger 禁用状态")
         live.resources = report["resources"]
         latest, event = live.resources
@@ -160,7 +167,7 @@ def main():
             assert bad["state"] == "failed", bad
             report["missing_file"] = {
                 "state": bad["state"],
-                "error_details": bad.get("error_details"),
+                "error": bad.get("error"),
             }
 
             for resource in live.resources:

@@ -44,9 +44,13 @@ class WorkflowTriggerDispatchResult:
 
     @property
     def error_message(self) -> str | None:
-        """返回公开错误消息。"""
+        """返回公开错误对象中的消息，供进程内状态观测使用。"""
 
-        return self.trigger_result.error_message
+        return (
+            self.trigger_result.error.message
+            if self.trigger_result.error is not None
+            else None
+        )
 
     @property
     def response_payload(self) -> dict[str, object]:

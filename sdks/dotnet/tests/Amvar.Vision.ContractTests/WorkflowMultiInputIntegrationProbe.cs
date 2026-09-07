@@ -144,7 +144,7 @@ namespace Amvar.Vision.ContractTests
             }
             if (!string.Equals(state, "succeeded", StringComparison.OrdinalIgnoreCase))
             {
-                var errorMessage = result.BodyJson["error_message"]?.Value<string>()
+                var errorMessage = result.BodyJson["error"]?["message"]?.Value<string>()
                     ?? "Workflow output does not contain a successful state or code.";
                 throw new InvalidOperationException(
                     "HTTP Workflow result failed: " + errorMessage);
@@ -314,7 +314,7 @@ namespace Amvar.Vision.ContractTests
             if (!string.Equals(result.State, "succeeded", StringComparison.OrdinalIgnoreCase))
             {
                 throw new InvalidOperationException(
-                    transport + " Workflow result failed: " + result.ErrorMessage);
+                    transport + " Workflow result failed: " + result.Error?.Message);
             }
         }
 

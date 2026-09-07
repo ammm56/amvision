@@ -22,6 +22,10 @@ from backend.service.application.errors import (
     ServiceConfigurationError,
     ServiceError,
 )
+from backend.service.application.public_errors import (
+    build_error_contract,
+    build_service_error_contract,
+)
 from backend.service.application.images.image_matrix import (
     IMAGE_MEDIA_TYPE_RAW,
     validate_raw_bgr24_bytes,
@@ -390,9 +394,7 @@ class ZeroMqTriggerAdapter:
             **_counter_fields("error_count", state.error_count),
             **_counter_fields("timeout_count", state.timeout_count),
             **_counter_fields("busy_count", state.busy_count),
-            **_counter_fields(
-                "capacity_reject_count", state.capacity_reject_count
-            ),
+            **_counter_fields("capacity_reject_count", state.capacity_reject_count),
             **self._transport_registry.snapshot(),
             "transport_timings": transport_timings,
         }
@@ -522,9 +524,7 @@ class ZeroMqTriggerAdapter:
         if prepared is not None and prepared.physical_payloads:
             raise InvalidRequestError("图片结果必须通过 tracked ZeroMQ multipart 发送")
 
-        return [
-            _to_json_bytes(dispatch_result.trigger_result.model_dump(mode="json"))
-        ]
+        return [_to_json_bytes(dispatch_result.trigger_result.model_dump(mode="json"))]
 
     def build_error_reply_frames(
         self,
@@ -534,17 +534,16 @@ class ZeroMqTriggerAdapter:
     ) -> list[bytes]:
         """把异常转换为 ZeroMQ 错误 reply 帧。"""
 
-        error_code = error.code if isinstance(error, ServiceError) else "internal_error"
-        error_message = (
-            error.message if isinstance(error, ServiceError) else error.__class__.__name__
+        public_error = (
+            build_service_error_contract(error)
+            if isinstance(error, ServiceError)
+            else build_error_contract(code="internal_error", message="内部错误")
         )
-        details = dict(error.details) if isinstance(error, ServiceError) else {}
         result = TriggerResultContract(
             trigger_source_id=trigger_source_id,
             event_id=f"trigger-error-{uuid4().hex}",
             state="failed",
-            error_message=error_message,
-            metadata={"error_code": error_code, "error_details": details},
+            error=public_error,
         )
         return [_to_json_bytes(result.model_dump(mode="json"))]
 
@@ -698,7 +697,9 @@ class ZeroMqTriggerAdapter:
             )
             manifest_bytes = self._serialize_result_manifest(manifest)
             if len(manifest_bytes) > self.runtime_config.max_message_size_bytes:
-                raise InvalidRequestError("ZeroMQ Result manifest 超过单 frame 大小限制")
+                raise InvalidRequestError(
+                    "ZeroMQ Result manifest 超过单 frame 大小限制"
+                )
             trackers = tuple(
                 tracker
                 for frame in image_frames
@@ -778,7 +779,9 @@ class ZeroMqTriggerAdapter:
         serialize_ms = _elapsed_ms(serialize_started_at)
         self._record_transport_timing("response_json_serialize_ms", serialize_ms)
         metadata = manifest.get("metadata")
-        if not isinstance(metadata, dict) or not isinstance(metadata.get("timings"), dict):
+        if not isinstance(metadata, dict) or not isinstance(
+            metadata.get("timings"), dict
+        ):
             return manifest_bytes
         metadata_payload = dict(metadata)
         timings = dict(metadata_payload["timings"])
@@ -986,13 +989,16 @@ class ZeroMqTriggerAdapter:
         """把 TriggerResult 计入 adapter health。"""
 
         error_code = read_trigger_result_error_code(trigger_result)
+        error_message = (
+            trigger_result.error.message if trigger_result.error is not None else None
+        )
         if trigger_result.state == "timed_out":
             increment_safe_counter(state.timeout_count)
             with state.lifecycle_lock:
-                state.last_error = trigger_result.error_message
+                state.last_error = error_message
                 state.recent_error = _build_recent_error(
                     error_code=error_code or "operation_timeout",
-                    error_message=trigger_result.error_message,
+                    error_message=error_message,
                 )
             return
         if trigger_result.state == "failed":
@@ -1002,10 +1008,10 @@ class ZeroMqTriggerAdapter:
             if error_code in CAPACITY_ERROR_CODES:
                 increment_safe_counter(state.capacity_reject_count)
             with state.lifecycle_lock:
-                state.last_error = trigger_result.error_message
+                state.last_error = error_message
                 state.recent_error = _build_recent_error(
                     error_code=error_code or "workflow_execution_failed",
-                    error_message=trigger_result.error_message,
+                    error_message=error_message,
                 )
             return
         increment_safe_counter(state.submitted_count)

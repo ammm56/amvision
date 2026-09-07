@@ -46,7 +46,7 @@ WebSocket 使用现有鉴权：第三方客户端可传 `Authorization: Bearer <
   "workflow_run_id": "workflow-run-<uuid>",
   "sequence": 12,
   "state": "succeeded",
-  "error_message": null,
+  "error": null,
   "display_error": null,
   "finished_at": "2026-09-04T12:00:00+00:00",
   "displays": [
@@ -86,6 +86,8 @@ WebSocket 使用现有鉴权：第三方客户端可传 `Authorization: Bearer <
 | Worker 在途副本 | 最多一份正在收集或发送的 Run；忙时不捕获新显示 |
 | Worker 到 backend 发送 | 独立 socket，2 秒发送超时；不使用业务响应/节点超时控制通道 |
 | 服务端显示持久化 | 无数据库记录、无历史缓存、无重放 |
+
+`error` 表示 Workflow 执行错误，`display_error` 表示 Preview 数据提取、容量或显示通道错误；两个字段均为统一的 `code/message/details` 对象或 null，二者不能互相覆盖。
 
 捕获预算按本次累计复制工作计数；循环多次更新同一端口也计入预算。超出限制会清空本次 `displays` 并给出 `display_error`，不会改变业务执行结果。最终编码后再次核对 64 MiB 长度。容量限制不是进程内存承诺：结构复制、编码/解码、浏览器图片解码和不同客户端的网络在途数据仍有额外峰值。
 
