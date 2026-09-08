@@ -59,7 +59,9 @@ describe('AppSidebar', () => {
     const expandButton = wrapper.get('.app-sidebar__collapsed-expand')
 
     expect(wrapper.find('.app-sidebar__brand').exists()).toBe(false)
-    expect(expandButton.get('.app-sidebar__collapsed-brand').text()).toBe('AM')
+    expect(expandButton.get('.app-sidebar__collapsed-brand').attributes('src')).toBe(
+      '/favicon.svg',
+    )
     expect(expandButton.attributes('aria-label')).toBe('展开导航栏')
 
     await expandButton.trigger('click')

@@ -9,13 +9,13 @@
           :aria-label="t('navigation.expandSidebarTitle')"
           @click="emit('toggleCollapsed')"
         >
-          <img class="brand-mark app-sidebar__collapsed-brand" src="/favicon.svg" alt="" aria-hidden="true" />
+          <img class="brand-mark app-sidebar__collapsed-brand" :src="brandIconUrl" alt="" aria-hidden="true" />
           <PanelLeftOpen class="app-sidebar__collapsed-expand-icon" :size="18" aria-hidden="true" />
         </button>
       </template>
       <template v-else>
         <RouterLink class="app-sidebar__brand" to="/projects">
-          <img class="brand-mark" src="/favicon.svg" alt="AM" />
+          <img class="brand-mark" :src="brandIconUrl" alt="AM" />
           <span class="app-sidebar__brand-name">amvision</span>
         </RouterLink>
         <button
@@ -74,6 +74,7 @@ import UserMenu from './UserMenu.vue'
 const route = useRoute()
 const { t } = useI18n()
 const sessionStore = useSessionStore()
+const brandIconUrl = '/favicon.svg'
 
 defineProps<{
   collapsed: boolean
