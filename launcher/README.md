@@ -25,6 +25,8 @@ $testPythonDirectory = python -c "import sys; from pathlib import Path; print(Pa
 
 普通 dotnet test 明确跳过该依赖 Python 夹具的测试；通过上述脚本单独执行，不把跳过算作通过。
 
+真实 CPU/NVIDIA 发行包的冷启动与退出回归另见 [开发环境](../docs/deployment/development-environment.md)中的 `AMVAR_LAUNCHER_RELEASE_TEST_ROOT` 命令。该测试需先停止开发服务，使用发行包自己的 Python、full 脚本和数据库，不能与开发后端同时运行。
+
 ## Windows 发布
 
 开发工具需要 .NET 10 SDK。Fixed Version WebView2 x64 解压到 `runtimes/third_party/webview2/win-x64/`，目录直接包含 `msedgewebview2.exe`。运行：

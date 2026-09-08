@@ -34,6 +34,7 @@ public sealed class LauncherCoordinator(BackendSessionController backend, ILaunc
             settings.Validate();
             sessionSettings = settings;
             installation = target;
+            log.Write($"启动配置：管理服务={settings.ManageService}，项目目录={target.RootDirectory}；只停止本次创建的服务。");
             Publish(Snapshot with { Application = ApplicationPhase.Active, Problem = null });
             return BeginConnect();
         }
@@ -140,7 +141,7 @@ public sealed class LauncherCoordinator(BackendSessionController backend, ILaunc
     private void Publish(LauncherSnapshot next)
     {
         if (next.Application != Snapshot.Application || next.Backend != Snapshot.Backend || next.Mode != Snapshot.Mode)
-            log.Write($"阶段 {next.Application}/{next.Backend}，服务模式 {next.Mode}");
+            log.Write($"阶段 {next.Application}/{next.Backend}，服务归属={(next.Mode == SessionManagementMode.ManagedFullStack ? "本次启动器管理" : "尚未创建或外部服务")}");
         Snapshot = next with { Revision = Snapshot.Revision + 1 };
         // 订阅者仅投递 UI 消息，不在事件内等待 IO。
         Changed?.Invoke(Snapshot);

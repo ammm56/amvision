@@ -40,21 +40,11 @@ public partial class MainWindow : Window
         }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
         AddHandler(KeyUpEvent, (_, args) => { if (args.Key == Key.F11) fullscreenKeyDown = false; }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
         Deactivated += (_, _) => fullscreenKeyDown = false;
-        AddHandler(PointerPressedEvent, (_, args) =>
+        if (OperatingSystem.IsWindows())
         {
-            if (WindowState != WindowState.Normal || !args.GetCurrentPoint(this).Properties.IsLeftButtonPressed) return;
-            var point = args.GetPosition(this);
-            var left = point.X < 5; var right = point.X >= Bounds.Width - 5;
-            var top = point.Y < 5; var bottom = point.Y >= Bounds.Height - 5;
-            WindowEdge? edge = (left, right, top, bottom) switch
-            {
-                (true, _, true, _) => WindowEdge.NorthWest, (_, true, true, _) => WindowEdge.NorthEast,
-                (true, _, _, true) => WindowEdge.SouthWest, (_, true, _, true) => WindowEdge.SouthEast,
-                (true, _, _, _) => WindowEdge.West, (_, true, _, _) => WindowEdge.East,
-                (_, _, true, _) => WindowEdge.North, (_, _, _, true) => WindowEdge.South, _ => null
-            };
-            if (edge.HasValue) { BeginResizeDrag(edge.Value, args); args.Handled = true; }
-        }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+            var frame = new WindowsWindowFrame(this, WindowSurface);
+            Closed += (_, _) => frame.Dispose();
+        }
     }
     public MainWindow(LauncherComposition composition, IClassicDesktopStyleApplicationLifetime lifetime) : this()
     {

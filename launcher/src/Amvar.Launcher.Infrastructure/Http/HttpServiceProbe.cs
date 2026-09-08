@@ -1,4 +1,6 @@
 using System.Net.Sockets;
+using System.Net;
+using System.Net.NetworkInformation;
 using Amvar.Launcher.Core.Abstractions;
 using Amvar.Launcher.Core.Runtime;
 using Amvar.Launcher.Infrastructure.Contracts;
@@ -8,16 +10,40 @@ namespace Amvar.Launcher.Infrastructure.Http;
 
 public sealed class HttpServiceProbe : IServiceProbe, IDisposable
 {
-    private readonly HttpClient client = new(new HttpClientHandler { AllowAutoRedirect = false, UseProxy = false })
-    { BaseAddress = ProjectInstallation.HomeUri, Timeout = TimeSpan.FromSeconds(2), MaxResponseContentBufferSize = 1024 * 1024 };
+    private readonly HttpClient client;
+    private readonly Uri address;
+
+    public HttpServiceProbe() : this(ProjectInstallation.HomeUri) { }
+
+    internal HttpServiceProbe(Uri address)
+    {
+        this.address = address;
+        client = new(new HttpClientHandler { AllowAutoRedirect = false, UseProxy = false })
+        { BaseAddress = address, Timeout = TimeSpan.FromSeconds(2), MaxResponseContentBufferSize = 1024 * 1024 };
+    }
+
+    // Windows 的未监听端口可能在 TCP 重试结束前触发连接超时。
+    // 以本机监听表确认端口空闲，不把超时本身当成允许启动第二个服务的依据。
+    private bool HasLocalListener() => IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners().Any(endpoint =>
+        endpoint.Port == address.Port && (endpoint.Address.Equals(IPAddress.Loopback) ||
+            endpoint.Address.Equals(IPAddress.Any) || endpoint.Address.Equals(IPAddress.IPv6Any) ||
+            endpoint.Address.Equals(IPAddress.Loopback.MapToIPv6())));
+
     public async Task<ServiceProbeResult> ProbeAsync(CancellationToken token)
     {
+        token.ThrowIfCancellationRequested();
+        try
+        {
+            if (!HasLocalListener()) return new(ProbeKind.NotListening);
+        }
+        catch (NetworkInformationException ex)
+        { return new(ProbeKind.Unavailable, "无法确认本机端口监听状态：" + ex.Message); }
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
         timeout.CancelAfter(TimeSpan.FromSeconds(2));
         try
         {
             using var socket = new TcpClient();
-            await socket.ConnectAsync("127.0.0.1", 5600, timeout.Token);
+            await socket.ConnectAsync(IPAddress.Loopback, address.Port, timeout.Token);
         }
         catch (SocketException ex) when (ex.SocketErrorCode == SocketError.ConnectionRefused)
         { return new(ProbeKind.NotListening); }

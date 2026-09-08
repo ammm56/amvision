@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup><InternalsVisibleTo Include="Amvar.Launcher.Infrastructure.Tests" /></ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../Amvar.Launcher.Core/Amvar.Launcher.Core.csproj" />
     <PackageReference Include="Newtonsoft.Json" />

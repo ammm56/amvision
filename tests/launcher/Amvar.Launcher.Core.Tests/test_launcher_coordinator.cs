@@ -9,6 +9,21 @@ namespace Amvar.Launcher.Core.Tests;
 public sealed class CoordinatorTests
 {
     [Fact]
+    public async Task Managed_release_starts_absent_service_navigates_and_stops_owned_stack()
+    {
+        var fake = new Dependencies { Probe = ProbeKind.NotListening, CompleteStart = true };
+        var coordinator = Create(fake);
+        await coordinator.InitializeAsync(new() { ManageService = true }, new("release"));
+        Assert.Equal(1, fake.Starts);
+        Assert.Equal(1, coordinator.Snapshot.NavigationId);
+        Assert.Equal(SessionManagementMode.ManagedFullStack, coordinator.Snapshot.Mode);
+        coordinator.ReportNavigation(coordinator.Snapshot.NavigationId, true);
+        Assert.Equal(BackendPhase.Connected, coordinator.Snapshot.Backend);
+        Assert.True(await coordinator.RequestExitAsync());
+        Assert.Equal(1, fake.Stops);
+    }
+
+    [Fact]
     public async Task ObserveOnly_never_probes_starts_or_stops_even_after_navigation_failure()
     {
         var fake = new Dependencies();
@@ -111,9 +126,10 @@ public sealed class CoordinatorTests
     {
         public bool HasOwnedSession { get; set; }
         public bool BlockStart { get; init; }
+        public bool CompleteStart { get; init; }
         public bool StopSuccess { get; set; } = true;
         public int Probes, Starts, Stops, Observations;
-        public ProbeKind Probe { get; init; } = ProbeKind.Available;
+        public ProbeKind Probe { get; set; } = ProbeKind.Available;
         public StackPhase Phase { get; set; } = StackPhase.Absent;
         public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource AllowStart { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -126,7 +142,8 @@ public sealed class CoordinatorTests
             Started.TrySetResult();
             if (BlockStart) await AllowStart.Task;
             HasOwnedSession = true;
-            Phase = StackPhase.Starting;
+            Phase = CompleteStart ? StackPhase.Running : StackPhase.Starting;
+            if (CompleteStart) Probe = ProbeKind.Available;
         }
         public Task<StackStopResult> StopAsync(CancellationToken token)
         { Stops++; return Task.FromResult(new StackStopResult(StopSuccess, "测试停止失败")); }

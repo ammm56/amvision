@@ -25,6 +25,8 @@ flowchart LR
 
 Core 不读取文件、操作 Process 或引用 Avalonia/Newtonsoft.Json。C# 不重新编排迁移、Broker、daemon、backend-service 和 Worker；这套规则继续由 Python full Supervisor 负责。模型、训练、推理、Workflow 和共享内存仍属于原平台。
 
+`Desktop/Services/WindowsWindowFrame` 集中处理自定义窗口的 Windows 样式、DWM 小圆角、八方向非客户区命中测试及边缘留白；窗口关闭时解除回调。`MainWindow` 负责装配和窗口状态，Core 不依赖这些平台细节。WebView 保持在缩放区域内侧，最大化和全屏时恢复无留白布局。
+
 ## 实际源码目录
 
 ```text

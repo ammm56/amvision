@@ -919,7 +919,12 @@ def assemble_release(request: ReleaseAssemblyRequest) -> ReleaseAssemblyResult:
     if release_dir.exists():
         preserved_python_temp_dir = _stash_existing_python_dir(release_dir)
         try:
-            shutil.rmtree(release_dir)
+            # 保留发行根本身，避免 Windows 资源管理器或终端占用目录句柄导致组装失败。
+            for child in release_dir.iterdir():
+                if child.is_dir() and not child.is_symlink():
+                    shutil.rmtree(child)
+                else:
+                    child.unlink()
         except Exception:
             _recover_preserved_python_dir(release_dir, preserved_python_temp_dir)
             raise

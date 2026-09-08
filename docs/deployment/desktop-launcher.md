@@ -59,9 +59,15 @@ python -m backend.maintenance.main assemble-release --profile-id full-windows-x6
 
 管理方式与项目目录下次启动生效，主题立即生效。手动 conda/Uvicorn/Vite 开发进程和第三方服务不受启动器管理。服务身份依据进程创建时间、可执行路径和本次进程祖先链确认；不能仅凭端口或旧 PID 文件停止进程。
 
+正式发行默认 `manage_service=true`、`project_root="."`。本机监听表确认 5600 空闲时，启动发行根的 full 脚本，并等待完整栈就绪后载入页面。端口已有监听但健康检查或页面异常时，明确报告错误，不重复创建服务。不能仅凭 2 秒 TCP 超时判断服务存在或不存在。
+
+开发调试仍使用终端启动 conda 后端和 Vite；启动器关闭服务管理后只显示 5600 页面。是否允许启动由配置决定，实际启动目标由发行文件和项目目录确定，不根据 EXE 文件名或目录名称猜测开发/生产模式。日志分别记录“管理服务”配置和“服务归属”；尚未创建服务或连接外部服务时没有停止权限，并不表示配置被关闭。
+
 `start_fullscreen` 默认 false，设置中的“启动时全屏”在下次启动生效。F11 临时进入/退出全屏，恢复原普通/最大化状态，不改动启动偏好。旧 schema v1 配置缺少该字段时按 false 读取，无需迁移。
 
 关闭主窗口或 Alt+F4 会隐藏至托盘，保留 WebView 和未保存内容。再次运行同一安装的启动器会恢复原窗口。托盘菜单依次为“显示窗口／关于／退出”。停止失败保留启动器并显示问题，可查看日志和重试退出。
+
+普通窗口保留 5 DIP 的边缘缩放区域，八个方向使用 Windows 标准命中测试、缩放光标和拖动行为；WebView 不覆盖该区域。最大化和全屏时取消边缘留白。支持 DWM 圆角的 Windows 使用小圆角及系统阴影，并隐藏默认浅色描边；圆角外观由系统能力决定。顶部按钮采用独立主题和不透明背景，悬停颜色与前端一致。
 
 `launcher/logs/launcher/` 保存启动器日志；`logs/full-stack/` 保存 full 服务日志、`runtime-state.json` 和 `launcher-status.json`。构建信息同时写入程序集和发行 JSON；“关于”的许可证来自内嵌资源，不需要联网。
 
@@ -69,4 +75,4 @@ python -m backend.maintenance.main assemble-release --profile-id full-windows-x6
 
 本机已验证 self-contained 根目录运行、随包 WebView2、外部服务连接、隐藏恢复及单实例、原生关于和许可证、文件导入与 JSON 下载。受控进程测试覆盖完整栈所有权、启动期间退出、无关监听进程隔离。详细结果见 [实施记录](../architecture/desktop-launcher-implementation.md)。
 
-真实视觉 full 发行包的冷启动与业务任务回收、干净离线机器、多屏 DPI、Explorer 重启和系统关机尚需专项验收。当前手动运行的开发服务不作为真实 full 栈验收对象。其他平台适配尚未完成。
+CPU/NVIDIA 真实发行包已验证冷启动、完整栈就绪和退出回收；NVIDIA 另验证正式 EXE 载入和托盘退出。带正在执行的业务任务退出、干净离线机器、多屏 DPI、Explorer 重启和系统关机仍需专项验收。其他平台适配尚未完成。

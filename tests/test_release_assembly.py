@@ -452,6 +452,16 @@ def test_assemble_release_preserves_existing_python_dir_when_overwriting(
     stale_file.parent.mkdir(parents=True, exist_ok=True)
     stale_file.write_text("stale", encoding="utf-8")
 
+    original_rmtree = release_assembly.shutil.rmtree
+
+    def _keep_open_release_root(path: object, *args: object, **kwargs: object) -> None:
+        """模拟 Windows 终端持有发行根句柄，但其内容仍可正常更新。"""
+        if Path(path).resolve() == release_dir.resolve():
+            raise PermissionError("release root is open in another application")
+        original_rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr(release_assembly.shutil, "rmtree", _keep_open_release_root)
+
     result = assemble_release(
         ReleaseAssemblyRequest(
             profile_id="full-windows-x64-nvidia",
@@ -612,7 +622,7 @@ def test_assemble_release_recovers_python_when_old_release_removal_fails(
     def _fail_old_release_removal(
         path: object, *args: object, **kwargs: object
     ) -> None:
-        if Path(path).resolve() == release_dir.resolve():
+        if Path(path).resolve() == locked_file.parent.resolve():
             raise PermissionError("simulated locked release file")
         original_rmtree(path, *args, **kwargs)
 

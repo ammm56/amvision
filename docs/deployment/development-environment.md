@@ -125,6 +125,43 @@ npm run dev
 - API：`http://127.0.0.1:5600`
 - OpenAPI：`http://127.0.0.1:5600/docs`
 
+### 7. 编译和启动桌面启动器
+
+从仓库根目录执行，构建机需要 .NET 10 SDK：
+
+```powershell
+dotnet build launcher/Amvar.Launcher.slnx
+dotnet run --project launcher/src/Amvar.Launcher.Desktop/Amvar.Launcher.Desktop.csproj --no-build
+```
+
+普通 Debug 输出位于 `launcher/src/Amvar.Launcher.Desktop/bin/Debug/net10.0/`，配置位于该目录的 `config/launcher.json`。开发服务由前述终端手动启动；启动器设置中关闭“启动并管理视觉服务”（`manage_service=false`）后重启，仅连接查看，不停止手动服务。未配置 Fixed Version WebView2 时，这种源码运行方式需要本机安装 Evergreen WebView2。
+
+验证随包 .NET 和 WebView2 的发布运行方式：先将 Fixed Version WebView2 x64 解压到 `runtimes/third_party/webview2/win-x64/`，确保目录直接包含 `msedgewebview2.exe`，然后执行：
+
+```powershell
+$launcherPublishDirectory = Join-Path (Get-Location) ('launcher/bin/publish/dev-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+./launcher/publish-win-x64.ps1 -OutputDirectory $launcherPublishDirectory
+& (Join-Path $launcherPublishDirectory 'amvar.launcher.exe')
+```
+
+发布输出仍在 `launcher/` 内，配置位于此次输出的 `launcher/config/launcher.json`。启动器地址固定为 `http://127.0.0.1:5600`，显示后端提供的静态前端，不使用 `5601` 的 Vite HMR；修改前端后需重新构建静态资源才能在启动器查看。启动器源码修改后退出托盘应用，再重新编译运行；已有发布目录不能覆盖，使用新的输出目录。
+
+```powershell
+dotnet test launcher/Amvar.Launcher.slnx
+```
+
+完整发行冷启动与退出回归需先停止开发后端、daemon 和 Worker，确保 5600 与共享内存无占用。以下测试使用指定发行目录自己的 Python 和 full 脚本，不使用 conda Python 执行服务；默认测试不会启动完整视觉栈：
+
+```powershell
+$env:AMVAR_LAUNCHER_RELEASE_TEST_ROOT = (Resolve-Path release/full-windows-x64-nvidia).Path
+dotnet test tests/launcher/Amvar.Launcher.Infrastructure.Tests/Amvar.Launcher.Infrastructure.Tests.csproj --filter FullyQualifiedName~ReleaseStartupTests
+Remove-Item Env:AMVAR_LAUNCHER_RELEASE_TEST_ROOT
+```
+
+CPU 验收时替换 profile 目录。测试会启动并停止其自身创建的服务，日志保留在发行目录的 `launcher/logs/release-acceptance/` 和 `logs/full-stack/`；测试不会把正常监听的外部服务接管为自己的服务。
+
+完整产品发行需继续按 [生产环境](production-environment.md) 将启动器、bundled Python 和视觉服务组装在一起。
+
 ## 完整启动验收
 
 以下条件同时满足才是完整开发环境：

@@ -7,7 +7,7 @@
 
 Ubuntu profile 仅保留命名，不可组装或交付。
 
-Windows 桌面外壳可通过 `assemble-release --launcher-publish-dir <启动器发行目录>` 随包组装；构建、托盘生命周期和配置见 [amvar launcher 部署](desktop-launcher.md)。默认命令仍按纯视觉服务方式组装。已有桌面用户数据的目录禁止整目录重建，更新应先输出到新目录。
+以下 CPU/NVIDIA 命令包含桌面启动器；构建、托盘生命周期和配置见 [amvar launcher 部署](desktop-launcher.md)。CLI 省略 `--launcher-publish-dir` 时仅组装视觉服务，不会生成桌面 EXE。已有用户数据的发行目录不能整目录重建，更新应先输出到新目录。
 
 ## 1. 准备构建环境
 
@@ -26,21 +26,30 @@ Python 要求 3.12+，Node.js 要求以 `frontend/web-ui/package.json` 为准。
 
 ## 2. 组装发行目录
 
+先在仓库根目录发布启动器。构建机需要 .NET 10 SDK，并将 Fixed Version WebView2 x64 解压到 `runtimes/third_party/webview2/win-x64/`，目录直接包含 `msedgewebview2.exe`。
+
+```powershell
+$launcherPublishDirectory = Join-Path (Get-Location) ('launcher/bin/publish/win-x64-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+./launcher/publish-win-x64.ps1 -OutputDirectory $launcherPublishDirectory
+```
+
+成功后在同一终端选择所需 profile；两个 profile 可复用此次启动器输出。
+
 CPU：
 
 ```powershell
-python -m backend.maintenance.main assemble-release --profile-id full-windows-x64-cpu --release-root .\release --force --output text
+python -m backend.maintenance.main assemble-release --profile-id full-windows-x64-cpu --release-root .\release --launcher-publish-dir $launcherPublishDirectory --force --output text
 ```
 
 NVIDIA：
 
 ```powershell
-python -m backend.maintenance.main assemble-release --profile-id full-windows-x64-nvidia --release-root .\release --force --output text
+python -m backend.maintenance.main assemble-release --profile-id full-windows-x64-nvidia --release-root .\release --launcher-publish-dir $launcherPublishDirectory --force --output text
 ```
 
 组装会先构建前端，再复制当前 backend、config 模板、Node Pack、前端 `dist`、launcher、manifest 和对应 runtime 工具。`release/<profile-id>/app/` 是生成结果，不能直接修改。前端构建失败时不会进入本轮发行目录覆盖步骤。
 
-`--force` 会保留既有 `python/` 后重新组装其他内容。首次生成只创建 Python 占位目录，不复制当前 conda 环境。
+输出根包含 `amvar.launcher.exe`，启动器依赖位于 `launcher/`。`--force` 会保留既有 `python/` 后重新组装其他内容。首次生成只创建 Python 占位目录，不复制当前 conda 环境；仅组装成功不代表已经具备可运行的 Python 和模型依赖，必须继续完成以下准备和校验。
 
 ## 3. 准备 bundled Python
 
@@ -75,6 +84,16 @@ NVIDIA 环境替换为对应目录。布局校验失败必须修正发行资产�
 该命令不仅检查目录，还会用当前发行包自己的 Python 校验 Python 3.12/Windows x64、requirements 直接依赖和目标 accelerator。CPU 包必须是 CPU-only PyTorch；NVIDIA 包必须能访问 CUDA/cuDNN，且 TensorRT Python 与 `trtexec` 版本一致。失败时退出码为非零。
 
 ## 5. 启动完整服务
+
+完成布局和运行时校验后，双击发行根的 `amvar.launcher.exe`，或运行：
+
+```powershell
+.\amvar.launcher.exe
+```
+
+启动器默认启动并管理本次创建的完整服务，服务就绪后显示 `http://127.0.0.1:5600`。已有外部服务时只连接。关闭窗口隐藏至托盘，托盘“退出”才会停止本次启动的服务并退出。只连接第三方服务可将 `launcher/config/launcher.json` 中 `manage_service` 设为 `false`。
+
+需要终端方式运行时使用以下脚本，不需要同时启动两种入口：
 
 ```powershell
 .\start-amvision-full.bat

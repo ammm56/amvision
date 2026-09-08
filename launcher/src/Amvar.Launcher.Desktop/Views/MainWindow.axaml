@@ -2,7 +2,7 @@
         xmlns:vm="using:Amvar.Launcher.Desktop.ViewModels" x:Class="Amvar.Launcher.Desktop.Views.MainWindow"
         x:DataType="vm:LauncherViewModel" Title="amvar launcher" Width="1280" Height="800"
         MinWidth="1024" MinHeight="720" WindowStartupLocation="CenterScreen" WindowDecorations="None">
-  <Border>
+  <Border Name="WindowSurface" Background="{DynamicResource ShellBackground}">
     <Grid Name="ShellLayout" RowDefinitions="36,*,30">
       <Border Name="TitleBar" Background="{DynamicResource ShellBackground}">
         <Grid ColumnDefinitions="Auto,*,Auto">

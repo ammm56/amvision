@@ -1,6 +1,7 @@
 <Application xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="Amvar.Launcher.Desktop.App" RequestedThemeVariant="Default">
   <Application.Resources>
     <ResourceDictionary><ControlTheme x:Key="{x:Type ComboBoxItem}" TargetType="ComboBoxItem" />
+      <ControlTheme x:Key="ChromeButtonTheme" TargetType="Button" />
       <SolidColorBrush x:Key="TextControlBorderBrush">#667085</SolidColorBrush>
       <Thickness x:Key="TextControlBorderThemeThickness">1</Thickness>
       <Thickness x:Key="TextControlBorderThemeThicknessFocused">1</Thickness>
@@ -71,7 +72,7 @@
     <Style Selector="Button.primary"><Setter Property="Background" Value="{DynamicResource ShellAccent}" /><Setter Property="Foreground" Value="{DynamicResource ShellAccentText}" /><Setter Property="BorderThickness" Value="0" /></Style>
     <Style Selector="Button.primary:pointerover /template/ ContentPresenter"><Setter Property="Background" Value="{DynamicResource ShellAccent}" /><Setter Property="Opacity" Value="0.85" /></Style>
     <Style Selector="Button.link"><Setter Property="Background" Value="Transparent" /><Setter Property="BorderThickness" Value="0" /><Setter Property="Foreground" Value="{DynamicResource ShellAccent}" /><Setter Property="Padding" Value="8,6" /></Style>
-    <Style Selector="Button.chrome, Button.menu"><Setter Property="Background" Value="Transparent" /><Setter Property="BorderThickness" Value="0" /><Setter Property="Padding" Value="8,4" /><Setter Property="Height" Value="28" /></Style>
+    <Style Selector="Button.chrome, Button.menu"><Setter Property="Theme" Value="{StaticResource ChromeButtonTheme}" /><Setter Property="Background" Value="{DynamicResource ShellBackground}" /><Setter Property="BorderThickness" Value="0" /><Setter Property="Padding" Value="8,4" /><Setter Property="Height" Value="28" /></Style>
     <Style Selector="Button.menu"><Setter Property="FontSize" Value="13" /></Style>
     <Style Selector="Button.chrome, Button.menu"><Setter Property="Foreground" Value="{DynamicResource ShellMuted}" /></Style>
     <Style Selector="Button.chrome.caption"><Setter Property="Width" Value="46" /><Setter Property="Height" Value="35" /><Setter Property="CornerRadius" Value="0" /></Style>
