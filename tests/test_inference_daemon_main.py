@@ -5,6 +5,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from backend.inference_daemon import main as inference_daemon_main
+from backend.service.infrastructure.ipc.mmap_primitives import MmapOwnerLockBusyError
 
 
 class _FakeMmapClient:
@@ -101,3 +102,17 @@ def test_local_buffer_probe_has_independent_cli_gate(monkeypatch) -> None:
     assert inference_daemon_main.main(["--probe-local-buffer"]) == 0
     assert captured["buffers_root"] == "./data/buffers"
     assert getattr(captured["broker_settings"], "arena_id") == "local-buffer-main"
+
+
+def test_duplicate_daemon_reports_owner_without_stopping_existing_runtime(monkeypatch, capsys):
+    """锁冲突稳定返回非零，不调用正常停机清除另一进程的运行状态。"""
+    def start():
+        raise MmapOwnerLockBusyError("owner PID=123")
+
+    monkeypatch.setattr(inference_daemon_main, "get_backend_service_settings", lambda: _settings(mmap_enabled=True))
+    monkeypatch.setattr(inference_daemon_main, "build_inference_daemon_runtime", lambda _: SimpleNamespace(start=start))
+    monkeypatch.setattr(inference_daemon_main.signal, "signal", lambda *_: None)
+    assert inference_daemon_main.main([]) == 1
+    error = capsys.readouterr().err
+    assert "owner PID=123" in error and "--probe" in error
+    assert "Traceback" not in error

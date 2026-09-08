@@ -21,6 +21,7 @@ from backend.service.application.local_buffers import (
 )
 from backend.service.application.local_memory import LocalMemorySettings
 from backend.service.settings import BackendServiceSettings
+from backend.service.infrastructure.ipc.mmap_primitives import MmapOwnerLockBusyError
 
 
 def test_backend_service_rejects_private_arena_as_public_main() -> None:
@@ -182,3 +183,46 @@ def test_inference_daemon_stop_reclaims_every_component_after_one_failure() -> N
         "sync-supervisor",
         "engine",
     ]
+
+
+@pytest.mark.parametrize("failure", ["owner", "control", None])
+def test_owner_is_acquired_before_starting_any_runtime(failure) -> None:
+    """重复 owner 不启动业务组件；后续启动失败反序回收且释放 owner。"""
+    calls = []
+
+    class Component:
+        """记录启动顺序，并在指定阶段注入失败。"""
+        def __init__(self, name):
+            self.name = name
+
+        def prepare(self):
+            calls.append("owner")
+            if failure == "owner":
+                raise MmapOwnerLockBusyError("occupied")
+
+        def start(self):
+            calls.append(self.name)
+            if self.name == failure:
+                raise RuntimeError("startup failed")
+
+        def stop(self):
+            calls.append("stop-" + self.name)
+
+    runtime = InferenceDaemonRuntime(
+        settings=SimpleNamespace(), session_factory=SimpleNamespace(engine=SimpleNamespace(dispose=lambda: calls.append("dispose"))),
+        dataset_storage=None, queue_backend=None,
+        task_runtimes=(SimpleNamespace(sync_supervisor=Component("sync"), async_supervisor=Component("async"), async_gateway_registry=Component("gateway")),),
+        deployment_runtime_reconciler=Component("reconciler"), control_dispatcher=Component("control"), local_mmap_server=Component("mmap"),
+    )
+    if failure == "owner":
+        with pytest.raises(MmapOwnerLockBusyError):
+            runtime.start()
+        assert calls == ["owner", "dispose"]
+    elif failure == "control":
+        with pytest.raises(RuntimeError, match="startup failed"):
+            runtime.start()
+        assert calls == ["owner", "sync", "async", "gateway", "reconciler", "control", "stop-reconciler", "stop-gateway", "stop-async", "stop-sync", "stop-mmap", "dispose"]
+    else:
+        runtime.start()
+        assert calls == ["owner", "sync", "async", "gateway", "reconciler", "control", "mmap"]
+        runtime.stop()

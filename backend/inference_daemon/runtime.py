@@ -90,6 +90,9 @@ class InferenceDaemonRuntime:
 
         started_components: list[object] = []
         try:
+            if self.local_mmap_server is not None:
+                self.local_mmap_server.prepare()
+                started_components.append(self.local_mmap_server)
             for task_runtime in self.task_runtimes:
                 for component in (
                     task_runtime.sync_supervisor,
@@ -104,11 +107,11 @@ class InferenceDaemonRuntime:
             started_components.append(self.control_dispatcher)
             if self.local_mmap_server is not None:
                 self.local_mmap_server.start()
-                started_components.append(self.local_mmap_server)
-        except Exception:
+        except BaseException:
             for component in reversed(started_components):
                 with contextlib.suppress(Exception):
                     component.stop()
+            self.session_factory.engine.dispose()
             raise
 
     def stop(self) -> None:
@@ -241,6 +244,7 @@ def build_inference_daemon_runtime(
     )
     local_mmap_server = (
         InferenceLocalMmapServer(
+            takeover_existing=True,
             buffers_root=settings.local_memory.root_dir,
             service_id=settings.inference_daemon.service_id,
             request_handler=control_dispatcher.handle_inference_message_request,

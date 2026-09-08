@@ -30,6 +30,8 @@
 
 daemon 启动后先验证主 LocalBuffer 依赖，再扫描 `desired_state=running` 的记录并恢复进程。依赖尚未出现时不创建子进程、不增加 restart/failure 计数。`start` 和崩溃恢复使用同一条全实例预热路径；父进程只在 `healthy_instance_count == warmed_instance_count == instance_count` 后开放推理。加载或预热期间的同步调用立即返回未就绪错误，不进入等待队列。进程崩溃和启动失败使用指数退避；generation 防止较早的 start 结果覆盖较新的 stop 请求；数据库 lease 防止同一 deployment 被两个 daemon 同时恢复。新 daemon 接管旧 owner 时，最坏需要等待 `controller_lease_seconds` 到期，正式默认值为 15 秒。
 
+`last_started_at` 和 `last_stopped_at` 只记录真实状态转换；同一 PID 的 heartbeat 不得刷新启动时间，重复的 stopped 观测也不得刷新停止时间。`restart_count` 是跨 daemon 生命周期的累计恢复次数，只在缺失进程恢复或 supervisor 报告新的自动重启增量时增加，不把每轮状态协调、daemon 内计数归零或普通状态查询计为重启。
+
 backend-service 不可达不会改变 daemon 中已运行模型进程的期望状态。daemon 不可达时，deployment status/health 返回结构化降级状态，仍允许把持久化期望状态改成 `stopped`，避免恢复后意外拉起。
 
 ## 控制面和推理热路径
@@ -89,6 +91,24 @@ backend 主 arena 默认总容量 2 GiB、最小 block 1 MiB、单次连续分�
 每个变更控制请求使用独立响应队列。daemon 定期按 `queue.response_queue_retention_seconds` 清理客户端超时后遗留的 `inference-control-response-*` 目录。控制请求必须携带明确 `expires_at`；缺少 deadline 的消息直接丢弃。请求队列使用 lease 恢复，瞬时文件系统错误只记录日志并继续消费，不会终止 dispatcher。只读状态不会创建这些目录。
 
 ## 运维边界
+
+同一 `local_memory.root_dir` 中的 inference Channel 只允许一个 daemon owner。标准 CLI 再次启动时，先核对冲突锁实际持有者的模块入口、工作目录、解释器、PID 和创建时间；仅更新的同类进程可以接替旧实例。旧进程及其子进程全部退出、锁释放后，新实例才启动部署 supervisor、恢复协调器和控制线程。普通 Mailbox 库调用仍保持锁冲突即失败，不自动结束其他进程。
+
+启动提示 `MmapOwnerLockBusyError` 或“推理 Channel 已被占用”时，通常已有 daemon 正在运行。Windows `msvcrt.locking` 在锁争用时可能返回 `PermissionError: [Errno 13]`，不能据此认定需要管理员权限。错误信息包含锁路径和 header 记录的 owner PID；PID 仅用于排查，OS 锁才是唯一所有权依据。
+
+```powershell
+conda activate amvision
+python -m backend.inference_daemon.main --probe
+Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'backend\.inference_daemon\.main' } | Select-Object ProcessId, ParentProcessId, CommandLine
+```
+
+源码开发中重新执行 daemon 命令即接替旧服务。支持停止请求的新版本先正常退出；旧版本或未响应进程在重新核对身份后有界结束，进程退出由 OS 释放锁，不删除 mmap 来绕过所有权。无法核实身份、不同目录/解释器或旧进程反向抢占新实例时明确拒绝。
+
+源码 Worker Supervisor 使用同样的接替规则，先结束旧 Supervisor 及其 Worker，再激活新 Topology。受 Supervisor 管理的单个 Worker 仍遵循 Profile/epoch 锁，不能独立抢占。正式发行重新运行 full 启动脚本时，向旧 root 发送绑定进程身份的完整停止请求，等待整套服务退出后再启动新一代；不能从外部单独接替 full 管理的 daemon，避免破坏整套服务生命周期。等待旧 full 退出超过 90 秒则报错，不让两套服务并行。
+
+磁盘上保留的锁文件本身不会阻止重启。实际 I/O、无效句柄等非争用错误保留原异常，不伪装成重复启动。
+
+2026-09-08 接替验证：真实双 daemon CLI 使用隔离数据库和 buffers，后启动者取得 owner，前一进程正常退出；不支持停止请求的旧 owner 分支也通过真实子进程测试。CPU profile 从源码重新组装后，连续启动两次 full，旧 root、backend、daemon 和 Worker 全部退出，新一代 health 返回 200。接替及相关运行时/发行回归共 103 项通过。源码 Worker Supervisor 的 Topology 行为通过专项回归，受管 Profile 的唯一锁保持不变。
 
 - SQLite 正式同机多进程模式启用 foreign keys、busy timeout 和 WAL；迁移到 MySQL/PostgreSQL 时继续通过 Repository 和 Unit of Work，不在应用层增加方言 SQL。
 - 根启动器仍是整套发行进程的前台生命周期管理器。需要进程自动拉起时，应由 Windows Service、systemd 或现场进程管理器监督根启动器；daemon 自身负责恢复其内部 deployment，而不是替代操作系统服务管理器。

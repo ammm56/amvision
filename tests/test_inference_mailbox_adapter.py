@@ -34,6 +34,26 @@ def _client(tmp_path, *, timeout: float = 2.0) -> InferenceLocalMmapClient:
     )
 
 
+def test_prepare_reserves_owner_without_accepting_requests(tmp_path) -> None:
+    """准备阶段不运行 dispatcher，后续 start 使用同一 owner epoch。"""
+    server = InferenceLocalMmapServer(buffers_root=tmp_path, service_id="inference-daemon-main", request_handler=lambda _: {"ready": True})
+    try:
+        server.prepare()
+        epoch = server.get_health_summary()["server_epoch"]
+        assert not server.is_running
+        assert server.get_health_summary()["ready"] is False
+        server.start()
+        assert server.is_running
+        assert server.get_health_summary()["server_epoch"] == epoch
+        client = _client(tmp_path)
+        try:
+            assert client.request({"action": "ping"})["result"]["ready"] is True
+        finally:
+            client.close()
+    finally:
+        server.stop()
+
+
 def _result_with_exact_wire_size(target_size: int) -> dict[str, object]:
     """构造指定 inference response envelope 长度的不可高度压缩结果。"""
 

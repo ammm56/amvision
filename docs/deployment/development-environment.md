@@ -43,6 +43,8 @@ python -m alembic -c backend/alembic.ini current
 
 必须先完成迁移，再启动常驻进程。禁止用 `stamp`、ORM `create_all()` 或删除数据库绕过 migration chain。
 
+开发中修改 ORM 字段也必须执行迁移；Uvicorn 热重载只重新加载 Python 代码，`create_all()` 只创建缺失表，不会为已有表补充字段。出现 `no such column` 时应先核对迁移状态，停止受影响的常驻进程，完成迁移后再按本文顺序启动。
+
 ### 2. 启动 backend-service
 
 终端一：
@@ -107,6 +109,8 @@ python -m backend.workers.supervisor
 5. 持续监督进程；任一 Profile 异常退出时明确失败并回收本代 Topology。
 
 看到 `backend-worker development topology ready` 后保持终端运行。
+
+同一项目目录中再次执行 backend、daemon 或 Worker Supervisor 的标准启动命令时，新进程接替经身份校验的旧同类服务。daemon 与 Worker Supervisor 先请求旧进程正常退出；不能响应的旧版本会在核对实际锁句柄、PID/创建时间、模块入口、工作目录及解释器后结束。旧进程和子进程全部退出后才启动新一代，不删除锁文件绕过唯一性。Worker 应整体重新执行 Supervisor 命令，单个 Profile 不能独立抢占；正式发行则重新执行 full 启动脚本接替整套服务。发行目录需重新 assemble 后使用更新后的启动逻辑。
 
 不要直接执行 `python -m backend.workers.main`。该模块是单个 Profile 的内部入口，必须由 Supervisor 注入 topology id、generation、epoch、worker instance 和 profile manifest。
 

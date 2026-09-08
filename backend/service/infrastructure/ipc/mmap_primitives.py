@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import errno
 import struct
 import zlib
 from collections.abc import Callable, Iterator, Sequence
@@ -120,6 +121,8 @@ def try_lock_byte_range_file(
         try:
             msvcrt.locking(guard_file.fileno(), msvcrt.LK_NBLCK, length)
         except OSError as error:
+            if error.errno not in {errno.EACCES, errno.EAGAIN, errno.EDEADLK}:
+                raise
             raise BlockingIOError from error
         return
     import fcntl
@@ -318,7 +321,9 @@ def acquire_mmap_owner_lock(lock_path: str | Path) -> MmapOwnerLockHandle:
         try_lock_byte_range_file(lock_file)
     except (BlockingIOError, OSError) as error:
         lock_file.close()
-        raise MmapOwnerLockBusyError from error
+        if not isinstance(error, BlockingIOError) and error.errno not in {errno.EACCES, errno.EAGAIN}:
+            raise
+        raise MmapOwnerLockBusyError(f"mmap owner lock 已被占用：{path}") from error
     return MmapOwnerLockHandle(lock_file)
 
 

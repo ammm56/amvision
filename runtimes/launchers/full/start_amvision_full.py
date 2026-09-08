@@ -303,6 +303,35 @@ def _ensure_stack_not_running(state_file_path: Path) -> None:
     )
 
 
+def _replace_previous_stack(app_root: Path, state_file_path: Path) -> None:
+    """向同一发行目录的旧 full 根进程请求完整停机，再允许新一代取得锁。"""
+    current = read_process_identity(os.getpid())
+    with full_state_guard(state_file_path):
+        state = _load_stack_state(state_file_path)
+        if state is None:
+            return
+        root = state.get("root_process")
+        if not isinstance(root, dict) or not process_identity_matches(root):
+            return
+        if state.get("format_id") != FULL_SUPERVISOR_STATE_FORMAT_ID or Path(str(state.get("app_root", ""))).resolve() != app_root.resolve():
+            raise RuntimeError("旧 full 状态的目录或格式不匹配，拒绝接管")
+        if float(root.get("create_time", 0)) >= float(current.get("create_time", 0)):
+            raise RuntimeError("当前 full 不比旧实例更新，拒绝反向接管")
+        if not any(Path(str(arg)).name == "start_amvision_full.py" for arg in root.get("command_line", [])):
+            raise RuntimeError("旧实例不是标准 full 入口，拒绝接管")
+        request = _resolve_shutdown_request_file(state_file_path)
+        temporary = request.with_name(f"{request.name}.{os.getpid()}.writing")
+        temporary.write_text(json.dumps({"format_id": FULL_SUPERVISOR_SHUTDOWN_FORMAT_ID, "root_process": root}), encoding="utf-8")
+        temporary.replace(request)
+    deadline = time.monotonic() + 90
+    identities = [root, *(entry["process"] for entry in state.get("components", []) if isinstance(entry, dict) and isinstance(entry.get("process"), dict))]
+    while any(process_identity_matches(identity) for identity in identities):
+        if time.monotonic() >= deadline:
+            raise RuntimeError("旧 full 未在 90 秒内完全退出，新实例未启动")
+        time.sleep(0.2)
+    print(f"旧 full 已退出（PID={root['pid']}），继续启动新一代。", flush=True)
+
+
 def _resolve_release_manifest_path(
     app_root: Path,
     release_manifest_file: str | None,
@@ -1205,7 +1234,17 @@ def main(argv: list[str] | None = None) -> int:
             "full 发行目录缺少可用的 python/python.exe，禁止回退到系统 Python"
         )
     python_executable = str(python_executable_path)
-    topology_lock, supervisor_instance_id = _acquire_topology_lock(app_root)
+    takeover_deadline = time.monotonic() + 120
+    while True:
+        _replace_previous_stack(app_root, state_file_path)
+        try:
+            topology_lock, supervisor_instance_id = _acquire_topology_lock(app_root)
+            break
+        except RuntimeError as error:
+            # 同时启动时，先取得 topology 锁的进程可能尚未公布 root 状态。
+            if "Profile 已有运行实例" not in str(error) or time.monotonic() >= takeover_deadline:
+                raise
+            time.sleep(0.2)
     worker_runtime_layout: object | None = None
     worker_topology: object | None = None
     worker_profiles: dict[str, object] = {}

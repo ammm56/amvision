@@ -44,6 +44,10 @@ from backend.service.infrastructure.ipc.local_message.mailbox import (
     MmapMailboxClient,
     MmapMailboxServer,
 )
+from backend.service.infrastructure.ipc.local_message.common_layout import (
+    CHANNEL_KIND_MAILBOX, COMMON_HEADER_SIZE, mailbox_layout, unpack_common_header,
+)
+from backend.service.infrastructure.ipc.mmap_primitives import MmapOwnerLockBusyError
 
 
 class _InferenceResponseCapacityExhaustedError(ServiceError):
@@ -178,6 +182,7 @@ class InferenceLocalMmapServer:
         service_id: str,
         request_handler: Callable[[dict[str, object]], dict[str, object]],
         max_concurrent_requests: int = 16,
+        takeover_existing: bool = False,
     ) -> None:
         """绑定 Channel、handler 与领域执行并发，不接收 transport 几何配置。"""
 
@@ -191,6 +196,7 @@ class InferenceLocalMmapServer:
         self.path = self.paths.mmap_path
         self.request_handler = request_handler
         self.max_concurrent_requests = max_concurrent_requests
+        self.takeover_existing = takeover_existing
         self._server: MmapMailboxServer | None = None
         self._executor: ThreadPoolExecutor | None = None
         self._thread: Thread | None = None
@@ -212,19 +218,54 @@ class InferenceLocalMmapServer:
 
         return self._thread is not None and self._thread.is_alive()
 
-    def start(self) -> None:
-        """创建单 owner Channel 与常驻 dispatcher。"""
+    def prepare(self) -> None:
+        """先取得唯一 Channel owner，不启动请求线程或部署执行组件。"""
 
-        if self.is_running:
+        if self._server is not None:
             return
         reject_legacy_inference_layout(
             buffers_root=self.buffers_root,
             service_id=self.service_id,
         )
-        self._server = MmapMailboxServer(
-            paths=self.paths,
-            profile=INFERENCE_MAILBOX_PROFILE_V1,
-        )
+        try:
+            self._server = MmapMailboxServer(
+                paths=self.paths,
+                profile=INFERENCE_MAILBOX_PROFILE_V1,
+            )
+        except MmapOwnerLockBusyError as error:
+            # header 仅用于诊断，唯一所有权仍以 OS 锁为准，不据 PID 强行接管。
+            owner = "未知"
+            header = None
+            try:
+                with self.paths.mmap_path.open("rb") as stream:
+                    header = unpack_common_header(
+                        stream.read(COMMON_HEADER_SIZE),
+                        expected_kind=CHANNEL_KIND_MAILBOX,
+                        expected_fingerprint=mailbox_layout(INFERENCE_MAILBOX_PROFILE_V1).fingerprint,
+                    )
+                owner = str(header.owner_pid)
+            except (OSError, ChannelCorruptMessageError):
+                pass
+            if self.takeover_existing and header is not None:
+                from backend.bootstrap.service_takeover import replace_service_owner
+                replace_service_owner(
+                    lock_path=self.paths.owner_lock_path,
+                    module="backend.inference_daemon.main",
+                    owner_pid=header.owner_pid,
+                    owner_started_ns=header.owner_process_started_ns,
+                )
+                self._server = MmapMailboxServer(paths=self.paths, profile=INFERENCE_MAILBOX_PROFILE_V1)
+                return
+            raise MmapOwnerLockBusyError(
+                f"推理 Channel 已被占用（header owner PID={owner}，锁文件={self.paths.owner_lock_path}）"
+            ) from error
+
+    def start(self) -> None:
+        """在 owner 已取得、依赖已启动后开启常驻 dispatcher。"""
+
+        if self.is_running:
+            return
+        self.prepare()
         self._executor = ThreadPoolExecutor(
             max_workers=self.max_concurrent_requests,
             thread_name_prefix="inference-mailbox-handler",

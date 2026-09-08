@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import _thread
 import contextlib
 import os
 import signal
@@ -35,6 +36,7 @@ from backend.workers.contracts import (
     write_worker_contract,
 )
 from backend.workers.profile_lock import BackendWorkerProfileLock
+from backend.bootstrap.service_takeover import ServiceStopListener, replace_service_owner
 
 
 DEFAULT_PROFILE_IDS = (
@@ -91,9 +93,13 @@ class DevelopmentWorkerSupervisor:
         """激活完整 Topology，等待所有 Profile 就绪并持续监督。"""
 
         self._validate_source_layout()
-        self.topology_lock.acquire()
+        profiles = self._load_profiles()
         try:
-            profiles = self._load_profiles()
+            self.topology_lock.acquire()
+        except RuntimeError:
+            replace_service_owner(lock_path=self.runtime_layout.topology_lock_path, module="backend.workers.supervisor")
+            self.topology_lock.acquire()
+        try:
             self.topology = self._activate_topology(profiles)
             for profile in profiles:
                 worker = self._start_worker(profile)
@@ -382,10 +388,12 @@ def main(argv: list[str] | None = None) -> int:
     """执行源码开发 Worker Supervisor。"""
 
     args = build_argument_parser().parse_args(argv)
-    DevelopmentWorkerSupervisor(
+    supervisor = DevelopmentWorkerSupervisor(
         app_root=Path(args.app_root),
         ready_timeout_seconds=args.ready_timeout_seconds,
-    ).run_forever()
+    )
+    with ServiceStopListener(supervisor.runtime_layout.topology_lock_path, _thread.interrupt_main):
+        supervisor.run_forever()
     return 0
 
 

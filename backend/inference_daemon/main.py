@@ -6,6 +6,8 @@ import argparse
 import signal
 import sys
 from threading import Event
+from backend.bootstrap.service_takeover import ServiceStopListener, ServiceTakeoverError
+from backend.service.infrastructure.ipc.local_message.paths import build_inference_mailbox_paths
 
 from backend.inference_daemon.local_buffer_dependency import (
     LocalBufferDependencyProbe,
@@ -13,6 +15,7 @@ from backend.inference_daemon.local_buffer_dependency import (
 from backend.inference_daemon.runtime import build_inference_daemon_runtime
 from backend.service.infrastructure.ipc.inference_mailbox import InferenceLocalMmapClient
 from backend.service.settings import get_backend_service_settings
+from backend.service.infrastructure.ipc.mmap_primitives import MmapOwnerLockBusyError
 
 
 def build_argument_parser() -> argparse.ArgumentParser:
@@ -96,17 +99,29 @@ def main(argv: list[str] | None = None) -> int:
 
     signal.signal(signal.SIGINT, request_stop)
     signal.signal(signal.SIGTERM, request_stop)
-    runtime.start()
-    print("inference-daemon ready", flush=True)
     try:
-        while not stop_event.wait(1.0):
-            if not runtime.control_dispatcher.is_running:
-                return 1
-            if (
-                runtime.local_mmap_server is not None
-                and not runtime.local_mmap_server.is_running
-            ):
-                return 1
+        runtime.start()
+    except (MmapOwnerLockBusyError, ServiceTakeoverError) as error:
+        print(
+            f"inference-daemon 启动失败：{error}。"
+            "同一 buffers 目录只允许一个 daemon，自动接替未完成；"
+            "可执行 python -m backend.inference_daemon.main --probe 检查现有服务。"
+            "请核对占用者身份或其 full 启动器，不要删除正在使用的锁或 mmap 文件。",
+            file=sys.stderr,
+        )
+        return 1
+    print("inference-daemon ready", flush=True)
+    paths = build_inference_mailbox_paths(buffers_root=settings.local_memory.root_dir)
+    try:
+        with ServiceStopListener(paths.owner_lock_path, stop_event.set):
+            while not stop_event.wait(1.0):
+                if not runtime.control_dispatcher.is_running:
+                    return 1
+                if (
+                    runtime.local_mmap_server is not None
+                    and not runtime.local_mmap_server.is_running
+                ):
+                    return 1
     finally:
         runtime.stop()
     return 0

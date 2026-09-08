@@ -58,3 +58,30 @@ def test_wait_loop_observes_startup_shutdown(monkeypatch):
     import pytest
     with pytest.raises(KeyboardInterrupt):
         start._wait_for_backend_service_ready(host="127.0.0.1", port=1, timeout_seconds=1, process=None)
+
+
+def test_full_replacement_requests_old_identity_before_proceeding(tmp_path, monkeypatch):
+    """新 full 请求旧 root 完整退出，不终止不相关端口或 PID。"""
+    start = _module("launcher_replace_contract", "runtimes/launchers/full/start_amvision_full.py")
+    state = tmp_path / "runtime-state.json"
+    root = {"pid": 20, "create_time": 1, "command_line": ["python", "start_amvision_full.py"]}
+    state.write_text(json.dumps({"format_id": start.FULL_SUPERVISOR_STATE_FORMAT_ID, "app_root": str(tmp_path), "root_process": root, "components": []}))
+    monkeypatch.setattr(start, "read_process_identity", lambda _: {"create_time": 2})
+    checks = iter([True, False])
+    monkeypatch.setattr(start, "process_identity_matches", lambda _: next(checks))
+    start._replace_previous_stack(tmp_path, state)
+    request = json.loads(start._resolve_shutdown_request_file(state).read_text())
+    assert request["root_process"] == root
+
+
+def test_full_replacement_refuses_older_contender(tmp_path, monkeypatch):
+    """旧启动命令不能反向结束已经接管的新 root。"""
+    import pytest
+    start = _module("launcher_replace_old", "runtimes/launchers/full/start_amvision_full.py")
+    state = tmp_path / "runtime-state.json"
+    state.write_text(json.dumps({"format_id": start.FULL_SUPERVISOR_STATE_FORMAT_ID, "app_root": str(tmp_path), "root_process": {"pid": 20, "create_time": 3}, "components": []}))
+    monkeypatch.setattr(start, "read_process_identity", lambda _: {"create_time": 2})
+    monkeypatch.setattr(start, "process_identity_matches", lambda _: True)
+    with pytest.raises(RuntimeError, match="反向接管"):
+        start._replace_previous_stack(tmp_path, state)
+    assert not start._resolve_shutdown_request_file(state).exists()
