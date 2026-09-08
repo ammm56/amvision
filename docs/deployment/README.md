@@ -15,6 +15,8 @@
 | bundled Python | [同目录 Python](bundled-python-deployment.md) |
 | 发布 profile 与目录 | [运行时 profile](runtime-profiles.md) |
 | 新机器首次验收 | [首次部署清单](full-first-deploy-checklist.md) |
+| 桌面启动器方案（待实现） | [桌面启动器设计](../design/desktop-launcher.md) |
+| 桌面启动器分步实施与验收（未开始） | [详细实施步骤](../architecture/desktop-launcher-implementation.md) |
 
 ## 源码开发
 

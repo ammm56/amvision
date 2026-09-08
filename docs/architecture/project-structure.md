@@ -20,6 +20,7 @@ API -> Application -> Domain <- Infrastructure
 |---|---|
 | `backend/` | 后端服务、领域、任务、Worker、推理 daemon 和维护命令 |
 | `frontend/web-ui/` | Vue 3 + TypeScript + Vite 前端 |
+| `launcher/` | 桌面启动器源码入口；[工程架构](desktop-launcher.md)定义 Core、Infrastructure、Desktop 分层，尚未实现 |
 | `custom_nodes/` | 可安装 Node Pack 与自定义节点实现 |
 | `config/` | 可提交的默认配置和 profile |
 | `runtimes/` | 发布启动器、bundled runtime 输入和本地厂商 runtime 资产 |
