@@ -30,7 +30,8 @@ public sealed class FullscreenTests
             Press();
             Assert.Equal(WindowState.Normal, window.WindowState);
             Assert.True(window.FindControl<Border>("TitleBar")!.IsVisible);
-            Assert.True(window.FindControl<Border>("StatusBar")!.IsVisible);
+            Assert.Null(window.FindControl<Border>("StatusBar"));
+            Assert.Equal(2, window.FindControl<Grid>("ShellLayout")!.RowDefinitions.Count);
             window.Close();
         }, CancellationToken.None);
     }

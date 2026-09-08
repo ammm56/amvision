@@ -200,9 +200,8 @@ public partial class MainWindow : Window
     {
         if (exiting) return;
         WindowState = fullscreen.Toggle(WindowState);
-        TitleBar.IsVisible = StatusBar.IsVisible = !fullscreen.IsFullscreen;
+        TitleBar.IsVisible = !fullscreen.IsFullscreen;
         ShellLayout.RowDefinitions[0].Height = new GridLength(fullscreen.IsFullscreen ? 0 : 36);
-        ShellLayout.RowDefinitions[2].Height = new GridLength(fullscreen.IsFullscreen ? 0 : 30);
     }
     private void MinimizeWindow(object? sender, Avalonia.Interactivity.RoutedEventArgs args) => WindowState = WindowState.Minimized;
     private void MaximizeWindow(object? sender, Avalonia.Interactivity.RoutedEventArgs args) => ToggleMaximize();

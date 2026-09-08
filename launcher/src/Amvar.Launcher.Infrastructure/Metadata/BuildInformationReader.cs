@@ -10,7 +10,8 @@ public static class BuildInformationReader
     {
         var timestamp = assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
             .FirstOrDefault(a => a.Key == "BuildTimestamp")?.Value;
-        var version = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "0.1.0";
+        var version = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+            ?? assembly.GetName().Version?.ToString(3) ?? "unknown";
         var parts = version.Split('+', 2);
         return new("amvar launcher", parts[0], DateTimeOffset.TryParse(timestamp, out var date) ? date : DateTimeOffset.MinValue,
             parts.Length > 1 ? parts[1] : "unknown", "PolyForm Noncommercial 1.0.0",

@@ -3,7 +3,7 @@
         x:DataType="vm:LauncherViewModel" Title="amvar launcher" Width="1280" Height="800"
         MinWidth="1024" MinHeight="720" WindowStartupLocation="CenterScreen" WindowDecorations="None">
   <Border Name="WindowSurface" Background="{DynamicResource ShellBackground}">
-    <Grid Name="ShellLayout" RowDefinitions="36,*,30">
+    <Grid Name="ShellLayout" RowDefinitions="36,*">
       <Border Name="TitleBar" Background="{DynamicResource ShellBackground}">
         <Grid ColumnDefinitions="Auto,*,Auto">
           <StackPanel Orientation="Horizontal" Spacing="2" Margin="8,0" VerticalAlignment="Center">
@@ -33,9 +33,6 @@
           </StackPanel>
         </Border>
       </Grid>
-      <Border Name="StatusBar" Grid.Row="2" Background="{DynamicResource ShellBackground}">
-        <Grid ColumnDefinitions="*,Auto" Margin="14,0"><TextBlock Text="{Binding Mode}" Classes="muted" FontSize="11" VerticalAlignment="Center" /><TextBlock Grid.Column="1" Text="127.0.0.1:5600" Classes="muted" FontSize="11" VerticalAlignment="Center" /></Grid>
-      </Border>
     </Grid>
   </Border>
 </Window>

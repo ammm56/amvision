@@ -85,7 +85,7 @@ python -m pytest tests/test_full_launcher_stop_contract.py tests/test_runtime_la
 
 ## 发行冷启动探测修复
 
-当前构建为 `launcher/bin/publish/win-x64-startup-fix-20260908/`。用户日志中的配置实际为 `manage_service=true`，失败原因是 TCP 连接在 2 秒取消期限内没有返回 ConnectionRefused，被错误归为不可确定的 Unavailable，因而没有进入启动脚本分支。原 ObserveOnly 日志描述服务所有权，不能用它判断管理配置是否关闭。
+该轮构建为 `launcher/bin/publish/win-x64-startup-fix-20260908/`。用户日志中的配置实际为 `manage_service=true`，失败原因是 TCP 连接在 2 秒取消期限内没有返回 ConnectionRefused，被错误归为不可确定的 Unavailable，因而没有进入启动脚本分支。原 ObserveOnly 日志描述服务所有权，不能用它判断管理配置是否关闭。
 
 修复先使用本机监听表确认 5600 是否空闲：空闲返回 NotListening 并启动 full；存在监听时继续校验 health 和 HTML，超时或不健康保持明确错误，不创建第二套服务。管理配置、项目目录与当前服务归属分别记录。开发终端服务和第三方服务仍不接管。
 
@@ -98,6 +98,16 @@ NVIDIA 真实发行自动化测试使用与桌面相同的 HttpServiceProbe、Ba
 随后直接运行 NVIDIA 发行根 EXE：12:19:14 进入本次管理的 Starting，12:20:03 进入 Connected。实机确认启动动画后载入发行前端，health=ok；空项目列表对应独立发行数据库，没有混入开发数据。
 
 用户从托盘点击退出后，12:21:19 进入 Stopping，12:21:24 到达 ReadyToExit/Stopped。实测启动器、full root、后端、daemon、六类 Worker 均退出，端口和运行状态文件释放。CPU 发行包同一套完整栈自动化验收约 69 秒通过；测试结束没有残留发行服务。两种 profile 的配置均保留 `manage_service=true`。
+
+## 0.1.5 表单与窗口布局修正
+
+当前构建为 `launcher/bin/publish/win-x64-ui-0.1.5-final-20260908/`。版本由 `Directory.Build.props` 统一为 0.1.5，关于窗口读取真实程序集元数据，发行 JSON 同步生成相同版本。
+
+删除底部服务归属和地址栏，主窗口保留顶部栏与内容区两行，并同步修正 F11 布局。数字输入框内部文本框不再绘制独立边框；修正旧样式中的模板部件名称，使项目目录输入框的悬停与焦点也使用统一配色。保存按钮使用独立按钮主题，亮暗外观均保持白字，悬停和按下只改变背景。
+
+常规 C# 测试共 63 项通过，4 项专用进程测试按默认条件跳过；本轮未重新执行完整栈冷启动。新增两种外观的真实 Headless 指针与焦点回归测试，检查输入框内圈不可见、外圈保留、保存按钮悬停仍为白字且不降低透明度。原生 Windows 窗口实测亮暗悬停、保存外观设置、底部栏移除及 F11 进入/退出恢复 1280×800；该轮 UI 验收使用独立开发发布目录，没有启动或停止视觉服务。
+
+从最终源构建正式组装到 `launcher/bin/assembled-ui-0.1.5-final-20260908/`，再按经过验证的启动器清单更新现有 CPU/NVIDIA 发行目录。两包分别通过 779 项文件摘要及 x64 PE 校验，构建版本均为 0.1.5；既有配置逐字节保留，Python、业务数据、WebView 数据及服务日志未覆盖。
 
 ## 尚待现场验收
 

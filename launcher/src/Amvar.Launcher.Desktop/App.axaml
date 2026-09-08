@@ -1,7 +1,10 @@
 <Application xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="Amvar.Launcher.Desktop.App" RequestedThemeVariant="Default">
   <Application.Resources>
     <ResourceDictionary><ControlTheme x:Key="{x:Type ComboBoxItem}" TargetType="ComboBoxItem" />
-      <ControlTheme x:Key="ChromeButtonTheme" TargetType="Button" />
+      <ControlTheme x:Key="ShellButtonTheme" TargetType="Button" />
+      <SolidColorBrush x:Key="ShellPrimary">#087A56</SolidColorBrush>
+      <SolidColorBrush x:Key="ShellPrimaryHover">#096B4E</SolidColorBrush>
+      <SolidColorBrush x:Key="ShellPrimaryPressed">#07563F</SolidColorBrush>
       <SolidColorBrush x:Key="TextControlBorderBrush">#667085</SolidColorBrush>
       <Thickness x:Key="TextControlBorderThemeThickness">1</Thickness>
       <Thickness x:Key="TextControlBorderThemeThicknessFocused">1</Thickness>
@@ -13,7 +16,6 @@
           <SolidColorBrush x:Key="ShellMuted">#667085</SolidColorBrush>
           <SolidColorBrush x:Key="ShellBorder">#E4E7EC</SolidColorBrush>
           <SolidColorBrush x:Key="ShellAccent">#087A56</SolidColorBrush>
-          <SolidColorBrush x:Key="ShellAccentText">#FFFFFF</SolidColorBrush>
           <SolidColorBrush x:Key="ShellHover">#ECEFF2</SolidColorBrush>
           <SolidColorBrush x:Key="ShellInput">#FFFFFF</SolidColorBrush>
         </ResourceDictionary>
@@ -24,7 +26,6 @@
           <SolidColorBrush x:Key="ShellMuted">#A7B0AB</SolidColorBrush>
           <SolidColorBrush x:Key="ShellBorder">#3D3A39</SolidColorBrush>
           <SolidColorBrush x:Key="ShellAccent">#00D992</SolidColorBrush>
-          <SolidColorBrush x:Key="ShellAccentText">#101010</SolidColorBrush>
           <SolidColorBrush x:Key="ShellHover">#242825</SolidColorBrush>
           <SolidColorBrush x:Key="ShellInput">#141615</SolidColorBrush>
         </ResourceDictionary>
@@ -69,10 +70,12 @@
     <Style Selector="Button:pointerover /template/ ContentPresenter"><Setter Property="Background" Value="{DynamicResource ShellHover}" /></Style>
     <Style Selector="Button:pressed /template/ ContentPresenter"><Setter Property="Background" Value="{DynamicResource ShellBorder}" /></Style>
     <Style Selector="Button:disabled"><Setter Property="Opacity" Value="0.35" /></Style>
-    <Style Selector="Button.primary"><Setter Property="Background" Value="{DynamicResource ShellAccent}" /><Setter Property="Foreground" Value="{DynamicResource ShellAccentText}" /><Setter Property="BorderThickness" Value="0" /></Style>
-    <Style Selector="Button.primary:pointerover /template/ ContentPresenter"><Setter Property="Background" Value="{DynamicResource ShellAccent}" /><Setter Property="Opacity" Value="0.85" /></Style>
+    <Style Selector="Button.primary"><Setter Property="Theme" Value="{StaticResource ShellButtonTheme}" /><Setter Property="Background" Value="{DynamicResource ShellPrimary}" /><Setter Property="Foreground" Value="White" /><Setter Property="BorderThickness" Value="0" /></Style>
+    <Style Selector="Button.primary /template/ ContentPresenter"><Setter Property="Foreground" Value="White" /></Style>
+    <Style Selector="Button.primary:pointerover /template/ ContentPresenter"><Setter Property="Background" Value="{DynamicResource ShellPrimaryHover}" /></Style>
+    <Style Selector="Button.primary:pressed /template/ ContentPresenter"><Setter Property="Background" Value="{DynamicResource ShellPrimaryPressed}" /></Style>
     <Style Selector="Button.link"><Setter Property="Background" Value="Transparent" /><Setter Property="BorderThickness" Value="0" /><Setter Property="Foreground" Value="{DynamicResource ShellAccent}" /><Setter Property="Padding" Value="8,6" /></Style>
-    <Style Selector="Button.chrome, Button.menu"><Setter Property="Theme" Value="{StaticResource ChromeButtonTheme}" /><Setter Property="Background" Value="{DynamicResource ShellBackground}" /><Setter Property="BorderThickness" Value="0" /><Setter Property="Padding" Value="8,4" /><Setter Property="Height" Value="28" /></Style>
+    <Style Selector="Button.chrome, Button.menu"><Setter Property="Theme" Value="{StaticResource ShellButtonTheme}" /><Setter Property="Background" Value="{DynamicResource ShellBackground}" /><Setter Property="BorderThickness" Value="0" /><Setter Property="Padding" Value="8,4" /><Setter Property="Height" Value="28" /></Style>
     <Style Selector="Button.menu"><Setter Property="FontSize" Value="13" /></Style>
     <Style Selector="Button.chrome, Button.menu"><Setter Property="Foreground" Value="{DynamicResource ShellMuted}" /></Style>
     <Style Selector="Button.chrome.caption"><Setter Property="Width" Value="46" /><Setter Property="Height" Value="35" /><Setter Property="CornerRadius" Value="0" /></Style>
@@ -84,8 +87,14 @@
     <Style Selector="TextBox, ComboBox, NumericUpDown"><Setter Property="CornerRadius" Value="7" /><Setter Property="BorderThickness" Value="1" /><Setter Property="BorderBrush" Value="{DynamicResource ShellBorder}" /><Setter Property="Background" Value="{DynamicResource ShellSurface}" /><Setter Property="Foreground" Value="{DynamicResource ShellText}" /><Setter Property="MinHeight" Value="38" /></Style>
     <Style Selector="TextBox:pointerover, ComboBox:pointerover, NumericUpDown:pointerover"><Setter Property="BorderBrush" Value="{DynamicResource ShellMuted}" /></Style>
     <Style Selector="TextBox:focus, ComboBox:focus, NumericUpDown:focus-within"><Setter Property="BorderBrush" Value="{DynamicResource ShellAccent}" /></Style>
-    <Style Selector="TextBox /template/ Border#PART_Border"><Setter Property="BorderBrush" Value="{DynamicResource ShellBorder}" /><Setter Property="BorderThickness" Value="1" /></Style>
-    <Style Selector="TextBox:focus /template/ Border#PART_Border"><Setter Property="BorderBrush" Value="{DynamicResource ShellAccent}" /><Setter Property="BorderThickness" Value="1" /></Style>
+    <Style Selector="TextBox /template/ Border#PART_BorderElement"><Setter Property="BorderBrush" Value="{DynamicResource ShellBorder}" /><Setter Property="BorderThickness" Value="1" /></Style>
+    <Style Selector="TextBox:pointerover /template/ Border#PART_BorderElement"><Setter Property="BorderBrush" Value="{DynamicResource ShellMuted}" /></Style>
+    <Style Selector="TextBox:focus /template/ Border#PART_BorderElement"><Setter Property="BorderBrush" Value="{DynamicResource ShellAccent}" /><Setter Property="BorderThickness" Value="1" /></Style>
+    <!-- NumericUpDown 由外层 Spinner 绘制边框，内部文本框不重复描边。 -->
+    <Style Selector="NumericUpDown /template/ TextBox#PART_TextBox">
+      <Setter Property="BorderThickness" Value="0" />
+      <Style Selector="^ /template/ Border#PART_BorderElement"><Setter Property="IsVisible" Value="False" /></Style>
+    </Style>
     <Style Selector="TextBox, ComboBox, NumericUpDown"><Setter Property="Background" Value="{DynamicResource ShellInput}" /></Style>
     <Style Selector="Button.popupItem"><Setter Property="MinWidth" Value="156" /><Setter Property="HorizontalContentAlignment" Value="Left" /><Setter Property="BorderThickness" Value="0" /><Setter Property="Background" Value="Transparent" /><Setter Property="Padding" Value="12,8" /></Style>
     <Style Selector="Button /template/ ContentPresenter"><Setter Property="Transitions"><Transitions><BrushTransition Property="Background" Duration="0:0:0.12" /></Transitions></Setter></Style>
