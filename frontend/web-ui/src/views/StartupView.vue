@@ -1,6 +1,6 @@
 <template>
   <section class="startup-view">
-    <span class="brand-mark brand-mark--large">AM</span>
+    <img class="brand-mark brand-mark--large" src="/favicon.svg" alt="AM" />
     <h1>{{ t('common.appName') }}</h1>
     <p>{{ t('startup.checkingSession') }}</p>
     <div class="startup-view__status">

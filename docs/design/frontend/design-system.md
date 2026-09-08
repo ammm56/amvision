@@ -45,6 +45,12 @@
 
 ## 3. 字体与数字
 
+项目图标固定使用 `#00D99B` 背景与 `#10221D` 的 AM 字样，不随主题切换。AM 在 Inkscape 中使用 Arial Bold 文本工具排版，保持字体原始宽高比例，按可见字形边界水平、垂直居中。图标颜色独立于页面操作按钮的主题色。
+
+可编辑母版为 [am-icon-master.svg](../assets/am-icon-master.svg)，保留文字对象；在 Inkscape 中将文字转换为路径后另存为 [favicon.svg](../../../frontend/web-ui/public/favicon.svg)，作为前端侧栏、登录页、启动页与启动器 SVG 的共同来源。发布用 SVG 不依赖目标机器字体。
+
+PNG 使用 Inkscape 按页面导出，保持圆角外透明；256 像素版本用于 `favicon.png` 和启动器 `Assets/app.png`。ICO 在 GIMP 中按独立尺寸图层导出，包含 16、20、24、32、40、48、64、128、256 像素，使用 32 bpp 与 8 位透明度；不能合并这些尺寸图层。前端 `favicon.ico` 与启动器 `Assets/app.ico` 使用同一文件。图标制作工具仅用于开发资产维护，不加入产品运行时依赖。
+
 - 中文正文：系统无衬线字体优先，风格中性、字面清楚。
 - 英文和界面数字：Inter 或等价无衬线字体。
 - ID、路径、JSON、日志、时间戳：等宽字体。

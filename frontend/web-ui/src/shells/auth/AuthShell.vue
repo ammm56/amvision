@@ -1,7 +1,7 @@
 <template>
   <main class="auth-shell">
     <section class="auth-shell__brand">
-      <span class="brand-mark">AM</span>
+      <img class="brand-mark" src="/favicon.svg" alt="AM" />
       <div>
         <strong>{{ t('common.appName') }}</strong>
         <small>{{ t('common.tagline') }}</small>

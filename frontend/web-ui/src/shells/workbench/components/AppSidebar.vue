@@ -9,13 +9,13 @@
           :aria-label="t('navigation.expandSidebarTitle')"
           @click="emit('toggleCollapsed')"
         >
-          <span class="brand-mark app-sidebar__collapsed-brand" aria-hidden="true">AM</span>
+          <img class="brand-mark app-sidebar__collapsed-brand" src="/favicon.svg" alt="" aria-hidden="true" />
           <PanelLeftOpen class="app-sidebar__collapsed-expand-icon" :size="18" aria-hidden="true" />
         </button>
       </template>
       <template v-else>
         <RouterLink class="app-sidebar__brand" to="/projects">
-          <span class="brand-mark">AM</span>
+          <img class="brand-mark" src="/favicon.svg" alt="AM" />
           <span class="app-sidebar__brand-name">amvision</span>
         </RouterLink>
         <button

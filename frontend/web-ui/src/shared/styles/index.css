@@ -42,20 +42,16 @@
 }
 
 .brand-mark {
-  display: inline-grid;
-  place-items: center;
+  display: block;
+  flex-shrink: 0;
   width: 34px;
   height: 34px;
-  border-radius: var(--am-radius-md);
-  background: var(--am-brand-primary);
-  color: var(--am-brand-on-primary);
-  font-weight: 700;
+  object-fit: contain;
 }
 
 .brand-mark--large {
   width: 52px;
   height: 52px;
-  font-size: 18px;
 }
 
 .workbench-shell {

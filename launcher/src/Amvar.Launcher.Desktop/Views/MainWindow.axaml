@@ -24,7 +24,7 @@
         <ContentControl Name="BrowserHost" />
         <Border Name="LoadingSurface" Background="{DynamicResource ShellBackground}">
           <StackPanel MaxWidth="480" Margin="32" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="18">
-            <Border Width="64" Height="64" CornerRadius="16" Background="#00D992" HorizontalAlignment="Center" Margin="0,0,0,14"><Path Data="M7 45 18 18h7l11 27h-7l-2-6H16l-2 6H7Zm11-12h7l-3.5-9.5L18 33Zm17 12V18h6l7 11 7-11h6v27h-6V29L48 40l-7-11v16h-6Z" Fill="#101010" Stretch="Uniform" Margin="7" /></Border>
+            <Image Source="/Assets/app.png" Width="64" Height="64" HorizontalAlignment="Center" Margin="0,0,0,14" AutomationProperties.Name="AM" />
             <TextBlock Text="{Binding Heading}" FontSize="24" FontWeight="SemiBold" HorizontalAlignment="Center" />
             <TextBlock Text="{Binding Detail}" Classes="muted" TextWrapping="Wrap" TextAlignment="Center" />
             <ProgressBar IsIndeterminate="True" IsVisible="{Binding Busy}" Foreground="{DynamicResource ShellAccent}" Width="240" Height="3" Margin="0,10" />
