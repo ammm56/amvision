@@ -68,8 +68,10 @@ function title(slot: WorkflowAppModeDisplay): string {
 .app-mode-displays__empty { display: grid; place-items: center; min-height: 0; padding: var(--am-space-lg); overflow: hidden; color: var(--am-text-muted); background: var(--am-surface-soft); text-align: center; }
 .app-mode-displays :deep(.workflow-graph-node-preview) { height: 100%; min-height: 0; margin: 0; overflow: hidden; border: 0; border-radius: 0; }
 .app-mode-displays :deep(.workflow-graph-node-preview__empty) { border-color: var(--am-border); }
-.app-mode-displays__slot--image :deep(.workflow-graph-node-preview) { grid-template-rows: minmax(0, 1fr); }
-.app-mode-displays__slot--image :deep(.workflow-graph-node-preview__image-frame), .app-mode-displays__slot--image :deep(.workflow-graph-node-preview__image-frame img) { width: 100%; height: 100%; min-height: 0; object-fit: contain; }
+.app-mode-displays__slot--image { align-self: start; }
+.app-mode-displays__slot--image :deep(.workflow-graph-node-preview) { height: auto; grid-template-rows: auto; align-content: start; }
+.app-mode-displays__slot--image :deep(.workflow-graph-node-preview__image-frame) { width: 100%; height: auto; min-height: 0; }
+.app-mode-displays__slot--image :deep(.workflow-graph-node-preview__image-frame img) { display: block; width: 100%; height: auto; min-height: 0; object-fit: contain; }
 .app-mode-displays__slot--value :deep(.workflow-graph-node-preview) { position: relative; overflow: hidden; }
 .app-mode-displays__slot--value :deep(.workflow-graph-node-preview__json) { position: absolute; inset: 6px; min-height: 0; max-height: none; overflow-y: auto; }
 @media (max-width: 640px) { .app-mode-displays__slot, .app-mode-displays__slot--small { grid-column: 1 / -1; } }

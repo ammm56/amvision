@@ -6,11 +6,17 @@ const runtimeId = process.env.AMVISION_RUNTIME_APP_MODE_ID
 test.skip(!runtimeId, 'Requires an explicitly selected development App Mode Runtime')
 
 const localeExpectations = [
-  { locale: 'zh-CN', inputs: '输入', monitor: '运行时监视', labels: ['图像', 'Base64 图像', 'JSON', '文本', '文件', '多个文件'], displays: ['图像预览', '值预览'] },
-  { locale: 'en-US', inputs: 'Inputs', monitor: 'Runtime monitor', labels: ['Image', 'Base64 image', 'JSON', 'Text', 'File', 'Files'], displays: ['Image preview', 'Value preview'] },
-  { locale: 'ja-JP', inputs: '入力', monitor: 'ランタイム監視', labels: ['画像', 'Base64 画像', 'JSON', 'テキスト', 'ファイル', '複数ファイル'], displays: ['画像プレビュー', '値プレビュー'] },
-  { locale: 'ko-KR', inputs: '입력', monitor: '런타임 모니터링', labels: ['이미지', 'Base64 이미지', 'JSON', '텍스트', '파일', '여러 파일'], displays: ['이미지 미리보기', '값 미리보기'] },
+  { locale: 'zh-CN', inputs: '输入', monitor: '运行时监视', labels: ['图像', 'Base64 图像', 'JSON', '文本', '文件', '多个文件'] },
+  { locale: 'en-US', inputs: 'Inputs', monitor: 'Runtime monitor', labels: ['Image', 'Base64 image', 'JSON', 'Text', 'File', 'Files'] },
+  { locale: 'ja-JP', inputs: '入力', monitor: 'ランタイム監視', labels: ['画像', 'Base64 画像', 'JSON', 'テキスト', 'ファイル', '複数ファイル'] },
+  { locale: 'ko-KR', inputs: '입력', monitor: '런타임 모니터링', labels: ['이미지', 'Base64 이미지', 'JSON', '텍스트', '파일', '여러 파일'] },
 ] as const
+
+interface RuntimePreviewSnapshot {
+  app_mode: null | { displays: Array<{ node_id: string; output_port: string; title: string }> }
+  template: { nodes: Array<{ node_id: string; node_type_id: string; ui_state: { title?: unknown }; parameters: { title?: unknown } }> }
+  node_definitions?: Array<{ node_type_id: string; display_name: string }>
+}
 
 async function selectLocale(page: Page, locale: string): Promise<void> {
   await page.evaluate((value: string) => localStorage.setItem('amvision.web-ui.locale', value), locale)
@@ -31,14 +37,30 @@ test('App Mode submits real public inputs and displays the matching Runtime resu
     }
   })
 
+  const snapshotResponsePromise = page.waitForResponse((response) => (
+    response.request().method() === 'GET'
+    && response.url().includes(`/workflows/app-runtimes/${runtimeId}/preview-snapshot`)
+  ))
   await page.goto(`/workflows/runtime/${runtimeId}/app-mode`)
+  const snapshotResponse = await snapshotResponsePromise
+  expect(snapshotResponse.ok()).toBe(true)
+  const snapshot = await snapshotResponse.json() as RuntimePreviewSnapshot
+  expect(snapshot.app_mode).not.toBeNull()
+  const nodeTypes = new Map(snapshot.template.nodes.map((node) => [node.node_id, node.node_type_id]))
+  const nodeTitles = new Map(snapshot.node_definitions?.map((definition) => [definition.node_type_id, definition.display_name]) ?? [])
+  const displayTitles = snapshot.app_mode!.displays.map((display) => (
+    display.title.trim()
+    || nodeTitles.get(nodeTypes.get(display.node_id) || '')
+    || display.output_port
+  ))
+  expect(displayTitles.length).toBeGreaterThan(0)
   for (const expectation of localeExpectations) {
     await selectLocale(page, expectation.locale)
     await expect(page.locator('.app-mode-inputs')).toHaveAttribute('aria-label', expectation.inputs, { timeout: 30_000 })
     await expect(page.getByText(expectation.inputs, { exact: true })).toHaveCount(0)
     await expect(page.getByRole('button', { name: expectation.monitor, exact: true })).toBeVisible()
     await expect(page.locator('.app-mode-inputs__label strong')).toHaveText([...expectation.labels])
-    await expect(page.locator('.app-mode-displays__slot > header strong')).toHaveText([...expectation.displays])
+    await expect(page.locator('.app-mode-displays__slot > header strong')).toHaveText(displayTitles)
     await expect(page.getByText('body', { exact: true })).toHaveCount(0)
   }
   await selectLocale(page, 'zh-CN')
@@ -95,18 +117,15 @@ test('App Mode submits real public inputs and displays the matching Runtime resu
   const displayGeometry = await page.locator('.app-mode-displays').evaluate((grid) => {
     const imageFrame = grid.querySelector<HTMLElement>('.workflow-graph-node-preview__image-frame')
     const image = imageFrame?.querySelector<HTMLImageElement>('img')
-    const imagePreview = grid.querySelector<HTMLElement>('.app-mode-displays__slot--image .workflow-graph-node-preview')
     const valuePreview = grid.querySelector<HTMLElement>('.app-mode-displays__slot--value .workflow-graph-node-preview')
     const value = grid.querySelector<HTMLElement>('.workflow-graph-node-preview__json')
-    if (!imageFrame || !image || !imagePreview || !valuePreview || !value) return null
+    if (!imageFrame || !image || !valuePreview || !value) return null
     const imageFrameRect = imageFrame.getBoundingClientRect()
-    const imagePreviewRect = imagePreview.getBoundingClientRect()
     const valuePreviewRect = valuePreview.getBoundingClientRect()
     const valueRect = value.getBoundingClientRect()
     return {
       imageAspectRatio: imageFrameRect.width / imageFrameRect.height,
       naturalImageAspectRatio: image.naturalWidth / image.naturalHeight,
-      previewHeightDifference: Math.abs(imagePreviewRect.height - valuePreviewRect.height),
       valueHeight: valueRect.height,
       bottomGap: valuePreviewRect.bottom - valueRect.bottom,
       valueHasVerticalScroll: value.scrollHeight > value.clientHeight,
@@ -116,12 +135,12 @@ test('App Mode submits real public inputs and displays the matching Runtime resu
   })
   expect(displayGeometry).not.toBeNull()
   expect(displayGeometry!.imageAspectRatio).toBeCloseTo(displayGeometry!.naturalImageAspectRatio, 2)
-  expect(displayGeometry!.previewHeightDifference).toBeLessThanOrEqual(1)
   expect(displayGeometry!.valueHeight).toBeGreaterThan(148)
   expect(displayGeometry!.bottomGap).toBeLessThanOrEqual(8)
   expect(displayGeometry!.valueHasVerticalScroll).toBe(true)
   expect(displayGeometry!.inlineHeight).toBe('')
   expect(displayGeometry!.maxHeight).toBe('none')
+  expect(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight + 1)).toBe(true)
   expect(invokeUrls).toEqual([
     `http://127.0.0.1:5600/api/v1/workflows/app-runtimes/${runtimeId}/invoke/upload?response_mode=run`,
   ])

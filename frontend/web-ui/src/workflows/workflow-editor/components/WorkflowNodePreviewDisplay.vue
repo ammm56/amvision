@@ -8,6 +8,7 @@
     <div
       v-if="display.kind === 'image' && display.image?.src"
       class="workflow-graph-node-preview__image-frame"
+      :style="imageFrameStyle(display.image)"
     >
       <img
         :src="display.image.src"
@@ -105,6 +106,7 @@
 <script setup lang="ts">
 import WorkflowPreviewTable from './WorkflowPreviewTable.vue'
 import type { PreviewImageOverlay, PreviewNodeDisplay, PreviewViewerImage } from '../preview/useWorkflowPreviewDisplays'
+import type { StyleValue } from 'vue'
 
 defineProps<{
   display: PreviewNodeDisplay
@@ -129,6 +131,12 @@ function readOverlayViewBox(image: PreviewViewerImage | null): string {
   const width = image?.sourceWidth ?? image?.width ?? 0
   const height = image?.sourceHeight ?? image?.height ?? 0
   return width > 0 && height > 0 ? `0 0 ${width} ${height}` : ''
+}
+
+function imageFrameStyle(image: PreviewViewerImage | null): StyleValue {
+  const width = image?.displayWidth ?? image?.width ?? image?.sourceWidth ?? 0
+  const height = image?.displayHeight ?? image?.height ?? image?.sourceHeight ?? 0
+  return width > 0 && height > 0 ? { aspectRatio: `${width} / ${height}` } : undefined
 }
 
 function overlayKey(overlay: PreviewImageOverlay, index: number): string {
