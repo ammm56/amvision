@@ -49,6 +49,7 @@ function shouldRetainPreviewNodeRecords(
 export function useWorkflowEditorActions() {
   const saving = ref(false)
   const previewing = ref(false)
+  let previewGeneration = 0
   const errorMessage = ref<string | null>(null)
   const statusMessage = ref<string | null>(null)
   const lastPreviewRun = ref<WorkflowPreviewRun | null>(null)
@@ -62,6 +63,7 @@ export function useWorkflowEditorActions() {
   })
 
   async function saveWorkflowDocument(input: WorkflowSaveActionInput): Promise<WorkflowAppSaveResult | null> {
+    if (saving.value) return null
     saving.value = true
     errorMessage.value = null
     statusMessage.value = null
@@ -84,12 +86,14 @@ export function useWorkflowEditorActions() {
       statusMessage.value = translate('workflowEditor.feedback.previewAlreadyRunning')
       return null
     }
+    const generation = ++previewGeneration
     previewing.value = true
     errorMessage.value = null
     statusMessage.value = null
     try {
       await validateWorkflowTemplate(input.template)
       await validateWorkflowApplication(input.projectId, input.application, input.template)
+      if (generation !== previewGeneration) return null
       const previewRun = await createWorkflowPreviewRun({
         projectId: input.projectId,
         template: input.template,
@@ -106,6 +110,7 @@ export function useWorkflowEditorActions() {
         application: input.application,
         executionScope: input.executionScope,
       })
+      if (generation !== previewGeneration) return null
       lastPreviewRun.value = previewRun
       if (!isTerminalPreviewRun(previewRun)) {
         previewRunStream.start(previewRun.preview_run_id)
@@ -113,10 +118,10 @@ export function useWorkflowEditorActions() {
       statusMessage.value = null
       return previewRun
     } catch (error) {
-      errorMessage.value = readErrorMessage(error, translate('workflowEditor.feedback.previewRunFailed'))
+      if (generation === previewGeneration) errorMessage.value = readErrorMessage(error, translate('workflowEditor.feedback.previewRunFailed'))
       return null
     } finally {
-      previewing.value = false
+      if (generation === previewGeneration) previewing.value = false
     }
   }
 
@@ -134,6 +139,8 @@ export function useWorkflowEditorActions() {
   }
 
   function resetPreviewRun(): void {
+    previewGeneration += 1
+    previewing.value = false
     previewRunStream.stop()
     lastPreviewRun.value = null
   }

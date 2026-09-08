@@ -1,6 +1,6 @@
 import { nextTick, type ComputedRef, type Ref, type ShallowRef } from 'vue'
 
-import { createUniquePublicId, normalizePublicIdentifier } from '../bindings/useWorkflowPublicBindings'
+import { cloneWorkflowJson } from './workflow-app-document'
 import { createWorkflowLiteGraphAdapter, type WorkflowLiteGraphAdapter } from '../canvas/graph-engine/litegraph-adapter'
 import { getWorkflowNodeCatalog } from '../services/node-catalog.service'
 import { getWorkflowApp, type WorkflowAppDocument } from '../services/workflow-app.service'
@@ -18,6 +18,7 @@ import type { WorkflowGraphNodeView } from '../nodes/useWorkflowGraphNodeViews'
 import type { WorkflowSelectionState } from '../selection/useWorkflowSelectionState'
 
 export interface WorkflowDocumentLoaderOptions {
+  onDocumentReplaced?: (preserveExisting: boolean) => void
   loading: Ref<boolean>
   nodeCatalog: Ref<WorkflowNodeCatalogResponse | null>
   workflowApp: Ref<WorkflowAppDocument | null>
@@ -39,11 +40,10 @@ export interface WorkflowDocumentLoaderOptions {
   createLocalWorkflowAppDraft: () => WorkflowAppDocument
   initializePublicBindings: (appDocument: WorkflowAppDocument) => void
   initializePreviewInputs: (bindings: FlowApplicationBinding[], options?: { preserveExisting?: boolean }) => void
-  normalizeLoadedRequestImageInputBindings: () => void
   readSelection: () => WorkflowSelectionState
   setSelection: (selection: WorkflowSelectionState) => void
   restoreSelectionAfterGraphRefresh: (previousSelection: WorkflowSelectionState, fallbackNodeId: string | null) => void
-  buildGraphNodeViews: (nodes: WorkflowGraphNode[]) => WorkflowGraphNodeView[]
+  buildGraphNodeViews: (nodes: WorkflowGraphNode[], edges?: WorkflowGraphEdge[]) => WorkflowGraphNodeView[]
   clearComplexParameterDrafts: () => void
   revokePreviewImageObjectUrls: () => void
   updateStageSize: () => void
@@ -53,26 +53,38 @@ export interface WorkflowDocumentLoaderOptions {
 
 export function useWorkflowDocumentLoader(options: WorkflowDocumentLoaderOptions) {
   function initializeWorkflowAppDrafts(appDocument: WorkflowAppDocument, draftOptions: { preservePreviewInputs?: boolean } = {}): void {
-    options.templateInputs.value = appDocument.graphDocument.template.template_inputs.map((input) => ({ ...input, metadata: { ...input.metadata } }))
-    options.templateOutputs.value = appDocument.graphDocument.template.template_outputs.map((output) => ({ ...output, metadata: { ...output.metadata } }))
+    options.templateInputs.value = cloneWorkflowJson(appDocument.graphDocument.template.template_inputs)
+    options.templateOutputs.value = cloneWorkflowJson(appDocument.graphDocument.template.template_outputs)
     options.initializePublicBindings(appDocument)
-    normalizeLoadedHttpResponseOutputIds(appDocument.graphDocument.template.nodes)
-    options.normalizeLoadedRequestImageInputBindings()
     options.initializePreviewInputs(options.applicationBindingsDraft.value, { preserveExisting: draftOptions.preservePreviewInputs === true })
   }
 
-  async function refreshSavedWorkflowApp(applicationId: string): Promise<void> {
+  /** 所有来源共用替换入口；准备完成后才替换编辑状态。保存回读保留选择和输入。 */
+  function replaceWorkflowEditorDocument(source: WorkflowAppDocument, preserveExisting = false): void {
+    const app = cloneWorkflowJson(source)
+    const template = app.graphDocument.template
+    const nodes = options.buildGraphNodeViews(template.nodes, template.edges)
     const previousSelection = options.readSelection()
-    const refreshedApp = await getWorkflowApp(options.selectedProjectId.value, applicationId)
-    options.workflowApp.value = refreshedApp
-    initializeWorkflowAppDrafts(refreshedApp, { preservePreviewInputs: true })
+    options.liteGraphAdapter.value?.loadTemplate(template)
+    if (!preserveExisting) {
+      options.resetPreviewRun()
+      options.revokePreviewImageObjectUrls()
+    }
+    options.workflowApp.value = app
+    options.graphEdges.value = cloneWorkflowJson(template.edges)
+    options.graphGroups.value = cloneWorkflowJson(template.groups)
+    options.graphNotes.value = cloneWorkflowJson(template.notes ?? [])
+    options.graphNodes.value = nodes
+    initializeWorkflowAppDrafts(app, { preservePreviewInputs: preserveExisting })
     options.clearComplexParameterDrafts()
-    options.liteGraphAdapter.value?.loadTemplate(refreshedApp.graphDocument.template)
-    options.graphEdges.value = cloneGraphEdges(refreshedApp.graphDocument.template.edges)
-    options.graphGroups.value = cloneGraphGroups(refreshedApp.graphDocument.template.groups)
-    options.graphNotes.value = cloneGraphNotes(refreshedApp.graphDocument.template.notes ?? [])
-    options.graphNodes.value = options.buildGraphNodeViews(refreshedApp.graphDocument.template.nodes)
-    options.restoreSelectionAfterGraphRefresh(previousSelection, options.graphNodes.value[0]?.node.node_id ?? null)
+    options.onDocumentReplaced?.(preserveExisting)
+    if (preserveExisting) options.restoreSelectionAfterGraphRefresh(previousSelection, nodes[0]?.node.node_id ?? null)
+    else options.setSelection({ nodeId: nodes[0]?.node.node_id ?? null, edgeId: null, boundaryKind: null })
+  }
+
+  async function refreshSavedWorkflowApp(applicationId: string): Promise<void> {
+    const refreshedApp = await getWorkflowApp(options.selectedProjectId.value, applicationId)
+    replaceWorkflowEditorDocument(refreshedApp, true)
   }
 
   async function loadPage(): Promise<void> {
@@ -103,83 +115,18 @@ export function useWorkflowDocumentLoader(options: WorkflowDocumentLoaderOptions
 
   async function loadSavedWorkflowApp(): Promise<void> {
     const loadedApp = await getWorkflowApp(options.selectedProjectId.value, options.routeApplicationId.value)
-    options.workflowApp.value = loadedApp
-    initializeWorkflowAppDrafts(loadedApp)
-    options.liteGraphAdapter.value?.loadTemplate(loadedApp.graphDocument.template)
-    options.graphEdges.value = cloneGraphEdges(loadedApp.graphDocument.template.edges)
-    options.graphGroups.value = cloneGraphGroups(loadedApp.graphDocument.template.groups)
-    options.graphNotes.value = cloneGraphNotes(loadedApp.graphDocument.template.notes ?? [])
-    options.graphNodes.value = options.buildGraphNodeViews(loadedApp.graphDocument.template.nodes)
-    options.setSelection({ nodeId: options.graphNodes.value[0]?.node.node_id ?? null, edgeId: null, boundaryKind: null })
+    replaceWorkflowEditorDocument(loadedApp)
   }
 
   function loadNewWorkflowAppDraft(): void {
     options.resetNewWorkflowAppDraft()
-    const draftApp = options.createLocalWorkflowAppDraft()
-    options.workflowApp.value = draftApp
-    initializeWorkflowAppDrafts(draftApp)
-    options.liteGraphAdapter.value?.loadTemplate(draftApp.graphDocument.template)
-    options.graphEdges.value = []
-    options.graphGroups.value = []
-    options.graphNotes.value = []
-    options.graphNodes.value = []
-    options.setSelection({ nodeId: null, edgeId: null, boundaryKind: null })
-  }
-
-  function normalizeLoadedHttpResponseOutputIds(nodes: WorkflowGraphNode[]): void {
-    const nodeTypeById = new Map(nodes.map((node) => [node.node_id, node.node_type_id]))
-    for (const output of options.templateOutputs.value) {
-      if (nodeTypeById.get(output.source_node_id) !== 'core.output.http-response') continue
-      if (output.source_port !== 'response') continue
-      const legacyOutputId = normalizePublicIdentifier(`${output.source_node_id}_${output.source_port}`, output.output_id)
-      if (output.output_id !== legacyOutputId) continue
-      const existingIds = new Set([
-        ...options.templateOutputs.value.filter((item) => item !== output).map((item) => item.output_id),
-        ...options.applicationBindingsDraft.value
-          .filter((binding) => binding.template_port_id !== output.output_id && binding.binding_id !== output.output_id)
-          .map((binding) => binding.binding_id),
-      ])
-      const nextOutputId = createUniquePublicId(output.source_node_id, existingIds)
-      if (nextOutputId === output.output_id) continue
-      renameHttpResponseOutput(output, nextOutputId)
-    }
-  }
-
-  function renameHttpResponseOutput(output: WorkflowGraphOutput, nextOutputId: string): void {
-    const previousOutputId = output.output_id
-    output.output_id = nextOutputId
-    for (const binding of options.applicationBindingsDraft.value) {
-      if (binding.direction !== 'output' || binding.template_port_id !== previousOutputId) continue
-      binding.template_port_id = nextOutputId
-      if (binding.binding_id === previousOutputId) binding.binding_id = nextOutputId
-    }
+    replaceWorkflowEditorDocument(options.createLocalWorkflowAppDraft())
   }
 
   return {
     initializeWorkflowAppDrafts,
+    replaceWorkflowEditorDocument,
     refreshSavedWorkflowApp,
     loadPage,
   }
-}
-
-function cloneGraphEdges(edges: WorkflowGraphEdge[]): WorkflowGraphEdge[] {
-  return edges.map((edge) => ({ ...edge, metadata: { ...edge.metadata } }))
-}
-
-function cloneGraphGroups(groups: WorkflowGraphGroup[]): WorkflowGraphGroup[] {
-  return groups.map((group) => ({
-    ...group,
-    rect: { ...group.rect },
-    member_node_ids: [...group.member_node_ids],
-    member_note_ids: [...(group.member_note_ids ?? [])],
-    metadata: { ...group.metadata },
-  }))
-}
-
-function cloneGraphNotes(notes: WorkflowGraphNote[]): WorkflowGraphNote[] {
-  return notes.map((note) => ({
-    ...note,
-    rect: { ...note.rect },
-    metadata: { ...note.metadata },
-  }))
 }

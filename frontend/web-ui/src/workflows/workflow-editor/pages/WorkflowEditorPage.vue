@@ -1,5 +1,5 @@
 <template>
-  <section class="workflow-graph-workbench" :class="`workflow-graph-workbench--${graphTheme}`">
+  <section class="workflow-graph-workbench" :class="[`workflow-graph-workbench--${graphTheme}`, { 'workflow-graph-workbench--history-open': history.open.value }]">
     <div
       ref="canvasRef"
       class="workflow-graph-stage"
@@ -7,6 +7,8 @@
       @dragstart.prevent
       @wheel="handleStageWheel"
       @contextmenu.prevent="openStageContextMenu"
+      @mousemove="trackClipboardPointer"
+      @mouseleave="clipboardPointer = null"
     >
       <WorkflowGraphToolbar
         ref="toolbarRef"
@@ -17,7 +19,10 @@
         :title-editable="editorTitleEditable"
         :runtime-state="workflowApp?.primaryRuntime?.observed_state ?? null"
         :status-message="toolbarStatusMessage"
-        :loading="loading"
+        :document-state="documentState"
+        :loading="documentBusy"
+        :history-disabled="isNewApp || documentBusy || !workflowApp"
+        @history="openVersionHistory"
         :preview-disabled="previewDisabled"
         :previewing="previewOperationRunning"
         :publish-disabled="publishDisabled"
@@ -32,7 +37,6 @@
         @cancel-title="cancelEditorTitleEdit"
         @refresh="loadPage"
         @toggle-group-create-mode="toggleGroupCreateMode"
-        @add-note="addNoteAtViewportCenter"
         @configure-app-mode="appModeConfigDialogOpen = true"
         @toggle-inspector="toggleInspector"
         @preview="requestPreviewRun"
@@ -150,8 +154,11 @@
         />
       </div>
 
+      <Transition name="workflow-inspector">
+      <div v-if="history.open.value || !inspectorCollapsed" class="workflow-graph-floating-panel workflow-editor-side-panel" :class="{ 'workflow-editor-side-panel--versions': history.open.value }">
+      <WorkflowVersionHistoryPanel :blocked="documentBusy" :open="history.open.value" :versions="history.versions.value" :loading="history.loading.value" :selected-id="history.selectedId.value" :error="history.error.value" :has-more="history.nextOffset.value !== null" :latest-version-id="history.versions.value.find(v => v.state === 'published')?.workflow_app_version_id" :document-state="documentState" @rename="(version, name, notes) => history.act(version, 'rename', name, notes)" @export="history.act($event, 'export')" @delete="history.act($event, 'delete')" @close="history.close" @refresh="history.refresh()" @more="history.refresh(true)" @select="history.select" />
       <WorkflowInspectorShell
-        :collapsed="inspectorCollapsed"
+        :collapsed="inspectorCollapsed || history.open.value"
         :show-new-app-draft-panel="showNewAppDraftPanel"
         :new-workflow-app-draft="newWorkflowAppDraft"
         :new-workflow-app-save-blocker="newWorkflowAppSaveBlocker"
@@ -209,7 +216,15 @@
         @open-preview-json="openPreviewJsonViewer"
       />
 
+      </div>
+      </Transition>
       <WorkflowGraphOverlayLayer
+        :document-disabled="documentBusy"
+        :can-paste-node="nodeClipboard.canPaste.value"
+        @copy-node="nodeClipboard.copy(contextMenu?.nodeId ?? null)"
+        @paste-node="pasteContextNode"
+        @export-document="exportDocumentFromContextMenu"
+        @import-document="openDocumentFilePicker"
         :minimap-visible="minimapVisible"
         :viewport-scale-percent="viewportScalePercent"
         :minimap-nodes="minimapNodes"
@@ -251,6 +266,7 @@
         @close-node-picker="closeNodePicker"
       />
     </div>
+    <WorkflowDocumentFileInput ref="documentFileInput" :disabled="documentBusy" @import="importWorkflowDocument" />
     <WorkflowPreviewViewers
       :image="activeImageViewer"
       :table="activePreviewTable"
@@ -281,7 +297,6 @@
       @select="selectDeploymentInstance"
       @apply="applySelectedDeploymentInstance"
     />
-    <Transition name="workflow-modal" appear>
       <WorkflowAppModeConfigDialog
         v-if="appModeConfigDialogOpen"
         :application-title="editorTitle"
@@ -291,7 +306,6 @@
         @remove="removeAppModeConfig"
         @apply="applyAppModeConfig"
       />
-    </Transition>
     <WorkflowPublishDialog
       :open="publishDialogOpen"
       :busy="publishingVersion"
@@ -303,7 +317,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, shallowRef, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
@@ -320,6 +334,10 @@ import WorkflowGraphLinksLayer from '../components/WorkflowGraphLinksLayer.vue'
 import WorkflowGraphNoteLayer from '../components/WorkflowGraphNoteLayer.vue'
 import WorkflowGraphNodeLayer from '../components/WorkflowGraphNodeLayer.vue'
 import WorkflowGraphOverlayLayer from '../components/WorkflowGraphOverlayLayer.vue'
+import WorkflowVersionHistoryPanel from '../components/WorkflowVersionHistoryPanel.vue'
+import WorkflowDocumentFileInput from '../components/WorkflowDocumentFileInput.vue'
+import { useWorkflowVersionHistory } from '../documents/useWorkflowVersionHistory'
+import { ApiError } from '@/shared/api/error'
 import WorkflowGraphToolbar from '../components/WorkflowGraphToolbar.vue'
 import WorkflowInspectorShell from '../components/WorkflowInspectorShell.vue'
 import WorkflowPreviewViewers from '../components/WorkflowPreviewViewers.vue'
@@ -346,6 +364,16 @@ import { getPreviewImageRefTransportKindOptions, useWorkflowPreviewInputs } from
 import { formatPreviewRunStatusLabel, useWorkflowPreviewValidation } from '../preview/useWorkflowPreviewValidation'
 import { buildPreviewNodeDurationIndex } from '../preview/workflow-preview-node-timings'
 import { useWorkflowDocumentBuilder } from '../documents/useWorkflowDocumentBuilder'
+import {
+  createWorkflowAppDocument,
+  parseWorkflowAppDocumentV1,
+  retargetWorkflowAppDocument,
+  downloadWorkflowAppDocument,
+  WORKFLOW_DOCUMENT_MAX_BYTES,
+  WorkflowDocumentLimitError,
+  type WorkflowAppDocumentV1,
+} from '../documents/workflow-app-document'
+import { nextTick } from 'vue'
 import { useWorkflowDocumentLoader } from '../documents/useWorkflowDocumentLoader'
 import { useWorkflowNewAppDraft } from '../documents/useWorkflowNewAppDraft'
 import { useWorkflowGraphPanelState } from '../panels/useWorkflowGraphPanelState'
@@ -363,6 +391,7 @@ import { useWorkflowGraphNotes } from '../notes/useWorkflowGraphNotes'
 import { useWorkflowRequestImageInputs } from '../graph/useWorkflowRequestImageInputs'
 import { useWorkflowNodeDisplayHelpers } from '../nodes/useWorkflowNodeDisplayHelpers'
 import { useWorkflowGraphNodeViews, type WorkflowGraphNodeView } from '../nodes/useWorkflowGraphNodeViews'
+import { useWorkflowNodeClipboard } from '../nodes/useWorkflowNodeClipboard'
 import { useWorkflowNodePicker } from '../nodes/useWorkflowNodePicker'
 import {
   buildInitialNodeParameters,
@@ -432,6 +461,8 @@ const imageInteractionApplying = ref(false)
 const nodeCatalog = ref<WorkflowNodeCatalogResponse | null>(null)
 const workflowApp = ref<WorkflowAppDocument | null>(null)
 const appModeConfig = ref<WorkflowAppModeConfig | null>(null)
+const importedUnsaved = ref(false)
+const appModeConfigEdited = ref(false)
 const appModeConfigDialogOpen = ref(false)
 const graphNodes = ref<GraphNodeView[]>([])
 const graphEdges = ref<WorkflowGraphEdge[]>([])
@@ -457,6 +488,7 @@ const {
 } = useWorkflowInspectorPanel()
 
 function toggleInspector(): void {
+  if (history.open.value) history.close()
   if (inspectorCollapsed.value) {
     expandInspector()
     return
@@ -480,6 +512,8 @@ function handleBoundarySelection(boundaryKind: AppBoundaryKind): void {
 }
 
 async function requestPreviewRun(): Promise<void> {
+  if (previewDisabled.value) return
+  history.close()
   expandInspector()
   await runPreview()
 }
@@ -557,6 +591,7 @@ const {
   nodePickerRequiredPortDirection,
   nodePickerRequiredPayloadTypeId,
   addGraphNode,
+  createGraphNodeId,
   openNodePickerFromContextMenu,
   openNodePickerFromConnectionDraft,
   closeNodePicker,
@@ -784,18 +819,21 @@ const appModeDisplayCandidates = computed(() => buildWorkflowAppModeDisplayCandi
 watch(
   () => workflowApp.value?.applicationDocument.application.metadata,
   (metadata) => {
+    appModeConfigEdited.value = false
     appModeConfig.value = metadata ? readWorkflowAppModeConfig(metadata) : null
   },
   { immediate: true },
 )
 
 function applyAppModeConfig(config: WorkflowAppModeConfig): void {
+  appModeConfigEdited.value = true
   appModeConfig.value = config
   appModeConfigDialogOpen.value = false
   statusMessage.value = t('workflowEditor.appMode.configured')
 }
 
 function removeAppModeConfig(): void {
+  appModeConfigEdited.value = true
   appModeConfig.value = null
   appModeConfigDialogOpen.value = false
   statusMessage.value = t('workflowEditor.appMode.removed')
@@ -836,14 +874,6 @@ const {
 watch([selectedNodeId, selectedEdgeId, selectedBoundaryKind], ([nodeId, edgeId, boundaryKind]) => {
   if (nodeId || edgeId || boundaryKind) clearNoteSelection()
 })
-
-function addNoteAtViewportCenter(): void {
-  const bounds = canvasRef.value?.getBoundingClientRect()
-  if (!bounds) return
-  const center = screenToWorld(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2)
-  const note = createNoteAt(center.x - 180, center.y - 120)
-  if (!note) setActionError(t('workflowEditor.feedback.noteLimitReached'))
-}
 
 function openNoteContextMenu(event: MouseEvent, note: WorkflowGraphNote): void {
   selectNote(note.note_id)
@@ -1126,10 +1156,10 @@ const {
   liteGraphAdapter,
   applyNewWorkflowTemplateSettings,
   buildNewWorkflowApplicationPatch,
-  writeBoundaryPositionsToMetadata: (metadata) => writeWorkflowAppModeConfig(
+  writeBoundaryPositionsToMetadata: (metadata) => appModeConfigEdited.value ? writeWorkflowAppModeConfig(
     writeBoundaryPositionsToMetadata(metadata),
     appModeConfig.value,
-  ),
+  ) : writeBoundaryPositionsToMetadata(metadata),
 })
 const {
   runWorkflowPreflight,
@@ -1170,6 +1200,9 @@ const {
   readNodeParameterJsonTextValue,
   updateNodeParameterJsonDraft,
   commitNodeParameterJsonDraft,
+  commitPendingNodeParameterDrafts,
+  hasPendingNodeParameterDrafts,
+  resetNodeParameterJsonDrafts,
   nodeParameterJsonPlaceholder,
 } = useWorkflowNodeParameters<GraphNodeView>({
   complexParameterDrafts,
@@ -1185,8 +1218,8 @@ const {
 const editorTitle = computed(() => isNewApp.value ? newWorkflowAppDraft.value.displayName || t('workflowEditor.editor.newTitle') : workflowApp.value?.applicationDocument.application.display_name || routeApplicationId.value)
 const editorTitleEditable = computed(() => !isNewApp.value && Boolean(workflowApp.value?.applicationDocument.application_id))
 const previewOperationRunning = computed(() => previewing.value || imageInteractionApplying.value)
-const saveDisabled = computed(() => saving.value || imageInteractionApplying.value || !workflowApp.value || Boolean(newWorkflowAppSaveBlocker.value))
-const previewDisabled = computed(() => previewOperationRunning.value || !workflowApp.value || isNewApp.value || Boolean(newWorkflowAppSaveBlocker.value))
+const saveDisabled = computed(() => documentBusy.value || !workflowApp.value || Boolean(newWorkflowAppSaveBlocker.value))
+const previewDisabled = computed(() => documentBusy.value || previewOperationRunning.value || !workflowApp.value || isNewApp.value || Boolean(newWorkflowAppSaveBlocker.value))
 const publishDisabled = computed(() => publishingVersion.value || saveDisabled.value)
 
 function beginEditorTitleEdit(): void {
@@ -1229,7 +1262,9 @@ async function commitEditorTitleEdit(): Promise<void> {
     )
     workflowApp.value = {
       ...app,
-      applicationDocument: updatedApplicationDocument,
+      applicationDocument: { ...updatedApplicationDocument, application: {
+        ...app.applicationDocument.application, display_name: nextDisplayName,
+      } },
     }
     editorTitleDraft.value = ''
     editorTitleEditing.value = false
@@ -1370,7 +1405,6 @@ const {
   addRequestTextInput,
   addRequestFileInput,
   addRequestFilesInput,
-  normalizeLoadedRequestImageInputBindings,
 } = useWorkflowRequestImageInputs<GraphNodeView>({
   workflowApp,
   graphNodes,
@@ -1400,6 +1434,8 @@ const {
   },
 })
 const { handleKeydown } = useWorkflowEditorKeyboard({
+  copySelectedNode: () => nodeClipboard.copy(selectedNodeId.value),
+  pasteNode: () => nodeClipboard.paste(),
   selectedNodeId,
   selectedEdgeId,
   selectedNoteId,
@@ -1417,9 +1453,25 @@ const { handleKeydown } = useWorkflowEditorKeyboard({
   deleteSelectedNote,
 })
 const {
+  replaceWorkflowEditorDocument,
   refreshSavedWorkflowApp,
   loadPage,
 } = useWorkflowDocumentLoader({
+  onDocumentReplaced: (preserveExisting) => {
+    importedUnsaved.value = false
+    if (!preserveExisting) {
+      nodeClipboard.clear()
+      clipboardPointer.value = null
+      clearNoteSelection()
+      selectedGroupId.value = null
+      cancelTransientGroupOperations()
+      stopNodeDrag()
+      stopBoundaryDrag()
+      stopPortConnection()
+      nodePicker.value = null
+      clearContextMenu()
+    }
+  },
   loading,
   nodeCatalog,
   workflowApp,
@@ -1441,14 +1493,11 @@ const {
   createLocalWorkflowAppDraft,
   initializePublicBindings,
   initializePreviewInputs,
-  normalizeLoadedRequestImageInputBindings,
   readSelection,
   setSelection,
   restoreSelectionAfterGraphRefresh,
   buildGraphNodeViews,
-  clearComplexParameterDrafts: () => {
-    complexParameterDrafts.value = {}
-  },
+  clearComplexParameterDrafts: resetNodeParameterJsonDrafts,
   revokePreviewImageObjectUrls,
   updateStageSize,
   fitView,
@@ -1509,8 +1558,11 @@ const {
 })
 const {
   saveCurrentWorkflowApp,
+  saveInProgress,
   runPreview,
 } = useWorkflowSaveRunOrchestration({
+  isDocumentBusy: () => loading.value || documentReading.value || history.loading.value || imageInteractionApplying.value,
+  commitParameterDrafts: () => commitPendingNodeParameterDrafts(graphNodes.value),
   workflowApp,
   isNewApp,
   selectedProjectId,
@@ -1522,7 +1574,10 @@ const {
   buildPreviewInputBindings,
   saveWorkflowDocument,
   runWorkflowPreview,
-  applyWorkflowSaveFeedback,
+  applyWorkflowSaveFeedback: async (result, options) => {
+    try { await applyWorkflowSaveFeedback(result, options) }
+    catch (error) { setActionError(`${t('workflowEditor.history.savedRefreshFailed')}: ${error instanceof Error ? error.message : error}`); throw error }
+  },
   applyPreviewRunFeedback,
   clearActionMessages,
   revokePreviewImageObjectUrls,
@@ -1548,32 +1603,202 @@ async function publishCurrentWorkflowApp(releaseNotes: string): Promise<void> {
   publishingVersion.value = true
   clearActionMessages()
   publishDialogError.value = null
+  let draftSaved = false
+  let versionPublished = false
   try {
-    await saveCurrentWorkflowApp()
+    const saved = await saveCurrentWorkflowApp()
+    draftSaved = Boolean(saved)
+    if (saved?.refreshError) throw saved.refreshError
     const app = workflowApp.value
-    if (!app || errorMessage.value || !app.applicationDocument.draft_fingerprint) {
-      publishDialogError.value = errorMessage.value || t('workflowEditor.feedback.publishFailed')
+    if (!saved || !app || errorMessage.value || !saved.result.applicationDocument.draft_fingerprint) {
+      publishDialogError.value = `${t('workflowEditor.history.saveFailed')}: ${errorMessage.value || t('workflowEditor.feedback.publishFailed')}`
       return
     }
     const version = await publishWorkflowAppVersion(
       selectedProjectId.value,
       app.applicationDocument.application_id,
       {
-        expectedDraftFingerprint: app.applicationDocument.draft_fingerprint,
+        expectedDraftFingerprint: saved.result.applicationDocument.draft_fingerprint,
         releaseNotes,
       },
     )
+    versionPublished = true
     app.versions = [version, ...app.versions.filter((item) => item.workflow_app_version_id !== version.workflow_app_version_id)]
     app.latestVersion = version
     setActionStatus(t('workflowEditor.feedback.published', { version: version.display_version }))
     publishDialogOpen.value = false
+    await history.refresh()
   } catch (error) {
-    const message = error instanceof Error ? error.message : t('workflowEditor.feedback.publishFailed')
+    const detail = error instanceof Error ? error.message : String(error)
+    const uncertain = !(error instanceof ApiError) || error.status >= 500
+    const key = versionPublished ? 'historyRefreshFailed' : draftSaved ? (uncertain ? 'publishUncertain' : 'publishFailed') : 'saveFailed'
+    const message = `${t(`workflowEditor.history.${key}`)}: ${detail}`
     publishDialogError.value = message
     setActionError(message)
   } finally {
     publishingVersion.value = false
   }
+}
+
+const documentFileInput = ref<InstanceType<typeof WorkflowDocumentFileInput> | null>(null)
+function openDocumentFilePicker(): void {
+  documentFileInput.value?.open()
+  clearContextMenu()
+}
+function exportDocumentFromContextMenu(): void {
+  exportCurrentWorkflowDocument()
+  clearContextMenu()
+}
+
+const history = useWorkflowVersionHistory({
+  isDocumentBusy: () => documentBusy.value,
+  readTarget: () => ({ projectId: selectedProjectId.value, applicationId: workflowApp.value?.applicationDocument.application_id ?? '' }),
+  loadDocument: (document, version) => loadWorkflowDocument(document, t('workflowEditor.history.loaded', { version: version.display_version })),
+  onVersionsChanged: (versions) => {
+    if (!workflowApp.value) return
+    workflowApp.value.versions = versions
+    workflowApp.value.latestVersion = versions.find(version => version.state === 'published') ?? null
+  },
+  readError: (error) => `${t('workflowEditor.history.actionFailed')}: ${readWorkflowDocumentError(error)}`,
+})
+function openVersionHistory(): void {
+  if (isNewApp.value || documentBusy.value || !workflowApp.value) return
+  if (history.open.value) { history.close(); return }
+  inspectorCollapsed.value = true
+  void history.show()
+}
+
+/** 保存状态只比较当前文档与草稿，不推断其与最新发布版本是否相同。 */
+function documentKey(value: unknown): string {
+  return JSON.stringify(value, (_key, item) => item && typeof item === 'object' && !Array.isArray(item)
+    ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item)
+}
+const documentState = computed(() => {
+  if (!workflowApp.value || loading.value) return ''
+  if (isNewApp.value || importedUnsaved.value || hasPendingNodeParameterDrafts()) return t('workflowEditor.document.unsaved')
+  const template = buildCurrentTemplate()
+  const application = template && buildCurrentApplication(template)
+  const current = { application, template }
+  const saved = { application: workflowApp.value.applicationDocument.application, template: workflowApp.value.graphDocument.template }
+  return t(documentKey(current) === documentKey(saved) ? 'workflowEditor.document.saved' : 'workflowEditor.document.unsaved')
+})
+
+let editorDisposed = false
+onBeforeUnmount(() => { editorDisposed = true; resetPreviewRun() })
+const documentReading = ref(false)
+const documentBusy = computed(() => loading.value || saving.value || saveInProgress.value || publishingVersion.value || editorTitleSaving.value || documentReading.value || imageInteractionApplying.value || history.loading.value)
+
+const clipboardPointer = ref<{ x: number; y: number } | null>(null)
+const nodeClipboard = useWorkflowNodeClipboard({
+  graphNodes,
+  isBusy: () => documentBusy.value || !workflowApp.value,
+  commitParameters: commitPendingNodeParameterDrafts,
+  createNodeId: createGraphNodeId,
+  buildView: node => buildGraphNodeView(node, graphNodes.value.length, new Map()),
+  readHeight: nodeVisualHeight,
+  readPastePosition: ({ width, height }) => {
+    if (clipboardPointer.value) return screenToWorld(clipboardPointer.value.x, clipboardPointer.value.y)
+    const stage = canvasRef.value
+    if (!stage) return { x: 0, y: 0 }
+    const bounds = stage.getBoundingClientRect()
+    const panel = stage.querySelector('.workflow-editor-side-panel')?.getBoundingClientRect()
+    const toolbar = stage.querySelector('.workflow-graph-toolbar')?.getBoundingClientRect()
+    const right = panel ? panel.left : bounds.right
+    const top = toolbar ? toolbar.bottom + 12 : bounds.top
+    const center = screenToWorld((bounds.left + right) / 2, (top + bounds.bottom - 64) / 2)
+    return { x: center.x - width / 2, y: center.y - height / 2 }
+  },
+  onCopied: () => { clearContextMenu(); setActionStatus(t('workflowEditor.editor.nodeCopied')) },
+  onPasted: view => {
+    clearContextMenu()
+    clearNoteSelection()
+    clearGroupSelection()
+    selectNode(view.node.node_id)
+    syncMembershipAfterNodeDrag()
+    setActionStatus(t('workflowEditor.editor.nodePasted'))
+  },
+})
+watch(loading, value => { if (value) { nodeClipboard.clear(); clipboardPointer.value = null } })
+onBeforeUnmount(() => nodeClipboard.clear())
+
+function trackClipboardPointer(event: MouseEvent): void {
+  const blocked = event.target instanceof Element && event.target.closest('.workflow-graph-toolbar, .workflow-graph-floating-panel, .workflow-graph-context-menu, .workflow-node-picker, .workflow-graph-navigation-dock, input, textarea, select, [contenteditable]')
+  clipboardPointer.value = blocked ? null : { x: event.clientX, y: event.clientY }
+}
+
+function pasteContextNode(): void {
+  const menu = contextMenu.value
+  if (menu) nodeClipboard.paste({ x: menu.worldX, y: menu.worldY })
+}
+
+function exportCurrentWorkflowDocument(): void {
+  if (documentBusy.value || !commitPendingNodeParameterDrafts(graphNodes.value)) return
+  try {
+    const template = buildCurrentTemplate()
+    const application = template && buildCurrentApplication(template)
+    if (!template || !application) return
+    downloadWorkflowAppDocument(createWorkflowAppDocument(application, template))
+    setActionStatus(t('workflowEditor.document.exported'))
+  } catch (error) {
+    setActionError(`${t('workflowEditor.document.exportFailed')}: ${readWorkflowDocumentError(error)}`)
+  }
+}
+
+function readWorkflowDocumentError(error: unknown): string {
+  if (!(error instanceof WorkflowDocumentLimitError)) return error instanceof Error ? error.message : String(error)
+  const key = {
+    bytes: 'fileTooLarge',
+    nodes: 'nodeLimit',
+    notes: 'noteLimit',
+    'graph-items': 'graphItemLimit',
+    'json-depth': 'jsonDepthLimit',
+    'json-values': 'jsonValueLimit',
+  }[error.kind]
+  return t(`workflowEditor.document.${key}`, { limit: error.limit })
+}
+
+/** 文件和发布版本都替换当前编辑模型，保存目标始终属于当前页面。 */
+async function loadWorkflowDocument(document: WorkflowAppDocumentV1, message: string): Promise<void> {
+  const current = workflowApp.value
+  const currentTemplate = buildCurrentTemplate()
+  const currentApplication = currentTemplate && buildCurrentApplication(currentTemplate)
+  if (!current || !currentTemplate || !currentApplication) return
+  const next = retargetWorkflowAppDocument(document, { application: currentApplication, template: currentTemplate })
+  replaceWorkflowEditorDocument({
+    ...current,
+    applicationDocument: { ...current.applicationDocument, application: next.application },
+    graphDocument: { ...current.graphDocument, template: next.template },
+  })
+  importedUnsaved.value = true
+  if (isNewApp.value) {
+    newWorkflowAppDraft.value.displayName = next.application.display_name
+    newWorkflowAppDraft.value.description = next.application.description
+    newWorkflowAppDraft.value.importedTemplate = { display_name: next.template.display_name, description: next.template.description }
+  }
+  editorTitleEditing.value = false
+  clearContextMenu()
+  appModeConfigDialogOpen.value = false
+  clearActionMessages()
+  setActionStatus(message)
+  await nextTick()
+  updateStageSize()
+  if (graphNodes.value.length) fitView()
+}
+
+async function importWorkflowDocument(file: File): Promise<void> {
+  if (documentBusy.value) return
+  const target = workflowApp.value
+  documentReading.value = true
+  try {
+    if (file.size > WORKFLOW_DOCUMENT_MAX_BYTES) {
+      throw new WorkflowDocumentLimitError('bytes', WORKFLOW_DOCUMENT_MAX_BYTES)
+    }
+    const document = parseWorkflowAppDocumentV1(JSON.parse(await file.text()))
+    if (editorDisposed || workflowApp.value !== target) return
+    await loadWorkflowDocument(document, t('workflowEditor.document.imported'))
+  } catch (error) {
+    setActionError(`${t('workflowEditor.document.importFailed')}: ${readWorkflowDocumentError(error)}`)
+  } finally { documentReading.value = false }
 }
 
 const { toolbarStatusMessage } = useWorkflowToolbarStatus({
@@ -2093,3 +2318,12 @@ useWorkflowEditorLifecycle({
   revokePreviewImageObjectUrls,
 })
 </script>
+
+<style scoped>
+/* 历史栏有自己的占位；导航小地图移到旁边，不覆盖版本列表。 */
+.workflow-editor-side-panel { top: var(--workflow-toolbar-bottom, 104px); right: 14px; bottom: 64px; width: 360px; max-width: calc(100% - 20px); padding: 0; gap: 0; overflow: hidden; transition: width 180ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 160ms ease, transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+.workflow-editor-side-panel--versions { width: 320px; }
+.workflow-editor-side-panel :deep(aside.workflow-graph-floating-panel) { position: relative; inset: auto; width: 100%; max-width: none; height: 100%; min-height: 0; box-sizing: border-box; border: 0; box-shadow: none; animation: workflow-panel-content 140ms ease; }
+@keyframes workflow-panel-content { from { opacity: 0.6; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .workflow-editor-side-panel { transition: none; } .workflow-editor-side-panel :deep(aside.workflow-graph-floating-panel) { animation: none; } }
+</style>

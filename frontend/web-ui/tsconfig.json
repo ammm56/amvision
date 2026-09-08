@@ -9,16 +9,48 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "esModuleInterop": true,
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "types": ["vite/client", "vitest/globals"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "types": [
+      "vite/client",
+      "vitest/globals"
+    ],
     "paths": {
-      "@litegraph/*": ["./src/lib/litegraph/src/*"],
-      "@/*": ["./src/*"]
+      "@litegraph/*": [
+        "./src/lib/litegraph/src/*"
+      ],
+      "@/*": [
+        "./src/*"
+      ],
+      "vue": [
+        "./node_modules/vue"
+      ],
+      "vitest": [
+        "./node_modules/vitest"
+      ],
+      "@vue/test-utils": [
+        "./node_modules/@vue/test-utils"
+      ],
+      "reka-ui": [
+        "./node_modules/reka-ui"
+      ]
     },
     "skipLibCheck": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true
   },
-  "include": ["src/**/*.ts", "src/**/*.vue", "vitest.setup.ts"],
-  "references": [{ "path": "./tsconfig.node.json" }]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.vue",
+    "vitest.setup.ts",
+    "../../tests/frontend/**/test_*.ts"
+  ],
+  "references": [
+    {
+      "path": "./tsconfig.node.json"
+    }
+  ]
 }

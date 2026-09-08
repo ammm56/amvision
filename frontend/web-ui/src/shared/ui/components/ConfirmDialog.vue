@@ -4,6 +4,7 @@
       <section
         ref="dialogRef"
         class="confirm-dialog"
+        :class="{ 'confirm-dialog--wide': size === 'wide' }"
         role="dialog"
         aria-modal="true"
         :aria-labelledby="titleId"
@@ -30,6 +31,7 @@
         </div>
 
         <footer class="confirm-dialog__actions">
+          <div v-if="$slots['leading-actions']" class="confirm-dialog__leading-actions"><slot name="leading-actions" /></div>
           <Button data-confirm-cancel variant="secondary" :disabled="busy" @click="cancelDialog">{{ cancelLabel }}</Button>
           <Button :variant="confirmVariant" :disabled="busy || confirmDisabled" :loading="busy" @click="emit('confirm')">{{ confirmLabel }}</Button>
         </footer>
@@ -55,6 +57,7 @@ const props = withDefaults(
     confirmDisabled?: boolean
     confirmVariant?: 'primary' | 'danger'
     initialFocus?: 'cancel' | 'first-field'
+    size?: 'default' | 'wide'
   }>(),
   {
     message: '',
@@ -63,6 +66,7 @@ const props = withDefaults(
     confirmDisabled: false,
     confirmVariant: 'danger',
     initialFocus: 'cancel',
+    size: 'default',
   },
 )
 
@@ -86,7 +90,7 @@ let previousBodyOverflow = ''
 function readFocusableElements(): HTMLElement[] {
   if (!dialogRef.value) return []
   return [...dialogRef.value.querySelectorAll<HTMLElement>(
-    'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])',
+    ':is(button, [href], input, select, textarea, [tabindex]):not(:disabled):not([tabindex="-1"])',
   )]
 }
 
@@ -147,6 +151,8 @@ onBeforeUnmount(() => {
   display: grid;
   gap: 16px;
   width: min(520px, calc(100vw - 36px));
+  max-height: calc(100dvh - 36px);
+  overflow: auto;
   padding: 18px;
   border: 1px solid var(--am-border);
   border-radius: var(--am-radius-md);
@@ -159,6 +165,11 @@ onBeforeUnmount(() => {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+}
+
+.confirm-dialog--wide {
+  width: min(760px, calc(100vw - 36px));
+  max-height: min(760px, calc(100dvh - 36px));
 }
 
 .confirm-dialog__header h2,
@@ -181,7 +192,10 @@ onBeforeUnmount(() => {
 .confirm-dialog__content {
   display: grid;
   gap: 12px;
+  min-width: 0;
 }
+
+.confirm-dialog__leading-actions { margin-right: auto; }
 
 .confirm-dialog__close {
   display: inline-flex;

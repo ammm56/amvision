@@ -2810,7 +2810,7 @@ textarea:focus-visible {
 
 .workflow-graph-error {
   position: absolute;
-  top: var(--workflow-toolbar-bottom, 70px);
+  top: var(--workflow-toolbar-bottom, 104px);
   left: 50%;
   z-index: 6;
   width: min(720px, calc(100% - 520px));
@@ -2824,6 +2824,19 @@ textarea:focus-visible {
 
 .workflow-graph-stage .workflow-graph-group-layer {
   z-index: 1;
+}
+
+.workflow-graph-stage .workflow-graph-group-layer:has(.workflow-graph-group__palette) {
+  z-index: 4;
+}
+
+.workflow-graph-group:has(.workflow-graph-group__palette) {
+  z-index: 1;
+}
+
+/* 状态暂时为空时仍为第二行保留高度，避免刷新时侧栏上下跳动。 */
+.workflow-graph-toolbar__meta {
+  min-height: 26px;
 }
 
 .workflow-graph-stage .workflow-graph-note-layer {
@@ -3054,8 +3067,19 @@ textarea:focus-visible {
   box-shadow: 0 16px 32px rgb(0 0 0 / 0.28);
 }
 
+/* 面板与菜单不继承画布的拖动光标；内部按钮、文本框和小地图保留自身光标。 */
+.workflow-graph-floating-panel,
+.workflow-graph-toolbar,
+.workflow-graph-context-menu,
+.workflow-node-picker,
+.workflow-graph-navigation-dock,
+.workflow-graph-error,
+.workflow-graph-group__palette {
+  cursor: default;
+}
+
 .workflow-graph-inspector-panel {
-  top: var(--workflow-toolbar-bottom, 70px);
+  top: var(--workflow-toolbar-bottom, 104px);
   right: 14px;
   bottom: 64px;
   grid-template-rows: auto minmax(0, 1fr);
@@ -3092,14 +3116,14 @@ textarea:focus-visible {
 
 @media (max-width: 720px) {
   .workflow-graph-inspector-panel {
-    top: var(--workflow-toolbar-bottom, 116px);
+    top: var(--workflow-toolbar-bottom, 104px);
     right: 10px;
     bottom: 60px;
     width: min(360px, calc(100% - 20px));
   }
 
   .workflow-graph-error {
-    top: var(--workflow-toolbar-bottom, 116px);
+    top: var(--workflow-toolbar-bottom, 104px);
     width: calc(100% - 20px);
   }
 }
@@ -3949,6 +3973,7 @@ textarea:focus-visible {
   --graph-toolbar: var(--am-graph-toolbar);
   --graph-panel: var(--am-graph-panel);
   --graph-panel-strong: var(--am-graph-panel-strong);
+  --graph-hover: var(--am-graph-hover);
   --graph-panel-soft: var(--am-graph-panel-soft);
   --graph-node-bg: var(--am-graph-node);
   --graph-node-header: var(--am-graph-node-header);
@@ -4024,7 +4049,7 @@ textarea:focus-visible {
 .workflow-graph-workbench .workflow-graph-toolbar .ui-button--secondary:hover:not(:disabled),
 .workflow-graph-workbench .workflow-graph-toolbar__title-edit:hover,
 .workflow-graph-workbench .workflow-graph-toolbar__title-editor button:hover:not(:disabled) {
-  background: var(--graph-panel-strong);
+  background: var(--graph-hover);
 }
 
 .workflow-graph-workbench .workflow-graph-toolbar .ui-button--secondary.is-active {
@@ -4440,7 +4465,7 @@ textarea:focus-visible {
 }
 
 .workflow-graph-context-menu button:hover:not(:disabled) {
-  background: var(--graph-panel-strong);
+  background: var(--graph-hover);
 }
 
 .workflow-graph-context-menu button:disabled {
@@ -4624,7 +4649,7 @@ textarea:focus-visible {
 .workflow-node-picker__sources button.is-active,
 .workflow-node-picker__categories button:hover,
 .workflow-node-picker__categories button.is-active {
-  background: var(--graph-panel-strong);
+  background: var(--graph-hover);
 }
 
 .workflow-node-picker__sources span {

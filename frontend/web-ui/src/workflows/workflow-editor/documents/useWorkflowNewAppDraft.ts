@@ -14,6 +14,7 @@ export interface NewWorkflowAppDraftState {
   graphId: string
   graphVersion: string
   description: string
+  importedTemplate?: { display_name: string; description: string }
 }
 
 export interface WorkflowNewAppDraftOptions {
@@ -176,9 +177,9 @@ export function useWorkflowNewAppDraft(options: WorkflowNewAppDraftOptions) {
       ...template,
       template_id: draft.graphId.trim(),
       template_version: draft.graphVersion.trim(),
-      display_name: options.translate('workflowEditor.editor.graphDisplayName', { name: draft.displayName.trim() || draft.graphId.trim() }),
-      description: draft.description.trim(),
-      metadata: { ...template.metadata, source: template.metadata.source ?? 'workflow-graph-editor' },
+      display_name: draft.importedTemplate?.display_name ?? options.translate('workflowEditor.editor.graphDisplayName', { name: draft.displayName.trim() || draft.graphId.trim() }),
+      description: draft.importedTemplate?.description ?? draft.description.trim(),
+      metadata: { ...template.metadata },
     }
   }
 

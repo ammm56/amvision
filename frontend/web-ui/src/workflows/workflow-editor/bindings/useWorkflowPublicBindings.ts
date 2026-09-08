@@ -1,3 +1,4 @@
+import { cloneWorkflowJson } from '../documents/workflow-app-document'
 import { computed, ref, type Ref } from 'vue'
 
 import type {
@@ -100,11 +101,7 @@ export function useWorkflowPublicBindings(options: WorkflowPublicBindingsOptions
   const templateOutputById = computed(() => new Map(options.templateOutputs.value.map((output) => [output.output_id, output])))
 
   function initializePublicBindings(appDocument: WorkflowPublicBindingDocument): void {
-    applicationBindingsDraft.value = appDocument.applicationDocument.application.bindings.map((binding: FlowApplicationBinding) => ({
-      ...binding,
-      config: { ...binding.config },
-      metadata: { ...binding.metadata },
-    }))
+    applicationBindingsDraft.value = cloneWorkflowJson(appDocument.applicationDocument.application.bindings)
     boundaryPositions.value = readBoundaryPositionsFromMetadata(appDocument.applicationDocument.application.metadata)
   }
 
@@ -122,6 +119,7 @@ export function useWorkflowPublicBindings(options: WorkflowPublicBindingsOptions
   }
 
   function writeBoundaryPositionsToMetadata(metadata: WorkflowJsonObject): WorkflowJsonObject {
+    if (JSON.stringify(readBoundaryPositionsFromMetadata(metadata)) === JSON.stringify(boundaryPositions.value)) return { ...metadata }
     const nextMetadata: WorkflowJsonObject = { ...metadata }
     const editorMetadataValue = nextMetadata[workflowGraphEditorMetadataKey]
     const editorMetadata: WorkflowJsonObject = isJsonObject(editorMetadataValue) ? { ...editorMetadataValue } : {}

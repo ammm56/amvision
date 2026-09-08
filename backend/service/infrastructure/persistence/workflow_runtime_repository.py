@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from backend.service.application.errors import PersistenceOperationError
 from backend.service.domain.workflows.workflow_runtime_records import (
     WorkflowApplicationLifecycle,
+    WorkflowApplicationDeletionInventory,
     WorkflowAppRuntime,
     WorkflowAppVersion,
     WorkflowExecutionPolicy,
@@ -124,6 +125,261 @@ class SqlAlchemyWorkflowRuntimeRepository:
                 details={"error_type": error.__class__.__name__},
             ) from error
         return bool(result.rowcount)
+
+    def rename_workflow_app_version(
+        self,
+        workflow_app_version_id: str,
+        display_version: str,
+        release_notes: str | None = None,
+    ) -> bool:
+        """修改记录标题和说明；release_notes 为 None 时保留，不修改快照文件。"""
+
+        try:
+            result = self.session.execute(
+                update(WorkflowAppVersionRecord)
+                .where(
+                    WorkflowAppVersionRecord.workflow_app_version_id
+                    == workflow_app_version_id,
+                    WorkflowAppVersionRecord.state.in_(("published", "archived")),
+                )
+                .values(
+                    **{
+                        "display_version": display_version,
+                        **(
+                            {"release_notes": release_notes}
+                            if release_notes is not None
+                            else {}
+                        ),
+                    }
+                )
+            )
+            return bool(result.rowcount)
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "修改 WorkflowAppVersion 名称失败"
+            ) from error
+
+    def fence_deletable_workflow_app_version(
+        self, workflow_app_version_id: str
+    ) -> bool:
+        """占用可删除版本行，与 Runtime revision 创建建立确定写入顺序。"""
+
+        try:
+            result = self.session.execute(
+                update(WorkflowAppVersionRecord)
+                .where(
+                    WorkflowAppVersionRecord.workflow_app_version_id
+                    == workflow_app_version_id,
+                    WorkflowAppVersionRecord.state.in_(("published", "archived")),
+                )
+                .values(state=WorkflowAppVersionRecord.state)
+            )
+            return bool(result.rowcount)
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "占用可删除 WorkflowAppVersion 失败"
+            ) from error
+
+    def delete_workflow_app_version_record(self, workflow_app_version_id: str) -> bool:
+        """物理删除已经完成引用检查的版本记录。"""
+
+        try:
+            result = self.session.execute(
+                delete(WorkflowAppVersionRecord).where(
+                    WorkflowAppVersionRecord.workflow_app_version_id
+                    == workflow_app_version_id,
+                    WorkflowAppVersionRecord.state.in_(
+                        ("published", "archived", "deleted")
+                    ),
+                )
+            )
+            return bool(result.rowcount)
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "物理删除 WorkflowAppVersion 失败"
+            ) from error
+
+    def workflow_app_version_reference_counts(
+        self, workflow_app_version_id: str
+    ) -> dict[str, int]:
+        """在版本行锁内查询 revision 和 Run 引用，包含历史记录。"""
+
+        try:
+            return {
+                name: int(
+                    self.session.scalar(
+                        select(func.count())
+                        .select_from(model)
+                        .where(model.workflow_app_version_id == workflow_app_version_id)
+                    )
+                    or 0
+                )
+                for name, model in (
+                    ("runtime_revisions", WorkflowRuntimeRevisionRecord),
+                    ("runs", WorkflowRunRecord),
+                )
+            }
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "读取 WorkflowAppVersion 引用失败"
+            ) from error
+
+    def list_workflow_app_versions_by_state(
+        self, state: str
+    ) -> tuple[WorkflowAppVersion, ...]:
+        """跨 Project 列出指定状态版本，供旧逻辑删除记录迁移使用。"""
+
+        try:
+            records = (
+                self.session.execute(
+                    select(WorkflowAppVersionRecord)
+                    .where(WorkflowAppVersionRecord.state == state)
+                    .order_by(
+                        WorkflowAppVersionRecord.project_id.asc(),
+                        WorkflowAppVersionRecord.application_id.asc(),
+                        WorkflowAppVersionRecord.version_number.asc(),
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "按状态列出 WorkflowAppVersion 失败"
+            ) from error
+        return tuple(self._app_version_to_domain(record) for record in records)
+
+    def inspect_workflow_application_deletion(
+        self,
+        project_id: str,
+        application_id: str,
+    ) -> WorkflowApplicationDeletionInventory:
+        """只读取 Application 物理删除需要的轻量 id 和状态。"""
+
+        try:
+            workflow_runtime_ids = tuple(
+                self.session.execute(
+                    select(WorkflowAppRuntimeRecord.workflow_runtime_id)
+                    .where(
+                        WorkflowAppRuntimeRecord.project_id == project_id,
+                        WorkflowAppRuntimeRecord.application_id == application_id,
+                    )
+                    .order_by(WorkflowAppRuntimeRecord.workflow_runtime_id.asc())
+                ).scalars()
+            )
+            preview_runs = tuple(
+                self.session.execute(
+                    select(
+                        WorkflowPreviewRunRecord.preview_run_id,
+                        WorkflowPreviewRunRecord.state,
+                    )
+                    .where(
+                        WorkflowPreviewRunRecord.project_id == project_id,
+                        WorkflowPreviewRunRecord.application_id == application_id,
+                    )
+                    .order_by(WorkflowPreviewRunRecord.preview_run_id.asc())
+                ).all()
+            )
+            workflow_run_ids = tuple(
+                self.session.execute(
+                    select(WorkflowRunRecord.workflow_run_id)
+                    .where(
+                        WorkflowRunRecord.project_id == project_id,
+                        WorkflowRunRecord.application_id == application_id,
+                    )
+                    .order_by(WorkflowRunRecord.workflow_run_id.asc())
+                ).scalars()
+            )
+            version_ids = tuple(
+                self.session.execute(
+                    select(WorkflowAppVersionRecord.workflow_app_version_id)
+                    .where(
+                        WorkflowAppVersionRecord.project_id == project_id,
+                        WorkflowAppVersionRecord.application_id == application_id,
+                    )
+                    .order_by(WorkflowAppVersionRecord.version_number.asc())
+                ).scalars()
+            )
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "读取 Workflow Application 删除清单失败"
+            ) from error
+        return WorkflowApplicationDeletionInventory(
+            workflow_runtime_ids=workflow_runtime_ids,
+            preview_runs=preview_runs,
+            workflow_run_ids=workflow_run_ids,
+            workflow_app_version_ids=version_ids,
+        )
+
+    def delete_claimed_workflow_application_records(
+        self,
+        *,
+        project_id: str,
+        application_id: str,
+        expected_generation: int,
+        operation_id: str,
+    ) -> bool:
+        """在删除 claim 仍有效时物理删除 Application 关联记录。"""
+
+        try:
+            runtime_count = int(
+                self.session.scalar(
+                    select(func.count())
+                    .select_from(WorkflowAppRuntimeRecord)
+                    .where(
+                        WorkflowAppRuntimeRecord.project_id == project_id,
+                        WorkflowAppRuntimeRecord.application_id == application_id,
+                    )
+                )
+                or 0
+            )
+            active_preview_count = int(
+                self.session.scalar(
+                    select(func.count())
+                    .select_from(WorkflowPreviewRunRecord)
+                    .where(
+                        WorkflowPreviewRunRecord.project_id == project_id,
+                        WorkflowPreviewRunRecord.application_id == application_id,
+                        WorkflowPreviewRunRecord.state.in_(("created", "running")),
+                    )
+                )
+                or 0
+            )
+            if runtime_count or active_preview_count:
+                return False
+            self.session.execute(
+                delete(WorkflowRunRecord).where(
+                    WorkflowRunRecord.project_id == project_id,
+                    WorkflowRunRecord.application_id == application_id,
+                )
+            )
+            self.session.execute(
+                delete(WorkflowPreviewRunRecord).where(
+                    WorkflowPreviewRunRecord.project_id == project_id,
+                    WorkflowPreviewRunRecord.application_id == application_id,
+                )
+            )
+            self.session.execute(
+                delete(WorkflowAppVersionRecord).where(
+                    WorkflowAppVersionRecord.project_id == project_id,
+                    WorkflowAppVersionRecord.application_id == application_id,
+                )
+            )
+            lifecycle_result = self.session.execute(
+                delete(WorkflowApplicationLifecycleRecord).where(
+                    WorkflowApplicationLifecycleRecord.project_id == project_id,
+                    WorkflowApplicationLifecycleRecord.application_id == application_id,
+                    WorkflowApplicationLifecycleRecord.state == "deleting",
+                    WorkflowApplicationLifecycleRecord.generation
+                    == expected_generation,
+                    WorkflowApplicationLifecycleRecord.operation_id == operation_id,
+                )
+            )
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "物理删除 Workflow Application 数据库记录失败"
+            ) from error
+        return bool(lifecycle_result.rowcount == 1)
 
     def fence_published_workflow_app_version(
         self,
@@ -1345,6 +1601,50 @@ class SqlAlchemyWorkflowRuntimeRepository:
                 "删除 WorkflowAppRuntime 失败",
                 details={"error_type": error.__class__.__name__},
             ) from error
+
+    def list_workflow_run_ids_by_runtime(
+        self, workflow_runtime_id: str
+    ) -> tuple[str, ...]:
+        """只读取指定 Runtime 的 WorkflowRun id，避免加载大 JSON 字段。"""
+
+        try:
+            return tuple(
+                self.session.execute(
+                    select(WorkflowRunRecord.workflow_run_id)
+                    .where(WorkflowRunRecord.workflow_runtime_id == workflow_runtime_id)
+                    .order_by(WorkflowRunRecord.workflow_run_id.asc())
+                ).scalars()
+            )
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "读取 WorkflowAppRuntime 的 WorkflowRun id 失败"
+            ) from error
+
+    def delete_workflow_app_runtime_records(self, workflow_runtime_id: str) -> bool:
+        """物理删除 Runtime 的 Run、revision 与 Runtime 记录。"""
+
+        try:
+            self.session.execute(
+                delete(WorkflowRunRecord).where(
+                    WorkflowRunRecord.workflow_runtime_id == workflow_runtime_id
+                )
+            )
+            self.session.execute(
+                delete(WorkflowRuntimeRevisionRecord).where(
+                    WorkflowRuntimeRevisionRecord.workflow_runtime_id
+                    == workflow_runtime_id
+                )
+            )
+            result = self.session.execute(
+                delete(WorkflowAppRuntimeRecord).where(
+                    WorkflowAppRuntimeRecord.workflow_runtime_id == workflow_runtime_id
+                )
+            )
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "物理删除 WorkflowAppRuntime 关联记录失败"
+            ) from error
+        return bool(result.rowcount == 1)
 
     def save_workflow_run(self, workflow_run: WorkflowRun) -> None:
         """保存一个 WorkflowRun。"""

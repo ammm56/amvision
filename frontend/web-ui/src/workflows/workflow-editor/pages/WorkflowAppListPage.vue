@@ -158,7 +158,6 @@ import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import PageHeader from '@/shared/ui/layout/PageHeader.vue'
 import { getWorkflowNodeCatalog } from '../services/node-catalog.service'
 import { deleteWorkflowApplication } from '../services/workflow-application.service'
-import { deleteWorkflowTemplateVersion } from '../services/workflow-template.service'
 import { listWorkflowApps, type WorkflowAppSummary } from '../services/workflow-app.service'
 import { refreshWorkflowAppRuntimeStatuses } from '../services/workflow-runtime.service'
 import type { WorkflowAppRuntime, WorkflowNodeCatalogResponse } from '../types'
@@ -184,12 +183,9 @@ const applicationCount = computed(() => applicationPagination.value.totalCount ?
 const deleteWorkflowAppMessage = computed(() => {
   const workflowApp = pendingDeleteWorkflowApp.value
   if (!workflowApp) return ''
-  return t(
-    isGraphVersionOnlyUsedByApplication(workflowApp)
-      ? 'workflowEditor.applications.confirmDeleteWithGraph'
-      : 'workflowEditor.applications.confirmDelete',
-    { applicationId: workflowApp.application.application_id },
-  )
+  return t('workflowEditor.applications.confirmDeleteWithGraph', {
+    applicationId: workflowApp.application.application_id,
+  })
 })
 
 function runtimeTone(state: string): 'neutral' | 'success' | 'warning' | 'danger' | 'info' {
@@ -273,18 +269,10 @@ async function deleteWorkflowApp(): Promise<void> {
   if (!workflowApp) return
   if (!canWriteWorkflows.value || workflowApp.runtimes.length > 0) return
   const applicationId = workflowApp.application.application_id
-  const shouldDeleteGraph = isGraphVersionOnlyUsedByApplication(workflowApp)
   deletingApplicationId.value = applicationId
   errorMessage.value = null
   try {
     await deleteWorkflowApplication(selectedProjectId.value, applicationId)
-    if (shouldDeleteGraph) {
-      await deleteWorkflowTemplateVersion(
-        selectedProjectId.value,
-        workflowApp.application.template_id,
-        workflowApp.application.template_version,
-      )
-    }
     const nextOffset = workflowApps.value.length === 1
       ? Math.max(0, applicationPagination.value.offset - applicationPagination.value.limit)
       : applicationPagination.value.offset
@@ -295,13 +283,6 @@ async function deleteWorkflowApp(): Promise<void> {
     deletingApplicationId.value = null
     pendingDeleteWorkflowApp.value = null
   }
-}
-
-function isGraphVersionOnlyUsedByApplication(workflowApp: WorkflowAppSummary): boolean {
-  return workflowApps.value.every((item) => {
-    if (item.application.application_id === workflowApp.application.application_id) return true
-    return item.application.template_id !== workflowApp.application.template_id || item.application.template_version !== workflowApp.application.template_version
-  })
 }
 
 function loadPreviousPage(): void {

@@ -61,8 +61,8 @@ def test_archive_and_runtime_create_select_have_one_database_order(
                 "display_name": "archive race runtime",
             }
 
-            # archive 先提交：create 在最终事务重新 fence 时必须返回 409，
-            # 且不能留下 Runtime 或 revision。
+            # create 已取得 Application claim：archive 必须立即返回 409，
+            # create 释放后正常提交，不能出现两边同时修改版本状态。
             create_fence_entered = Event()
             allow_create_fence = Event()
 
@@ -94,26 +94,29 @@ def test_archive_and_runtime_create_select_have_one_database_order(
                     headers=headers,
                     json={"expected_state": "published"},
                 )
-                assert archived.status_code == 200
+                assert archived.status_code == 409
                 allow_create_fence.set()
                 create_response = _finish_call(create_thread, create_result)
-            assert create_response.status_code == 409
-            assert create_response.json()["error"]["details"] == {
-                "workflow_app_version_id": version_id,
-                "required_state": "published",
-                "current_state": "archived",
-            }
-            runtimes = client.get(
-                "/api/v1/workflows/app-runtimes",
-                headers=headers,
-                params={"project_id": "project-1"},
+            assert create_response.status_code == 201
+            first_runtime_id = create_response.json()["workflow_runtime_id"]
+            assert (
+                client.delete(
+                    f"/api/v1/workflows/app-runtimes/{first_runtime_id}",
+                    headers=headers,
+                ).status_code
+                == 204
             )
-            assert runtimes.status_code == 200
-            assert runtimes.json() == []
-            _restore_version(client, headers=headers, restore_url=restore_url)
+            version = client.get(
+                (
+                    "/api/v1/workflows/projects/project-1/applications/"
+                    f"{application.application_id}/versions/{version_id}"
+                ),
+                headers=headers,
+            )
+            assert version.json()["state"] == "published"
 
-            # create 先取得版本行 fence：archive 必须等待 create 事务提交，
-            # 随后可以归档；成功返回时引用已经先存在。
+            # create 先取得 Application claim：并发 archive 立即返回 409；
+            # create 完成后显式重试归档可以成功，已有引用保持有效。
             create_fence_acquired = Event()
             allow_create_commit = Event()
             archive_call_started = Event()
@@ -157,9 +160,15 @@ def test_archive_and_runtime_create_select_have_one_database_order(
                 create_response = _finish_call(create_thread, create_result)
                 archived = _finish_call(archive_thread, archive_result)
             assert create_response.status_code == 201
-            assert archived.status_code == 200
+            assert archived.status_code == 409
             runtime_id = create_response.json()["workflow_runtime_id"]
             assert create_response.json()["revision_generation"] == 1
+            archived = client.post(
+                archive_url,
+                headers=headers,
+                json={"expected_state": "published"},
+            )
+            assert archived.status_code == 200
             _restore_version(client, headers=headers, restore_url=restore_url)
 
             select_url = f"/api/v1/workflows/app-runtimes/{runtime_id}/select-version"

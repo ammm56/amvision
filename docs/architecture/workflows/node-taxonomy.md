@@ -207,5 +207,4 @@ backend/nodes/core_nodes/io/output/
 ## 设计参考
 
 - [ComfyUI Custom Nodes](https://docs.comfy.org/custom-nodes/walkthrough) 使用 category 决定节点菜单位置；本项目将公开目录限制为两级，避免无限加深。
-- [Dify Tool Plugin](https://docs.dify.ai/en/develop-plugin/dev-guides-and-walkthroughs/tool-plugin) 将一个 provider 和多个 tools 放在同一个插件工程中。
 - [HALCON Operator Reference](https://www.mvtec.com/doc/halcon/2511/en/index.html) 使用稳定的功能层级组织大量视觉算子，而不是把每个小分类变成独立插件。

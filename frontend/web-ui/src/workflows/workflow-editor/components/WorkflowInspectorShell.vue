@@ -1,5 +1,4 @@
 <template>
-  <Transition name="workflow-inspector">
     <aside v-if="!collapsed" class="workflow-graph-floating-panel workflow-graph-inspector-panel" @mousedown.stop @contextmenu.stop>
     <div class="workflow-graph-panel__header">
       <div>
@@ -117,7 +116,6 @@
       />
     </div>
     </aside>
-  </Transition>
 </template>
 
 <script setup lang="ts">

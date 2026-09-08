@@ -1,9 +1,5 @@
 <template>
-  <div class="workflow-graph-context-menu" :style="menuStyle" @mousedown.stop @contextmenu.prevent>
-    <button v-if="!contextMenu.nodeId && !contextMenu.edgeId && !contextMenu.noteId" type="button" @click="emit('add-note')">
-      <NotebookPen :size="15" />
-      {{ t('workflowEditor.editor.addNote') }}
-    </button>
+  <div ref="menuElement" class="workflow-graph-context-menu" :style="boundedMenuStyle" @mousedown.stop @contextmenu.prevent.stop>
     <button v-if="contextMenu.noteId" type="button" @click="emit('edit-note')">
       <SquarePen :size="15" />
       {{ t('workflowEditor.editor.editNote') }}
@@ -34,6 +30,10 @@
       {{ addNodeLabel }}
       <ChevronRight :size="14" />
     </button>
+    <button v-if="contextMenu.nodeId && !contextMenu.port" type="button" :disabled="documentDisabled" @click="emit('copy-node')"><Copy :size="15" />{{ t('workflowEditor.editor.copyNode') }}<kbd>Ctrl+C</kbd></button>
+    <button v-if="isBlankCanvas" type="button" @click="emit('add-note')"><NotebookPen :size="15" />{{ t('workflowEditor.editor.addNote') }}</button>
+    <button v-if="isBlankCanvas" type="button" :disabled="previewDisabled" @click="emit('preview')"><Play :size="15" />{{ previewLabel }}</button>
+    <button v-if="isBlankCanvas" type="button" :disabled="documentDisabled || !canPasteNode" @click="emit('paste-node')"><ClipboardPaste :size="15" />{{ t('workflowEditor.editor.pasteNode') }}<kbd>Ctrl+V</kbd></button>
     <button v-if="contextMenu.port?.direction === 'input'" type="button" @click="emit('expose-app-input')">
       <Plus :size="15" />
       {{ t('workflowEditor.editor.exposeAppInput') }}
@@ -66,16 +66,12 @@
       <RefreshCw :size="15" />
       {{ t('workflowEditor.editor.resetView') }}
     </button>
-    <button type="button" @click="emit('toggle-minimap')">
-      <MapIcon :size="15" />
-      {{ minimapVisible ? t('workflowEditor.editor.hideMinimap') : t('workflowEditor.editor.showMinimap') }}
-    </button>
     <button type="button" :disabled="saveDisabled" @click="emit('save')">
       <Save :size="15" />
       {{ saveLabel }}
     </button>
     <button
-      v-if="!contextMenu.nodeId"
+      v-if="!contextMenu.nodeId && !isBlankCanvas"
       type="button"
       :disabled="previewDisabled"
       @click="emit('preview')"
@@ -92,11 +88,17 @@
       <Play :size="15" />
       {{ previewNodeLabel }}
     </button>
+    <template v-if="isBlankCanvas">
+      <hr class="workflow-graph-context-menu__separator" />
+      <button type="button" :disabled="documentDisabled" @click="emit('export-document')"><Download :size="15" />{{ t('workflowEditor.document.export') }}</button>
+      <button type="button" :disabled="documentDisabled" @click="emit('import-document')"><Upload :size="15" />{{ t('workflowEditor.document.import') }}</button>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ChevronRight, Copy, LockKeyhole, Map as MapIcon, NotebookPen, PanelTopClose, Play, Plus, RefreshCw, Save, SquarePen, Trash2 } from '@lucide/vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { ChevronRight, ClipboardPaste, Copy, Download, Upload, LockKeyhole, Map as MapIcon, NotebookPen, PanelTopClose, Play, Plus, RefreshCw, Save, SquarePen, Trash2 } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 
 type AppBoundaryKind = 'entry' | 'result'
@@ -121,12 +123,14 @@ interface WorkflowGraphContextMenuState {
   bindingId?: string | null
 }
 
-defineProps<{
+const props = defineProps<{
   contextMenu: WorkflowGraphContextMenuState
   menuStyle: Record<string, string>
   minimapVisible: boolean
   saveDisabled: boolean
   previewDisabled: boolean
+  documentDisabled?: boolean
+  canPasteNode?: boolean
   addNodeLabel: string
   saveLabel: string
   previewLabel: string
@@ -134,6 +138,10 @@ defineProps<{
 }>()
 
 const emit = defineEmits<{
+  'copy-node': []
+  'paste-node': []
+  'export-document': []
+  'import-document': []
   'open-node-picker': []
   'add-note': []
   'edit-note': []
@@ -156,4 +164,27 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const isBlankCanvas = computed(() => {
+  const menu = props.contextMenu
+  return !menu.nodeId && !menu.edgeId && !menu.noteId && !menu.port && !menu.boundaryKind && !menu.bindingId
+})
+const menuElement = ref<HTMLElement | null>(null)
+const boundedMenuStyle = ref<Record<string, string>>({ ...props.menuStyle })
+function positionMenu(): void {
+  const bounds = menuElement.value?.getBoundingClientRect()
+  if (!bounds) return
+  boundedMenuStyle.value = {
+    ...props.menuStyle,
+    left: `${Math.max(8, Math.min(props.contextMenu.x, window.innerWidth - bounds.width - 8))}px`,
+    top: `${Math.max(8, Math.min(props.contextMenu.y, window.innerHeight - bounds.height - 8))}px`,
+  }
+}
+watch(() => props.contextMenu, async () => { await nextTick(); positionMenu() }, { deep: true })
+onMounted(() => { positionMenu(); window.addEventListener('resize', positionMenu) })
+onBeforeUnmount(() => window.removeEventListener('resize', positionMenu))
 </script>
+<style scoped>
+.workflow-graph-context-menu { max-height: calc(100vh - 16px); overflow-y: auto; }
+.workflow-graph-context-menu__separator { width: 100%; margin: 5px 0; border: 0; border-top: 1px solid var(--graph-line); }
+.workflow-graph-context-menu kbd { margin-left: auto; padding-left: 16px; font: inherit; font-size: 11px; color: var(--graph-muted); }
+</style>

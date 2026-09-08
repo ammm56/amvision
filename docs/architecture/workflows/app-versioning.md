@@ -154,6 +154,8 @@ Project 使用持久 sentinel/tombstone 协调删除和 project-scoped 写入。
 
 Application lifecycle 使用数据库 CAS、generation 和 operation id。save、copy、publish、archive、restore 和 delete 不持有长数据库事务；ObjectStore I/O 在 claim 后执行，完成时用同一 operation id 收敛。
 
+单版本删除只允许无 Runtime revision/Run 引用的 published/archived 版本，成功后物理删除版本行和快照，Application 内的序号文件保证后续编号不复用。整个 Workflow 在无 Runtime、无活动 Preview 时物理删除 Application、全部版本、终态 Preview/Run、Prompt Mask 和独占 Template；共享 Template 保留。Runtime 删除物理清理自身 revision、Run 和磁盘目录但保留版本；Trigger 删除先停 adapter，再物理清理记录和状态目录。以上均使用同步文件暂存、数据库提交和启动恢复，不增加后台删除线程，也不进入 invoke 热路径。
+
 Project 删除先 claim deleting sentinel，再确认没有活动 mutation，移动文件并在最终事务中删除相关版本、revision、Runtime 和 lifecycle 记录，同时保留 deleted tombstone。迟到写入不能重新创建已删除 Project。
 
 ## 持久化对象

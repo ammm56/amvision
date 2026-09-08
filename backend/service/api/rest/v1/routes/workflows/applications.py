@@ -32,13 +32,16 @@ from backend.service.application.workflows.app_version_service import (
 from backend.service.application.workflows.application_lifecycle import (
     WorkflowApplicationLifecycleService,
 )
+from backend.service.application.workflows.application_deletion import (
+    WorkflowApplicationDeletionService,
+)
 from backend.service.application.workflows.lifecycle_resource_keys import (
     build_workflow_template_lifecycle_resource_key,
 )
 from backend.service.application.workflows.documents.storage import (
     normalize_application_identifier,
 )
-from backend.service.application.errors import InvalidRequestError, ResourceInUseError
+from backend.service.application.errors import InvalidRequestError
 from backend.service.domain.workflows.workflow_runtime_records import WorkflowAppVersion
 
 from .documents import (
@@ -61,6 +64,7 @@ from .schemas import (
     WorkflowApplicationValidationResponse,
     WorkflowAppVersionComparisonResponse,
     WorkflowAppVersionArchiveRequestBody,
+    WorkflowAppVersionRenameRequestBody,
     WorkflowAppVersionDetailResponse,
     WorkflowAppVersionPublishRequestBody,
     WorkflowAppVersionResponse,
@@ -466,52 +470,34 @@ def delete_flow_application(
 
     _ensure_project_visible(principal=principal, project_id=project_id)
     application_id = normalize_application_identifier(application_id, "application_id")
-    service = _build_workflow_json_service(
+    from backend.service.api.rest.v1.routes.workflow_runtime_support.services import (  # noqa: PLC0415
+        require_session_factory,
+    )
+
+    WorkflowApplicationDeletionService(
+        session_factory=require_session_factory(request),
         dataset_storage=dataset_storage,
         node_catalog_registry=node_catalog_registry,
+    ).delete(project_id=project_id, application_id=application_id)
+    runtime_context = getattr(
+        request.app.state,
+        "workflow_service_node_runtime_context",
+        None,
     )
-    with _build_application_lifecycle_service(request).operation(
-        project_id=project_id,
-        application_id=application_id,
-        operation="deleting",
-        deleted_on_success=True,
-    ):
-        versions = _build_app_version_service(request).list_versions(
+    if isinstance(runtime_context, WorkflowServiceNodeRuntimeContext):
+        preview_scope_id = build_workflow_preview_model_session_scope_id(
             project_id=project_id,
             application_id=application_id,
-            include_incomplete=True,
         )
-        retained_versions = tuple(item for item in versions if item.state != "failed")
-        if retained_versions:
-            raise ResourceInUseError(
-                "Workflow App 已存在版本记录，不能物理删除草稿",
-                details={
-                    "application_id": application_id,
-                    "workflow_app_version_ids": [
-                        item.workflow_app_version_id for item in retained_versions
-                    ],
-                },
+        model_session_manager = runtime_context.workflow_model_session_manager
+        if model_session_manager is not None:
+            model_session_manager.close_scope(
+                preview_scope_id,
+                wait=False,
             )
-        runtime_context = getattr(
-            request.app.state,
-            "workflow_service_node_runtime_context",
-            None,
-        )
-        if isinstance(runtime_context, WorkflowServiceNodeRuntimeContext):
-            preview_scope_id = build_workflow_preview_model_session_scope_id(
-                project_id=project_id,
-                application_id=application_id,
-            )
-            model_session_manager = runtime_context.workflow_model_session_manager
-            if model_session_manager is not None:
-                model_session_manager.close_scope(
-                    preview_scope_id,
-                    wait=False,
-                )
-            storage_image_cache = runtime_context.workflow_storage_image_cache
-            if storage_image_cache is not None:
-                storage_image_cache.clear_shared_scope(preview_scope_id)
-        service.delete_application(project_id=project_id, application_id=application_id)
+        storage_image_cache = runtime_context.workflow_storage_image_cache
+        if storage_image_cache is not None:
+            storage_image_cache.clear_shared_scope(preview_scope_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -577,6 +563,58 @@ def list_workflow_app_versions(
             limit=limit,
         )
     ]
+
+
+@workflow_applications_router.patch(
+    "/projects/{project_id}/applications/{application_id}/versions/{workflow_app_version_id}",
+    response_model=WorkflowAppVersionResponse,
+)
+def rename_workflow_app_version(
+    project_id: str,
+    application_id: str,
+    workflow_app_version_id: str,
+    body: WorkflowAppVersionRenameRequestBody,
+    request: Request,
+    principal: Annotated[
+        AuthenticatedPrincipal, Depends(require_scopes("workflows:write"))
+    ],
+) -> WorkflowAppVersionResponse:
+    """修改版本显示名称，保持发布 JSON 不变。"""
+
+    _ensure_project_visible(principal=principal, project_id=project_id)
+    return _build_app_version_response(
+        _build_app_version_service(request).rename_version(
+            project_id=project_id,
+            application_id=application_id,
+            workflow_app_version_id=workflow_app_version_id,
+            display_version=body.display_version,
+            release_notes=body.release_notes,
+        )
+    )
+
+
+@workflow_applications_router.delete(
+    "/projects/{project_id}/applications/{application_id}/versions/{workflow_app_version_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_workflow_app_version(
+    project_id: str,
+    application_id: str,
+    workflow_app_version_id: str,
+    request: Request,
+    principal: Annotated[
+        AuthenticatedPrincipal, Depends(require_scopes("workflows:write"))
+    ],
+) -> Response:
+    """物理删除未被 Runtime revision 或 WorkflowRun 引用的版本。"""
+
+    _ensure_project_visible(principal=principal, project_id=project_id)
+    _build_app_version_service(request).delete_version(
+        project_id=project_id,
+        application_id=application_id,
+        workflow_app_version_id=workflow_app_version_id,
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @workflow_applications_router.post(

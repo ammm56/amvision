@@ -1,6 +1,6 @@
 import { computed, type Ref } from 'vue'
 
-import { applyMissingNodeParameterDefaults } from '../parameters/useWorkflowNodeParameters'
+import { cloneWorkflowJson } from '../documents/workflow-app-document'
 import type {
   NodeDefinition,
   NodePortDefinition,
@@ -16,6 +16,7 @@ export interface WorkflowGraphNodeView {
   x: number
   y: number
   width: number
+  initialView?: { x: number; y: number; width: number }
   inputs: NodePortDefinition[]
   outputs: NodePortDefinition[]
 }
@@ -123,12 +124,6 @@ export function buildDefaultGraphNodeWidth(definition: NodeDefinition): number {
   return 256
 }
 
-function normalizeGraphNodeWidth(value: unknown, fallbackWidth: number): number {
-  const width = readNumber(value, fallbackWidth)
-  if ([250, 300, 320, 340].includes(width)) return fallbackWidth
-  return width
-}
-
 export function useWorkflowGraphNodeViews(options: WorkflowGraphNodeViewsOptions) {
   const nodeDefinitionsById = computed(() => new Map((options.nodeCatalog.value?.node_definitions ?? []).map((definition) => [definition.node_type_id, definition])))
   const nodePickerDefinitions = computed(() => (
@@ -139,12 +134,10 @@ export function useWorkflowGraphNodeViews(options: WorkflowGraphNodeViewsOptions
     node: WorkflowGraphNode,
     index: number,
     fallbackByNodeId: Map<string, WorkflowGraphNodePosition>,
+    edges = options.graphEdges.value,
   ): WorkflowGraphNodeView {
     const definition = nodeDefinitionsById.value.get(node.node_type_id) ?? null
-    const normalizedNode = {
-      ...(definition ? applyMissingNodeParameterDefaults(node, definition) : node),
-      enabled: node.enabled !== false,
-    }
+    const normalizedNode = cloneWorkflowJson(node)
     const position = readNodePosition(normalizedNode, index, fallbackByNodeId)
     const defaultWidth = definition ? buildDefaultGraphNodeWidth(definition) : 256
     return {
@@ -153,15 +146,16 @@ export function useWorkflowGraphNodeViews(options: WorkflowGraphNodeViewsOptions
       title: definition?.display_name || normalizedNode.node_type_id,
       x: position.x,
       y: position.y,
-      width: normalizeGraphNodeWidth(normalizedNode.ui_state.width, defaultWidth),
-      inputs: definition?.input_ports.length ? definition.input_ports : inferPortsFromEdges(normalizedNode, 'input', options.graphEdges.value),
-      outputs: definition?.output_ports.length ? definition.output_ports : inferPortsFromEdges(normalizedNode, 'output', options.graphEdges.value),
+      width: readNumber(normalizedNode.ui_state.width, defaultWidth),
+      initialView: { ...position, width: readNumber(normalizedNode.ui_state.width, defaultWidth) },
+      inputs: definition?.input_ports.length ? definition.input_ports : inferPortsFromEdges(normalizedNode, 'input', edges),
+      outputs: definition?.output_ports.length ? definition.output_ports : inferPortsFromEdges(normalizedNode, 'output', edges),
     }
   }
 
-  function buildGraphNodeViews(nodes: WorkflowGraphNode[]): WorkflowGraphNodeView[] {
-    const fallbackByNodeId = buildFallbackPositions(nodes, options.graphEdges.value)
-    return nodes.map((node, index) => buildGraphNodeView(node, index, fallbackByNodeId))
+  function buildGraphNodeViews(nodes: WorkflowGraphNode[], edges = options.graphEdges.value): WorkflowGraphNodeView[] {
+    const fallbackByNodeId = buildFallbackPositions(nodes, edges)
+    return nodes.map((node, index) => buildGraphNodeView(node, index, fallbackByNodeId, edges))
   }
 
   return {

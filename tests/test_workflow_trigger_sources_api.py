@@ -6,6 +6,7 @@ from dataclasses import replace
 from pathlib import Path
 from uuid import uuid4
 
+from backend.contracts.workflows import build_workflow_trigger_source_storage_dir
 from backend.service.api.rest.v1.routes.workflow_trigger_sources.health import (
     build_trigger_source_health_response,
 )
@@ -161,6 +162,14 @@ def test_workflow_trigger_source_api_manages_first_phase_resource(
                 "/api/v1/workflows/trigger-sources/trigger-source-1/disable",
                 headers=headers,
             )
+            trigger_storage_key = build_workflow_trigger_source_storage_dir(
+                "trigger-source-1"
+            )
+            context.dataset_storage.write_json(
+                f"{trigger_storage_key}/state.json", {"state": "stopped"}
+            )
+            trigger_storage_dir = context.dataset_storage.resolve(trigger_storage_key)
+            trigger_storage_exists_before_delete = trigger_storage_dir.exists()
             delete_response = context.client.delete(
                 "/api/v1/workflows/trigger-sources/trigger-source-1",
                 headers=headers,
@@ -282,6 +291,8 @@ def test_workflow_trigger_source_api_manages_first_phase_resource(
     assert disable_response.json()["updated_by"] == default_principal_id
 
     assert delete_response.status_code == 204
+    assert trigger_storage_exists_before_delete is True
+    assert not trigger_storage_dir.exists()
 
     assert get_deleted_response.status_code == 404
     assert get_deleted_response.json()["error"]["code"] == "resource_not_found"

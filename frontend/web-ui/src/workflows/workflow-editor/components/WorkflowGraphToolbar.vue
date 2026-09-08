@@ -59,17 +59,14 @@
           </div>
         </div>
       </div>
-      <div v-if="runtimeState || statusMessage" class="workflow-graph-toolbar__meta">
+      <div class="workflow-graph-toolbar__meta">
+        <span v-if="documentState">{{ documentState }}</span>
         <span v-if="runtimeState">{{ runtimeState }}</span>
-        <span v-if="statusMessage">{{ statusMessage }}</span>
+        <span v-if="statusMessage && statusMessage !== documentState">{{ statusMessage }}</span>
       </div>
     </div>
     <div class="workflow-graph-toolbar__actions">
       <div class="workflow-graph-toolbar__group">
-        <Button variant="secondary" :disabled="loading" @click="emit('addNote')">
-          <NotebookPen :size="16" />
-          {{ t('workflowEditor.editor.note') }}
-        </Button>
         <Button :class="{ 'is-active': groupCreateMode }" variant="secondary" :disabled="loading" @click="emit('toggleGroupCreateMode')">
           <BoxSelect :size="16" />
           {{ t('workflowEditor.editor.nodeGroup') }}
@@ -87,6 +84,10 @@
         <Button variant="secondary" :disabled="previewDisabled" :loading="previewing" @click="emit('preview')">
           <Play :size="16" />
           {{ t('workflowEditor.actions.previewRun') }}
+        </Button>
+        <Button variant="secondary" :disabled="saveDisabled" :loading="saving" @click="emit('save')">
+          <Save :size="16" />
+          {{ t('workflowEditor.actions.saveWorkflowApp') }}
         </Button>
         <Button variant="secondary" :disabled="publishDisabled" :loading="publishing" @click="emit('publish')">
           <Upload :size="16" />
@@ -108,17 +109,14 @@
           {{ t('workflowEditor.editor.inspectorTitle') }}
         </Button>
       </div>
-      <Button variant="primary" :disabled="saveDisabled" :loading="saving" @click="emit('save')">
-        <Save :size="16" />
-        {{ t('workflowEditor.actions.saveWorkflowApp') }}
-      </Button>
+      <div class="workflow-graph-toolbar__group"><Button variant="secondary" :disabled="historyDisabled" :title="t('workflowEditor.history.title')" :aria-label="t('workflowEditor.history.title')" @click="emit('history')"><History :size="16" /></Button></div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { nextTick, ref, watch } from 'vue'
-import { BoxSelect, Check, NotebookPen, PanelRightClose, PanelRightOpen, PanelsTopLeft, Play, RefreshCw, Save, SquarePen, Upload, X } from '@lucide/vue'
+import { History, BoxSelect, Check, PanelRightClose, PanelRightOpen, PanelsTopLeft, Play, RefreshCw, Save, SquarePen, Upload, X } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 
 import Button from '@/shared/ui/components/Button.vue'
@@ -131,6 +129,8 @@ const props = defineProps<{
   titleEditable: boolean
   runtimeState: string | null
   statusMessage: string | null
+  documentState?: string
+  historyDisabled?: boolean
   loading: boolean
   previewDisabled: boolean
   previewing: boolean
@@ -147,9 +147,9 @@ const emit = defineEmits<{
   updateTitleDraft: [value: string]
   commitTitle: []
   cancelTitle: []
+  history: []
   refresh: []
   toggleGroupCreateMode: []
-  addNote: []
   configureAppMode: []
   preview: []
   publish: []

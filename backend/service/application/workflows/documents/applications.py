@@ -25,6 +25,7 @@ from backend.service.application.workflows.documents.contracts import (
 from backend.service.application.workflows.documents.storage import (
     build_application_directory_key,
     build_application_object_key,
+    build_application_prompt_mask_root_key,
     build_applications_dir_key,
     normalize_application_identifier,
     normalize_identifier,
@@ -168,7 +169,7 @@ class WorkflowApplicationDocumentStore:
             )
         )
         self.dataset_storage.delete_tree(
-            _build_prompt_mask_root_key(
+            build_application_prompt_mask_root_key(
                 project_id=normalized_project_id,
                 application_id=normalized_application_id,
             )
@@ -508,7 +509,7 @@ class WorkflowApplicationDocumentStore:
     ) -> None:
         """在应用保存成功后回收已删除节点和旧版本的 Mask PNG。"""
 
-        prompt_mask_root_key = _build_prompt_mask_root_key(
+        prompt_mask_root_key = build_application_prompt_mask_root_key(
             project_id=project_id,
             application_id=application_id,
         )
@@ -541,12 +542,3 @@ class WorkflowApplicationDocumentStore:
                 directory_path.rmdir()
         if prompt_mask_root.is_dir() and not any(prompt_mask_root.iterdir()):
             prompt_mask_root.rmdir()
-
-
-def _build_prompt_mask_root_key(*, project_id: str, application_id: str) -> str:
-    """构造单个 Workflow Application 的 Prompt Mask 根路径。"""
-
-    return (
-        f"projects/{project_id}/inputs/workflow-applications/"
-        f"{application_id}/prompt-masks"
-    )

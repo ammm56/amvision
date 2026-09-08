@@ -9,7 +9,7 @@ FlowApplication 和 WorkflowGraphTemplate 仍是可修改草稿。`WorkflowAppVe
 - 版本前缀：`/api/v1`
 - `WorkflowAppVersion.format_id`：`amvision.workflow-app-version.v1`
 - 读取需要 `workflows:read`
-- 发布需要 `workflows:write`
+- 发布、命名、删除、归档和取消归档需要 `workflows:write`
 - published 版本不允许原地覆盖
 - 相同内容默认不能重复发布；确需保留重复发布记录时显式使用 `allow_duplicate_content=true`
 - 默认去重由数据库唯一占位保证，并发请求不会同时创建两条相同内容版本
@@ -20,6 +20,8 @@ FlowApplication 和 WorkflowGraphTemplate 仍是可修改草稿。`WorkflowAppVe
 POST /api/v1/workflows/projects/{project_id}/applications/{application_id}/versions
 GET  /api/v1/workflows/projects/{project_id}/applications/{application_id}/versions
 GET  /api/v1/workflows/projects/{project_id}/applications/{application_id}/versions/{workflow_app_version_id}
+PATCH /api/v1/workflows/projects/{project_id}/applications/{application_id}/versions/{workflow_app_version_id}
+DELETE /api/v1/workflows/projects/{project_id}/applications/{application_id}/versions/{workflow_app_version_id}
 GET  /api/v1/workflows/projects/{project_id}/applications/{application_id}/versions/{workflow_app_version_id}/compare
 POST /api/v1/workflows/projects/{project_id}/applications/{application_id}/versions/{workflow_app_version_id}/archive
 POST /api/v1/workflows/projects/{project_id}/applications/{application_id}/versions/{workflow_app_version_id}/restore
@@ -46,11 +48,11 @@ POST /api/v1/workflows/projects/{project_id}/applications/{application_id}/versi
 
 默认发布在写入 `publishing` 记录时原子占用 `(project_id, application_id, content_fingerprint)`。同一 Application 的并发发布通常先由 lifecycle 状态门裁决，竞争请求直接返回 409 和当前操作；数据库唯一内容占位继续作为持久化不变量，防止绕过控制面或异常恢复路径产生重复默认版本。两层裁决都不进入排队或轮询。发布收敛为 `failed` 时释放内容占位，后续请求可以明确重试。`allow_duplicate_content=true` 不占用默认去重键，因此仍可保留有意创建的重复发布记录。
 
-同一 `project_id/application_id` 的保存、发布和删除还共享一行持久化 lifecycle CAS 状态门。状态门只在两个短事务中占用和释放，文件 I/O 不持有数据库事务；竞争操作立即返回 409，不排队、不轮询。共享 Template claim 使用集中生成的保留资源 key，真实 `application_id` 禁止使用 `__amvision_workflow_lifecycle__` 前缀；保留资源在异常和启动恢复后保持 `deleted=false`，不会被 Application tombstone 规则误伤。删除成功保留 tombstone，重新保存同一 id 时以新的 generation 明确恢复。服务启动依次恢复 Project 删除、Application+Template bundle journal、`publishing` 版本，最后才按草稿文件实际存在性释放中断的普通 claim，旧 generation 不能覆盖新操作。
+同一 `project_id/application_id` 的保存、发布和删除共享一行持久化 lifecycle CAS 状态门。状态门只在短事务中占用和释放，文件 I/O 不持有数据库事务；竞争操作立即返回 409，不排队、不轮询。共享 Template claim 使用集中生成的保留资源 key，真实 `application_id` 禁止使用 `__amvision_workflow_lifecycle__` 前缀。整个 Workflow 删除成功时会连同 Application lifecycle 行一起物理删除；重新保存同一 id 会创建新的独立 Workflow。服务启动依次恢复 Project 删除、Application+Template bundle journal、资源删除暂存、`publishing` 版本，最后释放中断的普通 claim，旧 generation 不能覆盖新操作。
 
 Project 删除使用同表中的保留 sentinel 与 Project 资源写入建立持久化顺序。Application/Template/版本、Preview、执行策略、Runtime、TriggerSource，以及 Task 创建、Dataset 导入/导出提交、Model 训练输出/构建登记和 DeploymentInstance 创建，在一个短事务内通过 sentinel admission 后执行；Project 删除只有在没有活动 claim 时才能进入 `deleting`。先进入的一方生效，另一方返回 409。一次性 Project 资源 claim 在提交后删除，长期运行不会累计记录。删除成功保留 `deleted=true` 的 Project sentinel，防止迟到写复活已经删除的目录。该机制不用于 invoke、Task 事件、Run、取消、heartbeat 或 worker callback，不增加生产推理和 worker 热路径的数据库访问。
 
-草稿物理删除会在同一 lifecycle claim 内检查 `publishing`、`published` 和 `archived` 记录；存在任一可恢复版本时返回 409。已经清理发布文件且只保留诊断信息的 `failed` 记录不阻止草稿删除，但该诊断记录继续保留；若以后重新保存同一 Application id，版本序号仍沿用原审计历史，不从 v1 重新开始。
+删除整个 Workflow 只由 Runtime 和活动 Preview 阻止。没有 Runtime 且没有 `created/running` Preview 时，不论是否存在 `publishing`、`published`、`archived` 或 `failed` 版本，都会在一次同步删除中物理清理 Application 文档、全部版本记录与快照、终态 Preview/Run 记录与目录、Prompt Mask，以及仅由该 Workflow 使用的 Template 版本；共享 Template 保留。数据库提交失败时恢复已暂存目录，进程中断由下次启动恢复。删除后重新保存同一 Application id 从 v1 开始。
 
 ## 读取和比较
 
@@ -59,6 +61,16 @@ Project 删除使用同表中的保留 sentinel 与 Project 资源写入建立�
 `content_fingerprint` 同时覆盖完整 Application（包括 bindings）、Template、公开 contract、节点定义、node pack manifest 和稳定资源引用。dependency manifest 会把 Template 节点参数和 Application binding 配置中的稳定资源 id 展开列出，便于直接审计。节点实现身份只使用项目已有的稳定来源：core node 使用 `NodeDefinition.version`，custom node 使用 node definition version、node pack version 和 manifest SHA-256；不会扫描工作区或把实时文件状态写进发布身份。core 实现或 custom node pack 代码变化时必须同步推进相应版本/manifest。worker 启动后会按实际加载的节点目录重新计算同一指纹；依赖漂移或版本资产损坏都会阻止 revision 激活。
 
 `compare` 固定表示“指定已发布版本 -> 当前草稿”的公开契约差异，返回 `compatible`、`changes`、`breaking_changes` 和 source/target contract fingerprint。非破坏性修改仍需要显式发布和 Runtime 停机选择版本，不会自动生效。
+
+## 命名与删除
+
+`PATCH .../versions/{workflow_app_version_id}` 接收 `{"display_version": "现场基线", "release_notes": "现场参数校准完成"}`，成功返回更新后的版本记录。名称去掉首尾空白后必须为 1 至 128 个字符；空白名称返回 400，类型、长度或额外字段不合法返回 422。release_notes 最长 4096 个字符，省略或 null 保留原说明，空字符串清空；新旧调用方兼容，不需要数据库迁移。该操作只修改记录中的标题和说明，不改变 version_number、发布内容、指纹、创建时间或 Runtime revision。
+
+`DELETE .../versions/{workflow_app_version_id}` 无请求体，成功返回 204。仅允许删除 published/archived 且无 Runtime revision/Run 引用的版本；引用包括历史和停止状态的 Runtime revision。引用存在返回 409，details 包含 `workflow_app_version_id`、`runtime_revisions`、`runs`。Project/App 归属不匹配或版本已删除返回 404。
+
+删除与 Runtime 创建/切版使用 Application lifecycle 和版本行写顺序裁决：引用先提交时删除返回 409；删除先提交时新引用无法取得版本。成功后版本数据库行和版本快照目录都被物理删除，公开列表、详情、命名和取消归档均返回不存在。Application 仍存在时，独立的 `sequence.json` 保留已分配的最大内部编号，因此再次发布相同或其他内容都使用更大的版本号，不复用已删除编号。删除整个 Workflow 时会连同该序号文件一起删除，之后重建同一 id 从 v1 开始。归档不是删除，不能用取消归档恢复已删除版本。
+
+物理删除不新增数据库列或表。升级仍使用现有 migrate-database 入口；启动恢复会把旧实现遗留且无引用的 `deleted` 版本行和快照转换为物理删除。若旧 `deleted` 行仍存在引用，启动会明确报错，不能静默破坏 Runtime/Run 来源。
 
 ## 归档和恢复
 
@@ -89,7 +101,7 @@ conda activate amvision
 python -m backend.maintenance.main migrate-database --output text
 ```
 
-迁移增加 `workflow_app_versions`、`workflow_runtime_revisions`、`workflow_application_lifecycles` 及 Runtime/Run 来源字段，并增加仅用于数据库并发裁决的 nullable `content_deduplication_key`。lifecycle 表使用 `(project_id, application_id)` 复合主键，`generation + operation_id` 负责过期操作隔离，`deleted` 保存物理删除 tombstone；实现只使用 SQLAlchemy 通用类型和条件更新，可迁移到 SQLite、MySQL 和 PostgreSQL。历史相同内容版本不会被删除：每组非 failed 版本只选择一条规范记录持有默认占位，其余记录保持可读且占位为空。服务启动后以每个旧 Runtime 自己的快照为事实来源做幂等导入，保留原 `workflow_runtime_id`、TriggerSource id、协议地址和 SDK 配置。
+迁移增加 `workflow_app_versions`、`workflow_runtime_revisions`、`workflow_application_lifecycles` 及 Runtime/Run 来源字段，并增加仅用于数据库并发裁决的 nullable `content_deduplication_key`。lifecycle 表使用 `(project_id, application_id)` 复合主键，`generation + operation_id` 负责过期操作隔离；`deleted` 仍用于普通文件操作恢复和 Project tombstone，整个 Workflow 的成功删除会物理移除自己的 lifecycle 行。实现只使用 SQLAlchemy 通用类型和条件更新，可迁移到 SQLite、MySQL 和 PostgreSQL。服务启动后以每个旧 Runtime 自己的快照为事实来源做幂等导入，保留原 `workflow_runtime_id`、TriggerSource id、协议地址和 SDK 配置。
 
 ## 相关文档
 

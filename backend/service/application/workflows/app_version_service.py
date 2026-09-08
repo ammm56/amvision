@@ -40,6 +40,12 @@ from backend.service.application.workflows.lifecycle_resource_keys import (
 from backend.service.application.workflows.documents.storage import (
     normalize_application_identifier,
 )
+from backend.service.application.workflows.resource_deletion_staging import (
+    finalize_staged_workflow_resource_storage,
+    list_staged_workflow_resource_storage,
+    restore_staged_workflow_resource_storage,
+    stage_workflow_resource_storage,
+)
 from backend.service.domain.workflows.workflow_runtime_records import WorkflowAppVersion
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
@@ -50,6 +56,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 
 WORKFLOW_APP_VERSION_MANIFEST_FORMAT = "amvision.workflow-app-version-manifest.v1"
 WORKFLOW_APP_DEPENDENCY_MANIFEST_FORMAT = "amvision.workflow-app-dependencies.v1"
+WORKFLOW_APP_VERSION_SEQUENCE_FORMAT = "amvision.workflow-app-version-sequence.v1"
 
 
 @dataclass(frozen=True)
@@ -517,6 +524,120 @@ class WorkflowAppVersionService:
                 include_incomplete=include_incomplete,
             )
 
+    def rename_version(
+        self,
+        *,
+        project_id: str,
+        application_id: str,
+        workflow_app_version_id: str,
+        display_version: str,
+        release_notes: str | None = None,
+    ) -> WorkflowAppVersion:
+        """按 Project/App 归属修改标题和说明；release_notes 为 None 时保留说明。"""
+
+        name = display_version.strip()
+        if not name or len(name) > 128:
+            raise InvalidRequestError("版本名称必须为 1 至 128 个字符")
+        if release_notes is not None and len(release_notes) > 4096:
+            raise InvalidRequestError("版本说明不能超过 4096 个字符")
+        with self.application_lifecycle.operation(
+            project_id=project_id,
+            application_id=application_id,
+            operation="saving",
+            deleted_on_success=False,
+        ):
+            version = self.get_version(
+                project_id=project_id,
+                application_id=application_id,
+                workflow_app_version_id=workflow_app_version_id,
+            )
+            with self._open_unit_of_work() as unit_of_work:
+                if not unit_of_work.workflow_runtime.rename_workflow_app_version(
+                    workflow_app_version_id,
+                    name,
+                    release_notes,
+                ):
+                    raise ResourceConflictError("版本当前不能命名")
+                unit_of_work.commit()
+            return WorkflowAppVersion(
+                **{
+                    **version.__dict__,
+                    "display_version": name,
+                    "release_notes": version.release_notes
+                    if release_notes is None
+                    else release_notes,
+                }
+            )
+
+    def delete_version(
+        self,
+        *,
+        project_id: str,
+        application_id: str,
+        workflow_app_version_id: str,
+    ) -> None:
+        """物理删除未被任何 Runtime revision 或 WorkflowRun 引用的版本。"""
+
+        with self.application_lifecycle.operation(
+            project_id=project_id,
+            application_id=application_id,
+            operation="saving",
+            deleted_on_success=False,
+        ):
+            version = self.get_version(
+                project_id=project_id,
+                application_id=application_id,
+                workflow_app_version_id=workflow_app_version_id,
+            )
+            version_dir = str(
+                PurePosixPath(version.application_snapshot_object_key).parent
+            )
+            staging = stage_workflow_resource_storage(
+                dataset_storage=self.dataset_storage,
+                operation_id=f"workflow-app-version-delete-{uuid.uuid4().hex}",
+                resource_kind="workflow-app-version",
+                resource_id=workflow_app_version_id,
+                source_paths=(version_dir,),
+                metadata={
+                    "project_id": project_id,
+                    "application_id": application_id,
+                },
+            )
+            try:
+                with self._open_unit_of_work() as unit_of_work:
+                    # 与 Runtime 创建/切版复用同一版本行写入顺序：先提交的一方
+                    # 成功，后提交的一方只能看到引用或版本不存在。
+                    if not unit_of_work.workflow_runtime.fence_deletable_workflow_app_version(
+                        workflow_app_version_id,
+                    ):
+                        raise ResourceConflictError("版本当前不能删除")
+                    references = unit_of_work.workflow_runtime.workflow_app_version_reference_counts(
+                        workflow_app_version_id,
+                    )
+                    if any(references.values()):
+                        raise ResourceConflictError(
+                            "版本被 Runtime 历史或 Run 引用，不能删除",
+                            details={
+                                "workflow_app_version_id": workflow_app_version_id,
+                                **references,
+                            },
+                        )
+                    if not unit_of_work.workflow_runtime.delete_workflow_app_version_record(
+                        workflow_app_version_id
+                    ):
+                        raise ResourceConflictError("版本当前不能删除")
+                    unit_of_work.commit()
+            except Exception:
+                restore_staged_workflow_resource_storage(
+                    dataset_storage=self.dataset_storage,
+                    staging=staging,
+                )
+                raise
+            finalize_staged_workflow_resource_storage(
+                dataset_storage=self.dataset_storage,
+                staging=staging,
+            )
+
     def archive_version(
         self,
         *,
@@ -562,9 +683,7 @@ class WorkflowAppVersionService:
                 application_id=application_id,
                 workflow_app_version_id=workflow_app_version_id,
             )
-            contract_issues = find_workflow_app_public_contract_issues(
-                detail.contract
-            )
+            contract_issues = find_workflow_app_public_contract_issues(detail.contract)
             if contract_issues:
                 raise ResourceConflictError(
                     "归档版本不符合当前 Workflow App v1 公开契约，不能恢复",
@@ -631,6 +750,8 @@ class WorkflowAppVersionService:
     def recover_incomplete_versions(self) -> WorkflowAppVersionRecoveryResult:
         """恢复 manifest 已完成的发布，并把不完整发布收敛为 failed。"""
 
+        recovered_deletion_staging = self._recover_staged_version_deletions()
+        cleaned_legacy_deleted = self._cleanup_legacy_deleted_versions()
         with self._open_unit_of_work() as unit_of_work:
             versions = (
                 unit_of_work.workflow_runtime.list_incomplete_workflow_app_versions()
@@ -691,8 +812,107 @@ class WorkflowAppVersionService:
             scanned_versions=len(versions),
             recovered_versions=recovered_versions,
             failed_versions=failed_versions,
-            cleaned_staging_directories=self._cleanup_orphan_staging_directories(),
+            cleaned_staging_directories=(
+                recovered_deletion_staging
+                + cleaned_legacy_deleted
+                + self._cleanup_orphan_staging_directories()
+            ),
         )
+
+    def _recover_staged_version_deletions(self) -> int:
+        """按版本记录是否存在恢复或完成异常中断的物理删除。"""
+
+        recovered = 0
+        for staging in list_staged_workflow_resource_storage(
+            dataset_storage=self.dataset_storage,
+            resource_kind="workflow-app-version",
+        ):
+            with self._open_unit_of_work() as unit_of_work:
+                version = unit_of_work.workflow_runtime.get_workflow_app_version(
+                    staging.resource_id
+                )
+            if version is None:
+                finalize_staged_workflow_resource_storage(
+                    dataset_storage=self.dataset_storage,
+                    staging=staging,
+                )
+            else:
+                restore_staged_workflow_resource_storage(
+                    dataset_storage=self.dataset_storage,
+                    staging=staging,
+                )
+            recovered += 1
+        return recovered
+
+    def _cleanup_legacy_deleted_versions(self) -> int:
+        """把旧实现遗留的 deleted 行和快照一次性转换为物理删除。"""
+
+        with self._open_unit_of_work() as unit_of_work:
+            versions = (
+                unit_of_work.workflow_runtime.list_workflow_app_versions_by_state(
+                    "deleted"
+                )
+            )
+        cleaned = 0
+        for version in versions:
+            references: dict[str, int]
+            with self._open_unit_of_work() as unit_of_work:
+                references = (
+                    unit_of_work.workflow_runtime.workflow_app_version_reference_counts(
+                        version.workflow_app_version_id
+                    )
+                )
+            if any(references.values()):
+                raise PersistenceOperationError(
+                    "旧 deleted WorkflowAppVersion 仍被引用，无法物理清理",
+                    details={
+                        "workflow_app_version_id": version.workflow_app_version_id,
+                        **references,
+                    },
+                )
+            version_dir = str(
+                PurePosixPath(version.application_snapshot_object_key).parent
+            )
+            staging = stage_workflow_resource_storage(
+                dataset_storage=self.dataset_storage,
+                operation_id=(
+                    "workflow-app-version-legacy-delete-"
+                    f"{version.workflow_app_version_id}-{uuid.uuid4().hex}"
+                ),
+                resource_kind="workflow-app-version",
+                resource_id=version.workflow_app_version_id,
+                source_paths=(version_dir,),
+                metadata={
+                    "project_id": version.project_id,
+                    "application_id": version.application_id,
+                },
+            )
+            try:
+                with self._open_unit_of_work() as unit_of_work:
+                    if not unit_of_work.workflow_runtime.delete_workflow_app_version_record(
+                        version.workflow_app_version_id
+                    ):
+                        raise PersistenceOperationError(
+                            "旧 deleted WorkflowAppVersion 记录已经变化",
+                            details={
+                                "workflow_app_version_id": (
+                                    version.workflow_app_version_id
+                                )
+                            },
+                        )
+                    unit_of_work.commit()
+            except Exception:
+                restore_staged_workflow_resource_storage(
+                    dataset_storage=self.dataset_storage,
+                    staging=staging,
+                )
+                raise
+            finalize_staged_workflow_resource_storage(
+                dataset_storage=self.dataset_storage,
+                staging=staging,
+            )
+            cleaned += 1
+        return cleaned
 
     def _cleanup_orphan_staging_directories(self) -> int:
         """启动恢复结束后删除旧实现遗留且无活跃发布者的 staging。"""
@@ -725,7 +945,11 @@ class WorkflowAppVersionService:
             version = unit_of_work.workflow_runtime.get_workflow_app_version(
                 workflow_app_version_id
             )
-        if version is None or version.project_id != project_id:
+        if (
+            version is None
+            or version.state == "deleted"
+            or version.project_id != project_id
+        ):
             raise ResourceNotFoundError(
                 "请求的 WorkflowAppVersion 不存在",
                 details={"workflow_app_version_id": workflow_app_version_id},
@@ -812,6 +1036,7 @@ class WorkflowAppVersionService:
             )
         if (
             version is None
+            or version.state == "deleted"
             or version.project_id != project_id
             or version.application_id != application_id
         ):
@@ -988,20 +1213,15 @@ class WorkflowAppVersionService:
     ) -> WorkflowAppVersion:
         """以短事务分配内部序号并新增 publishing 记录。"""
 
+        version_number = self._allocate_next_version_number(
+            project_id=project_id,
+            application_id=application_id,
+        )
+        normalized_display = (display_version or "").strip() or f"v{version_number}"
         last_error: Exception | None = None
         for _attempt in range(3):
             try:
                 with self._open_unit_of_work() as unit_of_work:
-                    version_number = (
-                        unit_of_work.workflow_runtime.get_latest_workflow_app_version_number(
-                            project_id,
-                            application_id,
-                        )
-                        + 1
-                    )
-                    normalized_display = (
-                        display_version or ""
-                    ).strip() or f"v{version_number}"
                     version = WorkflowAppVersion(
                         workflow_app_version_id=workflow_app_version_id,
                         project_id=project_id,
@@ -1041,6 +1261,50 @@ class WorkflowAppVersionService:
             "并发发布时无法分配 Workflow App 版本号",
             details={"application_id": application_id},
         ) from last_error
+
+    def _allocate_next_version_number(
+        self,
+        *,
+        project_id: str,
+        application_id: str,
+    ) -> int:
+        """在 Application lifecycle claim 内分配不复用的内部版本序号。"""
+
+        sequence_key = _build_version_sequence_object_key(
+            project_id=project_id,
+            application_id=application_id,
+        )
+        with self._open_unit_of_work() as unit_of_work:
+            database_last = (
+                unit_of_work.workflow_runtime.get_latest_workflow_app_version_number(
+                    project_id,
+                    application_id,
+                )
+            )
+        file_last = 0
+        if self.dataset_storage.resolve(sequence_key).is_file():
+            payload = self.dataset_storage.read_json(sequence_key)
+            if (
+                not isinstance(payload, dict)
+                or payload.get("format_id") != WORKFLOW_APP_VERSION_SEQUENCE_FORMAT
+                or not isinstance(payload.get("last_version_number"), int)
+                or isinstance(payload.get("last_version_number"), bool)
+                or int(payload["last_version_number"]) < 0
+            ):
+                raise PersistenceOperationError(
+                    "Workflow App 版本序号文件无效",
+                    details={"object_key": sequence_key},
+                )
+            file_last = int(payload["last_version_number"])
+        next_number = max(database_last, file_last) + 1
+        self.dataset_storage.write_json(
+            sequence_key,
+            {
+                "format_id": WORKFLOW_APP_VERSION_SEQUENCE_FORMAT,
+                "last_version_number": next_number,
+            },
+        )
+        return next_number
 
     def _write_and_verify_staging(
         self,
@@ -1567,6 +1831,15 @@ def _build_version_directory(
     return (
         f"workflows/projects/{project_id}/applications/{application_id}/versions"
         f"/{workflow_app_version_id}"
+    )
+
+
+def _build_version_sequence_object_key(*, project_id: str, application_id: str) -> str:
+    """构建单个 Workflow App 的持久版本序号文件。"""
+
+    return (
+        f"workflows/projects/{project_id}/applications/{application_id}/versions"
+        "/sequence.json"
     )
 
 

@@ -27,8 +27,8 @@ WorkflowApplicationLifecycleState = Literal[
 class WorkflowApplicationLifecycle:
     """描述一份 Workflow Application 的持久化写操作状态门。
 
-    ``generation`` 与 ``operation_id`` 共同隔离过期操作；``deleted`` 保留
-    物理删除后的 tombstone，避免旧进程在恢复后重新写回过期状态。
+    ``generation`` 与 ``operation_id`` 共同隔离过期操作；``deleted`` 支持
+    普通文件操作与 Project 删除恢复。整个 Workflow 删除成功时会物理移除该行。
     """
 
     project_id: str
@@ -61,6 +61,16 @@ class WorkflowAppVersion:
     created_by: str | None = None
     completed_at: str | None = None
     error: str | None = None
+
+
+@dataclass(frozen=True)
+class WorkflowApplicationDeletionInventory:
+    """描述 Workflow Application 物理删除所需的数据库资源。"""
+
+    workflow_runtime_ids: tuple[str, ...] = ()
+    preview_runs: tuple[tuple[str, str], ...] = ()
+    workflow_run_ids: tuple[str, ...] = ()
+    workflow_app_version_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

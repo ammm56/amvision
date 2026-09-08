@@ -167,6 +167,20 @@ class WorkflowAppVersionPublishRequestBody(BaseModel):
     )
 
 
+class WorkflowAppVersionRenameRequestBody(BaseModel):
+    """描述版本标题和说明更新；不接受发布内容或内部编号。"""
+
+    model_config = {"extra": "forbid"}
+    display_version: str = Field(
+        min_length=1, max_length=128, description="版本显示名称"
+    )
+    release_notes: str | None = Field(
+        default=None,
+        max_length=4096,
+        description="版本说明；省略或 null 保留原值，空字符串清空",
+    )
+
+
 class WorkflowAppVersionArchiveRequestBody(BaseModel):
     """描述已发布版本的归档 CAS 请求。"""
 

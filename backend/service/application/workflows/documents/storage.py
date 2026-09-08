@@ -167,6 +167,17 @@ def build_application_directory_key(*, project_id: str, application_id: str) -> 
     return f"{_WORKFLOW_ROOT_DIR}/{project_id}/applications/{application_id}"
 
 
+def build_application_prompt_mask_root_key(
+    *, project_id: str, application_id: str
+) -> str:
+    """构建单个 Workflow Application 的 Prompt Mask 根路径。"""
+
+    return (
+        f"projects/{project_id}/inputs/workflow-applications/"
+        f"{application_id}/prompt-masks"
+    )
+
+
 def to_object_key(*, dataset_storage: LocalDatasetStorage, path: Path) -> str:
     """把本地绝对路径转换回对象存储相对路径。"""
 

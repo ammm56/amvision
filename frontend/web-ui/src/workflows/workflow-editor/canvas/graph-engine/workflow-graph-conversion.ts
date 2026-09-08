@@ -19,6 +19,7 @@ export interface WorkflowCanvasNodeSnapshot {
   parameters: WorkflowJsonObject
   metadata: WorkflowJsonObject
   ui_state: WorkflowJsonObject
+  preserveUiState?: boolean
 }
 
 export interface WorkflowCanvasGraphSnapshot {
@@ -42,9 +43,7 @@ function snapshotNodeToGraphNode(snapshot: WorkflowCanvasNodeSnapshot): Workflow
     parameters: { ...snapshot.parameters },
     ui_state: {
       ...snapshot.ui_state,
-      x: snapshot.x,
-      y: snapshot.y,
-      width: snapshot.width,
+      ...(snapshot.preserveUiState ? {} : { x: snapshot.x, y: snapshot.y, width: snapshot.width }),
     },
     metadata: { ...snapshot.metadata },
   }

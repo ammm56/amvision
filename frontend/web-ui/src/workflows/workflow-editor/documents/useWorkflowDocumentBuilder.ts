@@ -1,3 +1,4 @@
+import { cloneWorkflowJson } from './workflow-app-document'
 import type { Ref, ShallowRef } from 'vue'
 
 import type { WorkflowLiteGraphAdapter } from '../canvas/graph-engine/litegraph-adapter'
@@ -27,6 +28,7 @@ export interface WorkflowDocumentBuilderNodeView {
   x: number
   y: number
   width: number
+  initialView?: { x: number; y: number; width: number }
 }
 
 export interface WorkflowDocumentBuilderOptions<NodeView extends WorkflowDocumentBuilderNodeView> {
@@ -58,7 +60,14 @@ export function useWorkflowDocumentBuilder<NodeView extends WorkflowDocumentBuil
         width: node.width,
         parameters: { ...node.node.parameters },
         metadata: { ...node.node.metadata },
-        ui_state: { ...node.node.ui_state, x: node.x, y: node.y, width: node.width },
+        // 自动排版仅用于显示，只有实际移动或缩放才回写文档。
+        ui_state: {
+          ...node.node.ui_state,
+          ...(!node.initialView || node.x !== node.initialView.x ? { x: node.x } : {}),
+          ...(!node.initialView || node.y !== node.initialView.y ? { y: node.y } : {}),
+          ...(!node.initialView || node.width !== node.initialView.width ? { width: node.width } : {}),
+        },
+        preserveUiState: true,
       })),
       edges: options.graphEdges.value.map((edge) => ({ ...edge, metadata: { ...edge.metadata } })),
       template_inputs: options.templateInputs.value.map((input) => ({ ...input, metadata: { ...input.metadata } })),
@@ -83,13 +92,13 @@ export function useWorkflowDocumentBuilder<NodeView extends WorkflowDocumentBuil
     if (!sourceTemplate) return null
     const snapshot = createCanvasSnapshot()
     const template = options.liteGraphAdapter.value?.exportTemplate(sourceTemplate, snapshot) ?? sourceTemplate
-    return options.applyNewWorkflowTemplateSettings(template)
+    return cloneWorkflowJson(options.applyNewWorkflowTemplateSettings(template))
   }
 
   function buildCurrentApplication(template: WorkflowGraphTemplate): FlowApplication | null {
     const sourceApplication = options.workflowApp.value?.applicationDocument.application
     if (!sourceApplication) return null
-    return {
+    return cloneWorkflowJson({
       ...options.buildNewWorkflowApplicationPatch(sourceApplication, template),
       bindings: options.applicationBindingsDraft.value.map((binding) => ({
         ...binding,
@@ -97,7 +106,7 @@ export function useWorkflowDocumentBuilder<NodeView extends WorkflowDocumentBuil
         metadata: { ...binding.metadata },
       })),
       metadata: options.writeBoundaryPositionsToMetadata(sourceApplication.metadata),
-    }
+    })
   }
 
   return {

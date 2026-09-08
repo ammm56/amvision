@@ -99,6 +99,24 @@ FlowApplication 不是新的打包形式，也不是 exe。它只是另一份 JS
 
 FlowApplication 中 `bindings.config.route` 在现阶段主要用于描述绑定目标和后续适配方向，不等价于“保存 application 后自动生成同名专用 HTTP 路由”。
 
+### Workflow 便携文档
+
+Workflow 编辑器使用一份 JSON 同时导入、导出 `FlowApplication` 和它实际引用的 `WorkflowGraphTemplate`：
+
+```json
+{
+  "format_id": "amvision.workflow-app-document.v1",
+  "application": {},
+  "template": {}
+}
+```
+
+这是编辑文档文件格式，不是 Workflow App 发布版本。它只携带工作流定义、编辑器状态和现有资源引用，不携带 Project 对象、Runtime、Trigger、WorkflowRun、发布记录、服务端文档摘要或模型/图片/文件二进制内容。Application/Template id 及两者配对关系仍保留；便携文件的 template_ref 使用现有 embedded 类型引用文件内 Template，导入后改用当前保存目标。仅排除文档层的 Project 上下文和 application.metadata.project_id，不能删除节点参数中的同名资源引用。
+
+便携文档允许空画布和运行参数尚未补齐的编辑内容，其结构解析不等于后端可执行性校验。保存、预览和发布继续使用当前接口与校验，不修改现有 Application/Template 的服务端保存要求。
+
+导入只替换当前浏览器编辑内容，保留当前 Project、Application/Template id 和保存目标；不自动保存、发布或改变 Runtime/Trigger。历史版本内容载入复用同一 Application/Template 载入路径，不新增恢复协议。完整字段、交互、实施顺序和验收基线见 [Workflow 文档导入、导出与统一载入器](../../design/frontend/workflow-document-import-export.md)。该格式、空白画布右键导入/导出和历史载入入口已实现，并经过自动测试与独立 Workflow 页面验收。
+
 ### 编辑版本与生产发布版本
 
 `WorkflowGraphTemplate.template_version` 是模板文档的保存和引用版本，FlowApplication 是可继续编辑的应用文档。两者都不能单独代表完整、不可变的生产发布版本。

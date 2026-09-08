@@ -1,4 +1,4 @@
-import type { ComputedRef, Ref } from 'vue'
+import { ref, type ComputedRef, type Ref } from 'vue'
 
 import type { WorkflowSaveActionInput, WorkflowPreviewRunActionInput } from './useWorkflowEditorActions'
 import type { PreviewNodeDisplayRefreshOptions } from '../preview/useWorkflowPreviewDisplays'
@@ -18,6 +18,8 @@ export interface WorkflowPreviewRunUiOptions {
 }
 
 export interface WorkflowSaveRunOrchestrationOptions {
+  isDocumentBusy?: () => boolean
+  commitParameterDrafts?: () => boolean
   workflowApp: Ref<unknown | null>
   isNewApp: ComputedRef<boolean>
   selectedProjectId: ComputedRef<string>
@@ -38,21 +40,30 @@ export interface WorkflowSaveRunOrchestrationOptions {
 }
 
 export function useWorkflowSaveRunOrchestration(options: WorkflowSaveRunOrchestrationOptions) {
-  async function saveCurrentWorkflowApp(): Promise<void> {
-    if (!options.workflowApp.value) return
+  const saveInProgress = ref(false)
+  async function saveCurrentWorkflowApp(): Promise<{ result: WorkflowAppSaveResult; refreshError?: unknown } | null> {
+    if (saveInProgress.value || options.isDocumentBusy?.()) return null
+    saveInProgress.value = true
+    try { return await saveCurrentDocument() }
+    finally { saveInProgress.value = false }
+  }
+  async function saveCurrentDocument(): Promise<{ result: WorkflowAppSaveResult; refreshError?: unknown } | null> {
+    if (!options.workflowApp.value) return null
+    const sourceDocument = options.workflowApp.value
+    if (options.commitParameterDrafts && !options.commitParameterDrafts()) return null
     const saveBlocker = options.readNewWorkflowAppSaveBlocker()
     if (saveBlocker) {
       options.setActionError(saveBlocker)
-      return
+      return null
     }
     const template = options.buildCurrentTemplate()
-    if (!template) return
+    if (!template) return null
     const application = options.buildCurrentApplication(template)
-    if (!application) return
+    if (!application) return null
     const preflightIssue = options.runWorkflowPreflight(template, application)
     if (preflightIssue) {
       options.applyWorkflowValidationIssue(preflightIssue)
-      return
+      return null
     }
     const wasNewApp = options.isNewApp.value
     options.clearActionMessages()
@@ -62,12 +73,17 @@ export function useWorkflowSaveRunOrchestration(options: WorkflowSaveRunOrchestr
       application,
       template,
     })
-    if (!result) return
-    await options.applyWorkflowSaveFeedback(result, { wasNewApp })
+    if (!result) return null
+    if (options.workflowApp.value !== sourceDocument) return { result }
+    try { await options.applyWorkflowSaveFeedback(result, { wasNewApp }) }
+    catch (refreshError) { return { result, refreshError } }
+    return { result }
   }
 
   async function runPreview(uiOptions: WorkflowPreviewRunUiOptions = {}): Promise<void> {
-    if (!options.workflowApp.value) return
+    if (!options.workflowApp.value || saveInProgress.value || options.isDocumentBusy?.()) return
+    const sourceDocument = options.workflowApp.value
+    if (options.commitParameterDrafts && !options.commitParameterDrafts()) return
     const previewBlocker = options.readNewWorkflowAppSaveBlocker()
     if (previewBlocker) {
       options.setActionError(previewBlocker)
@@ -87,7 +103,7 @@ export function useWorkflowSaveRunOrchestration(options: WorkflowSaveRunOrchestr
       ? collectNodeScopeInputBindings(template, application, targetNodeId)
       : undefined
     const previewInputPayload = await options.buildPreviewInputBindings(scopedInputBindings)
-    if (!previewInputPayload) return
+    if (!previewInputPayload || options.workflowApp.value !== sourceDocument) return
     options.clearActionMessages()
     options.clearContextMenu()
     const preserveImageViewerNodeId = readOptionalText(uiOptions.preserveImageViewerNodeId)
@@ -104,11 +120,12 @@ export function useWorkflowSaveRunOrchestration(options: WorkflowSaveRunOrchestr
         ? { kind: 'node', targetNodeId }
         : { kind: 'application' },
     })
-    if (!previewRun) return
+    if (!previewRun || options.workflowApp.value !== sourceDocument) return
     await options.applyPreviewRunFeedback(previewRun, { reopenImageViewerNodeId: preserveImageViewerNodeId })
   }
 
   return {
+    saveInProgress,
     saveCurrentWorkflowApp,
     runPreview,
   }

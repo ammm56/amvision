@@ -125,10 +125,13 @@ export function useWorkflowNodeParameters<NodeView extends WorkflowNodeParameter
     return options.complexParameterDrafts.value[draftKey] ?? ''
   }
 
+  const editedJsonDraftKeys = new Set<string>()
+
   function updateNodeParameterJsonDraft(node: NodeView, field: NodeParameterUiField, event: Event): void {
     const target = event.target
     if (!(target instanceof HTMLTextAreaElement)) return
     const draftKey = buildComplexParameterDraftKey(node, field)
+    editedJsonDraftKeys.add(draftKey)
     options.complexParameterDrafts.value = {
       ...options.complexParameterDrafts.value,
       [draftKey]: target.value,
@@ -138,6 +141,7 @@ export function useWorkflowNodeParameters<NodeView extends WorkflowNodeParameter
   function commitNodeParameterJsonDraft(node: NodeView, field: NodeParameterUiField, event: Event): void {
     const target = event.target
     if (!(target instanceof HTMLTextAreaElement)) return
+    const draftKey = buildComplexParameterDraftKey(node, field)
     const rawValue = target.value.trim()
     if (!rawValue) {
       if (field.required) {
@@ -148,7 +152,6 @@ export function useWorkflowNodeParameters<NodeView extends WorkflowNodeParameter
         return
       }
       updateNodeParameter(node, field, undefined)
-      const draftKey = buildComplexParameterDraftKey(node, field)
       options.complexParameterDrafts.value = { ...options.complexParameterDrafts.value, [draftKey]: '' }
       options.setErrorMessage(null)
       return
@@ -162,7 +165,6 @@ export function useWorkflowNodeParameters<NodeView extends WorkflowNodeParameter
         throw new Error(translate('workflowEditor.feedback.parameterTypeRequired', { type: expectedType }))
       }
       updateNodeParameter(node, field, parsedValue)
-      const draftKey = buildComplexParameterDraftKey(node, field)
       options.complexParameterDrafts.value = {
         ...options.complexParameterDrafts.value,
         [draftKey]: formatWorkflowJson(parsedValue),
@@ -176,6 +178,49 @@ export function useWorkflowNodeParameters<NodeView extends WorkflowNodeParameter
         detail,
       }))
     }
+  }
+
+  function hasPendingNodeParameterDrafts(): boolean {
+    return Object.keys(options.complexParameterDrafts.value).some(key => editedJsonDraftKeys.has(key))
+  }
+
+  /** 文档被整体替换时同时清理显示草稿和编辑标记，避免相同节点 id 继承旧状态。 */
+  function resetNodeParameterJsonDrafts(): void {
+    options.complexParameterDrafts.value = {}
+    editedJsonDraftKeys.clear()
+  }
+
+  /** 只提交实际输入过的 JSON 草稿；未触碰字段不补入默认值。 */
+  function commitPendingNodeParameterDrafts(nodes: NodeView[]): boolean {
+    const updates: Array<{ node: NodeView; field: NodeParameterUiField; value: unknown }> = []
+    for (const node of nodes) for (const field of nodeParameterFieldsForNode(node)) {
+      const key = buildComplexParameterDraftKey(node, field)
+      if (!editedJsonDraftKeys.has(key) || !Object.hasOwn(options.complexParameterDrafts.value, key)) continue
+      const raw = options.complexParameterDrafts.value[key].trim()
+      try {
+        if (!raw && field.required) {
+          throw new Error(translate('workflowEditor.feedback.parameterRequired'))
+        }
+        const value = raw ? JSON.parse(raw) : undefined
+        if (raw && !isJsonParameterValueCompatible(field, value)) throw new Error('JSON type')
+        updates.push({ node, field, value })
+      } catch (error) {
+        options.setErrorMessage(translate('workflowEditor.feedback.invalidParameterJson', {
+          node: options.readNodeTitle(node), parameter: options.readParameterLabel(field),
+          detail: error instanceof Error ? `: ${error.message}` : '',
+        }))
+        return false
+      }
+    }
+    for (const item of updates) {
+      updateNodeParameter(item.node, item.field, item.value)
+      const key = buildComplexParameterDraftKey(item.node, item.field)
+      options.complexParameterDrafts.value = {
+        ...options.complexParameterDrafts.value,
+        [key]: item.value === undefined ? '' : formatWorkflowJson(item.value),
+      }
+    }
+    return true
   }
 
   function nodeParameterJsonPlaceholder(field: NodeParameterUiField): string {
@@ -193,6 +238,7 @@ export function useWorkflowNodeParameters<NodeView extends WorkflowNodeParameter
       nextParameters[field.parameter_name] = value
     }
     node.node.parameters = nextParameters
+    editedJsonDraftKeys.delete(buildComplexParameterDraftKey(node, field))
     options.setStatusMessage(translate('workflowEditor.feedback.nodeParametersUpdated'))
   }
 
@@ -211,6 +257,7 @@ export function useWorkflowNodeParameters<NodeView extends WorkflowNodeParameter
           delete nextDrafts[draftKey]
           options.complexParameterDrafts.value = nextDrafts
         }
+        editedJsonDraftKeys.delete(draftKey)
         changed = true
         continue
       }
@@ -221,6 +268,7 @@ export function useWorkflowNodeParameters<NodeView extends WorkflowNodeParameter
           [draftKey]: formatWorkflowJson(value),
         }
       }
+      editedJsonDraftKeys.delete(draftKey)
       changed = true
     }
     if (!changed) {
@@ -253,6 +301,9 @@ export function useWorkflowNodeParameters<NodeView extends WorkflowNodeParameter
     readNodeParameterJsonTextValue,
     updateNodeParameterJsonDraft,
     commitNodeParameterJsonDraft,
+    commitPendingNodeParameterDrafts,
+    hasPendingNodeParameterDrafts,
+    resetNodeParameterJsonDrafts,
     nodeParameterJsonPlaceholder,
   }
 }

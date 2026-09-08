@@ -12,8 +12,8 @@
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1 --port 6601",
     "typecheck": "vue-tsc --noEmit",
-    "test": "vitest run",
-    "test:unit": "vitest run",
+    "test": "cd ../.. && node frontend/web-ui/node_modules/vitest/vitest.mjs run --config frontend/web-ui/vite.config.ts",
+    "test:unit": "cd ../.. && node frontend/web-ui/node_modules/vitest/vitest.mjs run --config frontend/web-ui/vite.config.ts",
     "test:e2e": "playwright test --config=playwright.config.ts"
   },
   "dependencies": {

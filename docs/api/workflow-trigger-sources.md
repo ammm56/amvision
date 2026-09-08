@@ -32,7 +32,7 @@ GET    /api/v1/workflows/trigger-sources/{trigger_source_id}/health
 DELETE /api/v1/workflows/trigger-sources/{trigger_source_id}
 ```
 
-读取需要 `workflows:read`，创建、启停和删除需要 `workflows:write`；所有操作同时校验 Project 可见性。
+读取需要 `workflows:read`，创建、启停和删除需要 `workflows:write`；所有操作同时校验 Project 可见性。删除会先停止 adapter，再同步物理删除数据库行和 `workflows/runtime/trigger-sources/{trigger_source_id}/` 状态目录；数据库提交失败时恢复目录并尽力恢复原 enabled adapter，下次启动会收敛中断的文件清理。
 
 高性能 TriggerSource id 使用绑定 Runtime 的完整资源 id，不再使用场景名、测试名或随机短后缀：
 

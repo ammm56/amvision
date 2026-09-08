@@ -19,6 +19,14 @@ const colorMapField: NodeParameterUiField = {
   json_schema: { type: 'object' },
 }
 
+const jsonObjectField: NodeParameterUiField = {
+  ...colorMapField,
+  parameter_name: 'config',
+  display_name: 'Config',
+  widget: 'auto',
+  json_schema: { type: 'object' },
+}
+
 const graphNode: WorkflowGraphNode = {
   node_id: 'draw-regions',
   node_type_id: 'custom.opencv.draw-regions',
@@ -48,7 +56,10 @@ describe('useWorkflowNodeParameters color-map', () => {
 
   it('通过通用值更新入口一次性写入对象', () => {
     const parameters = buildParameters()
-    const node = { node: { ...graphNode, parameters: {} }, definition: null }
+    const node: { node: WorkflowGraphNode; definition: NodeDefinition | null } = {
+      node: { ...graphNode, parameters: {} },
+      definition: null,
+    }
 
     parameters.updateNodeParameterValue(node, colorMapField, {
       slot_empty: '#00C853',
@@ -57,6 +68,104 @@ describe('useWorkflowNodeParameters color-map', () => {
     expect(node.node.parameters).toEqual({
       class_colors: { slot_empty: '#00C853' },
     })
+  })
+})
+
+describe('JSON 参数草稿生命周期', () => {
+  function eventWithValue(value: string): Event {
+    const target = document.createElement('textarea')
+    target.value = value
+    const event = new Event('input')
+    Object.defineProperty(event, 'target', { value: target })
+    return event
+  }
+
+  function subject() {
+    const drafts = ref<Record<string, string>>({})
+    const errors: Array<string | null> = []
+    const parameters = useWorkflowNodeParameters({
+      complexParameterDrafts: drafts,
+      readNodeTitle: () => 'Node',
+      readParameterLabel: field => field.display_name,
+      setStatusMessage: () => undefined,
+      setErrorMessage: message => errors.push(message),
+    })
+    const node: { node: WorkflowGraphNode; definition: NodeDefinition | null } = {
+      node: { ...graphNode, parameters: {} },
+      definition: null,
+    }
+    return { drafts, errors, node, parameters }
+  }
+
+  it('合法 JSON 失焦提交后清除 edited 标记并保留格式化草稿', () => {
+    const { drafts, node, parameters } = subject()
+    const event = eventWithValue('{"value":1}')
+
+    parameters.updateNodeParameterJsonDraft(node, jsonObjectField, event)
+    expect(parameters.hasPendingNodeParameterDrafts()).toBe(true)
+    parameters.commitNodeParameterJsonDraft(node, jsonObjectField, event)
+
+    expect(node.node.parameters).toEqual({ config: { value: 1 } })
+    expect(drafts.value[`${graphNode.node_id}:config`]).toBe('{\n  "value": 1\n}')
+    expect(parameters.hasPendingNodeParameterDrafts()).toBe(false)
+  })
+
+  it('非法或必填空 JSON 保留 pending，可选空值提交后清除 pending', () => {
+    const { node, parameters } = subject()
+    const invalid = eventWithValue('{')
+    parameters.updateNodeParameterJsonDraft(node, jsonObjectField, invalid)
+    parameters.commitNodeParameterJsonDraft(node, jsonObjectField, invalid)
+    expect(parameters.hasPendingNodeParameterDrafts()).toBe(true)
+
+    const empty = eventWithValue('')
+    parameters.updateNodeParameterJsonDraft(node, jsonObjectField, empty)
+    parameters.commitNodeParameterJsonDraft(node, { ...jsonObjectField, required: true }, empty)
+    expect(parameters.hasPendingNodeParameterDrafts()).toBe(true)
+    parameters.commitNodeParameterJsonDraft(node, jsonObjectField, empty)
+    expect(parameters.hasPendingNodeParameterDrafts()).toBe(false)
+    expect(node.node.parameters).not.toHaveProperty('config')
+  })
+
+  it('整体替换文档时同时清除文本和 edited 标记', () => {
+    const { drafts, node, parameters } = subject()
+    const event = eventWithValue('{"old":true}')
+    parameters.updateNodeParameterJsonDraft(node, jsonObjectField, event)
+    expect(parameters.hasPendingNodeParameterDrafts()).toBe(true)
+
+    parameters.resetNodeParameterJsonDrafts()
+    expect(drafts.value).toEqual({})
+    parameters.readNodeParameterJsonTextValue(node, jsonObjectField)
+    expect(parameters.hasPendingNodeParameterDrafts()).toBe(false)
+  })
+
+  it('直接保存时必填空 JSON 仍阻止提交，可选空 JSON 正常取消设置', () => {
+    const requiredSubject = subject()
+    const empty = eventWithValue('')
+    requiredSubject.node.definition = {
+      parameter_ui_schema: { groups: [], fields: [{ ...jsonObjectField, required: true }] },
+    } as unknown as NodeDefinition
+    requiredSubject.parameters.updateNodeParameterJsonDraft(
+      requiredSubject.node,
+      { ...jsonObjectField, required: true },
+      empty,
+    )
+
+    expect(requiredSubject.parameters.commitPendingNodeParameterDrafts([
+      requiredSubject.node,
+    ])).toBe(false)
+    expect(requiredSubject.parameters.hasPendingNodeParameterDrafts()).toBe(true)
+    expect(requiredSubject.errors.at(-1)).toContain('Config')
+
+    const optionalSubject = subject()
+    optionalSubject.node.definition = {
+      parameter_ui_schema: { groups: [], fields: [jsonObjectField] },
+    } as unknown as NodeDefinition
+    optionalSubject.parameters.updateNodeParameterJsonDraft(optionalSubject.node, jsonObjectField, empty)
+    expect(optionalSubject.parameters.commitPendingNodeParameterDrafts([
+      optionalSubject.node,
+    ])).toBe(true)
+    expect(optionalSubject.parameters.hasPendingNodeParameterDrafts()).toBe(false)
+    expect(optionalSubject.node.node.parameters).not.toHaveProperty('config')
   })
 })
 

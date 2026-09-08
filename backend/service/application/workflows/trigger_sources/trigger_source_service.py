@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 from pydantic import ValidationError
 
@@ -15,6 +16,7 @@ from backend.contracts.workflows import (
     HIGH_PERFORMANCE_TRIGGER_INPUT_PAYLOAD_TYPE_IDS,
     ResultMappingContract,
     WORKFLOW_TRIGGER_KINDS,
+    build_workflow_trigger_source_storage_dir,
     workflow_trigger_supports_input_payload_type,
 )
 
@@ -30,6 +32,11 @@ from backend.service.application.workflows.input_contracts import (
 )
 from backend.service.application.workflows.application_lifecycle import (
     WorkflowApplicationLifecycleService,
+)
+from backend.service.application.workflows.resource_deletion_staging import (
+    finalize_staged_workflow_resource_storage,
+    restore_staged_workflow_resource_storage,
+    stage_workflow_resource_storage,
 )
 from backend.service.application.workflows.lifecycle_resource_keys import (
     build_workflow_lifecycle_resource_key,
@@ -587,6 +594,10 @@ class WorkflowTriggerSourceService:
     def _delete_trigger_source_locked(self, trigger_source_id: str) -> None:
         """在 Runtime 生命周期锁内停止 adapter 并删除 TriggerSource。"""
 
+        if self.dataset_storage is None:
+            raise ServiceConfigurationError(
+                "删除 WorkflowTriggerSource 缺少本地对象存储"
+            )
         with self._open_unit_of_work() as unit_of_work:
             trigger_source = unit_of_work.workflow_trigger_sources.get_trigger_source(
                 trigger_source_id
@@ -596,16 +607,47 @@ class WorkflowTriggerSourceService:
                     "请求的 WorkflowTriggerSource 不存在",
                     details={"trigger_source_id": trigger_source_id},
                 )
-            self._stop_trigger_source_runtime_if_supported(trigger_source)
-            deleted = unit_of_work.workflow_trigger_sources.delete_trigger_source(
-                trigger_source_id
-            )
-            if not deleted:
-                raise ResourceNotFoundError(
-                    "请求的 WorkflowTriggerSource 不存在",
-                    details={"trigger_source_id": trigger_source_id},
+        # adapter 停止可能等待传输线程退出，不能在此期间占用数据库事务。
+        self._stop_trigger_source_runtime_if_supported(trigger_source)
+        staging = stage_workflow_resource_storage(
+            dataset_storage=self.dataset_storage,
+            operation_id=f"workflow-trigger-delete-{uuid4().hex}",
+            resource_kind="workflow-trigger",
+            resource_id=trigger_source_id,
+            source_paths=(
+                build_workflow_trigger_source_storage_dir(trigger_source_id),
+            ),
+            metadata={
+                "project_id": trigger_source.project_id,
+                "workflow_runtime_id": trigger_source.workflow_runtime_id,
+            },
+        )
+        try:
+            with self._open_unit_of_work() as unit_of_work:
+                deleted = unit_of_work.workflow_trigger_sources.delete_trigger_source(
+                    trigger_source_id
                 )
-            unit_of_work.commit()
+                if not deleted:
+                    raise ResourceNotFoundError(
+                        "请求的 WorkflowTriggerSource 不存在",
+                        details={"trigger_source_id": trigger_source_id},
+                    )
+                unit_of_work.commit()
+        except Exception:
+            restore_staged_workflow_resource_storage(
+                dataset_storage=self.dataset_storage,
+                staging=staging,
+            )
+            if trigger_source.enabled:
+                self._start_trigger_source_if_supported(
+                    trigger_source,
+                    raise_on_error=False,
+                )
+            raise
+        finalize_staged_workflow_resource_storage(
+            dataset_storage=self.dataset_storage,
+            staging=staging,
+        )
 
     def get_trigger_source_health(self, trigger_source_id: str) -> dict[str, object]:
         """读取 TriggerSource 的健康摘要。"""
@@ -831,7 +873,9 @@ class WorkflowTriggerSourceService:
                     "directory-watch 必须使用 ack-after-run-created"
                 )
             if result_mode != "event-only":
-                raise InvalidRequestError("directory-watch 必须使用 event-only result_mode")
+                raise InvalidRequestError(
+                    "directory-watch 必须使用 event-only result_mode"
+                )
             if reply_timeout_seconds is not None:
                 raise InvalidRequestError(
                     "directory-watch 不使用 reply_timeout_seconds"
@@ -1328,9 +1372,7 @@ def _find_trigger_contract_mapping_issues(
             continue
         if not isinstance(mapping_rule, dict):
             continue
-        expected_payload_type = str(
-            input_contract.get("payload_type_id") or "value.v1"
-        )
+        expected_payload_type = str(input_contract.get("payload_type_id") or "value.v1")
         if not workflow_trigger_supports_input_payload_type(
             trigger_kind,
             expected_payload_type,
@@ -1718,8 +1760,7 @@ def _apply_directory_watch_default_mapping(
     if (
         request_json_contract is None
         or bool(request_json_contract.get("required", True))
-        or str(request_json_contract.get("payload_type_id") or "value.v1")
-        != "value.v1"
+        or str(request_json_contract.get("payload_type_id") or "value.v1") != "value.v1"
     ):
         return
     input_binding_mapping["request_json"] = {

@@ -272,9 +272,11 @@ Runtime 通过不可变 `WorkflowRuntimeRevision` 选择准确的 `WorkflowAppVe
 ## DELETE /api/v1/workflows/app-runtimes/{workflow_runtime_id}
 
 - 成功状态码：204 No Content
-- 如果 runtime 当前仍持有活动 WorkflowRun，会返回 400，要求先完成或取消当前执行
+- 如果 Runtime 仍绑定 TriggerSource，返回 409；必须先删除 TriggerSource
+- 如果 Runtime 当前仍持有活动 WorkflowRun，返回冲突，要求先完成或取消当前执行
 - 如果 runtime 当前仍有活动 worker 进程，当前会先停止 worker，再删除持久化记录
-- 删除时会一并清理 `workflows/runtime/app-runtimes/{workflow_runtime_id}/` snapshot 目录
+- 删除会物理清理 Runtime、全部 revision、属于该 Runtime 的 WorkflowRun 数据库行，以及 Runtime/Run 磁盘目录；WorkflowAppVersion 保留
+- 文件先同步移入删除暂存区；数据库提交失败时恢复，下次启动会恢复中断删除或完成已提交清理
 - 删除后再次读取同一 runtime 会返回 404
 
 ## GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}/events
@@ -287,7 +289,6 @@ Runtime 通过不可变 `WorkflowRuntimeRevision` 选择准确的 `WorkflowAppVe
 ### 当前稳定事件类型
 
 - runtime.created
-- runtime.deleted
 - runtime.started
 - runtime.stopped
 - runtime.restarted

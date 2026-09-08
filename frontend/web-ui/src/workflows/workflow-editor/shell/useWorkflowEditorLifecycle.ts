@@ -23,8 +23,8 @@ export function useWorkflowEditorLifecycle(options: WorkflowEditorLifecycleOptio
     const stage = options.canvasRef.value
     const toolbar = options.toolbarRef?.value?.$el
     if (!stage || !toolbar) return
-    // 浮层始终位于实际工具栏下方；语言切换和换行不依赖固定行数。
-    const inset = `${toolbar.offsetTop + toolbar.offsetHeight + 12}px`
+    // 保留标题和状态两行空间；按钮换行时再按实际工具栏高度扩展。
+    const inset = `${Math.max(104, toolbar.offsetTop + toolbar.offsetHeight + 12)}px`
     if (stage.style.getPropertyValue('--workflow-toolbar-bottom') !== inset) {
       stage.style.setProperty('--workflow-toolbar-bottom', inset)
     }

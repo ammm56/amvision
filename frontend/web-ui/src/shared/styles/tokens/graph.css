@@ -5,6 +5,7 @@
   --am-graph-toolbar: #ffffff;
   --am-graph-panel: #ffffff;
   --am-graph-panel-strong: #ffffff;
+  --am-graph-hover: var(--am-surface-muted);
   --am-graph-panel-soft: #ffffff;
   --am-graph-node: #ffffff;
   --am-graph-node-header: #fdfefd;
@@ -40,6 +41,7 @@
   --am-graph-toolbar: #202421;
   --am-graph-panel: #242925;
   --am-graph-panel-strong: #1d211e;
+  --am-graph-hover: var(--am-graph-panel-strong);
   --am-graph-panel-soft: #191d1a;
   --am-graph-node: #2a302c;
   --am-graph-node-header: #343b36;

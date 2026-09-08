@@ -106,6 +106,9 @@ from backend.service.application.workflows.application_bundle_journal import (
 from backend.service.application.workflows.application_lifecycle import (
     WorkflowApplicationLifecycleService,
 )
+from backend.service.application.workflows.application_deletion import (
+    WorkflowApplicationDeletionService,
+)
 from backend.service.application.workflows.graph_executor import (
     WorkflowNodeRuntimeRegistry,
 )
@@ -114,6 +117,9 @@ from backend.service.application.workflows.model_sessions import (
 )
 from backend.service.application.workflows.preview_run_manager import (
     WorkflowPreviewRunManager,
+)
+from backend.service.application.workflows.resource_deletion_recovery import (
+    WorkflowResourceDeletionRecoveryService,
 )
 from backend.service.application.workflows.runtime_registry_loader import (
     WorkflowNodeRuntimeRegistryLoader,
@@ -399,6 +405,15 @@ class RecoverIncompleteWorkflowAppVersionsStep:
         WorkflowApplicationBundleJournalService(
             dataset_storage=runtime.dataset_storage,
         ).recover_interrupted_journals()
+        WorkflowApplicationDeletionService(
+            session_factory=runtime.session_factory,
+            dataset_storage=runtime.dataset_storage,
+            node_catalog_registry=runtime.node_catalog_registry,
+        ).recover_interrupted_deletions()
+        WorkflowResourceDeletionRecoveryService(
+            session_factory=runtime.session_factory,
+            dataset_storage=runtime.dataset_storage,
+        ).recover()
         WorkflowAppVersionService(
             session_factory=runtime.session_factory,
             dataset_storage=runtime.dataset_storage,

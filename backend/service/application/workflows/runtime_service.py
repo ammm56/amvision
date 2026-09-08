@@ -30,6 +30,7 @@ from backend.contracts.workflows.resource_semantics import (
     build_workflow_app_runtime_storage_dir,
     build_workflow_app_runtime_snapshot_object_key,
     build_workflow_preview_run_snapshot_object_key,
+    build_workflow_run_storage_dir,
 )
 from backend.service.application.errors import (
     InvalidRequestError,
@@ -71,6 +72,11 @@ from backend.service.application.workflows.preview_run_cleanup import (
     finalize_staged_preview_run_storage,
     restore_staged_preview_run_storage,
     stage_preview_run_storage_for_cleanup,
+)
+from backend.service.application.workflows.resource_deletion_staging import (
+    finalize_staged_workflow_resource_storage,
+    restore_staged_workflow_resource_storage,
+    stage_workflow_resource_storage,
 )
 from backend.service.application.workflows.worker.health import (
     WorkflowRuntimeWorkerInstance,
@@ -278,9 +284,7 @@ class WorkflowRuntimeService:
     _event_lock = Lock()
     # 同一 WorkflowRun 的并发事件写入共享一把锁；最后一个写入者退出后自动
     # 释放锁对象，避免 Windows 为每次历史 run 永久保留一个内核句柄。
-    _workflow_run_event_locks: WeakValueDictionary[str, Lock] = (
-        WeakValueDictionary()
-    )
+    _workflow_run_event_locks: WeakValueDictionary[str, Lock] = WeakValueDictionary()
     _workflow_run_event_sequences: dict[str, int] = {}
     _workflow_app_runtime_event_locks: dict[str, Lock] = {}
     _raw_workflow_run_result_lock = Lock()
@@ -420,6 +424,18 @@ class WorkflowRuntimeService:
             resource_kind="preview",
             identity_parts=(preview_run_id,),
         ):
+            if normalized_request.application_ref_id is not None:
+                with self.application_lifecycle.operation(
+                    project_id=normalized_request.project_id,
+                    application_id=normalized_request.application_ref_id,
+                    operation="saving",
+                    deleted_on_success=False,
+                ):
+                    return self._create_preview_run(
+                        normalized_request,
+                        preview_run_id=preview_run_id,
+                        created_by=created_by,
+                    )
             return self._create_preview_run(
                 normalized_request,
                 preview_run_id=preview_run_id,
@@ -1134,11 +1150,43 @@ class WorkflowRuntimeService:
             resource_kind="runtime",
             identity_parts=(workflow_runtime_id,),
         ):
-            return self._create_workflow_app_runtime(
-                normalized_request,
-                workflow_runtime_id=workflow_runtime_id,
-                created_by=created_by,
+            version_service = self._build_workflow_app_version_service()
+            legacy_application_create = (
+                normalized_request.workflow_app_version_id is None
             )
+            if normalized_request.workflow_app_version_id is not None:
+                app_version = version_service.get_version_by_id(
+                    project_id=normalized_request.project_id,
+                    workflow_app_version_id=(
+                        normalized_request.workflow_app_version_id
+                    ),
+                    require_published=True,
+                )
+            else:
+                if normalized_request.application_id is None:
+                    raise InvalidRequestError("application_id 不能为空")
+                app_version = version_service.ensure_legacy_draft_version(
+                    project_id=normalized_request.project_id,
+                    application_id=normalized_request.application_id,
+                    created_by=created_by,
+                )
+                normalized_request = replace(
+                    normalized_request,
+                    application_id=None,
+                    workflow_app_version_id=app_version.workflow_app_version_id,
+                )
+            with self.application_lifecycle.operation(
+                project_id=app_version.project_id,
+                application_id=app_version.application_id,
+                operation="saving",
+                deleted_on_success=False,
+            ):
+                return self._create_workflow_app_runtime(
+                    normalized_request,
+                    workflow_runtime_id=workflow_runtime_id,
+                    created_by=created_by,
+                    legacy_application_create=legacy_application_create,
+                )
 
     def _create_workflow_app_runtime(
         self,
@@ -1146,6 +1194,7 @@ class WorkflowRuntimeService:
         *,
         workflow_runtime_id: str,
         created_by: str | None,
+        legacy_application_create: bool = False,
     ) -> WorkflowAppRuntime:
         """在 Project mutation claim 内创建稳定 Runtime。"""
 
@@ -1157,7 +1206,6 @@ class WorkflowRuntimeService:
                 workflow_app_version_id=normalized_request.workflow_app_version_id,
                 require_published=True,
             )
-            legacy_application_create = False
         else:
             if normalized_request.application_id is None:
                 raise InvalidRequestError("application_id 不能为空")
@@ -1166,7 +1214,6 @@ class WorkflowRuntimeService:
                 application_id=normalized_request.application_id,
                 created_by=created_by,
             )
-            legacy_application_create = True
         version_detail = version_service.get_version_detail(
             project_id=app_version.project_id,
             application_id=app_version.application_id,
@@ -1320,7 +1367,9 @@ class WorkflowRuntimeService:
             )
         return workflow_app_runtime
 
-    def get_runtime_preview_snapshot(self, workflow_runtime_id: str) -> dict[str, object]:
+    def get_runtime_preview_snapshot(
+        self, workflow_runtime_id: str
+    ) -> dict[str, object]:
         """读取实际激活版本的只读图；未激活时仅展示选定版本，不启动 Runtime。"""
         runtime = self.get_workflow_app_runtime(workflow_runtime_id)
         revision_id = runtime.active_revision_id or runtime.desired_revision_id
@@ -1328,7 +1377,8 @@ class WorkflowRuntimeService:
             raise InvalidRequestError("Runtime 尚未选择发布版本")
         revision = self.get_workflow_runtime_revision(workflow_runtime_id, revision_id)
         version = self._build_workflow_app_version_service().get_version_by_id(
-            project_id=runtime.project_id, workflow_app_version_id=revision.workflow_app_version_id,
+            project_id=runtime.project_id,
+            workflow_app_version_id=revision.workflow_app_version_id,
         )
         application_payload = self.dataset_storage.read_json(
             version.application_snapshot_object_key
@@ -2103,6 +2153,11 @@ class WorkflowRuntimeService:
                     workflow_runtime_id
                 )
             )
+            workflow_run_ids = (
+                unit_of_work.workflow_runtime.list_workflow_run_ids_by_runtime(
+                    workflow_runtime_id
+                )
+            )
             active_runs = (
                 unit_of_work.workflow_runtime.list_active_workflow_runs_for_runtime(
                     workflow_runtime_id
@@ -2158,28 +2213,45 @@ class WorkflowRuntimeService:
                 updated_by=deleted_by,
             )
 
-        deleted_runtime = replace(
-            workflow_app_runtime,
-            desired_state="stopped",
-            observed_state="stopped",
-            updated_at=_now_isoformat(),
-            metadata=with_runtime_resource_updated_by(
-                dict(workflow_app_runtime.metadata),
-                deleted_by,
+        staging = stage_workflow_resource_storage(
+            dataset_storage=self.dataset_storage,
+            operation_id=f"workflow-runtime-delete-{uuid4().hex}",
+            resource_kind="workflow-runtime",
+            resource_id=workflow_runtime_id,
+            source_paths=(
+                build_workflow_app_runtime_storage_dir(workflow_runtime_id),
+                *(
+                    build_workflow_run_storage_dir(workflow_run_id)
+                    for workflow_run_id in workflow_run_ids
+                ),
             ),
+            metadata={
+                "project_id": workflow_app_runtime.project_id,
+                "application_id": workflow_app_runtime.application_id,
+            },
         )
-        self._append_workflow_app_runtime_event(
-            deleted_runtime,
-            event_type="runtime.deleted",
-            message="workflow app runtime 已删除",
-        )
-        with self._open_unit_of_work() as unit_of_work:
-            unit_of_work.workflow_runtime.delete_workflow_app_runtime(
-                workflow_runtime_id
+        try:
+            with self._open_unit_of_work() as unit_of_work:
+                deleted = (
+                    unit_of_work.workflow_runtime.delete_workflow_app_runtime_records(
+                        workflow_runtime_id
+                    )
+                )
+                if not deleted:
+                    raise ResourceNotFoundError(
+                        "请求的 WorkflowAppRuntime 不存在",
+                        details={"workflow_runtime_id": workflow_runtime_id},
+                    )
+                unit_of_work.commit()
+        except Exception:
+            restore_staged_workflow_resource_storage(
+                dataset_storage=self.dataset_storage,
+                staging=staging,
             )
-            unit_of_work.commit()
-        self.dataset_storage.delete_tree(
-            build_workflow_app_runtime_storage_dir(workflow_runtime_id)
+            raise
+        finalize_staged_workflow_resource_storage(
+            dataset_storage=self.dataset_storage,
+            staging=staging,
         )
 
     def restart_workflow_app_runtime(

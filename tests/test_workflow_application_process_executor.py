@@ -1988,7 +1988,11 @@ def test_workflow_app_runtime_api_list_supports_offset_limit_pagination_headers(
 def test_workflow_app_runtime_api_lists_and_deletes_stopped_runtimes(
     tmp_path: Path,
 ) -> None:
-    """验证 app runtime 列表和删除接口可用，并会清理 snapshot 目录。"""
+    """验证 Runtime 删除会物理清理 Run、revision 和关联目录。"""
+
+    from backend.contracts.workflows import build_workflow_run_storage_dir
+    from backend.service.domain.workflows.workflow_runtime_records import WorkflowRun
+    from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 
     session_factory, dataset_storage, queue_backend = create_test_runtime(
         tmp_path,
@@ -2039,10 +2043,37 @@ def test_workflow_app_runtime_api_lists_and_deletes_stopped_runtimes(
                 },
             )
             workflow_runtime_id = create_response.json()["workflow_runtime_id"]
+            workflow_app_version_id = create_response.json()["metadata"][
+                "workflow_app_version_id"
+            ]
+            workflow_runtime_revision_id = create_response.json()["desired_revision_id"]
+            workflow_run_id = "workflow-run-delete-with-runtime"
+            unit_of_work = SqlAlchemyUnitOfWork(session_factory.create_session())
+            try:
+                unit_of_work.workflow_runtime.save_workflow_run(
+                    WorkflowRun(
+                        workflow_run_id=workflow_run_id,
+                        workflow_runtime_id=workflow_runtime_id,
+                        project_id="project-1",
+                        application_id="process-echo-app",
+                        workflow_runtime_revision_id=workflow_runtime_revision_id,
+                        workflow_app_version_id=workflow_app_version_id,
+                        state="succeeded",
+                    )
+                )
+                unit_of_work.commit()
+            finally:
+                unit_of_work.close()
+            workflow_run_dir_key = build_workflow_run_storage_dir(workflow_run_id)
+            dataset_storage.write_json(
+                f"{workflow_run_dir_key}/result.json", {"ok": True}
+            )
+            workflow_run_dir = dataset_storage.resolve(workflow_run_dir_key)
             runtime_dir = dataset_storage.resolve(
                 f"workflows/runtime/app-runtimes/{workflow_runtime_id}"
             )
             runtime_dir_exists_before_delete = runtime_dir.exists()
+            workflow_run_dir_exists_before_delete = workflow_run_dir.exists()
             list_response = client.get(
                 "/api/v1/workflows/app-runtimes",
                 params={"project_id": "project-1"},
@@ -2061,12 +2092,30 @@ def test_workflow_app_runtime_api_lists_and_deletes_stopped_runtimes(
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}",
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
             )
+            unit_of_work = SqlAlchemyUnitOfWork(session_factory.create_session())
+            try:
+                deleted_run = unit_of_work.workflow_runtime.get_workflow_run(
+                    workflow_run_id
+                )
+                deleted_revision = (
+                    unit_of_work.workflow_runtime.get_workflow_runtime_revision(
+                        workflow_runtime_revision_id
+                    )
+                )
+                retained_version = (
+                    unit_of_work.workflow_runtime.get_workflow_app_version(
+                        workflow_app_version_id
+                    )
+                )
+            finally:
+                unit_of_work.close()
             default_principal_id = get_default_test_principal_id(session_factory)
     finally:
         session_factory.engine.dispose()
 
     assert create_response.status_code == 201
     assert runtime_dir_exists_before_delete is True
+    assert workflow_run_dir_exists_before_delete is True
 
     assert list_response.status_code == 200
     list_payload = list_response.json()
@@ -2079,6 +2128,10 @@ def test_workflow_app_runtime_api_lists_and_deletes_stopped_runtimes(
 
     assert delete_response.status_code == 204
     assert not runtime_dir.exists()
+    assert not workflow_run_dir.exists()
+    assert deleted_run is None
+    assert deleted_revision is None
+    assert retained_version is not None
 
     assert list_after_delete_response.status_code == 200
     assert list_after_delete_response.json() == []

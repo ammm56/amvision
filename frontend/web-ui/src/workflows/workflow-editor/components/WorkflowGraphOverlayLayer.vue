@@ -27,6 +27,12 @@
     :minimap-visible="minimapVisible"
     :save-disabled="saveDisabled"
     :preview-disabled="previewDisabled"
+    :document-disabled="documentDisabled"
+    :can-paste-node="canPasteNode"
+    @copy-node="emit('copyNode')"
+    @paste-node="emit('pasteNode')"
+    @export-document="emit('exportDocument')"
+    @import-document="emit('importDocument')"
     :add-node-label="t('workflowEditor.nodePicker.addNode')"
     :save-label="t('workflowEditor.actions.saveWorkflowApp')"
     :preview-label="t('workflowEditor.actions.previewRun')"
@@ -96,6 +102,8 @@ defineProps<{
   contextMenuStyle: Record<string, string>
   saveDisabled: boolean
   previewDisabled: boolean
+  documentDisabled?: boolean
+  canPasteNode?: boolean
   nodePicker: WorkflowNodePickerState | null
   nodePickerDefinitions: NodeDefinition[]
   nodePickerTitle: string
@@ -105,12 +113,16 @@ defineProps<{
 }>()
 
 const emit = defineEmits<{
+  exportDocument: []
+  importDocument: []
   startMinimapNavigation: [event: MouseEvent]
   toggleMinimap: []
   openNodePicker: []
   addNote: []
   editNote: []
   copyNote: []
+  copyNode: []
+  pasteNode: []
   toggleNoteLock: []
   toggleNoteCollapse: []
   deleteNote: []

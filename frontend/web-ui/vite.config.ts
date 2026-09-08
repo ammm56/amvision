@@ -19,6 +19,7 @@ const vitestSetupFile = pathToFileURL(
 ).href
 
 export default defineConfig({
+  root: process.env.VITEST ? path.resolve(projectDirectory, '../..') : projectDirectory,
   plugins: [vue()],
   define: {
     __AMVISION_FRONTEND_VERSION__: JSON.stringify(frontendVersion),
@@ -58,9 +59,16 @@ export default defineConfig({
     },
   },
   test: {
+    root: path.resolve(projectDirectory, '../..'),
+    alias: {
+      'vue': path.resolve(projectDirectory, 'node_modules/vue'),
+      'reka-ui': path.resolve(projectDirectory, 'node_modules/reka-ui'),
+      'vitest': path.resolve(projectDirectory, 'node_modules/vitest'),
+      '@vue/test-utils': path.resolve(projectDirectory, 'node_modules/@vue/test-utils'),
+    },
     environment: 'jsdom',
     globals: true,
-    include: ['src/**/*.test.ts'],
+    include: ['frontend/web-ui/src/**/*.test.ts', 'tests/frontend/**/test_*.ts'],
     setupFiles: [vitestSetupFile],
   },
 })

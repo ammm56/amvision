@@ -239,6 +239,10 @@ Runtime revision 通过数据库记录引用上面的不可变发布对象；Exe
 
 - 需要 workflows:write
 - 成功状态码：204 No Content
+- 仍有 Runtime 时返回 409；Runtime 若绑定 TriggerSource，必须先删除 TriggerSource，再删除 Runtime
+- `created/running` Preview 会暂时阻止删除；终态 Preview 和 WorkflowRun 不阻止
+- 成功后物理删除 Application、全部发布版本、终态 Preview/Run、Prompt Mask 及对应磁盘目录；只由该 Workflow 使用的 Template 版本一并删除，共享 Template 保留
+- 删除不保留 Workflow tombstone 或版本序号；之后重建同一 Application id 从 v1 开始
 
 ### POST /api/v1/workflows/applications/validate
 

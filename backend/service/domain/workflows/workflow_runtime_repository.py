@@ -6,6 +6,7 @@ from typing import Protocol
 
 from backend.service.domain.workflows.workflow_runtime_records import (
     WorkflowApplicationLifecycle,
+    WorkflowApplicationDeletionInventory,
     WorkflowAppRuntime,
     WorkflowAppVersion,
     WorkflowExecutionPolicy,
@@ -275,6 +276,80 @@ class WorkflowRuntimeRepository(Protocol):
         target_state: str,
     ) -> bool:
         """按预期状态原子切换版本生命周期状态。"""
+
+        ...
+
+    def list_workflow_run_ids_by_runtime(
+        self, workflow_runtime_id: str
+    ) -> tuple[str, ...]:
+        """只读取指定 Runtime 的 WorkflowRun id。"""
+
+        ...
+
+    def delete_workflow_app_runtime_records(self, workflow_runtime_id: str) -> bool:
+        """物理删除 Runtime、revision 和其全部 WorkflowRun 记录。"""
+
+        ...
+
+    def rename_workflow_app_version(
+        self,
+        workflow_app_version_id: str,
+        display_version: str,
+        release_notes: str | None = None,
+    ) -> bool:
+        """修改可见版本名称和说明，不修改不可变发布快照。"""
+
+        ...
+
+    def fence_deletable_workflow_app_version(
+        self,
+        workflow_app_version_id: str,
+    ) -> bool:
+        """条件占用 published/archived 版本行，供物理删除建立写入顺序。"""
+
+        ...
+
+    def delete_workflow_app_version_record(
+        self,
+        workflow_app_version_id: str,
+    ) -> bool:
+        """物理删除一条未被引用的 WorkflowAppVersion 记录。"""
+
+        ...
+
+    def workflow_app_version_reference_counts(
+        self,
+        workflow_app_version_id: str,
+    ) -> dict[str, int]:
+        """统计版本的 Runtime revision 和 WorkflowRun 引用数量。"""
+
+        ...
+
+    def list_workflow_app_versions_by_state(
+        self, state: str
+    ) -> tuple[WorkflowAppVersion, ...]:
+        """跨 Project 列出指定持久化状态的版本，供兼容清理使用。"""
+
+        ...
+
+    def inspect_workflow_application_deletion(
+        self,
+        project_id: str,
+        application_id: str,
+    ) -> WorkflowApplicationDeletionInventory:
+        """读取一份 Workflow Application 的物理删除资源清单。"""
+
+        ...
+
+    def delete_claimed_workflow_application_records(
+        self,
+        *,
+        project_id: str,
+        application_id: str,
+        expected_generation: int,
+        operation_id: str,
+    ) -> bool:
+        """在删除 claim 仍有效时物理删除 Application 全部数据库记录。"""
 
         ...
 

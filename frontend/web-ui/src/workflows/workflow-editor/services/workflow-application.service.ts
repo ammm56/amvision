@@ -201,3 +201,18 @@ export async function compareWorkflowAppVersionToDraft(
     `/workflows/projects/${encodePathPart(projectId)}/applications/${encodePathPart(applicationId)}/versions/${encodePathPart(workflowAppVersionId)}/compare`,
   )
 }
+
+/** 命名只更新版本记录，不改变发布快照。 */
+export async function renameWorkflowAppVersion(projectId: string, applicationId: string, versionId: string, name: string, releaseNotes?: string): Promise<WorkflowAppVersion> {
+  return apiRequest<WorkflowAppVersion>(
+    `/workflows/projects/${encodePathPart(projectId)}/applications/${encodePathPart(applicationId)}/versions/${encodePathPart(versionId)}`,
+    { method: 'PATCH', body: { display_version: name, ...(releaseNotes !== undefined ? { release_notes: releaseNotes } : {}) } },
+  )
+}
+
+export async function deleteWorkflowAppVersion(projectId: string, applicationId: string, versionId: string): Promise<void> {
+  return apiRequest<void>(
+    `/workflows/projects/${encodePathPart(projectId)}/applications/${encodePathPart(applicationId)}/versions/${encodePathPart(versionId)}`,
+    { method: 'DELETE', responseType: 'void' },
+  )
+}
