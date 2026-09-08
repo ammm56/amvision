@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { translate } from '@/platform/i18n'
+import { ApiError } from '@/shared/api/error'
 import { validateWorkflowApplication } from '../services/workflow-application.service'
 import { saveWorkflowApp, type WorkflowAppSaveResult } from '../services/workflow-app.service'
 import { useWorkflowResourceStream } from '../composables/useWorkflowResourceStream'
@@ -24,6 +25,13 @@ export interface WorkflowPreviewRunActionInput extends WorkflowSaveActionInput {
 const DEFAULT_WORKFLOW_PREVIEW_TIMEOUT_SECONDS = 120
 
 function readErrorMessage(error: unknown, fallback: string): string {
+  // 校验接口将节点、端口和绑定的失败原因放在 details.reason，不能只显示总括消息。
+  if (error instanceof ApiError && error.details && typeof error.details === 'object' && 'reason' in error.details) {
+    const reason = error.details.reason
+    if (typeof reason === 'string' && reason.trim() && !error.message.includes(reason.trim())) {
+      return `${error.message}：${reason.trim()}`
+    }
+  }
   return error instanceof Error ? error.message : fallback
 }
 
