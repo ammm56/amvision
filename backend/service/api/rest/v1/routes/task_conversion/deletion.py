@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from backend.service.application.resource_deletion import ResourceDeletionService
+from backend.service.application.ports.queue import QueueBackend
+
 from pathlib import PurePosixPath
 from typing import Any
 
-from backend.service.application.errors import InvalidRequestError, ResourceInUseError
+from backend.service.application.errors import InvalidRequestError
 from backend.service.domain.tasks.task_records import TaskRecord
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
@@ -23,48 +26,15 @@ _TERMINAL_STATES = {
 
 
 def delete_conversion_task_outputs(
-    *,
-    task: TaskRecord,
-    session_factory: SessionFactory,
-    dataset_storage: LocalDatasetStorage,
+    *, task: TaskRecord, session_factory: SessionFactory,
+    dataset_storage: LocalDatasetStorage, queue_backend: QueueBackend | None = None,
 ) -> None:
-    """删除 conversion 任务的运行数据、登记 build/file 和任务记录。
-
-    删除边界：
-    - 只处理 conversion 任务自身的 task-runs 运行磁盘数据。
-    - 删除该任务登记出的 ModelBuild 和对应 ModelFile 记录。
-    - 当任一 ModelBuild 已被 DeploymentInstance 使用时拒绝删除。
-    - 不删除来源 ModelVersion、训练输出或平台预置模型文件。
-    """
-
+    """删除转换输出、登记、全部尝试及队列，任何外部依赖阻止删除。"""
     _ensure_terminal_task(task)
-    output_prefix = _resolve_conversion_output_prefix(task)
-
-    session = session_factory.create_session()
-    try:
-        unit_of_work = SqlAlchemyUnitOfWork(session)
-        build_ids = _collect_model_build_ids(task)
-        protected_builds = _collect_protected_builds(unit_of_work=unit_of_work, task=task, build_ids=build_ids)
-        if protected_builds:
-            raise ResourceInUseError(
-                "转换输出已被部署实例使用，不能删除",
-                details={"task_id": task.task_id, "protected_builds": protected_builds},
-            )
-
-        build_file_ids = _collect_build_file_ids(unit_of_work=unit_of_work, build_ids=build_ids)
-        dataset_storage.delete_tree(output_prefix)
-
-        for file_id in sorted(build_file_ids):
-            unit_of_work.model_files.delete_model_file(file_id)
-        for build_id in sorted(build_ids):
-            unit_of_work.models.delete_model_build(build_id)
-        unit_of_work.tasks.delete_task(task.task_id)
-        unit_of_work.commit()
-    except Exception:
-        session.rollback()
-        raise
-    finally:
-        session.close()
+    _resolve_conversion_output_prefix(task)
+    ResourceDeletionService(session_factory=session_factory, dataset_storage=dataset_storage, queue_backend=queue_backend).delete(
+        kind="task", resource_id=task.task_id, project_id=task.project_id,
+    )
 
 
 def _ensure_terminal_task(task: TaskRecord) -> None:

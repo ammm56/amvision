@@ -6,10 +6,14 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import FileResponse
+from backend.service.api.resource_file_response import ResourceFileResponse
 
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.db import get_session_factory, get_unit_of_work
 from backend.service.api.deps.storage import get_dataset_storage
+from backend.service.api.deps.queue import get_queue_backend
+from backend.service.infrastructure.queue.local_file import LocalFileQueueBackend
+from backend.service.application.resource_deletion import ResourceDeletionService
 from backend.service.application.datasets.exports import DatasetExportRequest
 from backend.service.application.datasets.exports.delivery import SqlAlchemyDatasetExportDeliveryService
 from backend.service.application.datasets.tasks import SqlAlchemyDatasetExportTaskService
@@ -169,6 +173,8 @@ def delete_dataset_export(
 	principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("datasets:write"))],
 	unit_of_work: Annotated[UnitOfWork, Depends(get_unit_of_work)],
 	dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+	session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+	queue_backend: Annotated[LocalFileQueueBackend, Depends(get_queue_backend)],
 ) -> None:
 	"""删除一个已结束的 DatasetExport 记录和它的本地运行磁盘数据。"""
 
@@ -183,17 +189,10 @@ def delete_dataset_export(
 			details={"dataset_export_id": dataset_export_id, "status": dataset_export.status},
 		)
 
-	if dataset_export.export_path is not None and dataset_export.export_path.strip():
-		dataset_storage.delete_tree(dataset_export.export_path)
-
-	for package_object_key in _collect_dataset_export_package_object_keys(dataset_export):
-		dataset_storage.delete_tree(package_object_key)
-
-	if dataset_export.task_id is not None and dataset_export.task_id.strip():
-		unit_of_work.tasks.delete_task(dataset_export.task_id)
-
-	unit_of_work.dataset_exports.delete_dataset_export(dataset_export_id)
-	unit_of_work.commit()
+	unit_of_work.rollback()
+	ResourceDeletionService(session_factory=session_factory, dataset_storage=dataset_storage, queue_backend=queue_backend).delete(
+		kind="dataset-export", resource_id=dataset_export_id, project_id=dataset_export.project_id,
+	)
 
 
 @dataset_exports_router.get(
@@ -268,7 +267,8 @@ def download_dataset_export(
 		dataset_storage=dataset_storage,
 	)
 	package, package_path = delivery_service.resolve_package_file(visible_export.dataset_export_id)
-	return FileResponse(
+	return ResourceFileResponse(
+		session_factory=session_factory, project_id=visible_export.project_id, resource_id=dataset_export_id,
 		path=package_path,
 		media_type="application/zip",
 		filename=package.package_file_name,
@@ -295,7 +295,8 @@ def download_dataset_export_manifest(
 		dataset_storage=dataset_storage,
 	)
 	_, manifest_path = delivery_service.resolve_manifest_file(visible_export.dataset_export_id)
-	return FileResponse(
+	return ResourceFileResponse(
+		session_factory=session_factory, project_id=visible_export.project_id, resource_id=dataset_export_id,
 		path=manifest_path,
 		media_type="application/json",
 		filename=f"{visible_export.dataset_export_id}-manifest.json",

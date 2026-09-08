@@ -19,6 +19,10 @@ from backend.service.application.runtime.deployment.deployment_process_superviso
 from backend.service.application.runtime.deployment.deployment_runtime_state_service import (
     DeploymentRuntimeStateService,
 )
+from backend.service.application.runtime.support.safe_counter import (
+    JSON_SAFE_INTEGER_MAX,
+    normalize_safe_counter_value,
+)
 from backend.service.domain.deployments.deployment_runtime_state import (
     DeploymentRuntimeMode,
     DeploymentRuntimeState,
@@ -94,6 +98,11 @@ class DeploymentRuntimeReconciler:
         self._last_round_failure_count = 0
         self._last_round_not_ready_count = 0
         self._recovery_in_progress = False
+        self._supervisor_counter_lock = Lock()
+        self._supervisor_restart_counters: dict[
+            tuple[str, DeploymentRuntimeMode, int],
+            tuple[int, int],
+        ] = {}
 
     @property
     def is_running(self) -> bool:
@@ -154,6 +163,13 @@ class DeploymentRuntimeReconciler:
                 self._recovery_in_progress = False
             return
         desired_states = self.state_service.list_desired_running_states()
+        existing_ids = self.state_service.list_existing_deployment_ids()
+        for binding in self.bindings_by_task_type.values():
+            for supervisor in (binding.sync_supervisor, binding.async_supervisor):
+                prune = getattr(supervisor, "prune_deleted_deployments", None)
+                if callable(prune):
+                    prune(existing_ids)
+        self._prune_supervisor_restart_counters(desired_states)
         failure_count = 0
         not_ready_count = 0
         for state in desired_states:
@@ -253,6 +269,19 @@ class DeploymentRuntimeReconciler:
         )
         supervisor = binding.get_supervisor(state.runtime_mode)
         status = supervisor.get_status(process_config)
+        counter_key = (
+            state.deployment_instance_id,
+            state.runtime_mode,
+            state.generation,
+        )
+        restart_delta = self._consume_supervisor_restart_delta(
+            key=counter_key,
+            process_status=status,
+        )
+        observed_restart_count = min(
+            JSON_SAFE_INTEGER_MAX,
+            current.restart_count + restart_delta,
+        )
         if status.process_state != "running":
             # start_deployment 会同步完成所有实例预热。开始该阻塞操作前必须立即
             # 撤销 daemon readiness，不能在数秒预热窗口继续发布上一轮 ready。
@@ -261,7 +290,10 @@ class DeploymentRuntimeReconciler:
             # 每次由持久化协调器重建缺失进程都属于一次恢复重启。
             # supervisor 的进程内计数在 daemon 重启后会归零，因此先在
             # 持久层累加，再由状态服务的单调合并保留历史值。
-            recovery_restart_count = current.restart_count + 1
+            recovery_restart_count = min(
+                JSON_SAFE_INTEGER_MAX,
+                observed_restart_count + 1,
+            )
             self.state_service.record_observed_state(
                 deployment_instance_id=state.deployment_instance_id,
                 runtime_mode=state.runtime_mode,
@@ -271,6 +303,11 @@ class DeploymentRuntimeReconciler:
                 restart_count=recovery_restart_count,
             )
             status = supervisor.start_deployment(process_config)
+            self._replace_supervisor_restart_counter(
+                key=counter_key,
+                process_status=status,
+            )
+            observed_restart_count = recovery_restart_count
 
         latest = self.state_service.get_runtime_state(
             deployment_instance_id=state.deployment_instance_id,
@@ -292,8 +329,57 @@ class DeploymentRuntimeReconciler:
             runtime_mode=state.runtime_mode,
             generation=state.generation,
             process_status=status,
+            restart_count=observed_restart_count,
         )
         return status.process_state == "running"
+
+    def _consume_supervisor_restart_delta(
+        self,
+        *,
+        key: tuple[str, DeploymentRuntimeMode, int],
+        process_status: object,
+    ) -> int:
+        """读取 supervisor 进程内计数增量，不把 daemon 重置误作累计值。"""
+
+        current = _read_supervisor_restart_counter(process_status)
+        with self._supervisor_counter_lock:
+            previous = self._supervisor_restart_counters.get(key)
+            self._supervisor_restart_counters[key] = current
+        if previous is None:
+            return 0
+        previous_value = _safe_counter_absolute(previous)
+        current_value = _safe_counter_absolute(current)
+        if current_value < previous_value:
+            return 0
+        return current_value - previous_value
+
+    def _replace_supervisor_restart_counter(
+        self,
+        *,
+        key: tuple[str, DeploymentRuntimeMode, int],
+        process_status: object,
+    ) -> None:
+        """在显式重建进程后建立新的 supervisor 计数基线。"""
+
+        with self._supervisor_counter_lock:
+            self._supervisor_restart_counters[key] = (
+                _read_supervisor_restart_counter(process_status)
+            )
+
+    def _prune_supervisor_restart_counters(
+        self,
+        desired_states: tuple[DeploymentRuntimeState, ...],
+    ) -> None:
+        """移除已停止、删除或换代的计数基线，避免控制面长期增长。"""
+
+        active_keys = {
+            (state.deployment_instance_id, state.runtime_mode, state.generation)
+            for state in desired_states
+        }
+        with self._supervisor_counter_lock:
+            stale_keys = self._supervisor_restart_counters.keys() - active_keys
+            for key in stale_keys:
+                self._supervisor_restart_counters.pop(key, None)
 
     def _record_reconcile_failure(
         self,
@@ -358,3 +444,21 @@ def _is_future_timestamp(value: str | None) -> bool:
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
     return parsed > datetime.now(timezone.utc)
+
+
+def _read_supervisor_restart_counter(process_status: object) -> tuple[int, int]:
+    """读取 supervisor 的 ``rollover_count/value`` 安全计数快照。"""
+
+    return (
+        normalize_safe_counter_value(
+            getattr(process_status, "restart_count_rollover_count", 0)
+        ),
+        normalize_safe_counter_value(getattr(process_status, "restart_count", 0)),
+    )
+
+
+def _safe_counter_absolute(counter: tuple[int, int]) -> int:
+    """把安全计数快照转换为仅供 Python 内部比较的绝对数。"""
+
+    rollover_count, value = counter
+    return rollover_count * JSON_SAFE_INTEGER_MAX + value

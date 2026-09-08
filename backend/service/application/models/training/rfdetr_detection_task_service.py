@@ -434,20 +434,15 @@ class SqlAlchemyRfdetrTrainingTaskService:
         )
 
     def delete_training_task(self, task_id: str) -> None:
-        """删除已停止 RF-DETR 任务及其平台管理的输出目录。"""
+        """删除任务与未使用模型产物；有依赖或活动执行时拒绝删除。"""
+        from backend.service.application.resource_deletion import ResourceDeletionService
 
-        task_record = self._require_training_task(task_id)
-        if task_record.state in {"queued", "running"}:
-            raise InvalidRequestError(
-                "当前 RF-DETR 训练任务仍在排队或运行中，不能删除",
-                details={"task_id": task_id, "state": task_record.state},
-            )
-        output_prefix = self._read_optional_str(
-            dict(task_record.result).get("output_object_prefix")
-        )
-        if self.dataset_storage is not None and output_prefix is not None:
-            self.dataset_storage.delete_tree(output_prefix)
-        self.task_service.delete_task(task_id)
+        task = self._require_training_task(task_id)
+        ResourceDeletionService(
+            session_factory=self.session_factory,
+            dataset_storage=self._require_dataset_storage(),
+            queue_backend=self.queue_backend,
+        ).delete(kind="task", resource_id=task_id, project_id=task.project_id)
 
     def process_training_task(
         self,

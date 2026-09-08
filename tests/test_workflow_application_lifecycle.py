@@ -11,6 +11,7 @@ import pytest
 from backend.service.application.errors import (
     ResourceConflictError,
     ResourceInUseError,
+    ResourceNotFoundError,
 )
 from backend.service.application.workflows.application_lifecycle import (
     WorkflowApplicationLifecycleService,
@@ -98,15 +99,18 @@ def test_application_mutations_reject_every_competing_persistent_claim(
                 headers=_build_workflow_write_headers(),
             )
             assert deleted.status_code == 204
-            tombstone = lifecycle_service.get(
-                project_id="project-1",
-                application_id=application_id,
-            )
-            assert tombstone.deleted is True
+            with pytest.raises(ResourceNotFoundError):
+                lifecycle_service.get(
+                    project_id="project-1",
+                    application_id=application_id,
+                )
             recreated = client.put(
                 f"/api/v1/workflows/projects/project-1/applications/{application_id}",
                 headers=_build_workflow_write_headers(),
-                json={"application": _build_application_payload()},
+                json={
+                    "application": _build_application_payload(),
+                    "template": _build_template_payload(),
+                },
             )
             assert recreated.status_code == 201
             restored = lifecycle_service.get(
@@ -114,7 +118,7 @@ def test_application_mutations_reject_every_competing_persistent_claim(
                 application_id=application_id,
             )
             assert restored.deleted is False
-            assert restored.generation > tombstone.generation
+            assert restored.state == "idle"
     finally:
         session_factory.engine.dispose()
 
@@ -194,11 +198,8 @@ def test_publish_record_exists_before_staging_and_failure_releases_claim(
             )
         finally:
             unit_of_work.close()
-        assert [item.state for item in versions] == ["failed"]
-        assert lifecycle is not None
-        assert lifecycle.state == "idle"
-        assert lifecycle.operation_id is None
-        assert lifecycle.deleted is True
+        assert versions == ()
+        assert lifecycle is None
         staging_root = dataset_storage.resolve(
             f"workflows/projects/project-1/applications/{application_id}/versions/.staging"
         )

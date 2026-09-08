@@ -656,6 +656,23 @@ class DeploymentProcessSupervisor:
             )
         return current_status
 
+    def prune_deleted_deployments(self, existing_ids: set[str]) -> int:
+        """释放已删除且已停止的实例缓存；活跃进程不会因数据库缺行被强删。"""
+        removed = 0
+        with self._lock:
+            for deployment_id, state in tuple(self._deployments.items()):
+                if deployment_id in existing_ids:
+                    continue
+                with state.lock:
+                    if state.desired_running or (state.process is not None and state.process.is_alive()):
+                        continue
+                    self._stop_process_locked(state)
+                    self._release_device_lease_locked(state)
+                    self.cpu_device_resource_manager.release(owner_id=self._resource_owner_id, deployment_instance_id=deployment_id)
+                    self._deployments.pop(deployment_id, None)
+                    removed += 1
+        return removed
+
     def warmup_deployment(
         self, config: DeploymentProcessConfig
     ) -> DeploymentProcessHealth:

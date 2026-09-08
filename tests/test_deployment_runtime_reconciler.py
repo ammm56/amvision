@@ -7,6 +7,11 @@ from pathlib import Path
 from threading import Event, Thread
 from types import SimpleNamespace
 
+import pytest
+
+from backend.service.application.runtime.deployment import (
+    deployment_runtime_state_service as runtime_state_service_module,
+)
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessConfig,
     DeploymentProcessStatus,
@@ -62,6 +67,9 @@ class _Supervisor:
         self.running = False
         self.start_count = 0
         self.stop_count = 0
+        self.process_id = 4321
+        self.restart_count = 0
+        self.restart_count_rollover_count = 0
 
     def get_status(self, config: DeploymentProcessConfig) -> DeploymentProcessStatus:
         return self._status(config)
@@ -89,9 +97,10 @@ class _Supervisor:
             instance_count=1,
             desired_state="running" if self.running else "stopped",
             process_state="running" if self.running else "stopped",
-            process_id=4321 if self.running else None,
+            process_id=self.process_id if self.running else None,
             auto_restart=True,
-            restart_count=0,
+            restart_count=self.restart_count,
+            restart_count_rollover_count=self.restart_count_rollover_count,
         )
 
 
@@ -246,6 +255,167 @@ def test_runtime_state_generation_rejects_stale_controller_write(
     session_factory.engine.dispose()
 
 
+def test_runtime_state_transition_timestamps_only_change_on_edges(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证 heartbeat 不重写状态转换时间，进程身份变化会记录新启动。"""
+
+    session_factory, _dataset_storage, _queue_backend = create_test_runtime(
+        tmp_path,
+        database_name="deployment-runtime-transition-time.db",
+    )
+    deployment_instance_id = "deployment-runtime-transition-time-1"
+    _insert_deployment_record(session_factory, deployment_instance_id)
+    state_service = DeploymentRuntimeStateService(session_factory=session_factory)
+    desired = state_service.set_desired_state(
+        deployment_instance_id=deployment_instance_id,
+        runtime_mode="sync",
+        desired_state="running",
+    )
+    clock = {"value": "2026-09-08T01:00:00+00:00"}
+    monkeypatch.setattr(
+        runtime_state_service_module,
+        "_now_isoformat",
+        lambda: clock["value"],
+    )
+
+    started = state_service.record_observed_state(
+        deployment_instance_id=deployment_instance_id,
+        runtime_mode="sync",
+        generation=desired.generation,
+        observed_state="running",
+        process_id=1001,
+        restart_count=0,
+    )
+    clock["value"] = "2026-09-08T01:01:00+00:00"
+    heartbeat = state_service.record_observed_state(
+        deployment_instance_id=deployment_instance_id,
+        runtime_mode="sync",
+        generation=desired.generation,
+        observed_state="running",
+        process_id=1001,
+        restart_count=0,
+    )
+    clock["value"] = "2026-09-08T01:02:00+00:00"
+    replaced_process = state_service.record_observed_state(
+        deployment_instance_id=deployment_instance_id,
+        runtime_mode="sync",
+        generation=desired.generation,
+        observed_state="running",
+        process_id=1002,
+        restart_count=1,
+    )
+    clock["value"] = "2026-09-08T01:03:00+00:00"
+    stopped = state_service.record_observed_state(
+        deployment_instance_id=deployment_instance_id,
+        runtime_mode="sync",
+        generation=desired.generation,
+        observed_state="stopped",
+        process_id=None,
+        restart_count=1,
+    )
+    clock["value"] = "2026-09-08T01:04:00+00:00"
+    repeated_stop = state_service.record_observed_state(
+        deployment_instance_id=deployment_instance_id,
+        runtime_mode="sync",
+        generation=desired.generation,
+        observed_state="stopped",
+        process_id=None,
+        restart_count=1,
+    )
+
+    assert started.last_started_at == "2026-09-08T01:00:00+00:00"
+    assert heartbeat.last_started_at == started.last_started_at
+    assert heartbeat.heartbeat_at == "2026-09-08T01:01:00+00:00"
+    assert replaced_process.last_started_at == "2026-09-08T01:02:00+00:00"
+    assert stopped.last_stopped_at == "2026-09-08T01:03:00+00:00"
+    assert repeated_stop.last_stopped_at == stopped.last_stopped_at
+    session_factory.engine.dispose()
+
+
+def test_reconciler_accumulates_supervisor_restart_delta_after_daemon_recovery(
+    tmp_path: Path,
+) -> None:
+    """验证 daemon 重启归零后仍能继续累计后续 supervisor 自动重启。"""
+
+    session_factory, dataset_storage, _queue_backend = create_test_runtime(
+        tmp_path,
+        database_name="deployment-runtime-restart-delta.db",
+    )
+    deployment_instance_id = "deployment-runtime-restart-delta-1"
+    _insert_deployment_record(session_factory, deployment_instance_id)
+    target = build_test_runtime_target(
+        dataset_storage=dataset_storage,
+        runtime_backend="pytorch",
+        device_name="cpu",
+        runtime_precision="fp32",
+        runtime_artifact_file_name="model.pt",
+        runtime_artifact_file_type="pytorch-state-dict",
+    )
+    process_config = DeploymentProcessConfig(
+        deployment_instance_id=deployment_instance_id,
+        runtime_target=target,
+        project_id="project-1",
+        runtime_configuration=DeploymentRuntimeConfiguration(),
+    )
+    state_service = DeploymentRuntimeStateService(session_factory=session_factory)
+    desired = state_service.set_desired_state(
+        deployment_instance_id=deployment_instance_id,
+        runtime_mode="sync",
+        desired_state="running",
+    )
+    state_service.record_observed_state(
+        deployment_instance_id=deployment_instance_id,
+        runtime_mode="sync",
+        generation=desired.generation,
+        observed_state="failed",
+        process_id=None,
+        restart_count=7,
+    )
+    supervisor = _Supervisor("sync")
+    reconciler = DeploymentRuntimeReconciler(
+        state_service=state_service,
+        lookup_service=_LookupService(),  # type: ignore[arg-type]
+        bindings_by_task_type={
+            "detection": DeploymentRuntimeBinding(
+                deployment_service=_DeploymentService(process_config),  # type: ignore[arg-type]
+                sync_supervisor=supervisor,  # type: ignore[arg-type]
+                async_supervisor=_Supervisor("async"),  # type: ignore[arg-type]
+                async_gateway_registry=_Registry(),
+            )
+        },
+        settings=BackendServiceDeploymentRuntimeReconcilerConfig(),
+        controller_id="restart-delta-controller",
+    )
+
+    reconciler.reconcile_once()
+    recovered = state_service.get_runtime_state(
+        deployment_instance_id=deployment_instance_id,
+        runtime_mode="sync",
+    )
+    assert recovered.restart_count == 8
+
+    supervisor.restart_count = 1
+    supervisor.process_id = 4322
+    reconciler.reconcile_once()
+    incremented = state_service.get_runtime_state(
+        deployment_instance_id=deployment_instance_id,
+        runtime_mode="sync",
+    )
+    assert incremented.restart_count == 9
+    assert incremented.process_id == 4322
+
+    reconciler.reconcile_once()
+    repeated = state_service.get_runtime_state(
+        deployment_instance_id=deployment_instance_id,
+        runtime_mode="sync",
+    )
+    assert repeated.restart_count == 9
+    assert repeated.last_started_at == incremented.last_started_at
+    session_factory.engine.dispose()
+
+
 def test_restart_backoff_is_bounded_for_extremely_large_failure_count() -> None:
     """验证长期启动失败不会在指数计算时产生巨大整数或超过最大退避。"""
 
@@ -313,6 +483,7 @@ def test_reconciler_withdraws_readiness_while_rewarming_missing_process() -> Non
     )
     state_service = SimpleNamespace(
         list_desired_running_states=lambda: (state,),
+        list_existing_deployment_ids=lambda: {deployment_instance_id},
         try_claim=lambda **_kwargs: True,
         get_runtime_state=lambda **_kwargs: state,
         record_observed_state=lambda **_kwargs: state,

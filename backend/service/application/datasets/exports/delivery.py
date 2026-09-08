@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
 from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError
+from backend.service.application.project_mutation import ProjectMutationAdmissionService
 from backend.service.domain.datasets.dataset_export import DatasetExport
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
@@ -56,6 +57,19 @@ class SqlAlchemyDatasetExportDeliveryService:
         self.dataset_storage = dataset_storage
 
     def package_export(
+        self, dataset_export_id: str, *, rebuild: bool = False,
+        package_object_key: str | None = None, persist_package_metadata: bool = True,
+    ) -> DatasetExportPackage:
+        """打包期间持有 Project 操作权，排除删除和同一导出的重复打包。"""
+        export = self._require_dataset_export(dataset_export_id)
+        with ProjectMutationAdmissionService(self.session_factory).operation(
+            project_id=export.project_id, mutation_kind="dataset-export-package",
+            resource_id=dataset_export_id,
+        ):
+            return self._package_export(dataset_export_id, rebuild=rebuild,
+                package_object_key=package_object_key, persist_package_metadata=persist_package_metadata)
+
+    def _package_export(
         self,
         dataset_export_id: str,
         *,

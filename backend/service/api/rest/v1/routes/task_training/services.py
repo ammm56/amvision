@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from backend.service.application.resource_deletion import ResourceDeletionService
+from backend.service.application.ports.queue import QueueBackend
+
 from backend.service.api.rest.v1.routes.task_training.catalog import (
     ALL_NON_DETECTION_TRAINING_TASK_KINDS,
     TASK_KIND_TO_TASK_TYPE,
@@ -132,6 +135,8 @@ def get_training_task_detail(
 def delete_training_task(
     *,
     session_factory: SessionFactory,
+    dataset_storage: LocalDatasetStorage,
+    queue_backend: QueueBackend,
     task_id: str,
     visible_project_ids: tuple[str, ...],
 ) -> None:
@@ -149,7 +154,7 @@ def delete_training_task(
             "当前训练任务仍在运行中，不能删除",
             details={"task_id": task_id, "state": task.state},
         )
-    task_service.delete_task(task_id)
+    ResourceDeletionService(session_factory=session_factory, dataset_storage=dataset_storage, queue_backend=queue_backend).delete(kind="task", resource_id=task_id, project_id=task.project_id)
 
 
 def list_training_task_output_files(

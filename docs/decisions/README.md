@@ -15,6 +15,7 @@ ADR 记录已经接受的关键取舍及未采用方案。ADR 可以处于待实
 - [ADR-0009：本机结构化消息共享内存通道](ADR-0009-local-message-channel.md)
 - [ADR-0010：Workflow App Entry 多类型输入契约](ADR-0010-workflow-app-entry-multi-input-contract.md)
 - [ADR-0011：工业二维视觉节点覆盖与节点粒度](ADR-0011-industrial-vision-node-coverage.md)
+- [ADR-0012：资源删除与存储清理](ADR-0012-resource-deletion.md)：统一删除、依赖阻塞、事务恢复与存储清理边界。
 
 ## 规则
 

@@ -11,6 +11,9 @@ from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.db import get_session_factory, get_unit_of_work
 from backend.service.api.deps.storage import get_dataset_storage
+from backend.service.api.deps.queue import get_queue_backend
+from backend.service.infrastructure.queue.local_file import LocalFileQueueBackend
+from backend.service.application.resource_deletion import ResourceDeletionService
 from backend.service.application.datasets.imports import (
 	DatasetImportRequest,
 	SqlAlchemyDatasetImportService,
@@ -313,6 +316,8 @@ def delete_dataset_import(
 	principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("datasets:write"))],
 	unit_of_work: Annotated[UnitOfWork, Depends(get_unit_of_work)],
 	dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+	session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+	queue_backend: Annotated[LocalFileQueueBackend, Depends(get_queue_backend)],
 ) -> None:
 	"""删除一个已完成的 DatasetImport 记录。
 
@@ -342,16 +347,10 @@ def delete_dataset_import(
 			details={"dataset_import_id": dataset_import_id, "status": dataset_import.status},
 		)
 
-	import_root = _resolve_dataset_import_root(dataset_import)
-	if import_root is not None:
-		dataset_storage.delete_tree(import_root)
-
-	import_task_id = _read_optional_str(dataset_import.metadata, "task_id")
-	if import_task_id is not None and import_task_id.strip():
-		unit_of_work.tasks.delete_task(import_task_id)
-
-	unit_of_work.dataset_imports.delete_dataset_import(dataset_import_id)
-	unit_of_work.commit()
+	unit_of_work.rollback()
+	ResourceDeletionService(session_factory=session_factory, dataset_storage=dataset_storage, queue_backend=queue_backend).delete(
+		kind="dataset-import", resource_id=dataset_import_id, project_id=dataset_import.project_id,
+	)
 
 
 def _parse_class_map_json(class_map_json: str | None) -> dict[str, str]:

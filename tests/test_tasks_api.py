@@ -232,8 +232,8 @@ def test_cancel_task_updates_state_and_events(tmp_path: Path) -> None:
         session_factory.engine.dispose()
 
 
-def test_task_api_does_not_expose_generic_delete_route(tmp_path: Path) -> None:
-    """验证通用 tasks API 不再暴露语义含混的删除入口。"""
+def test_task_api_physically_deletes_terminal_task_and_owned_files(tmp_path: Path) -> None:
+    """验证通用 tasks API 物理删除终态任务及其独占文件。"""
 
     context = create_api_test_context(
         tmp_path,
@@ -286,10 +286,10 @@ def test_task_api_does_not_expose_generic_delete_route(tmp_path: Path) -> None:
                 headers=_build_task_read_headers(),
             )
 
-        assert delete_response.status_code == 405
-        assert detail_response.status_code == 200
-        assert dataset_storage.resolve(f"task-runs/conversion/{task_id}").is_dir()
-        assert dataset_storage.resolve(f"task-runs/{task_id}").is_dir()
+        assert delete_response.status_code == 204
+        assert detail_response.status_code == 404
+        assert not dataset_storage.resolve(f"task-runs/conversion/{task_id}").exists()
+        assert not dataset_storage.resolve(f"task-runs/{task_id}").exists()
     finally:
         session_factory.engine.dispose()
 

@@ -393,6 +393,14 @@ class RecoverIncompleteWorkflowAppVersionsStep:
     def run(self, runtime: BackendServiceRuntime) -> None:
         """在 Runtime/Trigger 恢复前完成全部持久 mutation 恢复。"""
 
+        from backend.service.application.resource_deletion import ResourceDeletionService
+
+        ResourceDeletionService(
+            session_factory=runtime.session_factory,
+            dataset_storage=runtime.dataset_storage,
+            queue_backend=runtime.queue_backend,
+        ).recover()
+
         ProjectDeletionService(
             session_factory=runtime.session_factory,
             dataset_storage=runtime.dataset_storage,

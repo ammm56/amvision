@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.service.application.ports.queue import QueueBackend
+
 from backend.service.api.deps.auth import AuthenticatedPrincipal
 from backend.service.api.rest.v1.routes.pose_evaluation_tasks.responses import (
     PoseEvaluationDetailResponse,
@@ -116,6 +118,8 @@ def delete_pose_evaluation_task_response(
     *,
     principal: AuthenticatedPrincipal,
     session_factory: SessionFactory,
+    dataset_storage: LocalDatasetStorage,
+    queue_backend: QueueBackend,
     task_id: str,
 ):
     """删除已完成的 pose evaluation 任务。"""
@@ -123,6 +127,8 @@ def delete_pose_evaluation_task_response(
     return delete_finished_evaluation_task(
         principal=principal,
         session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
         task_id=task_id,
         expected_task_kind=POSE_EVALUATION_TASK_KIND,
     )

@@ -31,13 +31,17 @@ from backend.maintenance.database_migrations import (
 )
 from backend.service.infrastructure.db.schema import initialize_database_schema
 from backend.service.infrastructure.db.session import SessionFactory
+from backend.service.infrastructure.persistence.deployment_orm import (
+    DeploymentInstanceRecord,
+    DeploymentRuntimeStateRecord,
+)
 from backend.service.settings import BackendServiceSettings
 from backend.service.application.workflows.trigger_sources.output_delivery import (
     TriggerResponsePlan,
 )
 
 
-_DATABASE_HEAD = "b4d6f8a2c5e1"
+_DATABASE_HEAD = "e7a9b1c3d5f8"
 
 
 def test_migrate_database_adopts_unversioned_create_all_database(
@@ -151,7 +155,10 @@ def test_migrate_database_upgrades_preserved_task_idempotency_revision(
     assert script.get_revision("c7a9e2d4f6b8").down_revision == "b6e4f1a8c2d7"
     assert script.get_revision("d8e4f6a1b3c7").down_revision == "c7a9e2d4f6b8"
     assert script.get_revision("e2a7c9d1f4b6").down_revision == "d8e4f6a1b3c7"
-    assert script.get_revision(_DATABASE_HEAD).down_revision == "e2a7c9d1f4b6"
+    assert script.get_revision("b4d6f8a2c5e1").down_revision == "e2a7c9d1f4b6"
+    assert script.get_revision("c5e7f9a1b3d6").down_revision == "b4d6f8a2c5e1"
+    assert script.get_revision("d6f8a0b2c4e7").down_revision == "c5e7f9a1b3d6"
+    assert script.get_revision(_DATABASE_HEAD).down_revision == "d6f8a0b2c4e7"
     assert script.get_current_head() == _DATABASE_HEAD
 
     command.upgrade(config, "c4a2f7b8d3e5")
@@ -397,6 +404,86 @@ def test_publication_migration_rejects_active_legacy_conversion(
             ).scalar_one()
         assert revision == "c7a9e2d4f6b8"
     finally:
+        verification_factory.engine.dispose()
+
+
+def test_migrate_database_resets_invalid_deployment_runtime_telemetry(
+    tmp_path: Path,
+) -> None:
+    """验证升级会清除旧轮询逻辑产生的错误累计值和转换时间。"""
+
+    database_path = tmp_path / "deployment-runtime-telemetry.db"
+    settings = BackendServiceSettings(
+        database={"url": f"sqlite:///{database_path.as_posix()}", "echo": False}
+    )
+    config = _build_alembic_config(settings)
+    command.upgrade(config, "c5e7f9a1b3d6")
+    session_factory = SessionFactory(settings.to_database_settings())
+    session = session_factory.create_session()
+    try:
+        session.add(
+            DeploymentInstanceRecord(
+                deployment_instance_id="deployment-migration-telemetry",
+                project_id="project-1",
+                model_id="model-1",
+                model_version_id="model-version-1",
+                model_build_id=None,
+                runtime_profile_id=None,
+                runtime_backend="openvino",
+                device_name="cpu",
+                runtime_configuration_json={},
+                status="active",
+                display_name="migration telemetry",
+                created_at="2026-09-08T00:00:00+00:00",
+                updated_at="2026-09-08T00:00:00+00:00",
+                created_by=None,
+                metadata_json={},
+            )
+        )
+        session.add(
+            DeploymentRuntimeStateRecord(
+                deployment_instance_id="deployment-migration-telemetry",
+                runtime_mode="sync",
+                desired_state="running",
+                observed_state="running",
+                generation=3,
+                controller_owner_id=None,
+                controller_lease_expires_at=None,
+                process_id=4321,
+                heartbeat_at="2026-09-08T00:03:00+00:00",
+                restart_count=26015,
+                consecutive_failure_count=0,
+                next_restart_at=None,
+                last_started_at="2026-09-08T00:03:00+00:00",
+                last_stopped_at="2026-09-08T00:02:00+00:00",
+                last_error_code=None,
+                last_error_message=None,
+                created_at="2026-09-08T00:00:00+00:00",
+                updated_at="2026-09-08T00:03:00+00:00",
+            )
+        )
+        session.commit()
+    finally:
+        session.close()
+        session_factory.engine.dispose()
+
+    command.upgrade(config, "head")
+    verification_factory = SessionFactory(settings.to_database_settings())
+    session = verification_factory.create_session()
+    try:
+        state = session.get(
+            DeploymentRuntimeStateRecord,
+            ("deployment-migration-telemetry", "sync"),
+        )
+        assert state is not None
+        assert state.restart_count == 0
+        assert state.last_started_at is None
+        assert state.last_stopped_at is None
+        assert state.desired_state == "running"
+        assert state.observed_state == "running"
+        assert state.heartbeat_at == "2026-09-08T00:03:00+00:00"
+    finally:
+        session.close()
         verification_factory.engine.dispose()
 
 

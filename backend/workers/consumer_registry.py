@@ -206,6 +206,8 @@ def _dynamic_inference_factory(resources: BackgroundTaskConsumerResources, consu
 # ── 声明式注册表 ──
 
 _CONSUMER_FACTORIES: dict[str, _ConsumerFactory] = {
+    "resource-cleanup": _std_factory("backend.workers.resource_cleanup", "ResourceCleanupWorker", "resource-cleanup"),
+    "model-deployment-transfer": _std_factory("backend.workers.model_deployment_transfers", "ModelDeploymentTransferWorker", "model-transfer"),
     # 数据集
     BACKEND_WORKER_CONSUMER_DATASET_IMPORT: _std_factory(
         "backend.workers.datasets.dataset_import_queue_worker",

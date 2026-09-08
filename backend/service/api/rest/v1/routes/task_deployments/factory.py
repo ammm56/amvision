@@ -5,6 +5,8 @@ from typing import Annotated, Any, Callable
 
 from fastapi import APIRouter, Depends, Query, status
 
+from backend.service.api.deps.queue import get_queue_backend
+from backend.service.infrastructure.queue.local_file import LocalFileQueueBackend
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.db import get_session_factory
 from backend.service.api.deps.storage import get_dataset_storage
@@ -202,6 +204,8 @@ def create_task_deployment_router(config: TaskDeploymentRouteConfig) -> APIRoute
         async_supervisor: Annotated[
             DeploymentProcessSupervisor, Depends(config.async_supervisor_dependency)
         ],
+        queue_backend: Annotated[LocalFileQueueBackend, Depends(get_queue_backend)],
+        expected_revision: str | None = None,
     ) -> None:
         """删除已经停止的当前 task DeploymentInstance。"""
 
@@ -211,6 +215,8 @@ def create_task_deployment_router(config: TaskDeploymentRouteConfig) -> APIRoute
             deployment_service=build_current_service(session_factory, dataset_storage),
             sync_supervisor=sync_supervisor,
             async_supervisor=async_supervisor,
+            queue_backend=queue_backend,
+            expected_revision=expected_revision,
         )
 
     @router.get(

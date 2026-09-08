@@ -8,7 +8,9 @@ from datetime import datetime, timedelta, timezone
 from backend.service.application.errors import (
     InvalidRequestError,
     PersistenceOperationError,
+    ResourceNotFoundError,
 )
+from backend.service.application.project_mutation import ProjectMutationAdmissionService
 from backend.service.domain.deployments.deployment_runtime_state import (
     DEPLOYMENT_RUNTIME_MODES,
     DeploymentRuntimeDesiredState,
@@ -40,6 +42,8 @@ class DeploymentRuntimeStateService:
         now = _now_isoformat()
         unit_of_work = SqlAlchemyUnitOfWork(self.session_factory.create_session())
         try:
+            if unit_of_work.deployments.get_deployment_instance(normalized_id) is None:
+                raise ResourceNotFoundError("找不到指定的 DeploymentInstance", details={"deployment_instance_id": normalized_id})
             states: list[DeploymentRuntimeState] = []
             changed = False
             for runtime_mode in DEPLOYMENT_RUNTIME_MODES:
@@ -103,6 +107,24 @@ class DeploymentRuntimeStateService:
             unit_of_work.close()
 
     def set_desired_state(
+        self, *, deployment_instance_id: str, runtime_mode: DeploymentRuntimeMode,
+        desired_state: DeploymentRuntimeDesiredState,
+    ) -> DeploymentRuntimeState:
+        """更改期望状态与资源删除互斥，防止预检后又启动进程。"""
+        unit = SqlAlchemyUnitOfWork(self.session_factory.create_session())
+        try:
+            deployment = unit.deployments.get_deployment_instance(deployment_instance_id)
+        finally:
+            unit.close()
+        if deployment is None:
+            raise ResourceNotFoundError("找不到指定的 DeploymentInstance")
+        with ProjectMutationAdmissionService(self.session_factory).operation(
+            project_id=deployment.project_id, mutation_kind="deployment-control",
+            resource_id=deployment_instance_id,
+        ):
+            return self._set_desired_state(deployment_instance_id=deployment_instance_id, runtime_mode=runtime_mode, desired_state=desired_state)
+
+    def _set_desired_state(
         self,
         *,
         deployment_instance_id: str,
@@ -167,6 +189,20 @@ class DeploymentRuntimeStateService:
         now = _now_isoformat()
         successful = observed_state == "running"
         stopped = observed_state == "stopped"
+        process_identity_changed = (
+            successful
+            and process_id is not None
+            and current.process_id != process_id
+        )
+        started_transition = successful and (
+            current.observed_state != "running"
+            or process_identity_changed
+            or current.last_started_at is None
+        )
+        stopped_transition = stopped and (
+            current.observed_state != "stopped"
+            or current.last_stopped_at is None
+        )
         updated = replace(
             current,
             observed_state=observed_state,
@@ -185,8 +221,12 @@ class DeploymentRuntimeStateService:
                 )
             ),
             next_restart_at=next_restart_at,
-            last_started_at=now if successful else current.last_started_at,
-            last_stopped_at=now if stopped else current.last_stopped_at,
+            last_started_at=(
+                now if started_transition else current.last_started_at
+            ),
+            last_stopped_at=(
+                now if stopped_transition else current.last_stopped_at
+            ),
             last_error_code=last_error_code,
             last_error_message=last_error_message,
             updated_at=now,
@@ -209,6 +249,12 @@ class DeploymentRuntimeStateService:
         finally:
             unit_of_work.close()
 
+    def list_existing_deployment_ids(self) -> set[str]:
+        """读取部署主记录 id，用于回收 daemon 中已删除对象的停止缓存。"""
+        with self.session_factory.create_session() as session:
+            return SqlAlchemyUnitOfWork(session).deployments.list_existing_ids()
+
+
     def record_process_status(
         self,
         *,
@@ -217,8 +263,13 @@ class DeploymentRuntimeStateService:
         generation: int,
         process_status: object,
         failure: bool = False,
+        restart_count: int | None = None,
     ) -> DeploymentRuntimeState:
-        """把 DeploymentProcessStatus 兼容对象写入持久化状态。"""
+        """把 DeploymentProcessStatus 兼容对象写入持久化状态。
+
+        ``restart_count`` 由持久化协调器提供时表示已经合并完成的绝对累计值；
+        普通启停入口未提供时继续保留当前累计值和 supervisor 报告值中的较大者。
+        """
 
         process_state = str(getattr(process_status, "process_state", "stopped"))
         observed_state: DeploymentRuntimeObservedState
@@ -237,13 +288,22 @@ class DeploymentRuntimeStateService:
             if observed_state == "failed"
             else current.consecutive_failure_count
         )
+        reported_restart_count = max(
+            0,
+            int(getattr(process_status, "restart_count", 0)),
+        )
+        effective_restart_count = (
+            max(current.restart_count, reported_restart_count)
+            if restart_count is None
+            else max(0, int(restart_count))
+        )
         return self.record_observed_state(
             deployment_instance_id=deployment_instance_id,
             runtime_mode=runtime_mode,
             generation=generation,
             observed_state=observed_state,
             process_id=getattr(process_status, "process_id", None),
-            restart_count=int(getattr(process_status, "restart_count", 0)),
+            restart_count=effective_restart_count,
             last_error_message=getattr(process_status, "last_error", None),
             last_error_code=("deployment_process_failed" if observed_state == "failed" else None),
             consecutive_failure_count=consecutive_failures,

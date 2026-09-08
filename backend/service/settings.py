@@ -28,6 +28,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 )
 from backend.service.infrastructure.queue.local_file import LocalFileQueueSettings
 from backend.version import BACKEND_VERSION
+from backend.contracts.deployments.model_package import TransferLimits
 
 CONFIG_DIR = Path("config")
 BACKEND_SERVICE_CONFIG_FILE = CONFIG_DIR / "backend-service.json"
@@ -600,6 +601,7 @@ class BackendServiceSettings(BaseSettings):
     database: BackendServiceDatabaseConfig = Field(
         default_factory=BackendServiceDatabaseConfig
     )
+    model_deployment_transfers: TransferLimits = Field(default_factory=TransferLimits)
     dataset_storage: BackendServiceDatasetStorageConfig = Field(
         default_factory=BackendServiceDatasetStorageConfig
     )

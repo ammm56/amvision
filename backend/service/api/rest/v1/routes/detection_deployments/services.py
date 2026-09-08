@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from backend.service.infrastructure.queue.local_file import LocalFileQueueBackend
 from backend.service.api.deps.auth import AuthenticatedPrincipal
 from backend.service.api.rest.v1.routes.task_deployments.runtime_controls import (
     delete_stopped_deployment_instance,
@@ -126,6 +127,8 @@ def delete_visible_detection_deployment_instance(
     deployment_instance_id: str,
     sync_supervisor: DeploymentProcessSupervisor,
     async_supervisor: DeploymentProcessSupervisor,
+    queue_backend: LocalFileQueueBackend,
+    expected_revision: str | None = None,
 ) -> None:
     """删除当前主体可见且已经停止的 detection DeploymentInstance。"""
 
@@ -139,6 +142,8 @@ def delete_visible_detection_deployment_instance(
         deployment_service=service,
         sync_supervisor=sync_supervisor,
         async_supervisor=async_supervisor,
+        queue_backend=queue_backend,
+        expected_revision=expected_revision,
     )
 
 

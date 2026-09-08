@@ -952,13 +952,33 @@ class LocalDatasetStorage:
         - relative_path：要删除的目录或文件相对路径。
         """
 
-        target_path = self.resolve(relative_path)
+        target_path = self.resolve_deletion_path(relative_path)
         filesystem_target_path = to_filesystem_path(target_path)
         if filesystem_target_path.is_dir():
-            shutil.rmtree(filesystem_target_path, ignore_errors=True)
-            return
-        if filesystem_target_path.exists():
+            shutil.rmtree(filesystem_target_path)
+        elif filesystem_target_path.exists():
             filesystem_target_path.unlink(missing_ok=True)
+        if filesystem_target_path.exists():
+            raise OSError(f"本地对象删除后仍然存在：{relative_path}")
+
+    def resolve_deletion_path(self, relative_path: str) -> Path:
+        """校验删除路径及其祖先，拒绝根目录和重解析点越界。"""
+
+        target = self.resolve(relative_path).absolute()
+        root = self.root_dir.absolute()
+        if target == root or not target.is_relative_to(root):
+            raise InvalidRequestError("不能删除 ObjectStore 根目录或外部路径")
+        current = target
+        while current != root:
+            if current.is_symlink() or current.is_junction():
+                raise InvalidRequestError(
+                    "删除路径不能经过符号链接或 junction",
+                    details={"object_key": relative_path},
+                )
+            current = current.parent
+        if not target.resolve(strict=False).is_relative_to(root.resolve()):
+            raise InvalidRequestError("删除路径解析到 ObjectStore 外部")
+        return target
 
     def move_tree(
         self, source_relative_path: str, destination_relative_path: str
@@ -973,7 +993,7 @@ class LocalDatasetStorage:
         - InvalidRequestError：当源路径不存在或目标路径已存在时抛出。
         """
 
-        source_path = self.resolve(source_relative_path)
+        source_path = self.resolve_deletion_path(source_relative_path)
         filesystem_source_path = to_filesystem_path(source_path)
         if not filesystem_source_path.exists():
             raise InvalidRequestError(
@@ -981,7 +1001,7 @@ class LocalDatasetStorage:
                 details={"source_relative_path": source_relative_path},
             )
 
-        destination_path = self.resolve(destination_relative_path)
+        destination_path = self.resolve_deletion_path(destination_relative_path)
         filesystem_destination_path = to_filesystem_path(destination_path)
         if filesystem_destination_path.exists():
             raise InvalidRequestError(
@@ -990,7 +1010,10 @@ class LocalDatasetStorage:
             )
 
         self._mkdir(destination_path.parent)
-        shutil.move(str(filesystem_source_path), str(filesystem_destination_path))
+        # 暂存/恢复依赖原子重命名。shutil.move 在权限错误时也会回退复制，
+        # 可能产生两个不完整目录，不能用于数据库与文件间的事务边界。
+        # 跨文件系统或被占用时直接报错，源目录保持原样。
+        filesystem_source_path.rename(filesystem_destination_path)
 
     def reset_directory(self, relative_path: str) -> None:
         """清空一个目录并重新创建空目录。

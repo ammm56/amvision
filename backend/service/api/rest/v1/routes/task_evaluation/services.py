@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from backend.service.application.resource_deletion import ResourceDeletionService
+from backend.service.application.ports.queue import QueueBackend
+from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+
 from typing import Protocol
 
 from fastapi import Response, status
@@ -82,6 +86,8 @@ def delete_finished_evaluation_task(
     *,
     principal: AuthenticatedPrincipal,
     session_factory: SessionFactory,
+    dataset_storage: LocalDatasetStorage,
+    queue_backend: QueueBackend,
     task_id: str,
     expected_task_kind: str,
 ) -> Response:
@@ -103,5 +109,5 @@ def delete_finished_evaluation_task(
             "当前评估任务仍在运行中，不能删除",
             details={"task_id": task_id},
         )
-    task_service.delete_task(task_id)
+    ResourceDeletionService(session_factory=session_factory, dataset_storage=dataset_storage, queue_backend=queue_backend).delete(kind="task", resource_id=task_id, project_id=task.project_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

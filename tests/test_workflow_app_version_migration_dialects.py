@@ -36,14 +36,14 @@ _LIFECYCLE_UPDATED_AT_INDEX = "ix_workflow_application_lifecycles_updated_at"
 
 
 def test_workflow_version_migration_chain_has_one_head() -> None:
-    """验证 f7-f8-f9-fa 串行且 Alembic 只有一个 head。"""
+    """验证 Workflow 后续迁移串行且 Alembic 只有一个 head。"""
 
     settings = BackendServiceSettings(
         database={"url": "sqlite:///:memory:", "echo": False}
     )
     script = ScriptDirectory.from_config(_build_alembic_config(settings))
 
-    assert tuple(script.get_heads()) == ("b4d6f8a2c5e1",)
+    assert tuple(script.get_heads()) == ("e7a9b1c3d5f8",)
     assert script.get_revision("f8a2c4e6b1d3").down_revision == "f7d1e3a5b9c2"
     assert script.get_revision("f9b3d5e7c2a4").down_revision == "f8a2c4e6b1d3"
     assert script.get_revision("fa4c6e8b1d25").down_revision == "f9b3d5e7c2a4"
@@ -52,6 +52,9 @@ def test_workflow_version_migration_chain_has_one_head() -> None:
     assert script.get_revision("d8e4f6a1b3c7").down_revision == "c7a9e2d4f6b8"
     assert script.get_revision("e2a7c9d1f4b6").down_revision == "d8e4f6a1b3c7"
     assert script.get_revision("b4d6f8a2c5e1").down_revision == "e2a7c9d1f4b6"
+    assert script.get_revision("c5e7f9a1b3d6").down_revision == "b4d6f8a2c5e1"
+    assert script.get_revision("d6f8a0b2c4e7").down_revision == "c5e7f9a1b3d6"
+    assert script.get_revision("e7a9b1c3d5f8").down_revision == "d6f8a0b2c4e7"
 
 
 def test_lifecycle_boolean_validation_only_accepts_mysql_tinyint_one() -> None:

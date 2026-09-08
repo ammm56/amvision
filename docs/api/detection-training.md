@@ -304,7 +304,7 @@ YOLOv8、YOLO11、YOLO26 和 RF-DETR 使用不同 schema。完整默认值、数
 
 - 用于清理已经 `succeeded`、`failed`、`cancelled` 或 `paused` 后不再保留的训练任务记录。
 - 当前会同时删除任务记录、关联事件和尝试记录。
-- 当训练输出目录没有被已登记 ModelVersion 继续引用时，服务会一起清理该目录；如果已有引用，则只删除任务记录，不删除仍被版本复用的文件。
+- 同时删除该任务产生且未被其他资源使用的 ModelVersion、ModelFile 和全部训练尝试目录；存在转换、部署、其他训练或 Workflow 依赖时，整个删除被阻止并列出依赖。清理失败保留恢复清单，详见[资源删除](resource-deletions.md)。
 
 #### 当前约束
 
@@ -348,7 +348,7 @@ YOLOv8、YOLO11、YOLO26 和 RF-DETR 使用不同 schema。完整默认值、数
 - `pause`：先登记暂停请求，真正暂停也要等到下一个 epoch 边界，并且会先写 latest checkpoint。
 - `resume`：把具有有效 latest checkpoint 的 paused 或 failed 任务重新放回队列；真正恢复执行要等 worker 再次开始处理。恢复从最近一次 checkpoint 的 epoch 继续，不承诺恢复到异常发生的 batch。
 - `terminate`：queued 或 paused 时会直接取消；running 时先登记终止请求，等到下一个 epoch 边界结束训练。
-- `delete`：只在任务已经停止后可用；是否连训练输出一起清理，取决于当前文件是否仍被 ModelVersion 引用。
+- `delete`：只在任务已经停止后可用；同时删除未使用的训练模型产物，有外部依赖时阻止整个操作。
 
 ### 前端应读取的关键字段
 

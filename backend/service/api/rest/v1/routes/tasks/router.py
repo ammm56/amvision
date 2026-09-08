@@ -8,6 +8,11 @@ from fastapi import APIRouter, Depends, Query, Response, status
 
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.db import get_session_factory
+from backend.service.api.deps.storage import get_dataset_storage
+from backend.service.api.deps.queue import get_queue_backend
+from backend.service.application.resource_deletion import ResourceDeletionService
+from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.queue.local_file import LocalFileQueueBackend
 from backend.service.api.rest.v1.pagination import DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT, paginate_sequence
 from backend.service.api.rest.v1.routes.tasks.controls import cancel_task_response
 from backend.service.api.rest.v1.routes.tasks.responses import (
@@ -36,6 +41,20 @@ from backend.service.infrastructure.db.session import SessionFactory
 
 
 tasks_router = APIRouter(prefix="/tasks", tags=["tasks"])
+
+
+@tasks_router.delete("/{task_id}", status_code=204)
+def delete_task(
+    task_id: str,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("tasks:write"))],
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+    queue_backend: Annotated[LocalFileQueueBackend, Depends(get_queue_backend)],
+) -> Response:
+    """完整删除已停止的任务，包括评估及批量推理输出。"""
+    task = SqlAlchemyTaskService(session_factory).get_visible_task(task_id, visible_project_ids=principal.project_ids, include_events=False).task
+    ResourceDeletionService(session_factory=session_factory, dataset_storage=dataset_storage, queue_backend=queue_backend).delete(kind="task", resource_id=task_id, project_id=task.project_id)
+    return Response(status_code=204)
 
 
 @tasks_router.post("", response_model=TaskDetailResponse, status_code=status.HTTP_201_CREATED)

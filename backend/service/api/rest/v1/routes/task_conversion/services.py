@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from backend.service.api.deps.queue import get_queue_backend
+from backend.service.infrastructure.queue.local_file import LocalFileQueueBackend
+
 from dataclasses import dataclass
 from importlib import import_module
 from typing import Annotated, Any
@@ -215,6 +218,7 @@ def create_task_conversion_router(
         principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:write", "tasks:write"))],
         session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
         dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+        queue_backend: Annotated[LocalFileQueueBackend, Depends(get_queue_backend)],
     ) -> Response:
         """删除当前 task_type 的 conversion 任务运行数据和未被部署使用的输出。"""
 
@@ -230,6 +234,7 @@ def create_task_conversion_router(
             task=task_detail.task,
             session_factory=session_factory,
             dataset_storage=dataset_storage,
+            queue_backend=queue_backend,
         )
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 

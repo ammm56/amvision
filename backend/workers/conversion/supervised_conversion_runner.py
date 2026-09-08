@@ -164,7 +164,7 @@ class SupervisedConversionRunner:
             request,
             cancel_requested=None,
         )
-        control_dir = self.workspace_dir / "conversion-attempts" / attempt_id
+        control_dir = self.dataset_storage.resolve(f"{attempt_object_prefix}/control")
         control_dir.mkdir(parents=True, exist_ok=False)
         request_path = control_dir / "request.pkl"
         result_path = control_dir / "result.json"

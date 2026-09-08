@@ -585,39 +585,15 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
         )
 
     def delete_training_task(self, task_id: str) -> None:
-        """删除一个已经停止且可安全删除的训练任务记录。"""
+        """删除任务与未使用模型产物；有依赖或活动执行时拒绝删除。"""
+        from backend.service.application.resource_deletion import ResourceDeletionService
 
-        queue_backend = self.queue_backend
-        dataset_storage = self.dataset_storage
-        task_record = self._require_training_task(task_id)
-        if task_record.state in {"queued", "running"}:
-            raise InvalidRequestError(
-                "当前训练任务仍在排队或运行中，不能删除",
-                details={"task_id": task_id, "state": task_record.state},
-            )
-        queue_task_id = self._read_optional_str(
-            dict(task_record.metadata).get("queue_task_id")
-        )
-        if queue_backend is not None and queue_task_id is not None:
-            queue_task = queue_backend.get_task(
-                queue_name=self._resolve_training_queue_name(),
-                task_id=queue_task_id,
-            )
-            if queue_task is not None and queue_task.status in {"queued", "leased"}:
-                raise InvalidRequestError(
-                    "当前训练任务仍有未消费的队列消息，暂时不能删除",
-                    details={
-                        "task_id": task_id,
-                        "queue_task_id": queue_task_id,
-                        "queue_status": queue_task.status,
-                    },
-                )
-        output_object_prefix = self._read_optional_str(
-            dict(task_record.result).get("output_object_prefix")
-        )
-        if dataset_storage is not None and output_object_prefix is not None:
-            dataset_storage.delete_tree(output_object_prefix)
-        self.task_service.delete_task(task_id)
+        task = self._require_training_task(task_id)
+        ResourceDeletionService(
+            session_factory=self.session_factory,
+            dataset_storage=self._require_dataset_storage(),
+            queue_backend=self.queue_backend,
+        ).delete(kind="task", resource_id=task_id, project_id=task.project_id)
 
     def register_latest_checkpoint_model_version(
         self,

@@ -29,6 +29,10 @@ class SqlAlchemyDeploymentInstanceRepository:
 
         self.session = session
 
+    def list_existing_ids(self) -> set[str]:
+        """读取部署主记录的稳定 id 集合，避免载入模型快照。"""
+        return set(self.session.scalars(select(DeploymentInstanceRecord.deployment_instance_id)))
+
     def save_deployment_instance(self, deployment_instance: DeploymentInstance) -> None:
         """保存一个 DeploymentInstance。"""
 

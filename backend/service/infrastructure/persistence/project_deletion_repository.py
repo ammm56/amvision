@@ -24,7 +24,14 @@ from backend.service.infrastructure.persistence.local_auth_orm import (
 )
 from backend.service.infrastructure.persistence.model_file_orm import ModelFileRecord
 from backend.service.infrastructure.persistence.model_orm import ModelRecord
+from backend.service.infrastructure.persistence.model_transfer_repository import (
+    ImportedModelArtifactRecord,
+    ModelTransferRecord,
+)
 from backend.service.infrastructure.persistence.task_orm import TaskRecordEntity
+from backend.service.infrastructure.persistence.queue_outbox_orm import QueueOutboxMessageEntity
+from backend.service.application.resource_deletion_plan import referenced_ids
+from backend.service.application.errors import ResourceInUseError
 from backend.service.infrastructure.persistence.workflow_runtime_orm import (
     WorkflowApplicationLifecycleRecord,
     WorkflowAppVersionRecord,
@@ -50,7 +57,6 @@ class ProjectDatabaseInventory:
     trigger_sources: tuple[tuple[str, bool, str, str], ...]
     model_file_storage_uris: tuple[str, ...]
     counts: dict[str, int]
-
 
 class SqlAlchemyProjectDeletionRepository:
     """在单个事务内盘点并删除 Project 关联记录。"""
@@ -176,6 +182,18 @@ class SqlAlchemyProjectDeletionRepository:
         """删除 Project 关联记录，由外层 Unit of Work 提交。"""
 
         try:
+            task_ids = set(self.session.scalars(select(TaskRecordEntity.task_id).where(TaskRecordEntity.project_id == project_id)))
+            for message in self.session.scalars(select(QueueOutboxMessageEntity)):
+                payload = {"payload": message.payload_json, "metadata": message.metadata_json}
+                project_owned = any(
+                    isinstance(value, dict) and value.get("project_id") == project_id
+                    for value in (message.payload_json, message.metadata_json)
+                )
+                if not project_owned and not (referenced_ids(payload) & task_ids):
+                    continue
+                if message.state in {"pending", "leased"}:
+                    raise ResourceInUseError("Project 仍有待投递 Outbox 消息", details={"message_id": message.message_id})
+                self.session.delete(message)
             # LocalAuthUserRecord 保存的是 Project id 数组，不是 Project 所有权记录。
             # 删除 Project 时必须同步撤销引用，避免将来复用同名 id 后旧权限复活。
             for user in self._auth_users_referencing(project_id):
@@ -205,6 +223,8 @@ class SqlAlchemyProjectDeletionRepository:
 
             for model in (
                 WorkflowPreviewRunRecord,
+                ImportedModelArtifactRecord,
+                ModelTransferRecord,
                 WorkflowExecutionPolicyRecord,
                 DeploymentInstanceRecord,
                 ModelFileRecord,

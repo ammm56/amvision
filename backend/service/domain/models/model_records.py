@@ -7,7 +7,7 @@ from typing import Literal
 
 
 # 最小支持的模型版本来源类型。
-ModelVersionSourceKind = Literal["pretrained-reference", "training-output"]
+ModelVersionSourceKind = Literal["pretrained-reference", "training-output", "deployment-import"]
 ModelScopeKind = Literal["project", "platform-base"]
 
 PROJECT_MODEL_SCOPE: ModelScopeKind = "project"

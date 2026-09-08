@@ -20,7 +20,7 @@ WORKER_PROFILES_DIR = REPO_ROOT / "runtimes" / "manifests" / "worker-profiles"
 
 EXPECTED_WORKER_PROFILE_CONSUMERS: dict[str, tuple[str, ...]] = {
     "dataset-import": ("dataset-import",),
-    "dataset-export": ("dataset-export",),
+    "dataset-export": ("resource-cleanup", "model-deployment-transfer", "dataset-export"),
     "training": (
         "yolox-training",
         "yolov8-training",

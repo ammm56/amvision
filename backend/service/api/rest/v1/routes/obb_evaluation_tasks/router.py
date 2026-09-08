@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from backend.service.api.deps.queue import get_queue_backend
+from backend.service.infrastructure.queue.local_file import LocalFileQueueBackend
+
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Response, status
@@ -97,11 +100,15 @@ def delete_obb_evaluation_task(
     task_id: str,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("tasks:write"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+    queue_backend: Annotated[LocalFileQueueBackend, Depends(get_queue_backend)],
 ) -> Response:
     """删除已完成的 OBB 评估任务。"""
 
     return delete_obb_evaluation_task_response(
         principal=principal,
         session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
         task_id=task_id,
     )

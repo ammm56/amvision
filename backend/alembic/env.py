@@ -15,6 +15,7 @@ from backend.service.infrastructure.persistence.base import Base
 
 # 加载所有 ORM 实体模块，确保 Base.metadata 包含完整表结构。
 _ORM_MODULES = (
+    "backend.service.infrastructure.persistence.resource_deletion_repository",
     "backend.service.infrastructure.persistence.model_orm",
     "backend.service.infrastructure.persistence.model_file_orm",
     "backend.service.infrastructure.persistence.dataset_orm",

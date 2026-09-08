@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from fastapi import APIRouter
+from backend.service.api.rest.v1.routes.resource_deletions import resource_deletions_router
+from backend.service.api.rest.v1.routes.model_deployment_transfers import router as model_deployment_transfers_router
 
 from backend.service.api.rest.v1.routes.classification_conversion_tasks.router import (
     classification_conversion_tasks_router,
@@ -91,6 +93,8 @@ api_v1_router.include_router(workflows_router)
 api_v1_router.include_router(workflow_runtime_router)
 api_v1_router.include_router(workflow_trigger_sources_router)
 api_v1_router.include_router(datasets_router)
+api_v1_router.include_router(resource_deletions_router)
+api_v1_router.include_router(model_deployment_transfers_router)
 api_v1_router.include_router(models_router)
 api_v1_router.include_router(detection_training_tasks_router)
 api_v1_router.include_router(detection_validation_sessions_router)

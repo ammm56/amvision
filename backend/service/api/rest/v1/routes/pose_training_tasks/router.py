@@ -262,11 +262,15 @@ def delete_pose_training_task(
     task_id: str,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("tasks:write"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+    queue_backend: Annotated[LocalFileQueueBackend, Depends(get_queue_backend)],
 ) -> Response:
     """删除已停止的 pose 训练任务。"""
 
     delete_training_task(
         session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
         task_id=task_id,
         visible_project_ids=principal.project_ids,
     )

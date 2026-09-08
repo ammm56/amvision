@@ -13,6 +13,8 @@ from backend.service.application.errors import (
     ResourceNotFoundError,
     ServiceError,
 )
+from backend.service.application.resource_deletion import ResourceDeletionService
+from backend.service.application.ports.queue import QueueBackend
 from backend.service.application.model_type_support import (
     ensure_requested_platform_model_type_matches,
 )
@@ -222,15 +224,15 @@ def delete_stopped_deployment_instance(
     deployment_service: Any,
     sync_supervisor: DeploymentProcessSupervisor,
     async_supervisor: DeploymentProcessSupervisor,
+    queue_backend: QueueBackend | None = None,
+    expected_revision: str | None = None,
 ) -> None:
     """删除已经完全停止的 DeploymentInstance。
 
-    删除 deployment instance 只移除部署配置和部署事件，不删除 ModelVersion、
-    ModelBuild 或模型产物。这样可以避免误删仍被其他部署、训练记录或模型管理页
-    使用的长期资产。
+    同时回收本实例独占的导入模型产物；共享导入产物和本地训练、转换产物保留。
     """
 
-    deployment_service.get_visible_deployment_instance(
+    view = deployment_service.get_visible_deployment_instance(
         deployment_instance_id,
         visible_project_ids=principal.project_ids,
     )
@@ -274,11 +276,10 @@ def delete_stopped_deployment_instance(
                 },
             },
         )
-    if not deployment_service.delete_deployment_instance(deployment_instance_id):
-        raise ResourceNotFoundError(
-            "找不到指定的 DeploymentInstance",
-            details={"deployment_instance_id": deployment_instance_id},
-        )
+    ResourceDeletionService(
+        session_factory=deployment_service.session_factory,
+        dataset_storage=deployment_service.dataset_storage, queue_backend=queue_backend,
+    ).delete(kind="deployment", resource_id=deployment_instance_id, project_id=view.project_id, expected_revision=expected_revision)
 
 
 def read_async_inference_service_id(

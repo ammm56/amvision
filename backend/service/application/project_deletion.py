@@ -207,6 +207,9 @@ class ProjectDeletionService:
             # 短只读 UOW，必须在任何 manifest/move 文件 I/O 前关闭。
             inventory_unit_of_work = self._open_unit_of_work()
             try:
+                pending_deletions = [op.plan.operation_id for op in inventory_unit_of_work.resource_deletions.list_pending() if op.plan.project_id == normalized_project_id]
+                if pending_deletions:
+                    raise ResourceInUseError("Project 仍有待完成的资源清理", details={"operation_ids": pending_deletions})
                 inventory = inventory_unit_of_work.project_deletions.inspect(
                     normalized_project_id,
                     project_sentinel_resource_key=sentinel_resource_key,
@@ -367,8 +370,6 @@ class ProjectDeletionService:
     ) -> None:
         """删除已提交项目的隔离存储数据。"""
 
-        if cleanup_object_key:
-            self.dataset_storage.delete_tree(cleanup_object_key)
         self.queue_backend.delete_tasks_by_references(
             references=self._build_queue_references(
                 project_id=project_id,
@@ -376,6 +377,9 @@ class ProjectDeletionService:
             ),
             statuses=("completed", "failed"),
         )
+        # 队列失败时保留 manifest，启动恢复才有完整的重试依据。
+        if cleanup_object_key:
+            self.dataset_storage.delete_tree(cleanup_object_key)
 
     def recover_interrupted_deletions(self) -> ProjectDeletionRecoveryResult:
         """在 API 接收请求前回滚中断删除并补做已提交清理。"""

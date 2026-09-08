@@ -24,6 +24,8 @@
 
 - [DatasetImport](datasets-imports.md)
 - [DatasetExport](datasets-exports.md)
+- [资源删除与清理状态](resource-deletions.md)
+- [模型部署实例导出与导入](model-deployment-transfers.md)
 - [平台基础模型](platform-base-models.md)
 - [Detection 训练、评估、转换、部署与推理](detection-training.md)
 - [模型 Deployment SDK](model-deployment-sdks.md)

@@ -6,6 +6,8 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
 
+from backend.service.api.deps.queue import get_queue_backend
+from backend.service.infrastructure.queue.local_file import LocalFileQueueBackend
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.db import get_session_factory
 from backend.service.api.deps.detection_deployment_process_supervisor import (
@@ -121,6 +123,8 @@ def delete_detection_deployment_instance(
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
     sync_supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_detection_sync_deployment_process_supervisor)],
     async_supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_detection_async_deployment_process_supervisor)],
+    queue_backend: Annotated[LocalFileQueueBackend, Depends(get_queue_backend)],
+    expected_revision: str | None = None,
 ) -> None:
     """删除一个已经完全停止的 detection DeploymentInstance。"""
 
@@ -131,4 +135,6 @@ def delete_detection_deployment_instance(
         deployment_instance_id=deployment_instance_id,
         sync_supervisor=sync_supervisor,
         async_supervisor=async_supervisor,
+        queue_backend=queue_backend,
+        expected_revision=expected_revision,
     )
