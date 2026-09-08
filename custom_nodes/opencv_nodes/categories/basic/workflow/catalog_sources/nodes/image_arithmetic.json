@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.image-arithmetic",
+  "version": "0.1.4",
   "display_name": "Image Arithmetic",
   "category": "opencv.image.enhancement",
   "description": "对两张同形状图片执行加、减、乘、除、绝对差或加权叠加。",

@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.image-refs-statistics",
+  "version": "0.1.4",
   "display_name": "Image Refs Statistics",
   "category": "opencv.inspection.batch",
   "description": "对 image-refs.v1 图片集合逐张计算灰度、亮暗比例和边缘密度，并可按配置输出 empty / non-empty 判断，适合批量 ROI 裁剪后的槽位复核。",

@@ -33,12 +33,13 @@ from custom_nodes.camera_nodes.providers.usb_uvc.backend.nodes import (
 
 CAMERA_CAPTURE_TEST_NODE_DEFINITION = NodeDefinition(
     node_type_id=capture_frame.NODE_TYPE_ID,
+    version="0.1.5",
     display_name="Capture Frame Test",
     category="camera.usb",
     implementation_kind="custom-node",
     runtime_kind="python-callable",
     node_pack_id="camera.nodes",
-    node_pack_version="0.1.4",
+    node_pack_version="0.1.5",
 )
 
 

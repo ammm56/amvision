@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.get-rect-subpix",
+  "version": "0.1.4",
   "display_name": "Get Rect SubPix",
   "category": "opencv.image.transform",
   "description": "围绕浮点中心坐标提取指定尺寸的亚像素矩形 patch。",

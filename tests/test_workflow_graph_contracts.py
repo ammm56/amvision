@@ -153,6 +153,7 @@ def _build_node_definitions() -> tuple[NodeDefinition, ...]:
         ),
         NodeDefinition(
             node_type_id="custom.opencv.draw-detections",
+            version="0.1.3",
             display_name="Draw Detections",
             category="opencv.output.render",
             description="通过 OpenCV 把 detection 结果叠加到图片上，生成结构化 HTTP 回包。",

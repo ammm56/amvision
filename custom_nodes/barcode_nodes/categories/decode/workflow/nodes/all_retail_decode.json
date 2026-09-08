@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.barcode.all-retail-decode",
+  "version": "0.1.4",
   "display_name": "Decode All Retail Barcodes",
   "category": "barcode.decode",
   "description": "扫描输入图片中的全部零售条码制式，适合 EAN、UPC、DataBar 等零售识读场景。",

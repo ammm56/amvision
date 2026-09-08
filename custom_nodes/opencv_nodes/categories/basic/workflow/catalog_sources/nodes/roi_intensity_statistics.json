@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.roi-intensity-statistics",
+  "version": "0.1.4",
   "display_name": "ROI Intensity Statistics",
   "category": "opencv.inspection.statistics",
   "description": "计算整图或 ROI 各通道的均值、标准差、极值与常用百分位数。",

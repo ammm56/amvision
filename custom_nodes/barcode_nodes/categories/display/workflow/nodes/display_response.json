@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.barcode.display-response",
+  "version": "0.1.4",
   "display_name": "Barcode Display Response",
   "category": "barcode.display",
   "description": "把标注图片和 Barcode 结果摘要组装成适合工作站或 REST 返回的 response-body。",

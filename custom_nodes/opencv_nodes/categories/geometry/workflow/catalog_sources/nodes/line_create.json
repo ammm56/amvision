@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.line-create",
+  "version": "0.1.4",
   "display_name": "Line Create",
   "category": "opencv.geometry.shape",
   "description": "从两个端点或恰好两个 points.v1 项创建一条规范线段。",

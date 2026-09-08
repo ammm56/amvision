@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.barcode.results-to-value",
+  "version": "0.1.4",
   "display_name": "Barcode Results To Value",
   "category": "barcode.transform",
   "description": "把 barcode-results.v1 包装成 value.v1，供 object-create、response-envelope 和 value-preview 继续组合或预览。",

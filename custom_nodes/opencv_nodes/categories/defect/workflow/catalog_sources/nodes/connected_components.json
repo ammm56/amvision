@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.connected-components",
+  "version": "0.1.4",
   "display_name": "Connected Components",
   "category": "opencv.segmentation.region",
   "description": "把二值前景图分解成连通区域，并输出标准 regions.v1 与摘要。",

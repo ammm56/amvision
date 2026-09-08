@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.rectification-map",
+  "version": "0.1.4",
   "display_name": "Rectification Map",
   "category": "opencv.calibration.camera",
   "description": "生成左右 CV_32FC1 校正 map，原子写入 ObjectStore 并返回可追溯 key。",

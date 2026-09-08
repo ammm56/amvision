@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.crop-export",
+  "version": "0.1.4",
   "display_name": "Crop Export",
   "category": "opencv.output.workflow",
   "description": "把 image 和 detections 或 roi-list.v1 裁成 image-refs.v1 图片集合。常见接法：原图接 image，检测结果接 detections，或 ROI Grid Create.rois 接 rois，输出 crops 可继续接 Gallery Preview.images、Get Image Ref.images 或 QR Crop Decode Remap.crops。",

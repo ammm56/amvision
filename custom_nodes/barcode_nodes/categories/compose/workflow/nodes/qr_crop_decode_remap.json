@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.barcode.qr-crop-decode-remap",
+  "version": "0.1.4",
   "display_name": "QR Crop Decode Remap",
   "category": "barcode.compose",
   "description": "直接消费 crop-export.crops，逐张解码裁剪图中的 QR Code，并把每个结果的 position 回映射到原图坐标。适合 detect -> crop-export -> qr-crop-decode-remap 这条链。",

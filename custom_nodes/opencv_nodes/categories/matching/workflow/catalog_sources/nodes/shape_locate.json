@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.shape-locate",
+  "version": "0.1.4",
   "display_name": "Shape Locate",
   "category": "opencv.matching.template",
   "description": "在离散角度和尺度范围内搜索边缘形状模板，输出统一 localization 和相似变换。",

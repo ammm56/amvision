@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.sift-keypoints",
+  "version": "0.1.4",
   "display_name": "SIFT Keypoints",
   "category": "opencv.feature.detection",
   "description": "提取具备尺度和旋转不变性的 SIFT 关键点与 float32 描述子。",

@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.rectangle-measure",
+  "version": "0.1.4",
   "display_name": "Rectangle Measure",
   "category": "opencv.measurement.geometry",
   "description": "沿旋转矩形四边量测，输出宽高、角度、平行度、垂直度和矩形度。",

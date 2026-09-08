@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.quadrilateral-from-circle-centers",
+  "version": "0.1.4",
   "display_name": "Quadrilateral From Circle Centers",
   "category": "opencv.geometry.detection",
   "description": "从显式连接的 TL、TR、BR、BL 四个 circles.v1 输入构建凸四边形 ROI；不猜测角点语义。",

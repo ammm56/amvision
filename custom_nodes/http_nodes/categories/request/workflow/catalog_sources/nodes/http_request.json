@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.http.request",
+  "version": "0.1.4",
   "display_name": "HTTP Request",
   "category": "http.request",
   "description": "按受限映射规则构造并发送 HTTP JSON 请求，支持常用方法、鉴权、query、header、body 和响应结果处理。",

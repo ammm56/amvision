@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.image-rectify-stereo",
+  "version": "0.1.4",
   "display_name": "Image Rectify Stereo",
   "category": "opencv.image.transform",
   "description": "读取预生成 ObjectStore map 校正左右图片，不在每帧重复计算 map。",

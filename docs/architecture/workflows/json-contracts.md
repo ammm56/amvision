@@ -49,7 +49,7 @@ NodeDefinition 定义“节点能接什么、吐什么、怎么运行”。
   例如 `core.model.inference`、`opencv.image.color`、`opencv.output.render`
 - implementation_kind：core-node 或 custom-node
 - runtime_kind：python-callable、worker-task、service-call
-- version：单个节点实现版本；本次实际修改的节点使用当前后端版本，未修改节点保持原版本
+- version：单个节点实现版本；Custom Node 必须在源定义中显式填写，Core Node 未填写时才允许使用当前后端版本
 - input_ports / output_ports：端口定义，端口直接引用 payload_type_id
 - parameter_schema：参数 schema
 - parameter_input_bindings：显式声明可由可选 `value.v1` 输入端口在运行时覆盖的参数；未声明的参数保持固定值
@@ -61,6 +61,8 @@ NodeDefinition 定义“节点能接什么、吐什么、怎么运行”。
 参数输入绑定不创建新的边格式。绑定端口仍是正式 `input_ports`，连接仍保存在 `WorkflowGraphEdge` 或 `template_inputs`；节点实例的 `parameters` 保存未连接时使用的固定回退值。运行时固定采用“连接输入、固定参数、schema default”的优先级，不允许节点自行改变优先级。
 
 `version` 与 `node_pack_version` 不能混用：前者描述单节点实现，后者描述整个自定义节点包。一个 `0.1.4` 节点包可以同时包含 `0.1.4` 的已修改节点和 `0.1.3` 的未修改节点。两种版本都不得高于当前后端版本，避免前端展示尚不受当前运行时支持的节点能力。
+
+拆分维护的 Custom Node 以 `workflow/catalog_sources/` 或分类目录下的单节点 JSON 为版本事实源，生成后的 `workflow/catalog.json` 只作为派生产物。节点实现或公开契约发生变化时，只递增实际变化节点的 `version`，随后重新生成 catalog；加载器和测试会拒绝缺少显式 `version` 的 Custom Node，防止后端版本升级时未修改节点被隐式改版。
 
 ### 3. WorkflowGraphTemplate
 

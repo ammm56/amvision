@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.otsu-threshold",
+  "version": "0.1.4",
   "display_name": "Otsu Threshold",
   "category": "opencv.image.threshold",
   "description": "对输入灰度图执行 Otsu 自动阈值分割。",

@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.circle-grid-detect",
+  "version": "0.1.4",
   "display_name": "Circle Grid Detect",
   "category": "opencv.calibration.camera",
   "description": "检测对称或非对称圆点阵并输出带物理坐标的标定观测。",

@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.draw-inspection-errors",
+  "version": "0.1.4",
   "display_name": "Draw Inspection Errors",
   "category": "opencv.output.render",
   "description": "按 error_kind 使用稳定颜色绘制通用检查异常区域。",

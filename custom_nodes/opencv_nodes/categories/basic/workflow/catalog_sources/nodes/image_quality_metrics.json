@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.image-quality-metrics",
+  "version": "0.1.4",
   "display_name": "Image Quality Metrics",
   "category": "opencv.inspection.statistics",
   "description": "一次输出亮度、对比度、清晰度、曝光裁剪、HSV 饱和度和稳健噪声估计，可选 ROI。",

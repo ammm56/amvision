@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.clear-border",
+  "version": "0.1.4",
   "display_name": "Clear Border",
   "category": "opencv.mask.operation",
   "description": "删除与图像边界相接的二值连通域。",

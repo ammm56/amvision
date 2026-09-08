@@ -4110,6 +4110,7 @@ def register(context):
             {
                 "format_id": "amvision.node-definition.v1",
                 "node_type_id": "custom.test.process-echo",
+                "version": "0.1.0",
                 "display_name": "Process Echo",
                 "category": "test.process",
                 "description": "返回当前子进程 pid 与请求文本。",
@@ -4138,6 +4139,7 @@ def register(context):
             {
                 "format_id": "amvision.node-definition.v1",
                 "node_type_id": "custom.test.process-fail",
+                "version": "0.1.0",
                 "display_name": "Process Fail",
                 "category": "test.process",
                 "description": "主动抛出 AssertionError，用于验证失败节点定位。",
@@ -4166,6 +4168,7 @@ def register(context):
             {
                 "format_id": "amvision.node-definition.v1",
                 "node_type_id": "custom.test.process-slow",
+                "version": "0.1.0",
                 "display_name": "Process Slow",
                 "category": "test.process",
                 "description": "延迟返回结果，用于验证超时分支。",
@@ -4194,6 +4197,7 @@ def register(context):
             {
                 "format_id": "amvision.node-definition.v1",
                 "node_type_id": "custom.test.process-temp-artifact",
+                "version": "0.1.0",
                 "display_name": "Process Temp Artifact",
                 "category": "test.process",
                 "description": "在子进程里写入临时图片和临时导出目录，用于验证 cleanup。",

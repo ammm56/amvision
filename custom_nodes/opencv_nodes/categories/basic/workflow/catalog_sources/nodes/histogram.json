@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.histogram",
+  "version": "0.1.4",
   "display_name": "Histogram",
   "category": "opencv.inspection.statistics",
   "description": "计算整图或搜索 ROI 的逐通道直方图。",

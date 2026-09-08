@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.phase-correlation",
+  "version": "0.1.4",
   "display_name": "Phase Correlation",
   "category": "opencv.matching.registration",
   "description": "使用频域相位相关估计两张同尺寸图片间的亚像素平移。",

@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.draw-calibration-reprojection",
+  "version": "0.1.4",
   "display_name": "Draw Calibration Reprojection",
   "category": "opencv.output.render",
   "description": "绘制标定观察点、重投影点和残差线。",

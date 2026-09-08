@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.histogram-equalize",
+  "version": "0.1.4",
   "display_name": "Histogram Equalize",
   "category": "opencv.image.enhancement",
   "description": "执行全局直方图均衡化，彩色图片默认只处理亮度通道。",

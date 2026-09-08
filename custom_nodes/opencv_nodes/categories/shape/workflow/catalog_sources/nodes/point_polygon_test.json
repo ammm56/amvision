@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.point-polygon-test",
+  "version": "0.1.4",
   "display_name": "Point Polygon Test",
   "category": "opencv.geometry.contour",
   "description": "判断一个或多个点位于指定轮廓内部、边界还是外部，并可输出有符号距离。",

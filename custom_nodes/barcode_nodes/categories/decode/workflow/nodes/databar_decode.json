@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.barcode.databar-decode",
+  "version": "0.1.4",
   "display_name": "Decode DataBar Family",
   "category": "barcode.decode",
   "description": "扫描输入图片中的 DataBar 家族条码，适合 GS1 零售与扩展属性识读场景。",

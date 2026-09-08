@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.image-type-convert",
+  "version": "0.1.4",
   "display_name": "Image Type Convert",
   "category": "opencv.image.color",
   "description": "显式转换图片 dtype、HW/HWC 通道布局和数值范围；不隐式改变空间尺寸。",

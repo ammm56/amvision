@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.barcode.all-matrix-decode",
+  "version": "0.1.4",
   "display_name": "Decode All Matrix Barcodes",
   "category": "barcode.decode",
   "description": "扫描输入图片中的全部矩阵码制式，适合票据、证件、标签与文档二维码场景。",

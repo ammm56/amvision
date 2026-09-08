@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.grabcut",
+  "version": "0.1.4",
   "display_name": "GrabCut",
   "category": "opencv.segmentation.image",
   "description": "使用矩形或可选初始 mask 执行交互式前景分割。",

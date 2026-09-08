@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.good-features-to-track",
+  "version": "0.1.4",
   "display_name": "Good Features To Track",
   "category": "opencv.feature.detection",
   "description": "使用 Shi-Tomasi 或 Harris 响应提取适合跟踪的强角点。",

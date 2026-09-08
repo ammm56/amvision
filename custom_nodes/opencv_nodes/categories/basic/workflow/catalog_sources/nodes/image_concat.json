@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.image-concat",
+  "version": "0.1.4",
   "display_name": "Image Concat",
   "category": "opencv.image.transform",
   "description": "水平或垂直规则拼接图片集合，并明确对齐、间隔和填充值。",

@@ -124,7 +124,7 @@
       "description": "Segment image objects from Point, Box, Polygon or Mask Prompts.",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.5",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -233,7 +233,7 @@
       "description": "Segment all matching image regions from grouped positive and negative Text Prompts.",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.5",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -335,7 +335,7 @@
       "description": "Initialize objects from visual Prompts on the first frame, then propagate masks and identities with the SAM3.1 Multiplex video branch.",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.5",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -450,7 +450,7 @@
       "description": "Detect text concepts on the first frame, then propagate their masks and identities with the SAM3.1 Multiplex video branch.",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.5",
       "concurrency_policy": "serialized",
       "input_ports": [
         {

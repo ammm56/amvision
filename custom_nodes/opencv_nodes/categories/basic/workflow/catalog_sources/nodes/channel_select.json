@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.channel-select",
+  "version": "0.1.4",
   "display_name": "Channel Select",
   "category": "opencv.image.color",
   "description": "按零起始通道序号提取单个通道。",

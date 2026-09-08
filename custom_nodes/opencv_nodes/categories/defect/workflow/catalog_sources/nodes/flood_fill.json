@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.flood-fill",
+  "version": "0.1.4",
   "display_name": "Flood Fill",
   "category": "opencv.segmentation.region",
   "description": "从种子点按颜色差容差提取连通区域 mask。",

@@ -334,6 +334,19 @@ class NodeDefinition(BaseModel):
     node_pack_version: str | None = None
     metadata: dict[str, object] = Field(default_factory=dict)
 
+    @model_validator(mode="before")
+    @classmethod
+    def require_explicit_custom_node_version(cls, value: object) -> object:
+        """要求 custom node 在目录源中显式声明单节点实现版本。"""
+
+        if (
+            isinstance(value, dict)
+            and value.get("implementation_kind") == NODE_IMPLEMENTATION_CUSTOM
+            and "version" not in value
+        ):
+            raise ValueError("custom-node 必须显式声明 version")
+        return value
+
     @model_validator(mode="after")
     def validate_definition(self) -> NodeDefinition:
         """校验节点定义字段和节点包边界。"""

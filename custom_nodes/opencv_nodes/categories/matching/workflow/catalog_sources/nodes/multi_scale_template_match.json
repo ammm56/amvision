@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.multi-scale-template-match",
+  "version": "0.1.4",
   "display_name": "Multi-scale Template Match",
   "category": "opencv.matching.template",
   "description": "在尺度金字塔中搜索模板，并以 regions.v1 返回经过 NMS 的匹配结果。",

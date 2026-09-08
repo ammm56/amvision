@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.gray-profile-measure",
+  "version": "0.1.4",
   "display_name": "Gray Profile Measure",
   "category": "opencv.measurement.edge",
   "description": "沿线或带状区域输出亚像素采样灰度剖面、梯度和峰谷位置。",

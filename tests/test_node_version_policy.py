@@ -65,6 +65,23 @@ def test_custom_node_version_is_independent_from_pack_version() -> None:
     assert changed.node_pack_version == unchanged.node_pack_version
 
 
+def test_custom_node_requires_explicit_implementation_version() -> None:
+    """验证 custom node 不能隐式继承 backend 版本。"""
+
+    with pytest.raises(ValueError, match="custom-node 必须显式声明 version"):
+        NodeDefinition.model_validate(
+            {
+                "node_type_id": "custom.test.missing-version",
+                "display_name": "Missing Version",
+                "category": "test.version.missing",
+                "implementation_kind": NODE_IMPLEMENTATION_CUSTOM,
+                "runtime_kind": NODE_RUNTIME_PYTHON_CALLABLE,
+                "node_pack_id": "test.nodes",
+                "node_pack_version": BACKEND_VERSION,
+            }
+        )
+
+
 @pytest.mark.parametrize("field_name", ("version", "node_pack_version"))
 def test_node_definition_accepts_version_independent_from_backend(field_name: str) -> None:
     """验证节点实现版本和节点包版本拥有独立 SemVer 生命周期。"""

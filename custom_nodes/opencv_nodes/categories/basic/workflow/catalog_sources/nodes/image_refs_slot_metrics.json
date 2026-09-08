@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.image-refs-slot-metrics",
+  "version": "0.1.4",
   "display_name": "Image Refs Slot Metrics",
   "category": "opencv.inspection.batch",
   "description": "对 image-refs.v1 图片集合逐张计算灰度、暗像素、边缘和暗连通域指标，作为空槽、有料和统计判断的基础节点。",

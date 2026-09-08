@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.orb-match",
+  "version": "0.1.4",
   "display_name": "ORB Match",
   "category": "opencv.matching.feature",
   "description": "对两组 ORB 描述执行暴力匹配与过滤，并输出显式 feature-matches.v1，便于人工查看匹配密度、距离分布和误匹配情况。",

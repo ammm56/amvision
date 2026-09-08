@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.flann-match",
+  "version": "0.1.4",
   "display_name": "FLANN Match",
   "category": "opencv.matching.feature",
   "description": "使用 KD-Tree 或 LSH 对 float32 或 binary 局部描述子执行近邻匹配。",

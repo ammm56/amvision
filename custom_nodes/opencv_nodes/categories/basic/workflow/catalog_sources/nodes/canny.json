@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.canny",
+  "version": "0.1.4",
   "display_name": "Canny Edge",
   "category": "opencv.image.edge",
   "description": "对输入图片执行 Canny 边缘检测。",

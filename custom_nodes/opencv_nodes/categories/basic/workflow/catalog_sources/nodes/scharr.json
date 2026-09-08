@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.scharr",
+  "version": "0.1.4",
   "display_name": "Scharr",
   "category": "opencv.image.edge",
   "description": "计算 Scharr x、y 方向梯度或梯度幅值。",

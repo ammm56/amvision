@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.convexity-defects",
+  "version": "0.1.4",
   "display_name": "Convexity Defects",
   "category": "opencv.geometry.shape",
   "description": "计算每个轮廓相对凸包的凹陷位置和深度。",

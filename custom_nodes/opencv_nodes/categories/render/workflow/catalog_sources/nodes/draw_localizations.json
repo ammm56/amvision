@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.draw-localizations",
+  "version": "0.1.4",
   "display_name": "Draw Localizations",
   "category": "opencv.output.render",
   "description": "绘制统一定位结果的区域、中心、角度和 score。",

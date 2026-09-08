@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.barcode.ean5-decode",
+  "version": "0.1.4",
   "display_name": "EAN-5 Decode",
   "category": "barcode.decode",
   "description": "从输入图片中解码 EAN-5 附加码。",

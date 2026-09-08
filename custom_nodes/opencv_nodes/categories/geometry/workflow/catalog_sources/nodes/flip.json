@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.flip",
+  "version": "0.1.4",
   "display_name": "Flip",
   "category": "opencv.image.transform",
   "description": "沿水平、垂直或双轴翻转图像。",

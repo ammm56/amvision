@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.image-refs-empty-check",
+  "version": "0.1.4",
   "display_name": "Image Refs Empty Check",
   "category": "opencv.inspection.batch",
   "description": "消费 Image Refs Slot Metrics.summary，并按多指标规则输出 empty / non-empty 判断，适合批量槽位空槽检查。",

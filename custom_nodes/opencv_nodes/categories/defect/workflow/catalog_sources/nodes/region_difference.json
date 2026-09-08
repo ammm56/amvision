@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.region-difference",
+  "version": "0.1.4",
   "display_name": "Region Difference",
   "category": "opencv.segmentation.region",
   "description": "计算二值区域 A 减区域 B。",

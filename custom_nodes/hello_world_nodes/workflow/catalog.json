@@ -10,6 +10,7 @@
       "description": "根据输入 name 或默认参数生成一个最小的问候消息。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.0",
       "input_ports": [
         {
           "name": "name",

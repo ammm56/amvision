@@ -4096,6 +4096,7 @@ def register(context):
             {
                 "format_id": "amvision.node-definition.v1",
                 "node_type_id": "custom.text.normalize",
+                "version": "0.1.0",
                 "display_name": "Normalize Text",
                 "category": "utility.text",
                 "description": "去除输入文本两端空白。",
@@ -4124,6 +4125,7 @@ def register(context):
             {
                 "format_id": "amvision.node-definition.v1",
                 "node_type_id": "custom.text.uppercase-worker",
+                "version": "0.1.0",
                 "display_name": "Uppercase Worker",
                 "category": "worker.text",
                 "description": "把文本转换成大写。",
@@ -4206,6 +4208,7 @@ def _create_missing_entrypoint_node_pack_fixture(tmp_path: Path) -> Path:
             {
                 "format_id": "amvision.node-definition.v1",
                 "node_type_id": "custom.text.no-entrypoint",
+                "version": "0.1.0",
                 "display_name": "No Entrypoint",
                 "category": "utility.text",
                 "description": "测试缺少 backend entrypoint 的错误路径。",
@@ -4310,6 +4313,7 @@ def register(context):
             {
                 "format_id": "amvision.node-definition.v1",
                 "node_type_id": "custom.shadow.opencv-basic",
+                "version": "0.1.0",
                 "display_name": "Shadow OpenCV Basic",
                 "category": "test.shadow",
                 "description": "测试 custom_nodes 同名 pack 切换后的缓存隔离。",

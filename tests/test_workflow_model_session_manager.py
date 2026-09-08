@@ -521,6 +521,7 @@ def _register_fake_definition(registry: WorkflowNodeRuntimeRegistry) -> None:
     registry.register_node_definition(
         NodeDefinition(
             node_type_id="custom.fake.load-checkpoint",
+            version="0.1.3",
             display_name="Fake Load Checkpoint",
             category="fake.model.loader",
             implementation_kind="custom-node",

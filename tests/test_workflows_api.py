@@ -977,6 +977,7 @@ def register(context):
                 "description": "通过 OpenCV 把 detection 结果叠加到图片上，并生成结构化 HTTP 回包。",
                 "implementation_kind": "custom-node",
                 "runtime_kind": "python-callable",
+                "version": "0.1.0",
                 "input_ports": [
                     {
                         "name": "image",

@@ -50,7 +50,11 @@ def test_json_save_local_replaces_complete_document(tmp_path: Path) -> None:
         _request(
             node_id="json-save",
             invocation_id="json-save:1",
-            parameters={"save_location": str(output_path)},
+            parameters={
+                "save_directory": str(output_path.parent),
+                "file_name": output_path.name,
+                "overwrite": True,
+            },
             input_values={"value": {"value": {"new": True}}},
         )
     )

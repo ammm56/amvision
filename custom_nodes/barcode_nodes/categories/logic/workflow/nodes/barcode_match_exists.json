@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.barcode.match-exists",
+  "version": "0.1.4",
   "display_name": "Barcode Match Exists",
   "category": "barcode.logic",
   "description": "按 format、text、index 和区域范围判断 barcode-results.v1 中是否存在匹配项，并输出匹配数量。",

@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.barcode.upce-decode",
+  "version": "0.1.4",
   "display_name": "UPC-E Decode",
   "category": "barcode.decode",
   "description": "从输入图片中解码 UPC-E 条码。",

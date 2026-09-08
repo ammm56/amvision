@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.filter-2d",
+  "version": "0.1.4",
   "display_name": "Filter 2D",
   "category": "opencv.image.filter",
   "description": "使用用户提供的二维卷积核执行通用 filter2D。",

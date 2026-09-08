@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.ellipse-create",
+  "version": "0.1.4",
   "display_name": "Ellipse Create",
   "category": "opencv.geometry.shape",
   "description": "从中心、长短轴和角度创建规范 ellipses.v1。",

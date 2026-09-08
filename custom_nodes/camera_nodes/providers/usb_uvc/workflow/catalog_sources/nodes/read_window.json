@@ -6,7 +6,7 @@
   "description": "从已启动采流的 USB / UVC 相机会话缓冲中读取一段 frame-window.v1，供视频预览、时序分割和后续视频链复用。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "input_ports": [
     {
       "name": "session",

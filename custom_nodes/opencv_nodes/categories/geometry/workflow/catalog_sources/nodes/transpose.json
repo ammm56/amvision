@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.transpose",
+  "version": "0.1.4",
   "display_name": "Transpose",
   "category": "opencv.image.transform",
   "description": "交换图像行列轴。",

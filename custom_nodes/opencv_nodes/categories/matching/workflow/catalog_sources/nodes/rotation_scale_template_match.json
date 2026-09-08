@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.rotation-scale-template-match",
+  "version": "0.1.4",
   "display_name": "Rotation-scale Template Match",
   "category": "opencv.matching.template",
   "description": "在角度与尺度网格中搜索模板，并输出角度、尺度和匹配区域。",

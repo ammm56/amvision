@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.barcode.all-readable-decode",
+  "version": "0.1.4",
   "display_name": "Decode All Readable Barcodes",
   "category": "barcode.decode",
   "description": "扫描输入图片中 zxing 当前可读取的全部条码与二维码制式，适合未知制式混扫场景。",

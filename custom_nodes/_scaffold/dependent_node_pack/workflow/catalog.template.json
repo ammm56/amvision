@@ -5,6 +5,7 @@
     {
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.example-dependent.aggregate",
+      "version": "0.1.0",
       "display_name": "Example Dependent Aggregate",
       "category": "example.dependent",
       "description": "复用其他 node pack 能力后输出一个最小 response-body.v1 结果。",

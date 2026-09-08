@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.radial-line-search",
+  "version": "0.1.4",
   "display_name": "Radial Line Search",
   "category": "opencv.measurement.circle",
   "description": "从中心沿多条径向搜索边缘，输出点集、覆盖率和可选圆或椭圆拟合。",

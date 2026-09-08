@@ -121,7 +121,7 @@
       "description": "从指定 USB / UVC 相机读取单帧图片，输出标准 image-ref.v1 与结构化采集摘要，可直接接入检测、分割和工业规则链。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.5",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -652,7 +652,7 @@
       "description": "从已打开的 USB / UVC 相机会话读取最新单帧，适合单次 workflow invoke 内重复采图。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.5",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -772,7 +772,7 @@
       "description": "从已启动采流的 USB / UVC 相机会话缓冲中读取一段 frame-window.v1，供视频预览、时序分割和后续视频链复用。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.5",
       "concurrency_policy": "serialized",
       "input_ports": [
         {

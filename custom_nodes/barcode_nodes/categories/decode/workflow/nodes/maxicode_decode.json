@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.barcode.maxicode-decode",
+  "version": "0.1.4",
   "display_name": "MaxiCode Decode",
   "category": "barcode.decode",
   "description": "从输入图片中解码 MaxiCode；当前运行时以 partial read support 为主。",

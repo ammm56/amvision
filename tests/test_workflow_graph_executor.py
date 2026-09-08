@@ -176,6 +176,7 @@ def _build_custom_passthrough_graph() -> tuple[NodeDefinition, WorkflowGraphTemp
 
     definition = NodeDefinition(
         node_type_id="custom.test.passthrough",
+        version="1.0.0",
         display_name="Custom Passthrough",
         category="test",
         description="Node Pack timeout 测试节点。",

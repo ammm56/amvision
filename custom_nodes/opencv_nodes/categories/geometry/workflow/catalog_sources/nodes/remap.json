@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.remap",
+  "version": "0.1.4",
   "display_name": "Remap",
   "category": "opencv.image.transform",
   "description": "按显式映射表执行像素级重映射，支持 map_xy 或 map_x/map_y，适合配合本地标定映射文件做展开、对位和固定几何校正。",

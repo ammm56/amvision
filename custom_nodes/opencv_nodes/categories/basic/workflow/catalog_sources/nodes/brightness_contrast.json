@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.brightness-contrast",
+  "version": "0.1.4",
   "display_name": "Brightness Contrast",
   "category": "opencv.image.enhancement",
   "description": "按 dst = src × alpha + beta 调整亮度与对比度。",

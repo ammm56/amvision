@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.barcode.filter-results",
+  "version": "0.1.4",
   "display_name": "Filter Barcode Results",
   "category": "barcode.logic",
   "description": "按 format、text、index 和区域范围筛选 barcode-results.v1，输出过滤后的结果集。",

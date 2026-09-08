@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.slot-width",
+  "version": "0.1.4",
   "display_name": "Slot Width",
   "category": "opencv.measurement.geometry",
   "description": "计算两条边线之间的槽宽，适合卡槽、导轨间隙和双边距量测。",

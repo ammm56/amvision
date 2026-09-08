@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.edge-pair-measure",
+  "version": "0.1.4",
   "display_name": "Edge Pair Measure",
   "category": "opencv.measurement.edge",
   "description": "沿任意方向灰度剖面查找同极性、异极性或任意边缘对并输出间距。",

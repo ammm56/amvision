@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.contours-to-regions",
+  "version": "0.1.4",
   "display_name": "Contours To Regions",
   "category": "opencv.geometry.contour",
   "description": "把 contours.v1 规整成标准 regions.v1，便于继续接工业规则和 ROI/连续性节点。",

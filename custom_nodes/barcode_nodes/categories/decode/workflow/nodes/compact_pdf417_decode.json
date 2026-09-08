@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.barcode.compact-pdf417-decode",
+  "version": "0.1.4",
   "display_name": "Compact PDF417 Decode",
   "category": "barcode.decode",
   "description": "从输入图片中解码 Compact PDF417。",

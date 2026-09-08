@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.plc.modbus.write-value",
+  "version": "0.1.4",
   "display_name": "Write Modbus Value",
   "category": "integration.plc",
   "description": "按 PLC 常见逻辑地址直接写入单个 Modbus 值，统一覆盖 coil 与 holding register 的现场写值入口。",

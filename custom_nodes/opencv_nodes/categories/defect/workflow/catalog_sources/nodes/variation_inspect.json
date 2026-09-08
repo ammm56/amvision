@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.variation-inspect",
+  "version": "0.1.4",
   "display_name": "Variation Inspect",
   "category": "opencv.inspection.difference",
   "description": "使用正常样本变化模型输出异常热图、区域和统计。",

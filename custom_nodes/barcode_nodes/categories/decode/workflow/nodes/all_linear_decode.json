@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.barcode.all-linear-decode",
+  "version": "0.1.4",
   "display_name": "Decode All Linear Barcodes",
   "category": "barcode.decode",
   "description": "扫描输入图片中的全部一维条码制式，适合物流、零售与工业通用线性码场景。",

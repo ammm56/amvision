@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.barcode.ean-upc-decode",
+  "version": "0.1.4",
   "display_name": "Decode EAN/UPC Family",
   "category": "barcode.decode",
   "description": "扫描输入图片中的 EAN/UPC 家族条码，适合标准零售主码与附加码识读场景。",

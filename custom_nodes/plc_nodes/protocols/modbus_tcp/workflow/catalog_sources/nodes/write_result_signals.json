@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.plc.modbus.write-result-signals",
+  "version": "0.1.4",
   "display_name": "Write Modbus Result Signals",
   "category": "integration.plc",
   "description": "把 result-record/alarm-record 中的 OK/NG、报警位和结果码映射到 Modbus TCP coils 或 holding registers，适合现场结果回写。",

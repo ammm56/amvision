@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.image-composite",
+  "version": "0.1.4",
   "display_name": "Image Composite",
   "category": "opencv.image.transform",
   "description": "按位置、可选 mask 和 alpha 把同 dtype、同通道 overlay 组合到 base 图片。",

@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.project-points",
+  "version": "0.1.4",
   "display_name": "Project Points",
   "category": "opencv.calibration.pose",
   "description": "依据针孔或 fisheye 标定参数和位姿将三维点投影到图像平面。",

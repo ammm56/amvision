@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.line-measure",
+  "version": "0.1.4",
   "display_name": "Line Measure",
   "category": "opencv.measurement.edge",
   "description": "沿名义线布置法向卡尺，检测边缘点并拟合直线、残差和有效率。",

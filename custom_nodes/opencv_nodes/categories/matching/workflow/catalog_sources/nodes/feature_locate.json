@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.feature-locate",
+  "version": "0.1.4",
   "display_name": "Feature Locate",
   "category": "opencv.matching.feature",
   "description": "完成特征提取、ratio 匹配、RANSAC 几何验证并输出统一 localization 和 transform。",

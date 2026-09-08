@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.barcode.all-gs1-decode",
+  "version": "0.1.4",
   "display_name": "Decode All GS1 Barcodes",
   "category": "barcode.decode",
   "description": "扫描输入图片中的全部 GS1 相关条码制式，适合带 AI 编码的供应链与追溯场景。",

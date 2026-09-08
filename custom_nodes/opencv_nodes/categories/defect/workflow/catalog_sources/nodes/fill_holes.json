@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.fill-holes",
+  "version": "0.1.4",
   "display_name": "Fill Holes",
   "category": "opencv.mask.operation",
   "description": "填充白色前景内部孔洞，适合胶线、涂布、闭合区域和空腔缺口的前置规整。",

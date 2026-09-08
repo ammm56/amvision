@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.point-create",
+  "version": "0.1.4",
   "display_name": "Point Create",
   "category": "opencv.geometry.shape",
   "description": "从显式二维坐标创建带 coordinate space 和 unit 的 points.v1。",

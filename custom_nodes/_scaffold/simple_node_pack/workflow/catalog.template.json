@@ -5,6 +5,7 @@
     {
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.example-simple.message",
+      "version": "0.1.0",
       "display_name": "Example Simple Message",
       "category": "example.simple",
       "description": "返回一个最小 value.v1 示例输出。",

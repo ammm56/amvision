@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.ellipse-measure",
+  "version": "0.1.4",
   "display_name": "Ellipse Measure",
   "category": "opencv.measurement.geometry",
   "description": "沿名义椭圆法向采样边缘并拟合椭圆，输出覆盖率和残差。",

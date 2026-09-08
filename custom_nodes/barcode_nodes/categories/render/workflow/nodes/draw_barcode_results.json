@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.barcode.draw-results",
+  "version": "0.1.4",
   "display_name": "Draw Barcode Results",
   "category": "barcode.render",
   "description": "把 barcode-results 中的 position 轮廓和文本叠加回原图，输出新的图片引用。",

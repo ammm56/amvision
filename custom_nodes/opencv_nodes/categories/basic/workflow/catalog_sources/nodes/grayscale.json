@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.grayscale",
+  "version": "0.1.4",
   "display_name": "Grayscale",
   "category": "opencv.image.color",
   "description": "把输入图片转为灰度图。",

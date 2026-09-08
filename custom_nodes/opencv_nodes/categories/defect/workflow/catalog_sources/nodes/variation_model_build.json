@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.variation-model-build",
+  "version": "0.1.4",
   "display_name": "Variation Model Build",
   "category": "opencv.inspection.difference",
   "description": "从同尺寸正常样本建立逐像素均值与标准差变化模型。",

@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.image-stitch",
+  "version": "0.1.4",
   "display_name": "Image Stitch",
   "category": "opencv.matching.registration",
   "description": "使用特征匹配、几何配准、warp 和 blend 拼接图片集合，并返回诊断信息。",

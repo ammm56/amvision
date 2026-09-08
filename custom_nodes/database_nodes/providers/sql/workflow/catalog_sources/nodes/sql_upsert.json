@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.database.sql.upsert",
+  "version": "0.1.4",
   "display_name": "SQL Upsert",
   "category": "database.sql.write",
   "description": "通过受限列映射向 SQLite、MySQL 或 PostgreSQL 单表执行 upsert。",

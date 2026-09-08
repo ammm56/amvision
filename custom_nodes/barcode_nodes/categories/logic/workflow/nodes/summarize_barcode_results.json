@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.barcode.results-summary",
+  "version": "0.1.4",
   "display_name": "Summarize Barcode Results",
   "category": "barcode.logic",
   "description": "把 barcode-results.v1 转成更轻量的摘要对象，方便后续 workflow 条件分支直接读取。",

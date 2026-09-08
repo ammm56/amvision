@@ -1,6 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.watershed",
+  "version": "0.1.4",
   "display_name": "Watershed",
   "category": "opencv.segmentation.image",
   "description": "把粘连前景通过 watershed 拆成带边界隔离的二值结果，适合相邻颗粒、连在一起的缺陷块或胶点分离前处理。",
