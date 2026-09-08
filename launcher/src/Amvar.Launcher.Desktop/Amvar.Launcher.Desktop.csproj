@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>WinExe</OutputType><AssemblyName>amvar.launcher</AssemblyName><AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault><ApplicationManifest>app.manifest</ApplicationManifest><ApplicationIcon>Assets/app.ico</ApplicationIcon></PropertyGroup>
+  <ItemGroup><AvaloniaResource Include="Assets/**" /></ItemGroup>
+  <ItemGroup><AvaloniaResource Include="../../../LICENSE" Link="Assets/LICENSE.txt" /></ItemGroup>
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>BuildTimestamp</_Parameter1>
+      <_Parameter2>$([System.DateTime]::UtcNow.ToString('O'))</_Parameter2>
+    </AssemblyAttribute>
+    <ProjectReference Include="../Amvar.Launcher.Core/Amvar.Launcher.Core.csproj" />
+    <ProjectReference Include="../Amvar.Launcher.Infrastructure/Amvar.Launcher.Infrastructure.csproj" />
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Desktop" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+    <PackageReference Include="Avalonia.Controls.WebView" />
+  </ItemGroup>
+  <!-- 使用 SDK apphost 直接定位子目录程序集，根目录无需第二个引导进程。 -->
+  <Target Name="CreateLauncherEntry" AfterTargets="Publish" Condition="'$(LauncherLayout)' == 'true'">
+    <CreateAppHost AppHostSourcePath="$(AppHostSourcePath)" AppHostDestinationPath="$(PublishDir)../amvar.launcher.exe"
+      AppBinaryName="launcher/amvar.launcher.dll" IntermediateAssembly="@(IntermediateAssembly->'%(FullPath)')"
+      WindowsGraphicalUserInterface="true" />
+    <Delete Files="$(PublishDir)amvar.launcher.exe" />
+  </Target>
+</Project>

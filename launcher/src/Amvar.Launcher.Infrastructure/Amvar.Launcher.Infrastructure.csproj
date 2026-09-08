@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../Amvar.Launcher.Core/Amvar.Launcher.Core.csproj" />
+    <PackageReference Include="Newtonsoft.Json" />
+  </ItemGroup>
+</Project>

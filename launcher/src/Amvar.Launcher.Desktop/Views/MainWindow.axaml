@@ -1,0 +1,41 @@
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Amvar.Launcher.Desktop.ViewModels" x:Class="Amvar.Launcher.Desktop.Views.MainWindow"
+        x:DataType="vm:LauncherViewModel" Title="amvar launcher" Width="1280" Height="800"
+        MinWidth="1024" MinHeight="720" WindowStartupLocation="CenterScreen" WindowDecorations="None">
+  <Border>
+    <Grid Name="ShellLayout" RowDefinitions="36,*,30">
+      <Border Name="TitleBar" Background="{DynamicResource ShellBackground}">
+        <Grid ColumnDefinitions="Auto,*,Auto">
+          <StackPanel Orientation="Horizontal" Spacing="2" Margin="8,0" VerticalAlignment="Center">
+            <Button Classes="menu" Content="设置" Click="OpenSettings" />
+            <Button Name="HelpButton" Classes="menu" Content="帮助"><Button.Flyout><Flyout Placement="BottomEdgeAlignedLeft"><Flyout.FlyoutPresenterTheme><ControlTheme TargetType="FlyoutPresenter"><Setter Property="Template"><ControlTemplate><Border Background="{DynamicResource ShellSurface}" BorderBrush="{DynamicResource ShellBorder}" BorderThickness="1" CornerRadius="8" Padding="5"><ContentPresenter Content="{TemplateBinding Content}" /></Border></ControlTemplate></Setter></ControlTheme></Flyout.FlyoutPresenterTheme><Button Classes="popupItem" Content="关于" Click="OpenAbout" /></Flyout></Button.Flyout></Button>
+            <Button Name="BackButton" Classes="chrome" ToolTip.Tip="后退" AutomationProperties.Name="后退" IsEnabled="False" Click="GoBack"><Path Classes="glyph" Data="M11 2L5 8L11 14 M5 8H18" /></Button>
+            <Button Name="ForwardButton" Classes="chrome" ToolTip.Tip="前进" AutomationProperties.Name="前进" IsEnabled="False" Click="GoForward"><Path Classes="glyph" Data="M9 2L15 8L9 14 M2 8H15" /></Button>
+          </StackPanel>
+          <Border Grid.Column="1" Name="DragRegion" Background="Transparent" PointerPressed="DragTitle" />
+          <StackPanel Grid.Column="2" Orientation="Horizontal">
+            <Button Classes="chrome caption" ToolTip.Tip="最小化" AutomationProperties.Name="最小化" Click="MinimizeWindow"><Path Classes="windowGlyph" Data="M1 6H11" /></Button>
+            <Button Name="MaximizeButton" Classes="chrome caption" ToolTip.Tip="最大化 / 还原" AutomationProperties.Name="最大化或还原" Click="MaximizeWindow"><Path Name="MaximizeGlyph" Classes="windowGlyph" Data="M1 1H11V11H1Z" /></Button>
+            <Button Classes="chrome caption close" ToolTip.Tip="关闭到托盘" AutomationProperties.Name="关闭到托盘" Click="HideWindow"><Path Classes="windowGlyph" Data="M1 1L11 11 M11 1L1 11" /></Button>
+          </StackPanel>
+        </Grid>
+      </Border>
+      <Grid Grid.Row="1" Name="Workspace">
+        <ContentControl Name="BrowserHost" />
+        <Border Name="LoadingSurface" Background="{DynamicResource ShellBackground}">
+          <StackPanel MaxWidth="480" Margin="32" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="18">
+            <Border Width="64" Height="64" CornerRadius="16" Background="#00D992" HorizontalAlignment="Center" Margin="0,0,0,14"><Path Data="M7 45 18 18h7l11 27h-7l-2-6H16l-2 6H7Zm11-12h7l-3.5-9.5L18 33Zm17 12V18h6l7 11 7-11h6v27h-6V29L48 40l-7-11v16h-6Z" Fill="#101010" Stretch="Uniform" Margin="7" /></Border>
+            <TextBlock Text="{Binding Heading}" FontSize="24" FontWeight="SemiBold" HorizontalAlignment="Center" />
+            <TextBlock Text="{Binding Detail}" Classes="muted" TextWrapping="Wrap" TextAlignment="Center" />
+            <ProgressBar IsIndeterminate="True" IsVisible="{Binding Busy}" Foreground="{DynamicResource ShellAccent}" Width="240" Height="3" Margin="0,10" />
+            <TextBlock Text="{Binding Elapsed}" Classes="muted" HorizontalAlignment="Center" FontSize="12" />
+            <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center"><Button Content="重试" IsVisible="{Binding CanRetry}" Click="Retry" /><Button Content="查看日志" Click="OpenLogs" /></StackPanel>
+          </StackPanel>
+        </Border>
+      </Grid>
+      <Border Name="StatusBar" Grid.Row="2" Background="{DynamicResource ShellBackground}">
+        <Grid ColumnDefinitions="*,Auto" Margin="14,0"><TextBlock Text="{Binding Mode}" Classes="muted" FontSize="11" VerticalAlignment="Center" /><TextBlock Grid.Column="1" Text="127.0.0.1:5600" Classes="muted" FontSize="11" VerticalAlignment="Center" /></Grid>
+      </Border>
+    </Grid>
+  </Border>
+</Window>

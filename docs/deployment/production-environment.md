@@ -7,6 +7,8 @@
 
 Ubuntu profile 仅保留命名，不可组装或交付。
 
+Windows 桌面外壳可通过 `assemble-release --launcher-publish-dir <启动器发行目录>` 随包组装；构建、托盘生命周期和配置见 [amvar launcher 部署](desktop-launcher.md)。默认命令仍按纯视觉服务方式组装。已有桌面用户数据的目录禁止整目录重建，更新应先输出到新目录。
+
 ## 1. 准备构建环境
 
 从仓库根目录执行：

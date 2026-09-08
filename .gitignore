@@ -218,6 +218,7 @@ tempCodeRunnerFile.py
 .ruff_cache/
 
 # .NET
+launcher/config/launcher.json
 [Bb]in/
 [Oo]bj/
 .vs/

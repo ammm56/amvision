@@ -14,6 +14,7 @@ import re
 from typing import Callable
 
 from backend.version import BACKEND_VERSION
+from backend.maintenance.launcher_release import copy_launcher_package, validate_launcher_package
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -80,6 +81,7 @@ class ReleaseAssemblyRequest:
     frontend_runtime_config_source_file: Path | None = None
     frontend_runtime_config_template_file: Path | None = None
     build_frontend: bool = False
+    launcher_publish_dir: Path | None = None
 
     def resolve_release_dir(self) -> Path:
         """返回当前 profile 的发行目录。"""
@@ -184,6 +186,10 @@ def _copy_launcher_tree(release_dir: Path, *, target_os: str) -> None:
 
     _copy_file(
         SOURCE_LAUNCHERS_DIR / "common.py", release_dir / "launchers" / "common.py"
+    )
+    _copy_file(
+        SOURCE_LAUNCHERS_DIR / "inspect_process.py",
+        release_dir / "launchers" / "inspect_process.py",
     )
     _copy_file(
         SOURCE_LAUNCHERS_DIR / "enable_windows_long_paths.py",
@@ -890,16 +896,26 @@ def assemble_release(request: ReleaseAssemblyRequest) -> ReleaseAssemblyResult:
     target_os, target_arch, platform_tag, accelerator_kind = _resolve_release_target(
         source_release_profile
     )
+    launcher_manifest = (
+        validate_launcher_package(request.launcher_publish_dir)
+        if request.launcher_publish_dir is not None else None
+    )
     artifacts_section = source_release_profile["artifacts"]
     assert isinstance(artifacts_section, dict)
     release_dir = request.resolve_release_dir()
     if release_dir.exists() and not request.overwrite:
         raise FileExistsError(f"release 目录已存在: {release_dir}")
+    if launcher_manifest is not None and release_dir.exists() and any(
+        directory.is_dir() and any(directory.iterdir()) for directory in (release_dir / "data", release_dir / "logs", release_dir / "launcher" / "data", release_dir / "launcher" / "logs")
+    ):
+        raise ValueError("包含桌面用户数据的目录不能整包重建；请组装到新目录后仅更新发行清单中的程序文件")
     if request.build_frontend and bool(
         artifacts_section.get("include_frontend", False)
     ):
         _build_frontend_assets()
     preserved_python_temp_dir: Path | None = None
+    launcher_settings_file = release_dir / "launcher" / "config" / "launcher.json"
+    preserved_launcher_settings = launcher_settings_file.read_bytes() if launcher_settings_file.is_file() else None
     if release_dir.exists():
         preserved_python_temp_dir = _stash_existing_python_dir(release_dir)
         try:
@@ -927,6 +943,12 @@ def assemble_release(request: ReleaseAssemblyRequest) -> ReleaseAssemblyResult:
             target_os=target_os,
         )
         copied_root_documents = _copy_root_documents(release_dir)
+        if launcher_manifest is not None and request.launcher_publish_dir is not None:
+            copy_launcher_package(request.launcher_publish_dir, release_dir, launcher_manifest)
+            _copy_file(REPOSITORY_ROOT / "launcher" / "config" / "launcher.example.json", launcher_settings_file)
+        if preserved_launcher_settings is not None:
+            launcher_settings_file.parent.mkdir(parents=True, exist_ok=True)
+            launcher_settings_file.write_bytes(preserved_launcher_settings)
 
         worker_section = source_release_profile["worker"]
         assert isinstance(worker_section, dict)
@@ -1033,6 +1055,7 @@ def assemble_release(request: ReleaseAssemblyRequest) -> ReleaseAssemblyResult:
                 "stop_windows_launcher": "stop-amvision-full.bat",
             },
             "artifacts": artifacts_section,
+            "desktop_launcher": launcher_manifest,
             "layout": {
                 "app_dir": "app",
                 "config_dir": "config",

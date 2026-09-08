@@ -24,6 +24,8 @@ if str(LAUNCHERS_ROOT) not in sys.path:
     sys.path.insert(0, str(LAUNCHERS_ROOT))
 
 from common import (  # noqa: E402
+    clear_full_state,
+    full_state_guard,
     process_identity_matches,
     resolve_app_root,
     resolve_path,
@@ -58,6 +60,8 @@ def build_argument_parser() -> argparse.ArgumentParser:
         default=30.0,
         help="发送终止信号后等待进程退出的秒数",
     )
+    parser.add_argument("--expected-root-identity-file", help="启动器提供的本次 root 身份 JSON 文件")
+    parser.add_argument("--graceful-only", action="store_true", help="仅等待优雅退出，超时不强杀")
     return parser
 
 
@@ -238,6 +242,23 @@ def main(argv: list[str] | None = None) -> int:
         explicit_state_file=args.state_file,
     )
     stack_state = _load_stack_state(state_file_path)
+    expected_root: dict[str, object] | None = None
+    if args.expected_root_identity_file:
+        try:
+            request = json.loads(Path(args.expected_root_identity_file).read_text(encoding="utf-8"))
+            if request.get("format_id") != "amvision.launcher-stop-target.v1" or not isinstance(request.get("root_process"), dict):
+                raise ValueError("预期 root 身份格式无效")
+            expected_root = request["root_process"]
+        except (OSError, ValueError, AttributeError) as error:
+            print(f"停止请求无效：{error}", flush=True)
+            return 2
+        if stack_state is None:
+            if process_identity_matches(expected_root):
+                print("本次 root 仍存活但状态文件尚未出现，请继续等待。", flush=True)
+                return 2
+        elif stack_state.get("root_process") != expected_root:
+            print("运行状态已属于另一个 root，拒绝停止。", flush=True)
+            return 2
     if stack_state is None:
         print(f"未找到运行状态文件，无需停止：{state_file_path}", flush=True)
         return 0
@@ -280,10 +301,7 @@ def main(argv: list[str] | None = None) -> int:
             root_identity = root_process_raw
 
     if not stop_targets and root_identity is None:
-        with contextlib.suppress(FileNotFoundError):
-            state_file_path.unlink()
-        with contextlib.suppress(FileNotFoundError):
-            shutdown_request_file_path.unlink()
+        clear_full_state(state_file_path, None)
         print(f"运行状态文件中没有可停止的进程，已清理：{state_file_path}", flush=True)
         return 0
 
@@ -296,11 +314,19 @@ def main(argv: list[str] | None = None) -> int:
         else:
             shutdown_request_written = False
             try:
-                _write_shutdown_request(
-                    shutdown_request_file_path,
-                    root_process_identity=root_identity,
-                )
+                with full_state_guard(state_file_path):
+                    current_state = _load_stack_state(state_file_path)
+                    if current_state is None or current_state.get("root_process") != root_identity:
+                        print("停止目标已变化，请重新核对。", flush=True)
+                        return 2
+                    _write_shutdown_request(
+                        shutdown_request_file_path,
+                        root_process_identity=root_identity,
+                    )
             except OSError as error:
+                if args.graceful_only:
+                    print(f"优雅停止请求写入失败：{error}", flush=True)
+                    return 2
                 print(
                     f"写入 full-stack-root 优雅停止请求失败，转入强制停止：{error}",
                     flush=True,
@@ -317,6 +343,9 @@ def main(argv: list[str] | None = None) -> int:
             ):
                 print(f"已停止 full-stack-root，pid={root_pid}", flush=True)
             else:
+                if args.graceful_only:
+                    print("本次服务尚未退出，保留状态以便继续等待。", flush=True)
+                    return 2
                 print(
                     f"full-stack-root 未在等待窗口内退出，转入强制停止，pid={root_pid}",
                     flush=True,
@@ -338,6 +367,9 @@ def main(argv: list[str] | None = None) -> int:
         assert isinstance(pid, int)
         if not process_identity_matches(identity):
             print(f"{component_name} 已经退出，pid={pid}", flush=True)
+            continue
+        if args.graceful_only:
+            failed_targets.append((component_name, pid))
             continue
         print(f"正在停止残留 {component_name}，pid={pid}", flush=True)
         stopped = _stop_recorded_process(
@@ -377,10 +409,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
-    with contextlib.suppress(FileNotFoundError):
-        state_file_path.unlink()
-    with contextlib.suppress(FileNotFoundError):
-        shutdown_request_file_path.unlink()
+    clear_full_state(state_file_path, root_identity)
     print(f"已清理运行状态文件：{state_file_path}", flush=True)
     return 0
 

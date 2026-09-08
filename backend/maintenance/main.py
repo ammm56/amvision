@@ -150,6 +150,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="assemble-release 时允许覆盖现有目录",
     )
+    parser.add_argument("--launcher-publish-dir", default=None, help="assemble-release 可选启动器正式发行包目录")
     parser.add_argument(
         "--now-iso",
         default=None,
@@ -216,6 +217,7 @@ def run_command(
     profile_id: str | None = None,
     release_root: str = "release",
     force: bool = False,
+    launcher_publish_dir: str | None = None,
     now_iso: str | None = None,
     retention_hours: int = WORKFLOW_RUNTIME_STORAGE_DEFAULT_RETENTION_HOURS,
     pycache_roots: list[str] | None = None,
@@ -413,6 +415,7 @@ def run_command(
                     runtime.settings.release.frontend.runtime_config_template_file
                 ),
                 build_frontend=True,
+                launcher_publish_dir=Path(launcher_publish_dir) if launcher_publish_dir else None,
             )
         )
         return {
@@ -731,6 +734,7 @@ def main(argv: list[str] | None = None) -> int:
         profile_id=args.profile_id,
         release_root=args.release_root,
         force=args.force,
+        launcher_publish_dir=args.launcher_publish_dir,
         now_iso=args.now_iso,
         retention_hours=args.retention_hours,
         pycache_roots=args.pycache_root,

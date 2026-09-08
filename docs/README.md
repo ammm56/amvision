@@ -10,6 +10,7 @@ AMVision 是面向本地工作站、工控机和边缘设备的工业视觉服�
 | 查看项目目录和代码分层 | [项目结构](architecture/project-structure.md) |
 | 完整启动源码开发环境 | [开发环境启动](deployment/development-environment.md) |
 | 组装并启动生产发行包 | [生产环境](deployment/production-environment.md) |
+| 使用桌面启动器与托盘管理发行服务 | [amvar launcher](deployment/desktop-launcher.md) |
 | 调用 REST、WebSocket、ZeroMQ 或 SDK | [API 与集成](api/README.md) |
 | 核对模型和数据格式支持范围 | [参考资料](reference/README.md) |
 | 开发 Core Node、Custom Node 或 Node Pack | [节点扩展](nodes/README.md) |

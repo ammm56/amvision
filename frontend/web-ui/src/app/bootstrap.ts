@@ -1,10 +1,11 @@
-import { createApp } from 'vue'
+import { createApp, nextTick } from 'vue'
 import { createPinia } from 'pinia'
 
 import App from './App.vue'
 import { createAppRouter } from './router'
 import { registerRouterGuards } from './router/guards'
 import { usePreferencesStore } from './stores/preferences.store'
+import { installLauncherThemeSync } from './launcher-theme'
 import { useSessionStore } from './stores/session.store'
 import { installI18n } from '@/platform/i18n'
 import { configureHttpClient } from '@/shared/api/http-client'
@@ -19,6 +20,7 @@ export async function bootstrapApplication(): Promise<void> {
 
   app.use(pinia)
   usePreferencesStore(pinia).initializePreferences()
+  installLauncherThemeSync(usePreferencesStore(pinia))
   installI18n(app)
 
   configureHttpClient({
@@ -31,4 +33,6 @@ export async function bootstrapApplication(): Promise<void> {
   app.use(router)
   await router.isReady()
   app.mount('#app')
+  await nextTick()
+  document.documentElement.setAttribute('data-amvision-ui-ready', 'v1')
 }

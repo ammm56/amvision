@@ -9,6 +9,7 @@ import sys
 from types import SimpleNamespace
 
 import pytest
+from tests.test_launcher_release import _package
 
 import backend.maintenance.release_assembly as release_assembly
 from backend.maintenance.main import run_command
@@ -16,6 +17,35 @@ from backend.maintenance.release_assembly import (
     ReleaseAssemblyRequest,
     assemble_release,
 )
+
+
+@pytest.mark.parametrize("profile_id", ["full-windows-x64-cpu", "full-windows-x64-nvidia"])
+def test_assemble_release_with_launcher_preserves_configuration_and_blocks_data_loss(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, profile_id: str) -> None:
+    """桌面可选包实际进入发行根，重建保留配置并拒绝删除用户数据。"""
+    _patch_release_runtime_asset_sources(monkeypatch, tmp_path)
+    package = tmp_path / "desktop-package"
+    _package(package)
+    request = ReleaseAssemblyRequest(profile_id=profile_id, output_root=tmp_path / "output", launcher_publish_dir=package)
+    result = assemble_release(request)
+    root = result.release_dir
+    assert (root / "amvar.launcher.exe").is_file()
+    assert (root / "launcher" / "coreclr.dll").is_file()
+    assert not (root / "coreclr.dll").exists()
+    assert (root / "launchers" / "inspect_process.py").is_file()
+    settings = root / "launcher" / "config" / "launcher.json"
+    assert json.loads(settings.read_text(encoding="utf-8"))["manage_service"] is True
+    custom = b'{"schema_version":1,"manage_service":false}'
+    settings.write_bytes(custom)
+    request = ReleaseAssemblyRequest(profile_id=profile_id, output_root=tmp_path / "output", launcher_publish_dir=package, overwrite=True)
+    assemble_release(request)
+    assert settings.read_bytes() == custom
+    marker = root / "launcher" / "data" / "user-data.txt"
+    marker.parent.mkdir(exist_ok=True)
+    marker.write_text("keep", encoding="utf-8")
+    with pytest.raises(ValueError, match="不能整包重建"):
+        assemble_release(request)
+    assert marker.read_text(encoding="utf-8") == "keep"
+    assert settings.read_bytes() == custom
 
 
 def test_assemble_release_materializes_windows_x64_nvidia_layout(

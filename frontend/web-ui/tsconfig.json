@@ -28,6 +28,9 @@
       "vue": [
         "./node_modules/vue"
       ],
+      "pinia": [
+        "./node_modules/pinia"
+      ],
       "vitest": [
         "./node_modules/vitest"
       ],

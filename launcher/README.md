@@ -1,13 +1,40 @@
 # amvar launcher
 
-状态：设计阶段，尚未创建可运行的 .NET 工程或发布桌面程序。
+Windows x64 桌面启动器，源码分为 Core、Infrastructure、Desktop 三个工程；测试在根 `tests/launcher/`。固定打开 `http://127.0.0.1:5600`，不复制 Vue 视觉业务页面。
 
-本目录是桌面启动器源码入口，与 `backend/`、`frontend/` 同级。技术基线为最新稳定版 .NET 10、C#、Avalonia 稳定版、官方 NativeWebView 和 Newtonsoft.Json；仅支持 x64、ARM64，首先实现 Windows x64。
+默认启动并管理本次创建的发行 full 服务。已有外部服务只连接；设置 `launcher/config/launcher.json` 的 `manage_service=false` 时直接载入页面，不调用启停脚本。配置基于程序目录，管理方式与项目目录下次启动生效。
 
-配置文件 `config/launcher.json` 的 `manage_service` 默认 true：启动后检测 `http://127.0.0.1:5600`，已有外部服务只连接；未运行时调用发行项目根目录的 full 启动脚本，只管理本次会话实际启动的完整服务。设为 false 时直接载入该地址，不启动或停止服务，也不要求本机 full/Python 资产。第三方软件启动服务及终端手动开发均使用仅显示模式，启动器不启动开发后端或 Vite。配置改动下次启动应用生效。
+F11 进入/退出全屏，恢复之前的普通或最大化状态。设置中的“启动时全屏”对应 `start_fullscreen`，默认关闭、下次启动生效；临时 F11 切换不修改该偏好。外壳和内嵌前端统一亮暗配色，保存外观后立即同步。
 
-Windows 首版目标为 Windows 10 1903 及之后版本、Windows 11 x64，不开展旧 Windows 专项兼容调查或以此阻塞实施。关闭主窗口时隐藏到系统托盘，右键菜单依次为“显示窗口”“关于”和底部的“退出”。退出仅停止本次启动器创建的 full 完整服务并结束启动器；外部已有服务始终不接管，包括同目录的 full 栈。主窗口使用自定义标题栏，启动等待页与关于窗口使用 C#、Avalonia XAML 原生实现。
+关闭主窗口隐藏到托盘，保留 WebView 和未保存编辑。托盘菜单为“显示窗口／关于／退出”，只有退出才执行服务回收。关于、设置、启动动画为 Avalonia 原生界面。
 
-工程层级、模块依赖、强类型模型、JSON 序列化和状态机见 [启动器工程架构](../docs/architecture/desktop-launcher.md)；逐步工作项、测试和完成条件见 [详细实施步骤](../docs/architecture/desktop-launcher-implementation.md)。采用 Core、Infrastructure、Desktop 三个生产工程，测试统一位于仓库根 `tests/launcher/`。下一步先建立可构建的解决方案和工程骨架，再实现模型、接口与状态迁移。
+## 构建与测试
 
-用户交互、配置内容和发布行为见 [桌面启动器设计](../docs/design/desktop-launcher.md)。本目录后续保存工程源码，构建结果复制到实际使用的项目根目录；发行包中的根目录是 `release/<profile-id>/`，安装后是该包的解压目录。
+```powershell
+dotnet build launcher/Amvar.Launcher.slnx -c Release
+dotnet test launcher/Amvar.Launcher.slnx -c Release
+```
+
+真实进程测试使用受控短进程和独立端口，不操作开发服务：
+
+```powershell
+conda activate amvision
+$testPythonDirectory = python -c "import sys; from pathlib import Path; print(Path(sys.executable).parent)"
+./tests/launcher/test_process_integration.ps1 -PythonDirectory $testPythonDirectory
+```
+
+普通 dotnet test 明确跳过该依赖 Python 夹具的测试；通过上述脚本单独执行，不把跳过算作通过。
+
+## Windows 发布
+
+开发工具需要 .NET 10 SDK。Fixed Version WebView2 x64 解压到 `runtimes/third_party/webview2/win-x64/`，目录直接包含 `msedgewebview2.exe`。运行：
+
+```powershell
+./launcher/publish-win-x64.ps1 -OutputDirectory launcher/bin/publish/win-x64
+```
+
+输出目录必须尚不存在且位于 `launcher/` 项目内。开发构建与发布不写仓库根目录。输出根只放入口 `amvar.launcher.exe`，程序集、运行时、WebView2、配置和日志集中在其旁的 `launcher/` 子目录。二进制与本地配置不进入 Git。
+
+正式发行时两种 profile 均把 EXE 放在 `release/<profile-id>/` 根，其余启动器文件放入该根的 `launcher/`。`project_root="."` 相对入口 EXE 所在根解析。开发时连接手动服务，或通过设置 project_root 指向完整发行根。
+
+正式发行组装、更新和验收边界见 [部署说明](../docs/deployment/desktop-launcher.md)、[工程架构](../docs/architecture/desktop-launcher.md)、[产品设计](../docs/design/desktop-launcher.md)和[实施记录](../docs/architecture/desktop-launcher-implementation.md)。

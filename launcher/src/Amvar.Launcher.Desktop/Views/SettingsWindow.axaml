@@ -1,0 +1,15 @@
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="Amvar.Launcher.Desktop.Views.SettingsWindow"
+        Title="启动器设置" Width="560" SizeToContent="Height" CanResize="False" CanMinimize="False" CanMaximize="False" WindowStartupLocation="CenterOwner" x:CompileBindings="False">
+  <StackPanel Margin="28" Spacing="22">
+    <TextBlock Text="设置" FontSize="22" FontWeight="SemiBold" />
+    <CheckBox Name="ManageService" Content="启动并管理视觉服务" />
+    <CheckBox Name="StartFullscreen" Content="启动时全屏" Margin="0,-12,0,0" />
+    <StackPanel Spacing="8"><TextBlock Text="项目目录" /><TextBox Name="ProjectRoot" /></StackPanel>
+    <Grid ColumnDefinitions="*,24,*">
+      <StackPanel Spacing="8"><TextBlock Text="启动等待时间（秒）" /><NumericUpDown Name="Timeout" Minimum="5" Maximum="86400" Increment="30" FormatString="0" /></StackPanel>
+      <StackPanel Grid.Column="2" Spacing="8"><TextBlock Text="外观" /><ComboBox Name="ThemeChoice" HorizontalAlignment="Stretch"><ComboBoxItem Content="跟随系统" /><ComboBoxItem Content="亮色" /><ComboBoxItem Content="暗色" /></ComboBox></StackPanel>
+    </Grid>
+    <TextBlock Name="Problem" Foreground="#D92D20" TextWrapping="Wrap" IsVisible="False" />
+    <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Right"><Button Content="取消" Click="Cancel" /><Button Name="SaveButton" Classes="primary" Content="保存" Click="Save" /></StackPanel>
+  </StackPanel>
+</Window>

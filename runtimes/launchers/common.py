@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+import contextlib
 import os
 import subprocess
 import sys
+import time
 from collections import deque
 from datetime import datetime
 from pathlib import Path
@@ -14,6 +16,70 @@ from typing import BinaryIO, Callable, Mapping, Sequence
 
 
 WINDOWS_SYSTEM_CONFIGURATION_REQUIRED_EXIT_CODE = 78
+
+
+@contextlib.contextmanager
+def full_state_guard(state_file: Path):
+    """串行化 full 状态写入和条件清理；state_file 为同一安装的状态路径。"""
+
+    state_file.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = state_file.with_suffix(".lock")
+    with lock_path.open("a+b") as handle:
+        if lock_path.stat().st_size == 0:
+            handle.write(b"\0")
+            handle.flush()
+        deadline = time.monotonic() + 10
+        while True:
+            try:
+                handle.seek(0)
+                if os.name == "nt":
+                    import msvcrt
+
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                else:
+                    import fcntl
+
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("等待 full 状态文件锁超时") from None
+                time.sleep(0.02)
+        try:
+            yield
+        finally:
+            handle.seek(0)
+            if os.name == "nt":
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def write_full_json(path: Path, payload: Mapping[str, object]) -> None:
+    """原子写入 full 状态对象；调用方负责持有对应 state guard。"""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    try:
+        temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        temporary.replace(path)
+    finally:
+        with contextlib.suppress(FileNotFoundError):
+            temporary.unlink()
+
+
+def clear_full_state(state_file: Path, root_identity: object) -> None:
+    """仅清理预期 root 的记录；故障摘要保留用于退出后诊断。"""
+
+    paths = (state_file, state_file.with_name(f"{state_file.stem}.shutdown-request.json"), state_file.with_name("launcher-status.json"))
+    with full_state_guard(state_file):
+        for path in paths:
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except (FileNotFoundError, json.JSONDecodeError):
+                continue
+            if payload.get("root_process") == root_identity and payload.get("state") != "failed":
+                path.unlink(missing_ok=True)
 
 
 class DailyAppendLogCapture:

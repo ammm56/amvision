@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "manage_service": true,
+  "start_fullscreen": false,
+  "project_root": ".",
+  "startup_timeout_seconds": 300,
+  "theme": "system",
+  "window": { "width": 1280, "height": 800, "maximized": false }
+}

@@ -1,0 +1,8 @@
+<Solution>
+  <Project Path="src/Amvar.Launcher.Core/Amvar.Launcher.Core.csproj" />
+  <Project Path="../tests/launcher/Amvar.Launcher.Core.Tests/Amvar.Launcher.Core.Tests.csproj" />
+  <Project Path="src/Amvar.Launcher.Infrastructure/Amvar.Launcher.Infrastructure.csproj" />
+  <Project Path="../tests/launcher/Amvar.Launcher.Infrastructure.Tests/Amvar.Launcher.Infrastructure.Tests.csproj" />
+  <Project Path="src/Amvar.Launcher.Desktop/Amvar.Launcher.Desktop.csproj" />
+  <Project Path="../tests/launcher/Amvar.Launcher.Desktop.Tests/Amvar.Launcher.Desktop.Tests.csproj" />
+</Solution>

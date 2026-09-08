@@ -12,6 +12,7 @@ import subprocess
 import sys
 
 from packaging.requirements import InvalidRequirement, Requirement
+from backend.maintenance.launcher_release import validate_launcher_package
 
 
 def validate_release_runtime(
@@ -22,6 +23,11 @@ def validate_release_runtime(
     """校验当前发行目录正在使用的 Python、依赖和 accelerator。"""
 
     issues: list[str] = []
+    if release_manifest.get("desktop_launcher") is not None:
+        try:
+            validate_launcher_package(app_root)
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            issues.append(f"桌面启动器发行文件校验失败: {error}")
     expected_python = (app_root / "python" / "python.exe").resolve()
     actual_python = Path(sys.executable).resolve()
     if os.path.normcase(str(actual_python)) != os.path.normcase(str(expected_python)):

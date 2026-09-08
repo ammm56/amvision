@@ -62,6 +62,7 @@ export default defineConfig({
     root: path.resolve(projectDirectory, '../..'),
     alias: {
       'vue': path.resolve(projectDirectory, 'node_modules/vue'),
+      'pinia': path.resolve(projectDirectory, 'node_modules/pinia'),
       'reka-ui': path.resolve(projectDirectory, 'node_modules/reka-ui'),
       'vitest': path.resolve(projectDirectory, 'node_modules/vitest'),
       '@vue/test-utils': path.resolve(projectDirectory, 'node_modules/@vue/test-utils'),

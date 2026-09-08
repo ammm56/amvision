@@ -32,16 +32,27 @@ from common import (  # noqa: E402
     DailyAppendLogCapture,
     WINDOWS_SYSTEM_CONFIGURATION_REQUIRED_EXIT_CODE,
     build_daily_log_path,
+    clear_full_state,
     ensure_windows_long_paths_enabled,
+    full_state_guard,
     process_identity_matches,
     read_process_identity,
     resolve_app_root,
     resolve_path,
+    write_full_json,
 )
 
 
 FULL_SUPERVISOR_STATE_FORMAT_ID = "amvision.full-supervisor-state.v1"
 FULL_SUPERVISOR_SHUTDOWN_FORMAT_ID = "amvision.full-supervisor-shutdown.v1"
+_active_shutdown_check: Callable[[], None] | None = None
+
+
+def _check_startup_shutdown() -> None:
+    """在组件创建和就绪等待边界响应本次 root 的停止请求。"""
+
+    if _active_shutdown_check is not None:
+        _active_shutdown_check()
 
 
 class SupervisedComponent:
@@ -691,6 +702,7 @@ def _start_component(
     - 子进程对象和按日日志捕获器。
     """
 
+    _check_startup_shutdown()
     log_capture = DailyAppendLogCapture(
         logs_dir=log_file_path.parent,
         component_name=log_file_path.stem,
@@ -742,6 +754,7 @@ def _wait_for_backend_service_ready(
     health_url = f"http://{_resolve_health_host(host)}:{port}/api/v1/system/health"
     last_error = ""
     while time.monotonic() < deadline:
+        _check_startup_shutdown()
         return_code = process.poll()
         if return_code is not None:
             raise RuntimeError(f"backend-service 已退出，returncode={return_code}")
@@ -787,6 +800,7 @@ def _wait_for_worker_ready(
         profile.profile_id,
     )
     while time.monotonic() < deadline:
+        _check_startup_shutdown()
         return_code = process.poll()
         if heartbeat_path.is_file():
             try:
@@ -854,6 +868,7 @@ def _wait_for_inference_daemon_ready(
     ready_marker = "inference-daemon ready"
     last_probe_error = ""
     while time.monotonic() < deadline:
+        _check_startup_shutdown()
         return_code = process.poll()
         log_capture.assert_healthy()
         log_tail = log_capture.tail_text()
@@ -898,6 +913,7 @@ def _run_database_migration(
     app_root: Path,
     command: list[str],
     log_file_path: Path,
+    on_started: Callable[[subprocess.Popen[bytes]], None] | None = None,
 ) -> None:
     """在任何常驻组件启动前完成数据库升级，失败时阻止整套服务启动。"""
 
@@ -907,18 +923,26 @@ def _run_database_migration(
     )
     daily_log_file_path.parent.mkdir(parents=True, exist_ok=True)
     with daily_log_file_path.open("ab") as log_handle:
-        result = subprocess.run(
+        process = subprocess.Popen(
             command,
             cwd=str(app_root),
             env=_build_child_process_environment(),
             stdout=log_handle,
             stderr=subprocess.STDOUT,
-            check=False,
         )
-    if result.returncode != 0:
+        try:
+            if on_started is not None:
+                on_started(process)
+            # 数据库迁移按事务安全边界完成；退出请求在迁移结束后立即检查。
+            return_code = process.wait()
+        finally:
+            if process.poll() is None:
+                _stop_component(process)
+    _check_startup_shutdown()
+    if return_code != 0:
         raise RuntimeError(
             "数据库迁移失败，禁止继续启动；"
-            f"returncode={result.returncode}，"
+            f"returncode={return_code}，"
             f"日志={_format_runtime_path(app_root, daily_log_file_path)}"
         )
     print("数据库 schema 已升级到当前版本。", flush=True)
@@ -958,13 +982,8 @@ def _write_stack_state(
             _build_component_state(app_root, component) for component in components
         ],
     }
-    state_file_path.parent.mkdir(parents=True, exist_ok=True)
-    temp_path = state_file_path.with_name(f"{state_file_path.name}.{os.getpid()}.tmp")
-    temp_path.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
-    temp_path.replace(state_file_path)
+    with full_state_guard(state_file_path):
+        write_full_json(state_file_path, payload)
 
 
 def _build_component_state(
@@ -1099,6 +1118,7 @@ def _wait_for_local_buffer_ready(
     deadline = time.monotonic() + max(1.0, timeout_seconds)
     last_error = ""
     while time.monotonic() < deadline:
+        _check_startup_shutdown()
         return_code = backend_process.poll()
         if return_code is not None:
             raise RuntimeError(
@@ -1165,10 +1185,7 @@ def main(argv: list[str] | None = None) -> int:
         logs_subdir=args.logs_subdir,
         explicit_state_file=args.state_file,
     )
-    _ensure_stack_not_running(state_file_path)
     shutdown_request_file_path = _resolve_shutdown_request_file(state_file_path)
-    with contextlib.suppress(FileNotFoundError):
-        shutdown_request_file_path.unlink()
 
     release_manifest_path = _resolve_release_manifest_path(
         app_root, args.release_manifest_file
@@ -1193,6 +1210,9 @@ def main(argv: list[str] | None = None) -> int:
     worker_topology: object | None = None
     worker_profiles: dict[str, object] = {}
     try:
+        with full_state_guard(state_file_path):
+            _ensure_stack_not_running(state_file_path)
+            shutdown_request_file_path.unlink(missing_ok=True)
         (
             worker_runtime_layout,
             worker_topology,
@@ -1225,7 +1245,39 @@ def main(argv: list[str] | None = None) -> int:
             components=components,
         )
 
+    def write_launcher_status(state: str, error: BaseException | None = None) -> None:
+        """写入当前 root 的真实启动阶段，error 仅保存有界错误摘要。"""
+
+        payload: dict[str, object] = {
+            "format_id": "amvision.launcher-status.v1",
+            "root_process": root_process_identity,
+            "state": state,
+        }
+        if error is not None:
+            payload["error"] = {"code": "full_stack_failed", "message": str(error)[:4096]}
+        with full_state_guard(state_file_path):
+            write_full_json(state_file_path.with_name("launcher-status.json"), payload)
+
+    def check_shutdown() -> None:
+        """停止请求只能针对已绑定的当前 root。"""
+
+        if _shutdown_requested(shutdown_request_file_path, root_process_identity=root_process_identity):
+            raise KeyboardInterrupt
+
+    def record_migration(process: subprocess.Popen[bytes]) -> None:
+        """迁移进程先登记后等待，确保启动期间退出可以观察到它。"""
+
+        components.append(SupervisedComponent(name="database-migration", process=process, log_capture=None))
+        persist_stack_state()
+
+    global _active_shutdown_check
+    _active_shutdown_check = check_shutdown
+    failed = False
+
     try:
+        persist_stack_state()
+        write_launcher_status("starting")
+        check_shutdown()
         _run_database_migration(
             app_root=app_root,
             command=_build_database_migration_command(
@@ -1233,7 +1285,10 @@ def main(argv: list[str] | None = None) -> int:
                 python_executable=python_executable,
             ),
             log_file_path=logs_dir / "database-migration.log",
+            on_started=record_migration,
         )
+        components[:] = [item for item in components if item.name != "database-migration"]
+        check_shutdown()
         service_log_file_path = logs_dir / "backend-service.log"
         service_command = _build_service_command(
             app_root,
@@ -1364,6 +1419,7 @@ def main(argv: list[str] | None = None) -> int:
             flush=True,
         )
         print("full 发布目录全部组件已启动。按 Ctrl+C 停止全部子进程。", flush=True)
+        write_launcher_status("running")
 
         while True:
             if _shutdown_requested(
@@ -1466,7 +1522,16 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         print("收到终止信号，正在停止全部子进程。", flush=True)
         return 0
+    except BaseException as error:
+        failed = True
+        with contextlib.suppress(OSError):
+            write_launcher_status("failed", error)
+        raise
     finally:
+        _active_shutdown_check = None
+        if not failed:
+            with contextlib.suppress(OSError):
+                write_launcher_status("stopping")
         if worker_runtime_layout is not None and worker_topology is not None:
             with contextlib.suppress(Exception):
                 worker_topology = _update_worker_topology_state(
@@ -1490,11 +1555,10 @@ def main(argv: list[str] | None = None) -> int:
                     topology=worker_topology,
                     state="stopped",
                 )
-        topology_lock.release()
-        with contextlib.suppress(FileNotFoundError):
-            state_file_path.unlink()
-        with contextlib.suppress(FileNotFoundError):
-            shutdown_request_file_path.unlink()
+        try:
+            clear_full_state(state_file_path, root_process_identity)
+        finally:
+            topology_lock.release()
 
 
 if __name__ == "__main__":
