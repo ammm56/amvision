@@ -10,6 +10,8 @@
     </PageHeader>
 
     <InlineError :message="errorMessage" />
+    <ResourceCleanupPanel :project-id="selectedProjectId" @settled="refreshPage" />
+    <ImportedModelAssets :project-id="selectedProjectId" />
 
     <div class="operation-grid model-ops-grid">
       <ModelTrainingForm
@@ -202,6 +204,8 @@ import {
 import { useProjectStore } from '@/app/stores/project.store'
 import { useSessionStore } from '@/app/stores/session.store'
 import Button from '@/shared/ui/components/Button.vue'
+import ResourceCleanupPanel from '@/shared/ui/components/ResourceCleanupPanel.vue'
+import ImportedModelAssets from '../components/ImportedModelAssets.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import PageHeader from '@/shared/ui/layout/PageHeader.vue'
 import ConversionTaskList from '../components/ConversionTaskList.vue'

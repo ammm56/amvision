@@ -1,0 +1,6 @@
+export const resourceDeletionMessages = {
+  'zh-CN': { remove: '删除', cancel: '取消', confirm: '删除资源', detail: '删除记录及其拥有的磁盘文件。仍被使用的资源会阻止删除。', pending: '文件清理', running: '记录已删除，正在清理文件', prepared: '正在删除', failed: '清理未完成', retry: '重试清理', versions: '数据集版本', dataset: '删除整个数据集', action: '操作' },
+  'en-US': { remove: 'Delete', cancel: 'Cancel', confirm: 'Delete resource', detail: 'Delete the record and its owned files. Resources still in use cannot be deleted.', pending: 'File cleanup', running: 'Record deleted; cleaning files', prepared: 'Deleting', failed: 'Cleanup incomplete', retry: 'Retry cleanup', versions: 'Dataset versions', dataset: 'Delete dataset', action: 'Actions' },
+  'ja-JP': { remove: '削除', cancel: 'キャンセル', confirm: 'リソースを削除', detail: 'レコードと所有ファイルを削除します。使用中のリソースは削除できません。', pending: 'ファイルの整理', running: 'レコード削除済み、ファイルを整理中', prepared: '削除中', failed: '整理未完了', retry: '再試行', versions: 'データセットのバージョン', dataset: 'データセットを削除', action: '操作' },
+  'ko-KR': { remove: '삭제', cancel: '취소', confirm: '리소스 삭제', detail: '레코드와 소유 파일을 삭제합니다. 사용 중인 리소스는 삭제할 수 없습니다.', pending: '파일 정리', running: '레코드 삭제됨, 파일 정리 중', prepared: '삭제 중', failed: '정리 미완료', retry: '정리 재시도', versions: '데이터셋 버전', dataset: '데이터셋 삭제', action: '작업' },
+}

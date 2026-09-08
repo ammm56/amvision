@@ -10,6 +10,7 @@
     </PageHeader>
 
     <InlineError :message="taskStore.error" />
+    <ResourceCleanupPanel :project-id="projectStore.selectedProjectId" @settled="refreshTasks" />
 
     <EmptyState
       v-if="taskStore.tasks.length === 0"
@@ -26,6 +27,7 @@
             <th>{{ t('tasks.columns.state') }}</th>
             <th>{{ t('tasks.columns.progress') }}</th>
             <th>{{ t('tasks.columns.updatedAt') }}</th>
+            <th>{{ t('datasetOps.columns.actions') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -43,6 +45,7 @@
               />
             </td>
             <td>{{ formatSystemDateTime(task.updated_at || task.created_at) }}</td>
+            <td><ResourceDeleteButton kind="task" :resource-id="task.task_id" :project-id="task.project_id || projectStore.selectedProjectId" :disabled="!['succeeded', 'completed', 'failed', 'cancelled', 'canceled', 'timed_out', 'paused'].includes(task.state || '')" @accepted="refreshTasks" /></td>
           </tr>
         </tbody>
       </table>
@@ -75,6 +78,8 @@ import TaskProgress from '../components/TaskProgress.vue'
 import { DEFAULT_TASK_PAGE_SIZE, getTaskProgressPercent, useTaskStore } from '../stores/task.store'
 import type { TaskRecord } from '@/shared/contracts'
 import { useProjectStore } from '@/app/stores/project.store'
+import ResourceCleanupPanel from '@/shared/ui/components/ResourceCleanupPanel.vue'
+import ResourceDeleteButton from '@/shared/ui/components/ResourceDeleteButton.vue'
 import Button from '@/shared/ui/components/Button.vue'
 import PaginationControls from '@/shared/ui/components/PaginationControls.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'

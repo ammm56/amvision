@@ -242,10 +242,11 @@ export function buildDefaultDeploymentRuntimeConfiguration(
 export async function deleteTaskDeployment(
   taskType: ModelTaskType,
   deploymentInstanceId: string,
+  expectedRevision?: string,
 ): Promise<void> {
   await apiRequest<void>(
     buildDeploymentPath(taskType, `/${encodeURIComponent(deploymentInstanceId)}`),
-    { method: 'DELETE', responseType: 'void' },
+    { method: 'DELETE', responseType: 'void', query: { expected_revision: expectedRevision } },
   )
 }
 

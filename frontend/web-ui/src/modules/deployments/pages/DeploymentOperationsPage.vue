@@ -6,6 +6,8 @@
           <span>{{ t('deploymentOps.fields.runtimeMode') }}</span>
           <SelectField fit-options :model-value="runtimeMode" :options="runtimeModeOptions" @update:model-value="setRuntimeMode" />
         </label>
+        <Button variant="secondary" :disabled="!selectedProjectId || !canWriteModels" @click="transferPanel?.beginImport()">{{ t('deploymentTransfer.importInstance') }}</Button>
+        <input ref="transferFileInput" type="file" accept=".zip" hidden @change="uploadDeploymentPackage">
         <Button variant="secondary" :disabled="loading" :loading="loading" @click="refreshPage">
           <RefreshCw :size="16" />
           {{ t('common.refresh') }}
@@ -14,6 +16,8 @@
     </PageHeader>
 
     <InlineError :message="errorMessage" />
+    <ResourceCleanupPanel :project-id="selectedProjectId" @settled="refreshPage" />
+    <DeploymentTransferPanel ref="transferPanel" :project-id="selectedProjectId" :devices="sessionStore.bootstrap?.devices ?? null" @settled="refreshPage" @choose-file="transferFileInput?.click()" />
 
     <div class="operation-grid deployment-workspace-grid">
       <form class="form-panel deployment-create-panel" @submit.prevent="submitDeployment">
@@ -272,6 +276,7 @@
             <header class="deployment-instance-card__header">
               <div class="deployment-instance-card__title">
                 <strong>{{ deploymentCardTitle(item) }}</strong>
+                <span class="deployment-instance-card__origin">{{ t(item.metadata.creation_source === 'deployment-import' ? 'deploymentTransfer.importOrigin' : 'deploymentTransfer.localOrigin') }}</span>
               </div>
               <div
                 class="deployment-instance-card__states"
@@ -358,6 +363,7 @@
                 <Square :size="14" />
                 {{ t('deploymentOps.actions.stop') }}
               </Button>
+              <DeploymentExportActions v-if="selectedProjectId" :key="`${selectedProjectId}:${item.deployment_instance_id}`" :project-id="selectedProjectId" :deployment-id="item.deployment_instance_id" :operation="transferPanel?.exportFor(item.deployment_instance_id)" :disabled="!canWriteModels" @updated="transferPanel?.store($event)" />
               <Button
                 type="button"
                 size="sm"
@@ -418,7 +424,15 @@
       confirm-variant="danger"
       @cancel="closeDeleteDeploymentDialog"
       @confirm="confirmDeleteDeployment"
-    />
+    >
+      <InlineError :message="errorMessage" />
+      <template v-if="deletionPreview">
+        <p v-if="deletionPreview.deleted_models.length">{{ t('deploymentTransfer.deleteModels') }}</p>
+        <ul><li v-for="model in deletionPreview.deleted_models" :key="model.resource_id">{{ model.kind }} · {{ model.resource_id }}</li></ul>
+        <p v-if="deletionPreview.retained_models.length">{{ t('deploymentTransfer.retainModels') }}</p>
+        <ul><li v-for="model in deletionPreview.retained_models" :key="model.resource_id">{{ model.resource_id }}（{{ model.reason }}）</li></ul>
+      </template>
+    </ConfirmDialog>
 
     <DeploymentStatusDrawer
       :open="statusDrawerOpen"
@@ -483,6 +497,20 @@ import Button from '@/shared/ui/components/Button.vue'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import SelectField from '@/shared/ui/components/Select.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
+import ResourceCleanupPanel from '@/shared/ui/components/ResourceCleanupPanel.vue'
+import DeploymentTransferPanel from '../components/DeploymentTransferPanel.vue'
+import DeploymentExportActions from '../components/DeploymentExportActions.vue'
+import { previewDeploymentDeletion, type DeploymentDeletionPreview } from '../services/deployment-transfer.service'
+
+const transferPanel = ref<InstanceType<typeof DeploymentTransferPanel> | null>(null)
+const transferFileInput = ref<HTMLInputElement | null>(null)
+const deletionPreview = ref<DeploymentDeletionPreview | null>(null)
+async function uploadDeploymentPackage(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (file) await transferPanel.value?.upload(file)
+}
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import InlineMessage from '@/shared/ui/feedback/InlineMessage.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
@@ -625,7 +653,7 @@ const pendingDeleteDeployment = computed(() => {
   return deploymentId ? deployments.value.find((item) => item.deployment_instance_id === deploymentId) ?? null : null
 })
 const deleteDeploymentDialogDetails = computed(() => {
-  return pendingDeleteDeployment.value ? t('deploymentOps.messages.deleteConfirm') : ''
+  return pendingDeleteDeployment.value ? t('deploymentTransfer.deleteDetails') : ''
 })
 const deploymentDeviceLabels = computed(() => ({
   automaticDefault: t('deploymentOps.options.automaticDefault'),
@@ -1810,10 +1838,15 @@ async function runHealthAction(deploymentId: string, modeValue: string, action: 
   }
 }
 
-function openDeleteDeploymentDialog(deploymentId: string): void {
+async function openDeleteDeploymentDialog(deploymentId: string): Promise<void> {
   const deployment = deployments.value.find((item) => item.deployment_instance_id === deploymentId)
   if (!deployment || !canDeleteDeployment(deployment)) return
-  pendingDeleteDeploymentId.value = deploymentId
+  try {
+    deletionPreview.value = await previewDeploymentDeletion(selectedProjectId.value!, deploymentId)
+    pendingDeleteDeploymentId.value = deploymentId
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : String(error)
+  }
 }
 
 function closeDeleteDeploymentDialog(): void {
@@ -1831,18 +1864,19 @@ async function confirmDeleteDeployment(): Promise<void> {
   setDeploymentRunningAction(deploymentId, 'delete')
   errorMessage.value = null
   try {
-    await deleteTaskDeployment(taskType, deploymentId)
+    await deleteTaskDeployment(taskType, deploymentId, deletionPreview.value?.revision)
     deleteDeploymentRuntimeSnapshot(deploymentId)
     deploymentEvents.value = []
     lastCreatedDeployment.value = lastCreatedDeployment.value?.deployment_instance_id === deploymentId
       ? null
       : lastCreatedDeployment.value
     await refreshPage()
+    pendingDeleteDeploymentId.value = null
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('deploymentOps.messages.deleteFailed')
+    try { deletionPreview.value = await previewDeploymentDeletion(selectedProjectId.value!, deploymentId) } catch { /* 保留后端错误，避免隐藏失败。 */ }
   } finally {
     setDeploymentRunningAction(deploymentId, null)
-    pendingDeleteDeploymentId.value = null
   }
 }
 
@@ -1960,6 +1994,8 @@ async function loadDeploymentRuntimeHealthBeforeWarmup(
   gap: 4px;
   min-width: 0;
 }
+
+.deployment-instance-card__origin { color: var(--am-text-muted); font-size: 12px; }
 
 .deployment-instance-card__title strong,
 .deployment-instance-card__details strong {

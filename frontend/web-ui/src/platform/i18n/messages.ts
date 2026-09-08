@@ -1,4 +1,5 @@
 import type { SupportedLocale } from './locales'
+import { deploymentTransferMessages } from './deployment-transfers'
 
 export type MessageValue = string | MessageSchema
 
@@ -9267,6 +9268,10 @@ for (const locale of ['zh-CN', 'en-US', 'ja-JP', 'ko-KR'] as const) {
     ...(workflowEditorMessages.feedback as MessageSchema),
     ...workflowPreviewInputMessages[locale],
   }
+}
+
+for (const locale of ['zh-CN', 'en-US', 'ja-JP', 'ko-KR'] as const) {
+  baseMessages[locale].deploymentTransfer = deploymentTransferMessages[locale]
 }
 
 export const messages: Record<string, MessageSchema> = {

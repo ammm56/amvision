@@ -10,6 +10,7 @@
     </PageHeader>
 
     <InlineError :message="errorMessage" />
+    <ResourceCleanupPanel :project-id="selectedProjectId" @settled="refreshPage" />
 
     <div class="operation-grid dataset-ops-grid">
       <DatasetImportForm
@@ -71,12 +72,16 @@
       @close="closeDatasetVersionPicker"
     />
 
+    <DatasetVersionResources :versions="datasetVersions" :project-id="selectedProjectId" @changed="refreshPage" />
+
     <DatasetImportRecords
       :imports="imports"
+      @changed="refreshPage"
     />
 
     <DatasetExportRecords
       :exports="exports"
+      @changed="refreshPage"
       :can-write-datasets="canWriteDatasets"
       :packaging-export-id="packagingExportId"
       @package="packageExport"
@@ -90,6 +95,8 @@ import { computed, onMounted, ref } from 'vue'
 import { RefreshCw } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 
+import ResourceCleanupPanel from '@/shared/ui/components/ResourceCleanupPanel.vue'
+import DatasetVersionResources from '../components/DatasetVersionResources.vue'
 import DatasetExportForm from '../components/DatasetExportForm.vue'
 import DatasetExportRecords from '../components/DatasetExportRecords.vue'
 import DatasetImportForm from '../components/DatasetImportForm.vue'

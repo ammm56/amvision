@@ -4,7 +4,7 @@
       <section
         ref="dialogRef"
         class="confirm-dialog"
-        :class="{ 'confirm-dialog--wide': size === 'wide' }"
+        :class="{ 'confirm-dialog--wide': size === 'wide', 'confirm-dialog--medium': size === 'medium' }"
         role="dialog"
         aria-modal="true"
         :aria-labelledby="titleId"
@@ -57,7 +57,7 @@ const props = withDefaults(
     confirmDisabled?: boolean
     confirmVariant?: 'primary' | 'danger'
     initialFocus?: 'cancel' | 'first-field'
-    size?: 'default' | 'wide'
+    size?: 'default' | 'medium' | 'wide'
   }>(),
   {
     message: '',
@@ -165,6 +165,10 @@ onBeforeUnmount(() => {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+}
+
+.confirm-dialog--medium {
+  width: min(640px, calc(100vw - 36px));
 }
 
 .confirm-dialog--wide {

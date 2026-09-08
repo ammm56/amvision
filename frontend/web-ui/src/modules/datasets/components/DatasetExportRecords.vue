@@ -30,6 +30,7 @@
             <td>{{ item.package_file_name || item.package_object_key || '-' }}</td>
             <td>
               <div class="table-actions">
+                <ResourceDeleteButton kind="dataset-export" :resource-id="item.dataset_export_id" :project-id="item.project_id" :disabled="!['completed', 'failed'].includes(item.status)" @accepted="$emit('changed')" />
                 <Button
                   size="sm"
                   variant="secondary"
@@ -59,6 +60,7 @@ import { Download, PackageCheck } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 
 import type { DatasetExportSummary } from '../services/dataset.service'
+import ResourceDeleteButton from '@/shared/ui/components/ResourceDeleteButton.vue'
 import Button from '@/shared/ui/components/Button.vue'
 import TaskStateBadge from '@/modules/tasks/components/TaskStateBadge.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
@@ -70,6 +72,7 @@ defineProps<{
 }>()
 
 defineEmits<{
+  changed: []
   package: [datasetExportId: string]
   download: [datasetExport: DatasetExportSummary]
 }>()

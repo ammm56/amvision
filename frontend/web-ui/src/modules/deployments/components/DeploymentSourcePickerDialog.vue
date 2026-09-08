@@ -143,6 +143,7 @@
               >
                 <div class="deployment-source-build-meta">
                   <strong>{{ build.model_build_id }}</strong>
+                  <span v-if="build.metadata.import_provenance">{{ t('deploymentTransfer.importOrigin') }}</span>
                   <span>
                     {{ build.build_format }} · {{ build.runtime_backend }} ·
                     {{ build.runtime_precision.toUpperCase() }}

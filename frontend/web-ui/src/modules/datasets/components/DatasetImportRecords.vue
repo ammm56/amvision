@@ -15,6 +15,7 @@
             <th>{{ t('datasetOps.columns.version') }}</th>
             <th>{{ t('datasetOps.columns.format') }}</th>
             <th>{{ t('datasetOps.columns.createdAt') }}</th>
+            <th>{{ t('datasetOps.columns.actions') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -27,6 +28,7 @@
             <td>{{ item.dataset_version_id || '-' }}</td>
             <td>{{ item.format_type || '-' }}</td>
             <td>{{ formatSystemDateTime(item.created_at) }}</td>
+            <td><ResourceDeleteButton kind="dataset-import" :resource-id="item.dataset_import_id" :project-id="item.project_id" :disabled="!['completed', 'failed'].includes(item.status)" @accepted="$emit('changed')" /></td>
           </tr>
         </tbody>
       </table>
@@ -41,11 +43,13 @@ import { useI18n } from 'vue-i18n'
 import type { DatasetImportSummary } from '../services/dataset.service'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import TaskStateBadge from '@/modules/tasks/components/TaskStateBadge.vue'
+import ResourceDeleteButton from '@/shared/ui/components/ResourceDeleteButton.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 
 defineProps<{
   imports: DatasetImportSummary[]
 }>()
 
+defineEmits<{ changed: [] }>()
 const { t } = useI18n()
 </script>

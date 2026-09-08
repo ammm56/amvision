@@ -14,7 +14,11 @@ export class ApiError extends Error {
   readonly requestId?: string | null
 
   constructor(status: number, payload: ApiErrorPayload) {
-    super(payload.message)
+    const details = payload.details as { blockers?: Array<{ resource_id?: string; references?: string[] }> } | undefined
+    const dependencies = Array.isArray(details?.blockers)
+      ? [...new Set(details.blockers.flatMap(item => [item.resource_id, ...(item.references ?? [])]).filter((id): id is string => typeof id === 'string'))]
+      : []
+    super(dependencies.length ? `${payload.message}\n${dependencies.join('、')}` : payload.message)
     this.name = 'ApiError'
     this.status = status
     this.code = payload.code
