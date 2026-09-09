@@ -127,11 +127,12 @@ WORKFLOW_POSTMAN_COLLECTIONS = {
     ),
 }
 
+
+
+
 COMPLETE_WORKFLOW_REQUEST_NAMES = {
     "Save Template",
     "Save Application",
-    "Create Preview Run",
-    "Get Preview Run",
     "Create App Runtime",
     "Start App Runtime",
     "Get App Runtime Health",
@@ -144,8 +145,6 @@ COMPLETE_WORKFLOW_REQUEST_NAMES = {
 TRIGGER_SOURCE_WORKFLOW_REQUEST_NAMES = {
     "Save Template",
     "Save Application",
-    "Create Preview Run",
-    "Get Preview Run",
     "Create App Runtime",
     "Start App Runtime",
     "Get App Runtime Health",
@@ -159,7 +158,6 @@ TRIGGER_SOURCE_WORKFLOW_REQUEST_NAMES = {
     "Delete TriggerSource",
     "Stop App Runtime",
 }
-
 
 def _build_trigger_source_workflow_request_names(
     invoke_request_name: str,
@@ -197,13 +195,6 @@ def test_workflow_api_real_path_example_requests_are_valid() -> None:
     )
     application_request = _read_api_workflow_example(
         example_name, "save-application.request.json"
-    )
-    preview_run_request = _read_api_workflow_example(
-        example_name, "preview-run.request.json"
-    )
-    preview_execution_policy_request = _read_api_workflow_example(
-        example_name,
-        "preview-execution-policy.create.request.json",
     )
     runtime_execution_policy_request = _read_api_workflow_example(
         example_name,
@@ -266,14 +257,6 @@ def test_workflow_api_real_path_example_requests_are_valid() -> None:
         == "deployment-control-detection-lifecycle-real-path"
     )
     assert (
-        preview_execution_policy_request["execution_policy_id"]
-        == "preview-default-policy"
-    )
-    assert preview_execution_policy_request["policy_kind"] == "preview-default"
-    assert (
-        preview_execution_policy_request["metadata"]["target_surface"] == "preview-run"
-    )
-    assert (
         runtime_execution_policy_request["execution_policy_id"]
         == "runtime-default-policy"
     )
@@ -281,15 +264,6 @@ def test_workflow_api_real_path_example_requests_are_valid() -> None:
     assert (
         runtime_execution_policy_request["metadata"]["target_surface"] == "app-runtime"
     )
-    assert "execution_policy_id" not in preview_run_request
-    assert preview_run_request["input_bindings"]["request_image_ref"]["object_key"] == (
-        "projects/project-1/inputs/source.jpg"
-    )
-    assert (
-        preview_run_request["execution_metadata"]["scenario"]
-        == "deployment-control-detection-lifecycle-real-path"
-    )
-    assert "timeout_seconds" not in preview_run_request
     assert "execution_policy_id" not in app_runtime_create_request
     assert (
         app_runtime_create_request["metadata"]["uses_existing_deployment_instance"]
@@ -363,11 +337,9 @@ def test_workflow_postman_collection_contains_manual_test_sequence() -> None:
     assert "Get Workflow Template" in request_names
     assert "Save Flow Application" in request_names
     assert "Get Flow Application" in request_names
-    assert "Create Preview Execution Policy" in request_names
     assert "Create Runtime Execution Policy" in request_names
     assert "List Execution Policies" in request_names
     assert "Get Runtime Execution Policy" in request_names
-    assert "Create Preview Run" in request_names
     assert "Create App Runtime" in request_names
     assert "Get App Runtime Health" in request_names
     assert "List App Runtime Instances" in request_names
@@ -395,7 +367,6 @@ def test_workflow_postman_collection_contains_manual_test_sequence() -> None:
     )
     assert variables["templateId"] == "detection-deployment-lifecycle-real-path"
     assert variables["applicationId"] == "detection-deployment-lifecycle-real-path-app"
-    assert variables["previewExecutionPolicyId"] == "preview-default-policy"
     assert variables["runtimeExecutionPolicyId"] == "runtime-default-policy"
     assert "datasetImportWorkflowRuntimeId" in variables
     assert "datasetExportWorkflowRuntimeId" in variables
@@ -407,13 +378,9 @@ def test_workflow_postman_collection_contains_manual_test_sequence() -> None:
 
     save_template_body = json.loads(request_payloads["Save Workflow Template"])
     save_application_body = json.loads(request_payloads["Save Flow Application"])
-    preview_execution_policy_body = json.loads(
-        request_payloads["Create Preview Execution Policy"]
-    )
     runtime_execution_policy_body = json.loads(
         request_payloads["Create Runtime Execution Policy"]
     )
-    preview_body = json.loads(request_payloads["Create Preview Run"])
     create_runtime_body = json.loads(request_payloads["Create App Runtime"])
     async_run_body = json.loads(request_payloads["Create Async Workflow Run"])
     invoke_body = json.loads(request_payloads["Invoke App Runtime"])
@@ -492,21 +459,10 @@ def test_workflow_postman_collection_contains_manual_test_sequence() -> None:
         is True
     )
     assert (
-        preview_execution_policy_body["execution_policy_id"]
-        == "{{previewExecutionPolicyId}}"
-    )
-    assert preview_execution_policy_body["policy_kind"] == "preview-default"
-    assert (
         runtime_execution_policy_body["execution_policy_id"]
         == "{{runtimeExecutionPolicyId}}"
     )
     assert runtime_execution_policy_body["policy_kind"] == "runtime-default"
-    assert preview_body["execution_policy_id"] == "{{previewExecutionPolicyId}}"
-    assert (
-        preview_body["execution_metadata"]["scenario"]
-        == "deployment-control-detection-lifecycle-real-path"
-    )
-    assert "timeout_seconds" not in preview_body
     assert create_runtime_body["execution_policy_id"] == "{{runtimeExecutionPolicyId}}"
     assert create_runtime_body["metadata"]["uses_existing_deployment_instance"] is True
     assert "request_timeout_seconds" not in create_runtime_body
@@ -1078,9 +1034,6 @@ def test_trigger_source_api_invoke_examples_target_http_base64_binding(
             )
         )
     )
-    preview_run_request = _read_api_workflow_example(
-        example_name, "preview-run.request.json"
-    )
     invoke_request = _read_api_workflow_example(
         example_name, "app-runtime.invoke.request.json"
     )
@@ -1103,23 +1056,10 @@ def test_trigger_source_api_invoke_examples_target_http_base64_binding(
         input_binding_index["request_image_ref"].metadata["payload_type_id"]
         == "image-ref.v1"
     )
-    assert preview_run_request["application_ref"] == {
-        "application_id": application.application_id
-    }
-    assert set(preview_run_request["input_bindings"]) == expected_input_binding_ids
-    assert (
-        preview_run_request["execution_metadata"]["trigger_source"] == "editor-preview"
-    )
-    assert preview_run_request["timeout_seconds"] == 30
     assert set(invoke_request["input_bindings"]) == expected_input_binding_ids
     assert set(run_create_request["input_bindings"]) == expected_input_binding_ids
-    assert "request_image_ref" not in preview_run_request["input_bindings"]
     assert "request_image_ref" not in invoke_request["input_bindings"]
     assert "request_image_ref" not in run_create_request["input_bindings"]
-    assert (
-        preview_run_request["input_bindings"]["request_image_base64"]["media_type"]
-        == "image/png"
-    )
     assert (
         invoke_request["input_bindings"]["request_image_base64"]["media_type"]
         == "image/png"
@@ -1202,9 +1142,6 @@ def test_plc_register_trigger_source_api_examples_are_valid() -> None:
     create_request = _read_api_workflow_example(
         example_name, "app-runtime.create.request.json"
     )
-    preview_run_request = _read_api_workflow_example(
-        example_name, "preview-run.request.json"
-    )
     invoke_request = _read_api_workflow_example(
         example_name, "app-runtime.invoke.request.json"
     )
@@ -1236,16 +1173,8 @@ def test_plc_register_trigger_source_api_examples_are_valid() -> None:
         if binding.direction == "input"
     }
     assert input_binding_ids == {"request_trigger_payload", "request_trigger_event"}
-    assert set(preview_run_request["input_bindings"]) == input_binding_ids
     assert set(invoke_request["input_bindings"]) == input_binding_ids
     assert set(run_create_request["input_bindings"]) == input_binding_ids
-    assert preview_run_request["application_ref"] == {
-        "application_id": application.application_id
-    }
-    assert (
-        preview_run_request["execution_metadata"]["trigger_source"] == "editor-preview"
-    )
-    assert preview_run_request["timeout_seconds"] == 30
     assert (
         invoke_request["execution_metadata"]["scenario"]
         == "plc-register-modbus-tcp-async-result-record"
@@ -1325,9 +1254,6 @@ def test_directory_watch_trigger_source_api_examples_are_valid() -> None:
     create_request = _read_api_workflow_example(
         example_name, "app-runtime.create.request.json"
     )
-    preview_run_request = _read_api_workflow_example(
-        example_name, "preview-run.request.json"
-    )
     invoke_request = _read_api_workflow_example(
         example_name, "app-runtime.invoke.request.json"
     )
@@ -1362,10 +1288,6 @@ def test_directory_watch_trigger_source_api_examples_are_valid() -> None:
         if binding.direction == "input"
     }
     assert input_binding_ids == {"request_json", "deployment_request", "request_roi"}
-    assert set(preview_run_request["input_bindings"]) == {
-        "request_json",
-        "deployment_request",
-    }
     assert set(invoke_request["input_bindings"]) == {
         "request_json",
         "deployment_request",
@@ -1374,17 +1296,6 @@ def test_directory_watch_trigger_source_api_examples_are_valid() -> None:
         "request_json",
         "deployment_request",
     }
-    assert preview_run_request["application_ref"] == {
-        "application_id": application.application_id
-    }
-    assert (
-        preview_run_request["execution_metadata"]["trigger_source"] == "editor-preview"
-    )
-    assert preview_run_request["timeout_seconds"] == 30
-    assert (
-        preview_run_request["input_bindings"]["request_json"]["value"]["format_id"]
-        == "amvision.directory-change-event.v1"
-    )
     assert (
         invoke_request["execution_metadata"]["scenario"]
         == "industrial-local-directory-watch-detection-position-gate"
@@ -1491,9 +1402,6 @@ def test_directory_poll_trigger_source_api_examples_are_valid() -> None:
     create_request = _read_api_workflow_example(
         example_name, "app-runtime.create.request.json"
     )
-    preview_run_request = _read_api_workflow_example(
-        example_name, "preview-run.request.json"
-    )
     invoke_request = _read_api_workflow_example(
         example_name, "app-runtime.invoke.request.json"
     )
@@ -1532,20 +1440,8 @@ def test_directory_poll_trigger_source_api_examples_are_valid() -> None:
         "request_trigger_event",
         "deployment_request",
     }
-    assert set(preview_run_request["input_bindings"]) == input_binding_ids
     assert set(invoke_request["input_bindings"]) == input_binding_ids
     assert set(run_create_request["input_bindings"]) == input_binding_ids
-    assert preview_run_request["application_ref"] == {
-        "application_id": application.application_id
-    }
-    assert (
-        preview_run_request["execution_metadata"]["trigger_source"] == "editor-preview"
-    )
-    assert preview_run_request["timeout_seconds"] == 30
-    assert (
-        preview_run_request["input_bindings"]["request_trigger_payload"]["batch_id"]
-        == "directory-poll-trigger-source-11:1"
-    )
     assert (
         invoke_request["execution_metadata"]["scenario"]
         == "industrial-local-directory-poll-detection-position-gate"
@@ -1866,9 +1762,6 @@ def test_workflow_api_industrial_single_frame_glue_roi_delivery_bundle_requests_
     application_request = _read_api_workflow_example(
         example_name, "save-application.request.json"
     )
-    preview_run_request = _read_api_workflow_example(
-        example_name, "preview-run.request.json"
-    )
     create_request = _read_api_workflow_example(
         example_name, "app-runtime.create.request.json"
     )
@@ -1912,33 +1805,6 @@ def test_workflow_api_industrial_single_frame_glue_roi_delivery_bundle_requests_
     assert create_request["metadata"]["delivery_mode"] == "plc-json-csv-http-sql"
     assert "request_timeout_seconds" not in create_request
 
-    assert preview_run_request["application_ref"] == {
-        "application_id": application.application_id
-    }
-    assert set(preview_run_request["input_bindings"]) == {
-        "request_image_path",
-        "request_regions",
-        "request_roi",
-        "request_delivery_context",
-        "request_signal_write",
-    }
-    assert (
-        preview_run_request["input_bindings"]["request_regions"]["items"][0][
-            "class_name"
-        ]
-        == "glue"
-    )
-    assert preview_run_request["input_bindings"]["request_delivery_context"]["value"][
-        "record_id"
-    ] == ("line-b-20260610-0001")
-    assert preview_run_request["execution_metadata"]["example_name"] == example_name
-    assert preview_run_request["execution_metadata"]["scenario"] == (
-        "industrial-single-frame-glue-roi-delivery-bundle"
-    )
-    assert (
-        preview_run_request["execution_metadata"]["trigger_source"] == "editor-preview"
-    )
-    assert preview_run_request["timeout_seconds"] == 30
 
     assert (
         invoke_request["input_bindings"]["request_signal_write"]["value"][
@@ -1998,7 +1864,6 @@ def test_workflow_postman_directory_contains_ordered_formal_workflow_collections
     assert "13-classification-deployment-sync-class-gate" in readme_text
     assert "14-pose-deployment-sync-presence-gate" in readme_text
     assert "15-obb-deployment-sync-angle-gate" in readme_text
-    assert "Create Preview Run / Get Preview Run" in readme_text
     assert "Create Workflow Run / Get Workflow Run" in readme_text
     assert "Create TriggerSource / Enable / Health / Disable" in readme_text
     assert "Invoke App Runtime (HTTP Base64)" in readme_text
@@ -2012,7 +1877,7 @@ def test_workflow_postman_directory_contains_ordered_formal_workflow_collections
         "通用 multipart 当前也支持 `image-ref.v1`、`file-ref.v1` 和 "
         "`file-refs.v1` 流式上传"
     ) in readme_text
-    assert "编辑器同步 preview 复用 backend-service 已加载的节点 registry" in readme_text
+    assert "Preview Session 通过独立常驻 Worker 执行" in readme_text
     assert "LocalBufferBroker 的 BufferRef / FrameRef 和 mmap mailbox" in readme_text
     assert "inference daemon 中的常驻 deployment worker" in readme_text
     assert 'outputs[binding_id] = {"status_code": 200, "body": {...}}' in readme_text
@@ -2057,7 +1922,7 @@ def test_workflow_api_examples_are_classified_by_numbered_directories() -> None:
     assert "独立的 TriggerSource / directory-watch 调试示例" in readme_text
     assert "独立的 TriggerSource / directory-poll 调试示例" in readme_text
     assert "正式的工业单帧交付示例" in readme_text
-    assert "编辑器同步 preview 复用 backend-service 已加载的节点 registry" in readme_text
+    assert "Preview Session 通过独立常驻 Worker 执行" in readme_text
     assert "LocalBufferBroker 的 BufferRef / FrameRef 和 mmap mailbox" in readme_text
     assert "inference daemon 中的常驻 deployment worker" in readme_text
     assert "BufferRef" in readme_text
@@ -2068,7 +1933,6 @@ def test_workflow_api_examples_are_classified_by_numbered_directories() -> None:
         example_dir = API_WORKFLOW_EXAMPLE_DIR / folder
         assert (example_dir / "save-template.request.json").is_file(), example_name
         assert (example_dir / "save-application.request.json").is_file(), example_name
-        assert (example_dir / "preview-run.request.json").is_file(), example_name
         assert (example_dir / "app-runtime.create.request.json").is_file(), example_name
         assert (example_dir / "app-runtime.invoke.request.json").is_file(), example_name
         assert (example_dir / "app-runtime.run.create.request.json").is_file(), (
@@ -2078,7 +1942,6 @@ def test_workflow_api_examples_are_classified_by_numbered_directories() -> None:
         example_dir = API_WORKFLOW_EXAMPLE_DIR / folder
         assert (example_dir / "save-template.request.json").is_file(), example_name
         assert (example_dir / "save-application.request.json").is_file(), example_name
-        assert (example_dir / "preview-run.request.json").is_file(), example_name
         assert (example_dir / "app-runtime.create.request.json").is_file(), example_name
         assert (example_dir / "app-runtime.invoke.request.json").is_file(), example_name
         assert (example_dir / "app-runtime.run.create.request.json").is_file(), (
@@ -2194,14 +2057,10 @@ def test_trigger_source_postman_collections_include_runtime_prepare_steps(
     }
     save_template_body = json.loads(request_payloads["Save Template"])
     save_application_body = json.loads(request_payloads["Save Application"])
-    create_preview_body = json.loads(request_payloads["Create Preview Run"])
     create_runtime_body = json.loads(request_payloads["Create App Runtime"])
     invoke_body = json.loads(request_payloads[expected_invoke_request_name])
     create_run_body = json.loads(request_payloads["Create Workflow Run"])
     create_trigger_source_body = json.loads(request_payloads["Create TriggerSource"])
-    get_preview_request = _find_postman_request(
-        collection_payload["item"], "Get Preview Run"
-    )
     get_run_request = _find_postman_request(
         collection_payload["item"], "Get Workflow Run"
     )
@@ -2212,7 +2071,6 @@ def test_trigger_source_postman_collections_include_runtime_prepare_steps(
     assert request_names == _build_trigger_source_workflow_request_names(
         expected_invoke_request_name
     )
-    assert variables["previewRunId"] == ""
     assert variables["workflowRuntimeId"] == ""
     assert variables["workflowRunId"] == ""
     assert variables["triggerSourceId"] == expected_trigger_source_id
@@ -2221,13 +2079,6 @@ def test_trigger_source_postman_collections_include_runtime_prepare_steps(
     )
     assert save_application_body == _read_api_workflow_example(
         example_name, "save-application.request.json"
-    )
-    assert create_preview_body == _read_api_workflow_example(
-        example_name, "preview-run.request.json"
-    )
-    assert (
-        get_preview_request["url"]["raw"]
-        == "{{baseUrl}}/api/v1/workflows/preview-runs/{{previewRunId}}"
     )
     assert create_runtime_body["application_id"] == expected_application_id
     assert create_runtime_body == _read_api_workflow_example(
@@ -2404,17 +2255,6 @@ def test_workflow_example_documents_postman_collection_contains_remaining_debug_
     ]
     assert actual_example_names == SHORT_WORKFLOW_EXAMPLE_NAMES
     assert set(actual_example_names).isdisjoint(excluded_formal_example_names)
-    assert {item["key"] for item in collection_payload["variable"]} >= {
-        "baseUrl",
-        "accessToken",
-        "projectId",
-        "previewRunId",
-        "deploymentInstanceId",
-        "datasetId",
-        "datasetVersionId",
-        "datasetExportId",
-        "modelVersionId",
-    }
     for folder, example_name in zip(
         collection_payload["item"], SHORT_WORKFLOW_EXAMPLE_NAMES, strict=True
     ):
@@ -2444,10 +2284,6 @@ def test_workflow_example_documents_postman_collection_contains_remaining_debug_
         }
         request_payloads = _collect_postman_request_payloads(folder["item"])
         formdata_payloads = _collect_postman_formdata_payloads(folder["item"])
-        create_preview_request = _find_postman_request(
-            folder["item"], "Create Preview Run"
-        )
-        get_preview_request = _find_postman_request(folder["item"], "Get Preview Run")
         create_runtime_request = _find_postman_request(
             folder["item"], "Create App Runtime"
         )
@@ -2456,7 +2292,6 @@ def test_workflow_example_documents_postman_collection_contains_remaining_debug_
             folder["item"], "Create Workflow Run"
         )
         get_run_request = _find_postman_request(folder["item"], "Get Workflow Run")
-        create_preview_payload = json.loads(request_payloads["Create Preview Run"])
 
         assert (
             _collect_postman_request_names(folder["item"])
@@ -2467,14 +2302,6 @@ def test_workflow_example_documents_postman_collection_contains_remaining_debug_
             "application": application
         }
         assert (
-            create_preview_request["url"]["raw"]
-            == "{{baseUrl}}/api/v1/workflows/preview-runs"
-        )
-        assert (
-            get_preview_request["url"]["raw"]
-            == "{{baseUrl}}/api/v1/workflows/preview-runs/{{previewRunId}}"
-        )
-        assert (
             create_runtime_request["url"]["raw"]
             == "{{baseUrl}}/api/v1/workflows/app-runtimes"
         )
@@ -2482,27 +2309,6 @@ def test_workflow_example_documents_postman_collection_contains_remaining_debug_
             get_run_request["url"]["raw"]
             == "{{baseUrl}}/api/v1/workflows/runs/{{workflowRunId}}"
         )
-        assert create_preview_payload["project_id"] == "project-1"
-        assert create_preview_payload["application_ref"] == {
-            "application_id": application["application_id"]
-        }
-        assert set(create_preview_payload["input_bindings"]) == input_binding_ids
-        assert (
-            create_preview_payload["execution_metadata"]["marker"]
-            == "postman-workflow-example-documents-preview"
-        )
-        assert (
-            create_preview_payload["execution_metadata"]["example_name"] == example_name
-        )
-        assert (
-            create_preview_payload["execution_metadata"]["scenario"]
-            == template["metadata"]["example_kind"]
-        )
-        assert (
-            create_preview_payload["execution_metadata"]["trigger_source"]
-            == "editor-preview"
-        )
-        assert create_preview_payload["timeout_seconds"] == 30
         assert json.loads(request_payloads["Create App Runtime"]) == api_create_runtime
         if api_invoke.get("content_type") == "multipart/form-data":
             assert invoke_request["url"]["raw"].endswith("/invoke/upload")
@@ -2630,9 +2436,6 @@ def test_formal_workflow_postman_collections_match_api_examples(
     request_names = _collect_postman_request_names(collection_payload["item"])
     request_payloads = _collect_postman_request_payloads(collection_payload["item"])
     formdata_payloads = _collect_postman_formdata_payloads(collection_payload["item"])
-    create_preview_request = _find_postman_request(
-        collection_payload["item"], "Create Preview Run"
-    )
     invoke_request = _find_postman_request(
         collection_payload["item"], "Invoke App Runtime"
     )
@@ -2645,15 +2448,6 @@ def test_formal_workflow_postman_collections_match_api_examples(
     }
     assert collection_payload["variable"][0]["key"] == "baseUrl"
     if collection_dir == "01-detection-end-to-end-qr-crop-remap":
-        assert set(variable_entries) >= {
-            "workflowRuntimeId",
-            "workflowRunId",
-            "previewRunId",
-            "requestPackagePath",
-            "requestPackageFileName",
-            "modelType",
-            "modelScale",
-        }
         assert (
             variable_entries["requestPackagePath"]
             == "data/files/postman-assets/detection-coco-min.zip"
@@ -2672,10 +2466,6 @@ def test_formal_workflow_postman_collections_match_api_examples(
             variable_entries,
         )
     assert request_names == COMPLETE_WORKFLOW_REQUEST_NAMES
-    assert (
-        create_preview_request["url"]["raw"]
-        == "{{baseUrl}}/api/v1/workflows/preview-runs"
-    )
     if collection_dir == "01-detection-end-to-end-qr-crop-remap":
         assert expected_create_example == create_example
     else:
@@ -2683,21 +2473,6 @@ def test_formal_workflow_postman_collections_match_api_examples(
             json.loads(request_payloads["Create App Runtime"])
             == expected_create_example
         )
-
-    if collection_dir in {
-        "02-detection-deployment-sync-infer-health",
-        "03-detection-deployment-qr-crop-remap",
-        "04-detection-deployment-infer-opencv-health",
-    }:
-        assert (
-            "已接入 LocalBufferBroker direct mmap 数据面和 PublishedInferenceGateway 事件 dispatcher"
-            in create_preview_request["description"]
-        )
-        assert (
-            "backend-service 持有的长期运行 deployment worker"
-            in create_preview_request["description"]
-        )
-        assert "BufferRef / FrameRef" in create_preview_request["description"]
 
     if multipart_invoke:
         assert invoke_request["url"]["raw"].endswith("/invoke/upload")

@@ -10,15 +10,9 @@ from backend.contracts.workflows.workflow_graph import (
 )
 from backend.nodes.core_nodes.support.base import CoreNodeSpec
 from backend.nodes.runtime_support import (
-    PREVIEW_DISPLAY_MEDIA_TYPE,
     build_preview_response_image_payload,
-    require_image_payload,
 )
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
-from backend.service.application.workflows.preview_display_outputs import (
-    build_preview_run_artifact_object_key,
-    read_preview_run_id,
-)
 
 
 def _image_preview_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
@@ -26,23 +20,13 @@ def _image_preview_handler(request: WorkflowNodeExecutionRequest) -> dict[str, o
 
     save_location = request.parameters.get("save_location")
     response_transport_mode = str(request.parameters.get("response_transport_mode", "inline-base64")).strip()
-    source_object_key = _build_preview_artifact_object_key(
-        request,
-        artifact_name="image-preview",
-        media_type=str(require_image_payload(request.input_values.get("image")).get("media_type") or "image/png"),
-    )
-    display_object_key = _build_preview_artifact_object_key(
-        request,
-        artifact_name="image-preview-display",
-        media_type=PREVIEW_DISPLAY_MEDIA_TYPE,
-    )
     response_image = build_preview_response_image_payload(
         request,
         image_payload=request.input_values.get("image"),
         response_transport_mode=response_transport_mode,
-        object_key=source_object_key,
+        object_key=None,
         save_location=save_location if isinstance(save_location, str) else None,
-        display_object_key=display_object_key,
+        display_object_key=None,
         variant_name="image-preview",
     )
     preview_body: dict[str, object] = {
@@ -55,30 +39,6 @@ def _image_preview_handler(request: WorkflowNodeExecutionRequest) -> dict[str, o
     return {"body": preview_body}
 
 
-def _build_preview_artifact_object_key(
-    request: WorkflowNodeExecutionRequest,
-    *,
-    artifact_name: str,
-    media_type: str,
-) -> str | None:
-    """为 storage-ref Preview Run 自动生成受生命周期管理的 artifact 路径。
-
-    参数：
-    - request：当前 Image Preview 节点执行请求。
-
-    返回：
-    - str | None：存在 Preview Run 上下文时返回 artifact object key，否则返回 None。
-    """
-
-    preview_run_id = read_preview_run_id(request.execution_metadata)
-    if preview_run_id is None:
-        return None
-    return build_preview_run_artifact_object_key(
-        preview_run_id=preview_run_id,
-        node_id=request.node_id,
-        artifact_name=artifact_name,
-        media_type=media_type,
-    )
 
 
 CORE_NODE_SPEC = CoreNodeSpec(
@@ -115,7 +75,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 "response_transport_mode": {
                     "type": "string",
                     "title": "返回方式",
-                    "description": "inline-base64 只随本次 Preview Run 返回；storage-ref 保存为受 Preview Run 生命周期管理的 artifact。",
+                    "description": "正式响应可返回 inline-base64 或 storage-ref；编辑器预览统一使用内存显示，保存位置单独控制持久化。",
                     "enum": ["inline-base64", "storage-ref"],
                     "default": "inline-base64",
                 },

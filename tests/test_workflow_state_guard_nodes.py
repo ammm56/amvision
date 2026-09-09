@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.workflow_editor_graph_support import execute_editor_graph
+
 from backend.contracts.workflows.workflow_graph import (
     FlowApplication,
     FlowApplicationBinding,
@@ -12,7 +14,6 @@ from backend.contracts.workflows.workflow_graph import (
     WorkflowGraphOutput,
     WorkflowGraphTemplate,
 )
-from backend.service.application.workflows.runtime_service import WorkflowPreviewRunCreateRequest
 from tests.test_workflow_runtime_sanitization import _build_runtime_service
 
 
@@ -20,19 +21,11 @@ def test_preview_run_state_guard_nodes_support_exists_fallback_and_delete(tmp_pa
     """验证存在性判断、默认值回退与变量删除节点可以组成状态清理链。"""
 
     service, _, _ = _build_runtime_service(tmp_path)
-    preview_run = service.create_preview_run(
-        WorkflowPreviewRunCreateRequest(
-            project_id="project-1",
-            application=_build_state_guard_application(),
-            template=_build_state_guard_template(),
-            input_bindings={
+    preview_run = execute_editor_graph(service, project_id="project-1", application=_build_state_guard_application(), template=_build_state_guard_template(), input_bindings={
                 "nullable_value": {"value": None},
                 "fallback_value": {"value": "fallback-text"},
                 "stored_value": {"value": {"step": 1}},
-            },
-        ),
-        created_by="workflow-user",
-    )
+            })
 
     assert preview_run.state == "succeeded"
     assert preview_run.outputs["exists_before_delete"]["value"] is True

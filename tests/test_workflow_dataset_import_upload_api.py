@@ -1,6 +1,7 @@
 """workflow runtime 数据集上传节点 API 测试。"""
 
 from __future__ import annotations
+from tests.workflow_editor_graph_support import run_memory_preview
 
 import base64
 import json
@@ -180,13 +181,7 @@ def test_workflow_preview_run_accepts_dataset_package_base64_payload(tmp_path: P
 
     try:
         with client:
-            preview_response = client.post(
-                "/api/v1/workflows/preview-runs",
-                headers=headers,
-                json={
-                    "project_id": "project-1",
-                    "application_ref": {"application_id": "dataset-import-upload-app"},
-                    "input_bindings": {
+            preview_payload = run_memory_preview(client, headers, project_id="project-1", application=flow_application, template=template, input_bindings={
                         "request_payload": {
                             "value": {
                                 "project_id": "project-1",
@@ -200,20 +195,11 @@ def test_workflow_preview_run_accepts_dataset_package_base64_payload(tmp_path: P
                             "package_bytes": base64.b64encode(_build_coco_zip_bytes()).decode("ascii"),
                             "media_type": "application/zip",
                         },
-                    },
-                    "execution_metadata": {
-                        "scenario": "dataset-import-upload-preview",
-                        "trigger_source": "editor-preview",
-                    },
-                    "timeout_seconds": 30,
-                },
-            )
+                    })
     finally:
         session_factory.engine.dispose()
 
-    assert preview_response.status_code == 201
 
-    preview_payload = preview_response.json()
     import_body = preview_payload["outputs"]["submission_body"]
     assert preview_payload["state"] == "succeeded"
     assert import_body["status"] == "received"

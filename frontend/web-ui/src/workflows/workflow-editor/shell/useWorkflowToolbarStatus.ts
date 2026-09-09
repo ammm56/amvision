@@ -1,14 +1,14 @@
 import { computed, type ComputedRef, type Ref } from 'vue'
-import type { WorkflowRunState } from '../types'
+import type { WorkflowPreviewRun } from '../types'
 
 export interface WorkflowToolbarPreviewRun {
-  state: WorkflowRunState
+  state: WorkflowPreviewRun['state']
 }
 
 export interface WorkflowToolbarStatusOptions {
   statusMessage: Ref<string | null>
   lastPreviewRun: Ref<WorkflowToolbarPreviewRun | null>
-  formatPreviewRunStatusLabel: (state: WorkflowRunState) => string
+  formatPreviewRunStatusLabel: (state: WorkflowPreviewRun['state']) => string
 }
 
 export function useWorkflowToolbarStatus(options: WorkflowToolbarStatusOptions): {

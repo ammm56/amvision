@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.workflow_editor_graph_support import execute_editor_graph
+
 import base64
 from contextlib import contextmanager
 from dataclasses import replace
@@ -35,9 +37,6 @@ from backend.service.application.workflows.execution_cleanup import (
     WORKFLOW_EXECUTION_CLEANUP_ITEMS_KEY,
     WORKFLOW_EXECUTION_CLEANUP_KIND_LOCAL_BUFFER_LEASE,
 )
-from backend.service.application.workflows.preview_run_manager import (
-    WorkflowPreviewRunManager,
-)
 from backend.service.application.workflows.runtime_registry_loader import (
     WorkflowNodeRuntimeRegistryLoader,
 )
@@ -53,13 +52,7 @@ from backend.service.application.workflows.runtime_payload_sanitizer import (
     MAX_PERSISTED_STRING_CHARS,
     sanitize_runtime_mapping,
 )
-from backend.service.application.workflows.runtime_service import (
-    WorkflowAppRuntimeCreateRequest,
-    WorkflowAppRuntimeSelectVersionRequest,
-    WorkflowPreviewRunCreateRequest,
-    WorkflowRuntimeInvokeRequest,
-    WorkflowRuntimeService,
-)
+from backend.service.application.workflows.runtime_service import (WorkflowAppRuntimeCreateRequest, WorkflowAppRuntimeSelectVersionRequest, WorkflowRuntimeInvokeRequest, WorkflowRuntimeService)
 from backend.service.application.workflows.app_version_service import (
     compute_workflow_app_content_fingerprint,
 )
@@ -84,109 +77,8 @@ from backend.service.settings import (
 from tests.api_test_support import build_valid_test_png_bytes, create_test_runtime
 
 
-def test_preview_run_sync_response_keeps_inline_base64_but_persisted_copy_is_sanitized(
-    tmp_path: Path,
-) -> None:
-    """验证 preview run 同步响应返回 raw base64，而持久化详情仍会脱敏。"""
-
-    service, _, _ = _build_runtime_service(tmp_path)
-    image_base64 = base64.b64encode(build_valid_test_png_bytes()).decode("ascii")
-
-    preview_run = service.create_preview_run(
-        WorkflowPreviewRunCreateRequest(
-            project_id="project-1",
-            application=_build_image_decode_preview_application(),
-            template=_build_image_decode_preview_template(),
-            input_bindings={"request_image_base64": {"image_base64": image_base64}},
-        ),
-        created_by="workflow-user",
-    )
-
-    assert preview_run.state == "succeeded"
-    assert (
-        preview_run.metadata[WORKFLOW_MODEL_SESSION_SCOPE_ID_METADATA_KEY]
-        == "preview:project-1:image-decode-preview-app"
-    )
-    assert (
-        preview_run.metadata[WORKFLOW_MODEL_SESSION_SCOPE_WAIT_ENABLED_METADATA_KEY]
-        is False
-    )
-    preview_image = preview_run.outputs["http_response"]["body"]["image"]
-    assert preview_image["transport_kind"] == "inline-base64"
-    assert preview_image["image_base64"] == image_base64
-    assert (
-        preview_run.template_outputs["http_response"]["body"]["image"]["image_base64"]
-        == image_base64
-    )
-    assert (
-        preview_run.node_records[0]["inputs"]["payload"]["image_base64_redacted"]
-        is True
-    )
-    assert preview_run.node_records[0]["outputs"]["image"]["image_handle"]
-    assert (
-        preview_run.node_records[1]["inputs"]["image"]["image_handle_redacted"] is True
-    )
-    assert (
-        preview_run.node_records[1]["outputs"]["body"]["image"]["image_base64"]
-        == image_base64
-    )
-    persisted_preview_run = service.get_preview_run(preview_run.preview_run_id)
-    persisted_preview_image = persisted_preview_run.outputs["http_response"]["body"][
-        "image"
-    ]
-    assert persisted_preview_image["image_base64_redacted"] is True
-    assert "image_base64" not in persisted_preview_image
-    assert (
-        persisted_preview_run.template_outputs["http_response"]["body"]["image"][
-            "image_base64_redacted"
-        ]
-        is True
-    )
-    assert (
-        persisted_preview_run.node_records[0]["outputs"]["image"][
-            "image_handle_redacted"
-        ]
-        is True
-    )
-    assert (
-        persisted_preview_run.node_records[1]["outputs"]["body"]["image"][
-            "image_base64_redacted"
-        ]
-        is True
-    )
 
 
-def test_preview_run_storage_ref_image_preview_uses_preview_artifact(
-    tmp_path: Path,
-) -> None:
-    """验证 storage-ref Image Preview 会保存到 Preview Run artifact 目录。"""
-
-    service, _, _ = _build_runtime_service(tmp_path)
-    image_base64 = base64.b64encode(build_valid_test_png_bytes()).decode("ascii")
-
-    preview_run = service.create_preview_run(
-        WorkflowPreviewRunCreateRequest(
-            project_id="project-1",
-            application=_build_image_decode_save_preview_application(),
-            template=_build_image_decode_save_preview_template(),
-            input_bindings={"request_image_base64": {"image_base64": image_base64}},
-        ),
-        created_by="workflow-user",
-    )
-
-    assert preview_run.state == "succeeded"
-    preview_image = preview_run.outputs["http_response"]["body"]["image"]
-    object_key = preview_image["object_key"]
-    assert preview_image["transport_kind"] == "storage-ref"
-    assert object_key.startswith(
-        f"workflows/runtime/preview-runs/{preview_run.preview_run_id}/artifacts/preview/"
-    )
-    assert service.dataset_storage.resolve(object_key).exists()
-    persisted_preview_run = service.get_preview_run(preview_run.preview_run_id)
-    assert (
-        persisted_preview_run.outputs["http_response"]["body"]["image"]["object_key"]
-        == object_key
-    )
 
 
 def test_invoke_workflow_run_sanitizes_input_payload_outputs_and_node_records(
@@ -1329,10 +1221,6 @@ def _build_runtime_service(
             root_dir=str(custom_nodes_root_dir)
         ),
     )
-    preview_run_manager = WorkflowPreviewRunManager(
-        session_factory=session_factory,
-        dataset_storage=dataset_storage,
-    )
     runtime_registry_loader = WorkflowNodeRuntimeRegistryLoader(
         node_catalog_registry=node_catalog_registry,
         node_pack_loader=node_pack_loader,
@@ -1348,7 +1236,6 @@ def _build_runtime_service(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
         node_catalog_registry=node_catalog_registry,
-        preview_run_manager=preview_run_manager,
         worker_manager=worker_manager
         if worker_manager is not None
         else SimpleNamespace(),

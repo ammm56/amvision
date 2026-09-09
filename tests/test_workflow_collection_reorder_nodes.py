@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.workflow_editor_graph_support import execute_editor_graph
+
 from pathlib import Path
 
 from backend.contracts.workflows.workflow_graph import (
@@ -14,7 +16,6 @@ from backend.contracts.workflows.workflow_graph import (
     WorkflowGraphOutput,
     WorkflowGraphTemplate,
 )
-from backend.service.application.workflows.runtime_service import WorkflowPreviewRunCreateRequest
 from tests.test_workflow_runtime_sanitization import _build_runtime_service
 
 
@@ -22,12 +23,7 @@ def test_preview_run_collection_reorder_nodes_support_sort_group_and_unique(tmp_
     """验证 list-sort、list-group-by 与 list-unique 可以组成集合重排和聚合链。"""
 
     service, _, _ = _build_runtime_service(tmp_path)
-    preview_run = service.create_preview_run(
-        WorkflowPreviewRunCreateRequest(
-            project_id="project-1",
-            application=_build_collection_reorder_application(),
-            template=_build_collection_reorder_template(),
-            input_bindings={
+    preview_run = execute_editor_graph(service, project_id="project-1", application=_build_collection_reorder_application(), template=_build_collection_reorder_template(), input_bindings={
                 "users": {
                     "value": [
                         {"name": "A", "status": "queued", "department": "Sales", "score": 88},
@@ -46,10 +42,7 @@ def test_preview_run_collection_reorder_nodes_support_sort_group_and_unique(tmp_
                         {"name": "E", "status": "running", "department": "Ops", "score": 70},
                     ]
                 },
-            },
-        ),
-        created_by="workflow-user",
-    )
+            })
 
     assert preview_run.state == "succeeded"
     assert preview_run.outputs["sorted_names"]["value"] == ["C", "A", "D", "E", "B"]

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.workflow_editor_graph_support import execute_editor_graph
+
 from pathlib import Path
 
 from backend.contracts.workflows.workflow_graph import (
@@ -14,7 +16,6 @@ from backend.contracts.workflows.workflow_graph import (
     WorkflowGraphOutput,
     WorkflowGraphTemplate,
 )
-from backend.service.application.workflows.runtime_service import WorkflowPreviewRunCreateRequest
 from tests.test_workflow_runtime_sanitization import _build_runtime_service
 
 
@@ -26,17 +27,9 @@ def test_preview_run_variable_and_list_nodes_support_shared_state_and_collection
     """
 
     service, _, _ = _build_runtime_service(tmp_path)
-    preview_run = service.create_preview_run(
-        WorkflowPreviewRunCreateRequest(
-            project_id="project-1",
-            application=_build_state_nodes_application(),
-            template=_build_state_nodes_template(),
-            input_bindings={
+    preview_run = execute_editor_graph(service, project_id="project-1", application=_build_state_nodes_application(), template=_build_state_nodes_template(), input_bindings={
                 "source_items": {"value": ["alpha", "beta", "gamma"]},
-            },
-        ),
-        created_by="workflow-user",
-    )
+            })
 
     assert preview_run.state == "succeeded"
     assert preview_run.outputs["stored_items"]["value"] == ["alpha", "beta", "gamma"]

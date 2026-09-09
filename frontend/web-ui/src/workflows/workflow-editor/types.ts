@@ -398,39 +398,20 @@ export interface WorkflowError {
 export interface WorkflowPreviewRun {
   format_id: string
   preview_run_id: string
+  session_id: string
+  document_revision: string
   project_id: string
   application_id: string
-  source_kind: string
-  application_snapshot_object_key: string
-  template_snapshot_object_key: string
-  state: WorkflowRunState
+  state: 'accepted' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'timed_out'
   created_at: string
   started_at?: string | null
   finished_at?: string | null
-  created_by?: string | null
-  timeout_seconds: number
   outputs: WorkflowJsonObject
-  template_outputs: WorkflowJsonObject
   node_records: WorkflowJsonObject[]
   error: WorkflowError | null
-  retention_until?: string | null
-  metadata: WorkflowJsonObject
-}
-
-export interface WorkflowPreviewRunSummary {
-  format_id: string
-  preview_run_id: string
-  project_id: string
-  application_id: string
-  source_kind: string
-  state: WorkflowRunState
-  created_at: string
-  started_at?: string | null
-  finished_at?: string | null
-  created_by?: string | null
-  timeout_seconds: number
-  error: WorkflowError | null
-  retention_until?: string | null
+  readMemoryBlob?: (blobId: string, mediaType: string) => Promise<Blob>
+  values?: WorkflowJsonObject[]
+  readValue?: (blobId: string, offset?: number, path?: Array<string | number>) => Promise<import('./services/workflow-preview-session.service').PreviewValuePage>
 }
 
 export interface WorkflowRuntimeEvent {
@@ -440,10 +421,6 @@ export interface WorkflowRuntimeEvent {
   created_at: string
   message: string
   payload: WorkflowJsonObject
-}
-
-export interface WorkflowPreviewRunEvent extends WorkflowRuntimeEvent {
-  preview_run_id: string
 }
 
 export interface WorkflowAppRuntimeEvent extends WorkflowRuntimeEvent {

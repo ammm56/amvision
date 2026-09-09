@@ -51,14 +51,11 @@ from backend.maintenance.development_workflow_reset import (
     reset_development_workflow_state,
 )
 from backend.contracts.workflows.resource_semantics import (
-    WORKFLOW_PREVIEW_RUN_CLEANUP_COMMAND,
-    WORKFLOW_PREVIEW_RUN_STORAGE_ROOT,
     WORKFLOW_RUNTIME_STORAGE_CLEANUP_COMMAND,
     WORKFLOW_RUNTIME_STORAGE_DEFAULT_RETENTION_HOURS,
     WORKFLOW_RUN_STORAGE_ROOT,
     WORKFLOW_RUN_TERMINAL_STATES,
     WORKFLOW_RUNTIME_STORAGE_ROOT,
-    build_workflow_preview_run_storage_dir,
 )
 from backend.service.infrastructure.object_store.object_key_layout import (
     RUNTIME_INPUTS_STORAGE_ROOT,
@@ -119,7 +116,6 @@ def build_argument_parser() -> argparse.ArgumentParser:
             DATABASE_MIGRATION_COMMAND,
             REBUILD_PYCACHE_COMMAND,
             "sync-extension-pretrained-manifests",
-            WORKFLOW_PREVIEW_RUN_CLEANUP_COMMAND,
             WORKFLOW_RUNTIME_STORAGE_CLEANUP_COMMAND,
             DEVELOPMENT_MODEL_RESET_COMMAND,
             DEVELOPMENT_WORKFLOW_RESET_COMMAND,
@@ -464,11 +460,6 @@ def run_command(
             ],
             "warnings": list(result.warnings),
         }
-    if command == WORKFLOW_PREVIEW_RUN_CLEANUP_COMMAND:
-        return cleanup_expired_preview_runs(
-            backend_service_settings=backend_service_settings,
-            now_iso=now_iso,
-        )
     if command == WORKFLOW_RUNTIME_STORAGE_CLEANUP_COMMAND:
         return cleanup_runtime_storage(
             backend_service_settings=backend_service_settings,
@@ -527,84 +518,6 @@ def run_command(
     raise ValueError(f"unsupported maintenance command: {command}")
 
 
-def cleanup_expired_preview_runs(
-    *,
-    backend_service_settings: object | None = None,
-    now_iso: str | None = None,
-) -> dict[str, object]:
-    """按 retention_until 清理已过期的 preview run 记录和 snapshot 目录。"""
-
-    from backend.service.application.workflows.preview_run_cleanup import (
-        finalize_staged_preview_run_storage,
-        restore_staged_preview_run_storage,
-        stage_preview_run_storage_for_cleanup,
-    )
-    from backend.service.infrastructure.db.session import SessionFactory
-    from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
-    from backend.service.infrastructure.object_store.local_dataset_storage import (
-        LocalDatasetStorage,
-    )
-    from backend.service.settings import get_backend_service_settings
-
-    service_settings = backend_service_settings or get_backend_service_settings()
-    cutoff_time = _normalize_cutoff_time(now_iso)
-    session_factory = SessionFactory(service_settings.to_database_settings())
-    dataset_storage = LocalDatasetStorage(
-        service_settings.to_dataset_storage_settings()
-    )
-    unit_of_work = SqlAlchemyUnitOfWork(session_factory.create_session())
-    staged_snapshot_dirs: list[tuple[str, str | None]] = []
-    try:
-        expired_preview_runs = unit_of_work.workflow_runtime.list_expired_preview_runs(
-            cutoff_time
-        )
-        deleted_preview_run_ids = [item.preview_run_id for item in expired_preview_runs]
-        for preview_run in expired_preview_runs:
-            staged_snapshot_dirs.append(
-                (
-                    preview_run.preview_run_id,
-                    stage_preview_run_storage_for_cleanup(
-                        dataset_storage=dataset_storage,
-                        preview_run_id=preview_run.preview_run_id,
-                    ),
-                )
-            )
-        for preview_run in expired_preview_runs:
-            unit_of_work.workflow_runtime.delete_preview_run(preview_run.preview_run_id)
-        try:
-            unit_of_work.commit()
-        except Exception:
-            for preview_run_id, staging_dir in staged_snapshot_dirs:
-                restore_staged_preview_run_storage(
-                    dataset_storage=dataset_storage,
-                    preview_run_id=preview_run_id,
-                    staging_dir=staging_dir,
-                )
-            raise
-    finally:
-        unit_of_work.close()
-        session_factory.engine.dispose()
-
-    deleted_snapshot_dirs: list[str] = []
-    pending_staging_dirs: list[str] = []
-    for preview_run_id, staging_dir in staged_snapshot_dirs:
-        snapshot_dir = build_workflow_preview_run_storage_dir(preview_run_id)
-        deleted_snapshot_dirs.append(snapshot_dir)
-        pending_staging_dir = finalize_staged_preview_run_storage(
-            dataset_storage=dataset_storage,
-            staging_dir=staging_dir,
-        )
-        if pending_staging_dir is not None:
-            pending_staging_dirs.append(pending_staging_dir)
-
-    return {
-        "command": WORKFLOW_PREVIEW_RUN_CLEANUP_COMMAND,
-        "cutoff_time": cutoff_time,
-        "expired_count": len(deleted_preview_run_ids),
-        "deleted_preview_run_ids": deleted_preview_run_ids,
-        "deleted_snapshot_dirs": deleted_snapshot_dirs,
-        "pending_staging_dirs": pending_staging_dirs,
-    }
 
 
 def cleanup_runtime_storage(
@@ -634,10 +547,6 @@ def cleanup_runtime_storage(
     )
     from backend.service.settings import get_backend_service_settings
 
-    preview_cleanup_payload = cleanup_expired_preview_runs(
-        backend_service_settings=backend_service_settings,
-        now_iso=now_iso,
-    )
     service_settings = backend_service_settings or get_backend_service_settings()
     cutoff_time = _resolve_retention_cutoff_time(
         now_iso, retention_hours=retention_hours
@@ -658,11 +567,6 @@ def cleanup_runtime_storage(
             dataset_storage=dataset_storage,
             cutoff_datetime=cutoff_datetime,
         )
-        deleted_orphan_preview_dirs = _cleanup_orphan_preview_run_dirs(
-            unit_of_work=unit_of_work,
-            dataset_storage=dataset_storage,
-            cutoff_datetime=cutoff_datetime,
-        )
         deleted_orphan_app_runtime_dirs = _cleanup_orphan_app_runtime_dirs(
             unit_of_work=unit_of_work,
             dataset_storage=dataset_storage,
@@ -673,20 +577,16 @@ def cleanup_runtime_storage(
         session_factory.engine.dispose()
 
     deleted_count = (
-        len(preview_cleanup_payload["deleted_snapshot_dirs"])
-        + len(deleted_runtime_input_entries)
+        len(deleted_runtime_input_entries)
         + len(deleted_workflow_run_dirs)
-        + len(deleted_orphan_preview_dirs)
         + len(deleted_orphan_app_runtime_dirs)
     )
     return {
         "command": WORKFLOW_RUNTIME_STORAGE_CLEANUP_COMMAND,
         "cutoff_time": cutoff_time,
         "retention_hours": retention_hours,
-        "preview_cleanup": preview_cleanup_payload,
         "deleted_runtime_input_entries": deleted_runtime_input_entries,
         "deleted_workflow_run_dirs": deleted_workflow_run_dirs,
-        "deleted_orphan_preview_dirs": deleted_orphan_preview_dirs,
         "deleted_orphan_app_runtime_dirs": deleted_orphan_app_runtime_dirs,
         "deleted_count": deleted_count,
     }
@@ -821,7 +721,7 @@ def _cleanup_workflow_run_dirs(
         if not child_path.is_dir():
             continue
         if child_path.name in {
-            Path(WORKFLOW_PREVIEW_RUN_STORAGE_ROOT).name,
+            "preview-runs",
             Path(WORKFLOW_RUNTIME_STORAGE_ROOT).name,
         }:
             continue
@@ -844,32 +744,6 @@ def _cleanup_workflow_run_dirs(
     return deleted_dirs
 
 
-def _cleanup_orphan_preview_run_dirs(
-    *,
-    unit_of_work: SqlAlchemyUnitOfWork,
-    dataset_storage: LocalDatasetStorage,
-    cutoff_datetime: datetime,
-) -> list[str]:
-    """清理失去 preview run 记录的遗留 snapshot 目录。"""
-
-    preview_root = dataset_storage.resolve(WORKFLOW_PREVIEW_RUN_STORAGE_ROOT)
-    if not preview_root.is_dir():
-        return []
-
-    deleted_dirs: list[str] = []
-    for child_path in sorted(preview_root.iterdir(), key=lambda item: item.name):
-        if not child_path.is_dir():
-            continue
-        if unit_of_work.workflow_runtime.get_preview_run(child_path.name) is not None:
-            continue
-        if not _is_path_older_than_cutoff(child_path, cutoff_datetime=cutoff_datetime):
-            continue
-        relative_path = _to_relative_storage_path(
-            dataset_storage=dataset_storage, path=child_path
-        )
-        dataset_storage.delete_tree(relative_path)
-        deleted_dirs.append(relative_path)
-    return deleted_dirs
 
 
 def _cleanup_orphan_app_runtime_dirs(

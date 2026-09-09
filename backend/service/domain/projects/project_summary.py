@@ -14,7 +14,6 @@ class ProjectDatabaseSummary:
     - import_status_counts：DatasetImport 按 status 的数量。
     - export_status_counts：DatasetExport 按 status 的数量。
     - task_state_counts_by_kind：TaskRecord 按 task_kind、state 的数量。
-    - preview_run_state_counts：WorkflowPreviewRun 按 state 的数量。
     - workflow_run_state_counts：WorkflowRun 按 state 的数量。
     - app_runtime_observed_state_counts：WorkflowAppRuntime 按 observed_state 的数量。
     - deployment_status_counts：DeploymentInstance 按 status 的数量。
@@ -23,7 +22,6 @@ class ProjectDatabaseSummary:
     import_status_counts: dict[str, int] = field(default_factory=dict)
     export_status_counts: dict[str, int] = field(default_factory=dict)
     task_state_counts_by_kind: dict[str, dict[str, int]] = field(default_factory=dict)
-    preview_run_state_counts: dict[str, int] = field(default_factory=dict)
     workflow_run_state_counts: dict[str, int] = field(default_factory=dict)
     app_runtime_observed_state_counts: dict[str, int] = field(default_factory=dict)
     deployment_status_counts: dict[str, int] = field(default_factory=dict)

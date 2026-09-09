@@ -8,7 +8,6 @@ from typing import Literal
 from backend.contracts.workflows.resource_semantics import (
     WorkflowAppRuntimeState,
     WorkflowExecutionPolicyKind,
-    WorkflowPreviewRunState,
     WorkflowRunState,
 )
 
@@ -68,7 +67,6 @@ class WorkflowApplicationDeletionInventory:
     """描述 Workflow Application 物理删除所需的数据库资源。"""
 
     workflow_runtime_ids: tuple[str, ...] = ()
-    preview_runs: tuple[tuple[str, str], ...] = ()
     workflow_run_ids: tuple[str, ...] = ()
     workflow_app_version_ids: tuple[str, ...] = ()
 
@@ -91,61 +89,8 @@ class WorkflowRuntimeRevision:
     created_by: str | None = None
 
 
-@dataclass(frozen=True)
-class WorkflowPreviewRun:
-    """描述一次编辑态隔离试跑记录。
-
-    字段：
-    - preview_run_id：preview run id。
-    - project_id：所属 Project id。
-    - application_id：所属 application id。
-    - source_kind：创建来源类型。
-    - application_snapshot_object_key：application snapshot object key。
-    - template_snapshot_object_key：template snapshot object key。
-    - state：当前运行状态。
-    - created_at：创建时间。
-    - started_at：开始时间。
-    - finished_at：结束时间。
-    - created_by：创建主体 id。
-    - timeout_seconds：执行超时秒数。
-    - outputs：持久化的脱敏 application 输出。
-    - template_outputs：持久化的脱敏 template 输出。
-    - node_records：持久化的脱敏节点执行记录。
-    - error_message：失败或超时时的错误信息。
-    - retention_until：保留截止时间。
-    - metadata：附加元数据。
-    """
-
-    preview_run_id: str
-    project_id: str
-    application_id: str
-    source_kind: str
-    application_snapshot_object_key: str
-    template_snapshot_object_key: str
-    state: WorkflowPreviewRunState = "created"
-    created_at: str = ""
-    started_at: str | None = None
-    finished_at: str | None = None
-    created_by: str | None = None
-    timeout_seconds: int = 30
-    outputs: dict[str, object] = field(default_factory=dict)
-    template_outputs: dict[str, object] = field(default_factory=dict)
-    node_records: tuple[dict[str, object], ...] = ()
-    error_message: str | None = None
-    retention_until: str | None = None
-    metadata: dict[str, object] = field(default_factory=dict)
 
 
-@dataclass(frozen=True)
-class WorkflowPreviewRunEvent:
-    """描述一条 preview run 执行过程事件。"""
-
-    preview_run_id: str
-    sequence: int
-    event_type: str
-    created_at: str
-    message: str
-    payload: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

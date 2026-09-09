@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from time import monotonic
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from backend.service.api.ws.v1.preview_sessions import preview_sessions_ws_router
 
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.service.application.auth.auth_events import (
@@ -41,7 +42,6 @@ from backend.service.application.runtime.deployment.deployment_events import (
     DeploymentProcessEvent,
 )
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService, TaskEventQueryFilters
-from backend.service.application.workflows.preview_run_manager import WorkflowPreviewRunManager
 from backend.service.application.workflows.runtime_service import WorkflowRuntimeService
 from backend.service.application.workflows.runtime_preview import (
     RuntimePreviewCapacityError,
@@ -51,7 +51,6 @@ from backend.service.application.workflows.worker.manager import WorkflowRuntime
 from backend.service.domain.tasks.task_records import TaskEvent
 from backend.service.domain.workflows.workflow_runtime_records import (
     WorkflowAppRuntimeEvent,
-    WorkflowPreviewRunEvent,
     WorkflowRunEvent,
 )
 from backend.service.infrastructure.db.session import SessionFactory
@@ -60,6 +59,7 @@ from backend.service.settings import BackendServiceSettings
 
 
 ws_v1_router = APIRouter(prefix="/ws/v1")
+ws_v1_router.include_router(preview_sessions_ws_router)
 
 TASK_EVENT_DATABASE_POLL_INTERVAL_SECONDS = 1.0
 TASK_EVENT_HEARTBEAT_INTERVAL_SECONDS = 15.0
@@ -523,114 +523,6 @@ async def _send_persisted_task_events(
     return current_cursor, sent_count
 
 
-@ws_v1_router.websocket("/workflows/preview-runs/events")
-async def subscribe_preview_run_events(socket: WebSocket) -> None:
-    """按 preview run 维度建立 v1 事件订阅会话。
-
-    参数：
-    - socket：当前 WebSocket 连接。
-    """
-
-    principal = _get_socket_principal(socket)
-    if principal is None:
-        await socket.close(code=4401, reason="authentication_required")
-        return
-    if not _scope_granted(principal.scopes, "workflows:read"):
-        await socket.close(code=4403, reason="permission_denied")
-        return
-
-    preview_run_id = socket.query_params.get("preview_run_id")
-    if preview_run_id is None or not preview_run_id.strip():
-        await socket.close(code=4400, reason="preview_run_id_required")
-        return
-
-    preview_run_manager = _get_socket_preview_run_manager(socket)
-    if preview_run_manager is None:
-        await socket.close(code=1011, reason="workflow_preview_run_manager_not_ready")
-        return
-
-    event_bus = _get_socket_event_bus(socket)
-    if event_bus is None:
-        await socket.close(code=1011, reason="service_event_bus_not_ready")
-        return
-
-    try:
-        preview_run = preview_run_manager.get_preview_run(preview_run_id)
-    except Exception:
-        await socket.close(code=4404, reason="preview_run_not_found")
-        return
-    if principal.project_ids and preview_run.project_id not in principal.project_ids:
-        await socket.close(code=4404, reason="preview_run_not_found")
-        return
-
-    after_cursor = socket.query_params.get("after_cursor")
-    try:
-        after_sequence = _parse_preview_run_after_cursor(after_cursor)
-    except ValueError:
-        await socket.close(code=4400, reason="after_cursor_invalid")
-        return
-
-    limit = _parse_limit(socket.query_params.get("limit"))
-    sent_sequences: set[int] = set()
-    subscription = event_bus.subscribe(
-        stream="workflows.preview-runs.events",
-        resource_id=preview_run_id,
-    )
-
-    await socket.accept()
-    await socket.send_json(
-        {
-            "stream": "workflows.preview-runs.events",
-            "event_type": "workflows.preview-runs.connected",
-            "event_version": "v1",
-            "occurred_at": _now_iso(),
-            "resource_kind": "workflow_preview_run",
-            "resource_id": preview_run_id,
-            "cursor": after_cursor,
-            "payload": {
-                "filters": {
-                    "after_cursor": after_cursor,
-                    "limit": limit,
-                }
-            },
-        }
-    )
-
-    try:
-        replay_events = preview_run_manager.list_events(
-            preview_run_id,
-            after_sequence=after_sequence,
-            limit=limit,
-        )
-        for event in replay_events:
-            if event.sequence in sent_sequences:
-                continue
-            sent_sequences.add(event.sequence)
-            await socket.send_json(_build_preview_run_event_message(event))
-
-        while True:
-            if subscription.consume_overflowed():
-                await socket.send_json(_build_preview_run_lagging_message(preview_run_id))
-                await socket.close(code=1013, reason="subscriber_queue_overflowed")
-                return
-
-            service_event = await subscription.receive(timeout_seconds=15.0)
-            if service_event is None:
-                await socket.send_json(_build_preview_run_heartbeat_message(preview_run_id))
-                continue
-
-            sequence = _parse_service_event_sequence(service_event)
-            if sequence is not None and sequence in sent_sequences:
-                continue
-            if not _preview_service_event_after_cursor(service_event, after_sequence):
-                continue
-            if sequence is not None:
-                sent_sequences.add(sequence)
-            await socket.send_json(_build_service_event_message(service_event))
-    except WebSocketDisconnect:
-        return
-    finally:
-        subscription.close()
 
 
 @ws_v1_router.websocket("/workflows/runs/events")
@@ -728,7 +620,7 @@ async def subscribe_workflow_run_events(socket: WebSocket) -> None:
             sequence = _parse_service_event_sequence(service_event)
             if sequence is not None and sequence in sent_sequences:
                 continue
-            if not _preview_service_event_after_cursor(service_event, after_sequence):
+            if not _service_event_after_cursor(service_event, after_sequence):
                 continue
             if sequence is not None:
                 sent_sequences.add(sequence)
@@ -834,7 +726,7 @@ async def subscribe_workflow_app_runtime_events(socket: WebSocket) -> None:
             sequence = _parse_service_event_sequence(service_event)
             if sequence is not None and sequence in sent_sequences:
                 continue
-            if not _preview_service_event_after_cursor(service_event, after_sequence):
+            if not _service_event_after_cursor(service_event, after_sequence):
                 continue
             if sequence is not None:
                 sent_sequences.add(sequence)
@@ -954,7 +846,7 @@ async def subscribe_deployment_events(socket: WebSocket) -> None:
             sequence = _parse_service_event_sequence(service_event)
             if sequence is not None and sequence in sent_sequences:
                 continue
-            if not _preview_service_event_after_cursor(service_event, after_sequence):
+            if not _service_event_after_cursor(service_event, after_sequence):
                 continue
             if sequence is not None:
                 sent_sequences.add(sequence)
@@ -1125,31 +1017,6 @@ def _build_training_telemetry_control_message(
     }
 
 
-def _build_preview_run_event_message(event: WorkflowPreviewRunEvent) -> dict[str, object]:
-    """把 WorkflowPreviewRunEvent 构造成 WebSocket v1 消息。
-
-    参数：
-    - event：要发送的 preview run 事件。
-
-    返回：
-    - 统一结构的 WebSocket v1 消息字典。
-    """
-
-    return {
-        "stream": "workflows.preview-runs.events",
-        "event_type": event.event_type,
-        "event_version": "v1",
-        "occurred_at": event.created_at,
-        "resource_kind": "workflow_preview_run",
-        "resource_id": event.preview_run_id,
-        "cursor": str(event.sequence),
-        "payload": {
-            "preview_run_id": event.preview_run_id,
-            "sequence": event.sequence,
-            "message": event.message,
-            **dict(event.payload),
-        },
-    }
 
 
 def _build_workflow_run_event_message(event: WorkflowRunEvent) -> dict[str, object]:
@@ -1344,50 +1211,8 @@ def _build_lagging_message(task_id: str) -> dict[str, object]:
     }
 
 
-def _build_preview_run_heartbeat_message(preview_run_id: str) -> dict[str, object]:
-    """构造 preview run 事件流心跳消息。
-
-    参数：
-    - preview_run_id：所属 preview run id。
-
-    返回：
-    - WebSocket v1 心跳消息字典。
-    """
-
-    occurred_at = _now_iso()
-    return {
-        "stream": "workflows.preview-runs.events",
-        "event_type": "workflows.preview-runs.heartbeat",
-        "event_version": "v1",
-        "occurred_at": occurred_at,
-        "resource_kind": "workflow_preview_run",
-        "resource_id": preview_run_id,
-        "cursor": f"heartbeat|{occurred_at}",
-        "payload": {},
-    }
 
 
-def _build_preview_run_lagging_message(preview_run_id: str) -> dict[str, object]:
-    """构造 preview run 订阅端跟不上时的提示消息。
-
-    参数：
-    - preview_run_id：所属 preview run id。
-
-    返回：
-    - WebSocket v1 跟不上提示消息字典。
-    """
-
-    occurred_at = _now_iso()
-    return {
-        "stream": "workflows.preview-runs.events",
-        "event_type": "workflows.preview-runs.lagging",
-        "event_version": "v1",
-        "occurred_at": occurred_at,
-        "resource_kind": "workflow_preview_run",
-        "resource_id": preview_run_id,
-        "cursor": f"lagging|{occurred_at}",
-        "payload": {"message": "subscriber queue overflowed"},
-    }
 
 
 def _build_workflow_run_heartbeat_message(workflow_run_id: str) -> dict[str, object]:
@@ -1521,26 +1346,6 @@ def _auth_service_event_matches(
     return True
 
 
-def _preview_service_event_after_cursor(
-    event: ServiceEvent,
-    after_sequence: int | None,
-) -> bool:
-    """判断 preview run 服务内事件是否晚于指定序号。
-
-    参数：
-    - event：当前服务内事件。
-    - after_sequence：订阅方传入的最近处理序号。
-
-    返回：
-    - 当事件应继续发送时返回 True。
-    """
-
-    if after_sequence is None:
-        return True
-    event_sequence = _parse_service_event_sequence(event)
-    if event_sequence is None:
-        return True
-    return event_sequence > after_sequence
 
 
 def _get_socket_principal(socket: WebSocket) -> AuthenticatedPrincipal | None:
@@ -1599,21 +1404,6 @@ def _get_socket_training_telemetry_broker(
     return broker if isinstance(broker, TrainingTelemetryBroker) else None
 
 
-def _get_socket_preview_run_manager(socket: WebSocket) -> WorkflowPreviewRunManager | None:
-    """从 application.state 读取 WorkflowPreviewRunManager。
-
-    参数：
-    - socket：当前 WebSocket 连接。
-
-    返回：
-    - 当前应用绑定的 preview run 管理器；不存在时返回 None。
-    """
-
-    preview_run_manager = getattr(socket.app.state, "workflow_preview_run_manager", None)
-    if isinstance(preview_run_manager, WorkflowPreviewRunManager):
-        return preview_run_manager
-
-    return None
 
 
 def _get_socket_backend_service_settings(socket: WebSocket) -> BackendServiceSettings | None:
@@ -1674,7 +1464,6 @@ def _build_socket_workflow_runtime_service(socket: WebSocket) -> WorkflowRuntime
         dataset_storage=dataset_storage,
         node_catalog_registry=node_catalog_registry,
         worker_manager=worker_manager,
-        preview_run_manager=_get_socket_preview_run_manager(socket),
     )
 
 
@@ -1776,25 +1565,6 @@ def _parse_limit(raw_limit: str | None) -> int:
     return min(limit, 500)
 
 
-def _parse_preview_run_after_cursor(raw_cursor: str | None) -> int | None:
-    """解析 preview run 资源流的 after_cursor 参数。
-
-    参数：
-    - raw_cursor：原始 after_cursor 字符串。
-
-    返回：
-    - 解析得到的 sequence；未提供时返回 None。
-
-    异常：
-    - ValueError：当 cursor 不是非负整数时抛出。
-    """
-
-    if raw_cursor is None or not raw_cursor.strip():
-        return None
-    sequence = int(raw_cursor)
-    if sequence < 0:
-        raise ValueError("after_cursor 不能小于 0")
-    return sequence
 
 
 def _parse_sequence_after_cursor(raw_cursor: str | None) -> int | None:
@@ -1837,3 +1607,25 @@ def _now_iso() -> str:
     """
 
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _service_event_after_cursor(
+    event: ServiceEvent,
+    after_sequence: int | None,
+) -> bool:
+    """判断 preview run 服务内事件是否晚于指定序号。
+
+    参数：
+    - event：当前服务内事件。
+    - after_sequence：订阅方传入的最近处理序号。
+
+    返回：
+    - 当事件应继续发送时返回 True。
+    """
+
+    if after_sequence is None:
+        return True
+    event_sequence = _parse_service_event_sequence(event)
+    if event_sequence is None:
+        return True
+    return event_sequence > after_sequence

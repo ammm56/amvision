@@ -98,7 +98,7 @@
         v-if="showAppContractPanel"
         :bindings="previewInputBindings"
         :states="previewInputState"
-        :blocking-messages="lastPreviewRun && ['created', 'running'].includes(lastPreviewRun.state) ? [] : previewBlockingMessages"
+        :blocking-messages="lastPreviewRun && ['accepted', 'running'].includes(lastPreviewRun.state) ? [] : previewBlockingMessages"
         :image-ref-transport-kind-options="imageRefTransportKindOptions"
         :get-payload-type-id="getBindingPayloadTypeId"
         @add-value-field="emit('addPreviewValueField', $event)"
@@ -106,6 +106,11 @@
         @set-image-ref-transport-kind="(bindingId, value) => emit('setPreviewImageRefTransportKind', bindingId, value)"
       />
 
+      <WorkflowPreviewNodeValues
+        v-if="lastPreviewRun && inspectorDetail.kind === 'node'"
+        :run="lastPreviewRun"
+        :node-id="inspectorDetail.node.node.node_id"
+      />
       <WorkflowPreviewRunResultPanel
         v-if="lastPreviewRun"
         :preview-run="lastPreviewRun"
@@ -131,6 +136,7 @@ import WorkflowNodeDetailPanel from './WorkflowNodeDetailPanel.vue'
 import WorkflowNoteDetailPanel from './WorkflowNoteDetailPanel.vue'
 import WorkflowPreviewInputPanel from './WorkflowPreviewInputPanel.vue'
 import WorkflowPreviewRunResultPanel from './WorkflowPreviewRunResultPanel.vue'
+import WorkflowPreviewNodeValues from './WorkflowPreviewNodeValues.vue'
 import WorkflowPublicBindingEditorPanel from './WorkflowPublicBindingEditorPanel.vue'
 import { formatPreviewRunStatusLabel, readPreviewRunBadgeTone } from '../preview/useWorkflowPreviewValidation'
 import type { NewWorkflowAppDraftState } from '../documents/useWorkflowNewAppDraft'

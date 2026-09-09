@@ -15,10 +15,6 @@
       "value": "project-1"
     },
     {
-      "key": "previewRunId",
-      "value": ""
-    },
-    {
       "key": "workflowRuntimeId",
       "value": ""
     },
@@ -123,88 +119,6 @@
             }
           }
         }
-      },
-      "response": []
-    },
-    {
-      "name": "Create Preview Run",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json",
-            "type": "text"
-          },
-          {
-            "key": "Authorization",
-            "value": "Bearer {{accessToken}}",
-            "type": "text"
-          }
-        ],
-        "url": {
-          "raw": "{{baseUrl}}/api/v1/workflows/preview-runs",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "api",
-            "v1",
-            "workflows",
-            "preview-runs"
-          ]
-        },
-        "description": "创建 plc_register_modbus_tcp_async_result_record 的编辑态 preview run。这里直接用 synthetic trigger payload 和 event 做本地调试，不需要真实 PLC 常驻监听。",
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"project_id\": \"project-1\",\n  \"application_ref\": {\n    \"application_id\": \"plc-register-modbus-tcp-async-result-record-app\"\n  },\n  \"input_bindings\": {\n    \"request_trigger_payload\": {\n      \"matched\": true,\n      \"observed_value\": 5,\n      \"previous_observed_value\": 1,\n      \"register_address\": \"400101\",\n      \"register_area\": \"holding_register\",\n      \"data_type\": \"uint16\",\n      \"host\": \"192.168.10.20\",\n      \"port\": 502,\n      \"unit_id\": 1,\n      \"sequence_id\": 12,\n      \"response_meta\": {\n        \"function_code\": 3,\n        \"register_count\": 1\n      }\n    },\n    \"request_trigger_event\": {\n      \"trigger_source_id\": \"plc-trigger-source-08\",\n      \"trigger_kind\": \"plc-register\",\n      \"event_id\": \"plc-line-a-event-000012\",\n      \"occurred_at\": \"2026-06-09T09:00:00Z\",\n      \"idempotency_key\": \"12\"\n    }\n  },\n  \"execution_metadata\": {\n    \"marker\": \"postman-workflow-example-documents-preview\",\n    \"example_name\": \"plc_register_modbus_tcp_async_result_record\",\n    \"scenario\": \"plc-register-modbus-tcp-async-result-record\",\n    \"trigger_source\": \"editor-preview\"\n  },\n  \"timeout_seconds\": 30\n}\n",
-          "options": {
-            "raw": {
-              "language": "json"
-            }
-          }
-        }
-      },
-      "response": [],
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.response.to.have.status(201);",
-              "const body = pm.response.json();",
-              "if (body.preview_run_id) {",
-              "  pm.collectionVariables.set('previewRunId', body.preview_run_id);",
-              "}"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "Get Preview Run",
-      "request": {
-        "method": "GET",
-        "header": {
-          "key": "Authorization",
-          "value": "Bearer {{accessToken}}",
-          "type": "text"
-        },
-        "url": {
-          "raw": "{{baseUrl}}/api/v1/workflows/preview-runs/{{previewRunId}}",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "api",
-            "v1",
-            "workflows",
-            "preview-runs",
-            "{{previewRunId}}"
-          ]
-        },
-        "description": "读取上一步 preview run 的 outputs 和 node_records。"
       },
       "response": []
     },

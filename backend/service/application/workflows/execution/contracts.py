@@ -30,6 +30,12 @@ class WorkflowNodeExecutionRequest:
     node_deadline_monotonic: float | None = None
     node_invocation_id: str | None = None
 
+    def report_progress(self, *, completed=None, total=None, message=None) -> None:
+        """可选的节点真实进度；没有编辑器观察者时不做序列化或通信。"""
+        observer = self.execution_metadata.get("_editor_preview_observer")
+        if observer is not None:
+            observer.progress(completed=completed, total=total, message=message)
+
 
 @dataclass(frozen=True)
 class WorkflowNodeExecutionRecord:

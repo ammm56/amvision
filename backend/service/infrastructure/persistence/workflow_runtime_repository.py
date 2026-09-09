@@ -13,7 +13,6 @@ from backend.service.domain.workflows.workflow_runtime_records import (
     WorkflowAppRuntime,
     WorkflowAppVersion,
     WorkflowExecutionPolicy,
-    WorkflowPreviewRun,
     WorkflowRuntimeRevision,
     WorkflowRun,
 )
@@ -22,7 +21,6 @@ from backend.service.infrastructure.persistence.workflow_runtime_orm import (
     WorkflowAppRuntimeRecord,
     WorkflowAppVersionRecord,
     WorkflowExecutionPolicyRecord,
-    WorkflowPreviewRunRecord,
     WorkflowRuntimeRevisionRecord,
     WorkflowRunRecord,
 )
@@ -267,19 +265,6 @@ class SqlAlchemyWorkflowRuntimeRepository:
                     .order_by(WorkflowAppRuntimeRecord.workflow_runtime_id.asc())
                 ).scalars()
             )
-            preview_runs = tuple(
-                self.session.execute(
-                    select(
-                        WorkflowPreviewRunRecord.preview_run_id,
-                        WorkflowPreviewRunRecord.state,
-                    )
-                    .where(
-                        WorkflowPreviewRunRecord.project_id == project_id,
-                        WorkflowPreviewRunRecord.application_id == application_id,
-                    )
-                    .order_by(WorkflowPreviewRunRecord.preview_run_id.asc())
-                ).all()
-            )
             workflow_run_ids = tuple(
                 self.session.execute(
                     select(WorkflowRunRecord.workflow_run_id)
@@ -306,7 +291,6 @@ class SqlAlchemyWorkflowRuntimeRepository:
             ) from error
         return WorkflowApplicationDeletionInventory(
             workflow_runtime_ids=workflow_runtime_ids,
-            preview_runs=preview_runs,
             workflow_run_ids=workflow_run_ids,
             workflow_app_version_ids=version_ids,
         )
@@ -333,30 +317,12 @@ class SqlAlchemyWorkflowRuntimeRepository:
                 )
                 or 0
             )
-            active_preview_count = int(
-                self.session.scalar(
-                    select(func.count())
-                    .select_from(WorkflowPreviewRunRecord)
-                    .where(
-                        WorkflowPreviewRunRecord.project_id == project_id,
-                        WorkflowPreviewRunRecord.application_id == application_id,
-                        WorkflowPreviewRunRecord.state.in_(("created", "running")),
-                    )
-                )
-                or 0
-            )
-            if runtime_count or active_preview_count:
+            if runtime_count:
                 return False
             self.session.execute(
                 delete(WorkflowRunRecord).where(
                     WorkflowRunRecord.project_id == project_id,
                     WorkflowRunRecord.application_id == application_id,
-                )
-            )
-            self.session.execute(
-                delete(WorkflowPreviewRunRecord).where(
-                    WorkflowPreviewRunRecord.project_id == project_id,
-                    WorkflowPreviewRunRecord.application_id == application_id,
                 )
             )
             self.session.execute(
@@ -1056,181 +1022,12 @@ class SqlAlchemyWorkflowRuntimeRepository:
             ) from error
         return tuple(self._execution_policy_to_domain(record) for record in records)
 
-    def save_preview_run(self, preview_run: WorkflowPreviewRun) -> None:
-        """保存一个 WorkflowPreviewRun。"""
 
-        try:
-            existing_record = self.session.get(
-                WorkflowPreviewRunRecord, preview_run.preview_run_id
-            )
-            if existing_record is None:
-                self.session.add(self._preview_to_record(preview_run))
-                return
 
-            existing_record.project_id = preview_run.project_id
-            existing_record.application_id = preview_run.application_id
-            existing_record.source_kind = preview_run.source_kind
-            existing_record.application_snapshot_object_key = (
-                preview_run.application_snapshot_object_key
-            )
-            existing_record.template_snapshot_object_key = (
-                preview_run.template_snapshot_object_key
-            )
-            existing_record.state = preview_run.state
-            existing_record.created_at = preview_run.created_at
-            existing_record.started_at = preview_run.started_at
-            existing_record.finished_at = preview_run.finished_at
-            existing_record.created_by = preview_run.created_by
-            existing_record.timeout_seconds = preview_run.timeout_seconds
-            existing_record.outputs_json = dict(preview_run.outputs)
-            existing_record.template_outputs_json = dict(preview_run.template_outputs)
-            existing_record.node_records_json = [
-                dict(item) for item in preview_run.node_records
-            ]
-            existing_record.error_message = preview_run.error_message
-            existing_record.retention_until = preview_run.retention_until
-            existing_record.metadata_json = dict(preview_run.metadata)
-        except SQLAlchemyError as error:
-            raise PersistenceOperationError(
-                "保存 WorkflowPreviewRun 失败",
-                details={"error_type": error.__class__.__name__},
-            ) from error
 
-    def get_preview_run(self, preview_run_id: str) -> WorkflowPreviewRun | None:
-        """按 id 读取一个 WorkflowPreviewRun。"""
 
-        try:
-            record = self.session.get(WorkflowPreviewRunRecord, preview_run_id)
-        except SQLAlchemyError as error:
-            raise PersistenceOperationError(
-                "读取 WorkflowPreviewRun 失败",
-                details={"error_type": error.__class__.__name__},
-            ) from error
-        if record is None:
-            return None
-        return self._preview_to_domain(record)
 
-    def get_visible_preview_run(
-        self,
-        preview_run_id: str,
-        *,
-        visible_project_ids: tuple[str, ...],
-    ) -> WorkflowPreviewRun | None:
-        """按 id 和 Project 可见范围读取 WorkflowPreviewRun。"""
 
-        statement = select(WorkflowPreviewRunRecord).where(
-            WorkflowPreviewRunRecord.preview_run_id == preview_run_id
-        )
-        if visible_project_ids:
-            statement = statement.where(
-                WorkflowPreviewRunRecord.project_id.in_(visible_project_ids)
-            )
-        try:
-            record = self.session.execute(statement).scalar_one_or_none()
-        except SQLAlchemyError as error:
-            raise PersistenceOperationError(
-                "按可见 Project 读取 WorkflowPreviewRun 失败",
-                details={"error_type": error.__class__.__name__},
-            ) from error
-        return None if record is None else self._preview_to_domain(record)
-
-    def list_preview_runs(self, project_id: str) -> tuple[WorkflowPreviewRun, ...]:
-        """按 Project id 列出 WorkflowPreviewRun。
-
-        参数：
-        - project_id：所属 Project id。
-
-        返回：
-        - tuple[WorkflowPreviewRun, ...]：按创建时间倒序排列的 preview run 列表。
-        """
-
-        statement = (
-            select(WorkflowPreviewRunRecord)
-            .where(WorkflowPreviewRunRecord.project_id == project_id)
-            .order_by(
-                WorkflowPreviewRunRecord.created_at.desc(),
-                WorkflowPreviewRunRecord.preview_run_id.desc(),
-            )
-        )
-        try:
-            records = self.session.execute(statement).scalars().all()
-        except SQLAlchemyError as error:
-            raise PersistenceOperationError(
-                "列出 WorkflowPreviewRun 失败",
-                details={"error_type": error.__class__.__name__},
-            ) from error
-        return tuple(self._preview_to_domain(record) for record in records)
-
-    def count_preview_run_states_by_project(self, project_id: str) -> dict[str, int]:
-        """按 Project id 聚合 WorkflowPreviewRun 状态数量。
-
-        这个查询只读取 state 和 count，避免项目首页 summary 为了计数加载
-        outputs_json、node_records_json 等大字段。
-        """
-
-        statement = (
-            select(
-                WorkflowPreviewRunRecord.state,
-                func.count(WorkflowPreviewRunRecord.preview_run_id),
-            )
-            .where(WorkflowPreviewRunRecord.project_id == project_id)
-            .group_by(WorkflowPreviewRunRecord.state)
-        )
-        try:
-            rows = self.session.execute(statement).all()
-        except SQLAlchemyError as error:
-            raise PersistenceOperationError(
-                "聚合 WorkflowPreviewRun 状态失败",
-                details={"error_type": error.__class__.__name__},
-            ) from error
-        return {str(state): int(count) for state, count in rows}
-
-    def delete_preview_run(self, preview_run_id: str) -> None:
-        """按 id 删除一个 WorkflowPreviewRun。
-
-        参数：
-        - preview_run_id：要删除的 preview run id。
-
-        返回：
-        - None。
-        """
-
-        try:
-            record = self.session.get(WorkflowPreviewRunRecord, preview_run_id)
-            if record is None:
-                return
-            self.session.delete(record)
-        except SQLAlchemyError as error:
-            raise PersistenceOperationError(
-                "删除 WorkflowPreviewRun 失败",
-                details={"error_type": error.__class__.__name__},
-            ) from error
-
-    def list_expired_preview_runs(
-        self,
-        retention_until: str,
-    ) -> tuple[WorkflowPreviewRun, ...]:
-        """列出 retention_until 已到期的 preview run。"""
-
-        statement = (
-            select(WorkflowPreviewRunRecord)
-            .where(
-                WorkflowPreviewRunRecord.retention_until.is_not(None),
-                WorkflowPreviewRunRecord.retention_until <= retention_until,
-            )
-            .order_by(
-                WorkflowPreviewRunRecord.retention_until.asc(),
-                WorkflowPreviewRunRecord.preview_run_id.asc(),
-            )
-        )
-        try:
-            records = self.session.execute(statement).scalars().all()
-        except SQLAlchemyError as error:
-            raise PersistenceOperationError(
-                "列出已过期 WorkflowPreviewRun 失败",
-                details={"error_type": error.__class__.__name__},
-            ) from error
-        return tuple(self._preview_to_domain(record) for record in records)
 
     def save_workflow_app_runtime(
         self, workflow_app_runtime: WorkflowAppRuntime
@@ -1946,55 +1743,7 @@ class SqlAlchemyWorkflowRuntimeRepository:
             created_by=record.created_by,
         )
 
-    @staticmethod
-    def _preview_to_record(preview_run: WorkflowPreviewRun) -> WorkflowPreviewRunRecord:
-        """把 WorkflowPreviewRun 转换为 ORM 实体。"""
 
-        return WorkflowPreviewRunRecord(
-            preview_run_id=preview_run.preview_run_id,
-            project_id=preview_run.project_id,
-            application_id=preview_run.application_id,
-            source_kind=preview_run.source_kind,
-            application_snapshot_object_key=preview_run.application_snapshot_object_key,
-            template_snapshot_object_key=preview_run.template_snapshot_object_key,
-            state=preview_run.state,
-            created_at=preview_run.created_at,
-            started_at=preview_run.started_at,
-            finished_at=preview_run.finished_at,
-            created_by=preview_run.created_by,
-            timeout_seconds=preview_run.timeout_seconds,
-            outputs_json=dict(preview_run.outputs),
-            template_outputs_json=dict(preview_run.template_outputs),
-            node_records_json=[dict(item) for item in preview_run.node_records],
-            error_message=preview_run.error_message,
-            retention_until=preview_run.retention_until,
-            metadata_json=dict(preview_run.metadata),
-        )
-
-    @staticmethod
-    def _preview_to_domain(record: WorkflowPreviewRunRecord) -> WorkflowPreviewRun:
-        """把 WorkflowPreviewRun ORM 实体转换为领域对象。"""
-
-        return WorkflowPreviewRun(
-            preview_run_id=record.preview_run_id,
-            project_id=record.project_id,
-            application_id=record.application_id,
-            source_kind=record.source_kind,
-            application_snapshot_object_key=record.application_snapshot_object_key,
-            template_snapshot_object_key=record.template_snapshot_object_key,
-            state=record.state,
-            created_at=record.created_at,
-            started_at=record.started_at,
-            finished_at=record.finished_at,
-            created_by=record.created_by,
-            timeout_seconds=record.timeout_seconds,
-            outputs=dict(record.outputs_json or {}),
-            template_outputs=dict(record.template_outputs_json or {}),
-            node_records=tuple(dict(item) for item in (record.node_records_json or [])),
-            error_message=record.error_message,
-            retention_until=record.retention_until,
-            metadata=dict(record.metadata_json or {}),
-        )
 
     @staticmethod
     def _execution_policy_to_record(

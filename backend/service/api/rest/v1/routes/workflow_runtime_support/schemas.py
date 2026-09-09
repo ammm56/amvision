@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from backend.contracts.workflows import FlowApplication, WorkflowGraphTemplate
 
 
 class WorkflowApplicationRefRequestBody(BaseModel):
@@ -15,57 +13,8 @@ class WorkflowApplicationRefRequestBody(BaseModel):
     application_id: str = Field(description="已保存 FlowApplication id")
 
 
-class WorkflowPreviewExecutionScopeRequestBody(BaseModel):
-    """描述编辑器 Preview 的执行范围。"""
-
-    kind: Literal["application", "node"] = Field(
-        default="application",
-        description="执行完整 application，或只执行到指定节点",
-    )
-    target_node_id: str | None = Field(
-        default=None,
-        description="node 范围的目标节点 id",
-    )
-
-    @model_validator(mode="after")
-    def validate_execution_scope(
-        self,
-    ) -> WorkflowPreviewExecutionScopeRequestBody:
-        """校验范围类型与目标节点组合。"""
-
-        normalized_target_node_id = (
-            self.target_node_id.strip()
-            if isinstance(self.target_node_id, str)
-            else None
-        )
-        if self.kind == "node" and not normalized_target_node_id:
-            raise ValueError("node execution_scope 必须提供 target_node_id")
-        if self.kind == "application" and normalized_target_node_id:
-            raise ValueError(
-                "application execution_scope 不能提供 target_node_id"
-            )
-        return self
 
 
-class WorkflowPreviewRunCreateRequestBody(BaseModel):
-    """描述 preview run 创建请求体。"""
-
-    project_id: str = Field(description="所属 Project id")
-    execution_policy_id: str | None = Field(default=None, description="可选的 WorkflowExecutionPolicy id")
-    application_ref: WorkflowApplicationRefRequestBody | None = Field(
-        default=None,
-        description="可选的已保存 application 引用",
-    )
-    application: FlowApplication | None = Field(default=None, description="可选 inline application snapshot")
-    template: WorkflowGraphTemplate | None = Field(default=None, description="可选 inline template snapshot")
-    input_bindings: dict[str, object] = Field(default_factory=dict, description="输入绑定 payload")
-    execution_metadata: dict[str, object] = Field(default_factory=dict, description="执行元数据")
-    timeout_seconds: int | None = Field(default=None, description="可选同步等待超时秒数")
-    wait_mode: Literal["sync", "async"] = Field(default="sync", description="sync 等待结果；async 返回执行记录并通过 GET 查询")
-    execution_scope: WorkflowPreviewExecutionScopeRequestBody = Field(
-        default_factory=WorkflowPreviewExecutionScopeRequestBody,
-        description="编辑器 Preview 执行范围",
-    )
 
 
 class WorkflowExecutionPolicyCreateRequestBody(BaseModel):

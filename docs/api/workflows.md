@@ -11,7 +11,7 @@
 - workflow template validate、save、get、list、latest、copy、version browse、delete version 接口
 - FlowApplication validate、save、get、list、copy、delete 接口
 - workflow node catalog 读取、过滤和 palette 分组结果
-- WorkflowPreviewRun、WorkflowAppRuntime、WorkflowRun、execution policy 和实时事件流的当前公开边界
+- PreviewSession、WorkflowAppRuntime、WorkflowRun、execution policy 和实时事件流的当前公开边界
 - workflow 请求头鉴权规则
 - workflow service 节点语义分组
 - 真实 workflow object key 路径
@@ -19,11 +19,11 @@
 
 ## 相关 runtime 文档
 
-workflow runtime 控制面当前已经公开 preview-runs、app-runtimes、runs、execution-policies、TriggerSource 和对应 WebSocket 事件流。
+workflow runtime 控制面当前已经公开 preview-sessions、app-runtimes、runs、execution-policies、TriggerSource 和对应 WebSocket 事件流。
 
 FlowApplication 是可变保存文档；生产发布使用不可变 WorkflowAppVersion，WorkflowAppRuntime 再通过 revision 选择准确版本。版本切换保留稳定 Runtime/Trigger id，规则见 [docs/api/workflow-app-versions.md](workflow-app-versions.md) 和 [docs/architecture/workflows/app-versioning.md](../architecture/workflows/app-versioning.md)。本文档中的 `template_version` 不等于完整生产发布版本。
 
-- [docs/api/workflow-preview-runs.md](workflow-preview-runs.md)
+- [docs/api/workflow-preview-sessions.md](workflow-preview-sessions.md)
 - [docs/api/workflow-app-runtimes.md](workflow-app-runtimes.md)
 - [docs/api/workflow-runs.md](workflow-runs.md)
 - [docs/api/workflow-execution-policies.md](workflow-execution-policies.md)
@@ -34,7 +34,7 @@ FlowApplication 是可变保存文档；生产发布使用不可变 WorkflowAppV
 当前 workflow 中直接复用后端服务能力的节点分成两组：
 
 - 任务节点：例如 core.service.model-training.submit、core.service.model-conversion.submit、core.service.model-evaluation.submit、core.service.dataset-export.submit、core.service.model-inference.submit。这组节点直接调用现有应用服务并提交后台任务，训练、转换、评估、导出和异步推理仍由独立 worker 与 queue backend 执行。
-- deployment 资源与控制节点：core.service.model-deployment.create 负责创建 DeploymentInstance 资源；core.service.model-deployment.start、warmup、status、health、stop、reset 负责控制或观察已有 deployment 运行态。这组节点控制的是 backend-service 已装配的 deployment control plane，在 preview-run 或 app-runtime 固定 snapshot 内执行，不会临时发布另一套 deployment 服务。
+- deployment 资源与控制节点：core.service.model-deployment.create 负责创建 DeploymentInstance 资源；core.service.model-deployment.start、warmup、status、health、stop、reset 负责控制或观察已有 deployment 运行态。这组节点控制的是 backend-service 已装配的 deployment control plane，在编辑态内存快照或 app-runtime 固定 snapshot 内执行，不会临时发布另一套 deployment 服务。
 
 ## 接口入口
 
@@ -52,8 +52,8 @@ FlowApplication 是可变保存文档；生产发布使用不可变 WorkflowAppV
 
 ### scope 要求
 
-- template/application 的 validate、get、list，以及 node-catalog、preview-runs、app-runtimes、runs 的读取接口需要 workflows:read
-- template/application 的 save、delete，以及 preview-runs create/delete、app-runtimes create/start/stop/invoke 需要 workflows:write
+- template/application 的 validate、get、list，以及 node-catalog、preview-sessions、app-runtimes、runs 的读取接口需要 workflows:read
+- template/application 的 save、delete，以及 preview-sessions create/delete、app-runtimes create/start/stop/invoke 需要 workflows:write
 - 如果需要先查询可用 deployment_instance_id，还需要 models:read 和 models:write
 
 ## 真实 workflow 路径
@@ -64,7 +64,6 @@ FlowApplication 是可变保存文档；生产发布使用不可变 WorkflowAppV
 - template sidecar：workflows/projects/{project_id}/templates/{template_id}/versions/{template_version}/template.summary.json
 - application：workflows/projects/{project_id}/applications/{application_id}/application.json
 - application sidecar：workflows/projects/{project_id}/applications/{application_id}/application.summary.json
-- preview snapshot：workflows/runtime/preview-runs/{preview_run_id}/
 - app runtime snapshot：workflows/runtime/app-runtimes/{workflow_runtime_id}/
 
 - Workflow App 发布版本：`workflows/projects/{project_id}/applications/{application_id}/versions/{workflow_app_version_id}/`
@@ -335,11 +334,8 @@ Runtime revision 通过数据库记录引用上面的不可变发布对象；Exe
 
 ## workflow runtime 当前公开路径
 
-- POST /api/v1/workflows/preview-runs：创建并同步执行一条 WorkflowPreviewRun
-- GET /api/v1/workflows/preview-runs：按 Project 列出 WorkflowPreviewRun，并支持 state、created_from、created_to 过滤
-- GET /api/v1/workflows/preview-runs/{preview_run_id}：读取一条 WorkflowPreviewRun
-- GET /api/v1/workflows/preview-runs/{preview_run_id}/events：读取 preview run 事件历史，支持 after_sequence 和 limit
-- DELETE /api/v1/workflows/preview-runs/{preview_run_id}：删除一条 WorkflowPreviewRun 和对应 snapshot 目录
+- POST /api/v1/workflows/preview-sessions：创建编辑器内存会话；订阅后通过 sessions/{session_id}/runs 提交快照。
+- DELETE /api/v1/workflows/preview-sessions/{session_id}：释放会话，停止本次 Preview 后回收内存。
 - POST /api/v1/workflows/execution-policies：创建一条 WorkflowExecutionPolicy
 - GET /api/v1/workflows/execution-policies：按 Project 列出 WorkflowExecutionPolicy
 - GET /api/v1/workflows/execution-policies/{execution_policy_id}：读取一条 WorkflowExecutionPolicy
@@ -360,23 +356,23 @@ Runtime revision 通过数据库记录引用上面的不可变发布对象；Exe
 - GET /api/v1/workflows/runs/{workflow_run_id}：默认读取公开 App Result；`response_mode=run` 读取运行回执；`response_mode=debug` 读取完整调试 trace
 - GET /api/v1/workflows/runs/{workflow_run_id}/events：读取 WorkflowRun 事件历史，支持 after_sequence 和 limit
 - POST /api/v1/workflows/runs/{workflow_run_id}/cancel：取消一条异步 WorkflowRun
-- /ws/v1/workflows/preview-runs/events：订阅 preview run 实时事件
+- /ws/v1/workflows/preview-sessions/{session_id}：订阅 preview run 实时事件
 - /ws/v1/workflows/app-runtimes/events：订阅 app runtime 实时事件
 - /ws/v1/workflows/runs/events：订阅 WorkflowRun 实时事件
 
-这组路径的字段、状态和最小返回规则见 [docs/api/conventions.md](conventions.md)、[docs/api/workflow-preview-runs.md](workflow-preview-runs.md)、[docs/api/workflow-app-runtimes.md](workflow-app-runtimes.md)、[docs/api/workflow-runs.md](workflow-runs.md) 和 [docs/architecture/platform/websocket.md](../architecture/platform/websocket.md)。
+这组路径的字段、状态和最小返回规则见 [docs/api/conventions.md](conventions.md)、[docs/api/workflow-preview-sessions.md](workflow-preview-sessions.md)、[docs/api/workflow-app-runtimes.md](workflow-app-runtimes.md)、[docs/api/workflow-runs.md](workflow-runs.md) 和 [docs/architecture/platform/websocket.md](../architecture/platform/websocket.md)。
 
 ## 当前边界说明
 
 - 旧的 FlowApplication execute 路由已经删除，不再作为公开兼容入口。
-- 编辑态试跑与已发布应用运行已经拆成 PreviewRun、AppRuntime、WorkflowRun 三类资源。
-- 当前公开面已经覆盖 execution policy、preview run 事件分页、app runtime restart/instances、WorkflowRun 事件分页，以及 preview-run、run、app-runtime 三类 WebSocket 实时观察路径。
+- 编辑态试跑与已发布应用运行已经拆成 PreviewSession、AppRuntime、WorkflowRun 三类资源。
+- 当前公开面覆盖 execution policy、app runtime restart/instances、WorkflowRun 事件分页，以及 preview-session、run、app-runtime WebSocket。PreviewSession 直接推送状态和值，图片按 Blob 分块请求；没有 Preview 事件分页或磁盘结果读取。
 
 ## 常见调试点
 
 - Save Flow Application 成功后，如果返回体里的 application.template_ref.source_uri 与请求体不同，以返回体里的规范化 object key 为准
-- PreviewRun 或 WorkflowRun 使用图片 object_key 失败时，优先检查 data/files 下是否真的有对应文件
-- PreviewRun 和 WorkflowRun 都不会在 workflow worker 里重新发布 deployment 服务；如果 start、warmup、health、stop 行为异常，应优先检查 backend-service 当前进程里的 deployment supervisor 是否已经完成启动
+- PreviewSession 或 WorkflowRun 使用图片 object_key 失败时，优先检查 data/files 下是否真的有对应文件
+- PreviewSession 和 WorkflowRun 都不会在 workflow worker 里重新发布 deployment 服务；如果 start、warmup、health、stop 行为异常，应优先检查 backend-service 当前进程里的 deployment supervisor 是否已经完成启动
 - detection 节点当前把 auto_start_process 设为 false，目的是让 workflow 明确依赖前面的 start 节点；如果跳过 start 或 warmup，预期会在 detection 处暴露 deployment 运行状态问题
 - 当前示例只覆盖 sync deployment detection 链路，不覆盖 async inference-tasks
 
@@ -384,9 +380,7 @@ Runtime revision 通过数据库记录引用上面的不可变发布对象；Exe
 
 - [docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/save-template.request.json](examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/save-template.request.json)
 - [docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/save-application.request.json](examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/save-application.request.json)
-- [docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/preview-execution-policy.create.request.json](examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/preview-execution-policy.create.request.json)
 - [docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/runtime-execution-policy.create.request.json](examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/runtime-execution-policy.create.request.json)
-- [docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/preview-run.request.json](examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/preview-run.request.json)
 - [docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/app-runtime.create.request.json](examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/app-runtime.create.request.json)
 - [docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/app-runtime.invoke.request.json](examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/app-runtime.invoke.request.json)
 - [docs/api/postman/workflows/README.md](postman/workflows/README.md)

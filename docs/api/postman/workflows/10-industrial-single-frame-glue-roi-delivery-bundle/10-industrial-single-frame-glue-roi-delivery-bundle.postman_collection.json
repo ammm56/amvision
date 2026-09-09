@@ -15,10 +15,6 @@
       "value": "project-1"
     },
     {
-      "key": "previewRunId",
-      "value": ""
-    },
-    {
       "key": "workflowRuntimeId",
       "value": ""
     },
@@ -139,90 +135,6 @@
             }
           }
         }
-      },
-      "response": []
-    },
-    {
-      "name": "Create Preview Run",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json",
-            "type": "text"
-          },
-          {
-            "key": "Authorization",
-            "value": "Bearer {{accessToken}}",
-            "type": "text"
-          }
-        ],
-        "url": {
-          "raw": "{{baseUrl}}/api/v1/workflows/preview-runs",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "api",
-            "v1",
-            "workflows",
-            "preview-runs"
-          ]
-        },
-        "description": "创建 industrial_single_frame_glue_roi_delivery_bundle 的编辑态 preview run。适合先核对 request_image_path、regions.v1、delivery_context 和 signal_write 覆盖输入形状。",
-        "body": {
-          "mode": "raw",
-          "raw": "{\r\n  \"project_id\": \"project-1\",\r\n  \"application_ref\": {\r\n    \"application_id\": \"industrial-single-frame-glue-roi-delivery-bundle-app\"\r\n  },\r\n  \"input_bindings\": {\r\n    \"request_image_path\": {\r\n      \"value\": \"D:/cases/line-b/frame-021.png\"\r\n    },\r\n    \"request_regions\": {\r\n      \"count\": 1,\r\n      \"items\": [\r\n        {\r\n          \"region_id\": \"glue-001\",\r\n          \"score\": 0.97,\r\n          \"class_id\": 1,\r\n          \"class_name\": \"glue\",\r\n          \"bbox_xyxy\": [\r\n            240,\r\n            180,\r\n            1010,\r\n            610\r\n          ],\r\n          \"polygon_xy\": [\r\n            [\r\n              240,\r\n              180\r\n            ],\r\n            [\r\n              1010,\r\n              180\r\n            ],\r\n            [\r\n              1010,\r\n              610\r\n            ],\r\n            [\r\n              240,\r\n              610\r\n            ]\r\n          ],\r\n          \"area\": 331100\r\n        }\r\n      ]\r\n    },\r\n    \"request_roi\": {\r\n      \"value\": {\r\n        \"roi_id\": \"line-b-roi\",\r\n        \"roi_kind\": \"bbox\",\r\n        \"display_name\": \"Line B ROI\",\r\n        \"bbox_xyxy\": [\r\n          220,\r\n          160,\r\n          1040,\r\n          640\r\n        ]\r\n      }\r\n    },\r\n    \"request_delivery_context\": {\r\n      \"value\": {\r\n        \"record_id\": \"line-b-20260610-0001\",\r\n        \"work_order_id\": \"WO-1001\",\r\n        \"station_id\": \"line-b-02\",\r\n        \"line_id\": \"line-b\",\r\n        \"trace_id\": \"trace-0001\"\r\n      }\r\n    },\r\n    \"request_signal_write\": {\r\n      \"value\": {\r\n        \"host\": \"192.168.10.20\",\r\n        \"unit_id\": 1,\r\n        \"signal_values\": {\r\n          \"result_code\": 17\r\n        },\r\n        \"disabled_signals\": [\r\n          \"alarm_active\"\r\n        ]\r\n      }\r\n    }\r\n  },\r\n  \"execution_metadata\": {\r\n    \"marker\": \"postman-workflow-example-documents-preview\",\r\n    \"example_name\": \"industrial_single_frame_glue_roi_delivery_bundle\",\r\n    \"scenario\": \"industrial-single-frame-glue-roi-delivery-bundle\",\r\n    \"trigger_source\": \"editor-preview\"\r\n  },\r\n  \"timeout_seconds\": 30\r\n}",
-          "options": {
-            "raw": {
-              "language": "json"
-            }
-          }
-        }
-      },
-      "response": [],
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.response.to.have.status(201);",
-              "const body = pm.response.json();",
-              "if (body.preview_run_id) {",
-              "  pm.collectionVariables.set('previewRunId', body.preview_run_id);",
-              "}"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "Get Preview Run",
-      "request": {
-        "method": "GET",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{accessToken}}",
-            "type": "text"
-          }
-        ],
-        "url": {
-          "raw": "{{baseUrl}}/api/v1/workflows/preview-runs/{{previewRunId}}",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "api",
-            "v1",
-            "workflows",
-            "preview-runs",
-            "{{previewRunId}}"
-          ]
-        },
-        "description": "读取上一步 preview run 的 outputs 和 node_records。"
       },
       "response": []
     },

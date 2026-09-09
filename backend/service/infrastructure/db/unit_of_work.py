@@ -66,7 +66,7 @@ class SqlAlchemyUnitOfWork:
     - model_files：ModelFile 仓储。
     - tasks：TaskRecord、TaskAttempt、TaskEvent 仓储。
     - resource_profiles：ResourceProfile 仓储。
-    - workflow_runtime：Workflow App 版本/lifecycle、PreviewRun、Runtime、Run 仓储。
+    - workflow_runtime：Workflow App 版本/lifecycle、Runtime、Run 仓储。
     - workflow_trigger_sources：WorkflowTriggerSource 仓储。
     - project_summaries：Project summary 数据库聚合读仓储。
     """

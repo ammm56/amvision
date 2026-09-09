@@ -428,7 +428,7 @@
           {{ interactionApplyStatusText }}
         </span>
         <span v-else-if="interactionStatusText">{{ interactionStatusText }}</span>
-        <span>{{ image.sourceObjectKey || image.objectKey || 'inline-base64' }}</span>
+        <span>{{ image.sourceObjectKey || image.objectKey || image.transportKind || 'inline-base64' }}</span>
       </div>
     </div>
   </Teleport>
@@ -507,6 +507,7 @@ interface ViewerImageInteraction {
 }
 
 interface ViewerImage {
+  transportKind?: string
   nodeId?: string
   title: string
   src: string | null

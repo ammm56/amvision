@@ -69,12 +69,6 @@ from backend.service.api.rest.v1.routes.projects.services import (
     require_project_bootstrap_principal,
     require_dataset_storage,
 )
-from backend.service.application.workflows.model_sessions import (
-    build_workflow_preview_model_session_scope_id,
-)
-from backend.service.application.workflows.service_runtime.context import (
-    WorkflowServiceNodeRuntimeContext,
-)
 
 
 projects_router = APIRouter(prefix="/projects", tags=["projects"])
@@ -295,18 +289,13 @@ def delete_project(
     catalog_item = build_project_catalog_item_response(
         request=request, project_id=project_id, include_summary=False
     )
-    application_ids = _list_project_workflow_application_ids(request, project_id)
     service = build_project_deletion_service(request)
-    result = service.delete(
-        project_id=project_id,
-        project_source=catalog_item.project_source,
-        confirmation=body.confirmation,
-    )
-    _release_project_preview_resources(
-        request=request,
-        project_id=project_id,
-        application_ids=application_ids,
-    )
+    with request.app.state.workflow_preview_sessions.deleting_document(project_id):
+        result = service.delete(
+            project_id=project_id,
+            project_source=catalog_item.project_source,
+            confirmation=body.confirmation,
+        )
     if result.cleanup_object_key:
         background_tasks.add_task(
             service.cleanup,
@@ -322,49 +311,8 @@ def delete_project(
     )
 
 
-def _list_project_workflow_application_ids(request: Request, project_id: str) -> tuple[str, ...]:
-    """列出项目文档中的 Workflow Application id，用于释放 Preview 缓存。"""
-
-    applications_root = require_dataset_storage(request).resolve(
-        f"workflows/projects/{project_id}/applications"
-    )
-    if not applications_root.is_dir():
-        return ()
-    return tuple(sorted(child.name for child in applications_root.iterdir() if child.is_dir()))
 
 
-def _release_project_preview_resources(
-    *, request: Request, project_id: str, application_ids: tuple[str, ...]
-) -> None:
-    """释放已删除 Project 的 Workflow Preview 模型和图片缓存。"""
-
-    runtime_context = getattr(
-        request.app.state, "workflow_service_node_runtime_context", None
-    )
-    if not isinstance(runtime_context, WorkflowServiceNodeRuntimeContext):
-        return
-    for application_id in application_ids:
-        scope_id = build_workflow_preview_model_session_scope_id(
-            project_id=project_id, application_id=application_id
-        )
-        if runtime_context.workflow_model_session_manager is not None:
-            try:
-                runtime_context.workflow_model_session_manager.close_scope(
-                    scope_id, wait=False
-                )
-            except Exception:  # noqa: BLE001 - 删除已提交后缓存释放只能降级记录
-                _LOGGER.exception(
-                    "释放已删除 Project 的 Workflow 模型会话失败",
-                    extra={"project_id": project_id, "application_id": application_id},
-                )
-        if runtime_context.workflow_storage_image_cache is not None:
-            try:
-                runtime_context.workflow_storage_image_cache.clear_shared_scope(scope_id)
-            except Exception:  # noqa: BLE001 - 删除已提交后缓存释放只能降级记录
-                _LOGGER.exception(
-                    "释放已删除 Project 的 Workflow 图片缓存失败",
-                    extra={"project_id": project_id, "application_id": application_id},
-                )
 
 
 @projects_router.get("/{project_id}", response_model=ProjectCatalogItemResponse)

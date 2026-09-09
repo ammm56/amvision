@@ -5,6 +5,11 @@
     @mousedown.stop
     @dblclick.stop="emit('open-display', display)"
   >
+    <select v-if="props.display.variants && props.display.variants.length > 1" v-model="selectedOutput" :aria-label="t('workflowEditor.editor.previewOutputPort')" @click.stop>
+      <option v-for="item in props.display.variants" :key="item.outputName" :value="item.outputName">{{ item.outputName }}</option>
+    </select>
+    <small v-if="display.payload.paged" class="workflow-graph-node-preview__empty">{{ t('workflowEditor.editor.previewValuePaged') }}</small>
+    <small v-if="display.stale" class="workflow-graph-node-preview__empty">{{ t('workflowEditor.editor.previousPreviewResult') }}</small>
     <div
       v-if="display.kind === 'image' && display.image?.src"
       class="workflow-graph-node-preview__image-frame"
@@ -104,15 +109,23 @@
 </template>
 
 <script setup lang="ts">
+import { useTranslation } from '@/platform/i18n'
+import { computed, ref, watch } from 'vue'
 import WorkflowPreviewTable from './WorkflowPreviewTable.vue'
 import type { PreviewImageOverlay, PreviewNodeDisplay, PreviewViewerImage } from '../preview/useWorkflowPreviewDisplays'
 import type { StyleValue } from 'vue'
 
-defineProps<{
+const props = defineProps<{
   display: PreviewNodeDisplay
   tooltip: string
   fallbackTitle: string
 }>()
+const { t } = useTranslation()
+const selectedOutput = ref(props.display.outputName)
+watch(() => props.display.variants, (items) => {
+  if (!items?.some(item => item.outputName === selectedOutput.value)) selectedOutput.value = props.display.outputName
+})
+const display = computed(() => props.display.variants?.find(item => item.outputName === selectedOutput.value) ?? props.display)
 
 const emit = defineEmits<{
   'open-display': [display: PreviewNodeDisplay]

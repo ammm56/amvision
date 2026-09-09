@@ -186,26 +186,13 @@ export function useWorkflowPreviewInputs(options: WorkflowPreviewInputsOptions) 
   async function buildPreviewInputBindings(bindings: FlowApplicationBinding[]): Promise<WorkflowPreviewInputPayload> {
     const inputBindings: Record<string, unknown> = {}
     const fileUploads: WorkflowPreviewFileUpload[] = []
-    const imageRefBindings = bindings.filter(
-      (binding) => options.getBindingPayloadTypeId(binding) === 'image-ref.v1',
-    )
-    const usedUploadBindingIds = new Set<string>()
     for (const binding of bindings) {
       if (!hasPreviewBindingValue(binding)) continue
       const payloadTypeId = options.getBindingPayloadTypeId(binding)
       if (payloadTypeId === 'image-base64.v1') {
         const state = previewInputState.value[binding.binding_id]
         if (!state?.file) continue
-        const targetBinding = resolveImageRefUploadBinding(
-          binding,
-          imageRefBindings,
-          usedUploadBindingIds,
-        )
-        if (!targetBinding) {
-          throw new Error(translate('workflowEditor.feedback.previewImageRefRequired'))
-        }
-        usedUploadBindingIds.add(targetBinding.binding_id)
-        fileUploads.push({ bindingId: targetBinding.binding_id, file: state.file })
+        fileUploads.push({ bindingId: binding.binding_id, file: state.file })
         continue
       }
       if (payloadTypeId === 'image-ref.v1') {
@@ -407,20 +394,6 @@ function parsePreviewScalarValue(value: string): unknown {
 
 function createPreviewFieldId(): string {
   return `preview-field-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-}
-
-function resolveImageRefUploadBinding(
-  sourceBinding: FlowApplicationBinding,
-  candidates: FlowApplicationBinding[],
-  usedBindingIds: Set<string>,
-): FlowApplicationBinding | null {
-  const availableCandidates = candidates.filter(
-    (candidate) => !usedBindingIds.has(candidate.binding_id),
-  )
-  const preferredBindingId = sourceBinding.binding_id.replace(/base64/iu, 'ref')
-  return availableCandidates.find(
-    (candidate) => candidate.binding_id === preferredBindingId,
-  ) ?? (availableCandidates.length === 1 ? availableCandidates[0] : null)
 }
 
 function selectValueToString(value: PreviewSelectValue): string {

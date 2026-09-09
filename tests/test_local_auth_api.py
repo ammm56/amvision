@@ -404,7 +404,7 @@ def test_system_bootstrap_aggregates_current_user_providers_projects_and_capabil
         task_type: list(format_types)
         for task_type, format_types in IMPLEMENTED_DATASET_EXPORT_FORMAT_TYPES_BY_TASK_TYPE.items()
     }
-    assert "workflows.preview-runs" in payload["capabilities"]["project_summary_topics"]
+    assert "workflows.app-runtimes" in payload["capabilities"]["project_summary_topics"]
     assert payload["capabilities"]["platform_model_types_by_task_type"] == {
         task_type: list(model_types)
         for task_type, model_types in SUPPORTED_PLATFORM_MODEL_TYPES_BY_TASK_TYPE.items()

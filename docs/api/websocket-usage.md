@@ -20,7 +20,7 @@ Authorization: Bearer <token>
 | `/ws/v1/auth/events` | `event_type`、`user_id`、`provider_id`、`credential_kind`，均可选 | `auth:read` | 登录会话与 token 审计，仅实时事件 |
 | `/ws/v1/tasks/events` | `task_id` 必填；`event_type`、`after_cursor`、`limit` 可选 | `tasks:read` | Task 状态、进度、日志和结果事件 |
 | `/ws/v1/training/telemetry` | `task_id` 必填；`after_cursor`、`limit` 可选 | `tasks:read` | 训练高频遥测，只接受 training Task |
-| `/ws/v1/workflows/preview-runs/events` | `preview_run_id` 必填；`after_cursor`、`limit` 可选 | `workflows:read` | Preview Run 节点和终态事件 |
+| `/ws/v1/workflows/preview-sessions/{session_id}` | Preview Session | `workflows:read` | 内存快照 + 节点事件 + 二进制数据 |
 | `/ws/v1/workflows/runs/events` | `workflow_run_id` 必填；`after_cursor`、`limit` 可选 | `workflows:read` | 正式 Workflow Run 事件 |
 | `/ws/v1/workflows/app-runtimes/events` | `workflow_runtime_id` 必填；`after_cursor`、`limit` 可选 | `workflows:read` | Runtime 生命周期与 heartbeat |
 | `/ws/v1/deployments/events` | `deployment_instance_id` 必填；`runtime_mode`、`after_cursor`、`limit` 可选 | `models:read` | Deployment 生命周期与健康事件 |
@@ -63,9 +63,9 @@ Authorization: Bearer <token>
 
 ### Preview Run
 
-1. 读取 `GET /api/v1/workflows/preview-runs/{preview_run_id}`。
-2. 读取 `GET /api/v1/workflows/preview-runs/{preview_run_id}/events?after_sequence=...&limit=...`。
-3. 连接 `/ws/v1/workflows/preview-runs/events?preview_run_id=...&after_cursor=...&limit=...`。
+1. 创建 Preview Session，并连接其 WebSocket，收到 session.snapshot。
+2. 通过 WebSocket 上传文件，再向 sessions/{session_id}/runs 提交完整 v1 图快照。
+3. 增量消费节点事件与显示；断线后恢复当前内存快照，不自动重跑业务。
 
 ### Workflow Run
 
@@ -117,6 +117,6 @@ Project 流不支持 `after_cursor`。断线后重新读取 summary，再重连�
 - [API 通用约定](conventions.md)
 - [通信协议边界](communication-contracts.md)
 - [WebSocket 架构](../architecture/platform/websocket.md)
-- [Workflow Preview Run](workflow-preview-runs.md)
+- [Workflow Preview Run](workflow-preview-sessions.md)
 - [Workflow Run](workflow-runs.md)
 - [Workflow App Runtime](workflow-app-runtimes.md)

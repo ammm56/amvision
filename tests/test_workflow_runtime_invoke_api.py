@@ -1197,58 +1197,6 @@ def test_runtime_multipart_streams_single_and_ordered_files_then_cleans_inputs(
     )
 
 
-def test_preview_multipart_streams_ordered_files_and_cleans_inputs(
-    tmp_path: Path,
-) -> None:
-    """Preview 复用同名 binding、多文件顺序和流式临时对象清理规则。"""
-
-    client, session_factory, dataset_storage = _create_runtime_api_client(
-        tmp_path,
-        database_name="workflow-preview-stream-files.db",
-        enable_local_buffer_broker=False,
-    )
-    headers = build_test_headers(scopes="workflows:read,workflows:write")
-    workflow_service = LocalWorkflowJsonService(
-        dataset_storage=dataset_storage,
-        node_catalog_registry=client.app.state.node_catalog_registry,
-    )
-    template, application = _build_file_metadata_application(multiple=True)
-    workflow_service.save_template(project_id="project-1", template=template)
-    workflow_service.save_application(project_id="project-1", application=application)
-    try:
-        with client:
-            response = client.post(
-                "/api/v1/workflows/preview-runs/multipart",
-                headers=headers,
-                data={
-                    "request": json.dumps(
-                        {
-                            "project_id": "project-1",
-                            "application_ref": {
-                                "application_id": application.application_id
-                            },
-                            "input_bindings": {},
-                            "execution_metadata": {"scenario": "typed-preview-files"},
-                        }
-                    )
-                },
-                files=[
-                    ("request_files", ("a.txt", b"a", "text/plain")),
-                    ("request_files", ("b.txt", b"bb", "text/plain")),
-                ],
-            )
-    finally:
-        session_factory.engine.dispose()
-
-    assert response.status_code == 201, response.text
-    payload = response.json()
-    assert payload["state"] == "succeeded"
-    assert payload["outputs"]["metadata"]["value"]["file_name"] == "b.txt"
-    assert payload["outputs"]["metadata"]["value"]["content_length"] == 2
-    runtime_inputs_root = dataset_storage.resolve("workflows/runtime-inputs")
-    assert not runtime_inputs_root.exists() or not tuple(
-        runtime_inputs_root.rglob("content.*")
-    )
 
 
 def _build_file_metadata_application(

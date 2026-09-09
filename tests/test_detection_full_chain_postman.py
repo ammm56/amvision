@@ -180,13 +180,8 @@ def test_detection_full_chain_collection_covers_expected_stages() -> None:
     deployment_raw = deployment_request["body"]["raw"]
     assert '"model_type": "{{modelType}}"' in deployment_raw
 
-    preview_run_request = _find_request(collection_payload, "Create Preview Run")
-    preview_run_body = json.loads(preview_run_request["body"]["raw"])
-    assert preview_run_body["project_id"] == "{{projectId}}"
-    assert (
-        preview_run_body["input_bindings"]["request_image_base64"]["image_base64"]
-        == "{{inputImageBase64}}"
-    )
+    # 编辑态使用 WS 内存会话，正式模型链路集合不再发布旧持久化 Preview 请求。
+    assert "/preview-runs" not in json.dumps(collection_payload)
 
 
 def test_detection_full_chain_readmes_point_to_current_collection() -> None:

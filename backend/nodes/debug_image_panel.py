@@ -8,16 +8,11 @@ from typing import Any
 from backend.nodes.runtime_support import (
     RESPONSE_IMAGE_TRANSPORT_INLINE_BASE64,
     RESPONSE_IMAGE_TRANSPORT_STORAGE_REF,
-    PREVIEW_DISPLAY_MEDIA_TYPE,
     build_preview_response_image_payload,
     require_image_payload,
 )
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
-from backend.service.application.workflows.preview_display_outputs import (
-    build_preview_run_artifact_object_key,
-    read_preview_run_id,
-)
 
 
 DEBUG_IMAGE_PANEL_ENABLED_PARAMETER = "debug_image_panel_enabled"
@@ -70,22 +65,12 @@ def build_debug_image_preview_output(
 
     normalized_image_payload = require_image_payload(image_payload)
     response_transport_mode = _read_debug_transport_mode(request.parameters.get(DEBUG_IMAGE_PANEL_TRANSPORT_PARAMETER))
-    object_key = _build_debug_preview_artifact_object_key(
-        request,
-        artifact_name=artifact_name,
-        media_type=str(normalized_image_payload.get("media_type") or "image/png"),
-    )
-    display_object_key = _build_debug_preview_artifact_object_key(
-        request,
-        artifact_name=f"{artifact_name}-display",
-        media_type=PREVIEW_DISPLAY_MEDIA_TYPE,
-    )
     response_image = build_preview_response_image_payload(
         request,
         image_payload=normalized_image_payload,
         response_transport_mode=response_transport_mode,
-        object_key=object_key,
-        display_object_key=display_object_key,
+        object_key=None,
+        display_object_key=None,
         variant_name=artifact_name,
     )
     preview_body: dict[str, object] = {
@@ -395,23 +380,6 @@ def _read_debug_transport_mode(raw_value: object) -> str:
     return normalized_value
 
 
-def _build_debug_preview_artifact_object_key(
-    request: WorkflowNodeExecutionRequest,
-    *,
-    artifact_name: str,
-    media_type: str,
-) -> str | None:
-    """为 Preview Run 自动生成 debug 图片 artifact object key。"""
-
-    preview_run_id = read_preview_run_id(request.execution_metadata)
-    if preview_run_id is None:
-        return None
-    return build_preview_run_artifact_object_key(
-        preview_run_id=preview_run_id,
-        node_id=request.node_id,
-        artifact_name=artifact_name,
-        media_type=media_type,
-    )
 
 
 def _build_overlay_base(

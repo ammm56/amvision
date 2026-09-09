@@ -17,10 +17,14 @@
 
 - [Workflow JSON](json-contracts.md)
 - [Workflow 编辑器](editor.md)
+- [Preview 实时执行方案](preview-streaming-design.md)：内存会话、逐节点 WebSocket 和正式运行边界，待实现。
+- [Preview 实时执行代码实施清单](preview-streaming-implementation.md)：S00–S10 文件范围、固定合约、资源所有权及验收门禁，待实施。
 - [参数输入](parameter-inputs.md)
 - [说明节点](note-nodes.md)
 - [Runtime 显示与 App Mode](runtime-display.md)：Runtime 完成后只读画布与 App Mode 已实现；自动呈现全部 App Entry 公开输入，不实现逐节点进度、强制终止终态、独立应用或页面设计器。
 - [Visual Prompt](visual-prompt.md)
+
+- [Preview 内存会话实现与验证记录](preview-streaming-verification.md)
 
 ## 节点
 

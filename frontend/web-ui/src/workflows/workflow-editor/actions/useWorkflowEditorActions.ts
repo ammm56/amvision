@@ -5,7 +5,7 @@ import { validateWorkflowApplication } from '../services/workflow-application.se
 import { saveWorkflowApp, type WorkflowAppSaveResult } from '../services/workflow-app.service'
 import { useWorkflowPreviewSession, isTerminalPreviewRun } from '../preview/useWorkflowPreviewSession'
 import type { PreviewNodeDisplayRefreshOptions } from '../preview/useWorkflowPreviewDisplays'
-import { createWorkflowPreviewRun, cancelWorkflowPreviewRun } from '../services/workflow-runtime.service'
+
 import type { WorkflowPreviewExecutionScope } from '../services/workflow-runtime.service'
 import type { WorkflowPreviewFileUpload } from '../preview/useWorkflowPreviewInputs'
 import { validateWorkflowTemplate } from '../services/workflow-template.service'
@@ -33,25 +33,6 @@ function readErrorMessage(error: unknown, fallback: string): string {
     }
   }
   return error instanceof Error ? error.message : fallback
-}
-
-function readBooleanParameter(parameters: WorkflowJsonObject, parameterName: string): boolean {
-  return parameters[parameterName] === true
-}
-
-function hasDebugImagePanelNode(template: WorkflowGraphTemplate): boolean {
-  return template.nodes.some(
-    (node) => node.enabled !== false && readBooleanParameter(node.parameters, 'debug_image_panel_enabled'),
-  )
-}
-
-function shouldRetainPreviewNodeRecords(
-  template: WorkflowGraphTemplate,
-  executionScope?: WorkflowPreviewExecutionScope,
-): boolean {
-  if (executionScope?.kind === 'node') return true
-  return template.nodes.some((node) => node.enabled !== false && node.node_type_id.endsWith('-preview'))
-    || hasDebugImagePanelNode(template)
 }
 
 export function useWorkflowEditorActions() {
@@ -92,22 +73,7 @@ export function useWorkflowEditorActions() {
       await validateWorkflowTemplate(input.template)
       await validateWorkflowApplication(input.projectId, input.application, input.template)
       if (!previewSession.isCurrent(generation)) return null
-      const previewRun = await createWorkflowPreviewRun({
-        projectId: input.projectId,
-        template: input.template,
-        inputBindings: input.inputBindings,
-        fileUploads: input.fileUploads ?? [],
-        executionMetadata: {
-          source: 'workflow-graph-workbench',
-          debug_image_panels_enabled: hasDebugImagePanelNode(input.template),
-          retain_node_records_enabled: shouldRetainPreviewNodeRecords(input.template, input.executionScope),
-        },
-        waitMode: 'async',
-        application: input.application,
-        executionScope: input.executionScope,
-      })
-      if (!previewSession.isCurrent(generation)) return null
-      await previewSession.accepted(previewRun, generation)
+      const previewRun = await previewSession.execute(input, generation)
       statusMessage.value = null
       return previewRun
     } catch (error) {
@@ -125,8 +91,7 @@ export function useWorkflowEditorActions() {
     const targetRunId = lastPreviewRun.value.preview_run_id
     previewCancelling.value = true
     try {
-      await cancelWorkflowPreviewRun(lastPreviewRun.value.preview_run_id)
-      if (lastPreviewRun.value?.preview_run_id === targetRunId) await previewSession.refreshNow()
+      await previewSession.cancel()
     } catch (error) {
       if (lastPreviewRun.value?.preview_run_id === targetRunId) {
         previewCancelling.value = false

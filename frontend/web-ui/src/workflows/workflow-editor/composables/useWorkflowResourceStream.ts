@@ -5,7 +5,7 @@ import type { ResourceStreamState, WebSocketEnvelope } from '@/shared/contracts'
 import { isControlEvent } from '@/shared/contracts'
 import { ResourceStreamClient } from '@/shared/ws/resource-stream-client'
 
-export type WorkflowResourceStreamKind = 'preview-run' | 'run' | 'app-runtime'
+export type WorkflowResourceStreamKind = 'run' | 'app-runtime'
 
 interface WorkflowResourceStreamSpec {
   stream: string
@@ -27,18 +27,6 @@ export interface WorkflowResourceStreamOptions<TSnapshot> {
 const DEFAULT_POLLING_INTERVAL_MS = 2000
 
 const STREAM_SPECS: Record<WorkflowResourceStreamKind, WorkflowResourceStreamSpec> = {
-  'preview-run': {
-    stream: 'workflows.preview-runs.events',
-    path: '/workflows/preview-runs/events',
-    queryKey: 'preview_run_id',
-    terminalEventTypes: new Set([
-      'preview.succeeded',
-      'preview.failed',
-      'preview.timed_out',
-      'preview.cancelled',
-    ]),
-    refreshEveryBusinessEvent: true,
-  },
   run: {
     stream: 'workflows.runs.events',
     path: '/workflows/runs/events',
@@ -103,7 +91,7 @@ export function useWorkflowResourceStream<TSnapshot>(
       onMessage: handleMessage,
       onStateChange: (state) => {
         streamState.value = state
-        if (state.connected && !state.stale && options.kind !== 'preview-run') {
+        if (state.connected && !state.stale) {
           stopPolling()
           return
         }

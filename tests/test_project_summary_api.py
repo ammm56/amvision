@@ -149,18 +149,6 @@ def test_project_summary_api_aggregates_workflow_and_deployment_counts(tmp_path:
 
     try:
         with client:
-            preview_run_response = client.post(
-                "/api/v1/workflows/preview-runs",
-                headers=_build_headers(),
-                json={
-                    "project_id": "project-1",
-                    "application_ref": {"application_id": "process-echo-app"},
-                    "input_bindings": {"request_text": {"value": "project summary preview"}},
-                    "wait_mode": "sync",
-                },
-            )
-            assert preview_run_response.status_code == 201
-            assert preview_run_response.json()["state"] == "succeeded"
 
             create_runtime_response = client.post(
                 "/api/v1/workflows/app-runtimes",
@@ -220,8 +208,6 @@ def test_project_summary_api_aggregates_workflow_and_deployment_counts(tmp_path:
     assert payload["project_id"] == "project-1"
     assert payload["workflows"]["template_total"] == 1
     assert payload["workflows"]["application_total"] == 1
-    assert payload["workflows"]["preview_run_total"] == 1
-    assert payload["workflows"]["preview_run_state_counts"] == {"succeeded": 1}
     assert payload["workflows"]["workflow_run_total"] == 1
     assert payload["workflows"]["workflow_run_state_counts"] == {"succeeded": 1}
     assert payload["workflows"]["app_runtime_total"] == 1

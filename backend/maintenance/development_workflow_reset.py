@@ -10,7 +10,6 @@ from uuid import uuid4
 from sqlalchemy import delete, func, select
 
 from backend.contracts.workflows.resource_semantics import (
-    WORKFLOW_PREVIEW_RUN_TERMINAL_STATES,
     WORKFLOW_RUN_TERMINAL_STATES,
 )
 from backend.service.infrastructure.db.schema import initialize_database_schema
@@ -23,7 +22,6 @@ from backend.service.infrastructure.persistence.workflow_runtime_orm import (
     WorkflowAppRuntimeRecord,
     WorkflowAppVersionRecord,
     WorkflowExecutionPolicyRecord,
-    WorkflowPreviewRunRecord,
     WorkflowRunRecord,
     WorkflowRuntimeRevisionRecord,
 )
@@ -245,7 +243,6 @@ def _read_database_counts(*, session_factory: SessionFactory) -> dict[str, int]:
             "workflow_application_lifecycles": _count_rows(
                 session, WorkflowApplicationLifecycleRecord
             ),
-            "workflow_preview_runs": _count_rows(session, WorkflowPreviewRunRecord),
             "workflow_execution_policies": _count_rows(
                 session, WorkflowExecutionPolicyRecord
             ),
@@ -290,18 +287,6 @@ def _read_active_resource_counts(
                 )
                 or 0
             ),
-            "workflow_preview_runs": int(
-                session.scalar(
-                    select(func.count())
-                    .select_from(WorkflowPreviewRunRecord)
-                    .where(
-                        WorkflowPreviewRunRecord.state.not_in(
-                            WORKFLOW_PREVIEW_RUN_TERMINAL_STATES
-                        )
-                    )
-                )
-                or 0
-            ),
         }
 
 
@@ -317,7 +302,6 @@ def _delete_database_state(*, session_factory: SessionFactory) -> dict[str, int]
         session.execute(delete(WorkflowAppVersionRecord))
         session.flush()
         session.execute(delete(WorkflowApplicationLifecycleRecord))
-        session.execute(delete(WorkflowPreviewRunRecord))
         session.execute(delete(WorkflowExecutionPolicyRecord))
         session.commit()
     return counts
@@ -329,7 +313,6 @@ def _read_history_counts(*, session_factory: SessionFactory) -> dict[str, int]:
     with session_factory.create_session() as session:
         return {
             "workflow_runs": _count_rows(session, WorkflowRunRecord),
-            "workflow_preview_runs": _count_rows(session, WorkflowPreviewRunRecord),
         }
 
 
@@ -339,7 +322,6 @@ def _delete_execution_history(*, session_factory: SessionFactory) -> dict[str, i
     counts = _read_history_counts(session_factory=session_factory)
     with session_factory.create_session() as session:
         session.execute(delete(WorkflowRunRecord))
-        session.execute(delete(WorkflowPreviewRunRecord))
         for trigger_source in session.scalars(select(WorkflowTriggerSourceRecord)):
             trigger_source.last_triggered_at = None
             trigger_source.last_error = None

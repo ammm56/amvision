@@ -8,7 +8,6 @@ from pathlib import PurePosixPath
 
 from backend.contracts.workflows import (
     build_workflow_app_runtime_storage_dir,
-    build_workflow_preview_run_storage_dir,
     build_workflow_run_storage_dir,
     build_workflow_trigger_source_storage_dir,
 )
@@ -36,7 +35,6 @@ from backend.service.infrastructure.persistence.project_deletion_repository impo
 
 _ACTIVE_TASK_STATES = {"queued", "running", "paused"}
 _ACTIVE_QUEUE_STATES = {"queued", "leased"}
-_ACTIVE_PREVIEW_STATES = {"created", "running"}
 _ACTIVE_RUN_STATES = {"created", "queued", "dispatching", "running"}
 _ACTIVE_RUNTIME_STATES = {"starting", "running", "stopping"}
 _VALIDATION_SESSION_ROOTS = (
@@ -568,10 +566,6 @@ class ProjectDeletionService:
         for deployment_id, _state in inventory.deployments:
             candidates.append(f"deployments/instances/{deployment_id}")
         candidates.extend(
-            build_workflow_preview_run_storage_dir(resource_id)
-            for resource_id, _state in inventory.preview_runs
-        )
-        candidates.extend(
             build_workflow_app_runtime_storage_dir(resource_id)
             for resource_id, _desired, _observed in inventory.app_runtimes
         )
@@ -661,11 +655,6 @@ class ProjectDeletionService:
             if state == "active":
                 blockers.append(
                     ProjectDeletionBlocker("deployment", resource_id, state)
-                )
-        for resource_id, state in inventory.preview_runs:
-            if state in _ACTIVE_PREVIEW_STATES:
-                blockers.append(
-                    ProjectDeletionBlocker("workflow_preview", resource_id, state)
                 )
         for resource_id, desired, observed in inventory.app_runtimes:
             if desired in _ACTIVE_RUNTIME_STATES or observed in _ACTIVE_RUNTIME_STATES:

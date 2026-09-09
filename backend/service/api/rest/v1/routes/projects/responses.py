@@ -148,8 +148,6 @@ def build_project_summary_response(
         workflows=ProjectWorkflowSummaryResponse(
             template_total=summary.workflows.template_total,
             application_total=summary.workflows.application_total,
-            preview_run_total=summary.workflows.preview_run_total,
-            preview_run_state_counts=dict(summary.workflows.preview_run_state_counts),
             workflow_run_total=summary.workflows.workflow_run_total,
             workflow_run_state_counts=dict(summary.workflows.workflow_run_state_counts),
             app_runtime_total=summary.workflows.app_runtime_total,

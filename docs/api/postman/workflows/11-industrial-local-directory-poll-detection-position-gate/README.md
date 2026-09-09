@@ -48,8 +48,6 @@
 
 按下面顺序执行：
 
-- `Create Preview Run`
-- `Get Preview Run`
 
 这一步是可选的，但建议保留。它最适合先确认：
 

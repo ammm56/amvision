@@ -1,166 +1,49 @@
 import { createPinia, setActivePinia } from 'pinia'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { flushPromises } from '@vue/test-utils'
-
-import type { WorkflowPreviewRunActionInput } from './useWorkflowEditorActions'
-import { useWorkflowEditorActions } from './useWorkflowEditorActions'
-import { useSessionStore } from '@/app/stores/session.store'
-
-const mocks = vi.hoisted(() => ({
-  validateWorkflowTemplate: vi.fn(),
-  validateWorkflowApplication: vi.fn(),
-  createWorkflowPreviewRun: vi.fn(),
-  getWorkflowPreviewRun: vi.fn(),
-  cancelWorkflowPreviewRun: vi.fn(),
-  stream: vi.fn(),
-  start: vi.fn(),
-  stop: vi.fn(),
-  refreshNow: vi.fn(),
-  saveWorkflowApp: vi.fn(),
+import { beforeEach, expect, it, vi } from 'vitest'
+import { useWorkflowEditorActions, type WorkflowPreviewRunActionInput } from './useWorkflowEditorActions'
+const io = vi.hoisted(() => ({ options: null as any, revision: '', seq: 0, create: vi.fn(), submit: vi.fn(), release: vi.fn(), cancel: vi.fn(), validate: vi.fn() }))
+vi.mock('../services/workflow-preview-session.service', () => ({
+ PREVIEW_FORMAT: 'amvision.workflow-preview-session.v1', createPreviewSession: io.create, submitPreviewSession: io.submit, releasePreviewSession: io.release, cancelPreviewSession: io.cancel,
+ PreviewSessionConnection: class {
+   constructor(public identity: any, options: any) { io.options = options }
+   async connect() { send('session.snapshot', {watermark: 0, run: null, nodes: [], displays: [], values: []}, 0) }
+   close() {}
+   async readBlob() { return new Blob(['image'], { type: 'image/png' }) }
+ }
 }))
+const identity = {format_id:'amvision.workflow-preview-session.v1', session_id:'session',epoch:'epoch',memory_limit_bytes:1024}
+function send(type:string, payload:object, seq=++io.seq) { io.options.onEvent({...identity, run_id:seq?'run':null, document_revision:seq?io.revision:null,type,payload,seq}) }
+function setupTransport() {
+ io.seq=0; io.revision=''; sessionStorage.clear(); io.create.mockResolvedValue(identity); io.release.mockResolvedValue(undefined)
+ io.submit.mockImplementation(async (_sid, body) => { io.revision=body.document_revision; send('run.accepted',{run_id:'run',document_revision:io.revision,state:'accepted'}); return {...identity,run_id:'run',state:'accepted'} })
+}
 
-vi.mock('@/platform/i18n', () => ({
-  translate: (key: string) => key,
-}))
-
-vi.mock('../services/workflow-template.service', () => ({
-  validateWorkflowTemplate: mocks.validateWorkflowTemplate,
-}))
-
-vi.mock('../services/workflow-application.service', () => ({
-  validateWorkflowApplication: mocks.validateWorkflowApplication,
-}))
-
-vi.mock('../services/workflow-runtime.service', () => ({
-  createWorkflowPreviewRun: mocks.createWorkflowPreviewRun,
-  getWorkflowPreviewRun: mocks.getWorkflowPreviewRun,
-  cancelWorkflowPreviewRun: mocks.cancelWorkflowPreviewRun,
-}))
-
-vi.mock('../composables/useWorkflowResourceStream', () => ({ useWorkflowResourceStream: mocks.stream }))
-vi.mock('../preview/previewDisplayResults', () => ({ loadPreviewDisplayResult: async (run: unknown) => ({
-  run: await mocks.getWorkflowPreviewRun((run as { preview_run_id: string }).preview_run_id), errors: [],
-}) }))
-
-vi.mock('../services/workflow-app.service', () => ({
-  saveWorkflowApp: mocks.saveWorkflowApp,
-}))
-
-describe('useWorkflowEditorActions Preview guard', () => {
-  beforeEach(() => {
-    setActivePinia(createPinia())
-    vi.clearAllMocks()
-    sessionStorage.clear()
-    mocks.stream.mockReturnValue({ start: mocks.start, stop: mocks.stop, refreshNow: mocks.refreshNow })
-    mocks.validateWorkflowApplication.mockResolvedValue({})
-    mocks.createWorkflowPreviewRun.mockResolvedValue({
-      preview_run_id: 'preview-run-1',
-      state: 'succeeded',
-    })
-    mocks.getWorkflowPreviewRun.mockResolvedValue({ preview_run_id: 'preview-run-1', state: 'succeeded' })
-  })
-
-  it('rejects a second Preview before validation completes', async () => {
-    let releaseValidation: () => void = () => undefined
-    mocks.validateWorkflowTemplate.mockImplementation(
-      () => new Promise<void>((resolve) => {
-        releaseValidation = resolve
-      }),
-    )
-    const actions = useWorkflowEditorActions()
-    const input = {
-      projectId: 'project-1',
-      template: {
-        nodes: [],
-      },
-      application: {},
-      inputBindings: {},
-    } as unknown as WorkflowPreviewRunActionInput
-
-    const firstRun = actions.runWorkflowPreview(input)
-    expect(actions.previewing.value).toBe(true)
-
-    const duplicateRun = await actions.runWorkflowPreview(input)
-    expect(duplicateRun).toBeNull()
-    expect(actions.statusMessage.value).toBe(
-      'workflowEditor.feedback.previewAlreadyRunning',
-    )
-    expect(mocks.createWorkflowPreviewRun).not.toHaveBeenCalled()
-
-    releaseValidation()
-    await firstRun
-    expect(mocks.createWorkflowPreviewRun).toHaveBeenCalledTimes(1)
-    expect(actions.previewing.value).toBe(false)
-  })
-
-  it('forwards node execution scope and retains node records', async () => {
-    mocks.validateWorkflowTemplate.mockResolvedValue({})
-    const actions = useWorkflowEditorActions()
-    await actions.runWorkflowPreview({
-      projectId: 'project-1',
-      template: {
-        nodes: [],
-      },
-      application: {},
-      inputBindings: {},
-      executionScope: {
-        kind: 'node',
-        targetNodeId: 'mask-editor-1',
-      },
-    } as unknown as WorkflowPreviewRunActionInput)
-
-    expect(mocks.createWorkflowPreviewRun).toHaveBeenCalledWith(
-      expect.objectContaining({
-        executionScope: {
-          kind: 'node',
-          targetNodeId: 'mask-editor-1',
-        },
-        executionMetadata: expect.objectContaining({
-          retain_node_records_enabled: true,
-        }),
-      }),
-    )
-  })
-
-  it('keeps accepted long runs busy until a terminal snapshot, including cancellation', async () => {
-    mocks.validateWorkflowTemplate.mockResolvedValue({})
-    const running = { preview_run_id: 'preview-long', state: 'running', project_id: 'project-1', application_id: 'app-1' }
-    mocks.createWorkflowPreviewRun.mockResolvedValue(running)
-    const actions = useWorkflowEditorActions()
-    const input = { projectId: 'project-1', application: { application_id: 'app-1' }, template: { nodes: [] }, inputBindings: {} } as unknown as WorkflowPreviewRunActionInput
-    await actions.runWorkflowPreview(input)
-    expect(mocks.createWorkflowPreviewRun).toHaveBeenCalledWith(expect.objectContaining({ waitMode: 'async' }))
-    expect(actions.previewing.value).toBe(true)
-    expect(mocks.start).toHaveBeenCalledWith('preview-long')
-    await actions.runWorkflowPreview(input)
-    expect(mocks.createWorkflowPreviewRun).toHaveBeenCalledTimes(1)
-    await actions.cancelPreviewRun()
-    await actions.cancelPreviewRun()
-    expect(mocks.cancelWorkflowPreviewRun).toHaveBeenCalledTimes(1)
-    expect(actions.previewing.value).toBe(true)
-    expect(actions.previewCancelling.value).toBe(true)
-    mocks.stream.mock.calls[0]![0].onSnapshot({ ...running, state: 'cancelled' })
-    expect(actions.previewing.value).toBe(false)
-    expect(actions.previewCancelling.value).toBe(false)
-  })
-
-  it('restores only the same user, project and app; terminal snapshots clear the stored run', async () => {
-    mocks.validateWorkflowTemplate.mockResolvedValue({})
-    useSessionStore().currentUser = { principal_id: 'user-1' } as NonNullable<ReturnType<typeof useSessionStore>['currentUser']>
-    const running = { preview_run_id: 'preview-long', state: 'running', project_id: 'project-1', application_id: 'app-1' }
-    mocks.createWorkflowPreviewRun.mockResolvedValue(running)
-    mocks.getWorkflowPreviewRun.mockResolvedValue(running)
-    const actions = useWorkflowEditorActions()
-    await actions.runWorkflowPreview({ projectId: 'project-1', application: { application_id: 'app-1' }, template: { nodes: [] }, inputBindings: {} } as unknown as WorkflowPreviewRunActionInput)
-    actions.resetPreviewRun()
-    await actions.restorePreviewRun('other-project', 'app-1')
-    expect(mocks.getWorkflowPreviewRun).not.toHaveBeenCalled()
-    await actions.restorePreviewRun('project-1', 'app-1')
-    expect(mocks.getWorkflowPreviewRun).toHaveBeenCalledWith('preview-long', false)
-    expect(actions.previewing.value).toBe(true)
-    mocks.getWorkflowPreviewRun.mockResolvedValue({ ...running, state: 'succeeded' })
-    mocks.stream.mock.calls[0]![0].onSnapshot({ ...running, state: 'succeeded' })
-    await flushPromises()
-    expect(sessionStorage.length).toBe(0)
-  })
+vi.mock('@/platform/i18n', () => ({translate:(key:string)=>key}))
+vi.mock('../services/workflow-template.service', () => ({validateWorkflowTemplate:io.validate}))
+vi.mock('../services/workflow-application.service', () => ({validateWorkflowApplication:vi.fn()}))
+vi.mock('../services/workflow-app.service', () => ({saveWorkflowApp:vi.fn()}))
+const input={projectId:'p',application:{application_id:'app'},template:{nodes:[]},inputBindings:{}} as unknown as WorkflowPreviewRunActionInput
+beforeEach(()=>{setActivePinia(createPinia());vi.clearAllMocks();io.validate.mockResolvedValue({});setupTransport()})
+it('guards duplicate execution during validation and until the actual terminal event',async()=>{
+ let finish!:()=>void;io.validate.mockImplementation(()=>new Promise<void>(resolve=>{finish=resolve}))
+ const actions=useWorkflowEditorActions();const pending=actions.runWorkflowPreview(input)
+ expect(actions.previewing.value).toBe(true);expect(await actions.runWorkflowPreview(input)).toBeNull();expect(io.submit).not.toHaveBeenCalled()
+ finish();await pending;expect(io.submit).toHaveBeenCalledTimes(1);expect(actions.previewing.value).toBe(true)
+ send('run.finished',{status:'succeeded'});expect(actions.previewing.value).toBe(false);actions.resetPreviewRun()
+})
+it('submits explicit node scope to the v1 memory session',async()=>{
+ const actions=useWorkflowEditorActions();await actions.runWorkflowPreview({...input,executionScope:{kind:'node',targetNodeId:'mask-editor-1'}})
+ expect(io.submit).toHaveBeenCalledWith('session',expect.objectContaining({execution_scope:{kind:'node',target_node_id:'mask-editor-1'}}))
+ expect(io.submit.mock.calls[0]![1]).not.toHaveProperty('execution_metadata');actions.resetPreviewRun()
+})
+it('cancellation remains busy until confirmed and only sends one request',async()=>{
+ const actions=useWorkflowEditorActions();await actions.runWorkflowPreview(input)
+ await actions.cancelPreviewRun();await actions.cancelPreviewRun();expect(io.cancel).toHaveBeenCalledTimes(1)
+ expect(actions.previewing.value).toBe(true);expect(actions.previewCancelling.value).toBe(true)
+ send('run.finished',{status:'cancelled'});expect(actions.previewing.value).toBe(false);expect(actions.previewCancelling.value).toBe(false);actions.resetPreviewRun()
+})
+it('explicit reset releases the session and removes restore identity',async()=>{
+ const actions=useWorkflowEditorActions();await actions.runWorkflowPreview(input);expect(sessionStorage.length).toBe(1)
+ actions.resetPreviewRun();expect(io.release).toHaveBeenCalledWith('session');expect(sessionStorage.length).toBe(0)
+ await actions.restorePreviewRun('other','app');expect(io.create).toHaveBeenCalledTimes(1)
 })

@@ -19,12 +19,6 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
-from backend.service.application.workflows.model_sessions import (
-    build_workflow_preview_model_session_scope_id,
-)
-from backend.service.application.workflows.service_runtime.context import (
-    WorkflowServiceNodeRuntimeContext,
-)
 from backend.service.application.workflows.app_version_service import (
     WorkflowAppVersionDetail,
     WorkflowAppVersionService,
@@ -474,30 +468,12 @@ def delete_flow_application(
         require_session_factory,
     )
 
-    WorkflowApplicationDeletionService(
-        session_factory=require_session_factory(request),
-        dataset_storage=dataset_storage,
-        node_catalog_registry=node_catalog_registry,
-    ).delete(project_id=project_id, application_id=application_id)
-    runtime_context = getattr(
-        request.app.state,
-        "workflow_service_node_runtime_context",
-        None,
-    )
-    if isinstance(runtime_context, WorkflowServiceNodeRuntimeContext):
-        preview_scope_id = build_workflow_preview_model_session_scope_id(
-            project_id=project_id,
-            application_id=application_id,
-        )
-        model_session_manager = runtime_context.workflow_model_session_manager
-        if model_session_manager is not None:
-            model_session_manager.close_scope(
-                preview_scope_id,
-                wait=False,
-            )
-        storage_image_cache = runtime_context.workflow_storage_image_cache
-        if storage_image_cache is not None:
-            storage_image_cache.clear_shared_scope(preview_scope_id)
+    with request.app.state.workflow_preview_sessions.deleting_document(project_id, application_id):
+        WorkflowApplicationDeletionService(
+            session_factory=require_session_factory(request),
+            dataset_storage=dataset_storage,
+            node_catalog_registry=node_catalog_registry,
+        ).delete(project_id=project_id, application_id=application_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

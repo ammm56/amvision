@@ -2,16 +2,11 @@ import { apiRequest, apiRequestWithHeaders } from '@/shared/api/http-client'
 import { translate } from '@/platform/i18n'
 import { parsePaginationHeaders, type PaginatedResult } from '@/shared/api/pagination'
 import type {
-  FlowApplication,
   WorkflowAppRuntime,
   WorkflowAppRuntimeEvent,
   WorkflowAppRuntimeInstance,
   WorkflowExecutionPolicy,
-  WorkflowGraphTemplate,
   WorkflowJsonObject,
-  WorkflowPreviewRun,
-  WorkflowPreviewRunEvent,
-  WorkflowPreviewRunSummary,
   WorkflowRun,
   WorkflowRunEvent,
   WorkflowRuntimeRevision,
@@ -29,20 +24,6 @@ export interface WorkflowRuntimeListQuery {
 export type WorkflowPreviewExecutionScope =
   | { kind: 'application' }
   | { kind: 'node'; targetNodeId: string }
-
-export interface WorkflowPreviewRunCreateInput {
-  projectId: string
-  executionPolicyId?: string | null
-  applicationId?: string | null
-  application?: FlowApplication | null
-  template?: WorkflowGraphTemplate | null
-  inputBindings?: WorkflowJsonObject
-  fileUploads?: WorkflowPreviewFileUpload[]
-  executionMetadata?: WorkflowJsonObject
-  timeoutSeconds?: number | null
-  waitMode?: 'sync' | 'async'
-  executionScope?: WorkflowPreviewExecutionScope
-}
 
 interface WorkflowAppRuntimeCreateBaseInput {
   projectId: string
@@ -124,84 +105,12 @@ export async function getWorkflowExecutionPolicy(executionPolicyId: string): Pro
   return apiRequest<WorkflowExecutionPolicy>(`/workflows/execution-policies/${encodePathPart(executionPolicyId)}`)
 }
 
-export async function createWorkflowPreviewRun(input: WorkflowPreviewRunCreateInput): Promise<WorkflowPreviewRun> {
-  const requestBody = {
-      project_id: input.projectId,
-      execution_policy_id: input.executionPolicyId ?? null,
-      application_ref: input.applicationId ? { application_id: input.applicationId } : null,
-      application: input.application ?? null,
-      template: input.template ?? null,
-      input_bindings: input.inputBindings ?? {},
-      execution_metadata: input.executionMetadata ?? {},
-      timeout_seconds: input.timeoutSeconds ?? null,
-      wait_mode: input.waitMode ?? 'sync',
-      execution_scope: input.executionScope?.kind === 'node'
-        ? { kind: 'node', target_node_id: input.executionScope.targetNodeId }
-        : { kind: 'application', target_node_id: null },
-  }
-  if (input.fileUploads?.length) {
-    const form = new FormData()
-    form.append('request', JSON.stringify(requestBody))
-    for (const upload of input.fileUploads) {
-      form.append(upload.bindingId, upload.file, upload.file.name)
-    }
-    return apiRequest<WorkflowPreviewRun>('/workflows/preview-runs/multipart', {
-      method: 'POST',
-      body: form,
-    })
-  }
-  return apiRequest<WorkflowPreviewRun>('/workflows/preview-runs', {
-    method: 'POST',
-    body: requestBody,
-  })
-}
-
-export async function listWorkflowPreviewRuns(
-  query: WorkflowRuntimeListQuery & { state?: string; createdFrom?: string; createdTo?: string },
-): Promise<PaginatedResult<WorkflowPreviewRunSummary>> {
-  const { payload, headers } = await apiRequestWithHeaders<WorkflowPreviewRunSummary[]>('/workflows/preview-runs', {
-    query: {
-      project_id: query.projectId,
-      state: query.state,
-      created_from: query.createdFrom,
-      created_to: query.createdTo,
-      offset: query.offset ?? 0,
-      limit: query.limit ?? 100,
-    },
-  })
-  return { items: payload, pagination: parsePaginationHeaders(headers) }
-}
-
-export async function getWorkflowPreviewRun(previewRunId: string, includeResponsePayload = true): Promise<WorkflowPreviewRun> {
-  return apiRequest<WorkflowPreviewRun>(`/workflows/preview-runs/${encodePathPart(previewRunId)}`, {
-    query: { include_response_payload: includeResponsePayload },
-  })
-}
-
-export async function getWorkflowPreviewRunEvents(previewRunId: string, afterSequence?: number, limit?: number): Promise<WorkflowPreviewRunEvent[]> {
-  return apiRequest<WorkflowPreviewRunEvent[]>(`/workflows/preview-runs/${encodePathPart(previewRunId)}/events`, {
-    query: { after_sequence: afterSequence, limit },
-  })
-}
-
-export async function readWorkflowPreviewRunArtifactBlob(previewRunId: string, objectKey: string, signal?: AbortSignal): Promise<Blob> {
-  return apiRequest<Blob>(`/workflows/preview-runs/${encodePathPart(previewRunId)}/artifacts/content`, {
-    query: { object_key: objectKey },
-    responseType: 'blob',
-    signal,
-  })
-}
-
 export async function readProjectObjectContentBlob(projectId: string, objectKey: string, signal?: AbortSignal): Promise<Blob> {
   return apiRequest<Blob>(`/projects/${encodePathPart(projectId)}/files/content`, {
     query: { object_key: objectKey },
     responseType: 'blob',
     signal,
   })
-}
-
-export async function deleteWorkflowPreviewRun(previewRunId: string): Promise<void> {
-  return apiRequest<void>(`/workflows/preview-runs/${encodePathPart(previewRunId)}`, { method: 'DELETE', responseType: 'void' })
 }
 
 export async function createWorkflowAppRuntime(input: WorkflowAppRuntimeCreateInput): Promise<WorkflowAppRuntime> {
@@ -258,10 +167,6 @@ export async function restartWorkflowAppRuntime(workflowRuntimeId: string): Prom
 
 export async function getWorkflowAppRuntimeHealth(workflowRuntimeId: string): Promise<WorkflowAppRuntime> {
   return apiRequest<WorkflowAppRuntime>(`/workflows/app-runtimes/${encodePathPart(workflowRuntimeId)}/health`)
-}
-
-export async function cancelWorkflowPreviewRun(previewRunId: string): Promise<WorkflowPreviewRun> {
-  return apiRequest<WorkflowPreviewRun>(`/workflows/preview-runs/${encodePathPart(previewRunId)}/cancel`, { method: 'POST' })
 }
 
 export async function listWorkflowRuntimeRevisions(workflowRuntimeId: string): Promise<WorkflowRuntimeRevision[]> {

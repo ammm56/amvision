@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.workflow_editor_graph_support import execute_editor_graph
+
 from pathlib import Path
 
 import cv2
@@ -17,7 +19,6 @@ from backend.contracts.workflows.workflow_graph import (
     WorkflowGraphOutput,
     WorkflowGraphTemplate,
 )
-from backend.service.application.workflows.runtime_service import WorkflowPreviewRunCreateRequest
 from tests.api_test_support import build_valid_test_png_bytes
 from tests.test_workflow_runtime_sanitization import _build_runtime_service
 
@@ -26,22 +27,14 @@ def test_preview_run_table_preview_formats_rows_for_http_response(tmp_path: Path
     """验证 table-preview 可以把对象列表整理成固定列预览结果。"""
 
     service, _, _ = _build_runtime_service(tmp_path)
-    preview_run = service.create_preview_run(
-        WorkflowPreviewRunCreateRequest(
-            project_id="project-1",
-            application=_build_table_preview_application(),
-            template=_build_table_preview_template(),
-            input_bindings={
+    preview_run = execute_editor_graph(service, project_id="project-1", application=_build_table_preview_application(), template=_build_table_preview_template(), input_bindings={
                 "detections": {
                     "value": [
                         {"code": "ABC123", "score": 0.98, "location": {"line": 1}},
                         {"code": "XYZ999", "score": 0.76},
                     ]
                 }
-            },
-        ),
-        created_by="workflow-user",
-    )
+            })
 
     assert preview_run.state == "succeeded"
     response_body = preview_run.outputs["http_response"]["body"]
@@ -65,12 +58,7 @@ def test_preview_run_value_preview_formats_any_value_for_http_response(tmp_path:
     """验证 value-preview 可以把任意 value.v1 包装成可显示 JSON 预览。"""
 
     service, _, _ = _build_runtime_service(tmp_path)
-    preview_run = service.create_preview_run(
-        WorkflowPreviewRunCreateRequest(
-            project_id="project-1",
-            application=_build_value_preview_application(),
-            template=_build_value_preview_template(),
-            input_bindings={
+    preview_run = execute_editor_graph(service, project_id="project-1", application=_build_value_preview_application(), template=_build_value_preview_template(), input_bindings={
                 "payload": {
                     "value": {
                         "kind": "yolox-detections",
@@ -81,10 +69,7 @@ def test_preview_run_value_preview_formats_any_value_for_http_response(tmp_path:
                         ],
                     }
                 }
-            },
-        ),
-        created_by="workflow-user",
-    )
+            })
 
     assert preview_run.state == "succeeded"
     response_body = preview_run.outputs["http_response"]["body"]
@@ -110,17 +95,7 @@ def test_preview_node_run_executes_only_target_ancestor_closure(
     """验证节点级 Preview 运行到目标节点后停止，不执行下游 HTTP 输出。"""
 
     service, _, _ = _build_runtime_service(tmp_path)
-    preview_run = service.create_preview_run(
-        WorkflowPreviewRunCreateRequest(
-            project_id="project-1",
-            application=_build_value_preview_application(),
-            template=_build_value_preview_template(),
-            input_bindings={"payload": {"value": {"count": 2}}},
-            execution_scope_kind="node",
-            target_node_id="value_preview",
-        ),
-        created_by="workflow-user",
-    )
+    preview_run = execute_editor_graph(service, project_id="project-1", application=_build_value_preview_application(), template=_build_value_preview_template(), input_bindings={"payload": {"value": {"count": 2}}}, execution_scope_kind="node", target_node_id="value_preview")
 
     assert preview_run.state == "succeeded"
     assert preview_run.outputs == {}
@@ -137,15 +112,7 @@ def test_failed_preview_retains_completed_upstream_node_records(
     """验证下游失败时仍返回本次已完成节点的调试输出。"""
 
     service, _, _ = _build_runtime_service(tmp_path)
-    preview_run = service.create_preview_run(
-        WorkflowPreviewRunCreateRequest(
-            project_id="project-1",
-            application=_build_value_preview_application(),
-            template=_build_value_preview_with_failing_tail_template(),
-            input_bindings={"payload": {"value": {"count": 2}}},
-        ),
-        created_by="workflow-user",
-    )
+    preview_run = execute_editor_graph(service, project_id="project-1", application=_build_value_preview_application(), template=_build_value_preview_with_failing_tail_template(), input_bindings={"payload": {"value": {"count": 2}}})
 
     assert preview_run.state == "failed"
     assert "code 参数必须是整数" in (preview_run.error_message or "")
@@ -161,12 +128,7 @@ def test_preview_run_value_preview_path_extracts_single_subfield(tmp_path: Path)
     """验证 value-preview 可以按 path 只显示某个子字段。"""
 
     service, _, _ = _build_runtime_service(tmp_path)
-    preview_run = service.create_preview_run(
-        WorkflowPreviewRunCreateRequest(
-            project_id="project-1",
-            application=_build_value_preview_application(),
-            template=_build_value_preview_template(path="items.1.class_name"),
-            input_bindings={
+    preview_run = execute_editor_graph(service, project_id="project-1", application=_build_value_preview_application(), template=_build_value_preview_template(path="items.1.class_name"), input_bindings={
                 "payload": {
                     "value": {
                         "kind": "yolox-detections",
@@ -177,10 +139,7 @@ def test_preview_run_value_preview_path_extracts_single_subfield(tmp_path: Path)
                         ],
                     }
                 }
-            },
-        ),
-        created_by="workflow-user",
-    )
+            })
 
     assert preview_run.state == "succeeded"
     response_body = preview_run.outputs["http_response"]["body"]
@@ -199,22 +158,14 @@ def test_preview_run_failed_metadata_exposes_node_details(tmp_path: Path) -> Non
     service, _, _ = _build_runtime_service(tmp_path)
     service.dataset_storage.write_bytes("inputs/crop-001.png", build_valid_test_png_bytes())
 
-    preview_run = service.create_preview_run(
-        WorkflowPreviewRunCreateRequest(
-            project_id="project-1",
-            application=_build_image_refs_item_get_application(),
-            template=_build_image_refs_item_get_template(index=9),
-            input_bindings={
+    preview_run = execute_editor_graph(service, project_id="project-1", application=_build_image_refs_item_get_application(), template=_build_image_refs_item_get_template(index=9), input_bindings={
                 "crops": {
                     "items": [
                         {"transport_kind": "storage", "object_key": "inputs/crop-001.png", "media_type": "image/png", "crop_index": 1},
                     ],
                     "count": 1,
                 }
-            },
-        ),
-        created_by="workflow-user",
-    )
+            })
 
     assert preview_run.state == "failed"
     assert preview_run.error_message == "image-refs-item-get 节点索引越界"
@@ -232,12 +183,7 @@ def test_preview_run_image_refs_item_get_selects_single_image_ref(tmp_path: Path
     service.dataset_storage.write_bytes("inputs/crop-001.png", build_valid_test_png_bytes())
     service.dataset_storage.write_bytes("inputs/crop-002.png", build_valid_test_png_bytes())
 
-    preview_run = service.create_preview_run(
-        WorkflowPreviewRunCreateRequest(
-            project_id="project-1",
-            application=_build_image_refs_item_get_application(),
-            template=_build_image_refs_item_get_template(),
-            input_bindings={
+    preview_run = execute_editor_graph(service, project_id="project-1", application=_build_image_refs_item_get_application(), template=_build_image_refs_item_get_template(), input_bindings={
                 "crops": {
                     "items": [
                         {"transport_kind": "storage", "object_key": "inputs/crop-001.png", "media_type": "image/png", "crop_index": 1},
@@ -245,10 +191,7 @@ def test_preview_run_image_refs_item_get_selects_single_image_ref(tmp_path: Path
                     ],
                     "count": 2,
                 }
-            },
-        ),
-        created_by="workflow-user",
-    )
+            })
 
     assert preview_run.state == "succeeded"
     response_body = preview_run.outputs["http_response"]["body"]
@@ -260,7 +203,7 @@ def test_preview_run_image_refs_item_get_selects_single_image_ref(tmp_path: Path
     assert preview_record["inputs"]["image"]["object_key"] == "inputs/crop-002.png"
     assert response_body["image"]["transport_kind"] == "storage-ref"
     assert response_body["image"]["object_key"].startswith(
-        f"workflows/runtime/preview-runs/{preview_run.preview_run_id}/artifacts/preview/"
+        "inputs/"
     )
 
 
@@ -272,12 +215,7 @@ def test_preview_run_frame_window_preview_formats_gallery_for_http_response(tmp_
     service.dataset_storage.write_bytes("inputs/frame-002.png", build_valid_test_png_bytes())
     service.dataset_storage.write_bytes("inputs/frame-003.png", build_valid_test_png_bytes())
 
-    preview_run = service.create_preview_run(
-        WorkflowPreviewRunCreateRequest(
-            project_id="project-1",
-            application=_build_frame_window_preview_application(),
-            template=_build_frame_window_preview_template(),
-            input_bindings={
+    preview_run = execute_editor_graph(service, project_id="project-1", application=_build_frame_window_preview_application(), template=_build_frame_window_preview_template(), input_bindings={
                 "frames": {
                     "source_video": {
                         "transport_kind": "local-path",
@@ -322,10 +260,7 @@ def test_preview_run_frame_window_preview_formats_gallery_for_http_response(tmp_
                         },
                     ],
                 }
-            },
-        ),
-        created_by="workflow-user",
-    )
+            })
 
     assert preview_run.state == "succeeded"
     response_body = preview_run.outputs["http_response"]["body"]
@@ -336,12 +271,12 @@ def test_preview_run_frame_window_preview_formats_gallery_for_http_response(tmp_
     assert response_body["items"][0]["frame_index"] == 0
     assert response_body["items"][0]["image"]["transport_kind"] == "storage-ref"
     assert response_body["items"][0]["image"]["object_key"].startswith(
-        f"workflows/runtime/preview-runs/{preview_run.preview_run_id}/artifacts/frame_window_preview/"
+        "workflows/runtime/"
     )
 
 
-def test_preview_run_image_body_returns_raw_inline_base64_but_persists_redacted(tmp_path: Path) -> None:
-    """验证 image-body 在同步响应返回原始 base64，持久化结果继续脱敏。"""
+def test_image_body_returns_raw_inline_base64(tmp_path: Path) -> None:
+    """验证 image-body 的业务响应保留原始 base64；Preview 会话传输另行覆盖。"""
 
     service, _, _ = _build_runtime_service(tmp_path)
     source_object_key = service.dataset_storage.write_immutable_object(
@@ -351,21 +286,13 @@ def test_preview_run_image_body_returns_raw_inline_base64_but_persists_redacted(
         extension=".png",
     ).metadata.object_key
 
-    preview_run = service.create_preview_run(
-        WorkflowPreviewRunCreateRequest(
-            project_id="project-1",
-            application=_build_image_body_application(),
-            template=_build_image_body_template(),
-            input_bindings={
+    preview_run = execute_editor_graph(service, project_id="project-1", application=_build_image_body_application(), template=_build_image_body_template(), input_bindings={
                 "request_image_base64": {
                     "transport_kind": "storage",
                     "object_key": source_object_key,
                     "media_type": "image/png",
                 }
-            },
-        ),
-        created_by="workflow-user",
-    )
+            })
 
     assert preview_run.state == "succeeded"
     response_body = preview_run.outputs["http_response"]["body"]
@@ -375,68 +302,52 @@ def test_preview_run_image_body_returns_raw_inline_base64_but_persists_redacted(
     assert isinstance(response_body["image"]["image_base64"], str)
     assert response_body["image"]["image_base64"]
 
-    persisted_preview_run = service.get_preview_run(preview_run.preview_run_id)
-    persisted_response_body = persisted_preview_run.outputs["http_response"]["body"]
-    assert persisted_response_body["image"]["image_base64_redacted"] is True
-    assert persisted_response_body["image"]["image_base64_char_length"] > 0
-    assert "image_base64" not in persisted_response_body["image"]
 
 
-def test_preview_run_video_body_returns_playable_storage_ref_response(tmp_path: Path) -> None:
+def test_preview_video_body_returns_memory_without_copying_source(tmp_path: Path) -> None:
     """验证 video-body 会把视频结果整理成可播放 response body。"""
 
     service, _, _ = _build_runtime_service(tmp_path)
     video_path = _build_small_test_video_file(tmp_path / "inputs" / "sample.avi", frame_count=4)
 
-    preview_run = service.create_preview_run(
-        WorkflowPreviewRunCreateRequest(
-            project_id="project-1",
-            application=_build_video_body_application(),
-            template=_build_video_body_template(),
-            input_bindings={
-                "request_video": {
-                    "transport_kind": "local-path",
-                    "local_path": str(video_path),
-                    "media_type": "video/x-msvideo",
-                    "frame_count": 4,
-                    "fps": 5.0,
-                    "width": 48,
-                    "height": 32,
-                    "duration_ms": 800.0,
-                }
-            },
-        ),
-        created_by="workflow-user",
-    )
+    from contextlib import closing
+    from backend.service.application.workflows.preview.display import PreviewDisplayCapture
+    from backend.service.application.workflows.preview.buffers import PreviewBuffers
+    from tests.test_workflow_preview_values import Bridge
+    with closing(PreviewBuffers()) as buffers, closing(PreviewDisplayCapture(Bridge(buffers), lambda *args: None)) as capture:
+        preview_run = execute_editor_graph(service, project_id="project-1", application=_build_video_body_application(), template=_build_video_body_template(), execution_metadata={"_editor_preview_video_sink": capture.video}, input_bindings={
+                    "request_video": {
+                        "transport_kind": "local-path",
+                        "local_path": str(video_path),
+                        "media_type": "video/x-msvideo",
+                        "frame_count": 4,
+                        "fps": 5.0,
+                        "width": 48,
+                        "height": 32,
+                        "duration_ms": 800.0,
+                    }
+                })
 
-    assert preview_run.state == "succeeded"
-    response_body = preview_run.outputs["http_response"]["body"]
-    assert response_body["type"] == "video"
-    assert response_body["title"] == "Formal Video"
-    assert response_body["video"]["transport_kind"] == "storage-ref"
-    assert response_body["video"]["object_key"].startswith(
-        f"workflows/runtime/preview-runs/{preview_run.preview_run_id}/artifacts/video_body/"
-    )
-    assert service.dataset_storage.resolve(response_body["video"]["object_key"]).is_file() is True
+        assert preview_run.state == "succeeded"
+        response_body = preview_run.outputs["http_response"]["body"]
+        assert response_body["type"] == "video"
+        assert response_body["title"] == "Formal Video"
+        assert response_body["video"]["transport_kind"] == "preview-memory"
+        with buffers.borrow("session", response_body["video"]["blob_id"]) as content:
+            assert bytes(content) == video_path.read_bytes()
+        assert not service.dataset_storage.resolve("workflows/runtime").exists()
+
 
 
 def test_preview_run_response_envelope_wraps_data_and_meta(tmp_path: Path) -> None:
     """验证 response-envelope 可以稳定组装标准响应包体。"""
 
     service, _, _ = _build_runtime_service(tmp_path)
-    preview_run = service.create_preview_run(
-        WorkflowPreviewRunCreateRequest(
-            project_id="project-1",
-            application=_build_response_envelope_application(),
-            template=_build_response_envelope_template(),
-            input_bindings={
+    preview_run = execute_editor_graph(service, project_id="project-1", application=_build_response_envelope_application(), template=_build_response_envelope_template(), input_bindings={
                 "result_data": {"value": {"task_id": "task-123", "state": "queued"}},
                 "result_meta": {"value": {"source": "workflow-app", "version": "1.0.0"}},
                 "result_message": {"value": "submitted"},
-            },
-        ),
-        created_by="workflow-user",
-    )
+            })
 
     assert preview_run.state == "succeeded"
     response_body = preview_run.outputs["http_response"]["body"]
@@ -459,12 +370,7 @@ def test_preview_run_response_envelope_can_compose_detections_and_preview_image_
         extension=".png",
     ).metadata.object_key
 
-    preview_run = service.create_preview_run(
-        WorkflowPreviewRunCreateRequest(
-            project_id="project-1",
-            application=_build_payload_composition_application(),
-            template=_build_payload_composition_template(),
-            input_bindings={
+    preview_run = execute_editor_graph(service, project_id="project-1", application=_build_payload_composition_application(), template=_build_payload_composition_template(), input_bindings={
                 "request_image_base64": {
                     "transport_kind": "storage",
                     "object_key": source_object_key,
@@ -477,10 +383,7 @@ def test_preview_run_response_envelope_can_compose_detections_and_preview_image_
                     ],
                     "count": 2,
                 },
-            },
-        ),
-        created_by="workflow-user",
-    )
+            })
 
     assert preview_run.state == "succeeded"
     response_body = preview_run.outputs["http_response"]["body"]
@@ -491,22 +394,13 @@ def test_preview_run_response_envelope_can_compose_detections_and_preview_image_
     assert response_body["data"]["yolox_detections"]["items"][0]["class_name"] == "part-a"
     assert isinstance(response_body["data"]["input_image_base64"], str)
     assert response_body["data"]["input_image_base64"]
-    persisted_preview_run = service.get_preview_run(preview_run.preview_run_id)
-    persisted_response_body = persisted_preview_run.outputs["http_response"]["body"]
-    assert persisted_response_body["data"]["input_image_base64_redacted"] is True
-    assert persisted_response_body["data"]["input_image_base64_char_length"] > 0
 
 
 def test_preview_run_tracks_can_bridge_to_table_preview_via_value_extract(tmp_path: Path) -> None:
     """验证 tracks 可以经 payload-to-value 和 value-field-extract 接到 table-preview。"""
 
     service, _, _ = _build_runtime_service(tmp_path)
-    preview_run = service.create_preview_run(
-        WorkflowPreviewRunCreateRequest(
-            project_id="project-1",
-            application=_build_tracks_table_preview_application(),
-            template=_build_tracks_table_preview_template(),
-            input_bindings={
+    preview_run = execute_editor_graph(service, project_id="project-1", application=_build_tracks_table_preview_application(), template=_build_tracks_table_preview_template(), input_bindings={
                 "tracks": {
                     "source_video": {
                         "transport_kind": "local-path",
@@ -541,10 +435,7 @@ def test_preview_run_tracks_can_bridge_to_table_preview_via_value_extract(tmp_pa
                         },
                     ],
                 }
-            },
-        ),
-        created_by="workflow-user",
-    )
+            })
 
     assert preview_run.state == "succeeded"
     response_body = preview_run.outputs["http_response"]["body"]

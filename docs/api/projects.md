@@ -58,7 +58,7 @@ Project 是本地 ObjectStore 上的工作区命名空间，不是单独的数�
 
 1. POST /api/v1/projects/bootstrap
 2. 训练发布链：datasets/imports -> datasets/export-formats -> datasets/exports -> training / validation / evaluation / conversion / deployment / inference
-3. workflow app 链：workflows/node-catalog -> templates -> applications -> preview-runs -> app-runtimes -> runs / invoke
+3. workflow app 链：workflows/node-catalog -> templates -> applications -> preview-sessions -> app-runtimes -> runs / invoke
 
 ## GET /api/v1/system/bootstrap
 
@@ -188,8 +188,6 @@ Project 是本地 ObjectStore 上的工作区命名空间，不是单独的数�
 - `inference.status_counts`
 - `workflows.template_total`
 - `workflows.application_total`
-- `workflows.preview_run_total`
-- `workflows.preview_run_state_counts`
 - `workflows.workflow_run_total`
 - `workflows.workflow_run_state_counts`
 - `workflows.app_runtime_total`

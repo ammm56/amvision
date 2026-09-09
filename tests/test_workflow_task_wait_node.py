@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.workflow_editor_graph_support import execute_editor_graph
+
 import threading
 import time
 from pathlib import Path
@@ -20,7 +22,6 @@ from backend.service.application.tasks.task_service import (
     CreateTaskRequest,
     SqlAlchemyTaskService,
 )
-from backend.service.application.workflows.runtime_service import WorkflowPreviewRunCreateRequest
 from tests.test_workflow_runtime_sanitization import _build_runtime_service
 
 
@@ -59,16 +60,7 @@ def test_preview_run_task_wait_node_blocks_until_task_reaches_terminal_state(tmp
     worker = threading.Thread(target=_finish_task, daemon=True)
     worker.start()
     try:
-        preview_run = service.create_preview_run(
-            WorkflowPreviewRunCreateRequest(
-                project_id="project-1",
-                application=_build_task_wait_application(),
-                template=_build_task_wait_template(task_id=task_record.task_id),
-                input_bindings={},
-                timeout_seconds=5,
-            ),
-            created_by="workflow-user",
-        )
+        preview_run = execute_editor_graph(service, project_id="project-1", application=_build_task_wait_application(), template=_build_task_wait_template(task_id=task_record.task_id), input_bindings={}, timeout_seconds=5)
     finally:
         worker.join(timeout=2)
 
@@ -113,16 +105,7 @@ def test_preview_run_task_wait_node_can_include_events_when_requested(tmp_path: 
     worker = threading.Thread(target=_finish_task, daemon=True)
     worker.start()
     try:
-        preview_run = service.create_preview_run(
-            WorkflowPreviewRunCreateRequest(
-                project_id="project-1",
-                application=_build_task_wait_application(),
-                template=_build_task_wait_template(task_id=task_record.task_id, include_events=True),
-                input_bindings={},
-                timeout_seconds=5,
-            ),
-            created_by="workflow-user",
-        )
+        preview_run = execute_editor_graph(service, project_id="project-1", application=_build_task_wait_application(), template=_build_task_wait_template(task_id=task_record.task_id, include_events=True), input_bindings={}, timeout_seconds=5)
     finally:
         worker.join(timeout=2)
 
@@ -168,12 +151,7 @@ def test_preview_run_task_wait_node_accepts_dynamic_request_payload(tmp_path: Pa
     worker = threading.Thread(target=_finish_task, daemon=True)
     worker.start()
     try:
-        preview_run = service.create_preview_run(
-            WorkflowPreviewRunCreateRequest(
-                project_id="project-1",
-                application=_build_dynamic_task_wait_application(),
-                template=_build_dynamic_task_wait_template(),
-                input_bindings={
+        preview_run = execute_editor_graph(service, project_id="project-1", application=_build_dynamic_task_wait_application(), template=_build_dynamic_task_wait_template(), input_bindings={
                     "request_payload": {
                         "value": {
                             "task_id": task_record.task_id,
@@ -182,11 +160,7 @@ def test_preview_run_task_wait_node_accepts_dynamic_request_payload(tmp_path: Pa
                             "include_events": False,
                         }
                     }
-                },
-                timeout_seconds=5,
-            ),
-            created_by="workflow-user",
-        )
+                }, timeout_seconds=5)
     finally:
         worker.join(timeout=2)
 

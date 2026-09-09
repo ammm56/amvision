@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from typing import Iterator
 
 from backend.contracts.workflows import (
-    build_workflow_preview_run_storage_dir,
     build_workflow_run_storage_dir,
 )
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
@@ -47,7 +46,6 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 )
 
 
-_ACTIVE_PREVIEW_STATES = frozenset({"created", "running"})
 
 
 @dataclass(frozen=True)
@@ -55,7 +53,6 @@ class WorkflowApplicationDeletionResult:
     """描述一次 Workflow Application 物理删除的实际范围。"""
 
     application_id: str
-    deleted_preview_run_count: int
     deleted_workflow_run_count: int
     deleted_version_count: int
     deleted_template_version: bool
@@ -157,10 +154,6 @@ class WorkflowApplicationDeletionService:
                     application_id=normalized_application_id,
                 ),
                 *(
-                    build_workflow_preview_run_storage_dir(preview_run_id)
-                    for preview_run_id, _state in inventory.preview_runs
-                ),
-                *(
                     build_workflow_run_storage_dir(workflow_run_id)
                     for workflow_run_id in inventory.workflow_run_ids
                 ),
@@ -238,7 +231,6 @@ class WorkflowApplicationDeletionService:
             )
         return WorkflowApplicationDeletionResult(
             application_id=normalized_application_id,
-            deleted_preview_run_count=len(inventory.preview_runs),
             deleted_workflow_run_count=len(inventory.workflow_run_ids),
             deleted_version_count=len(inventory.workflow_app_version_ids),
             deleted_template_version=delete_template_version,
@@ -321,19 +313,6 @@ class WorkflowApplicationDeletionService:
                 details={
                     "application_id": application_id,
                     "workflow_runtime_ids": list(inventory.workflow_runtime_ids),
-                },
-            )
-        active_previews = [
-            {"preview_run_id": preview_run_id, "state": state}
-            for preview_run_id, state in inventory.preview_runs
-            if state in _ACTIVE_PREVIEW_STATES
-        ]
-        if active_previews:
-            raise ResourceInUseError(
-                "Workflow 仍有活动 Preview，执行结束后才能删除",
-                details={
-                    "application_id": application_id,
-                    "preview_runs": active_previews,
                 },
             )
 

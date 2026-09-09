@@ -1,5 +1,7 @@
 # Workflow Preview 显示链路审计、修复与验证（2026-09-10）
 
+> 历史审计记录：本文对应流式会话改造前的修复。文中的磁盘结果及旧 Preview Run 接口已退休，当前实现见 [实时 Preview 验证记录](../architecture/workflows/preview-streaming-verification.md)。
+
 ## 结论
 
 本轮发现的图片和值不显示是提交 `f846e722` 引入的前端异步完成处理回归。执行结果已存在，节点显示刷新仍停留在旧同步调用的返回位置；不能归因于模型没有输出、图片损坏、节点被禁用或 CSS 遮挡。

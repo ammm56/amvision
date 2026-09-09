@@ -15,10 +15,6 @@
       "value": "project-1"
     },
     {
-      "key": "previewRunId",
-      "value": ""
-    },
-    {
       "key": "workflowRuntimeId",
       "value": ""
     },
@@ -101,71 +97,6 @@
             }
           }
         }
-      },
-      "response": []
-    },
-    {
-      "name": "Create Preview Run",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json",
-            "type": "text"
-          },
-          {
-            "key": "Authorization",
-            "value": "Bearer {{accessToken}}",
-            "type": "text"
-          }
-        ],
-        "url": {
-          "raw": "{{baseUrl}}/api/v1/workflows/preview-runs"
-        },
-        "description": "创建 industrial_local_directory_watch_detection_position_gate 的编辑态 preview run。这里直接用 synthetic directory-watch payload 和 event 做本地调试，不需要真实目录监听常驻线程。",
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"project_id\": \"project-1\",\n  \"application_ref\": {\n    \"application_id\": \"industrial-local-directory-watch-detection-position-gate-app\"\n  },\n  \"input_bindings\": {\n    \"request_json\": {\n      \"value\": {\n        \"format_id\": \"amvision.directory-change-event.v1\",\n        \"event_id\": \"directory-watch-event-example-09\",\n        \"trigger_source_id\": \"directory-watch-trigger-source-09\",\n        \"workflow_runtime_id\": \"{{workflowRuntimeId}}\",\n        \"window_started_at\": \"2026-06-09T09:30:00Z\",\n        \"window_finished_at\": \"2026-06-09T09:30:03Z\",\n        \"min_trigger_interval_seconds\": 3.0,\n        \"directory\": {\n          \"path\": \"D:/cases/line-c/incoming\",\n          \"recursive\": false,\n          \"glob_pattern\": \"*\",\n          \"extensions\": [\".png\", \".jpg\", \".jpeg\"]\n        },\n        \"change_counts\": {\n          \"created\": 2,\n          \"modified\": 0,\n          \"deleted\": 0,\n          \"total\": 2\n        },\n        \"samples\": [\n          {\n            \"observed_change_types\": [\"created\"],\n            \"path\": \"D:/cases/line-c/incoming/frame-0002.png\",\n            \"relative_path\": \"frame-0002.png\",\n            \"observed_at\": \"2026-06-09T09:30:01Z\",\n            \"observed_sequence\": 2\n          },\n          {\n            \"observed_change_types\": [\"created\"],\n            \"path\": \"D:/cases/line-c/incoming/frame-0001.png\",\n            \"relative_path\": \"frame-0001.png\",\n            \"observed_at\": \"2026-06-09T09:30:00Z\",\n            \"observed_sequence\": 1\n          }\n        ],\n        \"sample_limit\": 10,\n        \"sample_count\": 2,\n        \"samples_truncated\": false\n      }\n    },\n    \"deployment_request\": {\n      \"value\": {\n        \"deployment_instance_id\": \"{{deploymentInstanceId}}\"\n      }\n    }\n  },\n  \"execution_metadata\": {\n    \"marker\": \"postman-workflow-example-documents-preview\",\n    \"example_name\": \"industrial_local_directory_watch_detection_position_gate\",\n    \"scenario\": \"industrial-local-directory-watch-detection-position-gate\",\n    \"trigger_source\": \"editor-preview\"\n  },\n  \"timeout_seconds\": 30\n}\n",
-          "options": {
-            "raw": {
-              "language": "json"
-            }
-          }
-        }
-      },
-      "response": [],
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.response.to.have.status(201);",
-              "const body = pm.response.json();",
-              "if (body.preview_run_id) {",
-              "  pm.collectionVariables.set('previewRunId', body.preview_run_id);",
-              "}"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "Get Preview Run",
-      "request": {
-        "method": "GET",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{accessToken}}",
-            "type": "text"
-          }
-        ],
-        "url": {
-          "raw": "{{baseUrl}}/api/v1/workflows/preview-runs/{{previewRunId}}"
-        },
-        "description": "读取上一步 preview run 的 outputs 和 node_records。"
       },
       "response": []
     },

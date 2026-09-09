@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.workflow_editor_graph_support import execute_editor_graph
+
 import base64
 import json
 from pathlib import Path
@@ -10,17 +12,13 @@ from types import SimpleNamespace
 from backend.contracts.workflows.workflow_graph import FlowApplication, WorkflowGraphTemplate
 from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
-from backend.service.application.workflows.preview_run_manager import WorkflowPreviewRunManager
 from backend.service.application.workflows.runtime_registry_loader import (
     WorkflowNodeRuntimeRegistryLoader,
 )
 from backend.service.application.workflows.service_runtime.context import (
     WorkflowServiceNodeRuntimeContext,
 )
-from backend.service.application.workflows.runtime_service import (
-    WorkflowPreviewRunCreateRequest,
-    WorkflowRuntimeService,
-)
+from backend.service.application.workflows.runtime_service import (WorkflowRuntimeService)
 from backend.service.settings import (
     BackendServiceCustomNodesConfig,
     BackendServiceDatabaseConfig,
@@ -39,22 +37,14 @@ def test_barcode_result_display_example_preview_run_returns_annotated_image_and_
     template, application = _load_barcode_example_documents()
     dataset_storage.write_bytes("inputs/mixed-readable.png", _build_mixed_barcode_test_png_bytes())
 
-    preview_run = service.create_preview_run(
-        WorkflowPreviewRunCreateRequest(
-            project_id="project-1",
-            application=application,
-            template=template,
-            input_bindings={
+    preview_run = execute_editor_graph(service, project_id="project-1", application=application, template=template, input_bindings={
                 "request_image_base64": {
                     "image_base64": base64.b64encode(
                         _build_mixed_barcode_test_png_bytes()
                     ).decode("ascii"),
                     "media_type": "image/png",
                 }
-            },
-        ),
-        created_by="workflow-user",
-    )
+            })
 
     assert preview_run.state == "succeeded"
     response_payload = preview_run.outputs["http_response"]
@@ -108,10 +98,6 @@ def _build_barcode_example_runtime_service(tmp_path: Path) -> tuple[WorkflowRunt
         queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
         custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
     )
-    preview_run_manager = WorkflowPreviewRunManager(
-        session_factory=session_factory,
-        dataset_storage=dataset_storage,
-    )
     runtime_registry_loader = WorkflowNodeRuntimeRegistryLoader(
         node_catalog_registry=node_catalog_registry,
         node_pack_loader=node_pack_loader,
@@ -127,7 +113,6 @@ def _build_barcode_example_runtime_service(tmp_path: Path) -> tuple[WorkflowRunt
         session_factory=session_factory,
         dataset_storage=dataset_storage,
         node_catalog_registry=node_catalog_registry,
-        preview_run_manager=preview_run_manager,
         worker_manager=SimpleNamespace(),
         workflow_node_runtime_registry=runtime_registry_loader.get_runtime_registry(),
         workflow_service_node_runtime_context=runtime_context,

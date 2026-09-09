@@ -15,8 +15,8 @@
 
 ## 当前边界
 
-- WorkflowExecutionPolicy 主要用于表达 preview 和 runtime 的执行默认项。
-- 当前已公开 create、list、get 三组接口，并允许 preview create 与 app runtime create 引用 execution_policy_id。
+- WorkflowExecutionPolicy 主要用于表达 正式 runtime 的执行默认项。
+- 当前已公开 create、list、get 三组接口，并允许 app runtime create 引用 execution_policy_id。
 - 当前资源只覆盖 timeout、trace_level、node_records 保留策略和 trace 保留策略。
 - runtime-default 策略默认应面向生产态正式调用：不写磁盘 trace，不保留 node_records。需要排查时再显式打开 `retain_trace_enabled`、`retain_node_records_enabled` 和非 `none` 的 `trace_level`。
 - 当前资源不负责 PLC、运动控制、传感器接入或结果上报的硬件权限控制。
@@ -44,7 +44,7 @@
 - execution_policy_id
 - project_id
 - display_name
-- policy_kind，当前取值为 preview-default 或 runtime-default
+- policy_kind，当前取值为 runtime-default
 - default_timeout_seconds
 - max_run_timeout_seconds
 - trace_level
@@ -176,13 +176,12 @@
 
 ## 联调示例
 
-- [docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/preview-execution-policy.create.request.json](examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/preview-execution-policy.create.request.json)
 - [docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/runtime-execution-policy.create.request.json](examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/runtime-execution-policy.create.request.json)
 - [docs/api/postman/workflow-runtime.postman_collection.json](postman/workflow-runtime.postman_collection.json)
 
 ## 与其他资源的关系
 
-- WorkflowPreviewRun create 可以引用 execution_policy_id；当前响应会把应用到本次执行的策略摘要写入 metadata.execution_policy。
+- PreviewSession create 可以引用 execution_policy_id；当前响应会把应用到本次执行的策略摘要写入 metadata.execution_policy。
 - WorkflowAppRuntime create 可以引用 execution_policy_id；当前响应会返回 execution_policy_snapshot_object_key。
 - WorkflowRun 不直接绑定 execution_policy_id，而是沿用宿主 WorkflowAppRuntime 固定的 policy snapshot。
 - 该资源不替代 custom node 的节点参数，也不替代 node pack 自己的实现语义。
@@ -191,5 +190,5 @@
 
 - [docs/architecture/workflows/runtime.md](../architecture/workflows/runtime.md)
 - [docs/api/workflows.md](workflows.md)
-- [docs/api/workflow-preview-runs.md](workflow-preview-runs.md)
+- [docs/api/workflow-preview-sessions.md](workflow-preview-sessions.md)
 - [docs/api/workflow-app-runtimes.md](workflow-app-runtimes.md)

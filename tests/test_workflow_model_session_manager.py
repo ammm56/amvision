@@ -18,10 +18,8 @@ from backend.service.application.workflows.execution.registry import (
     WorkflowNodeRuntimeRegistry,
 )
 from backend.service.application.workflows.model_sessions import (
-    WORKFLOW_PREVIEW_MODEL_SESSION_SCOPE_PREFIX,
     WorkflowModelSessionLoadResult,
     WorkflowModelSessionManager,
-    build_workflow_preview_model_session_scope_id,
 )
 from backend.service.application.errors import ResourceInUseError
 
@@ -307,10 +305,7 @@ def test_stable_preview_scope_reuses_session_and_configuration_change_reloads() 
 
     registry, provider = _build_registry()
     manager = WorkflowModelSessionManager(runtime_registry=registry)
-    scope_id = build_workflow_preview_model_session_scope_id(
-        project_id="project-1",
-        application_id="app-1",
-    )
+    scope_id = "preview-session:test-app-1"
 
     first = manager.prepare_template(
         scope_id=scope_id,
@@ -346,7 +341,7 @@ def test_node_scope_without_loader_keeps_existing_application_lease() -> None:
 
     registry, provider = _build_registry()
     manager = WorkflowModelSessionManager(runtime_registry=registry)
-    scope_id = "preview:project-1:app-1"
+    scope_id = "preview-session:app-1"
     template = _build_template()
 
     first = manager.prepare_template(
@@ -380,7 +375,7 @@ def test_non_loader_parameter_change_keeps_existing_application_lease() -> None:
 
     registry, provider = _build_registry()
     manager = WorkflowModelSessionManager(runtime_registry=registry)
-    scope_id = "preview:project-1:app-1"
+    scope_id = "preview-session:app-1"
     original_template = _build_template()
     changed_template = original_template.model_copy(
         update={
@@ -414,7 +409,7 @@ def test_deleted_or_disabled_loader_closes_orphan_lease() -> None:
     registry, provider = _build_registry()
     manager = WorkflowModelSessionManager(runtime_registry=registry)
     manager.prepare_template(
-        scope_id="preview:project-1:app-1",
+        scope_id="preview-session:app-1",
         template=_build_template(),
         runtime_context=object(),
     )
@@ -431,7 +426,7 @@ def test_deleted_or_disabled_loader_closes_orphan_lease() -> None:
     )
 
     prepared = manager.prepare_template(
-        scope_id="preview:project-1:app-1",
+        scope_id="preview-session:app-1",
         template=template_without_loader,
         runtime_context=object(),
     )
@@ -439,7 +434,7 @@ def test_deleted_or_disabled_loader_closes_orphan_lease() -> None:
     assert prepared == ()
     assert provider.events.count("close") == 1
     assert manager.build_health_summary(
-        scope_id="preview:project-1:app-1"
+        scope_id="preview-session:app-1"
     )["ready_session_count"] == 0
 
 
@@ -449,21 +444,21 @@ def test_preview_scope_limit_evicts_previous_application() -> None:
     registry, provider = _build_registry()
     manager = WorkflowModelSessionManager(runtime_registry=registry)
     manager.prepare_template(
-        scope_id="preview:project-1:app-1",
+        scope_id="preview-session:app-1",
         template=_build_template(),
         runtime_context=object(),
     )
 
     evicted = manager.enforce_scope_limit(
-        scope_prefix=WORKFLOW_PREVIEW_MODEL_SESSION_SCOPE_PREFIX,
-        current_scope_id="preview:project-1:app-2",
+        scope_prefix="preview-session:",
+        current_scope_id="preview-session:app-2",
         max_scope_count=1,
     )
 
-    assert evicted == ("preview:project-1:app-1",)
+    assert evicted == ("preview-session:app-1",)
     assert provider.events.count("close") == 1
     assert manager.build_health_summary(
-        scope_id="preview:project-1:app-1"
+        scope_id="preview-session:app-1"
     )["ready_session_count"] == 0
 
 
@@ -476,7 +471,7 @@ def test_preview_scope_rejects_duplicate_execution_without_queueing() -> None:
     release_first = Event()
 
     def hold_scope() -> None:
-        with manager.locked_scope("preview:project-1:app-1"):
+        with manager.locked_scope("preview-session:app-1"):
             first_entered.set()
             release_first.wait(timeout=1)
 
@@ -486,7 +481,7 @@ def test_preview_scope_rejects_duplicate_execution_without_queueing() -> None:
     try:
         with pytest.raises(ResourceInUseError):
             with manager.locked_scope(
-                "preview:project-1:app-1",
+                "preview-session:app-1",
                 wait=False,
             ):
                 pass

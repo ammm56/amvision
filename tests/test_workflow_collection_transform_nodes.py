@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.workflow_editor_graph_support import execute_editor_graph
+
 from pathlib import Path
 
 from backend.contracts.workflows.workflow_graph import (
@@ -14,7 +16,6 @@ from backend.contracts.workflows.workflow_graph import (
     WorkflowGraphOutput,
     WorkflowGraphTemplate,
 )
-from backend.service.application.workflows.runtime_service import WorkflowPreviewRunCreateRequest
 from tests.test_workflow_runtime_sanitization import _build_runtime_service
 
 
@@ -22,12 +23,7 @@ def test_preview_run_collection_transform_nodes_support_map_filter_and_merge(tmp
     """验证 list-map、list-filter 与 object-merge 可以组成集合和对象变换链。"""
 
     service, _, _ = _build_runtime_service(tmp_path)
-    preview_run = service.create_preview_run(
-        WorkflowPreviewRunCreateRequest(
-            project_id="project-1",
-            application=_build_collection_transform_application(),
-            template=_build_collection_transform_template(),
-            input_bindings={
+    preview_run = execute_editor_graph(service, project_id="project-1", application=_build_collection_transform_application(), template=_build_collection_transform_template(), input_bindings={
                 "users": {
                     "value": [
                         {"name": "A", "active": False, "tags": ["vip"], "score": 88},
@@ -38,10 +34,7 @@ def test_preview_run_collection_transform_nodes_support_map_filter_and_merge(tmp
                 },
                 "override_status": {"value": "approved"},
                 "owner": {"value": "qa"},
-            },
-        ),
-        created_by="workflow-user",
-    )
+            })
 
     assert preview_run.state == "succeeded"
     assert preview_run.outputs["filtered_count"]["value"] == 2

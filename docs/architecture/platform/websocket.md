@@ -21,7 +21,7 @@ WebSocket 不承担以下职责：
 | `/ws/v1/auth/events` | 登录与 token 审计 | `auth:read` | 仅实时事件 |
 | `/ws/v1/tasks/events` | Task 事件 | `tasks:read` | `after_cursor` + 数据库事件 |
 | `/ws/v1/training/telemetry` | 训练高频遥测 | `tasks:read` | `after_cursor` + 有界内存历史 |
-| `/ws/v1/workflows/preview-runs/events` | Preview Run | `workflows:read` | `after_cursor` + `events.jsonl` |
+| `/ws/v1/workflows/preview-sessions/{session_id}` | Preview Session | `workflows:read` | 内存快照 + 节点事件 + 二进制数据 |
 | `/ws/v1/workflows/runs/events` | Workflow Run | `workflows:read` | `after_cursor` + `events.jsonl` |
 | `/ws/v1/workflows/app-runtimes/events` | Workflow App Runtime | `workflows:read` | `after_cursor` + Runtime 事件记录 |
 | `/ws/v1/deployments/events` | Deployment | `models:read` | `after_cursor` + `events.jsonl` |

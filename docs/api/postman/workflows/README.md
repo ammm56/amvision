@@ -31,7 +31,6 @@
 
 - Save Template：保存界面图编排产出的 workflow template。
 - Save Application：保存 app 绑定关系。
-- Create Preview Run / Get Preview Run：覆盖界面图编排阶段的快速执行和结果回查。
 - Create App Runtime / Start / Health：覆盖保存 app 后的正式 runtime 生命周期。
 - Invoke App Runtime：覆盖正式生产入口的同步调用。
 - Create Workflow Run / Get Workflow Run：覆盖正式生产入口的异步 run 创建和结果回查。
@@ -52,7 +51,6 @@
 - `image-base64.v1` 输入绑定通过 JSON invoke 传入，常见形状是 `{"image_base64": "<base64>", "media_type": "image/png"}`；也支持 `data:image/png;base64,...` 形式的单行字符串。
 - `dataset-package.v1` 在 preview run 中使用 JSON 内联 base64 `package_bytes` 表达小型 zip 包；正式 runtime invoke/run 通过 `/invoke/upload` 或 `/runs/upload` 传入。通用 multipart 当前也支持 `image-ref.v1`、`file-ref.v1` 和 `file-refs.v1` 流式上传，文件字段名必须等于 binding id；`file-refs.v1` 通过重复同名字段保留顺序。`image-base64.v1` 放入 JSON 或 `input_bindings_json`，不会由上传图片隐式转换。
 - 对于 template 内可以根据上下文自动补齐的默认参数，collection 里的请求体仍优先显式展示关键值，便于排查问题；例如第一类 workflow 会直接写出 `training_request_payload.value.model_type`、`recipe_id` 和 `model_scale`，而不是只留一组模糊默认值。
-- 对于 `02-*`、`03-*`、`04-*` 这类依赖已有 deployment 的 collection，`Create Preview Run` 主要用于校验编排绑定和输入形状。编辑器同步 preview 复用 backend-service 已加载的节点 registry 和 PublishedInferenceGateway；推理节点通过 LocalBufferBroker 的 BufferRef / FrameRef 和 mmap mailbox 调用 inference daemon 中的常驻 deployment worker。目标 deployment 仍需提前通过 sync/start 或 sync/warmup 启动，或者在节点参数中显式允许 `auto_start_process`。
 - `06-*`、`07-*` collection 和 `04-*`、`05-*` HTTP collection 分开维护，避免把已验证 HTTP 调试路径和 ZeroMQ TriggerSource 调试路径混在同一目录中；06/07 仍保留完整本地 Save Template / Preview Run / Runtime / Workflow Run 调试链路，其中 HTTP invoke 只是用于验证同一 app 的双入口，不替代 04/05 的独立 HTTP 调试目录。
 - `08-*` collection 不再验证 HTTP 图片双入口，而是验证 `plc-register` 的事件输入边界；direct invoke 使用 synthetic event payload，只用于本地复现同一条业务处理链，不替代真实 PLC TriggerSource 常驻监听。
 - `09-*` collection 继续沿用 synthetic event 调试方式，但重点变成 `directory-watch` 的目录批次 payload/event 输入边界，以及静态 `deployment_request` 如何从 TriggerSource 直接注入到 workflow app；真实目录监听仍以 enable 后的 TriggerSource 常驻线程为准。
@@ -70,3 +68,7 @@
 - 项目目录读取、Project 文件 metadata/content，以及模板/应用/runtime 主列表的 offset/limit 分页示例统一收口到 [docs/api/postman/workflow-runtime.postman_collection.json](../workflow-runtime.postman_collection.json)。分场景 collection 继续只保留最短业务链路，不重复铺通用控制面请求。
 - `05-*`、`07-*` 这类保存图片场景的默认模板已经切到 `projects/{project_id}/results/workflow-applications/{application_id}/runs/{workflow_run_id}/...` 结果域，因此后续可以直接接入 Project 结果读取面。
 - 第一类 collection 的 `request_package` 默认指向 `data/files/postman-assets/detection-coco-min.zip`；导入 Postman 后如本地路径不同，只需要改 `requestPackagePath` 变量即可。
+
+Preview Session 通过独立常驻 Worker 执行，编辑预览请使用浏览器或 [v1 内存会话协议](../../workflow-preview-sessions.md)。正式 Runtime/Trigger 继续使用这些 Postman collection。
+
+正式 Runtime 模型调用继续经 LocalBufferBroker 的 BufferRef / FrameRef 和 mmap mailbox 进入 inference daemon 中的常驻 deployment worker；此路径不承载编辑器 Preview 的临时数据。

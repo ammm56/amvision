@@ -26,7 +26,6 @@ from backend.service.infrastructure.persistence.workflow_runtime_orm import (
     WorkflowAppRuntimeRecord,
     WorkflowAppVersionRecord,
     WorkflowExecutionPolicyRecord,
-    WorkflowPreviewRunRecord,
     WorkflowRunRecord,
     WorkflowRuntimeRevisionRecord,
 )
@@ -83,7 +82,6 @@ def test_reset_development_workflow_state_clears_only_workflow_state(
         "workflow_runtime_revisions": 1,
         "workflow_app_versions": 1,
         "workflow_application_lifecycles": 1,
-        "workflow_preview_runs": 1,
         "workflow_execution_policies": 1,
     }
     assert all(value == 0 for value in preview["preview"]["active_resources"].values())
@@ -222,7 +220,6 @@ def test_clear_development_workflow_history_preserves_published_resources(
 
     assert result["deleted_counts"] == {
         "workflow_runs": 1,
-        "workflow_preview_runs": 1,
     }
     assert result["pending_cleanup"] == []
     assert not run_marker.exists()
@@ -231,7 +228,6 @@ def test_clear_development_workflow_history_preserves_published_resources(
     verification_factory = SessionFactory(settings.to_database_settings())
     with verification_factory.create_session() as session:
         assert _count(session, WorkflowRunRecord) == 0
-        assert _count(session, WorkflowPreviewRunRecord) == 0
         assert _count(session, WorkflowAppVersionRecord) == 1
         assert _count(session, WorkflowAppRuntimeRecord) == 1
         assert _count(session, WorkflowRuntimeRevisionRecord) == 1
@@ -344,16 +340,6 @@ def _seed_stopped_workflow_state(session_factory: SessionFactory) -> None:
                     state="succeeded",
                     created_at="2026-08-31T00:00:00Z",
                 ),
-                WorkflowPreviewRunRecord(
-                    preview_run_id="preview-1",
-                    project_id="project-1",
-                    application_id="app-1",
-                    source_kind="application",
-                    application_snapshot_object_key="workflows/preview/app.json",
-                    template_snapshot_object_key="workflows/preview/template.json",
-                    state="succeeded",
-                    created_at="2026-08-31T00:00:00Z",
-                ),
                 WorkflowApplicationLifecycleRecord(
                     project_id="project-1",
                     application_id="app-1",
@@ -383,7 +369,6 @@ def _workflow_entities() -> tuple[type, ...]:
         WorkflowRuntimeRevisionRecord,
         WorkflowAppVersionRecord,
         WorkflowApplicationLifecycleRecord,
-        WorkflowPreviewRunRecord,
         WorkflowExecutionPolicyRecord,
     )
 

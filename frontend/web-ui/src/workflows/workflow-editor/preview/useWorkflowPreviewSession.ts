@@ -1,27 +1,22 @@
-import { onBeforeUnmount, ref } from 'vue'
-import { ApiError } from '@/shared/api/error'
-import { translate } from '@/platform/i18n'
+import { onBeforeUnmount, ref, shallowRef } from 'vue'
 import { useSessionStore } from '@/app/stores/session.store'
-import { useWorkflowResourceStream } from '../composables/useWorkflowResourceStream'
-import { getWorkflowPreviewRun } from '../services/workflow-runtime.service'
-import { loadPreviewDisplayResult } from './previewDisplayResults'
-import type { WorkflowPreviewRun } from '../types'
+import { cancelPreviewSession, createPreviewSession, PreviewSessionConnection, releasePreviewSession, submitPreviewSession, type PreviewEvent } from '../services/workflow-preview-session.service'
+import { emptyPreviewState, PREVIEW_TERMINAL, reducePreviewEvent, type PreviewSessionState } from './previewSessionState'
 import type { PreviewNodeDisplayRefreshOptions } from './useWorkflowPreviewDisplays'
+import type { WorkflowPreviewRunActionInput } from '../actions/useWorkflowEditorActions'
+import type { WorkflowPreviewRun } from '../types'
 
 export interface PreviewSessionContext extends PreviewNodeDisplayRefreshOptions {
   projectId: string
   applicationId: string
 }
 export type PreviewFeedback = (run: WorkflowPreviewRun, options?: PreviewNodeDisplayRefreshOptions) => Promise<void>
+export const isTerminalPreviewRun = (run: WorkflowPreviewRun) => PREVIEW_TERMINAL.has(run.state)
 
-export function isTerminalPreviewRun(run: WorkflowPreviewRun): boolean {
-  return ['succeeded', 'failed', 'cancelled', 'timed_out'].includes(run.state)
-}
-
-/** 编辑态会话只管理控制与显示，不拥有业务执行进程。 */
+/** 编辑器只保存当前内存会话身份；重连恢复状态，不自动重跑业务。 */
 export function useWorkflowPreviewSession() {
   const account = useSessionStore()
-  const lastPreviewRun = ref<WorkflowPreviewRun | null>(null)
+  const lastPreviewRun = shallowRef<WorkflowPreviewRun | null>(null)
   const previewing = ref(false)
   const previewCancelling = ref(false)
   const queryError = ref<string | null>(null)
@@ -30,160 +25,201 @@ export function useWorkflowPreviewSession() {
   let generation = 0
   let context: PreviewSessionContext | null = null
   let principalId: string | undefined
-  let runId = ''
-  let completedKey = ''
-  let pending: Promise<void> | null = null
+  let connection: PreviewSessionConnection | null = null
+  let state: PreviewSessionState | null = null
   let feedback: PreviewFeedback | null = null
   let clearDisplays: (() => void) | undefined
   let cancelDisplayRefresh: (() => void) | undefined
-  let resultController: AbortController | null = null
+  let requestedRevision: string | null = null
+  let createdAt = ''
+  let viewFrame: number | null = null
+  let pendingDisplays = 0
+  const displayFailures = new Map<string, string>()
+  const displayVersions = new Map<string, number>()
+  const editorId = crypto.randomUUID()
 
   function storageKey(projectId: string, applicationId: string): string {
-    return account.currentUser?.principal_id
-      ? `amvision.preview.v1:${JSON.stringify([account.currentUser.principal_id, projectId, applicationId])}` : ''
+    return `amvision.preview-session.v1:${JSON.stringify([account.currentUser?.principal_id, projectId, applicationId])}`
   }
-  function remember(run: WorkflowPreviewRun, terminal = false): void {
-    if (!context) return
-    const key = storageKey(context.projectId, context.applicationId)
-    if (!key) return
-    try {
-      if (terminal) sessionStorage.removeItem(key)
-      else sessionStorage.setItem(key, run.preview_run_id)
-    } catch { /* 浏览器存储被禁用时仍可完成当前预览。 */ }
+  function remember(): void {
+    if (!context || !connection) return
+    try { sessionStorage.setItem(storageKey(context.projectId, context.applicationId), JSON.stringify(connection.identity)) } catch { /* 存储禁用不影响当前预览。 */ }
   }
   function isCurrent(token: number): boolean {
-    return token === generation && principalId === account.currentUser?.principal_id && context?.isCurrent?.() !== false
+    return generation === token && context !== null && principalId === account.currentUser?.principal_id && context.isCurrent?.() !== false
   }
   function reset(): void {
+    if (viewFrame !== null) cancelAnimationFrame(viewFrame)
+    viewFrame = null
     generation++
-    stream.stop()
-    resultController?.abort()
+    const previous = connection
+    connection = null
+    previous?.close()
+    if (previous) void releasePreviewSession(previous.identity.session_id).catch(() => { /* 断线宽限最终回收。 */ })
+    if (context) {
+      try { sessionStorage.removeItem(storageKey(context.projectId, context.applicationId)) } catch { /* 无持久化依赖。 */ }
+    }
     clearDisplays?.()
     context = null
-    runId = ''
-    completedKey = ''
-    pending = null
-    previewing.value = false
-    previewCancelling.value = false
+    state = null
+    requestedRevision = null
     lastPreviewRun.value = null
-    queryError.value = null
-    displayError.value = null
+    previewing.value = previewCancelling.value = false
+    queryError.value = displayError.value = null
+    pendingDisplays = 0
+    displayFailures.clear()
+    displayVersions.clear()
     displayState.value = 'idle'
   }
   function begin(next: PreviewSessionContext): number {
+    if (context && (context.projectId !== next.projectId || context.applicationId !== next.applicationId || principalId !== account.currentUser?.principal_id)) reset()
     generation++
-    stream.stop()
-    resultController?.abort()
     cancelDisplayRefresh?.()
     context = next
     principalId = account.currentUser?.principal_id
-    runId = ''
-    completedKey = ''
-    pending = null
+    requestedRevision = crypto.randomUUID()
     previewing.value = true
     previewCancelling.value = false
-    lastPreviewRun.value = null
-    queryError.value = null
-    displayError.value = null
+    queryError.value = displayError.value = null
+    pendingDisplays = 0
+    displayFailures.clear()
+    displayVersions.clear()
     displayState.value = 'idle'
     return generation
   }
-  function queryFailed(error: unknown): void {
-    if (!isCurrent(generation)) return
-    queryError.value = `${translate('workflowEditor.feedback.previewQueryFailed')}: ${error instanceof Error ? error.message : String(error)}`
-    if (error instanceof ApiError && [401, 403, 404].includes(error.status)) {
-      stream.stop()
-      previewing.value = false
-      previewCancelling.value = false
-      if (runId) remember({ preview_run_id: runId } as WorkflowPreviewRun, true)
+  function view(): WorkflowPreviewRun | null {
+    if (!state?.run || !context || !connection) return null
+    const run = state.run
+    const active = connection
+    return { format_id: active.identity.format_id, session_id: state.sessionId, preview_run_id: run.run_id,
+      document_revision: run.document_revision, project_id: context.projectId, application_id: context.applicationId,
+      state: run.state, created_at: createdAt, outputs: run.outputs ?? {}, node_records: Object.values(state.nodes),
+      error: run.error ? { code: run.error.type ?? 'preview_failed', message: run.error.message,
+        details: typeof run.error.details === 'object' ? run.error.details : { node_id: run.error.node_id } } : null,
+      values: Object.values(state.values), readValue: (blobId, offset, path) => active.readValue(blobId, offset, path),
+      readMemoryBlob: (blobId, mediaType) => active.readBlob(blobId, mediaType) }
+  }
+  function refreshView(): void {
+    lastPreviewRun.value = view()
+    if (lastPreviewRun.value) {
+      previewing.value = !isTerminalPreviewRun(lastPreviewRun.value)
+      if (!previewing.value) previewCancelling.value = false
     }
   }
-  async function acceptSnapshot(run: WorkflowPreviewRun, token = generation): Promise<void> {
-    if (!isCurrent(token) || !context) return
-    if ((run.project_id && run.project_id !== context.projectId)
-      || (run.application_id && run.application_id !== context.applicationId)
-      || (runId && run.preview_run_id !== runId)) return
-    if (lastPreviewRun.value && isTerminalPreviewRun(lastPreviewRun.value) && !isTerminalPreviewRun(run)) return
-    runId = run.preview_run_id
-    lastPreviewRun.value = run
-    queryError.value = null
-    previewing.value = !isTerminalPreviewRun(run)
-    remember(run)
-    if (!isTerminalPreviewRun(run)) return
-    previewCancelling.value = false
-    const key = `${run.preview_run_id}:${run.state}:${run.finished_at ?? ''}`
-    if (completedKey === key) { remember(run, true); return }
-    if (pending) return pending
-    const refreshOptions = { ...context, isCurrent: () => isCurrent(token) }
-    displayState.value = 'loading'
-    displayError.value = null
-    resultController = new AbortController()
-    const signal = resultController.signal
-    const operation = (async () => {
-      try {
-        // 只在终态读取完整结果，轮询和 WebSocket 事件不反复搬运大图。
-        const { run: complete, errors } = await loadPreviewDisplayResult(run, signal)
-        if (!isCurrent(token) || complete.preview_run_id !== runId) return
-        if (!isTerminalPreviewRun(complete)
-          || (complete.project_id && complete.project_id !== context?.projectId)
-          || (complete.application_id && complete.application_id !== context?.applicationId)) {
-          throw new Error(translate('workflowEditor.feedback.previewResultUnavailable'))
-        }
-        lastPreviewRun.value = complete
-        await feedback?.(complete, refreshOptions)
-        if (!isCurrent(token)) return
-        if (errors.length) throw new Error(errors.join('; '))
-        completedKey = key
-        displayState.value = 'ready'
-        remember(complete, true)
-      } catch (error) {
-        if (!isCurrent(token)) return
-        displayState.value = 'failed'
-        displayError.value = `${translate('workflowEditor.feedback.previewDisplayFailed')}: ${error instanceof Error ? error.message : String(error)}`
-      }
-    })()
-    pending = operation
-    try { await operation } finally { if (pending === operation) pending = null }
-  }
-  const stream = useWorkflowResourceStream<WorkflowPreviewRun>({
-    kind: 'preview-run', getSnapshot: (id) => getWorkflowPreviewRun(id, false),
-    onSnapshot: (run) => { void acceptSnapshot(run) }, isTerminal: isTerminalPreviewRun, onError: queryFailed,
-  })
-  async function accepted(run: WorkflowPreviewRun, token: number): Promise<void> {
-    await acceptSnapshot(run, token)
-    if (isCurrent(token) && !isTerminalPreviewRun(run)) stream.start(run.preview_run_id)
-  }
-  async function restore(projectId: string, applicationId: string, explicitRunId?: string): Promise<void> {
-    if (previewing.value || !projectId || !applicationId) return
-    let id = explicitRunId ?? ''
-    if (!id) {
-      try { id = sessionStorage.getItem(storageKey(projectId, applicationId)) ?? '' } catch { return }
-    }
-    if (!id) return
-    const token = begin({ projectId, applicationId })
-    runId = id
-    try {
-      const run = await getWorkflowPreviewRun(id, false)
+  async function display(payloads: Record<string, any>[], token: number, terminal = false): Promise<void> {
+    const run = view()
+    if (!run || !isCurrent(token)) return
+    function updateStatus(): void {
       if (!isCurrent(token)) return
-      if (run.project_id !== projectId || run.application_id !== applicationId) { reset(); return }
-      await accepted(run, token)
-    } catch (error) {
-      if (isCurrent(token)) {
-        queryFailed(error)
-        if (!(error instanceof ApiError && [401, 403, 404].includes(error.status))) stream.start(id)
+      displayError.value = [...displayFailures.values()].join('; ') || null
+      displayState.value = displayError.value ? 'failed' : pendingDisplays ? 'loading' : 'ready'
+    }
+    await Promise.all(payloads.map(async item => {
+      const key = JSON.stringify([item.node_id, item.output_port])
+      const version = (displayVersions.get(key) ?? 0) + 1
+      displayVersions.set(key, version)
+      if (item.error) { displayFailures.set(key, `${item.node_id}: ${item.error}`); updateStatus(); return }
+      if (!item.payload) return
+      pendingDisplays++
+      updateStatus()
+      try {
+        await feedback?.({ ...run, node_records: [{ node_id: item.node_id, node_type_id: item.node_type_id,
+          duration_ms: item.duration_ms, outputs: { [item.output_port]: item.payload } }] },
+        { ...context!, incremental: true, isCurrent: () => isCurrent(token) && displayVersions.get(key) === version })
+        if (isCurrent(token) && displayVersions.get(key) === version) displayFailures.delete(key)
+      } catch (error) {
+        if (isCurrent(token) && displayVersions.get(key) === version) displayFailures.set(key, error instanceof Error ? error.message : String(error))
+      } finally {
+        if (isCurrent(token)) pendingDisplays--
+        updateStatus()
       }
+    }))
+    if (terminal) updateStatus()
+  }
+  function accept(event: PreviewEvent): void {
+    if (!state || !isCurrent(generation)) return
+    if (requestedRevision && event.document_revision && event.document_revision !== requestedRevision) return
+    if (!reducePreviewEvent(state, event)) return
+    if (event.type === 'run.accepted') createdAt = new Date().toISOString()
+    if (event.type.startsWith('node.') || event.type === 'value.updated') {
+      if (viewFrame === null) {
+        const token = generation
+        viewFrame = requestAnimationFrame(() => { viewFrame = null; if (isCurrent(token)) refreshView() })
+      }
+    } else refreshView()
+    if (event.type === 'run.accepted' && lastPreviewRun.value) {
+      const token = generation
+      void Promise.resolve(feedback?.(lastPreviewRun.value, { ...context!, incremental: true, markStale: true, retainedNodeIds: event.payload.node_ids })).catch(error => {
+        if (isCurrent(token)) { displayError.value = String(error); displayState.value = 'failed' }
+      })
+    }
+    if (event.type === 'session.snapshot') void display(Object.values(state.displays), generation, Boolean(state.run && PREVIEW_TERMINAL.has(state.run.state)))
+    else if (event.type.startsWith('display.')) void display([event.payload], generation)
+    else if (event.type === 'run.finished') void display([], generation, true)
+  }
+  async function open(identity: Awaited<ReturnType<typeof createPreviewSession>>, token: number): Promise<void> {
+    if (!isCurrent(token)) { await releasePreviewSession(identity.session_id); return }
+    state = emptyPreviewState(identity.session_id, identity.epoch)
+    const next = new PreviewSessionConnection(identity, {
+      getAccessToken: () => account.accessToken, queryTokenEnabled: () => account.websocketQueryTokenEnabled,
+      onEvent: accept,
+      onConnection: (connected, error, expired) => {
+        if (connection !== next) return
+        queryError.value = connected ? null : error ?? 'preview_connection_lost'
+        if (expired) {
+          previewing.value = false
+          previewCancelling.value = false
+          next.close()
+          connection = null
+        }
+      },
+    })
+    connection = next
+    await next.connect()
+    remember()
+  }
+  async function execute(input: WorkflowPreviewRunActionInput, token: number): Promise<WorkflowPreviewRun | null> {
+    if (!connection) await open(await createPreviewSession(input.projectId, input.application.application_id, editorId), token)
+    if (!isCurrent(token) || !connection) return null
+    const inputIds: Record<string, string[]> = {}
+    for (const upload of input.fileUploads ?? []) {
+      if (!isCurrent(token)) return null
+      inputIds[upload.bindingId] ??= []
+      inputIds[upload.bindingId]!.push(await connection.upload(upload.file))
+    }
+    if (!isCurrent(token)) return null
+    const accepted = await submitPreviewSession(connection.identity.session_id, {
+      request_id: crypto.randomUUID(), document_revision: requestedRevision,
+      application: input.application, template: input.template, input_bindings: input.inputBindings, input_ids: inputIds,
+      execution_scope: input.executionScope?.kind === 'node' ? { kind: 'node', target_node_id: input.executionScope.targetNodeId } : { kind: 'application' },
+    })
+    if (!isCurrent(token)) return null
+    if (!state?.run || state.run.run_id !== accepted.run_id) {
+      state!.run = { run_id: accepted.run_id, document_revision: requestedRevision, state: 'accepted', outputs: {}, error: null }
+      createdAt = new Date().toISOString()
+      refreshView()
+    }
+    return lastPreviewRun.value
+  }
+  async function restore(projectId: string, applicationId: string): Promise<void> {
+    if (connection || previewing.value || !projectId || !applicationId) return
+    let identity
+    try { identity = JSON.parse(sessionStorage.getItem(storageKey(projectId, applicationId)) ?? 'null') } catch { return }
+    if (!identity?.session_id || !identity?.epoch) return
+    const token = begin({ projectId, applicationId })
+    requestedRevision = null
+    try { await open(identity, token) } catch (error) {
+      if (isCurrent(token)) { queryError.value = String(error); previewing.value = false }
     }
   }
-  async function retry(): Promise<void> {
-    if (lastPreviewRun.value && isTerminalPreviewRun(lastPreviewRun.value)) await acceptSnapshot(lastPreviewRun.value)
-    else await stream.refreshNow()
+  async function retry(): Promise<void> { if (state) await display(Object.values(state.displays), generation) }
+  async function cancel(): Promise<void> {
+    if (connection && state?.run) await cancelPreviewSession(connection.identity.session_id, state.run.run_id)
   }
   function setFeedback(handler: PreviewFeedback, clear?: () => void, cancelRefresh?: () => void): void {
-    feedback = handler
-    clearDisplays = clear
-    cancelDisplayRefresh = cancelRefresh
+    feedback = handler; clearDisplays = clear; cancelDisplayRefresh = cancelRefresh
   }
   onBeforeUnmount(reset)
   return { lastPreviewRun, previewing, previewCancelling, queryError, displayError, displayState,
-    begin, isCurrent, accepted, restore, retry, reset, setFeedback, refreshNow: stream.refreshNow }
+    begin, isCurrent, execute, restore, retry, reset, setFeedback, cancel }
 }

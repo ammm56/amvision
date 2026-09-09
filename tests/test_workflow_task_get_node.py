@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.workflow_editor_graph_support import execute_editor_graph
+
 from pathlib import Path
 
 from backend.contracts.workflows.workflow_graph import (
@@ -14,10 +16,7 @@ from backend.contracts.workflows.workflow_graph import (
     WorkflowGraphTemplate,
 )
 from backend.service.application.tasks.task_service import CreateTaskRequest, SqlAlchemyTaskService
-from backend.service.application.workflows.runtime_service import (
-    WorkflowPreviewRunCreateRequest,
-    WorkflowRuntimeService,
-)
+from backend.service.application.workflows.runtime_service import (WorkflowRuntimeService)
 from backend.service.application.workflows.workflow_service import LocalWorkflowJsonService
 from tests.test_workflow_runtime_sanitization import _build_runtime_service as _build_base_runtime_service
 
@@ -37,15 +36,7 @@ def test_preview_run_task_get_node_reads_existing_task_detail(tmp_path: Path) ->
         )
     )
 
-    preview_run = service.create_preview_run(
-        WorkflowPreviewRunCreateRequest(
-            project_id="project-1",
-            application=_build_task_get_application(),
-            template=_build_task_get_template(task_id=task_record.task_id, include_events=True),
-            input_bindings={},
-        ),
-        created_by="workflow-user",
-    )
+    preview_run = execute_editor_graph(service, project_id="project-1", application=_build_task_get_application(), template=_build_task_get_template(task_id=task_record.task_id, include_events=True), input_bindings={})
 
     assert preview_run.state == "succeeded"
     body = preview_run.outputs["task_body"]
@@ -69,15 +60,7 @@ def test_preview_run_task_get_node_defaults_to_lightweight_detail(tmp_path: Path
         )
     )
 
-    preview_run = service.create_preview_run(
-        WorkflowPreviewRunCreateRequest(
-            project_id="project-1",
-            application=_build_task_get_application(),
-            template=_build_task_get_template(task_id=task_record.task_id),
-            input_bindings={},
-        ),
-        created_by="workflow-user",
-    )
+    preview_run = execute_editor_graph(service, project_id="project-1", application=_build_task_get_application(), template=_build_task_get_template(task_id=task_record.task_id), input_bindings={})
 
     assert preview_run.state == "succeeded"
     body = preview_run.outputs["task_body"]
@@ -101,22 +84,14 @@ def test_preview_run_task_get_node_accepts_dynamic_request_payload(tmp_path: Pat
         )
     )
 
-    preview_run = service.create_preview_run(
-        WorkflowPreviewRunCreateRequest(
-            project_id="project-1",
-            application=_build_dynamic_task_get_application(),
-            template=_build_dynamic_task_get_template(),
-            input_bindings={
+    preview_run = execute_editor_graph(service, project_id="project-1", application=_build_dynamic_task_get_application(), template=_build_dynamic_task_get_template(), input_bindings={
                 "request_payload": {
                     "value": {
                         "task_id": task_record.task_id,
                         "include_events": False,
                     }
                 }
-            },
-        ),
-        created_by="workflow-user",
-    )
+            })
 
     assert preview_run.state == "succeeded"
     body = preview_run.outputs["task_body"]

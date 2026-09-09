@@ -191,7 +191,7 @@ App Version 固定模板、节点包版本和公开输入契约；Runtime revisi
 
 HTTP、ZeroMQ、目录监听与本机共享内存 Trigger 复用 Runtime，但各自拥有输入转换和交付规则。本机共享内存 Trigger 仅支持 sync，Mailbox 与 Inference Mailbox 独立，图片仍使用 LocalBuffer。有图片时先 PREPARE、写入并发布，event-only 跳过图片阶段；响应 lease 通过 ACK/释放协议回收。
 
-编辑态 Preview 不经过上述常驻 Worker：backend-service 固定 snapshot 后调用同一个 Snapshot/Graph Executor，并记录 WorkflowPreviewRun。它采用协作取消；不可协作的同进程 Python handler 不能被安全强杀。
+编辑态 Preview 使用独立常驻 Preview Worker，复用图执行器，通过 WebSocket 发布每个节点的状态和值。快照、输入和显示只存在内存/OS 共享内存；取消及超时由独立进程监督，确认退出后释放借用。
 
 ### Workflow Runtime 链异常分支
 

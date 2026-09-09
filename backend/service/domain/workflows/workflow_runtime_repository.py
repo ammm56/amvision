@@ -10,7 +10,6 @@ from backend.service.domain.workflows.workflow_runtime_records import (
     WorkflowAppRuntime,
     WorkflowAppVersion,
     WorkflowExecutionPolicy,
-    WorkflowPreviewRun,
     WorkflowRuntimeRevision,
     WorkflowRun,
 )
@@ -38,30 +37,10 @@ class WorkflowRuntimeRepository(Protocol):
 
         ...
 
-    def save_preview_run(self, preview_run: WorkflowPreviewRun) -> None:
-        """保存一个 WorkflowPreviewRun。"""
 
-        ...
 
-    def get_preview_run(self, preview_run_id: str) -> WorkflowPreviewRun | None:
-        """按 id 读取一个 WorkflowPreviewRun。"""
 
-        ...
 
-    def list_preview_runs(self, project_id: str) -> tuple[WorkflowPreviewRun, ...]:
-        """按 Project id 列出 WorkflowPreviewRun。"""
-
-        ...
-
-    def count_preview_run_states_by_project(self, project_id: str) -> dict[str, int]:
-        """按 Project id 聚合 WorkflowPreviewRun 状态数量。"""
-
-        ...
-
-    def delete_preview_run(self, preview_run_id: str) -> None:
-        """按 id 删除一个 WorkflowPreviewRun。"""
-
-        ...
 
     def save_workflow_app_runtime(
         self, workflow_app_runtime: WorkflowAppRuntime

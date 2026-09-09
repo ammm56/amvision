@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.workflow_editor_graph_support import execute_editor_graph
+
 from backend.contracts.workflows.workflow_graph import (
     FlowApplication,
     FlowApplicationBinding,
@@ -11,7 +13,6 @@ from backend.contracts.workflows.workflow_graph import (
     WorkflowGraphOutput,
     WorkflowGraphTemplate,
 )
-from backend.service.application.workflows.runtime_service import WorkflowPreviewRunCreateRequest
 from tests.test_workflow_runtime_sanitization import _build_runtime_service
 
 
@@ -19,12 +20,7 @@ def test_preview_run_boolean_and_collection_nodes_support_basic_composition(tmp_
     """验证 boolean and/or/not 与 list-append 节点可以组成基础编排链。"""
 
     service, _, _ = _build_runtime_service(tmp_path)
-    preview_run = service.create_preview_run(
-        WorkflowPreviewRunCreateRequest(
-            project_id="project-1",
-            application=_build_boolean_collection_application(),
-            template=_build_boolean_collection_template(),
-            input_bindings={
+    preview_run = execute_editor_graph(service, project_id="project-1", application=_build_boolean_collection_application(), template=_build_boolean_collection_template(), input_bindings={
                 "source_items": {"value": ["alpha"]},
                 "new_item": {"value": "beta"},
                 "flag_true": {"value": True},
@@ -32,10 +28,7 @@ def test_preview_run_boolean_and_collection_nodes_support_basic_composition(tmp_
                 "flag_true_or": {"value": True},
                 "flag_false_or": {"value": False},
                 "flag_false_not": {"value": False},
-            },
-        ),
-        created_by="workflow-user",
-    )
+            })
 
     assert preview_run.state == "succeeded"
     assert preview_run.outputs["appended_items"]["value"] == ["alpha", "beta"]

@@ -15,10 +15,6 @@
       "value": "project-1"
     },
     {
-      "key": "previewRunId",
-      "value": ""
-    },
-    {
       "key": "workflowRuntimeId",
       "value": ""
     },
@@ -127,90 +123,6 @@
             }
           }
         }
-      },
-      "response": []
-    },
-    {
-      "name": "Create Preview Run",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json",
-            "type": "text"
-          },
-          {
-            "key": "Authorization",
-            "value": "Bearer {{accessToken}}",
-            "type": "text"
-          }
-        ],
-        "url": {
-          "raw": "{{baseUrl}}/api/v1/workflows/preview-runs",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "api",
-            "v1",
-            "workflows",
-            "preview-runs"
-          ]
-        },
-        "description": "创建 detection_deployment_infer_opencv_health_zeromq 的编辑态 preview run。双入口 app 的本地调试仍先走 HTTP base64 输入，ZeroMQ image-ref 入口单独通过 TriggerSource 管理控制面验证。",
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"project_id\": \"project-1\",\n  \"application_ref\": {\n    \"application_id\": \"detection-deployment-infer-opencv-health-zeromq-app\"\n  },\n  \"input_bindings\": {\n    \"request_image_base64\": {\n      \"image_base64\": \"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO8B9pQAAAAASUVORK5CYII=\",\n      \"media_type\": \"image/png\"\n    },\n    \"deployment_request\": {\n      \"value\": {\n        \"deployment_instance_id\": \"{{deploymentInstanceId}}\"\n      }\n    }\n  },\n  \"execution_metadata\": {\n    \"marker\": \"postman-workflow-example-documents-preview\",\n    \"example_name\": \"detection_deployment_infer_opencv_health_zeromq_image_ref\",\n    \"scenario\": \"deployment-infer-opencv-health-zeromq\",\n    \"trigger_source\": \"editor-preview\"\n  },\n  \"timeout_seconds\": 30\n}",
-          "options": {
-            "raw": {
-              "language": "json"
-            }
-          }
-        }
-      },
-      "response": [],
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.response.to.have.status(201);",
-              "const body = pm.response.json();",
-              "if (body.preview_run_id) {",
-              "  pm.collectionVariables.set('previewRunId', body.preview_run_id);",
-              "}"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "Get Preview Run",
-      "request": {
-        "method": "GET",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{accessToken}}",
-            "type": "text"
-          }
-        ],
-        "url": {
-          "raw": "{{baseUrl}}/api/v1/workflows/preview-runs/{{previewRunId}}",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "api",
-            "v1",
-            "workflows",
-            "preview-runs",
-            "{{previewRunId}}"
-          ]
-        },
-        "description": "读取上一步 preview run 的 outputs 和 node_records。"
       },
       "response": []
     },

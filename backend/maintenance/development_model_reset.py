@@ -37,7 +37,6 @@ from backend.service.infrastructure.persistence.task_orm import (
 )
 from backend.service.infrastructure.persistence.workflow_runtime_orm import (
     WorkflowAppRuntimeRecord,
-    WorkflowPreviewRunRecord,
     WorkflowRunRecord,
 )
 from backend.service.infrastructure.persistence.workflow_trigger_source_orm import (
@@ -209,7 +208,6 @@ def _delete_database_state(*, session_factory: SessionFactory) -> dict[str, int]
             ),
             "workflow_runs": _count_rows(session, WorkflowRunRecord),
             "workflow_app_runtimes": _count_rows(session, WorkflowAppRuntimeRecord),
-            "workflow_preview_runs": _count_rows(session, WorkflowPreviewRunRecord),
             "deployment_instances": _count_rows(session, DeploymentInstanceRecord),
             "model_files": _count_rows(session, ModelFileRecord),
             "model_builds": _count_rows(session, ModelBuildRecord),
@@ -220,7 +218,6 @@ def _delete_database_state(*, session_factory: SessionFactory) -> dict[str, int]
         session.execute(delete(WorkflowTriggerSourceRecord))
         session.execute(delete(WorkflowRunRecord))
         session.execute(delete(WorkflowAppRuntimeRecord))
-        session.execute(delete(WorkflowPreviewRunRecord))
         session.execute(delete(DeploymentInstanceRecord))
         session.execute(delete(ModelFileRecord))
         session.execute(delete(ModelBuildRecord))

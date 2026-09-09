@@ -74,7 +74,7 @@ def normalize_execution_policy_create_request(
         raise InvalidRequestError("execution_policy_id 不能为空")
     if not display_name:
         raise InvalidRequestError("display_name 不能为空")
-    if policy_kind not in {"preview-default", "runtime-default"}:
+    if policy_kind != "runtime-default":
         raise InvalidRequestError("policy_kind 取值无效")
     if request.default_timeout_seconds <= 0:
         raise InvalidRequestError("default_timeout_seconds 必须大于 0")

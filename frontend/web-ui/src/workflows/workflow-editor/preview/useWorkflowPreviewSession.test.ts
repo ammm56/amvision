@@ -3,89 +3,91 @@ import { beforeEach, expect, it, vi } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
 import { useWorkflowPreviewSession } from './useWorkflowPreviewSession'
 import { useSessionStore } from '@/app/stores/session.store'
-import { ApiError } from '@/shared/api/error'
-import type { WorkflowPreviewRun } from '../types'
+import type { WorkflowPreviewRunActionInput } from '../actions/useWorkflowEditorActions'
 
-const io = vi.hoisted(() => ({ load: vi.fn(), get: vi.fn(), stream: vi.fn(), stop: vi.fn() }))
-vi.mock('@/platform/i18n', () => ({ translate: (key: string) => key }))
-vi.mock('./previewDisplayResults', () => ({ loadPreviewDisplayResult: io.load }))
-vi.mock('../services/workflow-runtime.service', () => ({ getWorkflowPreviewRun: io.get }))
-vi.mock('../composables/useWorkflowResourceStream', () => ({ useWorkflowResourceStream: io.stream }))
-const run = (id = 'run', state = 'succeeded') => ({ preview_run_id: id, project_id: 'p', application_id: 'a', state,
-  node_records: [], metadata: {}, outputs: {}, template_outputs: {} }) as unknown as WorkflowPreviewRun
-
+const io = vi.hoisted(() => ({ options: null as any, create: vi.fn(), submit: vi.fn(), release: vi.fn(), cancel: vi.fn(), upload: vi.fn(), close: vi.fn(), revision: '' }))
+vi.mock('../services/workflow-preview-session.service', () => ({
+  PREVIEW_FORMAT: 'amvision.workflow-preview-session.v1',
+  createPreviewSession: io.create, submitPreviewSession: io.submit, releasePreviewSession: io.release, cancelPreviewSession: io.cancel,
+  PreviewSessionConnection: class {
+    constructor(public identity: any, options: any) { io.options = options }
+    async connect() { io.options.onEvent(event('session.snapshot', { watermark: 0, run: null, nodes: [], displays: [] }, 0)) }
+    upload = io.upload
+    close = io.close
+    readBlob = vi.fn()
+  },
+}))
+const identity = { format_id: 'amvision.workflow-preview-session.v1', session_id: 'session', epoch: 'epoch', memory_limit_bytes: 1 }
+const input = { projectId: 'p', application: { application_id: 'a' }, template: {}, inputBindings: {} } as WorkflowPreviewRunActionInput
+function event(type: string, payload: object, seq: number) {
+  return { ...identity, run_id: seq ? 'run' : null, document_revision: seq ? io.revision : null, type, payload, seq }
+}
 beforeEach(() => {
   setActivePinia(createPinia())
-  vi.resetAllMocks()
+  vi.clearAllMocks()
   sessionStorage.clear()
-  useSessionStore().currentUser = { principal_id: 'u' } as NonNullable<ReturnType<typeof useSessionStore>['currentUser']>
-  io.stream.mockReturnValue({ start: vi.fn(), stop: io.stop, refreshNow: vi.fn() })
-  io.load.mockImplementation(async (r) => ({ run: r, errors: [] }))
+  useSessionStore().currentUser = { principal_id: 'u' } as any
+  io.create.mockResolvedValue(identity)
+  io.release.mockResolvedValue(undefined)
+  io.submit.mockImplementation(async (_sid, body) => {
+    io.revision = body.document_revision
+    io.options.onEvent(event('run.accepted', { run_id: 'run', document_revision: io.revision, state: 'accepted' }, 1))
+    return { ...identity, run_id: 'run', state: 'accepted' }
+  })
 })
 
-it('deduplicates fast terminal, repeated subscription and poll results', async () => {
+it('shows node display before the graph finishes and ignores duplicate events', async () => {
   const session = useWorkflowPreviewSession(), feedback = vi.fn()
   session.setFeedback(feedback)
-  const token = session.begin({ projectId: 'p', applicationId: 'a' })
-  await session.accepted(run(), token)
-  io.stream.mock.calls[0]![0].onSnapshot(run())
+  await session.execute(input, session.begin({ projectId: 'p', applicationId: 'a' }))
+  io.options.onEvent(event('run.started', {}, 2))
+  const display = event('display.updated', { node_id: 'n', node_type_id: 'core.value-preview', output_port: 'preview', payload: { type: 'value-preview', value: 0 } }, 3)
+  io.options.onEvent(display)
+  io.options.onEvent(display)
   await flushPromises()
-  expect(feedback).toHaveBeenCalledTimes(1)
-  expect(io.load).toHaveBeenCalledTimes(1)
-  expect(sessionStorage.length).toBe(0)
+  expect(session.previewing.value).toBe(true)
+  const updates = feedback.mock.calls.filter(call => !call[1]?.markStale)
+  expect(updates).toHaveLength(1)
+  expect(updates[0]![0].node_records[0].outputs.preview.value).toBe(0)
+  expect(updates[0]![1].incremental).toBe(true)
+  session.reset()
 })
 
-it('restores a terminal run with the same completion feedback', async () => {
-  io.get.mockResolvedValue(run())
-  const session = useWorkflowPreviewSession(), feedback = vi.fn()
+it('keeps successful execution separate from display loading failures', async () => {
+  const session = useWorkflowPreviewSession(), feedback = vi.fn().mockImplementation((_run, options) => options?.markStale ? Promise.resolve() : Promise.reject(new Error('decode')))
   session.setFeedback(feedback)
-  await session.restore('p', 'a', 'run')
-  expect(feedback).toHaveBeenCalledTimes(1)
-  expect(session.displayState.value).toBe('ready')
-})
-
-it('aborts old result loading and rejects late results after switching app', async () => {
-  let release!: (value: unknown) => void
-  io.load.mockImplementation(() => new Promise((resolve) => { release = resolve }))
-  const session = useWorkflowPreviewSession(), feedback = vi.fn()
-  session.setFeedback(feedback)
-  const token = session.begin({ projectId: 'p', applicationId: 'a' })
-  const first = session.accepted(run(), token)
-  const signal = io.load.mock.calls[0]![1] as AbortSignal
-  session.begin({ projectId: 'p', applicationId: 'other' })
-  expect(signal.aborted).toBe(true)
-  release({ run: run(), errors: [] })
-  await first
-  expect(feedback).not.toHaveBeenCalled()
-  expect(session.lastPreviewRun.value).toBeNull()
-})
-
-it('keeps business success separate from a retryable display failure', async () => {
-  io.load.mockRejectedValueOnce(new Error('network'))
-  const session = useWorkflowPreviewSession(), feedback = vi.fn()
-  session.setFeedback(feedback)
-  await session.accepted(run(), session.begin({ projectId: 'p', applicationId: 'a' }))
+  await session.execute(input, session.begin({ projectId: 'p', applicationId: 'a' }))
+  io.options.onEvent(event('display.updated', { node_id: 'n', output_port: 'preview', payload: { type: 'value-preview', value: false } }, 2))
+  await flushPromises()
+  io.options.onEvent(event('run.finished', { status: 'succeeded' }, 3))
+  await flushPromises()
   expect(session.lastPreviewRun.value?.state).toBe('succeeded')
-  expect(session.displayState.value).toBe('failed')
-  expect(sessionStorage.length).toBe(1)
-  await session.retry()
-  expect(session.displayState.value).toBe('ready')
-  expect(sessionStorage.length).toBe(0)
+  expect(session.previewing.value).toBe(false)
+  expect(session.displayError.value).toBe('decode')
+  session.reset()
 })
 
-it.each(['failed', 'cancelled', 'timed_out'])('loads completed display nodes after %s', async (state) => {
+it('ignores events from the previous app after switching and releases its session', async () => {
   const session = useWorkflowPreviewSession(), feedback = vi.fn()
   session.setFeedback(feedback)
-  await session.accepted(run('run', state), session.begin({ projectId: 'p', applicationId: 'a' }))
-  expect(feedback).toHaveBeenCalledWith(expect.objectContaining({ state }), expect.anything())
-  expect(session.previewing.value).toBe(false)
+  await session.execute(input, session.begin({ projectId: 'p', applicationId: 'a' }))
+  feedback.mockClear()
+  const previous = io.options
+  session.begin({ projectId: 'p', applicationId: 'b' })
+  previous.onEvent(event('run.finished', { status: 'succeeded' }, 2))
+  expect(session.lastPreviewRun.value).toBeNull()
+  expect(io.release).toHaveBeenCalledWith('session')
+  expect(feedback).not.toHaveBeenCalled()
+  session.reset()
 })
 
-it('reports a missing record and stops invalid subscriptions', async () => {
-  io.get.mockRejectedValue(new ApiError(404, { message: 'missing' }))
+it('cancelling only requests cancellation and waits for the real terminal event', async () => {
   const session = useWorkflowPreviewSession()
-  await session.restore('p', 'a', 'missing')
-  expect(session.queryError.value).toContain('missing')
+  await session.execute(input, session.begin({ projectId: 'p', applicationId: 'a' }))
+  await session.cancel()
+  expect(io.cancel).toHaveBeenCalledWith('session', 'run')
+  expect(session.previewing.value).toBe(true)
+  io.options.onEvent(event('run.finished', { status: 'cancelled' }, 2))
   expect(session.previewing.value).toBe(false)
-  expect(io.stop).toHaveBeenCalled()
+  session.reset()
 })

@@ -21,7 +21,6 @@
 
 以下字段通常需要按现场机器改成真实值：
 
-- `preview-run.request.json`、`app-runtime.invoke.request.json`、`app-runtime.run.create.request.json` 里的 `request_image_path`
 - 上述三个请求里的 `request_regions`
 - 上述三个请求里的 `request_roi`
 - 上述三个请求里的 `request_delivery_context`
@@ -48,8 +47,6 @@
 
 按下面顺序执行：
 
-- `Create Preview Run`
-- `Get Preview Run`
 
 这一步最适合先确认：
 

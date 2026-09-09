@@ -19,7 +19,7 @@ describe('workflow Preview image inputs', () => {
     expect(previewInputs.previewInputState.value.request_image_ref.imageRefTransportKind).toBe('upload')
   })
 
-  it('maps an image-base64 file picker to its image-ref multipart binding', async () => {
+  it('uploads an image-base64 file using its own binding without embedding bytes in JSON', async () => {
     const bindings = [
       buildBinding('request_image_ref', 'image-ref.v1'),
       buildBinding('request_image_base64', 'image-base64.v1'),
@@ -35,7 +35,7 @@ describe('workflow Preview image inputs', () => {
 
     expect(payload.inputBindings).toEqual({})
     expect(payload.fileUploads).toEqual([
-      { bindingId: 'request_image_ref', file: imageFile },
+      { bindingId: 'request_image_base64', file: imageFile },
     ])
   })
 

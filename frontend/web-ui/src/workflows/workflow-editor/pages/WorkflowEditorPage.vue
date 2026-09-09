@@ -25,7 +25,7 @@
         @history="openVersionHistory"
         :preview-disabled="previewDisabled"
         :previewing="previewOperationRunning"
-        :preview-cancellable="Boolean(lastPreviewRun && ['created', 'running'].includes(lastPreviewRun.state) && previewing)"
+        :preview-cancellable="Boolean(lastPreviewRun && ['accepted', 'running'].includes(lastPreviewRun.state) && previewing)"
         :preview-cancelling="previewCancelling"
         :publish-disabled="publishDisabled"
         :publishing="publishingVersion"
@@ -143,6 +143,7 @@
           :read-preview-display="getPreviewNodeDisplay"
           :read-preview-display-tooltip="readPreviewNodeDisplayTooltip"
           :read-preview-duration-ms="readPreviewNodeDurationMs"
+          :read-preview-status="readPreviewNodeStatus"
           @start-node-drag="startNodeDrag"
           @node-click="handleGraphNodeSelection"
           @open-node-context-menu="openNodeContextMenu"
@@ -427,7 +428,7 @@ import {
   isAppliedMaskBinding,
   type AppliedMaskBinding,
 } from '../interactions/maskEditorInteraction'
-import type { FlowApplicationBinding, WorkflowGraphEdge, WorkflowGraphGroup, WorkflowGraphInput, WorkflowGraphNode, WorkflowGraphNote, WorkflowGraphOutput, WorkflowNodeCatalogResponse } from '../types'
+import type { WorkflowJsonObject, FlowApplicationBinding, WorkflowGraphEdge, WorkflowGraphGroup, WorkflowGraphInput, WorkflowGraphNode, WorkflowGraphNote, WorkflowGraphOutput, WorkflowNodeCatalogResponse } from '../types'
 
 type AppBoundaryKind = WorkflowBoundaryKind
 type SelectValue = WorkflowNodeParameterSelectValue
@@ -1236,8 +1237,8 @@ const {
 const editorTitle = computed(() => isNewApp.value ? newWorkflowAppDraft.value.displayName || t('workflowEditor.editor.newTitle') : workflowApp.value?.applicationDocument.application.display_name || routeApplicationId.value)
 const editorTitleEditable = computed(() => !isNewApp.value && Boolean(workflowApp.value?.applicationDocument.application_id))
 const previewOperationRunning = computed(() => previewing.value || imageInteractionApplying.value)
-watch([() => workflowApp.value?.applicationDocument.application_id, selectedProjectId, () => route.query.preview_run_id], ([applicationId, projectId, previewRunId]) => {
-  if (applicationId && projectId) void restorePreviewRun(projectId, applicationId, typeof previewRunId === 'string' ? previewRunId : undefined)
+watch([() => workflowApp.value?.applicationDocument.application_id, selectedProjectId], ([applicationId, projectId]) => {
+  if (applicationId && projectId) void restorePreviewRun(projectId, applicationId)
 })
 const saveDisabled = computed(() => documentBusy.value || !workflowApp.value || Boolean(newWorkflowAppSaveBlocker.value))
 const previewDisabled = computed(() => documentBusy.value || previewOperationRunning.value || !workflowApp.value || isNewApp.value || Boolean(newWorkflowAppSaveBlocker.value))
@@ -1563,6 +1564,31 @@ const {
   hasPreviewBindingValue,
 })
 const previewNodeDurationIndex = computed(() => buildPreviewNodeDurationIndex(lastPreviewRun.value?.node_records ?? []))
+const previewNodeStatusIndex = computed(() => {
+  const statuses = new Map<string, WorkflowJsonObject>()
+  for (const record of lastPreviewRun.value?.node_records ?? []) {
+    const key = String(record.node_id)
+    if (record.status === 'running' || statuses.get(key)?.status !== 'running') statuses.set(key, record)
+  }
+  return statuses
+})
+const previewClock = ref(Date.now())
+let previewClockTimer: ReturnType<typeof setInterval> | undefined
+watch(previewing, (active) => {
+  if (previewClockTimer) clearInterval(previewClockTimer)
+  previewClockTimer = undefined
+  previewClock.value = Date.now()
+  if (active) previewClockTimer = setInterval(() => { previewClock.value = Date.now() }, 500)
+}, { immediate: true })
+onBeforeUnmount(() => { if (previewClockTimer) clearInterval(previewClockTimer) })
+function readPreviewNodeStatus(nodeId: string): string {
+  const record = previewNodeStatusIndex.value.get(nodeId)
+  if (!record) return ''
+  const progress = typeof record.completed === 'number' && typeof record.total === 'number' ? ` ${record.completed}/${record.total}` : ''
+  const started = typeof record.started_at === 'string' ? Date.parse(record.started_at) : NaN
+  const elapsed = record.status === 'running' && Number.isFinite(started) ? ` · ${Math.max(0, (previewClock.value - started) / 1000).toFixed(1)}s` : ''
+  return `${record.status ?? ''}${progress}${elapsed}`
+}
 
 function readPreviewNodeDurationMs(nodeId: string): number | null {
   return previewNodeDurationIndex.value.get(nodeId) ?? null

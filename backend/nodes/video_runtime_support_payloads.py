@@ -21,10 +21,6 @@ from backend.nodes.video_runtime_support_tools import (
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
 from backend.service.application.workflows.execution_cleanup import register_dataset_storage_object_cleanup
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
-from backend.service.application.workflows.preview_display_outputs import (
-    build_preview_run_artifact_object_key,
-    read_preview_run_id,
-)
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 
@@ -235,6 +231,12 @@ def build_response_video_payload(
         saved_output = saved_file.to_payload()
         if saved_file.kind == SAVE_LOCATION_OBJECT_STORE:
             object_key = saved_file.object_key
+    preview_sink = request.execution_metadata.get("_editor_preview_video_sink")
+    if callable(preview_sink):
+        response_video = preview_sink(request, normalized_source_payload)
+        if saved_output is not None:
+            response_video["saved_output"] = saved_output
+        return response_video
     stored_payload = materialize_video_storage_payload(
         request,
         source_payload=normalized_source_payload,
@@ -371,14 +373,6 @@ def _build_default_video_target_object_key(
 
     source_object_key = normalize_optional_text(normalized_source_payload.get("object_key"))
     media_type = str(normalized_source_payload.get("media_type") or "video/mp4")
-    preview_run_id = read_preview_run_id(request.execution_metadata)
-    if preview_run_id is not None:
-        return build_preview_run_artifact_object_key(
-            preview_run_id=preview_run_id,
-            node_id=request.node_id,
-            artifact_name=variant_name,
-            media_type=media_type,
-        )
 
     output_extension = infer_video_file_extension_from_media_type(media_type)
     if source_object_key is not None:

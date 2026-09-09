@@ -115,9 +115,8 @@ from backend.service.application.workflows.graph_executor import (
 from backend.service.application.workflows.model_sessions import (
     WorkflowModelSessionManager,
 )
-from backend.service.application.workflows.preview_run_manager import (
-    WorkflowPreviewRunManager,
-)
+from backend.service.application.workflows.preview.session import PreviewSessionManager
+from backend.service.application.workflows.preview.pool import PreviewSessionPool
 from backend.service.application.workflows.resource_deletion_recovery import (
     WorkflowResourceDeletionRecoveryService,
 )
@@ -198,7 +197,7 @@ class BackendServiceRuntime:
     - detection_async_deployment_process_supervisor：异步 detection deployment 进程监督器。
     - detection_async_inference_gateway_dispatcher_registry：按 deployment 管理 async gateway dispatcher 的 registry。
     - workflow_runtime_worker_manager：workflow runtime worker 管理器。
-    - workflow_preview_run_manager：preview run 进程管理器。
+    - workflow_preview_sessions：内存 Preview 会话与常驻执行进程。
     - trigger_source_supervisor：workflow trigger source adapter 监督器。
     """
 
@@ -224,7 +223,7 @@ class BackendServiceRuntime:
         DetectionAsyncInferenceGatewayDispatcherRegistry
     )
     workflow_runtime_worker_manager: WorkflowRuntimeWorkerManager
-    workflow_preview_run_manager: WorkflowPreviewRunManager
+    workflow_preview_sessions: PreviewSessionManager
     trigger_source_supervisor: TriggerSourceSupervisor
     workflow_trigger_mailbox_supervisor: WorkflowTriggerMailboxSupervisor | None
     deployment_runtime_reconciler: DeploymentRuntimeReconciler
@@ -497,6 +496,8 @@ class BackendServiceBootstrap(
         - 当前应用实例要绑定的运行时资源。
         """
 
+        from backend.service.application.workflows.preview.deployment import validate_preview_api_processes
+        validate_preview_api_processes()
         session_factory = self._provided_session_factory or SessionFactory(
             settings.to_database_settings()
         )
@@ -780,20 +781,14 @@ class BackendServiceBootstrap(
             local_buffer_broker_event_channel_provider=local_buffer_broker_supervisor.get_event_channel,
             published_inference_gateway=published_inference_gateway,
         )
-        workflow_preview_run_manager = WorkflowPreviewRunManager(
-            session_factory=session_factory,
-            dataset_storage=dataset_storage,
-        )
-        from backend.service.application.workflows.preview_execution_pool import PreviewExecutionPool
-        workflow_preview_run_manager.execution_pool = PreviewExecutionPool(
-            settings=settings, worker_manager=workflow_runtime_worker_manager)
+        workflow_preview_sessions = PreviewSessionManager()
+        workflow_preview_sessions.pool = PreviewSessionPool(settings=settings, manager=workflow_preview_sessions)
         trigger_workflow_runtime_service = WorkflowRuntimeService(
             settings=settings,
             session_factory=session_factory,
             dataset_storage=dataset_storage,
             node_catalog_registry=node_catalog_registry,
             worker_manager=workflow_runtime_worker_manager,
-            preview_run_manager=workflow_preview_run_manager,
             published_inference_gateway=published_inference_gateway,
         )
         workflow_trigger_mailbox_supervisor = (
@@ -874,7 +869,7 @@ class BackendServiceBootstrap(
             detection_async_deployment_process_supervisor=detection_async_deployment_process_supervisor,
             detection_async_inference_gateway_dispatcher_registry=detection_async_inference_gateway_dispatcher_registry,
             workflow_runtime_worker_manager=workflow_runtime_worker_manager,
-            workflow_preview_run_manager=workflow_preview_run_manager,
+            workflow_preview_sessions=workflow_preview_sessions,
             trigger_source_supervisor=trigger_source_supervisor,
             workflow_trigger_mailbox_supervisor=(workflow_trigger_mailbox_supervisor),
             deployment_runtime_reconciler=deployment_runtime_reconciler,
@@ -995,9 +990,7 @@ class BackendServiceBootstrap(
         application.state.workflow_runtime_worker_manager = (
             runtime.workflow_runtime_worker_manager
         )
-        application.state.workflow_preview_run_manager = (
-            runtime.workflow_preview_run_manager
-        )
+        application.state.workflow_preview_sessions = runtime.workflow_preview_sessions
         application.state.trigger_source_supervisor = runtime.trigger_source_supervisor
         application.state.workflow_trigger_mailbox_supervisor = (
             runtime.workflow_trigger_mailbox_supervisor
@@ -1022,6 +1015,7 @@ class BackendServiceBootstrap(
             component.start()
         runtime.deployment_runtime_reconciler.start()
         runtime.workflow_runtime_worker_manager.start()
+        runtime.workflow_preview_sessions.start()
         if runtime.workflow_trigger_mailbox_supervisor is not None:
             runtime.workflow_trigger_mailbox_supervisor.start()
         WorkflowTriggerSourceService(
@@ -1067,7 +1061,7 @@ class BackendServiceBootstrap(
         if runtime.workflow_trigger_mailbox_supervisor is not None:
             runtime.workflow_trigger_mailbox_supervisor.stop()
         runtime.deployment_runtime_reconciler.stop()
-        runtime.workflow_preview_run_manager.close()
+        runtime.workflow_preview_sessions.close()
         if strict:
             runtime.workflow_runtime_worker_manager.stop(graceful_only=True)
         else:

@@ -10,14 +10,10 @@ from backend.contracts.errors import ErrorContract
 from backend.contracts.workflows.resource_semantics import (
     WorkflowAppRuntimeState,
     WorkflowExecutionPolicyKind,
-    WorkflowPreviewRunState,
     WorkflowRunState,
 )
 
 
-WORKFLOW_PREVIEW_RUN_FORMAT = "amvision.workflow-preview-run.v1"
-WORKFLOW_PREVIEW_RUN_SUMMARY_FORMAT = "amvision.workflow-preview-run-summary.v1"
-WORKFLOW_PREVIEW_RUN_EVENT_FORMAT = "amvision.workflow-preview-run-event.v1"
 WORKFLOW_APP_RUNTIME_FORMAT = "amvision.workflow-app-runtime.v1"
 WORKFLOW_APP_RUNTIME_INSTANCE_FORMAT = "amvision.workflow-app-runtime-instance.v1"
 WORKFLOW_APP_RUNTIME_EVENT_FORMAT = "amvision.workflow-app-runtime-event.v1"
@@ -55,126 +51,10 @@ def _validate_execution_error(*, state: str, error: ErrorContract | None) -> Non
         raise ValueError("非错误状态不得提供 error")
 
 
-class WorkflowPreviewRunContract(BaseModel):
-    """描述 WorkflowPreviewRun 的稳定 JSON 规则。"""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    format_id: Literal[WORKFLOW_PREVIEW_RUN_FORMAT] = WORKFLOW_PREVIEW_RUN_FORMAT
-    preview_run_id: str
-    project_id: str
-    application_id: str
-    source_kind: str
-    application_snapshot_object_key: str
-    template_snapshot_object_key: str
-    state: WorkflowPreviewRunState
-    created_at: str
-    started_at: str | None = None
-    finished_at: str | None = None
-    created_by: str | None = None
-    timeout_seconds: int = 30
-    outputs: dict[str, object] = Field(default_factory=dict)
-    template_outputs: dict[str, object] = Field(default_factory=dict)
-    node_records: list[dict[str, object]] = Field(default_factory=list)
-    error: ErrorContract | None = None
-    retention_until: str | None = None
-    metadata: dict[str, object] = Field(default_factory=dict)
-
-    @model_validator(mode="after")
-    def validate_contract(self) -> WorkflowPreviewRunContract:
-        """校验 WorkflowPreviewRun 规则的关键字段。"""
-
-        _require_stripped_text(self.preview_run_id, "preview_run_id")
-        _require_stripped_text(self.project_id, "project_id")
-        _require_stripped_text(self.application_id, "application_id")
-        _require_stripped_text(self.source_kind, "source_kind")
-        _require_stripped_text(
-            self.application_snapshot_object_key, "application_snapshot_object_key"
-        )
-        _require_stripped_text(
-            self.template_snapshot_object_key, "template_snapshot_object_key"
-        )
-        _require_stripped_text(self.state, "state")
-        _require_stripped_text(self.created_at, "created_at")
-        _validate_execution_error(state=self.state, error=self.error)
-        return self
 
 
-class WorkflowPreviewRunSummaryContract(BaseModel):
-    """描述 WorkflowPreviewRun 列表摘要规则。
-
-    字段：
-    - format_id：规则格式 id。
-    - preview_run_id：preview run id。
-    - project_id：所属 Project id。
-    - application_id：应用 id。
-    - source_kind：执行来源类型。
-    - state：当前运行状态。
-    - created_at：创建时间。
-    - started_at：开始时间。
-    - finished_at：结束时间。
-    - created_by：创建主体 id。
-    - timeout_seconds：请求超时秒数。
-    - error：失败或超时错误对象。
-    - retention_until：保留截止时间。
-    """
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    format_id: Literal[WORKFLOW_PREVIEW_RUN_SUMMARY_FORMAT] = (
-        WORKFLOW_PREVIEW_RUN_SUMMARY_FORMAT
-    )
-    preview_run_id: str
-    project_id: str
-    application_id: str
-    source_kind: str
-    state: WorkflowPreviewRunState
-    created_at: str
-    started_at: str | None = None
-    finished_at: str | None = None
-    created_by: str | None = None
-    timeout_seconds: int = 30
-    error: ErrorContract | None = None
-    retention_until: str | None = None
-
-    @model_validator(mode="after")
-    def validate_contract(self) -> WorkflowPreviewRunSummaryContract:
-        """校验 WorkflowPreviewRun 摘要规则的关键字段。"""
-
-        _require_stripped_text(self.preview_run_id, "preview_run_id")
-        _require_stripped_text(self.project_id, "project_id")
-        _require_stripped_text(self.application_id, "application_id")
-        _require_stripped_text(self.source_kind, "source_kind")
-        _require_stripped_text(self.state, "state")
-        _require_stripped_text(self.created_at, "created_at")
-        _validate_execution_error(state=self.state, error=self.error)
-        return self
 
 
-class WorkflowPreviewRunEventContract(BaseModel):
-    """描述 WorkflowPreviewRun 执行事件的稳定 JSON 规则。"""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    format_id: Literal[WORKFLOW_PREVIEW_RUN_EVENT_FORMAT] = (
-        WORKFLOW_PREVIEW_RUN_EVENT_FORMAT
-    )
-    preview_run_id: str
-    sequence: int = Field(ge=1)
-    event_type: str
-    created_at: str
-    message: str
-    payload: dict[str, object] = Field(default_factory=dict)
-
-    @model_validator(mode="after")
-    def validate_contract(self) -> WorkflowPreviewRunEventContract:
-        """校验 WorkflowPreviewRun 事件规则的关键字段。"""
-
-        _require_stripped_text(self.preview_run_id, "preview_run_id")
-        _require_stripped_text(self.event_type, "event_type")
-        _require_stripped_text(self.created_at, "created_at")
-        _require_stripped_text(self.message, "message")
-        return self
 
 
 class WorkflowAppRuntimeEventContract(BaseModel):

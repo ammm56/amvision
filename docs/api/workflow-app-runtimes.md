@@ -376,7 +376,7 @@ Runtime 通过不可变 `WorkflowRuntimeRevision` 选择准确的 `WorkflowAppVe
 - 当前同步调用入口仍挂在 runtime 下：POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke。
 - 同步调用和异步 run 可以分别通过 `POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke/upload` 与 `POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs/upload` 提交 multipart。除兼容的 `dataset-package.v1` 外，当前入口支持 `image-ref.v1`、`file-ref.v1` 和 `file-refs.v1` 流式上传，并可通过 `input_bindings_json` 同时提交 JSON、文本、Base64 图片或已有 ObjectStore 引用。
 - WorkflowAppRuntime create 当前可以引用 [docs/api/workflow-execution-policies.md](workflow-execution-policies.md) 中的 execution_policy_id，并返回 execution_policy_snapshot_object_key。
-- 编辑态试跑见 [docs/api/workflow-preview-runs.md](workflow-preview-runs.md)。
+- 编辑态试跑见 [docs/api/workflow-preview-sessions.md](workflow-preview-sessions.md)。
 
 ## invoke 输入输出约定
 
@@ -403,7 +403,7 @@ ZeroMQ 与 local-shared-memory Trigger 是独立的高性能调用面，只映�
 ## 相关文档
 
 - [docs/api/conventions.md](conventions.md)
-- [docs/api/workflow-preview-runs.md](workflow-preview-runs.md)
+- [docs/api/workflow-preview-sessions.md](workflow-preview-sessions.md)
 - [docs/api/workflow-runs.md](workflow-runs.md)
 - [docs/api/workflows.md](workflows.md)
 - [docs/api/postman/workflows/README.md](postman/workflows/README.md)

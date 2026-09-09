@@ -32,7 +32,6 @@ from backend.service.application.tasks.task_service import (
 from backend.service.domain.workflows.workflow_runtime_records import (
     WorkflowAppRuntime,
     WorkflowAppVersion,
-    WorkflowPreviewRun,
     WorkflowRun,
     WorkflowRuntimeRevision,
 )
@@ -216,12 +215,6 @@ def test_workflow_runtime_and_trigger_ids_hide_cross_project_resources(
     try:
         # Worker 和恢复链路保留不带主体信息的原始查询。
         assert (
-            unit_of_work.workflow_runtime.get_preview_run(
-                resource_ids["preview_run_id"]
-            )
-            is not None
-        )
-        assert (
             unit_of_work.workflow_runtime.get_workflow_app_runtime(
                 resource_ids["workflow_runtime_id"]
             )
@@ -238,13 +231,6 @@ def test_workflow_runtime_and_trigger_ids_hide_cross_project_resources(
                 resource_ids["trigger_source_id"]
             )
             is not None
-        )
-        assert (
-            unit_of_work.workflow_runtime.get_visible_preview_run(
-                resource_ids["preview_run_id"],
-                visible_project_ids=("project-visible",),
-            )
-            is None
         )
         assert (
             unit_of_work.workflow_runtime.get_visible_workflow_app_runtime(
@@ -280,29 +266,11 @@ def test_workflow_runtime_and_trigger_ids_hide_cross_project_resources(
 
     runtime_id = resource_ids["workflow_runtime_id"]
     revision_id = resource_ids["workflow_runtime_revision_id"]
-    preview_run_id = resource_ids["preview_run_id"]
     workflow_run_id = resource_ids["workflow_run_id"]
     trigger_source_id = resource_ids["trigger_source_id"]
     headers = context["headers"]
     with context["client"] as client:
         requests = (
-            client.get(
-                f"/api/v1/workflows/preview-runs/{preview_run_id}",
-                headers=headers,
-            ),
-            client.get(
-                f"/api/v1/workflows/preview-runs/{preview_run_id}/events",
-                headers=headers,
-            ),
-            client.get(
-                f"/api/v1/workflows/preview-runs/{preview_run_id}/artifacts/content",
-                params={"object_key": "runtime/hidden.txt"},
-                headers=headers,
-            ),
-            client.delete(
-                f"/api/v1/workflows/preview-runs/{preview_run_id}",
-                headers=headers,
-            ),
             client.get(
                 f"/api/v1/workflows/app-runtimes/{runtime_id}",
                 headers=headers,
@@ -420,7 +388,6 @@ def test_workflow_runtime_and_trigger_ids_hide_cross_project_resources(
         assert nested_runtime_response.status_code == 404
 
         for url in (
-            "/api/v1/workflows/preview-runs",
             "/api/v1/workflows/app-runtimes",
             "/api/v1/workflows/trigger-sources",
         ):
@@ -568,7 +535,6 @@ def _seed_hidden_workflow_resources(session_factory) -> dict[str, str]:
         "workflow_app_version_id": "hidden-workflow-app-version",
         "workflow_runtime_id": "hidden-workflow-runtime",
         "workflow_runtime_revision_id": "hidden-workflow-runtime-revision",
-        "preview_run_id": "hidden-workflow-preview-run",
         "workflow_run_id": "hidden-workflow-run",
         "trigger_source_id": "hidden-workflow-trigger-source",
     }
@@ -623,19 +589,6 @@ def _seed_hidden_workflow_resources(session_factory) -> dict[str, str]:
                 state="active",
                 created_at="2026-08-22T00:00:00Z",
                 activated_at="2026-08-22T00:00:00Z",
-            )
-        )
-        unit_of_work.workflow_runtime.save_preview_run(
-            WorkflowPreviewRun(
-                preview_run_id=resource_ids["preview_run_id"],
-                project_id="project-hidden",
-                application_id="hidden-workflow-app",
-                source_kind="inline-snapshot",
-                application_snapshot_object_key="workflows/hidden/preview-app.json",
-                template_snapshot_object_key="workflows/hidden/preview-template.json",
-                state="succeeded",
-                created_at="2026-08-22T00:00:00Z",
-                finished_at="2026-08-22T00:00:01Z",
             )
         )
         unit_of_work.workflow_runtime.save_workflow_run(

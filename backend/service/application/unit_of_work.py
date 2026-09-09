@@ -45,7 +45,7 @@ class UnitOfWork(Protocol):
     - model_files：ModelFile 仓储。
     - tasks：TaskRecord、TaskAttempt、TaskEvent 仓储。
     - resource_profiles：ResourceProfile 仓储。
-    - workflow_runtime：WorkflowPreviewRun、WorkflowAppRuntime、WorkflowRun 仓储。
+    - workflow_runtime：WorkflowAppRuntime、WorkflowRun 仓储。
     """
 
     dataset_exports: DatasetExportRepository

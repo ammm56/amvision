@@ -37,7 +37,7 @@
 | 资源 | 文档 |
 | --- | --- |
 | Template、Application、Node Catalog | [Workflow](workflows.md) |
-| 编辑态执行 | [Preview Run](workflow-preview-runs.md) |
+| 编辑态执行 | [Preview Run](workflow-preview-sessions.md) |
 | 不可变发布物 | [App Version](workflow-app-versions.md) |
 | 稳定生产实例 | [App Runtime](workflow-app-runtimes.md) |
 | Runtime 只读画布显示 | [Runtime 预览监视](workflow-runtime-preview.md) |

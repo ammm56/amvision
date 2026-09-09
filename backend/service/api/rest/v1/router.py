@@ -79,6 +79,7 @@ from backend.service.api.rest.v1.routes.projects.router import projects_router
 from backend.service.api.rest.v1.routes.system.router import system_router
 from backend.service.api.rest.v1.routes.tasks.router import tasks_router
 from backend.service.api.rest.v1.routes.workflow_runtime.router import workflow_runtime_router
+from backend.service.api.rest.v1.routes.workflow_runtime.preview_sessions import preview_sessions_router
 from backend.service.api.rest.v1.routes.workflow_trigger_sources.router import (
     workflow_trigger_sources_router,
 )
@@ -91,6 +92,7 @@ api_v1_router.include_router(system_router)
 api_v1_router.include_router(projects_router)
 api_v1_router.include_router(workflows_router)
 api_v1_router.include_router(workflow_runtime_router)
+api_v1_router.include_router(preview_sessions_router)
 api_v1_router.include_router(workflow_trigger_sources_router)
 api_v1_router.include_router(datasets_router)
 api_v1_router.include_router(resource_deletions_router)

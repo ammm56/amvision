@@ -15,10 +15,6 @@ class ProjectWorkflowSummaryResponse(BaseModel):
 
     template_total: int = Field(description="模板总数")
     application_total: int = Field(description="流程应用总数")
-    preview_run_total: int = Field(description="preview run 总数")
-    preview_run_state_counts: dict[str, int] = Field(
-        default_factory=dict, description="preview run 状态计数字典"
-    )
     workflow_run_total: int = Field(description="WorkflowRun 总数")
     workflow_run_state_counts: dict[str, int] = Field(
         default_factory=dict, description="WorkflowRun 状态计数字典"

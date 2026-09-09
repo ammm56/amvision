@@ -20,7 +20,6 @@ from backend.service.infrastructure.persistence.model_orm import ModelRecord
 from backend.service.infrastructure.persistence.task_orm import TaskRecordEntity
 from backend.service.infrastructure.persistence.workflow_runtime_orm import (
     WorkflowAppRuntimeRecord,
-    WorkflowPreviewRunRecord,
     WorkflowRunRecord,
 )
 from backend.service.infrastructure.persistence.workflow_trigger_source_orm import (
@@ -96,16 +95,6 @@ def test_reset_development_model_state_preserves_dataset_state(tmp_path: Path) -
                     state="succeeded",
                     created_at="2026-07-26T00:00:00Z",
                 ),
-                WorkflowPreviewRunRecord(
-                    preview_run_id="preview-1",
-                    project_id="project-1",
-                    application_id="application-1",
-                    source_kind="application",
-                    application_snapshot_object_key="workflows/runtime/preview-app.json",
-                    template_snapshot_object_key="workflows/runtime/preview-template.json",
-                    state="succeeded",
-                    created_at="2026-07-26T00:00:00Z",
-                ),
                 WorkflowTriggerSourceRecord(
                     trigger_source_id="trigger-1",
                     project_id="project-1",
@@ -174,7 +163,6 @@ def test_reset_development_model_state_preserves_dataset_state(tmp_path: Path) -
         assert _count(session, ModelRecord) == 0
         assert _count(session, WorkflowAppRuntimeRecord) == 0
         assert _count(session, WorkflowRunRecord) == 0
-        assert _count(session, WorkflowPreviewRunRecord) == 0
         assert _count(session, WorkflowTriggerSourceRecord) == 0
     verification_factory.engine.dispose()
 

@@ -17,7 +17,6 @@ from backend.service.infrastructure.object_store.local_dataset_storage import Lo
 
 PROJECT_SUMMARY_EVENT_TYPE = "projects.summary.updated"
 PROJECT_SUMMARY_SNAPSHOT_EVENT_TYPE = "projects.summary.snapshot"
-PROJECT_SUMMARY_TOPIC_WORKFLOW_PREVIEW_RUNS = "workflows.preview-runs"
 PROJECT_SUMMARY_TOPIC_WORKFLOW_RUNS = "workflows.runs"
 PROJECT_SUMMARY_TOPIC_WORKFLOW_APP_RUNTIMES = "workflows.app-runtimes"
 PROJECT_SUMMARY_TOPIC_DEPLOYMENTS = "deployments"
@@ -59,18 +58,9 @@ _CONVERSION_TASK_KINDS = (
 )
 
 _SUPPORTED_PROJECT_SUMMARY_TOPICS = (
-    PROJECT_SUMMARY_TOPIC_WORKFLOW_PREVIEW_RUNS,
     PROJECT_SUMMARY_TOPIC_WORKFLOW_RUNS,
     PROJECT_SUMMARY_TOPIC_WORKFLOW_APP_RUNTIMES,
     PROJECT_SUMMARY_TOPIC_DEPLOYMENTS,
-)
-_PROJECT_SUMMARY_PREVIEW_EVENT_TYPES = frozenset(
-    {
-        "preview.started",
-        "preview.succeeded",
-        "preview.failed",
-        "preview.timed_out",
-    }
 )
 _PROJECT_SUMMARY_RUNTIME_EVENT_TYPES = frozenset(
     {
@@ -93,8 +83,6 @@ class ProjectWorkflowSummarySnapshot:
     字段：
     - template_total：模板总数。
     - application_total：流程应用总数。
-    - preview_run_total：preview run 总数。
-    - preview_run_state_counts：preview run 状态计数字典。
     - workflow_run_total：WorkflowRun 总数。
     - workflow_run_state_counts：WorkflowRun 状态计数字典。
     - app_runtime_total：WorkflowAppRuntime 总数。
@@ -103,8 +91,6 @@ class ProjectWorkflowSummarySnapshot:
 
     template_total: int = 0
     application_total: int = 0
-    preview_run_total: int = 0
-    preview_run_state_counts: dict[str, int] = field(default_factory=dict)
     workflow_run_total: int = 0
     workflow_run_state_counts: dict[str, int] = field(default_factory=dict)
     app_runtime_total: int = 0
@@ -267,10 +253,6 @@ class ProjectSummaryService:
             workflows=ProjectWorkflowSummarySnapshot(
                 template_total=len(templates),
                 application_total=len(applications),
-                preview_run_total=sum(
-                    database_summary.preview_run_state_counts.values()
-                ),
-                preview_run_state_counts=database_summary.preview_run_state_counts,
                 workflow_run_total=sum(
                     database_summary.workflow_run_state_counts.values()
                 ),
@@ -310,10 +292,6 @@ def normalize_project_summary_topic(raw_topic: str | None) -> str | None:
     return topic
 
 
-def should_publish_project_summary_for_preview_event(event_type: str) -> bool:
-    """判断 preview run 事件是否需要触发项目级聚合更新。"""
-
-    return event_type in _PROJECT_SUMMARY_PREVIEW_EVENT_TYPES
 
 
 def should_publish_project_summary_for_workflow_run_event(event_type: str) -> bool:
@@ -374,8 +352,6 @@ def serialize_project_summary(snapshot: ProjectSummarySnapshot) -> dict[str, obj
         "workflows": {
             "template_total": snapshot.workflows.template_total,
             "application_total": snapshot.workflows.application_total,
-            "preview_run_total": snapshot.workflows.preview_run_total,
-            "preview_run_state_counts": dict(snapshot.workflows.preview_run_state_counts),
             "workflow_run_total": snapshot.workflows.workflow_run_total,
             "workflow_run_state_counts": dict(snapshot.workflows.workflow_run_state_counts),
             "app_runtime_total": snapshot.workflows.app_runtime_total,

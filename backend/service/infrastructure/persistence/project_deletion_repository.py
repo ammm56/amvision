@@ -37,7 +37,6 @@ from backend.service.infrastructure.persistence.workflow_runtime_orm import (
     WorkflowAppVersionRecord,
     WorkflowAppRuntimeRecord,
     WorkflowExecutionPolicyRecord,
-    WorkflowPreviewRunRecord,
     WorkflowRunRecord,
 )
 from backend.service.infrastructure.persistence.workflow_trigger_source_orm import (
@@ -51,7 +50,6 @@ class ProjectDatabaseInventory:
 
     tasks: tuple[tuple[str, str], ...]
     deployments: tuple[tuple[str, str], ...]
-    preview_runs: tuple[tuple[str, str], ...]
     app_runtimes: tuple[tuple[str, str, str], ...]
     workflow_runs: tuple[tuple[str, str], ...]
     trigger_sources: tuple[tuple[str, bool, str, str], ...]
@@ -86,14 +84,6 @@ class SqlAlchemyProjectDeletionRepository:
                         DeploymentInstanceRecord.deployment_instance_id,
                         DeploymentInstanceRecord.status,
                     ).where(DeploymentInstanceRecord.project_id == project_id)
-                ).all()
-            )
-            preview_runs = tuple(
-                self.session.execute(
-                    select(
-                        WorkflowPreviewRunRecord.preview_run_id,
-                        WorkflowPreviewRunRecord.state,
-                    ).where(WorkflowPreviewRunRecord.project_id == project_id)
                 ).all()
             )
             app_runtimes = tuple(
@@ -139,7 +129,6 @@ class SqlAlchemyProjectDeletionRepository:
                 "models": self._count(ModelRecord, project_id),
                 "model_files": len(model_file_storage_uris),
                 "deployments": len(deployments),
-                "workflow_preview_runs": len(preview_runs),
                 "workflow_app_runtimes": len(app_runtimes),
                 "workflow_app_versions": self._count(
                     WorkflowAppVersionRecord, project_id
@@ -165,7 +154,6 @@ class SqlAlchemyProjectDeletionRepository:
         return ProjectDatabaseInventory(
             tasks=tasks,
             deployments=deployments,
-            preview_runs=preview_runs,
             app_runtimes=app_runtimes,
             workflow_runs=workflow_runs,
             trigger_sources=trigger_sources,
@@ -222,7 +210,6 @@ class SqlAlchemyProjectDeletionRepository:
             self.session.flush()
 
             for model in (
-                WorkflowPreviewRunRecord,
                 ImportedModelArtifactRecord,
                 ModelTransferRecord,
                 WorkflowExecutionPolicyRecord,

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.workflow_editor_graph_support import execute_editor_graph
+
 from pathlib import Path
 
 from backend.contracts.workflows.workflow_graph import (
@@ -18,7 +20,6 @@ from backend.service.application.tasks.task_service import (
     CreateTaskRequest,
     SqlAlchemyTaskService,
 )
-from backend.service.application.workflows.runtime_service import WorkflowPreviewRunCreateRequest
 from tests.test_workflow_runtime_sanitization import _build_runtime_service
 
 
@@ -62,15 +63,7 @@ def test_preview_run_logic_nodes_extract_compare_and_select_values(tmp_path: Pat
         )
     )
 
-    preview_run = service.create_preview_run(
-        WorkflowPreviewRunCreateRequest(
-            project_id="project-1",
-            application=_build_logic_application(),
-            template=_build_logic_template(task_id=task_record.task_id),
-            input_bindings={},
-        ),
-        created_by="workflow-user",
-    )
+    preview_run = execute_editor_graph(service, project_id="project-1", application=_build_logic_application(), template=_build_logic_template(task_id=task_record.task_id), input_bindings={})
 
     assert preview_run.state == "succeeded"
     assert preview_run.outputs["selected_value"]["value"] == "model-build-logic-1"

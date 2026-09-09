@@ -2065,6 +2065,10 @@ def build_preview_response_image_payload(
     display_image 只服务节点卡片和 gallery 缩略预览，高分辨率图片才会降采样。
     """
 
+    preview_sink = request.execution_metadata.get("_editor_preview_image_sink")
+    if callable(preview_sink):
+        return preview_sink(request, image_payload=image_payload, save_location=save_location,
+                            variant_name=variant_name, overwrite=overwrite)
     normalized_mode = _normalize_response_transport_mode(response_transport_mode)
     original_image_payload = require_image_payload(image_payload)
     source_width, source_height = _read_payload_dimensions(original_image_payload)

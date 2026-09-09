@@ -9,7 +9,6 @@ from backend.service.api.deps.auth import AuthenticatedPrincipal
 from backend.service.application.deployments import PublishedInferenceGateway
 from backend.service.application.errors import PermissionDeniedError, ServiceConfigurationError
 from backend.service.application.local_buffers import LocalBufferBrokerClient, LocalBufferBrokerProcessSupervisor
-from backend.service.application.workflows.preview_run_manager import WorkflowPreviewRunManager
 from backend.service.application.workflows.graph_executor import WorkflowNodeRuntimeRegistry
 from backend.service.application.workflows.runtime_service import WorkflowRuntimeService
 from backend.service.application.workflows.service_runtime.context import WorkflowServiceNodeRuntimeContext
@@ -33,7 +32,6 @@ def build_workflow_runtime_service(
         workflow_node_runtime_registry=require_workflow_node_runtime_registry(request),
         workflow_service_node_runtime_context=require_workflow_service_node_runtime_context(request),
         worker_manager=require_workflow_runtime_worker_manager(request),
-        preview_run_manager=read_workflow_preview_run_manager(request),
         published_inference_gateway=read_published_inference_gateway(request),
     )
 
@@ -101,15 +99,6 @@ def require_workflow_service_node_runtime_context(request: Request) -> WorkflowS
     return runtime_context
 
 
-def read_workflow_preview_run_manager(request: Request) -> WorkflowPreviewRunManager | None:
-    """从 application.state 中读取 WorkflowPreviewRunManager。"""
-
-    preview_run_manager = getattr(request.app.state, "workflow_preview_run_manager", None)
-    if preview_run_manager is None:
-        return None
-    if not isinstance(preview_run_manager, WorkflowPreviewRunManager):
-        raise ServiceConfigurationError("当前服务 workflow_preview_run_manager 装配无效")
-    return preview_run_manager
 
 
 def create_local_buffer_broker_client(request: Request) -> LocalBufferBrokerClient | None:

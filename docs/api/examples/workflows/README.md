@@ -21,12 +21,6 @@
 
 ## 每个示例目录的文件
 
-- `00-*` 到 `05-*` 目录包含：`save-template.request.json`、`save-application.request.json`、`preview-run.request.json`、`app-runtime.create.request.json`、`app-runtime.invoke.request.json`、`app-runtime.run.create.request.json`。
-- `06-*`、`07-*`、`08-*` 目录包含：`save-template.request.json`、`save-application.request.json`、`preview-run.request.json`、`app-runtime.create.request.json`、`app-runtime.invoke.request.json`、`app-runtime.run.create.request.json`、`trigger-source.create.request.json`。
-- `09-*` 目录包含：`save-template.request.json`、`save-application.request.json`、`preview-run.request.json`、`app-runtime.create.request.json`、`app-runtime.invoke.request.json`、`app-runtime.run.create.request.json`、`trigger-source.create.request.json`。
-- `10-*` 目录包含：`save-template.request.json`、`save-application.request.json`、`preview-run.request.json`、`app-runtime.create.request.json`、`app-runtime.invoke.request.json`、`app-runtime.run.create.request.json`。
-- `11-*` 目录包含：`save-template.request.json`、`save-application.request.json`、`preview-run.request.json`、`app-runtime.create.request.json`、`app-runtime.invoke.request.json`、`app-runtime.run.create.request.json`、`trigger-source.create.request.json`。
-- `12-*` 到 `15-*` 目录包含：`save-template.request.json`、`save-application.request.json`、`preview-run.request.json`、`app-runtime.create.request.json`、`app-runtime.invoke.request.json`、`app-runtime.run.create.request.json`。
 
 `06-*`、`07-*`、`08-*`、`09-*` 不是只保留 TriggerSource 特例接口；Save Template、Save Application、Preview Run、Create App Runtime、Invoke App Runtime 和 Create Workflow Run 仍然完整保留，TriggerSource 请求只是额外增加的协议入口调试步骤。
 
@@ -60,4 +54,7 @@ TriggerSource 示例目录在完整本地调试链路之外额外描述协议入
 
 第二到第五类 workflow 当前没有像第一类训练链路那样的 template 内动态默认请求拼装。`02-*`、`03-*`、`04-*` 的示例请求体只显式展示真实输入 `deployment_instance_id`，`05-*` 只显式展示 `request_image_base64`；检测阈值、OpenCV 处理参数、health 摘要字段等固定值保留在 `save-template.request.json` 的节点参数中。
 
-对于 `02-*`、`03-*`、`04-*` 这类依赖已有 `deployment_instance_id` 的 workflow，`preview-run.request.json` 主要用于校验 template/application 绑定和输入形状。编辑器同步 preview 复用 backend-service 已加载的节点 registry 和 PublishedInferenceGateway；推理节点通过 LocalBufferBroker 的 BufferRef / FrameRef 和 mmap mailbox 调用 inference daemon 中的常驻 deployment worker。目标 deployment 仍需提前通过 sync/start 或 sync/warmup 启动，或者在节点参数中显式允许 `auto_start_process`。
+
+Preview Session 通过独立常驻 Worker 执行，编辑预览请使用浏览器或 [v1 内存会话协议](../../workflow-preview-sessions.md)。正式 Runtime/Trigger 继续使用这些 Postman collection。
+
+正式 Runtime 模型调用继续经 LocalBufferBroker 的 BufferRef / FrameRef 和 mmap mailbox 进入 inference daemon 中的常驻 deployment worker；此路径不承载编辑器 Preview 的临时数据。

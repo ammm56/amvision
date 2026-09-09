@@ -22,7 +22,6 @@ from backend.service.infrastructure.persistence.deployment_orm import (
 from backend.service.infrastructure.persistence.task_orm import TaskRecordEntity
 from backend.service.infrastructure.persistence.workflow_runtime_orm import (
     WorkflowAppRuntimeRecord,
-    WorkflowPreviewRunRecord,
     WorkflowRunRecord,
 )
 
@@ -48,10 +47,6 @@ class SqlAlchemyProjectSummaryRepository:
                 DatasetExportRecord.project_id == project_id,
             )
             task_counts = self._count_tasks(project_id)
-            preview_counts = self._count_by_one_column(
-                WorkflowPreviewRunRecord.state,
-                WorkflowPreviewRunRecord.project_id == project_id,
-            )
             workflow_run_counts = self._count_by_one_column(
                 WorkflowRunRecord.state,
                 WorkflowRunRecord.project_id == project_id,
@@ -74,7 +69,6 @@ class SqlAlchemyProjectSummaryRepository:
             import_status_counts=import_counts,
             export_status_counts=export_counts,
             task_state_counts_by_kind=task_counts,
-            preview_run_state_counts=preview_counts,
             workflow_run_state_counts=workflow_run_counts,
             app_runtime_observed_state_counts=app_runtime_counts,
             deployment_status_counts=deployment_counts,

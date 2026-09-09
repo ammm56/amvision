@@ -41,7 +41,7 @@ AMVision
 | 部署 | `/deployments` | DeploymentInstance |
 | 推理 | `/inference` | 同步推理、异步推理 |
 | 流程应用 | `/workflows/apps`、`/workflows/apps/:applicationId` | FlowApplication、AppVersion、Runtime、Run |
-| 流程编辑器 | `/workflows/graph/new`、`/workflows/graph/apps/:applicationId` | GraphTemplate、Node、PreviewRun |
+| 流程编辑器 | `/workflows/graph/new`、`/workflows/graph/apps/:applicationId` | GraphTemplate、Node、PreviewSession |
 | 触发源 | `/integrations/trigger-sources` | TriggerSource |
 | 自定义节点 | `/custom-nodes` | NodePack、NodeDefinition |
 | 设置与诊断 | `/settings` | Service、Runtime、Device、Access |
@@ -96,7 +96,7 @@ Project
 
 ```text
 流程编辑器
-  -> PreviewRun
+  -> PreviewSession
   -> 发布不可变 WorkflowAppVersion
   -> 创建或切换稳定 WorkflowAppRuntime
   -> 绑定 TriggerSource

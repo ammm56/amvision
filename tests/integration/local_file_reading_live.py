@@ -396,18 +396,6 @@ def main():
                 },
             )
             for resource in (latest, event):
-                preview = validation.api(
-                    "POST",
-                    "/workflows/preview-runs",
-                    {
-                        "project_id": "project-1",
-                        "application_ref": {
-                            "application_id": resource["application_id"]
-                        },
-                        "input_bindings": {},
-                    },
-                )
-                assert preview["state"] == "succeeded", preview
                 validation.invoke(resource)
             timings = []
             for _ in range(60):

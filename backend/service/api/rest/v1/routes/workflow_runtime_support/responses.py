@@ -9,9 +9,6 @@ from backend.contracts.workflows import (
     WorkflowAppRuntimeInstanceContract,
     WorkflowAppRuntimeContract,
     WorkflowExecutionPolicyContract,
-    WorkflowPreviewRunEventContract,
-    WorkflowPreviewRunContract,
-    WorkflowPreviewRunSummaryContract,
     WorkflowRunContract,
     WorkflowRunEventContract,
     WorkflowRuntimeRevisionContract,
@@ -28,83 +25,16 @@ from backend.service.domain.workflows.workflow_runtime_records import (
     WorkflowAppRuntime,
     WorkflowAppRuntimeEvent,
     WorkflowExecutionPolicy,
-    WorkflowPreviewRun,
-    WorkflowPreviewRunEvent,
     WorkflowRun,
     WorkflowRunEvent,
     WorkflowRuntimeRevision,
 )
 
 
-def build_preview_run_contract(
-    preview_run: WorkflowPreviewRun,
-) -> WorkflowPreviewRunContract:
-    """把 WorkflowPreviewRun 领域对象转换为公开规则。"""
-
-    return WorkflowPreviewRunContract(
-        preview_run_id=preview_run.preview_run_id,
-        project_id=preview_run.project_id,
-        application_id=preview_run.application_id,
-        source_kind=preview_run.source_kind,
-        application_snapshot_object_key=preview_run.application_snapshot_object_key,
-        template_snapshot_object_key=preview_run.template_snapshot_object_key,
-        state=preview_run.state,
-        created_at=preview_run.created_at,
-        started_at=preview_run.started_at,
-        finished_at=preview_run.finished_at,
-        created_by=preview_run.created_by,
-        timeout_seconds=preview_run.timeout_seconds,
-        outputs=dict(preview_run.outputs),
-        template_outputs=dict(preview_run.template_outputs),
-        node_records=[dict(item) for item in preview_run.node_records],
-        error=_build_record_error(
-            state=preview_run.state,
-            error_message=preview_run.error_message,
-            metadata=preview_run.metadata,
-        ),
-        retention_until=preview_run.retention_until,
-        metadata=without_public_error_metadata(preview_run.metadata),
-    )
 
 
-def build_preview_run_summary_contract(
-    preview_run: WorkflowPreviewRun,
-) -> WorkflowPreviewRunSummaryContract:
-    """把 WorkflowPreviewRun 领域对象转换为摘要规则。"""
-
-    return WorkflowPreviewRunSummaryContract(
-        preview_run_id=preview_run.preview_run_id,
-        project_id=preview_run.project_id,
-        application_id=preview_run.application_id,
-        source_kind=preview_run.source_kind,
-        state=preview_run.state,
-        created_at=preview_run.created_at,
-        started_at=preview_run.started_at,
-        finished_at=preview_run.finished_at,
-        created_by=preview_run.created_by,
-        timeout_seconds=preview_run.timeout_seconds,
-        error=_build_record_error(
-            state=preview_run.state,
-            error_message=preview_run.error_message,
-            metadata=preview_run.metadata,
-        ),
-        retention_until=preview_run.retention_until,
-    )
 
 
-def build_preview_run_event_contract(
-    preview_run_event: WorkflowPreviewRunEvent,
-) -> WorkflowPreviewRunEventContract:
-    """把 preview run 事件转换为公开规则。"""
-
-    return WorkflowPreviewRunEventContract(
-        preview_run_id=preview_run_event.preview_run_id,
-        sequence=preview_run_event.sequence,
-        event_type=preview_run_event.event_type,
-        created_at=preview_run_event.created_at,
-        message=preview_run_event.message,
-        payload=_build_public_event_payload(preview_run_event.payload),
-    )
 
 
 def build_workflow_app_runtime_contract(

@@ -41,7 +41,37 @@ from backend.service.application.workflows.trigger_sources.output_delivery impor
 )
 
 
-_DATABASE_HEAD = "f2b7d9a4c6e8"
+_DATABASE_HEAD = "a8d6c4e2b019"
+
+
+def test_remove_preview_table_preserves_formal_policy_parameters(tmp_path):
+    """真实上一版 schema 升级后仅退休预览表，策略参数和正式表结构保持。"""
+    from sqlalchemy.orm import Session
+    from backend.service.infrastructure.persistence.workflow_runtime_orm import WorkflowExecutionPolicyRecord
+    settings = BackendServiceSettings(database={"url": f"sqlite:///{(tmp_path / 'preview-upgrade.db').as_posix()}"})
+    config = _build_alembic_config(settings)
+    command.upgrade(config, "head")
+    # 初始迁移使用当前 ORM create_all；通过显式 downgrade 重建旧临时表。
+    command.downgrade(config, "f2b7d9a4c6e8")
+    factory = SessionFactory(settings.to_database_settings())
+    try:
+        assert "workflow_preview_runs" in inspect(factory.engine).get_table_names()
+        columns = inspect(factory.engine).get_columns("workflow_app_runtimes")
+        with Session(factory.engine) as session:
+            session.add(WorkflowExecutionPolicyRecord(execution_policy_id="existing", project_id="p", policy_kind="preview-default",
+                default_timeout_seconds=1800, max_run_timeout_seconds=3600, created_at="2026-09-10", updated_at="2026-09-10",
+                metadata_json={"formal_reference": "unchanged"}))
+            session.commit()
+        command.upgrade(config, "head")
+        assert "workflow_preview_runs" not in inspect(factory.engine).get_table_names()
+        assert [c["name"] for c in inspect(factory.engine).get_columns("workflow_app_runtimes")] == [c["name"] for c in columns]
+        with Session(factory.engine) as session:
+            policy = session.get(WorkflowExecutionPolicyRecord, "existing")
+            assert policy.policy_kind == "runtime-default"
+            assert (policy.default_timeout_seconds, policy.max_run_timeout_seconds) == (1800, 3600)
+            assert policy.metadata_json == {"formal_reference": "unchanged"}
+    finally:
+        factory.engine.dispose()
 
 
 def test_migrate_database_adopts_unversioned_create_all_database(
@@ -159,7 +189,8 @@ def test_migrate_database_upgrades_preserved_task_idempotency_revision(
     assert script.get_revision("c5e7f9a1b3d6").down_revision == "b4d6f8a2c5e1"
     assert script.get_revision("d6f8a0b2c4e7").down_revision == "c5e7f9a1b3d6"
     assert script.get_revision("e7a9b1c3d5f8").down_revision == "d6f8a0b2c4e7"
-    assert script.get_revision(_DATABASE_HEAD).down_revision == "e7a9b1c3d5f8"
+    assert script.get_revision("f2b7d9a4c6e8").down_revision == "e7a9b1c3d5f8"
+    assert script.get_revision(_DATABASE_HEAD).down_revision == "f2b7d9a4c6e8"
     assert script.get_current_head() == _DATABASE_HEAD
 
     command.upgrade(config, "c4a2f7b8d3e5")

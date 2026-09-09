@@ -6,17 +6,12 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from time import perf_counter
 
-from backend.service.application.errors import ServiceError
 from backend.service.application.workflows.runtime.policies import (
     should_return_workflow_node_timings,
     should_return_workflow_timing_metadata,
 )
-from backend.service.application.workflows.runtime_payload_sanitizer import (
-    sanitize_runtime_mapping,
-)
 from backend.service.domain.workflows.workflow_runtime_records import (
     WorkflowAppRuntime,
-    WorkflowExecutionPolicy,
     WorkflowRun,
 )
 
@@ -63,56 +58,8 @@ def build_minimal_workflow_run_record(workflow_run: WorkflowRun) -> WorkflowRun:
     )
 
 
-def merge_preview_run_inline_metadata(
-    metadata: dict[str, object],
-    *,
-    inline_duration_ms: float | None = None,
-    request_parse_ms: float | None = None,
-    process_startup_ms: float | None = None,
-    graph_execute_ms: float | None = None,
-    event_persist_ms: float | None = None,
-    response_serialize_ms: float | None = None,
-) -> dict[str, object]:
-    """给 PreviewRun metadata 标记当前使用的直接执行模式。"""
-
-    payload = dict(metadata)
-    payload.setdefault("preview_execution_mode", "inline")
-    if inline_duration_ms is not None:
-        timings = payload.get("timings")
-        timings_payload = dict(timings) if isinstance(timings, dict) else {}
-        timings_payload["preview_inline_total_ms"] = inline_duration_ms
-    else:
-        timings = payload.get("timings")
-        timings_payload = dict(timings) if isinstance(timings, dict) else {}
-    timing_values = {
-        "request_parse_ms": request_parse_ms,
-        "process_startup_ms": process_startup_ms,
-        "graph_execute_ms": graph_execute_ms,
-        "event_persist_ms": event_persist_ms,
-        "response_serialize_ms": response_serialize_ms,
-    }
-    for timing_name, timing_value in timing_values.items():
-        if timing_value is not None:
-            timings_payload[timing_name] = round(max(0.0, float(timing_value)), 3)
-    if timings_payload:
-        payload["timings"] = timings_payload
-    return payload
 
 
-def build_preview_run_error_metadata(
-    metadata: dict[str, object],
-    *,
-    error: ServiceError,
-) -> dict[str, object]:
-    """构造 PreviewRun 失败 metadata。"""
-
-    payload = dict(metadata)
-    payload["last_error"] = {
-        "code": error.code,
-        "message": error.message,
-        "details": sanitize_runtime_mapping(error.details),
-    }
-    return payload
 
 
 def strip_output_diagnostic_timings(
@@ -162,17 +109,6 @@ def strip_output_diagnostic_timings(
     return value
 
 
-def resolve_preview_retain_node_records_enabled(
-    metadata: dict[str, object],
-    *,
-    execution_policy: WorkflowExecutionPolicy | None,
-) -> bool:
-    """解析 Preview Run 是否需要保留完整 node_records。"""
-
-    explicit_value = read_optional_bool_flag(metadata.get("retain_node_records_enabled"))
-    if explicit_value is not None:
-        return explicit_value
-    return True if execution_policy is None else execution_policy.retain_node_records_enabled
 
 
 def elapsed_ms(started_at: float) -> float:
@@ -265,14 +201,11 @@ def read_optional_bool_flag(value: object) -> bool | None:
 __all__ = [
     "build_compact_node_timings",
     "build_minimal_workflow_run_record",
-    "build_preview_run_error_metadata",
     "build_runtime_default_execution_metadata",
     "elapsed_ms",
-    "merge_preview_run_inline_metadata",
     "merge_workflow_run_diagnostic_metadata",
     "normalize_optional_str",
     "now_isoformat",
-    "resolve_preview_retain_node_records_enabled",
     "should_retain_runtime_payload",
     "strip_output_diagnostic_timings",
 ]

@@ -14,14 +14,11 @@ from backend.nodes.core_nodes.support.base import CoreNodeSpec
 from backend.nodes.runtime_support import (
     RESPONSE_IMAGE_TRANSPORT_STORAGE_REF,
     build_response_image_payload,
+    build_preview_response_image_payload,
 )
 from backend.nodes.video_runtime_support import require_frame_window_payload
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
-from backend.service.application.workflows.preview_display_outputs import (
-    build_preview_run_artifact_object_key,
-    read_preview_run_id,
-)
 
 
 def _frame_window_preview_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
@@ -42,13 +39,16 @@ def _frame_window_preview_handler(request: WorkflowNodeExecutionRequest) -> dict
         max_items=max_items,
     )
     preview_items: list[dict[str, object]] = []
+    image_builder = (build_preview_response_image_payload
+                     if callable(request.execution_metadata.get("_editor_preview_image_sink"))
+                     else build_response_image_payload)
     for sample_offset, frame_item in enumerate(sampled_items, start=1):
         preview_items.append(
             {
                 "caption": _build_frame_caption(frame_item),
                 "frame_index": int(frame_item["frame_index"]),
                 "timestamp_ms": float(frame_item["timestamp_ms"]),
-                "image": build_response_image_payload(
+                "image": image_builder(
                     request,
                     image_payload=frame_item["image"],
                     response_transport_mode=response_transport_mode,
@@ -128,14 +128,6 @@ def _build_preview_object_key(
     if response_transport_mode != RESPONSE_IMAGE_TRANSPORT_STORAGE_REF:
         return None
     media_type = str(frame_item["image"].get("media_type") or "image/png")
-    preview_run_id = read_preview_run_id(request.execution_metadata)
-    if preview_run_id is not None:
-        return build_preview_run_artifact_object_key(
-            preview_run_id=preview_run_id,
-            node_id=request.node_id,
-            artifact_name=f"frame-window-preview-{int(frame_item['frame_index']):06d}",
-            media_type=media_type,
-        )
 
     workflow_run_id = str(request.execution_metadata.get("workflow_run_id") or "default-run")
     return (

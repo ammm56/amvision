@@ -414,7 +414,7 @@ class WorkflowGraphExecutor:
                         node_definition=node_definition,
                         execution_index=execution_index,
                         inputs=resolved_inputs,
-                        error_details=dict(exc.details),
+                        error_details={**exc.details, **({"code": exc.code} if execution_metadata_payload.get("_editor_preview_observer") is not None else {})},
                         extra_payload={"duration_ms": duration_ms},
                     )
                     raise
@@ -473,7 +473,7 @@ class WorkflowGraphExecutor:
                         node_definition=node_definition,
                         execution_index=execution_index,
                         inputs=resolved_inputs,
-                        error_details=dict(exc.details),
+                        error_details={**exc.details, **({"code": exc.code} if execution_metadata_payload.get("_editor_preview_observer") is not None else {})},
                         extra_payload={"duration_ms": duration_ms},
                     )
                     raise
@@ -531,7 +531,7 @@ class WorkflowGraphExecutor:
                         node_definition=node_definition,
                         execution_index=execution_index,
                         inputs=resolved_inputs,
-                        error_details=dict(exc.details),
+                        error_details={**exc.details, **({"code": exc.code} if execution_metadata_payload.get("_editor_preview_observer") is not None else {})},
                         extra_payload={"duration_ms": duration_ms},
                     )
                     raise
@@ -562,7 +562,7 @@ class WorkflowGraphExecutor:
                         node_definition=node_definition,
                         execution_index=execution_index,
                         inputs=resolved_inputs,
-                        error_details=dict(exc.details),
+                        error_details={**exc.details, **({"code": exc.code} if execution_metadata_payload.get("_editor_preview_observer") is not None else {})},
                         extra_payload={"duration_ms": duration_ms},
                     )
                     raise
@@ -1204,6 +1204,9 @@ class WorkflowGraphExecutor:
                 payload["parallel_branch_index"] = branch_index
                 payload["parallel_start_node_id"] = plan.start_node_id
                 payload["parallel_end_node_id"] = plan.end_node_id
+                if execution_metadata.get("_editor_preview_observer") is not None:
+                    payload["scope_path"] = [{"parallel_start_node_id": plan.start_node_id, "parallel_branch_index": branch_index},
+                                             *payload.get("scope_path", [])]
                 normalized_event["payload"] = payload
                 with event_lock:
                     event_callback(normalized_event)
@@ -1479,6 +1482,9 @@ class WorkflowGraphExecutor:
                     name=plan.index_variable_name,
                 )
             )
+            preview_observer = execution_metadata.get("_editor_preview_observer")
+            if preview_observer is not None:
+                preview_observer.progress(completed=0, total=len(items_value))
             try:
                 for iteration_index, item_value in enumerate(items_value):
                     iteration_result = self._execute_for_each_body_iteration(
@@ -1515,6 +1521,8 @@ class WorkflowGraphExecutor:
                                 "for_each_iteration_index": iteration_index,
                             },
                         )
+                    if preview_observer is not None:
+                        preview_observer.progress(completed=iteration_index + 1, total=len(items_value))
                     if iteration_result.control_action == "break":
                         terminated_early = True
                         termination_reason = "break"
@@ -1722,7 +1730,7 @@ class WorkflowGraphExecutor:
                     node_definition=body_node_definition,
                     execution_index=execution_index,
                     inputs=resolved_inputs,
-                    error_details=dict(exc.details),
+                    error_details={**exc.details, **({"code": exc.code} if execution_metadata.get("_editor_preview_observer") is not None else {})},
                     extra_payload={
                         "for_each_node_id": for_each_node.node_id,
                         "for_each_iteration_index": iteration_index,

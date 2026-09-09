@@ -118,7 +118,7 @@ Workflow 节点统一消费 `image-ref.v1`：
 - Worker manager：`backend/service/application/workflows/worker/manager.py`
 - Worker process：`backend/service/application/workflows/worker/process.py`
 - Runtime 持久化：`backend/service/infrastructure/persistence/workflow_runtime_repository.py`
-- Preview 应用服务：`backend/service/application/workflows/runtime/preview_runs.py`、`backend/service/application/workflows/preview_run_manager.py`
+- Preview 应用服务：`backend/service/application/workflows/preview/session.py`、`preview/pool.py`；独立的编辑态内存会话，不使用正式 Runtime 的持久化
 - Trigger 应用服务：`backend/service/application/workflows/trigger_sources/trigger_source_service.py`
 - API： [Workflow App Runtime](../../api/workflow-app-runtimes.md)、[Workflow Run](../../api/workflow-runs.md)、[Trigger Source](../../api/workflow-trigger-sources.md)
 

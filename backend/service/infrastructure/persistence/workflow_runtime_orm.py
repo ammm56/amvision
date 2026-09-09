@@ -10,29 +10,6 @@ from sqlalchemy.orm import Mapped, mapped_column
 from backend.service.infrastructure.persistence.base import Base
 
 
-class WorkflowPreviewRunRecord(Base):
-    """映射 WorkflowPreviewRun 对象。"""
-
-    __tablename__ = "workflow_preview_runs"
-
-    preview_run_id: Mapped[str] = mapped_column(String(128), primary_key=True)
-    project_id: Mapped[str] = mapped_column(String(128), index=True)
-    application_id: Mapped[str] = mapped_column(String(128), index=True)
-    source_kind: Mapped[str] = mapped_column(String(64))
-    application_snapshot_object_key: Mapped[str] = mapped_column(String(1024))
-    template_snapshot_object_key: Mapped[str] = mapped_column(String(1024))
-    state: Mapped[str] = mapped_column(String(32), index=True)
-    created_at: Mapped[str] = mapped_column(String(64), index=True)
-    started_at: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    finished_at: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    created_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    timeout_seconds: Mapped[int] = mapped_column(Integer, default=30)
-    outputs_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    template_outputs_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    node_records_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
-    error_message: Mapped[str | None] = mapped_column(String(2048), nullable=True)
-    retention_until: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
 
 class WorkflowExecutionPolicyRecord(Base):

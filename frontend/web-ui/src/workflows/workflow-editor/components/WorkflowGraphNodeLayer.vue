@@ -160,6 +160,7 @@ const props = defineProps<{
   readPreviewDisplay: (nodeId: string) => PreviewNodeDisplay | null
   readPreviewDisplayTooltip: (display: PreviewNodeDisplay | null) => string
   readPreviewDurationMs: (nodeId: string) => number | null
+  readPreviewStatus?: (nodeId: string) => string
 }>()
 
 const emit = defineEmits<{
@@ -197,6 +198,6 @@ function requirePreviewDisplay(node: WorkflowGraphNodeView): PreviewNodeDisplay 
 
 function readPreviewDurationLabel(nodeId: string): string {
   const durationMs = props.readPreviewDurationMs(nodeId)
-  return durationMs === null ? '' : formatPreviewNodeDuration(durationMs)
+  return [props.readPreviewStatus?.(nodeId), durationMs === null ? '' : formatPreviewNodeDuration(durationMs)].filter(Boolean).join(' · ')
 }
 </script>

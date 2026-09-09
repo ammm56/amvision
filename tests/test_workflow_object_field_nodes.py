@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.workflow_editor_graph_support import execute_editor_graph
+
 from pathlib import Path
 
 from backend.contracts.workflows.workflow_graph import (
@@ -14,7 +16,6 @@ from backend.contracts.workflows.workflow_graph import (
     WorkflowGraphOutput,
     WorkflowGraphTemplate,
 )
-from backend.service.application.workflows.runtime_service import WorkflowPreviewRunCreateRequest
 from tests.test_workflow_runtime_sanitization import _build_runtime_service
 
 
@@ -22,12 +23,7 @@ def test_preview_run_object_field_nodes_support_pick_remove_and_update(tmp_path:
     """验证 object-pick、object-remove 与单路径 object-update 可以组成确定性改写链。"""
 
     service, _, _ = _build_runtime_service(tmp_path)
-    preview_run = service.create_preview_run(
-        WorkflowPreviewRunCreateRequest(
-            project_id="project-1",
-            application=_build_object_field_application(),
-            template=_build_object_field_template(),
-            input_bindings={
+    preview_run = execute_editor_graph(service, project_id="project-1", application=_build_object_field_application(), template=_build_object_field_template(), input_bindings={
                 "source_object": {
                     "value": {
                         "status": "draft",
@@ -46,10 +42,7 @@ def test_preview_run_object_field_nodes_support_pick_remove_and_update(tmp_path:
                 },
                 "new_status": {"value": "approved"},
                 "reviewer": {"value": "qa-team"},
-            },
-        ),
-        created_by="workflow-user",
-    )
+            })
 
     assert preview_run.state == "succeeded"
     assert preview_run.outputs["picked_object"]["value"] == {

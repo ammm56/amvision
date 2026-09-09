@@ -320,7 +320,7 @@ DeploymentInstance 是模型发布后的正式运行单元。
 
 2. workflow 内部推理调用
 
-- PreviewRun、WorkflowAppRuntime、WorkflowRun 中的模型推理节点
+- PreviewSession、WorkflowAppRuntime、WorkflowRun 中的模型推理节点
 - 通过 PublishedInferenceGateway 命中已发布 DeploymentInstance
 
 这条路径面向 workflow 内部编排，不等于公开 inference task 接口。

@@ -23,7 +23,7 @@
 - WorkflowRun 表示已发布应用的一次正式调用。
 - WorkflowRun 同时承接 sync invoke 和 async run 两种调用方式。
 - invoke 或 runs 请求都会先写入 WorkflowRun，再推进到终态。
-- WorkflowRun 与 WorkflowPreviewRun 分开建模：前者面向已发布 runtime 的正式调用，后者面向编辑器里的快速试跑。
+- WorkflowRun 与 PreviewSession 分开建模：前者面向已发布 runtime 的正式调用，后者面向编辑器里的快速试跑。
 - 每次请求开始时固定 Runtime 当时的 active revision、Workflow App version、generation、snapshot fingerprint 和 worker epoch；后续版本切换或 worker 重启不会改变已经开始或已保存的运行来源。
 - `POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke` 和 `.../invoke/upload` 默认只返回公开 App Result；如需平台运行回执或完整调试 trace，必须显式传 `response_mode=run` 或 `response_mode=debug`。
 - `POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs` 创建异步 run，只返回运行回执。异步 run 完成后，`GET /api/v1/workflows/runs/{workflow_run_id}` 默认返回公开 App Result；如需平台运行回执或完整调试 trace，必须显式传 `response_mode=run` 或 `response_mode=debug`。
@@ -34,7 +34,7 @@
 - WorkflowRun 表示一条已发布 WorkflowAppRuntime 的正式执行记录。当前正式执行支持 sync invoke 和 async runs 两种提交方式，两者共享同一套 snapshot 和节点图。
 - sync invoke 在当前请求内等待执行结束，适合低时延、短链路和高频交互。
 - async runs 在创建时先返回 workflow_run_id，调用方再通过 GET 查询结果，必要时可发起 cancel，适合长时间执行、后台提交、排队和后续回查。
-- WorkflowPreviewRun 只用于编辑态试跑。生产态正式执行统一落在 WorkflowRun，不再为不同触发方式引入另一类正式执行资源。
+- PreviewSession 只用于编辑态试跑。生产态正式执行统一落在 WorkflowRun，不再为不同触发方式引入另一类正式执行资源。
 - 当前正式入口包括 HTTP Runtime API 和已注册 TriggerSource adapter；PLC、ZeroMQ、local-shared-memory、目录或其他 Trigger 仍统一映射为 WorkflowRun，不增加另一类正式执行资源。
 - 多 runtime 实例仍用于吞吐和隔离。async runs 解决的是长时间执行、排队、取消和回查，不承担扩容职责。
 
@@ -395,14 +395,14 @@
 
 - WorkflowRun 依附于 [docs/api/workflow-app-runtimes.md](workflow-app-runtimes.md) 创建和执行。
 - WorkflowRun 返回里的 metadata.execution_policy 摘要来自宿主 WorkflowAppRuntime 固定的 execution policy snapshot。
-- 编辑态试跑结果见 [docs/api/workflow-preview-runs.md](workflow-preview-runs.md)。
+- 编辑态试跑结果见 [docs/api/workflow-preview-sessions.md](workflow-preview-sessions.md)。
 - template/application 的保存和校验入口见 [docs/api/workflows.md](workflows.md)。
 
 ## 相关文档
 
 - [docs/api/conventions.md](conventions.md)
 - [docs/api/workflow-app-runtimes.md](workflow-app-runtimes.md)
-- [docs/api/workflow-preview-runs.md](workflow-preview-runs.md)
+- [docs/api/workflow-preview-sessions.md](workflow-preview-sessions.md)
 - [docs/api/workflows.md](workflows.md)
 - [docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/app-runtime.invoke.request.json](examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/app-runtime.invoke.request.json)
 - [docs/api/postman/workflow-runtime.postman_collection.json](postman/workflow-runtime.postman_collection.json)

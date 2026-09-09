@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.workflow_editor_graph_support import execute_editor_graph
+
 from pathlib import Path
 
 from backend.contracts.workflows.workflow_graph import (
@@ -13,7 +15,6 @@ from backend.contracts.workflows.workflow_graph import (
     WorkflowGraphOutput,
     WorkflowGraphTemplate,
 )
-from backend.service.application.workflows.runtime_service import WorkflowPreviewRunCreateRequest
 from tests.test_workflow_runtime_sanitization import _build_runtime_service
 
 
@@ -21,12 +22,7 @@ def test_preview_run_advanced_logic_nodes_support_switch_and_collection_reductio
     """验证 switch、any、all、reduce 节点可以组成多分支与集合归约链。"""
 
     service, _, _ = _build_runtime_service(tmp_path)
-    preview_run = service.create_preview_run(
-        WorkflowPreviewRunCreateRequest(
-            project_id="project-1",
-            application=_build_advanced_logic_application(),
-            template=_build_advanced_logic_template(),
-            input_bindings={
+    preview_run = execute_editor_graph(service, project_id="project-1", application=_build_advanced_logic_application(), template=_build_advanced_logic_template(), input_bindings={
                 "switch_target": {"value": "medium"},
                 "case_low": {"value": {"when": "low", "then": {"rank": 1}}},
                 "case_medium": {"value": {"when": "medium", "then": {"rank": 2}}},
@@ -36,10 +32,7 @@ def test_preview_run_advanced_logic_nodes_support_switch_and_collection_reductio
                 "all_items": {"value": [True, 1, "ok"]},
                 "sum_items": {"value": [1, 2, 3, 4]},
                 "join_items": {"value": ["A", "B", "C"]},
-            },
-        ),
-        created_by="workflow-user",
-    )
+            })
 
     assert preview_run.state == "succeeded"
     assert preview_run.outputs["selected_value"]["value"] == {"rank": 2}

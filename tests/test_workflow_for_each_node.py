@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from backend.contracts.workflows.workflow_graph import (
     WorkflowGraphEdge,
     WorkflowGraphInput,
@@ -18,7 +20,8 @@ from backend.nodes.core_nodes.logic.value.payload_to_value import CORE_NODE_SPEC
 from backend.service.application.workflows.graph_executor import WorkflowGraphExecutor, WorkflowNodeRuntimeRegistry
 
 
-def test_workflow_graph_executor_runs_for_each_body_and_collects_results() -> None:
+@pytest.mark.parametrize("preview", [False, True])
+def test_workflow_graph_executor_runs_for_each_body_and_collects_results(preview) -> None:
     """验证 for-each 会按循环体逐项执行并收集指定结果端口的值。"""
 
     registry = WorkflowNodeRuntimeRegistry()
@@ -163,10 +166,20 @@ def test_workflow_graph_executor_runs_for_each_body_and_collects_results() -> No
         ),
     )
 
+    from backend.service.application.workflows.preview.events import PreviewNodeEvents
+    progress = []
+    observer = PreviewNodeEvents(lambda kind, payload: progress.append((kind, payload)), [node.node_id for node in template.nodes]) if preview else None
     execution_result = executor.execute(
         template=template,
         input_values={"source_items": {"value": ["alpha", "beta", "gamma"]}},
+        execution_metadata={"_editor_preview_observer": observer} if preview else {},
+        event_callback=observer,
     )
+
+    if preview:
+        updates = [payload for kind, payload in progress if kind == "node.progress"]
+        assert [(item["node_id"], item["completed"], item["total"]) for item in updates] == [("iterate_items", i, 3) for i in range(4)]
+        assert len({item["invocation_id"] for item in updates}) == 1
 
     assert execution_result.outputs["results"]["value"] == [True, True, True]
     assert execution_result.outputs["count"]["value"] == 3

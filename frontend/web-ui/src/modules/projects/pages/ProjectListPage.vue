@@ -267,7 +267,6 @@ const deletionResourceLabelKeys: Record<string, string> = {
   workflow_app_runtimes: 'projects.deletion.resources.workflowAppRuntimes',
   workflow_documents: 'projects.deletion.resources.workflowDocuments',
   workflow_execution_policies: 'projects.deletion.resources.workflowExecutionPolicies',
-  workflow_preview_runs: 'projects.deletion.resources.workflowPreviewRuns',
   workflow_runs: 'projects.deletion.resources.workflowRuns',
   workflow_trigger_sources: 'projects.deletion.resources.workflowTriggerSources',
 }
@@ -276,7 +275,6 @@ const deletionBlockerResourceNames: Record<string, string> = {
   queue_message: 'queue_messages',
   task: 'tasks',
   trigger_source: 'workflow_trigger_sources',
-  workflow_preview: 'workflow_preview_runs',
   workflow_run: 'workflow_runs',
   workflow_runtime: 'workflow_app_runtimes',
 }

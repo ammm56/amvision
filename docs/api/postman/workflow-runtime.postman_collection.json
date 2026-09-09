@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "cb7a8a14-cd66-4c4a-b4a8-6382f87bf7f1",
     "name": "amvision workflow runtime api",
-    "description": "workflow runtime 当前联调 collection，覆盖 system/bootstrap、system/config、projects/bootstrap、projects 目录与公开文件读取、template/application validate/save/get/list/copy/delete、execution-policies、preview-runs、app-runtimes、sync invoke、async runs、trigger-sources list/detail/health 和 cancel 的最小公开接口。主要列表请求已补 offset/limit 示例，响应体仍保持数组，分页信息通过 x-offset、x-limit、x-total-count、x-has-more 和 x-next-offset 返回。当前 FastAPI 默认使用通用触发入口 /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke，FlowApplication.bindings.config.route 在现阶段仅作为绑定声明，不自动生成专用 HTTP 路由。detection 模型节点当前通过 PublishedInferenceGateway 命中 backend-service 持有的 sync deployment，不走公开 inference-tasks 或 async deployment 通道。模型生命周期联调请改用根目录 `*-full-chain.postman_collection.json`；正式 workflow 的分拆调试 collection 已统一移动到 docs/api/postman/workflows/ 目录，当前覆盖 01-15 号场景链。",
+    "description": "workflow runtime 当前联调 collection，覆盖 system/bootstrap、system/config、projects/bootstrap、projects 目录与公开文件读取、template/application validate/save/get/list/copy/delete、execution-policies、app-runtimes、sync invoke、async runs、trigger-sources list/detail/health 和 cancel 的最小公开接口。主要列表请求已补 offset/limit 示例，响应体仍保持数组，分页信息通过 x-offset、x-limit、x-total-count、x-has-more 和 x-next-offset 返回。当前 FastAPI 默认使用通用触发入口 /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke，FlowApplication.bindings.config.route 在现阶段仅作为绑定声明，不自动生成专用 HTTP 路由。detection 模型节点当前通过 PublishedInferenceGateway 命中 backend-service 持有的 sync deployment，不走公开 inference-tasks 或 async deployment 通道。模型生命周期联调请改用根目录 `*-full-chain.postman_collection.json`；正式 workflow 的分拆调试 collection 已统一移动到 docs/api/postman/workflows/ 目录，当前覆盖 01-15 号场景链。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -75,16 +75,8 @@
       "value": "20"
     },
     {
-      "key": "previewExecutionPolicyId",
-      "value": "preview-default-policy"
-    },
-    {
       "key": "runtimeExecutionPolicyId",
       "value": "runtime-default-policy"
-    },
-    {
-      "key": "previewRunId",
-      "value": ""
     },
     {
       "key": "workflowRuntimeId",
@@ -1143,47 +1135,6 @@
           "name": "Execution Policies",
           "item": [
             {
-              "name": "Create Preview Execution Policy",
-              "request": {
-                "method": "POST",
-                "header": [
-                  {
-                    "key": "Content-Type",
-                    "value": "application/json",
-                    "type": "text"
-                  },
-                  {
-                    "key": "Authorization",
-                    "value": "Bearer {{accessToken}}",
-                    "type": "text"
-                  }
-                ],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"execution_policy_id\": \"{{previewExecutionPolicyId}}\",\n  \"display_name\": \"Preview Default Policy\",\n  \"policy_kind\": \"preview-default\",\n  \"default_timeout_seconds\": 30,\n  \"max_run_timeout_seconds\": 30,\n  \"trace_level\": \"summary\",\n  \"retain_node_records_enabled\": true,\n  \"retain_trace_enabled\": true,\n  \"metadata\": {\n    \"example_kind\": \"deployment-control-detection-lifecycle-real-path\",\n    \"target_surface\": \"preview-run\"\n  }\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                },
-                "url": {
-                  "raw": "{{baseUrl}}/api/v1/workflows/execution-policies",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "api",
-                    "v1",
-                    "workflows",
-                    "execution-policies"
-                  ]
-                },
-                "description": "创建 preview 默认 execution policy。请求体与 docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/preview-execution-policy.create.request.json 对齐。"
-              },
-              "response": []
-            },
-            {
               "name": "Create Runtime Execution Policy",
               "request": {
                 "method": "POST",
@@ -1290,204 +1241,6 @@
                   ]
                 },
                 "description": "读取 runtime 默认 execution policy。"
-              },
-              "response": []
-            }
-          ]
-        },
-        {
-          "name": "Preview",
-          "item": [
-            {
-              "name": "Create Preview Run",
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "if (pm.response.code === 201) {",
-                      "  var payload = pm.response.json();",
-                      "  if (payload.preview_run_id) {",
-                      "    pm.collectionVariables.set('previewRunId', payload.preview_run_id);",
-                      "  }",
-                      "}"
-                    ]
-                  }
-                }
-              ],
-              "request": {
-                "method": "POST",
-                "header": [
-                  {
-                    "key": "Content-Type",
-                    "value": "application/json",
-                    "type": "text"
-                  },
-                  {
-                    "key": "Authorization",
-                    "value": "Bearer {{accessToken}}",
-                    "type": "text"
-                  }
-                ],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"execution_policy_id\": \"{{previewExecutionPolicyId}}\",\n  \"application_ref\": {\n    \"application_id\": \"{{applicationId}}\"\n  },\n  \"input_bindings\": {\n    \"request_image_ref\": {\n      \"object_key\": \"{{requestImageObjectKey}}\"\n    }\n  },\n  \"execution_metadata\": {\n    \"marker\": \"postman-workflow-runtime-preview\",\n    \"scenario\": \"deployment-control-detection-lifecycle-real-path\",\n    \"trigger_source\": \"editor-preview\"\n  }\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                },
-                "url": {
-                  "raw": "{{baseUrl}}/api/v1/workflows/preview-runs",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "api",
-                    "v1",
-                    "workflows",
-                    "preview-runs"
-                  ]
-                },
-                "description": "创建一次 preview run。请求体与 docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/preview-run.request.json 对齐。"
-              },
-              "response": []
-            },
-            {
-              "name": "List Preview Runs",
-              "request": {
-                "method": "GET",
-                "header": [
-                  {
-                    "key": "Authorization",
-                    "value": "Bearer {{accessToken}}",
-                    "type": "text"
-                  }
-                ],
-                "url": {
-                  "raw": "{{baseUrl}}/api/v1/workflows/preview-runs?project_id={{projectId}}&offset={{listOffset}}&limit={{listLimit}}",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "api",
-                    "v1",
-                    "workflows",
-                    "preview-runs"
-                  ],
-                  "query": [
-                    {
-                      "key": "project_id",
-                      "value": "{{projectId}}"
-                    },
-                    {
-                      "key": "offset",
-                      "value": "{{listOffset}}"
-                    },
-                    {
-                      "key": "limit",
-                      "value": "{{listLimit}}"
-                    }
-                  ]
-                },
-                "description": "列出当前 Project 下的 WorkflowPreviewRun，并演示统一 offset/limit 分页请求。"
-              },
-              "response": []
-            },
-            {
-              "name": "Get Preview Run",
-              "request": {
-                "method": "GET",
-                "header": [
-                  {
-                    "key": "Authorization",
-                    "value": "Bearer {{accessToken}}",
-                    "type": "text"
-                  }
-                ],
-                "url": {
-                  "raw": "{{baseUrl}}/api/v1/workflows/preview-runs/{{previewRunId}}",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "api",
-                    "v1",
-                    "workflows",
-                    "preview-runs",
-                    "{{previewRunId}}"
-                  ]
-                },
-                "description": "读取刚创建的 WorkflowPreviewRun。"
-              },
-              "response": []
-            },
-            {
-              "name": "Get Preview Run Events",
-              "request": {
-                "method": "GET",
-                "header": [
-                  {
-                    "key": "Authorization",
-                    "value": "Bearer {{accessToken}}",
-                    "type": "text"
-                  }
-                ],
-                "url": {
-                  "raw": "{{baseUrl}}/api/v1/workflows/preview-runs/{{previewRunId}}/events?after_sequence=0&limit={{eventLimit}}",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "api",
-                    "v1",
-                    "workflows",
-                    "preview-runs",
-                    "{{previewRunId}}",
-                    "events"
-                  ],
-                  "query": [
-                    {
-                      "key": "after_sequence",
-                      "value": "0"
-                    },
-                    {
-                      "key": "limit",
-                      "value": "{{eventLimit}}"
-                    }
-                  ]
-                },
-                "description": "读取 preview run 历史事件，验证 after_sequence 和 limit 分页。"
-              },
-              "response": []
-            },
-            {
-              "name": "Delete Preview Run",
-              "request": {
-                "method": "DELETE",
-                "header": [
-                  {
-                    "key": "Authorization",
-                    "value": "Bearer {{accessToken}}",
-                    "type": "text"
-                  }
-                ],
-                "url": {
-                  "raw": "{{baseUrl}}/api/v1/workflows/preview-runs/{{previewRunId}}",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "api",
-                    "v1",
-                    "workflows",
-                    "preview-runs",
-                    "{{previewRunId}}"
-                  ]
-                },
-                "description": "删除当前 collection 变量 previewRunId 指向的 WorkflowPreviewRun 和对应 snapshot 目录。"
               },
               "response": []
             }

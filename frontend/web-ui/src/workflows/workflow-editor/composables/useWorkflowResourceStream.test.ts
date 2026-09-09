@@ -125,7 +125,7 @@ describe('useWorkflowResourceStream', () => {
     const wrapper = mount(defineComponent({
       setup() {
         stream = useWorkflowResourceStream<WorkflowRun>({
-          kind: 'preview-run',
+          kind: 'run',
           getSnapshot,
           onSnapshot: (snapshot) => received.push(snapshot),
           isTerminal: (snapshot) => snapshot.state === 'succeeded',

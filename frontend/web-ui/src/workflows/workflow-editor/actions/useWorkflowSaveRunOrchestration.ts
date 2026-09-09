@@ -107,9 +107,6 @@ export function useWorkflowSaveRunOrchestration(options: WorkflowSaveRunOrchestr
     options.clearActionMessages()
     options.clearContextMenu()
     const preserveImageViewerNodeId = readOptionalText(uiOptions.preserveImageViewerNodeId)
-    if (!preserveImageViewerNodeId) {
-      options.revokePreviewImageObjectUrls()
-    }
     const previewRun = await options.runWorkflowPreview({
       projectId: options.selectedProjectId.value,
       template,

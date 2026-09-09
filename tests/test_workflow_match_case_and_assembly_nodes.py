@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.workflow_editor_graph_support import execute_editor_graph
+
 from pathlib import Path
 
 from backend.contracts.workflows.workflow_graph import (
@@ -14,7 +16,6 @@ from backend.contracts.workflows.workflow_graph import (
     WorkflowGraphOutput,
     WorkflowGraphTemplate,
 )
-from backend.service.application.workflows.runtime_service import WorkflowPreviewRunCreateRequest
 from tests.test_workflow_runtime_sanitization import _build_runtime_service
 
 
@@ -22,12 +23,7 @@ def test_preview_run_match_case_and_assembly_nodes_build_dynamic_cases_and_reduc
     """验证 list-create、object-create 与 match-case 可以构造条件分支和 reduce 输入。"""
 
     service, _, _ = _build_runtime_service(tmp_path)
-    preview_run = service.create_preview_run(
-        WorkflowPreviewRunCreateRequest(
-            project_id="project-1",
-            application=_build_match_case_application(),
-            template=_build_match_case_template(),
-            input_bindings={
+    preview_run = execute_editor_graph(service, project_id="project-1", application=_build_match_case_application(), template=_build_match_case_template(), input_bindings={
                 "applicant_score": {"value": 72},
                 "applicant_state": {"value": "inactive"},
                 "high_result": {"value": {"tier": "high"}},
@@ -37,10 +33,7 @@ def test_preview_run_match_case_and_assembly_nodes_build_dynamic_cases_and_reduc
                 "reduce_item_1": {"value": 5},
                 "reduce_item_2": {"value": 7},
                 "reduce_item_3": {"value": 9},
-            },
-        ),
-        created_by="workflow-user",
-    )
+            })
 
     assert preview_run.state == "succeeded"
     assert preview_run.outputs["matched_value"]["value"] == {"tier": "medium"}
