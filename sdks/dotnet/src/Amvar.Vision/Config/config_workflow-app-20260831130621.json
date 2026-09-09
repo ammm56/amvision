@@ -1,198 +1,17 @@
 {
   "backend": {
     "base_api_url": "http://127.0.0.1:5600",
-    "access_token": "amvision-default-user-token",
+    "access_token": "",
     "project_id": "project-1",
     "http_timeout_seconds": 300
   },
   "runtime": {
     "name": "摆盘分拣3570塑盒满盘检测应用",
-    "workflow_runtime_id": "workflow-runtime-914ad9305d8048a0b382137cfa07bf65",
+    "workflow_runtime_id": "workflow-runtime-8cb04cc4851e4923a5c0997ea18834f2",
     "public_contract": {
       "format_id": "amvision.workflow-app-contract.v1",
       "application_id": "workflow-app-20260831130621",
       "inputs": [
-        {
-          "binding_id": "request_file",
-          "template_port_id": "request_file",
-          "payload_type_id": "file-ref.v1",
-          "binding_kind": "api-request",
-          "required": false,
-          "config": {
-            "payload_type_id": "file-ref.v1",
-            "allowed_media_types": [
-              "application/json",
-              "text/plain"
-            ],
-            "max_file_bytes": 8388608,
-            "max_files": 1
-          },
-          "payload_schema": {
-            "type": "object",
-            "properties": {
-              "transport_kind": {
-                "const": "storage"
-              },
-              "storage_ref": {
-                "const": "object-store"
-              },
-              "object_key": {
-                "type": "string",
-                "minLength": 1
-              },
-              "file_name": {
-                "type": "string",
-                "minLength": 1
-              },
-              "media_type": {
-                "type": "string",
-                "minLength": 1
-              },
-              "content_length": {
-                "type": "integer",
-                "minimum": 0
-              },
-              "checksum_algorithm": {
-                "const": "sha256"
-              },
-              "checksum": {
-                "type": "string",
-                "pattern": "^[0-9a-f]{64}$"
-              },
-              "immutable_version": {
-                "type": "string",
-                "minLength": 1
-              },
-              "metadata": {
-                "type": "object"
-              }
-            },
-            "required": [
-              "transport_kind",
-              "storage_ref",
-              "object_key",
-              "file_name",
-              "media_type",
-              "content_length",
-              "checksum_algorithm",
-              "checksum",
-              "immutable_version"
-            ],
-            "additionalProperties": false
-          },
-          "request_schema": {},
-          "allowed_media_types": [
-            "application/json",
-            "text/plain"
-          ],
-          "max_inline_bytes": 1048576,
-          "max_file_bytes": 8388608,
-          "max_files": 1,
-          "transports": [
-            "json-reference",
-            "multipart-upload"
-          ],
-          "charset": null
-        },
-        {
-          "binding_id": "request_files",
-          "template_port_id": "request_files",
-          "payload_type_id": "file-refs.v1",
-          "binding_kind": "api-request",
-          "required": false,
-          "config": {
-            "payload_type_id": "file-refs.v1",
-            "allowed_media_types": [
-              "application/json",
-              "text/plain"
-            ],
-            "max_file_bytes": 4194304,
-            "max_files": 4
-          },
-          "payload_schema": {
-            "type": "object",
-            "properties": {
-              "items": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "transport_kind": {
-                      "const": "storage"
-                    },
-                    "storage_ref": {
-                      "const": "object-store"
-                    },
-                    "object_key": {
-                      "type": "string",
-                      "minLength": 1
-                    },
-                    "file_name": {
-                      "type": "string",
-                      "minLength": 1
-                    },
-                    "media_type": {
-                      "type": "string",
-                      "minLength": 1
-                    },
-                    "content_length": {
-                      "type": "integer",
-                      "minimum": 0
-                    },
-                    "checksum_algorithm": {
-                      "const": "sha256"
-                    },
-                    "checksum": {
-                      "type": "string",
-                      "pattern": "^[0-9a-f]{64}$"
-                    },
-                    "immutable_version": {
-                      "type": "string",
-                      "minLength": 1
-                    },
-                    "metadata": {
-                      "type": "object"
-                    }
-                  },
-                  "required": [
-                    "transport_kind",
-                    "storage_ref",
-                    "object_key",
-                    "file_name",
-                    "media_type",
-                    "content_length",
-                    "checksum_algorithm",
-                    "checksum",
-                    "immutable_version"
-                  ],
-                  "additionalProperties": false
-                }
-              },
-              "count": {
-                "type": "integer",
-                "minimum": 0
-              }
-            },
-            "required": [
-              "items",
-              "count"
-            ],
-            "additionalProperties": false
-          },
-          "request_schema": {},
-          "allowed_media_types": [
-            "application/json",
-            "text/plain"
-          ],
-          "max_inline_bytes": 1048576,
-          "max_file_bytes": 4194304,
-          "max_files": 4,
-          "transports": [
-            "json-reference",
-            "multipart-upload"
-          ],
-          "charset": null
-        },
         {
           "binding_id": "request_image_base64",
           "template_port_id": "request_image_base64",
@@ -427,52 +246,6 @@
             "json"
           ],
           "charset": null
-        },
-        {
-          "binding_id": "request_text",
-          "template_port_id": "request_text",
-          "payload_type_id": "text.v1",
-          "binding_kind": "api-request",
-          "required": false,
-          "config": {
-            "payload_type_id": "text.v1",
-            "charset": "utf-8",
-            "max_inline_bytes": 1048576
-          },
-          "payload_schema": {
-            "type": "object",
-            "properties": {
-              "text": {
-                "type": "string"
-              },
-              "media_type": {
-                "type": "string",
-                "minLength": 1
-              },
-              "charset": {
-                "type": "string",
-                "minLength": 1
-              }
-            },
-            "required": [
-              "text",
-              "media_type",
-              "charset"
-            ],
-            "additionalProperties": false
-          },
-          "request_schema": {},
-          "allowed_media_types": [
-            "text/*",
-            "application/json"
-          ],
-          "max_inline_bytes": 1048576,
-          "max_file_bytes": null,
-          "max_files": null,
-          "transports": [
-            "json"
-          ],
-          "charset": "utf-8"
         }
       ],
       "outputs": [
@@ -512,45 +285,8 @@
   },
   "trigger_sources": [
     {
-      "name": "本机共享内存 摆盘分拣3570塑盒满盘检测应用 runtime",
-      "trigger_source_id": "local-shared-memory-workflow-runtime-914ad9305d8048a0b382137cfa07bf65",
-      "trigger_kind": "local-shared-memory",
-      "input_binding_mapping": {
-        "request_image_ref": {
-          "source": "payload.request_image_ref",
-          "required": false,
-          "payload_type_id": "image-ref.v1",
-          "metadata": {
-            "inferred": true
-          }
-        },
-        "request_json": {
-          "source": "payload.request_json",
-          "required": false,
-          "payload_type_id": "value.v1",
-          "metadata": {
-            "inferred": false
-          }
-        },
-        "request_text": {
-          "source": "payload.request_text",
-          "required": false,
-          "payload_type_id": "text.v1",
-          "metadata": {
-            "inferred": false
-          }
-        }
-      },
-      "local_shared_memory": {
-        "buffers_root": "W:\\workspace\\codex\\python\\amvision\\data\\buffers",
-        "route_generation": 1,
-        "default_input_binding": "request_image_ref",
-        "timeout_seconds": 30
-      }
-    },
-    {
       "name": "ZeroMQ 图片触发 摆盘分拣3570塑盒满盘检测应用 runtime",
-      "trigger_source_id": "zeromq-workflow-runtime-914ad9305d8048a0b382137cfa07bf65",
+      "trigger_source_id": "zeromq-workflow-runtime-8cb04cc4851e4923a5c0997ea18834f2",
       "trigger_kind": "zeromq-topic",
       "input_binding_mapping": {
         "request_image_ref": {
@@ -568,18 +304,10 @@
           "metadata": {
             "inferred": false
           }
-        },
-        "request_text": {
-          "source": "payload.request_text",
-          "required": false,
-          "payload_type_id": "text.v1",
-          "metadata": {
-            "inferred": false
-          }
         }
       },
       "zero_mq": {
-        "bind_endpoint": "tcp://127.0.0.1:5555",
+        "bind_endpoint": "tcp://127.0.0.1:5556",
         "default_input_binding": "request_image_ref",
         "timeout_seconds": 30
       }

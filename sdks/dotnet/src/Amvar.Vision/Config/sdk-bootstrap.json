@@ -3,7 +3,7 @@
   "backend": {
     "base_api_url": "http://127.0.0.1:5600",
     "configuration_path": "/api/v1/projects/project-1/sdk-config-packages/current",
-    "access_token": "amvision-default-user-token",
+    "access_token": "",
     "http_timeout_seconds": 10
   },
   "configuration_sync": {
