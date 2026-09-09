@@ -41,7 +41,11 @@ const props = defineProps<{
   statusLabel: string
   createdAtText: string
 }>()
-const rawJsonText = computed(() => JSON.stringify(props.previewRun, null, 2))
+const rawJsonText = computed(() => {
+  const text = JSON.stringify(props.previewRun, null, 2)
+  // 属性面板只显示有界摘录，避免长节点记录产生巨量文本布局；双击仍传递完整对象。
+  return text.length > 12000 ? `${text.slice(0, 12000)}\n…` : text
+})
 
 const emit = defineEmits<{
   'open-json': [title: string, value: unknown, statusText: string | null]

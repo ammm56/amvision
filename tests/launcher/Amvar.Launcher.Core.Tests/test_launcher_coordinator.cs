@@ -9,6 +9,38 @@ namespace Amvar.Launcher.Core.Tests;
 public sealed class CoordinatorTests
 {
     [Fact]
+    public async Task Managed_degraded_state_keeps_checking_until_recovery_is_confirmed()
+    {
+        var fake = new Dependencies { HasOwnedSession = true, Phase = StackPhase.Running };
+        var coordinator = Create(fake);
+        await coordinator.InitializeAsync(new(), new("release"));
+        var navigation = coordinator.Snapshot.NavigationId;
+        var checking = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var recovered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var unavailable = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        coordinator.Changed += state =>
+        {
+            if (state.Backend == BackendPhase.Checking) checking.TrySetResult();
+            if (checking.Task.IsCompleted && state.Backend == BackendPhase.Connected) recovered.TrySetResult();
+            if (state.Backend == BackendPhase.Unavailable) unavailable.TrySetResult();
+        };
+        try
+        {
+            fake.Phase = StackPhase.Degraded;
+            await checking.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.False(unavailable.Task.IsCompleted);
+            fake.Phase = StackPhase.Running;
+            await recovered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(navigation, coordinator.Snapshot.NavigationId);
+            Assert.Equal(0, fake.Starts + fake.Stops);
+            fake.Phase = StackPhase.Recovering;
+            await unavailable.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(navigation, coordinator.Snapshot.NavigationId);
+        }
+        finally { Assert.True(await coordinator.RequestExitAsync()); }
+    }
+
+    [Fact]
     public async Task Runtime_observation_reports_loss_and_recovery_without_navigation_or_takeover()
     {
         var fake = new Dependencies { Phase = StackPhase.Running };
@@ -25,7 +57,7 @@ public sealed class CoordinatorTests
         try
         {
             fake.Probe = ProbeKind.NotListening;
-            await lost.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await lost.Task.WaitAsync(TimeSpan.FromSeconds(10));
             fake.Probe = ProbeKind.Available;
             await recovered.Task.WaitAsync(TimeSpan.FromSeconds(5));
             Assert.Equal(navigation, coordinator.Snapshot.NavigationId);

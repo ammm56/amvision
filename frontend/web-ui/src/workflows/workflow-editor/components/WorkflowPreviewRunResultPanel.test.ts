@@ -45,5 +45,12 @@ describe('WorkflowPreviewRunResultPanel', () => {
 
     await rawJson.trigger('dblclick')
     expect(wrapper.emitted('open-json')?.[0]).toEqual(['运行结果', previewRun, 'succeeded'])
+
+    const largeRun = { ...previewRun, outputs: { result: 'x'.repeat(2000000) } }
+    await wrapper.setProps({ previewRun: largeRun })
+    expect(rawJson.text().length).toBeLessThanOrEqual(12002)
+    expect(rawJson.text().endsWith('…')).toBe(true)
+    await rawJson.trigger('dblclick')
+    expect(wrapper.emitted('open-json')?.[1]?.[1]).toEqual(largeRun)
   })
 })

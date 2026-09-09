@@ -418,6 +418,10 @@ class WorkflowRuntimeService:
         """创建并在当前服务进程直接执行一条 Preview Run。"""
 
         normalized_request = normalize_preview_run_create_request(request)
+        if normalized_request.wait_mode == "async" and (
+            self.preview_run_manager is None or self.preview_run_manager.execution_pool is None
+        ):
+            raise ServiceConfigurationError("异步 Preview 执行器尚未装配")
         preview_run_id = f"preview-run-{uuid4().hex}"
         with self._project_control_mutation(
             project_id=normalized_request.project_id,
@@ -519,7 +523,8 @@ class WorkflowRuntimeService:
 
         effective_timeout_seconds = resolve_effective_timeout_seconds(
             requested_timeout_seconds=normalized_request.timeout_seconds,
-            fallback_timeout_seconds=120,
+            fallback_timeout_seconds=(self.settings.workflow_runtime.preview_default_timeout_seconds
+                                      if normalized_request.wait_mode == "async" else 120),
             execution_policy=execution_policy,
             field_name="timeout_seconds",
         )
@@ -528,6 +533,14 @@ class WorkflowRuntimeService:
             execution_policy=execution_policy,
             execution_policy_snapshot_object_key=execution_policy_snapshot_object_key,
         )
+        # 所有者信息必须先于首次持久化写入，且不能接受客户端 metadata 覆盖。
+        preview_metadata["preview_execution_mode"] = (
+            "process" if self.preview_run_manager.execution_pool is not None else "inline")
+        for key in ("preview_owner", "preview_worker", "preview_owned_upload_root"):
+            preview_metadata.pop(key, None)
+        if self.preview_run_manager.execution_pool is not None:
+            preview_metadata["preview_owner"] = self.preview_run_manager.execution_pool.owner_identity
+            preview_metadata["preview_owned_upload_root"] = normalized_request.owned_upload_root
         preview_model_session_scope_id = build_workflow_preview_model_session_scope_id(
             project_id=normalized_request.project_id,
             application_id=application_id,
@@ -578,9 +591,19 @@ class WorkflowRuntimeService:
             execution_metadata=preview_metadata,
             timeout_seconds=effective_timeout_seconds,
             retain_node_records_enabled=retain_node_records_enabled,
-            return_sync_response_payload_enabled=True,
+            return_sync_response_payload_enabled=normalized_request.wait_mode == "sync",
             target_node_id=normalized_request.target_node_id,
+            owned_upload_root=normalized_request.owned_upload_root,
         )
+        if self.preview_run_manager.execution_pool is not None:
+            try:
+                completion = self.preview_run_manager.execution_pool.submit(self, execution_request)
+                return preview_run if normalized_request.wait_mode == "async" else completion.result()
+            except ServiceError as error:
+                self._finish_inline_preview_run_failed(
+                    preview_run_id, error, inline_started_at=perf_counter(),
+                    graph_execute_ms=0, event_persist_ms=0)
+                raise
         return self._execute_preview_run_inline(
             preview_run_id,
             execution_request,
@@ -700,6 +723,8 @@ class WorkflowRuntimeService:
                 runtime_registry=self.workflow_node_runtime_registry,
                 runtime_context=self.workflow_service_node_runtime_context,
                 event_sink=persist_preview_event,
+                node_cancellation_event=getattr(self, "preview_cancellation_event", None),
+                node_lifecycle_sink=getattr(self, "preview_node_lifecycle_sink", None),
                 decoded_image_cache_max_entries=(
                     self.settings.workflow_runtime.decoded_image_cache_max_entries
                 ),
@@ -739,7 +764,7 @@ class WorkflowRuntimeService:
                 event_type=(
                     "preview.timed_out"
                     if isinstance(exc, OperationTimeoutError)
-                    else "preview.failed"
+                    else "preview.cancelled" if isinstance(exc, OperationCancelledError) else "preview.failed"
                 ),
                 message=(
                     "preview run timed out"
@@ -845,6 +870,15 @@ class WorkflowRuntimeService:
             if retain_node_records_enabled and return_sync_response_payload_enabled
             else persisted_node_records
         )
+        if not return_sync_response_payload_enabled:
+            # 异步查询的摘要仍按既有规则脱敏；完整展示结果作为 Preview 临时资产保存，
+            # 不把大图或长数组塞进数据库，也不通过进程控制队列反复传输。
+            self.dataset_storage.write_json(
+                f"workflows/runtime/preview-runs/{preview_run_id}/response.payload.json",
+                {"outputs": execution_result.outputs, "template_outputs": execution_result.template_outputs,
+                 "node_records": [serialize_node_execution_record_for_response(item)
+                                  for item in execution_result.node_records] if retain_node_records_enabled else []},
+            )
         response_serialize_ms = _elapsed_ms(response_serialize_started_at)
         with self._open_unit_of_work() as unit_of_work:
             preview_run = self._require_preview_run(unit_of_work, preview_run_id)
@@ -898,7 +932,7 @@ class WorkflowRuntimeService:
                 state=(
                     "timed_out"
                     if isinstance(error, OperationTimeoutError)
-                    else "failed"
+                    else "cancelled" if isinstance(error, OperationCancelledError) else "failed"
                 ),
                 finished_at=_now_isoformat(),
                 error_message=error.message,
@@ -982,7 +1016,8 @@ class WorkflowRuntimeService:
                 "请求的 WorkflowPreviewRun 不存在",
                 details={"preview_run_id": preview_run_id},
             )
-        return preview_run
+        pool = self.preview_run_manager.execution_pool if self.preview_run_manager is not None else None
+        return pool.reconcile(self, preview_run) if pool is not None else preview_run
 
     def get_preview_run_events(
         self,

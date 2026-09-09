@@ -6,6 +6,7 @@ import mimetypes
 import logging
 import sys
 from functools import partial
+from dataclasses import replace
 from time import perf_counter
 from typing import Annotated
 from uuid import uuid4
@@ -60,6 +61,7 @@ from backend.service.api.rest.v1.routes.workflow_runtime_support.uploads import 
     read_contract_limit,
     validate_upload_media_type,
 )
+from backend.service.api.rest.v1.routes.workflow_runtime_support.preview_dispatch import run_preview_blocking, wait_preview_completion
 
 
 workflow_runtime_preview_runs_router = APIRouter()
@@ -98,6 +100,12 @@ async def create_workflow_preview_run_multipart(
 ) -> WorkflowPreviewRunContract:
     """按公开 binding 处理图片、单文件和多文件 Preview 上传。"""
 
+    return await wait_preview_completion(_process_preview_multipart(request, principal))
+
+
+async def _process_preview_multipart(request: Request, principal: AuthenticatedPrincipal) -> WorkflowPreviewRunContract:
+    """持有上传资源直到同步执行或异步提交完成，取消不会提前关闭文件。"""
+
     form = await request.form(
         max_part_size=WORKFLOW_RUNTIME_MULTIPART_CONTROL_PART_MAX_BYTES
     )
@@ -107,6 +115,7 @@ async def create_workflow_preview_run_multipart(
     lease_ids: list[str] = []
     client: LocalBufferBrokerClient | None = None
     published_any = False
+    submitted_async = False
     try:
         dataset_storage = _require_dataset_storage(request)
         raw_request_body = form.get("request")
@@ -132,8 +141,8 @@ async def create_workflow_preview_run_multipart(
             input_bindings=dict(body.input_bindings),
             execution_metadata=dict(body.execution_metadata),
         )
-        application, public_contract = runtime_service.resolve_preview_input_contract(
-            preview_request
+        application, public_contract = await run_preview_blocking(
+            runtime_service.resolve_preview_input_contract, preview_request
         )
         contract_items = contract_input_index(public_contract)
         input_bindings = dict(body.input_bindings)
@@ -255,6 +264,15 @@ async def create_workflow_preview_run_multipart(
                 else file_payloads[0]
             )
 
+        if image_uploads and body.wait_mode == "async":
+            # 异步输入归执行记录管理，不借用短期上传 client 的 lease。
+            for binding_id, image_file, contract_item in image_uploads:
+                input_bindings[binding_id] = await publish_workflow_upload(
+                    dataset_storage=dataset_storage, upload=image_file, binding_id=binding_id,
+                    item_index=0, payload_type_id="image-ref.v1", contract_item=contract_item,
+                    upload_root=upload_root)
+                published_any = True
+            image_uploads = []
         if image_uploads:
             client = _create_local_buffer_broker_client(request)
             if client is None:
@@ -274,7 +292,7 @@ async def create_workflow_preview_run_multipart(
                     lease_ids=lease_ids,
                 )
 
-        WorkflowInputValidator(object_store=dataset_storage).validate(
+        await run_preview_blocking(WorkflowInputValidator(object_store=dataset_storage).validate,
             application=application,
             input_bindings=input_bindings,
             public_contract=public_contract,
@@ -291,23 +309,39 @@ async def create_workflow_preview_run_multipart(
                     "metadata": {},
                 }
             ]
-        preview_run = _create_preview_run(
+        preview_run = await run_preview_blocking(_create_preview_run,
             body=body,
             request=request,
             principal=principal,
             input_bindings=input_bindings,
             execution_metadata=execution_metadata,
+            owned_upload_root=upload_root if published_any else "",
         )
-        return _build_preview_run_contract(preview_run)
+        submitted_async = body.wait_mode == "async"
+        return await run_preview_blocking(_build_preview_run_contract, preview_run)
     finally:
         await _cleanup_preview_uploads(
             dataset_storage=dataset_storage,
-            upload_root=upload_root,
+            upload_root="" if submitted_async else upload_root,
             lease_ids=lease_ids,
             client=client,
             form=form,
             execution_failed=sys.exception() is not None,
         )
+
+
+@workflow_runtime_preview_runs_router.post("/preview-runs/{preview_run_id}/cancel", response_model=WorkflowPreviewRunContract)
+def cancel_workflow_preview_run(
+    preview_run_id: str, request: Request,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:write"))],
+) -> WorkflowPreviewRunContract:
+    """请求协作取消；仍在执行的任务保持当前状态，直到执行器实际结束。"""
+    service = _build_workflow_runtime_service(request)
+    preview = service.get_visible_preview_run(preview_run_id, visible_project_ids=principal.project_ids)
+    pool = service.preview_run_manager.execution_pool
+    if pool is not None:
+        pool.cancel(preview_run_id)
+    return _build_preview_run_contract(preview)
 
 
 async def _cleanup_preview_uploads(
@@ -330,7 +364,7 @@ async def _cleanup_preview_uploads(
     first_error: Exception | None = None
     for cleanup in cleanup_actions:
         try:
-            cleanup()
+            await run_preview_blocking(cleanup)
         except Exception as exc:
             first_error = first_error or exc
             LOGGER.exception("Preview 上传资源清理失败")
@@ -404,15 +438,20 @@ async def _write_preview_image_upload(
             code="workflow_input_payload_schema_invalid",
             details={"binding_id": binding_id},
         )
-    write_result = client.write_bytes(
-        content=content,
-        owner_kind="workflow-preview-upload",
-        owner_id=owner_id,
-        media_type=media_type,
-        ttl_seconds=float(body.timeout_seconds or 120) + 30.0,
-        trace_id=getattr(request.state, "request_id", None),
-    )
-    lease_ids.append(write_result.lease.lease_id)
+    def publish_image():
+        """发布与登记在同一阻塞操作内完成，取消时 lease 仍可被 finally 回收。"""
+        result = client.write_bytes(
+            content=content,
+            owner_kind="workflow-preview-upload",
+            owner_id=owner_id,
+            media_type=media_type,
+            ttl_seconds=float(body.timeout_seconds or 120) + 30.0,
+            trace_id=getattr(request.state, "request_id", None),
+        )
+        lease_ids.append(result.lease.lease_id)
+        return result
+
+    write_result = await run_preview_blocking(publish_image)
     return {
         "transport_kind": "buffer",
         "media_type": media_type,
@@ -427,6 +466,7 @@ def _create_preview_run(
     principal: AuthenticatedPrincipal,
     input_bindings: dict[str, object],
     execution_metadata: dict[str, object] | None = None,
+    owned_upload_root: str = "",
 ):
     """按统一参数创建 JSON 或 LocalBuffer multipart Preview。"""
 
@@ -447,11 +487,11 @@ def _create_preview_run(
         )
     execution_metadata["timings"] = timing_payload
     return _build_workflow_runtime_service(request).create_preview_run(
-        _build_preview_run_create_request(
+        replace(_build_preview_run_create_request(
             body=body,
             input_bindings=input_bindings,
             execution_metadata=execution_metadata,
-        ),
+        ), owned_upload_root=owned_upload_root),
         created_by=principal.principal_id,
     )
 
@@ -519,6 +559,7 @@ def get_workflow_preview_run(
     preview_run_id: str,
     request: Request,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:read"))],
+    include_response_payload: Annotated[bool, Query(description="终态返回完整预览展示结果")] = False,
 ) -> WorkflowPreviewRunContract:
     """读取一条已保存的 WorkflowPreviewRun。"""
 
@@ -526,6 +567,15 @@ def get_workflow_preview_run(
         preview_run_id,
         visible_project_ids=principal.project_ids,
     )
+    if include_response_payload and preview_run.state == "succeeded":
+        storage = _require_dataset_storage(request)
+        key = f"workflows/runtime/preview-runs/{preview_run_id}/response.payload.json"
+        if storage.resolve(key).is_file():
+            payload = storage.read_json(key)
+            preview_run = replace(preview_run, outputs=payload["outputs"],
+                                  template_outputs=payload["template_outputs"], node_records=tuple(payload["node_records"]))
+        # 同步路由在请求线程内完成 JSON 编码，避免大预览结果阻塞 HTTP loop。
+        return Response(content=_build_preview_run_contract(preview_run).model_dump_json(), media_type="application/json")
     return _build_preview_run_contract(preview_run)
 
 

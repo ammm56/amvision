@@ -57,6 +57,7 @@ class WorkflowPreviewRunExecutionRequest:
     retain_node_records_enabled: bool = True
     return_sync_response_payload_enabled: bool = True
     target_node_id: str | None = None
+    owned_upload_root: str = ""
 
 
 class WorkflowPreviewRunManager:
@@ -73,6 +74,7 @@ class WorkflowPreviewRunManager:
         self.session_factory = session_factory
         self.service_event_bus = getattr(session_factory, "service_event_bus", None)
         self.dataset_storage = dataset_storage
+        self.execution_pool = None
         self._lock = Lock()
         self._event_locks: dict[str, Lock] = {}
         self._event_sequences: dict[str, int] = {}
@@ -150,6 +152,7 @@ class WorkflowPreviewRunManager:
             "preview.succeeded",
             "preview.failed",
             "preview.timed_out",
+            "preview.cancelled",
         }:
             self._release_event_state(preview_run_id)
         return event, persist_ms
@@ -284,6 +287,8 @@ class WorkflowPreviewRunManager:
     def close(self) -> None:
         """关闭仍在执行中的 Preview JSONL 追加句柄。"""
 
+        if self.execution_pool is not None:
+            self.execution_pool.close()
         with self._lock:
             event_streams = tuple(self._event_streams.values())
             self._event_streams.clear()

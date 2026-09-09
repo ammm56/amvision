@@ -6,6 +6,24 @@ namespace Amvar.Launcher.Desktop.Tests;
 
 public sealed class ViewPoliciesTests
 {
+    [Fact]
+    public void Checking_preserves_only_an_already_visible_workbench()
+    {
+        var view = new LauncherViewModel();
+        var state = new LauncherSnapshot { Application = ApplicationPhase.Active, Backend = BackendPhase.Checking };
+        view.Apply(state);
+        Assert.False(view.ShowBrowser);
+        view.Apply(state with { Backend = BackendPhase.Connected });
+        view.Apply(state);
+        Assert.True(view.ShowBrowser);
+        view.Apply(state with { Backend = BackendPhase.Unavailable });
+        Assert.False(view.ShowBrowser);
+        view.Apply(state);
+        Assert.False(view.ShowBrowser);
+        view.Apply(state with { Backend = BackendPhase.Connected });
+        Assert.True(view.ShowBrowser);
+    }
+
     [Theory]
     [InlineData("http://127.0.0.1:5600/workflows", true)]
     [InlineData("https://127.0.0.1:5600", false)]

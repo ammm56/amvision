@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Literal
 
 
-WorkflowPreviewRunState = Literal["created", "running", "succeeded", "failed", "timed_out"]
+WorkflowPreviewRunState = Literal["created", "running", "succeeded", "failed", "timed_out", "cancelled"]
 WorkflowManagedRuntimeState = Literal["stopped", "starting", "running", "stopping", "failed"]
 WorkflowAppRuntimeState = WorkflowManagedRuntimeState
 WorkflowTriggerRuntimeState = WorkflowManagedRuntimeState
@@ -47,8 +47,9 @@ WORKFLOW_PREVIEW_RUN_STATES: tuple[WorkflowPreviewRunState, ...] = (
     "succeeded",
     "failed",
     "timed_out",
+    "cancelled",
 )
-WORKFLOW_PREVIEW_RUN_TERMINAL_STATES = frozenset(("succeeded", "failed", "timed_out"))
+WORKFLOW_PREVIEW_RUN_TERMINAL_STATES = frozenset(("succeeded", "failed", "timed_out", "cancelled"))
 WORKFLOW_PREVIEW_RUN_DEFAULT_RETENTION_HOURS = 24
 WORKFLOW_PREVIEW_RUN_STORAGE_ROOT = "workflows/runtime/preview-runs"
 WORKFLOW_PREVIEW_RUN_CLEANUP_STAGING_ROOT = "workflows/runtime/cleanup-staging/preview-runs"

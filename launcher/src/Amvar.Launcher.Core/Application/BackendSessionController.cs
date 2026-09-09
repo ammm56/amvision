@@ -51,6 +51,7 @@ public sealed class BackendSessionController(IServiceProbe probe, IStackControll
         Action<BackendPhase, string?> report, CancellationToken token)
     {
         // 只观察；恢复唯一执行者是 Python Supervisor，外部服务始终不接管。
+        var consecutiveFailures = 0;
         while (true)
         {
             await Task.Delay(TimeSpan.FromSeconds(2), clock, token);
@@ -61,18 +62,24 @@ public sealed class BackendSessionController(IServiceProbe probe, IStackControll
                     var state = await stack.ObserveAsync(installation, token);
                     if (state.Phase != StackPhase.Running)
                     {
-                        report(state.Phase == StackPhase.Failed ? BackendPhase.Faulted : BackendPhase.Unavailable,
+                        consecutiveFailures = 0;
+                        report(state.Phase == StackPhase.Failed ? BackendPhase.Faulted :
+                            state.Phase == StackPhase.Degraded ? BackendPhase.Checking : BackendPhase.Unavailable,
                             state.Error ?? (state.Phase == StackPhase.Recovering ? "视觉服务正在恢复。" : "视觉服务暂不可用。"));
                         continue;
                     }
                 }
                 var result = await probe.ProbeLivenessAsync(token);
-                report(result.Kind == ProbeKind.Available ? BackendPhase.Connected : BackendPhase.Unavailable,
+                consecutiveFailures = result.Kind == ProbeKind.Available ? 0 : Math.Min(3, consecutiveFailures + 1);
+                report(result.Kind == ProbeKind.Available ? BackendPhase.Connected :
+                    consecutiveFailures < 3 ? BackendPhase.Checking : BackendPhase.Unavailable,
                     result.Kind == ProbeKind.Available ? null : result.Error ?? "视觉服务连接已中断。");
             }
             catch (Exception ex) when (ex is not OperationCanceledException || !token.IsCancellationRequested)
             {
-                report(BackendPhase.Unavailable, "无法读取视觉服务状态：" + ex.Message);
+                consecutiveFailures = Math.Min(3, consecutiveFailures + 1);
+                report(consecutiveFailures < 3 ? BackendPhase.Checking : BackendPhase.Unavailable,
+                    "无法读取视觉服务状态：" + ex.Message);
             }
         }
     }

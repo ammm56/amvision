@@ -40,7 +40,7 @@ export interface WorkflowPreviewRunCreateInput {
   fileUploads?: WorkflowPreviewFileUpload[]
   executionMetadata?: WorkflowJsonObject
   timeoutSeconds?: number | null
-  waitMode?: 'sync'
+  waitMode?: 'sync' | 'async'
   executionScope?: WorkflowPreviewExecutionScope
 }
 
@@ -173,7 +173,9 @@ export async function listWorkflowPreviewRuns(
 }
 
 export async function getWorkflowPreviewRun(previewRunId: string): Promise<WorkflowPreviewRun> {
-  return apiRequest<WorkflowPreviewRun>(`/workflows/preview-runs/${encodePathPart(previewRunId)}`)
+  return apiRequest<WorkflowPreviewRun>(`/workflows/preview-runs/${encodePathPart(previewRunId)}`, {
+    query: { include_response_payload: true },
+  })
 }
 
 export async function getWorkflowPreviewRunEvents(previewRunId: string, afterSequence?: number, limit?: number): Promise<WorkflowPreviewRunEvent[]> {
@@ -256,6 +258,10 @@ export async function restartWorkflowAppRuntime(workflowRuntimeId: string): Prom
 
 export async function getWorkflowAppRuntimeHealth(workflowRuntimeId: string): Promise<WorkflowAppRuntime> {
   return apiRequest<WorkflowAppRuntime>(`/workflows/app-runtimes/${encodePathPart(workflowRuntimeId)}/health`)
+}
+
+export async function cancelWorkflowPreviewRun(previewRunId: string): Promise<WorkflowPreviewRun> {
+  return apiRequest<WorkflowPreviewRun>(`/workflows/preview-runs/${encodePathPart(previewRunId)}/cancel`, { method: 'POST' })
 }
 
 export async function listWorkflowRuntimeRevisions(workflowRuntimeId: string): Promise<WorkflowRuntimeRevision[]> {

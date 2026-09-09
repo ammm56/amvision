@@ -76,7 +76,7 @@ def merge_preview_run_inline_metadata(
     """给 PreviewRun metadata 标记当前使用的直接执行模式。"""
 
     payload = dict(metadata)
-    payload["preview_execution_mode"] = "inline"
+    payload.setdefault("preview_execution_mode", "inline")
     if inline_duration_ms is not None:
         timings = payload.get("timings")
         timings_payload = dict(timings) if isinstance(timings, dict) else {}

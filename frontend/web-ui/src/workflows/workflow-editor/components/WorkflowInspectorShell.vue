@@ -98,7 +98,7 @@
         v-if="showAppContractPanel"
         :bindings="previewInputBindings"
         :states="previewInputState"
-        :blocking-messages="previewBlockingMessages"
+        :blocking-messages="lastPreviewRun && ['created', 'running'].includes(lastPreviewRun.state) ? [] : previewBlockingMessages"
         :image-ref-transport-kind-options="imageRefTransportKindOptions"
         :get-payload-type-id="getBindingPayloadTypeId"
         @add-value-field="emit('addPreviewValueField', $event)"

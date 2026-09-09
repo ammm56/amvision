@@ -103,7 +103,7 @@ export function useWorkflowResourceStream<TSnapshot>(
       onMessage: handleMessage,
       onStateChange: (state) => {
         streamState.value = state
-        if (state.connected && !state.stale) {
+        if (state.connected && !state.stale && options.kind !== 'preview-run') {
           stopPolling()
           return
         }

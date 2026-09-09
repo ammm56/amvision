@@ -16,17 +16,16 @@
 - /ws/v1/workflows/preview-runs/events
 - saved application 引用执行
 - inline application + template snapshot 执行
-- sync wait_mode
+- sync / async wait_mode
+- POST /api/v1/workflows/preview-runs/{preview_run_id}/cancel
 - application/node execution_scope
 
 ## 资源定位
 
 - WorkflowPreviewRun 用于节点编辑器里的快速试跑和联调。
-- 每次 create 请求都会先固定 application snapshot 和 template snapshot，再在 backend-service
-  当前进程复用已加载的 runtime registry 直接执行。
+- 每次 create 请求固定 application/template snapshot，再交给有界、常驻的 Preview 进程执行。HTTP 服务只负责接入、状态查询和资源管理。
 - preview run 是短期调试资源，不进入长期 runtime worker 的实例管理。
-- preview run 只支持 sync wait_mode；create 直接返回终态和当前执行的原始 outputs、
-  template_outputs、node_records，便于 editor 显示图片、gallery、table 和 JSON。
+- `sync` 保留原有同步返回行为；`async` 提交后返回运行记录，浏览器轮询或订阅同一个资源直到终态。长执行与 HTTP 存活探测分别计时。
 - `GET /api/v1/workflows/preview-runs/{preview_run_id}` 返回的是持久化记录视图；如果节点图里出现 inline base64 图片或 memory image-ref，资源返回会自动脱敏，不直接回显原始图片内容或 image_handle。
 
 ## 接口入口
@@ -50,14 +49,15 @@
 | 状态 | 说明 |
 | --- | --- |
 | created | 记录已创建，尚未开始执行 |
-| running | backend-service 正在直接执行固定 snapshot |
-| succeeded | 同步执行成功结束 |
+| running | Preview 进程正在准备或执行固定 snapshot |
+| succeeded | 执行成功结束 |
 | failed | 执行失败 |
-| timed_out | 同步等待超时 |
+| timed_out | 超过声明的执行期限 |
+| cancelled | 执行已取消并结束 |
 
 补充说明：
 
-- create 接口直接返回 succeeded、failed 或 timed_out。
+- sync create 返回终态；async create 返回运行记录。取消请求本身不代表执行已经结束。
 - `failed` 和 `timed_out` 不会变成部分成功；状态仍准确表达整次 Preview
   的终态。开启 node records 保留时，本次失败前已经完成的节点仍写入 `node_records`，
   用于恢复调试图、表格和 JSON。
@@ -107,8 +107,8 @@
 - template：可选，inline WorkflowGraphTemplate snapshot
 - input_bindings：可选，按 application input binding_id 组织的输入 payload
 - execution_metadata：可选，执行元数据；接口层会补写 created_by
-- timeout_seconds：可选；未提供且存在 execution policy 时取 policy.default_timeout_seconds，否则默认 30
-- wait_mode：可选；只支持 sync，默认 sync
+- timeout_seconds：可选；存在 execution policy 时按既有策略解析，否则 sync 默认 120 秒，async 默认 `workflow_runtime.preview_default_timeout_seconds`（1800 秒）。可显式设置更长的执行预算；健康检查不会采用该值。
+- wait_mode：可选；支持 sync、async，默认 sync，编辑器使用 async
 - execution_scope：可选；默认 `{"kind":"application"}`。节点级编辑调试使用
   `{"kind":"node","target_node_id":"<node-id>"}`。
 
@@ -238,6 +238,14 @@ Preview 使用与正式 Runtime 相同的已注册 payload。前端为 `value.v1
 - 返回字段与 create 接口一致
 - 典型用途：在 create 请求执行期间回查 running，或在返回后再次读取 outputs、node_records 和 error
 - 详情接口返回持久化脱敏副本；如果 sync create 响应里出现原始 base64 或 memory image-ref，这里会改成 redacted 摘要
+- `include_response_payload=true`：成功后读取异步执行保存的完整展示结果，保留长数组、文本和预览图。结果随 Preview 目录一起清理，鉴权与项目可见性要求不变。运行期间仍返回摘要，旧记录无完整结果文件时仍返回原有视图。
+
+## POST /api/v1/workflows/preview-runs/{preview_run_id}/cancel
+
+- 需要 `workflows:write` 和目标项目访问权限。返回当前记录；取消中保持 running，查询到 cancelled/timed_out/failed/succeeded 才表示任务结束。
+- 协作取消优先；不响应取消的执行进程在 5 秒宽限后停止。Node Pack 使用声明的 timeout 和 kill grace。确认进程死亡前不回收输入，不复用槽位。
+- 同一个应用最多一个活动 Preview；默认最多两个 Preview 进程。满载返回 409，不建立无界等待队列。此限制不改变正式 Runtime 或 Trigger 的并发配置。
+- 服务进程退出不会重放预览或外部副作用；查询依据服务与子进程的 PID/创建时间确认失去所有者后，将遗留运行记录收敛为 failed。身份未知时不推断任务死亡。
 
 ## GET /api/v1/workflows/preview-runs
 
@@ -245,7 +253,7 @@ Preview 使用与正式 Runtime 相同的已注册 payload。前端为 `value.v1
 - 必填查询参数：
   - project_id
 - 可选查询参数：
-  - state：按状态过滤，支持 created、running、succeeded、failed、timed_out
+  - state：按状态过滤，支持 created、running、succeeded、failed、timed_out、cancelled
   - created_from：按 created_at 下界过滤，使用 ISO8601 文本
   - created_to：按 created_at 上界过滤，使用 ISO8601 文本
 - 摘要字段：

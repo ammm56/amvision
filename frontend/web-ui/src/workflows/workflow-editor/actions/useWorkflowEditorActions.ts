@@ -1,10 +1,11 @@
 import { ref } from 'vue'
+import { useSessionStore } from '@/app/stores/session.store'
 import { translate } from '@/platform/i18n'
 import { ApiError } from '@/shared/api/error'
 import { validateWorkflowApplication } from '../services/workflow-application.service'
 import { saveWorkflowApp, type WorkflowAppSaveResult } from '../services/workflow-app.service'
 import { useWorkflowResourceStream } from '../composables/useWorkflowResourceStream'
-import { createWorkflowPreviewRun, getWorkflowPreviewRun } from '../services/workflow-runtime.service'
+import { createWorkflowPreviewRun, getWorkflowPreviewRun, cancelWorkflowPreviewRun } from '../services/workflow-runtime.service'
 import type { WorkflowPreviewExecutionScope } from '../services/workflow-runtime.service'
 import type { WorkflowPreviewFileUpload } from '../preview/useWorkflowPreviewInputs'
 import { validateWorkflowTemplate } from '../services/workflow-template.service'
@@ -21,8 +22,6 @@ export interface WorkflowPreviewRunActionInput extends WorkflowSaveActionInput {
   fileUploads?: WorkflowPreviewFileUpload[]
   executionScope?: WorkflowPreviewExecutionScope
 }
-
-const DEFAULT_WORKFLOW_PREVIEW_TIMEOUT_SECONDS = 120
 
 function readErrorMessage(error: unknown, fallback: string): string {
   // 校验接口将节点、端口和绑定的失败原因放在 details.reason，不能只显示总括消息。
@@ -55,8 +54,22 @@ function shouldRetainPreviewNodeRecords(
 }
 
 export function useWorkflowEditorActions() {
+  const session = useSessionStore()
+  let previewStorageKey = ''
+  function storageKey(projectId: string, applicationId: string): string {
+    return session.currentUser?.principal_id
+      ? `amvision.preview.v1:${JSON.stringify([session.currentUser.principal_id, projectId, applicationId])}` : ''
+  }
+  function rememberPreview(run: WorkflowPreviewRun): void {
+    if (!previewStorageKey) return
+    try {
+      if (isTerminalPreviewRun(run)) sessionStorage.removeItem(previewStorageKey)
+      else sessionStorage.setItem(previewStorageKey, run.preview_run_id)
+    } catch { /* 禁用浏览器存储时仍允许预览和按 ID 查询。 */ }
+  }
   const saving = ref(false)
   const previewing = ref(false)
+  const previewCancelling = ref(false)
   let previewGeneration = 0
   const errorMessage = ref<string | null>(null)
   const statusMessage = ref<string | null>(null)
@@ -66,6 +79,9 @@ export function useWorkflowEditorActions() {
     getSnapshot: getWorkflowPreviewRun,
     onSnapshot: (previewRun) => {
       lastPreviewRun.value = previewRun
+      rememberPreview(previewRun)
+      previewing.value = !isTerminalPreviewRun(previewRun)
+      if (!previewing.value) previewCancelling.value = false
     },
     isTerminal: isTerminalPreviewRun,
   })
@@ -95,6 +111,7 @@ export function useWorkflowEditorActions() {
       return null
     }
     const generation = ++previewGeneration
+    previewStorageKey = storageKey(input.projectId, input.application.application_id)
     previewing.value = true
     errorMessage.value = null
     statusMessage.value = null
@@ -109,17 +126,16 @@ export function useWorkflowEditorActions() {
         fileUploads: input.fileUploads ?? [],
         executionMetadata: {
           source: 'workflow-graph-workbench',
-          preview_execution_mode: 'inline',
           debug_image_panels_enabled: hasDebugImagePanelNode(input.template),
           retain_node_records_enabled: shouldRetainPreviewNodeRecords(input.template, input.executionScope),
         },
-        waitMode: 'sync',
-        timeoutSeconds: DEFAULT_WORKFLOW_PREVIEW_TIMEOUT_SECONDS,
+        waitMode: 'async',
         application: input.application,
         executionScope: input.executionScope,
       })
       if (generation !== previewGeneration) return null
       lastPreviewRun.value = previewRun
+      rememberPreview(previewRun)
       if (!isTerminalPreviewRun(previewRun)) {
         previewRunStream.start(previewRun.preview_run_id)
       }
@@ -129,7 +145,50 @@ export function useWorkflowEditorActions() {
       if (generation === previewGeneration) errorMessage.value = readErrorMessage(error, translate('workflowEditor.feedback.previewRunFailed'))
       return null
     } finally {
-      if (generation === previewGeneration) previewing.value = false
+      if (generation === previewGeneration) {
+        previewing.value = Boolean(lastPreviewRun.value && !isTerminalPreviewRun(lastPreviewRun.value))
+      }
+    }
+  }
+
+  async function cancelPreviewRun(): Promise<void> {
+    if (!lastPreviewRun.value || isTerminalPreviewRun(lastPreviewRun.value) || !previewing.value || previewCancelling.value) return
+    const generation = previewGeneration
+    previewCancelling.value = true
+    try {
+      await cancelWorkflowPreviewRun(lastPreviewRun.value.preview_run_id)
+      if (generation === previewGeneration) await previewRunStream.refreshNow()
+    } catch (error) {
+      if (generation === previewGeneration) {
+        previewCancelling.value = false
+        errorMessage.value = readErrorMessage(error, translate('workflowEditor.feedback.previewRunFailed'))
+      }
+    }
+  }
+
+  async function restorePreviewRun(projectId: string, applicationId: string): Promise<void> {
+    if (previewing.value || !projectId || !applicationId) return
+    const key = storageKey(projectId, applicationId)
+    if (!key) return
+    let id: string | null
+    try { id = sessionStorage.getItem(key) } catch { return }
+    if (!id) return
+    const generation = ++previewGeneration
+    previewStorageKey = key
+    try {
+      const run = await getWorkflowPreviewRun(id)
+      if (generation !== previewGeneration || run.project_id !== projectId || run.application_id !== applicationId) return
+      lastPreviewRun.value = run
+      rememberPreview(run)
+      previewing.value = !isTerminalPreviewRun(run)
+      if (previewing.value) previewRunStream.start(run.preview_run_id)
+    } catch (error) {
+      if (generation === previewGeneration) {
+        if (error instanceof ApiError && [403, 404].includes(error.status)) {
+          try { sessionStorage.removeItem(key) } catch { /* 存储不可用不影响页面。 */ }
+        }
+        errorMessage.value = readErrorMessage(error, translate('workflowEditor.feedback.previewRunFailed'))
+      }
     }
   }
 
@@ -149,6 +208,7 @@ export function useWorkflowEditorActions() {
   function resetPreviewRun(): void {
     previewGeneration += 1
     previewing.value = false
+    previewCancelling.value = false
     previewRunStream.stop()
     lastPreviewRun.value = null
   }
@@ -156,6 +216,9 @@ export function useWorkflowEditorActions() {
   return {
     saving,
     previewing,
+    previewCancelling,
+    cancelPreviewRun,
+    restorePreviewRun,
     errorMessage,
     statusMessage,
     lastPreviewRun,

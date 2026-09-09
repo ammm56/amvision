@@ -384,7 +384,15 @@ class BackendServiceWorkflowRuntimeConfig(BaseModel):
     preview_model_session_scope_limit: int = Field(
         default=1,
         gt=0,
-        description="API 进程最多保留的编辑态 Preview 模型 scope 数量",
+        description="每个 Preview 执行进程最多保留的模型 scope 数量",
+    )
+    preview_worker_count: int = Field(
+        default=2, ge=1, le=8,
+        description="编辑态 Preview 常驻执行进程上限；容量满立即拒绝，不影响正式 Runtime",
+    )
+    preview_default_timeout_seconds: int = Field(
+        default=1800, ge=1, le=86400,
+        description="异步编辑态 Preview 默认执行期限；不作为 HTTP 存活判断依据",
     )
     local_shared_trigger_executor_worker_count: int = Field(
         default=16,

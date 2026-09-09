@@ -20,7 +20,9 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
         HasProblem = snapshot.Problem != null || snapshot.WaitExpired;
         CanRetry = snapshot.Application is ApplicationPhase.Active or ApplicationPhase.ExitBlocked && HasProblem;
         Busy = !HasProblem && snapshot.Backend != BackendPhase.Connected;
-        ShowBrowser = snapshot.Application == ApplicationPhase.Active && snapshot.Backend == BackendPhase.Connected;
+        // 待确认只保留已显示的工作台，不能绕过首次导航或确认故障后的恢复。
+        ShowBrowser = snapshot.Application == ApplicationPhase.Active &&
+            (snapshot.Backend == BackendPhase.Connected || snapshot.Backend == BackendPhase.Checking && ShowBrowser);
         Heading = snapshot.Application switch
         {
             ApplicationPhase.ExitRequested => "正在退出",
@@ -29,6 +31,7 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
             _ => snapshot.Backend switch
             {
                 BackendPhase.Connected => "工作台已就绪",
+                BackendPhase.Checking => "正在确认视觉服务状态",
                 BackendPhase.Starting => snapshot.WaitExpired ? "服务仍在启动" : "正在启动视觉服务",
                 BackendPhase.Faulted or BackendPhase.Unavailable => "暂时无法打开工作台",
                 _ => "正在准备工作台"

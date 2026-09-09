@@ -30,6 +30,7 @@ class WorkflowPreviewRunCreateRequest:
     wait_mode: str = "sync"
     execution_scope_kind: str = "application"
     target_node_id: str | None = None
+    owned_upload_root: str = ""
 
 
 def normalize_preview_run_create_request(
@@ -43,9 +44,9 @@ def normalize_preview_run_create_request(
     if request.timeout_seconds is not None and request.timeout_seconds <= 0:
         raise InvalidRequestError("timeout_seconds 必须大于 0")
     wait_mode = request.wait_mode.strip().lower()
-    if wait_mode != "sync":
+    if wait_mode not in {"sync", "async"}:
         raise InvalidRequestError(
-            "Preview 只支持 sync wait_mode",
+            "Preview wait_mode 必须是 sync 或 async",
             details={"wait_mode": request.wait_mode},
         )
     execution_scope_kind = request.execution_scope_kind.strip().lower()
@@ -73,6 +74,7 @@ def normalize_preview_run_create_request(
         wait_mode=wait_mode,
         execution_scope_kind=execution_scope_kind,
         target_node_id=target_node_id,
+        owned_upload_root=request.owned_upload_root,
     )
 
 

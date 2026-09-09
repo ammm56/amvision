@@ -784,6 +784,9 @@ class BackendServiceBootstrap(
             session_factory=session_factory,
             dataset_storage=dataset_storage,
         )
+        from backend.service.application.workflows.preview_execution_pool import PreviewExecutionPool
+        workflow_preview_run_manager.execution_pool = PreviewExecutionPool(
+            settings=settings, worker_manager=workflow_runtime_worker_manager)
         trigger_workflow_runtime_service = WorkflowRuntimeService(
             settings=settings,
             session_factory=session_factory,
@@ -1064,11 +1067,11 @@ class BackendServiceBootstrap(
         if runtime.workflow_trigger_mailbox_supervisor is not None:
             runtime.workflow_trigger_mailbox_supervisor.stop()
         runtime.deployment_runtime_reconciler.stop()
+        runtime.workflow_preview_run_manager.close()
         if strict:
             runtime.workflow_runtime_worker_manager.stop(graceful_only=True)
         else:
             runtime.workflow_runtime_worker_manager.stop()
-        runtime.workflow_preview_run_manager.close()
         model_session_manager = (
             runtime.workflow_service_node_runtime_context.workflow_model_session_manager
         )

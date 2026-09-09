@@ -85,6 +85,9 @@
           <Play :size="16" />
           {{ t('workflowEditor.actions.previewRun') }}
         </Button>
+        <Button v-if="previewing" variant="secondary" :disabled="!previewCancellable || previewCancelling" @click="emit('cancelPreview')">
+          {{ previewCancelling ? t('workflowEditor.actions.previewCancelling') : t('common.cancel') }}
+        </Button>
         <Button variant="secondary" :disabled="saveDisabled" :loading="saving" @click="emit('save')">
           <Save :size="16" />
           {{ t('workflowEditor.actions.saveWorkflowApp') }}
@@ -134,6 +137,8 @@ const props = defineProps<{
   loading: boolean
   previewDisabled: boolean
   previewing: boolean
+  previewCancellable?: boolean
+  previewCancelling?: boolean
   publishDisabled: boolean
   publishing: boolean
   saveDisabled: boolean
@@ -152,6 +157,7 @@ const emit = defineEmits<{
   toggleGroupCreateMode: []
   configureAppMode: []
   preview: []
+  cancelPreview: []
   publish: []
   save: []
   toggleInspector: []

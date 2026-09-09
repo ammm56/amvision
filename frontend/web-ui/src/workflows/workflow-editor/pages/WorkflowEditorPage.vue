@@ -25,6 +25,8 @@
         @history="openVersionHistory"
         :preview-disabled="previewDisabled"
         :previewing="previewOperationRunning"
+        :preview-cancellable="Boolean(lastPreviewRun && ['created', 'running'].includes(lastPreviewRun.state) && previewing)"
+        :preview-cancelling="previewCancelling"
         :publish-disabled="publishDisabled"
         :publishing="publishingVersion"
         :save-disabled="saveDisabled"
@@ -40,6 +42,7 @@
         @configure-app-mode="appModeConfigDialogOpen = true"
         @toggle-inspector="toggleInspector"
         @preview="requestPreviewRun"
+        @cancel-preview="cancelPreviewRun"
         @publish="openPublishDialog"
         @save="saveCurrentWorkflowApp"
       />
@@ -437,6 +440,9 @@ const projectStore = useProjectStore()
 const {
   saving,
   previewing,
+  previewCancelling,
+  cancelPreviewRun,
+  restorePreviewRun,
   errorMessage,
   statusMessage,
   lastPreviewRun,
@@ -1218,6 +1224,9 @@ const {
 const editorTitle = computed(() => isNewApp.value ? newWorkflowAppDraft.value.displayName || t('workflowEditor.editor.newTitle') : workflowApp.value?.applicationDocument.application.display_name || routeApplicationId.value)
 const editorTitleEditable = computed(() => !isNewApp.value && Boolean(workflowApp.value?.applicationDocument.application_id))
 const previewOperationRunning = computed(() => previewing.value || imageInteractionApplying.value)
+watch([() => workflowApp.value?.applicationDocument.application_id, selectedProjectId], ([applicationId, projectId]) => {
+  if (applicationId && projectId) void restorePreviewRun(projectId, applicationId)
+})
 const saveDisabled = computed(() => documentBusy.value || !workflowApp.value || Boolean(newWorkflowAppSaveBlocker.value))
 const previewDisabled = computed(() => documentBusy.value || previewOperationRunning.value || !workflowApp.value || isNewApp.value || Boolean(newWorkflowAppSaveBlocker.value))
 const publishDisabled = computed(() => publishingVersion.value || saveDisabled.value)
