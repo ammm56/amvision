@@ -592,17 +592,7 @@ class WorkflowAppVersionService:
             version_dir = str(
                 PurePosixPath(version.application_snapshot_object_key).parent
             )
-            staging = stage_workflow_resource_storage(
-                dataset_storage=self.dataset_storage,
-                operation_id=f"workflow-app-version-delete-{uuid.uuid4().hex}",
-                resource_kind="workflow-app-version",
-                resource_id=workflow_app_version_id,
-                source_paths=(version_dir,),
-                metadata={
-                    "project_id": project_id,
-                    "application_id": application_id,
-                },
-            )
+            staging = None
             try:
                 with self._open_unit_of_work() as unit_of_work:
                     # 与 Runtime 创建/切版复用同一版本行写入顺序：先提交的一方
@@ -622,16 +612,30 @@ class WorkflowAppVersionService:
                                 **references,
                             },
                         )
+                    # 引用检查通过且版本行已被 fence 后才能移走快照，避免
+                    # 最终拒绝的删除请求让正在连接或恢复的 Runtime 短暂读不到文件。
+                    staging = stage_workflow_resource_storage(
+                        dataset_storage=self.dataset_storage,
+                        operation_id=f"workflow-app-version-delete-{uuid.uuid4().hex}",
+                        resource_kind="workflow-app-version",
+                        resource_id=workflow_app_version_id,
+                        source_paths=(version_dir,),
+                        metadata={
+                            "project_id": project_id,
+                            "application_id": application_id,
+                        },
+                    )
                     if not unit_of_work.workflow_runtime.delete_workflow_app_version_record(
                         workflow_app_version_id
                     ):
                         raise ResourceConflictError("版本当前不能删除")
                     unit_of_work.commit()
             except Exception:
-                restore_staged_workflow_resource_storage(
-                    dataset_storage=self.dataset_storage,
-                    staging=staging,
-                )
+                if staging is not None:
+                    restore_staged_workflow_resource_storage(
+                        dataset_storage=self.dataset_storage,
+                        staging=staging,
+                    )
                 raise
             finalize_staged_workflow_resource_storage(
                 dataset_storage=self.dataset_storage,

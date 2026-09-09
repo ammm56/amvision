@@ -312,8 +312,21 @@ def test_versions_and_terminal_runs_do_not_block_physical_application_deletion(
         factory.engine.dispose()
 
 
-def test_version_history_delete_protects_runtime_revisions(tmp_path: Path) -> None:
-    """停止的 Runtime 仍有 revision，删除必须回滚，归档版本也受保护。"""
+def test_version_history_delete_protects_runtime_revisions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """有 Runtime 引用时直接拒绝，不能先移走快照再恢复造成读取窗口。"""
+    from backend.service.application.workflows import app_version_service
+
+    staged_versions = []
+    original_stage = app_version_service.stage_workflow_resource_storage
+
+    def track_stage(**kwargs):
+        """记录是否曾移走被 Runtime 依赖的发布快照。"""
+        staged_versions.append(kwargs["resource_id"])
+        return original_stage(**kwargs)
+
+    monkeypatch.setattr(app_version_service, "stage_workflow_resource_storage", track_stage)
     client, factory, storage = _create_runtime_api_client(
         tmp_path,
         database_name="history-references.db",
@@ -358,6 +371,7 @@ def test_version_history_delete_protects_runtime_revisions(tmp_path: Path) -> No
                 assert response.status_code == 409, response.text
                 assert response.json()["error"]["details"]["runtime_revisions"] == 1
                 assert client.get(url, headers=headers).json()["state"] == state
+                assert staged_versions == [], "被引用版本的快照不得出现短暂不可读窗口"
     finally:
         factory.engine.dispose()
 
