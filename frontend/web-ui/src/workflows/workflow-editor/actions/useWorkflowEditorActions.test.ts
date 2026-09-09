@@ -1,5 +1,6 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { flushPromises } from '@vue/test-utils'
 
 import type { WorkflowPreviewRunActionInput } from './useWorkflowEditorActions'
 import { useWorkflowEditorActions } from './useWorkflowEditorActions'
@@ -37,6 +38,9 @@ vi.mock('../services/workflow-runtime.service', () => ({
 }))
 
 vi.mock('../composables/useWorkflowResourceStream', () => ({ useWorkflowResourceStream: mocks.stream }))
+vi.mock('../preview/previewDisplayResults', () => ({ loadPreviewDisplayResult: async (run: unknown) => ({
+  run: await mocks.getWorkflowPreviewRun((run as { preview_run_id: string }).preview_run_id), errors: [],
+}) }))
 
 vi.mock('../services/workflow-app.service', () => ({
   saveWorkflowApp: mocks.saveWorkflowApp,
@@ -53,6 +57,7 @@ describe('useWorkflowEditorActions Preview guard', () => {
       preview_run_id: 'preview-run-1',
       state: 'succeeded',
     })
+    mocks.getWorkflowPreviewRun.mockResolvedValue({ preview_run_id: 'preview-run-1', state: 'succeeded' })
   })
 
   it('rejects a second Preview before validation completes', async () => {
@@ -151,9 +156,11 @@ describe('useWorkflowEditorActions Preview guard', () => {
     await actions.restorePreviewRun('other-project', 'app-1')
     expect(mocks.getWorkflowPreviewRun).not.toHaveBeenCalled()
     await actions.restorePreviewRun('project-1', 'app-1')
-    expect(mocks.getWorkflowPreviewRun).toHaveBeenCalledWith('preview-long')
+    expect(mocks.getWorkflowPreviewRun).toHaveBeenCalledWith('preview-long', false)
     expect(actions.previewing.value).toBe(true)
+    mocks.getWorkflowPreviewRun.mockResolvedValue({ ...running, state: 'succeeded' })
     mocks.stream.mock.calls[0]![0].onSnapshot({ ...running, state: 'succeeded' })
+    await flushPromises()
     expect(sessionStorage.length).toBe(0)
   })
 })

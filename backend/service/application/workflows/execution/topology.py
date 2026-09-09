@@ -146,6 +146,13 @@ def build_node_execution_scope_template(
         template=template,
         target_node_id=target_node_id,
     )
+    # 完整图先校验并行配对；目标位于分支内部时，Start 在此 scope 中仅转发输入。
+    # 不补跑其他分支，也不把缺少 End 的非法完整图当作合法图。
+    from backend.service.application.workflows.execution.parallel import build_parallel_execution_plans
+    parallel_plans = build_parallel_execution_plans(
+        template=template, topological_order=build_topological_node_order(template=template))
+    open_parallel_starts = [plan.start_node_id for plan in parallel_plans.values()
+                            if plan.start_node_id in scoped_node_ids and plan.end_node_id not in scoped_node_ids]
     scoped_groups = []
     for group in template.groups:
         member_node_ids = tuple(
@@ -188,6 +195,7 @@ def build_node_execution_scope_template(
                 "preview_execution_scope": {
                     "kind": "node",
                     "target_node_id": target_node_id,
+                    "open_parallel_start_node_ids": open_parallel_starts,
                 },
             },
         }

@@ -18,7 +18,7 @@
         :title-saving="editorTitleSaving"
         :title-editable="editorTitleEditable"
         :runtime-state="workflowApp?.primaryRuntime?.observed_state ?? null"
-        :status-message="toolbarStatusMessage"
+        :status-message="previewDisplayState === 'loading' ? t('workflowEditor.feedback.previewDisplayLoading') : toolbarStatusMessage"
         :document-state="documentState"
         :loading="documentBusy"
         :history-disabled="isNewApp || documentBusy || !workflowApp"
@@ -47,7 +47,12 @@
         @save="saveCurrentWorkflowApp"
       />
 
-      <InlineError v-if="errorMessage" class="workflow-graph-error" :message="errorMessage" />
+      <div v-if="errorMessage || previewQueryError || previewDisplayError" class="workflow-graph-error">
+        <InlineError :message="errorMessage || previewQueryError || previewDisplayError || ''" />
+        <Button v-if="previewQueryError || previewDisplayError" size="sm" :loading="previewDisplayState === 'loading'" @click="retryPreviewResult">
+          {{ t('workflowEditor.feedback.previewDisplayRetry') }}
+        </Button>
+      </div>
 
       <div class="workflow-graph-world" :style="worldTransformStyle">
         <WorkflowGraphLinksLayer
@@ -328,6 +333,7 @@ import { usePreferencesStore } from '@/app/stores/preferences.store'
 import { useProjectStore } from '@/app/stores/project.store'
 import type { SupportedLocale } from '@/platform/i18n'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
+import Button from '@/shared/ui/components/Button.vue'
 import WorkflowAppModeConfigDialog from '../components/WorkflowAppModeConfigDialog.vue'
 import WorkflowPublishDialog from '../components/WorkflowPublishDialog.vue'
 import WorkflowDeploymentInstancePickerDialog from '../components/WorkflowDeploymentInstancePickerDialog.vue'
@@ -443,6 +449,11 @@ const {
   previewCancelling,
   cancelPreviewRun,
   restorePreviewRun,
+  retryPreviewResult,
+  previewQueryError,
+  previewDisplayError,
+  previewDisplayState,
+  setPreviewFeedback,
   errorMessage,
   statusMessage,
   lastPreviewRun,
@@ -645,6 +656,7 @@ const {
   activePreviewTable,
   activePreviewJson,
   refreshPreviewNodeDisplays,
+  cancelPendingDisplayRefresh,
   revokePreviewImageObjectUrls,
   getPreviewNodeDisplay,
   readPreviewNodeDisplayTooltip,
@@ -1224,8 +1236,8 @@ const {
 const editorTitle = computed(() => isNewApp.value ? newWorkflowAppDraft.value.displayName || t('workflowEditor.editor.newTitle') : workflowApp.value?.applicationDocument.application.display_name || routeApplicationId.value)
 const editorTitleEditable = computed(() => !isNewApp.value && Boolean(workflowApp.value?.applicationDocument.application_id))
 const previewOperationRunning = computed(() => previewing.value || imageInteractionApplying.value)
-watch([() => workflowApp.value?.applicationDocument.application_id, selectedProjectId], ([applicationId, projectId]) => {
-  if (applicationId && projectId) void restorePreviewRun(projectId, applicationId)
+watch([() => workflowApp.value?.applicationDocument.application_id, selectedProjectId, () => route.query.preview_run_id], ([applicationId, projectId, previewRunId]) => {
+  if (applicationId && projectId) void restorePreviewRun(projectId, applicationId, typeof previewRunId === 'string' ? previewRunId : undefined)
 })
 const saveDisabled = computed(() => documentBusy.value || !workflowApp.value || Boolean(newWorkflowAppSaveBlocker.value))
 const previewDisabled = computed(() => documentBusy.value || previewOperationRunning.value || !workflowApp.value || isNewApp.value || Boolean(newWorkflowAppSaveBlocker.value))
@@ -1529,6 +1541,7 @@ const {
   setActionError,
   setActionStatus,
 })
+setPreviewFeedback(applyPreviewRunFeedback, revokePreviewImageObjectUrls, cancelPendingDisplayRefresh)
 const previewInputBindings = computed(() => appInputBindings.value)
 const previewAlternativeImageBindingIds = computed(() => {
   const metadata = workflowApp.value?.applicationDocument.application.metadata ?? {}

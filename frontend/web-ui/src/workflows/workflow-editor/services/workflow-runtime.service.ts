@@ -172,9 +172,9 @@ export async function listWorkflowPreviewRuns(
   return { items: payload, pagination: parsePaginationHeaders(headers) }
 }
 
-export async function getWorkflowPreviewRun(previewRunId: string): Promise<WorkflowPreviewRun> {
+export async function getWorkflowPreviewRun(previewRunId: string, includeResponsePayload = true): Promise<WorkflowPreviewRun> {
   return apiRequest<WorkflowPreviewRun>(`/workflows/preview-runs/${encodePathPart(previewRunId)}`, {
-    query: { include_response_payload: true },
+    query: { include_response_payload: includeResponsePayload },
   })
 }
 

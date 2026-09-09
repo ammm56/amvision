@@ -10,6 +10,7 @@ export interface PreviewDisplayContext {
   preview_run_id?: string
   signal?: AbortSignal
   readonly?: boolean
+  scheduleImageRead?: <T>(read: () => Promise<T>) => Promise<T>
 }
 
 export interface PreviewImageCircleOverlay {
@@ -101,6 +102,7 @@ export interface PreviewImageInteractionApplyEvent {
 }
 
 export interface PreviewViewerImage {
+  loadSource?: () => Promise<string | null>
   nodeId: string
   title: string
   src: string | null
@@ -158,6 +160,7 @@ interface PreviewNodeOutput {
 export interface PreviewNodeDisplayRefreshOptions {
   reopenImageViewerNodeId?: string | null
   keyByOutput?: boolean
+  isCurrent?: () => boolean
 }
 
 interface PreviewImageObjectUrlRevokeOptions {
@@ -209,10 +212,15 @@ export function useWorkflowPreviewDisplays() {
     outputs: PreviewNodeOutput[],
     options: PreviewNodeDisplayRefreshOptions = {},
   ): Promise<void> {
+    if (options.isCurrent?.() === false) return
     const reopenImageViewerNodeId = readDisplayText(options.reopenImageViewerNodeId)
-    revokePreviewImageObjectUrls({ closeImageViewer: !reopenImageViewerNodeId })
+    const preservedViewer = reopenImageViewerNodeId && activeImageViewer.value?.nodeId === reopenImageViewerNodeId
+      ? activeImageViewer.value : null
+    // 新图就绪前保留查看器仍在使用的 URL，避免重跑期间显示失效图片。
+    cancelPendingDisplayRefresh()
+    if (!preservedViewer) revokePreviewImageObjectUrls()
     imageRequestController = new AbortController()
-    const displayContext = { ...context, signal: imageRequestController.signal }
+    const displayContext = { ...context, signal: imageRequestController.signal, scheduleImageRead: createImageReadQueue(4) }
     const generation = displayGeneration
     const nextUrls: string[] = []
     const nextDisplays: Record<string, PreviewNodeDisplay> = {}
@@ -221,10 +229,11 @@ export function useWorkflowPreviewDisplays() {
         buildPreviewNodeDisplay(displayContext, displayOutput, (url) => nextUrls.push(url))
       )),
     )
-    if (generation !== displayGeneration) {
+    if (generation !== displayGeneration || options.isCurrent?.() === false) {
       nextUrls.forEach((url) => URL.revokeObjectURL(url))
       return
     }
+    previewImageObjectUrls.forEach((url) => URL.revokeObjectURL(url))
     previewImageObjectUrls = nextUrls
     for (const previewDisplay of previewDisplays) {
       if (previewDisplay) {
@@ -233,9 +242,10 @@ export function useWorkflowPreviewDisplays() {
       }
     }
     previewNodeDisplays.value = nextDisplays
-    if (reopenImageViewerNodeId) {
+    if (preservedViewer && activeImageViewer.value === preservedViewer) {
       const refreshedImage = nextDisplays[reopenImageViewerNodeId]?.image ?? null
-      activeImageViewer.value = refreshedImage?.src ? refreshedImage : null
+      if (refreshedImage?.src) openImageViewer(refreshedImage)
+      else activeImageViewer.value = null
     }
   }
 
@@ -297,6 +307,11 @@ export function useWorkflowPreviewDisplays() {
   function openImageViewer(image: PreviewViewerImage | null): void {
     if (!image?.src) return
     activeImageViewer.value = image
+    const viewer = activeImageViewer.value
+    const generation = displayGeneration
+    if (image.loadSource) void image.loadSource().then((source) => {
+      if (source && generation === displayGeneration && activeImageViewer.value === viewer) viewer.sourceSrc = source
+    })
   }
 
   function synchronizePreviewImageInteractionParameters(
@@ -635,7 +650,19 @@ async function buildPreviewViewerImage(
   const displayPayload = isPreviewJsonObject(imagePayload.display_image) ? imagePayload.display_image : imagePayload
   const sourcePayload = isPreviewJsonObject(imagePayload.source_image) ? imagePayload.source_image : imagePayload
   const displayImage = await resolvePreviewImagePayload(previewRun, displayPayload, registerObjectUrl)
-  const sourceImage = sourcePayload === displayPayload ? displayImage : await resolvePreviewImagePayload(previewRun, sourcePayload, registerObjectUrl)
+  // 节点缩略图无需读取原图；仅在用户打开查看器后读取，坐标仍始终使用原图尺寸。
+  const sourceImage = sourcePayload === displayPayload ? displayImage : {
+    src: null, width: readDisplayNumber(sourcePayload.width), height: readDisplayNumber(sourcePayload.height),
+    mediaType: readDisplayText(sourcePayload.media_type), objectKey: readDisplayText(sourcePayload.object_key) || null,
+  }
+  let sourceRead: Promise<string | null> | null = null
+  const loadSource = sourcePayload === displayPayload ? undefined : () => {
+    sourceRead ??= resolvePreviewImagePayload(previewRun, sourcePayload, registerObjectUrl).then((image) => {
+      if (!image.src) sourceRead = null
+      return image.src
+    })
+    return sourceRead
+  }
   const sourceWidth = readDisplayNumber(imagePayload.source_width)
     ?? sourceImage.width
     ?? readDisplayNumber(imagePayload.width)
@@ -661,6 +688,7 @@ async function buildPreviewViewerImage(
   }
   return {
     nodeId,
+    loadSource,
     title,
     src: displayImage.src,
     displaySrc: displayImage.src,
@@ -726,7 +754,8 @@ async function resolveStoragePreviewImageSrc(
 ): Promise<string | null> {
   if (!objectKey) return null
   try {
-    const blob = await readPreviewImageBlob(previewRun, objectKey)
+    const read = () => previewRun.signal?.aborted ? Promise.resolve(null) : readPreviewImageBlob(previewRun, objectKey)
+    const blob = await (previewRun.scheduleImageRead ? previewRun.scheduleImageRead(read) : read())
     if (!blob) return null
     const objectUrl = URL.createObjectURL(blob)
     registerObjectUrl(objectUrl)
@@ -747,6 +776,21 @@ async function readPreviewImageBlob(previewRun: PreviewDisplayContext, objectKey
     return readProjectObjectContentBlob(previewRun.project_id, objectKey, previewRun.signal)
   }
   return null
+}
+
+/** 每次显示刷新共享读取队列，图库和 Mask 也计入并发上限。 */
+function createImageReadQueue(limit: number) {
+  let active = 0
+  const waiting: Array<() => void> = []
+  return async <T>(read: () => Promise<T>): Promise<T> => {
+    if (active >= limit) await new Promise<void>((resolve) => waiting.push(resolve))
+    else active++
+    try { return await read() } finally {
+      const next = waiting.shift()
+      if (next) next()
+      else active--
+    }
+  }
 }
 
 function buildPreviewImageStatusText(transportKind: string, objectKey: string | null): string {

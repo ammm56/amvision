@@ -62,6 +62,7 @@ def build_parallel_execution_plans(
     *,
     template: WorkflowGraphTemplate,
     topological_order: tuple[str, ...],
+    open_preview_start_node_ids: frozenset[str] = frozenset(),
 ) -> dict[str, WorkflowParallelExecutionPlan]:
     """按实际画布连线识别任意数量的显式 Parallel 分支。"""
 
@@ -92,6 +93,8 @@ def build_parallel_execution_plans(
     managed_body_node_ids: set[str] = set()
 
     for start_node in start_nodes:
+        if start_node.node_id in open_preview_start_node_ids:
+            continue
         end_node_id = _resolve_nearest_end_node_id(
             start_node_id=start_node.node_id,
             end_node_ids=end_node_ids,

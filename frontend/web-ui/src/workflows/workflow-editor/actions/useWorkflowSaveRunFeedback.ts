@@ -34,7 +34,8 @@ export function useWorkflowSaveRunFeedback(options: WorkflowSaveRunFeedbackOptio
     refreshOptions: PreviewNodeDisplayRefreshOptions = {},
   ): Promise<void> {
     await options.refreshPreviewNodeDisplays(previewRun, refreshOptions)
-    if (previewRun.state === 'failed') {
+    if (refreshOptions.isCurrent?.() === false) return
+    if (['failed', 'timed_out'].includes(previewRun.state)) {
       const failedNodeId = readDisplayText(readPreviewRunFailureDetails(previewRun)?.node_id)
       if (failedNodeId) {
         options.focusGraphNode(failedNodeId)

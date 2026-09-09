@@ -11,6 +11,8 @@ from time import monotonic, perf_counter
 from typing import TYPE_CHECKING
 from uuid import uuid4
 from weakref import WeakValueDictionary
+from backend.service.application.workflows.preview_result_store import PreviewResultStore, DISPLAY_FORMAT
+from backend.service.application.workflows.runtime_preview import PREVIEW_CAPTURE_KEY
 
 from backend.service.application.events import ServiceEvent
 from backend.service.application.project_summary import (
@@ -638,6 +640,9 @@ class WorkflowRuntimeService:
             WORKFLOW_PREVIEW_RUN_ID_METADATA_KEY, preview_run_id
         )
         execution_metadata.setdefault("return_timing_metadata_enabled", True)
+        # 复用已有逐节点捕获接口，正式 Runtime/Trigger 的执行路径保持原样。
+        display_store = PreviewResultStore(self.dataset_storage, preview_run_id)
+        execution_metadata[PREVIEW_CAPTURE_KEY] = display_store
         model_session_manager = (
             self.workflow_service_node_runtime_context.workflow_model_session_manager
         )
@@ -850,6 +855,13 @@ class WorkflowRuntimeService:
         """把 inline Preview Run 写入 succeeded 状态。"""
 
         response_serialize_started_at = perf_counter()
+        try:
+            self.dataset_storage.write_json(
+                f"workflows/runtime/preview-runs/{preview_run_id}/displays/outputs.json",
+                {"outputs": execution_result.outputs, "template_outputs": execution_result.template_outputs},
+            )
+        except Exception:
+            logging.getLogger(__name__).exception("Preview 业务结果显示副本保存失败: %s", preview_run_id)
         persisted_outputs = sanitize_runtime_mapping(execution_result.outputs)
         persisted_template_outputs = sanitize_runtime_mapping(
             execution_result.template_outputs
@@ -873,12 +885,15 @@ class WorkflowRuntimeService:
         if not return_sync_response_payload_enabled:
             # 异步查询的摘要仍按既有规则脱敏；完整展示结果作为 Preview 临时资产保存，
             # 不把大图或长数组塞进数据库，也不通过进程控制队列反复传输。
-            self.dataset_storage.write_json(
-                f"workflows/runtime/preview-runs/{preview_run_id}/response.payload.json",
-                {"outputs": execution_result.outputs, "template_outputs": execution_result.template_outputs,
-                 "node_records": [serialize_node_execution_record_for_response(item)
-                                  for item in execution_result.node_records] if retain_node_records_enabled else []},
-            )
+            try:
+                self.dataset_storage.write_json(
+                    f"workflows/runtime/preview-runs/{preview_run_id}/response.payload.json",
+                    {"outputs": execution_result.outputs, "template_outputs": execution_result.template_outputs,
+                     "node_records": [serialize_node_execution_record_for_response(item)
+                                      for item in execution_result.node_records] if retain_node_records_enabled else []},
+                )
+            except Exception:
+                logging.getLogger(__name__).exception("Preview 完整响应保存失败: %s", preview_run_id)
         response_serialize_ms = _elapsed_ms(response_serialize_started_at)
         with self._open_unit_of_work() as unit_of_work:
             preview_run = self._require_preview_run(unit_of_work, preview_run_id)
@@ -892,6 +907,8 @@ class WorkflowRuntimeService:
             )
             if model_session_health is not None:
                 preview_metadata["model_session"] = dict(model_session_health)
+            preview_metadata["preview_display_format"] = DISPLAY_FORMAT
+            preview_metadata["preview_response_payload_expected"] = not return_sync_response_payload_enabled
             persisted_preview_run = replace(
                 preview_run,
                 state="succeeded",
@@ -921,9 +938,12 @@ class WorkflowRuntimeService:
         inline_started_at: float,
         graph_execute_ms: float,
         event_persist_ms: float,
-        node_records: tuple[dict[str, object], ...] = (),
+        node_records: tuple[dict[str, object], ...] | None = None,
     ) -> WorkflowPreviewRun:
         """把 inline Preview Run 写入 failed 状态。"""
+
+        if node_records is None:
+            node_records = build_completed_node_records_from_events(self.preview_run_manager.list_events(preview_run_id))
 
         with self._open_unit_of_work() as unit_of_work:
             preview_run = self._require_preview_run(unit_of_work, preview_run_id)
@@ -949,6 +969,8 @@ class WorkflowRuntimeService:
                 ),
                 node_records=node_records,
             )
+            updated_preview_run = replace(updated_preview_run, metadata={
+                **updated_preview_run.metadata, "preview_display_format": DISPLAY_FORMAT})
             unit_of_work.workflow_runtime.save_preview_run(updated_preview_run)
             unit_of_work.commit()
         return updated_preview_run

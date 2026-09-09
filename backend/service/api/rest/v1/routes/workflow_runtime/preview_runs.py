@@ -52,6 +52,7 @@ from backend.service.application.workflows.input_contracts import (
     WorkflowInputValidator,
 )
 from backend.service.application.workflows.preview_display_outputs import is_preview_run_artifact_object_key
+from backend.service.application.workflows.preview_result_store import read_display_manifest
 from backend.service.application.workflows.runtime.preview_runs import WorkflowPreviewRunCreateRequest
 from backend.service.api.rest.v1.routes.workflow_runtime_support.uploads import (
     WORKFLOW_RUNTIME_MULTIPART_CONTROL_PART_MAX_BYTES,
@@ -574,9 +575,59 @@ def get_workflow_preview_run(
             payload = storage.read_json(key)
             preview_run = replace(preview_run, outputs=payload["outputs"],
                                   template_outputs=payload["template_outputs"], node_records=tuple(payload["node_records"]))
+        elif preview_run.metadata.get("preview_response_payload_expected") is True:
+            raise ResourceNotFoundError("完整预览响应文件不可用；节点显示结果可独立读取", details={"reason": "preview_response_unavailable"})
         # 同步路由在请求线程内完成 JSON 编码，避免大预览结果阻塞 HTTP loop。
         return Response(content=_build_preview_run_contract(preview_run).model_dump_json(), media_type="application/json")
     return _build_preview_run_contract(preview_run)
+
+
+@workflow_runtime_preview_runs_router.get("/preview-runs/{preview_run_id}/displays")
+def get_workflow_preview_displays(
+    preview_run_id: str, request: Request,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:read"))],
+) -> dict:
+    """返回 amvision.workflow-preview-displays.v1 清单，不携带图片或完整值。"""
+    preview = _build_workflow_runtime_service(request).get_visible_preview_run(
+        preview_run_id, visible_project_ids=principal.project_ids)
+    return {**read_display_manifest(_require_dataset_storage(request), preview), "state": preview.state}
+
+
+@workflow_runtime_preview_runs_router.get("/preview-runs/{preview_run_id}/display-outputs")
+def get_workflow_preview_display_outputs(
+    preview_run_id: str, request: Request,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:read"))],
+) -> FileResponse:
+    """完整业务输出独立于逐节点显示读取，保留结果面板语义。"""
+    _build_workflow_runtime_service(request).get_visible_preview_run(
+        preview_run_id, visible_project_ids=principal.project_ids)
+    path = _require_dataset_storage(request).resolve(
+        f"workflows/runtime/preview-runs/{preview_run_id}/displays/outputs.json")
+    if not path.is_file():
+        raise ResourceNotFoundError("完整业务结果显示副本不可用", details={"reason": "preview_response_unavailable"})
+    return FileResponse(path, media_type="application/json", headers={"Cache-Control": "no-store"})
+
+
+@workflow_runtime_preview_runs_router.get("/preview-runs/{preview_run_id}/displays/{display_id}")
+def get_workflow_preview_display(
+    preview_run_id: str, display_id: str, request: Request,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:read"))],
+) -> FileResponse:
+    """仅按清单中的固定摘要 ID 读取显示 body，不接受任意文件路径。"""
+    preview = _build_workflow_runtime_service(request).get_visible_preview_run(
+        preview_run_id, visible_project_ids=principal.project_ids)
+    storage = _require_dataset_storage(request)
+    manifest = read_display_manifest(storage, preview)
+    descriptor = next((item for item in manifest["displays"] if item["display_id"] == display_id), None)
+    if descriptor is None or descriptor.get("error"):
+        raise ResourceNotFoundError("节点预览结果不可用", details={"reason": "preview_display_unavailable"})
+    # 清单由服务生成；仍验证固定摘要格式，防止损坏清单引入路径穿越。
+    if len(display_id) != 64 or any(c not in "0123456789abcdef" for c in display_id):
+        raise InvalidRequestError("无效的预览显示 ID")
+    path = storage.resolve(f"workflows/runtime/preview-runs/{preview_run_id}/displays/{display_id}.json")
+    if not path.is_file():
+        raise ResourceNotFoundError("节点预览结果文件已不可用", details={"reason": "preview_display_unavailable"})
+    return FileResponse(path, media_type="application/json", headers={"Cache-Control": "no-store"})
 
 
 @workflow_runtime_preview_runs_router.get("/preview-runs/{preview_run_id}/artifacts/content")

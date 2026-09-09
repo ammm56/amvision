@@ -303,6 +303,9 @@ class WorkflowGraphExecutor:
         parallel_plans = build_parallel_execution_plans(
             template=template,
             topological_order=topological_order,
+            open_preview_start_node_ids=frozenset(
+                template.metadata.get("preview_execution_scope", {}).get("open_parallel_start_node_ids", ())
+            ) if target_node_ids and isinstance(template.metadata.get("preview_execution_scope"), dict) else frozenset(),
         )
         selection_plans = build_selection_execution_plans(
             template=template,

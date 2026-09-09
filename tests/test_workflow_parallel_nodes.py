@@ -85,6 +85,26 @@ PASSTHROUGH_NODE_DEFINITION = NodeDefinition(
 )
 
 
+@pytest.mark.parametrize("target", ["parallel_start", "branch_1_item", "branch_1_end"])
+def test_node_preview_inside_parallel_does_not_execute_unrelated_branches(target):
+    """单节点预览允许有效完整图的开放 Parallel 边界，仅执行真实祖先闭包。"""
+    from backend.service.application.workflows.execution.topology import build_node_execution_scope_template
+    visited = []
+    def handler(request):
+        """记录实际被执行的分支。"""
+        visited.append(request.node_id)
+        return {"value": request.input_values["value"]}
+    template = _build_parallel_template(branch_count=3, max_concurrency=3)
+    scoped = build_node_execution_scope_template(template=template, target_node_id=target)
+    result = WorkflowGraphExecutor(registry=_build_registry(handler)).execute(
+        template=scoped, input_values={"source_items": {"value": list(range(6))}}, target_node_ids=frozenset((target,)))
+    assert target in {record.node_id for record in result.node_records}
+    assert not any("branch_2" in record.node_id or "branch_3" in record.node_id for record in result.node_records)
+    assert all(node_id == "branch_1_work" for node_id in visited)
+    with pytest.raises(InvalidRequestError, match="Parallel Start"):
+        WorkflowGraphExecutor(registry=_build_registry(handler)).execute(template=scoped, input_values={"source_items": {"value": list(range(6))}})
+
+
 def test_parallel_nodes_follow_existing_catalog_names_and_categories() -> None:
     """验证公开名称保持 English，且只使用现有 node categories。"""
 

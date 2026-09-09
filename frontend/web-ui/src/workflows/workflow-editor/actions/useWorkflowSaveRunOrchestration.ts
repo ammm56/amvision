@@ -116,12 +116,13 @@ export function useWorkflowSaveRunOrchestration(options: WorkflowSaveRunOrchestr
       application,
       inputBindings: previewInputPayload.inputBindings,
       fileUploads: previewInputPayload.fileUploads,
+      displayOptions: { reopenImageViewerNodeId: preserveImageViewerNodeId, isCurrent: () => options.workflowApp.value === sourceDocument },
       executionScope: targetNodeId
         ? { kind: 'node', targetNodeId }
         : { kind: 'application' },
     })
     if (!previewRun || options.workflowApp.value !== sourceDocument) return
-    await options.applyPreviewRunFeedback(previewRun, { reopenImageViewerNodeId: preserveImageViewerNodeId })
+    // 受理响应不代表完成；会话统一处理终态与刷新恢复。
   }
 
   return {

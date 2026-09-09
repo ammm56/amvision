@@ -2848,6 +2848,11 @@ textarea:focus-visible {
   transform: translateX(-50%);
 }
 
+.workflow-graph-error > button {
+  pointer-events: auto;
+  margin-top: 6px;
+}
+
 .workflow-graph-stage .workflow-graph-links {
   z-index: 1;
 }

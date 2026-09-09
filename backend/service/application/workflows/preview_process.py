@@ -21,6 +21,18 @@ class _ProcessPreviewRunManager(WorkflowPreviewRunManager):
         """摘要在父进程发布，避免重复读取和重复通知。"""
 
 
+def refresh_preview_node_resources(loader, catalog, registry_loader, models, cache, signature):
+    """空闲边界一致刷新目录和执行器；同版本继续复用模型，失败由调用方回收槽位。"""
+    loader.refresh()
+    next_signature = tuple(item.model_dump_json() for item in loader.get_node_pack_manifests())
+    if next_signature != signature:
+        models.close_all()
+        cache.clear()
+        catalog.invalidate_cache()
+        registry_loader.refresh()
+    return next_signature
+
+
 def run_preview_process(settings_payload, requests, responses, cancellation, broker_channel, gateway_channel):
     """串行执行编辑快照，进程内独占 registry、SessionFactory 和模型缓存。"""
 
@@ -100,15 +112,11 @@ def run_preview_process(settings_payload, requests, responses, cancellation, bro
                 continue
             if request is None:
                 return
+            refreshing = True
             try:
-                loader.refresh()
-                next_signature = tuple(item.model_dump_json() for item in loader.get_node_pack_manifests())
-                if next_signature != catalog_signature:
-                    # 节点包版本或启用状态变化时先卸载旧模型，再刷新同一个 registry。
-                    models.close_all()
-                    cache.clear()
-                    registry_loader.refresh()
-                    catalog_signature = next_signature
+                catalog_signature = refresh_preview_node_resources(
+                    loader, catalog, registry_loader, models, cache, catalog_signature)
+                refreshing = False
                 result = service._execute_preview_run_inline(
                     request.preview_run_id, request,
                     retain_node_records_enabled=request.retain_node_records_enabled,
@@ -117,3 +125,6 @@ def run_preview_process(settings_payload, requests, responses, cancellation, bro
             except Exception as error:
                 # 只传稳定的错误类型和有界文本，不序列化任意异常对象。
                 responses.put(("error", f"{type(error).__name__}: {str(error)[:1024]}"))
+                if refreshing:
+                    # 半更新的 handler/schema 不能进入下一次运行，由池重建本槽位。
+                    return
