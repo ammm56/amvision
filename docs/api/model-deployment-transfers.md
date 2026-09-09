@@ -17,6 +17,7 @@
 | POST `/imports/{operation_id}/analyze` | 修改现场配置后重新分析 |
 | POST `/imports/{operation_id}/commit` | 提交 `analysis_revision` 和非空 `idempotency_key` |
 | POST `/{operation_id}/cancel` | 协作取消；进入 `importing` 后拒绝取消 |
+| POST `/{operation_id}/dismiss` | 清除已失败导入的列表展示，返回 204；重复清除幂等 |
 | GET `/exports/{operation_id}/download` | 下载完整公布的导出包 |
 | GET `/deployment/{id}/deletion-preview` | 返回 revision、将删模型和保留模型 |
 | GET `/assets/list` | 导入模型版本/Build、来源和当前文件大小 |
@@ -35,6 +36,8 @@
 同实例重复导出使用一个操作目录和一个 `package.zip`，只合并尚在处理中的并发请求。每次新的导出都由 Worker 读取当前完整配置、固定推理语义和源文件，重新生成包含新包 ID 和生成时间的 ZIP；即使内容未变，也不复用旧 ZIP。文件先流式写入 `package.writing`，关闭后回读核对 CRC、文件大小和清单 SHA-256，全部成功后原子替换 `package.zip`。失败保留原文件，但当前操作标记失败，不把旧包作为本次成功结果返回。下载响应使用 `Cache-Control: no-store`，避免相同下载地址缓存旧包。API 请求不执行大文件哈希，回读校验不进入推理和 Trigger 链路。旧实现留下的同实例重复包，在最新包生成成功后按文件锁回收；下载占用的包留待下次导出或到期清理。
 
 部署页在实例的导出按钮显示统一加载动效，完成后紧邻显示下载按钮；错误也显示在对应实例内。导入上传、分析、配置核对均在对话框完成，成功后关闭并刷新实例列表，不在页面顶部保留导入/导出记录。再次打开“导入部署实例”可继续未完成操作或选择新包。
+
+导入对话框在每条失败记录后提供“清除”按钮。清除成功后，列表接口不再返回该记录，轮询、刷新和重新打开页面均不再显示；失败时保留原记录并显示请求错误。上传请求等尚未形成记录的错误提示可在当前页面直接清除。活动任务、待核对配置、成功记录和仍有恢复文件的操作不接受清除。该操作不删除模型、实例或运行资源，原失败状态和错误回执仍按既有保留期回收；已清除的记录不能再次分析。标记使用现有操作 JSON 的可选 `dismissed` 字段，无数据库表结构迁移；缺省值视为未清除。
 
 消费者 `model-deployment-transfer` 位于既有 `dataset-export` Worker profile。开发环境更新后需要使该 Worker 载入新消费者；仅运行 Uvicorn 不执行文件打包和导入。发行 full 脚本按 profile 自动启动消费者。
 

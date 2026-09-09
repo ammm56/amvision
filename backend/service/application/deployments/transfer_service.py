@@ -130,7 +130,7 @@ class ModelDeploymentTransferService:
         """目标设置更改需要重新分析，不在请求中做大文件哈希。"""
         with self._state_lock(operation_id):
             op = self.get(operation_id)
-            if op["state"] not in {"ready", "needs_attention", "failed"} or not op.get("manifest") or op.get("prepared_paths"):
+            if op.get("dismissed") or op["state"] not in {"ready", "needs_attention", "failed"} or not op.get("manifest") or op.get("prepared_paths"):
                 raise InvalidRequestError("当前阶段不能修改导入设置")
             return self.update(operation_id, "pending_analysis", options=options.model_dump(), cancel_requested=False, error=None)
 
@@ -151,6 +151,15 @@ class ModelDeploymentTransferService:
             if op["state"] in {"importing", "completed"}:
                 raise InvalidRequestError("已经进入提交阶段，请查看当前结果")
             return self.update(operation_id, cancel_requested=True)
+
+    def dismiss(self, operation_id: str) -> None:
+        """清除已失败导入的列表展示，保留短期回执及现有文件回收流程。"""
+        with self._state_lock(operation_id):
+            op = self.get(operation_id)
+            if op["direction"] != "import" or op["state"] != "failed" or op.get("prepared_paths") or op.get("cancel_requested"):
+                raise InvalidRequestError("只能清除已结束且无需恢复的失败导入记录")
+            if not op.get("dismissed"):
+                self.update(operation_id, dismissed=True)
 
     def _remove(self, key: str) -> None:
         """仅清理已计算的受管路径。"""

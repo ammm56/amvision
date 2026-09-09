@@ -54,6 +54,7 @@ export function uploadDeployment(project: string, file: File, signal?: AbortSign
 }
 export const changeTransfer = (project: string, id: string, action: 'analyze' | 'commit', options: TransferOptions) => apiRequest<DeploymentTransfer>(`${base(project)}/imports/${encodeURIComponent(id)}/${action}`, { method: 'POST', body: options })
 export const cancelTransfer = (project: string, id: string) => apiRequest<DeploymentTransfer>(`${base(project)}/${encodeURIComponent(id)}/cancel`, { method: 'POST' })
+export const dismissTransfer = (project: string, id: string) => apiRequest<void>(`${base(project)}/${encodeURIComponent(id)}/dismiss`, { method: 'POST' })
 export async function downloadTransfer(project: string, item: DeploymentTransfer) {
   const blob = await apiRequest<Blob>(`${base(project)}/exports/${encodeURIComponent(item.operation_id)}/download`, { responseType: 'blob' })
   const url = URL.createObjectURL(blob)

@@ -53,3 +53,34 @@ def test_package_http_roundtrip_and_project_isolation(tmp_path):
             assert client.get(f"/api/v1/projects/project-other/model-deployment-transfers/{op_id}", headers=headers).status_code in {403, 404}
     finally:
         context.session_factory.engine.dispose()
+
+
+def test_dismiss_failed_import_persists_and_preserves_receipt(tmp_path):
+    """清除只影响列表；刷新、重建服务和重复请求不会使错误再次显示。"""
+    context = create_api_test_context(tmp_path, database_name="dismiss-api.db", enable_local_buffer_broker=False)
+    svc = ModelDeploymentTransferService(context.session_factory, context.dataset_storage)
+    headers = build_test_headers(scopes="models:read models:write")
+    base = "/api/v1/projects/project-1/model-deployment-transfers"
+    try:
+        with context.client as client:
+            response = client.post(f"{base}/imports", headers=headers, files={"file": ("broken.zip", b"broken archive", "application/zip")})
+            assert response.status_code == 202
+            op_id = response.json()["operation_id"]
+            assert client.post(f"{base}/{op_id}/dismiss", headers=headers).status_code == 400
+            svc.run(op_id)
+            before = svc.get(op_id)
+            assert before["state"] == "failed"
+            archive = context.dataset_storage.resolve(f"{svc.root(before)}/package.zip")
+            assert any(row["operation_id"] == op_id for row in client.get(base, headers=headers).json())
+            assert client.post(f"/api/v1/projects/project-other/model-deployment-transfers/{op_id}/dismiss", headers=headers).status_code in {403, 404}
+            assert not svc.get(op_id).get("dismissed")
+            for _ in range(2):
+                assert client.post(f"{base}/{op_id}/dismiss", headers=headers).status_code == 204
+                assert all(row["operation_id"] != op_id for row in client.get(base, headers=headers).json())
+            restored = ModelDeploymentTransferService(context.session_factory, context.dataset_storage).get(op_id)
+            assert restored["dismissed"] is True
+            assert restored["state"] == "failed" and restored["error"] == before["error"]
+            assert archive.read_bytes() == b"broken archive"
+            assert client.get(f"{base}/{op_id}", headers=headers).status_code == 200
+    finally:
+        context.session_factory.engine.dispose()

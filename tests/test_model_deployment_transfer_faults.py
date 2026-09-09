@@ -100,3 +100,39 @@ def test_unknown_runtime_setting_is_reported_and_can_be_corrected(tmp_path):
         assert svc.get(op["operation_id"])["state"] == "ready"
     finally:
         factory.engine.dispose()
+
+
+@pytest.mark.parametrize("state,values", [
+    ("uploading", {}), ("pending_analysis", {}), ("analyzing", {}),
+    ("ready", {}), ("needs_attention", {}), ("pending_import", {}),
+    ("importing", {}), ("completed", {}),
+    ("failed", {"prepared_paths": ["pending-recovery"]}),
+    ("failed", {"cancel_requested": True}),
+])
+def test_dismiss_rejects_active_or_recovering_imports(tmp_path, state, values):
+    """不能通过清除按钮隐藏活动、待处理或需要回滚恢复的操作。"""
+    factory, storage, _ = create_test_runtime(tmp_path, database_name="dismiss-guard.db")
+    svc = ModelDeploymentTransferService(factory, storage)
+    try:
+        op = svc.create("project-1", "import")
+        svc.update(op["operation_id"], state, **values)
+        with pytest.raises(InvalidRequestError, match="只能清除"):
+            svc.dismiss(op["operation_id"])
+        assert not svc.get(op["operation_id"]).get("dismissed")
+    finally:
+        factory.engine.dispose()
+
+
+def test_dismissed_import_cannot_be_reanalyzed(tmp_path):
+    """其他旧页面不能重新执行已经清除的失败导入。"""
+    factory, storage, _ = create_test_runtime(tmp_path, database_name="dismiss-analysis.db")
+    svc = ModelDeploymentTransferService(factory, storage)
+    try:
+        op = upload_fixture(tmp_path, svc)
+        svc.update(op["operation_id"], "failed", error="test failure")
+        svc.dismiss(op["operation_id"])
+        with pytest.raises(InvalidRequestError):
+            svc.analyze(op["operation_id"], ImportOptions())
+        assert svc.get(op["operation_id"])["state"] == "failed"
+    finally:
+        factory.engine.dispose()

@@ -57,7 +57,7 @@ def export(project_id: str, body: ExportRequest, principal: Principal, factory: 
 @router.get("")
 def list_operations(project_id: str, principal: Principal, factory: Factory, storage: Storage) -> list[dict]:
     """页面刷新后回读未完成和短期结果。"""
-    return [public(op) for op in service(project_id, principal, factory, storage).list(project_id)]
+    return [public(op) for op in service(project_id, principal, factory, storage).list(project_id) if not op.get("dismissed")]
 
 
 @router.get("/deployment/{deployment_id}/deletion-preview")
@@ -185,3 +185,11 @@ def cancel(project_id: str, operation_id: str, principal: Principal, factory: Fa
     svc = service(project_id, principal, factory, storage)
     svc.get(operation_id, project_id)
     return public(svc.cancel(operation_id))
+
+
+@router.post("/{operation_id}/dismiss", status_code=204)
+def dismiss(project_id: str, operation_id: str, principal: Principal, factory: Factory, storage: Storage) -> None:
+    """持久清除失败导入的展示；不能隐藏活动任务或删除模型。"""
+    svc = service(project_id, principal, factory, storage)
+    svc.get(operation_id, project_id)
+    svc.dismiss(operation_id)

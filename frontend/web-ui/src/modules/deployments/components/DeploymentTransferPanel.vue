@@ -2,7 +2,10 @@
   <InlineError v-if="!visible" :message="error" />
   <Teleport to="body">
   <ConfirmDialog v-if="visible && !opened" :title="tr('importInstance')" :confirm-label="tr('selectFile')" :cancel-label="tr('close')" confirm-variant="primary" size="medium" :confirm-disabled="!!uploading || busy" @cancel="visible = false" @confirm="emit('chooseFile')">
-    <InlineError :message="error" />
+    <div v-if="error" class="transfer-feedback">
+      <InlineError :message="error" />
+      <Button variant="secondary" size="sm" @click="error = ''">{{ tr('clear') }}</Button>
+    </div>
     <div v-if="uploading" class="transfer-row">
       <LoadingPanel compact :title="tr('uploading')" :description="`${uploading.name} · ${bytes(uploading.size)}`" />
       <Button variant="secondary" size="sm" @click="abortUpload">{{ tr('cancel') }}</Button>
@@ -12,14 +15,22 @@
         <strong>{{ item.display_name || item.summary?.deployment.display_name || (item.direction === 'import' ? tr('importInstance') : tr('exportInstance')) }}</strong>
         <LoadingPanel v-if="transferIsActive(item.state)" compact :title="transferStateLabel(item.state)" :description="item.progress_bytes ? bytes(item.progress_bytes) : tr('preparing')" /><span v-else role="status">{{ transferStateLabel(item.state) }}</span>
         <span v-if="item.error" class="transfer-error">{{ item.error }}</span>
-              </div>
+      </div>
       <Button v-if="['ready', 'needs_attention', 'failed'].includes(item.state) && item.plan" variant="secondary" size="sm" @click="open(item)">{{ tr('continue') }}</Button>
       <Button v-if="!['importing', 'completed', 'failed', 'cancelled', 'expired'].includes(item.state)" variant="secondary" size="sm" :disabled="busy" @click="cancel(item)">{{ tr('cancel') }}</Button>
+      <Button v-if="item.state === 'failed'" variant="secondary" size="sm" :disabled="busy" :loading="dismissingId === item.operation_id" @click="dismiss(item)">{{ tr('clear') }}</Button>
     </div>
   </ConfirmDialog>
     <ConfirmDialog v-if="visible && opened" :title="tr('importInstance')" :confirm-label="needsAnalysis ? tr('check') : tr('import')" :cancel-label="tr('close')" confirm-variant="primary" size="medium" :busy="busy" :confirm-disabled="transferIsActive(opened.state) || (!dirty && !opened.plan?.can_import)" @cancel="visible = false; openedId = null" @confirm="confirm">
       <div class="transfer-form">
-        <InlineError :message="error || opened.error || null" />
+        <div v-if="error" class="transfer-feedback">
+          <InlineError :message="error" />
+          <Button variant="secondary" size="sm" @click="error = ''">{{ tr('clear') }}</Button>
+        </div>
+        <div v-if="opened.error" class="transfer-feedback">
+          <InlineError :message="opened.error" />
+          <Button v-if="opened.state === 'failed'" variant="secondary" size="sm" :disabled="busy" :loading="dismissingId === opened.operation_id" @click="dismiss(opened)">{{ tr('clear') }}</Button>
+        </div>
         <div v-if="opened.summary" class="summary-grid">
           <div><span>{{ tr('model') }}</span><strong>{{ opened.summary.model.model_name }}</strong></div>
           <div><span>{{ tr('task') }}</span><strong>{{ opened.summary.model.task_type }}</strong></div>
@@ -64,12 +75,13 @@ import LoadingPanel from '@/shared/ui/feedback/LoadingPanel.vue'
 import { translate } from '@/platform/i18n'
 const tr = (key: string) => translate(`deploymentTransfer.${key}`)
 import { getDeploymentRuntimeCapabilities } from '../services/deployment.service'
-import { cancelTransfer, changeTransfer, listTransfers, transferIsActive, transferStateLabel, uploadDeployment, type DeploymentTransfer, type TransferOptions } from '../services/deployment-transfer.service'
+import { cancelTransfer, changeTransfer, dismissTransfer, listTransfers, transferIsActive, transferStateLabel, uploadDeployment, type DeploymentTransfer, type TransferOptions } from '../services/deployment-transfer.service'
 
 const props = defineProps<{ projectId: string | null; devices?: Record<string, unknown> | null }>()
 const emit = defineEmits<{ settled: []; chooseFile: [] }>()
 const items = ref<DeploymentTransfer[]>([])
 const visible = ref(false)
+const dismissingId = ref<string | null>(null)
 const pendingImports = computed(() => items.value.filter(item => item.direction === 'import' && !['completed', 'cancelled', 'expired'].includes(item.state)))
 const error = ref('')
 const busy = ref(false)
@@ -201,7 +213,24 @@ const cancel = (item: DeploymentTransfer) => perform(async (current) => {
   const cancelled = await cancelTransfer(props.projectId!, item.operation_id)
   if (current()) store(cancelled)
 })
-watch(() => props.projectId, () => { abortUpload(); uploadController = null; uploading.value = null; generation++; clearTimeout(timer); items.value = []; busy.value = false; visible.value = false; openedId.value = null; awaitingUpload = null; error.value = ''; void refresh() }, { immediate: true })
+async function dismiss(item: DeploymentTransfer) {
+  if (!props.projectId || busy.value || item.state !== 'failed') return
+  const project = props.projectId
+  dismissingId.value = item.operation_id
+  await perform(async (current) => {
+    try {
+      await dismissTransfer(project, item.operation_id)
+      if (!current()) return
+      localRevision++
+      items.value = items.value.filter(row => row.operation_id !== item.operation_id)
+      if (openedId.value === item.operation_id) openedId.value = null
+      if (awaitingUpload === item.operation_id) awaitingUpload = null
+    } finally {
+      if (current()) dismissingId.value = null
+    }
+  })
+}
+watch(() => props.projectId, () => { abortUpload(); uploadController = null; uploading.value = null; generation++; clearTimeout(timer); items.value = []; busy.value = false; dismissingId.value = null; visible.value = false; openedId.value = null; awaitingUpload = null; error.value = ''; void refresh() }, { immediate: true })
 onBeforeUnmount(() => { abortUpload(); generation++; clearTimeout(timer) })
 defineExpose({ upload, beginImport, exportFor, store })
 </script>
@@ -211,6 +240,9 @@ defineExpose({ upload, beginImport, exportFor, store })
 .transfer-summary { display: grid; gap: 4px; flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .transfer-summary > span { font-size: 12px; color: var(--am-text-muted); }
 .transfer-error { color: var(--am-danger-text) !important; }
+.transfer-feedback { display: flex; align-items: flex-start; gap: 10px; }
+.transfer-feedback > :first-child { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.transfer-row > .ui-button, .transfer-feedback > .ui-button { flex-shrink: 0; }
 .transfer-form { display: grid; gap: 16px; }
 .transfer-form .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 0; gap: 12px; }
 .transfer-form .summary-grid > div:first-child { grid-column: 1 / -1; }
