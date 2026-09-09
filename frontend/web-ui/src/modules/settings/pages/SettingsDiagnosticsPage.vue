@@ -236,19 +236,20 @@
           </header>
           <dl class="settings-metadata-grid">
             <InfoRow :label="t('settingsDiagnostics.fields.appName')" :value="stringValue(about.app_name)" />
+            <InfoRow :label="t('settingsDiagnostics.fields.edition')" value="Community Edition" />
             <InfoRow :label="t('settingsDiagnostics.fields.frontendVersion')" :value="frontendVersion" />
             <InfoRow :label="t('settingsDiagnostics.fields.backendVersion')" :value="stringValue(about.backend_version)" />
             <InfoRow :label="t('settingsDiagnostics.fields.gitCommit')" :value="stringValue(about.git_commit)" />
             <InfoRow :label="t('settingsDiagnostics.fields.buildTime')" :value="formatOptionalDate(about.build_time)" />
-            <InfoRow :label="t('settingsDiagnostics.fields.license')" :value="stringValue(about.license)" />
             <InfoRow :label="t('settingsDiagnostics.fields.runMode')" :value="stringValue(about.run_mode)" />
-            <div>
-              <dt>{{ t('settingsDiagnostics.fields.githubRepository') }}</dt>
-              <dd><a href="https://github.com/ammm56/amvision" target="_blank" rel="noreferrer">github.com/ammm56/amvision</a></dd>
-            </div>
+            <InfoRow :label="t('settingsDiagnostics.fields.license')" :value="stringValue(about.license)" />
             <div>
               <dt>{{ t('settingsDiagnostics.fields.amvarWebsite') }}</dt>
               <dd><a href="https://www.amvar.io" target="_blank" rel="noreferrer">amvar.io</a></dd>
+            </div>
+            <div>
+              <dt>{{ t('settingsDiagnostics.fields.githubRepository') }}</dt>
+              <dd><a href="https://github.com/ammm56/amvision" target="_blank" rel="noreferrer">github.com/ammm56/amvision</a></dd>
             </div>
           </dl>
         </template>

@@ -3,11 +3,12 @@
   <StackPanel Margin="28" Spacing="22">
     <TextBlock Text="amvar launcher" FontSize="24" FontWeight="SemiBold" />
     <Border Background="{DynamicResource ShellSurface}" BorderBrush="{DynamicResource ShellBorder}" BorderThickness="1" CornerRadius="10" Padding="18">
-      <Grid ColumnDefinitions="100,*" RowDefinitions="Auto,16,Auto,16,Auto,16,Auto">
+      <Grid ColumnDefinitions="100,*" RowDefinitions="Auto,16,Auto,16,Auto,16,Auto,16,Auto">
         <TextBlock Text="版本" Classes="muted" /><SelectableTextBlock Name="VersionText" Grid.Column="1" />
-        <TextBlock Text="构建时间" Classes="muted" Grid.Row="2" /><SelectableTextBlock Name="BuildText" Grid.Row="2" Grid.Column="1" />
-        <TextBlock Text="提交" Classes="muted" Grid.Row="4" /><SelectableTextBlock Name="CommitText" Grid.Row="4" Grid.Column="1" TextWrapping="Wrap" />
-        <TextBlock Text="许可证" Classes="muted" Grid.Row="6" /><SelectableTextBlock Name="LicenseText" Grid.Row="6" Grid.Column="1" TextWrapping="Wrap" />
+        <TextBlock Text="版本类型" Classes="muted" Grid.Row="2" /><SelectableTextBlock Text="Community Edition" Grid.Row="2" Grid.Column="1" TextWrapping="Wrap" />
+        <TextBlock Text="构建时间" Classes="muted" Grid.Row="4" /><SelectableTextBlock Name="BuildText" Grid.Row="4" Grid.Column="1" />
+        <TextBlock Text="提交" Classes="muted" Grid.Row="6" /><SelectableTextBlock Name="CommitText" Grid.Row="6" Grid.Column="1" TextWrapping="Wrap" />
+        <TextBlock Text="许可证" Classes="muted" Grid.Row="8" /><SelectableTextBlock Name="LicenseText" Grid.Row="8" Grid.Column="1" TextWrapping="Wrap" />
       </Grid>
     </Border>
     <StackPanel Orientation="Horizontal" Spacing="10"><Button Classes="link" Content="GitHub" Click="OpenRepository" /><Button Classes="link" Content="amvar 官网" Click="OpenWebsite" /><Button Classes="link" Content="许可证" Click="OpenLicense" /></StackPanel>
