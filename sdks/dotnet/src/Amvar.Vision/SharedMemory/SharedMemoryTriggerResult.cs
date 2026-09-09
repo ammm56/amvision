@@ -300,7 +300,8 @@ namespace Amvar.Vision.SharedMemory
 
             if (Timings != null)
             {
-                Timings.DisposeAckMs = ElapsedMilliseconds(disposeStartedAt);
+                // JSON-only 的 ACK 已在 Invoke 返回前完成，保留已有耗时。
+                Timings.DisposeAckMs += ElapsedMilliseconds(disposeStartedAt);
             }
 
             if (firstError != null)
@@ -309,7 +310,7 @@ namespace Amvar.Vision.SharedMemory
             }
         }
 
-        /// <summary>异步释放入口；当前操作不执行阻塞 I/O。</summary>
+        /// <summary>异步接口入口；当前实现同步完成与 Dispose 相同的释放和 ACK 回收等待。</summary>
         public ValueTask DisposeAsync()
         {
             Dispose();

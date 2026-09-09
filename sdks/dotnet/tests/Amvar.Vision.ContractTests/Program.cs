@@ -45,6 +45,7 @@ namespace Amvar.Vision.ContractTests
             LocalMessageChannelV1Fixture.Verify();
             VerifyZeroMqTriggerResultFrames();
             VerifySharedMemoryTriggerResultMaterialization();
+            VerifySharedMemoryPreAcknowledgedTimings();
             VerifyPublicResultJsonFieldCasing();
             VerifyRunnerTriggerReturnTypeSymmetry();
             VerifyLocalBufferMappingCache();
@@ -101,6 +102,23 @@ namespace Amvar.Vision.ContractTests
             Assert(health.RequestTimeoutCount == 8, "request timeout count mismatch");
             Assert(health.ResponseAckTimeoutCount == 9, "ACK timeout count mismatch");
             Assert(health.CancelCount == 10, "cancel count mismatch");
+        }
+
+        private static void VerifySharedMemoryPreAcknowledgedTimings()
+        {
+            // 无附件结果在 Invoke 返回前已经 ACK；Dispose 不得覆盖这段诊断耗时。
+            var timings = new SharedMemoryTriggerTimings { DisposeAckMs = 25.0 };
+            var result = new SharedMemoryTriggerResult(
+                new TriggerResult(),
+                Array.Empty<PhysicalPayloadReader>(),
+                Array.Empty<PublicLogicalAttachment>(),
+                () => { },
+                timings);
+            result.Dispose();
+            Assert(timings.DisposeAckMs >= 25.0, "Dispose lost the pre-return ACK timing");
+            var firstDispose = timings.DisposeAckMs;
+            result.Dispose();
+            Assert(timings.DisposeAckMs == firstDispose, "Repeated Dispose changed ACK timing");
         }
 
         private static void VerifySharedMemoryTriggerResultMaterialization()
