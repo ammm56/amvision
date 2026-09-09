@@ -25,6 +25,21 @@ from custom_nodes.opencv_nodes.shared.backend.runtime.validators import (
 NODE_TYPE_ID = "custom.opencv.draw-regions"
 
 
+def _read_label_offset(raw_value: object, *, field_name: str) -> int:
+    """读取可选的有符号像素偏移；省略时保持原有文字位置。"""
+
+    if raw_value is None:
+        return 0
+    if (
+        isinstance(raw_value, bool)
+        or not isinstance(raw_value, (int, float))
+        or not -2147483648 <= raw_value <= 2147483647
+        or int(raw_value) != raw_value
+    ):
+        raise InvalidRequestError(f"{field_name} 必须是 32-bit 有符号整数像素值")
+    return int(raw_value)
+
+
 def _read_ratio(raw_value: object, *, field_name: str, default: float) -> float:
     """读取 0 到 1 之间的比例参数。"""
 
@@ -182,6 +197,12 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     if raw_font_scale in (None, ""):
         raw_font_scale = 0.5
     font_scale = require_non_negative_float(raw_font_scale, field_name="font_scale")
+    label_offset_x = _read_label_offset(
+        request.parameters.get("label_offset_x"), field_name="label_offset_x"
+    )
+    label_offset_y = _read_label_offset(
+        request.parameters.get("label_offset_y"), field_name="label_offset_y"
+    )
 
     mask_alpha = _read_ratio(request.parameters.get("mask_alpha"), field_name="mask_alpha", default=0.35)
     draw_masks = _read_boolean_parameter(
@@ -279,10 +300,15 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             if label_text:
                 anchor_x = int(round(float(region_item["bbox_xyxy"][0])))
                 anchor_y = int(round(float(region_item["bbox_xyxy"][1])))
+                label_x = anchor_x + label_offset_x
+                label_y = max(14, anchor_y - 6) + label_offset_y
+                # OpenCV 坐标使用 int32；极远的画布外文字直接跳过，避免原生转换溢出。
+                if not (-2147483648 <= label_x <= 2147483647 and -2147483648 <= label_y <= 2147483647):
+                    continue
                 cv2_module.putText(
                     image_matrix,
                     label_text,
-                    (anchor_x, max(14, anchor_y - 6)),
+                    (label_x, label_y),
                     cv2_module.FONT_HERSHEY_SIMPLEX,
                     font_scale,
                     color,

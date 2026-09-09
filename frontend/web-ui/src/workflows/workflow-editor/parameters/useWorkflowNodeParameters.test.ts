@@ -47,6 +47,26 @@ function buildParameters() {
 }
 
 describe('useWorkflowNodeParameters color-map', () => {
+  it('文字偏移输入支持负数、零值和保存后的数值回读', () => {
+    const parameters = buildParameters()
+    const node = { node: { ...graphNode, parameters: {} }, definition: null }
+    for (const name of ['label_offset_x', 'label_offset_y']) {
+      const field: NodeParameterUiField = {
+        ...colorMapField, parameter_name: name, widget: 'auto', default_value: 0,
+        json_schema: { type: 'integer', minimum: -2147483648, maximum: 2147483647 },
+      }
+      const input = document.createElement('input')
+      input.type = 'number'
+      input.addEventListener('input', (event) => parameters.updateNodeParameterFromNumberEvent(node, field, event))
+      for (const value of [-16, 0, 24]) {
+        input.value = String(value)
+        input.dispatchEvent(new Event('input'))
+        const saved = { ...node, node: JSON.parse(JSON.stringify(node.node)) }
+        expect(parameters.readNodeParameterValue(saved, field)).toBe(value)
+      }
+    }
+  })
+
   it('把 color-map 识别为紧凑专用控件而不是大 JSON 文本框', () => {
     const parameters = buildParameters()
 

@@ -60,3 +60,18 @@ def test_draw_regions_exposes_color_map_in_effective_ui_schema() -> None:
     assert class_colors.widget == "color-map"
     assert "x-amvision-ui" not in class_colors.json_schema
     assert class_colors.json_schema["additionalProperties"]["format"] == "color"
+
+
+def test_draw_regions_exposes_signed_pixel_offsets() -> None:
+    """偏移通过通用数值控件下发，两个方向都允许负数且默认不移动。"""
+
+    definition = next(item for item in build_custom_node_catalog_document().node_definitions
+                      if item.node_type_id == "custom.opencv.draw-regions")
+    effective = _with_effective_parameter_ui_schema(definition)
+    assert definition.version == "0.1.5"
+    for name in ("label_offset_x", "label_offset_y"):
+        field = next(item for item in effective.parameter_ui_schema.fields if item.parameter_name == name)
+        assert field.default_value == 0
+        assert field.json_schema["type"] == "integer"
+        assert field.json_schema["minimum"] < 0 < field.json_schema["maximum"]
+        assert not field.required

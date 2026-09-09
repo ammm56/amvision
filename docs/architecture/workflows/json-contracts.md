@@ -235,6 +235,8 @@ Measurement、Inspection、Output 十个一级分类，并在每个一级分类�
 
 `point-distance / point-to-line-distance / line-angle / circle-diameter / parallelism-metrics / concentricity-metrics / slot-width` 当前则直接输出可进规则链的 `value.v1 + summary(value.v1)`，适合继续接 `threshold-check / range-check / process-decision`。`draw-contours / draw-lines / draw-circles / draw-roi / draw-measurements / draw-regions` 则统一输出 `image-ref.v1`，用于把轮廓、直线、圆、ROI、分割覆盖层和量测依据直接画回原图做现场调试。
 
+`draw-regions` 从节点定义 `0.1.5` 起提供可选整数参数 `label_offset_x` 和 `label_offset_y`，单位为原图像素，默认均为 `0`。文字基线为 `(round(x1) + label_offset_x, max(14, round(y1) - 6) + label_offset_y)`：X 正值向右、负值向左，Y 正值向下、负值向上。偏移只作用于文字，框、polygon、mask 和结构化结果保持原坐标；关闭 `draw_labels` 时不绘制文字，关闭 `draw_boxes` 不影响文字定位。画布外文字由 OpenCV 裁剪，不进行自动避让。参数范围采用 OpenCV 坐标的有符号 int32 范围，最终基线溢出该范围时跳过画布外文字。这是坐标格式约束，不改变仅支持 64-bit 进程的部署要求。旧流程缺省仍使用原有基线；使用新参数的 App 需按现有版本发布流程更新 Runtime。
+
 这些节点统一通过 NodeDefinition 声明 runtime_requirements，例如：
 
 - python_packages: [opencv-python, numpy]

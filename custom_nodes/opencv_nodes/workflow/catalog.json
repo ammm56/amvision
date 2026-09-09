@@ -17448,7 +17448,7 @@
       "description": "通过 OpenCV 把 regions.v1 的 mask、polygon 和 bbox 绘制到图片上，适合模板匹配、分割和缺陷区域复核。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.5",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -17515,6 +17515,22 @@
           "draw_labels": {
             "type": "boolean",
             "default": true
+          },
+          "label_offset_x": {
+            "type": "integer",
+            "minimum": -2147483648,
+            "maximum": 2147483647,
+            "default": 0,
+            "title": "Label Offset X",
+            "description": "相对原有文字位置的水平偏移，正值向右、负值向左；仅绘制文字时生效。"
+          },
+          "label_offset_y": {
+            "type": "integer",
+            "minimum": -2147483648,
+            "maximum": 2147483647,
+            "default": 0,
+            "title": "Label Offset Y",
+            "description": "相对原有文字基线的垂直偏移，正值向下、负值向上；画布外部分会被裁剪。"
           },
           "draw_region_id": {
             "type": "boolean",
