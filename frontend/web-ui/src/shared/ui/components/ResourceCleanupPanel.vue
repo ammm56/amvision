@@ -26,6 +26,7 @@ let timer: ReturnType<typeof setTimeout> | undefined
 let controller: AbortController | undefined
 let disposed = false
 let epoch = 0
+let projectGeneration = 0
 async function load() {
   const currentEpoch = ++epoch
   clearTimeout(timer)
@@ -47,12 +48,14 @@ async function load() {
 }
 async function retry(id: string) {
   if (retrying.value) return
+  const current = projectGeneration
+  const isCurrent = () => current === projectGeneration && !disposed
   retrying.value = id
-  try { await retryResourceDeletion(id); await load() }
-  catch (cause) { error.value = getErrorMessage(cause) }
-  finally { retrying.value = null }
+  try { await retryResourceDeletion(id); if (isCurrent()) await load() }
+  catch (cause) { if (isCurrent()) error.value = getErrorMessage(cause) }
+  finally { if (isCurrent()) retrying.value = null }
 }
-watch(() => props.projectId, () => { operations.value = []; error.value = null; void load() }, { immediate: true })
+watch(() => props.projectId, () => { projectGeneration++; retrying.value = null; operations.value = []; error.value = null; void load() }, { immediate: true })
 watch(deletionRevision, () => { void load() })
 onBeforeUnmount(() => { disposed = true; epoch++; controller?.abort(); clearTimeout(timer) })
 </script>

@@ -17,7 +17,7 @@
 
     <InlineError :message="errorMessage" />
     <ResourceCleanupPanel :project-id="selectedProjectId" @settled="refreshPage" />
-    <DeploymentTransferPanel ref="transferPanel" :project-id="selectedProjectId" :devices="sessionStore.bootstrap?.devices ?? null" @settled="refreshPage" @choose-file="transferFileInput?.click()" />
+    <DeploymentTransferPanel v-if="canManageTransfers" ref="transferPanel" :project-id="selectedProjectId" :devices="sessionStore.bootstrap?.devices ?? null" @settled="refreshPage" @choose-file="transferFileInput?.click()" />
 
     <div class="operation-grid deployment-workspace-grid">
       <form class="form-panel deployment-create-panel" @submit.prevent="submitDeployment">
@@ -592,6 +592,7 @@ const displayName = ref('')
 const runtimeMode = ref<DeploymentRuntimeMode>('sync')
 
 const canWriteModels = computed(() => sessionStore.hasScopes(['models:write']))
+const canManageTransfers = computed(() => sessionStore.hasScopes(['models:read', 'models:write']))
 const selectedProjectId = computed(() => projectStore.selectedProjectId)
 const selectedDeployment = computed(() => deployments.value.find((item) => item.deployment_instance_id === selectedDeploymentId.value) ?? null)
 const selectedRuntimeStatus = computed(() => deploymentRuntimeStatus(selectedDeploymentId.value))

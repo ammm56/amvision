@@ -103,8 +103,9 @@ export const useSessionStore = defineStore('session', {
           })
           if (this.currentUser?.principal_id !== principalId || this.accessToken !== token) return
           const projectRangeChanged = JSON.stringify(user.project_ids) !== JSON.stringify(this.currentUser?.project_ids)
+          const scopesChanged = JSON.stringify(user.scopes) !== JSON.stringify(this.currentUser?.scopes)
           this.currentUser = user
-          if (projectRangeChanged) {
+          if (projectRangeChanged || scopesChanged) {
             useProjectStore().$reset()
             await this.loadBootstrap({ includeDevices: false })
           }

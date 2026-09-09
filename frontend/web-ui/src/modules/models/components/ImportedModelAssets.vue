@@ -10,7 +10,7 @@
   </section>
 </template>
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { onBeforeUnmount, ref, watch } from 'vue'
 import { translate } from '@/platform/i18n'
 const tr = (key: string) => translate(`deploymentTransfer.${key}`)
 import { apiRequest } from '@/shared/api/http-client'
@@ -23,21 +23,32 @@ const items = ref<Asset[]>([])
 const selected = ref<Asset | null>(null)
 const error = ref('')
 const busy = ref(false)
+let generation = 0
 const base = (id: string) => `/projects/${encodeURIComponent(id)}/model-deployment-transfers/assets`
 async function load() {
   const project = props.projectId
+  const current = generation
   if (!project) { items.value = []; return }
-  try { const result = await apiRequest<Asset[]>(`${base(project)}/list`); if (project === props.projectId) items.value = result }
-  catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause) }
+  try {
+    const result = await apiRequest<Asset[]>(`${base(project)}/list`)
+    if (current === generation) { items.value = result; error.value = '' }
+  }
+  catch (cause) { if (current === generation) error.value = cause instanceof Error ? cause.message : String(cause) }
 }
 async function remove() {
-  if (!props.projectId || !selected.value) return
+  if (!props.projectId || !selected.value || busy.value) return
+  const current = generation
   busy.value = true; error.value = ''
-  try { await apiRequest(`${base(props.projectId)}/${selected.value.kind}/${encodeURIComponent(selected.value.resource_id)}`, { method: 'DELETE', responseType: 'void' }); selected.value = null; await load() }
-  catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause) }
-  finally { busy.value = false }
+  try {
+    await apiRequest(`${base(props.projectId)}/${selected.value.kind}/${encodeURIComponent(selected.value.resource_id)}`, { method: 'DELETE', responseType: 'void' })
+    if (current === generation) { selected.value = null; await load() }
+  }
+  catch (cause) { if (current === generation) error.value = cause instanceof Error ? cause.message : String(cause) }
+  finally { if (current === generation) busy.value = false }
 }
-watch(() => props.projectId, () => { selected.value = null; error.value = ''; void load() }, { immediate: true })
+// 项目切换或卸载后，旧请求不能恢复列表、错误或删除弹窗。
+watch(() => props.projectId, () => { generation++; items.value = []; selected.value = null; busy.value = false; error.value = ''; void load() }, { immediate: true })
+onBeforeUnmount(() => { generation++ })
 </script>
 <style scoped>
 .imported-assets { padding: 16px; }

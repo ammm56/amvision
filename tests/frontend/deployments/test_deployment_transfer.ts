@@ -14,6 +14,50 @@ const operation: service.DeploymentTransfer = {
 const stubs = { ConfirmDialog: { props: ['confirmLabel', 'confirmDisabled'], template: '<div><slot/><button class="confirm" :disabled="confirmDisabled" @click="$emit(\'confirm\')">{{ confirmLabel }}</button></div>' }, Teleport: true }
 afterEach(() => { vi.clearAllMocks(); vi.useRealTimers() })
 describe('部署包页面流程', () => {
+  it('切换项目后立即允许新上传，旧上传回调不能清掉新上传状态', async () => {
+    vi.mocked(service.listTransfers).mockResolvedValue([])
+    let finishOld!: (value: service.DeploymentTransfer) => void
+    let finishNew!: (value: service.DeploymentTransfer) => void
+    vi.mocked(service.uploadDeployment)
+      .mockReturnValueOnce(new Promise(resolve => { finishOld = resolve }))
+      .mockReturnValueOnce(new Promise(resolve => { finishNew = resolve }))
+    const wrapper = mount(DeploymentTransferPanel, { props: { projectId: 'old' }, global: { stubs } })
+    const vm = wrapper.vm as unknown as { upload(file: File): Promise<void> }
+    const oldUpload = vm.upload(new File(['old'], 'old.zip'))
+    await wrapper.setProps({ projectId: 'new' })
+    const newUpload = vm.upload(new File(['new'], 'new.zip'))
+    await flushPromises()
+    expect(service.uploadDeployment).toHaveBeenCalledTimes(2)
+    finishOld({ ...operation, operation_id: 'old-upload' })
+    await oldUpload
+    expect(wrapper.text()).toContain('new.zip')
+    expect(wrapper.text()).not.toContain('old.zip')
+    finishNew({ ...operation, operation_id: 'new-upload' })
+    await newUpload
+    wrapper.unmount()
+  })
+  it.each([false, true])('切换项目后丢弃旧提交结果或错误，失败：%s', async (fails) => {
+    vi.mocked(service.listTransfers).mockResolvedValueOnce([structuredClone(operation)]).mockResolvedValue([])
+    let finish!: (value: service.DeploymentTransfer) => void
+    let reject!: (error: Error) => void
+    vi.mocked(service.changeTransfer).mockReturnValue(new Promise((resolve, fail) => { finish = resolve; reject = fail }))
+    const wrapper = mount(DeploymentTransferPanel, { props: { projectId: 'p' }, global: { stubs } })
+    await flushPromises()
+    const vm = wrapper.vm as unknown as { beginImport(): void }
+    vm.beginImport()
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === '继续导入')!.trigger('click')
+    await wrapper.find('.confirm').trigger('click')
+    await wrapper.setProps({ projectId: 'other-project' })
+    await flushPromises()
+    if (fails) reject(new Error('old project failure'))
+    else finish({ ...operation, state: 'pending_import' })
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('old project failure')
+    vm.beginImport()
+    expect(wrapper.emitted('chooseFile')).toHaveLength(1)
+    wrapper.unmount()
+  })
   it('完成记录不占页面顶部，导出记录按实例提供给操作行', async () => {
     const exported: service.DeploymentTransfer = { operation_id: 'export', direction: 'export', state: 'completed', deployment_id: 'd' }
     vi.mocked(service.listTransfers).mockResolvedValue([{ ...operation, state: 'completed' }, exported])

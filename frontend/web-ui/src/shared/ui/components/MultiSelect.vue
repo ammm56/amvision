@@ -138,14 +138,37 @@ function updateMenuPosition(): void {
   const triggerRect = rootElement.value.getBoundingClientRect()
   const viewportWidth = window.innerWidth
   const viewportHeight = window.innerHeight
-  const spaceBelow = viewportHeight - triggerRect.bottom - viewportMargin - menuGap
-  const spaceAbove = triggerRect.top - viewportMargin - menuGap
+  const scrollBoundary = rootElement.value.closest<HTMLElement>('.confirm-dialog__content')
+  const boundaryRect = scrollBoundary?.getBoundingClientRect()
+  const boundaryTop = Math.max(viewportMargin, boundaryRect?.top ?? viewportMargin)
+  const boundaryBottom = Math.min(
+    viewportHeight - viewportMargin,
+    boundaryRect?.bottom ?? viewportHeight - viewportMargin,
+  )
+  const boundaryLeft = Math.max(viewportMargin, boundaryRect?.left ?? viewportMargin)
+  const boundaryRight = Math.min(
+    viewportWidth - viewportMargin,
+    boundaryRect?.right ?? viewportWidth - viewportMargin,
+  )
+
+  // 滚动弹窗内容时，触发器离开可视区域就关闭菜单，避免 Teleport 菜单悬浮在弹窗外。
+  if (triggerRect.bottom <= boundaryTop || triggerRect.top >= boundaryBottom) {
+    close()
+    return
+  }
+
+  const spaceBelow = boundaryBottom - triggerRect.bottom - menuGap
+  const spaceAbove = triggerRect.top - boundaryTop - menuGap
   const openAbove = spaceBelow < menuMaxHeight && spaceAbove > spaceBelow
-  const availableHeight = Math.max(96, Math.min(menuMaxHeight, openAbove ? spaceAbove : spaceBelow))
-  const menuWidth = Math.min(triggerRect.width, viewportWidth - viewportMargin * 2)
+  const availableHeight = Math.max(0, Math.min(menuMaxHeight, openAbove ? spaceAbove : spaceBelow))
+  if (availableHeight === 0) {
+    close()
+    return
+  }
+  const menuWidth = Math.min(triggerRect.width, boundaryRight - boundaryLeft)
   const menuLeft = Math.min(
-    Math.max(viewportMargin, triggerRect.left),
-    Math.max(viewportMargin, viewportWidth - menuWidth - viewportMargin),
+    Math.max(boundaryLeft, triggerRect.left),
+    Math.max(boundaryLeft, boundaryRight - menuWidth),
   )
 
   menuStyle.value = {

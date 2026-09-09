@@ -11,6 +11,12 @@ interface LoadProjectsOptions {
   loadSelectedSummary?: boolean
 }
 
+/** 同一账号的范围或操作权限也可能变化；旧请求不得恢复已经失效的项目缓存。 */
+function readProjectAccessKey(): string {
+  const user = useSessionStore().currentUser
+  return JSON.stringify([user?.principal_id, user?.project_ids, user?.scopes])
+}
+
 export const useProjectStore = defineStore('project', {
   state: () => ({
     projects: [] as ProjectCatalogItem[],
@@ -24,7 +30,7 @@ export const useProjectStore = defineStore('project', {
   },
   actions: {
     async loadProjects(options: LoadProjectsOptions = {}): Promise<void> {
-      const principalId = useSessionStore().currentUser?.principal_id
+      const accessKey = readProjectAccessKey()
       this.loading = true
       this.error = null
       try {
@@ -38,7 +44,7 @@ export const useProjectStore = defineStore('project', {
         const includeSummary = options.includeSummary ?? false
         const loadSelectedSummary = options.loadSelectedSummary ?? false
         const response = await listProjects({ includeSummary })
-        if (useSessionStore().currentUser?.principal_id !== principalId) return
+        if (readProjectAccessKey() !== accessKey) return
         this.projects = response.items
         if (!this.projects.some((project) => project.project_id === this.selectedProjectId)) {
           const defaultProjectId = getRuntimeConfig().defaultProjectId
@@ -52,9 +58,9 @@ export const useProjectStore = defineStore('project', {
           await this.loadSummary(this.selectedProjectId)
         }
       } catch (error) {
-        this.error = error instanceof Error ? error.message : translate('projects.listLoadFailed')
+        if (readProjectAccessKey() === accessKey) this.error = error instanceof Error ? error.message : translate('projects.listLoadFailed')
       } finally {
-        this.loading = false
+        if (readProjectAccessKey() === accessKey) this.loading = false
       }
     },
     async refreshAfterDeletion(projectId: string): Promise<void> {
@@ -67,10 +73,10 @@ export const useProjectStore = defineStore('project', {
     },
     async loadSummary(projectId: string): Promise<void> {
       const session = useSessionStore()
-      const principalId = session.currentUser?.principal_id
+      const accessKey = readProjectAccessKey()
       if (!session.hasScopes(['workflows:read', 'models:read'])) { this.selectedSummary = null; return }
       const summary = await getProjectSummary(projectId)
-      if (session.currentUser?.principal_id === principalId && this.selectedProjectId === projectId) this.selectedSummary = summary
+      if (readProjectAccessKey() === accessKey && this.selectedProjectId === projectId) this.selectedSummary = summary
     },
     async selectProject(projectId: string): Promise<void> {
       this.selectedProjectId = projectId

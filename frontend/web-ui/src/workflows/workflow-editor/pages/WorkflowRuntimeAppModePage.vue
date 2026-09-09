@@ -4,6 +4,9 @@
       <div>
         <strong>{{ appMode?.title || snapshot?.display_name || t('workflowEditor.appMode.title') }}</strong>
       </div>
+      <span class="runtime-app-mode__connection" role="status" aria-live="polite">
+        {{ t(`workflowEditor.runtimePreview.${status}`) }}
+      </span>
       <span v-if="lastRun" class="runtime-app-mode__result">
         <strong>{{ t('workflowEditor.appMode.runtimeResult') }}</strong>
         <span>{{ runStateLabel }}</span>
@@ -22,7 +25,10 @@
     <div
       v-if="snapshot && appMode"
       class="runtime-app-mode__body"
-      :class="{ 'runtime-app-mode__body--without-inputs': inputs.length === 0 || !canInvoke }"
+      :class="{
+        'runtime-app-mode__body--without-inputs': inputs.length === 0,
+        'runtime-app-mode__body--read-only': !canInvoke,
+      }"
     >
       <WorkflowAppModeInputPanel
         v-if="canInvoke"
@@ -93,7 +99,7 @@ const PREVIEW_NODE_LABELS: Record<string, { key: string; defaultTitle: string }>
 const LOCALIZED_RUN_STATES = new Set(['queued', 'running', 'paused', 'succeeded', 'failed', 'timed_out', 'cancelled'])
 
 const runtimeId = computed(() => String(route.params.workflowRuntimeId || ''))
-const { snapshot, error, loading, lastRun, displays, load } = useRuntimePreview()
+const { snapshot, error, loading, status, lastRun, displays, load } = useRuntimePreview()
 const appMode = computed(() => snapshot.value?.app_mode ?? null)
 const inputs = computed(() => orderWorkflowAppContractInputs(
   snapshot.value?.application,
@@ -246,6 +252,16 @@ async function invoke(): Promise<void> {
 
 .runtime-app-mode__body--without-inputs {
   grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.runtime-app-mode__connection {
+  color: var(--am-text-muted);
+  font-size: 13px;
+}
+
+.runtime-app-mode__body--read-only {
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
 }
 
@@ -280,15 +296,19 @@ async function invoke(): Promise<void> {
 @media (max-width: 960px) {
   .runtime-app-mode__body {
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(320px, 1fr);
+    grid-template-rows: minmax(160px, auto) minmax(320px, 1fr);
     overflow-y: auto;
   }
 
-  .runtime-app-mode__body:not(.runtime-app-mode__body--without-inputs) {
-    grid-template-rows: minmax(160px, auto) minmax(320px, 1fr);
+  .runtime-app-mode__body--without-inputs {
+    grid-template-rows: auto minmax(320px, 1fr);
   }
 
-  .runtime-app-mode__body:not(.runtime-app-mode__body--without-inputs) > .app-mode-inputs {
+  .runtime-app-mode__body--read-only {
+    grid-template-rows: minmax(320px, 1fr);
+  }
+
+  .runtime-app-mode__body:not(.runtime-app-mode__body--without-inputs):not(.runtime-app-mode__body--read-only) > .app-mode-inputs {
     max-height: min(32dvh, 280px);
   }
 }

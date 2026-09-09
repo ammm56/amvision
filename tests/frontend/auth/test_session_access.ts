@@ -2,6 +2,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useSessionStore } from '@/app/stores/session.store'
 import { usePreferencesStore } from '@/app/stores/preferences.store'
+import { useProjectStore } from '@/app/stores/project.store'
 import { apiRequest } from '@/shared/api/http-client'
 
 vi.mock('@/shared/api/http-client', () => ({ apiRequest: vi.fn() }))
@@ -63,5 +64,19 @@ describe('默认登录与权限刷新', () => {
     await Promise.all([first, second])
     expect(session.currentUser?.principal_id).toBe('reader')
     expect(session.currentUser?.scopes).toEqual([])
+  })
+
+  it('同一账号仅收回操作权限时也清理项目摘要并重读可见项目', async () => {
+    const session = useSessionStore()
+    session.$patch({ currentUser: admin as never, accessToken: 'session' })
+    const projects = useProjectStore()
+    projects.selectedSummary = { project_id: 'project-1' } as never
+    projects.projects = [{ project_id: 'project-1' }] as never
+    const bootstrap = vi.spyOn(session, 'loadBootstrap').mockResolvedValue({} as never)
+    vi.mocked(apiRequest).mockResolvedValueOnce({ ...admin, scopes: ['workflows:read'] })
+    await session.refreshPermissions()
+    expect(projects.selectedSummary).toBeNull()
+    expect(projects.projects).toEqual([])
+    expect(bootstrap).toHaveBeenCalledWith({ includeDevices: false })
   })
 })

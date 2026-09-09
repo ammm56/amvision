@@ -11,7 +11,7 @@
 
     <InlineError :message="errorMessage" />
     <ResourceCleanupPanel :project-id="selectedProjectId" @settled="refreshPage" />
-    <ImportedModelAssets :project-id="selectedProjectId" />
+    <ImportedModelAssets v-if="canWriteModels" :project-id="selectedProjectId" />
 
     <div class="operation-grid model-ops-grid">
       <ModelTrainingForm
@@ -274,6 +274,7 @@ const conversionDisplayName = ref('')
 let pageRequestSerial = 0
 
 const canWriteTasks = computed(() => sessionStore.hasScopes(['tasks:write']))
+const canWriteModels = computed(() => sessionStore.hasScopes(['models:read', 'models:write']))
 const selectedProjectId = computed(() => projectStore.selectedProjectId)
 const trainingDeviceOptions = computed(() => buildTrainingDeviceOptions(sessionStore.bootstrap?.devices ?? null).map((option) => (
   option.value === '' ? { ...option, label: t('modelOps.trainingParameters.autoDevice') } : option

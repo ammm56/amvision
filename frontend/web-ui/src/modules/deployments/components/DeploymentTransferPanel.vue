@@ -111,15 +111,20 @@ function beginImport() {
 async function resetDeviceConfiguration() {
   const backend = opened.value?.summary?.deployment.runtime_backend
   if (!backend || !options.value.device_name) return
-  await perform(async () => {
+  await perform(async (current) => {
     const result = await getDeploymentRuntimeCapabilities(backend, options.value.device_name!)
+    if (!current()) return
     configuration.value.backend_options = structuredClone(result.default_runtime_configuration.backend_options) as unknown as Record<string, unknown>
     dirty.value = true
   })
 }
-async function perform(action: () => Promise<void>) {
+async function perform(action: (current: () => boolean) => Promise<void>) {
+  const epoch = generation
+  const current = () => epoch === generation
   busy.value = true; error.value = ''
-  try { await action() } catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause) } finally { busy.value = false }
+  try { await action(current) }
+  catch (cause) { if (current()) error.value = cause instanceof Error ? cause.message : String(cause) }
+  finally { if (current()) busy.value = false }
 }
 function open(item: DeploymentTransfer) {
   visible.value = true
@@ -155,16 +160,19 @@ async function upload(file: File) {
   const controller = new AbortController()
   uploadController = controller
   uploading.value = { name: file.name, size: file.size }
-  await perform(async () => {
+  await perform(async (current) => {
     try {
       const item = await uploadDeployment(project, file, controller.signal)
-      if (project !== props.projectId) return
+      if (!current()) return
       store(item)
-      if (controller.signal.aborted) store(await cancelTransfer(project, item.operation_id))
+      if (controller.signal.aborted) {
+        const cancelled = await cancelTransfer(project, item.operation_id)
+        if (current()) store(cancelled)
+      }
       else awaitingUpload = item.operation_id
     } catch (cause) {
       if (!controller.signal.aborted) throw cause
-      if (project === props.projectId) error.value = tr('uploadInterrupted')
+      if (current()) error.value = tr('uploadInterrupted')
     } finally {
       if (uploadController === controller) { uploadController = null; uploading.value = null }
     }
@@ -176,16 +184,24 @@ async function confirm() {
   if (!item || !props.projectId) return
   if (item.state === 'completed') { openedId.value = null; return }
   const project = props.projectId
-  await perform(async () => {
+  await perform(async (current) => {
     if (needsAnalysis.value) {
       if (!Number.isInteger(options.value.instance_count) || Number(options.value.instance_count) < 1 || Number(options.value.instance_count) > 64) throw new Error(tr('invalidCount'))
-      store(await changeTransfer(project, item.operation_id, 'analyze', { ...options.value, runtime_configuration: configuration.value }))
+      const analyzed = await changeTransfer(project, item.operation_id, 'analyze', { ...options.value, runtime_configuration: configuration.value })
+      if (!current()) return
+      store(analyzed)
       dirty.value = false
-    } else store(await changeTransfer(project, item.operation_id, 'commit', { analysis_revision: item.analysis_revision, idempotency_key: item.operation_id }))
+    } else {
+      const committed = await changeTransfer(project, item.operation_id, 'commit', { analysis_revision: item.analysis_revision, idempotency_key: item.operation_id })
+      if (current()) store(committed)
+    }
   })
 }
-const cancel = (item: DeploymentTransfer) => perform(async () => store(await cancelTransfer(props.projectId!, item.operation_id)))
-watch(() => props.projectId, () => { abortUpload(); generation++; clearTimeout(timer); items.value = []; visible.value = false; openedId.value = null; awaitingUpload = null; error.value = ''; void refresh() }, { immediate: true })
+const cancel = (item: DeploymentTransfer) => perform(async (current) => {
+  const cancelled = await cancelTransfer(props.projectId!, item.operation_id)
+  if (current()) store(cancelled)
+})
+watch(() => props.projectId, () => { abortUpload(); uploadController = null; uploading.value = null; generation++; clearTimeout(timer); items.value = []; busy.value = false; visible.value = false; openedId.value = null; awaitingUpload = null; error.value = ''; void refresh() }, { immediate: true })
 onBeforeUnmount(() => { abortUpload(); generation++; clearTimeout(timer) })
 defineExpose({ upload, beginImport, exportFor, store })
 </script>

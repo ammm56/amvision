@@ -398,6 +398,25 @@ function sourceModelDetail(model: DeploymentSourceModelSummary): DeploymentSourc
 describe('DeploymentOperationsPage', () => {
   let pinia: Pinia
 
+  it('只读用户不启动需要写权限的部署导入面板，权限收回后卸载面板', async () => {
+    const session = useSessionStore(pinia)
+    session.currentUser!.scopes = ['models:read']
+    const wrapper = mount(DeploymentOperationsPage, {
+      global: { plugins: [pinia, i18n], stubs: { DeploymentTransferPanel: { name: 'DeploymentTransferPanel', template: '<div />', methods: { exportFor: () => undefined } } } },
+    })
+    await flushPromises()
+    expect(wrapper.findComponent({ name: 'DeploymentTransferPanel' }).exists()).toBe(false)
+    session.currentUser!.scopes.push('models:write')
+    await nextTick()
+    expect(wrapper.findComponent({ name: 'DeploymentTransferPanel' }).exists()).toBe(true)
+    session.currentUser!.scopes = ['models:read']
+    await nextTick()
+    expect(wrapper.findComponent({ name: 'DeploymentTransferPanel' }).exists()).toBe(false)
+    session.currentUser!.scopes = ['models:write']
+    await nextTick()
+    expect(wrapper.findComponent({ name: 'DeploymentTransferPanel' }).exists()).toBe(false)
+  })
+
   beforeEach(() => {
     setI18nLocale('zh-CN')
     pinia = createPinia()

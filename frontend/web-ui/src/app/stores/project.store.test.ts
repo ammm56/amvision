@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useSessionStore } from './session.store'
 import { useProjectStore } from './project.store'
-import { listProjects } from '@/modules/projects/services/project.service'
+import { getProjectSummary, listProjects } from '@/modules/projects/services/project.service'
 
 vi.mock('@/modules/projects/services/project.service', () => ({
   bootstrapProject: vi.fn(),
@@ -50,6 +50,32 @@ describe('project store', () => {
     await store.loadProjects()
 
     expect(store.selectedProjectId).toBe('')
+    expect(store.selectedSummary).toBeNull()
+  })
+
+  it('同一账号缩小项目范围后，迟到列表不能重新填回已清理的项目', async () => {
+    let finish!: (value: Awaited<ReturnType<typeof listProjects>>) => void
+    vi.mocked(listProjects).mockReturnValue(new Promise(resolve => { finish = resolve }))
+    const store = useProjectStore()
+    const pending = store.loadProjects()
+    useSessionStore().currentUser = { ...useSessionStore().currentUser!, project_ids: ['project-1'] }
+    store.$reset()
+    finish({ items: [{ project_id: 'revoked-project' }], pagination: {} } as never)
+    await pending
+    expect(store.projects).toEqual([])
+    expect(store.selectedProjectId).not.toBe('revoked-project')
+  })
+
+  it('撤销读取操作后，迟到摘要不能恢复受限数据', async () => {
+    let finish!: (value: Awaited<ReturnType<typeof getProjectSummary>>) => void
+    vi.mocked(getProjectSummary).mockReturnValue(new Promise(resolve => { finish = resolve }))
+    const store = useProjectStore()
+    store.selectedProjectId = 'project-1'
+    const pending = store.loadSummary('project-1')
+    useSessionStore().currentUser = { ...useSessionStore().currentUser!, scopes: ['workflows:read'] }
+    store.selectedSummary = null
+    finish({ project_id: 'project-1' } as never)
+    await pending
     expect(store.selectedSummary).toBeNull()
   })
 })
