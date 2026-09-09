@@ -23,7 +23,7 @@
     "mode": "local",
     "websocket_query_token_enabled": true,
     "local_auth": {
-      "password_min_length": 6,
+      "password_min_length": 1,
       "initialize_default_user_on_empty_db": true
     },
     "static_tokens": []

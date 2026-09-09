@@ -39,7 +39,7 @@ from backend.service.settings import BackendServiceSettings
 
 _PASSWORD_HASH_ALGORITHM = "pbkdf2_sha256"
 _PASSWORD_HASH_ITERATIONS = 600_000
-_USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._@-]{2,63}$")
+_USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._@-]{0,63}$")
 _TOKEN_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._@-]{0,127}$")
 _LOCAL_PROVIDER_ID = "local"
 _DEFAULT_LOCAL_AUTH_USER_TOKEN_NAME = "default"
@@ -1352,7 +1352,7 @@ class LocalAuthService:
         normalized_username = username.strip()
         if not _USERNAME_PATTERN.fullmatch(normalized_username):
             raise InvalidRequestError(
-                "username 格式不合法，只允许字母、数字、点、下划线、减号和 @，长度 3-64",
+                "username 格式不合法，只允许字母、数字、点、下划线、减号和 @，长度 1-64",
                 details={"username": username},
             )
         return normalized_username

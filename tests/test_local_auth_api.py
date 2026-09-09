@@ -150,6 +150,43 @@ def test_local_auth_bootstrap_refresh_logout_and_system_me_resolves_session(
     assert me_after_logout_response.json()["error"]["code"] == "authentication_required"
 
 
+def test_local_auth_accepts_one_character_username_and_password(tmp_path: Path) -> None:
+    """验证用户名和密码的最小长度统一为 1。"""
+
+    client, session_factory = _create_local_auth_test_client(
+        tmp_path,
+        database_name="local-auth-minimum-credentials.db",
+    )
+
+    try:
+        with client:
+            bootstrap_response = client.post(
+                "/api/v1/auth/bootstrap-admin",
+                json={"username": "a", "password": "p"},
+            )
+            admin_headers = {
+                "Authorization": f"Bearer {bootstrap_response.json()['access_token']}"
+            }
+            create_response = client.post(
+                "/api/v1/auth/users",
+                headers=admin_headers,
+                json={"username": "b", "password": "q"},
+            )
+            empty_password_response = client.post(
+                "/api/v1/auth/users",
+                headers=admin_headers,
+                json={"username": "c", "password": ""},
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert bootstrap_response.status_code == 201
+    assert create_response.status_code == 201
+    assert create_response.json()["user"]["username"] == "b"
+    assert empty_password_response.status_code == 400
+    assert empty_password_response.json()["error"]["details"]["password_min_length"] == 1
+
+
 def test_local_auth_default_user_token_can_access_rest_and_websocket(
     tmp_path: Path,
 ) -> None:

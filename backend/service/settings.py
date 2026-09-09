@@ -134,7 +134,7 @@ class BackendServiceLocalAuthConfig(BaseModel):
         default=0,
         description="长期调用 user token 默认有效期小时数；0 表示永久有效",
     )
-    password_min_length: int = Field(default=6, description="本地密码最小长度")
+    password_min_length: int = Field(default=1, ge=1, description="本地密码最小长度")
     initialize_default_user_on_empty_db: bool = Field(
         default=True,
         description="当本地用户表为空时是否自动初始化默认本地用户",
