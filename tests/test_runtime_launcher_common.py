@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 from pathlib import Path
 import subprocess
 import sys
 from types import ModuleType
+
+import pytest
 
 
 def _load_launcher_common() -> ModuleType:
@@ -31,6 +34,54 @@ def test_is_pid_alive_recognizes_current_and_missing_process() -> None:
 
     assert launcher_common.is_pid_alive(os.getpid()) is True
     assert launcher_common.is_pid_alive(2_147_483_647) is False
+
+
+@pytest.mark.skipif(os.name != "nt", reason="验证 Windows 读句柄不共享删除时的真实文件占用")
+def test_full_json_publish_survives_concurrent_windows_reader(tmp_path: Path) -> None:
+    """状态读取与原子替换并发时，写入应在读句柄释放后完成。"""
+    from threading import Event, Thread
+
+    common = _load_launcher_common()
+    path = tmp_path / "runtime-state.json"
+    path.write_text('{"generation": 1}', encoding="utf-8")
+    opened = Event()
+
+    def read_state() -> None:
+        """模拟未持有写锁的状态轮询者。"""
+        with path.open("rb"):
+            opened.set()
+            Event().wait(0.15)
+
+    reader = Thread(target=read_state)
+    reader.start()
+    assert opened.wait(2)
+    try:
+        common.write_full_json(path, {"generation": 2})
+    finally:
+        reader.join(2)
+    assert json.loads(path.read_text(encoding="utf-8")) == {"generation": 2}
+    assert not list(tmp_path.glob("*.tmp"))
+
+
+def test_full_json_permanent_replace_error_preserves_previous_state(tmp_path: Path, monkeypatch) -> None:
+    """超出重试窗口仍报告错误，保留旧状态并回收本次暂存文件。"""
+    common = _load_launcher_common()
+    path = tmp_path / "runtime-state.json"
+    path.write_text('{"generation": 1}', encoding="utf-8")
+    timestamps = iter([0.0, 6.0])
+    monkeypatch.setattr(common.time, "monotonic", lambda: next(timestamps))
+
+    def fail_replace(*args) -> None:
+        """模拟不可恢复的 Windows 拒绝访问。"""
+        error = PermissionError("replacement denied")
+        error.winerror = 5
+        raise error
+
+    monkeypatch.setattr(Path, "replace", fail_replace)
+    with pytest.raises(PermissionError, match="replacement denied"):
+        common.write_full_json(path, {"generation": 2})
+    assert json.loads(path.read_text(encoding="utf-8")) == {"generation": 1}
+    assert not list(tmp_path.glob("*.tmp"))
 
 
 def test_run_python_module_resolves_explicit_relative_python_before_cwd_change(

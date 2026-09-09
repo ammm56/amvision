@@ -62,10 +62,24 @@ def write_full_json(path: Path, payload: Mapping[str, object]) -> None:
     temporary = path.with_name(f"{path.name}.{os.getpid()}.tmp")
     try:
         temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        temporary.replace(path)
+        _retry_full_state_file_operation(lambda: temporary.replace(path))
     finally:
         with contextlib.suppress(FileNotFoundError):
             temporary.unlink()
+
+
+def _retry_full_state_file_operation(operation: Callable[[], object]) -> None:
+    """Windows 状态读取者短暂占用文件时限时重试；永久错误仍向调用方报告。"""
+
+    deadline = time.monotonic() + 5.0
+    while True:
+        try:
+            operation()
+            return
+        except PermissionError as error:
+            if getattr(error, "winerror", None) not in {5, 32, 33} or time.monotonic() >= deadline:
+                raise
+            time.sleep(0.02)
 
 
 def clear_full_state(state_file: Path, root_identity: object) -> None:
@@ -79,7 +93,7 @@ def clear_full_state(state_file: Path, root_identity: object) -> None:
             except (FileNotFoundError, json.JSONDecodeError):
                 continue
             if payload.get("root_process") == root_identity and payload.get("state") != "failed":
-                path.unlink(missing_ok=True)
+                _retry_full_state_file_operation(lambda: path.unlink(missing_ok=True))
 
 
 class DailyAppendLogCapture:
