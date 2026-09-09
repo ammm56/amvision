@@ -129,10 +129,6 @@ npm run dev
 - API：`http://127.0.0.1:5600`
 - OpenAPI：`http://127.0.0.1:5600/docs`
 
-Vite 开发服务使用 `frontend/web-ui/node_modules/.vite/development/`，Vitest 使用同级 `unit-tests/`，两者不共享依赖预构建缓存。额外启动组件预览或验证服务时，必须显式指定独立的 `cacheDir`；仅修改端口、Vue alias 或页面入口不能隔离缓存。Vue 依赖统一解析到当前前端包，避免应用与组件库各自加载一份运行时。
-
-如果导航后只剩侧栏，控制台出现 `renderSlot` 的 `Cannot read properties of null (reading 'ce')`，并且堆栈引用不同 Vue 运行时文件，应先核对是否有多个 Vite 进程共用缓存。停止额外验证进程，为其指定独立缓存后重启开发 Vite（必要时使用 `npm run dev -- --force`），再完整刷新浏览器并逐项验证导航。此问题的处理不需要重启后端、Worker 或推理进程。
-
 ### 7. 编译和启动桌面启动器
 
 从仓库根目录执行，构建机需要 .NET 10 SDK：
