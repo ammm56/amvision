@@ -158,7 +158,6 @@
           <header class="settings-worker-topology__heading">
             <div>
               <h3>{{ t('settingsDiagnostics.sections.workerTopology') }}</h3>
-              <p>{{ t('settingsDiagnostics.workerTopologyDescription') }}</p>
             </div>
             <StatusBadge
               :status="backendWorkerDiagnostics.health"
