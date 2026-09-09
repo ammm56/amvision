@@ -150,9 +150,12 @@ namespace AMVision.Console
             //var zeroMqImageFileWithInputs = runner.Call(api => api.InvokeZeroMqImageFromFileWithInputs(ZeroMqTriggerSourceName, ImagePath, zeroMqInputs, ImageMediaType, cancellationToken));
             var zeroMqImageBytesWithInputs = runner.Call(api => api.InvokeZeroMqImageBytesWithInputs(ZeroMqTriggerSourceName, LoadImageBytes(), zeroMqInputs, ImageMediaType, cancellationToken));
             resultStr = JsonConvert.SerializeObject(zeroMqImageBytesWithInputs, Formatting.Indented);
+
             var zeroMqImageBase64WithInputs = runner.Call(api => api.InvokeZeroMqImageBase64WithInputs(ZeroMqTriggerSourceName, LoadImageBase64(), zeroMqInputs, ImageMediaType, cancellationToken));
             resultStr = JsonConvert.SerializeObject(zeroMqImageBase64WithInputs, Formatting.Indented);
+
             var zeroMqBgr24WithInputs = runner.Call(api => api.InvokeZeroMqBgr24WithInputs(ZeroMqTriggerSourceName, frame.Bytes, frame.Width, frame.Height, zeroMqInputs, cancellationToken));
+
             //var zeroMqBgr24FileWithInputs = runner.Call(api => api.InvokeZeroMqBgr24FromFileWithInputs(ZeroMqTriggerSourceName, ImagePath, zeroMqInputs, cancellationToken));
             //var zeroMqConfiguredBgr24WithInputs = runner.Call(api => api.InvokeConfiguredZeroMqBgr24ImageWithInputs(ZeroMqTriggerSourceName, zeroMqInputs, cancellationToken));
             //var zeroMqBgr24BitmapWithInputs = runner.Call(api => { using (var bitmap = LoadBitmap()) return api.InvokeZeroMqBgr24FromBitmapWithInputs(ZeroMqTriggerSourceName, bitmap, zeroMqInputs, cancellationToken); });
@@ -202,6 +205,7 @@ namespace AMVision.Console
                 {
                     recipe = "3570",
                     station = 2,
+                    savepath = "D:\\记录",
                     barqrcode = "abcdefg12345678"
                 })
                 .WithTimeoutSeconds(30)
@@ -231,9 +235,10 @@ namespace AMVision.Console
                 {
                     recipe = "3570",
                     station = 2,
+                    savepath = "D:\\记录",
                     barqrcode = "abcdefg12345678"
                 })
-                .AddText("request_text", "lot-20260831")
+                //.AddText("request_text", "lot-20260831")
                 .Build();
         }
     }
