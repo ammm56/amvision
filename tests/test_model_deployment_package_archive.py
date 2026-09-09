@@ -1,8 +1,9 @@
 """部署包契约及文件完整性测试，不需要加载视觉模型。"""
 
 import hashlib
+import struct
 from pathlib import Path
-from zipfile import ZipFile
+from zipfile import BadZipFile, ZipFile
 
 import pytest
 from pydantic import ValidationError
@@ -71,3 +72,52 @@ def test_missing_reference_and_runtime_state_are_rejected() -> None:
     payload["deployment"]["desired_state"] = "running"
     with pytest.raises(ValidationError):
         ModelDeploymentPackage.model_validate(payload)
+
+
+def damage_checkpoint(path: Path) -> None:
+    """只破坏独立测试 ZIP 中的一个数据字节，保留原有 CRC 和文件长度。"""
+    with ZipFile(path) as archive:
+        offset = archive.getinfo("files/version/best.pt").header_offset
+    with path.open("r+b") as stream:
+        stream.seek(offset)
+        header = stream.read(30)
+        name_size, extra_size = struct.unpack_from("<HH", header, 26)
+        stream.seek(name_size + extra_size, 1)
+        position = stream.tell()
+        value = stream.read(1)
+        stream.seek(position)
+        stream.write(bytes([value[0] ^ 1]))
+
+
+def test_crc_damage_reports_export_recovery_instructions(tmp_path: Path) -> None:
+    """文件长度相同的位损坏仍须拒绝，并明确提示重新导出。"""
+    source = tmp_path / "source.pt"
+    source.write_bytes(b"model")
+    path = tmp_path / "model.zip"
+    write_package(path, sample_package(), {"weights": source})
+    damage_checkpoint(path)
+    with pytest.raises(ValueError, match="ZIP 完整性校验失败.*best.pt.*重新导出"):
+        read_package(path, tmp_path / "unpacked")
+
+
+def test_written_crc_damage_preserves_previous_archive(tmp_path: Path, monkeypatch) -> None:
+    """模拟临时 ZIP 写入后损坏，回读失败不能替换已有完整包。"""
+    source = tmp_path / "source.pt"
+    source.write_bytes(b"model")
+    path = tmp_path / "model.zip"
+    write_package(path, sample_package(), {"weights": source})
+    original = path.read_bytes()
+    close = ZipFile.close
+
+    def close_and_damage(archive):
+        """仅在本次写归档关闭时注入故障，不影响读归档关闭。"""
+        damage = archive.mode == "w" and archive.fp is not None
+        close(archive)
+        if damage:
+            damage_checkpoint(Path(archive.filename))
+
+    monkeypatch.setattr(ZipFile, "close", close_and_damage)
+    with pytest.raises(BadZipFile, match="CRC"):
+        write_package(path, sample_package(), {"weights": source})
+    assert path.read_bytes() == original
+    assert not path.with_suffix(".writing").exists()

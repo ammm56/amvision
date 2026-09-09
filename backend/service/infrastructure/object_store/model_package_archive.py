@@ -8,7 +8,7 @@ import stat
 import shutil
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from zipfile import ZIP_STORED, ZipFile
+from zipfile import ZIP_STORED, BadZipFile, ZipFile
 
 from backend.contracts.deployments.model_package import ModelDeploymentPackage, TransferLimits, safe_package_path
 
@@ -43,6 +43,20 @@ def write_package(path: Path, manifest: ModelDeploymentPackage, sources: Mapping
                             progress(len(chunk))
                 if (digest.hexdigest(), size) != (item.sha256, item.byte_size):
                     raise ValueError(f"导出期间文件已变化：{item.logical_name}")
+        # 回读已关闭的归档，确保公布的是完整文件，而不只是源读取缓冲区正确。
+        with ZipFile(staging) as archive:
+            if archive.read("manifest.json") != manifest.model_dump_json(indent=2).encode("utf-8"):
+                raise ValueError("导出包清单写入校验失败")
+            for item in manifest.files:
+                digest, size = hashlib.sha256(), 0
+                with archive.open(f"files/{item.owner}/{item.path}") as src:
+                    while chunk := src.read(1024 * 1024):
+                        digest.update(chunk)
+                        size += len(chunk)
+                        if progress:
+                            progress(len(chunk))
+                if (digest.hexdigest(), size) != (item.sha256, item.byte_size):
+                    raise ValueError(f"导出包文件写入校验失败：{item.logical_name}")
         staging.replace(path)
     finally:
         staging.unlink(missing_ok=True)
@@ -96,15 +110,18 @@ def read_package(path: Path, destination: Path, limits: TransferLimits | None = 
             target = destination / item.owner / item.path
             target.parent.mkdir(parents=True, exist_ok=True)
             digest, size = hashlib.sha256(), 0
-            with archive.open(name) as src, target.open("xb") as dst:
-                while chunk := src.read(1024 * 1024):
-                    size += len(chunk)
-                    if size > item.byte_size:
-                        raise ValueError("解压文件超过声明大小")
-                    digest.update(chunk)
-                    dst.write(chunk)
-                    if progress:
-                        progress(len(chunk))
+            try:
+                with archive.open(name) as src, target.open("xb") as dst:
+                    while chunk := src.read(1024 * 1024):
+                        size += len(chunk)
+                        if size > item.byte_size:
+                            raise ValueError("解压文件超过声明大小")
+                        digest.update(chunk)
+                        dst.write(chunk)
+                        if progress:
+                            progress(len(chunk))
+            except BadZipFile as error:
+                raise ValueError(f"部署包 ZIP 完整性校验失败：{name}。请在源环境重新导出并下载后重试。") from error
             if digest.hexdigest() != item.sha256:
                 raise ValueError(f"文件摘要不匹配：{item.logical_name}")
         return manifest

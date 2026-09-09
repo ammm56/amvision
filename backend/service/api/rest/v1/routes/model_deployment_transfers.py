@@ -132,7 +132,7 @@ def download(project_id: str, operation_id: str, principal: Principal, factory: 
     import re
     name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", op.get("display_name") or "model")[:100]
     root = svc.root(op)
-    return TransferDownloadResponse(lock_path=str(storage.resolve(f"{root}/worker.lock")), session_factory=factory, project_id=project_id, resource_id=operation_id, path=storage.resolve(f"{root}/package.zip"), filename=f"{name}.amvision-deployment.zip", media_type="application/zip")
+    return TransferDownloadResponse(lock_path=str(storage.resolve(f"{root}/worker.lock")), session_factory=factory, project_id=project_id, resource_id=operation_id, path=storage.resolve(f"{root}/package.zip"), filename=f"{name}.amvision-deployment.zip", media_type="application/zip", headers={"Cache-Control": "no-store"})
 
 
 @router.post("/imports", status_code=202)

@@ -6,6 +6,7 @@ import argparse
 import json
 import shutil
 from pathlib import Path
+from zipfile import ZipFile
 
 from backend.contracts.deployments.model_package import ImportOptions
 from backend.service.application.deployments.deployment_instance_service import SqlAlchemyDeploymentInstanceService
@@ -87,13 +88,17 @@ def import_target(root: Path, source: Path) -> None:
         service.run(exported["operation_id"])
         assert service.get(exported["operation_id"])["state"] == "completed", service.get(exported["operation_id"])
         archive = storage.resolve(f"{service.root(exported)}/package.zip")
-        original_bytes, original_mtime = archive.read_bytes(), archive.stat().st_mtime_ns
+        original_digest = service.get(exported["operation_id"])["archive_sha256"]
         for _ in range(3):
             repeated = service.create("project-1", "export", deployment_id=op["deployment_id"])
             assert repeated["operation_id"] == exported["operation_id"]
             service.run(repeated["operation_id"])
             assert service.get(repeated["operation_id"])["state"] == "completed"
-            assert archive.read_bytes() == original_bytes and archive.stat().st_mtime_ns == original_mtime
+            current_digest = service.get(repeated["operation_id"])["archive_sha256"]
+            assert current_digest != original_digest
+            original_digest = current_digest
+            with ZipFile(archive) as package_zip:
+                assert package_zip.testzip() is None
         assert len(list(storage.resolve("projects/project-1/model-deployment-transfers").glob("*/package.zip"))) == 1
         deletion = ResourceDeletionService(session_factory=factory, dataset_storage=storage, queue_backend=queue)
         preview = deletion.preview(kind="deployment", resource_id=op["deployment_id"], project_id="project-1")
@@ -105,7 +110,7 @@ def import_target(root: Path, source: Path) -> None:
             assert unit.models.get_model_build(op["mapping"]["build"]) is None
         for kind in ("version", "build"):
             assert not storage.resolve(f"projects/project-1/models/imported/{kind}s/{op['mapping'][kind]}").exists()
-        print(json.dumps({"import": "passed", "prediction": actual, "roundtrip_export": "passed", "repeated_export_same_zip": "passed", "delete_records_and_files": "passed"}, ensure_ascii=False))
+        print(json.dumps({"import": "passed", "prediction": actual, "roundtrip_export": "passed", "repeated_export_rebuilds_zip": "passed", "delete_records_and_files": "passed"}, ensure_ascii=False))
     finally:
         factory.engine.dispose()
 

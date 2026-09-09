@@ -48,6 +48,7 @@ def test_package_http_roundtrip_and_project_isolation(tmp_path):
             assert service.get(export_id)["state"] == "completed", service.get(export_id)
             response = client.get(f"{base}/exports/{export_id}/download", headers=headers)
             assert response.status_code == 200, response.text
+            assert response.headers["cache-control"] == "no-store"
             assert response.content[:2] == b"PK"
             assert client.get(f"/api/v1/projects/project-other/model-deployment-transfers/{op_id}", headers=headers).status_code in {403, 404}
     finally:

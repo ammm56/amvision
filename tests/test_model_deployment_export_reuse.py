@@ -3,6 +3,9 @@
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
+from zipfile import ZipFile
+
+import json
 
 import pytest
 
@@ -35,17 +38,25 @@ def export(service):
     return result, service.storage.resolve(f"{service.root(result)}/package.zip")
 
 
-def test_repeated_and_concurrent_exports_share_operation_and_unchanged_zip(service):
-    """并发登记只有一个操作；再次导出不改变 ZIP 字节或写入时间。"""
+def test_repeated_and_concurrent_exports_share_operation_but_rebuild_zip(service):
+    """并发登记只有一个操作；内容未变也必须生成新包并替换旧文件。"""
     with ThreadPoolExecutor(max_workers=4) as pool:
         operations = list(pool.map(lambda _: service.create("project-1", "export", deployment_id="deployment-1"), range(8)))
     assert len({op["operation_id"] for op in operations}) == 1
     first, path = export(service)
-    original, modified = path.read_bytes(), path.stat().st_mtime_ns
+    original = path.read_bytes()
+    with ZipFile(path) as archive:
+        original_manifest = json.loads(archive.read("manifest.json"))
     second, repeated = export(service)
     assert first["operation_id"] == second["operation_id"]
-    assert repeated == path and path.read_bytes() == original
-    assert path.stat().st_mtime_ns == modified
+    assert repeated == path and path.read_bytes() != original
+    assert first["export_fingerprint"] == second["export_fingerprint"]
+    assert first["archive_sha256"] != second["archive_sha256"]
+    with ZipFile(path) as archive:
+        manifest = json.loads(archive.read("manifest.json"))
+        assert manifest["package_id"] != original_manifest["package_id"]
+        assert manifest["files"] == original_manifest["files"]
+        assert archive.testzip() is None
     assert len([op for op in service.list() if op["direction"] == "export"]) == 1
 
 

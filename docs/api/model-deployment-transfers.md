@@ -32,13 +32,15 @@
 
 导出为 `pending_export → exporting → completed`；导入为 `uploading → pending_analysis → analyzing → ready/needs_attention → pending_import → importing → completed`。另有 failed、cancelled、expired。页面刷新后从数据库回读状态。
 
-同实例重复导出使用一个操作目录和一个 `package.zip`。Worker 每次核对完整配置、固定推理语义及源文件 SHA-256，比较时排除随机包 ID 和生成时间；已有 ZIP 自身摘要也必须匹配。内容未变时保留原 ZIP 字节和写入时间，变化、缺失或损坏时原位生成替换；API 请求不执行大文件哈希。旧实现留下的同实例重复包，在最新包生成成功后按文件锁回收；下载占用的包留待下次导出或到期清理。
+同实例重复导出使用一个操作目录和一个 `package.zip`，只合并尚在处理中的并发请求。每次新的导出都由 Worker 读取当前完整配置、固定推理语义和源文件，重新生成包含新包 ID 和生成时间的 ZIP；即使内容未变，也不复用旧 ZIP。文件先流式写入 `package.writing`，关闭后回读核对 CRC、文件大小和清单 SHA-256，全部成功后原子替换 `package.zip`。失败保留原文件，但当前操作标记失败，不把旧包作为本次成功结果返回。下载响应使用 `Cache-Control: no-store`，避免相同下载地址缓存旧包。API 请求不执行大文件哈希，回读校验不进入推理和 Trigger 链路。旧实现留下的同实例重复包，在最新包生成成功后按文件锁回收；下载占用的包留待下次导出或到期清理。
 
 部署页在实例的导出按钮显示统一加载动效，完成后紧邻显示下载按钮；错误也显示在对应实例内。导入上传、分析、配置核对均在对话框完成，成功后关闭并刷新实例列表，不在页面顶部保留导入/导出记录。再次打开“导入部署实例”可继续未完成操作或选择新包。
 
 消费者 `model-deployment-transfer` 位于既有 `dataset-export` Worker profile。开发环境更新后需要使该 Worker 载入新消费者；仅运行 Uvicorn 不执行文件打包和导入。发行 full 脚本按 profile 自动启动消费者。
 
 包格式 `amvision.model-deployment.v1`：根文件 `manifest.json`，文件位于 `files/version/…` 与 `files/build/…`。拒绝路径穿越、大小写重复路径、链接、加密 ZIP、清单外文件、大小或摘要不符的文件；OpenVINO 收集 XML/BIN，ONNX 收集 external data。分析不执行模型反序列化。
+
+导入出现 ZIP CRC 完整性错误表示包内字节损坏，不能通过跳过校验继续导入。应在源环境重新导出并下载，再上传新包；必要时比对源包、下载包和上传包的 SHA-256，以定位损坏环节。
 
 磁盘位置相对 ObjectStore 根（默认 `data/files`）：
 

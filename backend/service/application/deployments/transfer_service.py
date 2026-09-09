@@ -96,7 +96,7 @@ class ModelDeploymentTransferService:
                             existing = self.get(existing["operation_id"])
                             if existing["state"] in {"pending_export", "exporting"}:
                                 return existing
-                            # 保留一个操作和 ZIP；Worker 重新核对内容后复用或原位替换。
+                            # 保留一个操作目录；每次重新打包，成功后原位替换旧 ZIP。
                             return self.update(existing["operation_id"], "pending_export", progress_bytes=0, total_bytes=None, error=None, cancel_requested=False, actor=actor)
                 return self._create(project_id, direction, deployment_id=deployment_id, actor=actor)
         return self._create(project_id, direction, deployment_id=deployment_id, actor=actor)
@@ -221,20 +221,14 @@ class ModelDeploymentTransferService:
             return False
 
     def _export(self, op: dict) -> None:
-        """按完整配置及文件摘要复用 ZIP；变化时只替换当前包。"""
+        """按当前配置和源文件重新生成 ZIP，校验成功后替换旧包。"""
         self.update(op["operation_id"], "exporting")
         progress = self._progress(op["operation_id"])
         package, sources = compile_deployment_package(self.factory, self.storage, op["deployment_id"], op["project_id"], progress)
         destination = self.storage.resolve(f"{self.root(op)}/package.zip")
         fingerprint = content_hash(package.model_dump(exclude={"package_id", "created_at"}))
-        reusable = (
-            op.get("export_fingerprint") == fingerprint
-            and destination.is_file()
-            and file_digest(destination, progress)[0] == op.get("archive_sha256")
-        )
-        if not reusable:
-            write_package(destination, package, sources, progress)
-        digest, size = file_digest(destination) if not reusable else (op["archive_sha256"], destination.stat().st_size)
+        write_package(destination, package, sources, progress)
+        digest, size = file_digest(destination)
         self.update(op["operation_id"], "completed", display_name=package.deployment.display_name, total_bytes=size, progress_bytes=size, export_fingerprint=fingerprint, archive_sha256=digest)
         self._retire_older_exports(op)
 
