@@ -24,12 +24,21 @@ export const useProjectStore = defineStore('project', {
   },
   actions: {
     async loadProjects(options: LoadProjectsOptions = {}): Promise<void> {
+      const principalId = useSessionStore().currentUser?.principal_id
       this.loading = true
       this.error = null
       try {
+        const session = useSessionStore()
+        if (!session.hasScopes(['workflows:read', 'models:read'])) {
+          this.projects = session.bootstrap?.visible_projects ?? []
+          this.selectedSummary = null
+          if (!this.projects.some((p) => p.project_id === this.selectedProjectId)) this.selectedProjectId = this.projects[0]?.project_id ?? ''
+          return
+        }
         const includeSummary = options.includeSummary ?? false
         const loadSelectedSummary = options.loadSelectedSummary ?? false
         const response = await listProjects({ includeSummary })
+        if (useSessionStore().currentUser?.principal_id !== principalId) return
         this.projects = response.items
         if (!this.projects.some((project) => project.project_id === this.selectedProjectId)) {
           const defaultProjectId = getRuntimeConfig().defaultProjectId
@@ -57,7 +66,11 @@ export const useProjectStore = defineStore('project', {
       await useSessionStore().loadBootstrap({ includeDevices: false }).catch(() => undefined)
     },
     async loadSummary(projectId: string): Promise<void> {
-      this.selectedSummary = await getProjectSummary(projectId)
+      const session = useSessionStore()
+      const principalId = session.currentUser?.principal_id
+      if (!session.hasScopes(['workflows:read', 'models:read'])) { this.selectedSummary = null; return }
+      const summary = await getProjectSummary(projectId)
+      if (session.currentUser?.principal_id === principalId && this.selectedProjectId === projectId) this.selectedSummary = summary
     },
     async selectProject(projectId: string): Promise<void> {
       this.selectedProjectId = projectId

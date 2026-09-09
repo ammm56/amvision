@@ -9,13 +9,20 @@ import hmac
 import re
 import secrets
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from backend.service.application.auth.auth_events import build_auth_service_event
+from backend.service.application.auth.permissions import (
+    normalize_allowed_pages,
+    validate_page_access,
+    is_account_administrator,
+)
 from backend.service.application.errors import (
     AuthenticationRequiredError,
+    PermissionDeniedError,
+    ServiceError,
     InvalidRequestError,
     PersistenceOperationError,
     ResourceNotFoundError,
@@ -49,6 +56,7 @@ class LocalAuthUser:
     principal_type: str
     project_ids: tuple[str, ...] = ()
     scopes: tuple[str, ...] = ()
+    allowed_pages: tuple[str, ...] | None = None
     is_active: bool = True
     created_at: str = ""
     updated_at: str = ""
@@ -148,6 +156,7 @@ class LocalAuthUserCreateRequest:
     project_ids: tuple[str, ...] = ()
     scopes: tuple[str, ...] = ()
     metadata: dict[str, object] = field(default_factory=dict)
+    allowed_pages: tuple[str, ...] | None = None
     initial_user_token: LocalAuthUserTokenCreateRequest | None = field(
         default_factory=LocalAuthUserTokenCreateRequest
     )
@@ -170,6 +179,9 @@ class LocalAuthUserUpdateRequest:
     project_ids: tuple[str, ...] | None = None
     scopes: tuple[str, ...] | None = None
     is_active: bool | None = None
+    allowed_pages: tuple[str, ...] | None = None
+    update_allowed_pages: bool = False
+    expected_updated_at: str | None = None
     metadata: dict[str, object] | None = None
 
 
@@ -441,6 +453,56 @@ class LocalAuthService:
                 ) from error
         return True
 
+    @staticmethod
+    def _serialize_account_change(session: Session) -> None:
+        """仅账号修改使用数据库写事务串行化，避免跨进程末位管理员竞态。"""
+        session.execute(
+            update(LocalAuthUserRecord)
+            .values(is_active=LocalAuthUserRecord.is_active)
+            .execution_options(synchronize_session=False)
+        )
+
+    @staticmethod
+    def _ensure_administrator_remains(
+        session: Session, *, excluding: str | None = None
+    ) -> None:
+        """验证本次修改后仍有有效管理账号，失败回滚整个事务。"""
+        session.flush()
+        users = session.scalars(
+            select(LocalAuthUserRecord).where(LocalAuthUserRecord.is_active.is_(True))
+        )
+        if not any(
+            user.user_id != excluding
+            and is_account_administrator(user.scopes_json, user.allowed_pages_json)
+            for user in users
+        ):
+            raise PermissionDeniedError("至少保留一个有效管理员")
+
+    def default_auto_login_allowed(self) -> bool:
+        """仅启动页面初始化查询其他账号，不改变默认永久 Token 鉴权。"""
+        if not self.settings.auth.local_session_auth_enabled():
+            return False
+        with self.session_factory.create_session() as session:
+            default_id = session.scalar(
+                select(LocalAuthUserRecord.user_id)
+                .where(
+                    LocalAuthUserRecord.metadata_json["system_default_user"]
+                    .as_boolean()
+                    .is_(True)
+                )
+                .limit(1)
+            )
+            if default_id is None:
+                return False
+            return (
+                session.scalar(
+                    select(LocalAuthUserRecord.user_id)
+                    .where(LocalAuthUserRecord.user_id != default_id)
+                    .limit(1)
+                )
+                is None
+            )
+
     def list_users(self) -> tuple[LocalAuthUser, ...]:
         """列出全部本地用户。"""
 
@@ -489,8 +551,12 @@ class LocalAuthService:
         display_name = self._normalize_display_name(request.display_name, username)
         principal_type = self._normalize_principal_type(request.principal_type)
         self._validate_password(request.password)
-        project_ids = _normalize_string_collection(request.project_ids, field_name="project_ids")
+        project_ids = _normalize_string_collection(
+            request.project_ids, field_name="project_ids"
+        )
         scopes = _normalize_string_collection(request.scopes, field_name="scopes")
+        allowed_pages = normalize_allowed_pages(request.allowed_pages)
+        validate_page_access(allowed_pages, scopes)
         now = _now_isoformat()
 
         with self.session_factory.create_session() as session:
@@ -518,6 +584,9 @@ class LocalAuthService:
                     is_active=True,
                     project_ids_json=list(project_ids),
                     scopes_json=list(scopes),
+                    allowed_pages_json=None
+                    if allowed_pages is None
+                    else list(allowed_pages),
                     created_at=now,
                     updated_at=now,
                     last_login_at=None,
@@ -545,31 +614,63 @@ class LocalAuthService:
             initial_user_token=issued_user_token,
         )
 
-    def update_user(self, user_id: str, request: LocalAuthUserUpdateRequest) -> LocalAuthUser:
+    def update_user(
+        self, user_id: str, request: LocalAuthUserUpdateRequest
+    ) -> LocalAuthUser:
         """更新一个本地用户。"""
 
         self._require_local_auth_enabled()
         with self.session_factory.create_session() as session:
             try:
+                self._serialize_account_change(session)
                 record = session.get(LocalAuthUserRecord, user_id)
                 if record is None:
-                    raise ResourceNotFoundError("请求的本地用户不存在", details={"user_id": user_id})
+                    raise ResourceNotFoundError(
+                        "请求的本地用户不存在", details={"user_id": user_id}
+                    )
 
+                if (
+                    request.expected_updated_at is not None
+                    and record.updated_at != request.expected_updated_at
+                ):
+                    raise ServiceError(
+                        "权限已更新，请重新载入",
+                        code="user_update_conflict",
+                        status_code=412,
+                    )
+                was_administrator = record.is_active and is_account_administrator(
+                    record.scopes_json, record.allowed_pages_json
+                )
+                if request.update_allowed_pages:
+                    pages = normalize_allowed_pages(request.allowed_pages)
+                    record.allowed_pages_json = None if pages is None else list(pages)
                 if request.display_name is not None:
-                    record.display_name = self._normalize_display_name(request.display_name, record.username)
+                    record.display_name = self._normalize_display_name(
+                        request.display_name, record.username
+                    )
                 if request.password is not None:
                     self._validate_password(request.password)
                     record.password_hash = _hash_password(request.password)
                 if request.project_ids is not None:
                     record.project_ids_json = list(
-                        _normalize_string_collection(request.project_ids, field_name="project_ids")
+                        _normalize_string_collection(
+                            request.project_ids, field_name="project_ids"
+                        )
                     )
                 if request.scopes is not None:
-                    record.scopes_json = list(_normalize_string_collection(request.scopes, field_name="scopes"))
+                    record.scopes_json = list(
+                        _normalize_string_collection(
+                            request.scopes, field_name="scopes"
+                        )
+                    )
                 if request.is_active is not None:
                     record.is_active = request.is_active
                 if request.metadata is not None:
                     record.metadata_json = dict(request.metadata)
+                if request.update_allowed_pages or request.scopes is not None:
+                    validate_page_access(record.allowed_pages_json, record.scopes_json)
+                if was_administrator:
+                    self._ensure_administrator_remains(session)
                 record.updated_at = _now_isoformat()
                 session.commit()
             except SQLAlchemyError as error:
@@ -586,10 +687,21 @@ class LocalAuthService:
         self._require_local_auth_enabled()
         with self.session_factory.create_session() as session:
             try:
+                self._serialize_account_change(session)
                 user_record = session.get(LocalAuthUserRecord, user_id)
                 if user_record is None:
-                    raise ResourceNotFoundError("请求的本地用户不存在", details={"user_id": user_id})
+                    raise ResourceNotFoundError(
+                        "请求的本地用户不存在", details={"user_id": user_id}
+                    )
 
+                if user_id == actor_user_id or (user_record.metadata_json or {}).get(
+                    "system_default_user"
+                ):
+                    raise PermissionDeniedError("不能删除当前账号或默认管理员")
+                if user_record.is_active and is_account_administrator(
+                    user_record.scopes_json, user_record.allowed_pages_json
+                ):
+                    self._ensure_administrator_remains(session, excluding=user_id)
                 self._revoke_user_sessions(
                     session,
                     user_id=user_id,
@@ -1370,6 +1482,9 @@ def _user_from_record(record: LocalAuthUserRecord) -> LocalAuthUser:
         principal_type=record.principal_type,
         project_ids=tuple(record.project_ids_json or []),
         scopes=tuple(record.scopes_json or []),
+        allowed_pages=None
+        if record.allowed_pages_json is None
+        else tuple(record.allowed_pages_json),
         is_active=record.is_active,
         created_at=record.created_at,
         updated_at=record.updated_at,

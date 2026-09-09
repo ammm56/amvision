@@ -7,13 +7,19 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, Request, status
 
 from backend.contracts.workflows import WorkflowRunContract, WorkflowRunEventContract
-from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
+from backend.service.api.deps.auth import (
+    AuthenticatedPrincipal,
+    require_scopes,
+    require_workflow_invoke,
+)
 from backend.service.api.rest.v1.routes.workflow_runtime_support.responses import (
     build_workflow_app_invoke_result_payload as _build_workflow_app_invoke_result_payload,
     build_workflow_run_contract as _build_workflow_run_contract,
     build_workflow_run_event_contract as _build_workflow_run_event_contract,
 )
-from backend.service.api.rest.v1.routes.workflow_runtime_support.schemas import WorkflowRuntimeInvokeRequestBody
+from backend.service.api.rest.v1.routes.workflow_runtime_support.schemas import (
+    WorkflowRuntimeInvokeRequestBody,
+)
 from backend.service.api.rest.v1.routes.workflow_runtime_support.services import (
     build_workflow_runtime_service as _build_workflow_runtime_service,
     with_created_by as _with_created_by,
@@ -111,7 +117,7 @@ def create_workflow_run(
     workflow_runtime_id: str,
     body: WorkflowRuntimeInvokeRequestBody,
     request: Request,
-    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:write"))],
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_workflow_invoke)],
 ) -> WorkflowRunContract:
     """为已启动的 runtime 创建一条异步 WorkflowRun。"""
 
@@ -123,7 +129,9 @@ def create_workflow_run(
         workflow_runtime_id,
         WorkflowRuntimeInvokeRequest(
             input_bindings=_resolve_input_bindings(body),
-            execution_metadata=_with_created_by(body.execution_metadata, principal.principal_id),
+            execution_metadata=_with_created_by(
+                body.execution_metadata, principal.principal_id
+            ),
             timeout_seconds=body.timeout_seconds,
         ),
         created_by=principal.principal_id,
@@ -139,7 +147,7 @@ def create_workflow_run(
 async def create_workflow_run_upload(
     workflow_runtime_id: str,
     request: Request,
-    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:write"))],
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_workflow_invoke)],
 ) -> WorkflowRunContract:
     """为已启动的 runtime 创建一条支持 multipart 上传的异步 WorkflowRun。"""
 
@@ -170,23 +178,30 @@ def invoke_workflow_app_runtime(
     workflow_runtime_id: str,
     body: WorkflowRuntimeInvokeRequestBody,
     request: Request,
-    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:write"))],
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_workflow_invoke)],
     response_mode: Annotated[
         str,
-        Query(description="同步调用响应模式：app-result 返回公开 App Result，run 返回运行回执，debug 返回完整调试 trace"),
+        Query(
+            description="同步调用响应模式：app-result 返回公开 App Result，run 返回运行回执，debug 返回完整调试 trace"
+        ),
     ] = "app-result",
 ) -> object:
     """通过已启动的 runtime 发起一次同步调用。"""
 
+    response_mode = _normalize_response_mode(response_mode)
     _build_workflow_runtime_service(request).get_visible_workflow_app_runtime(
         workflow_runtime_id,
         visible_project_ids=principal.project_ids,
     )
-    invoke_result = _build_workflow_runtime_service(request).invoke_workflow_app_runtime_with_response(
+    invoke_result = _build_workflow_runtime_service(
+        request
+    ).invoke_workflow_app_runtime_with_response(
         workflow_runtime_id,
         WorkflowRuntimeInvokeRequest(
             input_bindings=_resolve_input_bindings(body),
-            execution_metadata=_with_created_by(body.execution_metadata, principal.principal_id),
+            execution_metadata=_with_created_by(
+                body.execution_metadata, principal.principal_id
+            ),
             timeout_seconds=body.timeout_seconds,
         ),
         created_by=principal.principal_id,
@@ -201,14 +216,17 @@ def invoke_workflow_app_runtime(
 async def invoke_workflow_app_runtime_upload(
     workflow_runtime_id: str,
     request: Request,
-    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:write"))],
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_workflow_invoke)],
     response_mode: Annotated[
         str,
-        Query(description="同步调用响应模式：app-result 返回公开 App Result，run 返回运行回执，debug 返回完整调试 trace"),
+        Query(
+            description="同步调用响应模式：app-result 返回公开 App Result，run 返回运行回执，debug 返回完整调试 trace"
+        ),
     ] = "app-result",
 ) -> object:
     """通过 multipart 上传方式发起一次同步 workflow 调用。"""
 
+    response_mode = _normalize_response_mode(response_mode)
     workflow_app_runtime = _build_workflow_runtime_service(
         request
     ).get_visible_workflow_app_runtime(
@@ -220,7 +238,9 @@ async def invoke_workflow_app_runtime_upload(
         workflow_app_runtime=workflow_app_runtime,
         created_by=principal.principal_id,
     )
-    invoke_result = _build_workflow_runtime_service(request).invoke_workflow_app_runtime_with_response(
+    invoke_result = _build_workflow_runtime_service(
+        request
+    ).invoke_workflow_app_runtime_with_response(
         workflow_runtime_id,
         invoke_request,
         created_by=principal.principal_id,
@@ -305,5 +325,3 @@ def cancel_workflow_run(
         cancelled_by=principal.principal_id,
     )
     return _build_workflow_run_contract(updated_run)
-
-

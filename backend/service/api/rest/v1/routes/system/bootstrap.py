@@ -38,6 +38,7 @@ from backend.service.api.rest.v1.routes.system.services import (
     require_session_factory,
 )
 from backend.service.application.auth.provider_registry import AuthProviderRegistry
+from backend.service.application.auth.local_auth_service import LocalAuthService
 from backend.service.application.datasets.formats.export_support import (
     build_supported_dataset_export_formats_by_task_and_model_type,
 )
@@ -93,6 +94,9 @@ def get_system_bootstrap(
         ]
 
     return SystemBootstrapResponse(
+        default_auto_login_allowed=LocalAuthService(
+            settings=settings, session_factory=require_session_factory(request)
+        ).default_auto_login_allowed(),
         auth_mode=settings.auth.mode,
         bearer_auth_enabled=settings.auth.bearer_auth_enabled(),
         websocket_query_token_enabled=settings.auth.websocket_query_token_enabled,

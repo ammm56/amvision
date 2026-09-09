@@ -44,6 +44,7 @@ async function start(): Promise<void> {
   if (sessionStore.isAuthenticated) {
     await projectStore.loadProjects({ includeSummary: false })
     const destination = await resolvePostAuthenticationRoute({
+      user: sessionStore.currentUser,
       explicitRedirect: route.query.redirect,
       preference: preferencesStore.startupPage,
     })

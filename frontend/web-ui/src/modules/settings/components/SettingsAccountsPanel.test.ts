@@ -6,6 +6,8 @@ import { useSessionStore } from '@/app/stores/session.store'
 import { i18n, setI18nLocale } from '@/platform/i18n'
 import SettingsAccountsPanel from './SettingsAccountsPanel.vue'
 
+vi.mock('vue-router', () => ({ useRouter: () => ({ replace: vi.fn() }) }))
+
 vi.mock('../services/local-auth-management.service', () => ({
   createLocalAuthUser: vi.fn(),
   createLocalAuthUserToken: vi.fn(),

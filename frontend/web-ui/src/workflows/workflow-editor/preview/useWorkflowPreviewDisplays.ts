@@ -1,4 +1,5 @@
 import { computed, ref } from 'vue'
+import { ApiError } from '@/shared/api/error'
 
 import { translate } from '@/platform/i18n'
 import { readProjectObjectContentBlob, readWorkflowPreviewRunArtifactBlob } from '../services/workflow-runtime.service'
@@ -666,7 +667,7 @@ async function buildPreviewViewerImage(
     sourceSrc: sourceImage.src ?? displayImage.src,
     statusText: displayImage.src
       ? translate('workflowEditor.feedback.previewImageReady')
-      : buildPreviewImageStatusText(displayImage.transportKind, displayImage.objectKey),
+      : displayImage.accessDenied ? translate('userAccess.fileDenied') : buildPreviewImageStatusText(displayImage.transportKind, displayImage.objectKey),
     transportKind: displayImage.transportKind,
     mediaType: sourceImage.mediaType || displayImage.mediaType,
     width: sourceWidth,
@@ -691,6 +692,7 @@ async function resolvePreviewImagePayload(
   registerObjectUrl: (objectUrl: string) => void,
 ): Promise<{
   src: string | null
+  accessDenied: boolean
   transportKind: string
   mediaType: string
   objectKey: string | null
@@ -701,11 +703,13 @@ async function resolvePreviewImagePayload(
   const mediaType = readDisplayText(imagePayload.media_type)
   const objectKey = readDisplayText(imagePayload.object_key) || null
   const imageBase64 = readDisplayText(imagePayload.image_base64)
+  let accessDenied = false
   const src = imageBase64
     ? `data:${mediaType || 'image/png'};base64,${imageBase64}`
-    : await resolveStoragePreviewImageSrc(previewRun, objectKey, registerObjectUrl)
+    : await resolveStoragePreviewImageSrc(previewRun, objectKey, registerObjectUrl, () => { accessDenied = true })
   return {
     src,
+    accessDenied,
     transportKind,
     mediaType,
     objectKey,
@@ -718,6 +722,7 @@ async function resolveStoragePreviewImageSrc(
   previewRun: PreviewDisplayContext,
   objectKey: string | null,
   registerObjectUrl: (objectUrl: string) => void,
+  onAccessDenied?: () => void,
 ): Promise<string | null> {
   if (!objectKey) return null
   try {
@@ -728,6 +733,7 @@ async function resolveStoragePreviewImageSrc(
     return objectUrl
   } catch (error) {
     if (previewRun.signal?.aborted) return null
+    if (error instanceof ApiError && error.status === 403) onAccessDenied?.()
     console.warn(translate('workflowEditor.feedback.readPreviewImageFailed'), error)
     return null
   }

@@ -1,10 +1,11 @@
 import { readStorageValue, removeStorageValue, writeStorageValue } from '@/platform/storage/browser-storage'
 
 export const STARTUP_PAGE_STORAGE_KEY = 'amvision.web-ui.startup-page'
-export const STARTUP_PAGE_PREFERENCE_FORMAT_ID = 'amvision.web-ui.startup-page-preference.v1'
+export const STARTUP_PAGE_PREFERENCE_FORMAT_ID = 'amvision.web-ui.startup-page-preference.v2'
 
 export type StartupPagePreference =
   | { mode: 'projects' }
+  | { mode: 'default' }
   | {
       mode: 'workflow-runtime-app-mode'
       projectId: string
@@ -13,7 +14,7 @@ export type StartupPagePreference =
     }
 
 export function createDefaultStartupPagePreference(): StartupPagePreference {
-  return { mode: 'projects' }
+  return { mode: 'default' }
 }
 
 export function parseStartupPagePreference(value: string | null): StartupPagePreference {
@@ -21,8 +22,9 @@ export function parseStartupPagePreference(value: string | null): StartupPagePre
   try {
     const parsed = JSON.parse(value) as unknown
     if (!isRecord(parsed)) return createDefaultStartupPagePreference()
-    if (parsed.format_id !== STARTUP_PAGE_PREFERENCE_FORMAT_ID) return createDefaultStartupPagePreference()
-    if (parsed.mode === 'projects') return createDefaultStartupPagePreference()
+    if (![STARTUP_PAGE_PREFERENCE_FORMAT_ID, 'amvision.web-ui.startup-page-preference.v1'].includes(String(parsed.format_id))) return createDefaultStartupPagePreference()
+    if (parsed.mode === 'projects') return { mode: 'projects' }
+    if (parsed.mode === 'default') return createDefaultStartupPagePreference()
     if (
       parsed.mode === 'workflow-runtime-app-mode'
       && isNonEmptyString(parsed.projectId)
@@ -42,16 +44,16 @@ export function parseStartupPagePreference(value: string | null): StartupPagePre
   return createDefaultStartupPagePreference()
 }
 
-export function readStartupPagePreference(): StartupPagePreference {
-  return parseStartupPagePreference(readStorageValue(STARTUP_PAGE_STORAGE_KEY, 'localStorage'))
+export function readStartupPagePreference(principalId?: string): StartupPagePreference {
+  return parseStartupPagePreference(readStorageValue(startupStorageKey(principalId), 'localStorage'))
 }
 
-export function writeStartupPagePreference(preference: StartupPagePreference): void {
-  if (preference.mode === 'projects') {
-    removeStorageValue(STARTUP_PAGE_STORAGE_KEY, 'localStorage')
+export function writeStartupPagePreference(preference: StartupPagePreference, principalId?: string): void {
+  if (preference.mode === 'default') {
+    removeStorageValue(startupStorageKey(principalId), 'localStorage')
     return
   }
-  writeStorageValue(STARTUP_PAGE_STORAGE_KEY, JSON.stringify({
+  writeStorageValue(startupStorageKey(principalId), JSON.stringify({
     format_id: STARTUP_PAGE_PREFERENCE_FORMAT_ID,
     ...preference,
   }), 'localStorage')
@@ -63,4 +65,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0
+}
+
+export function startupStorageKey(principalId?: string): string {
+  return principalId ? `${STARTUP_PAGE_STORAGE_KEY}.${encodeURIComponent(principalId)}` : STARTUP_PAGE_STORAGE_KEY
 }

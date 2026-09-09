@@ -14,17 +14,17 @@ import {
 describe('startup page preference', () => {
   beforeEach(() => localStorage.clear())
 
-  it('uses projects for missing, damaged, or incomplete values', () => {
-    expect(parseStartupPagePreference(null)).toEqual({ mode: 'projects' })
-    expect(parseStartupPagePreference('{bad-json')).toEqual({ mode: 'projects' })
+  it('uses permission-aware default for missing, damaged, or incomplete values', () => {
+    expect(parseStartupPagePreference(null)).toEqual({ mode: 'default' })
+    expect(parseStartupPagePreference('{bad-json')).toEqual({ mode: 'default' })
     expect(parseStartupPagePreference(JSON.stringify({ mode: 'workflow-runtime-app-mode' })))
-      .toEqual({ mode: 'projects' })
+      .toEqual({ mode: 'default' })
     expect(parseStartupPagePreference(JSON.stringify({
       format_id: STARTUP_PAGE_PREFERENCE_FORMAT_ID,
       mode: 'workflow-runtime-app-mode',
       workflowRuntimeId: 'runtime',
     })))
-      .toEqual({ mode: 'projects' })
+      .toEqual({ mode: 'default' })
   })
 
   it('normalizes and restores a complete Runtime App Mode target', () => {
@@ -56,9 +56,9 @@ describe('startup page preference', () => {
     })
     expect(readStartupPagePreference()).toMatchObject({ workflowRuntimeId: 'workflow-runtime-1' })
 
-    writeStartupPagePreference({ mode: 'projects' })
+    writeStartupPagePreference({ mode: 'default' })
     expect(localStorage.getItem(STARTUP_PAGE_STORAGE_KEY)).toBeNull()
-    expect(readStartupPagePreference()).toEqual({ mode: 'projects' })
+    expect(readStartupPagePreference()).toEqual({ mode: 'default' })
   })
 
   it('provides complete startup-page labels for every supported locale', () => {

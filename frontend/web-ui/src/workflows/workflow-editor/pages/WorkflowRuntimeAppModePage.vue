@@ -11,8 +11,8 @@
       </span>
       <div class="runtime-app-mode__actions">
         <Button variant="secondary" :disabled="loading" @click="load(runtimeId)">{{ t('common.refresh') }}</Button>
-        <Button v-if="snapshot" variant="secondary" @click="router.push(`/workflows/runtime/${encodeURIComponent(runtimeId)}/monitor`)">{{ t('workflowEditor.runtimePreview.title') }}</Button>
-        <Button v-if="snapshot" variant="secondary" @click="router.push(`/workflows/apps/${snapshot.application_id}`)">{{ t('workflowEditor.runtimePreview.back') }}</Button>
+        <Button v-if="snapshot && canAccessPage(sessionStore.currentUser, 'workflow-monitor')" variant="secondary" @click="router.push(`/workflows/runtime/${encodeURIComponent(runtimeId)}/monitor`)">{{ t('workflowEditor.runtimePreview.title') }}</Button>
+        <Button v-if="snapshot && canAccessPage(sessionStore.currentUser, 'workflow-apps')" variant="secondary" @click="router.push(`/workflows/apps/${snapshot.application_id}`)">{{ t('workflowEditor.runtimePreview.back') }}</Button>
       </div>
     </header>
 
@@ -22,9 +22,10 @@
     <div
       v-if="snapshot && appMode"
       class="runtime-app-mode__body"
-      :class="{ 'runtime-app-mode__body--without-inputs': inputs.length === 0 }"
+      :class="{ 'runtime-app-mode__body--without-inputs': inputs.length === 0 || !canInvoke }"
     >
       <WorkflowAppModeInputPanel
+        v-if="canInvoke"
         :inputs="inputs"
         :labels="inputLabels"
         :states="inputStates"
@@ -58,6 +59,9 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { ApiError } from '@/shared/api/error'
+import { useSessionStore } from '@/app/stores/session.store'
+import { canAccessPage, canInvokeWorkflow } from '@/platform/auth/page-access'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
@@ -73,6 +77,8 @@ import { invokeWorkflowAppRuntime } from '../services/workflow-runtime.service'
 import { orderWorkflowAppContractInputs } from '../app-mode/workflow-app-mode'
 import type { WorkflowGraphNode } from '../types'
 
+const sessionStore = useSessionStore()
+const canInvoke = computed(() => canInvokeWorkflow(sessionStore.currentUser))
 const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
@@ -143,7 +149,7 @@ function humanizeIdentifier(value: string): string {
 }
 
 async function invoke(): Promise<void> {
-  if (!snapshot.value || !appMode.value || invoking.value) return
+  if (!canInvoke.value || !snapshot.value || !appMode.value || invoking.value || snapshot.value.observed_state !== 'running' || !snapshot.value.active) return
   invoking.value = true
   invokeError.value = ''
   try {
@@ -154,6 +160,7 @@ async function invoke(): Promise<void> {
     })
   } catch (cause) {
     invokeError.value = cause instanceof Error ? cause.message : String(cause)
+    if (cause instanceof ApiError && cause.status === 403) await sessionStore.refreshPermissions()
   } finally {
     invoking.value = false
   }
@@ -239,7 +246,7 @@ async function invoke(): Promise<void> {
 
 .runtime-app-mode__body--without-inputs {
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
 }
 
 .runtime-app-mode__body > main {
@@ -273,7 +280,12 @@ async function invoke(): Promise<void> {
 @media (max-width: 960px) {
   .runtime-app-mode__body {
     grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: minmax(320px, 1fr);
+    overflow-y: auto;
+  }
+
+  .runtime-app-mode__body:not(.runtime-app-mode__body--without-inputs) {
+    grid-template-rows: minmax(160px, auto) minmax(320px, 1fr);
   }
 
   .runtime-app-mode__body:not(.runtime-app-mode__body--without-inputs) > .app-mode-inputs {

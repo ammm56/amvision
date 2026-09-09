@@ -1,6 +1,8 @@
 import { defineStore } from 'pinia'
 
 import { useAppStore } from './app.store'
+import { usePreferencesStore } from './preferences.store'
+import { useProjectStore } from './project.store'
 import { ApiError } from '@/shared/api/error'
 import { apiRequest } from '@/shared/api/http-client'
 import type { AuthLoginResponse, CurrentUser, LocalAuthUser, SystemBootstrapResponse } from '@/shared/contracts'
@@ -55,6 +57,7 @@ function normalizeLoginUser(user: LocalAuthUser): CurrentUser {
     principal_type: user.principal_type,
     project_ids: user.project_ids,
     scopes: user.scopes,
+    allowed_pages: user.allowed_pages ?? null,
     username: user.username,
     display_name: user.display_name,
     auth_provider_kind: user.provider_kind,
@@ -80,12 +83,43 @@ export const useSessionStore = defineStore('session', {
     lastAuthError: null as string | null,
     bootstrap: null as SystemBootstrapResponse | null,
     refreshPromise: null as Promise<boolean> | null,
+    permissionsPromise: null as Promise<void> | null,
+    permissionsToken: null as string | null,
   }),
   getters: {
     isAuthenticated: (state) => Boolean(state.currentUser && state.accessToken),
     displayName: (state) => state.currentUser?.display_name || state.currentUser?.username || '',
   },
   actions: {
+    async refreshPermissions(): Promise<void> {
+      if (!this.isAuthenticated) return
+      const token = this.accessToken
+      if (this.permissionsPromise && this.permissionsToken === token) return this.permissionsPromise
+      const principalId = this.currentUser?.principal_id
+      const pending = (async () => {
+        try {
+          const user = await apiRequest<CurrentUser>('/system/me', {
+            signal: AbortSignal.timeout(3000), retryTransientRead: false,
+          })
+          if (this.currentUser?.principal_id !== principalId || this.accessToken !== token) return
+          const projectRangeChanged = JSON.stringify(user.project_ids) !== JSON.stringify(this.currentUser?.project_ids)
+          this.currentUser = user
+          if (projectRangeChanged) {
+            useProjectStore().$reset()
+            await this.loadBootstrap({ includeDevices: false })
+          }
+        } catch {
+          // 导航和窗口重新获得焦点时刷新即可；短暂断网不清除登录，也不干预运行服务。
+        }
+      })()
+      this.permissionsToken = token
+      this.permissionsPromise = pending
+      try {
+        await pending
+      } finally {
+        if (this.permissionsPromise === pending) this.permissionsPromise = null
+      }
+    },
     async loadBootstrap(options: { skipAuth?: boolean; includeDevices?: boolean } = {}): Promise<SystemBootstrapResponse> {
       const bootstrap = await apiRequest<SystemBootstrapResponse>('/system/bootstrap', {
         query: options.includeDevices === undefined ? undefined : { include_devices: options.includeDevices },
@@ -166,9 +200,9 @@ export const useSessionStore = defineStore('session', {
       const storedUserToken = readStorageValue(USER_TOKEN_KEY, 'localStorage')
       const defaultUserToken = getRuntimeConfig().auth.defaultUserToken
       const candidateUserToken = storedUserToken || defaultUserToken
-      this.defaultAutoLoginAvailable = Boolean(defaultUserToken && getRuntimeConfig().auth.autoLoginEnabled)
+      this.defaultAutoLoginAvailable = Boolean(defaultUserToken && getRuntimeConfig().auth.autoLoginEnabled && this.bootstrap?.default_auto_login_allowed === true)
 
-      if (getRuntimeConfig().auth.autoLoginEnabled && candidateUserToken) {
+      if (getRuntimeConfig().auth.autoLoginEnabled && candidateUserToken && (candidateUserToken !== defaultUserToken || this.defaultAutoLoginAvailable)) {
         this.accessToken = candidateUserToken
         this.refreshToken = null
         this.credentialKind = 'user-token'
@@ -186,6 +220,7 @@ export const useSessionStore = defineStore('session', {
       try {
         const currentUser = await apiRequest<CurrentUser>('/system/me')
         this.currentUser = currentUser
+        usePreferencesStore().setStartupPrincipal(currentUser)
         this.credentialKind = (currentUser.auth_credential_kind ?? this.credentialKind) as CredentialKind
         try {
           await this.loadBootstrap({ includeDevices: options.includeDevices ?? true })
@@ -222,11 +257,13 @@ export const useSessionStore = defineStore('session', {
       this.loginState = 'authenticated'
     },
     applyLoginResponse(response: AuthLoginResponse): void {
+      if (this.currentUser?.principal_id !== response.user.user_id) useProjectStore().$reset()
       this.accessToken = response.access_token
       this.refreshToken = response.refresh_token
       this.tokenExpiresAt = response.expires_at
       this.refreshExpiresAt = response.refresh_expires_at
       this.currentUser = normalizeLoginUser(response.user)
+      usePreferencesStore().setStartupPrincipal(this.currentUser)
       this.credentialKind = 'session'
       writeStorageValue(SESSION_TOKEN_KEY, response.access_token, getRuntimeConfig().storage.sessionTokenStorage)
       writeStorageValue(REFRESH_TOKEN_KEY, response.refresh_token, getRuntimeConfig().storage.sessionTokenStorage)
@@ -289,6 +326,9 @@ export const useSessionStore = defineStore('session', {
       this.loginState = 'manual-login-required'
     },
     clearCredentials(): void {
+      useProjectStore().$reset()
+      this.bootstrap = null
+      usePreferencesStore().setStartupPrincipal(null)
       this.currentUser = null
       this.accessToken = null
       this.refreshToken = null

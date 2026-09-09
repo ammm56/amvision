@@ -66,8 +66,13 @@ def create_local_auth_user(
             principal_type=body.principal_type,
             project_ids=tuple(body.project_ids),
             scopes=tuple(body.scopes),
+            allowed_pages=None
+            if body.allowed_pages is None
+            else tuple(body.allowed_pages),
             metadata=dict(body.metadata),
-            initial_user_token=build_initial_user_token_create_request(body.initial_user_token),
+            initial_user_token=build_initial_user_token_create_request(
+                body.initial_user_token
+            ),
         ),
         created_by_user_id=principal.principal_id,
     )
@@ -94,6 +99,11 @@ def update_local_auth_user(
             password=body.password,
             project_ids=None if body.project_ids is None else tuple(body.project_ids),
             scopes=None if body.scopes is None else tuple(body.scopes),
+            allowed_pages=None
+            if body.allowed_pages is None
+            else tuple(body.allowed_pages),
+            update_allowed_pages="allowed_pages" in body.model_fields_set,
+            expected_updated_at=request.headers.get("if-match"),
             is_active=body.is_active,
             metadata=None if body.metadata is None else dict(body.metadata),
         ),
@@ -139,4 +149,3 @@ def reset_local_auth_user_password(
         actor_user_id=principal.principal_id,
     )
     return build_local_auth_user_contract(user)
-

@@ -1,6 +1,7 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { useSessionStore } from './session.store'
 import { useProjectStore } from './project.store'
 import { listProjects } from '@/modules/projects/services/project.service'
 
@@ -13,6 +14,7 @@ vi.mock('@/modules/projects/services/project.service', () => ({
 describe('project store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+    useSessionStore().currentUser = { principal_id: 'admin', scopes: ['*'], project_ids: [] } as never
     vi.clearAllMocks()
   })
 

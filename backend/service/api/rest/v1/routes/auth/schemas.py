@@ -13,8 +13,13 @@ class LocalAuthUserContract(BaseModel):
     username: str
     display_name: str
     principal_type: str
-    project_ids: list[str] = Field(default_factory=list, description="Project 可见范围列表；为空表示全部 Project")
+    project_ids: list[str] = Field(
+        default_factory=list, description="Project 可见范围列表；为空表示全部 Project"
+    )
     scopes: list[str] = Field(default_factory=list)
+    allowed_pages: list[str] | None = Field(
+        default=None, description="允许访问的页面；null 兼容原权限"
+    )
     is_active: bool
     created_at: str
     updated_at: str
@@ -127,8 +132,13 @@ class LocalAuthUserCreateRequestBody(BaseModel):
     password: str = Field(description="密码")
     display_name: str | None = Field(default=None, description="展示名称")
     principal_type: str = Field(default="user", description="主体类型")
-    project_ids: list[str] = Field(default_factory=list, description="Project 可见范围列表；为空表示全部 Project")
+    project_ids: list[str] = Field(
+        default_factory=list, description="Project 可见范围列表；为空表示全部 Project"
+    )
     scopes: list[str] = Field(default_factory=list, description="当前用户持有的 scopes")
+    allowed_pages: list[str] | None = Field(
+        default=None, description="允许访问的页面；null 兼容原权限"
+    )
     metadata: dict[str, object] = Field(default_factory=dict, description="附加元数据")
     initial_user_token: LocalAuthInitialUserTokenRequestBody | None = Field(
         default_factory=LocalAuthInitialUserTokenRequestBody,
@@ -141,8 +151,13 @@ class LocalAuthUserUpdateRequestBody(BaseModel):
 
     display_name: str | None = Field(default=None, description="展示名称")
     password: str | None = Field(default=None, description="新密码")
-    project_ids: list[str] | None = Field(default=None, description="Project 可见范围列表；为空表示全部 Project")
+    project_ids: list[str] | None = Field(
+        default=None, description="Project 可见范围列表；为空表示全部 Project"
+    )
     scopes: list[str] | None = Field(default=None, description="当前用户持有的 scopes")
+    allowed_pages: list[str] | None = Field(
+        default=None, description="省略不修改，null 兼容，空列表无页面"
+    )
     is_active: bool | None = Field(default=None, description="是否启用")
     metadata: dict[str, object] | None = Field(default=None, description="附加元数据")
 
@@ -153,4 +168,3 @@ class LocalAuthPasswordResetRequestBody(BaseModel):
     new_password: str = Field(description="新密码")
     revoke_sessions: bool = Field(default=True, description="是否同时撤销全部登录会话与 refresh token")
     revoke_user_tokens: bool = Field(default=False, description="是否同时撤销全部长期调用 token")
-

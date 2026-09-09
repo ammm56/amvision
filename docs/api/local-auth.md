@@ -38,6 +38,7 @@
 - `logout` 只撤销登录会话，不撤销长期调用 token。
 - 当前权限模型继续复用既有 `scopes` 和 `project_ids` 语义，不额外引入第二套角色系统。
 - `project_ids` 为空时，表示不按 Project 做可见性裁剪。
+- `allowed_pages` 控制浏览器页面入口，`scopes` 控制后端业务操作；隐藏页面不收回已授予的 API 读取能力。页面目录与最低读取能力见[用户权限](../development/user-access-implementation.md#1-数据和页面契约)。
 - 当本地用户表为空且启用自动初始化时，服务会在启动阶段写入默认本地用户和长期调用 token；这组初始化数据由启动期初始化器维护，不通过 backend-service.json 暴露。
 - `bootstrap-admin` 只适用于本地用户表为空且关闭默认本地用户自动初始化的场景。
 
@@ -55,11 +56,15 @@
 - 这组 seed 只会在本地用户表为空时写入；数据库已有用户数据时不会覆盖。
 - docs/api/postman 下的根 collection 默认变量已经预置这组 seed 值，用于空库首次启动后的最小联调。
 - 如果数据库已经存在用户数据，或当前环境手动改过默认账号，应改用当前环境实际 Bearer token。
+- `system/bootstrap.default_auto_login_allowed` 仅当本地默认种子账号存在且没有其他账号记录时为 true（禁用账号也计入其他账号）。浏览器同时遵循原 autoLoginEnabled 设置；字段缺失或请求失败不自动使用默认 Token。
+- 已有合法手动会话仍恢复，创建账号不强制退出当前管理员。此规则不轮换、不撤销默认 amvar 的全权限永久 Token，不影响第三方或 .NET SDK 显式调用。
 
 ## 当前公开 scope
 
 - `auth:read`
 - `auth:write`
+- `workflows:invoke`：配合 `workflows:read` 调用已发布 Runtime；原 `workflows:write` 继续可调用。不能用于编辑、发布、草稿预览或 Runtime/Trigger 管理。
+- `projects:files:read`：读取授权 Project 的公开文件列表、元数据及内容；原 `workflows:read` 与 `models:read` 组合继续兼容，不扩大公开命名空间。
 
 说明：
 
@@ -167,9 +172,11 @@
   - `principal_type`
   - `project_ids`
   - `scopes`
+  - `allowed_pages`，默认 null
   - `metadata`
   - `initial_user_token`
 - `initial_user_token` 默认启用，会为新用户签发一个名为 `default` 的长期调用 token
+- 用户管理页面的新建表单默认显式传 `initial_user_token.enabled=false`；上述 API 默认值保持兼容。
 - `initial_user_token` 可选字段：
   - `enabled`
   - `token_name`
@@ -188,13 +195,18 @@
   - `password`
   - `project_ids`
   - `scopes`
+  - `allowed_pages`
   - `is_active`
   - `metadata`
+- `allowed_pages` 省略时不修改；null 恢复按 scope 的兼容页面策略；[] 表示无业务页面；非空数组仅接受登记 ID 并要求其最低读取 scope。执行 scope 必须同时具备工作流读取能力。未知旧 scope 保留，不映射为更大权限。
+- 可选 `If-Match` 请求头传最近用户响应的 `updated_at` 原值；已被修改时返回 412，更新不生效。不传时保持原客户端兼容。前端编辑权限使用该头并在冲突时保留输入。
+- 禁用或变更权限不能移除最后有效账号管理员。判断包含活动状态、auth:read/auth:write 和用户管理页面可达性，在数据库事务内串行核对，不进入运行数据面。
 
 ## DELETE /api/v1/auth/users/{user_id}
 
 - 需要 `auth:write`
 - 删除用户时会一并清理该用户的登录会话、refresh token 和长期调用 token
+- 当前操作者账号、默认种子账号与最后有效管理员不能删除。
 
 ## POST /api/v1/auth/users/{user_id}/reset-password
 
@@ -286,6 +298,8 @@
 - WebSocket 只提供实时流，不提供历史回放
 
 ## 当前限制
+
+登录/refresh 返回的 user、用户列表/创建/更新返回的用户对象，以及 system/me、bootstrap.current_user 均包含 `allowed_pages`。新增字段迁移旧记录为 null，旧客户端和默认 Token 保留原 scope 语义。权限刷新位于请求、导航与前台恢复入口，不加入逐帧执行；撤权不停止已接受的任务或 Runtime，既有只读长连接不承诺即时切断，重连按最新权限验证。
 
 - 当前不公开邮箱验证、忘记密码、自助找回密码、二次认证和在线账号绑定。
 - 当前在线 provider 目录只提供发现抽象，不包含浏览器回调、code exchange 和外部 issuer token 校验实现。

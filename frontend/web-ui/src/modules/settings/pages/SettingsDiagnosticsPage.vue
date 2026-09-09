@@ -6,6 +6,7 @@
         <button
           type="button"
           class="settings-workspace-nav__item"
+          v-if="canAccessPage(sessionStore.currentUser, 'settings-preferences')"
           :class="{ 'is-active': activeCategory === 'preferences' }"
           @click="selectCategory('preferences')"
         >
@@ -15,6 +16,7 @@
         <button
           type="button"
           class="settings-workspace-nav__item"
+          v-if="canAccessPage(sessionStore.currentUser, 'settings-startup')"
           :class="{ 'is-active': activeCategory === 'startup' }"
           @click="selectCategory('startup')"
         >
@@ -24,6 +26,7 @@
         <button
           type="button"
           class="settings-workspace-nav__item"
+          v-if="canAccessPage(sessionStore.currentUser, 'settings-services')"
           :class="{ 'is-active': activeCategory === 'services' }"
           @click="selectCategory('services')"
         >
@@ -31,7 +34,7 @@
           <span>{{ t('settingsDiagnostics.tabs.services') }}</span>
         </button>
 
-        <section class="settings-workspace-nav__group">
+        <section v-if="canAccessPage(sessionStore.currentUser, 'settings-system')" class="settings-workspace-nav__group">
           <div class="settings-workspace-nav__group-title">
             <HardDrive :size="15" />
             <span>{{ t('settingsDiagnostics.tabs.system') }}</span>
@@ -49,7 +52,7 @@
           </button>
         </section>
 
-        <section class="settings-workspace-nav__group">
+        <section v-if="accessSections.length" class="settings-workspace-nav__group">
           <div class="settings-workspace-nav__group-title">
             <ShieldCheck :size="15" />
             <span>{{ t('settingsDiagnostics.tabs.security') }}</span>
@@ -379,6 +382,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import { usePreferencesStore, type ThemeMode } from '@/app/stores/preferences.store'
 import { useProjectStore } from '@/app/stores/project.store'
+import { canAccessPage } from '@/platform/auth/page-access'
 import { useSessionStore } from '@/app/stores/session.store'
 import { supportedLocaleOptions, type SupportedLocale } from '@/platform/i18n'
 import { getRuntimeConfig } from '@/platform/runtime/runtime-config'
@@ -446,18 +450,18 @@ const frontendVersion = __AMVISION_FRONTEND_VERSION__
 
 const diagnostics = ref<SystemDiagnosticsResponse | null>(null)
 const errorMessage = ref<string | null>(null)
-const activeCategory = ref<SettingsCategoryId>('system')
+const activeCategory = ref<SettingsCategoryId>((route.query.category as SettingsCategoryId) || 'system')
 const activeSystemSection = ref<SystemSectionId>('about')
 const activeAccessSection = ref<AccessSectionId>('session')
 
 const localeOptions = supportedLocaleOptions.map((item) => ({ label: item.label, value: item.locale }))
-const categoryTabs = computed<SettingsCategoryTab[]>(() => [
+const categoryTabs = computed<SettingsCategoryTab[]>(() => ([
   { id: 'preferences', label: t('settingsDiagnostics.tabs.preferences'), icon: Settings2 },
   { id: 'startup', label: t('settingsDiagnostics.tabs.startup'), icon: MonitorPlay },
   { id: 'services', label: t('settingsDiagnostics.tabs.services'), icon: ServerCog },
   { id: 'system', label: t('settingsDiagnostics.tabs.system'), icon: HardDrive },
   { id: 'security', label: t('settingsDiagnostics.tabs.security'), icon: ShieldCheck },
-])
+] satisfies SettingsCategoryTab[]).filter((tab) => tab.id === 'security' ? accessSections.value.length > 0 : canAccessPage(sessionStore.currentUser, `settings-${tab.id}`)))
 
 const sections = computed<SectionItem[]>(() => [
   { id: 'about', label: t('settingsDiagnostics.sections.about'), icon: Info },
@@ -468,7 +472,7 @@ const sections = computed<SectionItem[]>(() => [
 const accessSections = computed(() => [
   { id: 'session', label: t('settingsDiagnostics.sections.security'), icon: ShieldCheck },
   { id: 'accounts', label: t('settingsDiagnostics.sections.accounts'), icon: UsersRound },
-])
+].filter((section) => canAccessPage(sessionStore.currentUser, `settings-${section.id}`)))
 const about = computed(() => diagnostics.value?.about ?? {})
 const system = computed(() => diagnostics.value?.system ?? {})
 const pythonRuntime = computed(() => diagnostics.value?.python_runtime ?? {})
@@ -538,12 +542,12 @@ function selectCategory(categoryId: string): void {
 
 onMounted(() => {
   restoreSettingsLocation()
-  void loadDiagnostics()
+  if (['system', 'services'].includes(activeCategory.value)) void loadDiagnostics()
 })
 
 watch(
   () => [route.query.category, route.query.section],
-  () => restoreSettingsLocation(),
+  () => { restoreSettingsLocation(); errorMessage.value = null; if (['system', 'services'].includes(activeCategory.value)) void loadDiagnostics() },
 )
 
 function selectSystemSection(sectionId: SystemSectionId): void {
@@ -597,6 +601,7 @@ function setTheme(theme: ThemeMode): void {
 }
 
 async function loadDiagnostics(): Promise<void> {
+  if (!sessionStore.hasScopes(['auth:read'])) return
   errorMessage.value = null
   try {
     const [nextDiagnostics] = await Promise.all([

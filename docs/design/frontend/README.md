@@ -21,6 +21,10 @@
 
 [Workflow 节点复制与粘贴](workflow-node-copy-paste.md)：节点右键第二项复制、空白画布第四项粘贴和 Ctrl+C / Ctrl+V，保留节点参数并生成新的节点 ID；实现与验证边界见专题。
 
+## 待实现页面规格
+
+[用户权限与启动页面设计](user-permissions.md)：管理员配置页面与操作，用户自行设置启动应用，复用原 App Mode；见[详细实施计划](../../development/user-access-implementation.md)。
+
 ## 设计方向
 
 - 专业、清晰、克制，适合长时间使用的工业视觉工作台。

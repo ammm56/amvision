@@ -8,8 +8,13 @@ from typing import Annotated
 from fastapi import Depends, Request, WebSocket
 
 from backend.service.application.auth.local_auth_service import LocalAuthService
+from backend.service.application.auth.permissions import scope_granted
 from backend.service.settings import BackendServiceSettings
-from backend.service.application.errors import AuthenticationRequiredError, PermissionDeniedError, ServiceConfigurationError
+from backend.service.application.errors import (
+    AuthenticationRequiredError,
+    PermissionDeniedError,
+    ServiceConfigurationError,
+)
 from backend.service.infrastructure.db.session import SessionFactory
 
 
@@ -30,6 +35,7 @@ class AuthenticatedPrincipal:
     project_ids: tuple[str, ...] = ()
     scopes: tuple[str, ...] = ()
     metadata: dict[str, object] = field(default_factory=dict)
+    allowed_pages: tuple[str, ...] | None = None
 
 
 def get_optional_principal(request: Request) -> AuthenticatedPrincipal | None:
@@ -170,6 +176,35 @@ def require_scopes(*required_scopes: str):
     return dependency
 
 
+def require_any_scope_group(*groups: tuple[str, ...]):
+    """允许满足任一完整 scope 组合，复用本请求主体，不重复查账号。"""
+
+    def dependency(
+        principal: Annotated[AuthenticatedPrincipal, Depends(require_principal)],
+    ) -> AuthenticatedPrincipal:
+        """在请求入口检查组合权限，不进入执行器。"""
+        if not any(
+            all(scope_granted(principal.scopes, scope) for scope in group)
+            for group in groups
+        ):
+            raise PermissionDeniedError(
+                "当前主体缺少操作权限", details={"scope_alternatives": groups}
+            )
+        return principal
+
+    return dependency
+
+
+require_workflow_invoke = require_any_scope_group(
+    ("workflows:write",),
+    ("workflows:read", "workflows:invoke"),
+)
+require_project_file_read = require_any_scope_group(
+    ("projects:files:read",),
+    ("workflows:read", "models:read"),
+)
+
+
 def _require_backend_service_settings(application: object) -> BackendServiceSettings:
     """从 application.state 读取 BackendServiceSettings。
 
@@ -298,7 +333,9 @@ def _resolve_principal_from_local_credential(
             "username": resolved_credential.user.username,
             "display_name": resolved_credential.user.display_name,
             "auth_source": auth_source,
-            "auth_provider_id": resolved_credential.user.metadata.get("provider_id", resolved_credential.user.provider_kind),
+            "auth_provider_id": resolved_credential.user.metadata.get(
+                "provider_id", resolved_credential.user.provider_kind
+            ),
             "auth_provider_kind": resolved_credential.user.provider_kind,
             "auth_credential_kind": resolved_credential.credential_kind,
             "auth_credential_id": resolved_credential.credential_id,
@@ -314,6 +351,7 @@ def _resolve_principal_from_local_credential(
         principal_type=resolved_credential.user.principal_type,
         project_ids=resolved_credential.user.project_ids,
         scopes=resolved_credential.user.scopes,
+        allowed_pages=resolved_credential.user.allowed_pages,
         metadata=metadata,
     )
 
@@ -352,10 +390,4 @@ def _scope_granted(granted_scopes: tuple[str, ...], required_scope: str) -> bool
     - 当 scope 已被授权时返回 True，否则返回 False。
     """
 
-    for granted_scope in granted_scopes:
-        if granted_scope == "*" or granted_scope == required_scope:
-            return True
-        if granted_scope.endswith(":*") and required_scope.startswith(granted_scope[:-1]):
-            return True
-
-    return False
+    return scope_granted(granted_scopes, required_scope)

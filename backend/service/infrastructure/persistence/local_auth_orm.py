@@ -15,7 +15,9 @@ class LocalAuthUserRecord(Base):
 
     __tablename__ = "auth_users"
     __table_args__ = (
-        UniqueConstraint("provider_kind", "provider_subject", name="uq_auth_users_provider_subject"),
+        UniqueConstraint(
+            "provider_kind", "provider_subject", name="uq_auth_users_provider_subject"
+        ),
     )
 
     user_id: Mapped[str] = mapped_column(String(128), primary_key=True)
@@ -28,6 +30,9 @@ class LocalAuthUserRecord(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     project_ids_json: Mapped[list[str]] = mapped_column(JSON, default=list)
     scopes_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    allowed_pages_json: Mapped[list[str] | None] = mapped_column(
+        JSON(none_as_null=True), nullable=True
+    )
     created_at: Mapped[str] = mapped_column(String(64), index=True)
     updated_at: Mapped[str] = mapped_column(String(64))
     last_login_at: Mapped[str | None] = mapped_column(String(64), nullable=True)

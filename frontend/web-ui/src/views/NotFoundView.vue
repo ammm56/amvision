@@ -2,7 +2,7 @@
   <section class="error-view">
     <h1>{{ t('errors.notFoundTitle') }}</h1>
     <p>{{ t('errors.notFoundDescription') }}</p>
-    <RouterLink to="/projects">{{ t('common.returnWorkbench') }}</RouterLink>
+    <RouterLink to="/">{{ t('common.returnWorkbench') }}</RouterLink>
   </section>
 </template>
 

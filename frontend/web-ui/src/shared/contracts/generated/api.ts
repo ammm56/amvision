@@ -18,6 +18,7 @@ export interface CurrentUser {
   principal_type: string
   project_ids: string[]
   scopes: string[]
+  allowed_pages?: string[] | null
   username?: string | null
   display_name?: string | null
   auth_source?: string | null
@@ -39,6 +40,7 @@ export interface LocalAuthUser {
   principal_type: string
   project_ids: string[]
   scopes: string[]
+  allowed_pages?: string[] | null
   is_active: boolean
   created_at: string
   updated_at: string
@@ -64,6 +66,7 @@ export interface SystemCapabilities {
 }
 
 export interface SystemBootstrapResponse {
+  default_auto_login_allowed?: boolean
   auth_mode: string
   bearer_auth_enabled: boolean
   websocket_query_token_enabled: boolean

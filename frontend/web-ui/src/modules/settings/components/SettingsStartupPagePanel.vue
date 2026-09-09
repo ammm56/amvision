@@ -8,10 +8,11 @@
       <div class="settings-preference-row">
         <strong>{{ t('startupPage.openMode') }}</strong>
         <div class="settings-segmented-control" :aria-label="t('startupPage.openMode')">
-          <button type="button" :class="{ 'is-active': draftMode === 'projects' }" @click="setMode('projects')">
+          <button v-if="canAccessPage(sessionStore.currentUser, 'projects')" type="button" :class="{ 'is-active': draftMode === 'projects' }" @click="setMode('projects')">
             {{ t('startupPage.projects') }}
           </button>
           <button
+            v-if="canAccessPage(sessionStore.currentUser, 'workflow-app-mode')"
             type="button"
             :class="{ 'is-active': draftMode === 'workflow-runtime-app-mode' }"
             @click="setMode('workflow-runtime-app-mode')"
@@ -74,6 +75,8 @@ import { useI18n } from 'vue-i18n'
 
 import { useFeedbackStore } from '@/app/stores/feedback.store'
 import { usePreferencesStore } from '@/app/stores/preferences.store'
+import { useSessionStore } from '@/app/stores/session.store'
+import { canAccessPage } from '@/platform/auth/page-access'
 import { useProjectStore } from '@/app/stores/project.store'
 import type { StartupPagePreference } from '@/app/startup/startup-page-preference'
 import { getErrorMessage } from '@/shared/api/error'
@@ -94,6 +97,7 @@ const { t } = useI18n()
 const feedbackStore = useFeedbackStore()
 const preferencesStore = usePreferencesStore()
 const projectStore = useProjectStore()
+const sessionStore = useSessionStore()
 
 const draftMode = ref<StartupPageMode>(preferencesStore.startupPage.mode)
 const selectedProjectId = ref(preferencesStore.startupPage.mode === 'workflow-runtime-app-mode'
@@ -113,7 +117,7 @@ const errorMessage = ref('')
 let runtimeRequestGeneration = 0
 let validationGeneration = 0
 
-const projectOptions = computed(() => projectStore.projects.map((project) => ({
+const projectOptions = computed(() => (sessionStore.bootstrap?.visible_projects ?? []).map((project) => ({
   label: project.display_name || project.project_id,
   value: project.project_id,
   description: project.project_id,
@@ -134,11 +138,11 @@ const showEmptyRuntimes = computed(() => Boolean(
   && runtimes.value.length === 0,
 ))
 const canRestoreDefault = computed(() => (
-  draftMode.value !== 'projects' || preferencesStore.startupPage.mode !== 'projects'
+  draftMode.value !== 'default' || preferencesStore.startupPage.mode !== 'default'
 ))
 const isDirty = computed(() => {
   const current = preferencesStore.startupPage
-  if (draftMode.value === 'projects') return current.mode !== 'projects'
+  if (draftMode.value !== 'workflow-runtime-app-mode') return current.mode !== draftMode.value
   return current.mode !== 'workflow-runtime-app-mode'
     || current.projectId !== selectedProjectId.value
     || current.workflowRuntimeId !== selectedRuntimeId.value
@@ -158,11 +162,10 @@ async function initialize(): Promise<void> {
   let projectsReady = true
   loadingProjects.value = true
   try {
-    if (projectStore.projects.length === 0) {
-      await projectStore.loadProjects({ includeSummary: false })
-    }
-    if (!selectedProjectId.value || !projectStore.projects.some((project) => project.project_id === selectedProjectId.value)) {
-      selectedProjectId.value = projectStore.selectedProjectId || projectStore.projects[0]?.project_id || ''
+    if (!sessionStore.bootstrap) await sessionStore.loadBootstrap({ includeDevices: false })
+    const projects = sessionStore.bootstrap?.visible_projects ?? []
+    if (!selectedProjectId.value || !projects.some((project) => project.project_id === selectedProjectId.value)) {
+      selectedProjectId.value = projects[0]?.project_id || ''
       selectedRuntimeId.value = ''
     }
   } catch (error) {
@@ -172,11 +175,12 @@ async function initialize(): Promise<void> {
     loadingProjects.value = false
   }
   if (!projectsReady) return
-  await loadRuntimes(selectedProjectId.value)
+  if (canAccessPage(sessionStore.currentUser, 'workflow-app-mode')) await loadRuntimes(selectedProjectId.value)
   if (selectedRuntimeId.value) await validateRuntime(selectedRuntimeId.value)
 }
 
 function setMode(mode: StartupPageMode): void {
+  if (mode === 'projects' && !canAccessPage(sessionStore.currentUser, 'projects') || mode === 'workflow-runtime-app-mode' && !canAccessPage(sessionStore.currentUser, 'workflow-app-mode')) return
   draftMode.value = mode
   errorMessage.value = ''
   if (mode === 'workflow-runtime-app-mode' && selectedProjectId.value && runtimes.value.length === 0) {
@@ -277,7 +281,7 @@ async function save(): Promise<void> {
   saving.value = true
   try {
     if (draftMode.value === 'projects') {
-      preferencesStore.resetStartupPage()
+      preferencesStore.setStartupPage({ mode: 'projects' })
       feedbackStore.success(t('startupPage.saved'))
       return
     }
@@ -297,7 +301,7 @@ async function save(): Promise<void> {
 
 function restoreDefault(): void {
   preferencesStore.resetStartupPage()
-  draftMode.value = 'projects'
+  draftMode.value = 'default'
   errorMessage.value = ''
   feedbackStore.success(t('startupPage.restored'))
 }

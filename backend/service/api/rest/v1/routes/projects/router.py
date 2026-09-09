@@ -7,20 +7,35 @@ import logging
 import re
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, Response, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    Query,
+    Request,
+    Response,
+    status,
+)
 from fastapi.responses import FileResponse
 from starlette.datastructures import UploadFile
 
 import cv2
 import numpy as np
 
-from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
+from backend.service.api.deps.auth import (
+    AuthenticatedPrincipal,
+    require_scopes,
+    require_project_file_read,
+)
 from backend.service.api.rest.v1.pagination import (
     DEFAULT_LIST_LIMIT,
     MAX_LIST_LIMIT,
     paginate_sequence,
 )
-from backend.service.application.errors import InvalidRequestError, PermissionDeniedError
+from backend.service.application.errors import (
+    InvalidRequestError,
+    PermissionDeniedError,
+)
 from backend.service.application.project_bootstrap import ProjectBootstrapRequest
 from backend.service.api.rest.v1.routes.projects.files import (
     list_project_public_object_entries,
@@ -404,9 +419,11 @@ def list_project_objects(
     response: Response,
     principal: Annotated[
         AuthenticatedPrincipal,
-        Depends(require_scopes("workflows:read", "models:read")),
+        Depends(require_project_file_read),
     ],
-    object_prefix: Annotated[str | None, Query(description="Project 内对象前缀")] = None,
+    object_prefix: Annotated[
+        str | None, Query(description="Project 内对象前缀")
+    ] = None,
     storage_prefix: Annotated[
         str | None, Query(description="兼容字段；等价于 object_prefix")
     ] = None,
@@ -447,9 +464,11 @@ def get_project_object_metadata(
     request: Request,
     principal: Annotated[
         AuthenticatedPrincipal,
-        Depends(require_scopes("workflows:read", "models:read")),
+        Depends(require_project_file_read),
     ],
-    object_key: Annotated[str | None, Query(description="Project 内对象相对路径")] = None,
+    object_key: Annotated[
+        str | None, Query(description="Project 内对象相对路径")
+    ] = None,
     storage_uri: Annotated[
         str | None, Query(description="兼容字段；等价于 object_key")
     ] = None,
@@ -476,9 +495,11 @@ def read_project_object_content(
     request: Request,
     principal: Annotated[
         AuthenticatedPrincipal,
-        Depends(require_scopes("workflows:read", "models:read")),
+        Depends(require_project_file_read),
     ],
-    object_key: Annotated[str | None, Query(description="Project 内对象相对路径")] = None,
+    object_key: Annotated[
+        str | None, Query(description="Project 内对象相对路径")
+    ] = None,
     storage_uri: Annotated[
         str | None, Query(description="兼容字段；等价于 object_key")
     ] = None,

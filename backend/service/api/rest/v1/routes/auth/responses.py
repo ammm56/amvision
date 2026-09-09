@@ -75,6 +75,7 @@ def build_local_auth_user_contract(user: LocalAuthUser) -> LocalAuthUserContract
         principal_type=user.principal_type,
         project_ids=list(user.project_ids),
         scopes=list(user.scopes),
+        allowed_pages=None if user.allowed_pages is None else list(user.allowed_pages),
         is_active=user.is_active,
         created_at=user.created_at,
         updated_at=user.updated_at,
@@ -118,4 +119,3 @@ def build_local_auth_issued_user_token_contract(
         created_by_user_id=summary.created_by_user_id,
         metadata=dict(summary.metadata),
     )
-

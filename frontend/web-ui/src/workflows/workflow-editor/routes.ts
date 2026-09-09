@@ -13,7 +13,7 @@ export const workflowEditorRoutes: RouteRecordRaw[] = [
   {
     path: '/workflows/runtime/:workflowRuntimeId/app-mode',
     component: () => import('./pages/WorkflowRuntimeAppModePage.vue'),
-    meta: { requiredScopes: ['workflows:read', 'workflows:write'], graphWorkbench: true },
+    meta: { requiredScopes: ['workflows:read'], graphWorkbench: true },
   },
   {
     path: '/workflows',

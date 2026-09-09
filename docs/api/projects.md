@@ -41,7 +41,7 @@ Project 是本地 ObjectStore 上的工作区命名空间，不是单独的数�
 - POST /api/v1/projects/bootstrap：当前主体需要至少具备 `datasets:write` 或 `workflows:write`
 - GET /api/v1/projects、GET /api/v1/projects/{project_id}、GET /api/v1/projects/{project_id}/summary：需要 `workflows:read` 和 `models:read`
 - POST /api/v1/projects/{project_id}/sdk-config-packages/preview、POST /api/v1/projects/{project_id}/sdk-config-packages/download：需要 `workflows:read` 和 `models:read`
-- GET /api/v1/projects/{project_id}/files、GET /api/v1/projects/{project_id}/files/metadata、GET /api/v1/projects/{project_id}/files/content：需要 `workflows:read` 和 `models:read`
+- GET /api/v1/projects/{project_id}/files、GET /api/v1/projects/{project_id}/files/metadata、GET /api/v1/projects/{project_id}/files/content：需要 `projects:files:read`，或原 `workflows:read` 与 `models:read` 组合。继续检查 Project 和公开命名空间，不能读取全磁盘或写入/删除文件。
 - GET /api/v1/projects/{project_id}/deletion-preview、DELETE /api/v1/projects/{project_id}：需要 `projects:delete`
 
 当 Bearer token 自带 `project_ids` 可见性裁剪时，Project 相关接口还会额外校验 `project_id` 是否在可访问范围内。
@@ -71,6 +71,7 @@ Project 是本地 ObjectStore 上的工作区命名空间，不是单独的数�
 - `auth_mode`
 - `bearer_auth_enabled`
 - `websocket_query_token_enabled`
+- `default_auto_login_allowed`：是否允许浏览器自动使用默认管理员 Token；存在其他账号（包括禁用账号）时为 false，不影响该 Token 的显式接口调用。
 - `current_user`
 - `providers`
 - `visible_projects`
@@ -82,6 +83,7 @@ Project 是本地 ObjectStore 上的工作区命名空间，不是单独的数�
 - `principal_type`
 - `project_ids`
 - `scopes`
+- `allowed_pages`：null 兼容原页面策略，[] 无业务页面，非空为登记页面 ID；页面隐藏不取代 scope 与 Project 检查。
 - `username`
 - `display_name`
 - `auth_source`

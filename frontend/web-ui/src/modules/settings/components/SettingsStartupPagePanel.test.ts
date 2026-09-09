@@ -3,6 +3,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { usePreferencesStore } from '@/app/stores/preferences.store'
+import { useSessionStore } from '@/app/stores/session.store'
 import { useProjectStore } from '@/app/stores/project.store'
 import { i18n } from '@/platform/i18n'
 import { getWorkflowRuntimePreviewSnapshot } from '@/workflows/workflow-editor/services/workflow-runtime-preview.service'
@@ -48,6 +49,10 @@ describe('SettingsStartupPagePanel', () => {
         storage_prefix: 'projects/project-1',
       }],
     })
+    const session = useSessionStore()
+    session.currentUser = { principal_id: 'admin', scopes: ['*'], project_ids: [], allowed_pages: null } as never
+    session.bootstrap = { visible_projects: useProjectStore().projects } as never
+    usePreferencesStore().setStartupPrincipal(session.currentUser)
     vi.mocked(listWorkflowAppRuntimes).mockResolvedValue({ items: [runtime], pagination } as never)
     vi.mocked(getWorkflowRuntimePreviewSnapshot).mockResolvedValue(snapshot as never)
   })
@@ -85,7 +90,7 @@ describe('SettingsStartupPagePanel', () => {
 
     expect(wrapper.text()).toContain('未配置应用模式')
     expect(wrapper.get('.ui-button--primary').attributes('disabled')).toBeDefined()
-    expect(usePreferencesStore().startupPage).toEqual({ mode: 'projects' })
+    expect(usePreferencesStore().startupPage).toEqual({ mode: 'default' })
     wrapper.unmount()
   })
 })

@@ -22,6 +22,19 @@
 
 # 手动执行
 
+## 用户权限与正式 .NET SDK
+
+`test_user_access_sdk.cs` 编译进现有 `Amvar.Vision.ContractTests.vs2019.net472.csproj`，使用正式客户端执行同步和异步调用并检查 Workflow 状态，不以 HTTP 成功替代业务成功。默认使用项目既有 amvar Token；测试受限账号时通过 `AMVISION_ACCEPTANCE_TOKEN` 传入临时会话，不把 Token 写入结果。
+
+```powershell
+dotnet msbuild sdks/dotnet/tests/Amvar.Vision.ContractTests/Amvar.Vision.ContractTests.vs2019.net472.csproj /t:Build /p:Configuration=Release /verbosity:minimal
+sdks/dotnet/tests/Amvar.Vision.ContractTests/bin/Release/net472/Amvar.Vision.ContractTests.exe --user-access-smoke http://127.0.0.1:5600 <runtime-id> <image.jpg> <result.json>
+```
+
+默认 Runtime 需声明 `request_image_base64`（image-base64.v1）；设置 `AMVISION_ACCEPTANCE_INPUT_MODE=upload` 时使用 multipart 的 `request_image_ref`（image-ref.v1）。应选独立验收 Runtime，避免与已有单并发调用争用。两个模式都调用原 SDK API，不增加专用业务接口。结束后清理本次环境变量。
+
+权限追加验收范围与实际结果见 [用户权限专项验收](../../docs/development/user-access-acceptance.md)。
+
 显式指定路径时，`tests/integration/` 下的测试会执行，例如：
 
 以下示例默认先在当前终端执行：

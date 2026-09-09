@@ -55,14 +55,16 @@
 
 ## 鉴权规则
 
-- POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke 需要 workflows:write
-- POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke/upload 需要 workflows:write
-- POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs 需要 workflows:write
-- POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs/upload 需要 workflows:write
+- POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke 需要 workflows:write，或 workflows:read 与 workflows:invoke
+- POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke/upload 需要 workflows:write，或 workflows:read 与 workflows:invoke
+- POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs 需要 workflows:write，或 workflows:read 与 workflows:invoke
+- POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs/upload 需要 workflows:write，或 workflows:read 与 workflows:invoke
 - GET /api/v1/workflows/runs/{workflow_run_id} 需要 workflows:read
 - GET /api/v1/workflows/runs/{workflow_run_id}/events 需要 workflows:read
 - POST /api/v1/workflows/runs/{workflow_run_id}/cancel 需要 workflows:write
 - /ws/v1/workflows/runs/events 需要 workflows:read
+
+上述调用继续校验 Project 范围和 Runtime 状态，只接受已发布版本的公开输入。执行权限不包含草稿预览、配置覆盖、保存、发布、启停、选版、取消或删除。无权限及非法 response_mode 在上传持久化和执行前拒绝；原同步/异步、记录策略和响应协议保持。
 
 ## 状态语义
 

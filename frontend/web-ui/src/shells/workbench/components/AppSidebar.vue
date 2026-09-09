@@ -14,7 +14,7 @@
         </button>
       </template>
       <template v-else>
-        <RouterLink class="app-sidebar__brand" to="/projects">
+        <RouterLink class="app-sidebar__brand" :to="firstAccessiblePath(sessionStore.currentUser)">
           <img class="brand-mark" :src="brandIconUrl" alt="AM" />
           <span class="app-sidebar__brand-name">amvision</span>
         </RouterLink>
@@ -68,6 +68,7 @@ import {
 } from '@lucide/vue'
 
 import { navigationItems, type NavigationItem } from '@/config/navigation.config'
+import { canAccessPath, firstAccessiblePath, settingsPath } from '@/platform/auth/page-access'
 import { useSessionStore } from '@/app/stores/session.store'
 import UserMenu from './UserMenu.vue'
 
@@ -98,10 +99,11 @@ const iconMap = {
 }
 
 const visibleItems = computed(() =>
-  navigationItems.filter((item) => item.requiredScopes.length === 0 || sessionStore.hasScopes(item.requiredScopes)),
+  navigationItems.map((item) => item.path === '/settings' ? { ...item, path: settingsPath(sessionStore.currentUser) ?? '/settings' } : item).filter((item) => canAccessPath(sessionStore.currentUser, item.path)),
 )
 
 function isActive(item: NavigationItem): boolean {
-  return route.path === item.path || route.path.startsWith(`${item.path}/`)
+  const path = item.path.split('?')[0]
+  return route.path === path || route.path.startsWith(`${path}/`)
 }
 </script>

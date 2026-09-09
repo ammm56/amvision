@@ -19,6 +19,9 @@ def build_current_principal_contract(
         principal_type=principal.principal_type,
         project_ids=list(principal.project_ids),
         scopes=list(principal.scopes),
+        allowed_pages=None
+        if principal.allowed_pages is None
+        else list(principal.allowed_pages),
         username=_read_metadata_str(principal, "username"),
         display_name=_read_metadata_str(principal, "display_name"),
         auth_source=_read_metadata_str(principal, "auth_source"),
@@ -59,4 +62,3 @@ def _read_metadata_str(principal: AuthenticatedPrincipal, key: str) -> str | Non
         return None
     normalized_value = value.strip()
     return normalized_value or None
-

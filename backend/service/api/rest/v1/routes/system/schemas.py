@@ -19,6 +19,9 @@ class SystemCurrentPrincipalContract(BaseModel):
         description="当前主体的 Project 可见范围；为空表示全部 Project",
     )
     scopes: list[str] = Field(default_factory=list, description="当前主体持有的 scopes")
+    allowed_pages: list[str] | None = Field(
+        default=None, description="允许访问的页面；null 兼容原权限"
+    )
     username: str | None = Field(default=None, description="用户名")
     display_name: str | None = Field(default=None, description="展示名称")
     auth_source: str | None = Field(default=None, description="当前鉴权来源")
@@ -104,6 +107,9 @@ class SystemBootstrapCapabilitiesContract(BaseModel):
 class SystemBootstrapResponse(BaseModel):
     """描述前端首屏初始化需要的聚合响应。"""
 
+    default_auto_login_allowed: bool = Field(
+        default=False, description="是否允许浏览器默认管理员自动登录"
+    )
     auth_mode: str | None = Field(default=None, description="当前鉴权模式")
     bearer_auth_enabled: bool = Field(description="是否启用 Bearer token 鉴权")
     websocket_query_token_enabled: bool = Field(

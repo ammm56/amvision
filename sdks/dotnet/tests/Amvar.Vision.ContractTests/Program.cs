@@ -19,6 +19,7 @@ namespace Amvar.Vision.ContractTests
     {
         private static int Main(string[] args)
         {
+            if (args.Length > 0 && args[0] == "--user-access-smoke") return UserAccessSdkProbe.Run(args);
             var probeResult = WorkflowTriggerContractProbe.TryRun(args);
             if (probeResult.HasValue)
             {

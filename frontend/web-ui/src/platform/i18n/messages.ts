@@ -1,3 +1,4 @@
+import { userAccessMessages } from './user-access'
 import type { SupportedLocale } from './locales'
 import { deploymentTransferMessages } from './deployment-transfers'
 
@@ -64,7 +65,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       saved: '启动页面已保存',
       restored: '已恢复默认启动页面',
       targetUnavailable: '所选 Runtime 不可用',
-      targetReset: '启动页面目标已失效，已恢复项目页面',
+      targetReset: '启动页面目标已失效，请重新选择',
       appModeRequired: '所选 Runtime 的发布版本未配置应用模式',
       states: {
         created: '已创建',
@@ -103,7 +104,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       localAuth: 'Local Auth',
       login: '登录',
       loggingIn: '登录中',
-      loginIntro: '本机已记录退出状态，需要使用本地账号重新进入。',
+      loginIntro: '使用本地账号登录。',
       username: '用户名',
       password: '密码',
       notSignedIn: '未登录',
@@ -2286,7 +2287,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
     },
     errors: {
       forbiddenTitle: '权限不足',
-      forbiddenDescription: '当前主体没有访问该页面所需的 scope。',
+      forbiddenDescription: '当前账号没有访问此页面的权限。',
       offlineTitle: '后端不可用',
       offlineDescription: '请确认 backend-service 已启动。',
       notFoundTitle: '页面不存在',
@@ -2357,7 +2358,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       saved: 'Startup page saved',
       restored: 'Default startup page restored',
       targetUnavailable: 'The selected Runtime is unavailable',
-      targetReset: 'The startup target is no longer available. Projects has been restored.',
+      targetReset: 'The startup target is no longer available. Select another target.',
       appModeRequired: 'The selected Runtime version has no App Mode configuration',
       states: {
         created: 'Created',
@@ -2396,7 +2397,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       localAuth: 'Local Auth',
       login: 'Log in',
       loggingIn: 'Logging in',
-      loginIntro: 'A manual login state is recorded on this workstation. Sign in with a local account.',
+      loginIntro: 'Sign in with a local account.',
       username: 'Username',
       password: 'Password',
       notSignedIn: 'Not signed in',
@@ -4580,7 +4581,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
     },
     errors: {
       forbiddenTitle: 'Permission Required',
-      forbiddenDescription: 'The current principal does not have the scope required for this page.',
+      forbiddenDescription: 'This account does not have permission to access this page.',
       offlineTitle: 'Backend Unavailable',
       offlineDescription: 'Confirm that backend-service is running.',
       notFoundTitle: 'Page Not Found',
@@ -4647,7 +4648,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       saved: '起動ページを保存しました',
       restored: '既定の起動ページに戻しました',
       targetUnavailable: '選択した Runtime は利用できません',
-      targetReset: '起動ページの対象が無効なため、プロジェクトページに戻しました',
+      targetReset: '起動ページの対象が無効です。選択し直してください。',
       appModeRequired: '選択した Runtime の公開バージョンにアプリモード設定がありません',
       states: {
         created: '作成済み',
@@ -4686,7 +4687,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       localAuth: 'Local Auth',
       login: 'ログイン',
       loggingIn: 'ログイン中',
-      loginIntro: 'この端末には手動ログイン状態が記録されています。ローカルアカウントで再度ログインしてください。',
+      loginIntro: 'ローカルアカウントでログインしてください。',
       username: 'ユーザー名',
       password: 'パスワード',
       notSignedIn: '未ログイン',
@@ -6722,7 +6723,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
     },
     errors: {
       forbiddenTitle: '権限が不足しています',
-      forbiddenDescription: '現在の主体にはこのページに必要な scope がありません。',
+      forbiddenDescription: 'このアカウントには、このページにアクセスする権限がありません。',
       offlineTitle: 'バックエンドを利用できません',
       offlineDescription: 'backend-service が起動していることを確認してください。',
       notFoundTitle: 'ページが見つかりません',
@@ -6789,7 +6790,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       saved: '시작 페이지를 저장했습니다',
       restored: '기본 시작 페이지를 복원했습니다',
       targetUnavailable: '선택한 Runtime을 사용할 수 없습니다',
-      targetReset: '시작 페이지 대상이 유효하지 않아 프로젝트 페이지로 복원했습니다',
+      targetReset: '시작 페이지 대상이 유효하지 않습니다. 다시 선택하세요.',
       appModeRequired: '선택한 Runtime의 게시 버전에 앱 모드 설정이 없습니다',
       states: {
         created: '생성됨',
@@ -6828,7 +6829,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       localAuth: 'Local Auth',
       login: '로그인',
       loggingIn: '로그인 중',
-      loginIntro: '이 장비에 수동 로그인 상태가 기록되어 있습니다. 로컬 계정으로 다시 로그인하세요.',
+      loginIntro: '로컬 계정으로 로그인하세요.',
       username: '사용자 이름',
       password: '비밀번호',
       notSignedIn: '로그인 안 됨',
@@ -8864,7 +8865,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
     },
     errors: {
       forbiddenTitle: '권한 부족',
-      forbiddenDescription: '현재 주체에는 이 페이지에 필요한 scope 가 없습니다.',
+      forbiddenDescription: '이 계정에는 이 페이지에 접근할 권한이 없습니다.',
       offlineTitle: '백엔드 사용 불가',
       offlineDescription: 'backend-service 가 실행 중인지 확인하세요.',
       notFoundTitle: '페이지 없음',
@@ -9272,6 +9273,7 @@ for (const locale of ['zh-CN', 'en-US', 'ja-JP', 'ko-KR'] as const) {
 
 for (const locale of ['zh-CN', 'en-US', 'ja-JP', 'ko-KR'] as const) {
   baseMessages[locale].deploymentTransfer = deploymentTransferMessages[locale]
+  baseMessages[locale].userAccess = userAccessMessages[locale]
 }
 
 export const messages: Record<string, MessageSchema> = {

@@ -4,7 +4,7 @@
       <section
         ref="dialogRef"
         class="confirm-dialog"
-        :class="{ 'confirm-dialog--wide': size === 'wide', 'confirm-dialog--medium': size === 'medium' }"
+        :class="{ 'confirm-dialog--wide': size === 'wide', 'confirm-dialog--medium': size === 'medium', 'confirm-dialog--scroll-body': scrollBody }"
         role="dialog"
         aria-modal="true"
         :aria-labelledby="titleId"
@@ -26,7 +26,7 @@
 
         <p v-if="message" :id="messageId" class="confirm-dialog__message">{{ message }}</p>
         <p v-if="details" :id="detailsId" class="confirm-dialog__details">{{ details }}</p>
-        <div v-if="$slots.default" class="confirm-dialog__content">
+        <div v-if="$slots.default" class="confirm-dialog__content" :inert="scrollBody && busy">
           <slot />
         </div>
 
@@ -58,6 +58,7 @@ const props = withDefaults(
     confirmVariant?: 'primary' | 'danger'
     initialFocus?: 'cancel' | 'first-field'
     size?: 'default' | 'medium' | 'wide'
+    scrollBody?: boolean
   }>(),
   {
     message: '',
@@ -67,6 +68,7 @@ const props = withDefaults(
     confirmVariant: 'danger',
     initialFocus: 'cancel',
     size: 'default',
+    scrollBody: false,
   },
 )
 
@@ -198,6 +200,10 @@ onBeforeUnmount(() => {
   gap: 12px;
   min-width: 0;
 }
+
+.confirm-dialog--scroll-body { display: flex; flex-direction: column; overflow: hidden; }
+.confirm-dialog--scroll-body .confirm-dialog__content { min-height: 0; overflow: auto; padding-right: 4px; }
+.confirm-dialog--scroll-body > :not(.confirm-dialog__content) { flex-shrink: 0; }
 
 .confirm-dialog__leading-actions { margin-right: auto; }
 

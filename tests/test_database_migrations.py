@@ -41,7 +41,7 @@ from backend.service.application.workflows.trigger_sources.output_delivery impor
 )
 
 
-_DATABASE_HEAD = "e7a9b1c3d5f8"
+_DATABASE_HEAD = "f2b7d9a4c6e8"
 
 
 def test_migrate_database_adopts_unversioned_create_all_database(
@@ -158,7 +158,8 @@ def test_migrate_database_upgrades_preserved_task_idempotency_revision(
     assert script.get_revision("b4d6f8a2c5e1").down_revision == "e2a7c9d1f4b6"
     assert script.get_revision("c5e7f9a1b3d6").down_revision == "b4d6f8a2c5e1"
     assert script.get_revision("d6f8a0b2c4e7").down_revision == "c5e7f9a1b3d6"
-    assert script.get_revision(_DATABASE_HEAD).down_revision == "d6f8a0b2c4e7"
+    assert script.get_revision("e7a9b1c3d5f8").down_revision == "d6f8a0b2c4e7"
+    assert script.get_revision(_DATABASE_HEAD).down_revision == "e7a9b1c3d5f8"
     assert script.get_current_head() == _DATABASE_HEAD
 
     command.upgrade(config, "c4a2f7b8d3e5")

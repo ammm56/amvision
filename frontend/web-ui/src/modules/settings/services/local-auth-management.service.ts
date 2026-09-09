@@ -38,6 +38,7 @@ export interface LocalAuthUserCreateInput {
   principal_type?: string
   project_ids?: string[]
   scopes?: string[]
+  allowed_pages?: string[] | null
   metadata?: Record<string, unknown>
   initial_user_token?: LocalAuthInitialUserTokenInput | null
 }
@@ -47,6 +48,7 @@ export interface LocalAuthUserUpdateInput {
   password?: string | null
   project_ids?: string[] | null
   scopes?: string[] | null
+  allowed_pages?: string[] | null
   is_active?: boolean | null
   metadata?: Record<string, unknown> | null
 }
@@ -72,8 +74,8 @@ export async function createLocalAuthUser(input: LocalAuthUserCreateInput): Prom
   return apiRequest<LocalAuthUserCreateResult>('/auth/users', { method: 'POST', body: input })
 }
 
-export async function updateLocalAuthUser(userId: string, input: LocalAuthUserUpdateInput): Promise<LocalAuthUser> {
-  return apiRequest<LocalAuthUser>(`/auth/users/${encodeURIComponent(userId)}`, { method: 'PATCH', body: input })
+export async function updateLocalAuthUser(userId: string, input: LocalAuthUserUpdateInput, expectedUpdatedAt?: string): Promise<LocalAuthUser> {
+  return apiRequest<LocalAuthUser>(`/auth/users/${encodeURIComponent(userId)}`, { method: 'PATCH', body: input, headers: expectedUpdatedAt ? { 'If-Match': expectedUpdatedAt } : undefined })
 }
 
 export async function deleteLocalAuthUser(userId: string): Promise<void> {

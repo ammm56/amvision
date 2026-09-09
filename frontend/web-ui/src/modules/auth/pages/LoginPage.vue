@@ -58,6 +58,7 @@ async function submitLogin(): Promise<void> {
     await sessionStore.login({ username: username.value, password: password.value })
     await projectStore.loadProjects()
     const destination = await resolvePostAuthenticationRoute({
+      user: sessionStore.currentUser,
       explicitRedirect: route.query.redirect,
       preference: preferencesStore.startupPage,
     })

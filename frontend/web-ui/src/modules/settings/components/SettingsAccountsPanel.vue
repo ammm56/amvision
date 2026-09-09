@@ -9,7 +9,7 @@
           <RefreshCw :size="16" />
           {{ t('common.refresh') }}
         </Button>
-        <Button variant="primary" :disabled="!canWrite" @click="showCreateUser = true">
+        <Button variant="primary" :disabled="!canWrite" @click="openCreateUser">
           <UserPlus :size="16" />
           {{ t('settingsDiagnostics.actions.createUser') }}
         </Button>
@@ -58,7 +58,7 @@
             <Button
               variant="danger"
               size="sm"
-              :disabled="!canWrite || selectedUser.user_id === currentUserId || isSelectedSoleAmvar || accountDangerActionKey !== null"
+              :disabled="!canWrite || selectedUser.user_id === currentUserId || Boolean(selectedUser.metadata?.system_default_user) || isSelectedSoleAmvar || accountDangerActionKey !== null"
               :title="isSelectedSoleAmvar ? soleAmvarProtectionMessage : undefined"
               @click="requestRemoveUser(selectedUser)"
             >
@@ -68,7 +68,9 @@
           </div>
         </header>
 
+        <div class="settings-panel__actions"><Button v-if="canWrite" variant="secondary" size="sm" @click="openAccess(selectedUser)">{{ t('userAccess.edit') }}</Button></div>
         <dl class="settings-metadata-grid settings-account-summary">
+          <div><dt>{{ t('userAccess.pagesTitle') }}</dt><dd>{{ selectedUser.allowed_pages == null ? t('userAccess.compatible') : selectedUser.allowed_pages.map(id => t(`userAccess.pages.${id}`)).join('、') || '—' }}</dd></div>
           <div><dt>{{ t('settingsDiagnostics.columns.status') }}</dt><dd><StatusBadge :status="selectedUser.is_active ? 'enabled' : 'disabled'" :label="selectedUser.is_active ? t('settingsDiagnostics.status.enabled') : t('settingsDiagnostics.status.disabled')" /></dd></div>
           <div><dt>{{ t('settingsDiagnostics.columns.scopes') }}</dt><dd>{{ formatScopeSummary(selectedUser.scopes) }}</dd></div>
           <div><dt>{{ t('settingsDiagnostics.columns.projectVisibility') }}</dt><dd>{{ formatProjectVisibility(selectedUser.project_ids) }}</dd></div>
@@ -123,27 +125,21 @@
       <div v-else class="settings-account-empty">{{ t('settingsDiagnostics.emptyUsers') }}</div>
     </div>
 
-    <div v-if="showCreateUser" class="settings-modal-backdrop" @click="showCreateUser = false">
-      <section class="settings-modal" role="dialog" aria-modal="true" :aria-label="t('settingsDiagnostics.actions.createUser')" @click.stop @keydown.esc="showCreateUser = false">
-        <header class="settings-panel__heading">
-          <h2>{{ t('settingsDiagnostics.actions.createUser') }}</h2>
-          <button type="button" class="settings-modal__close" :aria-label="t('common.cancel')" @click="showCreateUser = false"><X :size="16" /></button>
-        </header>
-        <div class="form-grid settings-account-form">
-          <label class="field"><span>{{ t('settingsDiagnostics.fields.username') }}</span><input v-model.trim="createUserForm.username" autocomplete="off" /></label>
-          <label class="field"><span>{{ t('settingsDiagnostics.fields.displayName') }}</span><input v-model.trim="createUserForm.displayName" autocomplete="off" /></label>
-          <label class="field"><span>{{ t('settingsDiagnostics.fields.password') }}</span><input v-model="createUserForm.password" type="password" autocomplete="new-password" /></label>
-          <label class="field"><span>{{ t('settingsDiagnostics.fields.defaultTokenName') }}</span><input v-model.trim="createUserForm.tokenName" autocomplete="off" /></label>
-          <label class="field field--wide"><span>{{ t('settingsDiagnostics.fields.scopes') }}</span><MultiSelect :model-value="createUserForm.scopes" :options="scopeOptions" :placeholder="t('settingsDiagnostics.placeholders.scopeList')" @update:model-value="updateCreateUserScopes" /></label>
-          <label class="field field--wide"><span>{{ t('settingsDiagnostics.fields.projectVisibility') }}</span><input v-model.trim="createUserForm.projectIds" autocomplete="off" :placeholder="t('settingsDiagnostics.placeholders.projectList')" /></label>
-          <label class="checkbox-field"><input v-model="createUserForm.issueToken" type="checkbox" /><span>{{ t('settingsDiagnostics.fields.issueDefaultToken') }}</span></label>
-        </div>
-        <footer class="settings-modal__actions">
-          <Button variant="secondary" @click="showCreateUser = false">{{ t('common.cancel') }}</Button>
-          <Button variant="primary" :disabled="!canWrite || usersLoading" :loading="usersLoading" @click="createUser"><UserPlus :size="16" />{{ t('settingsDiagnostics.actions.createUser') }}</Button>
-        </footer>
-      </section>
-    </div>
+    <ConfirmDialog v-if="showCreateUser" :title="t('settingsDiagnostics.actions.createUser')" :confirm-label="t('settingsDiagnostics.actions.createUser')" :cancel-label="t('common.cancel')" confirm-variant="primary" size="wide" scroll-body initial-focus="first-field" :busy="usersLoading" :confirm-disabled="!canWrite || Boolean(userAccessIssue(createAccess)) || !createUserForm.username || !createUserForm.password" @cancel="showCreateUser = false" @confirm="createUser">
+      <div class="form-grid settings-account-form">
+        <label class="field"><span>{{ t('settingsDiagnostics.fields.username') }}</span><input v-model.trim="createUserForm.username" autocomplete="off" /></label>
+        <label class="field"><span>{{ t('settingsDiagnostics.fields.displayName') }}</span><input v-model.trim="createUserForm.displayName" autocomplete="off" /></label>
+        <label class="field field--wide"><span>{{ t('settingsDiagnostics.fields.password') }}</span><input v-model="createUserForm.password" type="password" autocomplete="new-password" /></label>
+      </div>
+      <UserAccessForm v-model="createAccess" :inert="usersLoading" />
+      <label class="checkbox-field"><input v-model="createUserForm.issueToken" type="checkbox" /><span>{{ t('settingsDiagnostics.fields.issueDefaultToken') }}</span></label>
+      <label v-if="createUserForm.issueToken" class="field"><span>{{ t('settingsDiagnostics.fields.defaultTokenName') }}</span><input v-model.trim="createUserForm.tokenName" /></label>
+      <InlineError :message="errorMessage" />
+    </ConfirmDialog>
+    <ConfirmDialog v-if="editingUser" :title="t('userAccess.edit')" :message="editingUser.display_name || editingUser.username" :confirm-label="t('startupPage.save')" :cancel-label="t('common.cancel')" confirm-variant="primary" size="wide" scroll-body initial-focus="first-field" :busy="accessSaving" :confirm-disabled="!canWrite || Boolean(userAccessIssue(editAccess))" @cancel="editingUser = null" @confirm="saveAccess">
+      <UserAccessForm v-model="editAccess" :inert="accessSaving" />
+      <InlineError :message="accessError" />
+    </ConfirmDialog>
 
     <ConfirmDialog
       v-if="pendingDeleteUser"
@@ -171,7 +167,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { Copy, KeyRound, Power, RefreshCw, RotateCcw, Trash2, UserPlus, X } from '@lucide/vue'
+import { Copy, KeyRound, Power, RefreshCw, RotateCcw, Trash2, UserPlus } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 
 import { useSessionStore } from '@/app/stores/session.store'
@@ -179,7 +175,10 @@ import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import type { LocalAuthUser } from '@/shared/contracts'
 import Button from '@/shared/ui/components/Button.vue'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
-import MultiSelect from '@/shared/ui/components/MultiSelect.vue'
+import UserAccessForm from './UserAccessForm.vue'
+import { emptyUserAccess, userAccessDraft, userAccessIssue } from '../user-access-form'
+import { firstAccessiblePath } from '@/platform/auth/page-access'
+import { useRouter } from 'vue-router'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import InlineMessage from '@/shared/ui/feedback/InlineMessage.vue'
@@ -197,8 +196,14 @@ import {
   type LocalAuthUserToken,
 } from '../services/local-auth-management.service'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const sessionStore = useSessionStore()
+const router = useRouter()
+const createAccess = ref(emptyUserAccess())
+const editingUser = ref<LocalAuthUser | null>(null)
+const editAccess = ref(emptyUserAccess())
+const accessSaving = ref(false)
+const accessError = ref<string | null>(null)
 
 const users = ref<LocalAuthUser[]>([])
 const tokens = ref<LocalAuthUserToken[]>([])
@@ -218,9 +223,9 @@ const createUserForm = reactive({
   username: '',
   displayName: '',
   password: '',
-  scopes: ['workflows:read', 'models:read', 'datasets:read', 'tasks:read'],
+  scopes: [] as string[],
   projectIds: '',
-  issueToken: true,
+  issueToken: false,
   tokenName: 'default',
 })
 const tokenForm = reactive({ tokenName: 'default', ttlHours: null as number | null })
@@ -231,25 +236,6 @@ const currentUserId = computed(() => sessionStore.currentUser?.principal_id ?? '
 const selectedUser = computed(() => users.value.find((user) => user.user_id === selectedUserId.value) ?? null)
 const isSelectedSoleAmvar = computed(() => isProtectedSoleAmvarUser(users.value, selectedUser.value?.user_id))
 const soleAmvarProtectionMessage = computed(() => t('settingsDiagnostics.messages.soleAmvarProtected'))
-const scopeOptions = computed(() => [
-  { label: t('settingsDiagnostics.fields.allScopes'), value: '*', description: '*' },
-  { label: 'workflows:read', value: 'workflows:read' },
-  { label: 'workflows:write', value: 'workflows:write' },
-  { label: 'projects:delete', value: 'projects:delete' },
-  { label: 'models:read', value: 'models:read' },
-  { label: 'models:write', value: 'models:write' },
-  { label: 'datasets:read', value: 'datasets:read' },
-  { label: 'datasets:write', value: 'datasets:write' },
-  { label: 'tasks:read', value: 'tasks:read' },
-  { label: 'tasks:write', value: 'tasks:write' },
-  { label: 'deployments:read', value: 'deployments:read' },
-  { label: 'deployments:write', value: 'deployments:write' },
-  { label: 'integrations:read', value: 'integrations:read' },
-  { label: 'integrations:write', value: 'integrations:write' },
-  { label: 'auth:read', value: 'auth:read' },
-  { label: 'auth:write', value: 'auth:write' },
-  { label: 'system:read', value: 'system:read' },
-])
 
 onMounted(() => {
   void loadUsers()
@@ -274,6 +260,8 @@ async function loadUsers(): Promise<void> {
 }
 
 async function selectUser(userId: string): Promise<void> {
+  tokens.value = []
+  editingUser.value = null
   selectedUserId.value = userId
   issuedToken.value = null
   await loadTokens(userId)
@@ -283,7 +271,8 @@ async function loadTokens(userId: string): Promise<void> {
   tokensLoading.value = true
   errorMessage.value = null
   try {
-    tokens.value = await listLocalAuthUserTokens(userId)
+    const loaded = await listLocalAuthUserTokens(userId)
+    if (selectedUserId.value === userId) tokens.value = loaded
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('settingsDiagnostics.messages.tokensLoadFailed')
   } finally {
@@ -291,7 +280,14 @@ async function loadTokens(userId: string): Promise<void> {
   }
 }
 
+function openCreateUser(): void {
+  resetCreateUserForm()
+  errorMessage.value = null
+  showCreateUser.value = true
+}
+
 async function createUser(): Promise<void> {
+  if (!canWrite.value || usersLoading.value || userAccessIssue(createAccess.value)) return
   if (!createUserForm.username || !createUserForm.password) {
     errorMessage.value = t('settingsDiagnostics.messages.userInputRequired')
     return
@@ -304,8 +300,9 @@ async function createUser(): Promise<void> {
       username: createUserForm.username,
       password: createUserForm.password,
       display_name: createUserForm.displayName || null,
-      scopes: createUserForm.scopes,
-      project_ids: parseCsv(createUserForm.projectIds),
+      scopes: createAccess.value.scopes,
+      allowed_pages: createAccess.value.pages,
+      project_ids: createAccess.value.allProjects ? [] : createAccess.value.projectIds,
       initial_user_token: createUserForm.issueToken
         ? { enabled: true, token_name: createUserForm.tokenName || 'default' }
         : { enabled: false },
@@ -337,7 +334,7 @@ async function toggleUser(userId: string, isActive: boolean): Promise<void> {
 }
 
 function requestRemoveUser(user: LocalAuthUser): void {
-  if (!canWrite.value || user.user_id === currentUserId.value || isProtectedSoleAmvarUser(users.value, user.user_id) || accountDangerActionKey.value) return
+    if (!canWrite.value || user.user_id === currentUserId.value || user.metadata?.system_default_user || isProtectedSoleAmvarUser(users.value, user.user_id) || accountDangerActionKey.value) return
   pendingDeleteUser.value = user
 }
 
@@ -435,13 +432,6 @@ async function copyIssuedToken(): Promise<void> {
   }
 }
 
-function parseCsv(value: string): string[] {
-  return value
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean)
-}
-
 function formatProjectVisibility(value: string[]): string {
   return value.length > 0 ? value.join(', ') : t('settingsDiagnostics.fields.allProjects')
 }
@@ -449,19 +439,7 @@ function formatProjectVisibility(value: string[]): string {
 function formatScopeSummary(value: string[]): string {
   if (value.includes('*')) return t('settingsDiagnostics.fields.allScopes')
   if (value.length === 0) return '-'
-  return value.join(', ')
-}
-
-function updateCreateUserScopes(value: string[]): void {
-  createUserForm.scopes = normalizeScopeSelection(value)
-}
-
-function normalizeScopeSelection(value: string[]): string[] {
-  const uniqueValue = Array.from(new Set(value))
-  if (uniqueValue.includes('*') && !createUserForm.scopes.includes('*')) return ['*']
-  if (createUserForm.scopes.includes('*') && uniqueValue.length > 1) return uniqueValue.filter((item) => item !== '*')
-  if (uniqueValue.includes('*')) return ['*']
-  return uniqueValue
+  return value.map(scope => te(`userAccess.operations.${scope}`) ? t(`userAccess.operations.${scope}`) : scope).join('、')
 }
 
 function formatDate(value?: string | null): string {
@@ -476,9 +454,40 @@ function resetCreateUserForm(): void {
   createUserForm.username = ''
   createUserForm.displayName = ''
   createUserForm.password = ''
-  createUserForm.scopes = ['workflows:read', 'models:read', 'datasets:read', 'tasks:read']
+  createUserForm.scopes = []
+  createAccess.value = emptyUserAccess()
   createUserForm.projectIds = ''
   createUserForm.tokenName = 'default'
-  createUserForm.issueToken = true
+  createUserForm.issueToken = false
+}
+async function openAccess(user: LocalAuthUser): Promise<void> {
+  if (!canWrite.value) return
+  accessError.value = null
+  try {
+    const latest = (await listLocalAuthUsers()).find(item => item.user_id === user.user_id)
+    if (!latest) { await loadUsers(); return }
+    editAccess.value = userAccessDraft(latest)
+    editingUser.value = latest
+  } catch (error) { errorMessage.value = error instanceof Error ? error.message : String(error) }
+}
+async function saveAccess(): Promise<void> {
+  const user = editingUser.value
+  if (!user || !canWrite.value || accessSaving.value || userAccessIssue(editAccess.value)) return
+  accessSaving.value = true
+  accessError.value = null
+  try {
+    const updated = await updateLocalAuthUser(user.user_id, {
+      scopes: editAccess.value.scopes, allowed_pages: editAccess.value.pages,
+      project_ids: editAccess.value.allProjects ? [] : editAccess.value.projectIds,
+    }, user.updated_at)
+    users.value = users.value.map(item => item.user_id === updated.user_id ? updated : item)
+    editingUser.value = null
+    statusMessage.value = t('userAccess.saved')
+    if (user.user_id === currentUserId.value) {
+      await sessionStore.refreshPermissions()
+      if (!sessionStore.currentUser?.scopes.some(scope => scope === '*' || scope === 'auth:*' || scope === 'auth:read') || sessionStore.currentUser.allowed_pages && !sessionStore.currentUser.allowed_pages.includes('settings-accounts')) await router.replace(firstAccessiblePath(sessionStore.currentUser))
+    }
+  } catch (error) { accessError.value = error instanceof Error ? error.message : String(error) }
+  finally { accessSaving.value = false }
 }
 </script>
