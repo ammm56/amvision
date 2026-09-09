@@ -30,6 +30,7 @@ class Detect(nn.Module):
 
     dynamic = False
     export = False
+    validation_raw_output = False
     format = None
     max_det = 300
     agnostic_nms = False
@@ -186,6 +187,9 @@ class Detect(nn.Module):
         inference_outputs = raw_outputs["one2one"] if self.end2end else raw_outputs
         prediction = self._inference(inference_outputs)
         normalized_prediction = prediction.transpose(1, 2).contiguous()
+        # 只在转换验收的受控 forward 中读取 TopK 前候选，普通推理不保留张量。
+        if self.export and self.validation_raw_output:
+            return normalized_prediction
         if self.end2end:
             processed_prediction = postprocess_yolo26_detection_export_tensor(
                 torch_module=torch,

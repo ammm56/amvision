@@ -230,6 +230,10 @@ OpenVINO `AUTO` 需要单独表达候选设备和调度意图：
 
 这些选项不能混入普通 CPU / GPU / NPU 基础表单。当前工业同步调用默认不自动启用 `CUMULATIVE_THROUGHPUT` 或 auto batching。
 
+RF-DETR segmentation 的 AUTO 会话在统一编译入口内部设置 `ENABLE_STARTUP_FALLBACK=False`，等待目标设备编译就绪后才进入可用状态。该适配处理 OpenVINO 2026.2.0 在本机 CPU 启动辅助切换到 Intel GPU 后无法访问 `pred_masks` 的问题；不改变其他模型、显式 CPU/GPU/NPU 或运行期 fallback 配置。
+
+必要属性通过 Core 配置读回及显式 compile 参数核对；CompiledModel 支持读回时还会核对其值。属性不支持或值不一致时明确失败。effective 诊断包含适配原因、OpenVINO 版本、验证方式和实际执行设备。输出按端口完整名称集合识别，`pred_boxes`、`pred_logits`、`pred_masks` 缺一不可，不把 mask 缺失替换为空结果。冷启动可能延长，需分别测量编译、首帧和稳定阶段。
+
 ## TensorRT 配置边界
 
 ### 基本运行模型

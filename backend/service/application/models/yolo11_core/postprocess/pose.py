@@ -57,6 +57,7 @@ def build_yolo11_pose_postprocess_instances(
     keypoint_confidence_threshold: float,
     letterbox_transform: YoloLetterboxTransform,
     default_kpt_shape: tuple[int, int],
+    clip_coordinates: bool = True,
     nms_threshold: float,
     nms_indices_func: Callable[..., Any],
 ) -> tuple[tuple[Yolo11PosePostprocessInstance, ...], tuple[int, int]]:
@@ -137,6 +138,7 @@ def build_yolo11_pose_postprocess_instances(
                     keypoint_confidence_threshold=keypoint_confidence_threshold,
                     letterbox_transform=letterbox_transform,
                     default_kpt_shape=default_kpt_shape,
+                    clip_coordinates=clip_coordinates,
                 )
             )
     results.sort(key=lambda item: item.score, reverse=True)
@@ -178,12 +180,14 @@ def _build_yolo11_pose_instance(
     keypoint_confidence_threshold: float,
     letterbox_transform: YoloLetterboxTransform,
     default_kpt_shape: tuple[int, int],
+    clip_coordinates: bool = True,
 ) -> Yolo11PosePostprocessInstance:
     """构建单个 YOLO11 pose 后处理实例。"""
 
     scaled_box = scale_yolo_box_from_letterbox(
         box_xyxy=(float(box[0]), float(box[1]), float(box[2]), float(box[3])),
         transform=letterbox_transform,
+        clip=clip_coordinates,
     )
     if scaled_box is None:
         scaled_box = (0.0, 0.0, 0.0, 0.0)
@@ -195,8 +199,12 @@ def _build_yolo11_pose_instance(
     for keypoint_index in range(int(default_kpt_shape[0])):
         base_index = keypoint_index * int(default_kpt_shape[1])
         x_value, y_value = scale_yolo_point_from_letterbox(
-            point_xy=(float(keypoint_row[base_index]), float(keypoint_row[base_index + 1])),
+            point_xy=(
+                float(keypoint_row[base_index]),
+                float(keypoint_row[base_index + 1]),
+            ),
             transform=letterbox_transform,
+            clip=clip_coordinates,
         )
         confidence = (
             float(keypoint_row[base_index + 2])

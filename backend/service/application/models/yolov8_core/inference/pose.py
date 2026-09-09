@@ -54,6 +54,7 @@ def build_yolov8_pose_inference_instances(
     keypoint_confidence_threshold: float,
     letterbox_transform: YoloLetterboxTransform,
     default_kpt_shape: tuple[int, int],
+    clip_coordinates: bool = True,
     nms_threshold: float,
     nms_indices_func: Callable[..., Any],
 ) -> tuple[tuple[YoloV8PosePostprocessInstance, ...], tuple[int, int]]:
@@ -67,6 +68,7 @@ def build_yolov8_pose_inference_instances(
         keypoint_confidence_threshold=keypoint_confidence_threshold,
         letterbox_transform=letterbox_transform,
         default_kpt_shape=default_kpt_shape,
+        clip_coordinates=clip_coordinates,
         nms_threshold=nms_threshold,
         nms_indices_func=nms_indices_func,
     )

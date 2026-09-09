@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+from backend.service.application.runtime.contracts.pose.evaluation import (
+    pose_evaluation_preprocess_options,
+    pose_evaluation_postprocess_options,
+)
+
 from time import perf_counter
 from typing import Any
 
@@ -33,7 +38,9 @@ from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetSnapshot,
     describe_runtime_execution_mode,
 )
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 
 class OnnxRuntimeYoloV8PoseRuntimeSession:
@@ -108,7 +115,9 @@ class OnnxRuntimeYoloV8PoseRuntimeSession:
             output_names=tuple(item.name for item in session.get_outputs()),
         )
 
-    def predict(self, request: YoloV8PosePredictionRequest) -> YoloV8PosePredictionExecutionResult:
+    def predict(
+        self, request: YoloV8PosePredictionRequest
+    ) -> YoloV8PosePredictionExecutionResult:
         """执行一次 ONNXRuntime YOLOv8 pose 预测。"""
 
         decode_started_at = perf_counter()
@@ -125,6 +134,7 @@ class OnnxRuntimeYoloV8PoseRuntimeSession:
             np_module=self.imports.np,
             image=image,
             input_size=self.runtime_target.input_size,
+            **pose_evaluation_preprocess_options(request),
         )
         input_tensor = self.imports.np.expand_dims(input_tensor, axis=0).astype(
             self.imports.np.float32,
@@ -132,7 +142,9 @@ class OnnxRuntimeYoloV8PoseRuntimeSession:
         )
         preprocess_ms = round((perf_counter() - preprocess_started_at) * 1000, 3)
         infer_started_at = perf_counter()
-        outputs = self.session.run(list(self.output_names), {self.input_name: input_tensor})
+        outputs = self.session.run(
+            list(self.output_names), {self.input_name: input_tensor}
+        )
         infer_ms = round((perf_counter() - infer_started_at) * 1000, 3)
         prediction_array = normalize_yolov8_pose_outputs_for_backend(
             outputs=outputs,
@@ -147,6 +159,7 @@ class OnnxRuntimeYoloV8PoseRuntimeSession:
             keypoint_confidence_threshold=request.keypoint_confidence_threshold,
             letterbox_transform=letterbox_transform,
             default_kpt_shape=infer_yolov8_pose_keypoint_shape(self.runtime_target),
+            **pose_evaluation_postprocess_options(request),
         )
         postprocess_ms = round((perf_counter() - postprocess_started_at) * 1000, 3)
         latency_ms = decode_ms + preprocess_ms + infer_ms + postprocess_ms
@@ -168,12 +181,19 @@ class OnnxRuntimeYoloV8PoseRuntimeSession:
                 device_name=self.device_name,
                 input_spec=YoloV8PoseRuntimeTensorSpec(
                     name=self.input_name,
-                    shape=(1, 3, self.runtime_target.input_size[0], self.runtime_target.input_size[1]),
+                    shape=(
+                        1,
+                        3,
+                        self.runtime_target.input_size[0],
+                        self.runtime_target.input_size[1],
+                    ),
                     dtype="float32",
                 ),
                 output_specs=(
                     YoloV8PoseRuntimeTensorSpec(
-                        name=self.output_names[0] if self.output_names else "predictions",
+                        name=self.output_names[0]
+                        if self.output_names
+                        else "predictions",
                         shape=tuple(int(item) for item in prediction_array.shape),
                         dtype="float32",
                     ),

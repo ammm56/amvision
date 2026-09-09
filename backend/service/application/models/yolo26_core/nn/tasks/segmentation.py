@@ -186,8 +186,13 @@ class Segment26(Detect):
             strides=self.strides,
             dfl_decoder=self.dfl,
         )
-        prediction = torch.cat((prediction, inference_outputs["mask_coefficients"]), dim=1)
+        prediction = torch.cat(
+            (prediction, inference_outputs["mask_coefficients"]), dim=1
+        )
         normalized_prediction = prediction.transpose(1, 2).contiguous()
+        # 只在转换验收的受控 forward 中读取 TopK 前候选，普通推理不保留张量。
+        if self.export and self.validation_raw_output:
+            return (normalized_prediction, proto)
         if self.end2end:
             processed_prediction = postprocess_yolo26_extra_export_tensor(
                 torch_module=torch,
@@ -201,9 +206,13 @@ class Segment26(Detect):
                 if self.export
                 else ((processed_prediction, proto), raw_outputs)
             )
-        return (normalized_prediction, proto) if self.export else (
-            (normalized_prediction, proto),
-            raw_outputs,
+        return (
+            (normalized_prediction, proto)
+            if self.export
+            else (
+                (normalized_prediction, proto),
+                raw_outputs,
+            )
         )
 
     def forward_head(

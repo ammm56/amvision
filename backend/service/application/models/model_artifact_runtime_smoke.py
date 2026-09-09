@@ -45,14 +45,19 @@ def validate_openvino_ir_against_onnx(
     source_input = source_inputs[0]
     input_shape = _resolve_runtime_input_shape(source_input.shape)
     input_dtype = _resolve_numpy_input_dtype(source_input.type, np_module=np)
-    random_input = np.random.default_rng(0).standard_normal(input_shape).astype(
-        input_dtype,
-        copy=False,
+    random_input = (
+        np.random.default_rng(0)
+        .standard_normal(input_shape)
+        .astype(
+            input_dtype,
+            copy=False,
+        )
     )
 
     compiled_model = Core().compile_model(
         str(openvino_model_path.resolve()),
         "CPU",
+        {"INFERENCE_PRECISION_HINT": "f32"},
     )
     if len(compiled_model.inputs) != 1:
         raise ServiceConfigurationError(
@@ -63,16 +68,79 @@ def validate_openvino_ir_against_onnx(
         np.asarray(value)
         for value in source_session.run(None, {source_input.name: random_input})
     ]
+    output_names = [output.name for output in source_session.get_outputs()]
+    if len(compiled_model.outputs) != len(output_names):
+        raise ServiceConfigurationError("OpenVINO runtime smoke 输出数量不一致")
     target_result = compiled_model([random_input])
-    target_outputs = [
-        np.asarray(target_result[output]) for output in compiled_model.outputs
-    ]
-    numeric_summary = summarize_runtime_output_consistency(
-        source_outputs=source_outputs,
-        target_outputs=target_outputs,
-        build_precision=normalized_precision,
-        np_module=np,
+    # 编译器可重排多输出端口；只按名称集合对应，不依赖端口顺序或任意别名。
+    try:
+        target_outputs = [
+            np.asarray(target_result[compiled_model.output(name)])
+            for name in output_names
+        ]
+    except RuntimeError as error:
+        raise ServiceConfigurationError(
+            "OpenVINO runtime smoke 输出名称与来源 ONNX 不一致"
+        ) from error
+    import onnx
+    from backend.service.application.models.yolo26_core.export.validation_graph import (
+        instrument_topk_graph,
+        read_topk_contract,
     )
+
+    source_graph = onnx.load(str(source_path))
+    topk_contract = read_topk_contract(source_graph)
+    if topk_contract is None:
+        numeric_summary = summarize_runtime_output_consistency(
+            source_outputs=source_outputs,
+            target_outputs=target_outputs,
+            build_precision=normalized_precision,
+            np_module=np,
+        )
+    else:
+        from backend.service.application.models.yolo26_core.export.topk_validation import (
+            validate_topk_outputs,
+        )
+
+        observed_source = ort.InferenceSession(
+            instrument_topk_graph(source_graph, topk_contract).SerializeToString(),
+            providers=["CPUExecutionProvider"],
+        )
+        source_observed_outputs = observed_source.run(
+            [*output_names, topk_contract.candidates_name],
+            {source_input.name: random_input},
+        )
+        observed_target_graph = Core().read_model(str(openvino_model_path.resolve()))
+        try:
+            observed_target_graph.add_outputs(topk_contract.candidates_name)
+        except RuntimeError as error:
+            raise ServiceConfigurationError(
+                "OpenVINO 图丢失 YOLO26 TopK 候选观测张量"
+            ) from error
+        observed_target = Core().compile_model(
+            observed_target_graph,
+            "CPU",
+            {"INFERENCE_PRECISION_HINT": "f32"},
+        )
+        observed_result = observed_target([random_input])
+        target_observed_outputs = [
+            np.asarray(observed_result[observed_target.output(name)])
+            for name in output_names
+        ]
+        target_candidates = np.asarray(
+            observed_result[observed_target.output(topk_contract.candidates_name)]
+        )
+        numeric_summary = validate_topk_outputs(
+            source_candidates=source_observed_outputs[-1],
+            target_candidates=target_candidates,
+            source_outputs=source_outputs,
+            target_outputs=target_outputs,
+            source_observed_outputs=source_observed_outputs[:-1],
+            target_observed_outputs=target_observed_outputs,
+            class_count=topk_contract.class_count,
+            build_precision=normalized_precision,
+            np_module=np,
+        )
     if numeric_summary["passed"] is not True:
         raise ServiceConfigurationError(
             "OpenVINO runtime smoke 数值一致性校验失败",
@@ -80,6 +148,7 @@ def validate_openvino_ir_against_onnx(
         )
     return {
         **numeric_summary,
+        "stage": "validate-openvino",
         "source_runtime": "onnxruntime-cpu",
         "target_runtime": "openvino-cpu",
         "input_shape": list(input_shape),

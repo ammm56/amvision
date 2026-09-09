@@ -119,7 +119,9 @@ class Pose26(Detect):
         self.nk = self.kpt_shape[0] * self.kpt_shape[1]
         self.flow_model = RealNVP()
         c4 = max(ch[0] // 4, self.nk + self.kpt_shape[0] * 2)
-        self.cv4 = nn.ModuleList(nn.Sequential(Conv(x, c4, 3), Conv(c4, c4, 3)) for x in ch)
+        self.cv4 = nn.ModuleList(
+            nn.Sequential(Conv(x, c4, 3), Conv(c4, c4, 3)) for x in ch
+        )
         self.cv4_kpts = nn.ModuleList(nn.Conv2d(c4, self.nk, 1) for _ in ch)
         self.nk_sigma = self.kpt_shape[0] * 2
         self.cv4_sigma = nn.ModuleList(nn.Conv2d(c4, self.nk_sigma, 1) for _ in ch)
@@ -177,6 +179,9 @@ class Pose26(Detect):
         )
         prediction = torch.cat((prediction, kpts), dim=1)
         normalized_prediction = prediction.transpose(1, 2).contiguous()
+        # 只在转换验收的受控 forward 中读取 TopK 前候选，普通推理不保留张量。
+        if self.export and self.validation_raw_output:
+            return normalized_prediction
         if self.end2end:
             processed_prediction = postprocess_yolo26_extra_export_tensor(
                 torch_module=torch,
@@ -190,7 +195,11 @@ class Pose26(Detect):
                 if self.export
                 else (processed_prediction, raw_outputs)
             )
-        return normalized_prediction if self.export else (normalized_prediction, raw_outputs)
+        return (
+            normalized_prediction
+            if self.export
+            else (normalized_prediction, raw_outputs)
+        )
 
     def _build_head_outputs_pose26(
         self,

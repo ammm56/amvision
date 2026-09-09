@@ -103,7 +103,7 @@ CPU、NVIDIA 均通过真实 full 服务启动、SQLite、基础 API、失效状
 
 - YOLOv8 / YOLO11 / YOLO26 classification 于 10:08:49～10:20:40 完整复测，3 项全部通过，测试进程正常退出 0。
 - RF-DETR detection 修正后已完成训练、独立评估、三种转换、sync/async、Workflow；原复测进程最后因测试脚本未映射 `test/mAP_50` 等字段而失败。修正解析器后重读该次真实训练报告并比对 SQLite 中独立评估，AP50/AP50:95 均为 0，符合现有差异门禁。这是对已完成业务结果的补充核验，不把原失败进程改写为正常退出。
-- RF-DETR segmentation 于 10:20:40～10:25:46 完整重跑至 OpenVINO 阶段：自定义尺寸训练、评估、ONNX 转换和 sync/async/Workflow 通过，空分割异步图片问题已修复；OpenVINO 转换及前序同步调用成功，但异步实例启动返回 500，底层报 `Cannot find tensor for port ... pred_masks/sink_port_0[0]:f32[1,100,96,96]`。此轮失败，尚未执行 TensorRT；输出张量失配的具体根因仍需专项定位。
+- RF-DETR segmentation 于 10:20:40～10:25:46 完整重跑至 OpenVINO 阶段：自定义尺寸训练、评估、ONNX 转换和 sync/async/Workflow 通过，空分割异步图片问题已修复；OpenVINO 转换及前序同步调用成功，但异步实例启动返回 500，底层报 `Cannot find tensor for port ... pred_masks/sink_port_0[0]:f32[1,100,96,96]`。此轮失败，尚未执行 TensorRT。后续专项诊断确认失败部署使用 AUTO，并在纯 OpenVINO 程序中复现 CPU 启动辅助转入 GPU 时的同类错误，见[修复方案](model-matrix-repair-plan.md#5-rf-detr-segmentation修复-auto-启动阶段)。
 
 按组合汇总，10 个组合有完整矩阵成功结果（首轮 7 个及 classification 3 个）；另 1 个 RF-DETR detection 完成业务链路并通过修正解析后的真实指标补验；剩余 7 个组合失败。不能汇报为 18/18 通过。
 
@@ -111,13 +111,15 @@ CPU、NVIDIA 均通过真实 full 服务启动、SQLite、基础 API、失效状
 
 | 组合 | 仍未通过的门禁 |
 | --- | --- |
-| YOLO26 detection | OpenVINO 数值一致性；已验证部分差异来自极近分数的 TopK 排序，尚未完成排序无关的等价性证明 |
-| YOLO26 segmentation / pose / obb | PyTorch→ONNX 数值一致性；尚未证明与 detection 相同根因 |
+| YOLO26 detection | OpenVINO 数值一致性；专项诊断中 TopK 前候选通过原容差，临界候选集合及行顺序不同；完整语义门禁尚待实现，旧 ONNX 特例还漏检框坐标 |
+| YOLO26 segmentation / pose / obb | PyTorch→ONNX 数值一致性；专项诊断已确认 TopK 前候选及共同候选完整字段一致，TopK 选择差异与 detection 同类；尚未完成生产修复和完整复测 |
 | YOLOv8 pose | 串行复测已完成三种转换、sync/async 和 Workflow，但训练 test OKS AP50=0.1，独立评估=1.0，差异 0.9 超过既有 0.05 门禁 |
 | YOLO11 pose | 训练 test OKS AP50≈0.142857，独立评估=1.0，差异≈0.857143 超过门禁 |
-| RF-DETR segmentation | OpenVINO 异步实例启动时无法找到 pred_masks 输出张量；TensorRT 链路尚未覆盖 |
+| RF-DETR segmentation | OpenVINO AUTO 启动设备切换后无法找到 pred_masks 输出张量；关闭启动辅助的独立短测通过，生产适配及完整复测尚未完成；TensorRT 链路尚未覆盖 |
 
-Pose 的串行复测已排除前一轮 GPU 租约争用；评估差异的具体根因仍未确认，不归因于权限修改，也不通过降低评估标准消除失败。
+Pose 的串行复测已排除前一轮 GPU 租约争用。后续专项诊断逐项对齐 scaleup、NMS 和关键点裁剪后，YOLOv8/YOLO11 独立评估与同设备训练评估在报告精度内吻合；生产评估策略尚未修复，不归因于权限修改，也不降低原评估门禁。
+
+参考源码、受控实验、兼容边界和实施步骤见[模型转换与 Pose 评估修复方案](model-matrix-repair-plan.md)。专项诊断不改变本节历史轮次的失败状态，7 个组合仍需修复后逐项完整验收。
 
 ## 复验入口
 

@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from backend.service.application.models.evaluation.pose_policy import (
+    build_pose_evaluation_policy,
+)
+
 import io
 from collections.abc import Callable
 from contextlib import nullcontext
@@ -181,9 +185,9 @@ class YoloV8PoseTrainingExecutionRequest:
     extra_options: dict[str, object] | None = None
     epoch_callback: Callable | None = None
     batch_callback: Callable[[YoloV8PoseTrainingBatchProgress], None] | None = None
-    control_callback: Callable[
-        [], YoloV8PoseTrainingControlCommand | None
-    ] | None = None
+    control_callback: Callable[[], YoloV8PoseTrainingControlCommand | None] | None = (
+        None
+    )
     savepoint_callback: Callable | None = None
 
 
@@ -417,9 +421,7 @@ def run_yolov8_pose_training(
     last_completed_savepoint = YoloV8PoseTrainingSavePoint(
         latest_checkpoint_bytes=ckpt_bytes,
         train_metrics=dict(metrics_history[-1]) if metrics_history else {},
-        validation_metrics=(
-            dict(validation_history[-1]) if validation_history else {}
-        ),
+        validation_metrics=(dict(validation_history[-1]) if validation_history else {}),
         best_metric_value=best_metric_value,
         best_metric_name=best_metric_name,
         epoch=start_epoch,
@@ -447,6 +449,7 @@ def run_yolov8_pose_training(
             raise YoloV8PoseTrainingPausedError()
         if command.terminate_training:
             raise YoloV8PoseTrainingTerminatedError()
+
     dataloader_plan = resolve_yolo_task_dataloader_plan(
         extra_options=dict(request.extra_options or {}),
         device=device,
@@ -599,6 +602,7 @@ def run_yolov8_pose_training(
         )
         if should_evaluate:
             val_metrics = evaluate_yolov8_pose_samples(
+                evaluation_options=extra,
                 model=ema.model,
                 samples=val_anns,
                 labels=labels,
@@ -706,6 +710,7 @@ def run_yolov8_pose_training(
         ema.model.load_state_dict(best_state_dict, strict=False)
         ema.model.to(device)
         test_metrics = evaluate_yolov8_pose_samples(
+            evaluation_options=extra,
             model=ema.model,
             samples=test_anns,
             labels=labels,
@@ -726,6 +731,15 @@ def run_yolov8_pose_training(
             category_names=labels,
             task_type="pose",
         )
+    test_policy = build_pose_evaluation_policy(
+        input_size=input_size,
+        score_threshold=float(extra.get("evaluation_confidence_threshold", 0.001)),
+        extra_options=extra,
+    )
+    test_metrics_payload["evaluation_policy"] = {
+        **test_policy.to_report(),
+        "oks_sigmas": list(test_policy.resolve_sigmas(int(kpt_shape[0]))),
+    }
     return YoloV8PoseTrainingExecutionResult(
         best_metric_value=best_metric_value,
         best_metric_name=best_metric_name,

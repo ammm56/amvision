@@ -13,6 +13,7 @@ from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.evaluation.coco_style_metrics import (
     bbox_iou_xyxy,
     compute_coco_style_ap,
+    encode_binary_mask_to_coco_rle,
 )
 from backend.service.application.models.evaluation.manifest_splits import (
     select_independent_evaluation_split,
@@ -21,8 +22,9 @@ from backend.service.application.models.support.yolo_dataset_manifest_support im
     build_coco_payload_from_yolo_segmentation_split,
     normalize_yolo_category_names,
 )
-from backend.service.application.runtime.contracts.segmentation.prediction import (
-    SegmentationPredictionRequest,
+from backend.service.application.runtime.contracts.segmentation.evaluation import (
+    SegmentationEvaluationPredictionRequest,
+    SegmentationEvaluationPredictionInstance,
 )
 from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetSnapshot,
@@ -159,7 +161,7 @@ def _run_segmentation_evaluation_with_session(
             )
 
         image_bytes = resolved.read_bytes()
-        pred_request = SegmentationPredictionRequest(
+        pred_request = SegmentationEvaluationPredictionRequest(
             score_threshold=request.score_threshold,
             mask_threshold=request.mask_threshold,
             save_result_image=False,
@@ -191,7 +193,7 @@ def _run_segmentation_evaluation_with_session(
                     {
                         "image_id": img_idx,
                         "category_id": category_id,
-                        "mask": mask,
+                        "mask": encode_binary_mask_to_coco_rle(mask),
                     },
                 )
 
@@ -204,20 +206,20 @@ def _run_segmentation_evaluation_with_session(
                     "score": float(inst.score),
                 },
             )
-            mask = _build_segmentation_instance_mask(
-                segments=inst.segments,
-                width=image_width,
-                height=image_height,
-            )
-            if mask is not None:
-                pred_mask_items.append(
-                    {
-                        "image_id": img_idx,
-                        "category_id": int(inst.class_id),
-                        "mask": mask,
-                        "score": float(inst.score),
-                    },
+            if not isinstance(inst, SegmentationEvaluationPredictionInstance):
+                raise InvalidRequestError(
+                    "segmentation 评估需要原始 mask RLE，不能从显示轮廓重建"
                 )
+            if list(inst.mask_rle.get("size", [])) != [image_height, image_width]:
+                raise InvalidRequestError("segmentation 评估 mask 尺寸与样本不一致")
+            pred_mask_items.append(
+                {
+                    "image_id": img_idx,
+                    "category_id": int(inst.class_id),
+                    "mask": inst.mask_rle,
+                    "score": float(inst.score),
+                },
+            )
 
         predictions_out.append(
             {
@@ -266,6 +268,7 @@ def _run_segmentation_evaluation_with_session(
         "mask_map50_95": round(mask_metrics.ap50_95, 6),
         "score_threshold": request.score_threshold,
         "mask_threshold": request.mask_threshold,
+        "evaluation_policy": {"mask_representation": "native-mask-rle-v1"},
         "per_class_metrics": per_class_metrics,
     }
 
@@ -392,89 +395,35 @@ def _build_segmentation_annotation_mask(
     width: int,
     height: int,
 ):
-    """把 COCO polygon segmentation 标注转换为二值 mask。"""
+    """按 COCO 规则读取 polygon、压缩和未压缩 RLE，保留标注孔洞。"""
+
+    from pycocotools import mask as coco_mask
 
     segmentation = annotation.get("segmentation")
-    polygons = _normalize_segmentation_polygons(segmentation)
-    if not polygons:
+    if not segmentation:
         return None
-    return _rasterize_polygons(polygons=polygons, width=width, height=height)
-
-
-def _build_segmentation_instance_mask(
-    *,
-    segments: object,
-    width: int,
-    height: int,
-):
-    """把预测 segments 转换为二值 mask。"""
-
-    polygons: list[list[tuple[float, float]]] = []
-    if isinstance(segments, (list, tuple)):
-        for segment in segments:
-            if not isinstance(segment, (list, tuple)):
-                continue
-            polygon: list[tuple[float, float]] = []
-            for point in segment:
-                if isinstance(point, (list, tuple)) and len(point) >= 2:
-                    polygon.append((float(point[0]), float(point[1])))
-            if len(polygon) >= 3:
-                polygons.append(polygon)
-    if not polygons:
-        return None
-    return _rasterize_polygons(polygons=polygons, width=width, height=height)
-
-
-def _normalize_segmentation_polygons(
-    segmentation: object,
-) -> list[list[tuple[float, float]]]:
-    """归一化 COCO polygon segmentation。"""
-
-    polygons: list[list[tuple[float, float]]] = []
-    if not isinstance(segmentation, list):
-        return polygons
-    raw_polygons = segmentation
-    if raw_polygons and all(isinstance(value, (int, float)) for value in raw_polygons):
-        raw_polygons = [raw_polygons]
-    for raw_polygon in raw_polygons:
-        if not isinstance(raw_polygon, list) or len(raw_polygon) < 6:
-            continue
-        polygon = [
-            (float(raw_polygon[index]), float(raw_polygon[index + 1]))
-            for index in range(0, len(raw_polygon) - 1, 2)
-        ]
-        if len(polygon) >= 3:
-            polygons.append(polygon)
-    return polygons
-
-
-def _rasterize_polygons(
-    *, polygons: list[list[tuple[float, float]]], width: int, height: int
-):
-    """用 Pillow 把 polygon 列表栅格化为 NumPy bool mask。"""
-
-    from PIL import Image, ImageDraw
-    import numpy as np
-
-    mask_image = Image.new("1", (max(1, int(width)), max(1, int(height))), 0)
-    draw = ImageDraw.Draw(mask_image)
-    for polygon in polygons:
-        draw.polygon(polygon, outline=1, fill=1)
-    return np.asarray(mask_image, dtype=bool)
+    if isinstance(segmentation, list):
+        polygons = segmentation
+        if isinstance(polygons[0], (int, float)):
+            polygons = [polygons]
+        rle = coco_mask.merge(coco_mask.frPyObjects(polygons, height, width))
+    elif isinstance(segmentation, dict):
+        rle = dict(segmentation)
+        if isinstance(rle.get("counts"), list):
+            rle = coco_mask.frPyObjects(rle, height, width)
+        if list(rle.get("size", [])) != [height, width]:
+            raise InvalidRequestError("segmentation 标注 mask 尺寸与样本不一致")
+    else:
+        raise InvalidRequestError("segmentation 标注必须为 COCO polygon 或 RLE")
+    return coco_mask.decode(rle).astype(bool)
 
 
 def _mask_iou(mask1: object, mask2: object) -> float:
-    """计算两个二值 mask 的 IoU。"""
+    """直接计算压缩 RLE 的 IoU，保留孔洞且不常驻整个数据集的稠密 mask。"""
 
-    import numpy as np
+    from pycocotools import mask as coco_mask
 
-    left = np.asarray(mask1, dtype=bool)
-    right = np.asarray(mask2, dtype=bool)
-    if left.shape != right.shape:
-        return 0.0
-    intersection = np.logical_and(left, right).sum()
-    union = np.logical_or(left, right).sum()
-    return float(intersection / max(float(union), 1.0))
+    return float(coco_mask.iou([mask1], [mask2], [0])[0, 0])
 
 
 def _merge_segmentation_per_class_metrics(

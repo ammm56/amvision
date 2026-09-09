@@ -21,7 +21,9 @@ from backend.service.application.runtime.contracts.pose.prediction import (
 from backend.service.application.runtime.predictors.yolo11.pose.contracts import (
     DEFAULT_YOLO11_POSE_NMS_THRESHOLD,
 )
-from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.targets.runtime_target import (
+    RuntimeTargetSnapshot,
+)
 
 
 def infer_yolo11_pose_keypoint_shape(
@@ -48,6 +50,8 @@ def build_yolo11_pose_runtime_instances(
     keypoint_confidence_threshold: float,
     letterbox_transform: YoloLetterboxTransform,
     default_kpt_shape: tuple[int, int],
+    clip_coordinates: bool = True,
+    nms_threshold: float = DEFAULT_YOLO11_POSE_NMS_THRESHOLD,
 ) -> tuple[tuple[PosePredictionInstance, ...], tuple[int, int]]:
     """把 YOLO11 pose 输出数组转换成平台实例记录。"""
 
@@ -59,7 +63,8 @@ def build_yolo11_pose_runtime_instances(
         keypoint_confidence_threshold=keypoint_confidence_threshold,
         letterbox_transform=letterbox_transform,
         default_kpt_shape=default_kpt_shape,
-        nms_threshold=DEFAULT_YOLO11_POSE_NMS_THRESHOLD,
+        clip_coordinates=clip_coordinates,
+        nms_threshold=nms_threshold,
         nms_indices_func=batched_yolox_nms_indices,
     )
     return (

@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+from backend.service.application.runtime.contracts.pose.evaluation import (
+    pose_evaluation_preprocess_options,
+    pose_evaluation_postprocess_options,
+)
+
 from time import perf_counter
 from typing import Any
 
@@ -40,7 +45,9 @@ from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetSnapshot,
     describe_runtime_execution_mode,
 )
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 
 class PyTorchYoloV8PoseRuntimeSession:
@@ -107,7 +114,9 @@ class PyTorchYoloV8PoseRuntimeSession:
             torch_module=imports.torch,
             requested_device_name=runtime_target.device_name,
         )
-        enable_yolov8_pose_cuda_fast_path(torch_module=imports.torch, device_name=device_name)
+        enable_yolov8_pose_cuda_fast_path(
+            torch_module=imports.torch, device_name=device_name
+        )
         model.to(device_name)
         if runtime_target.runtime_precision == "fp16":
             model.half()
@@ -121,7 +130,9 @@ class PyTorchYoloV8PoseRuntimeSession:
             runtime_precision=runtime_target.runtime_precision,
         )
 
-    def predict(self, request: YoloV8PosePredictionRequest) -> YoloV8PosePredictionExecutionResult:
+    def predict(
+        self, request: YoloV8PosePredictionRequest
+    ) -> YoloV8PosePredictionExecutionResult:
         """执行一次 PyTorch YOLOv8 pose 预测。"""
 
         decode_started_at = perf_counter()
@@ -143,8 +154,13 @@ class PyTorchYoloV8PoseRuntimeSession:
             np_module=self.imports.np,
             image=image,
             input_size=self.runtime_target.input_size,
+            **pose_evaluation_preprocess_options(request),
         )
-        input_tensor = self.imports.torch.from_numpy(input_tensor).unsqueeze(0).to(self.device_name)
+        input_tensor = (
+            self.imports.torch.from_numpy(input_tensor)
+            .unsqueeze(0)
+            .to(self.device_name)
+        )
         input_tensor = input_tensor.float()
         if self.runtime_precision == "fp16":
             input_tensor = input_tensor.half()
@@ -181,6 +197,7 @@ class PyTorchYoloV8PoseRuntimeSession:
             keypoint_confidence_threshold=request.keypoint_confidence_threshold,
             letterbox_transform=letterbox_transform,
             default_kpt_shape=infer_yolov8_pose_keypoint_shape(self.runtime_target),
+            **pose_evaluation_postprocess_options(request),
         )
         postprocess_ms = measure_yolov8_pose_stage_elapsed_ms(
             imports=self.imports,
@@ -207,7 +224,12 @@ class PyTorchYoloV8PoseRuntimeSession:
                 device_name=self.device_name,
                 input_spec=YoloV8PoseRuntimeTensorSpec(
                     name="images",
-                    shape=(1, 3, self.runtime_target.input_size[0], self.runtime_target.input_size[1]),
+                    shape=(
+                        1,
+                        3,
+                        self.runtime_target.input_size[0],
+                        self.runtime_target.input_size[1],
+                    ),
                     dtype=output_dtype,
                 ),
                 output_specs=(

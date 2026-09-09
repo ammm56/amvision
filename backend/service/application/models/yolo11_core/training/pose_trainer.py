@@ -153,6 +153,7 @@ def run_yolo11_pose_training_loop(
     control_callback: Callable[[], Yolo11PoseTrainingControlCommand | None]
     | None = None,
     dataloader_plan: YoloTaskDataLoaderPlan | None = None,
+    evaluation_options: dict[str, object] | None = None,
 ) -> Yolo11PoseTrainingLoopResult:
     """执行 YOLO11 pose 从 start epoch 到 max epoch 的完整训练循环。"""
 
@@ -191,9 +192,7 @@ def run_yolo11_pose_training_loop(
     last_completed_savepoint = Yolo11PoseTrainingSavePoint(
         latest_checkpoint_bytes=checkpoint_bytes,
         train_metrics=dict(metrics_history[-1]) if metrics_history else {},
-        validation_metrics=(
-            dict(validation_history[-1]) if validation_history else {}
-        ),
+        validation_metrics=(dict(validation_history[-1]) if validation_history else {}),
         best_metric_value=best_metric_value,
         best_metric_name=best_metric_name,
         epoch=start_epoch,
@@ -221,6 +220,7 @@ def run_yolo11_pose_training_loop(
             raise Yolo11PoseTrainingPausedError()
         if command.terminate_training:
             raise Yolo11PoseTrainingTerminatedError()
+
     resolved_dataloader_plan = dataloader_plan or resolve_yolo_task_dataloader_plan(
         extra_options={},
         device=device_name,
@@ -293,6 +293,7 @@ def run_yolo11_pose_training_loop(
             build_yolo_epoch_history_item(epoch_index=epoch, metrics=epoch_metrics)
         )
         validation_metrics = _run_yolo11_pose_validation(
+            evaluation_options=evaluation_options,
             imports=imports,
             model=ema.model,
             val_annotations=val_annotations,
@@ -352,34 +353,34 @@ def run_yolo11_pose_training_loop(
             terminate_requested=bool(command and command.terminate_training),
         )
         checkpoint_bytes = build_yolo11_pose_checkpoint_bytes(
-                epoch=epoch,
-                global_iteration=global_iteration,
-                model=model,
-                ema_model=ema.model,
-                ema_updates=ema.updates,
-                optimizer=optimizer,
-                scheduler=scheduler,
-                scaler=scaler,
-                metrics_history=metrics_history,
-                validation_history=validation_history,
-                best_metric_value=best_metric_value,
-                best_metric_name=best_metric_name,
-                batch_size=batch_size,
-                max_epochs=max_epochs,
-                learning_rate=learning_rate,
-                weight_decay=weight_decay,
-                evaluation_interval=evaluation_interval,
-                min_lr_ratio=min_lr_ratio,
-                class_loss_weight=class_loss_weight,
-                box_loss_weight=box_loss_weight,
-                dfl_loss_weight=dfl_loss_weight,
-                kpt_loss_weight=kpt_loss_weight,
-                assign_topk=assign_topk,
-                assign_alpha=assign_alpha,
-                assign_beta=assign_beta,
-                grad_clip_norm=grad_clip_norm,
-                evaluation_confidence_threshold=evaluation_confidence_threshold,
-                evaluation_nms_threshold=evaluation_nms_threshold,
+            epoch=epoch,
+            global_iteration=global_iteration,
+            model=model,
+            ema_model=ema.model,
+            ema_updates=ema.updates,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            scaler=scaler,
+            metrics_history=metrics_history,
+            validation_history=validation_history,
+            best_metric_value=best_metric_value,
+            best_metric_name=best_metric_name,
+            batch_size=batch_size,
+            max_epochs=max_epochs,
+            learning_rate=learning_rate,
+            weight_decay=weight_decay,
+            evaluation_interval=evaluation_interval,
+            min_lr_ratio=min_lr_ratio,
+            class_loss_weight=class_loss_weight,
+            box_loss_weight=box_loss_weight,
+            dfl_loss_weight=dfl_loss_weight,
+            kpt_loss_weight=kpt_loss_weight,
+            assign_topk=assign_topk,
+            assign_alpha=assign_alpha,
+            assign_beta=assign_beta,
+            grad_clip_norm=grad_clip_norm,
+            evaluation_confidence_threshold=evaluation_confidence_threshold,
+            evaluation_nms_threshold=evaluation_nms_threshold,
             torch_module=imports.torch,
         )
         if best_metric_improved:
@@ -556,6 +557,7 @@ def _run_yolo11_pose_validation(
     max_epochs: int,
     evaluation_interval: int,
     control_callback: Callable[[], None] | None,
+    evaluation_options: dict[str, object] | None = None,
 ) -> dict[str, float]:
     """执行 YOLO11 pose 训练期 validation。"""
 
@@ -568,6 +570,7 @@ def _run_yolo11_pose_validation(
     if not should_evaluate:
         return {}
     return evaluate_yolo11_pose_samples(
+        evaluation_options=evaluation_options,
         model=model,
         samples=val_annotations,
         labels=labels,

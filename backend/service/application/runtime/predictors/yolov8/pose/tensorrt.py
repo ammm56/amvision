@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+from backend.service.application.runtime.contracts.pose.evaluation import (
+    pose_evaluation_preprocess_options,
+    pose_evaluation_postprocess_options,
+)
+
 from time import perf_counter
 from typing import Any
 
@@ -272,6 +277,7 @@ class TensorRTYoloV8PoseRuntimeSession:
             np_module=self.imports.np,
             image=image,
             input_size=self.runtime_target.input_size,
+            **pose_evaluation_preprocess_options(request),
         )
         input_array = self.imports.np.expand_dims(input_tensor, axis=0).astype(
             resolve_yolov8_pose_numpy_dtype(
@@ -371,6 +377,7 @@ class TensorRTYoloV8PoseRuntimeSession:
             keypoint_confidence_threshold=request.keypoint_confidence_threshold,
             letterbox_transform=letterbox_transform,
             default_kpt_shape=infer_yolov8_pose_keypoint_shape(self.runtime_target),
+            **pose_evaluation_postprocess_options(request),
         )
         postprocess_ms = round((perf_counter() - postprocess_started_at) * 1000, 3)
         latency_ms = decode_ms + preprocess_ms + infer_ms + postprocess_ms

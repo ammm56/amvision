@@ -12,6 +12,12 @@ from backend.service.application.models.rfdetr_core.runtime import (
 from backend.service.application.runtime.contracts.segmentation.prediction import (
     SegmentationPredictionInstance,
 )
+from backend.service.application.runtime.contracts.segmentation.evaluation import (
+    SegmentationEvaluationPredictionInstance,
+)
+from backend.service.application.models.evaluation.coco_style_metrics import (
+    encode_binary_mask_to_coco_rle,
+)
 from backend.service.application.runtime.support.detection import render_preview_image
 
 
@@ -68,6 +74,7 @@ def build_rfdetr_segmentation_instances(
     label_names: tuple[str, ...],
     score_threshold: float,
     mask_threshold: float,
+    retain_metric_mask: bool = False,
 ) -> tuple[SegmentationPredictionInstance, ...]:
     """把 RF-DETR segmentation 后处理输出整理成 segmentation runtime 结果。"""
 
@@ -86,6 +93,18 @@ def build_rfdetr_segmentation_instances(
             mask_tensor=masks[0, index],
             mask_threshold=mask_threshold,
         )
+        if retain_metric_mask:
+            result.append(
+                SegmentationEvaluationPredictionInstance(
+                    bbox_xyxy=tuple(float(value.item()) for value in box),
+                    score=score,
+                    class_id=class_id,
+                    class_name=label_names[class_id],
+                    mask_area=float(binary_mask.sum()),
+                    mask_rle=encode_binary_mask_to_coco_rle(binary_mask),
+                )
+            )
+            continue
         contours, _ = cv2_module.findContours(
             binary_mask,
             cv2_module.RETR_EXTERNAL,
@@ -119,7 +138,9 @@ def build_rfdetr_segmentation_instances(
     return tuple(result)
 
 
-def _as_preview_detection(instance: SegmentationPredictionInstance) -> dict[str, object]:
+def _as_preview_detection(
+    instance: SegmentationPredictionInstance,
+) -> dict[str, object]:
     """把 segmentation instance 转成通用预览绘制所需的 detection 结构。"""
 
     return {

@@ -489,7 +489,12 @@ def validate_case_result(
             ("mask_map50", "mask_map50"),
             ("mask_map50_95", "mask_map50_95"),
         ),
-        "pose": (("oks_ap50", "oks_ap50"), ("oks_ap50_95", "oks_ap50_95")),
+        "pose": (
+            ("bbox_map50", "bbox_map50"),
+            ("bbox_map50_95", "bbox_map50_95"),
+            ("oks_ap50", "oks_ap50"),
+            ("oks_ap50_95", "oks_ap50_95"),
+        ),
         "obb": (("map50", "map50"), ("map50_95", "map50_95")),
     }
     metric_pairs = metric_pairs_by_task.get(task_type)
@@ -507,6 +512,16 @@ def validate_case_result(
     training_test_metrics = result.get("training_test_metrics")
     if not isinstance(training_test_metrics, dict):
         raise RuntimeError("端到端结果缺少训练收尾 test 指标")
+    if task_type == "pose":
+        policies = result.get("evaluation_policies")
+        if not isinstance(policies, dict) or not isinstance(
+            policies.get("training"), dict
+        ):
+            raise RuntimeError("Pose 对比缺少训练评估策略，不能用历史未知策略报告验收")
+        if policies["training"].get("version") != "pose-evaluation-v2" or policies[
+            "training"
+        ] != policies.get("independent"):
+            raise RuntimeError("Pose 训练 test 与独立 evaluation 策略不一致")
     for evaluation_metric_name, training_metric_name in metric_pairs:
         evaluation_value = float(evaluation[evaluation_metric_name])
         training_test_value = training_test_metrics.get(training_metric_name)

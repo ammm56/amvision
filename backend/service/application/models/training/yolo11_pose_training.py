@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from backend.service.application.models.evaluation.pose_policy import (
+    build_pose_evaluation_policy,
+)
+
 import io
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -123,9 +127,9 @@ class Yolo11PoseTrainingExecutionRequest:
         | None
     ) = None
     batch_callback: Callable[[YoloTaskTrainingBatchProgress], None] | None = None
-    control_callback: (
-        Callable[[], Yolo11PoseTrainingControlCommand | None] | None
-    ) = None
+    control_callback: Callable[[], Yolo11PoseTrainingControlCommand | None] | None = (
+        None
+    )
     savepoint_callback: Callable[[Yolo11PoseTrainingSavePoint], None] | None = None
 
 
@@ -337,6 +341,7 @@ def run_yolo11_pose_training(
         ema.load_state_dict(resume_state.ema_state_dict, strict=False)
 
     loop_result = run_yolo11_pose_training_loop(
+        evaluation_options=extra,
         imports=imports,
         model=model,
         optimizer=optimizer,
@@ -417,6 +422,7 @@ def run_yolo11_pose_training(
         ema.model.load_state_dict(best_state_dict, strict=False)
         ema.model.to(device_name)
         test_metrics = evaluate_yolo11_pose_samples(
+            evaluation_options=extra,
             model=ema.model,
             samples=manifest.test_annotations,
             labels=labels,
@@ -437,6 +443,15 @@ def run_yolo11_pose_training(
             category_names=labels,
             task_type="pose",
         )
+    test_policy = build_pose_evaluation_policy(
+        input_size=input_size,
+        score_threshold=eval_conf,
+        extra_options=extra,
+    )
+    test_metrics_payload["evaluation_policy"] = {
+        **test_policy.to_report(),
+        "oks_sigmas": list(test_policy.resolve_sigmas(int(kpt_shape[0]))),
+    }
     return Yolo11PoseTrainingExecutionResult(
         best_metric_value=loop_result.best_metric_value,
         best_metric_name=loop_result.best_metric_name,

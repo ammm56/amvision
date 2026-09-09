@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from backend.service.application.models.evaluation.pose_policy import (
+    build_pose_evaluation_policy,
+)
+
 from collections.abc import Callable
 from contextlib import nullcontext
 from dataclasses import dataclass, field
@@ -16,7 +20,6 @@ from backend.service.application.models.yolo_core_common.geometry import (
 from backend.service.application.models.evaluation.coco_style_metrics import (
     compute_pycocotools_detection_ap,
     compute_pycocotools_pose_ap,
-    resolve_keypoint_oks_sigmas,
 )
 from backend.service.application.models.evaluation.pose_evaluation import (
     PoseEvaluationRequest,
@@ -92,9 +95,18 @@ def evaluate_yolov8_pose_samples(
     batch_size: int = 1,
     dataloader_plan: YoloTaskDataLoaderPlan | None = None,
     control_callback: Callable[[], None] | None = None,
+    evaluation_options: dict[str, object] | None = None,
 ) -> dict[str, float]:
     """对少量验证样本执行 YOLOv8 pose 训练期评估。"""
 
+    policy = build_pose_evaluation_policy(
+        input_size=input_size,
+        score_threshold=score_threshold,
+        extra_options={
+            "evaluation_nms_threshold": nms_threshold,
+            **(evaluation_options or {}),
+        },
+    )
     gt_items: list[dict[str, object]] = []
     pred_items: list[dict[str, object]] = []
     total_predictions = 0
@@ -142,12 +154,13 @@ def evaluate_yolov8_pose_samples(
                     np_module=imports.np,
                     prediction_array=output_slices[0],
                     labels=labels,
-                    score_threshold=score_threshold,
+                    score_threshold=policy.score_threshold,
                     # 评估必须保留所有坐标；该阈值仅用于推理结果显示。
                     keypoint_confidence_threshold=0.0,
                     letterbox_transform=letterbox_transform,
                     default_kpt_shape=kpt_shape,
-                    nms_threshold=nms_threshold,
+                    clip_coordinates=policy.clip_coordinates,
+                    nms_threshold=policy.nms_threshold,
                     nms_indices_func=batched_nms_indices,
                 )
                 _append_yolov8_pose_gt_items(
@@ -178,7 +191,7 @@ def evaluate_yolov8_pose_samples(
         category_names=category_names,
         image_count=next_image_index,
         keypoint_count=int(kpt_shape[0]),
-        keypoint_oks_sigmas=resolve_keypoint_oks_sigmas(int(kpt_shape[0])),
+        keypoint_oks_sigmas=policy.resolve_sigmas(int(kpt_shape[0])),
     )
     return {
         "map50": round(bbox_metrics.ap50, 6),
@@ -260,7 +273,7 @@ def _flatten_yolov8_pose_prediction_keypoints(
 def _yolov8_pose_box_area(box: list[float] | tuple[float, ...]) -> float:
     """用 bbox 面积作为 OKS area。"""
 
-    return max((float(box[2]) - float(box[0])) * (float(box[3]) - float(box[1])), 1.0)
+    return max((float(box[2]) - float(box[0])) * (float(box[3]) - float(box[1])), 1e-12)
 
 
 def _yolov8_evaluation_autocast(imports: Any, precision: str, device: str):

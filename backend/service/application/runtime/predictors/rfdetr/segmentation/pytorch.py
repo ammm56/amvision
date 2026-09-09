@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
+from backend.service.application.runtime.contracts.segmentation.evaluation import (
+    retain_segmentation_metric_mask,
+)
+
 from time import perf_counter
 from typing import Any
 
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.models.rfdetr_core.runtime import resolve_rfdetr_runtime_input_size
-from backend.service.application.models.rfdetr_core.segmentation import build_rfdetr_segmentation_model
+from backend.service.application.models.rfdetr_core.runtime import (
+    resolve_rfdetr_runtime_input_size,
+)
+from backend.service.application.models.rfdetr_core.segmentation import (
+    build_rfdetr_segmentation_model,
+)
 from backend.service.application.models.rfdetr_core.models.weights import (
     load_rfdetr_deployment_weights,
 )
@@ -30,7 +38,9 @@ from backend.service.application.runtime.contracts.segmentation.prediction impor
     SegmentationRuntimeSessionInfo,
     SegmentationRuntimeTensorSpec,
 )
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 
 class PyTorchRfdetrSegmentationRuntimeSession:
@@ -109,7 +119,9 @@ class PyTorchRfdetrSegmentationRuntimeSession:
         if device_name == "cuda" and torch.cuda.is_available():
             device_name = "cuda:0"
         model.to(device_name)
-        if runtime_target.runtime_precision == "fp16" and device_name.startswith("cuda"):
+        if runtime_target.runtime_precision == "fp16" and device_name.startswith(
+            "cuda"
+        ):
             model.half()
         model.eval()
         return cls(
@@ -122,7 +134,9 @@ class PyTorchRfdetrSegmentationRuntimeSession:
             input_size=input_size,
         )
 
-    def predict(self, request: SegmentationPredictionRequest) -> SegmentationPredictionExecutionResult:
+    def predict(
+        self, request: SegmentationPredictionRequest
+    ) -> SegmentationPredictionExecutionResult:
         imports = self.imports
         image, decode_ms = load_rfdetr_runtime_input_image(
             cv2_module=imports.cv2,
@@ -136,7 +150,9 @@ class PyTorchRfdetrSegmentationRuntimeSession:
             image=image,
             input_size=self.input_size,
         )
-        input_tensor = imports.torch.from_numpy(input_array).to(self.device_name).float()
+        input_tensor = (
+            imports.torch.from_numpy(input_array).to(self.device_name).float()
+        )
         if self.runtime_precision == "fp16" and self.device_name.startswith("cuda"):
             input_tensor = input_tensor.half()
 
@@ -167,6 +183,7 @@ class PyTorchRfdetrSegmentationRuntimeSession:
             label_names=self.runtime_target.labels,
             score_threshold=request.score_threshold,
             mask_threshold=request.mask_threshold,
+            retain_metric_mask=retain_segmentation_metric_mask(request),
         )
         preview_image_bytes = render_rfdetr_segmentation_preview(
             cv2_module=imports.cv2,
@@ -193,17 +210,23 @@ class PyTorchRfdetrSegmentationRuntimeSession:
                     SegmentationRuntimeTensorSpec(
                         name="pred_logits",
                         shape=tuple(int(item) for item in outputs["pred_logits"].shape),
-                        dtype="float16" if self.runtime_precision == "fp16" else "float32",
+                        dtype="float16"
+                        if self.runtime_precision == "fp16"
+                        else "float32",
                     ),
                     SegmentationRuntimeTensorSpec(
                         name="pred_boxes",
                         shape=tuple(int(item) for item in outputs["pred_boxes"].shape),
-                        dtype="float16" if self.runtime_precision == "fp16" else "float32",
+                        dtype="float16"
+                        if self.runtime_precision == "fp16"
+                        else "float32",
                     ),
                     SegmentationRuntimeTensorSpec(
                         name="pred_masks",
                         shape=tuple(int(item) for item in outputs["pred_masks"].shape),
-                        dtype="float16" if self.runtime_precision == "fp16" else "float32",
+                        dtype="float16"
+                        if self.runtime_precision == "fp16"
+                        else "float32",
                     ),
                 ),
                 metadata={
@@ -226,7 +249,9 @@ class PyTorchRfdetrSegmentationRuntimeSession:
         """在 runtime pool 回收会话时主动释放模型引用。"""
 
         model = getattr(self, "model", None)
-        if model is not None and str(getattr(self, "device_name", "")).startswith("cuda"):
+        if model is not None and str(getattr(self, "device_name", "")).startswith(
+            "cuda"
+        ):
             try:
                 model.to("cpu")
             except Exception:

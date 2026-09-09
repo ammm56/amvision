@@ -466,6 +466,68 @@ class _FakeCompiledModel:
         return self.properties[name]
 
 
+@pytest.mark.parametrize(
+    "supported,effective,accepted",
+    [(True, False, True), (False, False, False), (True, True, False)],
+)
+def test_openvino_auto_required_startup_policy_cannot_be_ignored(
+    supported: bool,
+    effective: bool,
+    accepted: bool,
+) -> None:
+    """必要的 AUTO 适配不支持或未生效时必须拒绝创建会话。"""
+    from backend.service.application.runtime.support.openvino_execution import (
+        OpenVinoCompilationPolicy,
+    )
+    from backend.service.domain.deployments.deployment_runtime_configuration import (
+        OpenVinoAutoRuntimeOptions,
+    )
+
+    session = _FakeCompiledModel(
+        {"ENABLE_STARTUP_FALLBACK": effective, "EXECUTION_DEVICES": ["GPU.0"]}
+    )
+    captured: dict = {}
+
+    def compile_model(path, device, properties):
+        """核对仅改变 AUTO 启动属性，仍保留原来的设备选择。"""
+        assert device == "AUTO"
+        captured.update(properties)
+        return session
+
+    core = SimpleNamespace(
+        get_property=lambda device, name: (
+            ["PERFORMANCE_HINT", *(["ENABLE_STARTUP_FALLBACK"] if supported else [])]
+            if name == "SUPPORTED_PROPERTIES"
+            else False
+        ),
+        set_property=lambda device, properties: None,
+        compile_model=compile_model,
+    )
+    options = dict(
+        openvino_module=SimpleNamespace(Core=lambda: core, __version__="test"),
+        model_path="model.xml",
+        device_name="AUTO",
+        base_properties={},
+        runtime_configuration=DeploymentRuntimeConfiguration(
+            backend_options=OpenVinoAutoRuntimeOptions()
+        ),
+        compilation_policy=OpenVinoCompilationPolicy(
+            False, "rfdetr-segmentation-auto-output-handover"
+        ),
+    )
+    if not accepted:
+        with pytest.raises(ServiceConfigurationError):
+            compile_openvino_model(**options)
+        return
+    assert compile_openvino_model(**options) is session
+    assert captured["ENABLE_STARTUP_FALLBACK"] is False
+    diagnostics = get_openvino_runtime_diagnostics(session)
+    assert (
+        diagnostics.effective["compile_properties"]["compatibility_reason"]
+        == "rfdetr-segmentation-auto-output-handover"
+    )
+
+
 class _FakeStreamsNum:
     """模拟 OpenVINO properties.streams.Num 强类型值。"""
 

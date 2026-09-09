@@ -968,6 +968,18 @@ def run_task_case(
         "warm_start_model_version_id": warm_start_model_version_id,
         "model_version_id": model_version_id,
         "training_test_metrics": load_training_test_metrics(training_detail),
+        "evaluation_policies": (
+            {
+                "training": load_registered_report(
+                    training_detail, "test_metrics_object_key"
+                ).get("evaluation_policy"),
+                "independent": load_registered_report(
+                    evaluation_detail, "report_object_key"
+                ).get("evaluation_policy"),
+            }
+            if case.task_type == "pose"
+            else None
+        ),
         "evaluation": summarize_evaluation_payload(evaluation_detail),
         "conversions": conversions,
     }
@@ -1013,6 +1025,21 @@ def load_training_test_metrics(training_detail: dict[str, Any]) -> dict[str, flo
             for target in targets:
                 result.setdefault(target, result[source])
     return result
+
+
+def load_registered_report(detail: dict[str, Any], field: str) -> dict[str, Any]:
+    """只读取正式登记且位于测试存储根目录内的报告。"""
+    key = find_string(detail, (field,))
+    if not key:
+        raise RuntimeError(f"任务未登记 {field}")
+    root = (PROJECT_ROOT / "data/files").resolve()
+    path = (root / PurePosixPath(key)).resolve()
+    if not path.is_relative_to(root) or not path.is_file():
+        raise RuntimeError(f"登记报告不可读取：{field}")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise RuntimeError("登记报告必须是 JSON object")
+    return payload
 
 
 def validate_task_case_source(case: YoloModelTaskCase) -> None:

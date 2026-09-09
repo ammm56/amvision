@@ -218,6 +218,7 @@ def scale_yolo_box_to_letterbox(
     *,
     box_xyxy: tuple[float, float, float, float],
     transform: YoloLetterboxTransform,
+    clip: bool = True,
 ) -> tuple[float, float, float, float] | None:
     """把原图 xyxy bbox 映射到 LetterBox 输入坐标。"""
 
@@ -227,6 +228,8 @@ def scale_yolo_box_to_letterbox(
         float(box_xyxy[2]) * transform.gain + float(transform.pad_left),
         float(box_xyxy[3]) * transform.gain + float(transform.pad_top),
     )
+    if not clip:
+        return mapped_box
     return clip_yolo_xyxy_box(
         box_xyxy=mapped_box,
         image_width=transform.target_width,
@@ -238,6 +241,7 @@ def scale_yolo_box_from_letterbox(
     *,
     box_xyxy: tuple[float, float, float, float],
     transform: YoloLetterboxTransform,
+    clip: bool = True,
 ) -> tuple[float, float, float, float] | None:
     """把 LetterBox 输入坐标中的 xyxy bbox 反算回原图坐标。"""
 
@@ -249,6 +253,8 @@ def scale_yolo_box_from_letterbox(
         (float(box_xyxy[2]) - float(transform.pad_left)) / transform.gain,
         (float(box_xyxy[3]) - float(transform.pad_top)) / transform.gain,
     )
+    if not clip:
+        return mapped_box
     return clip_yolo_xyxy_box(
         box_xyxy=mapped_box,
         image_width=transform.source_width,
@@ -260,6 +266,7 @@ def scale_yolo_point_from_letterbox(
     *,
     point_xy: tuple[float, float],
     transform: YoloLetterboxTransform,
+    clip: bool = True,
 ) -> tuple[float, float]:
     """把 LetterBox 输入坐标中的点反算回原图坐标。"""
 
@@ -267,6 +274,8 @@ def scale_yolo_point_from_letterbox(
         return (0.0, 0.0)
     x_value = (float(point_xy[0]) - float(transform.pad_left)) / transform.gain
     y_value = (float(point_xy[1]) - float(transform.pad_top)) / transform.gain
+    if not clip:
+        return x_value, y_value
     x_value = max(0.0, min(x_value, float(transform.source_width)))
     y_value = max(0.0, min(y_value, float(transform.source_height)))
     return (x_value, y_value)
@@ -276,11 +285,14 @@ def scale_yolo_point_to_letterbox(
     *,
     point_xy: tuple[float, float],
     transform: YoloLetterboxTransform,
+    clip: bool = True,
 ) -> tuple[float, float]:
     """把原图中的点映射到 LetterBox 输入坐标。"""
 
     x_value = float(point_xy[0]) * transform.gain + float(transform.pad_left)
     y_value = float(point_xy[1]) * transform.gain + float(transform.pad_top)
+    if not clip:
+        return x_value, y_value
     x_value = max(0.0, min(x_value, float(transform.target_width)))
     y_value = max(0.0, min(y_value, float(transform.target_height)))
     return (x_value, y_value)

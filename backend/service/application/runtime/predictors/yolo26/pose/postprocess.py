@@ -15,7 +15,9 @@ from backend.service.application.runtime.contracts.pose.prediction import (
     PosePredictionInstance,
     PosePredictionKeypoint,
 )
-from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.targets.runtime_target import (
+    RuntimeTargetSnapshot,
+)
 
 
 def infer_yolo26_pose_keypoint_shape(
@@ -42,6 +44,7 @@ def build_yolo26_pose_runtime_instances(
     keypoint_confidence_threshold: float,
     letterbox_transform: YoloLetterboxTransform,
     default_kpt_shape: tuple[int, int],
+    clip_coordinates: bool = True,
 ) -> tuple[tuple[PosePredictionInstance, ...], tuple[int, int]]:
     """把 YOLO26 pose 输出数组转换成平台实例记录。"""
 
@@ -53,6 +56,7 @@ def build_yolo26_pose_runtime_instances(
         keypoint_confidence_threshold=keypoint_confidence_threshold,
         letterbox_transform=letterbox_transform,
         default_kpt_shape=default_kpt_shape,
+        clip_coordinates=clip_coordinates,
     )
     return (
         tuple(

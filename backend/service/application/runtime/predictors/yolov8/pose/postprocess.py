@@ -21,10 +21,14 @@ from backend.service.application.runtime.contracts.pose.prediction import (
 from backend.service.application.runtime.predictors.yolov8.pose.contracts import (
     DEFAULT_YOLOV8_POSE_NMS_THRESHOLD,
 )
-from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.targets.runtime_target import (
+    RuntimeTargetSnapshot,
+)
 
 
-def infer_yolov8_pose_keypoint_shape(runtime_target: RuntimeTargetSnapshot) -> tuple[int, int]:
+def infer_yolov8_pose_keypoint_shape(
+    runtime_target: RuntimeTargetSnapshot,
+) -> tuple[int, int]:
     """从运行时配置读取 pose keypoint shape。"""
 
     configured_shape = runtime_target.model_config.get("kpt_shape")
@@ -46,6 +50,8 @@ def build_yolov8_pose_runtime_instances(
     keypoint_confidence_threshold: float,
     letterbox_transform: YoloLetterboxTransform,
     default_kpt_shape: tuple[int, int],
+    clip_coordinates: bool = True,
+    nms_threshold: float = DEFAULT_YOLOV8_POSE_NMS_THRESHOLD,
 ) -> tuple[tuple[PosePredictionInstance, ...], tuple[int, int]]:
     """把 YOLOv8 pose 输出数组转换成平台实例记录。"""
 
@@ -57,7 +63,8 @@ def build_yolov8_pose_runtime_instances(
         keypoint_confidence_threshold=keypoint_confidence_threshold,
         letterbox_transform=letterbox_transform,
         default_kpt_shape=default_kpt_shape,
-        nms_threshold=DEFAULT_YOLOV8_POSE_NMS_THRESHOLD,
+        clip_coordinates=clip_coordinates,
+        nms_threshold=nms_threshold,
         nms_indices_func=batched_yolox_nms_indices,
     )
     return (

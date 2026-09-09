@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from backend.service.application.runtime.contracts.segmentation.evaluation import (
+    retain_segmentation_metric_mask,
+)
+
 from time import perf_counter
 from typing import Any
 
@@ -34,7 +38,9 @@ from backend.service.application.runtime.support.detection import (
     import_onnxruntime_module,
     resolve_onnxruntime_providers,
 )
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 
 class OnnxRuntimeRfdetrSegmentationRuntimeSession:
@@ -127,7 +133,9 @@ class OnnxRuntimeRfdetrSegmentationRuntimeSession:
             ),
         )
 
-    def predict(self, request: SegmentationPredictionRequest) -> SegmentationPredictionExecutionResult:
+    def predict(
+        self, request: SegmentationPredictionRequest
+    ) -> SegmentationPredictionExecutionResult:
         imports = self.imports
         image, decode_ms = load_rfdetr_runtime_input_image(
             cv2_module=imports.cv2,
@@ -170,6 +178,7 @@ class OnnxRuntimeRfdetrSegmentationRuntimeSession:
             label_names=self.runtime_target.labels,
             score_threshold=request.score_threshold,
             mask_threshold=request.mask_threshold,
+            retain_metric_mask=retain_segmentation_metric_mask(request),
         )
         preview_image_bytes = render_rfdetr_segmentation_preview(
             cv2_module=imports.cv2,

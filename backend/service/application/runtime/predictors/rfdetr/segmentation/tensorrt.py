@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from backend.service.application.runtime.contracts.segmentation.evaluation import (
+    retain_segmentation_metric_mask,
+)
+
 from time import perf_counter
 from typing import Any
 
@@ -496,6 +500,7 @@ class TensorRTRfdetrSegmentationRuntimeSession:
             label_names=self.runtime_target.labels,
             score_threshold=request.score_threshold,
             mask_threshold=request.mask_threshold,
+            retain_metric_mask=retain_segmentation_metric_mask(request),
         )
         preview_image_bytes = render_rfdetr_segmentation_preview(
             cv2_module=imports.cv2,

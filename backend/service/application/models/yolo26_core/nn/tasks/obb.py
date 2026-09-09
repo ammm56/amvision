@@ -100,6 +100,9 @@ class OBB26(Detect):
             angle_decode_mode=self.angle_decode_mode,
         )
         normalized_prediction = prediction.transpose(1, 2).contiguous()
+        # 只在转换验收的受控 forward 中读取 TopK 前候选，普通推理不保留张量。
+        if self.export and self.validation_raw_output:
+            return normalized_prediction
         if self.end2end:
             processed_prediction = postprocess_yolo26_obb_export_tensor(
                 torch_module=torch,
@@ -113,4 +116,8 @@ class OBB26(Detect):
                 if self.export
                 else (processed_prediction, raw_outputs)
             )
-        return normalized_prediction if self.export else (normalized_prediction, raw_outputs)
+        return (
+            normalized_prediction
+            if self.export
+            else (normalized_prediction, raw_outputs)
+        )

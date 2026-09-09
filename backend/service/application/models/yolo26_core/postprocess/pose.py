@@ -58,6 +58,7 @@ def build_yolo26_pose_postprocess_instances(
     keypoint_confidence_threshold: float,
     letterbox_transform: YoloLetterboxTransform,
     default_kpt_shape: tuple[int, int],
+    clip_coordinates: bool = True,
 ) -> tuple[tuple[Yolo26PosePostprocessInstance, ...], tuple[int, int]]:
     """把 YOLO26 pose 输出转换为实例记录。"""
 
@@ -84,6 +85,7 @@ def build_yolo26_pose_postprocess_instances(
         keypoint_confidence_threshold=keypoint_confidence_threshold,
         letterbox_transform=letterbox_transform,
         default_kpt_shape=default_kpt_shape,
+        clip_coordinates=clip_coordinates,
     )
     if processed_instances is not None:
         return processed_instances, default_kpt_shape
@@ -134,6 +136,7 @@ def build_yolo26_pose_postprocess_instances(
                     keypoint_confidence_threshold=keypoint_confidence_threshold,
                     letterbox_transform=letterbox_transform,
                     default_kpt_shape=default_kpt_shape,
+                    clip_coordinates=clip_coordinates,
                 )
             )
     results.sort(key=lambda item: item.score, reverse=True)
@@ -149,6 +152,7 @@ def _build_yolo26_pose_processed_instances(
     keypoint_confidence_threshold: float,
     letterbox_transform: YoloLetterboxTransform,
     default_kpt_shape: tuple[int, int],
+    clip_coordinates: bool = True,
 ) -> tuple[Yolo26PosePostprocessInstance, ...] | None:
     """解析官方 YOLO26 export processed pose 输出。"""
 
@@ -190,6 +194,7 @@ def _build_yolo26_pose_processed_instances(
                     keypoint_confidence_threshold=keypoint_confidence_threshold,
                     letterbox_transform=letterbox_transform,
                     default_kpt_shape=default_kpt_shape,
+                    clip_coordinates=clip_coordinates,
                 )
             )
     results.sort(key=lambda item: item.score, reverse=True)
@@ -207,12 +212,14 @@ def _build_yolo26_pose_instance(
     keypoint_confidence_threshold: float,
     letterbox_transform: YoloLetterboxTransform,
     default_kpt_shape: tuple[int, int],
+    clip_coordinates: bool = True,
 ) -> Yolo26PosePostprocessInstance:
     """构建单个 YOLO26 pose 后处理实例。"""
 
     scaled_box = scale_yolo_box_from_letterbox(
         box_xyxy=tuple(float(value) for value in box[:4]),
         transform=letterbox_transform,
+        clip=clip_coordinates,
     )
     if scaled_box is None:
         x1, y1, x2, y2 = 0.0, 0.0, 0.0, 0.0
@@ -230,6 +237,7 @@ def _build_yolo26_pose_instance(
                 float(keypoint_row[base_index + 1]),
             ),
             transform=letterbox_transform,
+            clip=clip_coordinates,
         )
         confidence = (
             float(keypoint_row[base_index + 2])

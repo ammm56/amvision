@@ -48,6 +48,7 @@ def build_yolo26_pose_inference_instances(
     keypoint_confidence_threshold: float,
     letterbox_transform: YoloLetterboxTransform,
     default_kpt_shape: tuple[int, int],
+    clip_coordinates: bool = True,
 ) -> tuple[tuple[Yolo26PosePostprocessInstance, ...], tuple[int, int]]:
     """把 YOLO26 pose inference 输出转换为 core 实例记录。"""
 
@@ -59,6 +60,7 @@ def build_yolo26_pose_inference_instances(
         keypoint_confidence_threshold=keypoint_confidence_threshold,
         letterbox_transform=letterbox_transform,
         default_kpt_shape=default_kpt_shape,
+        clip_coordinates=clip_coordinates,
     )
 
 

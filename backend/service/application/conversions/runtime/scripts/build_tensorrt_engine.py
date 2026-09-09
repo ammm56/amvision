@@ -98,6 +98,9 @@ def build_tensorrt_engine(
         if not builder.platform_has_fast_fp16:
             raise RuntimeError("current TensorRT platform does not support fast fp16")
         config.set_flag(trt.BuilderFlag.FP16)
+    elif hasattr(trt.BuilderFlag, "TF32"):
+        # fp32 数值门禁使用完整 mantissa，不能把默认 TF32 运算标记成严格 fp32。
+        config.clear_flag(trt.BuilderFlag.TF32)
 
     serialized_engine = builder.build_serialized_network(network, config)
     if serialized_engine is None:
@@ -110,6 +113,21 @@ def build_tensorrt_engine(
     execution_context = runtime_engine.create_execution_context()
     if execution_context is None:
         raise RuntimeError("TensorRT runtime 无法创建 execution context")
+
+    from backend.service.application.models.tensorrt_artifact_validation import (
+        validate_tensorrt_engine_against_onnx,
+    )
+
+    runtime_smoke = validate_tensorrt_engine_against_onnx(
+        source_path=resolved_source_path,
+        engine=runtime_engine,
+        builder=builder,
+        network=network,
+        config=config,
+        runtime=runtime,
+        trt=trt,
+        build_precision=normalized_precision,
+    )
 
     resolved_output_path.parent.mkdir(parents=True, exist_ok=True)
     resolved_output_path.write_bytes(bytes(serialized_engine))
@@ -131,7 +149,7 @@ def build_tensorrt_engine(
         "workspace_bytes": 1 << 30,
         "engine_file_bytes": resolved_output_path.stat().st_size,
         "runtime_smoke": {
-            "passed": True,
+            **runtime_smoke,
             "engine_deserialized": True,
             "execution_context_created": True,
             "runtime": "tensorrt",

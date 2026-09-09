@@ -2,6 +2,14 @@
 
 from __future__ import annotations
 
+from backend.service.application.runtime.contracts.segmentation.evaluation import (
+    retain_segmentation_metric_mask,
+)
+
+from backend.service.application.runtime.support.openvino_execution import (
+    OpenVinoCompilationPolicy,
+)
+
 from time import perf_counter
 from typing import Any
 
@@ -127,6 +135,14 @@ class OpenVINORfdetrSegmentationRuntimeSession:
             device_name=compiled_device_name,
             base_properties=compile_properties,
             runtime_configuration=runtime_configuration,
+            compilation_policy=(
+                OpenVinoCompilationPolicy(
+                    startup_fallback=False,
+                    reason="rfdetr-segmentation-auto-output-handover",
+                )
+                if compiled_device_name.upper().startswith("AUTO")
+                else None
+            ),
         )
         input_port = session.input(0)
         all_output_ports = tuple(
@@ -137,8 +153,13 @@ class OpenVINORfdetrSegmentationRuntimeSession:
                 "OpenVINO RF-DETR segmentation 模型输出数量不足",
                 details={"output_count": len(all_output_ports)},
             )
+        # 一个 port 可能同时具有 einsum 和 pred_masks，必须优先匹配正式语义名。
+        required_names = ("pred_boxes", "pred_logits", "pred_masks")
         all_output_names = tuple(
-            resolve_openvino_port_name(port, fallback=f"output-{index}")
+            next(
+                (name for name in required_names if name in port.get_names()),
+                resolve_openvino_port_name(port, fallback=f"output-{index}"),
+            )
             for index, port in enumerate(all_output_ports)
         )
         resolved_output_names = resolve_rfdetr_runtime_output_names(
@@ -232,6 +253,7 @@ class OpenVINORfdetrSegmentationRuntimeSession:
             label_names=self.runtime_target.labels,
             score_threshold=request.score_threshold,
             mask_threshold=request.mask_threshold,
+            retain_metric_mask=retain_segmentation_metric_mask(request),
         )
         preview_image_bytes = render_rfdetr_segmentation_preview(
             cv2_module=imports.cv2,

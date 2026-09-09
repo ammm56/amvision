@@ -156,6 +156,7 @@ def _prepare_yolov8_pose_sample_with_mix(
             output_size=(target_width, target_height),
             scale_gain=1.0,
             scaleup=training,
+            preserve_evaluation_geometry=not training,
         )
     if prepared is None:
         return None
@@ -301,6 +302,7 @@ def _prepare_yolov8_pose_single_sample(
     output_size: tuple[int, int],
     scale_gain: float,
     scaleup: bool,
+    preserve_evaluation_geometry: bool = False,
 ) -> tuple[Any, YoloV8PosePreparedTarget] | None:
     """把单张 pose 样本缩放到指定画布。"""
 
@@ -319,6 +321,7 @@ def _prepare_yolov8_pose_single_sample(
     return canvas, _build_yolov8_pose_sample_targets(
         sample=sample,
         letterbox_transform=letterbox_transform,
+        preserve_evaluation_geometry=preserve_evaluation_geometry,
     )
 
 
@@ -326,6 +329,7 @@ def _build_yolov8_pose_sample_targets(
     *,
     sample: Any,
     letterbox_transform: YoloLetterboxTransform,
+    preserve_evaluation_geometry: bool = False,
 ) -> YoloV8PosePreparedTarget:
     """构造单张图的 YOLOv8 pose target。"""
 
@@ -339,11 +343,14 @@ def _build_yolov8_pose_sample_targets(
         mapped_box = scale_yolo_box_to_letterbox(
             box_xyxy=(x, y, x + width, y + height),
             transform=letterbox_transform,
+            clip=not preserve_evaluation_geometry,
         )
         if mapped_box is None:
             continue
         x1, y1, x2, y2 = mapped_box
-        if x2 - x1 < 2 or y2 - y1 < 2:
+        if x2 <= x1 or y2 <= y1:
+            continue
+        if not preserve_evaluation_geometry and (x2 - x1 < 2 or y2 - y1 < 2):
             continue
         boxes_xyxy.append([x1, y1, x2, y2])
         class_ids.append(int(class_id))
@@ -352,6 +359,7 @@ def _build_yolov8_pose_sample_targets(
                 sample=sample,
                 object_index=object_index,
                 letterbox_transform=letterbox_transform,
+                preserve_evaluation_geometry=preserve_evaluation_geometry,
             )
         )
     return YoloV8PosePreparedTarget(
@@ -414,6 +422,7 @@ def _transform_yolov8_pose_keypoints(
     sample: Any,
     object_index: int,
     letterbox_transform: YoloLetterboxTransform,
+    preserve_evaluation_geometry: bool = False,
 ) -> list[float]:
     """把单个目标的 keypoints 变换到 letterbox 后坐标。"""
 
@@ -432,6 +441,7 @@ def _transform_yolov8_pose_keypoints(
                 raw_keypoints[base_index + 1],
             ),
             transform=letterbox_transform,
+            clip=not preserve_evaluation_geometry,
         )
         transformed.extend([mapped_x, mapped_y, raw_keypoints[base_index + 2]])
     return transformed

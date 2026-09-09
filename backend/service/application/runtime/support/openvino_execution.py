@@ -26,6 +26,14 @@ class OpenVinoRuntimeDiagnostics:
     warnings: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class OpenVinoCompilationPolicy:
+    """会话创建期的内部兼容策略，不增加逐帧控制或用户配置开关。"""
+
+    startup_fallback: bool
+    reason: str
+
+
 _DIAGNOSTICS_LIMIT = 256
 _DIAGNOSTICS_BY_SESSION_ID: OrderedDict[int, OpenVinoRuntimeDiagnostics] = OrderedDict()
 _DIAGNOSTICS_LOCK = Lock()
@@ -38,12 +46,35 @@ def compile_openvino_model(
     device_name: str,
     base_properties: dict[object, object],
     runtime_configuration: DeploymentRuntimeConfiguration,
+    compilation_policy: OpenVinoCompilationPolicy | None = None,
 ) -> Any:
     """使用统一 deployment 配置编译 OpenVINO 模型。"""
 
     core = openvino_module.Core()
     requested_properties = _build_requested_properties(runtime_configuration)
     supported_properties = _read_supported_properties(core, device_name)
+    if compilation_policy is not None:
+        if not device_name.upper().startswith("AUTO"):
+            raise ServiceConfigurationError("OpenVINO 启动辅助策略只适用于 AUTO")
+        if (
+            supported_properties
+            and "ENABLE_STARTUP_FALLBACK" not in supported_properties
+        ):
+            raise ServiceConfigurationError(
+                "当前 OpenVINO AUTO 不支持必需的启动辅助配置"
+            )
+        requested_properties["ENABLE_STARTUP_FALLBACK"] = (
+            compilation_policy.startup_fallback
+        )
+        # AUTO CompiledModel 不公开该只写编译属性；在独立 Core 上设置并读回，
+        # 编译时仍显式传入，不能把 CompiledModel 查询失败误报为配置未生效。
+        core.set_property(
+            device_name,
+            {"ENABLE_STARTUP_FALLBACK": compilation_policy.startup_fallback},
+        )
+        configured = core.get_property(device_name, "ENABLE_STARTUP_FALLBACK")
+        if configured is not compilation_policy.startup_fallback:
+            raise ServiceConfigurationError("OpenVINO AUTO 未接受必需的启动辅助配置")
     accepted_properties = dict(base_properties)
     warnings: list[str] = []
     for property_name, value in requested_properties.items():
@@ -63,6 +94,24 @@ def compile_openvino_model(
         session,
         tuple(requested_properties),
     )
+    if compilation_policy is not None:
+        if (
+            "ENABLE_STARTUP_FALLBACK" in effective
+            and effective["ENABLE_STARTUP_FALLBACK"]
+            is not compilation_policy.startup_fallback
+        ):
+            raise ServiceConfigurationError("OpenVINO AUTO 未应用必需的启动辅助配置")
+        effective["startup_fallback_configuration"] = (
+            compilation_policy.startup_fallback
+        )
+        effective["startup_fallback_verification"] = (
+            "core-readback-and-explicit-compile"
+        )
+        effective["compatibility_reason"] = compilation_policy.reason
+        effective["openvino_version"] = str(
+            getattr(openvino_module, "__version__", "unknown")
+        )
+        effective.update(_read_effective_properties(session, ("EXECUTION_DEVICES",)))
     _remember_diagnostics(
         session,
         OpenVinoRuntimeDiagnostics(

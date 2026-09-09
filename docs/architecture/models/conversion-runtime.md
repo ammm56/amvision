@@ -32,9 +32,25 @@ Task/TaskAttempt
 - 主文件和 OpenVINO XML/BIN 配对文件存在且非空；
 - ONNX 来源数值摘要为 finite，并通过 allclose 或模型专用 accepted 容差；
 - OpenVINO 模型能在 CPU runtime 完成一次推理，结果与来源 ONNX 一致；
-- TensorRT engine 能反序列化并创建 execution context；RF-DETR trtexec 路径实际加载并执行 engine。
+- TensorRT 正式 engine 实际执行全部输出，并与同输入的来源 ONNX 通过数值门禁；只完成反序列化或创建 context 不算通过。RF-DETR 的 trtexec 路径遵守相同门禁。
 
 失败和 timeout 不会发布 staging，也不会把半成品登记为 ModelBuild。
+
+### 数值策略与观测边界
+
+固定顺序输出使用原逐元素容差：fp32 为 `rtol=1e-3, atol=1e-4`，fp16 为 `rtol=2e-2, atol=5e-3`。OpenVINO 校验先核对输出数量，再按 ONNX 名称对应端口，不按编译后端口下标比较；CPU 转换验收显式使用 f32 计算，fp16 权重压缩仍由产物精度决定。TensorRT fp32 构建关闭 TF32，fp16 构建保留对应精度设置；构建精度的性能应按实际 engine 测量。
+
+YOLO26 detection、segmentation、pose、obb 使用 `yolo26-topk-v3`：固定 anchor/class 顺序比较完整候选，再把同次观测执行的框、分数、类别及附加字段精确映射回候选，验证两阶段 TopK 的数量、唯一 anchor/class 对、排序及高分候选完整性。segmentation 的 proto 单独比较。相同 anchor 的不同类别可以同时选中。
+
+跨后端候选使用原数值容差，同次执行的 Split/Gather/Concat 只复制元素，完整行映射与选择排序不使用模型容差。每个后端必须正确选取自身的最高分候选，不能借另一候选的跨后端误差放行漏选。近同分导致两个后端选中不同集合时，分别验证各自选择。候选分数最大绝对差仅保留为诊断信息；旧版 E/2E 放宽规则和只比较 score/class 的 detection 例外均已移除。
+
+项目导出的 ONNX 通过 `amvision.yolo26.topk_validation.v2` 元数据记录内部候选张量映射。观测 ONNX/IR 仅在内存副本增加输出；TensorRT 额外构建内存中的候选观测 engine，同时执行原正式 engine。公开 ONNX、IR、engine 的输出布局不增加调试输出。映射缺失或观测失败会拒绝转换，不退回不完整的检查。
+
+增加观测输出可能改变编译优化，观测 engine 不等同于正式 engine。候选与 processed 输出必须来自同一次观测调用，并按输出名称对应。PyTorch raw forward 的观测选择直接由其候选生成，另行检查公开 forward。每端还需通过正式/观测交接检查：正式结果自身精确满足观测候选的选择规则，或者正式结果与观测结果在原容差内逐实例完整对应（包括类别、框、分数和全部附加字段，不能重复占用）。proto 也必须对应。摘要通过 `public_observation_validation` 区分 `exact-candidate-selection` 与 `complete-output-equivalence`；后者证明输出数值等价，不声称读取了正式 engine 的内部候选。无法对应的近同分集合报告 `correspondence unverified` 并停止发布，不能据此断言模型本身损坏，也不能标记 accepted。图映射格式未变化，保留 v2 元数据键；验证策略版本单独升级。
+
+这些检查仅发生在转换阶段，不加入部署逐帧推理、Broker 或 Trigger 热路径。历史模型仍按原公开格式加载，旧验证报告不会自动升级为新策略通过；需要重新验证的产物生成新的 build。
+
+segmentation 的正式 proto 另行直接按原容差跨后端比较，记录 `public_auxiliary_validation`；正式/观测交接的多个容差不得累加后替代该检查。
 
 ## DB 登记与恢复
 

@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+from backend.service.application.runtime.contracts.pose.evaluation import (
+    pose_evaluation_preprocess_options,
+    pose_evaluation_postprocess_options,
+)
+
 from time import perf_counter
 from typing import Any
 
@@ -149,6 +154,7 @@ class PyTorchYolo26PoseRuntimeSession:
             np_module=self.imports.np,
             image=image,
             input_size=self.runtime_target.input_size,
+            **pose_evaluation_preprocess_options(request),
         )
         input_tensor = (
             self.imports.torch.from_numpy(input_tensor)
@@ -191,6 +197,7 @@ class PyTorchYolo26PoseRuntimeSession:
             keypoint_confidence_threshold=request.keypoint_confidence_threshold,
             letterbox_transform=letterbox_transform,
             default_kpt_shape=infer_yolo26_pose_keypoint_shape(self.runtime_target),
+            **pose_evaluation_postprocess_options(request, end2end=True),
         )
         postprocess_ms = measure_yolo26_pose_stage_elapsed_ms(
             imports=self.imports,

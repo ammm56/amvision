@@ -233,7 +233,7 @@ def test_pose_evaluation_uses_loaded_runtime_session(monkeypatch, tmp_path) -> N
         pose_module.PoseEvaluationRequest(
             dataset_storage=_FakeDatasetStorage(tmp_path),
             runtime_target=SimpleNamespace(
-                model_version_id="mv-pose", model_type="yolov8"
+                model_version_id="mv-pose", model_type="yolov8", input_size=(640, 640)
             ),
             manifest_payload={
                 "categories": [{"id": 0, "name": "person"}],
@@ -271,6 +271,15 @@ def test_segmentation_evaluation_computes_bbox_and_mask_ap(
 ) -> None:
     """验证 segmentation 评估同时计算 bbox AP 和 mask AP。"""
 
+    from backend.service.application.runtime.contracts.segmentation.evaluation import (
+        SegmentationEvaluationPredictionInstance,
+        SegmentationEvaluationPredictionRequest,
+    )
+    from pycocotools import mask as coco_mask
+
+    mask_rle = coco_mask.merge(
+        coco_mask.frPyObjects([[0, 0, 10, 0, 10, 10, 0, 10]], 12, 12)
+    )
     image_path = tmp_path / "images" / "a.jpg"
     image_path.parent.mkdir(parents=True)
     image_path.write_bytes(b"fake-image")
@@ -282,13 +291,16 @@ def test_segmentation_evaluation_computes_bbox_and_mask_ap(
 
     class FakeSession:
         def predict(self, request):
+            assert isinstance(request, SegmentationEvaluationPredictionRequest)
             assert request.input_image_bytes == b"fake-image"
             return SimpleNamespace(
                 image_width=12,
                 image_height=12,
                 latency_ms=1.0,
                 instances=[
-                    SimpleNamespace(
+                    SegmentationEvaluationPredictionInstance(
+                        mask_rle=mask_rle,
+                        class_name="part",
                         class_id=0,
                         bbox_xyxy=[0.0, 0.0, 10.0, 10.0],
                         score=0.95,
@@ -312,7 +324,7 @@ def test_segmentation_evaluation_computes_bbox_and_mask_ap(
         segmentation_module.SegmentationEvaluationRequest(
             dataset_storage=_FakeDatasetStorage(tmp_path),
             runtime_target=SimpleNamespace(
-                model_version_id="mv-seg", model_type="yolov8"
+                model_version_id="mv-seg", model_type="rfdetr"
             ),
             manifest_payload={
                 "categories": [{"id": 0, "name": "part"}],

@@ -53,20 +53,22 @@ def run_command(
         raise RuntimeError(
             "AMVISION_WORKER_CONVERSION__HELPER_TIMEOUT_SECONDS 必须是数字"
         ) from error
-    raw_deadline_at = os.environ.get(
-        "AMVISION_WORKER_CONVERSION__ATTEMPT_DEADLINE_AT"
-    )
+    raw_deadline_at = os.environ.get("AMVISION_WORKER_CONVERSION__ATTEMPT_DEADLINE_AT")
     if raw_deadline_at:
         deadline = AttemptDeadline.from_deadline_at(raw_deadline_at)
         remaining_seconds = deadline.remaining_seconds()
         if remaining_seconds <= 0:
             raise RuntimeError("conversion Attempt 总 deadline 已到期")
         timeout_seconds = min(timeout_seconds, remaining_seconds)
-    result = ProcessTreeSupervisor(timeout_seconds=timeout_seconds).run(
-        command,
-        env=process_env,
-        tee_output=True,
-    ).to_completed_process()
+    result = (
+        ProcessTreeSupervisor(timeout_seconds=timeout_seconds)
+        .run(
+            command,
+            env=process_env,
+            tee_output=True,
+        )
+        .to_completed_process()
+    )
     if result.returncode != 0:
         logger.error("Command failed with exit code %s", result.returncode)
         logger.error("Error output:\n%s", result.stderr)
@@ -126,6 +128,8 @@ def build_tensorrt_engine(
     ]
     if normalized_precision == "fp16":
         trt_command.append("--fp16")
+    else:
+        trt_command.append("--noTF32")
     if verbose:
         trt_command.append("--verbose")
     if profile:
@@ -145,6 +149,32 @@ def build_tensorrt_engine(
 
     output = run_command(command, dry_run=dry_run)
     stats = parse_trtexec_output(output.stdout)
+    runtime_smoke: dict[str, object] = {"passed": False, "executed": False}
+    if not dry_run:
+        from backend.service.application.runtime.support.tensorrt_runtime import (
+            prepare_tensorrt_python_runtime,
+        )
+        from backend.service.application.models.tensorrt_artifact_validation import (
+            validate_tensorrt_engine_against_onnx,
+        )
+
+        prepare_tensorrt_python_runtime()
+        import tensorrt as trt
+
+        runtime = trt.Runtime(trt.Logger(trt.Logger.WARNING))
+        engine = runtime.deserialize_cuda_engine(engine_file.read_bytes())
+        if engine is None:
+            raise RuntimeError("RF-DETR TensorRT 数值验收无法加载 engine")
+        runtime_smoke = validate_tensorrt_engine_against_onnx(
+            source_path=onnx_file,
+            engine=engine,
+            builder=None,
+            network=None,
+            config=None,
+            runtime=runtime,
+            trt=trt,
+            build_precision=normalized_precision,
+        )
     return {
         "build_precision": normalized_precision,
         "execution_mode": "rfdetr-core-trtexec",
@@ -162,7 +192,7 @@ def build_tensorrt_engine(
         "trtexec_stdout": output.stdout,
         "trtexec_stderr": output.stderr,
         "runtime_smoke": {
-            "passed": not dry_run,
+            **runtime_smoke,
             "engine_built_and_executed": not dry_run,
             "runtime": "trtexec",
         },

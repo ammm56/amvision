@@ -146,6 +146,18 @@ test 结果不得反向影响 best checkpoint、学习率或训练轮数。
 
 ## 数值稳定性
 
+### Pose 评估策略
+
+YOLOv8、YOLO11、YOLO26 的训练验证、训练 test 和独立评估共用内部不可变的 `PoseEvaluationPolicy`，报告中的策略版本为 `pose-evaluation-v2`。评估固定 `scaleup=False`、不裁剪指标坐标、最多 300 个检测；默认 NMS IoU 为 0.7，显式 `evaluation_nms_threshold` 和 `oks_sigmas` 由同一入口解析。YOLO26 端到端头不额外执行 NMS。
+
+预测和 GT 使用一致的纯坐标变换，bbox 面积由同域宽高计算；评估不沿用训练增强的小框过滤，不因框缩小到 2 像素以下就丢弃目标。面积只保留防止零除的极小下限。关键点置信度影响显示，不将指标坐标清零或裁剪到原图边缘。
+
+训练 test 与独立评估报告包含 `evaluation_policy` 及实际解析的 OKS sigma。比较指标前核对权重、split、输入尺寸、设备及策略，再同时核对 bbox AP50/AP50:95 和 OKS AP50/AP50:95。缺少策略信息的历史报告保留为历史结果，重新评估生成新报告；不修改旧数值，也不需要数据库迁移。
+
+普通部署预测保持原有预处理和展示裁剪默认值。只有内部强类型评估请求启用该策略，HTTP 请求和共享内存逐帧协议没有增加评估开关。
+
+### 训练计算
+
 - total loss 和 FP32 gradient 出现 NaN 或 Inf 时立即失败，不能继续更新或写出
   被污染的 checkpoint。
 - FP16 forward 可以使用 autocast，但 assigner、IoU/DFL/BCE、mask 和 semantic
@@ -209,6 +221,8 @@ RF-DETR grouped-query warm-start 不允许按 Tensor 第一维做模糊 flat sli
 兼容路径。catalog 启动扫描同样会拒绝缺少上述正整数配置的 RF-DETR manifest。
 
 ## 验收
+
+RF-DETR segmentation 的独立评估使用内部强类型请求保留原始二值 mask 的 compressed RLE，不能把显示用的外轮廓重新填充后计算指标；外轮廓会丢失孔洞和细线。COCO polygon、压缩和未压缩 RLE 标注统一按 pycocotools 规则读取。评估报告记录 `evaluation_policy.mask_representation=native-mask-rle-v1`，已有报告不原地修改。普通部署、Workflow 和 SDK 的公开轮廓输出保持原契约，不执行评估用的 RLE 编码。
 
 每个模型和任务类型至少覆盖：
 

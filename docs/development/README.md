@@ -8,12 +8,14 @@
 - [LocalBuffer 与 Trigger 数据面验收](shared-memory-data-plane-reliability-implementation.md)：固定 arena、guard/owner 与真实图片链路的故障、容量和持续认证。
 - [LocalMessage 阶段 0 基线](local-message-channel-stage0-baseline.md)：迁移前历史测量、冻结 profile 与复测方法，不代表当前运行拓扑。
 - [模型验证](model-validation.md)：真实模型、训练、转换和部署矩阵。
+- [用户权限与业务链路验收](user-access-acceptance.md)：已执行的长稳、发行、SDK 和模型矩阵结果及未完成边界。
 - [资源删除与存储清理](resource-deletion-implementation.md)：当前模块、删除范围、故障恢复、维护入口及验收边界。
 - [模型部署实例导出与导入](model-deployment-import-export.md)：单个实例、必要模型文件和部署参数的跨机器使用及实现边界。
 - [模型部署导入导出实施步骤](model-deployment-import-export-implementation.md)：契约、产物归属、导出、导入、删除、页面与真实发行的分步验收。
 
 ## 待实施设计
 
+- [模型转换与 Pose 评估修复方案](model-matrix-repair-plan.md)：已知模型问题的修复实现、回归证据与待验收范围；工程测试与真实业务验收分别记录。
 - [用户页面与操作权限](user-access.md)：管理员逐项配置页面、操作和项目范围，复用现有启动页与应用模式。
 - [用户权限详细实施步骤](user-access-implementation.md)：通用契约、七个实施阶段和全链路、性能、真实发行验收；待实施。
 - [完整离线部署包](offline-deployment-package.md)：暂缓，独立能力稳定后再考虑，不属于当前实施范围。
