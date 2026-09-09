@@ -14,7 +14,7 @@
         </button>
       </template>
       <template v-else>
-        <RouterLink class="app-sidebar__brand" :to="firstAccessiblePath(sessionStore.currentUser)">
+        <RouterLink class="app-sidebar__brand" to="/">
           <img class="brand-mark" :src="brandIconUrl" alt="AM" />
           <span class="app-sidebar__brand-name">amvision</span>
         </RouterLink>
@@ -68,7 +68,7 @@ import {
 } from '@lucide/vue'
 
 import { navigationItems, type NavigationItem } from '@/config/navigation.config'
-import { canAccessPath, firstAccessiblePath, settingsPath } from '@/platform/auth/page-access'
+import { canAccessPath, settingsPath } from '@/platform/auth/page-access'
 import { useSessionStore } from '@/app/stores/session.store'
 import UserMenu from './UserMenu.vue'
 

@@ -126,8 +126,28 @@
   gap: 10px;
   flex: 0 0 auto;
   color: var(--am-text);
+  border-radius: var(--am-radius-sm);
+  text-decoration: none;
+  transition:
+    color 140ms ease,
+    opacity 140ms ease;
   touch-action: manipulation;
   user-select: none;
+}
+
+.app-sidebar__brand:hover,
+.app-sidebar__brand:focus-visible {
+  color: var(--am-action-primary-strong);
+  text-decoration: none;
+}
+
+.app-sidebar__brand:active {
+  opacity: 0.8;
+}
+
+.app-sidebar__brand:focus-visible {
+  outline: 2px solid var(--am-focus-ring);
+  outline-offset: 2px;
 }
 
 .app-sidebar__header-collapse,
