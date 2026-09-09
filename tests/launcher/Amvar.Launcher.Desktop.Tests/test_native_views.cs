@@ -66,7 +66,7 @@ public sealed class NativeViewTests
         {
             var about = new AboutWindow(BuildInformationReader.Read(typeof(MainWindow).Assembly));
             about.Show();
-            Assert.Equal("0.1.5", about.FindControl<SelectableTextBlock>("VersionText")!.Text);
+            Assert.Equal("0.1.6", about.FindControl<SelectableTextBlock>("VersionText")!.Text);
             using var license = new StreamReader(AssetLoader.Open(new Uri("avares://amvar.launcher/Assets/LICENSE.txt")));
             Assert.Contains("PolyForm", license.ReadToEnd());
             using var icon = AssetLoader.Open(new Uri("avares://amvar.launcher/Assets/app.ico"));

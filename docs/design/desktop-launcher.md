@@ -68,7 +68,7 @@ Python 阶段文件使用 starting/running/stopping/failed。完整栈 running �
 - PolyForm Noncommercial 1.0.0，点击后查看嵌入的离线许可证。
 - GitHub 仓库 `https://github.com/ammm56/amvision` 和官网 `https://amvar.io`。
 
-启动器版本为 0.1.5，与前后端一致，版本源为 `launcher/Directory.Build.props`。构建时间由 MSBuild 写入程序集，不使用应用启动时间或文件修改时间。发行阶段从具名 BuildInformation 对象生成 JSON，配置不能修改该信息。后端版本仍由视觉页面负责显示。
+启动器版本为 0.1.6，与前后端一致，版本源为 `launcher/Directory.Build.props`。构建时间由 MSBuild 写入程序集，不使用应用启动时间或文件修改时间。发行阶段从具名 BuildInformation 对象生成 JSON，配置不能修改该信息。后端版本仍由视觉页面负责显示。
 
 ## 配置与保存
 

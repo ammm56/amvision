@@ -1,5 +1,5 @@
 ---
-version: 0.1.5
+version: 0.1.6
 name: AMVision-frontend-design-system
 description: AMVision 前端设计规则，面向本地优先的工业视觉平台、工作站界面和流程编排场景，统一定义默认 Light 与可切换 Dark 主题下的色彩、排版、间距、组件层级和交互状态。界面强调信息密度、操作稳定性、低延迟反馈和长时间使用的可读性，不采用营销站式视觉表达。
 
