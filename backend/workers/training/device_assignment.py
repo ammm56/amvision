@@ -121,6 +121,7 @@ def write_resolved_training_device(
     )
     assignment_event = AppendTaskEventRequest(
             task_id=task_record.task_id,
+            attempt_id=execution_fence.attempt_id if execution_fence is not None else None,
             event_type="log",
             message=f"training device assigned: {lease.info.resolved_device}",
             payload={

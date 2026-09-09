@@ -60,14 +60,16 @@ def build_rfdetr_model(
     model_scale: str = "nano",
     num_classes: int = 91,
     pretrained_path: str | None = None,
+    input_size: tuple[int, int] | None = None,
 ) -> torch.nn.Module:
-    """构建 RF-DETR detection full core 模型并挂载 runtime postprocess。"""
+    """构建 detection 模型；input_size 保留训练尺寸对应的位置编码，None 使用 scale 默认值。"""
 
     model = build_rfdetr_full_core_model(
         task_type=DETECTION_TASK_TYPE,
         model_scale=model_scale,
         num_classes=num_classes,
         pretrained_path=pretrained_path,
+        input_size=input_size,
     )
     model.postprocess = RfdetrPostProcess()  # type: ignore[attr-defined]
     return model

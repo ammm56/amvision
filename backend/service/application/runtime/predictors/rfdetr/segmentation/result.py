@@ -48,7 +48,8 @@ def render_rfdetr_segmentation_preview(
 ) -> bytes | None:
     """按请求生成 RF-DETR segmentation 调试预览图。"""
 
-    if save_result_image is not True or not instances:
+    # 无实例时也保存原图，保持同步结果与异步 ObjectStore 回执契约一致。
+    if save_result_image is not True:
         return None
     return render_preview_image(
         cv2_module=cv2_module,

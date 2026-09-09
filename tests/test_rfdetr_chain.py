@@ -2,7 +2,24 @@
 
 from __future__ import annotations
 
+import pytest
+
 import torch
+
+
+@pytest.mark.parametrize("save_result_image", [False, True])
+def test_rfdetr_empty_segmentation_preview_respects_save_request(save_result_image):
+    """无分割实例时仍按保存请求输出可解码图片。"""
+    import cv2
+    import numpy as np
+    from backend.service.application.runtime.predictors.rfdetr.segmentation.result import render_rfdetr_segmentation_preview
+
+    content = render_rfdetr_segmentation_preview(cv2_module=cv2, image=np.zeros((32, 48, 3), dtype=np.uint8), instances=(), save_result_image=save_result_image)
+    if save_result_image:
+        assert content
+        assert cv2.imdecode(np.frombuffer(content, np.uint8), cv2.IMREAD_COLOR).shape == (32, 48, 3)
+    else:
+        assert content is None
 
 
 def test_rfdetr_model_can_build():
@@ -15,6 +32,33 @@ def test_rfdetr_model_can_build():
     assert isinstance(model.backbone, torch.nn.Module)
     assert isinstance(model.transformer.decoder, torch.nn.Module)
     assert isinstance(model.class_embed, torch.nn.Module)
+
+
+@pytest.mark.parametrize("task_type,input_size", [("detection", (448, 448)), ("segmentation", (384, 384))])
+def test_rfdetr_runtime_loads_checkpoint_with_custom_training_size(tmp_path, task_type, input_size):
+    """非默认训练尺寸的 checkpoint 必须按原尺寸构建位置编码并严格加载。"""
+    from types import SimpleNamespace
+
+    from backend.service.application.models.rfdetr_core.factory import build_rfdetr_full_core_model
+    from backend.service.application.runtime.predictors.rfdetr.detection.pytorch import PyTorchRfdetrRuntimeSession
+    from backend.service.application.runtime.predictors.rfdetr.segmentation.pytorch import PyTorchRfdetrSegmentationRuntimeSession
+
+    model = build_rfdetr_full_core_model(task_type=task_type, model_scale="nano", num_classes=1, input_size=input_size)
+    checkpoint = tmp_path / "custom-size.pt"
+    torch.save({"model": model.state_dict()}, checkpoint)
+    position_key = "backbone.0.encoder.encoder.embeddings.position_embeddings"
+    expected_positions = model.state_dict()[position_key].clone()
+    del model
+    target = SimpleNamespace(runtime_backend="pytorch", runtime_artifact_path=checkpoint,
+        task_type=task_type, model_scale="nano", labels=("target",), device_name="cpu",
+        runtime_precision="fp32", input_size=input_size)
+    session_type = PyTorchRfdetrRuntimeSession if task_type == "detection" else PyTorchRfdetrSegmentationRuntimeSession
+    session = session_type.load(dataset_storage=None, runtime_target=target)
+    try:
+        assert session.input_size == input_size
+        assert torch.equal(session.model.state_dict()[position_key], expected_positions)
+    finally:
+        session.close()
 
 
 def test_rfdetr_backend_registration():
@@ -321,9 +365,13 @@ def test_rfdetr_tensorrt_runtime_load_uses_cuda_python(monkeypatch, tmp_path):
     assert session.output_names == ("pred_logits", "pred_boxes")
 
 
-def test_rfdetr_detection_result_uses_detection_session_info_contract() -> None:
-    """验证 RF-DETR detection 多输出不会写入 detection contract 不支持的字段。"""
+@pytest.mark.parametrize("save_result_image", [False, True])
+def test_rfdetr_detection_result_uses_detection_session_info_contract(
+    save_result_image: bool,
+) -> None:
+    """验证多输出契约，以及无目标时仍按保存选项生成可发布的结果图。"""
 
+    import cv2
     import numpy as np
 
     from backend.service.application.runtime.contracts.detection.prediction import (
@@ -348,13 +396,13 @@ def test_rfdetr_detection_result_uses_detection_session_info_contract() -> None:
             "device_name": "cuda:0",
             "input_size": (64, 64),
             "input_dtype_name": "float32",
-            "imports": type("_FakeImports", (), {"cv2": object()})(),
+            "imports": type("_FakeImports", (), {"cv2": cv2})(),
         },
     )()
     request = type(
         "_FakeRequest",
         (),
-        {"save_result_image": False},
+        {"save_result_image": save_result_image},
     )()
 
     result = build_rfdetr_detection_result(
@@ -383,6 +431,12 @@ def test_rfdetr_detection_result_uses_detection_session_info_contract() -> None:
     )
 
     assert result.runtime_session_info.output_spec.name == "pred_logits"
+    if save_result_image:
+        assert result.preview_image_bytes
+        decoded = cv2.imdecode(np.frombuffer(result.preview_image_bytes, np.uint8), cv2.IMREAD_COLOR)
+        assert decoded.shape == (32, 32, 3)
+    else:
+        assert result.preview_image_bytes is None
     assert result.runtime_session_info.metadata["output_specs"] == [
         {"name": "pred_logits", "shape": [1, 300, 91], "dtype": "float32"},
         {"name": "pred_boxes", "shape": [1, 300, 4], "dtype": "float32"},

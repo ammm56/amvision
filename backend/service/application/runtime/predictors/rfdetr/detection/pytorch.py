@@ -84,10 +84,16 @@ class PyTorchRfdetrRuntimeSession:
         checkpoint_path = runtime_target.runtime_artifact_path
         if checkpoint_path is None:
             raise InvalidRequestError("RF-DETR PyTorch deployment 缺少 checkpoint 文件")
+        input_size = resolve_rfdetr_runtime_input_size(
+            task_type=runtime_target.task_type,
+            model_scale=runtime_target.model_scale,
+            input_size=runtime_target.input_size,
+        )
         model = build_rfdetr_model(
             model_scale=runtime_target.model_scale,
             num_classes=len(runtime_target.labels),
             pretrained_path=None,
+            input_size=input_size,
         )
         load_rfdetr_deployment_weights(
             model=model,
@@ -106,11 +112,7 @@ class PyTorchRfdetrRuntimeSession:
             model=model,
             device_name=device_name,
             runtime_precision=runtime_target.runtime_precision or "fp32",
-            input_size=resolve_rfdetr_runtime_input_size(
-                task_type=runtime_target.task_type,
-                model_scale=runtime_target.model_scale,
-                input_size=runtime_target.input_size,
-            ),
+            input_size=input_size,
         )
 
     def predict(self, request: DetectionPredictionRequest) -> DetectionPredictionExecutionResult:

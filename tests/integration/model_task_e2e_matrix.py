@@ -188,6 +188,7 @@ def main(argv: list[str] | None = None) -> int:
                     task_case,
                     input_size=(int(args.input_size[0]), int(args.input_size[1])),
                 )
+            case_result = None
             try:
                 case_result = run_task_case(
                     client=client,
@@ -240,6 +241,7 @@ def main(argv: list[str] | None = None) -> int:
                     "status": "failed",
                     "finished_at": datetime.now().isoformat(timespec="seconds"),
                     "error": str(error),
+                    "completed_result": case_result,
                 }
                 if args.fail_fast:
                     break
@@ -266,7 +268,8 @@ def main(argv: list[str] | None = None) -> int:
         "succeeded" if not failed_case_ids and not missing_case_ids else "failed"
     )
     write_result(run_dir=run_dir, result=result)
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    # 控制台可能仍使用 GBK；JSON 转义避免错误详情中的 Unicode 使验收入口再次崩溃。
+    print(json.dumps(result, ensure_ascii=True, indent=2))
     return 0 if result["status"] == "succeeded" else 1
 
 

@@ -94,7 +94,8 @@ def build_rfdetr_detection_result(
     """组装 detection runtime 统一响应和可选预览图。"""
 
     preview_image_bytes = None
-    if request.save_result_image and detections:
+    # 无目标也是合法检测结果；保存请求仍需生成图片供异步 ObjectStore 发布。
+    if request.save_result_image:
         preview_image_bytes = render_preview_image(
             cv2_module=session_obj.imports.cv2,
             image=image,

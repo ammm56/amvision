@@ -116,6 +116,7 @@ def test_rfdetr_pytorch_session_uses_strict_deployment_loader(
         model_scale="nano",
         num_classes=2,
         pretrained_path=None,
+        input_size=(64, 64),
     )
     strict_loader.assert_called_once_with(
         model=model,

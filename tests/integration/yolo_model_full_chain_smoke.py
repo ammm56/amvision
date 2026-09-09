@@ -511,8 +511,8 @@ def build_e2e_process_environment(*, run_dir: Path, port: int) -> dict[str, str]
     process_env["AMVISION_DATASET_STORAGE__ROOT_DIR"] = str(dataset_storage_root)
     process_env["AMVISION_QUEUE__ROOT_DIR"] = str(queue_root)
     process_env["AMVISION_ASYNC_INFERENCE_GATEWAY__SERVICE_ID"] = service_id
-    process_env["AMVISION_LOCAL_BUFFER_BROKER__ENABLED"] = "false"
-    process_env["AMVISION_LOCAL_BUFFER_BROKER__ROOT_DIR"] = str(buffer_root)
+    process_env["AMVISION_LOCAL_BUFFER_BROKER__ENABLED"] = "true"
+    process_env["AMVISION_LOCAL_MEMORY__ROOT_DIR"] = str(buffer_root)
     process_env["AMVISION_INFERENCE_DAEMON__RUNTIME_OWNER"] = "daemon"
     process_env["AMVISION_INFERENCE_DAEMON__SERVICE_ID"] = service_id
     process_env["AMVISION_DEPLOYMENT_RUNTIME_RECONCILER__ENABLED"] = "false"
@@ -521,6 +521,7 @@ def build_e2e_process_environment(*, run_dir: Path, port: int) -> dict[str, str]
     process_env["AMVISION_WORKER_DATASET_STORAGE__ROOT_DIR"] = str(dataset_storage_root)
     process_env["AMVISION_WORKER_QUEUE__ROOT_DIR"] = str(queue_root)
     process_env["AMVISION_WORKER_WORKSPACE__ROOT_DIR"] = str(worker_root)
+    process_env["AMVISION_WORKER_LOCAL_MEMORY__ROOT_DIR"] = str(buffer_root)
     return process_env
 
 
@@ -984,13 +985,34 @@ def load_training_test_metrics(training_detail: dict[str, Any]) -> dict[str, flo
         raise RuntimeError(f"训练 test 指标文件不存在：{object_key}")
     payload = json.loads(report_path.read_text(encoding="utf-8"))
     metrics = payload.get("metrics") if isinstance(payload, dict) else None
+    if (
+        not isinstance(metrics, dict)
+        and isinstance(payload, dict)
+        and payload.get("available") is True
+        and payload.get("split_name") == "test"
+        and {"top1_accuracy", "top5_accuracy"}.issubset(payload)
+    ):
+        # Classification 的正式报告将准确率直接放在顶层，不能套用 detection 的包装。
+        metrics = {name: payload[name] for name in ("top1_accuracy", "top5_accuracy")}
     if not isinstance(metrics, dict):
         raise RuntimeError("训练 test 指标文件缺少 metrics")
-    return {
+    result = {
         str(name): float(value)
         for name, value in metrics.items()
         if isinstance(value, int | float)
     }
+    # RF-DETR 的 Lightning test 报告保留原指标名，转换为矩阵使用的公开评估名称。
+    aliases = {
+        "test/mAP_50": ("map50", "bbox_map50"),
+        "test/mAP_50_95": ("map50_95", "bbox_map50_95"),
+        "test/segm_mAP_50": ("mask_map50",),
+        "test/segm_mAP_50_95": ("mask_map50_95",),
+    }
+    for source, targets in aliases.items():
+        if source in result:
+            for target in targets:
+                result.setdefault(target, result[source])
+    return result
 
 
 def validate_task_case_source(case: YoloModelTaskCase) -> None:
@@ -1449,6 +1471,9 @@ def submit_training_task(
         },
         "display_name": f"smoke {model_type} {case.task_type}",
     }
+    if model_type == "rfdetr":
+        # RF-DETR 的公开 runtime 参数不包含 DataLoader prefetch_factor。
+        payload["parameters"]["runtime"].pop("prefetch_factor", None)
     if warm_start_model_version_id is not None:
         payload["warm_start_model_version_id"] = warm_start_model_version_id
     return client.post(

@@ -223,9 +223,11 @@ def test_training_device_assignment_activates_cuda_current_device(
     assert torch_module.cuda.set_history == [1, 0]
 
 
+@pytest.mark.parametrize('use_fence', [False, True])
 def test_training_boundary_acquires_exclusive_gpu_and_records_diagnostics(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    use_fence: bool,
 ) -> None:
     """训练 worker 入口在写任务状态前获取 exclusive lease，并完整回写诊断。"""
 
@@ -240,6 +242,10 @@ def test_training_boundary_acquires_exclusive_gpu_and_records_diagnostics(
     )
     updates: list[dict[str, object]] = []
     events: list[object] = []
+    fence = device_assignment_module.TaskExecutionFence(
+        attempt_id='attempt-1', worker_id='worker-1', heartbeat_at=None,
+        queue_message_id='queue-1', queue_attempt_count=1,
+    ) if use_fence else None
 
     class _FakeTaskService:
         def get_task(self, task_id: str):
@@ -251,6 +257,10 @@ def test_training_boundary_acquires_exclusive_gpu_and_records_diagnostics(
             updates.append(dict(kwargs))
 
         def append_task_event(self, request: object):
+            events.append(request)
+
+        def append_task_attempt_event(self, request, *, fence):
+            assert request.attempt_id == fence.attempt_id
             events.append(request)
 
     @contextmanager
@@ -296,6 +306,7 @@ def test_training_boundary_acquires_exclusive_gpu_and_records_diagnostics(
         task_id=task_record.task_id,
         device_lease_provider=provider,
         device_lease_config=config,
+        execution_fence=fence,
     ) as lease:
         assert lease.info.mode == "exclusive"
         assert lease.info.resource_key == resolver.resource.resource_key

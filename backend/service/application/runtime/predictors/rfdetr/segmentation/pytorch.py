@@ -99,6 +99,7 @@ class PyTorchRfdetrSegmentationRuntimeSession:
             model_scale=runtime_target.model_scale,
             num_classes=len(runtime_target.labels),
             pretrained_path=None,
+            input_size=input_size,
         )
         load_rfdetr_deployment_weights(
             model=model,

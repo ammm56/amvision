@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import json
 import sys
 import time
 import zipfile
@@ -37,6 +38,42 @@ from tests.integration.yolo_model_full_chain_smoke import (
 )
 
 
+@pytest.mark.parametrize("available", [True, False])
+def test_classification_training_metrics_follow_published_report_shape(tmp_path, monkeypatch, available):
+    """分类报告顶层准确率可以验收，缺少独立 test 样本仍拒绝通过。"""
+    from tests.integration import yolo_model_full_chain_smoke as smoke
+
+    monkeypatch.setattr(smoke, "PROJECT_ROOT", tmp_path)
+    path = tmp_path / "data/files/task-runs/training/task-test/test-metrics.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({"available": available, "split_name": "test",
+        "sample_count": 4 if available else 0,
+        "top1_accuracy": 0.5 if available else None, "top5_accuracy": 1.0 if available else None}), encoding="utf-8")
+    detail = {"test_metrics_object_key": "task-runs/training/task-test/test-metrics.json"}
+    if available:
+        assert smoke.load_training_test_metrics(detail) == {"top1_accuracy": 0.5, "top5_accuracy": 1.0}
+    else:
+        with pytest.raises(RuntimeError, match="缺少 metrics"):
+            smoke.load_training_test_metrics(detail)
+
+
+def test_rfdetr_test_report_maps_bbox_and_mask_metric_names(tmp_path, monkeypatch):
+    """RF-DETR 原生 test 指标与独立评估的 bbox/mask 名称对应，不混淆两者。"""
+    from tests.integration import yolo_model_full_chain_smoke as smoke
+
+    monkeypatch.setattr(smoke, "PROJECT_ROOT", tmp_path)
+    path = tmp_path / "data/files/test-report.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({"available": True, "split_name": "test", "metrics": {
+        "test/mAP_50": 0.7, "test/mAP_50_95": 0.4,
+        "test/segm_mAP_50": 0.6, "test/segm_mAP_50_95": 0.3}}), encoding="utf-8")
+    result = smoke.load_training_test_metrics({"test_metrics_object_key": "test-report.json"})
+    assert result["map50"] == result["bbox_map50"] == 0.7
+    assert result["map50_95"] == result["bbox_map50_95"] == 0.4
+    assert result["mask_map50"] == 0.6
+    assert result["mask_map50_95"] == 0.3
+
+
 class _RecordingApiClient:
     """记录 E2E helper 发出的 API 请求。"""
 
@@ -66,6 +103,9 @@ def test_e2e_process_environment_isolates_database_queue_and_ipc(
     )
     assert first["AMVISION_WORKER_DATABASE__URL"] == first["AMVISION_DATABASE__URL"]
     assert first["AMVISION_WORKER_QUEUE__ROOT_DIR"] == first["AMVISION_QUEUE__ROOT_DIR"]
+    assert first["AMVISION_LOCAL_MEMORY__ROOT_DIR"] != second["AMVISION_LOCAL_MEMORY__ROOT_DIR"]
+    assert first["AMVISION_WORKER_LOCAL_MEMORY__ROOT_DIR"] == first["AMVISION_LOCAL_MEMORY__ROOT_DIR"]
+    assert "AMVISION_LOCAL_BUFFER_BROKER__ROOT_DIR" not in first
     assert "AMVISION_TASK_MANAGER__ENABLED" not in first
 
 

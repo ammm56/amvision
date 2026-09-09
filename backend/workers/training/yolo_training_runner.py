@@ -219,8 +219,6 @@ class SqlAlchemyYoloTrainingRunner:
                 "session_factory": self.session_factory,
                 "dataset_storage": self.dataset_storage,
             }
-            if self.queue_backend is not None:
-                service_kwargs["queue_backend"] = self.queue_backend
             service = service_cls(**service_kwargs)
 
             # 执行训练
