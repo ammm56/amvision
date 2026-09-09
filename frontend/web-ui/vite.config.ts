@@ -20,11 +20,14 @@ const vitestSetupFile = pathToFileURL(
 
 export default defineConfig({
   root: process.env.VITEST ? path.resolve(projectDirectory, '../..') : projectDirectory,
+  // 开发服务与单元测试分别持有依赖缓存；临时预览必须显式指定独立 cacheDir。
+  cacheDir: path.resolve(projectDirectory, 'node_modules/.vite', process.env.VITEST ? 'unit-tests' : 'development'),
   plugins: [vue()],
   define: {
     __AMVISION_FRONTEND_VERSION__: JSON.stringify(frontendVersion),
   },
   resolve: {
+    dedupe: ['vue'],
     alias: {
       '@litegraph': path.resolve(projectDirectory, 'src/lib/litegraph/src'),
       '@': path.resolve(projectDirectory, 'src'),
