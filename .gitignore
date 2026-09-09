@@ -35,6 +35,7 @@ runtimes/tensorrt_bin/
 MANIFEST
 *.lscache
 custom_nodes/.amvision-node-packs/
+sdks/dotnet/src/Amvar.Vision/Config/
 
 # PyInstaller
 #   Usually these files are written by a python script from a template
