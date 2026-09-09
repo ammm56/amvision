@@ -8,7 +8,7 @@ public sealed record class ProjectInstallation(string RootDirectory)
 public enum SessionManagementMode { ObserveOnly, ManagedFullStack }
 public enum ProbeKind { Available, NotListening, Unavailable }
 public sealed record class ServiceProbeResult(ProbeKind Kind, string? Error = null);
-public enum StackPhase { Absent, Starting, Running, Failed, Stopping }
+public enum StackPhase { Absent, Starting, Running, Degraded, Recovering, Failed, Stopping }
 public sealed record class StackObservation(StackPhase Phase, string? Error = null);
 public sealed record class StackStopResult(bool Succeeded, string? Error = null);
 /// <summary>进程身份保留 Python 协议的 Unix 数值秒与完整参数列表。</summary>

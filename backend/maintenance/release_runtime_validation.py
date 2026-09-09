@@ -49,6 +49,14 @@ def validate_release_runtime(
     if os.name != "nt":
         issues.append(f"当前发行 profile 只支持 Windows: actual={os.name}")
 
+    # HTTP accept 使用隔离的 CPython IOCP 接口；发行不接受未经回归的 Uvicorn 组合。
+    try:
+        uvicorn_version = metadata.version("uvicorn")
+        if uvicorn_version != "0.48.0":
+            issues.append(f"Windows HTTP loop factory 尚未验证 Uvicorn {uvicorn_version}，要求 0.48.0")
+    except metadata.PackageNotFoundError:
+        issues.append("缺少 HTTP 服务依赖 uvicorn")
+
     requirements_path = app_root / "app" / "requirements.txt"
     requirement_issues = _validate_installed_requirements(requirements_path)
     issues.extend(requirement_issues)

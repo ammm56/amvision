@@ -640,8 +640,8 @@ class LocalBufferBrokerProcessSupervisor:
                 else {},
             )
 
-    def stop(self) -> None:
-        """停止 broker companion process。"""
+    def stop(self, *, graceful_only: bool = False) -> None:
+        """停止 Broker；自动恢复必须确认正常退出，禁止超时强杀。"""
 
         self._stop_expire_loop()
         self._close_direct_io_client()
@@ -654,11 +654,14 @@ class LocalBufferBrokerProcessSupervisor:
                 if client is not None:
                     client.shutdown()
             except Exception:
-                pass
+                if graceful_only:
+                    raise
             finally:
                 if client is not None:
                     client.close()
             process.join(timeout=max(0.1, self.settings.shutdown_timeout_seconds))
+        if graceful_only and process is not None and (process.is_alive() or process.exitcode != 0):
+            raise OperationTimeoutError("LocalBufferBroker 未确认正常退出，禁止创建新 owner")
         if process is not None and process.is_alive():
             process.terminate()
             process.join(timeout=max(0.1, self.settings.shutdown_timeout_seconds))

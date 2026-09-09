@@ -70,23 +70,32 @@ public sealed class FullStackController(string requestDirectory, ILauncherLog lo
             return launcher.Process.HasExited ? new(StackPhase.Failed, "启动任务已退出，未接管任何外部服务。") : new(StackPhase.Starting);
         if (!await Alive(ownedRoot, token)) return new(StackPhase.Failed, "本次视觉服务已退出。");
         if (state == null || !state.RootProcess.Matches(ownedRoot)) return new(StackPhase.Failed, "服务状态已改变，不能绑定到其他实例。");
-        foreach (var component in state.Components.Select(c => c.Process).OfType<ProcessIdentityDocument>())
+        var currentComponents = state.Components.Select(c => c.Process).OfType<ProcessIdentityDocument>().ToArray();
+        // 恢复换代后只移除已验证退出的旧身份，避免长期观察无限保留进程历史。
+        foreach (var previous in knownComponents.ToArray())
+            if (!currentComponents.Any(current => current.Matches(previous)) && !await Alive(previous, token))
+                knownComponents.Remove(previous);
+        foreach (var component in currentComponents)
             if (!knownComponents.Any(existing => existing.Matches(component))) knownComponents.Add(component);
         var statusFile = Path.Combine(path, "logs", "full-stack", "launcher-status.json");
         if (!File.Exists(statusFile)) return new(StackPhase.Starting);
         var status = LauncherJson.Read<LauncherStatusDocumentV1>(await File.ReadAllTextAsync(statusFile, token), false);
-        if (status.FormatId != "amvision.launcher-status.v1" || !status.RootProcess.Matches(ownedRoot)) return new(StackPhase.Starting);
+        if (status.FormatId is not ("amvision.launcher-status.v1" or "amvision.launcher-status.v2"))
+            return new(StackPhase.Failed, "不支持的服务状态版本，请使用同一发行包的启动器。");
+        if (!status.RootProcess.Matches(ownedRoot)) return new(StackPhase.Failed, "服务状态身份不匹配。");
         if (status.State == "running")
         {
             var endpoint = await inspector.InspectAsync(path, ownedRoot.Pid, token, listeningPort);
             if (endpoint.Identity == null || !endpoint.Identity.Matches(ownedRoot)) return new(StackPhase.Failed, "本次服务身份已改变。");
-            if (endpoint.Listeners.Count == 0) return new(StackPhase.Starting);
+            if (endpoint.Listeners.Count == 0) return new(StackPhase.Degraded, "视觉服务进程存活，但 HTTP 监听不可用。");
             if (endpoint.Listeners.Any(listener => !listener.Identity.Matches(ownedRoot) && !listener.AncestorPids.Contains(ownedRoot.Pid)))
                 return new(StackPhase.Failed, "工作台端口由其他进程占用。");
         }
         return status.State switch
         {
             "running" => new(StackPhase.Running), "starting" => new(StackPhase.Starting),
+            "degraded" when status.FormatId == "amvision.launcher-status.v2" => new(StackPhase.Degraded, "视觉服务接入异常，正在确认。"),
+            "recovering" when status.FormatId == "amvision.launcher-status.v2" => new(StackPhase.Recovering),
             "stopping" => new(StackPhase.Stopping), "failed" => new(StackPhase.Failed, status.Error?.Message),
             _ => new(StackPhase.Failed, "未知服务阶段。")
         };

@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import mimetypes
+import asyncio
+import os
+import signal
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -23,6 +26,9 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
 from backend.service.infrastructure.queue.local_file import LocalFileQueueBackend
+from backend.service.infrastructure.http.liveness import ServiceLiveness
+from backend.service.infrastructure.http.recovery_control import HttpRecoveryControl
+from backend.service.infrastructure.http.drain_middleware import HttpDrainMiddleware
 from backend.service.settings import BackendServiceSettings
 
 
@@ -64,6 +70,9 @@ class FrontendStaticFiles(StaticFiles):
             return await super().get_response(path, scope)
         except StarletteHTTPException as exc:
             if exc.status_code != 404:
+                raise
+
+            if path.replace("\\", "/").strip("/").split("/", 1)[0] in {"api", "ws"}:
                 raise
 
             request_path = Path(path)
@@ -185,20 +194,52 @@ def create_app(
     )
     resolved_settings = bootstrap.load_settings()
     runtime = bootstrap.build_runtime(resolved_settings)
+    liveness = ServiceLiveness()
 
     @asynccontextmanager
     async def application_lifespan(_application: FastAPI):
         """在应用生命周期启动阶段执行服务级初始化。"""
 
+        control = None
         bootstrap.initialize(runtime)
         try:
             # start_runtime 包含多个跨进程组件。任一步失败也必须进入同一
             # stop 路径，避免 FastAPI 尚未 yield 时遗留 Broker、Workflow
             # Runtime 或模型子进程。
             bootstrap.start_runtime(runtime)
+            liveness.phase = "ready"
+            recovery_directory = os.environ.get("AMVISION_HTTP_RECOVERY_DIR")
+            if recovery_directory:
+                from backend.service.infrastructure.ipc.local_message.paths import build_inference_mailbox_paths
+
+                loop = asyncio.get_running_loop()
+                control = HttpRecoveryControl(
+                    Path(recovery_directory), liveness,
+                    lambda: bootstrap.drain_runtime(runtime, strict=True),
+                    lambda: loop.call_soon_threadsafe(signal.raise_signal, signal.SIGINT),
+                    inference_owner_lock=str(build_inference_mailbox_paths(
+                        buffers_root=runtime.settings.local_memory.root_dir,
+                    ).owner_lock_path.resolve()),
+                )
+                control.start()
             yield
         finally:
-            bootstrap.stop_runtime(runtime)
+            liveness.phase = "draining"
+            if control is not None:
+                control.close()
+            try:
+                if control is not None and control.phase == "closing":
+                    runtime.local_buffer_broker_supervisor.stop(graceful_only=True)
+                    runtime.session_factory.engine.dispose()
+                else:
+                    bootstrap.stop_runtime(runtime)
+                liveness.phase = "stopped"
+                if control is not None:
+                    control.publish("closed")
+            except BaseException as error:
+                if control is not None:
+                    control.publish("failed", str(error))
+                raise
 
     application = FastAPI(
         title=resolved_settings.app.app_name,
@@ -206,9 +247,11 @@ def create_app(
         lifespan=application_lifespan,
     )
     bootstrap.bind_application_state(application, runtime)
+    application.state.service_liveness = liveness
 
     _register_cors_middleware(application, resolved_settings)
     application.add_middleware(RequestContextMiddleware)
+    application.add_middleware(HttpDrainMiddleware, liveness=liveness)
     register_exception_handlers(application)
     application.include_router(rest_router)
     application.include_router(ws_router)

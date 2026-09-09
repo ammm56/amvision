@@ -5,6 +5,8 @@
 ## 入口
 
 - [完整发行栈排障](release-full-troubleshooting.md)
+- [0.1.6 生产就绪审计（2026-09-09）](production-readiness-audit-20260909.md)
+- [Windows HTTP 服务恢复修复验证](http-service-recovery-validation-20260909.md)
 - [Windows 长路径](windows-long-paths.md)
 - [PLC / Modbus 联调](plc-modbus.md)
 - [YOLOE / SAM3 Workflow 操作](yoloe-sam3-workflow.md)

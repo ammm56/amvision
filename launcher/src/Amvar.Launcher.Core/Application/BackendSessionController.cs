@@ -23,7 +23,7 @@ public sealed class BackendSessionController(IServiceProbe probe, IStackControll
             var observation = await stack.ObserveAsync(installation, token);
             if (observation.Phase == StackPhase.Failed)
                 throw new InvalidOperationException(observation.Error ?? "视觉服务启动失败。");
-            var inProgress = observation.Phase is StackPhase.Starting or StackPhase.Stopping;
+            var inProgress = observation.Phase is StackPhase.Starting or StackPhase.Stopping or StackPhase.Recovering or StackPhase.Degraded;
             if (result.Kind == ProbeKind.Available && !inProgress &&
                 (!OwnsService || observation.Phase == StackPhase.Running))
                 return;
@@ -46,4 +46,34 @@ public sealed class BackendSessionController(IServiceProbe probe, IStackControll
 
     public Task<StackStopResult> StopAsync(CancellationToken token) =>
         OwnsService ? stack.StopAsync(token) : Task.FromResult(new StackStopResult(true));
+
+    public async Task ObserveAsync(ProjectInstallation installation,
+        Action<BackendPhase, string?> report, CancellationToken token)
+    {
+        // 只观察；恢复唯一执行者是 Python Supervisor，外部服务始终不接管。
+        while (true)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(2), clock, token);
+            try
+            {
+                if (OwnsService)
+                {
+                    var state = await stack.ObserveAsync(installation, token);
+                    if (state.Phase != StackPhase.Running)
+                    {
+                        report(state.Phase == StackPhase.Failed ? BackendPhase.Faulted : BackendPhase.Unavailable,
+                            state.Error ?? (state.Phase == StackPhase.Recovering ? "视觉服务正在恢复。" : "视觉服务暂不可用。"));
+                        continue;
+                    }
+                }
+                var result = await probe.ProbeLivenessAsync(token);
+                report(result.Kind == ProbeKind.Available ? BackendPhase.Connected : BackendPhase.Unavailable,
+                    result.Kind == ProbeKind.Available ? null : result.Error ?? "视觉服务连接已中断。");
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !token.IsCancellationRequested)
+            {
+                report(BackendPhase.Unavailable, "无法读取视觉服务状态：" + ex.Message);
+            }
+        }
+    }
 }

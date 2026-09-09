@@ -11,6 +11,7 @@ public sealed class LauncherCoordinator(BackendSessionController backend, ILaunc
     private readonly object gate = new();
     private CancellationTokenSource? connectionCancellation;
     private Task connection = Task.CompletedTask;
+    private Task observation = Task.CompletedTask;
     private Task<bool>? exiting;
     private LauncherSettings? sessionSettings;
     private ProjectInstallation? installation;
@@ -51,6 +52,7 @@ public sealed class LauncherCoordinator(BackendSessionController backend, ILaunc
 
     private Task BeginConnect()
     {
+        connectionCancellation?.Cancel();
         connectionCancellation?.Dispose();
         connectionCancellation = new();
         var id = ++operation;
@@ -64,6 +66,8 @@ public sealed class LauncherCoordinator(BackendSessionController backend, ILaunc
         await Task.Yield();
         try
         {
+            // 旧观察完成后才开始新连接，避免两代状态回调竞争。
+            await observation;
             await backend.ConnectAsync(sessionSettings!, installation!, (phase, problem, elapsed, expired) =>
             {
                 lock (gate)
@@ -75,6 +79,7 @@ public sealed class LauncherCoordinator(BackendSessionController backend, ILaunc
             {
                 if (id != operation || Snapshot.Application != ApplicationPhase.Active || Snapshot.WaitExpired) return;
                 Publish(Snapshot with { Mode = Mode, NavigationId = Snapshot.NavigationId + 1, Problem = null });
+                observation = ObserveAsync(id, token);
             }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
@@ -88,6 +93,22 @@ public sealed class LauncherCoordinator(BackendSessionController backend, ILaunc
     }
 
     private SessionManagementMode Mode => backend.OwnsService ? SessionManagementMode.ManagedFullStack : SessionManagementMode.ObserveOnly;
+
+    private async Task ObserveAsync(long id, CancellationToken token)
+    {
+        try
+        {
+            await backend.ObserveAsync(installation!, (phase, problem) =>
+            {
+                lock (gate)
+                    if (id == operation && Snapshot.Application == ApplicationPhase.Active &&
+                        (Snapshot.Backend != phase || Snapshot.Problem != problem))
+                        Publish(Snapshot with { Backend = phase, Problem = problem });
+                // 不增加 NavigationId，不重载页面或丢弃未保存的 Workflow。
+            }, token);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+    }
 
     public void ReportNavigation(long navigationId, bool succeeded, string? error = null)
     {
@@ -118,6 +139,7 @@ public sealed class LauncherCoordinator(BackendSessionController backend, ILaunc
         try
         {
             await connection;
+            await observation;
             if (backend.OwnsService)
             {
                 lock (gate) Publish(Snapshot with { Backend = BackendPhase.Stopping, Mode = Mode });

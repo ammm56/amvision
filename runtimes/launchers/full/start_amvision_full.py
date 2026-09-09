@@ -11,8 +11,6 @@ import signal
 import subprocess
 import sys
 import time
-import urllib.error
-import urllib.request
 from pathlib import Path
 from typing import Callable
 from uuid import uuid4
@@ -41,6 +39,10 @@ from common import (  # noqa: E402
     resolve_path,
     write_full_json,
 )
+
+
+from http_service_monitor import HealthDecision, ProbeResult, ServiceMonitor, probe_service  # noqa: E402
+from http_stack_recovery import RecoveryBlocked, RecoveryBudget, ServiceRecoveryRequired, drain_owned_stack, wait_until  # noqa: E402
 
 
 FULL_SUPERVISOR_STATE_FORMAT_ID = "amvision.full-supervisor-state.v1"
@@ -771,37 +773,36 @@ def _wait_for_backend_service_ready(
     port: int,
     timeout_seconds: float,
     process: subprocess.Popen[bytes],
-) -> None:
-    """等待 backend-service health endpoint 可用。
-
-    说明：
-    - backend-service 负责数据库 schema 和 seeder 初始化。
-    - worker profiles 必须等该初始化完成后再启动。
-    """
+) -> ProbeResult:
+    """严格校验新连接、协议及受管 service 身份，连续两次就绪才放行。"""
+    import psutil
 
     deadline = time.monotonic() + max(1.0, timeout_seconds)
-    health_url = f"http://{_resolve_health_host(host)}:{port}/api/v1/system/health"
+    previous = None
     last_error = ""
     while time.monotonic() < deadline:
         _check_startup_shutdown()
-        return_code = process.poll()
-        if return_code is not None:
-            raise RuntimeError(f"backend-service 已退出，returncode={return_code}")
-        try:
-            with urllib.request.urlopen(health_url, timeout=5.0) as response:
-                if response.status < 500:
-                    print(
-                        "backend-service health 已就绪，开始启动 worker。", flush=True
-                    )
-                    return
-                last_error = f"HTTP {response.status}"
-        except (OSError, urllib.error.URLError) as error:
-            last_error = str(error)
-        time.sleep(1.0)
-
-    raise TimeoutError(
-        f"backend-service health 未在 {timeout_seconds:.0f}s 内就绪：{last_error}"
-    )
+        if process.poll() is not None:
+            raise RuntimeError(f"backend-service 已退出，returncode={process.returncode}")
+        result = probe_service(host, port, timeout=min(1.0, max(.01, deadline - time.monotonic())))
+        if result.kind == "ready":
+            try:
+                child, parent = psutil.Process(result.pid), psutil.Process(process.pid)
+                if child.pid != parent.pid and parent.pid not in {p.pid for p in child.parents()}:
+                    raise RuntimeError("HTTP 响应来自非受管进程，拒绝接管端口")
+                if Path(child.exe()).resolve() != Path(parent.exe()).resolve() or Path(child.cwd()).resolve() != Path(parent.cwd()).resolve():
+                    raise RuntimeError("HTTP 服务解释器或目录与受管组件不匹配")
+            except psutil.Error as error:
+                raise RuntimeError("无法核实 HTTP 服务身份") from error
+            if previous and (result.instance_id, result.pid) == (previous.instance_id, previous.pid):
+                print("backend-service liveness 已就绪，开始启动 worker。", flush=True)
+                return result
+            previous = result
+        else:
+            previous = None
+        last_error = result.detail or result.kind
+        time.sleep(.2)
+    raise TimeoutError(f"backend-service liveness 未在 {timeout_seconds:.0f}s 内就绪：{last_error}")
 
 
 def _wait_for_worker_ready(
@@ -1122,6 +1123,9 @@ def _launch_worker_profile(
             topology=worker_topology,
             profile=profile,
         )
+    except (ServiceRecoveryRequired, RecoveryBlocked):
+        # 恢复由唯一协调器排空；Worker 可能已开始任务，不能在就绪等待中强杀。
+        raise
     except BaseException:
         _stop_component(worker_process)
         worker_log_capture.close()
@@ -1288,9 +1292,10 @@ def main(argv: list[str] | None = None) -> int:
         """写入当前 root 的真实启动阶段，error 仅保存有界错误摘要。"""
 
         payload: dict[str, object] = {
-            "format_id": "amvision.launcher-status.v1",
+            "format_id": "amvision.launcher-status.v2",
             "root_process": root_process_identity,
             "state": state,
+            "generation": generation,
         }
         if error is not None:
             payload["error"] = {"code": "full_stack_failed", "message": str(error)[:4096]}
@@ -1303,6 +1308,25 @@ def main(argv: list[str] | None = None) -> int:
         if _shutdown_requested(shutdown_request_file_path, root_process_identity=root_process_identity):
             raise KeyboardInterrupt
 
+    def check_runtime_health() -> None:
+        """Worker 就绪等待期间仍处理 HTTP 故障，并保留当前组件所有权。"""
+        nonlocal published_health
+        check_shutdown()
+        if http_monitor is None:
+            return
+        try:
+            http_monitor.assert_healthy()
+        except RuntimeError as error:
+            raise RecoveryBlocked(str(error)) from error
+        state = health_decision.observe(http_monitor.latest())
+        if state == "failed":
+            raise RecoveryBlocked("HTTP 响应身份改变，禁止接管其他进程")
+        if state == "recovering":
+            raise ServiceRecoveryRequired("Worker 就绪等待期间 HTTP 持续不可用")
+        if state != published_health:
+            write_launcher_status(state)
+            published_health = state
+
     def record_migration(process: subprocess.Popen[bytes]) -> None:
         """迁移进程先登记后等待，确保启动期间退出可以观察到它。"""
 
@@ -1312,6 +1336,12 @@ def main(argv: list[str] | None = None) -> int:
     global _active_shutdown_check
     _active_shutdown_check = check_shutdown
     failed = False
+    http_monitor = None
+    generation = 1
+    recovery_budget = RecoveryBudget()
+    recovery_directory = (logs_dir / "http-recovery").resolve()
+    previous_recovery_directory = os.environ.get("AMVISION_HTTP_RECOVERY_DIR")
+    os.environ["AMVISION_HTTP_RECOVERY_DIR"] = str(recovery_directory)
 
     try:
         persist_stack_state()
@@ -1328,236 +1358,292 @@ def main(argv: list[str] | None = None) -> int:
         )
         components[:] = [item for item in components if item.name != "database-migration"]
         check_shutdown()
-        service_log_file_path = logs_dir / "backend-service.log"
-        service_command = _build_service_command(
-            app_root,
-            release_manifest,
-            python_executable=python_executable,
-            host=args.host,
-            port=args.port,
-            service_log_level=args.service_log_level,
-        )
-        service_process, service_log_capture = _start_component(
-            "backend-service",
-            service_command,
-            app_root=app_root,
-            log_file_path=service_log_file_path,
-        )
-        components.append(
-            SupervisedComponent(
-                name="backend-service",
-                process=service_process,
-                log_capture=service_log_capture,
-                started_monotonic=time.monotonic(),
-            )
-        )
-        persist_stack_state()
-
-        if args.startup_delay_seconds > 0:
-            time.sleep(args.startup_delay_seconds)
-        inference_daemon_command = _build_inference_daemon_command(
-            app_root,
-            release_manifest,
-            python_executable=python_executable,
-        )
-        _wait_for_local_buffer_ready(
-            app_root=app_root,
-            backend_process=service_process,
-            timeout_seconds=args.service_ready_timeout_seconds,
-            probe_command=inference_daemon_command,
-        )
-
-        # inference deployment worker 直接打开 backend-service 持有的主
-        # LocalBuffer。必须先确认 backend lifespan 和 Broker 已完成启动，
-        # 再恢复 deployment，避免把依赖尚未出现误记成模型启动失败。
-        daemon_log_file_path = logs_dir / "inference-daemon.log"
-        daemon_process, daemon_log_capture = _start_component(
-            "inference-daemon",
-            inference_daemon_command,
-            app_root=app_root,
-            log_file_path=daemon_log_file_path,
-        )
-        components.append(
-            SupervisedComponent(
-                name="inference-daemon",
-                process=daemon_process,
-                log_capture=daemon_log_capture,
-                started_monotonic=time.monotonic(),
-            )
-        )
-        persist_stack_state()
-        _wait_for_inference_daemon_ready(
-            app_root=app_root,
-            process=daemon_process,
-            log_capture=daemon_log_capture,
-            timeout_seconds=args.service_ready_timeout_seconds,
-            probe_command=inference_daemon_command,
-        )
-
-        # Workflow Runtime 的 startup 可能包含依赖 daemon 的模型节点。
-        # daemon 完整 ready 后再等待 FastAPI health，可避免二者互相等待。
-        _wait_for_backend_service_ready(
-            host=args.host,
-            port=args.port,
-            timeout_seconds=args.service_ready_timeout_seconds,
-            process=service_process,
-        )
-
-        for worker_entry in worker_entries:
-            profile_id = str(worker_entry["profile_id"])
-            component = SupervisedComponent(
-                name=f"backend-worker:{profile_id}",
-                process=None,
-                log_capture=None,
-                worker_entry=worker_entry,
-                worker_profile=worker_profiles[profile_id],
-            )
-            components.append(component)
-
-            def record_worker_start(
-                process: subprocess.Popen[bytes],
-                log_capture: DailyAppendLogCapture,
-                *,
-                target: SupervisedComponent = component,
-            ) -> None:
-                """在启动等待前持久化新 Worker pid。"""
-
-                target.process = process
-                target.log_capture = log_capture
-                target.started_monotonic = time.monotonic()
+        while True:
+            try:
+                service_log_file_path = logs_dir / "backend-service.log"
+                service_command = _build_service_command(
+                    app_root,
+                    release_manifest,
+                    python_executable=python_executable,
+                    host=args.host,
+                    port=args.port,
+                    service_log_level=args.service_log_level,
+                )
+                service_process, service_log_capture = _start_component(
+                    "backend-service",
+                    service_command,
+                    app_root=app_root,
+                    log_file_path=service_log_file_path,
+                )
+                components.append(
+                    SupervisedComponent(
+                        name="backend-service",
+                        process=service_process,
+                        log_capture=service_log_capture,
+                        started_monotonic=time.monotonic(),
+                    )
+                )
                 persist_stack_state()
 
-            worker_process, worker_log_capture = _launch_worker_profile(
-                app_root=app_root,
-                python_executable=python_executable,
-                logs_dir=logs_dir,
-                worker_entry=worker_entry,
-                profile=worker_profiles[profile_id],
-                worker_runtime_layout=worker_runtime_layout,
-                worker_topology=worker_topology,
-                ready_timeout_seconds=args.worker_ready_timeout_seconds,
-                on_started=record_worker_start,
-            )
-            component.process = worker_process
-            component.log_capture = worker_log_capture
-            component.started_monotonic = time.monotonic()
-            component.restart_count = 0
-            component.next_restart_at = None
-            component.last_return_code = None
-            persist_stack_state()
+                if args.startup_delay_seconds > 0:
+                    time.sleep(args.startup_delay_seconds)
+                inference_daemon_command = _build_inference_daemon_command(
+                    app_root,
+                    release_manifest,
+                    python_executable=python_executable,
+                )
+                _wait_for_local_buffer_ready(
+                    app_root=app_root,
+                    backend_process=service_process,
+                    timeout_seconds=args.service_ready_timeout_seconds,
+                    probe_command=inference_daemon_command,
+                )
 
-        worker_topology = _update_worker_topology_state(
-            app_root,
-            layout=worker_runtime_layout,
-            topology=worker_topology,
-            state="running",
-        )
-        persist_stack_state()
-        print(
-            f"运行状态文件已写入 {_format_runtime_path(app_root, state_file_path)}。",
-            flush=True,
-        )
-        print("full 发布目录全部组件已启动。按 Ctrl+C 停止全部子进程。", flush=True)
-        write_launcher_status("running")
-
-        while True:
-            if _shutdown_requested(
-                shutdown_request_file_path,
-                root_process_identity=root_process_identity,
-            ):
-                print("收到 stop-amvision-full 优雅停止请求。", flush=True)
-                raise KeyboardInterrupt
-            now = time.monotonic()
-            for component in components:
-                process = component.process
-                log_capture = component.log_capture
-                if log_capture is not None:
-                    log_capture.assert_healthy()
-                if process is not None:
-                    return_code = process.poll()
-                    if return_code is None:
-                        continue
-                    component.last_return_code = return_code
-                    if not component.is_worker:
-                        print(
-                            f"检测到 {component.name} 已退出，returncode={return_code}；"
-                            "正在停止整套服务。",
-                            flush=True,
-                        )
-                        return 1 if return_code == 0 else return_code
-                    if log_capture is not None:
-                        log_capture.close()
-                    if now - component.started_monotonic >= 300:
-                        component.restart_count = 0
-                    component.restart_count += 1
-                    component.process = None
-                    component.log_capture = None
-                    restart_delay = _calculate_worker_restart_delay(
-                        component.restart_count
+                # inference deployment worker 直接打开 backend-service 持有的主
+                # LocalBuffer。必须先确认 backend lifespan 和 Broker 已完成启动，
+                # 再恢复 deployment，避免把依赖尚未出现误记成模型启动失败。
+                daemon_log_file_path = logs_dir / "inference-daemon.log"
+                daemon_process, daemon_log_capture = _start_component(
+                    "inference-daemon",
+                    inference_daemon_command,
+                    app_root=app_root,
+                    log_file_path=daemon_log_file_path,
+                )
+                components.append(
+                    SupervisedComponent(
+                        name="inference-daemon",
+                        process=daemon_process,
+                        log_capture=daemon_log_capture,
+                        started_monotonic=time.monotonic(),
                     )
-                    component.next_restart_at = now + restart_delay
-                    print(
-                        f"{component.name} 已退出，returncode={return_code}；"
-                        f"仅恢复该 Profile，{restart_delay:.0f}s 后重启。",
-                        flush=True,
+                )
+                persist_stack_state()
+                _wait_for_inference_daemon_ready(
+                    app_root=app_root,
+                    process=daemon_process,
+                    log_capture=daemon_log_capture,
+                    timeout_seconds=args.service_ready_timeout_seconds,
+                    probe_command=inference_daemon_command,
+                )
+
+                # Workflow Runtime 的 startup 可能包含依赖 daemon 的模型节点。
+                # daemon 完整 ready 后再等待 FastAPI health，可避免二者互相等待。
+                service_identity = _wait_for_backend_service_ready(
+                    host=args.host,
+                    port=args.port,
+                    timeout_seconds=args.service_ready_timeout_seconds,
+                    process=service_process,
+                )
+
+                for worker_entry in worker_entries:
+                    profile_id = str(worker_entry["profile_id"])
+                    component = SupervisedComponent(
+                        name=f"backend-worker:{profile_id}",
+                        process=None,
+                        log_capture=None,
+                        worker_entry=worker_entry,
+                        worker_profile=worker_profiles[profile_id],
                     )
-                    persist_stack_state()
-                    continue
-                if not component.is_worker:
-                    continue
-                restart_at = component.next_restart_at
-                if restart_at is None or now < restart_at:
-                    continue
+                    components.append(component)
 
-                def record_recovery_start(
-                    recovered_process: subprocess.Popen[bytes],
-                    recovered_log_capture: DailyAppendLogCapture,
-                    *,
-                    target: SupervisedComponent = component,
-                ) -> None:
-                    """持久化恢复中的 Worker 新进程身份。"""
+                    def record_worker_start(
+                        process: subprocess.Popen[bytes],
+                        log_capture: DailyAppendLogCapture,
+                        *,
+                        target: SupervisedComponent = component,
+                    ) -> None:
+                        """在启动等待前持久化新 Worker pid。"""
 
-                    target.process = recovered_process
-                    target.log_capture = recovered_log_capture
-                    target.started_monotonic = time.monotonic()
-                    target.next_restart_at = None
-                    persist_stack_state()
+                        target.process = process
+                        target.log_capture = log_capture
+                        target.started_monotonic = time.monotonic()
+                        persist_stack_state()
 
-                try:
-                    recovered_process, recovered_log_capture = _launch_worker_profile(
+                    worker_process, worker_log_capture = _launch_worker_profile(
                         app_root=app_root,
                         python_executable=python_executable,
                         logs_dir=logs_dir,
-                        worker_entry=component.worker_entry,
-                        profile=component.worker_profile,
+                        worker_entry=worker_entry,
+                        profile=worker_profiles[profile_id],
                         worker_runtime_layout=worker_runtime_layout,
                         worker_topology=worker_topology,
                         ready_timeout_seconds=args.worker_ready_timeout_seconds,
-                        on_started=record_recovery_start,
+                        on_started=record_worker_start,
                     )
-                except Exception as error:  # noqa: BLE001 - 单 Profile 故障不停止整栈
-                    component.process = None
-                    component.log_capture = None
-                    component.restart_count += 1
-                    restart_delay = _calculate_worker_restart_delay(
-                        component.restart_count
-                    )
-                    component.next_restart_at = time.monotonic() + restart_delay
-                    print(
-                        f"{component.name} 恢复失败：{error}；"
-                        f"{restart_delay:.0f}s 后再次启动该 Profile。",
-                        flush=True,
-                    )
+                    component.process = worker_process
+                    component.log_capture = worker_log_capture
+                    component.started_monotonic = time.monotonic()
+                    component.restart_count = 0
+                    component.next_restart_at = None
+                    component.last_return_code = None
                     persist_stack_state()
-                    continue
-                component.process = recovered_process
-                component.log_capture = recovered_log_capture
-                component.started_monotonic = time.monotonic()
-                component.next_restart_at = None
-                component.last_return_code = None
-                print(f"{component.name} 已独立恢复。", flush=True)
+
+                worker_topology = _update_worker_topology_state(
+                    app_root,
+                    layout=worker_runtime_layout,
+                    topology=worker_topology,
+                    state="running",
+                )
                 persist_stack_state()
-            time.sleep(0.5)
+                print(
+                    f"运行状态文件已写入 {_format_runtime_path(app_root, state_file_path)}。",
+                    flush=True,
+                )
+                print("full 发布目录全部组件已启动。按 Ctrl+C 停止全部子进程。", flush=True)
+                write_launcher_status("running")
+                http_monitor = ServiceMonitor(args.host, args.port)
+                http_monitor.start()
+                health_decision = HealthDecision(service_identity)
+                _active_shutdown_check = check_runtime_health
+                published_health = "running"
+
+                while True:
+                    if _shutdown_requested(
+                        shutdown_request_file_path,
+                        root_process_identity=root_process_identity,
+                    ):
+                        print("收到 stop-amvision-full 优雅停止请求。", flush=True)
+                        raise KeyboardInterrupt
+                    check_runtime_health()
+                    now = time.monotonic()
+                    for component in components:
+                        process = component.process
+                        log_capture = component.log_capture
+                        if log_capture is not None:
+                            log_capture.assert_healthy()
+                        if process is not None:
+                            return_code = process.poll()
+                            if return_code is None:
+                                continue
+                            component.last_return_code = return_code
+                            if not component.is_worker:
+                                print(
+                                    f"检测到 {component.name} 已退出，returncode={return_code}；"
+                                    "正在停止整套服务。",
+                                    flush=True,
+                                )
+                                raise RecoveryBlocked(f"{component.name} 已退出，returncode={return_code}；不能确认资源已正常释放")
+                            if log_capture is not None:
+                                log_capture.close()
+                            if now - component.started_monotonic >= 300:
+                                component.restart_count = 0
+                            component.restart_count += 1
+                            component.process = None
+                            component.log_capture = None
+                            restart_delay = _calculate_worker_restart_delay(
+                                component.restart_count
+                            )
+                            component.next_restart_at = now + restart_delay
+                            print(
+                                f"{component.name} 已退出，returncode={return_code}；"
+                                f"仅恢复该 Profile，{restart_delay:.0f}s 后重启。",
+                                flush=True,
+                            )
+                            persist_stack_state()
+                            continue
+                        if not component.is_worker:
+                            continue
+                        restart_at = component.next_restart_at
+                        if restart_at is None or now < restart_at:
+                            continue
+
+                        def record_recovery_start(
+                            recovered_process: subprocess.Popen[bytes],
+                            recovered_log_capture: DailyAppendLogCapture,
+                            *,
+                            target: SupervisedComponent = component,
+                        ) -> None:
+                            """持久化恢复中的 Worker 新进程身份。"""
+
+                            target.process = recovered_process
+                            target.log_capture = recovered_log_capture
+                            target.started_monotonic = time.monotonic()
+                            target.next_restart_at = None
+                            persist_stack_state()
+
+                        try:
+                            recovered_process, recovered_log_capture = _launch_worker_profile(
+                                app_root=app_root,
+                                python_executable=python_executable,
+                                logs_dir=logs_dir,
+                                worker_entry=component.worker_entry,
+                                profile=component.worker_profile,
+                                worker_runtime_layout=worker_runtime_layout,
+                                worker_topology=worker_topology,
+                                ready_timeout_seconds=args.worker_ready_timeout_seconds,
+                                on_started=record_recovery_start,
+                            )
+                        except (ServiceRecoveryRequired, RecoveryBlocked):
+                            raise
+                        except Exception as error:  # noqa: BLE001 - 单 Profile 故障不停止整栈
+                            component.process = None
+                            component.log_capture = None
+                            component.restart_count += 1
+                            restart_delay = _calculate_worker_restart_delay(
+                                component.restart_count
+                            )
+                            component.next_restart_at = time.monotonic() + restart_delay
+                            print(
+                                f"{component.name} 恢复失败：{error}；"
+                                f"{restart_delay:.0f}s 后再次启动该 Profile。",
+                                flush=True,
+                            )
+                            persist_stack_state()
+                            continue
+                        component.process = recovered_process
+                        component.log_capture = recovered_log_capture
+                        component.started_monotonic = time.monotonic()
+                        component.next_restart_at = None
+                        component.last_return_code = None
+                        print(f"{component.name} 已独立恢复。", flush=True)
+                        persist_stack_state()
+                    time.sleep(0.5)
+            except ServiceRecoveryRequired as error:
+                _active_shutdown_check = check_shutdown
+                try:
+                    http_monitor.close()
+                    http_monitor = None
+                    delay = recovery_budget.reserve(time.monotonic())
+                    write_launcher_status("recovering", error)
+                    worker_topology = _update_worker_topology_state(
+                        app_root, layout=worker_runtime_layout, topology=worker_topology, state="stopping",
+                    )
+                    drain_owned_stack(components=components, identity=service_identity,
+                                      directory=recovery_directory, check_shutdown=check_shutdown)
+                    for component in components:
+                        if component.log_capture is not None:
+                            component.log_capture.close()
+                    components.clear()
+                    persist_stack_state()
+                    worker_topology = _update_worker_topology_state(
+                        app_root, layout=worker_runtime_layout, topology=worker_topology, state="stopped",
+                    )
+                    restart_at = time.monotonic() + delay
+                    wait_until(lambda: time.monotonic() >= restart_at, check_shutdown,
+                               timeout=delay + 1, description="恢复退避超时")
+                    worker_runtime_layout, worker_topology, worker_profiles = _activate_worker_topology(
+                        app_root, worker_entries, supervisor_instance_id=supervisor_instance_id,
+                    )
+                    generation += 1
+                    write_launcher_status("recovering")
+                except Exception as blocked:
+                    failed = True
+                    write_launcher_status("failed", blocked)
+                    print(str(blocked), flush=True)
+                    # 未排空时只等待显式停止，不能进入 finally 强杀后再自动启动。
+                    while True:
+                        check_shutdown()
+                        time.sleep(.2)
+            except RecoveryBlocked as blocked:
+                _active_shutdown_check = check_shutdown
+                failed = True
+                write_launcher_status("failed", blocked)
+                if http_monitor is not None:
+                    http_monitor.close()
+                    http_monitor = None
+                while True:
+                    check_shutdown()
+                    time.sleep(.2)
     except KeyboardInterrupt:
         print("收到终止信号，正在停止全部子进程。", flush=True)
         return 0
@@ -1568,6 +1654,13 @@ def main(argv: list[str] | None = None) -> int:
         raise
     finally:
         _active_shutdown_check = None
+        if http_monitor is not None:
+            with contextlib.suppress(Exception):
+                http_monitor.close()
+        if previous_recovery_directory is None:
+            os.environ.pop("AMVISION_HTTP_RECOVERY_DIR", None)
+        else:
+            os.environ["AMVISION_HTTP_RECOVERY_DIR"] = previous_recovery_directory
         if not failed:
             with contextlib.suppress(OSError):
                 write_launcher_status("stopping")

@@ -308,13 +308,13 @@ class WorkflowRuntimeWorkerManager:
             for recovery_thread in threads:
                 recovery_thread.join()
 
-    def stop(self) -> None:
-        """停止全部 runtime worker 进程。"""
+    def stop(self, *, graceful_only: bool = False) -> None:
+        """停止全部 runtime worker；恢复排空时禁止取消工作或强杀。"""
 
         with self._lock:
+            self._stopping.set()
             async_handles = tuple(self._async_runs.values())
             runtime_ids = tuple(self._handles.keys())
-        self._stopping.set()
         self._monitor_stop_event.set()
         self._monitor_wake_event.set()
         monitor_thread = self._monitor_thread
@@ -327,11 +327,21 @@ class WorkflowRuntimeWorkerManager:
         for recovery_thread in recovery_threads:
             recovery_thread.join(timeout=1.0)
         for async_handle in async_handles:
-            async_handle.cancel_event.set()
+            if graceful_only:
+                if not async_handle.completion_event.wait(timeout=30):
+                    raise OperationTimeoutError("Workflow 异步工作尚未排空，拒绝自动恢复")
+            else:
+                async_handle.cancel_event.set()
         for workflow_runtime_id in runtime_ids:
             try:
-                self.stop_runtime(workflow_runtime_id)
+                if graceful_only:
+                    with self._resolve_runtime_lifecycle_lock(workflow_runtime_id):
+                        self._stop_runtime(workflow_runtime_id, graceful_only=True)
+                else:
+                    self.stop_runtime(workflow_runtime_id)
             except ServiceError:
+                if graceful_only:
+                    raise
                 continue
         for async_handle in async_handles:
             async_handle.completion_event.wait(timeout=1.0)
@@ -584,7 +594,7 @@ class WorkflowRuntimeWorkerManager:
         with self._resolve_runtime_lifecycle_lock(workflow_runtime_id):
             return self._stop_runtime(workflow_runtime_id)
 
-    def _stop_runtime(self, workflow_runtime_id: str) -> WorkflowRuntimeWorkerState:
+    def _stop_runtime(self, workflow_runtime_id: str, *, graceful_only: bool = False) -> WorkflowRuntimeWorkerState:
         """在当前 runtime 生命周期锁内停止 worker 进程。"""
 
         with self._lock:
@@ -611,8 +621,12 @@ class WorkflowRuntimeWorkerManager:
                     "workflow_runtime_id": workflow_runtime_id,
                 },
             )
-        self._remove_handle_if_current(workflow_runtime_id, handle)
+        if graceful_only:
+            handle.process.join(timeout=10)
+            if handle.process.is_alive() or handle.process.exitcode != 0:
+                raise OperationTimeoutError("Workflow worker 未确认正常退出，拒绝自动恢复")
         self._cleanup_handle(handle)
+        self._remove_handle_if_current(workflow_runtime_id, handle)
         return runtime_state
 
     def restart_runtime(
@@ -760,7 +774,12 @@ class WorkflowRuntimeWorkerManager:
         )
         async_handle.thread = async_thread
         with self._lock:
-            self._async_runs[workflow_run_id] = async_handle
+            rejected = self._stopping.is_set()
+            if not rejected:
+                self._async_runs[workflow_run_id] = async_handle
+        if rejected:
+            self.cleanup_parent_local_buffer_leases(execution_metadata)
+            raise ServiceConfigurationError("workflow runtime worker manager 正在排空")
         try:
             async_thread.start()
         except Exception as exc:

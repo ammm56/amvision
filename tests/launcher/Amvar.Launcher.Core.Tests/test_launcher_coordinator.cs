@@ -9,6 +9,35 @@ namespace Amvar.Launcher.Core.Tests;
 public sealed class CoordinatorTests
 {
     [Fact]
+    public async Task Runtime_observation_reports_loss_and_recovery_without_navigation_or_takeover()
+    {
+        var fake = new Dependencies { Phase = StackPhase.Running };
+        var coordinator = Create(fake);
+        await coordinator.InitializeAsync(new(), new("release"));
+        var navigation = coordinator.Snapshot.NavigationId;
+        var lost = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var recovered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        coordinator.Changed += state =>
+        {
+            if (state.Backend == BackendPhase.Unavailable) lost.TrySetResult();
+            if (lost.Task.IsCompleted && state.Backend == BackendPhase.Connected) recovered.TrySetResult();
+        };
+        try
+        {
+            fake.Probe = ProbeKind.NotListening;
+            await lost.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            fake.Probe = ProbeKind.Available;
+            await recovered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(navigation, coordinator.Snapshot.NavigationId);
+            Assert.Equal(0, fake.Starts + fake.Stops);
+        }
+        finally { Assert.True(await coordinator.RequestExitAsync()); }
+        var probes = fake.Probes;
+        await Task.Delay(2200);
+        Assert.Equal(probes, fake.Probes);
+    }
+
+    [Fact]
     public async Task Managed_release_starts_absent_service_navigates_and_stops_owned_stack()
     {
         var fake = new Dependencies { Probe = ProbeKind.NotListening, CompleteStart = true };

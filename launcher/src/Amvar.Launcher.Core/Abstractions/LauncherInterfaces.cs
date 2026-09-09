@@ -8,7 +8,11 @@ public interface ISettingsStore
     Task<SettingsLoadResult> LoadAsync(CancellationToken cancellationToken);
     Task SaveAsync(LauncherSettings settings, CancellationToken cancellationToken);
 }
-public interface IServiceProbe { Task<ServiceProbeResult> ProbeAsync(CancellationToken cancellationToken); }
+public interface IServiceProbe
+{
+    Task<ServiceProbeResult> ProbeAsync(CancellationToken cancellationToken);
+    Task<ServiceProbeResult> ProbeLivenessAsync(CancellationToken cancellationToken) => ProbeAsync(cancellationToken);
+}
 public interface IStackController
 {
     bool HasOwnedSession { get; }

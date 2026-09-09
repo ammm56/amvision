@@ -1043,6 +1043,12 @@ class BackendServiceBootstrap(
         - runtime：当前应用实例使用的运行时资源。
         """
 
+        self.drain_runtime(runtime)
+        runtime.local_buffer_broker_supervisor.stop()
+        runtime.session_factory.engine.dispose()
+
+    def drain_runtime(self, runtime: BackendServiceRuntime, *, strict: bool = False) -> None:
+        """先停止接入和消费者，保留 Broker，供 full 按依赖顺序关闭 daemon。"""
         runtime.queue_outbox_dispatcher.stop()
         if runtime.training_telemetry_receiver is not None:
             runtime.training_telemetry_receiver.stop()
@@ -1052,11 +1058,16 @@ class BackendServiceBootstrap(
         except OperationTimeoutError as error:
             # 单个协议 listener 的有界停止超时不能阻断其余进程、mmap 和数据库资源清理。
             # 显式 Trigger 停止仍保留原错误语义；这里仅用于整个 Backend 进程退出。
+            if strict:
+                raise
             LOGGER.warning("Backend 退出时 TriggerSource 停止超时：%s", error)
         if runtime.workflow_trigger_mailbox_supervisor is not None:
             runtime.workflow_trigger_mailbox_supervisor.stop()
         runtime.deployment_runtime_reconciler.stop()
-        runtime.workflow_runtime_worker_manager.stop()
+        if strict:
+            runtime.workflow_runtime_worker_manager.stop(graceful_only=True)
+        else:
+            runtime.workflow_runtime_worker_manager.stop()
         runtime.workflow_preview_run_manager.close()
         model_session_manager = (
             runtime.workflow_service_node_runtime_context.workflow_model_session_manager
@@ -1074,8 +1085,6 @@ class BackendServiceBootstrap(
             component.stop()
         if runtime.inference_message_client is not None:
             runtime.inference_message_client.close()
-        runtime.local_buffer_broker_supervisor.stop()
-        runtime.session_factory.engine.dispose()
 
     def _build_steps(self) -> tuple[BootstrapStep[BackendServiceRuntime], ...]:
         """返回当前 backend-service 启动链要执行的步骤元组。

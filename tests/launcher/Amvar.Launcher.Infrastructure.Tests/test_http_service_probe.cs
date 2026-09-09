@@ -9,6 +9,36 @@ namespace Amvar.Launcher.Infrastructure.Tests;
 
 public sealed class HttpServiceProbeTests
 {
+    [Theory]
+    [InlineData("application/json", "amvision.service-liveness.v1", ProbeKind.Available)]
+    [InlineData("text/html", "amvision.service-liveness.v1", ProbeKind.Unavailable)]
+    [InlineData("application/json", "other", ProbeKind.Unavailable)]
+    public async Task Runtime_probe_uses_new_connections_and_validates_protocol(string type, string format, ProbeKind expected)
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        using var probe = new HttpServiceProbe(new Uri($"http://127.0.0.1:{port}"));
+        var serving = Task.Run(async () =>
+        {
+            for (var i = 0; i < 2; i++)
+            {
+                using var connection = await listener.AcceptTcpClientAsync(deadline.Token);
+                var stream = connection.GetStream();
+                using var reader = new StreamReader(stream, Encoding.ASCII, leaveOpen: true);
+                Assert.Contains("/api/v1/system/liveness", await reader.ReadLineAsync(deadline.Token));
+                var headers = "";
+                while (await reader.ReadLineAsync(deadline.Token) is { Length: > 0 } line) headers += line;
+                Assert.Contains("Connection: close", headers);
+                var body = $"{{\"format_id\":\"{format}\",\"phase\":\"ready\",\"pid\":123,\"instance_id\":\"{new string('a', 32)}\"}}";
+                await stream.WriteAsync(Encoding.ASCII.GetBytes($"HTTP/1.1 200 OK\r\nContent-Type: {type}\r\nContent-Length: {body.Length}\r\n\r\n{body}"), deadline.Token);
+            }
+        });
+        for (var i = 0; i < 2; i++) Assert.Equal(expected, (await probe.ProbeLivenessAsync(deadline.Token)).Kind);
+        await serving;
+    }
+
     [Fact]
     public async Task Unused_loopback_port_is_absent_without_waiting_for_tcp_timeout()
     {

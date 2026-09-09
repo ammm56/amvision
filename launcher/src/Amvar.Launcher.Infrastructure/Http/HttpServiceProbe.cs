@@ -1,6 +1,7 @@
 using System.Net.Sockets;
 using System.Net;
 using System.Net.NetworkInformation;
+using System.Text.Json;
 using Amvar.Launcher.Core.Abstractions;
 using Amvar.Launcher.Core.Runtime;
 using Amvar.Launcher.Infrastructure.Contracts;
@@ -65,4 +66,30 @@ public sealed class HttpServiceProbe : IServiceProbe, IDisposable
         { return new(ProbeKind.Unavailable, "端口已被占用，页面不可用：" + ex.Message); }
     }
     public void Dispose() => client.Dispose();
+
+    public async Task<ServiceProbeResult> ProbeLivenessAsync(CancellationToken token)
+    {
+        // 新 HTTP 连接、短响应、总期限；运行期不反复读取 Broker 健康和首页。
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+        deadline.CancelAfter(TimeSpan.FromSeconds(2));
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, "api/v1/system/liveness");
+            request.Headers.ConnectionClose = true;
+            using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
+            if (response.StatusCode != HttpStatusCode.OK || response.Content.Headers.ContentType?.MediaType != "application/json" ||
+                response.Content.Headers.ContentLength is not (> 0 and <= 4096))
+                return new(ProbeKind.Unavailable, "视觉服务接入检查响应无效。");
+            await response.Content.LoadIntoBufferAsync(4096, deadline.Token);
+            using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(deadline.Token));
+            var root = json.RootElement;
+            return root.GetProperty("format_id").GetString() == "amvision.service-liveness.v1" &&
+                root.GetProperty("phase").GetString() == "ready" &&
+                root.GetProperty("pid").GetInt32() > 0 &&
+                Guid.TryParseExact(root.GetProperty("instance_id").GetString(), "N", out _)
+                ? new(ProbeKind.Available) : new(ProbeKind.Unavailable, "视觉服务尚未就绪。");
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !token.IsCancellationRequested)
+        { return new(ProbeKind.Unavailable, "视觉服务连接已中断：" + ex.Message); }
+    }
 }

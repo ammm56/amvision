@@ -62,6 +62,12 @@ def main(argv: list[str] | None = None) -> int:
         "--log-level",
         args.log_level,
     ]
+    if sys.platform == "win32" and not any(
+        value == "--loop" or value.startswith("--loop=") for value in extra_args
+    ):
+        module_args.extend(
+            ["--loop", "backend.service.infrastructure.http.windows_event_loop:create_loop"]
+        )
     if args.reload:
         module_args.append("--reload")
         for source_directory in RELOAD_SOURCE_DIRECTORIES:

@@ -188,6 +188,14 @@ def _copy_launcher_tree(release_dir: Path, *, target_os: str) -> None:
         SOURCE_LAUNCHERS_DIR / "common.py", release_dir / "launchers" / "common.py"
     )
     _copy_file(
+        SOURCE_LAUNCHERS_DIR / "http_stack_recovery.py",
+        release_dir / "launchers" / "http_stack_recovery.py",
+    )
+    _copy_file(
+        SOURCE_LAUNCHERS_DIR / "http_service_monitor.py",
+        release_dir / "launchers" / "http_service_monitor.py",
+    )
+    _copy_file(
         SOURCE_LAUNCHERS_DIR / "inspect_process.py",
         release_dir / "launchers" / "inspect_process.py",
     )
