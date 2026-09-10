@@ -49,6 +49,7 @@
     <Compile Include="WorkflowMultiInputIntegrationProbe.cs" />
     <Compile Include="WorkflowTriggerContractProbe.cs" />
     <Compile Include="WorkflowTriggerBenchmarkProbe.cs" />
+    <Compile Include="WorkflowCoexistenceProbe.cs" />
     <Compile Include="WorkflowTriggerMailboxV1Fixture.g.cs" />
     <Compile Include="LocalMessageChannelV1Fixture.g.cs" />
   </ItemGroup>

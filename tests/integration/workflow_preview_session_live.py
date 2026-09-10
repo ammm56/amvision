@@ -182,7 +182,7 @@ async def validate(args):
                         released = await expect("protocol.error")
                         assert released["error"] == "preview_memory_unavailable", released
                         result["released_resources"] += 1
-                async with websockets.connect(url, max_size=8*1024**2) as ws:
+                async with websockets.connect(url, max_size=8*1024**2, compression=None) as ws:
                     snapshot = json.loads(await ws.recv())
                     result["reconnected_state"] = snapshot["payload"]["run"]["state"]
                     result["retained_displays"] = len(snapshot["payload"]["displays"])

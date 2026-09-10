@@ -1,0 +1,1503 @@
+{
+  "date": "2026-09-10",
+  "code_commit": "24c6dac5",
+  "application_id": "workflow-app-20260831130620",
+  "runtime_id": "workflow-runtime-1691960999904278a9bad29cee6487aa",
+  "runtime_revision": "workflow-runtime-revision-1282e33c39e344a59dd60c354df8e804",
+  "deployment_instance_id": "deployment-instance-637c2ea77b124e00ae3256813a5d880d",
+  "model": "YOLO11 classification / OpenVINO CPU FP32",
+  "deployment_configuration": {
+    "instance_count": 2,
+    "overflow_policy": "reject",
+    "inference_num_threads": 8
+  },
+  "image": "data/files/developer/图片/3570/治具托盘/空盘/Image_20260721103308382.bmp",
+  "image_bytes": 59885622,
+  "dimensions": [
+    5472,
+    3648
+  ],
+  "cases": {
+    "baseline-runtime": {
+      "passed": true,
+      "error": null,
+      "samples": [
+        {
+          "index": -2,
+          "elapsed_ms": 4125.1274,
+          "run_id": "workflow-run-e9e81d408c3d46b9884aa5481353c297",
+          "started_at": null
+        },
+        {
+          "index": -1,
+          "elapsed_ms": 3823.0138,
+          "run_id": "workflow-run-48e598602dbf48d294ec326359108df1",
+          "started_at": null
+        },
+        {
+          "index": 0,
+          "elapsed_ms": 4382.6665,
+          "run_id": "workflow-run-deb45aa428754ef7aac9c9d1cef1bfc7",
+          "started_at": null
+        },
+        {
+          "index": 1,
+          "elapsed_ms": 3921.9486,
+          "run_id": "workflow-run-2b01375d24ca4f1f83c10406bc5459a7",
+          "started_at": null
+        },
+        {
+          "index": 2,
+          "elapsed_ms": 3926.2554,
+          "run_id": "workflow-run-6f5f7e2835134484b1daed01864ab184",
+          "started_at": null
+        },
+        {
+          "index": 3,
+          "elapsed_ms": 3825.3248000000003,
+          "run_id": "workflow-run-e8a43d39d15746fb9a682323dd66f300",
+          "started_at": null
+        },
+        {
+          "index": 4,
+          "elapsed_ms": 3646.1353000000004,
+          "run_id": "workflow-run-974a2172778a4e69a8dc40a1ad47f11a",
+          "started_at": null
+        },
+        {
+          "index": 5,
+          "elapsed_ms": 3696.1053,
+          "run_id": "workflow-run-3ad6b47299284705adcb19b2f34ae37b",
+          "started_at": null
+        },
+        {
+          "index": 6,
+          "elapsed_ms": 3871.1211000000003,
+          "run_id": "workflow-run-2ed2acae3d7f467c87b74d370f9179c0",
+          "started_at": null
+        },
+        {
+          "index": 7,
+          "elapsed_ms": 2701.8471,
+          "run_id": "workflow-run-19aba94c1ec644e5932acc1edaddfbc8",
+          "started_at": null
+        }
+      ],
+      "measured_count": 8,
+      "p50_ms": 3848.2229500000003,
+      "max_ms": 4382.6665,
+      "mean_ms": 3746.4255125,
+      "peak_working_set_bytes": 102240256,
+      "managed_heap_bytes": 64028144,
+      "business_result": {
+        "core_logic_payload_to_value_2_value": {
+          "value": {
+            "code": 200,
+            "message": "ok",
+            "data": {
+              "format_id": "amvision.slot-classification-summary.v1",
+              "count": 24,
+              "expected_count": 24,
+              "expected_count_matched": true,
+              "target_state": "empty",
+              "tray_state": "empty",
+              "state": "ok",
+              "passed": true,
+              "empty_count": 24,
+              "full_count": 0,
+              "abnormal_count": 0,
+              "unknown_count": 0,
+              "low_score_count": 0,
+              "all_empty": true,
+              "all_full": false,
+              "has_abnormal": false,
+              "problem_count": 0,
+              "problem_items": [],
+              "rules": {
+                "empty_labels": [
+                  "slot_empty"
+                ],
+                "full_labels": [
+                  "slot_barcode_surface_full"
+                ],
+                "abnormal_labels": [
+                  "slot_barcode_surface_abnormal",
+                  "slot_pcb_surface_abnormal",
+                  "slot_pcb_surface_full"
+                ],
+                "min_score": 0.0,
+                "include_items": false,
+                "include_raw_categories": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "baseline-zeromq": {
+      "passed": true,
+      "error": null,
+      "samples": [
+        {
+          "index": -2,
+          "elapsed_ms": 2248.7424,
+          "run_id": "workflow-run-965b2cf396894871af8a34a11915348e",
+          "started_at": null
+        },
+        {
+          "index": -1,
+          "elapsed_ms": 1721.4967000000001,
+          "run_id": "workflow-run-851d61ee1d9f4832a7bafebda174cc7d",
+          "started_at": null
+        },
+        {
+          "index": 0,
+          "elapsed_ms": 1863.9986000000001,
+          "run_id": "workflow-run-b257546572f945229bb4a03b5b2292a1",
+          "started_at": null
+        },
+        {
+          "index": 1,
+          "elapsed_ms": 2072.2714,
+          "run_id": "workflow-run-cac4aa0adc264a5cbf97e385606992b3",
+          "started_at": null
+        },
+        {
+          "index": 2,
+          "elapsed_ms": 2700.6598,
+          "run_id": "workflow-run-e6a14972c8144e2d8048834652dc76b2",
+          "started_at": null
+        },
+        {
+          "index": 3,
+          "elapsed_ms": 2326.4353,
+          "run_id": "workflow-run-f97734606eab4510b8eb0a3ea7a3236c",
+          "started_at": null
+        },
+        {
+          "index": 4,
+          "elapsed_ms": 2184.3324000000002,
+          "run_id": "workflow-run-de0612ade0234885b730433ab250d2ed",
+          "started_at": null
+        },
+        {
+          "index": 5,
+          "elapsed_ms": 2230.5821,
+          "run_id": "workflow-run-f009b76c4c914ae0b158159a1e0a10fc",
+          "started_at": null
+        },
+        {
+          "index": 6,
+          "elapsed_ms": 2134.2496,
+          "run_id": "workflow-run-a49d4216a8f1421d9d0c1eabf7d3966f",
+          "started_at": null
+        },
+        {
+          "index": 7,
+          "elapsed_ms": 1977.8381000000002,
+          "run_id": "workflow-run-3b860e1d6d8645358eb0bc33a9d28f42",
+          "started_at": null
+        },
+        {
+          "index": 8,
+          "elapsed_ms": 1949.4109,
+          "run_id": "workflow-run-10aca6a7779540d789e5955af8d66ba2",
+          "started_at": null
+        },
+        {
+          "index": 9,
+          "elapsed_ms": 2219.6647000000003,
+          "run_id": "workflow-run-b3aaf58054844ac8a18820b9245953d6",
+          "started_at": null
+        },
+        {
+          "index": 10,
+          "elapsed_ms": 2006.6616000000001,
+          "run_id": "workflow-run-91ccacdc71de47f3a231f2db1f1809fd",
+          "started_at": null
+        },
+        {
+          "index": 11,
+          "elapsed_ms": 2069.6656000000003,
+          "run_id": "workflow-run-6a1cf9be83564924b05df85a57a892e3",
+          "started_at": null
+        }
+      ],
+      "measured_count": 12,
+      "p50_ms": 2103.2605000000003,
+      "max_ms": 2700.6598,
+      "mean_ms": 2144.6475083333335,
+      "peak_working_set_bytes": 515534848,
+      "managed_heap_bytes": 121928912,
+      "business_result": {
+        "core_logic_payload_to_value_2_value": {
+          "value": {
+            "code": 200,
+            "message": "ok",
+            "data": {
+              "format_id": "amvision.slot-classification-summary.v1",
+              "count": 24,
+              "expected_count": 24,
+              "expected_count_matched": true,
+              "target_state": "empty",
+              "tray_state": "empty",
+              "state": "ok",
+              "passed": true,
+              "empty_count": 24,
+              "full_count": 0,
+              "abnormal_count": 0,
+              "unknown_count": 0,
+              "low_score_count": 0,
+              "all_empty": true,
+              "all_full": false,
+              "has_abnormal": false,
+              "problem_count": 0,
+              "problem_items": [],
+              "rules": {
+                "empty_labels": [
+                  "slot_empty"
+                ],
+                "full_labels": [
+                  "slot_barcode_surface_full"
+                ],
+                "abnormal_labels": [
+                  "slot_barcode_surface_abnormal",
+                  "slot_pcb_surface_abnormal",
+                  "slot_pcb_surface_full"
+                ],
+                "min_score": 0.0,
+                "include_items": false,
+                "include_raw_categories": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "mixed-runtime": {
+      "passed": false,
+      "error": "Amvar.Vision.AMVisionApiException: Workflow Runtime 当前正在执行其他请求 (POST api/v1/workflows/app-runtimes/workflow-runtime-1691960999904278a9bad29cee6487aa/invoke/upload?response_mode=app-result, HTTP 409 Conflict)\r\n   在 Amvar.Vision.AMVisionApiResponse.EnsureSuccessStatusCode() 位置 W:\\workspace\\codex\\python\\amvision\\sdks\\dotnet\\src\\Amvar.Vision\\Http\\AMVisionApiResponse.cs:行号 96\r\n   在 Amvar.Vision.WorkflowAppResultResponse.FromApiResponse(AMVisionApiResponse response) 位置 W:\\workspace\\codex\\python\\amvision\\sdks\\dotnet\\src\\Amvar.Vision\\Http\\Responses\\WorkflowAppResultResponse.cs:行号 128\r\n   在 Amvar.Vision.AMVisionClient.<InvokeWorkflowAppRuntimeUploadAppResultResponseAsync>d__116.MoveNext() 位置 W:\\workspace\\codex\\python\\amvision\\sdks\\dotnet\\src\\Amvar.Vision\\Http\\AMVisionClient.Runs.cs:行号 338\r\n--- 引发异常的上一位置中堆栈跟踪的末尾 ---\r\n   在 System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw()\r\n   在 System.Runtime.CompilerServices.TaskAwaiter.HandleNonSuccessAndDebuggerNotification(Task task)\r\n   在 System.Runtime.CompilerServices.TaskAwaiter`1.GetResult()\r\n   在 Amvar.Vision.ContractTests.WorkflowCoexistenceProbe.Run(String[] args)",
+      "samples": [],
+      "measured_count": 0,
+      "p50_ms": null,
+      "max_ms": null,
+      "mean_ms": null,
+      "peak_working_set_bytes": null,
+      "managed_heap_bytes": null,
+      "business_result": null
+    },
+    "mixed-zeromq": {
+      "passed": true,
+      "error": null,
+      "samples": [
+        {
+          "index": 0,
+          "elapsed_ms": 3552.0094000000004,
+          "run_id": "workflow-run-16060a251abe463d97db70b043050d8a",
+          "started_at": null
+        },
+        {
+          "index": 1,
+          "elapsed_ms": 2767.6786,
+          "run_id": "workflow-run-28c5a523a57d4884891c432ce6f3a895",
+          "started_at": null
+        },
+        {
+          "index": 2,
+          "elapsed_ms": 2344.2829,
+          "run_id": "workflow-run-e2cb197266a0440584a4b55b59b9133c",
+          "started_at": null
+        },
+        {
+          "index": 3,
+          "elapsed_ms": 2214.176,
+          "run_id": "workflow-run-d4f127710a1a4153a068147a8cc571d8",
+          "started_at": null
+        },
+        {
+          "index": 4,
+          "elapsed_ms": 2587.3401000000003,
+          "run_id": "workflow-run-19e79ee71d164e1fbed67c8cf4b9ef7b",
+          "started_at": null
+        },
+        {
+          "index": 5,
+          "elapsed_ms": 2043.4813000000001,
+          "run_id": "workflow-run-b59ff2eb379948d0ae90e162e67b1134",
+          "started_at": null
+        },
+        {
+          "index": 6,
+          "elapsed_ms": 3082.4194,
+          "run_id": "workflow-run-3311c5718509430fa2daf59fad436418",
+          "started_at": null
+        },
+        {
+          "index": 7,
+          "elapsed_ms": 3411.4867000000004,
+          "run_id": "workflow-run-300f0fac423f4e7da01e856a2259059b",
+          "started_at": null
+        },
+        {
+          "index": 8,
+          "elapsed_ms": 2365.0172000000002,
+          "run_id": "workflow-run-36671ce59f2249cba246d99a3ab564c3",
+          "started_at": null
+        },
+        {
+          "index": 9,
+          "elapsed_ms": 2657.6696,
+          "run_id": "workflow-run-9a255132c43a4fa2bae1aeef2ab19497",
+          "started_at": null
+        },
+        {
+          "index": 10,
+          "elapsed_ms": 3561.3301,
+          "run_id": "workflow-run-f55702a5eb384d9f9c545942489b4983",
+          "started_at": null
+        },
+        {
+          "index": 11,
+          "elapsed_ms": 2105.1921,
+          "run_id": "workflow-run-6032106f3ccb4b62b673b0ed9c80bc25",
+          "started_at": null
+        }
+      ],
+      "measured_count": 12,
+      "p50_ms": 2622.5048500000003,
+      "max_ms": 3561.3301,
+      "mean_ms": 2724.3402833333334,
+      "peak_working_set_bytes": 335892480,
+      "managed_heap_bytes": 121788232,
+      "business_result": {
+        "core_logic_payload_to_value_2_value": {
+          "value": {
+            "code": 200,
+            "message": "ok",
+            "data": {
+              "format_id": "amvision.slot-classification-summary.v1",
+              "count": 24,
+              "expected_count": 24,
+              "expected_count_matched": true,
+              "target_state": "empty",
+              "tray_state": "empty",
+              "state": "ok",
+              "passed": true,
+              "empty_count": 24,
+              "full_count": 0,
+              "abnormal_count": 0,
+              "unknown_count": 0,
+              "low_score_count": 0,
+              "all_empty": true,
+              "all_full": false,
+              "has_abnormal": false,
+              "problem_count": 0,
+              "problem_items": [],
+              "rules": {
+                "empty_labels": [
+                  "slot_empty"
+                ],
+                "full_labels": [
+                  "slot_barcode_surface_full"
+                ],
+                "abnormal_labels": [
+                  "slot_barcode_surface_abnormal",
+                  "slot_pcb_surface_abnormal",
+                  "slot_pcb_surface_full"
+                ],
+                "min_score": 0.0,
+                "include_items": false,
+                "include_raw_categories": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "recovery-zeromq": {
+      "passed": true,
+      "error": null,
+      "samples": [
+        {
+          "index": 0,
+          "elapsed_ms": 2179.4955,
+          "run_id": "workflow-run-2e82f9a6edca49f08d9a9ac58d1d617a",
+          "started_at": null
+        },
+        {
+          "index": 1,
+          "elapsed_ms": 2265.3944,
+          "run_id": "workflow-run-97cd5d4dfbc64212bb236e12c68bb4d7",
+          "started_at": null
+        },
+        {
+          "index": 2,
+          "elapsed_ms": 1756.3326000000002,
+          "run_id": "workflow-run-f99de8b7315b4b269f10515815f6dece",
+          "started_at": null
+        },
+        {
+          "index": 3,
+          "elapsed_ms": 1829.2317,
+          "run_id": "workflow-run-ee38973bbb95404fb0e9541fbb181b3a",
+          "started_at": null
+        },
+        {
+          "index": 4,
+          "elapsed_ms": 1861.6471000000001,
+          "run_id": "workflow-run-359359b5b24f40b6b76c44ba6b56de52",
+          "started_at": null
+        },
+        {
+          "index": 5,
+          "elapsed_ms": 1858.7964000000002,
+          "run_id": "workflow-run-e3fbf86bb2874435a2e131ac2a2f9ec4",
+          "started_at": null
+        }
+      ],
+      "measured_count": 6,
+      "p50_ms": 1860.2217500000002,
+      "max_ms": 2265.3944,
+      "mean_ms": 1958.48295,
+      "peak_working_set_bytes": 335753216,
+      "managed_heap_bytes": 121826600,
+      "business_result": {
+        "core_logic_payload_to_value_2_value": {
+          "value": {
+            "code": 200,
+            "message": "ok",
+            "data": {
+              "format_id": "amvision.slot-classification-summary.v1",
+              "count": 24,
+              "expected_count": 24,
+              "expected_count_matched": true,
+              "target_state": "empty",
+              "tray_state": "empty",
+              "state": "ok",
+              "passed": true,
+              "empty_count": 24,
+              "full_count": 0,
+              "abnormal_count": 0,
+              "unknown_count": 0,
+              "low_score_count": 0,
+              "all_empty": true,
+              "all_full": false,
+              "has_abnormal": false,
+              "problem_count": 0,
+              "problem_items": [],
+              "rules": {
+                "empty_labels": [
+                  "slot_empty"
+                ],
+                "full_labels": [
+                  "slot_barcode_surface_full"
+                ],
+                "abnormal_labels": [
+                  "slot_barcode_surface_abnormal",
+                  "slot_pcb_surface_abnormal",
+                  "slot_pcb_surface_full"
+                ],
+                "min_score": 0.0,
+                "include_items": false,
+                "include_raw_categories": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "raw-baseline": {
+      "passed": true,
+      "error": null,
+      "samples": [
+        {
+          "index": -1,
+          "elapsed_ms": 1566.3517000000002,
+          "run_id": "workflow-run-fcf36eddbc9846b5a0fa2b083b3c1af5",
+          "started_at": "2026-09-10T02:10:44.3270144+00:00"
+        },
+        {
+          "index": 0,
+          "elapsed_ms": 1282.5896,
+          "run_id": "workflow-run-4dbfb2e02c1c499ab8415e399ae51104",
+          "started_at": "2026-09-10T02:10:45.9038618+00:00"
+        },
+        {
+          "index": 1,
+          "elapsed_ms": 1298.8897000000002,
+          "run_id": "workflow-run-2d1e7076dd2e473f8789434f4e73b20e",
+          "started_at": "2026-09-10T02:10:47.1861816+00:00"
+        },
+        {
+          "index": 2,
+          "elapsed_ms": 1294.4823000000001,
+          "run_id": "workflow-run-9724ccd66865490da4c7dabe0c2b9829",
+          "started_at": "2026-09-10T02:10:48.4850586+00:00"
+        },
+        {
+          "index": 3,
+          "elapsed_ms": 1383.8863000000001,
+          "run_id": "workflow-run-c6fa6440f2874e8abb076058dbcfe24f",
+          "started_at": "2026-09-10T02:10:49.7788807+00:00"
+        },
+        {
+          "index": 4,
+          "elapsed_ms": 1404.5351,
+          "run_id": "workflow-run-240a53b75e914982a9be9a1f41acac8f",
+          "started_at": "2026-09-10T02:10:51.1638984+00:00"
+        }
+      ],
+      "measured_count": 5,
+      "p50_ms": 1298.8897000000002,
+      "max_ms": 1404.5351,
+      "mean_ms": 1332.8766,
+      "peak_working_set_bytes": 335785984,
+      "managed_heap_bytes": 121704568,
+      "business_result": {
+        "core_logic_payload_to_value_2_value": {
+          "value": {
+            "code": 200,
+            "message": "ok",
+            "data": {
+              "format_id": "amvision.slot-classification-summary.v1",
+              "count": 24,
+              "expected_count": 24,
+              "expected_count_matched": true,
+              "target_state": "empty",
+              "tray_state": "empty",
+              "state": "ok",
+              "passed": true,
+              "empty_count": 24,
+              "full_count": 0,
+              "abnormal_count": 0,
+              "unknown_count": 0,
+              "low_score_count": 0,
+              "all_empty": true,
+              "all_full": false,
+              "has_abnormal": false,
+              "problem_count": 0,
+              "problem_items": [],
+              "rules": {
+                "empty_labels": [
+                  "slot_empty"
+                ],
+                "full_labels": [
+                  "slot_barcode_surface_full"
+                ],
+                "abnormal_labels": [
+                  "slot_barcode_surface_abnormal",
+                  "slot_pcb_surface_abnormal",
+                  "slot_pcb_surface_full"
+                ],
+                "min_score": 0.0,
+                "include_items": false,
+                "include_raw_categories": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "preview-runtime": {
+      "passed": true,
+      "error": null,
+      "samples": [
+        {
+          "index": 0,
+          "elapsed_ms": 3804.9889000000003,
+          "run_id": "workflow-run-5b5f0f8a8ec8400aa78bd9f2f7634929",
+          "started_at": "2026-09-10T02:10:52.8716964+00:00"
+        },
+        {
+          "index": 1,
+          "elapsed_ms": 6892.4114,
+          "run_id": "workflow-run-3228d2084cf24f70962803465b20f513",
+          "started_at": "2026-09-10T02:10:56.6867202+00:00"
+        },
+        {
+          "index": 2,
+          "elapsed_ms": 19572.7586,
+          "run_id": "workflow-run-d610103a9e744da19fcfca79bfb1cbf3",
+          "started_at": "2026-09-10T02:11:03.5793009+00:00"
+        },
+        {
+          "index": 3,
+          "elapsed_ms": 11271.3641,
+          "run_id": "workflow-run-987469dbc0564708abefa09a88376149",
+          "started_at": "2026-09-10T02:11:23.1529806+00:00"
+        },
+        {
+          "index": 4,
+          "elapsed_ms": 9322.8729,
+          "run_id": "workflow-run-eb2671cd7815447888888b97c6df7e33",
+          "started_at": "2026-09-10T02:11:34.4236788+00:00"
+        }
+      ],
+      "measured_count": 5,
+      "p50_ms": 9322.8729,
+      "max_ms": 19572.7586,
+      "mean_ms": 10172.87918,
+      "peak_working_set_bytes": 101613568,
+      "managed_heap_bytes": 63378568,
+      "business_result": {
+        "core_logic_payload_to_value_2_value": {
+          "value": {
+            "code": 200,
+            "message": "ok",
+            "data": {
+              "format_id": "amvision.slot-classification-summary.v1",
+              "count": 24,
+              "expected_count": 24,
+              "expected_count_matched": true,
+              "target_state": "empty",
+              "tray_state": "empty",
+              "state": "ok",
+              "passed": true,
+              "empty_count": 24,
+              "full_count": 0,
+              "abnormal_count": 0,
+              "unknown_count": 0,
+              "low_score_count": 0,
+              "all_empty": true,
+              "all_full": false,
+              "has_abnormal": false,
+              "problem_count": 0,
+              "problem_items": [],
+              "rules": {
+                "empty_labels": [
+                  "slot_empty"
+                ],
+                "full_labels": [
+                  "slot_barcode_surface_full"
+                ],
+                "abnormal_labels": [
+                  "slot_barcode_surface_abnormal",
+                  "slot_pcb_surface_abnormal",
+                  "slot_pcb_surface_full"
+                ],
+                "min_score": 0.0,
+                "include_items": false,
+                "include_raw_categories": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "raw-mixed": {
+      "passed": true,
+      "error": null,
+      "samples": [
+        {
+          "index": 0,
+          "elapsed_ms": 7184.1292,
+          "run_id": "workflow-run-0518af06f2354d6a8650fefc97dd0025",
+          "started_at": "2026-09-10T02:11:44.3827823+00:00"
+        },
+        {
+          "index": 1,
+          "elapsed_ms": 4235.5077,
+          "run_id": "workflow-run-a96a438b6b32498b958bfdb908f4a66c",
+          "started_at": "2026-09-10T02:11:51.5924111+00:00"
+        },
+        {
+          "index": 2,
+          "elapsed_ms": 4817.2405,
+          "run_id": "workflow-run-982cd9b6c30b4b4b95ef18980c9ad447",
+          "started_at": "2026-09-10T02:11:55.8293991+00:00"
+        },
+        {
+          "index": 3,
+          "elapsed_ms": 7586.7082,
+          "run_id": "workflow-run-889cee7dadb64847b3edbbbbaadf142d",
+          "started_at": "2026-09-10T02:12:00.6463575+00:00"
+        },
+        {
+          "index": 4,
+          "elapsed_ms": 5870.8403,
+          "run_id": "workflow-run-457d8f54d86c457b933c5bab73ffba8a",
+          "started_at": "2026-09-10T02:12:08.2334139+00:00"
+        },
+        {
+          "index": 5,
+          "elapsed_ms": 5062.135200000001,
+          "run_id": "workflow-run-28591baa4c42423788e690edee1c0a6f",
+          "started_at": "2026-09-10T02:12:14.1040553+00:00"
+        }
+      ],
+      "measured_count": 6,
+      "p50_ms": 5466.48775,
+      "max_ms": 7586.7082,
+      "mean_ms": 5792.760183333334,
+      "peak_working_set_bytes": 335843328,
+      "managed_heap_bytes": 121896136,
+      "business_result": {
+        "core_logic_payload_to_value_2_value": {
+          "value": {
+            "code": 200,
+            "message": "ok",
+            "data": {
+              "format_id": "amvision.slot-classification-summary.v1",
+              "count": 24,
+              "expected_count": 24,
+              "expected_count_matched": true,
+              "target_state": "empty",
+              "tray_state": "empty",
+              "state": "ok",
+              "passed": true,
+              "empty_count": 24,
+              "full_count": 0,
+              "abnormal_count": 0,
+              "unknown_count": 0,
+              "low_score_count": 0,
+              "all_empty": true,
+              "all_full": false,
+              "has_abnormal": false,
+              "problem_count": 0,
+              "problem_items": [],
+              "rules": {
+                "empty_labels": [
+                  "slot_empty"
+                ],
+                "full_labels": [
+                  "slot_barcode_surface_full"
+                ],
+                "abnormal_labels": [
+                  "slot_barcode_surface_abnormal",
+                  "slot_pcb_surface_abnormal",
+                  "slot_pcb_surface_full"
+                ],
+                "min_score": 0.0,
+                "include_items": false,
+                "include_raw_categories": false
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "previews": {
+    "http-preview-0": {
+      "passed": true,
+      "terminal": {
+        "status": "succeeded",
+        "outputs": {
+          "core_logic_payload_to_value_2_value": {
+            "value": {
+              "code": 200,
+              "message": "ok",
+              "data": {
+                "format_id": "amvision.slot-classification-summary.v1",
+                "count": 24,
+                "expected_count": 24,
+                "expected_count_matched": true,
+                "target_state": "empty",
+                "tray_state": "empty",
+                "state": "ok",
+                "passed": true,
+                "empty_count": 24,
+                "full_count": 0,
+                "abnormal_count": 0,
+                "unknown_count": 0,
+                "low_score_count": 0,
+                "all_empty": true,
+                "all_full": false,
+                "has_abnormal": false,
+                "problem_count": 0,
+                "problem_items": [],
+                "rules": {
+                  "empty_labels": [
+                    "slot_empty"
+                  ],
+                  "full_labels": [
+                    "slot_barcode_surface_full"
+                  ],
+                  "abnormal_labels": [
+                    "slot_barcode_surface_abnormal",
+                    "slot_pcb_surface_abnormal",
+                    "slot_pcb_surface_full"
+                  ],
+                  "min_score": 0.0,
+                  "include_items": false,
+                  "include_raw_categories": false
+                }
+              }
+            }
+          }
+        },
+        "delivery_state": "pending",
+        "timings": {
+          "prepare_ms": 234.72450001281686,
+          "graph_ms": 2013.2785000023432
+        }
+      },
+      "run_id": "1a860f0bee13404b8d97da406faf5716",
+      "session_id": "d4f1e548cbde4b97b0f72d5857f02556",
+      "input_sha256": "4218cf9210770b37e3e0079f7c6fccbb3d7acb4e937332cb51bfeb6d2d050fb5",
+      "snapshot_sha256": "70d047f1cc0b7a7c7bff5d045ba1e88c9d823182199dcdd91d3aa85778fdde31",
+      "finished_seconds": 4.063,
+      "all_received_decoded_seconds": 5.5939999999827705,
+      "released_resources": 40,
+      "session_released": true,
+      "errors": []
+    },
+    "http-preview-1": {
+      "passed": true,
+      "terminal": {
+        "status": "succeeded",
+        "outputs": {
+          "core_logic_payload_to_value_2_value": {
+            "value": {
+              "code": 200,
+              "message": "ok",
+              "data": {
+                "format_id": "amvision.slot-classification-summary.v1",
+                "count": 24,
+                "expected_count": 24,
+                "expected_count_matched": true,
+                "target_state": "empty",
+                "tray_state": "empty",
+                "state": "ok",
+                "passed": true,
+                "empty_count": 24,
+                "full_count": 0,
+                "abnormal_count": 0,
+                "unknown_count": 0,
+                "low_score_count": 0,
+                "all_empty": true,
+                "all_full": false,
+                "has_abnormal": false,
+                "problem_count": 0,
+                "problem_items": [],
+                "rules": {
+                  "empty_labels": [
+                    "slot_empty"
+                  ],
+                  "full_labels": [
+                    "slot_barcode_surface_full"
+                  ],
+                  "abnormal_labels": [
+                    "slot_barcode_surface_abnormal",
+                    "slot_pcb_surface_abnormal",
+                    "slot_pcb_surface_full"
+                  ],
+                  "min_score": 0.0,
+                  "include_items": false,
+                  "include_raw_categories": false
+                }
+              }
+            }
+          }
+        },
+        "delivery_state": "pending",
+        "timings": {
+          "prepare_ms": 233.21500001475215,
+          "graph_ms": 2436.0373999807052
+        }
+      },
+      "run_id": "8366d193b3644fdea83999b844068245",
+      "session_id": "571ddce851ff43e6ba77f834902bf05a",
+      "input_sha256": "4218cf9210770b37e3e0079f7c6fccbb3d7acb4e937332cb51bfeb6d2d050fb5",
+      "snapshot_sha256": "70d047f1cc0b7a7c7bff5d045ba1e88c9d823182199dcdd91d3aa85778fdde31",
+      "finished_seconds": 5.141,
+      "all_received_decoded_seconds": 10.015999999974156,
+      "released_resources": 40,
+      "session_released": true,
+      "errors": []
+    },
+    "mixed-preview-0": {
+      "passed": true,
+      "terminal": {
+        "status": "succeeded",
+        "outputs": {
+          "core_logic_payload_to_value_2_value": {
+            "value": {
+              "code": 200,
+              "message": "ok",
+              "data": {
+                "format_id": "amvision.slot-classification-summary.v1",
+                "count": 24,
+                "expected_count": 24,
+                "expected_count_matched": true,
+                "target_state": "empty",
+                "tray_state": "empty",
+                "state": "ok",
+                "passed": true,
+                "empty_count": 24,
+                "full_count": 0,
+                "abnormal_count": 0,
+                "unknown_count": 0,
+                "low_score_count": 0,
+                "all_empty": true,
+                "all_full": false,
+                "has_abnormal": false,
+                "problem_count": 0,
+                "problem_items": [],
+                "rules": {
+                  "empty_labels": [
+                    "slot_empty"
+                  ],
+                  "full_labels": [
+                    "slot_barcode_surface_full"
+                  ],
+                  "abnormal_labels": [
+                    "slot_barcode_surface_abnormal",
+                    "slot_pcb_surface_abnormal",
+                    "slot_pcb_surface_full"
+                  ],
+                  "min_score": 0.0,
+                  "include_items": false,
+                  "include_raw_categories": false
+                }
+              }
+            }
+          }
+        },
+        "delivery_state": "pending",
+        "timings": {
+          "prepare_ms": 305.5580999935046,
+          "graph_ms": 4135.899100016104
+        }
+      },
+      "run_id": "dce78fc9ba114ce7bb8bfacb6e41c349",
+      "session_id": "aea7f07fca244463a8c2820e58f7fe91",
+      "input_sha256": "4218cf9210770b37e3e0079f7c6fccbb3d7acb4e937332cb51bfeb6d2d050fb5",
+      "snapshot_sha256": "70d047f1cc0b7a7c7bff5d045ba1e88c9d823182199dcdd91d3aa85778fdde31",
+      "finished_seconds": 6.61,
+      "all_received_decoded_seconds": 7.407000000006519,
+      "released_resources": 40,
+      "session_released": true,
+      "errors": []
+    },
+    "mixed-preview-1": {
+      "passed": true,
+      "terminal": {
+        "status": "succeeded",
+        "outputs": {
+          "core_logic_payload_to_value_2_value": {
+            "value": {
+              "code": 200,
+              "message": "ok",
+              "data": {
+                "format_id": "amvision.slot-classification-summary.v1",
+                "count": 24,
+                "expected_count": 24,
+                "expected_count_matched": true,
+                "target_state": "empty",
+                "tray_state": "empty",
+                "state": "ok",
+                "passed": true,
+                "empty_count": 24,
+                "full_count": 0,
+                "abnormal_count": 0,
+                "unknown_count": 0,
+                "low_score_count": 0,
+                "all_empty": true,
+                "all_full": false,
+                "has_abnormal": false,
+                "problem_count": 0,
+                "problem_items": [],
+                "rules": {
+                  "empty_labels": [
+                    "slot_empty"
+                  ],
+                  "full_labels": [
+                    "slot_barcode_surface_full"
+                  ],
+                  "abnormal_labels": [
+                    "slot_barcode_surface_abnormal",
+                    "slot_pcb_surface_abnormal",
+                    "slot_pcb_surface_full"
+                  ],
+                  "min_score": 0.0,
+                  "include_items": false,
+                  "include_raw_categories": false
+                }
+              }
+            }
+          }
+        },
+        "delivery_state": "pending",
+        "timings": {
+          "prepare_ms": 260.8710000058636,
+          "graph_ms": 3062.680500006536
+        }
+      },
+      "run_id": "c7e31b80006e4f39b7c89d9625623823",
+      "session_id": "008ad4144e7249e3a6fc24b7b141351a",
+      "input_sha256": "4218cf9210770b37e3e0079f7c6fccbb3d7acb4e937332cb51bfeb6d2d050fb5",
+      "snapshot_sha256": "70d047f1cc0b7a7c7bff5d045ba1e88c9d823182199dcdd91d3aa85778fdde31",
+      "finished_seconds": 4.578,
+      "all_received_decoded_seconds": 6.078000000008615,
+      "released_resources": 40,
+      "session_released": true,
+      "errors": []
+    },
+    "mixed-preview-2": {
+      "passed": true,
+      "terminal": {
+        "status": "succeeded",
+        "outputs": {
+          "core_logic_payload_to_value_2_value": {
+            "value": {
+              "code": 200,
+              "message": "ok",
+              "data": {
+                "format_id": "amvision.slot-classification-summary.v1",
+                "count": 24,
+                "expected_count": 24,
+                "expected_count_matched": true,
+                "target_state": "empty",
+                "tray_state": "empty",
+                "state": "ok",
+                "passed": true,
+                "empty_count": 24,
+                "full_count": 0,
+                "abnormal_count": 0,
+                "unknown_count": 0,
+                "low_score_count": 0,
+                "all_empty": true,
+                "all_full": false,
+                "has_abnormal": false,
+                "problem_count": 0,
+                "problem_items": [],
+                "rules": {
+                  "empty_labels": [
+                    "slot_empty"
+                  ],
+                  "full_labels": [
+                    "slot_barcode_surface_full"
+                  ],
+                  "abnormal_labels": [
+                    "slot_barcode_surface_abnormal",
+                    "slot_pcb_surface_abnormal",
+                    "slot_pcb_surface_full"
+                  ],
+                  "min_score": 0.0,
+                  "include_items": false,
+                  "include_raw_categories": false
+                }
+              }
+            }
+          }
+        },
+        "delivery_state": "pending",
+        "timings": {
+          "prepare_ms": 258.4666000038851,
+          "graph_ms": 4096.777600003406
+        }
+      },
+      "run_id": "05e2465fec7d403a98b6abc72c1d2887",
+      "session_id": "9acb5ab732a14d27b7682468ea27ba4e",
+      "input_sha256": "4218cf9210770b37e3e0079f7c6fccbb3d7acb4e937332cb51bfeb6d2d050fb5",
+      "snapshot_sha256": "70d047f1cc0b7a7c7bff5d045ba1e88c9d823182199dcdd91d3aa85778fdde31",
+      "finished_seconds": 5.765,
+      "all_received_decoded_seconds": 7.875,
+      "released_resources": 40,
+      "session_released": true,
+      "errors": []
+    },
+    "raw-preview-0": {
+      "passed": true,
+      "terminal": {
+        "status": "succeeded",
+        "outputs": {
+          "core_logic_payload_to_value_2_value": {
+            "value": {
+              "code": 200,
+              "message": "ok",
+              "data": {
+                "format_id": "amvision.slot-classification-summary.v1",
+                "count": 24,
+                "expected_count": 24,
+                "expected_count_matched": true,
+                "target_state": "empty",
+                "tray_state": "empty",
+                "state": "ok",
+                "passed": true,
+                "empty_count": 24,
+                "full_count": 0,
+                "abnormal_count": 0,
+                "unknown_count": 0,
+                "low_score_count": 0,
+                "all_empty": true,
+                "all_full": false,
+                "has_abnormal": false,
+                "problem_count": 0,
+                "problem_items": [],
+                "rules": {
+                  "empty_labels": [
+                    "slot_empty"
+                  ],
+                  "full_labels": [
+                    "slot_barcode_surface_full"
+                  ],
+                  "abnormal_labels": [
+                    "slot_barcode_surface_abnormal",
+                    "slot_pcb_surface_abnormal",
+                    "slot_pcb_surface_full"
+                  ],
+                  "min_score": 0.0,
+                  "include_items": false,
+                  "include_raw_categories": false
+                }
+              }
+            }
+          }
+        },
+        "delivery_state": "pending",
+        "timings": {
+          "prepare_ms": 427.0488999900408,
+          "graph_ms": 5661.676000017906
+        }
+      },
+      "run_id": "010b07fa8e9b499fa32ffbec9729c17e",
+      "session_id": "660e6216cb5d4026b24220d238bd7133",
+      "input_sha256": "4218cf9210770b37e3e0079f7c6fccbb3d7acb4e937332cb51bfeb6d2d050fb5",
+      "snapshot_sha256": "70d047f1cc0b7a7c7bff5d045ba1e88c9d823182199dcdd91d3aa85778fdde31",
+      "finished_seconds": 10.141,
+      "all_received_decoded_seconds": 12.84399999998277,
+      "released_resources": 40,
+      "session_released": true,
+      "errors": []
+    },
+    "raw-preview-1": {
+      "passed": null,
+      "terminal": {
+        "status": "failed",
+        "error": {
+          "message": "当前 deployment 推理实例已满载",
+          "type": "ServiceError",
+          "details": "{'deployment_instance_id': 'deployment-instance-637c2ea77b124e00ae3256813a5d880d', 'instance_count': 2, 'node_id': 'core_model_classification_batch_1', 'node_type_id': 'core.model.classification-batch', 'node_display_name': 'Classification Batch', 'runtime_kind': 'worker-task', 'execution_index': 3, 'error_type': 'ServiceError', 'error_message': '当前 deployment 推理实例已满载', 'parallel_branch_index': 1, 'parallel_start_node_id': 'core_logic_parallel_start', 'parallel_end_node_id': 'core_logic_parallel_end'}",
+          "node_id": "core_model_classification_batch_1"
+        }
+      },
+      "run_id": "171af43cd64a42878f03f2c5c9fca415",
+      "session_id": "ed9bff556a9c48319dee287e3a5d0a09",
+      "input_sha256": "4218cf9210770b37e3e0079f7c6fccbb3d7acb4e937332cb51bfeb6d2d050fb5",
+      "snapshot_sha256": "70d047f1cc0b7a7c7bff5d045ba1e88c9d823182199dcdd91d3aa85778fdde31",
+      "finished_seconds": 10.64,
+      "all_received_decoded_seconds": null,
+      "released_resources": null,
+      "session_released": true,
+      "errors": []
+    }
+  },
+  "health": {
+    "load-before": {
+      "status": {
+        "process_id": 23584,
+        "state": "healthy",
+        "arena_id": "local-buffer-main",
+        "broker_epoch": "a9f33828bd284e1280bb94bf186eef26",
+        "lifecycle_state": "open",
+        "active_borrow_count": 0,
+        "close_blocked_count": 0,
+        "layout_version": 1,
+        "layout_fingerprint": "10e599c65d9b0c7588aa752bc03c9d3520e45ce0e7f48ea026d05f6288a06577",
+        "arena_total_bytes": 2147483648,
+        "general_total_bytes": 2147483648,
+        "huge_reserved_total_bytes": 0,
+        "general": {
+          "reserved_writing": 0,
+          "active": 0,
+          "frame_reserved": 0,
+          "revoking": 0,
+          "quarantined": 0,
+          "free": 2147483648
+        },
+        "huge_reserve": {
+          "reserved_writing": 0,
+          "active": 0,
+          "frame_reserved": 0,
+          "revoking": 0,
+          "quarantined": 0,
+          "free": 0
+        },
+        "free_capacity_bytes": 2147483648,
+        "allocated_capacity_bytes": 0,
+        "published_content_bytes": 0,
+        "rounding_waste_bytes": 0,
+        "frame_reserved_capacity_bytes": 0,
+        "revoking_capacity_bytes": 0,
+        "quarantined_capacity_bytes": 0,
+        "largest_general_free_block_bytes": 1073741824,
+        "general_external_fragmentation": 0.5,
+        "free_blocks_by_order": {
+          "20": 0,
+          "21": 0,
+          "22": 0,
+          "23": 0,
+          "24": 0,
+          "25": 0,
+          "26": 0,
+          "27": 0,
+          "28": 0,
+          "29": 0,
+          "30": 2
+        },
+        "allocation_failure_counts": {
+          "total_capacity": 0,
+          "contiguous_capacity": 0,
+          "maximum_allocation": 0,
+          "huge_reserve": 0,
+          "integrity": 0
+        },
+        "active_lease_count": 0,
+        "frame_channel_count": 0,
+        "stale_fence_count": 0,
+        "frame_channels": []
+      },
+      "router": {
+        "configured": true,
+        "response_router_running": true,
+        "active_client_channel_count": 9,
+        "pending_response_route_count": 0,
+        "active_forward_thread_count": 8,
+        "closed_channel_count": 626,
+        "closed_channel_count_rollover_count": 0,
+        "forward_error_count": 0,
+        "forward_error_count_rollover_count": 0,
+        "dropped_response_count": 0,
+        "dropped_response_count_rollover_count": 0,
+        "active_client_channel_ids": [
+          "broker-channel-06b42d3e25694eaea62ee9de7bdaaa56",
+          "broker-channel-1a2b524955844baba12f5c005ccb2160",
+          "broker-channel-2f473489b02142169df0c0aff6ac7402",
+          "broker-channel-30b2b1a0dc4a443c9d9196f5d40fecad",
+          "broker-channel-3b0fe976db8e465e9f6b7904beeebd8b",
+          "broker-channel-6e8a8d00e7cb400ca25ec1c87b3a32c0",
+          "broker-channel-ccfaaee1fc6d433b99c6b4743b3a1b1d",
+          "broker-channel-e06670704584421287b70a1d7c0b9aa8"
+        ],
+        "active_client_channel_overflow_count": 1,
+        "last_router_error": null
+      }
+    },
+    "load-after": {
+      "status": {
+        "process_id": 23584,
+        "state": "healthy",
+        "arena_id": "local-buffer-main",
+        "broker_epoch": "a9f33828bd284e1280bb94bf186eef26",
+        "lifecycle_state": "open",
+        "active_borrow_count": 0,
+        "close_blocked_count": 0,
+        "layout_version": 1,
+        "layout_fingerprint": "10e599c65d9b0c7588aa752bc03c9d3520e45ce0e7f48ea026d05f6288a06577",
+        "arena_total_bytes": 2147483648,
+        "general_total_bytes": 2147483648,
+        "huge_reserved_total_bytes": 0,
+        "general": {
+          "reserved_writing": 0,
+          "active": 0,
+          "frame_reserved": 0,
+          "revoking": 0,
+          "quarantined": 0,
+          "free": 2147483648
+        },
+        "huge_reserve": {
+          "reserved_writing": 0,
+          "active": 0,
+          "frame_reserved": 0,
+          "revoking": 0,
+          "quarantined": 0,
+          "free": 0
+        },
+        "free_capacity_bytes": 2147483648,
+        "allocated_capacity_bytes": 0,
+        "published_content_bytes": 0,
+        "rounding_waste_bytes": 0,
+        "frame_reserved_capacity_bytes": 0,
+        "revoking_capacity_bytes": 0,
+        "quarantined_capacity_bytes": 0,
+        "largest_general_free_block_bytes": 1073741824,
+        "general_external_fragmentation": 0.5,
+        "free_blocks_by_order": {
+          "20": 0,
+          "21": 0,
+          "22": 0,
+          "23": 0,
+          "24": 0,
+          "25": 0,
+          "26": 0,
+          "27": 0,
+          "28": 0,
+          "29": 0,
+          "30": 2
+        },
+        "allocation_failure_counts": {
+          "total_capacity": 0,
+          "contiguous_capacity": 0,
+          "maximum_allocation": 0,
+          "huge_reserve": 0,
+          "integrity": 0
+        },
+        "active_lease_count": 0,
+        "frame_channel_count": 0,
+        "stale_fence_count": 0,
+        "frame_channels": []
+      },
+      "router": {
+        "configured": true,
+        "response_router_running": true,
+        "active_client_channel_count": 9,
+        "pending_response_route_count": 0,
+        "active_forward_thread_count": 8,
+        "closed_channel_count": 740,
+        "closed_channel_count_rollover_count": 0,
+        "forward_error_count": 0,
+        "forward_error_count_rollover_count": 0,
+        "dropped_response_count": 0,
+        "dropped_response_count_rollover_count": 0,
+        "active_client_channel_ids": [
+          "broker-channel-06b42d3e25694eaea62ee9de7bdaaa56",
+          "broker-channel-1a2b524955844baba12f5c005ccb2160",
+          "broker-channel-2f473489b02142169df0c0aff6ac7402",
+          "broker-channel-30b2b1a0dc4a443c9d9196f5d40fecad",
+          "broker-channel-3b0fe976db8e465e9f6b7904beeebd8b",
+          "broker-channel-6e8a8d00e7cb400ca25ec1c87b3a32c0",
+          "broker-channel-ccfaaee1fc6d433b99c6b4743b3a1b1d",
+          "broker-channel-e06670704584421287b70a1d7c0b9aa8"
+        ],
+        "active_client_channel_overflow_count": 1,
+        "last_router_error": null
+      }
+    },
+    "final-health": {
+      "status": {
+        "process_id": 23584,
+        "state": "healthy",
+        "arena_id": "local-buffer-main",
+        "broker_epoch": "a9f33828bd284e1280bb94bf186eef26",
+        "lifecycle_state": "open",
+        "active_borrow_count": 0,
+        "close_blocked_count": 0,
+        "layout_version": 1,
+        "layout_fingerprint": "10e599c65d9b0c7588aa752bc03c9d3520e45ce0e7f48ea026d05f6288a06577",
+        "arena_total_bytes": 2147483648,
+        "general_total_bytes": 2147483648,
+        "huge_reserved_total_bytes": 0,
+        "general": {
+          "reserved_writing": 0,
+          "active": 0,
+          "frame_reserved": 0,
+          "revoking": 0,
+          "quarantined": 0,
+          "free": 2147483648
+        },
+        "huge_reserve": {
+          "reserved_writing": 0,
+          "active": 0,
+          "frame_reserved": 0,
+          "revoking": 0,
+          "quarantined": 0,
+          "free": 0
+        },
+        "free_capacity_bytes": 2147483648,
+        "allocated_capacity_bytes": 0,
+        "published_content_bytes": 0,
+        "rounding_waste_bytes": 0,
+        "frame_reserved_capacity_bytes": 0,
+        "revoking_capacity_bytes": 0,
+        "quarantined_capacity_bytes": 0,
+        "largest_general_free_block_bytes": 1073741824,
+        "general_external_fragmentation": 0.5,
+        "free_blocks_by_order": {
+          "20": 0,
+          "21": 0,
+          "22": 0,
+          "23": 0,
+          "24": 0,
+          "25": 0,
+          "26": 0,
+          "27": 0,
+          "28": 0,
+          "29": 0,
+          "30": 2
+        },
+        "allocation_failure_counts": {
+          "total_capacity": 0,
+          "contiguous_capacity": 0,
+          "maximum_allocation": 0,
+          "huge_reserve": 0,
+          "integrity": 0
+        },
+        "active_lease_count": 0,
+        "frame_channel_count": 0,
+        "stale_fence_count": 0,
+        "frame_channels": []
+      },
+      "router": {
+        "configured": true,
+        "response_router_running": true,
+        "active_client_channel_count": 9,
+        "pending_response_route_count": 0,
+        "active_forward_thread_count": 8,
+        "closed_channel_count": 854,
+        "closed_channel_count_rollover_count": 0,
+        "forward_error_count": 0,
+        "forward_error_count_rollover_count": 0,
+        "dropped_response_count": 0,
+        "dropped_response_count_rollover_count": 0,
+        "active_client_channel_ids": [
+          "broker-channel-06b42d3e25694eaea62ee9de7bdaaa56",
+          "broker-channel-1a2b524955844baba12f5c005ccb2160",
+          "broker-channel-2f473489b02142169df0c0aff6ac7402",
+          "broker-channel-30b2b1a0dc4a443c9d9196f5d40fecad",
+          "broker-channel-3b0fe976db8e465e9f6b7904beeebd8b",
+          "broker-channel-6e8a8d00e7cb400ca25ec1c87b3a32c0",
+          "broker-channel-ccfaaee1fc6d433b99c6b4743b3a1b1d",
+          "broker-channel-e06670704584421287b70a1d7c0b9aa8"
+        ],
+        "active_client_channel_overflow_count": 1,
+        "last_router_error": null
+      }
+    }
+  },
+  "monitor": {
+    "count": 75,
+    "cpu_percent_p50": 70.6,
+    "cpu_percent_max": 100.0,
+    "local_buffer_peak_sampled_allocated_bytes": 92274688,
+    "errors": 0
+  },
+  "later_host_pressure": {
+    "cpu_percent": 100,
+    "available_memory_bytes": 5891981312,
+    "memory_percent": 86.1,
+    "observed_background_processes": [
+      "explorer.exe",
+      "dotnet.exe",
+      "Microsoft.VisualStudio.Code.ServiceHost.exe",
+      "Microsoft.CodeAnalysis.LanguageServer.exe",
+      "MsMpEng.exe"
+    ]
+  },
+  "validation": {
+    "targeted_pytest_passed": 28,
+    "dotnet_contracts": "passed",
+    "sdk_release_build": "passed",
+    "console_release_build": "passed",
+    "full_console_run": false,
+    "long_pytest_suite": "interrupted; not counted as passed"
+  },
+  "contract_assessment": {
+    "status": "consistent_with_current_contract_within_tested_scope",
+    "deployment_capacity_rejection": "expected; two instances permit at most two simultaneous inference calls",
+    "runtime_busy_rejection": "expected; existing single Runtime execution ownership",
+    "resource_lifecycle": "no leak, stale allocation or unreleased ownership observed in this test",
+    "implementation_action": "retain current behavior; no queue, waiting, automatic retry or priority scheduling",
+    "correction": "Previous classification of deployment saturation as a defect and acceptance blocker is withdrawn. Original per-request outcomes and timings are unchanged."
+  },
+  "limitations": [
+    "Short sample set, no statistically meaningful P99 or long-term acceptance.",
+    "No isolated old-commit performance comparison.",
+    "Later host saturation confounds preview-only latency attribution.",
+    "Same real empty-tray image; not full accuracy acceptance.",
+    "No enabled pure local-shared-memory TriggerSource in current environment.",
+    "Only main 3570 Runtime exercised; remaining runtimes read-only audited.",
+    "Preview and published Runtime use their existing respective snapshots."
+  ]
+}
