@@ -21,7 +21,7 @@ npm ci
 Set-Location ../..
 ```
 
-Python 要求 3.12+，Node.js 要求以 `frontend/web-ui/package.json` 为准。
+当前 Windows 发行及验证使用 Python 3.12.x；HTTP accept 适配会拒绝未经验证的其他 Python 主次版本。Node.js 要求以 `frontend/web-ui/package.json` 为准。
 `assemble-release` 会执行正式 `npm run build`，不需要预先手工生成 `dist/`；这里的 `npm ci` 只负责按 lockfile 准备构建依赖。
 
 ## 2. 组装发行目录
@@ -49,11 +49,11 @@ python -m backend.maintenance.main assemble-release --profile-id full-windows-x6
 
 组装会先构建前端，再复制当前 backend、config 模板、Node Pack、前端 `dist`、launcher、manifest 和对应 runtime 工具。`release/<profile-id>/app/` 是生成结果，不能直接修改。前端构建失败时不会进入本轮发行目录覆盖步骤。
 
-输出根包含 `amvar.launcher.exe`，启动器依赖位于 `launcher/`。`--force` 会保留既有 `python/` 后重新组装其他内容。首次生成只创建 Python 占位目录，不复制当前 conda 环境；仅组装成功不代表已经具备可运行的 Python 和模型依赖，必须继续完成以下准备和校验。
+输出根包含 `amvar.launcher.exe`，启动器依赖位于 `launcher/`。以上 `--force` 仅用于重建构建输出，保留既有 `python/` 和 `launcher/config/launcher.json`，其余内容重新组装，不用于原地更新已有业务数据的生产目录。首次生成只创建 Python 占位目录，不复制当前 conda 环境；仅组装成功不代表已经具备可运行的 Python 和模型依赖，必须继续完成以下准备和校验。
 
 ## 3. 准备 bundled Python
 
-把与 profile、Python 版本和依赖锁一致的 Windows Python 环境放到：
+把与 profile、依赖锁一致的 Windows x64 Python 3.12.x 环境放到：
 
 ```text
 release/<profile-id>/python/python.exe
@@ -101,6 +101,8 @@ NVIDIA 环境替换为对应目录。布局校验失败必须修正发行资产�
 
 默认监听地址为 `0.0.0.0`，默认端口为 `5600`。只有需要改变监听范围或端口时才传 `--host`、`--port`。
 
+full 脚本通过 service launcher 固定传入 `--ws-per-message-deflate false`，同时启用 Windows HTTP accept 修复所用的专用事件循环。无需给 `start-amvision-full.bat` 或桌面启动器追加这两个 Uvicorn 参数；full 脚本不提供它们的透传入口。生产不启用 `--reload`，API 保持单进程，Preview 和正式 Workflow 使用各自执行进程。已有发行包需要重新 assemble 才包含更新后的 launcher，单纯重启旧包不会更新脚本。
+
 发行前端的 API/WebSocket 地址由 `frontend/runtime-config.json` 独立配置，默认同样指向 `127.0.0.1:5600`。修改 Backend `--port` 不会隐式改写静态前端文件；使用其他端口时必须在组装前提供匹配的 runtime config。该边界避免启动过程修改发行内容，也避免浏览器误连到另一套实例。
 
 启动器按顺序：
@@ -108,17 +110,20 @@ NVIDIA 环境替换为对应目录。布局校验失败必须修正发行资产�
 1. Alembic `upgrade head`，SQLite schema 变化前创建一致性备份；
 2. backend-service 启动，独立 probe 确认主 LocalBufferBroker owner/layout 可用；
 3. inference daemon 恢复并预热 Deployment，通过完整 mmap ready/probe；
-4. backend-service 通过完整 health；
+4. backend-service 连续两次通过 liveness，就绪响应的进程身份与受管服务匹配；
 5. 六个 Worker Profile 启动并通过 heartbeat；
 6. 写入 `logs/full-stack/runtime-state.json`。
 
-任一关键步骤失败都会回收已经启动的组件并返回非零。根脚本保持前台运行；直接按 `Ctrl+C` 会按逆序停止进程树。
+任一关键步骤失败都会回收已经启动的组件并返回非零。启动完成后 full Supervisor 持续检查 HTTP liveness 和服务身份，确认故障后按现有恢复策略处理，不仅检查进程是否存活。根脚本保持前台运行；直接按 `Ctrl+C` 会按逆序停止进程树。
 
 ## 6. 验收
 
 ```powershell
+Invoke-RestMethod http://127.0.0.1:5600/api/v1/system/liveness
 Invoke-RestMethod http://127.0.0.1:5600/api/v1/system/health
 ```
+
+liveness 的 `phase` 应为 `ready`；health 中主 LocalBufferBroker 应健康。二者不代替模型推理和业务任务验收。
 
 同时核对：
 

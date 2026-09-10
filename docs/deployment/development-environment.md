@@ -13,14 +13,14 @@
 3. backend-worker development supervisor：激活一代源码开发 Worker Topology，并启动数据集导入、数据集导出、训练、转换、评估、异步推理六个 Worker Profile。
 4. Vue Vite：提供源码前端和 HMR。
 
-`uvicorn` 只负责第 2 项，不会启动 inference daemon、Worker Supervisor 或 Vite。只启动 Uvicorn 不是完整开发环境。
+backend-service launcher 启动的 `uvicorn` 只负责第 1 项，不会启动 inference daemon、Worker Supervisor 或 Vite。只启动 Uvicorn 不是完整开发环境。
 
 ## 前置条件
 
 - 从仓库根目录执行后端命令。
 - 已创建 `amvision` conda 环境，并按 `requirements.txt` 安装依赖。
 - 已在 `frontend/web-ui/` 执行 `npm ci`。
-- Python 版本为 3.12+；Node.js 版本满足 `frontend/web-ui/package.json` 的 `engines`。
+- Windows 当前使用 Python 3.12.x：HTTP accept 适配只验证并允许该主次版本；项目通用 Python 3.12+ 基线不表示 Windows HTTP 入口已支持更高版本。Node.js 版本满足 `frontend/web-ui/package.json` 的 `engines`。
 - `config/backend-service.json` 和 `config/backend-worker.json` 中的数据库、ObjectStore、Queue 与 runtime 路径可写。
 
 建议准备四个终端。每个运行 Python 的终端先执行：
@@ -51,8 +51,12 @@ python -m alembic -c backend/alembic.ini current
 
 ```powershell
 conda activate amvision
-python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 5600 --ws-per-message-deflate false --reload --reload-dir backend --reload-dir custom_nodes
+python runtimes/launchers/service/start_backend_service.py --app-root . --host 127.0.0.1 --port 5600 --reload
 ```
+
+此入口使用当前 conda Python，自动关闭 WebSocket `permessage-deflate`，并在 Windows 上选择 `backend.service.infrastructure.http.windows_event_loop:create_loop`，启用 WinError 64 accept 修复。`--reload` 自动限定监视 `backend/` 和 `custom_nodes/`。无需额外传压缩或 loop 参数，也不要配置多个 Uvicorn API worker；Preview 执行进程数由 `workflow_runtime.preview_worker_count` 管理。
+
+性能与稳定性验证使用同一命令去掉 `--reload`，其余进程仍按本文顺序启动。手工分终端启动不包含生产 full Supervisor 的持续 HTTP 探测和整栈恢复。
 
 backend lifespan 会先创建 LocalBuffer，再恢复现有 Workflow Runtime。恢复流程可能需要调用 inference daemon，因此此时不等待完整 HTTP health。另开临时终端只探测主 LocalBuffer：
 
@@ -83,13 +87,14 @@ conda activate amvision
 python -m backend.inference_daemon.main --probe
 ```
 
-退出码为 `0` 后，再验证 backend-service 完整 health：
+退出码为 `0` 后，再验证 backend-service HTTP 就绪和 LocalBuffer 健康状态：
 
 ```powershell
+Invoke-RestMethod http://127.0.0.1:5600/api/v1/system/liveness
 Invoke-RestMethod http://127.0.0.1:5600/api/v1/system/health
 ```
 
-daemon probe 同时验证 mailbox、主 LocalBuffer 依赖、首轮 Deployment 恢复以及全部实例预热结果，不再把仅能 ping 通误报为 ready。backend health 必须放在 daemon probe 后，避免包含模型节点的 Workflow Runtime startup 与 daemon 互相等待。
+daemon probe 同时验证 mailbox、主 LocalBuffer 依赖、首轮 Deployment 恢复以及全部实例预热结果，不再把仅能 ping 通误报为 ready。liveness 的 `phase` 应为 `ready`；它只证明 HTTP 接入就绪，health 中的 LocalBuffer 状态也不能替代 daemon probe。HTTP 检查放在 daemon probe 后，避免包含模型节点的 Workflow Runtime startup 与 daemon 互相等待。
 
 ### 5. 启动完整 backend-worker Topology
 
@@ -195,9 +200,9 @@ CPU 验收时替换 profile 目录。测试会启动并停止其自身创建的�
 | --- | --- |
 | Vue 页面 | Vite HMR；状态不一致时刷新页面 |
 | REST/API 普通代码 | Uvicorn reload |
-| backend-service bootstrap、Workflow Runtime、Trigger | 完整重启 backend-service |
+| backend-service bootstrap、Workflow Runtime、Trigger、Preview Worker、HTTP loop 或 WebSocket 启动参数 | 完整重启 backend-service；已有 Preview 会话和临时结果不跨服务重启恢复 |
 | Worker、训练、转换、评估、数据集任务 | 重启 Worker Supervisor |
-| inference daemon、Deployment、mmap、LocalBuffer | 停止 daemon，再停止 service；启动 service 并通过 health 后再启动 daemon 和 probe |
+| inference daemon、Deployment、mmap、LocalBuffer | 停止 daemon，再停止 service；启动 service，通过 `--probe-local-buffer` 后启动 daemon，通过 `--probe` 后再检查 HTTP liveness/health |
 | Alembic、配置、公共进程协议 | 停止全部进程，迁移后按本文顺序完整启动 |
 
 ## 快速局部调试边界
