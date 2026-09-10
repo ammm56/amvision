@@ -5,13 +5,16 @@ import { useWorkflowPreviewSession } from './useWorkflowPreviewSession'
 import { useSessionStore } from '@/app/stores/session.store'
 import type { WorkflowPreviewRunActionInput } from '../actions/useWorkflowEditorActions'
 
-const io = vi.hoisted(() => ({ options: null as any, create: vi.fn(), submit: vi.fn(), release: vi.fn(), cancel: vi.fn(), upload: vi.fn(), close: vi.fn(), revision: '', pendingResources: 0 }))
+const io = vi.hoisted(() => ({ options: null as any, create: vi.fn(), submit: vi.fn(), release: vi.fn(), cancel: vi.fn(), upload: vi.fn(), close: vi.fn(), revision: '', pendingResources: 0, snapshot: null as any, connectError: '' }))
 vi.mock('../services/workflow-preview-session.service', () => ({
   PREVIEW_FORMAT: 'amvision.workflow-preview-session.v1',
   createPreviewSession: io.create, submitPreviewSession: io.submit, releasePreviewSession: io.release, cancelPreviewSession: io.cancel,
   PreviewSessionConnection: class {
     constructor(public identity: any, options: any) { io.options = options }
-    async connect() { io.options.onEvent(event('session.snapshot', { watermark: 0, run: null, nodes: [], displays: [] }, 0)) }
+    async connect() {
+      if (io.connectError) { io.options.onConnection(false, io.connectError, true); throw new Error(io.connectError) }
+      io.options.onEvent(event('session.snapshot', io.snapshot ?? { watermark: 0, run: null, nodes: [], displays: [] }, 0))
+    }
     upload = io.upload
     close = io.close
     readBlob = vi.fn()
@@ -27,6 +30,8 @@ beforeEach(() => {
   setActivePinia(createPinia())
   vi.clearAllMocks()
   io.pendingResources = 0
+  io.snapshot = null
+  io.connectError = ''
   sessionStorage.clear()
   useSessionStore().currentUser = { principal_id: 'u' } as any
   io.create.mockResolvedValue(identity)
@@ -101,16 +106,45 @@ it('records full delivery only after current-run resources complete', async () =
   io.options.onEvent(event('run.finished', { status: 'succeeded', delivery_state: 'pending' }, 2))
   io.options.onEvent(event('run.outputs', { delivery_state: 'ready' }, 3))
   await flushPromises()
+  expect(sessionStorage.length).toBe(1)
   expect(session.lastPreviewRun.value?.timings?.client_total_ms).toBeUndefined()
   io.pendingResources = 0
   io.options.onResources()
   await flushPromises()
   expect(session.lastPreviewRun.value?.timings?.client_total_ms).toBeGreaterThanOrEqual(0)
+  expect(sessionStorage.length).toBe(0)
   const previousView = session.lastPreviewRun.value
   session.begin({ projectId: 'p', applicationId: 'a' })
   io.options.onResources()
   await flushPromises()
   // 上轮 Blob 的迟到回调不得把尚未上传的新运行标记为完整交付。
   expect(session.lastPreviewRun.value).toBe(previousView)
+  session.reset()
+})
+
+it('restores partial history once without treating released resources as execution errors', async () => {
+  const session = useWorkflowPreviewSession()
+  sessionStorage.setItem('amvision.preview-session.v1:["u","p","a"]', JSON.stringify(identity))
+  io.snapshot = { watermark: 0, run: { run_id: 'run', state: 'succeeded', delivery_state: 'ready' }, nodes: [], displays: [], values: [], expired_resources: 3 }
+  await session.restore('p', 'a')
+  await flushPromises()
+  expect(session.resultsExpired.value).toBe(true)
+  expect(session.displayError.value).toBeNull()
+  expect(session.queryError.value).toBeNull()
+  expect(sessionStorage.length).toBe(0)
+  session.begin({ projectId: 'p', applicationId: 'a' })
+  expect(session.resultsExpired.value).toBe(false)
+  session.reset()
+})
+
+it('removes an expired stored identity instead of retrying it after every reload', async () => {
+  const session = useWorkflowPreviewSession()
+  sessionStorage.setItem('amvision.preview-session.v1:["u","p","a"]', JSON.stringify(identity))
+  io.connectError = 'preview_session_expired'
+  await session.restore('p', 'a')
+  expect(session.queryError.value).toBeNull()
+  expect(session.resultsExpired.value).toBe(true)
+  expect(sessionStorage.length).toBe(0)
+  expect(session.previewing.value).toBe(false)
   session.reset()
 })

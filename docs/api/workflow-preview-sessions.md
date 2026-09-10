@@ -67,6 +67,8 @@ AMVP 使用网络字节序，32 字节头：`magic(4), version(1), kind(1), rese
 
 所有当前订阅者接管后，后端撤销该 Blob 的持有；现有 borrow pin 归零后才销毁映射。已断开的订阅者不永久阻止其他接收者释放。快照描述符的 `server_available=false` 表示服务端不再提供该内容，同页重连使用已有浏览器缓存；没有本地副本时明确不可用。浏览器完整 JSON 默认按 50 项本地分页，已删除服务端 `value.get/value.page` 旧读路径。
 
+页面仅为仍在执行或交付中的预览保留 sessionStorage 会话身份；完成交付后移除恢复身份，当前页面仍持有结果。硬刷新会清空页面 Blob，不能恢复已释放的临时图片。恢复活动会话时，客户端排除已释放且本地无副本的历史显示/大值，保留其他结果及节点进度，只显示一次历史结果释放说明；不重试下载，也不自动重跑业务。最终输出再次引用这些 Blob 时同样标记不可用。同页 WebSocket 重连仍复用完整缓存，真正的传输或业务失败继续报告错误。
+
 ## 边界与恢复
 
 - 默认每会话受管内存 512 MiB，全局 1 GiB；上传单文件 64 MiB，JSON 值 16 MiB，快照请求 8 MiB；容量不足明确失败，不落盘。
@@ -79,7 +81,7 @@ AMVP 使用网络字节序，32 字节头：`magic(4), version(1), kind(1), rese
 
 Preview 模型节点通过既有 PublishedInferenceGatewayClient、平台网关和 LocalBuffer 调用部署进程。Preview 不创建部署模型运行时池；显式 checkpoint/model-session 节点仍保留自身原有作用域。
 
-项目服务启动器默认 `--ws-per-message-deflate false`，减少本地大图上传及 JPEG 二次压缩开销。手工 Uvicorn 启动需使用同一参数并重启生效；站点可显式覆盖。此设置影响 HTTP 服务 WebSocket 扩展协商，不改变 REST、模型字节和 Runtime/Trigger IPC。
+项目服务启动器固定 `--ws-per-message-deflate false`，拒绝开启压缩。VS Code 调试、手工 Uvicorn 示例和实际服务探针均不启用压缩；手工启动需使用同一参数并重启生效。此设置影响 HTTP 服务 WebSocket 扩展协商，不改变 REST、模型字节和 Runtime/Trigger IPC。JPEG 属于页面图像编码，不是 WebSocket 传输压缩。
 
 ## 开发阶段替换与数据库升级
 

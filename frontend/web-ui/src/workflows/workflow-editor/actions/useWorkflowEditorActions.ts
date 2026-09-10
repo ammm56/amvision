@@ -123,6 +123,7 @@ export function useWorkflowEditorActions() {
     previewQueryError: previewSession.queryError,
     previewDisplayError: previewSession.displayError,
     previewDisplayState: previewSession.displayState,
+    previewResultsExpired: previewSession.resultsExpired,
     setPreviewFeedback: previewSession.setFeedback,
     errorMessage,
     statusMessage,

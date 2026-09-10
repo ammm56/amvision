@@ -21,6 +21,7 @@ export function useWorkflowPreviewSession() {
   const previewCancelling = ref(false)
   const queryError = ref<string | null>(null)
   const displayError = ref<string | null>(null)
+  const resultsExpired = ref(false)
   const displayState = ref<'idle' | 'loading' | 'ready' | 'failed'>('idle')
   let generation = 0
   let context: PreviewSessionContext | null = null
@@ -45,7 +46,13 @@ export function useWorkflowPreviewSession() {
   }
   function remember(): void {
     if (!context || !connection) return
-    try { sessionStorage.setItem(storageKey(context.projectId, context.applicationId), JSON.stringify(connection.identity)) } catch { /* 存储禁用不影响当前预览。 */ }
+    try {
+      const key = storageKey(context.projectId, context.applicationId)
+      if (state?.run && (!PREVIEW_TERMINAL.has(state.run.state) || state.run.delivery_state === 'pending'
+        || pendingDisplays > 0 || connection.resourceStatus().pending > 0)) {
+        sessionStorage.setItem(key, JSON.stringify(connection.identity))
+      } else sessionStorage.removeItem(key)
+    } catch { /* 存储禁用不影响当前预览。 */ }
   }
   function isCurrent(token: number): boolean {
     return generation === token && context !== null && principalId === account.currentUser?.principal_id && context.isCurrent?.() !== false
@@ -74,6 +81,7 @@ export function useWorkflowPreviewSession() {
     displayFailures.clear()
     displayVersions.clear()
     displayState.value = 'idle'
+    resultsExpired.value = false
   }
   function begin(next: PreviewSessionContext): number {
     if (context && (context.projectId !== next.projectId || context.applicationId !== next.applicationId || principalId !== account.currentUser?.principal_id)) reset()
@@ -91,6 +99,7 @@ export function useWorkflowPreviewSession() {
     displayFailures.clear()
     displayVersions.clear()
     displayState.value = 'idle'
+    resultsExpired.value = false
     return generation
   }
   function view(): WorkflowPreviewRun | null {
@@ -119,9 +128,10 @@ export function useWorkflowPreviewSession() {
     function updateStatus(): void {
       if (!isCurrent(token)) return
       const resources = connection?.resourceStatus() ?? { pending: 0, errors: [] }
-      displayError.value = [...displayFailures.values(), ...resources.errors].join('; ') || null
+      displayError.value = [...new Set([...displayFailures.values(), ...resources.errors])].join('; ') || null
       displayState.value = displayError.value || state?.run?.delivery_state === 'unavailable' ? 'failed'
         : pendingDisplays || resources.pending || state?.run?.delivery_state === 'pending' ? 'loading' : 'ready'
+      if (displayState.value === 'ready' || displayState.value === 'failed') remember()
       if (state?.run?.document_revision === requestedRevision && state?.run?.delivery_state === 'ready' && displayState.value === 'ready' && clientStarted !== null && !clientTimings.client_total_ms) {
         clientTimings.client_total_ms = performance.now() - clientStarted
         refreshView()
@@ -153,6 +163,8 @@ export function useWorkflowPreviewSession() {
     if (!state || !isCurrent(generation)) return
     if (requestedRevision && event.document_revision && event.document_revision !== requestedRevision) return
     if (!reducePreviewEvent(state, event)) return
+    if (event.type === 'session.snapshot') resultsExpired.value = event.payload.expired_resources > 0
+    if (['session.snapshot', 'run.accepted', 'run.finished', 'run.outputs'].includes(event.type)) remember()
     if (event.type === 'run.started' && clientStarted !== null) clientTimings.client_run_started_ms = performance.now() - clientStarted
     if (event.type === 'node.started' && clientStarted !== null && clientTimings.client_first_node_ms === undefined) clientTimings.client_first_node_ms = performance.now() - clientStarted
     if (event.type === 'run.accepted') createdAt = new Date().toISOString()
@@ -188,6 +200,13 @@ export function useWorkflowPreviewSession() {
           previewCancelling.value = false
           next.close()
           connection = null
+          if (context) {
+            try { sessionStorage.removeItem(storageKey(context.projectId, context.applicationId)) } catch { /* 身份不影响内存回收。 */ }
+          }
+          if (error === 'preview_session_expired') {
+            queryError.value = null
+            resultsExpired.value = true
+          }
         }
       },
     })
@@ -232,8 +251,14 @@ export function useWorkflowPreviewSession() {
     if (!identity?.session_id || !identity?.epoch) return
     const token = begin({ projectId, applicationId })
     requestedRevision = null
+    clientStarted = null
     try { await open(identity, token) } catch (error) {
-      if (isCurrent(token)) { queryError.value = String(error); previewing.value = false }
+      if (isCurrent(token)) {
+        const expired = error instanceof Error && error.message === 'preview_session_expired'
+        queryError.value = expired ? null : String(error)
+        resultsExpired.value = expired
+        previewing.value = false
+      }
     }
   }
   async function retry(): Promise<void> { if (state) await display(Object.values(state.displays), generation) }
@@ -244,6 +269,6 @@ export function useWorkflowPreviewSession() {
     feedback = handler; clearDisplays = clear; cancelDisplayRefresh = cancelRefresh
   }
   onBeforeUnmount(reset)
-  return { lastPreviewRun, previewing, previewCancelling, queryError, displayError, displayState,
+  return { lastPreviewRun, previewing, previewCancelling, queryError, displayError, displayState, resultsExpired,
     begin, isCurrent, execute, restore, retry, reset, setFeedback, cancel }
 }

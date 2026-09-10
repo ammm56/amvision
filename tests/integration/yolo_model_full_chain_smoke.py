@@ -421,6 +421,8 @@ def start_service_processes(
                 "127.0.0.1",
                 "--port",
                 str(port),
+                "--ws-per-message-deflate",
+                "false",
             ],
             env=process_env,
             log_path=service_log,

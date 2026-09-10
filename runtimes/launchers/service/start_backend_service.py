@@ -53,6 +53,23 @@ def main(argv: list[str] | None = None) -> int:
     ):
         return WINDOWS_SYSTEM_CONFIGURATION_REQUIRED_EXIT_CODE
     extra_args = args.extra_args[1:] if args.extra_args[:1] == ["--"] else args.extra_args
+    # 工业实时通信统一禁用压缩，显式开启属于无效启动配置。
+    normalized_args = []
+    index = 0
+    while index < len(extra_args):
+        value = extra_args[index]
+        if value == "--ws-per-message-deflate" or value.startswith("--ws-per-message-deflate="):
+            if "=" in value:
+                enabled = value.split("=", 1)[1]
+            else:
+                index += 1
+                enabled = extra_args[index] if index < len(extra_args) else ""
+            if enabled.lower() not in {"false", "0", "no", "off"}:
+                parser.error("WebSocket permessage-deflate 已禁用；不支持开启压缩")
+        else:
+            normalized_args.append(value)
+        index += 1
+    extra_args = normalized_args
     module_args = [
         "backend.service.api.app:app",
         "--host",
@@ -64,8 +81,7 @@ def main(argv: list[str] | None = None) -> int:
     ]
     # 原始大图/JPEG 已有自己的编码；DEFLATE 会增加本地预览的 CPU 和传输延迟。
     # 仅影响 HTTP 服务的 WebSocket 扩展协商，不改变 Runtime/Trigger IPC。
-    if not any(value == "--ws-per-message-deflate" or value.startswith("--ws-per-message-deflate=") for value in extra_args):
-        module_args.extend(["--ws-per-message-deflate", "false"])
+    module_args.extend(["--ws-per-message-deflate", "false"])
     if sys.platform == "win32" and not any(
         value == "--loop" or value.startswith("--loop=") for value in extra_args
     ):

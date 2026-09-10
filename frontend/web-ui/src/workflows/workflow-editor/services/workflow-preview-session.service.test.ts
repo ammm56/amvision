@@ -138,6 +138,53 @@ it('rejects bad frame ordering instead of publishing a partial image', async () 
   expect(socket.sent).toHaveLength(1)
 })
 
+it('restores progress and available values without reading released history after a page reload', () => {
+  const socket = sockets[0]!, id = '07'.repeat(16), received = vi.fn()
+  // 独立连接代表没有上一页 Blob 缓存的新页面。
+  const fresh = new PreviewSessionConnection(connection.identity, {
+    getAccessToken: () => null, queryTokenEnabled: () => false, onEvent: received, onConnection: vi.fn(),
+  })
+  const ready = fresh.connect()
+  const freshSocket = sockets.at(-1)!
+  const image = { transport_kind: 'preview-memory', blob_id: id, media_type: 'image/jpeg', server_available: false }
+  freshSocket.receive({ format_id: PREVIEW_FORMAT, session_id: 's', epoch: 'e', seq: 4, type: 'session.snapshot', payload: {
+    watermark: 4, run: { run_id: 'run', state: 'running', outputs: { passed: false, image } },
+    nodes: [{ node_id: 'n', status: 'running' }],
+    displays: [{ node_id: 'n', payload: { image } }],
+    values: [{ node_id: 'released', value: image }, { node_id: 'kept', value: { kind: 'inline', value: 0 } }],
+  } })
+  expect(received.mock.calls[0]![0].payload).toMatchObject({
+    expired_resources: 1, displays: [], values: [{ node_id: 'kept', value: { value: 0 } }],
+    run: { state: 'running', outputs: { passed: false, image: { unavailable: true, reason: 'preview_result_expired' } } },
+    nodes: [{ status: 'running' }],
+  })
+  expect(fresh.resourceStatus()).toEqual({ pending: 0, errors: [] })
+  freshSocket.receive({ format_id: PREVIEW_FORMAT, session_id: 's', epoch: 'e', run_id: 'run', seq: 5, type: 'run.outputs', payload: {
+    outputs: { passed: false, image: { transport_kind: 'preview-memory', blob_id: id } }, delivery_state: 'ready',
+  } })
+  expect(received.mock.calls.at(-1)![0].payload.outputs).toEqual({ passed: false, image: { unavailable: true, reason: 'preview_result_expired' } })
+  expect(freshSocket.sent).toHaveLength(0)
+  expect(socket.sent).toHaveLength(0)
+  fresh.close()
+  return ready
+})
+
+it('keeps received images available across same-page snapshot reconnection', async () => {
+  const id = '08'.repeat(16), socket = sockets[0]!
+  const received = connection.readBlob(id)
+  socket.receive({ type: 'display.begin', blob_id: id, byte_length: 1 })
+  socket.receive(frame(id, 0, [1]))
+  socket.receive({ type: 'display.end', blob_id: id, receipt: 'proof' })
+  const blob = await received
+  const count = socket.sent.length
+  socket.receive({ format_id: PREVIEW_FORMAT, session_id: 's', epoch: 'e', seq: 8, type: 'session.snapshot', payload: {
+    watermark: 8, displays: [{ node_id: 'n', payload: { image: { transport_kind: 'preview-memory', blob_id: id, server_available: false } } }],
+  } })
+  expect(await connection.readBlob(id)).toBe(blob)
+  expect(connection.resourceStatus()).toEqual({ pending: 0, errors: [] })
+  expect(socket.sent.slice(count).map(item => JSON.parse(item as string))).toEqual([{ type: 'resource.received', blob_id: id, receipt: 'proof' }])
+})
+
 it('an expired image does not reject another node image transfer', async () => {
   const a = '03'.repeat(16), b = '04'.repeat(16), socket = sockets[0]!
   const first = connection.readBlob(a), second = connection.readBlob(b)

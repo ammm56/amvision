@@ -67,6 +67,7 @@ export class PreviewSessionConnection {
   private receipts = new Map<string, string>()
   private descriptors = new Map<string, { size: number; available: boolean }>()
   private failures = new Map<string, Error>()
+  private released = new Set<string>()
   private runId: string | null = null
   private readQueue: Array<() => void> = []
   private activeReads = 0
@@ -109,9 +110,10 @@ export class PreviewSessionConnection {
     socket.onclose = ({ code, reason }) => {
       if (socket !== this.socket) return
       this.connected = false
-      this.failPending(new Error(reason || 'preview_connection_lost'))
+      const failureReason = reason || (code === 4404 ? 'preview_session_expired' : 'preview_connection_lost')
+      this.failPending(new Error(failureReason))
       const expired = [4401, 4403, 4404].includes(code)
-      this.options.onConnection(false, reason || 'preview_connection_lost', expired)
+      this.options.onConnection(false, failureReason, expired)
       if (!this.stopped && !expired) {
         this.reconnect = setTimeout(() => this.open(), Math.min(1000 * ++this.attempts, 5000))
       }
@@ -175,6 +177,7 @@ export class PreviewSessionConnection {
       return
     }
     if (message.format_id !== PREVIEW_FORMAT || message.session_id !== this.identity.session_id || message.epoch !== this.identity.epoch) throw new Error('preview_session_identity')
+    if (!this.projectResources(message as PreviewEvent)) return
     if (message.type === 'session.snapshot') {
       this.connected = true
       this.attempts = 0
@@ -183,6 +186,45 @@ export class PreviewSessionConnection {
     }
     this.trackResources(message as PreviewEvent)
     this.options.onEvent(message as PreviewEvent)
+  }
+
+  /** 页面重载没有 Blob 缓存；已释放的历史资源不能按可重试传输错误恢复。 */
+  private projectResources(event: PreviewEvent): boolean {
+    if (event.type === 'run.accepted') this.released.clear()
+    if (event.type !== 'session.snapshot' && this.released.size === 0) return true
+    if (!['session.snapshot', 'run.outputs', 'run.finished', 'display.updated', 'value.updated'].includes(event.type)) return true
+    const expired = new Set<string>()
+    const missing = (value: any): boolean => {
+      if (!value || typeof value !== 'object') return false
+      let unavailable = false
+      if (value.transport_kind === 'preview-memory' && typeof value.blob_id === 'string') {
+        const id = value.blob_id.replaceAll('-', '')
+        if ((value.server_available === false || this.released.has(id)) && !this.blobs.has(id)) {
+          expired.add(id)
+          this.released.add(id)
+          unavailable = true
+        }
+      }
+      for (const child of Object.values(value)) if (missing(child)) unavailable = true
+      return unavailable
+    }
+    const payload = event.payload
+    // 保留可恢复的值与显示；同页断线仍可使用已接管的完整 Blob。
+    if (event.type === 'session.snapshot') {
+      for (const kind of ['displays', 'values']) payload[kind] = (payload[kind] ?? []).filter((item: any) => !missing(item))
+    } else if (event.type === 'display.updated' || event.type === 'value.updated') {
+      return !missing(payload)
+    }
+    const pruneOutputs = (value: any): any => {
+      if (!value || typeof value !== 'object') return value
+      if (value.transport_kind === 'preview-memory' && missing(value)) return { unavailable: true, reason: 'preview_result_expired' }
+      if (Array.isArray(value)) return value.map(pruneOutputs)
+      return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, pruneOutputs(child)]))
+    }
+    if (payload.run) payload.run.outputs = pruneOutputs(payload.run.outputs)
+    if ('outputs' in payload) payload.outputs = pruneOutputs(payload.outputs)
+    payload.expired_resources = expired.size
+    return true
   }
 
   /** 当前结果在浏览器持有完整副本；旧版本替换后同时撤销缓存引用。 */
@@ -401,5 +443,6 @@ export class PreviewSessionConnection {
     this.receipts.clear()
     this.descriptors.clear()
     this.failures.clear()
+    this.released.clear()
   }
 }

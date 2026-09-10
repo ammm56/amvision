@@ -75,6 +75,8 @@ python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 5600 --ws-
 python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 5600 --ws-per-message-deflate false
 ```
 
+工业实时通信不启用 WebSocket permessage-deflate。标准 launcher 固定关闭并拒绝开启压缩；VS Code 调试配置与手工命令保持一致。浏览器可以在握手中提出压缩扩展，但服务端不协商该扩展。
+
 `--reload` 只用于开发。性能、稳定性、进程恢复和 Workflow/Deployment 延迟测试至少不得启用 reload，并应按开发环境文档启动完整源码进程组。
 
 ### 4. 健康检查

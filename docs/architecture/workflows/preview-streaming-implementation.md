@@ -21,7 +21,7 @@
 - workflow-preview-session.service.ts：上传窗口、完整资源缓存、接管确认、本地 JSON 分页。
 - useWorkflowPreviewSession.ts：业务完成/显示就绪分离、前端分段耗时。
 - WorkflowGraphNode.vue、WorkflowGraphNodeLayer.vue：单节点更新边界，保留拖拽、参数及预览交互。
-- runtimes/launchers/service/start_backend_service.py：默认不协商 WebSocket DEFLATE，允许显式站点覆盖。
+- runtimes/launchers/service/start_backend_service.py：固定不协商 WebSocket DEFLATE，拒绝开启压缩；VS Code 调试入口同样关闭压缩。
 
 ## 验证约束
 

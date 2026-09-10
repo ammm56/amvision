@@ -68,7 +68,7 @@ async def validate(args):
         try:
             health_task = asyncio.create_task(health())
             async with asyncio.timeout(max(1, 180-(monotonic()-started))):
-                async with websockets.connect(url, max_size=PREVIEW_CHUNK_SIZE + 65536, compression=None if args.no_compression else 'deflate') as ws:
+                async with websockets.connect(url, max_size=PREVIEW_CHUNK_SIZE + 65536, compression=None) as ws:
                     assert json.loads(await ws.recv())["type"] == "session.snapshot"
                     result["input_started_seconds"] = monotonic()-started
                     content = Path(args.image).read_bytes()
@@ -212,7 +212,6 @@ if __name__ == "__main__":
     parser.add_argument("--application", default="workflow-app-20260831130620")
     parser.add_argument("--delay", type=float, default=0)
     parser.add_argument("--input-kind", choices=["request_image_ref", "request_image_base64"], default="request_image_base64")
-    parser.add_argument("--no-compression", action="store_true")
     parser.add_argument("--image", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--report", required=True)

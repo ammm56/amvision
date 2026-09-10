@@ -16,6 +16,8 @@
                 "127.0.0.1",
                 "--port",
                 "5600",
+                "--ws-per-message-deflate",
+                "false",
                 "--reload",
                 "--reload-dir",
                 "${workspaceFolder}/backend",

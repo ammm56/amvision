@@ -54,6 +54,10 @@
         </Button>
       </div>
 
+      <div v-else-if="previewResultsExpired" class="workflow-graph-error">
+        <InlineMessage tone="info" :message="t('workflowEditor.feedback.previewResultsExpired')" />
+      </div>
+
       <div class="workflow-graph-world" :style="worldTransformStyle">
         <WorkflowGraphLinksLayer
           :links="graphLinks"
@@ -334,6 +338,7 @@ import { usePreferencesStore } from '@/app/stores/preferences.store'
 import { useProjectStore } from '@/app/stores/project.store'
 import type { SupportedLocale } from '@/platform/i18n'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
+import InlineMessage from '@/shared/ui/feedback/InlineMessage.vue'
 import Button from '@/shared/ui/components/Button.vue'
 import WorkflowAppModeConfigDialog from '../components/WorkflowAppModeConfigDialog.vue'
 import WorkflowPublishDialog from '../components/WorkflowPublishDialog.vue'
@@ -454,6 +459,7 @@ const {
   previewQueryError,
   previewDisplayError,
   previewDisplayState,
+  previewResultsExpired,
   setPreviewFeedback,
   errorMessage,
   statusMessage,
