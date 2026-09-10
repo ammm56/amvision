@@ -107,18 +107,23 @@ def test_memory_worker_streams_before_long_node_finishes(tmp_path):
                 event = manager.take(sub)
                 if event:
                     events.append(event)
-                    if len([e for e in events if e["type"] == "display.updated"]) == 2:
+                    if any(e["type"] == "display.updated" and e["payload"]["node_id"] == "image" and
+                           e["payload"]["payload"]["image"]["source_image"].get("blob_id") for e in events) and any(
+                               e["type"] == "display.updated" and e["payload"]["node_id"] == "display" for e in events):
                         break
                     if event["type"] == "run.finished":
                         raise AssertionError(event)
                 else:
                     sleep(.02)
             assert any(e["type"] == "node.finished" and e["payload"]["node_id"] == "display" for e in events), events
-            display = next(e["payload"]["payload"]["image"] for e in events if e["type"] == "display.updated" and e["payload"]["node_id"] == "image")
+            image_events = [e["payload"]["payload"]["image"] for e in events if e["type"] == "display.updated" and e["payload"]["node_id"] == "image"]
+            display = image_events[-1]
+            assert "blob_id" not in image_events[0]["source_image"]
             assert display["source_width"] == 2048 and display["display_width"] == 1920
             with manager.buffers.borrow(sid, display["source_image"]["blob_id"]) as content:
                 decoded = cv2.imdecode(np.frombuffer(content, dtype=np.uint8), cv2.IMREAD_COLOR)
-            assert np.array_equal(decoded, source)
+            assert decoded.shape == source.shape
+            assert display["source_image"]["media_type"] == "image/jpeg"
             assert next(e["payload"]["payload"]["value"] for e in events if e["type"] == "display.updated" and e["payload"]["node_id"] == "display") == "实时值"
             assert manager.authorize(sid, "test").run["state"] == "running"
             pool.cancel(reply["run_id"])

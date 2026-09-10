@@ -1,12 +1,13 @@
 """完整值分页与资源回收测试，不需要模型或浏览器长时间运行。"""
 
 import hashlib
+import json
 from multiprocessing.shared_memory import SharedMemory
 
 import pytest
 
 from backend.service.application.workflows.preview.buffers import PreviewBuffers, PreviewMemoryError
-from backend.service.application.workflows.preview.values import PreviewValues, read_value_page
+from backend.service.application.workflows.preview.values import PreviewValues
 
 
 class Bridge:
@@ -40,7 +41,7 @@ def test_roi_values_preserve_execution_image_ids_as_diagnostic_json():
         assert buffers.stats()["blocks"] == 0
 
 
-def test_large_nested_value_is_paged_without_truncating_false_or_zero():
+def test_large_nested_value_transfers_completely_without_truncating_false_or_zero():
     buffers = PreviewBuffers()
     values = PreviewValues(Bridge(buffers))
     try:
@@ -49,15 +50,9 @@ def test_large_nested_value_is_paged_without_truncating_false_or_zero():
         source = {"items": [{"index": index, "value": False} for index in range(2000)]}
         descriptor = values.describe(source)
         assert descriptor["kind"] == "json"
-        root = read_value_page(buffers, "session", descriptor["blob_id"])
-        assert root["children"][0]["path"] == ["items"]
-        page = read_value_page(buffers, "session", descriptor["blob_id"], path=["items"], offset=1950)
-        assert page["total"] == 2000 and not page["has_more"]
-        leaf = read_value_page(buffers, "session", descriptor["blob_id"], path=["items", 1999])
-        assert leaf["value"] == {"index": 1999, "value": False}
+        with buffers.borrow("session", descriptor["blob_id"]) as content:
+            assert json.loads(bytes(content)) == source
         assert buffers.stats()["reserved_bytes"] == 0
-        with pytest.raises(ValueError, match="page_invalid"):
-            read_value_page(buffers, "session", descriptor["blob_id"], offset=True)
     finally:
         buffers.close()
     assert buffers.stats() == {"blocks": 0, "bytes": 0, "pins": 0, "reserved_bytes": 0}

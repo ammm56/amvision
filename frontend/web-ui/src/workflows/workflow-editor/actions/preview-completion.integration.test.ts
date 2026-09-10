@@ -15,6 +15,7 @@ vi.mock('../services/workflow-preview-session.service', () => ({
    constructor(public identity: any, options: any) { io.options = options }
    async connect() { send('session.snapshot', {watermark: 0, run: null, nodes: [], displays: [], values: []}, 0) }
    close() {}
+   resourceStatus() { return { pending: 0, errors: [] } }
    async readBlob() { return new Blob(['image'], { type: 'image/png' }) }
  }
 }))

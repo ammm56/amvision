@@ -670,6 +670,13 @@ class ExecutionImageRegistry:
             )
             self._decoded_cache_evictions += 1
 
+    def release_decoded_matrices(self, cache_keys) -> None:
+        """归还明确不再使用的解码缓存；cache_keys 来自调用方的执行期消费计划。"""
+        with self._lock:
+            for key in cache_keys:
+                self._decoded_matrices.pop(key, None)
+                self._decoded_cache_total_bytes -= self._decoded_matrix_sizes.pop(key, 0)
+
     def release(self, image_handle: str) -> None:
         """释放一张已注册的内存图片。
 
@@ -1683,6 +1690,9 @@ def load_image_matrix_from_payload(
         normalized_payload,
         imdecode_flags=imdecode_flags,
     )
+    preview_lifetime = request.execution_metadata.get("_preview_lifetime")
+    if preview_lifetime is not None:
+        preview_lifetime.track_decode(normalized_payload.get("image_handle"), decode_cache_key)
 
     decoded_on_this_call = False
 

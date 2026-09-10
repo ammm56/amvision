@@ -169,10 +169,13 @@ def test_workflow_graph_executor_runs_for_each_body_and_collects_results(preview
     from backend.service.application.workflows.preview.events import PreviewNodeEvents
     progress = []
     observer = PreviewNodeEvents(lambda kind, payload: progress.append((kind, payload)), [node.node_id for node in template.nodes]) if preview else None
+    from backend.nodes.runtime_support import ExecutionImageRegistry
+    from backend.service.application.workflows.preview.lifetime import PreviewLifetimes
+    images = ExecutionImageRegistry()
     execution_result = executor.execute(
         template=template,
         input_values={"source_items": {"value": ["alpha", "beta", "gamma"]}},
-        execution_metadata={"_editor_preview_observer": observer} if preview else {},
+        execution_metadata={"_editor_preview_observer": observer, "_preview_lifetime": PreviewLifetimes(images)} if preview else {},
         event_callback=observer,
     )
 

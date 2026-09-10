@@ -64,7 +64,7 @@ python -m alembic -c backend/alembic.ini current
 热重载：
 
 ```powershell
-python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 5600 --reload --reload-dir backend --reload-dir custom_nodes
+python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 5600 --ws-per-message-deflate false --reload --reload-dir backend --reload-dir custom_nodes
 ```
 
 这条命令只启动 backend-service。它不会拉起独立 inference daemon 或后台任务 Worker；默认 daemon 配置下，未单独启动 daemon 时模型相关 health 可以处于降级状态。
@@ -72,7 +72,7 @@ python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 5600 --rel
 不带 reload 的诊断：
 
 ```powershell
-python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 5600
+python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 5600 --ws-per-message-deflate false
 ```
 
 `--reload` 只用于开发。性能、稳定性、进程恢复和 Workflow/Deployment 延迟测试至少不得启用 reload，并应按开发环境文档启动完整源码进程组。

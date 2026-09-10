@@ -51,7 +51,7 @@ python -m alembic -c backend/alembic.ini current
 
 ```powershell
 conda activate amvision
-python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 5600 --reload --reload-dir backend --reload-dir custom_nodes
+python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 5600 --ws-per-message-deflate false --reload --reload-dir backend --reload-dir custom_nodes
 ```
 
 backend lifespan 会先创建 LocalBuffer，再恢复现有 Workflow Runtime。恢复流程可能需要调用 inference daemon，因此此时不等待完整 HTTP health。另开临时终端只探测主 LocalBuffer：

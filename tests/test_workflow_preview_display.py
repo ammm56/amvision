@@ -121,7 +121,7 @@ def test_nested_custom_display_converts_binary_and_pages_values(definitions):
     """真实自定义端口容器的两个显示都可用；大表格原值从 SHM 分页读取。"""
     from base64 import b64encode
     from tests.api_test_support import build_valid_test_png_bytes
-    from backend.service.application.workflows.preview.values import read_value_page
+    import json
     definition = definitions["core.io.value-preview"]
     source = build_valid_test_png_bytes()
     payload = {"data": {"annotated_image": {"type": "image-preview", "image": {
@@ -136,11 +136,16 @@ def test_nested_custom_display_converts_binary_and_pages_values(definitions):
         image = displays["body/data/annotated_image"]["image"]
         assert "image_base64" not in image
         with buffers.borrow("session", image["blob_id"]) as content:
-            assert bytes(content) == source
+            import cv2
+            import numpy as np
+            assert bytes(content).startswith(b"\xff\xd8")
+            assert image["media_type"] == "image/jpeg"
+            assert cv2.imdecode(np.frombuffer(content, dtype=np.uint8), 1).shape == cv2.imdecode(np.frombuffer(source, dtype=np.uint8), 1).shape
         table = displays["body/data/result_table"]
         assert table["paged"] and len(table["rows"]) == 4
-        full = read_value_page(buffers, "session", table["value_descriptor"]["blob_id"], path=["rows", 1999])
-        assert full["value"] == {"index": 1999, "value": False}
+        with buffers.borrow("session", table["value_descriptor"]["blob_id"]) as content:
+            full = json.loads(bytes(content))
+        assert full["rows"][1999] == {"index": 1999, "value": False}
         assert payload["data"]["annotated_image"]["image"]["image_base64"] == b64encode(source).decode()
     finally:
         capture.close()

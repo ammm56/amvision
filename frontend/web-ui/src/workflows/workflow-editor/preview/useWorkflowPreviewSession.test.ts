@@ -5,7 +5,7 @@ import { useWorkflowPreviewSession } from './useWorkflowPreviewSession'
 import { useSessionStore } from '@/app/stores/session.store'
 import type { WorkflowPreviewRunActionInput } from '../actions/useWorkflowEditorActions'
 
-const io = vi.hoisted(() => ({ options: null as any, create: vi.fn(), submit: vi.fn(), release: vi.fn(), cancel: vi.fn(), upload: vi.fn(), close: vi.fn(), revision: '' }))
+const io = vi.hoisted(() => ({ options: null as any, create: vi.fn(), submit: vi.fn(), release: vi.fn(), cancel: vi.fn(), upload: vi.fn(), close: vi.fn(), revision: '', pendingResources: 0 }))
 vi.mock('../services/workflow-preview-session.service', () => ({
   PREVIEW_FORMAT: 'amvision.workflow-preview-session.v1',
   createPreviewSession: io.create, submitPreviewSession: io.submit, releasePreviewSession: io.release, cancelPreviewSession: io.cancel,
@@ -15,6 +15,7 @@ vi.mock('../services/workflow-preview-session.service', () => ({
     upload = io.upload
     close = io.close
     readBlob = vi.fn()
+    resourceStatus = () => ({ pending: io.pendingResources, errors: [] })
   },
 }))
 const identity = { format_id: 'amvision.workflow-preview-session.v1', session_id: 'session', epoch: 'epoch', memory_limit_bytes: 1 }
@@ -25,6 +26,7 @@ function event(type: string, payload: object, seq: number) {
 beforeEach(() => {
   setActivePinia(createPinia())
   vi.clearAllMocks()
+  io.pendingResources = 0
   sessionStorage.clear()
   useSessionStore().currentUser = { principal_id: 'u' } as any
   io.create.mockResolvedValue(identity)
@@ -89,5 +91,26 @@ it('cancelling only requests cancellation and waits for the real terminal event'
   expect(session.previewing.value).toBe(true)
   io.options.onEvent(event('run.finished', { status: 'cancelled' }, 2))
   expect(session.previewing.value).toBe(false)
+  session.reset()
+})
+
+it('records full delivery only after current-run resources complete', async () => {
+  const session = useWorkflowPreviewSession()
+  await session.execute(input, session.begin({ projectId: 'p', applicationId: 'a' }))
+  io.pendingResources = 1
+  io.options.onEvent(event('run.finished', { status: 'succeeded', delivery_state: 'pending' }, 2))
+  io.options.onEvent(event('run.outputs', { delivery_state: 'ready' }, 3))
+  await flushPromises()
+  expect(session.lastPreviewRun.value?.timings?.client_total_ms).toBeUndefined()
+  io.pendingResources = 0
+  io.options.onResources()
+  await flushPromises()
+  expect(session.lastPreviewRun.value?.timings?.client_total_ms).toBeGreaterThanOrEqual(0)
+  const previousView = session.lastPreviewRun.value
+  session.begin({ projectId: 'p', applicationId: 'a' })
+  io.options.onResources()
+  await flushPromises()
+  // 上轮 Blob 的迟到回调不得把尚未上传的新运行标记为完整交付。
+  expect(session.lastPreviewRun.value).toBe(previousView)
   session.reset()
 })

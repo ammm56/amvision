@@ -45,20 +45,27 @@
 | `display.updated` / `display.unavailable` | 单节点输出端口的显示内容或明确失败 |
 | `value.updated` | 完整值描述：inline、json 或 unavailable |
 | `run.finished` | succeeded、failed、cancelled 或 timed_out |
+| `run.outputs` | 业务结束后的最终输出、显示交付状态及分段耗时 |
 
-节点显示不等待整图结束。源图为无损 PNG；画布缩略图最大边长 1920，交互坐标始终使用源图尺寸。大 JSON 存储为共享内存 Blob，画布明确显示部分内容，检查器通过 `value.get` 分页读取完整值。自定义 response body 内的嵌套显示使用端口 JSON Pointer 路径区分。
+节点显示不等待整图结束。页面缩略图和全尺寸预览均使用 JPEG，编码质量 90；可直接复用的 JPEG 源字节不重复编码。画布缩略图最大边长 1920，交互坐标始终使用源图尺寸，业务图片和模型输入不压缩。大 JSON 完整传输到浏览器，检查器在本地分页。自定义 response body 内的嵌套显示使用端口 JSON Pointer 路径区分。
+
+`run.finished` 表示业务执行结束，`delivery_state=pending` 表示仍有显示编码；`run.outputs` 将交付置为 `ready` 或 `unavailable`。编码完成也不等于浏览器接收、解码完成。`timings` 中 `prepare_ms`、`graph_ms`、`worker_total_ms`、`display_drain_ms` 为 Worker 本地持续时间；页面另记录从点击开始的 `client_business_ms`、`client_total_ms`，不混用不同进程的计时起点。
+
+页面分段计时包含文件读取、SHA256、传输、上传合计（`client_file_read_ms`、`client_file_hash_ms`、`client_file_transfer_ms`、`client_upload_ms`），以及提交前、提交请求、执行开始及首节点事件到达（`client_before_submit_ms`、`client_submit_ms`、`client_run_started_ms`、`client_first_node_ms`）。多文件读取/摘要/传输按本轮累计；各字段有重叠，不能直接相加。事件到达时间包含传输及浏览器调度，不等于 Worker 内部起点。
 
 ## 二进制上传和读取
 
 1. 发送 `input.begin`，包含 UUID `transfer_id`、`byte_length`、`media_type`、SHA-256 `sha256` 和可选 `file_name`。
-2. 收到 `input.ready` 后发送 AMVP 二进制块，每块不超过 256 KiB；逐块确认 `input.ack`。
+2. 收到 `input.ready` 后发送 AMVP 二进制块，每块不超过 256 KiB；逐块确认 `input.ack`，浏览器最多预发 8 块。
 3. 发送 `input.commit`；全部块顺序、长度和 SHA-256 正确后返回 `input.committed` 与 `input_id`。
 
 AMVP 使用网络字节序，32 字节头：`magic(4), version(1), kind(1), reserved(2), UUID(16), chunk_index(4), payload_length(4)`；version=1，kind=1 上传，kind=2 下载。
 
 `display.get` 包含 `blob_id`，返回 `display.begin`、二进制块和 `display.end`；浏览器逐块发送 `display.ack`。不返回共享内存名称或任意文件读取接口。
 
-`value.get` 包含 `request_id, blob_id, path, offset, limit`；返回 `value.page`，包含 `value, children, path, offset, limit, total, has_more, value_type`。limit 为 1–100，默认 50；嵌套容器用 children 的 path 下钻，单条页面不超过 64 KiB。
+图片和大 JSON 共用 `display.get`。完整传输后 `display.end` 携带不透明 `receipt`。浏览器按序校验完整长度、建立独立 Blob 后发送 `{"type":"resource.received","blob_id":"...","receipt":"..."}`。凭证绑定当前已鉴权的会话与 Blob；任意节点 ID、共享内存名称和未完成传输不能释放资源。分块 ACK 只用于流控。
+
+所有当前订阅者接管后，后端撤销该 Blob 的持有；现有 borrow pin 归零后才销毁映射。已断开的订阅者不永久阻止其他接收者释放。快照描述符的 `server_available=false` 表示服务端不再提供该内容，同页重连使用已有浏览器缓存；没有本地副本时明确不可用。浏览器完整 JSON 默认按 50 项本地分页，已删除服务端 `value.get/value.page` 旧读路径。
 
 ## 边界与恢复
 
@@ -68,6 +75,11 @@ AMVP 使用网络字节序，32 字节头：`magic(4), version(1), kind(1), rese
 - 每会话保留最多 256 个受理请求摘要，达到上限需创建新会话；不会淘汰去重记录后重新执行旧请求。
 - 重连恢复当前内存状态。API 重启后 epoch 改变，旧会话明确失效；不会从磁盘恢复或重新执行。
 - 受管预算不等于进程 RSS 或 GPU 显存上限，模型和第三方算法工作区另计。
+- 显示排队最多 128 张图、256 MiB 矩阵；每次执行最多 4096 个编码描述符，超限返回显示容量错误。业务完成后的编码排空限 60 秒，超时只报告交付失败。
+
+Preview 模型节点通过既有 PublishedInferenceGatewayClient、平台网关和 LocalBuffer 调用部署进程。Preview 不创建部署模型运行时池；显式 checkpoint/model-session 节点仍保留自身原有作用域。
+
+项目服务启动器默认 `--ws-per-message-deflate false`，减少本地大图上传及 JPEG 二次压缩开销。手工 Uvicorn 启动需使用同一参数并重启生效；站点可显式覆盖。此设置影响 HTTP 服务 WebSocket 扩展协商，不改变 REST、模型字节和 Runtime/Trigger IPC。
 
 ## 开发阶段替换与数据库升级
 

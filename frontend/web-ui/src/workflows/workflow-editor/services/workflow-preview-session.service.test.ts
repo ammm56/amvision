@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { flushPromises } from '@vue/test-utils'
 import { PREVIEW_FORMAT, PreviewSessionConnection } from './workflow-preview-session.service'
 
 vi.mock('@/platform/runtime/runtime-config', () => ({ getRuntimeConfig: () => ({ wsBaseUrl: 'ws://127.0.0.1/ws/v1' }) }))
@@ -37,13 +38,37 @@ function frame(blobId: string, index: number, content: number[]): ArrayBuffer {
   return frame
 }
 
+it('keeps at most eight upload chunks in flight and refills after one ACK', async () => {
+  const transferId = '12345678-1234-1234-1234-123456789abc'
+  vi.stubGlobal('crypto', { randomUUID: () => transferId, subtle: { digest: async () => new ArrayBuffer(32) } })
+  const socket = sockets[0]!, content = new ArrayBuffer(10 * 256 * 1024)
+  const uploaded = connection.upload({ size: content.byteLength, name: 'test.bmp', type: 'image/bmp', arrayBuffer: async () => content } as File)
+  await flushPromises()
+  socket.receive({ type: 'input.ready', transfer_id: transferId })
+  await flushPromises()
+  const frames = () => socket.sent.filter(item => item instanceof ArrayBuffer)
+  expect(frames()).toHaveLength(8)
+  socket.receive({ type: 'input.ack', transfer_id: transferId, chunk_index: 0 })
+  await flushPromises()
+  expect(frames()).toHaveLength(9)
+  for (let index = 1; index < 10; index++) {
+    socket.receive({ type: 'input.ack', transfer_id: transferId, chunk_index: index })
+    await flushPromises()
+  }
+  expect(frames()).toHaveLength(10)
+  expect(JSON.parse(socket.sent.at(-1) as string).type).toBe('input.commit')
+  socket.receive({ type: 'input.committed', transfer_id: transferId, input_id: 'complete' })
+  expect(await uploaded).toBe('complete')
+})
+
 it('collects binary chunks in order and acknowledges only received data', async () => {
   const id = '01'.repeat(16), socket = sockets[0]!
   const received = connection.readBlob(id, 'image/png')
   socket.receive({ type: 'display.begin', blob_id: id, byte_length: 5 })
   socket.receive(frame(id, 0, [1, 2, 3]))
   socket.receive(frame(id, 1, [4, 5]))
-  socket.receive({ type: 'display.end', blob_id: id })
+  expect(socket.sent.every(item => !String(item).includes('resource.received'))).toBe(true)
+  socket.receive({ type: 'display.end', blob_id: id, receipt: 'complete-proof' })
   const blob = await received
   const bytes = await new Promise<ArrayBuffer>(resolve => {
     const reader = new FileReader()
@@ -53,7 +78,53 @@ it('collects binary chunks in order and acknowledges only received data', async 
   expect(Array.from(new Uint8Array(bytes))).toEqual([1, 2, 3, 4, 5])
   expect(socket.sent.map(item => JSON.parse(item as string))).toEqual([
     { type: 'display.get', blob_id: id }, { type: 'display.ack', blob_id: id, chunk_index: 0 }, { type: 'display.ack', blob_id: id, chunk_index: 1 },
+    { type: 'resource.received', blob_id: id, receipt: 'complete-proof' },
   ])
+  expect(await connection.readBlob(id)).toBe(blob)
+  expect(socket.sent).toHaveLength(4)
+})
+
+it('oversized display fails only its own transfer without a reconnect loop', async () => {
+  const id = '05'.repeat(16), socket = sockets[0]!
+  connection.identity.memory_limit_bytes = 2
+  const received = connection.readBlob(id)
+  const rejection = expect(received).rejects.toThrow('preview_browser_memory_capacity')
+  socket.receive({ type: 'display.begin', blob_id: id, byte_length: 3 })
+  socket.receive(frame(id, 0, [1, 2, 3]))
+  socket.receive({ type: 'display.end', blob_id: id, receipt: 'not-owned' })
+  await rejection
+  expect(socket.close).not.toHaveBeenCalled()
+  const count = socket.sent.length
+  await expect(connection.readBlob(id)).rejects.toThrow('preview_browser_memory_capacity')
+  expect(socket.sent).toHaveLength(count)
+})
+
+it('pages complete nested JSON from browser ownership without another server request', async () => {
+  // jsdom 的 Blob 缺少现代浏览器 text()，只补测试环境 API。
+  vi.stubGlobal('Blob', class extends Blob {
+    text(): Promise<string> {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(String(reader.result))
+        reader.onerror = () => reject(reader.error)
+        reader.readAsText(this)
+      })
+    }
+  })
+  const id = '06'.repeat(16), socket = sockets[0]!
+  const source = { items: Array.from({ length: 80 }, (_, index) => ({ index, value: false, score: 0 })) }
+  const bytes = [...new TextEncoder().encode(JSON.stringify(source))]
+  const page = connection.readValue(id, 50, ['items'])
+  socket.receive({ type: 'display.begin', blob_id: id, byte_length: bytes.length })
+  socket.receive(frame(id, 0, bytes))
+  socket.receive({ type: 'display.end', blob_id: id, receipt: 'json-proof' })
+  const result = await page
+  expect(result).toMatchObject({ total: 80, offset: 50, has_more: false })
+  expect(result.children).toHaveLength(30)
+  expect(result.children[0]).toMatchObject({ key: 50, path: ['items', 50], value_type: 'dict', total: 3 })
+  const count = socket.sent.length
+  expect((await connection.readValue(id, 0, ['items', 79])).value).toEqual({ index: 79, value: false, score: 0 })
+  expect(socket.sent).toHaveLength(count)
 })
 
 it('rejects bad frame ordering instead of publishing a partial image', async () => {

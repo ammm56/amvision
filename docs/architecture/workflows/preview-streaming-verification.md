@@ -1,82 +1,61 @@
-# Preview 内存会话实现与验证记录
+# Preview 调用、生命周期与性能验证
 
-日期：2026-09-10。代码基线：`12c3ba27`，结果对应本次未提交工作区。没有组装或替换生产发行包。
+日期：2026-09-10；代码基线 `eef9c011`，结果对应本次未提交工作区。没有组装或替换生产发行包。本记录替换先前 Preview 验证说明；先前 PNG、本地部署模型缓存等结论不代表当前实现。
 
-## 实现结果
+## 已完成的修复
 
-编辑器使用 `/api/v1/workflows/preview-sessions` 和对应 v1 WebSocket。HTTP 只受理不可变 JSON 快照，常驻独立 Worker 执行节点；节点状态、真实循环进度和值增量发送，图像通过有 ACK 的二进制 Blob 通道读取。恢复订阅读取当前内存快照，不重跑业务、不扫描磁盘事件。
-
-上传、快照、输出和编码使用有界进程内存/OS SHM；Preview 不再建立数据库 Run、JSONL、结果 manifest、临时图片或文件支持的 mmap。明确 Save 节点仍按原配置保存业务文件。模型和已有业务文件仍从原存储读取。任意自定义 Python 主动写盘的副作用不属于平台临时传输，不能声称已拦截所有自定义代码的写入。
-
-职责划分：
-
-| 层 | 实现 | 边界 |
-| --- | --- | --- |
-| v1 合约 | `backend/contracts/workflows/preview_session.py` | 严格 JSON、身份、分块协议、输入大小和摘要 |
-| 会话 | `preview/session.py` | owner/project/app 隔离、去重、快照、终态、断线宽限、文档删除互斥 |
-| 资源 | `preview/buffers.py` | 预算、写入/发布、pin、最后借用归还、无磁盘降级 |
-| 执行 | `preview/pool.py`、`worker.py`、`execution.py` | spawn 常驻池、取消/超时、死亡确认、隔离进程延后回收 |
-| 节点观察 | `preview/events.py`、节点 `report_progress` | 并行/循环 invocation、开始/完成/真实进度；无内部进度时仅显示执行中和耗时 |
-| 显示/值 | `preview/display.py`、`values.py` | 异步有界编码、原图与缩略图分离、完整值分页、多输出端口、嵌套显示 |
-| 模型 | `preview/models.py` | 复用原 task-native 请求、模型运行时和结果转换，独立有界缓存 |
-| Vue 编辑器 | `useWorkflowPreviewSession`、`previewSessionState`、`useWorkflowPreviewDisplays` | WS 增量归并、上一轮结果标记、删除节点释放、Blob URL 生命周期、节点值分页 |
-| 数据升级 | Alembic `a8d6c4e2b019` | 删除旧临时表；保留已有策略参数并统一 kind，正式 Runtime 表不改结构 |
-
-`preview/` 路径均相对于 `backend/service/application/workflows/`。正式 Runtime/Trigger 不使用 PreviewSession、显示编码或本次 WS 协议；共享图执行器只在注入编辑器观察者时发送编辑器事件。正式同步/既有异步协议、模型参数和算法保持原职责。前端沿用 Vue 3，资源本地构建，不增加 Redis、外网 CDN 或部署时系统 Node 依赖。
+- Preview Worker 通过 PublishedInferenceGatewayClient、平台网关及 LocalBuffer 调用已有部署进程，删除 Preview 部署模型加载池。显式 checkpoint/model-session 节点仍按自身作用域执行。
+- Preview 独立维护临时上传、编码和显示资源；不新增磁盘交换、数据库 Run 或结果文件。明确 Save Image/Save JSON 节点继续保存业务文件。
+- 页面显示统一 JPEG，先缩略图，再完整分辨率图片；业务原图、模型输入及掩膜计算不进行有损替换。
+- 业务最后消费、嵌套作用域交接及输入容器释放有明确管理；浏览器完整接收后发送 receipt，所有当前订阅者接收且借用归零后回收服务端 Blob。
+- 浏览器保留当前显示的 Blob 和完整 JSON，旧显示替换、节点删除及会话关闭会撤销引用；完整 JSON 在浏览器分页。
+- 业务完成、显示编码完成、浏览器完整接收分别计时。慢显示和显示失败不会覆盖业务成功状态；上一轮回调不能提前完成下一轮计时。
+- 前端节点各自渲染，未变化节点不会因其他节点进度更新重建端口/参数。上传采用最多八帧的连续 ACK 窗口。
+- 服务启动器默认关闭 WebSocket DEFLATE；手工开发启动参数需一致。现场已由用户重启，实际握手确认没有协商压缩扩展。
 
 ## 自动验证
 
-所有开发命令先执行 `conda activate amvision`。
-
-| 范围 | 命令/测试组 | 结果 |
-| --- | --- | --- |
-| 会话、内存、WS、显示、值、模型适配、真实 spawn | `python -m pytest tests/test_workflow_preview_{memory,session,session_api,worker,models,values,display,observation}.py`（表中花括号表示文件组，PowerShell 运行时逐项展开） | 73 passed |
-| 编辑器服务、状态、Viewer、操作和组件 | `npm run test:unit -- --run src/workflows/workflow-editor` | 64 files / 230 passed |
-| 前端类型/生产构建 | `npm run typecheck`、`npm run build` | 通过 |
-| 正式 Runtime 进程 | `tests/test_workflow_application_process_executor.py` | 24 passed |
-| Parallel / ForEach / Selection / SAHI / 正式 Runtime Preview | 对应六组 pytest 文件 | 44 passed；增加 ForEach 观察者参数化后该文件 3 passed |
-| 发行目录 Python | 使用同目录 `python/python.exe` 执行 memory、values、worker 测试 | 当时版本 9 passed；Python 3.12.13，Windows x64 |
-| 数据迁移 | 上一版临时表重建、升级、策略参数/正式表结构保留 | 通过；现有迁移回归亦通过 |
-| 文档与 API 示例 | 文档链接、Workflow API 示例、Detection / Non-detection Postman、Submit 示例 | 62 passed |
-| Python 静态检查 | 新 Preview 模块、协议/API、测试及真实探针的 `ruff check` | 通过 |
-
-关键断言包括：未提交上传不可见、错误摘要不发布、跨 owner 拒绝、释放时仍可持有合法借用、真实子进程退出后计数归零、强制超时和延后回收、重复提交不重复业务、慢订阅者恢复快照、循环 invocation 不串线、节点已完成而 Delay 仍运行、PNG 原图像素一致、临时文件引用无物理文件、文件列表顺序、常驻进程复用、显式图片保存字节及 saved_output 保留。
-
-五种任务 detection/classification/segmentation/pose/obb 的模型网关测试核对真实请求构造器的参数和批次顺序，预测执行使用受控测试结果；这些是契约测试，不能作为五种模型的真实精度验收。
-
-## 真实开发环境验证
-
-使用 `workflow-app-20260831130620` 已保存快照，用户已授权保存原草稿。探针另建未持久化应用身份，只在内存副本追加 Delay；没有发布或替换原应用。图片来自 `data/files/developer/图片/3570/治具托盘/空盘/Image_20260721103308382.bmp`，59,885,622 字节（57.1 MiB）。明确 Save 节点的验证输出定向到本次临时目录。
-
-脚本：`python -m tests.integration.workflow_preview_session_live --image <图片> --output <明确保存目标> --report <证据文件>`。默认 Delay 90 秒，整体观测超时 180 秒；不改业务默认 timeout。
-
-通过运行：session `848bdbc09d434cd8b649657384f87406`，run `0cf4cb8d84464626a56821e1224dfe04`。原快照 SHA256：`70d047f1cc0b7a7c7bff5d045ba1e88c9d823182199dcdd91d3aa85778fdde31`。
-
-| 观察项 | 实测 |
+| 范围 | 当前结果 |
 | --- | --- |
-| 整体验证 | 108.407 秒 |
-| 首个显示结果 | 17.485 秒，包含启动及真实图执行开销，不是单节点传输延迟 |
-| Delay 开始 | 18.391 秒；当时已有 10 个显示 |
-| 原图获取、解码 | 18.860 秒完成，5472×3648，PNG 29,016,749 字节；此时 Delay 未结束 |
-| WS | 92 个节点开始/完成、113 个值更新、17 个显示、7 次连接心跳；无 display.unavailable / protocol.error |
-| 最终业务结果 | 24 个空槽；full / abnormal / unknown / low_score 均 0；passed=true |
-| 重连 | succeeded，保留 17 个显示；探针最后释放会话 |
-| HTTP 接入 | 107 次成功；P95 16 ms、最大 109 ms；此指标不是推理延迟或 SHM/ZeroMQ P99 |
-| API RSS | 开始 1,034,162,176；峰值 1,094,852,608；结束 1,068,556,288 字节；未宣称回到初值 |
+| 后端 Preview、生命周期、网关、WS、真实 spawn、循环/并行/选择及 Runtime Preview | 118 passed |
+| 编辑器全量单元及集成测试 | 65 files / 235 passed |
+| Vue / TypeScript 类型检查 | 通过 |
+| Python Ruff 与 diff 空白检查 | 通过 |
 
-随后在 Codex 内置浏览器直接执行原保存应用，核对图片预览、24 张 Crop 图库、分类汇总、ROI 完整值、Hough 调试图及 5472×3648 原图查看器。Hough 查看器的 Preview Run 单节点调用也已完成：查看器保持打开，新图替换成功，其余节点明确标为上次结果。浏览器日志中的旧 HMR 错误保留其发生时间，不当作最终运行错误；最终验证期间没有新增错误。
+测试覆盖最后别名释放、父子作用域交接、已消费输入容器、pin 延迟销毁、多订阅者回执、完整接收前不释放、JPEG 格式/尺寸、容量失败不重连循环、JSON 的 false/0 保留、业务成功后显示失败、旧运行回调隔离、单节点渲染与交互转发、有界连续上传窗口。
 
-失败证据也保留：第一轮探针将 HTTP 接入地址误写成 `/api/v1/liveness`，其 404 不代表监听丢失；同时 `Value Preview 5` 因 ROI JSON 含 execution image id 被拒绝。修复为使用 `/api/v1/system/liveness`，完整 JSON 保留不透明 ID 并标明 `reference_scope: execution`，只有授权 `blob_id` 能取图。修复后才得到上表通过结果。较早的编码/会话容量失败已分别加入编码队列限额、临时借用归还和不可变源编码合并，不能把失败样本抹去。
+扩展编辑器回归曾发现旧测试连接替身缺少 resourceStatus，已同步替身并重新验证。组件拆分期间的中间 HMR 状态曾报 emitsOptions 异常，完整重载后继续验证；不把该阶段当作性能通过样本。
 
-## 验收边界
+## 真实输入与功能结果
 
-- 本次真实模型是既有 YOLO11、OpenVINO CPU FP32 分类部署，不能据此宣布其他模型/任务/格式真实精度通过。没有重训或修改模型阈值。
-- Windows conda 与同目录 Python 已验证；POSIX 的共享内存资源跟踪/退出尚未实测。
-- API RSS 是进程内所有业务的合计；没有取得本次真实运行的逐 Worker Private Bytes、GPU 显存或全部资源计数时间序列。SHM/预留计数归零证据来自独立跨进程测试，不能冒充真实服务全部内存归零。
-- 显示传输 P95 目标没有完成时钟校准下的分位验收。三分钟观察不能证明长期工业稳定性，历史共享内存 P99 比 ZeroMQ 高 17.46% 的失败结论保持。
-- Preview 与正式执行共用机器硬件，仍可能产生 CPU/GPU/内存竞争；独立进程和预算不等于完全没有性能影响。标准启动只支持单 API 进程，Preview 执行池数量单独配置。
-- 本轮没有自动迁移生产数据库或重新发布。发行更新应同时更新前后端，并使用项目维护入口备份、迁移数据库；不能直接编辑生成的 release/app。
+应用 `workflow-app-20260831130620`，图片 `data/files/developer/图片/3570/治具托盘/空盘/Image_20260721103308382.bmp`，59,885,622 字节，5472×3648。SHA256 为 `4218cf9210770b37e3e0079f7c6fccbb3d7acb4e937332cb51bfeb6d2d050fb5`。
 
-## 临时文件清理受阻
+既有部署 `deployment-instance-637c2ea77b124e00ae3256813a5d880d`，YOLO11 classification / OpenVINO CPU FP32。实际结果为 24 个空槽、passed=true，full/abnormal/unknown 均为 0。原应用文档和部署未被替换，显式 Save 输出使用验证目录。
 
-结束时已确认本次 pytest / 探针进程均退出。清理目标限定为仓库 `.tmp` 下明确列出的本轮 `preview-session-*` 与 `preview-route-inspect` 目录，执行前核对了解析后的绝对路径边界。自动审批拒绝了原生 PowerShell 删除操作，仅返回 `blocked by policy`，未提供更具体原因；没有尝试绕过，目录仍保留。证据报告与截图已另存于长期交付目录，不依赖 `.tmp`。
+真实探针执行 91 个节点，40 个 JPEG/JSON 资源全部接收并解码；完整接管后再次读取全部 40 个资源均返回 preview_memory_unavailable，证明这些服务端 Blob 已回收。浏览器仍能显示 24 张 Crop、Hough 调试图、图片预览、值预览及完整分辨率 Viewer。
+
+额外 5 秒 Delay 的隔离快照测试中，长节点结束前已出现 22 个显示，HTTP 健康检查无失败。该测试证明显示与长业务独立，不证明任意时长或长期工业稳定性。
+
+脚本入口为 `tests/integration/workflow_preview_session_live.py`；默认无额外 Delay、总超时 180 秒。开发命令先执行 `conda activate amvision`。永久摘要见 [验证数据](validation/2026-09-10-preview-lifetime.json)，不依赖临时输出目录。
+
+## 性能证据及未通过项
+
+同一图片的 Python 客户端对照：DEFLATE 开启时从开始上传到全部接收/解码约 8.14–9.88 秒；禁用压缩的一轮为 3.72 秒，上传约 0.30 秒。这是 Python 客户端结果，不是浏览器结果。
+
+浏览器已确认一个前端放大因素：共享节点渲染组件使状态更新触发整层节点计算。拆分后，一轮页面完整接收为 5.87 秒，其中图执行 2.38 秒，文件读取 0.21 秒、摘要 0.057 秒、传输 1.27 秒。但后续出现 8.91 秒及 10.62 秒样本；最慢一轮文件传输为 5.30 秒，图执行仍约 2.47 秒。不能选择最快样本宣布回归解决。
+
+最终连续窗口两轮复测分别为 5.25 秒、5.92 秒；图执行为 2.34 秒、2.31 秒，文件传输为 0.86 秒、1.17 秒。均使用已启动 Worker，包含每次重新上传同一 57.1 MiB BMP。逐轮计时写入验证数据文件。client_total_ms 是从预览开始到当前资源完整缓存及显示反馈完成，不是硬件实际绘制完成；全尺寸源图在打开 Viewer 时使用浏览器缓存。
+
+当前缺少同条件的历史同步实现基线；上传耗时波动的根因仍未完全确认，不能宣布已恢复用户原先约一秒的体验。后续需对浏览器发送/ACK、服务接收、OS 调度分别记录同轮时间，固定机器负载和相同输入开展对照。没有证据把所有额外耗时归因于模型推理或永久内存泄漏。
+
+## 兼容性与验收边界
+
+正式 Runtime/Trigger 的同步协议、LocalBuffer 槽位规则及模型算法未改。共享图执行器仅在 Preview 注入生命周期管理器时启用管理；部署网关沿用现有实现。Preview 调用真实部署后与正式调用共享推理服务及机器资源，隔离进程不代表不存在负载竞争。
+
+前端仍为 Vue 3，本地构建、离线分发；开发使用 conda，发行使用同目录 Python。没有本轮新数据库 schema 变更；原 Preview 临时表移除迁移仍按现有维护入口执行。公开 API 保持 v1，前后端及文档同步替换，不保留旧 Preview 模型池或服务端值分页。
+
+真实精度证据仅限已有分类模型及该图片。历史共享内存 P99 比 ZeroMQ 高 17.46% 的失败结论保持独立；本轮短测不构成长时间稳定性、全模型精度、正式链路 P99 或生产发行验收。
+
+## 临时文件清理
+
+最终检查未发现仍在运行的本轮 pytest、探针、Vitest 或类型检查进程。清理操作仅针对 `.tmp/preview-repair-s1` 至 `s5`、`preview-repair-final` 和 `preview-repair-live`，包含绝对路径边界检查。自动审批拒绝该原生 PowerShell 删除操作，返回 `blocked by policy`，未提供具体原因；未绕过限制，临时目录仍保留。正式验证摘要已保存，不依赖这些临时目录。

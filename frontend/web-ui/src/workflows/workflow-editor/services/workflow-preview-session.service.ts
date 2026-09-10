@@ -35,7 +35,7 @@ export interface PreviewEvent {
 }
 
 type Pending = { resolve: (value: any) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
-type Download = { chunks: ArrayBuffer[]; bytes: number; size: number; next: number; mediaType: string }
+type Download = { chunks: ArrayBuffer[]; bytes: number; size: number; next: number; mediaType: string; discardError?: string }
 
 export function createPreviewSession(projectId: string, applicationId: string, editorSessionId: string) {
   return apiRequest<PreviewSessionIdentity>('/workflows/preview-sessions', {
@@ -62,6 +62,12 @@ export class PreviewSessionConnection {
   private pending = new Map<string, Pending>()
   private downloads = new Map<string, Download>()
   private reads = new Map<string, Promise<Blob>>()
+  private blobs = new Map<string, Blob>()
+  private resources = new Map<string, Map<string, string>>()
+  private receipts = new Map<string, string>()
+  private descriptors = new Map<string, { size: number; available: boolean }>()
+  private failures = new Map<string, Error>()
+  private runId: string | null = null
   private readQueue: Array<() => void> = []
   private activeReads = 0
   private stopped = false
@@ -74,6 +80,7 @@ export class PreviewSessionConnection {
     queryTokenEnabled: () => boolean
     onEvent: (event: PreviewEvent) => void
     onConnection: (connected: boolean, error?: string, expired?: boolean) => void
+    onResources?: () => void
   }) {}
 
   async connect(): Promise<void> {
@@ -120,7 +127,7 @@ export class PreviewSessionConnection {
       const index = header.getUint32(24), length = header.getUint32(28)
       const transfer = this.downloads.get(blobId)
       if (!transfer || index !== transfer.next || length !== data.byteLength - 32 || length < 1 || transfer.bytes + length > transfer.size) throw new Error('preview_frame_order')
-      transfer.chunks.push(data.slice(32))
+      if (!transfer.discardError) transfer.chunks.push(data.slice(32))
       transfer.bytes += length
       transfer.next++
       this.send({ type: 'display.ack', blob_id: blobId, chunk_index: index })
@@ -132,13 +139,12 @@ export class PreviewSessionConnection {
     if (message.type === 'protocol.error') {
       // 服务器拒绝命令后终止这次传输；不能让 Promise 一直等待不存在的 ACK。
       const inputReply: Record<string, string> = { 'input.begin': 'input.ready', 'input.commit': 'input.committed', 'input.chunk': 'input.ack' }
-      const key = message.request_type === 'value.get' ? `value:${message.request_id}` : message.blob_id ? `display:${message.blob_id.replaceAll('-', '')}`
+      const key = message.blob_id ? `display:${message.blob_id.replaceAll('-', '')}`
         : message.transfer_id ? `${inputReply[message.request_type]}:${message.transfer_id}${message.request_type === 'input.chunk' ? `:${message.chunk_index}` : ''}` : null
       if (key) this.reject(key, new Error(message.error))
       else this.failPending(new Error(message.error))
       return
     }
-    if (message.type === 'value.page') { this.resolve(`value:${message.request_id}`, message); return }
     if (message.type.startsWith('input.')) {
       const key = message.type === 'input.ack' ? `input.ack:${message.transfer_id}:${message.chunk_index}` : `${message.type}:${message.transfer_id}`
       this.resolve(key, message)
@@ -148,7 +154,9 @@ export class PreviewSessionConnection {
       const transfer = this.downloads.get(message.blob_id)
       if (!transfer || !Number.isSafeInteger(message.byte_length) || message.byte_length < 1 || message.byte_length > MAX_FILE_BYTES * 8) throw new Error('preview_display_size')
       const reserved = [...this.downloads.values()].reduce((total, item) => total + item.size, 0)
-      if (reserved + message.byte_length > this.identity.memory_limit_bytes) throw new Error('preview_browser_memory_capacity')
+        + [...this.blobs.values()].reduce((total, item) => total + item.size, 0)
+      // 合法的大结果超出浏览器预算只拒绝该资源，不能制造 WS 重连循环。
+      if (reserved + message.byte_length > this.identity.memory_limit_bytes) transfer.discardError = 'preview_browser_memory_capacity'
       transfer.size = message.byte_length
       return
     }
@@ -156,7 +164,14 @@ export class PreviewSessionConnection {
       const transfer = this.downloads.get(message.blob_id)
       if (!transfer || transfer.bytes !== transfer.size) throw new Error('preview_display_incomplete')
       this.downloads.delete(message.blob_id)
-      this.resolve(`display:${message.blob_id}`, new Blob(transfer.chunks, { type: transfer.mediaType }))
+      if (transfer.discardError) { this.reject(`display:${message.blob_id}`, new Error(transfer.discardError)); return }
+      const blob = new Blob(transfer.chunks, { type: transfer.mediaType })
+      this.blobs.set(message.blob_id, blob)
+      this.resolve(`display:${message.blob_id}`, blob)
+      if (typeof message.receipt === 'string') {
+        this.receipts.set(message.blob_id, message.receipt)
+        this.send({ type: 'resource.received', blob_id: message.blob_id, receipt: message.receipt })
+      }
       return
     }
     if (message.format_id !== PREVIEW_FORMAT || message.session_id !== this.identity.session_id || message.epoch !== this.identity.epoch) throw new Error('preview_session_identity')
@@ -166,7 +181,73 @@ export class PreviewSessionConnection {
       this.options.onConnection(true)
       this.resolve('snapshot', undefined)
     }
+    this.trackResources(message as PreviewEvent)
     this.options.onEvent(message as PreviewEvent)
+  }
+
+  /** 当前结果在浏览器持有完整副本；旧版本替换后同时撤销缓存引用。 */
+  private trackResources(event: PreviewEvent): void {
+    const register = (key: string, value: unknown) => {
+      const found = new Map<string, string>()
+      const visit = (item: any): void => {
+        if (!item || typeof item !== 'object') return
+        if (item.transport_kind === 'preview-memory' && typeof item.blob_id === 'string') {
+          const id = item.blob_id.replaceAll('-', '')
+          found.set(id, item.media_type || 'image/jpeg')
+          this.descriptors.set(id, { size: Number.isSafeInteger(item.byte_length) ? item.byte_length : 0, available: item.server_available !== false })
+        }
+        for (const child of Object.values(item)) visit(child)
+      }
+      visit(value)
+      this.resources.set(key, found)
+    }
+    const payload = event.payload
+    if (event.type === 'session.snapshot') {
+      this.runId = payload.run?.run_id ?? null
+      this.failures.clear()
+      this.resources.clear()
+      for (const kind of ['displays', 'values']) for (const item of payload[kind] ?? []) register(JSON.stringify([kind, item.node_id, item.output_port]), item)
+      register('outputs', payload.run?.outputs)
+    } else if (event.type === 'run.accepted') {
+      this.runId = event.run_id
+      const nodes = Array.isArray(payload.node_ids) ? new Set(payload.node_ids) : null
+      for (const key of this.resources.keys()) {
+        if (key === 'outputs') this.resources.delete(key)
+        else {
+          const [kind, node] = JSON.parse(key)
+          if (kind === 'values' || nodes && !nodes.has(node)) this.resources.delete(key)
+        }
+      }
+    } else if (event.run_id !== this.runId) return
+    else if (event.type === 'display.updated' || event.type === 'value.updated') {
+      register(JSON.stringify([event.type === 'display.updated' ? 'displays' : 'values', payload.node_id, payload.output_port]), payload)
+    } else if (event.type === 'run.finished' || event.type === 'run.outputs') {
+      if ('outputs' in payload) register('outputs', payload.outputs)
+    } else return
+    const current = new Map([...this.resources.values()].flatMap(value => [...value]))
+    for (const id of this.descriptors.keys()) if (!current.has(id) && !this.reads.has(id)) {
+      this.blobs.delete(id); this.receipts.delete(id); this.descriptors.delete(id); this.failures.delete(id)
+    }
+    if (event.type === 'session.snapshot') for (const [id, receipt] of this.receipts) {
+      if (current.has(id)) this.send({ type: 'resource.received', blob_id: id, receipt })
+    }
+    // 完整源图和大值也转移到浏览器，不能只接收缩略图后长期占用后端。
+    for (const [id, mediaType] of current) void this.readBlob(id, mediaType).catch(() => { /* 显式读取仍返回具体容量/传输错误。 */ })
+    this.options.onResources?.()
+  }
+
+  /** 只检查当前显示的完整 Blob，浏览器解码由反馈回调单独确认。 */
+  resourceStatus(): { pending: number; errors: string[] } {
+    const current = new Set([...this.resources.values()].flatMap(value => [...value.keys()]))
+    let pending = 0
+    const errors: string[] = []
+    for (const id of current) {
+      if (this.blobs.has(id)) continue
+      const error = this.failures.get(id)?.message ?? (this.descriptors.get(id)?.available === false ? 'preview_memory_unavailable' : null)
+      if (error) errors.push(error)
+      else pending++
+    }
+    return { pending, errors: [...new Set(errors)] }
   }
 
   private send(message: object | ArrayBuffer): void {
@@ -175,12 +256,30 @@ export class PreviewSessionConnection {
   }
 
   async readValue(blobId: string, offset = 0, path: Array<string | number> = []): Promise<PreviewValuePage> {
-    if (!this.connected) throw new Error('preview_connection_lost')
-    const requestId = crypto.randomUUID()
-    const pending = this.wait(`value:${requestId}`)
-    try { this.send({ type: 'value.get', request_id: requestId, blob_id: blobId, offset, limit: 50, path }) }
-    catch (error) { this.reject(`value:${requestId}`, error instanceof Error ? error : new Error(String(error))) }
-    return pending
+    if (!Number.isSafeInteger(offset) || offset < 0) throw new Error('preview_value_page_invalid')
+    if (!Array.isArray(path) || path.length > 32 || path.some(key => typeof key !== 'string' && !Number.isSafeInteger(key))) throw new Error('preview_value_path_invalid')
+    const blob = await this.readBlob(blobId, 'application/json')
+    let value: any = JSON.parse(await blob.text())
+    for (const key of path) {
+      if (value == null || !Object.prototype.hasOwnProperty.call(value, key)) throw new Error('preview_value_path_invalid')
+      value = value[key]
+    }
+    const children: PreviewValuePage['children'] = []
+    const describe = (key: string | number, item: any): any => {
+      if (item !== null && typeof item === 'object' || typeof item === 'string' && item.length > 1024) {
+        const type = Array.isArray(item) ? 'list' : typeof item === 'string' ? 'str' : 'dict'
+        const total = type === 'dict' ? Object.keys(item).length : item.length
+        children.push({ key, path: [...path, key], value_type: type, total })
+        return { value_type: type, total, summary: true }
+      }
+      return item
+    }
+    const type = Array.isArray(value) ? 'list' : value !== null && typeof value === 'object' ? 'dict' : typeof value === 'string' ? 'str' : value === null ? 'NoneType' : typeof value === 'boolean' ? 'bool' : Number.isInteger(value) ? 'int' : 'float'
+    const total = type === 'dict' ? Object.keys(value).length : ['list', 'str'].includes(type) ? value.length : 1
+    const page = type === 'dict' ? Object.fromEntries(Object.entries(value).slice(offset, offset + 50).map(([key, item]) => [key, describe(key, item)]))
+      : type === 'list' ? value.slice(offset, offset + 50).map((item: any, index: number) => describe(offset + index, item))
+        : type === 'str' ? value.slice(offset, offset + 50) : value
+    return { value: page, total, offset, limit: 50, has_more: offset + 50 < total, value_type: type, path, children }
   }
 
   private wait(key: string, timeout = 30_000): Promise<any> {
@@ -210,16 +309,20 @@ export class PreviewSessionConnection {
     this.downloads.clear()
   }
 
-  async upload(file: File): Promise<string> {
+  async upload(file: File, onTimings?: (timings: Record<string, number>) => void): Promise<string> {
     if (!this.connected || this.stopped) throw new Error('preview_connection_lost')
     if (!file.size || file.size > MAX_FILE_BYTES) throw new Error('preview_input_capacity')
     const transferId = crypto.randomUUID()
+    const started = performance.now()
     const content = await file.arrayBuffer()
+    const readDone = performance.now()
     const digest = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', content)), byte => byte.toString(16).padStart(2, '0')).join('')
+    const hashDone = performance.now()
     const ready = this.wait(`input.ready:${transferId}`)
     this.send({ type: 'input.begin', transfer_id: transferId, byte_length: file.size, media_type: file.type || 'application/octet-stream', file_name: file.name, sha256: digest })
     await ready
     const identity = transferId.replaceAll('-', '').match(/../g)!.map(byte => parseInt(byte, 16))
+    const acknowledgements: Promise<any>[] = []
     for (let offset = 0, index = 0; offset < content.byteLength; offset += CHUNK_SIZE, index++) {
       const length = Math.min(CHUNK_SIZE, content.byteLength - offset)
       const frame = new ArrayBuffer(32 + length)
@@ -229,20 +332,43 @@ export class PreviewSessionConnection {
       header.setUint32(24, index); header.setUint32(28, length)
       new Uint8Array(frame, 32).set(new Uint8Array(content, offset, length))
       const ack = this.wait(`input.ack:${transferId}:${index}`)
+      // 后续帧可能在较早帧失败后被连接一并拒绝；主等待仍传播错误。
+      void ack.catch(() => {})
       this.send(frame)
-      await ack
+      acknowledgements.push(ack)
+      // 每收到最早一帧 ACK 就补充一帧，保持有界连续窗口，避免逐批停顿。
+      if (acknowledgements.length === 8) await acknowledgements.shift()
     }
+    await Promise.all(acknowledgements)
     const committed = this.wait(`input.committed:${transferId}`)
     this.send({ type: 'input.commit', transfer_id: transferId })
-    return (await committed).input_id
+    const result = await committed
+    onTimings?.({ client_file_read_ms: readDone - started, client_file_hash_ms: hashDone - readDone, client_file_transfer_ms: performance.now() - hashDone })
+    return result.input_id
   }
 
-  readBlob(blobId: string, mediaType = 'image/png'): Promise<Blob> {
+  readBlob(blobId: string, mediaType = 'image/jpeg'): Promise<Blob> {
     blobId = blobId.replaceAll('-', '')
+    const cached = this.blobs.get(blobId)
+    if (cached) return Promise.resolve(cached)
     const existing = this.reads.get(blobId)
     if (existing) return existing
+    const failed = this.failures.get(blobId)
+    if (failed) return Promise.reject(failed)
+    const descriptor = this.descriptors.get(blobId)
+    if (descriptor?.available === false) return Promise.reject(new Error('preview_memory_unavailable'))
+    const reserved = [...this.blobs.values()].reduce((sum, item) => sum + item.size, 0)
+      + [...this.reads.keys()].reduce((sum, id) => sum + (this.descriptors.get(id)?.size ?? 0), 0)
+    if (reserved + (descriptor?.size ?? 0) > this.identity.memory_limit_bytes) {
+      const error = new Error('preview_browser_memory_capacity')
+      this.failures.set(blobId, error)
+      return Promise.reject(error)
+    }
     if (this.readQueue.length >= 256) return Promise.reject(new Error('preview_browser_capacity'))
-    const operation = this.download(blobId, mediaType).finally(() => this.reads.delete(blobId))
+    const operation = this.download(blobId, mediaType).catch(error => { this.failures.set(blobId, error); throw error }).finally(() => {
+      this.reads.delete(blobId)
+      this.options.onResources?.()
+    })
     this.reads.set(blobId, operation)
     return operation
   }
@@ -270,5 +396,10 @@ export class PreviewSessionConnection {
     if (this.reconnect !== null) clearTimeout(this.reconnect)
     this.socket?.close()
     this.failPending(new Error('preview_session_closed'))
+    this.blobs.clear()
+    this.resources.clear()
+    this.receipts.clear()
+    this.descriptors.clear()
+    this.failures.clear()
   }
 }

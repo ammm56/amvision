@@ -410,6 +410,8 @@ export interface WorkflowPreviewRun {
   node_records: WorkflowJsonObject[]
   error: WorkflowError | null
   readMemoryBlob?: (blobId: string, mediaType: string) => Promise<Blob>
+  timings?: Record<string, number>
+  delivery_state?: string
   values?: WorkflowJsonObject[]
   readValue?: (blobId: string, offset?: number, path?: Array<string | number>) => Promise<import('./services/workflow-preview-session.service').PreviewValuePage>
 }

@@ -17,7 +17,7 @@ from backend.service.application.workflows.preview.worker import run_preview_wor
 
 @dataclass
 class _PreviewSlot:
-    """独占一个串行 Worker，任务结束后复用模型而非新建进程。"""
+    """复用串行图执行进程；部署模型由既有推理服务拥有。"""
 
     cancellation: object
     process: object = None
@@ -27,15 +27,21 @@ class _PreviewSlot:
     busy: bool = False
     quarantined: bool = False
     deferred_cleanup: object = None
+    gateway_channel: object = None
+    gateway_dispatcher: object = None
+    local_buffer_channel: object = None
 
 
 class PreviewSessionPool:
     """有界进程池，只向 SessionManager 交付实时控制事件。"""
 
-    def __init__(self, *, settings, manager):
+    def __init__(self, *, settings, manager, published_inference_gateway=None,
+                 local_buffer_channel_provider=None):
         """复用既有进程数量/业务期限，状态存放在注入的内存 manager。"""
         self.settings = settings
         self.manager = manager
+        self.published_inference_gateway = published_inference_gateway
+        self.local_buffer_channel_provider = local_buffer_channel_provider
         self._context = multiprocessing.get_context("spawn")
         self._lock = RLock()
         self._slots = [_PreviewSlot(self._context.Event()) for _ in range(settings.workflow_runtime.preview_worker_count)]
@@ -114,9 +120,26 @@ class PreviewSessionPool:
         slot.requests = self._context.Queue(maxsize=1)
         slot.responses = self._context.Queue(maxsize=1024)
         slot.replies = self._context.Queue(maxsize=1)
+        channels = {}
+        if self.published_inference_gateway is not None:
+            from backend.service.application.deployments import (
+                PublishedInferenceGatewayEventChannel, PublishedInferenceGatewayDispatcher,
+            )
+            slot.gateway_channel = PublishedInferenceGatewayEventChannel(
+                request_queue=self._context.Queue(maxsize=64),
+                response_queue=self._context.Queue(maxsize=64),
+                request_timeout_seconds=self.settings.deployment_process_supervisor.request_timeout_seconds)
+            slot.gateway_dispatcher = PublishedInferenceGatewayDispatcher(
+                channel=slot.gateway_channel, gateway=self.published_inference_gateway)
+            slot.gateway_dispatcher.start()
+            channels["gateway_channel"] = slot.gateway_channel
+        if self.local_buffer_channel_provider is not None:
+            slot.local_buffer_channel = self.local_buffer_channel_provider()
+            channels["local_buffer_channel"] = slot.local_buffer_channel
         slot.process = self._context.Process(target=run_preview_worker, kwargs={
             "settings_payload": self.settings.model_dump(mode="python"), "requests": slot.requests,
-            "responses": slot.responses, "replies": slot.replies, "cancellation": slot.cancellation}, name="workflow-preview-session")
+            "responses": slot.responses, "replies": slot.replies, "cancellation": slot.cancellation,
+            **channels}, name="workflow-preview-session")
         slot.process.start()
         deadline = monotonic() + self.settings.workflow_runtime.model_startup_timeout_seconds
         while True:
@@ -143,6 +166,14 @@ class PreviewSessionPool:
         writer_pins = set()
         published = set()
         borrowing_finished = False
+        business_finished = False
+        def finish(payload):
+            """业务完成后故障只改变交付状态，不能留下永久 pending 或改写业务结果。"""
+            if business_finished:
+                if payload.get("status") != "succeeded":
+                    self.manager.accept(sid, rid, "run.outputs", {"delivery_state": "unavailable", "delivery_error": payload.get("error") or payload["status"]})
+            else:
+                self.manager.accept(sid, rid, "run.finished", payload)
         try:
             self._start(slot)
             timeout = message["request"].get("timeout_seconds") or self.settings.workflow_runtime.preview_default_timeout_seconds
@@ -157,6 +188,10 @@ class PreviewSessionPool:
                     kind, payload = None, None
                 if kind == "event":
                     self.manager.accept(sid, rid, payload["type"], payload["payload"])
+                    if payload["type"] == "run.finished":
+                        business_finished = True
+                        # 显示交付有独立上限，不套用已经结束的业务 deadline。
+                        deadline = monotonic() + 60
                     if payload["type"].startswith(("display.", "value.")):
                         published.intersection_update(self.manager.buffers.live_ids(sid))
                 elif kind == "memory":
@@ -209,7 +244,7 @@ class PreviewSessionPool:
                     borrowing_finished = True
                     if timed_out:
                         payload["status"] = "timed_out"
-                    self.manager.accept(sid, rid, "run.finished", payload)
+                    finish(payload)
                     return
                 elif kind == "lifecycle":
                     invocation = payload.get("node_invocation_id")
@@ -235,7 +270,7 @@ class PreviewSessionPool:
                     if now >= force_at:
                         self._stop(slot)
                         borrowing_finished = True
-                        self.manager.accept(sid, rid, "run.finished", {"status": "timed_out" if timed_out else "cancelled"})
+                        finish({"status": "timed_out" if timed_out else "cancelled"})
                         return
         except Exception as original_error:
             failure = original_error
@@ -247,7 +282,7 @@ class PreviewSessionPool:
                 slot.quarantined = True
                 failure = stop_error
                 was_cancelled = timed_out = False
-            self.manager.accept(sid, rid, "run.finished", {
+            finish({
                 "status": "timed_out" if timed_out else "cancelled" if was_cancelled else "failed",
                 "error": {"type": type(failure).__name__, "message": str(failure)[:1024]}})
         finally:
@@ -288,6 +323,19 @@ class PreviewSessionPool:
                     pass
                 self._stop(slot)
             slot.process.close()
+        if slot.gateway_dispatcher is not None:
+            slot.gateway_dispatcher.stop()
+            slot.gateway_dispatcher = None
+        if slot.gateway_channel is not None:
+            for queue in (slot.gateway_channel.request_queue, slot.gateway_channel.response_queue):
+                queue.cancel_join_thread()
+                queue.close()
+            slot.gateway_channel = None
+        if slot.local_buffer_channel is not None:
+            # 强制退出时子进程无法注销通道，父进程在确认死亡后补偿关闭。
+            from backend.service.application.local_buffers.local_buffer_client import LocalBufferBrokerClient
+            LocalBufferBrokerClient(slot.local_buffer_channel).close()
+            slot.local_buffer_channel = None
         for queue in (slot.requests, slot.responses, slot.replies):
             if queue is not None:
                 queue.cancel_join_thread()

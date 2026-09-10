@@ -110,14 +110,9 @@ async def stream_session(socket: WebSocket, session_id: str):
                             transfer = {"blob_id": blob, "borrow": borrow, "view": view, "sent": 0, "acked": 0, "touched": monotonic()}
                             transfers.append(transfer)
                             await send({"type": "display.begin", "blob_id": blob, "byte_length": len(view)})
-                        elif kind == "value.get":
-                            from backend.service.application.workflows.preview.values import read_value_page
+                        elif kind == "resource.received":
                             blob = UUID(command["blob_id"]).hex
-                            if blob not in manager.referenced_blobs(session_id):
-                                raise ValueError("preview_value_unavailable")
-                            result = await asyncio.to_thread(read_value_page, manager.buffers, session_id, blob,
-                                path=command.get("path", []), offset=command.get("offset", 0), limit=command.get("limit", 50))
-                            await send({"type": "value.page", "request_id": command.get("request_id"), **result})
+                            manager.received_blob(session_id, subscription, blob, command.get("receipt"))
                         elif kind == "display.ack":
                             blob = UUID(command["blob_id"]).hex
                             transfer = next(item for item in transfers if item["blob_id"] == blob)
@@ -139,7 +134,8 @@ async def stream_session(socket: WebSocket, session_id: str):
                     raise TimeoutError("preview_transfer_ack_timeout")
                 offset = transfer["sent"] * PREVIEW_CHUNK_SIZE
                 if offset >= len(transfer["view"]) and transfer["acked"] == transfer["sent"]:
-                    await send({"type": "display.end", "blob_id": transfer["blob_id"]})
+                    receipt = manager.issue_receipt(session_id, transfer["blob_id"])
+                    await send({"type": "display.end", "blob_id": transfer["blob_id"], "receipt": receipt})
                     finish_transfer(transfer)
                     transfers.remove(transfer)
                 elif outstanding < 4 and offset < len(transfer["view"]):

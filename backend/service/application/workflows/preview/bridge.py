@@ -1,7 +1,7 @@
 """Preview Worker 的专用内存交接，控制队列不承载大图字节。"""
 
 from multiprocessing.shared_memory import SharedMemory
-from threading import Lock
+from threading import Lock, RLock
 from uuid import uuid4
 
 
@@ -13,6 +13,9 @@ class PreviewMemoryBridge:
         self.responses = responses
         self.replies = replies
         self.lock = Lock()
+        self.budget_lock = RLock()
+        self.reservations = {}
+        self.credit = 0
 
     def call(self, action, **payload):
         """固定类型小消息；通道异常立即报告，不写磁盘或重试副作用。"""
@@ -37,8 +40,19 @@ class PreviewMemoryBridge:
         return self.call("publish", blob_id=descriptor["blob_id"])
 
     def reserve(self, key, size):
-        """矩阵复制与编码工作区在父进程统一预算中预留。"""
-        self.call("reserve", key=key, byte_length=size)
+        """按 MiB 申请额度，内部原子计量，避免小值逐项往返父进程。"""
+        with self.budget_lock:
+            needed = sum(self.reservations.values()) - self.reservations.get(key, 0) + size
+            if size < 0:
+                raise ValueError("preview_memory_capacity")
+            credit = ((needed + 1024**2 - 1) // 1024**2) * 1024**2
+            if needed > self.credit or self.credit - credit >= 8 * 1024**2:
+                self.call("reserve", key="workspace", byte_length=credit)
+                self.credit = credit
+            if size:
+                self.reservations[key] = size
+            else:
+                self.reservations.pop(key, None)
 
     def release(self, blob_id):
         """未交付给显示状态的编码结果可以立即回收。"""

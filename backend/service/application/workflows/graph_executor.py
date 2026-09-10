@@ -329,6 +329,23 @@ class WorkflowGraphExecutor:
             execution_metadata if execution_metadata is not None else {}
         )
 
+        preview_lifetime = execution_metadata_payload.get("_preview_lifetime")
+        preview_scope = None
+        if preview_lifetime is not None:
+            collapsed = {}
+            for plan in (*parallel_plans.values(), *selection_plans.values()):
+                collapsed.update({inner: plan.end_node_id for inner in plan.body_node_ids})
+            for plan in for_each_plans.values():
+                collapsed.update({inner: plan.end_node_id for inner in (plan.start_node_id, *plan.body_node_order)})
+            for inner, target in tuple(collapsed.items()):
+                seen = {inner}
+                while target in collapsed and target not in seen:
+                    seen.add(target)
+                    target = collapsed[target]
+                collapsed[inner] = target
+            preview_scope = preview_lifetime.scope(template, input_values, execution_metadata_payload, collapsed)
+            node_output_values = preview_scope
+
         for node_id in topological_order:
             _raise_if_workflow_deadline_expired(
                 execution_metadata_payload,
@@ -644,6 +661,9 @@ class WorkflowGraphExecutor:
                 extra_payload={"duration_ms": duration_ms},
             )
 
+            if preview_scope is not None:
+                preview_scope.complete(node_id, opaque=node_definition.node_pack_id is not None)
+
         _raise_if_workflow_deadline_expired(
             execution_metadata_payload,
             node_id="workflow",
@@ -664,6 +684,8 @@ class WorkflowGraphExecutor:
                 output_key
             ]
 
+        if preview_scope is not None:
+            preview_scope.finish(resolved_template_outputs)
         return WorkflowGraphExecutionResult(
             template_id=template.template_id,
             template_version=template.template_version,
@@ -1631,6 +1653,19 @@ class WorkflowGraphExecutor:
             (plan.start_node_id, output_name): output_value
             for output_name, output_value in start_outputs.items()
         }
+        iteration_scope = None
+        preview_lifetime = execution_metadata.get("_preview_lifetime")
+        if preview_lifetime is not None:
+            included = {plan.start_node_id, plan.end_node_id, *plan.body_node_order}
+            local_template = template.model_copy(update={
+                "edges": tuple(edge for edge in template.edges if edge.source_node_id in included and edge.target_node_id in included),
+                "template_inputs": (),
+            })
+            iteration_scope = preview_lifetime.scope(local_template, {}, execution_metadata,
+                final_keys={(plan.result_node_id, plan.result_port)})
+            for key, value in local_output_values.items():
+                iteration_scope[key] = value
+            local_output_values = iteration_scope
         start_duration_ms = _elapsed_ms(start_node_started_at)
         node_records.append(
             WorkflowNodeExecutionRecord(
@@ -1829,9 +1864,14 @@ class WorkflowGraphExecutor:
                 body_node=body_node,
                 raw_outputs=raw_outputs,
             )
+            if iteration_scope is not None:
+                iteration_scope.complete(body_node_id, opaque=body_node_definition.node_pack_id is not None)
             if control_action is not None:
+                result_values = dict(local_output_values)
+                if iteration_scope is not None:
+                    iteration_scope.finish(result_values)
                 return WorkflowForEachIterationResult(
-                    output_values=local_output_values,
+                    output_values=result_values,
                     control_action=control_action,
                 )
         end_node = node_instances[plan.end_node_id]
@@ -1849,7 +1889,10 @@ class WorkflowGraphExecutor:
         local_output_values[(plan.end_node_id, FOR_EACH_RESULT_INPUT_PORT)] = (
             resolved_end_inputs[FOR_EACH_RESULT_INPUT_PORT]
         )
-        return WorkflowForEachIterationResult(output_values=local_output_values)
+        result_values = dict(local_output_values)
+        if iteration_scope is not None:
+            iteration_scope.finish({key: value for key, value in result_values.items() if key == (plan.result_node_id, plan.result_port)})
+        return WorkflowForEachIterationResult(output_values=result_values)
 
 
 def _is_workflow_node_enabled(node: WorkflowGraphNode) -> bool:

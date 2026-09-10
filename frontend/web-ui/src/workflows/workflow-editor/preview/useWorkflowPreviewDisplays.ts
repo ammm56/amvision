@@ -823,7 +823,7 @@ async function resolvePreviewImagePayload(
     ? `data:${mediaType || 'image/png'};base64,${imageBase64}`
     : await resolveStoragePreviewImageSrc(previewRun, objectKey, registerObjectUrl, () => { accessDenied = true })
   if (transportKind === 'preview-memory' && typeof imagePayload.blob_id === 'string' && previewRun.readMemoryBlob) {
-    const read = () => previewRun.readMemoryBlob!(imagePayload.blob_id as string, mediaType || 'image/png')
+    const read = () => previewRun.readMemoryBlob!(imagePayload.blob_id as string, mediaType || 'image/jpeg')
     const blob = await (previewRun.scheduleImageRead ? previewRun.scheduleImageRead(read) : read())
     src = URL.createObjectURL(blob)
     registerObjectUrl(src, blob.size)

@@ -35,6 +35,7 @@ class PreviewSubscription:
     bytes: int = 0
     overflowed: bool = False
     closed: bool = False
+    subscription_id: str = field(default_factory=lambda: uuid4().hex)
 
 
 @dataclass
@@ -56,6 +57,8 @@ class PreviewSession:
     disconnected_at: float | None = field(default_factory=monotonic)
     released: bool = False
     state_bytes: int = 0
+    received: dict = field(default_factory=dict)
+    receipts: dict = field(default_factory=dict)
 
 
 def _encoded_size(value: object) -> int:
@@ -200,7 +203,20 @@ class PreviewSessionManager:
             snapshot = self._envelope(session, "session.snapshot", {
                 "watermark": session.seq, "run": session.run,
                 "nodes": list(session.nodes.values()), "displays": list(session.displays.values()), "values": list(session.values.values())})
-            return sub, deepcopy(snapshot)
+            snapshot = deepcopy(snapshot)
+            live = self.buffers.live_ids(session_id)
+            def availability(value):
+                """重连时区分浏览器已接管资源与仍可从服务端读取的资源。"""
+                if isinstance(value, dict):
+                    if value.get("transport_kind") == "preview-memory" and value.get("blob_id"):
+                        value["server_available"] = value["blob_id"] in live
+                    for child in value.values():
+                        availability(child)
+                elif isinstance(value, list):
+                    for child in value:
+                        availability(child)
+            availability(snapshot)
+            return sub, snapshot
 
     def take(self, sub: PreviewSubscription) -> dict | None:
         """WS 适配层非阻塞读取，发送 await 不能持有状态锁。"""
@@ -225,6 +241,12 @@ class PreviewSessionManager:
                 session.subscriptions.remove(sub)
                 if not session.subscriptions:
                     session.disconnected_at = monotonic()
+                else:
+                    active = {item.subscription_id for item in session.subscriptions}
+                    for blob_id, received in session.received.items():
+                        received.intersection_update(active)
+                        if active <= received:
+                            self.buffers.release(session_id, blob_id)
                 self.buffers.reserve(session.session_id, "state:queues", sum(item.bytes for item in session.subscriptions))
 
     def submit(self, session_id: str, principal_id: str, request: dict, start: Callable) -> dict:
@@ -293,7 +315,7 @@ class PreviewSessionManager:
             if session is None or session.released or not session.run or session.run["run_id"] != run_id:
                 return False
             terminal = session.run["state"] in PREVIEW_TERMINAL_STATES
-            if terminal and kind not in {"display.updated", "display.unavailable"}:
+            if terminal and kind not in {"display.updated", "display.unavailable", "value.updated", "run.outputs"}:
                 return False
             payload = deepcopy(payload)
             size = _encoded_size(payload)
@@ -311,8 +333,20 @@ class PreviewSessionManager:
                     for node in list(session.nodes.values()):
                         if node.get("status") == "running":
                             self.accept(session_id, run_id, "node.finished", {**node, "status": state, "error_details": payload.get("error") or {}})
-                self.buffers.reserve(session_id, "state:run", size)
-                session.run.update(state=state, outputs=payload.get("outputs", {}), error=payload.get("error"))
+                merged = {**session.run, "state": state, "outputs": payload.get("outputs", {}), "error": payload.get("error"),
+                          **{key: payload[key] for key in ("timings", "delivery_state") if key in payload}}
+                self.buffers.reserve(session_id, "state:run", _encoded_size(merged))
+                session.run = merged
+            elif kind == "run.outputs":
+                if not terminal:
+                    return False
+                previous = _blob_ids(session.run.get("outputs", {}))
+                merged = {**session.run, **{key: payload[key] for key in ("outputs", "delivery_state", "delivery_error") if key in payload},
+                          "timings": {**session.run.get("timings", {}), **payload.get("timings", {})}}
+                self.buffers.reserve(session_id, "state:run", _encoded_size(merged))
+                session.run = merged
+                for blob_id in previous - self.referenced_blobs(session_id):
+                    self.buffers.release(session_id, blob_id)
             elif kind.startswith("node."):
                 key = str(payload.get("invocation_id", ""))
                 if not key or not payload.get("node_id"):
@@ -378,6 +412,32 @@ class PreviewSessionManager:
         with self._lock:
             session = self._sessions.get(session_id)
             return _blob_ids([*session.displays.values(), *session.values.values(), session.run]) if session else set()
+
+    def issue_receipt(self, session_id: str, blob_id: str) -> str:
+        """完整传输后颁发会话内凭证，重连可重发；不暴露操作系统映射名称。"""
+        with self._lock:
+            session = self._get(session_id)
+            referenced = self.referenced_blobs(session_id)
+            session.receipts = {key: value for key, value in session.receipts.items() if key in referenced}
+            return session.receipts.setdefault(blob_id, uuid4().hex)
+
+    def received_blob(self, session_id: str, sub: PreviewSubscription, blob_id: str, receipt: str) -> None:
+        """完整传输的接管凭证由 WS 校验；所有当前接收者接管后撤销 Blob 所有权。"""
+        with self._lock:
+            session = self._get(session_id)
+            if blob_id not in self.referenced_blobs(session_id):
+                return
+            if session.receipts.get(blob_id) != receipt:
+                raise ValueError("preview_receipt_invalid")
+            if sub not in session.subscriptions or blob_id not in self.referenced_blobs(session_id):
+                return
+            referenced = self.referenced_blobs(session_id)
+            session.received = {key: value for key, value in session.received.items() if key in referenced}
+            received = session.received.setdefault(blob_id, set())
+            received.intersection_update(item.subscription_id for item in session.subscriptions)
+            received.add(sub.subscription_id)
+            if all(item.subscription_id in received for item in session.subscriptions):
+                self.buffers.release(session_id, blob_id)
 
     def expire(self, *, now: float | None = None) -> None:
         """连接宽限与业务 timeout 分开；没有 progress 不能导致误判。"""

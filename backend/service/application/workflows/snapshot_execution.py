@@ -276,6 +276,9 @@ class SnapshotExecutionService:
                 item.input_id for item in template.template_inputs
             },
         )
+        preview_lifetime = request.execution_metadata.get("_preview_lifetime")
+        if preview_lifetime is not None:
+            preview_lifetime.adopt_bindings(application, request.input_bindings, validated_input_bindings)
         execution_metadata_payload = dict(request.execution_metadata)
         workflow_resource_scope = get_or_create_workflow_resource_scope(
             execution_metadata_payload

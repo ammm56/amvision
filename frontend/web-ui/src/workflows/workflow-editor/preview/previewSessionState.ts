@@ -48,7 +48,10 @@ export function reducePreviewEvent(state: PreviewSessionState, event: PreviewEve
       state.run = { ...state.run, state: 'running' }
     } else if (event.type === 'run.finished') {
       if (terminal || !PREVIEW_TERMINAL.has(payload.status)) return false
-      state.run = { ...state.run, state: payload.status, outputs: payload.outputs ?? {}, error: payload.error ?? null }
+      state.run = { ...state.run, state: payload.status, outputs: payload.outputs ?? {}, error: payload.error ?? null, delivery_state: payload.delivery_state, timings: payload.timings }
+    } else if (event.type === 'run.outputs') {
+      if (!terminal) return false
+      state.run = { ...state.run, ...payload, timings: { ...state.run.timings, ...payload.timings } }
     } else if (event.type.startsWith('node.')) {
       if (terminal || !payload.invocation_id || !payload.node_id) return false
       const old = state.nodes[payload.invocation_id]

@@ -77,25 +77,6 @@ def _has_execution_image(value):
     return isinstance(value, (list, tuple)) and any(_has_execution_image(item) for item in value)
 
 
-def read_value_page(buffers, session_id, blob_id, *, path=(), offset=0, limit=50):
-    """借用期间在线程中解析 JSON，按成员/行/字符串分页，响应仍受 64 KiB 限制。"""
-    if type(offset) is not int or offset < 0 or type(limit) is not int or not 1 <= limit <= 100:
-        raise ValueError("preview_value_page_invalid")
-    if not isinstance(path, (list, tuple)) or len(path) > 32 or any(type(key) not in (str, int) for key in path):
-        raise ValueError("preview_value_path_invalid")
-    with buffers.borrow(session_id, blob_id) as content:
-        if len(content) > 16 * 1024**2:
-            raise ValueError("preview_value_capacity")
-        from uuid import uuid4
-        reservation = f"reader:value:{uuid4().hex}"
-        buffers.reserve(session_id, reservation, len(content) * 4)
-        try:
-            value = json.loads(bytes(content))
-            return _page(value, path, offset, limit)
-        finally:
-            buffers.reserve(session_id, reservation, 0)
-
-
 def _page(value, path, offset, limit):
     """嵌套容器提供可继续读取的路径，不把它的摘要冒充完整内容。"""
     for key in path:

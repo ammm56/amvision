@@ -782,7 +782,10 @@ class BackendServiceBootstrap(
             published_inference_gateway=published_inference_gateway,
         )
         workflow_preview_sessions = PreviewSessionManager()
-        workflow_preview_sessions.pool = PreviewSessionPool(settings=settings, manager=workflow_preview_sessions)
+        workflow_preview_sessions.pool = PreviewSessionPool(
+            settings=settings, manager=workflow_preview_sessions,
+            published_inference_gateway=published_inference_gateway,
+            local_buffer_channel_provider=local_buffer_broker_supervisor.get_event_channel)
         trigger_workflow_runtime_service = WorkflowRuntimeService(
             settings=settings,
             session_factory=session_factory,

@@ -62,6 +62,10 @@ def main(argv: list[str] | None = None) -> int:
         "--log-level",
         args.log_level,
     ]
+    # 原始大图/JPEG 已有自己的编码；DEFLATE 会增加本地预览的 CPU 和传输延迟。
+    # 仅影响 HTTP 服务的 WebSocket 扩展协商，不改变 Runtime/Trigger IPC。
+    if not any(value == "--ws-per-message-deflate" or value.startswith("--ws-per-message-deflate=") for value in extra_args):
+        module_args.extend(["--ws-per-message-deflate", "false"])
     if sys.platform == "win32" and not any(
         value == "--loop" or value.startswith("--loop=") for value in extra_args
     ):

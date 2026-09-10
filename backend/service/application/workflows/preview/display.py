@@ -1,6 +1,6 @@
 """编辑态显示副本的内存编码与交接；业务端口值不经过显示传输。"""
 
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, Future
 from collections import OrderedDict
 from copy import deepcopy
 from threading import BoundedSemaphore, RLock
@@ -9,6 +9,9 @@ from itertools import islice
 
 from backend.service.application.workflows.runtime_preview import RuntimePreviewCapture, PREVIEW_TYPES, _copy_json
 from backend.service.application.workflows.preview.values import PreviewValues
+
+JPEG_QUALITY = 90
+"""页面显示编码质量；不改变节点业务图片或模型输入。"""
 
 
 class PreviewDisplayCapture(RuntimePreviewCapture):
@@ -19,7 +22,8 @@ class PreviewDisplayCapture(RuntimePreviewCapture):
         self.bridge = bridge
         self.emit = emit
         self.events = events
-        self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="preview-image-encode")
+        self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="preview-display-events")
+        self.encoder = ThreadPoolExecutor(max_workers=1, thread_name_prefix="preview-image-encode")
         self.capacity = BoundedSemaphore(128)
         self.display_capacity = BoundedSemaphore(128)
         self.lock = RLock()
@@ -43,23 +47,28 @@ class PreviewDisplayCapture(RuntimePreviewCapture):
                 saved_output = save_bytes(request, save_location=location, content=content).to_payload()
         _, matrix, width, height = _load_preview_image_matrix(request, image_payload=image_payload)
         source_key = None
+        source_jpeg = None
         if isinstance(image_payload, dict) and image_payload.get("transport_kind") == "memory":
             entry = require_execution_image_registry(request).get_entry(image_payload.get("image_handle"))
             if isinstance(entry.content, bytes):
                 source_key = entry.image_handle
+                if entry.media_type == "image/jpeg":
+                    source_jpeg = entry.content
         with self.lock:
-            result = self._schedule_image(matrix, width, height, source_key)
+            result = self._schedule_image(matrix, width, height, source_key, source_jpeg)
             if saved_output is not None:
                 result["saved_output"] = saved_output
             return result
 
-    def _schedule_image(self, matrix, width, height, source_key):
+    def _schedule_image(self, matrix, width, height, source_key, source_jpeg=None):
         """同一不可变源只登记一次编码，复制完成后立即归还业务线程。"""
         import cv2
         with self.lock:
             pending = self.encoding_sources.get(source_key) if source_key else None
             if pending is not None:
                 return {"transport_kind": "preview-memory", "pending_image_id": pending, "width": width, "height": height}
+            if len(self.images) >= 4096:
+                return {"transport_kind": "preview-memory", "unavailable": "preview_image_descriptor_capacity", "width": width, "height": height}
         amount = matrix.nbytes
         with self.lock:
             if self.bytes + amount > 256 * 1024**2 or not self.capacity.acquire(blocking=False):
@@ -77,24 +86,38 @@ class PreviewDisplayCapture(RuntimePreviewCapture):
             self.bridge.reserve(identity, 0)
             return {"transport_kind": "preview-memory", "unavailable": str(error)[:256], "width": width, "height": height}
 
+        thumbnail = Future()
+
+        def publish_jpeg(pixels):
+            """JPEG 仅用于页面显示，业务矩阵保持原样。"""
+            if pixels.ndim == 3 and pixels.shape[2] == 4:
+                pixels = cv2.cvtColor(pixels, cv2.COLOR_BGRA2BGR)
+            ok, encoded = cv2.imencode(".jpg", pixels, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
+            if not ok:
+                raise ValueError("preview_image_encoding_failed")
+            return {"transport_kind": "preview-memory", **self.bridge.publish(encoded.tobytes(), "image/jpeg"),
+                    "width": pixels.shape[1], "height": pixels.shape[0]}
+
         def encode():
-            """源图无损 PNG；缩略图只用于显示，不参与 ROI 坐标或模型计算。"""
+            """先交付缩略图，再编码全尺寸 JPEG；两阶段不阻塞业务图。"""
             try:
                 self.bridge.reserve("image-encoder", amount * 2 + 64 * 1024)
-                ok, encoded = cv2.imencode(".png", owned)
-                if not ok:
-                    raise ValueError("preview_image_encoding_failed")
-                source = {"transport_kind": "preview-memory", **self.bridge.publish(encoded.tobytes(), "image/png"), "width": width, "height": height}
                 scale = min(1.0, 1920 / max(width, height))
-                display = source
-                if scale < 1:
-                    small = cv2.resize(owned, (max(1, round(width * scale)), max(1, round(height * scale))), interpolation=cv2.INTER_AREA)
-                    ok, encoded = cv2.imencode(".png", small)
-                    if not ok:
-                        raise ValueError("preview_image_encoding_failed")
-                    display = {"transport_kind": "preview-memory", **self.bridge.publish(encoded.tobytes(), "image/png"), "width": small.shape[1], "height": small.shape[0]}
-                return {**display, "source_image": source, "display_image": display, "source_width": width, "source_height": height,
-                        "display_width": display["width"], "display_height": display["height"], "display_scale": scale}
+                small = cv2.resize(owned, (max(1, round(width * scale)), max(1, round(height * scale))), interpolation=cv2.INTER_AREA) if scale < 1 else owned
+                display = publish_jpeg(small)
+                metadata = {**display, "display_image": display, "source_width": width, "source_height": height,
+                            "display_width": display["width"], "display_height": display["height"], "display_scale": scale}
+                thumbnail.set_result({**metadata, "source_image": {"transport_kind": "preview-memory", "pending_image_id": identity,
+                                                                  "width": width, "height": height, "pending_source": True}} if scale < 1 else {**metadata, "source_image": display})
+                source = ({"transport_kind": "preview-memory", **self.bridge.publish(source_jpeg, "image/jpeg"), "width": width, "height": height}
+                          if scale < 1 and source_jpeg is not None else publish_jpeg(owned) if scale < 1 else display)
+                return {**metadata, "source_image": source}
+            except Exception as error:
+                # Future 只保留错误描述，不能通过 traceback 长期持有大矩阵。
+                unavailable = {"transport_kind": "preview-memory", "unavailable": str(error)[:256]}
+                if not thumbnail.done():
+                    thumbnail.set_result(unavailable)
+                return unavailable
             finally:
                 with self.lock:
                     self.bytes -= amount
@@ -102,24 +125,12 @@ class PreviewDisplayCapture(RuntimePreviewCapture):
                 self.bridge.reserve(identity, 0)
                 self.bridge.reserve("image-encoder", 0)
         with self.lock:
-            # Future 只作本次节点显示的短暂交接，不随循环永久累计。
-            while len(self.images) >= 512:
-                oldest, future = next(iter(self.images.items()))
-                if not future.done():
-                    break
-                self.images.pop(oldest)
-            self.images[identity] = self.executor.submit(encode)
+            self.images[identity] = (thumbnail, self.encoder.submit(encode))
             if source_key:
                 self.encoding_sources[source_key] = identity
-                def completed(_future):
-                    """只合并正在编码的同一不可变源，已释放旧结果不被缓存重新引用。"""
-                    with self.lock:
-                        if self.encoding_sources.get(source_key) == identity:
-                            self.encoding_sources.pop(source_key, None)
-                self.images[identity].add_done_callback(completed)
         return {"transport_kind": "preview-memory", "pending_image_id": identity, "width": width, "height": height}
 
-    def _resolve(self, value):
+    def _resolve(self, value, *, full=True):
         """只处理显示 body，执行图中的原始输出和图片引用保持不变。"""
         if isinstance(value, dict):
             if value.get("transport_kind") == "inline-base64" and isinstance(value.get("image_base64"), str):
@@ -130,7 +141,15 @@ class PreviewDisplayCapture(RuntimePreviewCapture):
                 key = f"inline:{uuid4().hex}"
                 self.bridge.reserve(key, len(source))
                 try:
-                    descriptor = self.bridge.publish(b64decode(source, validate=True), value.get("media_type") or "image/png")
+                    import cv2
+                    import numpy as np
+                    pixels = cv2.imdecode(np.frombuffer(b64decode(source, validate=True), dtype=np.uint8), cv2.IMREAD_COLOR)
+                    if pixels is None:
+                        raise ValueError("preview_image_decode_failed")
+                    ok, encoded = cv2.imencode(".jpg", pixels, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
+                    if not ok:
+                        raise ValueError("preview_image_encoding_failed")
+                    descriptor = self.bridge.publish(encoded.tobytes(), "image/jpeg")
                     return {**{k: v for k, v in value.items() if k != "image_base64"}, **descriptor, "transport_kind": "preview-memory"}
                 finally:
                     self.bridge.reserve(key, 0)
@@ -143,11 +162,15 @@ class PreviewDisplayCapture(RuntimePreviewCapture):
                         future = self.images.get(identity)
                     if future is None:
                         raise ValueError("preview_image_expired")
-                    resolved = future.result()
+                    resolved = future[1 if full else 0].result()
+                    if resolved.get("unavailable"):
+                        raise ValueError(resolved["unavailable"])
+                    if value.get("pending_source"):
+                        return resolved["source_image"]
                     return {**resolved, "saved_output": value["saved_output"]} if "saved_output" in value else resolved
-            return {key: self._resolve(item) for key, item in value.items()}
+            return {key: self._resolve(item, full=full) for key, item in value.items()}
         if isinstance(value, list | tuple):
-            return [self._resolve(item) for item in value]
+            return [self._resolve(item, full=full) for item in value]
         return value
 
     def capture(self, *, node_id, definition, outputs, invocation_id, duration_ms):
@@ -207,7 +230,12 @@ class PreviewDisplayCapture(RuntimePreviewCapture):
             def send(copied=copied, identity=deepcopy(identity), amount=amount, reservation=reservation):
                 """编码完成才发布完整 descriptor，错误只影响相应显示。"""
                 try:
-                    self.emit("display.updated", {**identity, "payload": self._resolve(copied)})
+                    first = self._resolve(copied, full=False)
+                    self.emit("display.updated", {**identity, "payload": first})
+                    # 只补全第一阶段的 pending 引用，避免再次解码内联图或重复发布 Blob。
+                    complete = self._resolve(first)
+                    if complete != first:
+                        self.emit("display.updated", {**identity, "payload": complete})
                 except Exception as error:
                     self.emit("display.unavailable", {**identity, "error": str(error)[:256]})
                 finally:
@@ -227,6 +255,7 @@ class PreviewDisplayCapture(RuntimePreviewCapture):
 
     def close(self):
         """正常/取消均排空已产生的显示，并释放所有矩阵与 Future 引用。"""
+        self.encoder.shutdown(wait=True)
         self.executor.shutdown(wait=True)
         if self.failure is not None:
             raise RuntimeError("preview_display_channel_failed") from self.failure
@@ -239,6 +268,7 @@ class PreviewDisplayCapture(RuntimePreviewCapture):
             return {"preview_value": {"kind": "unavailable", "error": str(error)[:256]}}
         finally:
             self.images.clear()
+            self.encoding_sources.clear()
 
     def video(self, request, payload):
         """读取节点已有视频到有界 SHM，不为预览复制到 ObjectStore。"""

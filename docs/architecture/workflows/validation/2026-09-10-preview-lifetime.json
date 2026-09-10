@@ -1,0 +1,1109 @@
+{
+  "date": "2026-09-10",
+  "application": "workflow-app-20260831130620",
+  "records": [
+    {
+      "case": "report.json",
+      "compression": "deflate",
+      "functional_only": false,
+      "input_sha256": "4218cf9210770b37e3e0079f7c6fccbb3d7acb4e937332cb51bfeb6d2d050fb5",
+      "snapshot_sha256": "70d047f1cc0b7a7c7bff5d045ba1e88c9d823182199dcdd91d3aa85778fdde31",
+      "input_bytes": 59885622,
+      "upload_ms": 3718,
+      "all_received_decoded_ms": 9875,
+      "timings": {
+        "prepare_ms": 377.45910001103766,
+        "graph_ms": 2707.439899997553,
+        "worker_total_ms": 3191.7130000074394,
+        "display_drain_ms": 106.81520000798628
+      },
+      "resources": 40,
+      "released_resources": null,
+      "delay_seconds": 0,
+      "health_failures": 0,
+      "errors": [],
+      "passed": true
+    },
+    {
+      "case": "report2.json",
+      "compression": "deflate",
+      "functional_only": false,
+      "input_sha256": "4218cf9210770b37e3e0079f7c6fccbb3d7acb4e937332cb51bfeb6d2d050fb5",
+      "snapshot_sha256": "70d047f1cc0b7a7c7bff5d045ba1e88c9d823182199dcdd91d3aa85778fdde31",
+      "input_bytes": 59885622,
+      "upload_ms": 4031,
+      "all_received_decoded_ms": 8140,
+      "timings": {
+        "prepare_ms": 336.0538999841083,
+        "graph_ms": 2557.743000012124,
+        "worker_total_ms": 3267.5811999943107,
+        "display_drain_ms": 373.78520000493154
+      },
+      "resources": 40,
+      "released_resources": null,
+      "delay_seconds": 0,
+      "health_failures": 0,
+      "errors": [],
+      "passed": true
+    },
+    {
+      "case": "uncompressed.json",
+      "compression": "none",
+      "functional_only": false,
+      "input_sha256": "4218cf9210770b37e3e0079f7c6fccbb3d7acb4e937332cb51bfeb6d2d050fb5",
+      "snapshot_sha256": "70d047f1cc0b7a7c7bff5d045ba1e88c9d823182199dcdd91d3aa85778fdde31",
+      "input_bytes": 59885622,
+      "upload_ms": 297,
+      "all_received_decoded_ms": 3719,
+      "timings": {
+        "prepare_ms": 316.19929999578744,
+        "graph_ms": 2440.239699993981,
+        "worker_total_ms": 2955.642499990063,
+        "display_drain_ms": 199.20460000867024
+      },
+      "resources": 40,
+      "released_resources": null,
+      "delay_seconds": 0,
+      "health_failures": 0,
+      "errors": [],
+      "passed": true
+    },
+    {
+      "case": "delay.json",
+      "compression": "none",
+      "functional_only": false,
+      "input_sha256": "4218cf9210770b37e3e0079f7c6fccbb3d7acb4e937332cb51bfeb6d2d050fb5",
+      "snapshot_sha256": "70d047f1cc0b7a7c7bff5d045ba1e88c9d823182199dcdd91d3aa85778fdde31",
+      "input_bytes": 59885622,
+      "upload_ms": 296,
+      "all_received_decoded_ms": 9828,
+      "timings": {
+        "prepare_ms": 338.35949999047443,
+        "graph_ms": 7375.133699999424,
+        "worker_total_ms": 7714.557900006184,
+        "display_drain_ms": 1.065399992512539
+      },
+      "resources": 40,
+      "released_resources": null,
+      "delay_seconds": 5,
+      "health_failures": 0,
+      "errors": [],
+      "passed": true
+    },
+    {
+      "case": "release-proof.json",
+      "compression": "none",
+      "functional_only": false,
+      "input_sha256": "4218cf9210770b37e3e0079f7c6fccbb3d7acb4e937332cb51bfeb6d2d050fb5",
+      "snapshot_sha256": "70d047f1cc0b7a7c7bff5d045ba1e88c9d823182199dcdd91d3aa85778fdde31",
+      "input_bytes": 59885622,
+      "upload_ms": 344,
+      "all_received_decoded_ms": 4359,
+      "timings": {
+        "prepare_ms": 358.416600007331,
+        "graph_ms": 2731.641199992737,
+        "worker_total_ms": 3241.412700008368,
+        "display_drain_ms": 151.35580001515336
+      },
+      "resources": 40,
+      "released_resources": 40,
+      "delay_seconds": 0,
+      "health_failures": 0,
+      "errors": [],
+      "passed": true
+    },
+    {
+      "case": "final.json",
+      "compression": "none",
+      "functional_only": true,
+      "input_sha256": "4218cf9210770b37e3e0079f7c6fccbb3d7acb4e937332cb51bfeb6d2d050fb5",
+      "snapshot_sha256": "70d047f1cc0b7a7c7bff5d045ba1e88c9d823182199dcdd91d3aa85778fdde31",
+      "input_bytes": 59885622,
+      "upload_ms": 391,
+      "all_received_decoded_ms": 6188,
+      "timings": {
+        "prepare_ms": 358.9281000022311,
+        "graph_ms": 2617.4656999937724,
+        "worker_total_ms": 3139.6424999984447,
+        "display_drain_ms": 163.25000001234002
+      },
+      "resources": 40,
+      "released_resources": 40,
+      "delay_seconds": 0,
+      "health_failures": 0,
+      "errors": [],
+      "passed": true
+    }
+  ],
+  "browser": {
+    "images": [
+      {
+        "alt": "Image Preview",
+        "complete": true,
+        "height": 1280,
+        "width": 1920
+      },
+      {
+        "alt": "Image Preview",
+        "complete": true,
+        "height": 1768,
+        "width": 1920
+      },
+      {
+        "alt": "Image Preview",
+        "complete": true,
+        "height": 156,
+        "width": 150
+      },
+      {
+        "alt": "Crop 1",
+        "complete": true,
+        "height": 156,
+        "width": 150
+      },
+      {
+        "alt": "Crop 2",
+        "complete": true,
+        "height": 156,
+        "width": 150
+      },
+      {
+        "alt": "Crop 3",
+        "complete": true,
+        "height": 156,
+        "width": 150
+      },
+      {
+        "alt": "Crop 4",
+        "complete": true,
+        "height": 156,
+        "width": 150
+      },
+      {
+        "alt": "Crop 5",
+        "complete": true,
+        "height": 156,
+        "width": 150
+      },
+      {
+        "alt": "Crop 6",
+        "complete": true,
+        "height": 156,
+        "width": 150
+      },
+      {
+        "alt": "Crop 7",
+        "complete": true,
+        "height": 156,
+        "width": 150
+      },
+      {
+        "alt": "Crop 8",
+        "complete": true,
+        "height": 156,
+        "width": 150
+      },
+      {
+        "alt": "Crop 9",
+        "complete": true,
+        "height": 156,
+        "width": 150
+      },
+      {
+        "alt": "Crop 10",
+        "complete": true,
+        "height": 156,
+        "width": 150
+      },
+      {
+        "alt": "Crop 11",
+        "complete": true,
+        "height": 156,
+        "width": 150
+      },
+      {
+        "alt": "Crop 12",
+        "complete": true,
+        "height": 156,
+        "width": 150
+      },
+      {
+        "alt": "Crop 13",
+        "complete": true,
+        "height": 156,
+        "width": 150
+      },
+      {
+        "alt": "Crop 14",
+        "complete": true,
+        "height": 156,
+        "width": 150
+      },
+      {
+        "alt": "Crop 15",
+        "complete": true,
+        "height": 156,
+        "width": 150
+      },
+      {
+        "alt": "Crop 16",
+        "complete": true,
+        "height": 156,
+        "width": 150
+      },
+      {
+        "alt": "Crop 17",
+        "complete": true,
+        "height": 156,
+        "width": 150
+      },
+      {
+        "alt": "Crop 18",
+        "complete": true,
+        "height": 156,
+        "width": 150
+      },
+      {
+        "alt": "Crop 19",
+        "complete": true,
+        "height": 156,
+        "width": 150
+      },
+      {
+        "alt": "Crop 20",
+        "complete": true,
+        "height": 156,
+        "width": 150
+      },
+      {
+        "alt": "Crop 21",
+        "complete": true,
+        "height": 156,
+        "width": 150
+      },
+      {
+        "alt": "Crop 22",
+        "complete": true,
+        "height": 156,
+        "width": 150
+      },
+      {
+        "alt": "Crop 23",
+        "complete": true,
+        "height": 156,
+        "width": 150
+      },
+      {
+        "alt": "Crop 24",
+        "complete": true,
+        "height": 156,
+        "width": 150
+      },
+      {
+        "alt": "Hough Circles",
+        "complete": true,
+        "height": 1280,
+        "width": 1920
+      },
+      {
+        "alt": "Hough Circles",
+        "complete": true,
+        "height": 1280,
+        "width": 1920
+      },
+      {
+        "alt": "Hough Circles",
+        "complete": true,
+        "height": 1280,
+        "width": 1920
+      },
+      {
+        "alt": "Hough Circles",
+        "complete": true,
+        "height": 1280,
+        "width": 1920
+      },
+      {
+        "alt": "Image Preview",
+        "complete": true,
+        "height": 1768,
+        "width": 1920
+      },
+      {
+        "alt": "Image Preview",
+        "complete": true,
+        "height": 1768,
+        "width": 1920
+      }
+    ],
+    "run_id": "4478670e167c40609a1307965490bf59",
+    "timings": {
+      "client_business_ms": 8563.09999999404,
+      "client_total_ms": 10325.70000001788,
+      "display_drain_ms": 56.23409998952411,
+      "graph_ms": 2343.5361000010744,
+      "prepare_ms": 340.0383999978658,
+      "worker_total_ms": 2739.807900012238
+    }
+  },
+  "limitations": [
+    "Final browser complete receipt: 5254.9 ms and 5920.7 ms; no same-condition historical synchronous baseline.",
+    "Earlier slow browser uploads are preserved; two final samples do not establish absence of tail latency.",
+    "final.json ran with regression tests and is functional evidence only.",
+    "No long-term stability, all-model accuracy or formal Runtime/Trigger P99 acceptance."
+  ],
+  "browser_runs": {
+    "before_restart": {
+      "images": [
+        {
+          "alt": "Image Preview",
+          "complete": true,
+          "height": 1280,
+          "width": 1920
+        },
+        {
+          "alt": "Image Preview",
+          "complete": true,
+          "height": 1768,
+          "width": 1920
+        },
+        {
+          "alt": "Image Preview",
+          "complete": true,
+          "height": 156,
+          "width": 150
+        },
+        {
+          "alt": "Crop 1",
+          "complete": true,
+          "height": 156,
+          "width": 150
+        },
+        {
+          "alt": "Crop 2",
+          "complete": true,
+          "height": 156,
+          "width": 150
+        },
+        {
+          "alt": "Crop 3",
+          "complete": true,
+          "height": 156,
+          "width": 150
+        },
+        {
+          "alt": "Crop 4",
+          "complete": true,
+          "height": 156,
+          "width": 150
+        },
+        {
+          "alt": "Crop 5",
+          "complete": true,
+          "height": 156,
+          "width": 150
+        },
+        {
+          "alt": "Crop 6",
+          "complete": true,
+          "height": 156,
+          "width": 150
+        },
+        {
+          "alt": "Crop 7",
+          "complete": true,
+          "height": 156,
+          "width": 150
+        },
+        {
+          "alt": "Crop 8",
+          "complete": true,
+          "height": 156,
+          "width": 150
+        },
+        {
+          "alt": "Crop 9",
+          "complete": true,
+          "height": 156,
+          "width": 150
+        },
+        {
+          "alt": "Crop 10",
+          "complete": true,
+          "height": 156,
+          "width": 150
+        },
+        {
+          "alt": "Crop 11",
+          "complete": true,
+          "height": 156,
+          "width": 150
+        },
+        {
+          "alt": "Crop 12",
+          "complete": true,
+          "height": 156,
+          "width": 150
+        },
+        {
+          "alt": "Crop 13",
+          "complete": true,
+          "height": 156,
+          "width": 150
+        },
+        {
+          "alt": "Crop 14",
+          "complete": true,
+          "height": 156,
+          "width": 150
+        },
+        {
+          "alt": "Crop 15",
+          "complete": true,
+          "height": 156,
+          "width": 150
+        },
+        {
+          "alt": "Crop 16",
+          "complete": true,
+          "height": 156,
+          "width": 150
+        },
+        {
+          "alt": "Crop 17",
+          "complete": true,
+          "height": 156,
+          "width": 150
+        },
+        {
+          "alt": "Crop 18",
+          "complete": true,
+          "height": 156,
+          "width": 150
+        },
+        {
+          "alt": "Crop 19",
+          "complete": true,
+          "height": 156,
+          "width": 150
+        },
+        {
+          "alt": "Crop 20",
+          "complete": true,
+          "height": 156,
+          "width": 150
+        },
+        {
+          "alt": "Crop 21",
+          "complete": true,
+          "height": 156,
+          "width": 150
+        },
+        {
+          "alt": "Crop 22",
+          "complete": true,
+          "height": 156,
+          "width": 150
+        },
+        {
+          "alt": "Crop 23",
+          "complete": true,
+          "height": 156,
+          "width": 150
+        },
+        {
+          "alt": "Crop 24",
+          "complete": true,
+          "height": 156,
+          "width": 150
+        },
+        {
+          "alt": "Hough Circles",
+          "complete": true,
+          "height": 1280,
+          "width": 1920
+        },
+        {
+          "alt": "Hough Circles",
+          "complete": true,
+          "height": 1280,
+          "width": 1920
+        },
+        {
+          "alt": "Hough Circles",
+          "complete": true,
+          "height": 1280,
+          "width": 1920
+        },
+        {
+          "alt": "Hough Circles",
+          "complete": true,
+          "height": 1280,
+          "width": 1920
+        },
+        {
+          "alt": "Image Preview",
+          "complete": true,
+          "height": 1768,
+          "width": 1920
+        },
+        {
+          "alt": "Image Preview",
+          "complete": true,
+          "height": 1768,
+          "width": 1920
+        }
+      ],
+      "inspection": [
+        "<div class=\"workflow-graph-node-preview__image-frame\" style=\"aspect-ratio: 1920 / 1280;\"><img src=\"blob:http://127.0.0.1:5601/a41865e1-bbbf-4ebf-9dbd-a1b3c00e8de4\" alt=\"Image Preview\" draggable=\"false\"><!--v-if--></div>",
+        "<div class=\"workflow-graph-node-preview__image-frame\" style=\"aspect-ratio: 1920 / 1768;\"><img src=\"blob:http://127.0.0.1:5601/581d7c2d-19c5-46df-b483-9e739d136c5c\" alt=\"Image Preview\" draggable=\"false\"><!--v-if--></div>"
+      ],
+      "run_id": "4478670e167c40609a1307965490bf59",
+      "timings": {
+        "client_business_ms": 8563.09999999404,
+        "client_total_ms": 10325.70000001788,
+        "display_drain_ms": 56.23409998952411,
+        "graph_ms": 2343.5361000010744,
+        "prepare_ms": 340.0383999978658,
+        "worker_total_ms": 2739.807900012238
+      }
+    },
+    "after_restart_before_node_isolation": [
+      {
+        "images": [
+          {
+            "alt": "Image Preview",
+            "complete": true,
+            "height": 1280,
+            "width": 1920
+          },
+          {
+            "alt": "Image Preview",
+            "complete": true,
+            "height": 1768,
+            "width": 1920
+          },
+          {
+            "alt": "Image Preview",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 1",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 2",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 3",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 4",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 5",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 6",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 7",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 8",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 9",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 10",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 11",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 12",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 13",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 14",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 15",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 16",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 17",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 18",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 19",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 20",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 21",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 22",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 23",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 24",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Hough Circles",
+            "complete": true,
+            "height": 1280,
+            "width": 1920
+          },
+          {
+            "alt": "Hough Circles",
+            "complete": true,
+            "height": 1280,
+            "width": 1920
+          },
+          {
+            "alt": "Hough Circles",
+            "complete": true,
+            "height": 1280,
+            "width": 1920
+          },
+          {
+            "alt": "Hough Circles",
+            "complete": true,
+            "height": 1280,
+            "width": 1920
+          },
+          {
+            "alt": "Image Preview",
+            "complete": true,
+            "height": 1768,
+            "width": 1920
+          },
+          {
+            "alt": "Image Preview",
+            "complete": true,
+            "height": 1768,
+            "width": 1920
+          }
+        ],
+        "run_id": "cdda07f24bd44a36a34713a152c9f1d6",
+        "timings": {
+          "client_business_ms": 9062.30000001192,
+          "client_total_ms": 10475.59999999404,
+          "display_drain_ms": 43.12159999972209,
+          "graph_ms": 2428.058499994222,
+          "prepare_ms": 373.41110000852495,
+          "worker_total_ms": 2844.590099994093
+        }
+      },
+      {
+        "run_id": "1114e01953e945a98702070d70f41e62",
+        "timings": {
+          "client_business_ms": 6462.200000017881,
+          "client_total_ms": 8250.300000011921,
+          "display_drain_ms": 91.05300001101568,
+          "graph_ms": 2333.13939999789,
+          "prepare_ms": 351.97419999167323,
+          "worker_total_ms": 2776.16599999601
+        }
+      },
+      {
+        "run_id": "0dbd42b70fd24295bc59f545c66e0cd7",
+        "timings": {
+          "client_before_submit_ms": 1666.300000011921,
+          "client_business_ms": 7182.800000011921,
+          "client_submit_ms": 99.59999999403954,
+          "client_total_ms": 8653.59999999404,
+          "client_upload_ms": 1529.600000023842,
+          "display_drain_ms": 55.75839997618459,
+          "graph_ms": 2347.1516000281554,
+          "prepare_ms": 322.62409999384545,
+          "worker_total_ms": 2725.533599994378
+        }
+      }
+    ],
+    "node_isolation_batch_upload": [
+      {
+        "run_id": "3305280655e8482d865c619f7a1fb218",
+        "timings": {
+          "client_before_submit_ms": 1731.0999999940395,
+          "client_business_ms": 4745.5,
+          "client_file_hash_ms": 57,
+          "client_file_read_ms": 209.9000000059605,
+          "client_file_transfer_ms": 1273.7000000178814,
+          "client_first_node_ms": 2765.699999988079,
+          "client_run_started_ms": 1914.699999988079,
+          "client_submit_ms": 55.900000005960464,
+          "client_total_ms": 5868.299999982119,
+          "client_upload_ms": 1541.0999999940395,
+          "display_drain_ms": 89.61139997700229,
+          "graph_ms": 2381.577299995115,
+          "prepare_ms": 408.2071000011638,
+          "worker_total_ms": 2879.395199997816
+        }
+      },
+      {
+        "run_id": "8c3a20036bcd4a1a9aba0ffed18eba95",
+        "timings": {
+          "client_before_submit_ms": 4233.0999999940395,
+          "client_business_ms": 7728.40000000596,
+          "client_file_hash_ms": 79.69999998807907,
+          "client_file_read_ms": 351,
+          "client_file_transfer_ms": 3703.300000011921,
+          "client_first_node_ms": 5270.799999982119,
+          "client_run_started_ms": 4367.5,
+          "client_submit_ms": 56.69999998807907,
+          "client_total_ms": 8911.09999999404,
+          "client_upload_ms": 4134.199999988079,
+          "display_drain_ms": 55.1530999946408,
+          "graph_ms": 2600.5862999882083,
+          "prepare_ms": 338.88009999645874,
+          "worker_total_ms": 2994.6186000015587
+        }
+      },
+      {
+        "run_id": "845e0df9334f4a4ab55534b63417cb4e",
+        "timings": {
+          "client_before_submit_ms": 6278,
+          "client_business_ms": 9393,
+          "client_file_hash_ms": 91.7000000178814,
+          "client_file_read_ms": 661.5999999940395,
+          "client_file_transfer_ms": 5302.699999988079,
+          "client_first_node_ms": 7306.300000011921,
+          "client_run_started_ms": 6470,
+          "client_submit_ms": 213.60000002384183,
+          "client_total_ms": 10623.30000001192,
+          "client_upload_ms": 6056.199999988079,
+          "display_drain_ms": 104.95339997578412,
+          "graph_ms": 2472.221600008197,
+          "prepare_ms": 354.55809999257326,
+          "worker_total_ms": 2931.7325000010896
+        }
+      }
+    ],
+    "final_sliding_window": [
+      {
+        "run_id": "df88fdacd9144ebc9b2ccda2899c6ee4",
+        "timings": {
+          "client_before_submit_ms": 1249.800000011921,
+          "client_business_ms": 4193.200000017881,
+          "client_file_hash_ms": 81,
+          "client_file_read_ms": 149.5,
+          "client_file_transfer_ms": 864.6000000238419,
+          "client_first_node_ms": 2250.5,
+          "client_run_started_ms": 1366.4000000059605,
+          "client_submit_ms": 58.79999998211861,
+          "client_total_ms": 5254.9000000059605,
+          "client_upload_ms": 1095.4000000059605,
+          "display_drain_ms": 96.00659998250194,
+          "graph_ms": 2341.520999994827,
+          "prepare_ms": 335.4567000060342,
+          "worker_total_ms": 2772.9836000071373
+        }
+      },
+      {
+        "images": [
+          {
+            "alt": "Image Preview",
+            "complete": true,
+            "height": 1280,
+            "width": 1920
+          },
+          {
+            "alt": "Image Preview",
+            "complete": true,
+            "height": 1768,
+            "width": 1920
+          },
+          {
+            "alt": "Image Preview",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 1",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 2",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 3",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 4",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 5",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 6",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 7",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 8",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 9",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 10",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 11",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 12",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 13",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 14",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 15",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 16",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 17",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 18",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 19",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 20",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 21",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 22",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 23",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Crop 24",
+            "complete": true,
+            "height": 156,
+            "width": 150
+          },
+          {
+            "alt": "Hough Circles",
+            "complete": true,
+            "height": 1280,
+            "width": 1920
+          },
+          {
+            "alt": "Hough Circles",
+            "complete": true,
+            "height": 1280,
+            "width": 1920
+          },
+          {
+            "alt": "Hough Circles",
+            "complete": true,
+            "height": 1280,
+            "width": 1920
+          },
+          {
+            "alt": "Hough Circles",
+            "complete": true,
+            "height": 1280,
+            "width": 1920
+          },
+          {
+            "alt": "Image Preview",
+            "complete": true,
+            "height": 1768,
+            "width": 1920
+          },
+          {
+            "alt": "Image Preview",
+            "complete": true,
+            "height": 1768,
+            "width": 1920
+          }
+        ],
+        "run_id": "2140fbd09fd64164b4eddec055d39bf7",
+        "timings": {
+          "client_before_submit_ms": 1842,
+          "client_business_ms": 4843.199999988079,
+          "client_file_hash_ms": 57.39999997615814,
+          "client_file_read_ms": 372.800000011921,
+          "client_file_transfer_ms": 1173.800000011921,
+          "client_first_node_ms": 2992.300000011921,
+          "client_run_started_ms": 2034.199999988079,
+          "client_submit_ms": 175.80000001192093,
+          "client_total_ms": 5920.699999988079,
+          "client_upload_ms": 1604,
+          "display_drain_ms": 96.75290001905525,
+          "graph_ms": 2312.184799986426,
+          "prepare_ms": 401.7209000012372,
+          "worker_total_ms": 2810.657199996058
+        }
+      }
+    ]
+  }
+}

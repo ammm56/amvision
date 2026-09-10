@@ -34,6 +34,8 @@ export function useWorkflowPreviewSession() {
   let createdAt = ''
   let viewFrame: number | null = null
   let pendingDisplays = 0
+  let clientStarted: number | null = null
+  let clientTimings: Record<string, number> = {}
   const displayFailures = new Map<string, string>()
   const displayVersions = new Map<string, number>()
   const editorId = crypto.randomUUID()
@@ -64,6 +66,8 @@ export function useWorkflowPreviewSession() {
     state = null
     requestedRevision = null
     lastPreviewRun.value = null
+    clientStarted = null
+    clientTimings = {}
     previewing.value = previewCancelling.value = false
     queryError.value = displayError.value = null
     pendingDisplays = 0
@@ -74,6 +78,8 @@ export function useWorkflowPreviewSession() {
   function begin(next: PreviewSessionContext): number {
     if (context && (context.projectId !== next.projectId || context.applicationId !== next.applicationId || principalId !== account.currentUser?.principal_id)) reset()
     generation++
+    clientStarted = performance.now()
+    clientTimings = {}
     cancelDisplayRefresh?.()
     context = next
     principalId = account.currentUser?.principal_id
@@ -93,7 +99,8 @@ export function useWorkflowPreviewSession() {
     const active = connection
     return { format_id: active.identity.format_id, session_id: state.sessionId, preview_run_id: run.run_id,
       document_revision: run.document_revision, project_id: context.projectId, application_id: context.applicationId,
-      state: run.state, created_at: createdAt, outputs: run.outputs ?? {}, node_records: Object.values(state.nodes),
+      state: run.state, created_at: createdAt, timings: { ...run.timings, ...clientTimings }, delivery_state: run.delivery_state,
+      outputs: run.outputs ?? {}, node_records: Object.values(state.nodes),
       error: run.error ? { code: run.error.type ?? 'preview_failed', message: run.error.message,
         details: typeof run.error.details === 'object' ? run.error.details : { node_id: run.error.node_id } } : null,
       values: Object.values(state.values), readValue: (blobId, offset, path) => active.readValue(blobId, offset, path),
@@ -111,8 +118,14 @@ export function useWorkflowPreviewSession() {
     if (!run || !isCurrent(token)) return
     function updateStatus(): void {
       if (!isCurrent(token)) return
-      displayError.value = [...displayFailures.values()].join('; ') || null
-      displayState.value = displayError.value ? 'failed' : pendingDisplays ? 'loading' : 'ready'
+      const resources = connection?.resourceStatus() ?? { pending: 0, errors: [] }
+      displayError.value = [...displayFailures.values(), ...resources.errors].join('; ') || null
+      displayState.value = displayError.value || state?.run?.delivery_state === 'unavailable' ? 'failed'
+        : pendingDisplays || resources.pending || state?.run?.delivery_state === 'pending' ? 'loading' : 'ready'
+      if (state?.run?.document_revision === requestedRevision && state?.run?.delivery_state === 'ready' && displayState.value === 'ready' && clientStarted !== null && !clientTimings.client_total_ms) {
+        clientTimings.client_total_ms = performance.now() - clientStarted
+        refreshView()
+      }
     }
     await Promise.all(payloads.map(async item => {
       const key = JSON.stringify([item.node_id, item.output_port])
@@ -140,7 +153,10 @@ export function useWorkflowPreviewSession() {
     if (!state || !isCurrent(generation)) return
     if (requestedRevision && event.document_revision && event.document_revision !== requestedRevision) return
     if (!reducePreviewEvent(state, event)) return
+    if (event.type === 'run.started' && clientStarted !== null) clientTimings.client_run_started_ms = performance.now() - clientStarted
+    if (event.type === 'node.started' && clientStarted !== null && clientTimings.client_first_node_ms === undefined) clientTimings.client_first_node_ms = performance.now() - clientStarted
     if (event.type === 'run.accepted') createdAt = new Date().toISOString()
+    if (event.type === 'run.finished' && clientStarted !== null) clientTimings.client_business_ms = performance.now() - clientStarted
     if (event.type.startsWith('node.') || event.type === 'value.updated') {
       if (viewFrame === null) {
         const token = generation
@@ -155,7 +171,7 @@ export function useWorkflowPreviewSession() {
     }
     if (event.type === 'session.snapshot') void display(Object.values(state.displays), generation, Boolean(state.run && PREVIEW_TERMINAL.has(state.run.state)))
     else if (event.type.startsWith('display.')) void display([event.payload], generation)
-    else if (event.type === 'run.finished') void display([], generation, true)
+    else if (event.type === 'run.finished' || event.type === 'run.outputs') void display([], generation, true)
   }
   async function open(identity: Awaited<ReturnType<typeof createPreviewSession>>, token: number): Promise<void> {
     if (!isCurrent(token)) { await releasePreviewSession(identity.session_id); return }
@@ -163,6 +179,7 @@ export function useWorkflowPreviewSession() {
     const next = new PreviewSessionConnection(identity, {
       getAccessToken: () => account.accessToken, queryTokenEnabled: () => account.websocketQueryTokenEnabled,
       onEvent: accept,
+      onResources: () => { if (connection === next) void display([], generation, true) },
       onConnection: (connected, error, expired) => {
         if (connection !== next) return
         queryError.value = connected ? null : error ?? 'preview_connection_lost'
@@ -181,19 +198,26 @@ export function useWorkflowPreviewSession() {
   async function execute(input: WorkflowPreviewRunActionInput, token: number): Promise<WorkflowPreviewRun | null> {
     if (!connection) await open(await createPreviewSession(input.projectId, input.application.application_id, editorId), token)
     if (!isCurrent(token) || !connection) return null
+    const uploadStarted = performance.now()
     const inputIds: Record<string, string[]> = {}
     for (const upload of input.fileUploads ?? []) {
       if (!isCurrent(token)) return null
       inputIds[upload.bindingId] ??= []
-      inputIds[upload.bindingId]!.push(await connection.upload(upload.file))
+      inputIds[upload.bindingId]!.push(await connection.upload(upload.file, timings => {
+        if (isCurrent(token)) for (const [key, value] of Object.entries(timings)) clientTimings[key] = (clientTimings[key] ?? 0) + value
+      }))
     }
     if (!isCurrent(token)) return null
+    clientTimings.client_upload_ms = performance.now() - uploadStarted
+    clientTimings.client_before_submit_ms = performance.now() - clientStarted!
+    const submitStarted = performance.now()
     const accepted = await submitPreviewSession(connection.identity.session_id, {
       request_id: crypto.randomUUID(), document_revision: requestedRevision,
       application: input.application, template: input.template, input_bindings: input.inputBindings, input_ids: inputIds,
       execution_scope: input.executionScope?.kind === 'node' ? { kind: 'node', target_node_id: input.executionScope.targetNodeId } : { kind: 'application' },
     })
     if (!isCurrent(token)) return null
+    clientTimings.client_submit_ms = performance.now() - submitStarted
     if (!state?.run || state.run.run_id !== accepted.run_id) {
       state!.run = { run_id: accepted.run_id, document_revision: requestedRevision, state: 'accepted', outputs: {}, error: null }
       createdAt = new Date().toISOString()
