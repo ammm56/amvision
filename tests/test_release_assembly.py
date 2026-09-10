@@ -203,7 +203,7 @@ def test_assemble_release_materializes_windows_x64_nvidia_layout(
         ).read_text(encoding="utf-8")
     )
     assert release_manifest["profile_id"] == "full-windows-x64-nvidia"
-    assert release_manifest["provenance"]["product_version"] == "0.1.6"
+    assert release_manifest["provenance"]["product_version"] == "0.1.7"
     assert release_manifest["provenance"]["assembled_at_utc"].endswith("Z")
     assert "source_revision" in release_manifest["provenance"]
     assert "source_dirty" in release_manifest["provenance"]
