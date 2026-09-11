@@ -1,7 +1,7 @@
 <template>
-  <Button v-if="allowed" size="sm" variant="ghost" :disabled="disabled || busy" @click="openDialog">{{ label || t('remove') }}</Button>
+  <Button v-if="allowed" size="sm" variant="ghost" :disabled="disabled || busy" @click="openDialog">{{ label || (kind === 'dataset-import' ? t('removeImport') : t('remove')) }}</Button>
   <Teleport to="body">
-    <ConfirmDialog v-if="target" :title="t('confirm')" :message="target.resourceId" :details="t('detail')" :confirm-label="t('remove')" :cancel-label="t('cancel')" :busy="busy" @cancel="target = null" @confirm="remove">
+    <ConfirmDialog v-if="target" :title="target.kind === 'dataset-import' ? t('removeImportTitle') : t('confirm')" :message="target.resourceId" :details="target.kind === 'dataset-import' ? t('removeImportDetails') : t('detail')" :confirm-label="target.kind === 'dataset-import' ? t('removeImport') : t('remove')" :cancel-label="t('cancel')" :busy="busy" @cancel="target = null" @confirm="remove">
       <InlineError :message="error" />
     </ConfirmDialog>
   </Teleport>

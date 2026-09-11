@@ -1,4 +1,4 @@
-import { ref, type Ref } from 'vue'
+import { onBeforeUnmount, ref, watch, type Ref } from 'vue'
 
 import {
   listProjectDatasetImports,
@@ -30,18 +30,30 @@ export function useDatasetImportState(options: UseDatasetImportStateOptions) {
   const classMapJson = ref('')
   const submittingImport = ref(false)
   const lastImportSubmission = ref<DatasetImportSubmissionResponse | null>(null)
+  let refreshGeneration = 0
+  watch(options.selectedProjectId, () => {
+    refreshGeneration++
+    options.imports.value = []
+    options.datasetVersions.value = []
+    options.datasetVersionId.value = ''
+    options.datasetId.value = ''
+  }, { flush: 'sync' })
+  onBeforeUnmount(() => { refreshGeneration++ })
 
   function setSplitStrategy(value: DatasetSelectValue): void {
     splitStrategy.value = selectValueToString(value) || 'auto'
   }
 
   async function refreshImportRecords(): Promise<void> {
-    if (!options.selectedProjectId.value.trim()) return
+    const projectId = options.selectedProjectId.value.trim()
+    const generation = ++refreshGeneration
+    if (!projectId) return
 
     const [nextImports, nextDatasetVersions] = await Promise.all([
-      listProjectDatasetImports(options.selectedProjectId.value.trim()),
-      listProjectDatasetVersions(options.selectedProjectId.value.trim()),
+      listProjectDatasetImports(projectId),
+      listProjectDatasetVersions(projectId),
     ])
+    if (generation !== refreshGeneration || projectId !== options.selectedProjectId.value.trim()) return
     options.imports.value = nextImports
     options.datasetVersions.value = nextDatasetVersions
     const currentDatasetVersionId = options.datasetVersionId.value.trim()
@@ -58,9 +70,7 @@ export function useDatasetImportState(options: UseDatasetImportStateOptions) {
       (item) => item.dataset_version_id === latestImportedVersionId,
     ) ?? nextDatasetVersions[0]
     options.datasetVersionId.value = latestDatasetVersion?.dataset_version_id ?? ''
-    if (latestDatasetVersion) {
-      options.datasetId.value = latestDatasetVersion.dataset_id
-    }
+    options.datasetId.value = latestDatasetVersion?.dataset_id ?? ''
   }
 
   async function submitImportForm(): Promise<void> {

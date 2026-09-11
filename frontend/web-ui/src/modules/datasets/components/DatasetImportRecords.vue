@@ -53,3 +53,10 @@ defineProps<{
 defineEmits<{ changed: [] }>()
 const { t } = useI18n()
 </script>
+
+<style scoped>
+.resource-table table { min-width: 800px; }
+.resource-table th:first-child { width: 42%; }
+.resource-table td:first-child { overflow-wrap: anywhere; }
+.resource-table td:nth-child(4), .resource-table td:last-child { white-space: nowrap; }
+</style>

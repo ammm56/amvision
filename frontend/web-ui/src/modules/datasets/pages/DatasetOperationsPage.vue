@@ -2,6 +2,10 @@
   <section class="page-stack">
     <PageHeader :title="t('datasetOps.title')">
       <template #actions>
+        <Button variant="secondary" :disabled="!selectedProjectId" @click="datasetManagerOpen = true">
+          <Database :size="16" />
+          {{ t('datasetOps.manageDatasets') }}
+        </Button>
         <Button variant="secondary" :disabled="loading" :loading="loading" @click="refreshPage">
           <RefreshCw :size="16" />
           {{ t('common.refresh') }}
@@ -72,7 +76,7 @@
       @close="closeDatasetVersionPicker"
     />
 
-    <DatasetVersionResources :versions="datasetVersions" :project-id="selectedProjectId" @changed="refreshPage" />
+    <DatasetManagerDialog v-if="datasetManagerOpen" :versions="datasetVersions" :project-id="selectedProjectId" :loading="loading" :load-error="errorMessage" @close="datasetManagerOpen = false" @changed="refreshPage" />
 
     <DatasetImportRecords
       :imports="imports"
@@ -91,12 +95,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { RefreshCw } from '@lucide/vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { Database, RefreshCw } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 
 import ResourceCleanupPanel from '@/shared/ui/components/ResourceCleanupPanel.vue'
-import DatasetVersionResources from '../components/DatasetVersionResources.vue'
+import DatasetManagerDialog from '../components/DatasetManagerDialog.vue'
 import DatasetExportForm from '../components/DatasetExportForm.vue'
 import DatasetExportRecords from '../components/DatasetExportRecords.vue'
 import DatasetImportForm from '../components/DatasetImportForm.vue'
@@ -132,9 +136,11 @@ const datasetVersions = ref<DatasetVersionRelation[]>([])
 const exports = ref<DatasetExportSummary[]>([])
 const loading = ref(false)
 const errorMessage = ref<string | null>(null)
+const datasetManagerOpen = ref(false)
 
 const canWriteDatasets = computed(() => sessionStore.hasScopes(['datasets:write']))
 const selectedProjectId = computed(() => projectStore.selectedProjectId)
+watch(selectedProjectId, () => { datasetManagerOpen.value = false })
 
 const {
   datasetVersionPickerOpen,
@@ -258,18 +264,25 @@ async function loadInitialData(): Promise<void> {
   }
 }
 
+let refreshGeneration = 0
 async function refreshPage(): Promise<void> {
+  const generation = ++refreshGeneration
+  const projectId = selectedProjectId.value
+  const isCurrent = () => generation === refreshGeneration && projectId === selectedProjectId.value
   loading.value = true
   errorMessage.value = null
   try {
     await refreshImportRecords()
+    if (!isCurrent()) return
     await loadCurrentDatasetExports()
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : t('datasetOps.messages.loadFailed')
+    if (isCurrent()) errorMessage.value = error instanceof Error ? error.message : t('datasetOps.messages.loadFailed')
   } finally {
-    loading.value = false
+    if (isCurrent()) loading.value = false
   }
 }
+
+watch(selectedProjectId, () => { void refreshPage() })
 </script>
 
 <style scoped>

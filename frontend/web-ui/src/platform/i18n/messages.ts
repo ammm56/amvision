@@ -238,6 +238,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       },
     },
     datasetOps: {
+      manageDatasets: '管理数据集',
       title: '数据集导入与导出',
       description: '上传 zip 数据集、查看导入记录，并把 DatasetVersion 导出为训练可用的数据包。',
       importTitle: '导入 zip 数据集',
@@ -2546,6 +2547,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       },
     },
     datasetOps: {
+      manageDatasets: 'Manage datasets',
       title: 'Dataset Import and Export',
       description: 'Upload zip datasets, inspect import records, and export DatasetVersion packages for training.',
       importTitle: 'Import zip dataset',
@@ -4851,6 +4853,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       },
     },
     datasetOps: {
+      manageDatasets: 'データセット管理',
       title: 'データセットのインポートとエクスポート',
       description: 'zip データセットをアップロードし、インポート記録を確認し、学習用の DatasetVersion パッケージをエクスポートします。',
       importTitle: 'zip データセットをインポート',
@@ -7002,6 +7005,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       },
     },
     datasetOps: {
+      manageDatasets: '데이터셋 관리',
       title: '데이터셋 가져오기와 내보내기',
       description: 'zip 데이터셋을 업로드하고 가져오기 기록을 확인한 뒤 학습용 DatasetVersion 패키지를 내보냅니다.',
       importTitle: 'zip 데이터셋 가져오기',

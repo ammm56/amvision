@@ -33,7 +33,7 @@
         <footer class="confirm-dialog__actions">
           <div v-if="$slots['leading-actions']" class="confirm-dialog__leading-actions"><slot name="leading-actions" /></div>
           <Button data-confirm-cancel variant="secondary" :disabled="busy" @click="cancelDialog">{{ cancelLabel }}</Button>
-          <Button :variant="confirmVariant" :disabled="busy || confirmDisabled" :loading="busy" @click="emit('confirm')">{{ confirmLabel }}</Button>
+          <Button v-if="showConfirm" :variant="confirmVariant" :disabled="busy || confirmDisabled" :loading="busy" @click="emit('confirm')">{{ confirmLabel }}</Button>
         </footer>
       </section>
     </div>
@@ -59,11 +59,13 @@ const props = withDefaults(
     initialFocus?: 'cancel' | 'first-field'
     size?: 'default' | 'medium' | 'wide'
     scrollBody?: boolean
+    showConfirm?: boolean
   }>(),
   {
     message: '',
     details: '',
     busy: false,
+    showConfirm: true,
     confirmDisabled: false,
     confirmVariant: 'danger',
     initialFocus: 'cancel',
