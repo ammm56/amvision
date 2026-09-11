@@ -21,7 +21,7 @@
       <Button v-if="item.state === 'failed'" variant="secondary" size="sm" :disabled="busy" :loading="dismissingId === item.operation_id" @click="dismiss(item)">{{ tr('clear') }}</Button>
     </div>
   </ConfirmDialog>
-    <ConfirmDialog v-if="visible && opened" :title="tr('importInstance')" :confirm-label="needsAnalysis ? tr('check') : tr('import')" :cancel-label="tr('close')" confirm-variant="primary" size="medium" :busy="busy" :confirm-disabled="transferIsActive(opened.state) || (!dirty && !opened.plan?.can_import)" @cancel="visible = false; openedId = null" @confirm="confirm">
+    <ConfirmDialog v-if="visible && opened" :title="tr('importInstance')" :confirm-label="needsAnalysis ? tr('check') : tr('import')" :cancel-label="tr('close')" confirm-variant="primary" size="wide" scroll-body :busy="busy" :confirm-disabled="transferIsActive(opened.state) || (!dirty && !opened.plan?.can_import)" @cancel="visible = false; openedId = null" @confirm="confirm">
       <div class="transfer-form">
         <div v-if="error" class="transfer-feedback">
           <InlineError :message="error" />
@@ -45,19 +45,37 @@
             <label class="field"><span>{{ tr('count') }}</span><input v-model.number="options.instance_count" type="number" min="1" max="64" @input="dirty = true"></label>
           </div>
           <label v-if="opened.plan?.issues.some(issue => issue.code === 'id_conflict') || options.create_copy" class="transfer-check"><input v-model="options.create_copy" type="checkbox" @change="dirty = true">{{ tr('copy') }}</label>
-          <details><summary>{{ tr('configuration') }}</summary>
-            <p>{{ tr('preserve') }}</p>
-            <Button variant="secondary" size="sm" :disabled="busy" @click="resetDeviceConfiguration">{{ tr('recommended') }}</Button>
-            <div v-for="(fields, group) in configuration" :key="group" class="form-grid">
-              <label v-for="(value, key) in fields" :key="key" class="field"><span>{{ fieldLabel(String(key)) }}</span>
-                <input v-if="typeof value === 'boolean'" type="checkbox" :checked="value" @change="setConfiguration(String(group), String(key), ($event.target as HTMLInputElement).checked)">
-                <input v-else :value="Array.isArray(value) ? value.join(',') : value ?? ''" :readonly="key === 'kind' || key === 'instance_count'" @change="setConfiguration(String(group), String(key), ($event.target as HTMLInputElement).value)">
-              </label>
+          <details class="transfer-section"><summary>{{ tr('configuration') }}</summary>
+            <div class="configuration-content">
+              <div class="configuration-toolbar">
+                <p>{{ tr('preserve') }}</p>
+                <Button variant="secondary" size="sm" :disabled="busy" @click="resetDeviceConfiguration">{{ tr('recommended') }}</Button>
+              </div>
+              <fieldset v-for="(fields, group) in configuration" :key="group" class="configuration-group">
+                <legend>{{ groupLabel(String(group)) }}</legend>
+                <div class="form-grid">
+                  <label v-for="(value, key) in fields" :key="key" :class="typeof value === 'boolean' ? 'configuration-toggle' : 'field'">
+                    <span>{{ fieldLabel(String(key)) }}</span>
+                    <input v-if="typeof value === 'boolean'" type="checkbox" :checked="value" @change="setConfiguration(String(group), String(key), ($event.target as HTMLInputElement).checked)">
+                    <input v-else :value="Array.isArray(value) ? value.join(',') : value ?? ''" :readonly="key === 'kind' || key === 'instance_count'" @change="setConfiguration(String(group), String(key), ($event.target as HTMLInputElement).value)">
+                  </label>
+                </div>
+              </fieldset>
             </div>
           </details>
           <ul v-if="opened.plan?.issues.length"><li v-for="issue in opened.plan.issues" :key="issue.reason" class="transfer-error">{{ issue.reason }}</li></ul>
         </template>
-        <details v-if="opened.plan"><summary>{{ tr('mapping') }}</summary><dl class="transfer-mapping"><template v-for="(value, key) in opened.plan.mapping" :key="key"><dt>{{ key }}{{ opened.plan.reused.includes(String(key)) ? tr('reuse') : '' }}</dt><dd>{{ opened.plan.original[key] }} → {{ value }}</dd></template></dl></details>
+        <details v-if="opened.plan" class="transfer-section"><summary>{{ tr('mapping') }}</summary>
+          <div class="resource-table transfer-mapping">
+            <table>
+              <thead><tr><th scope="col">{{ tr('resourceType') }}</th><th scope="col">{{ tr('source') }}</th><th scope="col">{{ tr('target') }}</th></tr></thead>
+              <tbody><tr v-for="(value, key) in opened.plan.mapping" :key="key">
+                <th scope="row">{{ resourceLabel(String(key)) }}<small v-if="opened.plan.reused.includes(String(key))">{{ tr('reuse') }}</small></th>
+                <td>{{ opened.plan.original[key] }}</td><td>{{ value }}</td>
+              </tr></tbody>
+            </table>
+          </div>
+        </details>
         <LoadingPanel v-if="transferIsActive(opened.state)" compact :title="transferStateLabel(opened.state)" :description="opened.progress_bytes ? bytes(opened.progress_bytes) : tr('preparing')" />
       </div>
     </ConfirmDialog>
@@ -103,7 +121,9 @@ let timer: ReturnType<typeof setTimeout> | undefined
 let generation = 0
 let localRevision = 0
 const bytes = (value: number) => `${(value / 1024 / 1024).toFixed(1)} MB`
-const fieldLabel = (key: string) => ({ instance_count: tr('count'), performance_goal: '性能目标', keep_warm_enabled: '保温', keep_warm_interval_seconds: '保温间隔（秒）', warmup_dummy_inference_count: '预热次数', warmup_dummy_image_size: '预热尺寸', performance_hint: '性能模式', inference_num_threads: '线程数', num_streams: '流数', kind: '后端配置', execution_scope: '执行范围', overflow_policy: '队列满时策略' }[key] || key)
+const fieldLabel = (key: string) => ({ instance_count: tr('count'), performance_goal: tr('performanceGoal'), keep_warm_enabled: tr('keepWarm'), keep_warm_interval_seconds: tr('keepWarmInterval'), warmup_dummy_inference_count: tr('warmupCount'), warmup_dummy_image_size: tr('warmupSize'), performance_hint: tr('performanceHint'), inference_num_threads: tr('threads'), num_streams: tr('streams'), kind: tr('backendKind'), execution_scope: tr('executionScope'), overflow_policy: tr('overflowPolicy'), isolation_level: tr('isolationLevel'), scheduling_core_type: tr('coreType'), enable_hyper_threading: tr('hyperThreading'), enable_cpu_pinning: tr('cpuPinning') }[key] || key)
+const groupLabel = (key: string) => ({ execution: tr('execution'), lifecycle: tr('lifecycle'), backend_options: tr('backendOptions') }[key] || key)
+const resourceLabel = (key: string) => ({ model: tr('model'), version: tr('modelVersion'), build: tr('modelBuild'), deployment: tr('deployment') }[key] || key)
 function setConfiguration(group: string, key: string, value: unknown) {
   const previous = configuration.value[group]?.[key]
   if (typeof value === 'string') {
@@ -245,11 +265,30 @@ defineExpose({ upload, beginImport, exportFor, store })
 .transfer-row > .ui-button, .transfer-feedback > .ui-button { flex-shrink: 0; }
 .transfer-form { display: grid; gap: 16px; }
 .transfer-form .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 0; gap: 12px; }
+.transfer-form .summary-grid > div { padding: 8px 12px; }
 .transfer-form .summary-grid > div:first-child { grid-column: 1 / -1; }
 .transfer-form .summary-grid strong { font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
-.transfer-form details { padding: 8px 0; }
-.transfer-form summary { cursor: pointer; }
+.transfer-section { border: 1px solid var(--am-border); border-radius: var(--am-radius-sm); min-width: 0; }
+.transfer-section > summary { cursor: pointer; padding: 12px 16px; font-weight: 650; color: var(--am-text-strong); }
+.transfer-section > summary:focus-visible { outline: 2px solid var(--am-action-primary); outline-offset: -2px; }
+.configuration-content { display: grid; gap: 20px; padding: 0 16px 16px; }
+.configuration-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.configuration-toolbar p { flex: 1 1 240px; margin: 0; color: var(--am-text-muted); font-size: 13px; line-height: 1.5; }
+.configuration-group { min-width: 0; margin: 0; padding: 16px 0 0; border: 0; border-top: 1px solid var(--am-border); }
+.configuration-group legend { padding: 0 8px 0 0; font-size: 13px; font-weight: 650; }
+.transfer-form .form-grid { align-items: start; gap: 16px; }
+.transfer-form .field { min-width: 0; }
+.transfer-form .field > span { overflow-wrap: anywhere; }
+.configuration-toggle { display: flex; align-items: center; justify-content: space-between; align-self: end; min-height: 40px; gap: 12px; font-size: 13px; font-weight: 650; }
+.configuration-toggle input { width: 16px; height: 16px; min-height: 16px; flex: 0 0 16px; margin: 0; }
 .transfer-check { display: flex; align-items: center; gap: 8px; }
-.transfer-mapping { font-size: 12px; overflow-wrap: anywhere; }
-.transfer-mapping dd { margin: 4px 0 12px; }
+.transfer-mapping { margin: 0 16px 16px; }
+.transfer-mapping table { width: 100%; min-width: 0; table-layout: fixed; }
+.transfer-mapping th:first-child { width: 22%; }
+.transfer-mapping th, .transfer-mapping td { overflow-wrap: anywhere; vertical-align: top; padding: 12px; }
+.transfer-mapping small { display: block; margin-top: 4px; color: var(--am-text-muted); font-weight: 400; }
+@media (max-width: 640px) {
+  .transfer-form .form-grid { grid-template-columns: minmax(0, 1fr); }
+  .transfer-mapping table { min-width: 480px; }
+}
 </style>

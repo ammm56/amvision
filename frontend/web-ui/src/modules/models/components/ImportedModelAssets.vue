@@ -1,10 +1,23 @@
 <template>
-  <section v-if="items.length || error" class="form-panel imported-assets">
+  <section v-if="items.length || error" class="resource-section imported-assets">
     <div class="section-heading"><h2>{{ tr('importedModels') }}</h2><Button variant="secondary" size="sm" @click="load">{{ tr('refresh') }}</Button></div>
     <InlineError :message="error" />
-    <div v-for="item in items" :key="item.resource_id" class="imported-asset">
-      <div><strong>{{ item.model_name }}</strong><p>{{ item.task_type }} · {{ item.kind }} · {{ (item.byte_size / 1024 / 1024).toFixed(1) }} MB · {{ tr('importOrigin') }}</p><small>{{ item.resource_id }}</small></div>
-      <Button variant="danger" size="sm" @click="selected = item; error = ''">{{ tr('delete') }}</Button>
+    <div v-if="items.length" class="resource-table">
+      <table>
+        <thead><tr>
+          <th scope="col">{{ tr('model') }}</th><th scope="col">{{ tr('task') }}</th>
+          <th scope="col">{{ tr('resourceType') }}</th><th scope="col">{{ tr('size') }}</th>
+          <th scope="col">{{ tr('origin') }}</th><th scope="col">{{ tr('actions') }}</th>
+        </tr></thead>
+        <tbody><tr v-for="item in items" :key="item.resource_id">
+          <td class="imported-model-name"><strong>{{ item.model_name }}</strong><span>{{ item.resource_id }}</span></td>
+          <td>{{ item.task_type }}</td>
+          <td>{{ item.kind === 'model-version' ? tr('modelVersion') : item.kind === 'model-build' ? tr('modelBuild') : item.kind }}</td>
+          <td class="asset-size">{{ (item.byte_size / 1024 / 1024).toFixed(1) }} MB</td>
+          <td>{{ tr('importOrigin') }}</td>
+          <td><Button variant="danger" size="sm" @click="selected = item; error = ''">{{ tr('delete') }}</Button></td>
+        </tr></tbody>
+      </table>
     </div>
     <Teleport to="body"><ConfirmDialog v-if="selected" :title="tr('deleteModel')" :message="tr('deleteModelMessage')" :details="selected.resource_id" :confirm-label="tr('delete')" :cancel-label="tr('cancel')" :busy="busy" @cancel="selected = null" @confirm="remove"><InlineError :message="error" /></ConfirmDialog></Teleport>
   </section>
@@ -51,7 +64,7 @@ watch(() => props.projectId, () => { generation++; items.value = []; selected.va
 onBeforeUnmount(() => { generation++ })
 </script>
 <style scoped>
-.imported-assets { padding: 16px; }
-.imported-asset { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 12px 0; overflow-wrap: anywhere; }
-.imported-asset p, .imported-asset small { color: var(--am-text-muted); font-size: 12px; }
+.imported-assets table { min-width: 760px; }
+.imported-model-name { width: 45%; overflow-wrap: anywhere; }
+.asset-size { white-space: nowrap; font-variant-numeric: tabular-nums; }
 </style>

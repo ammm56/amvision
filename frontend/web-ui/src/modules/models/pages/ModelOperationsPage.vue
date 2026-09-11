@@ -11,7 +11,6 @@
 
     <InlineError :message="errorMessage" />
     <ResourceCleanupPanel :project-id="selectedProjectId" @settled="refreshPage" />
-    <ImportedModelAssets v-if="canWriteModels" :project-id="selectedProjectId" />
 
     <div class="operation-grid model-ops-grid">
       <ModelTrainingForm
@@ -107,6 +106,8 @@
       :selected-task-type="selectedTaskType"
       :conversion-tasks="conversionTasks"
     />
+
+    <ImportedModelAssets v-if="canWriteModels" :project-id="selectedProjectId" />
 
     <PlatformBaseModelPickerDialog
       :open="baseModelPickerOpen"
