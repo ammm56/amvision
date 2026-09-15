@@ -56,6 +56,10 @@ python runtimes/launchers/service/start_backend_service.py --app-root . --host 1
 
 此入口使用当前 conda Python，自动关闭 WebSocket `permessage-deflate`，并在 Windows 上选择 `backend.service.infrastructure.http.windows_event_loop:create_loop`，启用 WinError 64 accept 修复。`--reload` 自动限定监视 `backend/` 和 `custom_nodes/`。无需额外传压缩或 loop 参数，也不要配置多个 Uvicorn API worker；Preview 执行进程数由 `workflow_runtime.preview_worker_count` 管理。
 
+Windows 热重载通过 `backend.service.infrastructure.http.reload_server` 复用 Uvicorn 文件监控和正常停机流程。父进程不持有监听 socket；每次旧服务进程退出后，新进程自行绑定相同 host/port，避免跨 IOCP 复用监听导致 `WinError 87`。源码重载期间存在短暂的端口关闭窗口，不承诺无中断执行；生产运行不得启用 `--reload`。
+
+升级此启动入口后，必须停止原启动命令（包括 WatchFiles 父进程），再执行上述命令。仅等待 Python 文件自动重载无法替换原父进程的监听策略；Windows 开发环境不要直接使用 `python -m uvicorn ... --reload` 绕过此入口。
+
 性能与稳定性验证使用同一命令去掉 `--reload`，其余进程仍按本文顺序启动。手工分终端启动不包含生产 full Supervisor 的持续 HTTP 探测和整栈恢复。
 
 backend lifespan 会先创建 LocalBuffer，再恢复现有 Workflow Runtime。恢复流程可能需要调用 inference daemon，因此此时不等待完整 HTTP health。另开临时终端只探测主 LocalBuffer：

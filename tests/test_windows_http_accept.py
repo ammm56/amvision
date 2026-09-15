@@ -13,14 +13,10 @@ import pytest
 pytestmark = pytest.mark.skipif(sys.platform != "win32", reason="Windows IOCP 回归")
 
 
-@pytest.mark.parametrize("loop_factory,proactor_name", [
-    ("backend.service.infrastructure.http.windows_event_loop:create_loop", "HttpProactor"),
-    ("reload_probe:stock_loop", "IocpProactor"),
-])
 @pytest.mark.skipif(os.environ.get("AMVISION_TEST_CONSOLE_RELOAD") != "1",
     reason="真实 reload 需要可交付 CTRL_C_EVENT 的独立 Windows 控制台；设置 AMVISION_TEST_CONSOLE_RELOAD=1 后执行")
-def test_uvicorn_reload_keeps_custom_proactor(tmp_path, loop_factory, proactor_name):
-    """真实 reload 子进程重建后仍采用项目 Proactor；仅运行隔离 ASGI 应用。"""
+def test_uvicorn_reload_keeps_custom_proactor(tmp_path):
+    """连续三次真实 reload 均重新绑定监听，真实收发且保持项目 Proactor。"""
     import http.client
     import json
     import os
@@ -28,6 +24,8 @@ def test_uvicorn_reload_keeps_custom_proactor(tmp_path, loop_factory, proactor_n
     import subprocess
     import time
     import psutil
+    from copy import deepcopy
+    from uvicorn.config import LOGGING_CONFIG
 
     application = tmp_path / "reload_probe.py"
     source = '''import asyncio, ctypes, json, os
@@ -52,9 +50,22 @@ async def app(scope, receive, send):
     startup = subprocess.STARTUPINFO()
     startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
     startup.wShowWindow = subprocess.SW_HIDE
-    process = subprocess.Popen([sys.executable, "-m", "uvicorn", "reload_probe:app",
+    log_path = tmp_path / "reload.log"
+    # 保留 stdout 的控制台句柄；重定向它会破坏 Uvicorn 的 Windows CTRL_C 处理。
+    logging_config = deepcopy(LOGGING_CONFIG)
+    for formatter in logging_config["formatters"].values():
+        formatter["use_colors"] = False
+    for name, handler in logging_config["handlers"].items():
+        logging_config["handlers"][name] = {
+            "class": "logging.FileHandler", "filename": str(log_path),
+            "encoding": "utf-8", "formatter": handler["formatter"],
+        }
+    log_config_path = tmp_path / "logging.json"
+    log_config_path.write_text(json.dumps(logging_config), encoding="utf-8")
+    process = subprocess.Popen([sys.executable, "-m", "backend.service.infrastructure.http.reload_server", "reload_probe:app",
         "--host", "127.0.0.1", "--port", str(port), "--reload", "--reload-dir", str(tmp_path),
-        "--loop", loop_factory, "--lifespan", "off"],
+        "--loop", "backend.service.infrastructure.http.windows_event_loop:create_loop", "--lifespan", "off",
+        "--log-config", str(log_config_path)],
         cwd=tmp_path, env=env,
         creationflags=subprocess.CREATE_NEW_CONSOLE, startupinfo=startup)
     def wait_for(marker):
@@ -67,21 +78,28 @@ async def app(scope, receive, send):
                 connection.request("GET", "/")
                 result = json.loads(connection.getresponse().read())
                 if result["marker"] == marker:
-                    assert result["proactor"] == proactor_name
+                    assert result["proactor"] == "HttpProactor"
                     return result
             except (OSError, http.client.HTTPException):
                 pass
             finally:
                 connection.close()
             time.sleep(.2)
-        raise TimeoutError("Uvicorn reload 未就绪")
+        raise TimeoutError("Uvicorn reload 未就绪：" + log_path.read_text(encoding="utf-8", errors="replace")[-4000:])
     try:
         before = wait_for("before")
         # 等待文件监听线程注册，避免把尚未被观察到的写入当作 reload 故障。
         time.sleep(1)
-        application.write_text(source.replace('"before"', '"after-change"'), encoding="utf-8")
-        after = wait_for("after-change")
-        assert before["pid"] != after["pid"]
+        for cycle in range(3):
+            marker = f"after-change-{cycle}"
+            application.write_text(source.replace('"before"', f'"{marker}"'), encoding="utf-8")
+            after = wait_for(marker)
+            assert before["pid"] != after["pid"]
+            # 多个新连接验证实际监听，不以启动日志或进程存活作为恢复依据。
+            for _ in range(5):
+                assert wait_for(marker)["pid"] == after["pid"]
+            before = after
+            time.sleep(1)
     finally:
         root = psutil.Process(process.pid)
         owned = [*root.children(recursive=True), root]
@@ -93,6 +111,29 @@ async def app(scope, receive, send):
         _, alive = psutil.wait_procs(owned, timeout=5)
         assert not alive
         process.wait(timeout=5)
+    assert "Accept failed on a socket" not in log_path.read_text(encoding="utf-8", errors="replace")
+
+
+def test_listener_cannot_move_between_iocp():
+    """相同内核 socket 的副本不能重新关联到另一个 IOCP；必须创建新 socket。"""
+    first = asyncio.ProactorEventLoop()
+    second = asyncio.ProactorEventLoop()
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    duplicate = listener.dup()
+    fresh = socket.socket()
+    try:
+        first._proactor._register_with_iocp(listener)
+        with pytest.raises(OSError) as error:
+            second._proactor._register_with_iocp(duplicate)
+        assert error.value.winerror == 87
+        second._proactor._register_with_iocp(fresh)
+    finally:
+        duplicate.close()
+        listener.close()
+        fresh.close()
+        first.close()
+        second.close()
 
 
 def test_stock_loop_closes_listener_on_winerror64() -> None:

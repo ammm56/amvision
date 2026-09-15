@@ -45,7 +45,25 @@ CPython [issue #93821](https://github.com/python/cpython/issues/93821) 和 [PR #
 
 Linux 保持现有循环；Windows reload 与非 reload 分别记录实际循环类型。不能把 reload 模式测试通过当作生产 Proactor 修复通过。
 
-### 4.2 accept 处理规则
+### 4.2 Windows 开发热重载的监听所有权
+
+2026-09-15 现场在 WatchFiles 重载后，新服务进程执行 `CreateIoCompletionPort` 注册监听时出现 `WinError 87`。这与单次 accept completion 的 `WinError 64` 不同；错误发生在 IOCP 注册阶段，不能通过扩大 accept 重试错误码集合处理。修改节点源码只是触发重载，不代表该节点执行导致网络错误。
+
+标准 Uvicorn reload 父进程绑定并保留监听 socket，后续子进程复用该监听。Windows 同一个内核 socket 不能关联到另一个 IOCP；复制 socket 句柄也不会创建独立的内核监听。隔离测试已复现复制句柄后跨 IOCP 注册报 87，新建 socket 可正常注册。
+
+项目 Windows `--reload` 入口改为 `backend/service/infrastructure/http/reload_server.py`：
+
+- 复用 Uvicorn CLI 参数定义、Config、ChangeReload 和正常信号停机流程，不修改 Python 或 Uvicorn 全局对象。
+- 父进程只监控文件，不加载 ASGI 应用、不创建事件循环、不绑定监听。
+- 旧服务进程正常退出后，新服务进程自行绑定 host/port，监听与其 IOCP 同生共灭。
+- 拒绝共享 fd、UDS、多 HTTP worker 和 WebSocket 压缩；普通无 reload 启动和 Linux 启动保持原路径。
+- 不改变 Runtime/Trigger IPC、模型实例、节点计算或结果协议。开发重载期间不保证请求不中断；正式性能和稳定性测试仍使用无 reload 服务。
+
+兼容验证覆盖 conda Python 3.12、Uvicorn 0.48.0，使用隔离 ASGI 服务连续三次源码重载，每次检查 PID 更新及多个新连接实际返回，并回归 HTTP/WebSocket 的 WinError 64 恢复。更换 Uvicorn 版本时需要重跑 `tests/test_http_reload_server.py`、`tests/test_preview_service_launcher.py` 和 `tests/test_windows_http_accept.py`；真实 Windows 控制台重载测试通过 `AMVISION_TEST_CONSOLE_RELOAD=1` 开启。
+
+本轮定向验证共 26 项通过，耗时 9.63 秒。旧入口的隔离对照出现重载后新进程仍存活但 HTTP 无法接入；独立 IOCP 测试确认重复关联错误码为 87。两项证据分别记录，不把对照的 HTTP 超时直接等同于捕获了同一异常堆栈。重启开发入口后，实际 5600 健康接口返回 `200 / ok`，LocalBufferBroker 健康，浏览器 Runtime 应用模式恢复为等待执行状态。本轮不触发生产计数，不代替模型、Trigger 或长期负载验收。
+
+### 4.3 accept 处理规则
 
 - 第一版只处理已复现的 WinError 64；其他错误进入已有异常/故障路径。新增错误码必须附带独立证据与测试。
 - 失败的新连接 socket 必须关闭；监听 socket 保持有效；关闭 socket 与未完成 overlapped 操作的先后关系遵守当前 CPython/Windows 完成回调契约。
@@ -58,7 +76,7 @@ Linux 保持现有循环；Windows reload 与非 reload 分别记录实际循环
 
 第一版建议的错误退避为连续错误 8 次后从 1 ms 递增，上限 100 ms；成功 accept 清零。该值属于待验证的内部策略，不是生产性能承诺。持续错误由外部接入探测触发不可用判定，不能仅因错误总次数多而杀掉仍能正常服务的实例。
 
-### 4.3 备选方案的处理
+### 4.4 备选方案的处理
 
 | 方案 | 决定 |
 | --- | --- |

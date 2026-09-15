@@ -70,6 +70,9 @@ def main(argv: list[str] | None = None) -> int:
             normalized_args.append(value)
         index += 1
     extra_args = normalized_args
+    # 附加参数中的 --reload 也必须走同一个入口，不能绕过 Windows socket 生命周期修复。
+    reload_enabled = args.reload or "--reload" in extra_args
+    extra_args = [value for value in extra_args if value != "--reload"]
     module_args = [
         "backend.service.api.app:app",
         "--host",
@@ -88,7 +91,7 @@ def main(argv: list[str] | None = None) -> int:
         module_args.extend(
             ["--loop", "backend.service.infrastructure.http.windows_event_loop:create_loop"]
         )
-    if args.reload:
+    if reload_enabled:
         module_args.append("--reload")
         for source_directory in RELOAD_SOURCE_DIRECTORIES:
             module_args.extend(
@@ -97,7 +100,10 @@ def main(argv: list[str] | None = None) -> int:
     module_args.extend(extra_args)
     return run_python_module(
         app_root=app_root,
-        module_name="uvicorn",
+        module_name=(
+            "backend.service.infrastructure.http.reload_server"
+            if sys.platform == "win32" and reload_enabled else "uvicorn"
+        ),
         module_args=module_args,
         python_executable=args.python_executable,
     )
