@@ -41,7 +41,7 @@ export function useWorkflowNodeParameters<NodeView extends WorkflowNodeParameter
 
   function isStringParameter(field: NodeParameterUiField): boolean {
     const type = field.json_schema.type
-    return type === 'string' || type === undefined
+    return type === 'string' || type === undefined || (Array.isArray(type) && type.includes('string') && type.includes('null'))
   }
 
   function isNumberParameter(field: NodeParameterUiField): boolean {
@@ -87,7 +87,8 @@ export function useWorkflowNodeParameters<NodeView extends WorkflowNodeParameter
   function updateNodeParameterFromTextEvent(node: NodeView, field: NodeParameterUiField, event: Event): void {
     const target = event.target
     if (!(target instanceof HTMLInputElement)) return
-    updateNodeParameter(node, field, target.value)
+    const type = field.json_schema.type
+    updateNodeParameter(node, field, target.value === '' && Array.isArray(type) && type.includes('null') ? null : target.value)
   }
 
   function updateNodeParameterFromNumberEvent(node: NodeView, field: NodeParameterUiField, event: Event): void {

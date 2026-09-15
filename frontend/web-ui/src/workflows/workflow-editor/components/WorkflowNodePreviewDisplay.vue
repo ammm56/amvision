@@ -19,7 +19,12 @@
         :src="display.image.src"
         :alt="display.image.title || fallbackTitle"
         draggable="false"
+        @load="loadedSrc = display.image?.src ?? null"
       />
+      <div v-if="loadedSrc === display.image.src && (display.image.presentation || display.image.presentationUnavailable)" class="workflow-image-information">
+        <WorkflowValueDisplay v-if="display.image.presentation" :payload="display.image.presentation" overlay />
+        <span v-else class="workflow-image-information__unavailable">结果关联不可用</span>
+      </div>
       <svg
         v-if="readOverlayViewBox(display.image) && display.image.overlays.length > 0"
         class="workflow-graph-node-preview__overlay"
@@ -100,6 +105,7 @@
       :max-rows="4"
       compact
     />
+    <WorkflowValueDisplay v-else-if="display.payload.type === 'value-display'" :payload="display.payload" />
     <pre
       v-else-if="display.kind === 'value'"
       class="json-view workflow-graph-node-preview__json"
@@ -112,6 +118,7 @@
 import { useTranslation } from '@/platform/i18n'
 import { computed, ref, watch } from 'vue'
 import WorkflowPreviewTable from './WorkflowPreviewTable.vue'
+import WorkflowValueDisplay from './WorkflowValueDisplay.vue'
 import type { PreviewImageOverlay, PreviewNodeDisplay, PreviewViewerImage } from '../preview/useWorkflowPreviewDisplays'
 import type { StyleValue } from 'vue'
 
@@ -122,6 +129,7 @@ const props = defineProps<{
 }>()
 const { t } = useTranslation()
 const selectedOutput = ref(props.display.outputName)
+const loadedSrc = ref<string | null>(null)
 watch(() => props.display.variants, (items) => {
   if (!items?.some(item => item.outputName === selectedOutput.value)) selectedOutput.value = props.display.outputName
 })
@@ -168,3 +176,9 @@ function bboxHeight(overlay: PreviewImageOverlay): number {
   return overlay.bboxXyxy ? Math.max(0, overlay.bboxXyxy[3] - overlay.bboxXyxy[1]) : 0
 }
 </script>
+
+<style scoped>
+.workflow-graph-node-preview__image-frame { position: relative; }
+.workflow-image-information { position: absolute; top: 8px; left: 8px; right: 8px; z-index: 2; pointer-events: none; }
+.workflow-image-information__unavailable { padding: 6px 10px; color: var(--am-text-muted); background: var(--am-surface); border-radius: var(--am-radius-sm); font-size: 12px; }
+</style>

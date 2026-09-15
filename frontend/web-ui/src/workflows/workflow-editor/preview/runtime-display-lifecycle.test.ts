@@ -1,12 +1,31 @@
 import { describe, expect, it, vi } from 'vitest'
 import { useWorkflowPreviewDisplays } from './useWorkflowPreviewDisplays'
 import { readProjectObjectContentBlob } from '../services/workflow-runtime.service'
+import type { WorkflowPreviewRun } from '../types'
 
 vi.mock('../services/workflow-runtime.service', () => ({
   readProjectObjectContentBlob: vi.fn(), readWorkflowPreviewRunArtifactBlob: vi.fn(),
 }))
 
 describe('runtime display lifecycle', () => {
+  it('refreshes the open image viewer when runtime displays are keyed by output', async () => {
+    const view = useWorkflowPreviewDisplays()
+    const outputs = [{ nodeId: 'image', nodeTypeId: 'core.io.image-preview', outputName: 'body', payload: { type: 'image-preview', image: { transport_kind: 'inline-base64', image_base64: 'AA==', media_type: 'image/jpeg' } } }]
+    await view.refreshDisplayOutputs({ project_id: 'p' }, outputs, { keyByOutput: true })
+    view.openImageViewer(view.previewNodeDisplays.value['["image","body"]']!.image)
+    await view.refreshDisplayOutputs({ project_id: 'p' }, outputs, { keyByOutput: true, reopenImageViewerNodeId: 'image' })
+    expect(view.activeImageViewer.value?.nodeId).toBe('image')
+    view.revokePreviewImageObjectUrls()
+  })
+  it('recognizes Value Display in preview node records as well as runtime outputs', async () => {
+    const view = useWorkflowPreviewDisplays()
+    await view.refreshPreviewNodeDisplays({ project_id: 'p', node_records: [{ node_id: 'fields', node_type_id: 'core.io.value-display', outputs: { body: { type: 'value-display', fields: [{ label: 'total', value: 24 }] } } }] } as unknown as WorkflowPreviewRun)
+    const display = view.previewNodeDisplays.value.fields!
+    expect(display.payload.type).toBe('value-display')
+    view.openPreviewDisplayViewer(display)
+    expect(view.activePreviewJson.value).toBeNull()
+    view.revokePreviewImageObjectUrls()
+  })
   it('keeps two explicit ports of one preview node distinct', async () => {
     const view = useWorkflowPreviewDisplays()
     await view.refreshDisplayOutputs({ project_id: 'p' }, ['a', 'b'].map((port) => ({

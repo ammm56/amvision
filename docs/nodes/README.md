@@ -7,6 +7,7 @@
 - [Node Pack manifest](node-pack-manifest.md)：manifest、版本、依赖、capability、timeout、启用和兼容范围。
 - [Runtime hook 与回调](runtime-hooks-callbacks.md)：Trigger、hook、结果上报和外部调用边界。
 - [OpenCV 圆节点](opencv-circle-nodes.md)：Hough Circles、Circle Measure 与四圆角点组合。
+- [文件记录、汇总与字段显示](file-record-display.md)：通用规则计数、JSONL、增量汇总及图片角标。
 - [节点分类](../architecture/workflows/node-taxonomy.md)：Core/Custom 分类、命名和职责。
 
 ## 示例

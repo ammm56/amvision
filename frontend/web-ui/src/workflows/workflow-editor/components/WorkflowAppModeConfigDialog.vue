@@ -28,6 +28,14 @@
               <button type="button" :aria-label="t('workflowEditor.appMode.moveUp')" :disabled="!row.selected || isFirstSelected(row)" @click="moveSelected(row, -1)">↑</button>
               <button type="button" :aria-label="t('workflowEditor.appMode.moveDown')" :disabled="!row.selected || isLastSelected(row)" @click="moveSelected(row, 1)">↓</button>
             </span>
+            <label v-if="row.node_type_id === 'core.io.image-preview'" class="app-mode-dialog__overlay">
+              <span>结果显示</span>
+              <select :value="row.overlay ? identity(row.overlay) : ''" :disabled="!row.selected" @change="setOverlay(row, $event)">
+                <option value="">不绑定</option>
+                <option v-for="option in overlayCandidates" :key="identity(option)" :value="identity(option)">{{ option.node_title }} · {{ option.node_id }}</option>
+              </select>
+              <small v-if="row.overlay && !overlayCandidates.some(item => identity(item) === identity(row.overlay!))">结果显示引用无效</small>
+            </label>
           </div>
         </TransitionGroup>
       </div>
@@ -84,6 +92,7 @@ const rows = ref<EditableDisplay[]>([
       invalid: !candidate,
       title: display.title,
       size: display.size,
+      overlay: display.overlay,
     }
   }),
   ...props.candidates
@@ -96,7 +105,8 @@ const sizeOptions = computed(() => ([
   { value: 'large', label: t('workflowEditor.appMode.sizeLarge') },
 ]))
 const selectedDisplays = computed(() => rows.value.filter((row) => row.selected))
-const hasInvalidSelection = computed(() => selectedDisplays.value.some((row) => row.invalid))
+const overlayCandidates = computed(() => props.candidates.filter(item => item.node_type_id === 'core.io.value-display'))
+const hasInvalidSelection = computed(() => selectedDisplays.value.some((row) => row.invalid || (row.overlay && !overlayCandidates.value.some(item => identity(item) === identity(row.overlay!)))))
 const canApply = computed(() => selectedDisplays.value.length > 0 && !hasInvalidSelection.value
   && title.value.trim().length <= 128
   && selectedDisplays.value.every(row => row.title.trim().length <= 128 && ['small', 'medium', 'large'].includes(row.size)))
@@ -111,12 +121,18 @@ function apply(): void {
     format_id: 'amvision.workflow-app-mode.v1',
     title: title.value.trim(),
     displays: selectedDisplays.value.map((row) => ({
+      ...(row.overlay ? { overlay: { ...row.overlay } } : {}),
       node_id: row.node_id,
       output_port: row.output_port,
       title: row.title.trim(),
       size: row.size as WorkflowAppModeDisplaySize,
     })),
   })
+}
+
+function setOverlay(row: EditableDisplay, event: Event): void {
+  const selected = overlayCandidates.value.find(item => identity(item) === (event.target as HTMLSelectElement).value)
+  row.overlay = selected ? { node_id: selected.node_id, output_port: selected.output_port, position: 'top-left' } : undefined
 }
 
 function selectedIndex(row: EditableDisplay): number {
@@ -144,6 +160,8 @@ function moveSelected(row: EditableDisplay, direction: -1 | 1): void {
 </script>
 
 <style scoped>
+.app-mode-dialog__overlay { grid-column: 2 / -1; display: flex; align-items: center; gap: 10px; min-width: 0; font-size: 13px; }
+.app-mode-dialog__overlay select { flex: 1; min-width: 0; height: 34px; border: 1px solid var(--am-border); background: var(--am-input); color: var(--am-text); border-radius: var(--am-radius-sm); }
 .app-mode-dialog { display: grid; gap: 16px; min-width: 0; color: var(--am-text); }
 .app-mode-dialog__title { display: grid; gap: 8px; }
 .app-mode-dialog__title > span, .app-mode-dialog__outputs > strong { font-size: 13px; font-weight: 700; }

@@ -1,8 +1,8 @@
 # 通用文件记录、增量汇总与结果显示方案
 
-状态：设计，尚未实现。2026-09-15 按已确认口径整理。
+状态：通用节点与界面已实现，现场部署并发验收未完成。2026-09-15 更新。
 
-本文件是需求、节点边界与数据语义的统一入口。具体编码顺序、文件范围、验证方法和完成条件见[代码实施清单](file-record-display-implementation.md)。两份文档均为实施依据，不表示功能已经完成。
+本文件是需求、节点边界与数据语义的统一入口。具体编码顺序、文件范围、验证方法和完成条件见[代码实施清单](file-record-display-implementation.md)。节点使用与实际参数见[文件记录、汇总与字段显示](../../nodes/file-record-display.md)；未完成的验收以实施清单为准。
 
 生产记录写入指定磁盘文件，不写数据库。使用通用的提取、计算、追加记录、读取汇总和字段显示能力，不新增生产数据库表或 Save Inspection / Read Inspection 专用节点。
 
@@ -22,7 +22,7 @@
 - 治具与塑盒分别统计。同批物料经过不同工序，不把两处累计简单相加当作整机产量。
 - 检测应用 workflow-app-20260910030059 已有 data.state、data.passed、槽位分类计数并通过 Save JSON 保存。外层 code=200/message=ok 代表调用状态。
 - 显示应用 workflow-app-20260910030132 当前四组 Directory Latest File → Image Load Local → Image Preview，没有读取结果 JSON。不同目录独立取最新文件有跨次图片错配风险，本轮未做并发故障复现。
-- 当前 App Mode 只有 node_id/output_port/title/size 绑定。2026-09-15 检查时草稿与发布 v1 模板一致，浏览器四栏图片正常显示。
+- 实施前 App Mode 只有 node_id/output_port/title/size 绑定；本次新增可选 overlay。2026-09-15 检查时草稿与发布 v1 模板一致，浏览器四栏图片正常显示。
 
 ## 业务字段与计算
 
@@ -195,16 +195,16 @@ Value Display 的 fields 配置示例：
 - 数据格式版本由工作流按需放入 schema_version 等业务字段；文件层使用独立文件协议版本。不同业务 schema 混入同文件时，汇总必须按明确过滤/规则处理，不能默默改变口径。
 - 显示端默认统计全部记录。需要过滤时配置显式条件，不用“当前画面字段选择”改变统计范围。
 
-### 文件节点拟定端口
+### 文件节点端口
 
 | 节点 | 输入/参数 | 输出 |
 | --- | --- | --- |
-| Append JSONL | value；save_directory、file_name；写入开关和 Preview 策略；单条字节上限 | receipt：file、generation、sequence、committed_offset、write_state；不把业务对象改写为固定生产 schema |
+| Append JSONL | value；save_location 参数或输入；enabled、preview_write；固定单条字节上限 | receipt：file、generation、sequence、committed_offset、write_state；不把业务对象改写为固定生产 schema |
 | Read JSONL | file 或 local_path（二选一，沿用现有文件来源约定）；cursor；max_records/max_bytes | records、next_cursor、snapshot_end、has_more；保持一条完整记录的边界 |
 | File Summary | 同一文件来源；state_path；reducers；读取预算；显式过滤条件 | snapshot：totals、latest、source、complete、status |
 | Value Display | value；可选 context；fields 配置 | 结构化 display 正文，不新增文件读写或业务副作用 |
 
-Append JSONL 支持目录/文件名参数输入绑定，复用现有路径解析、主机权限和目录模板规则。路径在一次调用开始时解析并固定，不能写入中途跨日期切换。累计文件路径与检查点路径必须不同；校验碰撞，禁止覆盖原始日志。项目隔离不能代替主机路径权限，同一目标路径必须使用同一个规范化锁键。
+Append JSONL 使用当前统一 save_location 参数及同名输入，复用现有路径解析和主机路径边界，不新增目录/文件名双重解析。路径在一次调用开始时解析并固定，不能写入中途跨日期切换。累计文件路径与检查点路径必须不同；校验碰撞，禁止覆盖原始日志。项目隔离不能代替主机路径权限，同一目标路径必须使用同一个规范化锁键。
 
 ### 明细、累计与输出命名
 
@@ -334,7 +334,7 @@ matched_count 为命中显式规则的项数，fallback_count 为进入配置兜
 
 ### 显示契约与配置体验
 
-Value Display 的 body 使用 type=value-display，携带有序 fields 及可选 context。每个 field 具有 label、原始 value、format、precision 和受控 states；格式化在共享前端组件完成一次。无效字段路径按 empty_text 显示“—”，不泄露整个输入对象，也不把 null 格式化为 0。
+Value Display 的 body 使用 type=value-display，携带有序 fields 及可选 context。每个 field 具有 label、原始 value、format、precision 和受控 states；格式化在共享前端组件完成一次。缺失字段/null 固定显示“—”，不泄露整个输入对象，也不把 null 格式化为 0。
 
 节点属性编辑器提供可添加/删除的规则行、匹配值列表以及显示字段行。字段路径可手动输入，已有样本可辅助选择，但不依赖模型在线或预览结果存在才能保存配置。输出 key 重复、精度越界、空路径等错误在保存/发布前提示。
 
@@ -354,7 +354,7 @@ Value Display 的 body 使用 type=value-display，携带有序 fields 及可选
 
 标准节点能力可先实现，不需要再询问产量或复检口径。现场不同模型的具体 OK/NG 值集合通过参数配置，接入时从实际输出核对，不预设类别名称。缺失槽位通过上游明确的槽位结果构造纳入规则；不在计数器中补造对象。
 
-当前文档整理不代表新代码已经完成；单元测试、真实模型 NG 精度、性能变化和长期运行结论都必须在对应实现与验证之后报告。逐步实施与进度记录统一维护在[代码实施清单](file-record-display-implementation.md)。
+通用节点代码已落地，真实保存结果与图片的隔离 Worker/REST/WebSocket 验证通过；现有部署模型、Trigger 并发性能及真实 NG 精度仍须分别验收，短测不构成长期稳定性保证。逐步实施与进度记录统一维护在[代码实施清单](file-record-display-implementation.md)。
 
 ## 复用入口
 

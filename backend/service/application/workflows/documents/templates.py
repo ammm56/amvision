@@ -10,6 +10,7 @@ from backend.contracts.workflows.workflow_graph import (
     validate_workflow_graph_template,
 )
 from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError
+from backend.nodes.file_display_validation import validate_file_display_parameters
 from backend.service.application.workflows.documents.contracts import (
     WorkflowTemplateDocument,
     WorkflowTemplateSummary,
@@ -67,6 +68,7 @@ class WorkflowTemplateDocumentStore:
                 "Workflow 图模板校验失败",
                 details={"reason": str(exc)},
             ) from exc
+        validate_file_display_parameters(template, self.node_definitions)
         return summarize_workflow_template(template)
 
     def list_templates(self, *, project_id: str) -> tuple[WorkflowTemplateSummary, ...]:

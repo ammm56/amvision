@@ -19,7 +19,13 @@ PREVIEW_FORMAT = "amvision.workflow-runtime-preview.v1"
 MAX_PREVIEW_BYTES = 64 * 1024 * 1024
 MAX_PREVIEW_VALUES = 100_000
 PREVIEW_TYPES = frozenset(
-    {"image-preview", "value-preview", "table-preview", "gallery-preview"}
+    {
+        "image-preview",
+        "value-preview",
+        "table-preview",
+        "gallery-preview",
+        "value-display",
+    }
 )
 
 

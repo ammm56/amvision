@@ -6,6 +6,7 @@ export const WORKFLOW_APP_MODE_METADATA_KEY = 'app_mode'
 export type WorkflowAppModeDisplaySize = 'small' | 'medium' | 'large'
 
 export interface WorkflowAppModeDisplay {
+  overlay?: { node_id: string; output_port: string; position: 'top-left' }
   node_id: string
   output_port: string
   title: string
@@ -19,6 +20,7 @@ export interface WorkflowAppModeConfig {
 }
 
 export interface WorkflowAppModeDisplayCandidate extends WorkflowAppModeDisplay {
+  node_type_id?: string
   node_title: string
   output_title: string
 }
@@ -93,7 +95,14 @@ export function readWorkflowAppModeConfig(metadata: WorkflowJsonObject): Workflo
     const identity = `${nodeId}\u0000${outputPort}`
     if (!nodeId || !outputPort || displayTitle.length > 128 || !size || identities.has(identity)) return null
     identities.add(identity)
+    let overlay: WorkflowAppModeDisplay['overlay']
+    if (rawDisplay.overlay != null) {
+      const raw = rawDisplay.overlay
+      if (!isObject(raw) || !readText(raw.node_id) || !readText(raw.output_port) || raw.position !== 'top-left') return null
+      overlay = { node_id: readText(raw.node_id), output_port: readText(raw.output_port), position: 'top-left' }
+    }
     displays.push({
+      ...(overlay ? { overlay } : {}),
       node_id: nodeId,
       output_port: outputPort,
       title: displayTitle,
@@ -123,6 +132,7 @@ export function writeWorkflowAppModeConfig(
     format_id: WORKFLOW_APP_MODE_FORMAT,
     title: config.title.trim(),
     displays: config.displays.map((display) => ({
+      ...(display.overlay ? { overlay: { ...display.overlay } } : {}),
       node_id: display.node_id,
       output_port: display.output_port,
       title: display.title.trim(),
@@ -144,6 +154,7 @@ export function buildWorkflowAppModeDisplayCandidates(
     if (!definition?.capability_tags?.includes('ui.preview')) continue
     for (const output of definition.output_ports) {
       candidates.push({
+        node_type_id: node.node_type_id,
         node_id: node.node_id,
         output_port: output.name,
         title: 'Node',

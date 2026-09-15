@@ -101,6 +101,12 @@
         :disabled="isParameterEditorDisabled(node, field)"
         @update:model-value="emit('update-value', node, field, $event)"
       />
+      <WorkflowParameterRows
+        v-else-if="field.json_schema['x-ui-widget'] === 'object-rows'"
+        :model-value="readValue(node, field)" :schema="field.json_schema"
+        :disabled="isParameterEditorDisabled(node, field)"
+        @update:model-value="emit('update-value', node, field, $event)"
+      />
       <template v-else-if="isJson(field)">
         <textarea
           :value="readJsonTextValue(node, field)"
@@ -122,6 +128,7 @@ import { useI18n } from 'vue-i18n'
 import SelectField from '@/shared/ui/components/Select.vue'
 import WorkflowGraphCheckbox from './WorkflowGraphCheckbox.vue'
 import WorkflowParameterColorMap from './WorkflowParameterColorMap.vue'
+import WorkflowParameterRows from './WorkflowParameterRows.vue'
 import { readNodeParameterInputPort } from '../parameters/parameter-input-bindings'
 import { isModelInferenceDeploymentField } from '../parameters/useWorkflowDeploymentInstancePicker'
 import { readWorkflowNumericParameterInputAttributes } from '../parameters/numeric-parameter-input'

@@ -103,6 +103,9 @@ export interface PreviewImageInteractionApplyEvent {
 }
 
 export interface PreviewViewerImage {
+  presentationContext?: unknown
+  presentation?: WorkflowJsonObject | null
+  presentationUnavailable?: boolean
   loadSource?: () => Promise<string | null>
   nodeId: string
   title: string
@@ -322,7 +325,8 @@ export function useWorkflowPreviewDisplays() {
     }
     previewNodeDisplays.value = nextDisplays
     if (preservedViewer && activeImageViewer.value === preservedViewer) {
-      const refreshedImage = nextDisplays[reopenImageViewerNodeId]?.image ?? null
+      const refreshedImage = (nextDisplays[reopenImageViewerNodeId]
+        ?? Object.values(nextDisplays).find(item => item.nodeId === reopenImageViewerNodeId))?.image ?? null
       if (refreshedImage?.src) openImageViewer(refreshedImage)
       else activeImageViewer.value = null
     }
@@ -372,6 +376,7 @@ export function useWorkflowPreviewDisplays() {
 
   function openPreviewDisplayViewer(display: PreviewNodeDisplay | null): void {
     if (!display) return
+    if (display.payload.type === 'value-display') return
     if (display.kind === 'value') {
       openPreviewJsonViewer(
         display.title,
@@ -571,7 +576,7 @@ function readPreviewDisplayOutputs(previewRun: WorkflowPreviewRun): PreviewNodeO
     for (const [outputName, payload] of Object.entries(outputs)) {
       if (!isPreviewJsonObject(payload)) continue
       const previewType = readDisplayText(payload.type)
-      if (!previewType.endsWith('-preview')) continue
+      if (!previewType.endsWith('-preview') && previewType !== 'value-display') continue
       registerDisplayOutput({
         nodeId,
         nodeTypeId,
@@ -594,6 +599,7 @@ async function buildPreviewNodeDisplay(
   if (previewType === 'table-preview') return buildTablePreviewNodeDisplay(displayOutput)
   if (previewType === 'gallery-preview') return buildGalleryPreviewNodeDisplay(previewRun, displayOutput, registerObjectUrl)
   if (previewType === 'value-preview') return buildValuePreviewNodeDisplay(displayOutput)
+  if (previewType === 'value-display') return buildValuePreviewNodeDisplay(displayOutput)
   return null
 }
 
@@ -776,6 +782,7 @@ async function buildPreviewViewerImage(
   return {
     nodeId,
     loadSource,
+    presentationContext: previewPayload?.presentation_context,
     title,
     src: displayImage.src,
     displaySrc: displayImage.src,

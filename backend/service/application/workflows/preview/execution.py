@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from backend.contracts.workflows.workflow_graph import FlowApplication, WorkflowGraphTemplate
 from backend.service.application.workflows.input_contracts import build_workflow_app_public_contract
@@ -26,6 +26,18 @@ class PreviewMemoryExecutionRequest:
 
 class PreviewMemoryExecutionService(SnapshotExecutionService):
     """只替换文档来源，复用校验、图执行、模型作用域及业务资源 finally。"""
+
+    def execute(self, request: PreviewMemoryExecutionRequest):
+        """显式标识编辑器执行，不以是否订阅进度来判断文件副作用策略。"""
+        return super().execute(
+            replace(
+                request,
+                execution_metadata={
+                    **request.execution_metadata,
+                    "_preview_execution": True,
+                },
+            )
+        )
 
     @staticmethod
     def _resolve_model_session_scope_id(request: PreviewMemoryExecutionRequest) -> str:

@@ -29,6 +29,8 @@
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
+import { watchEffect } from 'vue'
+import { samePresentationContext } from '../preview/value-display'
 
 import type { WorkflowAppModeConfig, WorkflowAppModeDisplay } from '../app-mode/workflow-app-mode'
 import type { PreviewNodeDisplay, PreviewViewerImage } from '../preview/useWorkflowPreviewDisplays'
@@ -46,7 +48,21 @@ const emit = defineEmits<{
 }>()
 const { t } = useI18n()
 
-function identity(slot: WorkflowAppModeDisplay): string {
+// 仅附加展示状态，不复制图片对象或改变 Object URL 的所有权。
+watchEffect(() => {
+  for (const slot of props.config.displays) {
+    const item = display(slot)
+    const image = item?.image
+    if (!image) continue
+    const overlay = slot.overlay ? props.displays[identity(slot.overlay)] : undefined
+    const matched = !item?.stale && !overlay?.stale && overlay?.payload.type === 'value-display'
+      && samePresentationContext(image.presentationContext, overlay.payload.context)
+    image.presentation = slot.overlay && matched ? overlay!.payload : null
+    image.presentationUnavailable = Boolean(slot.overlay && !matched)
+  }
+})
+
+function identity(slot: Pick<WorkflowAppModeDisplay, 'node_id' | 'output_port'>): string {
   return JSON.stringify([slot.node_id, slot.output_port])
 }
 

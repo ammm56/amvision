@@ -10,6 +10,19 @@ const candidates = [
 ]
 
 describe('WorkflowAppModeConfigDialog', () => {
+  it('binds a Value Display without requiring an extra standalone pane', async () => {
+    const wrapper = mount(WorkflowAppModeConfigDialog, {
+      global: { plugins: [i18n] }, props: { applicationTitle: 'Test', config: null,
+        candidates: candidates.map((item, index) => ({ ...item, node_type_id: index ? 'core.io.value-display' : 'core.io.image-preview' })) },
+    })
+    await wrapper.find('input[type="checkbox"]').setValue(true)
+    await wrapper.get('.app-mode-dialog__overlay select').setValue('preview-2\u0000body')
+    await wrapper.get('footer .ui-button--primary').trigger('click')
+    const config = wrapper.emitted('apply')![0]![0] as { displays: Array<{ overlay: unknown }> }
+    expect(config.displays).toHaveLength(1)
+    expect(config.displays[0]!.overlay).toEqual({ node_id: 'preview-2', output_port: 'body', position: 'top-left' })
+    wrapper.unmount()
+  })
   it('新候选项使用 Node 作为真实默认标题', () => {
     const wrapper = mount(WorkflowAppModeConfigDialog, {
       global: { plugins: [i18n] },

@@ -1,6 +1,6 @@
 # 通用文件记录与结果显示代码实施清单
 
-状态：待实施。整理日期：2026-09-15。本清单不表示节点、接口或测试已经完成。
+状态：S00–S08 已实现并通过对应回归；S09 部分验证完成，现有部署/Trigger 并发门禁未完成。更新日期：2026-09-15。
 
 需求与数据语义以[通用文件记录、增量汇总与结果显示方案](inspection-statistics-display.md)为统一入口；本文件负责实现顺序、文件范围、验证与完成条件。实现中发现冲突应先修订对应契约和测试，再修改代码，不能靠隐式默认值改变计数口径。
 
@@ -14,22 +14,22 @@
 - Preview 默认跳过正式日志写入；需要验证写入时显式启用并使用测试路径。显示调用只读取权威记录，可以更新自己的派生检查点。
 - 第一阶段支持单文件、本机磁盘；不新增多文件扫描汇总、自动轮转、跨文件时间窗口或网络盘保证。已有 CSV 功能保持原样。
 - API 保持 v1，App Mode 增加可选配置；既有无角标工作流继续可用。JPEG 和关闭 WebSocket permessage-deflate 的设置保持不变。
-- 本次交付只有文档；后续执行本清单时逐步记录实际结果，不提前宣布准确率、性能或长期稳定性通过。
+- 本次交付包含通用节点、界面与测试；真实准确率、现场性能及长期稳定性不以本次短测替代。
 
 ## 步骤与依赖
 
 | 步骤 | 内容 | 前置条件 | 当前状态 |
 | --- | --- | --- | --- |
-| S00 | 契约、样例和验证基线 | 设计文档 | 待实施 |
-| S01 | Count by Rules 与对象链路 | S00 | 待实施 |
-| S02 | JSONL 文件协议与恢复 | S00 | 待实施 |
-| S03 | Append JSONL / Read JSONL 节点 | S02 | 待实施 |
-| S04 | File Summary 增量归约与检查点 | S03 | 待实施 |
-| S05 | Value Display 与配置编辑 | S00 | 待实施 |
-| S06 | App Mode 绑定与显示上下文 | S05 | 待实施 |
-| S07 | 图片栏、大图与刷新生命周期 | S06 | 待实施 |
-| S08 | 通用示例图与完整链路 | S01、S04、S07 | 待实施 |
-| S09 | 真实环境、性能与交付核对 | S08 | 待实施 |
+| S00 | 契约、样例和验证基线 | 设计文档 | 已实现；验证见文末 |
+| S01 | Count by Rules 与对象链路 | S00 | 已实现；验证见文末 |
+| S02 | JSONL 文件协议与恢复 | S00 | 已实现；验证见文末 |
+| S03 | Append JSONL / Read JSONL 节点 | S02 | 已实现；验证见文末 |
+| S04 | File Summary 增量归约与检查点 | S03 | 已实现；验证见文末 |
+| S05 | Value Display 与配置编辑 | S00 | 已实现；验证见文末 |
+| S06 | App Mode 绑定与显示上下文 | S05 | 已实现；验证见文末 |
+| S07 | 图片栏、大图与刷新生命周期 | S06 | 已实现；验证见文末 |
+| S08 | 通用示例图与完整链路 | S01、S04、S07 | 已实现；验证见文末 |
+| S09 | 真实环境、性能与交付核对 | S08 | 部分完成；现场并发待验收 |
 
 以下路径均相对仓库根目录。“拟新增”表示设计落点，编码前按邻近模块约定核对最终名称；不能把拟定路径当成已有实现。每步完成后检查差异、运行对应验证、记录结果，门禁通过后再推进依赖步骤。
 
@@ -88,7 +88,7 @@
 
 拟新增文件：`backend/nodes/core_nodes/io/output/storage/jsonl_append_local.py`、`backend/nodes/core_nodes/io/local/jsonl_load_local.py`。节点封装只负责参数、payload、执行控制和协议适配，恢复逻辑统一调用 S02。
 
-1. Append 接收对象 value，目录/文件名支持既有输入绑定、路径模板和权限规则；一次执行固定路径。返回 file、generation、sequence、committed_offset、write_state 回执。
+1. Append 接收对象 value，save_location 支持既有同名输入绑定与路径解析；一次执行固定路径。返回 file、generation、sequence、committed_offset、write_state 回执。
 2. 明确写入开关和 Preview 策略。默认预览不写，跳过状态不能伪装成已提交；显式测试写入应使用独立目录。
 3. Read 接收 file 或 local_path、source_mode、cursor 和预算，输出完整 records、next_cursor、snapshot_end、has_more 及明确的文件状态。
 4. 校验 cursor 与源文件身份，单条超限直接失败；无新增数据保持游标，不重放旧记录。missing 与损坏分开处理。
@@ -206,3 +206,35 @@ Python 测试先 `conda activate amvision`，使用当前环境 `python -m pytes
 每步实施后在本文件或关联验证记录中填写：实际文件、契约变更、检查命令与结果、未覆盖范围、下一步条件。未通过时保留失败结论及原因，不把“已编写代码”标成“已验证”。
 
 业务语义以设计文档为准；实现进度以经过验证的步骤状态为准，两者不能混用。
+
+## 2026-09-15 实施与验证记录
+
+已有 3570 应用的实际编排、独立 OK/NG 规则、磁盘路径及后续真实模型验证见 [3570 治具计数与结果显示编排](3570-count-display-integration.md)。下文保留节点能力最初实现阶段的验证范围，不能将当时的环境故障状态当作当前服务状态。
+
+### 代码落点
+
+- S00–S01：`rule_counting.py`、`logic/collections/count_by_rules.py` 与 `backend/nodes/file_display_validation.py`。复用现有条件 DSL、对象节点；保存/发布时校验新增节点配置。
+- S02–S04：`backend/service/application/runtime/io/jsonl.py` 统一文件提交与恢复；`support/jsonl_nodes.py`、`support/file_summary.py` 和三个文件节点负责适配。读取/计算不持日志写锁；序列化在锁外，归约纳入记录间时间预算，检查点有 4 MiB 上限。
+- S05：`io/preview/value_display.py`、`WorkflowParameterRows.vue`、`WorkflowValueDisplay.vue`；有序配置行与共享格式化组件，完整结果进入既有 Preview/Runtime 显示通道。
+- S06–S07：App Mode v1 可选 overlay、Image Preview 可选 presentation_context；`WorkflowAppModeDisplayGrid`、`WorkflowPreviewViewers`、共享 `ImageViewer` 传递同一字段对象。修正预览 node_records 筛选漏掉 value-display，以及按输出端口索引刷新时大图无法找到新图片的问题。新结果未匹配前显示关联不可用。
+- S08：`tests/workflow_file_display_support.py` 构造完整通用图，24/80 两组连续执行两次，独立规则得到 48/160 总量；NG 不补差。包含提取、对象组装、追加、增量汇总、除法与百分比显示。`tests/test_file_display_api.py` 使用实际隔离 Worker 及 REST/WS 验证保存结果文件和图片。
+
+当前可配置参数、连接方式、错误与边界以[节点使用说明](../../nodes/file-record-display.md)为准。计划中的目录/文件名组合收敛到仓库已经使用的统一 `save_location`；没有保留第二套解析方式。未增加数据库迁移或安装依赖，沿用 conda / bundled Python、Vue 3 和本地分发。
+
+### 已完成验证
+
+1. 后端集中回归125项通过；随后补充预览禁止写入和已提交意图后未知尾部两项保护用例，并分别运行对应测试文件通过（合计127项不同用例，另有实际API联调1项）。覆盖新增节点、注册与分类、App Mode、既有显示节点、Preview/Runtime显示和本地读取。新增用例覆盖互斥规则、显式兜底、同内容新调用、实际跨进程锁冲突、完整/部分尾部恢复、fsync/提交失败、游标边界、文件替换/坏行、非有限JSON、检查点重建/提交冲突/预算。
+2. 前端 37 项通过：规则行、配置往返、图片角标、上下文不一致、值格式化、部分结果提示、Runtime 大图刷新及 Object URL 生命周期。`vue-tsc --noEmit`、生产构建与改变文件的 Ruff 检查通过。
+3. 现场保存的 24 槽 OK JSON 和 2560×2358 JPEG 作为只读输入，使用独立测试数据库/目录和真实 Worker。实际 Runtime 两次执行正确累计到 48，OK=48、NG=0；另一个 Preview 测试目录独立累计到 24。收到的 Value Display 是本次 ok、总数24、OK24、NG0、比值1，网页格式化为100.00%。这轮使用保存结果中的 empty_count/abnormal_count 字段，没有重跑模型或确认 NG 真值。
+4. JPEG 经实际 Preview WebSocket 分块接收、逐块 ACK、resource.received 完整接收确认；会话释放后共享内存 blocks/bytes/pins/reserved_bytes 全为零。内置浏览器使用本次 Worker 输出字段核对图片栏和双击大图，角标固定在左上角，支持收起；图像内容不变。
+5. 隔离真实文件测试分别在18.23秒、20.44秒内完成。第一轮 Runtime HTTP 请求179.41/159.07 ms，Preview显示数据就绪3183.92 ms；补充完整图片接收验证一轮为522.60/186.42 ms，Preview显示数据就绪3298.58 ms。包含冷启动，样本很少；不计算或宣称P99达标，不把文件显示耗时当模型推理耗时。后一个指标到显示描述符就绪，不包括浏览器绘制或后续完整原图传输时间。
+
+后端命令在 `conda activate amvision` 后运行。可复现的集中入口为 `python -m pytest tests/test_rule_counting.py tests/test_managed_jsonl.py tests/test_file_summary.py tests/test_file_display_nodes.py tests/test_file_display_workflow.py tests/test_node_catalog_taxonomy.py tests/test_node_catalog_registry.py tests/test_workflow_app_mode.py tests/test_workflow_display_and_response_nodes.py tests/test_workflow_preview_display.py tests/test_workflow_runtime_preview.py tests/test_workflow_local_file_reading.py -q`。实际 Worker 联调为 `python -m pytest tests/test_file_display_api.py -q -s`；默认使用隔离测试输入，可通过 `AMVISION_FILE_DISPLAY_TEST_JSON` / `AMVISION_FILE_DISPLAY_TEST_IMAGE` 指定只读现场保存文件。
+
+### S09 未完成门禁
+
+开发5600端口仍监听但 HTTP 请求超时，浏览器原 Runtime 为断开状态；已请求恢复开发服务。上述隔离验证没有修改、替换或发布既有生产 App/Runtime，也没有重启它们。
+
+因此现有部署模型 + Runtime/Trigger + Preview 同时运行的对照、.NET Console 实际调用、真实 NG 精度与长时稳定性未验收。待开发服务恢复后，使用相同真实输入、相同部署实例数做约3分钟对照；分别记录成功/明确满载拒绝、P50/P95/P99、资源归还。保持无排队/等待的高性能调用行为。当前数据面契约没有变更，不需要预先修改 .NET SDK。
+
+收尾时已确认没有本任务测试进程继续使用临时目录，临时浏览器页面已关闭，前端联调入口与嵌入图片文件已删除。自动审批拒绝批量递归清理 `.tmp/file-record-display*` 的操作，只返回 blocked by policy；测试临时目录仍待清理，不作为交付资产或长期验证报告。

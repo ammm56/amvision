@@ -123,6 +123,9 @@
         @mousedown="handleViewportMouseDown"
         @dblclick="handleViewportDoubleClick"
       >
+        <div v-if="$slots.information && loadedInformationSrc === viewerImageSrc" class="image-viewer__information" style="position: absolute; top: 12px; left: 12px; right: 12px; z-index: 4; pointer-events: none;">
+          <slot name="information" />
+        </div>
         <div v-if="tuningControls.length" class="image-viewer__tuning-panel">
           <div class="image-viewer__tuning-header">
             <strong>{{ t('imageViewer.tuning.title') }}</strong>
@@ -664,6 +667,7 @@ let interactionFeedbackTimer: ReturnType<typeof window.setTimeout> | null = null
 let fitImageAnimationFrame: number | null = null
 
 const viewerImageSrc = computed(() => props.image?.sourceSrc || props.image?.src || null)
+const loadedInformationSrc = ref<string | null>(null)
 const sourceImageWidth = computed(() => {
   const value = props.image?.sourceWidth ?? props.image?.width ?? naturalWidth.value
   return typeof value === 'number' && Number.isFinite(value) ? value : 0
@@ -1028,7 +1032,8 @@ watch(() => [
   if (!open) return
   resetView()
   void nextTick(() => {
-    if (!imageRef.value?.complete) return
+    if (!imageRef.value?.complete || !imageRef.value.naturalWidth) return
+    loadedInformationSrc.value = viewerImageSrc.value
     updateNaturalImageSize()
     scheduleFitImage()
     if (interactionTool.value === 'mask') void initializeMaskCanvas()
@@ -1040,6 +1045,7 @@ watch(tuningControls, () => {
 })
 
 function handleImageLoad(): void {
+  loadedInformationSrc.value = viewerImageSrc.value
   updateNaturalImageSize()
   scheduleFitImage()
   if (interactionTool.value === 'mask') void nextTick(initializeMaskCanvas)
