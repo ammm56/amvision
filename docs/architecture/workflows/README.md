@@ -22,6 +22,8 @@
 - [参数输入](parameter-inputs.md)
 - [说明节点](note-nodes.md)
 - [Runtime 显示与 App Mode](runtime-display.md)：Runtime 完成后只读画布与 App Mode 已实现；自动呈现全部 App Entry 公开输入，不实现逐节点进度、强制终止终态、独立应用或页面设计器。
+- [通用文件记录、增量汇总与结果显示方案](inspection-statistics-display.md)：磁盘增量记录、通用字段汇总、物料/盘数分开累计和图片角标组合，设计待实现。
+- [通用文件记录与结果显示代码实施清单](file-record-display-implementation.md)：S00–S09 契约、文件范围、前置依赖、逐步验证与真实环境验收，待实施。
 - [Visual Prompt](visual-prompt.md)
 
 - [Preview 内存会话实现与验证记录](preview-streaming-verification.md)
