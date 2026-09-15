@@ -72,6 +72,43 @@ def test_consumed_uploaded_input_releases_all_worker_binding_containers():
     images.clear()
 
 
+@pytest.mark.parametrize("kind,selector,expected", [
+    ("conditional", True, "if_true"), ("conditional", False, "if_false"),
+    ("switch", "A", "case_1"), ("switch", 7, "case_2"),
+    ("switch", "missing", "default"),
+])
+def test_preview_keeps_implicit_selection_until_end(kind, selector, expected):
+    """真实执行器必须读到内部选择结果，只运行选中分支并及时归还图片。"""
+    from tests.test_workflow_selection_nodes import (
+        _build_conditional_template, _build_switch_template, _build_registry,
+    )
+    from backend.service.application.workflows.graph_executor import WorkflowGraphExecutor
+
+    images = ExecutionImageRegistry()
+    lifetime = PreviewLifetimes(images)
+    payload = image(images)
+    invoked = []
+    def handler(request):
+        invoked.append(request.parameters["branch_name"])
+        assert images.get_entry(payload["image_handle"])
+        return {"value": {"value": request.parameters["branch_name"]}}
+    try:
+        graph = _build_conditional_template() if kind == "conditional" else _build_switch_template()
+        result = WorkflowGraphExecutor(registry=_build_registry(handler)).execute(
+            template=graph,
+            input_values={"condition" if kind == "conditional" else "selector": {"value": selector},
+                          "value": {"value": payload}},
+            execution_metadata={"_preview_lifetime": lifetime},
+        )
+        assert invoked == [expected]
+        assert result.outputs["result"] == {"value": expected}
+        assert not lifetime.counts
+        with pytest.raises(Exception, match="不存在"):
+            images.get_entry(payload["image_handle"])
+    finally:
+        images.clear()
+
+
 def test_receipt_requires_complete_transfer_and_all_subscribers():
     manager = PreviewSessionManager()
     try:

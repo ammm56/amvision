@@ -344,6 +344,12 @@ class WorkflowGraphExecutor:
                     target = collapsed[target]
                 collapsed[inner] = target
             preview_scope = preview_lifetime.scope(template, input_values, execution_metadata_payload, collapsed)
+            # Conditional/Switch 的 End 隐式读取 Start 的选择结果，不能按无连线输出提前释放。
+            for plan in selection_plans.values():
+                preview_scope.add_consumer(
+                    (plan.start_node_id, SELECTION_SELECTED_BRANCH_OUTPUT_PORT),
+                    collapsed.get(plan.end_node_id, plan.end_node_id),
+                )
             node_output_values = preview_scope
 
         for node_id in topological_order:

@@ -109,6 +109,11 @@ class PreviewOutputScope(dict):
         self.produced[key[0]].add(key)
         self.manager.release(old)
 
+    def add_consumer(self, key, node_id):
+        """登记执行器内部消费，覆盖没有显式画布连线的控制端口。"""
+        self.consumers[key].add(node_id)
+        self.incoming[node_id].add(key)
+
     def discard(self, key):
         """移除输出字典和注册表的对应持有。"""
         super().pop(key, None)
