@@ -21,7 +21,7 @@ Count By Rules 读取既有并行推理结果的 `result.top_item.class_name`，
 
 OK 与 NG 分别按规则计数，没有使用总数减 OK 计算 NG。每条正常完成记录的 `material_total` 固定为 24；本次状态沿用既有 Classification Summary 的 `state`。规则只分类实际输入条目，不凭空生成缺失槽位结果。9 月 17 日移除每条记录中冗余的 `tray_total: 1`，托盘数量改为统计记录条数。
 
-Create Object 组装总数、OK/NG 数、本次状态、条码、原图/结果图路径及结果 JSON 路径。Append JSONL 依赖原有图片和 JSON 保存结果，追加完成后返回原有响应；公开输出端口和响应内容保持原有契约。9 月 15 日保存时 `preview_write=false`，编辑预览不会追加生产记录；9 月 17 日已为此应用开启，详见下文。
+Create Object 组装总数、OK/NG 数、本次状态、条码、原图/结果图路径及结果 JSON 路径。Append JSONL 依赖原有图片和 JSON 保存结果，追加完成后返回原有响应；公开输出端口和响应内容保持原有契约。当前已移除节点内写入开关，Preview 与正式调用均在实际执行时追加；下文早期 Preview Write 配置仅为修复过程记录。
 
 默认记录文件为 `D:/摆盘机/记录/生产统计/治具.jsonl`。写入目录跟随既有请求 JSON 的 `savepath`，再拼接 `生产统计/治具.jsonl`；上位机修改 `savepath` 时，需要同步修改显示应用 File Summary 的路径。
 
@@ -54,7 +54,7 @@ File Summary 增量读取上述 JSONL，对 `material_total`、`material_ok`、`
 
 两个运行中的 Runtime 分别为 `workflow-runtime-00ac97b7030b4bb5bda4c3d1e7a76fba`（检测）和 `workflow-runtime-71bf1addb3614f24b7554eec8925b343`（显示）。发布新草稿后需要选择新版本，按原运行状态恢复，再核对空数据应用模式及首条正式记录。切换涉及短暂停止对应 Runtime，当前等待用户选择是否立即执行；测试累计不迁入正式文件。
 
-## 2026-09-17 写入与节点显示修复
+## 2026-09-17 写入与节点显示修复（阶段记录）
 
 现场的“物料计数 · 保存成功后追加生产记录”组负责计数、字段提取、对象组装及 JSONL 追加。图片仍由原有两个 Save Image 节点保存；组内 Payload to Value / Extract Value Field 只提取保存回执中的路径，没有再次保存图片。
 
@@ -85,3 +85,15 @@ Count By Rules 的 Rules 行之前直接在窄参数栏展开复杂编辑器，�
 备份、候选草稿、保存响应及真实调用记录位于本机 `data/files/developer/workflow-backups/20260917-log-cleanup/`。删除操作只针对隔离测试日志，未清理正式生产记录。
 
 自动化验证：`test_managed_jsonl.py`、`test_file_summary.py`、`test_file_display_nodes.py`、`test_file_display_workflow.py`、`test_file_display_api.py` 共 40 项通过；修改 Python 文件的 Ruff 检查通过。覆盖正常路径不进入重建、不增加读锁，以及删除、清空、重建、取消、损坏拒绝和汇总两次读取间发生清理的情况。
+
+## 2026-09-17 统一追加节点执行语义（当前）
+
+移除 Append JSONL 的 `parameters.enabled` 和 `parameters.preview_write`、预览分支及 skipped 回执。实际执行即追加，成功返回 committed，失败明确报错；节点顶层启用状态与工作流控制仍沿用既有机制。旧参数即使残留也不再控制写入，调试须使用隔离保存路径。
+
+保存浏览器当前草稿后读取最新文档，只清理 `production_append` 的两个旧参数，校验、保存并读回一致。`production_record.fields` 已由当前草稿简化为 `{"material_total":24}`，确认没有冗余 `format_id` 或 `tray_total`，没有覆盖现场已有修改。显示图的 count 规则保留，Runtime 版本未切换。
+
+真实图片 Preview 在无旧参数的情况下成功提交 1 条记录，总数 24、OK 24、NG 0，耗时约 5396 ms（含上传和结果传输）。隔离显示约 535 ms，统计 1 盘、24 个物料。43 项相关测试及 Ruff 检查通过，浏览器确认两个开关不再显示。
+
+现场配置另有差异：检测图 `production_log_suffix` 当前为 `/治具生产统计/治具.jsonl`，显示图仍读取 `/生产统计/治具.jsonl`；显示图依赖的 `D:/摆盘机/记录/塑盒原图` 目录不存在，原配置的显示执行在该节点失败。本次没有修改这些现场路径；隔离验证将显示日志指向实际测试文件，并为塑盒栏使用测试图片目录，因此不能把该结果视为原路径完整显示验收通过。
+
+备份与验证记录位于本机 `data/files/developer/workflow-backups/20260917-jsonl-write-semantics/`。正式生产记录未被测试写入。

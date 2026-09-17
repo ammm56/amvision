@@ -11,7 +11,7 @@
 - 不绑定模型分类名称，不进行条码去重、复检管理，不在通用节点补造缺失槽位。输入计数单位由上游明确。
 - 生产记录使用磁盘文件，不建生产数据库表或专用统计服务。文件恢复身份只处理被中断的同一次物理追加，不合并新调用。
 - 保持 Runtime/Trigger 同步高性能调用、实例满载拒绝及模型部署调用边界。不引入推理队列、后台等待或模型加载分支。
-- Preview 默认跳过正式日志写入；需要验证写入时显式启用并使用测试路径。显示调用只读取权威记录，可以更新自己的派生检查点。
+- Append JSONL 实际执行就写入，Preview 与正式调用使用相同语义；验证写入使用测试路径。显示调用只读取权威记录，可以更新自己的派生检查点。
 - 第一阶段支持单文件、本机磁盘；不新增多文件扫描汇总、自动轮转、跨文件时间窗口或网络盘保证。已有 CSV 功能保持原样。
 - API 保持 v1，App Mode 增加可选配置；既有无角标工作流继续可用。JPEG 和关闭 WebSocket permessage-deflate 的设置保持不变。
 - 本次交付包含通用节点、界面与测试；真实准确率、现场性能及长期稳定性不以本次短测替代。
@@ -89,12 +89,12 @@
 拟新增文件：`backend/nodes/core_nodes/io/output/storage/jsonl_append_local.py`、`backend/nodes/core_nodes/io/local/jsonl_load_local.py`。节点封装只负责参数、payload、执行控制和协议适配，恢复逻辑统一调用 S02。
 
 1. Append 接收对象 value，save_location 支持既有同名输入绑定与路径解析；一次执行固定路径。返回 file、generation、sequence、committed_offset、write_state 回执。
-2. 明确写入开关和 Preview 策略。默认预览不写，跳过状态不能伪装成已提交；显式测试写入应使用独立目录。
+2. 不增加节点内 Enabled 或 Preview Write 开关，实际执行就提交，失败明确报错；是否执行使用既有工作流控制，测试写入使用独立目录。
 3. Read 接收 file 或 local_path、source_mode、cursor 和预算，输出完整 records、next_cursor、snapshot_end、has_more 及明确的文件状态。
 4. 校验 cursor 与源文件身份，单条超限直接失败；无新增数据保持游标，不重放旧记录。missing 与损坏分开处理。
 5. 复用既有取消/timeout 控制，在受控边界检查；中断不能留下被当成成功提交的半条数据。
 
-验证：输入绑定、路径碰撞、对象而非 JSON 字符串、Preview 跳过、显式测试写入、缺失文件、重复读取与超限；既有 Append CSV/Save JSON 行为回归。
+验证：输入绑定、路径碰撞、对象而非 JSON 字符串、Preview 与正式执行均提交及写入失败、缺失文件、重复读取与超限；既有 Append CSV/Save JSON 行为回归。
 
 完成条件：节点目录和执行器可调用；正常回执与磁盘记录逐条对应，文件错误不会被转成成功空结果。
 

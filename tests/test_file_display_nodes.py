@@ -13,7 +13,7 @@ from backend.service.application.workflows.execution.contracts import (
     WorkflowNodeExecutionRequest,
 )
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.runtime.io.jsonl import append_record
+from backend.service.application.runtime.io.jsonl import append_record, read_records
 from backend.service.application.workflows.runtime_preview import RuntimePreviewCapture
 
 
@@ -67,16 +67,37 @@ def test_value_display_capture_and_errors():
         )
 
 
-def test_preview_default_skips_without_resolving_save_path():
-    """预览默认不触碰正式路径，跳过不是提交成功。"""
-    req = request(APPEND, metadata={"_editor_preview_observer": object()})
-    assert APPEND.handler(req)["receipt"]["value"] == {
-        "write_state": "skipped", "reason": "preview_write_disabled"
-    }
-    disabled = replace(req, parameters={"enabled": False, "preview_write": True})
-    assert APPEND.handler(disabled)["receipt"]["value"] == {
-        "write_state": "skipped", "reason": "disabled"
-    }
+@pytest.mark.parametrize(
+    "metadata",
+    [{}, {"_preview_execution": True}, {"_editor_preview_observer": object()}],
+)
+def test_append_writes_in_preview_and_runtime(tmp_path, metadata):
+    """两种预览标记及正式执行都提交记录，不需要额外开关。"""
+    path = tmp_path / "records.jsonl"
+    req = request(
+        APPEND,
+        {"save_location": str(path)},
+        {"value": {"value": {"total": 24}}},
+        metadata,
+    )
+    receipt = APPEND.handler(req)["receipt"]["value"]
+    assert receipt["write_state"] == "committed"
+    assert receipt["file"]["local_path"] == str(path)
+    assert read_records(path)["records"] == [{"total": 24}]
+
+
+def test_append_preview_errors_are_not_reported_as_skipped(tmp_path):
+    """预览写入失败直接报错，不能回退为成功跳过。"""
+    parent = tmp_path / "not-a-directory"
+    parent.write_text("occupied", encoding="utf-8")
+    req = request(
+        APPEND,
+        {"save_location": str(parent / "r.jsonl")},
+        {"value": {"value": {}}},
+        {"_preview_execution": True},
+    )
+    with pytest.raises((OSError, InvalidRequestError)):
+        APPEND.handler(req)
 
 
 def test_read_node_cursor_roundtrip(tmp_path):

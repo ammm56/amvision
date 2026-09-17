@@ -64,7 +64,7 @@ def build_file_display_graph(
     node(
         "record",
         "core.logic.object-build",
-        fields={"material_total": total, "tray_total": 1},
+        fields={"material_total": total},
     )
     for key in ("ok", "ng"):
         source = extract("count_" + key, "counts", "counts", key)
@@ -73,7 +73,6 @@ def build_file_display_graph(
         "append",
         "core.output.jsonl-append-local",
         save_location=str(root / "records.jsonl"),
-        preview_write=True,
     )
     edge("record", "value", "append", "value")
     extract("log_path", "append", "receipt", "file.local_path")
@@ -83,8 +82,9 @@ def build_file_display_graph(
         state_path=str(root / "summary.json"),
         reducers=[
             {"output_key": key, "source_path": key, "operation": "sum"}
-            for key in ("material_total", "material_ok", "material_ng", "tray_total")
-        ],
+            for key in ("material_total", "material_ok", "material_ng")
+        ]
+        + [{"output_key": "tray_total", "operation": "count"}],
     )
     edge("log_path", "value", "summary", "path")
     extract("context", "summary", "snapshot", "source")

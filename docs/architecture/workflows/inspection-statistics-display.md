@@ -163,7 +163,7 @@ cursor 和累计必须在同一文件中原子替换，不能分别保存。检�
 
 日志提交是记录成功点。图片保存成功而日志失败可能留下孤立图片，普通文件写入不具备跨文件事务；保持明确失败并复用既有保存/保留规则。日志提交后下游显示失败不能再次累计。
 
-新记录节点提供明确写入开关及 Preview 写入策略，默认 Preview 不写正式日志且显示跳过状态。需要调试保存时使用显式测试路径。显示工作流刷新、重复执行和断线重连不产生生产记录。
+Append JSONL 实际执行就追加，Preview 与 Runtime/Trigger 保持相同语义，不提供节点内额外写入开关。调试使用显式测试路径。显示工作流没有追加节点，刷新、重复执行和断线重连不产生生产记录。
 
 ## 通用显示与图片组合
 
@@ -199,7 +199,7 @@ Value Display 的 fields 配置示例：
 
 | 节点 | 输入/参数 | 输出 |
 | --- | --- | --- |
-| Append JSONL | value；save_location 参数或输入；enabled、preview_write；固定单条字节上限 | receipt：file、generation、sequence、committed_offset、write_state；不把业务对象改写为固定生产 schema |
+| Append JSONL | value；save_location 参数或输入；固定单条字节上限 | receipt：file、generation、sequence、committed_offset、write_state；不把业务对象改写为固定生产 schema |
 | Read JSONL | file 或 local_path（二选一，沿用现有文件来源约定）；cursor；max_records/max_bytes | records、next_cursor、snapshot_end、has_more；保持一条完整记录的边界 |
 | File Summary | 同一文件来源；state_path；reducers；读取预算；显式过滤条件 | snapshot：totals、latest、source、complete、status |
 | Value Display | value；可选 context；fields 配置 | 结构化 display 正文，不新增文件读写或业务副作用 |

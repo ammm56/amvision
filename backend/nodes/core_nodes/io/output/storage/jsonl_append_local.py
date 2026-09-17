@@ -33,24 +33,7 @@ from backend.service.application.workflows.graph_executor import (
 
 
 def _handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
-    """默认 Preview 跳过写入，正式执行短锁追加并返回真实提交状态。"""
-    enabled = request.parameters.get("enabled", True)
-    preview_write = request.parameters.get("preview_write", False)
-    if type(enabled) is not bool or type(preview_write) is not bool:
-        raise fail("Enabled 和 Preview Write 必须为布尔值")
-    is_preview = (
-        request.execution_metadata.get("_preview_execution") is True
-        or "_editor_preview_observer" in request.execution_metadata
-    )
-    if not enabled or (is_preview and not preview_write):
-        return {
-            "receipt": build_value_payload(
-                {
-                    "write_state": "skipped",
-                    "reason": "disabled" if not enabled else "preview_write_disabled",
-                }
-            )
-        }
+    """每次实际执行都短锁追加，Preview 与 Runtime 返回相同提交语义。"""
     value = require_value_payload(
         request.input_values.get("value"), field_name="value"
     )["value"]
@@ -84,7 +67,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
         node_type_id="core.output.jsonl-append-local",
         display_name="Append JSONL",
         category="core.io.file",
-        description="追加单个 JSON 对象；默认预览不写入，路径冲突明确失败。",
+        description="追加单个 JSON 对象；预览与正式执行均写入，路径冲突明确失败。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,
         runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
         input_ports=(
@@ -112,13 +95,6 @@ CORE_NODE_SPEC = CoreNodeSpec(
             "type": "object",
             "properties": {
                 "save_location": {"type": "string", "title": "保存位置"},
-                "enabled": {"type": "boolean", "default": True, "title": "Enabled"},
-                "preview_write": {
-                    "type": "boolean",
-                    "default": False,
-                    "title": "Preview Write",
-                    "description": "开启后编辑预览也会追加记录；调试时使用独立测试路径，避免计入生产统计。",
-                },
             },
         },
         capability_tags=("io.output", "jsonl.append"),

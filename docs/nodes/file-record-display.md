@@ -7,7 +7,7 @@
 | 名称 | node_type_id | 主要输入与参数 | 输出 |
 | --- | --- | --- | --- |
 | Count by Rules | `core.logic.count-by-rules` | `items`；`rules`；可选 `fallback_group` | `counts`、`input_count`、`matched_count`、`fallback_count`、`unmatched_count`，均为 value.v1 |
-| Append JSONL | `core.output.jsonl-append-local` | `value` 对象；`save_location` 参数或同名输入；`enabled`；`preview_write` | `receipt` value.v1 |
+| Append JSONL | `core.output.jsonl-append-local` | `value` 对象；`save_location` 参数或同名输入 | `receipt` value.v1 |
 | Read JSONL | `core.io.jsonl-load-local` | `file` 或 `path` 输入/`local_path` 参数；`cursor`；`snapshot_end`；读取预算 | `records`、`next_cursor`、`snapshot_end`、`has_more`、`status`，均为 value.v1 |
 | File Summary | `core.io.file-summary` | 同一文件来源；`state_path` 输入或参数；`reducers`；可选 `condition`；读取预算 | `snapshot` value.v1 |
 | Value Display | `core.io.value-display` | `value`；可选 `context`；`fields`、`title` | `body` response-body.v1，`type=value-display` |
@@ -85,7 +85,7 @@ Value Display 的字段配置示例（假设输入对象已经组装）：
 - `records.jsonl.commit.json` 与 `records.jsonl.intent.json` 是管理协议元数据，正常运行时由节点维护，不手工编辑。协议默认 managed；外部稳定 JSONL 可显式使用 snapshot，不能自动降级。
 - 写入使用既有非等待路径锁；冲突报 `jsonl_busy`。读端只读已提交边界，不持写锁。检查点使用独立短锁与比较后提交；冲突报 `jsonl_checkpoint_busy` 或 `jsonl_checkpoint_conflict`。
 - 写意图 → 完整行与 fsync → 原子提交边界 → 清理意图。中断恢复只处理核对过的未提交尾部。物理操作身份不作为业务记录去重；检查点丢失或校验失败可有界重建，权威文件损坏不能伪装为空结果。
-- Preview 默认 `preview_write=false`，回执为 `write_state=skipped`、`reason=preview_write_disabled`；节点未启用时原因为 `disabled`。开启 Preview Write 后编辑预览也会真实追加记录，调试应配置测试路径。跳过回执没有 `file`，下游不能当作成功追加使用；节点执行成功不等于文件已提交，写入结果以 `write_state=committed` 为准。
+- Append JSONL 实际执行就追加文件，Preview 与 Runtime/Trigger 使用相同写入语义；成功返回 `write_state=committed`，失败直接报错，不返回成功跳过。节点不再提供额外 `enabled`、`preview_write` 参数，是否执行由工作流统一控制；调试使用独立保存路径。
 - 本期面向本机单文件；不保证网络盘、任意外部并发修改或所有硬件掉电情形。文件与元数据一起备份，检查点可重建。
 
 ### 定期或手动清理
@@ -104,6 +104,8 @@ Value Display 的字段配置示例（假设输入对象已经组装）：
 累计口径是当前日志中的有效记录，删除记录意味着对应累计也被清除。每条成功记录对应一个物件或托盘时，使用 `{"operation":"count","output_key":"tray_total"}`，无需每行保存固定的 `tray_total: 1`；旧记录的额外字段仍可保留。
 
 ## 兼容与验证
+
+开发阶段仍使用 v1：已有草稿中 Append JSONL 的 `parameters.enabled`、`parameters.preview_write` 应移除，节点顶层 `enabled` 保留。旧参数不再参与处理器逻辑，不能用旧的 false 值阻止写入；使用旧草稿或已发布版本执行 Preview 时，也遵守“执行即写入”。需要隔离调试数据时调整保存路径，不能依赖旧开关。生产记录字段由工作流自定义，不要求 `format_id`。
 
 未增加数据库迁移、外部运行时依赖、API v2 或 .NET 数据面字段要求。新增节点只在工作流显式配置时执行；文件同步持久化有真实磁盘成本。Runtime/Trigger 调度、部署模型、满载拒绝、JPEG 和 WebSocket 压缩设置未改变。
 

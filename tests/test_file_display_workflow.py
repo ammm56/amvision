@@ -7,8 +7,8 @@ from tests.workflow_editor_graph_support import execute_editor_graph
 from tests.workflow_file_display_support import build_file_display_graph
 
 
-def test_editor_preview_does_not_write_without_explicit_opt_in(tmp_path):
-    """真实预览执行器的标志不能由调用方 metadata 关闭。"""
+def test_editor_preview_commits_without_extra_switches(tmp_path):
+    """真实预览执行器与正式节点调用具有相同写入语义。"""
     from backend.contracts.workflows.workflow_graph import WorkflowGraphTemplate
 
     service, _, _ = _build_runtime_service(tmp_path)
@@ -29,9 +29,6 @@ def test_editor_preview_does_not_write_without_explicit_opt_in(tmp_path):
         for e in document["edges"]
         if e["source_node_id"] in keep and e["target_node_id"] in keep
     ]
-    next(n for n in document["nodes"] if n["node_id"] == "append")["parameters"][
-        "preview_write"
-    ] = False
     document["template_outputs"][0].update(
         source_node_id="append", source_port="receipt"
     )
@@ -45,8 +42,12 @@ def test_editor_preview_does_not_write_without_explicit_opt_in(tmp_path):
         execution_metadata={"_preview_execution": False},
     )
     assert result.state == "succeeded", result.error_message
-    assert result.outputs["result"]["value"] == {"write_state": "skipped", "reason": "preview_write_disabled"}
-    assert not (tmp_path / "records").exists()
+    assert result.outputs["result"]["value"]["write_state"] == "committed"
+    from backend.service.application.runtime.io.jsonl import read_records
+
+    assert read_records(tmp_path / "records" / "records.jsonl")["records"] == [
+        {"material_total": 24, "material_ok": 0, "material_ng": 0}
+    ]
     service.session_factory.engine.dispose()
 
 
