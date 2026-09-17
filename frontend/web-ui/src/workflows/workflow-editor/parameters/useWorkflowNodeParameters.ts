@@ -32,6 +32,7 @@ export function useWorkflowNodeParameters<NodeView extends WorkflowNodeParameter
 
   function isJsonParameter(field: NodeParameterUiField): boolean {
     return (field.widget ?? 'auto') === 'auto'
+      && field.json_schema['x-ui-widget'] !== 'object-rows'
       && (field.json_schema.type === 'object' || field.json_schema.type === 'array')
   }
 

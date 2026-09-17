@@ -21,7 +21,7 @@ Count By Rules 读取既有并行推理结果的 `result.top_item.class_name`，
 
 OK 与 NG 分别按规则计数，没有使用总数减 OK 计算 NG。每条正常完成记录的 `material_total` 固定为 24，`tray_total` 固定为 1；本次状态沿用既有 Classification Summary 的 `state`。规则只分类实际输入条目，不凭空生成缺失槽位结果。
 
-Create Object 组装总数、OK/NG 数、本次状态、条码、原图/结果图路径及结果 JSON 路径。Append JSONL 依赖原有图片和 JSON 保存结果，追加完成后返回原有响应；公开输出端口和响应内容保持原有契约。普通编辑预览的 `preview_write=false`，不会追加生产记录。
+Create Object 组装总数、OK/NG 数、本次状态、条码、原图/结果图路径及结果 JSON 路径。Append JSONL 依赖原有图片和 JSON 保存结果，追加完成后返回原有响应；公开输出端口和响应内容保持原有契约。9 月 15 日保存时 `preview_write=false`，编辑预览不会追加生产记录；9 月 17 日已为此应用开启，详见下文。
 
 默认记录文件为 `D:/摆盘机/记录/生产统计/治具.jsonl`。写入目录跟随既有请求 JSON 的 `savepath`，再拼接 `生产统计/治具.jsonl`；上位机修改 `savepath` 时，需要同步修改显示应用 File Summary 的路径。
 
@@ -53,3 +53,23 @@ File Summary 增量读取上述 JSONL，汇总 `material_total`、`material_ok`�
 ## 生效步骤
 
 两个运行中的 Runtime 分别为 `workflow-runtime-00ac97b7030b4bb5bda4c3d1e7a76fba`（检测）和 `workflow-runtime-71bf1addb3614f24b7554eec8925b343`（显示）。发布新草稿后需要选择新版本，按原运行状态恢复，再核对空数据应用模式及首条正式记录。切换涉及短暂停止对应 Runtime，当前等待用户选择是否立即执行；测试累计不迁入正式文件。
+
+## 2026-09-17 写入与节点显示修复
+
+现场的“物料计数 · 保存成功后追加生产记录”组负责计数、字段提取、对象组装及 JSONL 追加。图片仍由原有两个 Save Image 节点保存；组内 Payload to Value / Extract Value Field 只提取保存回执中的路径，没有再次保存图片。
+
+未生成正式日志的直接原因是检测应用的 Append JSONL 关闭了 Preview Write。Preview 的节点成功状态表示处理器正常完成，不能替代 `receipt.write_state=committed`。本次仅把该应用草稿的 `production_append.parameters.preview_write` 改为 `true`，保存并读回核对；节点全局默认仍为 `false`。之后此应用的正常编辑预览也会追加正式记录，调试需要提供隔离的 `savepath`。Runtime 的固定发布版本未更新。
+
+Append JSONL 的跳过回执增加 `reason=disabled` 或 `preview_write_disabled`，便于区分未启用与预览禁写；保存路径参数绑定对应输入端口，连线后明确显示“来自连接”。
+
+Count By Rules 的 Rules 行之前直接在窄参数栏展开复杂编辑器，而节点几何高度仍按普通 JSON 控件计算，造成内容越界。现在改为摘要按钮与独立编辑对话框，使用已有对话框组件，取消不修改节点参数，应用才提交；无效条件 JSON 阻止应用。File Summary 和 Value Display 的同类行编辑器共用此修复。
+
+验证结果：
+
+- 使用真实 `Image_20260721103258062.bmp`（约 57 MB）调用既有部署模型，一次 Preview 完成约 4694 ms，包含图片上传与结果传输，不是单独推理耗时。
+- 在隔离目录提交 1 条 JSONL：物料总数 24、OK 24、NG 0、状态 ok；追加节点约 17.979 ms，回执 `write_state=committed`、`sequence=1`。
+- 实际文件为原有两张 JPEG、一份原有结果 JSON 和新增 JSONL 及其协议元数据；记录引用的图片路径存在，没有重复图片保存节点。
+- 浏览器确认 Rules 内容不越界、四个 NG 分类可完整查看、无效 JSON 无法应用、Preview Write 已开启。
+- 后端相关测试 7 项、前端编辑器及几何相关测试 24 项通过，TypeScript 类型检查与改动 Python 文件 Ruff 检查通过。
+
+本次备份及验证记录位于本机 `data/files/developer/workflow-backups/20260917-count-record-review/`。测试结束时正式生产日志仍未创建，验证记录没有计入正式统计；下次使用正式路径执行此应用预览才会创建或追加该日志。

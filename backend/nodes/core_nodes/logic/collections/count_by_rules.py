@@ -49,7 +49,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
             ),
         ),
         output_ports=tuple(
-            NodePortDefinition(name=key, display_name=key, payload_type_id="value.v1")
+            NodePortDefinition(name=key, display_name=key.replace("_", " ").title(), payload_type_id="value.v1")
             for key in (
                 "counts",
                 "input_count",

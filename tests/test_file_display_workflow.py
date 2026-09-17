@@ -45,7 +45,7 @@ def test_editor_preview_does_not_write_without_explicit_opt_in(tmp_path):
         execution_metadata={"_preview_execution": False},
     )
     assert result.state == "succeeded", result.error_message
-    assert result.outputs["result"]["value"] == {"write_state": "skipped"}
+    assert result.outputs["result"]["value"] == {"write_state": "skipped", "reason": "preview_write_disabled"}
     assert not (tmp_path / "records").exists()
     service.session_factory.engine.dispose()
 

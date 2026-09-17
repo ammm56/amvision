@@ -70,7 +70,13 @@ def test_value_display_capture_and_errors():
 def test_preview_default_skips_without_resolving_save_path():
     """预览默认不触碰正式路径，跳过不是提交成功。"""
     req = request(APPEND, metadata={"_editor_preview_observer": object()})
-    assert APPEND.handler(req)["receipt"]["value"]["write_state"] == "skipped"
+    assert APPEND.handler(req)["receipt"]["value"] == {
+        "write_state": "skipped", "reason": "preview_write_disabled"
+    }
+    disabled = replace(req, parameters={"enabled": False, "preview_write": True})
+    assert APPEND.handler(disabled)["receipt"]["value"] == {
+        "write_state": "skipped", "reason": "disabled"
+    }
 
 
 def test_read_node_cursor_roundtrip(tmp_path):

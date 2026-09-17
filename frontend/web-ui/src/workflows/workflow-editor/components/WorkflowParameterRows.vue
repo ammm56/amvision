@@ -11,7 +11,7 @@
         <span>{{ property.title || key }}</span>
         <template v-if="key === 'condition' && !advanced[index] && simpleCondition(row[key])">
           <input aria-label="Path" placeholder="Path" :value="condition(row).path ?? ''" :disabled="disabled" @input="setConditionPath(index, $event)" />
-          <textarea aria-label="Match Values" placeholder="Match Values · 每行一个值" :value="matchValues(row)" :disabled="disabled" @change="setMatchValues(index, $event)" />
+          <textarea aria-label="Match Values" placeholder="Match Values · 每行一个值" :rows="Math.min(8, Math.max(3, matchValues(row).split('\n').length))" :value="matchValues(row)" :disabled="disabled" @change="setMatchValues(index, $event)" />
           <button type="button" :disabled="disabled" @click="advanced[index] = true">编辑条件 JSON</button>
         </template>
         <select v-else-if="Array.isArray(property.enum)" :value="row[key] ?? property.default ?? property.enum[0]" :disabled="disabled" @change="set(index, key, ($event.target as HTMLSelectElement).value)">
@@ -29,17 +29,20 @@
 import { computed, ref } from 'vue'
 import type { WorkflowJsonObject } from '../types'
 const props = defineProps<{ modelValue: unknown; schema: WorkflowJsonObject; disabled?: boolean }>()
-const emit = defineEmits<{ 'update:modelValue': [value: unknown] }>()
-const error = ref('')
+const emit = defineEmits<{ 'update:modelValue': [value: unknown]; 'validity-change': [valid: boolean] }>()
+const errors = ref<Record<string, string>>({})
+const error = computed(() => Object.values(errors.value)[0] ?? '')
 const advanced = ref<Record<number, boolean>>({})
 const rows = computed(() => Array.isArray(props.modelValue) ? props.modelValue as WorkflowJsonObject[] : [])
 const properties = computed(() => ((props.schema.items as WorkflowJsonObject)?.properties ?? {}) as Record<string, WorkflowJsonObject>)
 function set(index: number, key: string, value: unknown) {
+  delete errors.value[`${index}:${key}`]
+  emit('validity-change', Object.keys(errors.value).length === 0)
   emit('update:modelValue', rows.value.map((row, i) => i === index ? { ...row, [key]: value } : row))
 }
 function setJson(index: number, key: string, event: Event) {
-  try { set(index, key, JSON.parse((event.target as HTMLTextAreaElement).value)); error.value = '' }
-  catch { error.value = 'JSON 格式无效，尚未应用此字段' }
+  try { set(index, key, JSON.parse((event.target as HTMLTextAreaElement).value)) }
+  catch { errors.value[`${index}:${key}`] = 'JSON 格式无效，尚未应用此字段'; emit('validity-change', false) }
 }
 function add() {
   const row: WorkflowJsonObject = {}
@@ -48,10 +51,23 @@ function add() {
   }
   emit('update:modelValue', [...rows.value, row])
 }
-function remove(index: number) { advanced.value = {}; emit('update:modelValue', rows.value.filter((_, i) => i !== index)) }
+function reorderErrors(order: number[]) {
+  errors.value = Object.fromEntries(Object.entries(errors.value).flatMap(([key, message]) => {
+    const split = key.indexOf(':'); const newIndex = order.indexOf(Number(key.slice(0, split)))
+    return newIndex < 0 ? [] : [[`${newIndex}${key.slice(split)}`, message]]
+  }))
+  emit('validity-change', Object.keys(errors.value).length === 0)
+}
+function remove(index: number) {
+  reorderErrors(rows.value.map((_, i) => i).filter(i => i !== index))
+  advanced.value = {}; emit('update:modelValue', rows.value.filter((_, i) => i !== index))
+}
 function move(index: number, direction: number) {
   const next = [...rows.value]; const target = index + direction
   ;[next[index], next[target]] = [next[target]!, next[index]!]
+  const order = rows.value.map((_, i) => i)
+  ;[order[index], order[target]] = [order[target]!, order[index]!]
+  reorderErrors(order)
   advanced.value = {}; emit('update:modelValue', next)
 }
 function simpleCondition(value: unknown) { return !value || (typeof value === 'object' && (value as WorkflowJsonObject).operator === 'in') }
@@ -69,13 +85,13 @@ function setMatchValues(index: number, event: Event) {
 }
 </script>
 <style scoped>
-.parameter-rows { display: grid; gap: 8px; min-width: 0; }
+.parameter-rows { display: grid; gap: 8px; min-width: 0; color: var(--am-text); font-family: var(--am-font-sans); }
 .parameter-rows__row { border: 1px solid var(--am-border); border-radius: var(--am-radius-sm); padding: 8px; display: grid; gap: 6px; min-width: 0; }
 .parameter-rows__actions { display: flex; gap: 6px; align-items: center; }
 .parameter-rows__actions span { margin-right: auto; color: var(--am-text-muted); }
 .parameter-rows label { display: grid; gap: 4px; min-width: 0; font-size: 12px; }
-.parameter-rows input, .parameter-rows select, .parameter-rows textarea { width: 100%; box-sizing: border-box; min-width: 0; padding: 5px; background: var(--am-input); color: var(--am-text); border: 1px solid var(--am-border); border-radius: var(--am-radius-sm); }
+.parameter-rows input, .parameter-rows select, .parameter-rows textarea { width: 100%; box-sizing: border-box; min-width: 0; padding: 5px; background: var(--am-input); color: var(--am-text); border: 1px solid var(--am-border); border-radius: var(--am-radius-sm); font: inherit; }
 .parameter-rows textarea { min-height: 56px; resize: vertical; }
-.parameter-rows button { color: var(--am-text); background: var(--am-surface); border: 1px solid var(--am-border); border-radius: var(--am-radius-sm); cursor: pointer; }
+.parameter-rows button { color: var(--am-text); background: var(--am-surface); border: 1px solid var(--am-border); border-radius: var(--am-radius-sm); cursor: pointer; font: inherit; min-height: 28px; }
 .parameter-rows [role='alert'] { color: var(--am-danger-text); }
 </style>

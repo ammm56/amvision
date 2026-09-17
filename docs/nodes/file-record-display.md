@@ -65,7 +65,7 @@ Value Display 的字段配置示例（假设输入对象已经组装）：
 ]
 ```
 
-格式支持 `text/integer/number/percent/status`；状态样式仅支持 `success/danger/warning/neutral`。原始状态值不自动改名或推断业务含义。属性面板支持规则/归约/显示字段行的添加、删除、排序；简单匹配值逐行填写，复杂条件沿用现有条件 JSON。
+格式支持 `text/integer/number/percent/status`；状态样式仅支持 `success/danger/warning/neutral`。原始状态值不自动改名或推断业务含义。规则/归约/显示字段使用摘要按钮打开独立编辑对话框，支持行的添加、删除、排序；简单匹配值逐行填写，复杂条件沿用现有条件 JSON。取消不修改节点参数，应用才提交，无效 JSON 阻止应用。
 
 ## App Mode 与大图
 
@@ -85,7 +85,7 @@ Value Display 的字段配置示例（假设输入对象已经组装）：
 - `records.jsonl.commit.json` 与 `records.jsonl.intent.json` 是管理协议元数据，不能单独删除或编辑。协议默认 managed；外部稳定 JSONL 可显式使用 snapshot，不能自动降级。
 - 写入使用既有非等待路径锁；冲突报 `jsonl_busy`。读端只读已提交边界，不持写锁。检查点使用独立短锁与比较后提交；冲突报 `jsonl_checkpoint_busy` 或 `jsonl_checkpoint_conflict`。
 - 写意图 → 完整行与 fsync → 原子提交边界 → 清理意图。中断恢复只处理核对过的未提交尾部。物理操作身份不作为业务记录去重；检查点丢失或校验失败可有界重建，权威文件损坏不能伪装为空结果。
-- Preview 默认 `preview_write=false`，回执为 `write_state=skipped`；需要真实写入验证时显式开启并配置测试路径。跳过回执没有 `file`，下游不能当作成功追加使用。
+- Preview 默认 `preview_write=false`，回执为 `write_state=skipped`、`reason=preview_write_disabled`；节点未启用时原因为 `disabled`。开启 Preview Write 后编辑预览也会真实追加记录，调试应配置测试路径。跳过回执没有 `file`，下游不能当作成功追加使用；节点执行成功不等于文件已提交，写入结果以 `write_state=committed` 为准。
 - 本期面向本机单文件；不保证网络盘、任意外部并发修改或所有硬件掉电情形。文件与元数据一起备份，检查点可重建。
 
 ## 兼容与验证

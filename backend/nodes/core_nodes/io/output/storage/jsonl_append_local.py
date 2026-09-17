@@ -6,6 +6,7 @@ from backend.contracts.workflows.workflow_graph import (
     NODE_IMPLEMENTATION_CORE,
     NODE_RUNTIME_PYTHON_CALLABLE,
     NodeDefinition,
+    NodeParameterInputBinding,
     NodePortDefinition,
 )
 from backend.nodes.core_nodes.support.base import CoreNodeSpec
@@ -42,7 +43,10 @@ def _handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         or "_editor_preview_observer" in request.execution_metadata
     )
     if not enabled or (is_preview and not preview_write):
-        return {"receipt": build_value_payload({"write_state": "skipped"})}
+        return {"receipt": build_value_payload({
+            "write_state": "skipped",
+            "reason": "disabled" if not enabled else "preview_write_disabled",
+        })}
     value = require_value_payload(
         request.input_values.get("value"), field_name="value"
     )["value"]
@@ -90,6 +94,9 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 name="receipt", display_name="Receipt", payload_type_id="value.v1"
             ),
         ),
+        parameter_input_bindings=(
+            NodeParameterInputBinding(parameter_name="save_location", input_port_name="save_location"),
+        ),
         parameter_schema={
             "type": "object",
             "properties": {
@@ -99,7 +106,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
                     "type": "boolean",
                     "default": False,
                     "title": "Preview Write",
-                    "description": "仅调试时启用，并使用独立测试路径。",
+                    "description": "开启后编辑预览也会追加记录；调试时使用独立测试路径，避免计入生产统计。",
                 },
             },
         },

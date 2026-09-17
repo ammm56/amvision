@@ -47,6 +47,11 @@ function buildParameters() {
 }
 
 describe('useWorkflowNodeParameters color-map', () => {
+  it('object-rows 使用紧凑编辑入口，与普通参数采用相同高度', () => {
+    const parameters = buildParameters()
+    expect(parameters.isJsonParameter({ ...jsonObjectField, json_schema: { type: 'array', 'x-ui-widget': 'object-rows' } })).toBe(false)
+    expect(parameters.isJsonParameter(jsonObjectField)).toBe(true)
+  })
   it('文字偏移输入支持负数、零值和保存后的数值回读', () => {
     const parameters = buildParameters()
     const node = { node: { ...graphNode, parameters: {} }, definition: null }
