@@ -1,32 +1,36 @@
 <template>
   <div class="parameter-rows">
-    <div v-for="(row, index) in rows" :key="index" class="parameter-rows__row">
+    <div v-for="(row, index) in rows" :key="index" class="parameter-rows__row" :class="{ 'parameter-rows__row--reducer': isReducer, 'parameter-rows__row--count': isReducer && row.operation === 'count' }">
       <div class="parameter-rows__actions">
         <span>{{ index + 1 }}</span>
-        <button type="button" :disabled="disabled || index === 0" aria-label="上移" @click="move(index, -1)">↑</button>
-        <button type="button" :disabled="disabled || index === rows.length - 1" aria-label="下移" @click="move(index, 1)">↓</button>
-        <button type="button" :disabled="disabled" aria-label="删除行" @click="remove(index)">删除</button>
+        <button type="button" :disabled="disabled || index === 0" aria-label="上移" title="上移" @click="move(index, -1)"><ArrowUp :size="16" /></button>
+        <button type="button" :disabled="disabled || index === rows.length - 1" aria-label="下移" title="下移" @click="move(index, 1)"><ArrowDown :size="16" /></button>
+        <button type="button" :disabled="disabled" aria-label="删除行" title="删除行" @click="remove(index)"><Trash2 :size="16" /></button>
       </div>
-      <label v-for="(property, key) in properties" :key="key">
+      <label v-for="(property, key) in visibleProperties(row)" :key="key" :class="{ 'parameter-rows__field--wide': property.type === 'object' || property.type === 'array' }">
         <span>{{ property.title || key }}</span>
         <template v-if="key === 'condition' && !advanced[index] && simpleCondition(row[key])">
           <input aria-label="Path" placeholder="Path" :value="condition(row).path ?? ''" :disabled="disabled" @input="setConditionPath(index, $event)" />
           <textarea aria-label="Match Values" placeholder="Match Values · 每行一个值" :rows="Math.min(8, Math.max(3, matchValues(row).split('\n').length))" :value="matchValues(row)" :disabled="disabled" @change="setMatchValues(index, $event)" />
           <button type="button" :disabled="disabled" @click="advanced[index] = true">编辑条件 JSON</button>
         </template>
-        <select v-else-if="Array.isArray(property.enum)" :value="row[key] ?? property.default ?? property.enum[0]" :disabled="disabled" @change="set(index, key, ($event.target as HTMLSelectElement).value)">
-          <option v-for="option in property.enum" :key="String(option)" :value="String(option)">{{ option }}</option>
-        </select>
+        <Select v-else-if="Array.isArray(property.enum)" floating
+          :model-value="String(row[key] ?? property.default ?? property.enum[0])"
+          :options="property.enum.map(option => ({ value: String(option), label: optionLabel(key, option) }))"
+          :aria-label="String(property.title || key)" :disabled="disabled"
+          @update:model-value="set(index, key, $event)" />
         <textarea v-else-if="property.type === 'object' || property.type === 'array'" :value="JSON.stringify(row[key] ?? {}, null, 2)" :disabled="disabled" @change="setJson(index, key, $event)" />
         <input v-else :type="property.type === 'integer' ? 'number' : 'text'" :min="Number(property.minimum ?? 0)" :max="property.maximum == null ? undefined : Number(property.maximum)" :value="String(row[key] ?? property.default ?? '')" :disabled="disabled" @input="set(index, key, property.type === 'integer' ? Number(($event.target as HTMLInputElement).value) : ($event.target as HTMLInputElement).value)" />
       </label>
     </div>
     <span v-if="error" role="alert">{{ error }}</span>
-    <button type="button" :disabled="disabled || rows.length >= Number(schema.maxItems ?? 64)" @click="add">添加行</button>
+    <button type="button" class="parameter-rows__add" :disabled="disabled || rows.length >= Number(schema.maxItems ?? 64)" @click="add"><Plus :size="16" />添加行</button>
   </div>
 </template>
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { ArrowDown, ArrowUp, Plus, Trash2 } from '@lucide/vue'
+import Select from '@/shared/ui/components/Select.vue'
 import type { WorkflowJsonObject } from '../types'
 const props = defineProps<{ modelValue: unknown; schema: WorkflowJsonObject; disabled?: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [value: unknown]; 'validity-change': [valid: boolean] }>()
@@ -35,6 +39,24 @@ const error = computed(() => Object.values(errors.value)[0] ?? '')
 const advanced = ref<Record<number, boolean>>({})
 const rows = computed(() => Array.isArray(props.modelValue) ? props.modelValue as WorkflowJsonObject[] : [])
 const properties = computed(() => ((props.schema.items as WorkflowJsonObject)?.properties ?? {}) as Record<string, WorkflowJsonObject>)
+// 仅识别归约配置的结构，不把生产字段或模型分类写入通用编辑器。
+const isReducer = computed(() => Boolean(properties.value.output_key && properties.value.source_path && properties.value.operation))
+function visibleProperties(row: WorkflowJsonObject) {
+  return Object.fromEntries(Object.entries(properties.value).filter(([key]) => {
+    if (!isReducer.value) return true
+    if (row.operation === 'count') return !['source_path', 'numeric_type', 'missing_policy'].includes(key)
+    return row.operation !== 'last' || key !== 'numeric_type'
+  }))
+}
+function optionLabel(key: string, value: unknown): string {
+  if (!isReducer.value) return String(value)
+  const labels: Record<string, Record<string, string>> = {
+    operation: { sum: 'Sum', count: 'Count', min: 'Minimum', max: 'Maximum', last: 'Last Value' },
+    numeric_type: { integer: 'Integer', number: 'Number' },
+    missing_policy: { error: 'Report Error', skip: 'Skip Missing' },
+  }
+  return labels[key]?.[String(value)] ?? String(value)
+}
 function set(index: number, key: string, value: unknown) {
   delete errors.value[`${index}:${key}`]
   emit('validity-change', Object.keys(errors.value).length === 0)
@@ -85,13 +107,23 @@ function setMatchValues(index: number, event: Event) {
 }
 </script>
 <style scoped>
-.parameter-rows { display: grid; gap: 8px; min-width: 0; color: var(--am-text); font-family: var(--am-font-sans); }
-.parameter-rows__row { border: 1px solid var(--am-border); border-radius: var(--am-radius-sm); padding: 8px; display: grid; gap: 6px; min-width: 0; }
+.parameter-rows { display: grid; gap: 12px; min-width: 0; color: var(--am-text); font-family: var(--am-font-sans); }
+.parameter-rows__row { border: 1px solid var(--am-border); border-radius: var(--am-radius-md); padding: 12px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; min-width: 0; align-items: start; }
+.parameter-rows__actions, .parameter-rows__field--wide { grid-column: 1 / -1; }
+.parameter-rows__row--reducer { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.parameter-rows__row--reducer > label { grid-column: span 2; }
+.parameter-rows__row--reducer > label:nth-of-type(-n+2), .parameter-rows__row--count > label { grid-column: span 3; }
 .parameter-rows__actions { display: flex; gap: 6px; align-items: center; }
 .parameter-rows__actions span { margin-right: auto; color: var(--am-text-muted); }
-.parameter-rows label { display: grid; gap: 4px; min-width: 0; font-size: 12px; }
-.parameter-rows input, .parameter-rows select, .parameter-rows textarea { width: 100%; box-sizing: border-box; min-width: 0; padding: 5px; background: var(--am-input); color: var(--am-text); border: 1px solid var(--am-border); border-radius: var(--am-radius-sm); font: inherit; }
+.parameter-rows label { display: grid; gap: 6px; min-width: 0; font-size: 13px; font-weight: 500; }
+.parameter-rows input, .parameter-rows select, .parameter-rows textarea { width: 100%; box-sizing: border-box; min-width: 0; min-height: 36px; padding: 8px 10px; background: var(--am-input); color: var(--am-text); border: 1px solid var(--am-border-strong); border-radius: var(--am-radius-sm); font: inherit; font-weight: 400; }
+.parameter-rows :deep(.ui-select__button) { min-height: 36px; padding: 8px 10px; font: inherit; font-weight: 400; }
 .parameter-rows textarea { min-height: 56px; resize: vertical; }
-.parameter-rows button { color: var(--am-text); background: var(--am-surface); border: 1px solid var(--am-border); border-radius: var(--am-radius-sm); cursor: pointer; font: inherit; min-height: 28px; }
+.parameter-rows button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 8px; color: var(--am-text); background: var(--am-surface); border: 1px solid var(--am-border); border-radius: var(--am-radius-sm); cursor: pointer; font: inherit; min-height: 32px; }
+.parameter-rows button:hover:not(:disabled) { background: var(--am-surface-soft); }
+.parameter-rows :is(input, select, textarea, button):focus-visible { outline: 2px solid var(--am-focus-ring); outline-offset: 2px; }
+.parameter-rows :disabled { opacity: .5; cursor: default; }
+.parameter-rows__add { justify-self: start; }
 .parameter-rows [role='alert'] { color: var(--am-danger-text); }
+@media (max-width: 540px) { .parameter-rows__row { grid-template-columns: minmax(0, 1fr); } .parameter-rows__row > label { grid-column: 1 / -1; } }
 </style>

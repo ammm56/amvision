@@ -4,6 +4,27 @@ import WorkflowParameterRows from './WorkflowParameterRows.vue'
 import WorkflowValueDisplay from './WorkflowValueDisplay.vue'
 
 describe('file display parameter rows', () => {
+  it('shows only applicable reducer controls without changing stored values', async () => {
+    const row = { output_key: 'total', source_path: 'quantity', operation: 'sum', numeric_type: 'integer', missing_policy: 'error' }
+    const wrapper = mount(WorkflowParameterRows, { props: { modelValue: [row], schema: { items: { properties: {
+      output_key: { type: 'string' }, source_path: { type: 'string' },
+      operation: { enum: ['sum', 'count', 'last'] }, numeric_type: { enum: ['integer', 'number'] },
+      missing_policy: { enum: ['error', 'skip'] },
+    } } } } })
+    expect(wrapper.findAllComponents({ name: 'Select' })).toHaveLength(3)
+    expect(wrapper.text()).toContain('Report Error')
+    wrapper.findComponent({ name: 'Select' }).vm.$emit('update:modelValue', 'count')
+    const updated = (wrapper.emitted('update:modelValue')!.at(-1)![0] as typeof row[])[0]!
+    expect(updated).toEqual({ ...row, operation: 'count' })
+    await wrapper.setProps({ modelValue: [updated] })
+    expect(wrapper.findAllComponents({ name: 'Select' })).toHaveLength(1)
+    expect(wrapper.findAll('input')).toHaveLength(1)
+    await wrapper.setProps({ modelValue: [{ ...updated, operation: 'last' }] })
+    expect(wrapper.findAllComponents({ name: 'Select' })).toHaveLength(2)
+    expect(wrapper.findAll('input')).toHaveLength(2)
+    wrapper.unmount()
+  })
+
   it('edits typed match values and keeps order through move/delete', async () => {
     const rows = [{ key: 'ok', condition: { operator: 'in', path: 'label', right: ['a'] } }, { key: 'ng', condition: { operator: 'in', path: 'label', right: ['b'] } }]
     const wrapper = mount(WorkflowParameterRows, { props: { modelValue: rows, schema: { items: { properties: { key: { type: 'string' }, condition: { type: 'object' } } } } } })
