@@ -120,8 +120,93 @@ def test_corruption_missing_and_replacement(tmp_path):
     with pytest.raises(InvalidRequestError):
         jsonl.read_records(path)
     jsonl.sidecars(path)[0].unlink()
+    append(path, {"n": 2})
+    assert jsonl.read_records(path)["records"] == [{"n": 1}, {"n": 2}]
+
+
+@pytest.mark.parametrize("cleanup", ["log", "all", "empty", "commit"])
+def test_manual_cleanup_then_append(tmp_path, cleanup):
+    """主日志删除或清空从零开始，只删提交文件则保留所有完整记录。"""
+    path = tmp_path / "r.jsonl"
+    old = append(path, {"n": 1})
+    metadata, _ = jsonl.sidecars(path)
+    if cleanup in {"log", "all"}:
+        path.unlink()
+        assert jsonl.read_records(path, allow_missing=True)["status"] == "missing"
+    if cleanup in {"all", "commit"}:
+        metadata.unlink()
+    if cleanup == "empty":
+        path.write_bytes(b"")
+    result = append(path, {"n": 2})
+    assert result["generation"] != old["generation"]
+    assert jsonl.read_records(path)["records"] == (
+        [{"n": 1}, {"n": 2}] if cleanup == "commit" else [{"n": 2}]
+    )
+
+
+def test_reader_repairs_metadata_with_nonblocking_lock(tmp_path):
+    """显示端能独立恢复缺失提交文件，锁冲突不修改文件。"""
+    from contextlib import nullcontext
+
+    path = tmp_path / "r.jsonl"
+    append(path, {"n": 1})
+    metadata, _ = jsonl.sidecars(path)
+    metadata.unlink()
+    with pytest.raises(InvalidRequestError, match="正在写入"):
+        jsonl.read_records(path, repair_lock=lambda: nullcontext(False))
+    assert not metadata.exists()
+    assert jsonl.read_records(
+        path, repair_lock=lambda: PathWriteCoordinator().try_acquire([path])
+    )["records"] == [{"n": 1}]
+    assert metadata.exists()
+
+
+@pytest.mark.parametrize("tail", [b'{"n":', b"not json\n", b"[]\n"])
+def test_metadata_rebuild_rejects_bad_log_without_changing_it(tmp_path, tail):
+    """缺失元数据不授权丢弃坏行、半行或非对象记录。"""
+    path = tmp_path / "r.jsonl"
+    content = b'{"n":1}\n' + tail
+    path.write_bytes(content)
     with pytest.raises(InvalidRequestError):
         append(path, {"n": 2})
+    assert path.read_bytes() == content
+    assert not jsonl.sidecars(path)[0].exists()
+
+
+def test_rebuild_cancellation_and_uncertain_intent(tmp_path):
+    """重建可取消；仍有写意图时不猜测提交状态。"""
+    path = tmp_path / "r.jsonl"
+    append(path, {"n": 1})
+    metadata, intent = jsonl.sidecars(path)
+    metadata.unlink()
+
+    def cancelled():
+        raise TimeoutError("cancelled")
+
+    with pytest.raises(TimeoutError):
+        jsonl.append_record(path, {"n": 2}, operation="two", check_control=cancelled)
+    assert not metadata.exists()
+    intent.write_bytes(b"unknown")
+    with pytest.raises(InvalidRequestError, match="未完成"):
+        append(path, {"n": 2})
+    # 主日志确实删除后，旧意图不能恢复已经清理的数据。
+    path.unlink()
+    result = append(path, {"n": 3})
+    assert result["sequence"] == 1
+    assert jsonl.read_records(path)["records"] == [{"n": 3}]
+
+
+def test_normal_io_does_not_scan_or_acquire_repair_lock(tmp_path, monkeypatch):
+    """正常追加与读取没有恢复扫描和新增读锁。"""
+    path = tmp_path / "r.jsonl"
+    append(path, {"n": 1})
+
+    def unexpected(*args, **kwargs):
+        raise AssertionError("normal IO must not enter repair")
+
+    monkeypatch.setattr(jsonl, "_rebuild_commit", unexpected)
+    append(path, {"n": 2})
+    assert len(jsonl.read_records(path, repair_lock=unexpected)["records"]) == 2
 
 
 def _try_lock(path, connection):

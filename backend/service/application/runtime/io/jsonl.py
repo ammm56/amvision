@@ -9,6 +9,7 @@ import os
 import time
 from dataclasses import dataclass
 from collections.abc import Callable
+from contextlib import AbstractContextManager
 from pathlib import Path
 from uuid import uuid4
 
@@ -106,8 +107,17 @@ def _commit(path: Path) -> Commit:
     try:
         result = Commit.model_validate(read_small(sidecars(path)[0]))
         stat = path.stat()
-    except (ValidationError, FileNotFoundError) as exc:
+    except FileNotFoundError as exc:
+        raise fail(
+            "JSONL 提交文件缺失，需要校验重建", "jsonl_rebuild_required"
+        ) from exc
+    except ValidationError as exc:
         raise fail("JSONL 提交元数据缺失或无效") from exc
+    if stat.st_size == 0 and (
+        result.committed_offset != 0
+        or (stat.st_dev, stat.st_ino) != (result.device, result.inode)
+    ):
+        raise fail("JSONL 已清空，需要开始新记录", "jsonl_rebuild_required")
     if result.format_id != "amvision.jsonl-commit.v1" or (stat.st_dev, stat.st_ino) != (
         result.device,
         result.inode,
@@ -134,6 +144,67 @@ def _clear_intent(path: Path) -> None:
         sidecars(path)[1].unlink(missing_ok=True)
     except OSError:
         pass
+
+
+def _rebuild_commit(
+    path: Path, *, check_control: Callable[[], None] | None = None
+) -> Commit:
+    """调用方持写锁；逐行校验现存日志，重建丢失的元数据或清空后的新代次。"""
+    intent_path = sidecars(path)[1]
+    started = time.monotonic()
+    sequence = 0
+    with path.open("rb") as stream:
+        before = os.fstat(stream.fileno())
+        if before.st_size and intent_path.exists():
+            raise fail("提交文件缺失且存在未完成写入，不能自动判定提交边界")
+        while stream.tell() < before.st_size:
+            if check_control:
+                check_control()
+            if time.monotonic() - started > 30:
+                raise fail(
+                    "JSONL 提交文件重建超过 30 秒，未修改原日志",
+                    "jsonl_rebuild_timeout",
+                )
+            line = stream.readline(MAX_RECORD_BYTES + 1)
+            if not line.endswith(b"\n") or len(line) > MAX_RECORD_BYTES:
+                raise fail("JSONL 存在不完整或超限记录，不能重建提交文件")
+            if not isinstance(decode(line), dict):
+                raise fail("JSONL 每条记录必须为对象")
+            sequence += 1
+        after = path.stat()
+        if (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns) != (
+            after.st_dev,
+            after.st_ino,
+            after.st_size,
+            after.st_mtime_ns,
+        ):
+            raise fail("重建期间 JSONL 被修改，请在清理完成后重新执行")
+    if check_control:
+        check_control()
+    # 空日志视为显式清理，旧意图不得应用于新日志；删除失败须中止。
+    if not before.st_size:
+        intent_path.unlink(missing_ok=True)
+    commit = Commit(
+        generation=uuid4().hex,
+        device=before.st_dev,
+        inode=before.st_ino,
+        sequence=sequence,
+        committed_offset=before.st_size,
+    )
+    _publish(path, commit)
+    return commit
+
+
+def _load_or_rebuild_commit(
+    path: Path, *, check_control: Callable[[], None] | None = None
+) -> Commit:
+    """仅在可识别的清理情形恢复，格式损坏与非空文件替换仍明确失败。"""
+    try:
+        return _commit(path)
+    except InvalidRequestError as exc:
+        if exc.details.get("error_code") != "jsonl_rebuild_required":
+            raise
+    return _rebuild_commit(path, check_control=check_control)
 
 
 def _recover(path: Path, commit: Commit) -> Commit:
@@ -211,30 +282,27 @@ def prepare_record(value: dict) -> PreparedRecord:
     return PreparedRecord(payload, hashlib.sha256(payload).hexdigest())
 
 
-def append_record(path: Path, value: dict | PreparedRecord, *, operation: str) -> dict:
+def append_record(
+    path: Path,
+    value: dict | PreparedRecord,
+    *,
+    operation: str,
+    check_control: Callable[[], None] | None = None,
+) -> dict:
     """在调用方的短路径锁内追加一条对象，新调用使用不同 operation。"""
     prepared = value if isinstance(value, PreparedRecord) else prepare_record(value)
     payload, digest = prepared.payload, prepared.digest
-    metadata, intent_path = sidecars(path)
+    _, intent_path = sidecars(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    if not metadata.exists():
-        if intent_path.exists() or (path.exists() and path.stat().st_size):
-            raise fail("不能接管无提交元数据的已有 JSONL")
-        with path.open("ab") as stream:
+    if not path.exists():
+        # 删除主日志就是开始新日志；残留提交文件不阻止后续写入。
+        with path.open("xb") as stream:
             stream.flush()
             os.fsync(stream.fileno())
-        stat = path.stat()
-        _publish(
-            path,
-            Commit(
-                generation=uuid4().hex,
-                device=stat.st_dev,
-                inode=stat.st_ino,
-                sequence=0,
-                committed_offset=0,
-            ),
-        )
-    commit = _recover(path, _commit(path))
+        commit = _rebuild_commit(path, check_control=check_control)
+    else:
+        commit = _load_or_rebuild_commit(path, check_control=check_control)
+    commit = _recover(path, commit)
     if commit.last_operation == operation:
         if commit.last_digest != digest:
             raise fail("同一物理追加身份的内容不一致")
@@ -277,8 +345,9 @@ def read_records(
     snapshot_end: dict | None = None,
     check_control: Callable[[], None] | None = None,
     on_record: Callable[[dict], None] | None = None,
+    repair_lock: Callable[[], AbstractContextManager[bool]] | None = None,
 ) -> dict:
-    """不获取 writer 锁，按固定提交边界有界读取完整对象。"""
+    """正常读取不持写锁；repair_lock 仅用于清理后的元数据重建。"""
     if source_mode not in {"managed", "snapshot"}:
         raise fail("source_mode 必须为 managed 或 snapshot")
     if check_control:
@@ -297,7 +366,7 @@ def read_records(
         if type(number) is not int or not 1 <= number <= upper:
             raise fail("JSONL 读取预算无效")
     if not path.exists():
-        if allow_missing and not any(p.exists() for p in sidecars(path)):
+        if allow_missing:
             return dict(
                 records=[],
                 next_cursor=None,
@@ -306,7 +375,21 @@ def read_records(
                 status="missing",
             )
         raise fail("JSONL 文件不存在", "jsonl_missing")
-    commit = _commit(path) if source_mode == "managed" else None
+    commit = None
+    if source_mode == "managed":
+        try:
+            commit = _commit(path)
+        except InvalidRequestError as exc:
+            if (
+                exc.details.get("error_code") != "jsonl_rebuild_required"
+                or repair_lock is None
+            ):
+                raise
+            # 只有恢复需要写锁；正常读取仍不获取生产写锁。
+            with repair_lock() as acquired:
+                if not acquired:
+                    raise fail("JSONL 正在写入，暂不能重建提交文件", "jsonl_busy")
+                commit = _load_or_rebuild_commit(path, check_control=check_control)
     with path.open("rb") as stream:
         before = os.fstat(stream.fileno())
         identity = (

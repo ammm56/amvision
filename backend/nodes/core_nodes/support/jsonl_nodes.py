@@ -69,8 +69,12 @@ def read_options(request):
     from backend.service.application.workflows.execution.execution_control import (
         build_node_execution_control,
     )
+    from backend.service.application.runtime.io import try_acquire_path_write_locks
 
     return {
+        "repair_lock": lambda: try_acquire_path_write_locks(
+            request, (source_path(request),)
+        ),
         "check_control": build_node_execution_control(
             request
         ).raise_if_cancelled_or_expired,

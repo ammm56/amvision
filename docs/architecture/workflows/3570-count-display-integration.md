@@ -19,7 +19,7 @@ Count By Rules 读取既有并行推理结果的 `result.top_item.class_name`，
 | NG | `slot_barcode_surface_full`、`slot_barcode_surface_abnormal`、`slot_pcb_surface_abnormal`、`slot_pcb_surface_full` |
 | 未匹配结果 | 显式归入 NG |
 
-OK 与 NG 分别按规则计数，没有使用总数减 OK 计算 NG。每条正常完成记录的 `material_total` 固定为 24，`tray_total` 固定为 1；本次状态沿用既有 Classification Summary 的 `state`。规则只分类实际输入条目，不凭空生成缺失槽位结果。
+OK 与 NG 分别按规则计数，没有使用总数减 OK 计算 NG。每条正常完成记录的 `material_total` 固定为 24；本次状态沿用既有 Classification Summary 的 `state`。规则只分类实际输入条目，不凭空生成缺失槽位结果。9 月 17 日移除每条记录中冗余的 `tray_total: 1`，托盘数量改为统计记录条数。
 
 Create Object 组装总数、OK/NG 数、本次状态、条码、原图/结果图路径及结果 JSON 路径。Append JSONL 依赖原有图片和 JSON 保存结果，追加完成后返回原有响应；公开输出端口和响应内容保持原有契约。9 月 15 日保存时 `preview_write=false`，编辑预览不会追加生产记录；9 月 17 日已为此应用开启，详见下文。
 
@@ -29,7 +29,7 @@ Create Object 组装总数、OK/NG 数、本次状态、条码、原图/结果�
 
 ## 显示应用
 
-File Summary 增量读取上述 JSONL，汇总 `material_total`、`material_ok`、`material_ng` 和 `tray_total`；检查点为 `D:/摆盘机/记录/生产统计/治具汇总.json`。良品率通过 Number Operation 计算累计 OK / 累计总数。
+File Summary 增量读取上述 JSONL，对 `material_total`、`material_ok`、`material_ng` 求和，以 `count` 输出 `tray_total`；检查点为 `D:/摆盘机/记录/生产统计/治具汇总.json`。良品率通过 Number Operation 计算累计 OK / 累计总数。
 
 两个治具图片栏读取同一汇总快照的 `latest.images.original`、`latest.images.result`，不再分别寻找最新图片。Value Display 配置本次结果、总产量、OK、NG、良品率，通过 App Mode 的 overlay 绑定到两个治具图片栏左上角。图片和统计传递相同的 presentation context，避免不同批次混显。大图使用既有 App Mode 查看器的相同叠加数据。
 
@@ -73,3 +73,15 @@ Count By Rules 的 Rules 行之前直接在窄参数栏展开复杂编辑器，�
 - 后端相关测试 7 项、前端编辑器及几何相关测试 24 项通过，TypeScript 类型检查与改动 Python 文件 Ruff 检查通过。
 
 本次备份及验证记录位于本机 `data/files/developer/workflow-backups/20260917-count-record-review/`。测试结束时正式生产日志仍未创建，验证记录没有计入正式统计；下次使用正式路径执行此应用预览才会创建或追加该日志。
+
+## 2026-09-17 清理恢复与托盘计数简化
+
+再次读取最新草稿后，检测应用仅移除 `production_record.parameters.fields.tray_total`；显示应用的 `tray_summary` 将该项归约改为 `count`，保留输出键 `tray_total`。两份真实应用均通过 v1 校验、保存和读回核对，没有重新生成或覆盖其他节点布局、分类规则及图片保存逻辑。旧记录无需迁移，汇总规则签名变化会从现存日志重算；Runtime 固定版本仍需另行发布和切换。
+
+补齐主日志删除、清空、提交文件丢失及检查点删除后的恢复，行为和并发清理边界见[文件节点说明](../../nodes/file-record-display.md#定期或手动清理)。删除主日志后统计从零开始，不继续显示旧检查点累计。
+
+使用真实图片与当前部署模型，通过开发服务 Preview Worker 在隔离目录完成六次调用：检测写入、显示统计、删除提交文件后显示恢复、删除日志后显示空状态、再次检测写入、读取新代次统计。两次检测约 3765 ms / 1653 ms（含图片上传及结果返回）；显示约 228–471 ms。新记录没有 `tray_total`，删除提交文件后累计仍为 1 盘/24 个物料；删除日志后显示 0，再检测后为 1 盘/24 个物料，未重复累计。
+
+备份、候选草稿、保存响应及真实调用记录位于本机 `data/files/developer/workflow-backups/20260917-log-cleanup/`。删除操作只针对隔离测试日志，未清理正式生产记录。
+
+自动化验证：`test_managed_jsonl.py`、`test_file_summary.py`、`test_file_display_nodes.py`、`test_file_display_workflow.py`、`test_file_display_api.py` 共 40 项通过；修改 Python 文件的 Ruff 检查通过。覆盖正常路径不进入重建、不增加读锁，以及删除、清空、重建、取消、损坏拒绝和汇总两次读取间发生清理的情况。

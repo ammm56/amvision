@@ -43,10 +43,14 @@ def _handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         or "_editor_preview_observer" in request.execution_metadata
     )
     if not enabled or (is_preview and not preview_write):
-        return {"receipt": build_value_payload({
-            "write_state": "skipped",
-            "reason": "disabled" if not enabled else "preview_write_disabled",
-        })}
+        return {
+            "receipt": build_value_payload(
+                {
+                    "write_state": "skipped",
+                    "reason": "disabled" if not enabled else "preview_write_disabled",
+                }
+            )
+        }
     value = require_value_payload(
         request.input_values.get("value"), field_name="value"
     )["value"]
@@ -65,7 +69,12 @@ def _handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         if not acquired:
             raise fail("JSONL 文件正在写入", "jsonl_busy")
         control.raise_if_cancelled_or_expired()
-        receipt = append_record(path, prepared, operation=operation)
+        receipt = append_record(
+            path,
+            prepared,
+            operation=operation,
+            check_control=control.raise_if_cancelled_or_expired,
+        )
     receipt["file"] = saved.to_payload()
     return {"receipt": build_value_payload(receipt)}
 
@@ -95,7 +104,9 @@ CORE_NODE_SPEC = CoreNodeSpec(
             ),
         ),
         parameter_input_bindings=(
-            NodeParameterInputBinding(parameter_name="save_location", input_port_name="save_location"),
+            NodeParameterInputBinding(
+                parameter_name="save_location", input_port_name="save_location"
+            ),
         ),
         parameter_schema={
             "type": "object",

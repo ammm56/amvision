@@ -199,6 +199,15 @@ def summarize(
         on_record=consume,
         **options,
     )
+    if batch["status"] == "missing":
+        # 日志在两次读取之间被清理；不发布旧累计，也不复活旧检查点。
+        return dict(
+            totals=initial_totals(reducers),
+            latest=None,
+            source=None,
+            complete=True,
+            status="empty",
+        )
     revision = (
         uuid4().hex
         if batch["records"] or not state.get("revision")

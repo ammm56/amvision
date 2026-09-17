@@ -137,3 +137,67 @@ def test_checkpoint_compare_and_swap_conflict(tmp_path):
     with pytest.raises(InvalidRequestError, match="另一调用"):
         summarize(path, state, reducers=RULES, lock=concurrent_commit())
     assert state.read_bytes() == b"another checkpoint"
+
+
+@pytest.mark.parametrize("cleanup", ["log", "all", "empty", "commit", "checkpoint"])
+def test_cleanup_resets_or_rebuilds_count_without_double_counting(tmp_path, cleanup):
+    """删日志归零，删派生状态重建，旧新记录均以条数统计盘数。"""
+    from backend.service.application.runtime.io.jsonl import sidecars
+    from backend.service.application.runtime.io.path_write_coordinator import (
+        PathWriteCoordinator,
+    )
+
+    path, state = tmp_path / "r.jsonl", tmp_path / "state.json"
+    rules = [{"operation": "count", "output_key": "tray_total"}]
+
+    def run():
+        return summarize(
+            path,
+            state,
+            reducers=rules,
+            lock=nullcontext(True),
+            allow_missing=True,
+            repair_lock=lambda: PathWriteCoordinator().try_acquire([path]),
+        )
+
+    append_record(path, {"tray_total": 1}, operation="one")
+    assert run()["totals"]["tray_total"] == 1
+    if cleanup in {"log", "all"}:
+        path.unlink()
+    if cleanup == "empty":
+        path.write_bytes(b"")
+    if cleanup in {"all", "commit"}:
+        sidecars(path)[0].unlink()
+    if cleanup in {"all", "checkpoint"}:
+        state.unlink()
+    expected = 0 if cleanup in {"log", "all", "empty"} else 1
+    assert run()["totals"]["tray_total"] == expected
+    append_record(path, {"material_total": 24}, operation="two")
+    assert run()["totals"]["tray_total"] == expected + 1
+    assert run()["totals"]["tray_total"] == expected + 1
+
+
+def test_log_deleted_between_summary_reads(tmp_path, monkeypatch):
+    """外部清理发生在两次读取间时返回空结果，不发布旧统计。"""
+    from backend.nodes.core_nodes.support import file_summary as summary
+
+    path, state = tmp_path / "r.jsonl", tmp_path / "state.json"
+    append_record(path, {"delta": {"total": 24, "ng": 0}}, operation="one")
+    original = summary.read_records
+    calls = 0
+
+    def read_then_delete(*args, **kwargs):
+        nonlocal calls
+        result = original(*args, **kwargs)
+        calls += 1
+        if calls == 1:
+            path.unlink()
+        return result
+
+    monkeypatch.setattr(summary, "read_records", read_then_delete)
+    result = summarize(
+        path, state, reducers=RULES, lock=nullcontext(True), allow_missing=True
+    )
+    assert result["status"] == "empty"
+    assert result["totals"] == {"total": 0, "ng": 0}
+    assert not state.exists()
