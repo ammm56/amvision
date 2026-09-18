@@ -2409,6 +2409,11 @@ textarea:focus-visible {
   background: #111619;
 }
 
+/* Value Display 使用数据预览预留的 176px：面板 160px，加上下外边距 16px。 */
+.workflow-graph-node > .workflow-graph-node-preview--fields {
+  max-height: 160px;
+}
+
 .workflow-graph-node-preview img {
   height: 112px;
   border-radius: 6px;

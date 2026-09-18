@@ -106,7 +106,7 @@
       :max-rows="4"
       compact
     />
-    <WorkflowValueDisplay v-else-if="display.payload.type === 'value-display'" :payload="display.payload" />
+    <WorkflowValueDisplay v-else-if="display.payload.type === 'value-display'" :payload="display.payload" @wheel.stop />
     <pre
       v-else-if="display.kind === 'value'"
       class="json-view workflow-graph-node-preview__json"
@@ -179,8 +179,7 @@ function bboxHeight(overlay: PreviewImageOverlay): number {
 </script>
 
 <style scoped>
-/* 与节点数据预览预留的 176px 对齐：面板 160px，加上下外边距 16px。 */
-.workflow-graph-node-preview--fields { display: flex; flex-direction: column; min-width: 0; max-height: 160px; box-sizing: border-box; overflow: hidden; }
+.workflow-graph-node-preview--fields { display: flex; flex-direction: column; min-width: 0; box-sizing: border-box; overflow: hidden; }
 .workflow-graph-node-preview--fields > .value-display { min-height: 0; min-width: 0; overflow: auto; border: 0; padding: 4px; background: transparent; }
 .workflow-graph-node-preview__image-frame { position: relative; }
 .workflow-image-information { position: absolute; top: 8px; bottom: 8px; left: 8px; right: 8px; z-index: 2; pointer-events: none; }
