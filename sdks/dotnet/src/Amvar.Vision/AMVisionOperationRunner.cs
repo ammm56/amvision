@@ -228,10 +228,26 @@ namespace Amvar.Vision
         }
 
         /// <summary>
-        /// 读取后端系统配置。
+        /// 同步查询一次视觉服务状态，不等待业务执行或启动完成。
         /// </summary>
         /// <param name="cancellationToken">取消信号。</param>
-        /// <returns>系统配置响应。</returns>
+        /// <returns>当前服务状态。</returns>
+        public ServiceStatusResponse GetServiceStatus(bool details = false,
+            CancellationToken cancellationToken = default)
+        {
+            EnsureNotDisposed();
+            return client.GetServiceStatus(details, cancellationToken);
+        }
+
+        /// <summary>只查询一次视觉服务状态，不排队、不轮询。</summary>
+        public Task<ServiceStatusResponse> GetServiceStatusAsync(
+            CancellationToken cancellationToken = default, bool details = false)
+        {
+            EnsureNotDisposed();
+            return client.GetServiceStatusAsync(cancellationToken, details);
+        }
+
+        /// <summary>读取服务配置。</summary>
         public async Task<SystemConfigResponse> GetSystemConfigResponseAsync(CancellationToken cancellationToken = default)
         {
             EnsureNotDisposed();

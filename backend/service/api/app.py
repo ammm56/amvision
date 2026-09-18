@@ -27,6 +27,8 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 )
 from backend.service.infrastructure.queue.local_file import LocalFileQueueBackend
 from backend.service.infrastructure.http.liveness import ServiceLiveness
+from backend.service.application.service_status import ServiceStatusMonitor
+from backend.service.application.service_status_collector import ServiceStatusCollector
 from backend.service.infrastructure.http.recovery_control import HttpRecoveryControl
 from backend.service.infrastructure.http.drain_middleware import HttpDrainMiddleware
 from backend.service.settings import BackendServiceSettings
@@ -195,6 +197,7 @@ def create_app(
     resolved_settings = bootstrap.load_settings()
     runtime = bootstrap.build_runtime(resolved_settings)
     liveness = ServiceLiveness()
+    status_monitor = ServiceStatusMonitor(ServiceStatusCollector(runtime), liveness.instance_id)
 
     @asynccontextmanager
     async def application_lifespan(_application: FastAPI):
@@ -208,6 +211,7 @@ def create_app(
             # Runtime 或模型子进程。
             bootstrap.start_runtime(runtime)
             liveness.phase = "ready"
+            status_monitor.start()
             recovery_directory = os.environ.get("AMVISION_HTTP_RECOVERY_DIR")
             if recovery_directory:
                 from backend.service.infrastructure.ipc.local_message.paths import build_inference_mailbox_paths
@@ -225,6 +229,7 @@ def create_app(
             yield
         finally:
             liveness.phase = "draining"
+            status_monitor.stop()
             if control is not None:
                 control.close()
             try:
@@ -248,6 +253,7 @@ def create_app(
     )
     bootstrap.bind_application_state(application, runtime)
     application.state.service_liveness = liveness
+    application.state.service_status_monitor = status_monitor
 
     _register_cors_middleware(application, resolved_settings)
     application.add_middleware(RequestContextMiddleware)

@@ -649,6 +649,35 @@ class WorkflowRuntimeWorkerManager:
                 expected_snapshot_fingerprint=expected_snapshot_fingerprint,
             )
 
+    def service_status_snapshot(self) -> dict[str, dict[str, object]]:
+        """读取已验证的 worker 心跳；不等待执行锁，也不发送 health-check。"""
+        with self._lock:
+            handles = tuple(self._handles.items())
+        result: dict[str, dict[str, object]] = {}
+        now = monotonic()
+        for runtime_id, handle in handles:
+            with handle.state_lock:
+                state = handle.latest_runtime_state
+                timestamp = handle.latest_runtime_state_monotonic
+                ready = (
+                    not self._stopping.is_set()
+                    and not handle.expected_shutdown
+                    and handle.process.is_alive()
+                    and state is not None
+                    and state.observed_state == "running"
+                    and timestamp is not None
+                    and now - timestamp <= handle.heartbeat_timeout_seconds
+                    and handle.response_thread is not None
+                    and handle.response_thread.is_alive()
+                )
+                result[runtime_id] = {
+                    "ready": ready,
+                    "revision_id": handle.workflow_runtime_revision_id,
+                    "generation": handle.runtime_generation,
+                    "fingerprint": state.loaded_snapshot_fingerprint if state else None,
+                }
+        return result
+
     def get_runtime_health(
         self, workflow_runtime_id: str
     ) -> WorkflowRuntimeWorkerState:

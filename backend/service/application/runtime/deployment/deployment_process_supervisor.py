@@ -732,6 +732,29 @@ class DeploymentProcessSupervisor:
         )
         return health
 
+    def service_status_snapshot(self) -> list[dict[str, object]]:
+        """读取已初始化进程状态；不向模型发请求，不检查空闲容量。"""
+        with self._lock:
+            states = tuple(self._deployments.values())
+        result = []
+        for state in states:
+            with state.lock:
+                status = self._build_status_from_locked_state(state)
+                ready = (
+                    status.process_state == "running"
+                    and state.warmed_instance_count >= state.config.instance_count
+                    and state.response_thread is not None
+                    and state.response_thread.is_alive()
+                    and not state.response_stop_event.is_set()
+                )
+            result.append({
+                "id": status.deployment_instance_id,
+                "mode": status.runtime_mode,
+                "ready": ready,
+                "instance_count": status.instance_count,
+            })
+        return result
+
     def get_status(self, config: DeploymentProcessConfig) -> DeploymentProcessStatus:
         """返回指定 deployment 当前监督状态。"""
 

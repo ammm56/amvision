@@ -16,6 +16,10 @@ class HttpDrainMiddleware:
         """传递原始 ASGI 消息，最终响应完成或异常后归还计数。"""
         if scope["type"] != "http" or scope.get("path") == "/api/v1/system/liveness":
             return await self.app(scope, receive, send)
+        # 无参数状态查询只读取内存，不进入业务排空计数；停机时仍返回正式 503 状态。
+        if (scope.get("path") == "/api/v1/system/status"
+                and scope.get("method") == "GET" and not scope.get("query_string")):
+            return await self.app(scope, receive, send)
         if not self.liveness.begin_request():
             return await JSONResponse({"detail": "Service is draining"}, status_code=503)(scope, receive, send)
         try:

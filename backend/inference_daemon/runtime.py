@@ -43,6 +43,7 @@ from backend.service.application.runtime.deployment.inference_control import (
     InferenceControlDispatcher,
 )
 from backend.service.infrastructure.ipc.inference_mailbox import InferenceLocalMmapServer
+from backend.service.infrastructure.ipc.service_status_channel import InferenceStatusPublisher
 from backend.service.application.runtime.deployment.runtime_factory import (
     build_task_type_deployment_runtimes,
 )
@@ -80,6 +81,7 @@ class InferenceDaemonRuntime:
     deployment_runtime_reconciler: DeploymentRuntimeReconciler
     control_dispatcher: InferenceControlDispatcher
     local_mmap_server: InferenceLocalMmapServer | None
+    status_publisher: InferenceStatusPublisher | None = None
 
     def start(self) -> None:
         """按依赖顺序启动 supervisor、gateway、恢复协调器和控制面。
@@ -107,6 +109,9 @@ class InferenceDaemonRuntime:
             started_components.append(self.control_dispatcher)
             if self.local_mmap_server is not None:
                 self.local_mmap_server.start()
+            if self.status_publisher is not None:
+                self.status_publisher.start()
+                started_components.append(self.status_publisher)
         except BaseException:
             for component in reversed(started_components):
                 with contextlib.suppress(Exception):
@@ -118,6 +123,8 @@ class InferenceDaemonRuntime:
         """反序停止全部组件；单个组件失败不得跳过后续资源回收。"""
 
         components: list[object] = []
+        if self.status_publisher is not None:
+            components.append(self.status_publisher)
         if self.local_mmap_server is not None:
             components.append(self.local_mmap_server)
         components.extend((self.control_dispatcher, self.deployment_runtime_reconciler))
@@ -255,6 +262,20 @@ def build_inference_daemon_runtime(
         if settings.inference_daemon.mmap_mailbox.enabled
         else None
     )
+    def collect_status() -> dict[str, object]:
+        """只读进程初始化状态，忽略推理并发占用与历史业务错误。"""
+        recovery = deployment_runtime_reconciler.readiness_snapshot()
+        return {
+            "ready": (control_dispatcher.is_running
+                      and local_mmap_server is not None and local_mmap_server.is_running
+                      and recovery["local_buffer"]["ready"]
+                      and (deployment_runtime_reconciler.is_running
+                           or not deployment_runtime_reconciler.settings.enabled)),
+            "deployments": [item for task in task_runtimes
+                            for supervisor in (task.sync_supervisor, task.async_supervisor)
+                            for item in supervisor.service_status_snapshot()],
+        }
+
     return InferenceDaemonRuntime(
         settings=settings,
         session_factory=session_factory,
@@ -264,4 +285,5 @@ def build_inference_daemon_runtime(
         deployment_runtime_reconciler=deployment_runtime_reconciler,
         control_dispatcher=control_dispatcher,
         local_mmap_server=local_mmap_server,
+        status_publisher=InferenceStatusPublisher(settings.local_memory.root_dir, collect_status),
     )

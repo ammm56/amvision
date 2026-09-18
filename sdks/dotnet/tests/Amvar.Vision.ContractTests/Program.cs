@@ -19,6 +19,7 @@ namespace Amvar.Vision.ContractTests
     {
         private static int Main(string[] args)
         {
+            if (args.Length > 0 && args[0] == "--service-status") return ProbeServiceStatus(args);
             if (args.Length > 0 && args[0] == "--workflow-coexistence") return WorkflowCoexistenceProbe.Run(args);
             if (args.Length > 0 && args[0] == "--user-access-smoke") return UserAccessSdkProbe.Run(args);
             var probeResult = WorkflowTriggerContractProbe.TryRun(args);
@@ -40,8 +41,35 @@ namespace Amvar.Vision.ContractTests
             }
         }
 
+        private static int ProbeServiceStatus(string[] args)
+        {
+            try
+            {
+                using var client = new AMVisionClient(new AMVisionClientOptions {
+                    BaseApiUrl = args[1], AccessToken = "public-status", Timeout = TimeSpan.FromSeconds(3)
+                });
+                var durations = new List<double>();
+                var readyCount = 0;
+                ServiceStatusResponse? last = null;
+                for (var i = 0; i < int.Parse(args[2]); i++)
+                {
+                    var timer = Stopwatch.StartNew();
+                    last = client.GetServiceStatus();
+                    durations.Add(timer.Elapsed.TotalMilliseconds);
+                    if (last.Ready) readyCount++;
+                }
+                durations.Sort();
+                Console.WriteLine(JsonConvert.SerializeObject(new { count = durations.Count, ready_count = readyCount,
+                    median_ms = durations[durations.Count / 2], p99_ms = durations[(int)((durations.Count - 1) * .99)],
+                    max_ms = durations.Last(), last }));
+                return readyCount == durations.Count ? 0 : 2;
+            }
+            catch (Exception error) { Console.Error.WriteLine(error); return 1; }
+        }
+
         private static async Task RunAsync()
         {
+            await VerifyServiceStatusAsync().ConfigureAwait(false);
             WorkflowTriggerMailboxV1Fixture.Verify();
             LocalMessageChannelV1Fixture.Verify();
             VerifyZeroMqTriggerResultFrames();
@@ -63,6 +91,35 @@ namespace Amvar.Vision.ContractTests
             await VerifyRuntimeAndRevisionResponsesAsync().ConfigureAwait(false);
             await VerifyRunResponseAsync().ConfigureAwait(false);
             await VerifyConflictDetailsAsync().ConfigureAwait(false);
+        }
+
+        private static async Task VerifyServiceStatusAsync()
+        {
+            const string ready = "{\"ready\":true,\"state\":\"ready\",\"instance_id\":\"boot\",\"checked_at\":\"2026-09-18T00:00:00Z\",\"summary\":{},\"blockers\":[]}";
+            var handler = new StubHandler(HttpStatusCode.OK, ready);
+            using (var client = CreateClient(handler))
+            {
+                Assert(client.GetServiceStatus().Ready, "sync service status");
+                Assert(handler.CallCount == 1, "sync must query exactly once");
+                Assert((await client.GetServiceStatusAsync().ConfigureAwait(false)).Ready, "async service status");
+                Assert(handler.CallCount == 2, "async must query exactly once");
+                Assert(handler.LastRequestPath!.EndsWith("/api/v1/system/status"), "service status path");
+            }
+            const string starting = "{\"ready\":false,\"state\":\"starting\",\"instance_id\":\"boot\",\"checked_at\":null,\"summary\":null,\"blockers\":[{\"kind\":\"service\",\"code\":\"initializing\"}]}";
+            handler = new StubHandler(HttpStatusCode.ServiceUnavailable, starting);
+            using (var client = CreateClient(handler))
+            {
+                Assert(!client.GetServiceStatus().Ready, "503 is a valid not-ready result");
+                Assert(handler.CallCount == 1, "503 must not retry or poll");
+            }
+            using (var client = CreateClient(new StubHandler(HttpStatusCode.ServiceUnavailable, "{\"error\":\"proxy down\"}")))
+                AssertThrows<JsonException>(() => client.GetServiceStatus());
+            using (var client = CreateClient(new StubHandler(HttpStatusCode.OK, starting)))
+                AssertThrows<JsonException>(() => client.GetServiceStatus());
+            using (var client = CreateClient(new StubHandler(HttpStatusCode.Unauthorized, "{}")))
+                AssertThrows<AMVisionApiException>(() => client.GetServiceStatus());
+            using (var client = CreateClient(new StubHandler(HttpStatusCode.Forbidden, "{}")))
+                AssertThrows<AMVisionApiException>(() => client.GetServiceStatus());
         }
 
         private static void VerifyWorkflowTriggerHealthResponse()

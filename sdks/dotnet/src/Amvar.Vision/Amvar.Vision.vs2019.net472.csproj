@@ -135,6 +135,7 @@
     <Compile Include="Http\AMVisionClient.Runs.cs" />
     <Compile Include="Http\AMVisionClient.Runtime.cs" />
     <Compile Include="Http\AMVisionClient.System.cs" />
+    <Compile Include="Http\Responses\ServiceStatusResponse.cs" />
     <Compile Include="Http\AMVisionClient.TriggerSources.cs" />
     <Compile Include="Http\AMVisionClient.WorkflowApplications.cs" />
     <Compile Include="Http\AMVisionClientOptions.cs" />

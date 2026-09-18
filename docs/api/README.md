@@ -14,6 +14,7 @@
 
 ## 平台
 
+- [视觉服务运行状态与 .NET 同步查询](system-status.md)
 - [本地鉴权](local-auth.md)
 - [Project](projects.md)
 - [通信契约](communication-contracts.md)

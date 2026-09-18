@@ -32,6 +32,8 @@ JSON 统一使用 Newtonsoft.Json；ZeroMQ 统一使用 NetMQ。SDK 项目文件
 
 ## 功能边界
 
+服务就绪检查使用 `client.GetServiceStatus()` 或 `runner.GetServiceStatus()`，同步请求一次并返回当前状态；异步对应方法为 `GetServiceStatusAsync`。执行中、满载、长任务仍属于正常。有效的 HTTP 503 状态响应正常返回 `Ready=false`，不轮询、不排队、不等待启动完成。完整字段与权限见 [视觉服务运行状态](../../docs/api/system-status.md)。
+
 `Amvar.Vision` SDK 负责封装 Amvar Vision 后端的外部调用能力：
 
 - Workflow App Runtime 查询、启动、停止、重启、健康检查、revision 读取和停机版本选择
