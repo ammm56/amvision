@@ -8,6 +8,22 @@ vi.mock('../services/workflow-runtime.service', () => ({
 }))
 
 describe('runtime display lifecycle', () => {
+  it('moves image and its explicit presentation together, then clears both', async () => {
+    const view = useWorkflowPreviewDisplays()
+    const output = (count: number) => ({ nodeId: 'image', nodeTypeId: 'core.io.image-preview', outputName: 'body', payload: {
+      type: 'image-preview', image: { transport_kind: 'inline-base64', image_base64: 'AA==', media_type: 'image/jpeg' },
+      presentation: { type: 'value-display', fields: [{ label: 'Count', value: count }] },
+    } })
+    await view.refreshDisplayOutputs({ project_id: 'p' }, [output(24)], { keyByOutput: true })
+    const oldImage = view.previewNodeDisplays.value['["image","body"]']!.image!
+    view.openImageViewer(oldImage)
+    await view.refreshDisplayOutputs({ project_id: 'p' }, [output(48)], { keyByOutput: true, reopenImageViewerNodeId: 'image' })
+    expect(view.activeImageViewer.value?.presentation?.fields).toEqual([{ label: 'Count', value: 48 }])
+    expect(oldImage.presentation?.fields).toEqual([{ label: 'Count', value: 24 }])
+    view.revokePreviewImageObjectUrls()
+    expect(view.activeImageViewer.value).toBeNull()
+    expect(view.previewNodeDisplays.value).toEqual({})
+  })
   it('refreshes the open image viewer when runtime displays are keyed by output', async () => {
     const view = useWorkflowPreviewDisplays()
     const outputs = [{ nodeId: 'image', nodeTypeId: 'core.io.image-preview', outputName: 'body', payload: { type: 'image-preview', image: { transport_kind: 'inline-base64', image_base64: 'AA==', media_type: 'image/jpeg' } } }]

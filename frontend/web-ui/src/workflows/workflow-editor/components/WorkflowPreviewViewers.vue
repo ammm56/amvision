@@ -10,9 +10,8 @@
     @preview-interaction="emit('previewImageInteraction', $event)"
     @run-preview="emit('runImagePreview')"
   >
-    <template v-if="image?.presentation || image?.presentationUnavailable" #information>
-      <WorkflowValueDisplay v-if="image?.presentation" :payload="image.presentation" overlay />
-      <span v-else>结果关联不可用</span>
+    <template v-if="image?.presentation" #information>
+      <WorkflowValueDisplay :payload="image.presentation" overlay />
     </template>
   </ImageViewer>
   <WorkflowPreviewTableViewer :open="Boolean(table)" :table="table" @close="emit('closeTable')" />

@@ -17,15 +17,6 @@ WORKFLOW_APP_MODE_METADATA_KEY = "app_mode"
 WORKFLOW_APP_MODE_FORMAT = "amvision.workflow-app-mode.v1"
 
 
-class WorkflowAppModeOverlay(BaseModel):
-    """图片项引用的字段显示，位置固定为视口左上角。"""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-    node_id: str = Field(min_length=1)
-    output_port: str = Field(min_length=1)
-    position: Literal["top-left"] = "top-left"
-
-
 class WorkflowAppModeDisplay(BaseModel):
     """描述 App Mode 中一个确定性的 Preview 显示槽。"""
 
@@ -35,7 +26,14 @@ class WorkflowAppModeDisplay(BaseModel):
     output_port: str
     title: str = Field(default="", max_length=128)
     size: Literal["small", "medium", "large"] = "medium"
-    overlay: WorkflowAppModeOverlay | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_legacy_overlay(cls, value: object) -> object:
+        """旧关联必须显式迁移为 Presentation 连线，禁止静默丢失。"""
+        if isinstance(value, dict) and "overlay" in value:
+            raise ValueError("旧 App Mode overlay 配置需要迁移为 Image Preview.Presentation 连线")
+        return value
 
     @field_validator("node_id", "output_port")
     @classmethod
@@ -128,21 +126,4 @@ def validate_workflow_app_mode_config(
             raise ValueError(
                 f"App Mode 节点 {display.node_id} 不存在输出端口 {display.output_port}"
             )
-        if display.overlay is not None:
-            if node.node_type_id != "core.io.image-preview":
-                raise ValueError("App Mode overlay 只支持 Image Preview")
-            target = node_index.get(display.overlay.node_id)
-            target_definition = (
-                definition_index.get(target.node_type_id) if target else None
-            )
-            if (
-                target is None
-                or not target.enabled
-                or target.node_type_id != "core.io.value-display"
-            ):
-                raise ValueError("App Mode overlay 必须引用已启用的 Value Display")
-            if target_definition is None or display.overlay.output_port not in {
-                p.name for p in target_definition.output_ports
-            }:
-                raise ValueError("App Mode overlay 输出端口不存在")
     return config

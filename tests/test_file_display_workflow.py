@@ -72,8 +72,8 @@ def test_overlay_and_static_rules_are_validated_before_execution(tmp_path):
         node_definitions=catalog.get_workflow_node_definitions(),
     )
     bad_app = app.model_dump(mode="json")
-    bad_app["metadata"]["app_mode"]["displays"][0]["overlay"]["node_id"] = "counts"
-    with pytest.raises(ValueError, match="Value Display"):
+    bad_app["metadata"]["app_mode"]["displays"][0]["overlay"] = {"node_id": "counts"}
+    with pytest.raises(ValueError, match="迁移"):
         validate_workflow_app_mode_config(
             application=FlowApplication.model_validate(bad_app),
             template=graph,

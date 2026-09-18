@@ -1,4 +1,4 @@
-import type { FlowApplication, NodeDefinition, WorkflowGraphNode, WorkflowJsonObject } from '../types'
+import type { FlowApplication, NodeDefinition, WorkflowGraphNode, WorkflowGraphEdge, WorkflowJsonObject } from '../types'
 
 export const WORKFLOW_APP_MODE_FORMAT = 'amvision.workflow-app-mode.v1' as const
 export const WORKFLOW_APP_MODE_METADATA_KEY = 'app_mode'
@@ -6,7 +6,6 @@ export const WORKFLOW_APP_MODE_METADATA_KEY = 'app_mode'
 export type WorkflowAppModeDisplaySize = 'small' | 'medium' | 'large'
 
 export interface WorkflowAppModeDisplay {
-  overlay?: { node_id: string; output_port: string; position: 'top-left' }
   node_id: string
   output_port: string
   title: string
@@ -20,6 +19,7 @@ export interface WorkflowAppModeConfig {
 }
 
 export interface WorkflowAppModeDisplayCandidate extends WorkflowAppModeDisplay {
+  presentationSource?: { nodeId: string; title: string; enabled: boolean }
   node_type_id?: string
   node_title: string
   output_title: string
@@ -95,14 +95,8 @@ export function readWorkflowAppModeConfig(metadata: WorkflowJsonObject): Workflo
     const identity = `${nodeId}\u0000${outputPort}`
     if (!nodeId || !outputPort || displayTitle.length > 128 || !size || identities.has(identity)) return null
     identities.add(identity)
-    let overlay: WorkflowAppModeDisplay['overlay']
-    if (rawDisplay.overlay != null) {
-      const raw = rawDisplay.overlay
-      if (!isObject(raw) || !readText(raw.node_id) || !readText(raw.output_port) || raw.position !== 'top-left') return null
-      overlay = { node_id: readText(raw.node_id), output_port: readText(raw.output_port), position: 'top-left' }
-    }
+    if ('overlay' in rawDisplay) return null // 旧配置必须显式迁移，不能静默丢失绑定。
     displays.push({
-      ...(overlay ? { overlay } : {}),
       node_id: nodeId,
       output_port: outputPort,
       title: displayTitle,
@@ -132,7 +126,6 @@ export function writeWorkflowAppModeConfig(
     format_id: WORKFLOW_APP_MODE_FORMAT,
     title: config.title.trim(),
     displays: config.displays.map((display) => ({
-      ...(display.overlay ? { overlay: { ...display.overlay } } : {}),
       node_id: display.node_id,
       output_port: display.output_port,
       title: display.title.trim(),
@@ -146,6 +139,7 @@ export function writeWorkflowAppModeConfig(
 export function buildWorkflowAppModeDisplayCandidates(
   nodes: WorkflowGraphNode[],
   definitionsById: Map<string, NodeDefinition>,
+  edges: WorkflowGraphEdge[] = [],
 ): WorkflowAppModeDisplayCandidate[] {
   const candidates: WorkflowAppModeDisplayCandidate[] = []
   for (const node of nodes) {
@@ -153,7 +147,10 @@ export function buildWorkflowAppModeDisplayCandidates(
     const definition = definitionsById.get(node.node_type_id)
     if (!definition?.capability_tags?.includes('ui.preview')) continue
     for (const output of definition.output_ports) {
+      const edge = edges.find(item => item.target_node_id === node.node_id && item.target_port === 'presentation')
+      const source = edge ? nodes.find(item => item.node_id === edge.source_node_id) : undefined
       candidates.push({
+        ...(edge ? { presentationSource: { nodeId: edge.source_node_id, title: source ? String(source.parameters.title || source.node_id) : edge.source_node_id, enabled: Boolean(source && source.enabled !== false) } } : {}),
         node_type_id: node.node_type_id,
         node_id: node.node_id,
         output_port: output.name,

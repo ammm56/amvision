@@ -63,10 +63,3 @@ export function formatDisplayField(field: DisplayField): string {
   }
   return String(value).slice(0, 1024)
 }
-
-/** 来源和汇总版本必须一致，缺失上下文不能猜测配对。 */
-export function samePresentationContext(left: unknown, right: unknown): boolean {
-  if (!left || !right || typeof left !== 'object' || typeof right !== 'object') return false
-  const a = left as Record<string, unknown>, b = right as Record<string, unknown>
-  return ['generation', 'sequence', 'snapshot_revision'].every(key => a[key] !== undefined && a[key] !== null && a[key] === b[key])
-}

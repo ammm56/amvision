@@ -106,6 +106,7 @@
         @set-image-ref-transport-kind="(bindingId, value) => emit('setPreviewImageRefTransportKind', bindingId, value)"
       />
 
+      <slot name="presentation" />
       <WorkflowPreviewNodeValues
         v-if="lastPreviewRun && inspectorDetail.kind === 'node'"
         :run="lastPreviewRun"

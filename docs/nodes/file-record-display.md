@@ -16,7 +16,7 @@ Append JSONL 沿用当前统一的 Save Location 机制：绝对路径保存到�
 
 检测图推荐顺序：部署模型调用 → 规则计数 → 字段提取/对象组装 → 必需的明确保存节点 → Append JSONL → 返回回执。追加必须依赖业务判定与所需图片保存成功，不放在尚未确定结果的并行分支。追加已经提交后，后续其他节点失败不能回滚该条记录，因此检测记录与显示汇总应按设计分到不同工作流。新调用再次执行仍会新增记录。
 
-显示图推荐顺序：File Summary → 提取 `totals`、`latest`、`source` → 计算 → Value Display；从同一个 `latest` 对象提取明确保存的图片路径 → Image Load Local → Image Preview。不要分别从多个目录猜测“最新图片”。File Summary 的 `source` 同时连接 Value Display 的 `context` 与 Image Preview 的 `presentation_context`。
+显示图推荐顺序：File Summary → 提取 `totals`、`latest`、`source` → 计算 → Value Display；从同一个 `latest` 对象提取明确保存的图片路径 → Image Load Local → Image Preview。不要分别从多个目录猜测“最新图片”。Value Display 的 `body` 明确连接 Image Preview 的可选 `presentation`。文件汇总场景中，File Summary 的 `source` 继续同时连接 Value Display 的 `context` 与 Image Preview 的 `presentation_context`，用于来源核对。
 
 ## 可配置规则与字段
 
@@ -86,13 +86,22 @@ Appearance 配置面板提供即时示例、取消和恢复默认：
 
 ## App Mode 与大图
 
-在应用模式配置中选中 Image Preview，在该行的“结果显示”选择 Value Display。绑定的 Value Display 不必再勾选成独立图片栏。配置仍为 v1，新增可选字段：
+Image Preview 的可选 `Presentation` 输入接受 Value Display 的 `Body`。不接线只显示图片，接线后图片 Body 携带 `presentation` 字段。一个 Value Display 可连接多个图片节点；不按名称、位置或相同 context 自动选择来源。图片节点单独预览会沿真实连线执行字段显示上游。
 
-```json
-{"node_id":"image-preview","output_port":"body","title":"检测结果","size":"large","overlay":{"node_id":"value-display","output_port":"body","position":"top-left"}}
+应用模式配置只选择独立显示栏、标题、大小和顺序。图片行显示从连线读取的数据来源，可点击定位；节点属性面板同时提供图片的来源与 Value Display 的关联图片列表。独立显示复选框不控制节点执行，也不控制已连接图片的字段面板。
+
+图片接收 Presentation Context 时，校验字段正文的 generation、sequence、snapshot_revision；没有来源约束的通用图不需要伪造文件标识。已连接来源禁用、未产出、空正文、错误显示类型或来源不一致均明确失败，不能变为纯图或沿用旧值。节点组启用沿用成员节点的统一 enabled 状态。
+
+字段面板随同一次图片输出交接，小图和双击大图共用字段组件，图片解码后显示。缩放和平移不改变面板位置，图片字节不重绘。颜色、字体、尺寸和半透明背景仍由 Value Display 控制。图片与统计的业务对应关系须由工作流从同一记录提取，连线本身不能判断外部图片路径是否选对。
+
+旧 `app_mode.displays[].overlay` 已移除，读取旧配置会提示迁移，不能直接恢复旧绑定版 Runtime。导出的 application/template bundle 可生成迁移候选：
+
+```powershell
+conda activate amvision
+python -m backend.maintenance.workflow_presentation_migration --input old-bundle.json --output connected-bundle.json
 ```
 
-图片与字段只在 `generation/sequence/snapshot_revision` 一致且均为当前结果时配对。缺少或冲突时显示“结果关联不可用”，不把新数量叠到旧图。角标在图片解码后显示；小图和双击大图共用同一字段组件，缩放/平移不会改变角标位置。可收起，多字段内容有高度边界；图片字节不被改写。旧工作流未配置 overlay 时行为保持不变。
+命令不覆盖已有文件，不修改运行服务。转换后需校验、保存并发布新版本，Runtime 显式选择新版本；原发布快照保留用于追溯。转换规则与本次现场验证见 [显式关联实现](../architecture/workflows/image-value-display-association.md)。
 
 ## 文件边界与恢复
 

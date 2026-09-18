@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { appearanceStyles, displayFields, fieldValueColor, formatDisplayField, samePresentationContext } from './value-display'
+import { appearanceStyles, displayFields, fieldValueColor, formatDisplayField } from './value-display'
 import { readWorkflowAppModeConfig, writeWorkflowAppModeConfig } from '../app-mode/workflow-app-mode'
 
 describe('Value Display contracts', () => {
@@ -23,17 +23,12 @@ describe('Value Display contracts', () => {
     expect(formatDisplayField({ ...field, value: 0 })).toBe('0.00%')
     expect(formatDisplayField({ ...field, format: 'integer', value: 9007199254740992 })).toBe('—')
   })
-  it('does not pair images with different file generations or snapshots', () => {
-    const context = { generation: 'file-a', sequence: 2, snapshot_revision: 'rev' }
-    expect(samePresentationContext(context, { ...context })).toBe(true)
-    expect(samePresentationContext(context, { ...context, generation: 'file-b' })).toBe(false)
-    expect(samePresentationContext(context, { ...context, snapshot_revision: 'old' })).toBe(false)
-    expect(samePresentationContext(null, null)).toBe(false)
-  })
-  it('round-trips optional overlay without duplicating field configuration', () => {
+  it('rejects old overlay configuration instead of silently hiding fields', () => {
+    expect(readWorkflowAppModeConfig({ app_mode: { format_id: 'amvision.workflow-app-mode.v1', displays: [{
+      node_id: 'image', output_port: 'body', title: '', size: 'medium', overlay: { node_id: 'values' },
+    }] } })).toBeNull()
     const config = { format_id: 'amvision.workflow-app-mode.v1' as const, title: '', displays: [{
       node_id: 'image', output_port: 'body', title: '', size: 'medium' as const,
-      overlay: { node_id: 'values', output_port: 'body', position: 'top-left' as const },
     }] }
     expect(readWorkflowAppModeConfig(writeWorkflowAppModeConfig({}, config))).toEqual(config)
   })

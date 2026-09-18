@@ -22,9 +22,8 @@
         draggable="false"
         @load="loadedSrc = display.image?.src ?? null"
       />
-      <div v-if="loadedSrc === display.image.src && (display.image.presentation || display.image.presentationUnavailable)" class="workflow-image-information">
-        <WorkflowValueDisplay v-if="display.image.presentation" :payload="display.image.presentation" overlay />
-        <span v-else class="workflow-image-information__unavailable">结果关联不可用</span>
+      <div v-if="loadedSrc === display.image.src && display.image.presentation" class="workflow-image-information">
+        <WorkflowValueDisplay :payload="display.image.presentation" overlay />
       </div>
       <svg
         v-if="readOverlayViewBox(display.image) && display.image.overlays.length > 0"
@@ -183,5 +182,4 @@ function bboxHeight(overlay: PreviewImageOverlay): number {
 .workflow-graph-node-preview--fields > .value-display { min-height: 0; min-width: 0; overflow: auto; border: 0; padding: 4px; background: transparent; }
 .workflow-graph-node-preview__image-frame { position: relative; }
 .workflow-image-information { position: absolute; top: 8px; bottom: 8px; left: 8px; right: 8px; z-index: 2; pointer-events: none; }
-.workflow-image-information__unavailable { padding: 6px 10px; color: var(--am-text-muted); background: var(--am-surface); border-radius: var(--am-radius-sm); font-size: 12px; }
 </style>

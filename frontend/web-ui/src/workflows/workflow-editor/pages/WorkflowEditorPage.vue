@@ -227,7 +227,11 @@
         @remove-preview-value-field="removePreviewValueField"
         @set-preview-image-ref-transport-kind="setPreviewImageRefTransportKind"
         @open-preview-json="openPreviewJsonViewer"
-      />
+      >
+        <template #presentation>
+          <WorkflowPresentationConnections :selected="selectedNode" :nodes="graphNodes" :edges="graphEdges" @locate="locatePresentationNode" />
+        </template>
+      </WorkflowInspectorShell>
 
       </div>
       </Transition>
@@ -311,6 +315,7 @@
       @apply="applySelectedDeploymentInstance"
     />
       <WorkflowAppModeConfigDialog
+        @locate="locatePresentationNode"
         v-if="appModeConfigDialogOpen"
         :application-title="editorTitle"
         :config="appModeConfig"
@@ -341,6 +346,7 @@ import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import InlineMessage from '@/shared/ui/feedback/InlineMessage.vue'
 import Button from '@/shared/ui/components/Button.vue'
 import WorkflowAppModeConfigDialog from '../components/WorkflowAppModeConfigDialog.vue'
+import WorkflowPresentationConnections from '../components/WorkflowPresentationConnections.vue'
 import WorkflowPublishDialog from '../components/WorkflowPublishDialog.vue'
 import WorkflowDeploymentInstancePickerDialog from '../components/WorkflowDeploymentInstancePickerDialog.vue'
 import WorkflowBoundaryNodeLayer from '../components/WorkflowBoundaryNodeLayer.vue'
@@ -839,7 +845,14 @@ const {
 const appModeDisplayCandidates = computed(() => buildWorkflowAppModeDisplayCandidates(
   graphNodes.value.map((item) => item.node),
   nodeDefinitionsById.value,
+  graphEdges.value,
 ))
+
+function locatePresentationNode(nodeId: string): void {
+  appModeConfigDialogOpen.value = false
+  selectNode(nodeId)
+  focusGraphNode(nodeId)
+}
 
 watch(
   () => workflowApp.value?.applicationDocument.application.metadata,

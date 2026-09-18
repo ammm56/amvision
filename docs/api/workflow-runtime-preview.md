@@ -12,6 +12,12 @@ Runtime 监视显示实际发布图中 Image、Value、Table、Gallery Preview �
 
 轻量 App Mode 已实现：编辑画布配置需要显示的 Preview 输出，发布后从选定 Runtime 进入 `/workflows/runtime/{workflow_runtime_id}/app-mode`。页面自动呈现当前发布版 App Entry 的全部公开输入，并复用本页描述的观察连接显示实际 Runtime 结果；不创建第二条消息协议。逐节点进度与强制终止终态明确不纳入当前范围，当前实现和验收边界见 [Runtime 显示与 App Mode](../architecture/workflows/runtime-display.md)。
 
+## 图片与字段的明确关联
+
+`core.io.image-preview` 的可选 `presentation` 输入通过 `response-body.v1` 连线接受 `type=value-display` 的正文，输出的 `type=image-preview` Body 可携带同名 `presentation`。该字段只包含显示元数据，不包含另一个图片载荷。未连接时不输出 presentation，也不查找其他节点结果。运行和传输协议继续为 v1，业务响应绑定不变。
+
+应用模式的 `displays[]` 只包含 node_id、output_port、title、size。旧 overlay 需显式迁移为图连线后重新发布，不提供运行时隐式兼容；迁移工具与界面说明见 [文件记录与显示](../nodes/file-record-display.md#app-mode-与大图)。
+
 ## 快照与连接
 
 1. `GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}/preview-snapshot`，需要现有 `workflows:read` 和 Project 可见范围。

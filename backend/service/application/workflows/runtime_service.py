@@ -627,7 +627,14 @@ class WorkflowRuntimeService:
         template = self.dataset_storage.read_json(version.template_snapshot_object_key)
         contract = self.dataset_storage.read_json(version.contract_snapshot_object_key)
         self._require_current_workflow_app_contract(contract)
-        app_mode = read_workflow_app_mode_config(application)
+        try:
+            app_mode = read_workflow_app_mode_config(application)
+        except ValueError as exc:
+            # 旧发布配置不能静默丢失字段关联，也不能返回无说明的内部错误。
+            raise InvalidRequestError(
+                "Runtime 应用模式配置无效；旧 overlay 需迁移为 Presentation 连线并重新发布",
+                details={"workflow_app_version_id": revision.workflow_app_version_id, "reason": str(exc)},
+            ) from exc
         dependencies = self.dataset_storage.read_json(
             version.dependency_manifest_object_key
         )

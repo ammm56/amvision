@@ -119,17 +119,13 @@ def build_file_display_graph(
         node("preview", "core.io.image-preview")
         edge("image", "image", "preview", "image")
         edge("context", "value", "preview", "presentation_context")
+        edge("values", "body", "preview", "presentation")
         displays = [
             {
                 "node_id": "preview",
                 "output_port": "body",
                 "title": "检测结果",
                 "size": "large",
-                "overlay": {
-                    "node_id": "values",
-                    "output_port": "body",
-                    "position": "top-left",
-                },
             }
         ]
     template = WorkflowGraphTemplate.model_validate(

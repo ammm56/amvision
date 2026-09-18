@@ -7,12 +7,13 @@ from backend.contracts.workflows.workflow_graph import (
     NodePortDefinition,
 )
 from backend.nodes.core_nodes.support.base import CoreNodeSpec
+from backend.nodes.core_nodes.support.display_body import validate_display_body
 from backend.nodes.core_nodes.support.display_appearance import (
     APPEARANCE_SCHEMA, COLOR_PATTERN, STATE_PRESETS, display_appearance, display_color,
 )
 from backend.nodes.core_nodes.support.jsonl_nodes import input_value
 from backend.nodes.core_nodes.support.logic import try_extract_value_by_path
-from backend.service.application.runtime.io.jsonl import encode, fail, MAX_SAFE_INTEGER
+from backend.service.application.runtime.io.jsonl import fail, MAX_SAFE_INTEGER
 from backend.service.application.workflows.graph_executor import (
     WorkflowNodeExecutionRequest,
 )
@@ -117,9 +118,7 @@ def _handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     appearance = display_appearance(request.parameters.get("appearance"))
     if appearance:
         body["appearance"] = appearance
-    if len(encode(body)) > 128 * 1024:
-        raise fail("Value Display 超过 128 KiB")
-    return {"body": body}
+    return {"body": validate_display_body(body)}
 
 
 CORE_NODE_SPEC = CoreNodeSpec(

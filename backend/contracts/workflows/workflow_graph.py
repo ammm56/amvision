@@ -1001,6 +1001,12 @@ def validate_workflow_graph_template(
         target_port = target_ports[edge.target_port]
         if source_port.payload_type_id != target_port.payload_type_id:
             raise ValueError(f"边 {edge.edge_id} 的 payload_type_id 不匹配")
+        # 可选显示端口允许不连线，但明确连接后不能忽略已禁用的来源。
+        if (target_definition.node_type_id == "core.io.image-preview"
+                and edge.target_port == "presentation"
+                and node_instances[edge.target_node_id].enabled
+                and not node_instances[edge.source_node_id].enabled):
+            raise ValueError(f"节点 {edge.target_node_id} 的 Presentation 来源 {edge.source_node_id} 已禁用")
         target_key = (edge.target_node_id, edge.target_port)
         inbound_counts[target_key] = inbound_counts.get(target_key, 0) + 1
         if inbound_counts[target_key] > 1 and target_port.multiple is not True:

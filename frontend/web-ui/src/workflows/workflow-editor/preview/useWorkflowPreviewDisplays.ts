@@ -103,9 +103,7 @@ export interface PreviewImageInteractionApplyEvent {
 }
 
 export interface PreviewViewerImage {
-  presentationContext?: unknown
   presentation?: WorkflowJsonObject | null
-  presentationUnavailable?: boolean
   loadSource?: () => Promise<string | null>
   nodeId: string
   title: string
@@ -782,7 +780,7 @@ async function buildPreviewViewerImage(
   return {
     nodeId,
     loadSource,
-    presentationContext: previewPayload?.presentation_context,
+    presentation: isPreviewJsonObject(previewPayload?.presentation) && previewPayload.presentation.type === 'value-display' ? previewPayload.presentation : null,
     title,
     src: displayImage.src,
     displaySrc: displayImage.src,

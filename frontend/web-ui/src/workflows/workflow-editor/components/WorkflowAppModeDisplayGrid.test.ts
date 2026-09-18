@@ -50,24 +50,23 @@ function display(kind: 'image' | 'value'): PreviewNodeDisplay {
 }
 
 describe('WorkflowAppModeDisplayGrid', () => {
-  it('pairs fields with the same image context and rejects a late mismatched result', async () => {
+  it('uses only fields carried by the image, independent of other display results', async () => {
     const imageDisplay = display('image'), values = display('value')
-    const context = { generation: 'file', sequence: 1, snapshot_revision: 'one' }
-    imageDisplay.image!.presentationContext = context
-    values.payload = { type: 'value-display', context, fields: [{ label: '总产量', value: 24, format: 'integer' }] }
+    imageDisplay.image!.presentation = { type: 'value-display', fields: [{ label: '总产量', value: 24, format: 'integer' }] }
+    values.payload = { type: 'value-display', fields: [{ label: 'Other', value: 999 }] }
     const props = {
-      config: { format_id: 'amvision.workflow-app-mode.v1' as const, title: '', displays: [{ node_id: 'image', output_port: 'body', title: 'Image', size: 'medium' as const,
-        overlay: { node_id: 'value', output_port: 'body', position: 'top-left' as const } }] },
+      config: { format_id: 'amvision.workflow-app-mode.v1' as const, title: '', displays: [{ node_id: 'image', output_port: 'body', title: 'Image', size: 'medium' as const }] },
       displays: { '["image","body"]': imageDisplay, '["value","body"]': values }, nodeTitles: {}, hasRun: true,
     }
     const wrapper = mount(WorkflowAppModeDisplayGrid, { props, global: { plugins: [i18n] } })
+    expect(wrapper.text()).not.toContain('总产量24')
     await wrapper.find('img').trigger('load')
     expect(wrapper.text()).toContain('总产量24')
     await wrapper.find('.workflow-graph-node-preview').trigger('dblclick')
     expect(toRaw((wrapper.emitted('openDisplay')![0]![0] as PreviewNodeDisplay).image!)).toBe(imageDisplay.image)
-    await wrapper.setProps({ displays: { ...props.displays, '["value","body"]': { ...values, payload: { ...values.payload, context: { ...context, snapshot_revision: 'two' } } } } })
-    expect(wrapper.text()).toContain('结果关联不可用')
+    await wrapper.setProps({ displays: { ...props.displays, '["image","body"]': display('image') } })
     expect(wrapper.text()).not.toContain('总产量24')
+    expect(wrapper.text()).not.toContain('999')
     wrapper.unmount()
   })
 

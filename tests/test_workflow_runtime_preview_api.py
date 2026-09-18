@@ -149,6 +149,7 @@ def test_runtime_preview_spawn_sync_async_none_and_failure(
 
 def test_runtime_preview_snapshot_exposes_published_app_mode_and_contract(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Runtime 快照返回同一发布版本的 App Mode 配置与公开输入契约。"""
 
@@ -219,5 +220,18 @@ def test_runtime_preview_snapshot_exposes_published_app_mode_and_contract(
                     }
                 ],
             }
+            def reject_old_config(_application):
+                """模拟尚未迁移的历史发布配置。"""
+                raise ValueError("旧 overlay 需要迁移")
+
+            monkeypatch.setattr(
+                "backend.service.application.workflows.runtime_service.read_workflow_app_mode_config",
+                reject_old_config,
+            )
+            invalid = client.get(
+                f"/api/v1/workflows/app-runtimes/{runtime_id}/preview-snapshot", headers=headers,
+            )
+            assert invalid.status_code == 400, invalid.text
+            assert "Presentation" in invalid.json()["error"]["message"]
     finally:
         factory.engine.dispose()

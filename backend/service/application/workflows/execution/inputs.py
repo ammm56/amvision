@@ -124,6 +124,12 @@ def resolve_node_inputs(
             resolved_inputs[port.name] = () if port.multiple else None
             continue
 
+        if (node_definition.node_type_id == "core.io.image-preview"
+                and port.name == "presentation" and resolved_values[0] is None):
+            raise InvalidRequestError(
+                "已连接的 Presentation 未返回有效 Body",
+                details={"node_id": node_id, "port_name": port.name},
+            )
         resolved_inputs[port.name] = tuple(resolved_values) if port.multiple else resolved_values[0]
 
     return resolved_inputs

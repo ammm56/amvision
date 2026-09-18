@@ -10,17 +10,20 @@ const candidates = [
 ]
 
 describe('WorkflowAppModeConfigDialog', () => {
-  it('binds a Value Display without requiring an extra standalone pane', async () => {
+  it('shows the graph source without saving a second binding', async () => {
     const wrapper = mount(WorkflowAppModeConfigDialog, {
       global: { plugins: [i18n] }, props: { applicationTitle: 'Test', config: null,
-        candidates: candidates.map((item, index) => ({ ...item, node_type_id: index ? 'core.io.value-display' : 'core.io.image-preview' })) },
+        candidates: [{ ...candidates[0]!, node_type_id: 'core.io.image-preview', presentationSource: { nodeId: 'values', title: 'Statistics', enabled: true } }] },
     })
     await wrapper.find('input[type="checkbox"]').setValue(true)
-    await wrapper.get('.app-mode-dialog__overlay select').setValue('preview-2\u0000body')
+    expect(wrapper.find('.app-mode-dialog__overlay select').exists()).toBe(false)
+    await wrapper.get('.app-mode-dialog__overlay button').trigger('click')
+    expect(wrapper.emitted('locate')).toEqual([['values']])
     await wrapper.get('footer .ui-button--primary').trigger('click')
-    const config = wrapper.emitted('apply')![0]![0] as { displays: Array<{ overlay: unknown }> }
+    const config = wrapper.emitted('apply')![0]![0] as { displays: Array<Record<string, unknown>> }
     expect(config.displays).toHaveLength(1)
-    expect(config.displays[0]!.overlay).toEqual({ node_id: 'preview-2', output_port: 'body', position: 'top-left' })
+    expect(config.displays[0]).not.toHaveProperty('overlay')
+    expect(config.displays[0]).not.toHaveProperty('presentationSource')
     wrapper.unmount()
   })
   it('新候选项使用 Node 作为真实默认标题', () => {
