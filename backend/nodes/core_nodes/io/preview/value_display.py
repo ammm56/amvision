@@ -7,6 +7,9 @@ from backend.contracts.workflows.workflow_graph import (
     NodePortDefinition,
 )
 from backend.nodes.core_nodes.support.base import CoreNodeSpec
+from backend.nodes.core_nodes.support.display_appearance import (
+    APPEARANCE_SCHEMA, COLOR_PATTERN, STATE_PRESETS, display_appearance, display_color,
+)
 from backend.nodes.core_nodes.support.jsonl_nodes import input_value
 from backend.nodes.core_nodes.support.logic import try_extract_value_by_path
 from backend.service.application.runtime.io.jsonl import encode, fail, MAX_SAFE_INTEGER
@@ -36,12 +39,15 @@ FIELD_SCHEMA = {
         },
         "states": {
             "type": "object",
-            "title": "States",
+            "title": "State Colors",
+            "x-ui-widget": "state-colors",
             "additionalProperties": {
                 "type": "string",
-                "enum": ["success", "danger", "warning", "neutral"],
+                "anyOf": [{"enum": list(STATE_PRESETS)}, {"pattern": COLOR_PATTERN}],
             },
         },
+        "label_color": {"type": ["string", "null"], "title": "Label Color", "x-ui-widget": "display-color", "pattern": COLOR_PATTERN},
+        "value_color": {"type": ["string", "null"], "title": "Value Color", "x-ui-widget": "display-color", "pattern": COLOR_PATTERN},
     },
 }
 
@@ -78,12 +84,13 @@ def _handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             not isinstance(states, dict)
             or len(states) > 64
             or any(
-                not isinstance(v, str)
-                or v not in {"success", "danger", "warning", "neutral"}
-                for v in states.values()
+                not isinstance(k, str) or not k or len(k) > 128
+                or not isinstance(v, str) or not v
+                for k, v in states.items()
             )
         ):
-            raise fail("States 只能使用受控状态样式")
+            raise fail("State Colors 必须为有效状态与颜色的映射")
+        states = {key: display_color(color, presets=True) for key, color in states.items()}
         exists, value = try_extract_value_by_path(root=root, path=field["path"])
         if not exists:
             value = None
@@ -98,12 +105,18 @@ def _handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 label=label, value=value, format=fmt, precision=precision, states=states
             )
         )
+        for key in ("label_color", "value_color"):
+            if key in field:
+                output[-1][key] = display_color(field[key])
     body = dict(
         type="value-display",
         fields=output,
         context=input_value(request, "context"),
         title=request.parameters.get("title", "Value Display"),
     )
+    appearance = display_appearance(request.parameters.get("appearance"))
+    if appearance:
+        body["appearance"] = appearance
     if len(encode(body)) > 128 * 1024:
         raise fail("Value Display 超过 128 KiB")
     return {"body": body}
@@ -137,6 +150,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
             "type": "object",
             "required": ["fields"],
             "properties": {
+                "appearance": APPEARANCE_SCHEMA,
                 "title": {
                     "type": "string",
                     "title": "Title",

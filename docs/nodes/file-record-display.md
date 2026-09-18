@@ -65,7 +65,24 @@ Value Display 的字段配置示例（假设输入对象已经组装）：
 ]
 ```
 
-格式支持 `text/integer/number/percent/status`；状态样式仅支持 `success/danger/warning/neutral`。原始状态值不自动改名或推断业务含义。规则/归约/显示字段使用摘要按钮打开独立编辑对话框，支持行的添加、删除、排序；简单匹配值逐行填写，复杂条件沿用现有条件 JSON。取消不修改节点参数，应用才提交，无效 JSON 阻止应用。
+格式支持 `text/integer/number/percent/status`；状态颜色支持 `success/danger/warning/neutral` 主题预设或 `#RRGGBB` 自定义颜色。原始状态值不自动改名或推断业务含义。规则/归约/显示字段使用摘要按钮打开独立编辑对话框，支持行的添加、删除、排序；简单匹配值逐行填写，复杂条件沿用现有条件 JSON。取消不修改节点参数，应用才提交，无效 JSON 阻止应用。
+
+Value Display 的 Fields 编辑器提供 Label Color、Value Color；Status 格式提供 State Colors 行编辑器，通过色块选择颜色，无需手写语义名称或 JSON。状态按原值精确匹配，命中的状态颜色优先于 Value Color，标签颜色独立；空颜色使用主题默认。颜色只改变显示，不改变状态或数量。状态键不能重复，每个字段最多 64 项；null 显示“—”，不匹配字符串 `"null"` 的状态规则。
+
+File Summary / Value Display 的 Apply、Cancel、Reset to Default、Collapse、Expand Results 等操作文案，以及配置摘要和校验提示，随界面语言即时切换，支持中文、English、日本語、한국어。节点参数名沿用英文；用户配置的 Label、状态值和字段路径不自动翻译。切换语言不重置已打开的编辑草稿，也不写入工作流参数。
+
+Appearance 配置面板提供即时示例、取消和恢复默认：
+
+| 参数 | 默认 | 范围 |
+| --- | --- | --- |
+| Panel Width | Auto（内容自适应，最大 280 CSS px） | 100–1600 CSS px |
+| Panel Height | Auto（内容自适应，正文有滚动上限） | 80–1200 CSS px |
+| Font Size | 13 | 10–72 CSS px |
+| Status Font Size | 图片叠加 20，普通节点继承正文 | 10–120 CSS px |
+| Background Color | 主题面板色 | `#RRGGBB` |
+| Background Opacity | 78% | 0–100 整数 |
+
+宽高留空为 Auto；字号留空使用默认。宽高和背景仅用于图片叠加，字段颜色和显式字号也用于普通节点预览。叠加始终限制在图片容器内，空间不足时正文滚动，收起按钮保持可访问；图片放大不缩放叠加文字。背景透明度不影响文字。参数通过可选 `appearance` 对象保存，缺省节点无需迁移；已有语义颜色保持有效。固定 Runtime 需要发布并选择包含新参数的版本后使用自定义配置。
 
 ## App Mode 与大图
 

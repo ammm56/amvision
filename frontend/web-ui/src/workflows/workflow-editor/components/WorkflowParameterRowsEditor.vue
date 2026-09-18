@@ -1,9 +1,9 @@
 <template>
-  <button type="button" class="parameter-rows-summary" :disabled="disabled" :aria-label="`编辑 ${label}`" @click="openEditor">
-    <span>{{ count ? `已配置 ${count} 项` : '未配置' }}</span><span>编辑</span>
+  <button type="button" class="parameter-rows-summary" :disabled="disabled" :aria-label="t('workflowDisplay.editLabel', { label })" @click="openEditor">
+    <span>{{ count ? t('workflowDisplay.configured', { count }) : t('workflowDisplay.unconfigured') }}</span><span>{{ t('workflowDisplay.edit') }}</span>
   </button>
   <Teleport to="body">
-    <ConfirmDialog v-if="open" :title="label" confirm-label="应用" cancel-label="取消" confirm-variant="primary" size="medium" scroll-body
+    <ConfirmDialog v-if="open" :title="label" :confirm-label="t('workflowDisplay.apply')" :cancel-label="t('workflowDisplay.cancel')" confirm-variant="primary" size="medium" scroll-body
       :confirm-disabled="!valid || disabled" @cancel="open = false" @confirm="apply">
       <WorkflowParameterRows :model-value="draft" :schema="schema" :disabled="disabled"
         @update:model-value="draft = $event" @validity-change="valid = $event" />
@@ -11,6 +11,8 @@
   </Teleport>
 </template>
 <script setup lang="ts">
+import { useTranslation } from '@/platform/i18n'
+const { t } = useTranslation()
 import { computed, ref } from 'vue'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import type { WorkflowJsonObject } from '../types'

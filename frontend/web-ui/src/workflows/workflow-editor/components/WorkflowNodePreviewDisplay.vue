@@ -1,6 +1,7 @@
 <template>
   <div
     class="workflow-graph-node-preview"
+    :class="{ 'workflow-graph-node-preview--fields': display.payload.type === 'value-display' }"
     :title="tooltip"
     @mousedown.stop
     @dblclick.stop="emit('open-display', display)"
@@ -178,7 +179,10 @@ function bboxHeight(overlay: PreviewImageOverlay): number {
 </script>
 
 <style scoped>
+/* 与节点数据预览预留的 176px 对齐：面板 160px，加上下外边距 16px。 */
+.workflow-graph-node-preview--fields { display: flex; flex-direction: column; min-width: 0; max-height: 160px; box-sizing: border-box; overflow: hidden; }
+.workflow-graph-node-preview--fields > .value-display { min-height: 0; min-width: 0; overflow: auto; border: 0; padding: 4px; background: transparent; }
 .workflow-graph-node-preview__image-frame { position: relative; }
-.workflow-image-information { position: absolute; top: 8px; left: 8px; right: 8px; z-index: 2; pointer-events: none; }
+.workflow-image-information { position: absolute; top: 8px; bottom: 8px; left: 8px; right: 8px; z-index: 2; pointer-events: none; }
 .workflow-image-information__unavailable { padding: 6px 10px; color: var(--am-text-muted); background: var(--am-surface); border-radius: var(--am-radius-sm); font-size: 12px; }
 </style>

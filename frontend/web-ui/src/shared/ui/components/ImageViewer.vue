@@ -123,7 +123,7 @@
         @mousedown="handleViewportMouseDown"
         @dblclick="handleViewportDoubleClick"
       >
-        <div v-if="$slots.information && loadedInformationSrc === viewerImageSrc" class="image-viewer__information" style="position: absolute; top: 12px; left: 12px; right: 12px; z-index: 4; pointer-events: none;">
+        <div v-if="$slots.information && loadedInformationSrc === viewerImageSrc" class="image-viewer__information" style="position: absolute; top: 12px; bottom: 12px; left: 12px; right: 12px; z-index: 4; pointer-events: none;">
           <slot name="information" />
         </div>
         <div v-if="tuningControls.length" class="image-viewer__tuning-panel">

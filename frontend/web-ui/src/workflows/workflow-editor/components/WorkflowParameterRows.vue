@@ -3,16 +3,18 @@
     <div v-for="(row, index) in rows" :key="index" class="parameter-rows__row" :class="{ 'parameter-rows__row--reducer': isReducer, 'parameter-rows__row--count': isReducer && row.operation === 'count' }">
       <div class="parameter-rows__actions">
         <span>{{ index + 1 }}</span>
-        <button type="button" :disabled="disabled || index === 0" aria-label="上移" title="上移" @click="move(index, -1)"><ArrowUp :size="16" /></button>
-        <button type="button" :disabled="disabled || index === rows.length - 1" aria-label="下移" title="下移" @click="move(index, 1)"><ArrowDown :size="16" /></button>
-        <button type="button" :disabled="disabled" aria-label="删除行" title="删除行" @click="remove(index)"><Trash2 :size="16" /></button>
+        <button type="button" :disabled="disabled || index === 0" :aria-label="t('workflowDisplay.moveUp')" :title="t('workflowDisplay.moveUp')" @click="move(index, -1)"><ArrowUp :size="16" /></button>
+        <button type="button" :disabled="disabled || index === rows.length - 1" :aria-label="t('workflowDisplay.moveDown')" :title="t('workflowDisplay.moveDown')" @click="move(index, 1)"><ArrowDown :size="16" /></button>
+        <button type="button" :disabled="disabled" :aria-label="t('workflowDisplay.deleteRow')" :title="t('workflowDisplay.deleteRow')" @click="remove(index)"><Trash2 :size="16" /></button>
       </div>
       <label v-for="(property, key) in visibleProperties(row)" :key="key" :class="{ 'parameter-rows__field--wide': property.type === 'object' || property.type === 'array' }">
         <span>{{ property.title || key }}</span>
-        <template v-if="key === 'condition' && !advanced[index] && simpleCondition(row[key])">
+        <WorkflowDisplayColor v-if="property['x-ui-widget'] === 'display-color'" :model-value="row[key]" :label="String(property.title || key)" :disabled="disabled" :default-color="key === 'label_color' ? 'var(--am-text-muted)' : 'var(--am-text)'" @update:model-value="set(index, key, $event)" @validity-change="setValidity(index, key, $event)" />
+        <WorkflowStateColors v-else-if="property['x-ui-widget'] === 'state-colors'" :model-value="row[key]" :disabled="disabled" @update:model-value="set(index, key, $event)" @validity-change="setValidity(index, key, $event)" />
+        <template v-else-if="key === 'condition' && !advanced[index] && simpleCondition(row[key])">
           <input aria-label="Path" placeholder="Path" :value="condition(row).path ?? ''" :disabled="disabled" @input="setConditionPath(index, $event)" />
-          <textarea aria-label="Match Values" placeholder="Match Values · 每行一个值" :rows="Math.min(8, Math.max(3, matchValues(row).split('\n').length))" :value="matchValues(row)" :disabled="disabled" @change="setMatchValues(index, $event)" />
-          <button type="button" :disabled="disabled" @click="advanced[index] = true">编辑条件 JSON</button>
+          <textarea aria-label="Match Values" :placeholder="t('workflowDisplay.matchValues')" :rows="Math.min(8, Math.max(3, matchValues(row).split('\n').length))" :value="matchValues(row)" :disabled="disabled" @change="setMatchValues(index, $event)" />
+          <button type="button" :disabled="disabled" @click="advanced[index] = true">{{ t('workflowDisplay.editCondition') }}</button>
         </template>
         <Select v-else-if="Array.isArray(property.enum)" floating
           :model-value="String(row[key] ?? property.default ?? property.enum[0])"
@@ -23,14 +25,18 @@
         <input v-else :type="property.type === 'integer' ? 'number' : 'text'" :min="Number(property.minimum ?? 0)" :max="property.maximum == null ? undefined : Number(property.maximum)" :value="String(row[key] ?? property.default ?? '')" :disabled="disabled" @input="set(index, key, property.type === 'integer' ? Number(($event.target as HTMLInputElement).value) : ($event.target as HTMLInputElement).value)" />
       </label>
     </div>
-    <span v-if="error" role="alert">{{ error }}</span>
-    <button type="button" class="parameter-rows__add" :disabled="disabled || rows.length >= Number(schema.maxItems ?? 64)" @click="add"><Plus :size="16" />添加行</button>
+    <span v-if="error" role="alert">{{ t(error) }}</span>
+    <button type="button" class="parameter-rows__add" :disabled="disabled || rows.length >= Number(schema.maxItems ?? 64)" @click="add"><Plus :size="16" />{{ t('workflowDisplay.addRow') }}</button>
   </div>
 </template>
 <script setup lang="ts">
+import { useTranslation } from '@/platform/i18n'
+const { t } = useTranslation()
 import { computed, ref } from 'vue'
 import { ArrowDown, ArrowUp, Plus, Trash2 } from '@lucide/vue'
 import Select from '@/shared/ui/components/Select.vue'
+import WorkflowDisplayColor from './WorkflowDisplayColor.vue'
+import WorkflowStateColors from './WorkflowStateColors.vue'
 import type { WorkflowJsonObject } from '../types'
 const props = defineProps<{ modelValue: unknown; schema: WorkflowJsonObject; disabled?: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [value: unknown]; 'validity-change': [valid: boolean] }>()
@@ -43,6 +49,10 @@ const properties = computed(() => ((props.schema.items as WorkflowJsonObject)?.p
 const isReducer = computed(() => Boolean(properties.value.output_key && properties.value.source_path && properties.value.operation))
 function visibleProperties(row: WorkflowJsonObject) {
   return Object.fromEntries(Object.entries(properties.value).filter(([key]) => {
+    if (properties.value.states?.['x-ui-widget'] === 'state-colors') {
+      if (key === 'states') return row.format === 'status'
+      if (key === 'precision') return ['number', 'percent'].includes(String(row.format))
+    }
     if (!isReducer.value) return true
     if (row.operation === 'count') return !['source_path', 'numeric_type', 'missing_policy'].includes(key)
     return row.operation !== 'last' || key !== 'numeric_type'
@@ -58,18 +68,24 @@ function optionLabel(key: string, value: unknown): string {
   return labels[key]?.[String(value)] ?? String(value)
 }
 function set(index: number, key: string, value: unknown) {
+  if (key === 'format') { delete errors.value[`${index}:states`]; delete errors.value[`${index}:precision`] }
   delete errors.value[`${index}:${key}`]
   emit('validity-change', Object.keys(errors.value).length === 0)
   emit('update:modelValue', rows.value.map((row, i) => i === index ? { ...row, [key]: value } : row))
 }
+function setValidity(index: number, key: string, valid: boolean) {
+  if (valid) delete errors.value[`${index}:${key}`]
+  else errors.value[`${index}:${key}`] = 'workflowDisplay.invalidConfig'
+  emit('validity-change', Object.keys(errors.value).length === 0)
+}
 function setJson(index: number, key: string, event: Event) {
   try { set(index, key, JSON.parse((event.target as HTMLTextAreaElement).value)) }
-  catch { errors.value[`${index}:${key}`] = 'JSON 格式无效，尚未应用此字段'; emit('validity-change', false) }
+  catch { errors.value[`${index}:${key}`] = 'workflowDisplay.invalidJson'; emit('validity-change', false) }
 }
 function add() {
   const row: WorkflowJsonObject = {}
   for (const [key, spec] of Object.entries(properties.value)) {
-    row[key] = spec.default ?? (Array.isArray(spec.enum) ? spec.enum[0] : key === 'condition' ? { operator: 'in', path: '', right: [] } : spec.type === 'object' ? {} : '')
+    row[key] = spec['x-ui-widget'] === 'display-color' ? null : spec.default ?? (Array.isArray(spec.enum) ? spec.enum[0] : key === 'condition' ? { operator: 'in', path: '', right: [] } : spec.type === 'object' ? {} : '')
   }
   emit('update:modelValue', [...rows.value, row])
 }

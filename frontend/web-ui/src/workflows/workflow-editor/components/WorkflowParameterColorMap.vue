@@ -143,6 +143,7 @@
 <script setup lang="ts">
 import { Braces, Palette, Plus, Trash2 } from '@lucide/vue'
 import { computed, ref } from 'vue'
+import { isHexColor, normalizeHexColor, paletteColors } from '../parameters/display-colors'
 
 import { useTranslation } from '@/platform/i18n'
 import Button from '@/shared/ui/components/Button.vue'
@@ -174,14 +175,6 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useTranslation()
-const hexColorPattern = /^#[0-9A-Fa-f]{6}$/
-const paletteColors = [
-  '#00C853', '#00B8D4', '#2962FF', '#6200EA',
-  '#AA00FF', '#D500F9', '#D50000', '#FF6D00',
-  '#FFB300', '#FFD600', '#64DD17', '#1DE9B6',
-  '#607D8B', '#546E7A', '#37474F', '#FFFFFF',
-]
-
 const editorOpen = ref(false)
 const advancedMode = ref(false)
 const draftEntries = ref<ColorMapEntry[]>([])
@@ -325,14 +318,6 @@ function entriesToObject(entries: ColorMapEntry[]): Record<string, string> {
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value))
-}
-
-function isHexColor(value: string): boolean {
-  return hexColorPattern.test(value.trim())
-}
-
-function normalizeHexColor(value: string): string {
-  return value.trim().toUpperCase()
 }
 
 function readSwatchStyle(color: string): Record<string, string> {

@@ -67,6 +67,47 @@ def test_value_display_capture_and_errors():
         )
 
 
+def test_display_appearance_keeps_values_and_context():
+    """外观只随正文透传，不改变标量、状态值和配对信息。"""
+    context = {"generation": "a", "sequence": 9, "snapshot_revision": "r"}
+    req = request(DISPLAY, {
+        "fields": [{"path": "state", "label": "Result", "format": "status",
+                    "states": {"custom-pass": "#abcdef", "custom-fail": "danger"},
+                    "label_color": "#123456", "value_color": None}],
+        "appearance": {"panel_width": 320, "panel_height": None, "font_size": 24,
+                       "status_font_size": 40, "background_opacity": 0,
+                       "background_color": "#ffffff"},
+    }, {"value": {"value": {"state": "custom-pass"}}, "context": {"value": context}})
+    body = DISPLAY.handler(req)["body"]
+    assert body["context"] == context
+    assert body["fields"][0]["value"] == "custom-pass"
+    assert body["fields"][0]["states"] == {"custom-pass": "#ABCDEF", "custom-fail": "danger"}
+    assert body["appearance"]["background_opacity"] == 0
+    assert body["appearance"]["background_color"] == "#FFFFFF"
+
+
+@pytest.mark.parametrize("appearance", [
+    {"font_size": True}, {"font_size": float("nan")}, {"panel_width": 0},
+    {"panel_height": 1201}, {"font_size": 73}, {"font_size": None},
+    {"status_font_size": 9}, {"background_opacity": 101},
+    {"background_color": "url(x)"}, {"position": "fixed"},
+])
+def test_display_rejects_invalid_appearance(appearance):
+    """非法尺寸和任意 CSS 不得通过节点正文进入页面。"""
+    with pytest.raises(InvalidRequestError):
+        DISPLAY.handler(request(DISPLAY, {"fields": [{"path": "a", "label": "A"}], "appearance": appearance}, {"value": {"value": {"a": 1}}}))
+
+
+@pytest.mark.parametrize("field", [
+    {"label_color": "red"}, {"value_color": 12},
+    {"states": {"ng": "#ff00"}}, {"states": {"ng": "url(x)"}},
+])
+def test_display_rejects_invalid_field_colors(field):
+    """字段色与状态色只接受允许的颜色格式。"""
+    with pytest.raises(InvalidRequestError):
+        DISPLAY.handler(request(DISPLAY, {"fields": [{"path": "a", "label": "A", **field}]}, {"value": {"value": {"a": 1}}}))
+
+
 @pytest.mark.parametrize(
     "metadata",
     [{}, {"_preview_execution": True}, {"_editor_preview_observer": object()}],

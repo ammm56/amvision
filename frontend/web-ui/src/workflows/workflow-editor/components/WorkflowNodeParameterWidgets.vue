@@ -101,6 +101,11 @@
         :disabled="isParameterEditorDisabled(node, field)"
         @update:model-value="emit('update-value', node, field, $event)"
       />
+      <WorkflowDisplayAppearance
+        v-else-if="field.json_schema['x-ui-widget'] === 'display-appearance'"
+        :model-value="readValue(node, field)" :disabled="isParameterEditorDisabled(node, field)"
+        @update:model-value="emit('update-value', node, field, $event)"
+      />
       <WorkflowParameterRowsEditor
         v-else-if="field.json_schema['x-ui-widget'] === 'object-rows'"
         :model-value="readValue(node, field)" :schema="field.json_schema" :label="readLabel(field)"
@@ -123,6 +128,7 @@
 
 <script setup lang="ts">
 import { ListFilter } from '@lucide/vue'
+import WorkflowDisplayAppearance from './WorkflowDisplayAppearance.vue'
 import { useI18n } from 'vue-i18n'
 
 import SelectField from '@/shared/ui/components/Select.vue'
