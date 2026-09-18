@@ -209,6 +209,35 @@ def test_normal_io_does_not_scan_or_acquire_repair_lock(tmp_path, monkeypatch):
     assert len(jsonl.read_records(path, repair_lock=unexpected)["records"]) == 2
 
 
+@pytest.mark.parametrize("elapsed", [31, 179, 181])
+def test_commit_rebuild_three_minute_budget(tmp_path, monkeypatch, elapsed):
+    """超过旧上限仍可恢复，超过三分钟拒绝发布且保留原日志。"""
+    from types import SimpleNamespace
+
+    path = tmp_path / "records.jsonl"
+    content = b'{"n":1}\n{"n":2}\n'
+    path.write_bytes(content)
+    calls = 0
+
+    def monotonic():
+        """模拟扫描耗时，不让测试实际等待三分钟。"""
+        nonlocal calls
+        calls += 1
+        return 100 if calls == 1 else 100 + elapsed
+
+    monkeypatch.setattr(jsonl, "time", SimpleNamespace(monotonic=monotonic))
+    if elapsed > 180:
+        with pytest.raises(InvalidRequestError, match="超过 180 秒") as caught:
+            append(path, {"n": 3})
+        assert caught.value.details["error_code"] == "jsonl_rebuild_timeout"
+        assert path.read_bytes() == content
+        assert not jsonl.sidecars(path)[0].exists()
+        assert not jsonl.sidecars(path)[1].exists()
+    else:
+        assert append(path, {"n": 3})["sequence"] == 3
+        assert path.read_bytes() == content + b'{"n":3}\n'
+
+
 def _try_lock(path, connection):
     """子进程尝试路径锁，不能无限等待。"""
     with PathWriteCoordinator().try_acquire([Path(path)]) as acquired:

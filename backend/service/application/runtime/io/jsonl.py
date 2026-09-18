@@ -22,6 +22,8 @@ MAX_RECORD_BYTES = 1024 * 1024
 DEFAULT_READ_BYTES = 4 * MAX_RECORD_BYTES
 DEFAULT_READ_RECORDS = 1000
 DEFAULT_READ_MS = 100
+# 元数据恢复允许扫描大日志；不改变正常增量读取的批次预算。
+COMMIT_REBUILD_TIMEOUT_SECONDS = 180
 MAX_SAFE_INTEGER = 2**53 - 1
 
 
@@ -160,9 +162,9 @@ def _rebuild_commit(
         while stream.tell() < before.st_size:
             if check_control:
                 check_control()
-            if time.monotonic() - started > 30:
+            if time.monotonic() - started > COMMIT_REBUILD_TIMEOUT_SECONDS:
                 raise fail(
-                    "JSONL 提交文件重建超过 30 秒，未修改原日志",
+                    f"JSONL 提交文件重建超过 {COMMIT_REBUILD_TIMEOUT_SECONDS} 秒，未修改原日志",
                     "jsonl_rebuild_timeout",
                 )
             line = stream.readline(MAX_RECORD_BYTES + 1)
