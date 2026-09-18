@@ -71,13 +71,13 @@ CORE_NODE_SPEC = CoreNodeSpec(
         input_ports=(
             NodePortDefinition(
                 name="presentation",
-                display_name="Presentation",
+                display_name="Display Data",
                 payload_type_id="response-body.v1",
                 required=False,
             ),
             NodePortDefinition(
                 name="presentation_context",
-                display_name="Presentation Context",
+                display_name="Data Context",
                 payload_type_id="value.v1",
                 required=False,
             ),

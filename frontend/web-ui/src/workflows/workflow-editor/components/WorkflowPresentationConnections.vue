@@ -3,7 +3,7 @@
     <strong>{{ pt(selected.node.node_type_id === 'core.io.image-preview' ? 'presentation' : 'targets') }}</strong>
     <span v-if="!connections.length">{{ pt(selected.node.node_type_id === 'core.io.image-preview' ? 'imageOnly' : 'noTargets') }}</span>
     <button v-for="item in connections" :key="item.id" type="button" :title="pt('locate')" @click="emit('locate', item.id)">
-      {{ item.title }} / {{ item.port }} <small>{{ item.id }}{{ item.enabled ? '' : ' · ' + pt('disabled') }}</small>
+      {{ item.title }}<small v-if="!item.enabled">{{ pt('disabled') }}</small>
     </button>
   </section>
 </template>
@@ -23,7 +23,7 @@ const connections = computed(() => {
   return props.edges.filter(edge => edge.target_port === 'presentation' && (incoming ? edge.target_node_id : edge.source_node_id) === selected.node_id).map(edge => {
     const id = incoming ? edge.source_node_id : edge.target_node_id
     const node = props.nodes.find(item => item.node.node_id === id)
-    return { id, title: node?.node.parameters.title || node?.title || id, enabled: Boolean(node && node.node.enabled !== false), port: incoming ? edge.source_port : edge.target_port }
+    return { id, title: node?.node.parameters.title || node?.title || id, enabled: Boolean(node && node.node.enabled !== false) }
   })
 })
 </script>

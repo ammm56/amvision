@@ -171,6 +171,7 @@
       <div v-if="history.open.value || !inspectorCollapsed" class="workflow-graph-floating-panel workflow-editor-side-panel" :class="{ 'workflow-editor-side-panel--versions': history.open.value }">
       <WorkflowVersionHistoryPanel :blocked="documentBusy" :open="history.open.value" :versions="history.versions.value" :loading="history.loading.value" :selected-id="history.selectedId.value" :error="history.error.value" :has-more="history.nextOffset.value !== null" :latest-version-id="history.versions.value.find(v => v.state === 'published')?.workflow_app_version_id" :document-state="documentState" @rename="(version, name, notes) => history.act(version, 'rename', name, notes)" @export="history.act($event, 'export')" @delete="history.act($event, 'delete')" @close="history.close" @refresh="history.refresh()" @more="history.refresh(true)" @select="history.select" />
       <WorkflowInspectorShell
+        :graph-node-views="graphNodes"
         :collapsed="inspectorCollapsed || history.open.value"
         :show-new-app-draft-panel="showNewAppDraftPanel"
         :new-workflow-app-draft="newWorkflowAppDraft"

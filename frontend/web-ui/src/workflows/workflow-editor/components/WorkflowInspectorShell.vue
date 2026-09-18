@@ -41,6 +41,7 @@
       <WorkflowEdgeDetailPanel
         v-else-if="inspectorDetail.kind === 'edge'"
         :edge="inspectorDetail.edge"
+        :nodes="graphNodeViews"
         @delete-edge="emit('deleteSelectedEdge')"
       />
       <WorkflowNoteDetailPanel
@@ -159,6 +160,7 @@ defineProps<{
   appInputBindings: FlowApplicationBinding[]
   appOutputBindings: FlowApplicationBinding[]
   inspectorDetail: WorkflowInspectorDetail<WorkflowGraphNodeView>
+  graphNodeViews?: WorkflowGraphNodeView[]
   readGraphNodeTitle: (node: WorkflowGraphNodeView) => string
   bindingDisplayName: (binding: FlowApplicationBinding) => string
   bindingKindSelectOptions: (binding: FlowApplicationBinding) => Array<{ label: string; value: string | number | boolean | null; description?: string }>

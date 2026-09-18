@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { NodeDefinition, WorkflowGraphNode } from '../types'
+import type { NodeDefinition, WorkflowGraphNode, WorkflowGraphEdge } from '../types'
 import {
   buildWorkflowAppModeDisplayCandidates,
   orderWorkflowAppContractInputs,
@@ -9,6 +9,27 @@ import {
 } from './workflow-app-mode'
 
 describe('workflow app mode metadata', () => {
+  it('使用配置标题区分同类节点，并完整派生一对多和已禁用图片关联', () => {
+    const nodes = [
+      { node_id: 'values', node_type_id: 'core.io.value-display', parameters: { title: '治具检测' }, enabled: true },
+      { node_id: 'image-1', node_type_id: 'core.io.image-preview', parameters: {}, enabled: true },
+      { node_id: 'image-2', node_type_id: 'core.io.image-preview', parameters: {}, enabled: false },
+    ] as WorkflowGraphNode[]
+    const definitions = new Map(nodes.map(node => [node.node_type_id, { node_type_id: node.node_type_id, display_name: node.node_type_id,
+      capability_tags: ['ui.preview'], output_ports: [{ name: 'body', display_name: 'Body' }] } as NodeDefinition]))
+    const edges = ['image-1', 'image-2'].map(id => ({ source_node_id: 'values', source_port: 'body', target_node_id: id, target_port: 'presentation' })) as WorkflowGraphEdge[]
+    const before = JSON.stringify({ nodes, edges })
+    const result = buildWorkflowAppModeDisplayCandidates(nodes, definitions, edges)
+    expect(result[0]).toMatchObject({ title: '治具检测', node_title: '治具检测', connectedImages: [
+      { nodeId: 'image-1', enabled: true }, { nodeId: 'image-2', enabled: false },
+    ] })
+    expect(result[1]!.presentationSource).toEqual({ nodeId: 'values', title: '治具检测', enabled: true })
+    expect(result).toHaveLength(2)
+    const disconnected = buildWorkflowAppModeDisplayCandidates(nodes, definitions, [])
+    expect(disconnected[1]!.presentationSource).toBeUndefined()
+    expect(disconnected[0]!.connectedImages).toEqual([])
+    expect(JSON.stringify({ nodes, edges })).toBe(before)
+  })
   it('round trips a normalized v1 config without changing sibling metadata', () => {
     const metadata = writeWorkflowAppModeConfig(
       { retained: true },
@@ -73,7 +94,7 @@ describe('workflow app mode metadata', () => {
     expect(buildWorkflowAppModeDisplayCandidates(nodes, new Map([
       ['preview', previewDefinition], ['logic', logicDefinition],
     ]))).toEqual([{
-      node_id: 'preview-1', output_port: 'preview', title: 'Node', size: 'medium',
+      node_id: 'preview-1', output_port: 'preview', title: 'Image Preview', size: 'medium',
       node_title: 'Image Preview', output_title: 'Preview', node_type_id: 'preview',
     }])
   })

@@ -142,7 +142,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
         ),
         output_ports=(
             NodePortDefinition(
-                name="body", display_name="Body", payload_type_id="response-body.v1"
+                name="body", display_name="Display Data", payload_type_id="response-body.v1"
             ),
         ),
         parameter_schema={
