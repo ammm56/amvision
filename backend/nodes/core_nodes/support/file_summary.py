@@ -4,6 +4,8 @@ import hashlib
 from pathlib import Path
 from uuid import uuid4
 
+from backend.service.infrastructure.filesystem.shared_files import open_shared_read
+
 from backend.nodes.core_nodes.support.condition_expression import (
     evaluate_condition_expression,
 )
@@ -25,7 +27,7 @@ MAX_CHECKPOINT_BYTES = 4 * 1024 * 1024
 def _checkpoint_bytes(path: Path) -> bytes | None:
     """单次有界读取；超限派生状态保留前缀用于并发冲突核对。"""
     try:
-        with path.open("rb") as stream:
+        with open_shared_read(path) as stream:
             return stream.read(MAX_CHECKPOINT_BYTES + 1)
     except FileNotFoundError:
         return None

@@ -17,6 +17,7 @@ from backend.nodes.core_nodes.support.jsonl_nodes import (
 )
 from backend.nodes.core_nodes.support.logic import build_value_payload
 from backend.service.application.runtime.io.jsonl import read_records
+from backend.service.application.runtime.io.file_errors import file_io_errors
 from backend.service.application.workflows.graph_executor import (
     WorkflowNodeExecutionRequest,
 )
@@ -24,12 +25,14 @@ from backend.service.application.workflows.graph_executor import (
 
 def _handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     """读取单批记录并输出可继续使用的游标和固定边界。"""
-    result = read_records(
-        source_path(request),
-        cursor=input_value(request, "cursor"),
-        snapshot_end=input_value(request, "snapshot_end"),
-        **read_options(request),
-    )
+    path = source_path(request)
+    with file_io_errors(path, operation="read_jsonl"):
+        result = read_records(
+            path,
+            cursor=input_value(request, "cursor"),
+            snapshot_end=input_value(request, "snapshot_end"),
+            **read_options(request),
+        )
     return {key: build_value_payload(value) for key, value in result.items()}
 
 

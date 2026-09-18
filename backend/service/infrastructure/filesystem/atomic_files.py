@@ -6,6 +6,8 @@ import os
 from pathlib import Path
 from time import monotonic, sleep
 
+from backend.service.infrastructure.filesystem.shared_files import replace_shared_file
+
 
 _TRANSIENT_WINDOWS_FILE_ERROR_CODES = frozenset({5, 32, 33})
 
@@ -28,7 +30,7 @@ def replace_path_with_retry(
     retry_interval_seconds = 0.005
     while True:
         try:
-            source_path.replace(target_path)
+            replace_shared_file(source_path, target_path)
             return
         except PermissionError as error:
             if (

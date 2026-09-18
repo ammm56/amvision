@@ -12,7 +12,7 @@ from backend.nodes.core_nodes.io.local.jsonl_load_local import CORE_NODE_SPEC as
 from backend.service.application.workflows.execution.contracts import (
     WorkflowNodeExecutionRequest,
 )
-from backend.service.application.errors import InvalidRequestError
+from backend.service.application.errors import InvalidRequestError, ServiceError
 from backend.service.application.runtime.io.jsonl import append_record, read_records
 from backend.service.application.workflows.runtime_preview import RuntimePreviewCapture
 
@@ -137,7 +137,7 @@ def test_append_preview_errors_are_not_reported_as_skipped(tmp_path):
         {"value": {"value": {}}},
         {"_preview_execution": True},
     )
-    with pytest.raises((OSError, InvalidRequestError)):
+    with pytest.raises((OSError, ServiceError)):
         APPEND.handler(req)
 
 

@@ -8,6 +8,7 @@ from pathlib import Path
 from time import time
 
 from backend.service.application.runtime.io.atomic_files import atomic_write_bytes
+from backend.service.infrastructure.filesystem.shared_files import open_shared_read
 from backend.service.application.workflows.execution.contracts import (
     WorkflowNodeExecutionRequest,
 )
@@ -45,7 +46,8 @@ class WriteJournal:
 
         if not self.path.is_file():
             return None
-        raw_value = json.loads(self.path.read_text(encoding="utf-8"))
+        with open_shared_read(self.path) as stream:
+            raw_value = json.load(stream)
         return dict(raw_value) if isinstance(raw_value, dict) else None
 
     def write_prepared(self, payload: dict[str, object]) -> dict[str, object]:
@@ -141,7 +143,8 @@ def _compact_journal_directory(directory: Path) -> None:
     committed_paths: list[Path] = []
     for path in journal_paths:
         try:
-            record = json.loads(path.read_text(encoding="utf-8"))
+            with open_shared_read(path) as stream:
+                record = json.load(stream)
         except (OSError, json.JSONDecodeError):
             continue
         if isinstance(record, dict) and record.get("state") == "committed":

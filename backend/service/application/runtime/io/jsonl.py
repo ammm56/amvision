@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.runtime.io.atomic_files import atomic_write_bytes
+from backend.service.infrastructure.filesystem.shared_files import open_shared_read
 
 MAX_RECORD_BYTES = 1024 * 1024
 DEFAULT_READ_BYTES = 4 * MAX_RECORD_BYTES
@@ -97,7 +98,7 @@ def sidecars(path: Path) -> tuple[Path, Path]:
 
 def read_small(path: Path, *, limit: int = DEFAULT_READ_BYTES) -> object:
     """读取有界控制文件或检查点。"""
-    with path.open("rb") as stream:
+    with open_shared_read(path) as stream:
         content = stream.read(limit + 1)
     if len(content) > limit:
         raise fail("控制文件超过大小限制")
@@ -135,8 +136,15 @@ def _publish(path: Path, commit: Commit) -> None:
     target = sidecars(path)[0]
     try:
         atomic_write_bytes(target, encode(commit.model_dump()))
-    except OSError:
-        if not target.exists() or read_small(target) != commit.model_dump():
+    except OSError as publish_error:
+        try:
+            confirmed = target.exists() and read_small(target) == commit.model_dump()
+        except (OSError, InvalidRequestError) as verification_error:
+            # 二次核对也失败时保留最初的发布路径、阶段和系统错误。
+            publish_error.file_io_verification_error = str(verification_error)
+            publish_error.add_note(f"提交状态读回失败：{verification_error}")
+            raise publish_error from verification_error
+        if not confirmed:
             raise
 
 

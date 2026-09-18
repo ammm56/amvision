@@ -354,7 +354,9 @@ def test_local_file_queue_retries_windows_sharing_violation_on_complete(
     leased_task = queue_backend.claim_next(queue_name="jobs", worker_id="worker-a")
     assert leased_task is not None
 
-    original_replace = Path.replace
+    from backend.service.infrastructure.filesystem import atomic_files
+
+    original_replace = atomic_files.replace_shared_file
     sharing_violation_count = 0
 
     def replace_with_transient_lock(
@@ -374,7 +376,7 @@ def test_local_file_queue_retries_windows_sharing_violation_on_complete(
             raise error
         return original_replace(source_path, target_path)
 
-    monkeypatch.setattr(Path, "replace", replace_with_transient_lock)
+    monkeypatch.setattr(atomic_files, "replace_shared_file", replace_with_transient_lock)
 
     completed_task = queue_backend.complete(leased_task)
 

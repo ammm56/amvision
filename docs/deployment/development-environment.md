@@ -22,6 +22,7 @@ backend-service launcher 启动的 `uvicorn` 只负责第 1 项，不会启动 i
 - 已在 `frontend/web-ui/` 执行 `npm ci`。
 - Windows 当前使用 Python 3.12.x：HTTP accept 适配只验证并允许该主次版本；项目通用 Python 3.12+ 基线不表示 Windows HTTP 入口已支持更高版本。Node.js 版本满足 `frontend/web-ui/package.json` 的 `engines`。
 - `config/backend-service.json` 和 `config/backend-worker.json` 中的数据库、ObjectStore、Queue 与 runtime 路径可写。
+- Windows 原子文件发布要求支持 FileRenameInfoEx / POSIX 替换语义，当前验证为本地 NTFS；共享盘或其他文件系统需单独验证。此能力使用 Python 标准库和 kernel32，无额外依赖，见[文件替换验证](../operations/windows-file-replace-audit-20260918.md)。
 
 建议准备四个终端。每个运行 Python 的终端先执行：
 

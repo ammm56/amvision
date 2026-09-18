@@ -21,6 +21,7 @@ from backend.nodes.core_nodes.support.local_io.paths import (
 )
 from backend.nodes.core_nodes.support.logic import build_value_payload
 from backend.service.application.runtime.io import try_acquire_path_write_locks
+from backend.service.application.runtime.io.file_errors import file_io_errors
 from backend.service.application.workflows.graph_executor import (
     WorkflowNodeExecutionRequest,
 )
@@ -37,14 +38,15 @@ def _handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     )
     options = read_options(request)
     options["allow_missing"] = request.parameters.get("allow_missing", True)
-    result = summarize(
-        path,
-        state_path,
-        reducers=request.parameters.get("reducers"),
-        condition=request.parameters.get("condition"),
-        lock=try_acquire_path_write_locks(request, (state_path,)),
-        **options,
-    )
+    with file_io_errors(path, operation="file_summary"):
+        result = summarize(
+            path,
+            state_path,
+            reducers=request.parameters.get("reducers"),
+            condition=request.parameters.get("condition"),
+            lock=try_acquire_path_write_locks(request, (state_path,)),
+            **options,
+        )
     return {"snapshot": build_value_payload(result)}
 
 

@@ -24,6 +24,7 @@ from backend.service.infrastructure.filesystem.atomic_files import (
     replace_path_with_retry,
 )
 from backend.service.infrastructure.filesystem.windows_paths import to_filesystem_path
+from backend.service.infrastructure.filesystem.shared_files import open_shared_read
 from backend.service.application.ports.object_store import (
     ObjectReadSnapshot,
     ObjectSnapshotMetadata,
@@ -470,7 +471,8 @@ class LocalDatasetStorage:
         """
 
         target_path = self.resolve(relative_path)
-        return json.loads(to_filesystem_path(target_path).read_text(encoding="utf-8"))
+        with open_shared_read(target_path) as stream:
+            return json.load(stream)
 
     def write_text(self, relative_path: str, content: str) -> None:
         """把文本内容写入本地文件。
@@ -1186,45 +1188,4 @@ def _has_complete_immutable_identity(metadata: ObjectSnapshotMetadata) -> bool:
 
 def _open_shared_read_snapshot(path: Path) -> BinaryIO:
     """打开允许同 key 原子替换、但自身内容保持稳定的只读 handle。"""
-
-    filesystem_path = to_filesystem_path(path)
-    if os.name != "nt":
-        return filesystem_path.open("rb")
-
-    import ctypes
-    import msvcrt
-    from ctypes import wintypes
-
-    create_file = ctypes.windll.kernel32.CreateFileW
-    create_file.argtypes = (
-        wintypes.LPCWSTR,
-        wintypes.DWORD,
-        wintypes.DWORD,
-        wintypes.LPVOID,
-        wintypes.DWORD,
-        wintypes.DWORD,
-        wintypes.HANDLE,
-    )
-    create_file.restype = wintypes.HANDLE
-    handle = create_file(
-        str(filesystem_path),
-        0x80000000,  # GENERIC_READ
-        0x00000001 | 0x00000002 | 0x00000004,  # SHARE_READ|WRITE|DELETE
-        None,
-        3,  # OPEN_EXISTING
-        0x00000080,  # FILE_ATTRIBUTE_NORMAL
-        None,
-    )
-    invalid_handle_value = wintypes.HANDLE(-1).value
-    if handle == invalid_handle_value:
-        error_code = ctypes.get_last_error()
-        raise FileNotFoundError(error_code, os.strerror(error_code), str(path))
-    try:
-        descriptor = msvcrt.open_osfhandle(
-            int(handle),
-            os.O_RDONLY | getattr(os, "O_BINARY", 0),
-        )
-    except Exception:
-        ctypes.windll.kernel32.CloseHandle(handle)
-        raise
-    return os.fdopen(descriptor, "rb", closefd=True)
+    return open_shared_read(path)

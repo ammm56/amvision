@@ -9,6 +9,7 @@ import pytest
 from backend.service.infrastructure.filesystem.atomic_files import (
     replace_path_with_retry,
 )
+from backend.service.infrastructure.filesystem import atomic_files
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
     LocalDatasetStorage,
@@ -25,7 +26,7 @@ def test_replace_path_with_retry_recovers_windows_sharing_violation(
     target_path = tmp_path / "target.json"
     source_path.write_text("new", encoding="utf-8")
     target_path.write_text("old", encoding="utf-8")
-    original_replace = Path.replace
+    original_replace = atomic_files.replace_shared_file
     attempt_count = 0
 
     def replace_with_transient_lock(
@@ -40,7 +41,7 @@ def test_replace_path_with_retry_recovers_windows_sharing_violation(
             raise error
         return original_replace(current_source_path, current_target_path)
 
-    monkeypatch.setattr(Path, "replace", replace_with_transient_lock)
+    monkeypatch.setattr(atomic_files, "replace_shared_file", replace_with_transient_lock)
 
     replace_path_with_retry(
         source_path,
@@ -62,7 +63,7 @@ def test_local_dataset_storage_json_write_uses_atomic_replace_retry(
     dataset_storage = LocalDatasetStorage(
         DatasetStorageSettings(root_dir=str(tmp_path / "files"))
     )
-    original_replace = Path.replace
+    original_replace = atomic_files.replace_shared_file
     sharing_violation_count = 0
 
     def replace_with_transient_lock(
@@ -77,7 +78,7 @@ def test_local_dataset_storage_json_write_uses_atomic_replace_retry(
             raise error
         return original_replace(source_path, target_path)
 
-    monkeypatch.setattr(Path, "replace", replace_with_transient_lock)
+    monkeypatch.setattr(atomic_files, "replace_shared_file", replace_with_transient_lock)
 
     dataset_storage.write_json(
         "workflows/runtime/app-runtimes/runtime-1/events.json",
@@ -99,7 +100,7 @@ def test_local_dataset_storage_text_write_uses_atomic_replace_retry(
     dataset_storage = LocalDatasetStorage(
         DatasetStorageSettings(root_dir=str(tmp_path / "files"))
     )
-    original_replace = Path.replace
+    original_replace = atomic_files.replace_shared_file
     sharing_violation_count = 0
 
     def replace_with_transient_lock(
@@ -114,7 +115,7 @@ def test_local_dataset_storage_text_write_uses_atomic_replace_retry(
             raise error
         return original_replace(source_path, target_path)
 
-    monkeypatch.setattr(Path, "replace", replace_with_transient_lock)
+    monkeypatch.setattr(atomic_files, "replace_shared_file", replace_with_transient_lock)
 
     dataset_storage.write_text("models/manifest.json", '{"status":"ready"}\n')
 

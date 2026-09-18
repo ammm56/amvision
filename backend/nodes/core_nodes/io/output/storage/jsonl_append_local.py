@@ -19,6 +19,7 @@ from backend.nodes.save_locations import (
     resolve_save_location_path,
 )
 from backend.service.application.runtime.io import try_acquire_path_write_locks
+from backend.service.application.runtime.io.file_errors import file_io_errors
 from backend.service.application.runtime.io.jsonl import (
     append_record,
     fail,
@@ -48,7 +49,9 @@ def _handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         + ":"
         + str(request.node_invocation_id or uuid4().hex)
     )
-    with try_acquire_path_write_locks(request, (path,)) as acquired:
+    with file_io_errors(path, operation="append_jsonl"), try_acquire_path_write_locks(
+        request, (path,)
+    ) as acquired:
         if not acquired:
             raise fail("JSONL 文件正在写入", "jsonl_busy")
         control.raise_if_cancelled_or_expired()

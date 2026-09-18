@@ -122,6 +122,12 @@ managed 日志的已提交历史记录必须保持不变。为保持增量性能
 
 累计口径是当前日志中的有效记录，删除记录意味着对应累计也被清除。每条成功记录对应一个物件或托盘时，使用 `{"operation":"count","output_key":"tray_total"}`，无需每行保存固定的 `tray_total: 1`；旧记录的额外字段仍可保留。
 
+### Windows 文件并发与系统错误
+
+提交元数据、汇总检查点和输出 journal 使用允许替换的共享读取；Windows 通过 FileRenameInfoEx / POSIX 语义单步发布完整新文件。已有读者读取完整旧版本，不阻塞发布，不新增重试或等待。只读属性、权限和外部不共享句柄仍受操作系统限制。
+
+三个 JSONL 文件节点的 IO 失败提供 `path`、`operation`、`stage`、`errno` 和 `winerror`，区分文件占用、拒绝访问、磁盘满、只读文件系统等情况。追加失败可能发生在日志已写入、提交文件尚未发布之后，因此标记 `write_state=unconfirmed`；不能据此自动重跑整个生产调用。临时文件清理及提交读回的二次错误不会掩盖原始错误。验证与处理边界见 [Windows 文件替换故障修复](../operations/windows-file-replace-audit-20260918.md)。
+
 ## 兼容与验证
 
 开发阶段仍使用 v1：已有草稿中 Append JSONL 的 `parameters.enabled`、`parameters.preview_write` 应移除，节点顶层 `enabled` 保留。旧参数不再参与处理器逻辑，不能用旧的 false 值阻止写入；使用旧草稿或已发布版本执行 Preview 时，也遵守“执行即写入”。需要隔离调试数据时调整保存路径，不能依赖旧开关。生产记录字段由工作流自定义，不要求 `format_id`。

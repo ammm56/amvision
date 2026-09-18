@@ -7,6 +7,8 @@
 
 Ubuntu profile 仅保留命名，不可组装或交付。
 
+Windows 文件存储当前验证为支持 FileRenameInfoEx / POSIX 替换语义的本地 NTFS；网络共享、其他文件系统或旧系统需单独验证。Bundled Python 通过标准库 ctypes 调用 kernel32，无新增 DLL 或 pip 依赖。文件并发与故障处理见[文件替换验证](../operations/windows-file-replace-audit-20260918.md)。
+
 以下 CPU/NVIDIA 命令包含桌面启动器；构建、托盘生命周期和配置见 [amvar launcher 部署](desktop-launcher.md)。CLI 省略 `--launcher-publish-dir` 时仅组装视觉服务，不会生成桌面 EXE。已有用户数据的发行目录不能整目录重建，更新应先输出到新目录。
 
 ## 1. 准备构建环境
