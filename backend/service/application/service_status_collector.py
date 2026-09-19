@@ -33,14 +33,22 @@ class ServiceStatusCollector:
         """绑定当前 HTTP 服务装配的资源。"""
         self.runtime = runtime
         self._dependencies: dict[tuple[str, str], tuple[tuple[str, str], ...]] = {}
-        self._model_modes = {
+        # 装配阶段 loader 尚未 refresh，不能提前生成并缓存只有 core nodes 的目录。
+        self._model_modes: dict[str, str] = {}
+
+    def _refresh_model_modes(self) -> None:
+        """启动完成后读取目录；节点包刷新时同步失效派生的部署依赖。"""
+        modes = {
             definition.node_type_id: definition.runtime_requirements[
                 "deployment_process"
             ]
-            for definition in runtime.node_catalog_registry.get_workflow_node_definitions()
+            for definition in self.runtime.node_catalog_registry.get_workflow_node_definitions()
             if definition.runtime_requirements.get("deployment_process")
             in {"sync", "async"}
         }
+        if modes != self._model_modes:
+            self._model_modes = modes
+            self._dependencies.clear()
 
     def _model_dependencies(self, workflow) -> tuple[tuple[str, str], ...]:
         """按节点声明缓存发布版本的静态部署依赖，不读取草稿或执行节点。"""
@@ -71,6 +79,7 @@ class ServiceStatusCollector:
     def __call__(self) -> list[dict[str, object]]:
         """采集完整资源清单；数据库失败由 monitor 撤销整体成功状态。"""
         runtime = self.runtime
+        self._refresh_model_modes()
         uow = SqlAlchemyUnitOfWork(runtime.session_factory.create_session())
         try:
             deployments = uow.deployment_runtime_states.list_deployment_runtime_states(

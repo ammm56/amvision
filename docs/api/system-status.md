@@ -79,3 +79,5 @@ var current = await client.GetServiceStatusAsync(cancellationToken);
 - .NET Framework 4.7.2 x64 编译及契约程序通过；覆盖同步/异步单次请求、有效 503 返回、认证失败、无效或矛盾的状态响应。
 - 开发环境旧 daemon 尚未重启时，SDK 连续 1000 次查询全部正常返回未就绪。端到端中位数 0.9633 ms、P99 2.3944 ms，最大 258.3698 ms（包含首请求开销）；该结果仅衡量此次机器环境的状态查询，不代表推理或满载下的性能承诺。
 - 新 daemon 的全就绪及真实业务并行验收需在更新后的 daemon 启动后完成；以上结果不替代该项验收。
+
+2026-09-19 补充：更新后的 daemon 已在开发环境验证全就绪，.NET 1000 次查询及真实 Runtime、Trigger、Preview 并行调用通过。审计同时发现并修复采集器提前缓存未初始化节点目录的启动顺序回归，保留状态查询响应长尾及运行版本差异，详见[一周功能验证](../operations/weekly-verification-20260919.md)。

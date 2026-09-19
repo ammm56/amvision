@@ -223,6 +223,28 @@ def test_collector_full_load_and_old_business_error_are_healthy(collector):
     assert all(item["ready"] for item in collect())
 
 
+def test_collector_construction_does_not_read_uninitialized_catalog():
+    """服务装配先于节点包加载，状态采集器不能在构造阶段污染目录缓存。"""
+    def premature_read():
+        raise AssertionError("启动之前读取了节点目录")
+
+    ServiceStatusCollector(NS(node_catalog_registry=NS(
+        get_workflow_node_definitions=premature_read,
+    )))
+
+
+def test_collector_refreshes_model_requirements_after_catalog_change(collector):
+    """同一发布版本的节点依赖声明变化后，不能复用旧依赖缓存。"""
+    collect, model, *_ = collector
+    collect()
+    collect.runtime.node_catalog_registry.get_workflow_node_definitions = lambda: [
+        NS(node_type_id="core.model.classification",
+           runtime_requirements={"deployment_process": "async"})
+    ]
+    assert model["mode"] == "sync"
+    assert not next(item for item in collect() if item["kind"] == "runtimes")["ready"]
+
+
 def test_collector_partial_model_failure_and_old_runtime_revision(collector):
     """一项模型失败与旧版本 Worker 都不能伪装为全部成功。"""
     collect, model, _, observed, _, _ = collector
