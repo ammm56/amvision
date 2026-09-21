@@ -32,6 +32,8 @@
         @normalize-graph-version="emit('normalizeNewAppGraphVersion', $event)"
       />
 
+      <p v-if="(selectedNodeCount ?? 0) > 1" role="status">{{ t('workflowEditor.editor.nodesSelected', { count: selectedNodeCount }) }}</p>
+      <template v-else>
       <WorkflowNodeDetailPanel
         v-if="inspectorDetail.kind === 'node'"
         :node="inspectorDetail.node"
@@ -121,6 +123,7 @@
         :created-at-text="formatSystemDateTime(lastPreviewRun.created_at)"
         @open-json="(title, value, statusText) => emit('openPreviewJson', title, value, statusText)"
       />
+      </template>
     </div>
     </aside>
 </template>
@@ -152,6 +155,7 @@ import type {
 } from '../types'
 
 defineProps<{
+  selectedNodeCount?: number
   collapsed: boolean
   showNewAppDraftPanel: boolean
   newWorkflowAppDraft: NewWorkflowAppDraftState

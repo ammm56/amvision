@@ -5,7 +5,7 @@
     v-bind="nodeProps"
     :node="node"
     @startNodeDrag="(event, node) => emit('startNodeDrag', event, node)"
-    @nodeClick="(nodeId) => emit('nodeClick', nodeId)"
+    @nodeClick="(nodeId, event) => emit('nodeClick', nodeId, event)"
     @openNodeContextMenu="(event, node) => emit('openNodeContextMenu', event, node)"
     @startPortConnection="(event, node, port, direction) => emit('startPortConnection', event, node, port, direction)"
     @selectPortEndpoint="(node, port, direction) => emit('selectPortEndpoint', node, port, direction)"

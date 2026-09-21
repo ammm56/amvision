@@ -15,8 +15,9 @@ export interface WorkflowNodeDragNodeView {
 
 interface WorkflowNodeDragState {
   nodeId: string
-  offsetX: number
-  offsetY: number
+  startX: number
+  startY: number
+  positions: { id: string; x: number; y: number }[]
   hasMoved: boolean
 }
 
@@ -25,20 +26,29 @@ export interface WorkflowNodeDragOptions<NodeView extends WorkflowNodeDragNodeVi
   connectionDraft: Ref<WorkflowConnectionDraftState | null>
   screenToWorld: (clientX: number, clientY: number) => { x: number; y: number }
   selectNode: (nodeId: string) => void
+  selectedNodeIds?: Ref<Set<string>>
+  isBusy?: () => boolean
+  onMoved?: () => void
   onStop?: () => void
 }
 
 export function useWorkflowNodeDrag<NodeView extends WorkflowNodeDragNodeView>(options: WorkflowNodeDragOptions<NodeView>) {
   const nodeDragState = ref<WorkflowNodeDragState | null>(null)
+  let targets = new Map<string, NodeView>()
+  let pending: { x: number; y: number } | null = null
+  let frame = 0
 
   function startNodeDrag(event: MouseEvent, node: NodeView): void {
-    if (event.button !== 0 || options.connectionDraft.value) return
+    if (event.button !== 0 || event.ctrlKey || options.isBusy?.() || options.connectionDraft.value) return
     const worldPosition = options.screenToWorld(event.clientX, event.clientY)
-    options.selectNode(node.node.node_id)
+    if (!options.selectedNodeIds?.value.has(node.node.node_id)) options.selectNode(node.node.node_id)
+    const ids = options.selectedNodeIds?.value ?? new Set([node.node.node_id])
+    targets = new Map(options.graphNodes.value.filter(n => ids.has(n.node.node_id)).map(n => [n.node.node_id, n]))
     nodeDragState.value = {
       nodeId: node.node.node_id,
-      offsetX: worldPosition.x - node.x,
-      offsetY: worldPosition.y - node.y,
+      startX: worldPosition.x,
+      startY: worldPosition.y,
+      positions: [...targets.values()].map(n => ({ id: n.node.node_id, x: n.x, y: n.y })),
       hasMoved: false,
     }
     event.preventDefault()
@@ -54,27 +64,36 @@ export function useWorkflowNodeDrag<NodeView extends WorkflowNodeDragNodeView>(o
       stopNodeDrag()
       return
     }
-    const targetNode = options.graphNodes.value.find((node) => node.node.node_id === drag.nodeId)
-    if (!targetNode) {
-      stopNodeDrag()
-      return
+    pending = options.screenToWorld(event.clientX, event.clientY)
+    if (!frame) frame = requestAnimationFrame(renderMove)
+  }
+
+  function renderMove(): void {
+    frame = 0
+    const drag = nodeDragState.value
+    if (!drag || !pending) return
+    const dx = Math.round(pending.x - drag.startX), dy = Math.round(pending.y - drag.startY)
+    drag.hasMoved ||= dx !== 0 || dy !== 0
+    for (const initial of drag.positions) {
+      const node = targets.get(initial.id)
+      if (!node) continue
+      node.x = initial.x + dx
+      node.y = initial.y + dy
+      node.node.ui_state = { ...node.node.ui_state, x: node.x, y: node.y, width: node.width }
     }
-    const worldPosition = options.screenToWorld(event.clientX, event.clientY)
-    const nextX = Math.round(worldPosition.x - drag.offsetX)
-    const nextY = Math.round(worldPosition.y - drag.offsetY)
-    drag.hasMoved = drag.hasMoved || nextX !== targetNode.x || nextY !== targetNode.y
-    targetNode.x = nextX
-    targetNode.y = nextY
-    targetNode.node.ui_state = { ...targetNode.node.ui_state, x: targetNode.x, y: targetNode.y, width: targetNode.width }
   }
 
   function stopNodeDrag(): void {
+    cancelAnimationFrame(frame)
+    renderMove()
+    pending = null
+    targets.clear()
     const hasMoved = nodeDragState.value?.hasMoved === true
     nodeDragState.value = null
     document.removeEventListener('mousemove', moveDraggedNode)
     document.removeEventListener('mouseup', stopNodeDrag)
     window.removeEventListener('blur', stopNodeDrag)
-    if (hasMoved) options.onStop?.()
+    if (hasMoved) { options.onMoved?.(); options.onStop?.() }
   }
 
   return {

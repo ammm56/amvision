@@ -21,6 +21,25 @@ function createGroup(memberNodeIds: string[]): WorkflowGraphGroup {
 }
 
 describe('useWorkflowGraphDeletion', () => {
+  it('批量清理内部及外部连线、公开绑定和组引用', () => {
+    const graphNodes = ref(['a', 'b', 'c'].map(node_id => ({ node: { node_id } })))
+    const graphEdges = ref(['a', 'b'].map((id, i) => ({ edge_id: id, source_node_id: id, target_node_id: i ? 'c' : 'b', source_port: 'out', target_port: 'in', metadata: {} })))
+    const templateInputs = ref([{ input_id: 'input', target_node_id: 'a' }] as import('../types').WorkflowGraphInput[])
+    const templateOutputs = ref([{ output_id: 'output', source_node_id: 'b' }] as import('../types').WorkflowGraphOutput[])
+    const applicationBindingsDraft = ref([{ binding_id: 'binding', template_port_id: 'output' }] as import('../types').FlowApplicationBinding[])
+    const graphGroups = ref([createGroup(['a', 'b', 'c'])])
+    let removed = new Set<string>()
+    const deletion = useWorkflowGraphDeletion({ graphNodes, graphEdges, graphGroups, templateInputs, templateOutputs, applicationBindingsDraft,
+      removePreviewInputStates: ids => { removed = ids }, setSelection: () => {}, clearTransientUi: () => {}, setStatusMessage: () => {} })
+    expect(deletion.deleteGraphNodes(['a', 'b'])).toBe(true)
+    expect(graphNodes.value.map(n => n.node.node_id)).toEqual(['c'])
+    expect(graphEdges.value).toEqual([])
+    expect(templateInputs.value).toEqual([])
+    expect(templateOutputs.value).toEqual([])
+    expect(applicationBindingsDraft.value).toEqual([])
+    expect([...removed]).toEqual(['binding'])
+    expect(graphGroups.value[0]!.member_node_ids).toEqual(['c'])
+  })
   it('删除节点时同步清理节点组引用', () => {
     const graphGroups = ref([createGroup(['node-1', 'node-2'])])
     const graphNodes = ref([

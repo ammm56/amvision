@@ -8,6 +8,7 @@ type PortDirection = 'input' | 'output'
 
 export interface WorkflowGraphNodeProps {
   node: WorkflowGraphNodeView
+  selectedNodeIds?: ReadonlySet<string>
   selectedNodeId: string | null
   lastPreviewFailureNodeId: string | null
   readNodeHeight: (node: WorkflowGraphNodeView) => number
@@ -40,7 +41,7 @@ export interface WorkflowGraphNodeProps {
 
 export interface WorkflowGraphNodeEvents {
   startNodeDrag: [event: MouseEvent, node: WorkflowGraphNodeView]
-  nodeClick: [nodeId: string]
+  nodeClick: [nodeId: string, event?: MouseEvent]
   openNodeContextMenu: [event: MouseEvent, node: WorkflowGraphNodeView]
   startPortConnection: [event: MouseEvent, node: WorkflowGraphNodeView, port: NodePortDefinition, direction: PortDirection]
   selectPortEndpoint: [node: WorkflowGraphNodeView, port: NodePortDefinition, direction: PortDirection]

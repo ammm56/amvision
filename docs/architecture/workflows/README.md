@@ -17,6 +17,7 @@
 
 - [Workflow JSON](json-contracts.md)
 - [Workflow 编辑器](editor.md)
+- [Workflow 多节点选择与复制决策](../../decisions/ADR-0013-workflow-multi-node-copy.md)与[实施方案](../../development/workflow-multi-node-copy.md)：Ctrl 框选、片段复制、整体移动和批量删除已实现，包含验证范围。
 - [Preview 实时执行方案](preview-streaming-design.md)：内存会话、逐节点 WebSocket 和正式运行边界，待实现。
 - [Preview 实时执行代码实施清单](preview-streaming-implementation.md)：S00–S10 文件范围、固定合约、资源所有权及验收门禁，待实施。
 - [参数输入](parameter-inputs.md)

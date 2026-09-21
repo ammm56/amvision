@@ -4,7 +4,7 @@
     tabindex="0"
     class="workflow-graph-node"
     :class="{
-      'is-selected': selectedNodeId === node.node.node_id,
+      'is-selected': selectedNodeIds ? selectedNodeIds.has(node.node.node_id) : selectedNodeId === node.node.node_id,
       'is-runtime-failed': lastPreviewFailureNodeId === node.node.node_id,
       'is-disabled': node.node.enabled === false,
     }"
@@ -15,7 +15,7 @@
       height: `${visualHeight}px`,
     }"
     @mousedown.stop="emit('startNodeDrag', $event, node)"
-    @click.stop="emit('nodeClick', node.node.node_id)"
+    @click.stop="emit('nodeClick', node.node.node_id, $event)"
     @contextmenu.prevent.stop="emit('openNodeContextMenu', $event, node)"
   >
     <span class="workflow-graph-node__title" :title="readTitle(node)">{{ readTitle(node) }}</span>

@@ -3,6 +3,8 @@
     <div
       ref="canvasRef"
       class="workflow-graph-stage"
+      @mousedown.capture="boxSelection.start"
+      @click.capture="handleStageSelectionClick"
       @mousedown="handleStageMouseDown"
       @dragstart.prevent
       @wheel="handleStageWheel"
@@ -121,6 +123,7 @@
         <WorkflowGraphNodeLayer
           :nodes="graphNodes"
           :selected-node-id="selectedNodeId"
+          :selected-node-ids="selectedNodeIds"
           :last-preview-failure-node-id="lastPreviewFailureNodeId"
           :read-node-height="nodeVisualHeight"
           :read-title="readGraphNodeTitle"
@@ -165,12 +168,14 @@
           @open-preview-display="openWorkflowPreviewDisplayViewer"
           @open-preview-image="openWorkflowImageViewer"
         />
+        <div v-if="selectionRect" class="workflow-graph-selection-box" :style="{ position: 'absolute', pointerEvents: 'none', zIndex: 50, left: `${selectionRect.x}px`, top: `${selectionRect.y}px`, width: `${selectionRect.width}px`, height: `${selectionRect.height}px`, border: '1px solid var(--color-primary, #00a884)', background: 'rgba(0, 168, 132, 0.1)' }" />
       </div>
 
       <Transition name="workflow-inspector">
       <div v-if="history.open.value || !inspectorCollapsed" class="workflow-graph-floating-panel workflow-editor-side-panel" :class="{ 'workflow-editor-side-panel--versions': history.open.value }">
       <WorkflowVersionHistoryPanel :blocked="documentBusy" :open="history.open.value" :versions="history.versions.value" :loading="history.loading.value" :selected-id="history.selectedId.value" :error="history.error.value" :has-more="history.nextOffset.value !== null" :latest-version-id="history.versions.value.find(v => v.state === 'published')?.workflow_app_version_id" :document-state="documentState" @rename="(version, name, notes) => history.act(version, 'rename', name, notes)" @export="history.act($event, 'export')" @delete="history.act($event, 'delete')" @close="history.close" @refresh="history.refresh()" @more="history.refresh(true)" @select="history.select" />
       <WorkflowInspectorShell
+        :selected-node-count="selectedNodeIds.size"
         :graph-node-views="graphNodes"
         :collapsed="inspectorCollapsed || history.open.value"
         :show-new-app-draft-panel="showNewAppDraftPanel"
@@ -239,7 +244,7 @@
       <WorkflowGraphOverlayLayer
         :document-disabled="documentBusy"
         :can-paste-node="nodeClipboard.canPaste.value"
-        @copy-node="nodeClipboard.copy(contextMenu?.nodeId ?? null)"
+        @copy-node="nodeClipboard.copy(selectedNodeIds)"
         @paste-node="pasteContextNode"
         @export-document="exportDocumentFromContextMenu"
         @import-document="openDocumentFilePicker"
@@ -336,6 +341,7 @@
 </template>
 
 <script setup lang="ts">
+import { useWorkflowBoxSelection } from '../canvas/useWorkflowBoxSelection'
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -527,9 +533,10 @@ function toggleInspector(): void {
   collapseInspector()
 }
 
-function handleGraphNodeSelection(nodeId: string): void {
+function handleGraphNodeSelection(nodeId: string, event?: MouseEvent): void {
   clearNoteSelection()
-  handleNodeClick(nodeId)
+  clearGroupSelection()
+  handleNodeClick(nodeId, event)
 }
 
 function handleGraphLinkSelection(link: GraphLinkView): void {
@@ -720,6 +727,8 @@ const {
   removePreviewInputState,
 })
 const {
+  selectedNodeIds,
+  selectNodes,
   selectedNodeId,
   selectedEdgeId,
   selectedBoundaryKind,
@@ -910,8 +919,8 @@ const {
   },
 })
 
-watch([selectedNodeId, selectedEdgeId, selectedBoundaryKind], ([nodeId, edgeId, boundaryKind]) => {
-  if (nodeId || edgeId || boundaryKind) clearNoteSelection()
+watch([selectedNodeIds, selectedEdgeId, selectedBoundaryKind], ([nodeIds, edgeId, boundaryKind]) => {
+  if (nodeIds.size || edgeId || boundaryKind) { clearNoteSelection(); clearGroupSelection() }
 })
 
 function openNoteContextMenu(event: MouseEvent, note: WorkflowGraphNote): void {
@@ -1009,6 +1018,7 @@ function readInputSourceLabel(nodeId: string, portName: string): string {
 
 const {
   deleteGraphNode,
+  deleteGraphNodes,
   deleteGraphEdge,
 } = useWorkflowGraphDeletion({
   graphNodes,
@@ -1051,6 +1061,9 @@ const {
   screenToWorld,
   findInputEdge,
   findOutputEdge,
+  readSelectedNodeIds: () => selectedNodeIds.value,
+  deleteGraphNodes,
+  isBusy: () => documentBusy.value,
   readSelectedNodeId: () => selectedNodeId.value,
   readSelectedEdgeId: () => selectedEdgeId.value,
   setPreviewInputStateForBinding,
@@ -1405,6 +1418,9 @@ const {
   connectionDraft,
   screenToWorld,
   selectNode,
+  selectedNodeIds,
+  isBusy: () => documentBusy.value,
+  onMoved: suppressNodeClickOnce,
   onStop: syncMembershipAfterNodeDrag,
 })
 const {
@@ -1476,7 +1492,11 @@ const {
   },
 })
 const { handleKeydown } = useWorkflowEditorKeyboard({
-  copySelectedNode: () => nodeClipboard.copy(selectedNodeId.value),
+  selectedNodeIds,
+  isBusy: () => documentBusy.value,
+  clearSelection: () => selectNodes([]),
+  cancelBoxSelection: () => boxSelection.cancel(),
+  copySelectedNode: () => nodeClipboard.copy(selectedNodeIds.value),
   pasteNode: () => nodeClipboard.paste(),
   selectedNodeId,
   selectedEdgeId,
@@ -1502,6 +1522,7 @@ const {
   onDocumentReplaced: (preserveExisting) => {
     importedUnsaved.value = false
     if (!preserveExisting) {
+      boxSelection.cancel()
       nodeClipboard.clear()
       clipboardPointer.value = null
       clearNoteSelection()
@@ -1759,6 +1780,7 @@ const documentBusy = computed(() => loading.value || saving.value || saveInProgr
 const clipboardPointer = ref<{ x: number; y: number } | null>(null)
 const nodeClipboard = useWorkflowNodeClipboard({
   graphNodes,
+  graphEdges,
   isBusy: () => documentBusy.value || !workflowApp.value,
   commitParameters: commitPendingNodeParameterDrafts,
   createNodeId: createGraphNodeId,
@@ -1777,16 +1799,17 @@ const nodeClipboard = useWorkflowNodeClipboard({
     return { x: center.x - width / 2, y: center.y - height / 2 }
   },
   onCopied: () => { clearContextMenu(); setActionStatus(t('workflowEditor.editor.nodeCopied')) },
-  onPasted: view => {
+  onError: () => setActionError(t('workflowEditor.editor.fragmentInvalid')),
+  onPasted: views => {
     clearContextMenu()
     clearNoteSelection()
     clearGroupSelection()
-    selectNode(view.node.node_id)
+    selectNodes(views.map(view => view.node.node_id))
     syncMembershipAfterNodeDrag()
     setActionStatus(t('workflowEditor.editor.nodePasted'))
   },
 })
-watch(loading, value => { if (value) { nodeClipboard.clear(); clipboardPointer.value = null } })
+watch(loading, value => { if (value) { boxSelection.cancel(); nodeClipboard.clear(); clipboardPointer.value = null } })
 onBeforeUnmount(() => nodeClipboard.clear())
 
 function trackClipboardPointer(event: MouseEvent): void {
@@ -1881,6 +1904,19 @@ function getBindingPayloadTypeId(binding: FlowApplicationBinding): string {
 
 function clampNumber(value: number, minValue: number, maxValue: number): number {
   return Math.min(maxValue, Math.max(minValue, value))
+}
+
+const boxSelection = useWorkflowBoxSelection({
+  candidates: () => graphNodes.value.map(n => ({ id: n.node.node_id, x: n.x, y: n.y, width: n.width, height: nodeVisualHeight(n) })),
+  readSelection: () => selectedNodeIds.value,
+  select: ids => { clearNoteSelection(); clearGroupSelection(); selectNodes(ids) },
+  screenToWorld,
+  blocked: () => documentBusy.value || Boolean(connectionDraft.value) || groupCreateMode.value,
+})
+const selectionRect = boxSelection.rect
+function handleStageSelectionClick(event: MouseEvent): void {
+  if (boxSelection.consumeClick(event)) return
+  if (!shouldIgnoreStagePointer(event.target) && !(event.target instanceof Element && event.target.closest('.workflow-graph-group, .workflow-graph-note, button, input, textarea, [contenteditable]'))) selectNodes([])
 }
 
 function handleStageMouseDown(event: MouseEvent): void {

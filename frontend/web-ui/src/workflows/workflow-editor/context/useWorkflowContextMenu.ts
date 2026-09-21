@@ -71,6 +71,9 @@ export interface WorkflowContextMenuOptions<
   screenToWorld: (screenX: number, screenY: number) => WorkflowScreenPosition
   findInputEdge: (nodeId: string, portName: string) => WorkflowGraphEdge | null | undefined
   findOutputEdge: (nodeId: string, portName: string) => WorkflowGraphEdge | null | undefined
+  readSelectedNodeIds?: () => ReadonlySet<string>
+  deleteGraphNodes?: (ids: Iterable<string>) => boolean
+  isBusy?: () => boolean
   readSelectedNodeId: () => string | null
   readSelectedEdgeId: () => string | null
   setPreviewInputStateForBinding: (binding: FlowApplicationBinding) => void
@@ -256,6 +259,9 @@ export function useWorkflowContextMenu<
   }
 
   function deleteSelectedNode(): void {
+    if (options.isBusy?.()) return
+    const selected = options.readSelectedNodeIds?.()
+    if (selected?.size && options.deleteGraphNodes) { options.deleteGraphNodes(selected); return }
     const nodeId = options.readSelectedNodeId() ?? options.contextMenu.value?.nodeId
     options.deleteGraphNode(nodeId)
   }
@@ -266,7 +272,7 @@ export function useWorkflowContextMenu<
   }
 
   function openNodeContextMenu(event: MouseEvent, node: NodeView): void {
-    options.setSelection({ nodeId: node.node.node_id, edgeId: null, boundaryKind: null })
+    if (!options.readSelectedNodeIds?.().has(node.node.node_id)) options.setSelection({ nodeId: node.node.node_id, edgeId: null, boundaryKind: null })
     setContextMenuFromEvent(event, {
       nodeId: node.node.node_id,
       edgeId: null,

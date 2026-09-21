@@ -1,3 +1,4 @@
+import type { NodeDefinition } from '@/workflows/workflow-editor/types'
 import { ref } from 'vue'
 import { describe, expect, it, vi } from 'vitest'
 import { useWorkflowNodeClipboard } from '@/workflows/workflow-editor/nodes/useWorkflowNodeClipboard'
@@ -10,8 +11,8 @@ function setup() {
   const busy = ref(false)
   const commitParameters = vi.fn(() => true)
   const onPasted = vi.fn()
-  const clipboard = useWorkflowNodeClipboard({ graphNodes, isBusy: () => busy.value, commitParameters,
-    createNodeId: () => `copy_${graphNodes.value.length}`, buildView: node => views.buildGraphNodeView(node, 0, new Map()),
+  const clipboard = useWorkflowNodeClipboard({ graphNodes, graphEdges: ref([]), onError: vi.fn(), isBusy: () => busy.value, commitParameters,
+    createNodeId: () => `copy_${graphNodes.value.length}`, buildView: node => ({ ...views.buildGraphNodeView(node, 0, new Map()), definition: {} as NodeDefinition }),
     readHeight: () => 120, readPastePosition: () => ({ x: 400, y: 200 }), onCopied: vi.fn(), onPasted })
   return { clipboard, graphNodes, busy, commitParameters, onPasted }
 }
@@ -19,7 +20,7 @@ function setup() {
 describe('节点复制快照与粘贴', () => {
   it('保留真实参数、外观和资源引用，源和各副本相互独立', () => {
     const { clipboard, graphNodes } = setup()
-    expect(clipboard.copy('source')).toBe(true)
+    expect(clipboard.copy(['source'])).toBe(true)
     graphNodes.value[0]!.node.parameters.values = [{ x: 99 }]
     graphNodes.value[0]!.width = 500
     expect(clipboard.paste({ x: 100, y: 150 })).toBe(true)
@@ -39,9 +40,9 @@ describe('节点复制快照与粘贴', () => {
     const { clipboard, graphNodes, busy } = setup()
     expect(clipboard.paste()).toBe(false)
     busy.value = true
-    expect(clipboard.copy('source')).toBe(false)
+    expect(clipboard.copy(['source'])).toBe(false)
     busy.value = false
-    clipboard.copy('source')
+    clipboard.copy(['source'])
     busy.value = true
     expect(clipboard.paste()).toBe(false)
     busy.value = false
@@ -54,10 +55,10 @@ describe('节点复制快照与粘贴', () => {
 
   it('参数提交失败保留上一次快照，键盘位置由当前画布提供', () => {
     const { clipboard, graphNodes, commitParameters } = setup()
-    clipboard.copy('source')
+    clipboard.copy(['source'])
     commitParameters.mockReturnValue(false)
-    expect(clipboard.copy('source')).toBe(false)
-    expect(clipboard.copy('missing')).toBe(false)
+    expect(clipboard.copy(['source'])).toBe(false)
+    expect(clipboard.copy(['missing'])).toBe(false)
     clipboard.paste()
     expect(graphNodes.value.at(-1)!.node.ui_state).toMatchObject({ x: 400, y: 200 })
   })

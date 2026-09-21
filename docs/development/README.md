@@ -4,6 +4,7 @@
 
 ## 验收与基准
 
+- [Workflow 多节点复制验收](workflow-multi-node-copy.md)：实现完成，332 项回归通过；真实 82 节点整体复制与执行验证，以及浏览器工具的验证限制。
 - [LocalMessage 通道验收](local-message-channel-implementation.md)：三条结构化链路已迁移，本机压力与发行装配已完成；目标发行 24 小时混合 soak 待验收。
 - [LocalBuffer 与 Trigger 数据面验收](shared-memory-data-plane-reliability-implementation.md)：固定 arena、guard/owner 与真实图片链路的故障、容量和持续认证。
 - [LocalMessage 阶段 0 基线](local-message-channel-stage0-baseline.md)：迁移前历史测量、冻结 profile 与复测方法，不代表当前运行拓扑。
@@ -14,6 +15,7 @@
 - [模型部署导入导出实施步骤](model-deployment-import-export-implementation.md)：契约、产物归属、导出、导入、删除、页面与真实发行的分步验收。
 
 ## 待实施设计
+
 
 - [模型转换与 Pose 评估修复方案](model-matrix-repair-plan.md)：已知模型问题的修复实现、回归证据与待验收范围；工程测试与真实业务验收分别记录。
 - [用户页面与操作权限](user-access.md)：管理员逐项配置页面、操作和项目范围，复用现有启动页与应用模式。

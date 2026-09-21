@@ -17,6 +17,8 @@ ADR 记录已经接受的关键取舍及未采用方案。ADR 可以处于待实
 - [ADR-0011：工业二维视觉节点覆盖与节点粒度](ADR-0011-industrial-vision-node-coverage.md)
 - [ADR-0012：资源删除与存储清理](ADR-0012-resource-deletion.md)：统一删除、依赖阻塞、事务恢复与存储清理边界。
 
+- [ADR-0013：Workflow 多节点选择与复制](ADR-0013-workflow-multi-node-copy.md)：已实现，验证范围见关联验收文档。
+
 ## 规则
 
 - ADR 包含状态、背景、决策、未采用方案和影响。

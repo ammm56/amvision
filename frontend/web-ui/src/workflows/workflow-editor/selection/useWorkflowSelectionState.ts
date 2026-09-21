@@ -1,4 +1,4 @@
-import { computed, ref, type Ref } from 'vue'
+import { computed, ref, watch, type Ref } from 'vue'
 
 import type { WorkflowGraphLinkView } from '../geometry/useWorkflowGraphGeometry'
 import type { WorkflowGraphEdge } from '../types'
@@ -6,6 +6,7 @@ import type { WorkflowBoundaryKind } from '../bindings/useWorkflowPublicBindings
 
 export interface WorkflowSelectionState {
   nodeId: string | null
+  nodeIds?: string[]
   edgeId: string | null
   boundaryKind: WorkflowBoundaryKind | null
 }
@@ -24,10 +25,13 @@ interface WorkflowSelectionActionOptions {
 }
 
 export function useWorkflowSelectionState<NodeView>(options: WorkflowSelectionStateOptions<NodeView>) {
-  const selectedNodeId = ref<string | null>(null)
+  // 多选集合为唯一节点选择来源，单节点详情只在恰好选中一个时提供。
+  const selectedNodeIds = ref<Set<string>>(new Set())
+  const selectedNodeId = computed(() => selectedNodeIds.value.size === 1 ? [...selectedNodeIds.value][0]! : null)
   const selectedEdgeId = ref<string | null>(null)
   const selectedBoundaryKind = ref<WorkflowBoundaryKind | null>(null)
   const suppressNextNodeClick = ref(false)
+  const nodesById = computed(() => new Map(options.graphNodes.value.map(node => [options.readNodeId(node), node])))
 
   const selectedNode = computed(() => graphNodeById(selectedNodeId.value))
   const selectedEdge = computed(() => graphEdgeById(selectedEdgeId.value))
@@ -35,13 +39,16 @@ export function useWorkflowSelectionState<NodeView>(options: WorkflowSelectionSt
   function readSelection(): WorkflowSelectionState {
     return {
       nodeId: selectedNodeId.value,
+      nodeIds: [...selectedNodeIds.value],
       edgeId: selectedEdgeId.value,
       boundaryKind: selectedBoundaryKind.value,
     }
   }
 
   function setSelection(selection: WorkflowSelectionState): void {
-    selectedNodeId.value = selection.nodeId
+    const ids = selection.edgeId || selection.boundaryKind ? [] : selection.nodeIds ?? (selection.nodeId ? [selection.nodeId] : [])
+    const next = new Set(ids.filter(id => nodesById.value.has(id)))
+    if (next.size !== selectedNodeIds.value.size || [...next].some(id => !selectedNodeIds.value.has(id))) selectedNodeIds.value = next
     selectedEdgeId.value = selection.edgeId
     selectedBoundaryKind.value = selection.boundaryKind
   }
@@ -59,13 +66,29 @@ export function useWorkflowSelectionState<NodeView>(options: WorkflowSelectionSt
     clearTransientUi(actionOptions)
   }
 
-  function handleNodeClick(nodeId: string): void {
+  function handleNodeClick(nodeId: string, event?: MouseEvent): void {
     if (suppressNextNodeClick.value) {
       suppressNextNodeClick.value = false
       return
     }
-    selectNode(nodeId)
+    if (event?.ctrlKey) {
+      const ids = new Set(selectedNodeIds.value)
+      if (!ids.delete(nodeId)) ids.add(nodeId)
+      selectNodes(ids)
+    } else selectNode(nodeId)
   }
+
+  function selectNodes(ids: Iterable<string>): void {
+    setSelection({ nodeId: null, nodeIds: [...ids], edgeId: null, boundaryKind: null })
+    clearTransientUi()
+  }
+
+  watch(() => options.graphNodes.value.map(options.readNodeId), ids => {
+    const present = new Set(ids)
+    if ([...selectedNodeIds.value].some(id => !present.has(id))) {
+      selectedNodeIds.value = new Set([...selectedNodeIds.value].filter(id => present.has(id)))
+    }
+  })
 
   function suppressNodeClickOnce(): void {
     suppressNextNodeClick.value = true
@@ -103,6 +126,10 @@ export function useWorkflowSelectionState<NodeView>(options: WorkflowSelectionSt
       setSelection({ nodeId: null, edgeId: null, boundaryKind: previousSelection.boundaryKind })
       return
     }
+    if (previousSelection.nodeIds?.length) {
+      selectNodes(previousSelection.nodeIds)
+      return
+    }
     const nextEdgeId = previousSelection.edgeId && graphEdgeById(previousSelection.edgeId)
       ? previousSelection.edgeId
       : null
@@ -116,7 +143,7 @@ export function useWorkflowSelectionState<NodeView>(options: WorkflowSelectionSt
 
   function graphNodeById(nodeId: string | null): NodeView | null {
     if (!nodeId) return null
-    return options.graphNodes.value.find((node) => options.readNodeId(node) === nodeId) ?? null
+    return nodesById.value.get(nodeId) ?? null
   }
 
   function graphEdgeById(edgeId: string | null): WorkflowGraphEdge | null {
@@ -126,6 +153,8 @@ export function useWorkflowSelectionState<NodeView>(options: WorkflowSelectionSt
 
   return {
     selectedNodeId,
+    selectedNodeIds,
+    selectNodes,
     selectedEdgeId,
     selectedBoundaryKind,
     selectedNode,

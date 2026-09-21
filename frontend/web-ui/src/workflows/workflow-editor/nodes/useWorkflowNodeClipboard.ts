@@ -1,12 +1,13 @@
-import { computed, ref, type Ref } from 'vue'
+import { computed, shallowRef, type Ref } from 'vue'
 import { cloneWorkflowJson } from '../documents/workflow-app-document'
-import type { WorkflowGraphNode } from '../types'
+import { portsCanConnect } from '../connections/useWorkflowConnectionRules'
+import type { WorkflowGraphEdge, WorkflowGraphNode } from '../types'
 import type { WorkflowGraphNodeView } from './useWorkflowGraphNodeViews'
 
 export interface NodePastePosition { x: number; y: number }
-
 export interface WorkflowNodeClipboardOptions {
   graphNodes: Ref<WorkflowGraphNodeView[]>
+  graphEdges: Ref<WorkflowGraphEdge[]>
   isBusy: () => boolean
   commitParameters: (nodes: WorkflowGraphNodeView[]) => boolean
   createNodeId: (nodeTypeId: string) => string
@@ -14,50 +15,101 @@ export interface WorkflowNodeClipboardOptions {
   readHeight: (node: WorkflowGraphNodeView) => number
   readPastePosition: (size: { width: number; height: number }) => NodePastePosition
   onCopied: () => void
-  onPasted: (node: WorkflowGraphNodeView) => void
+  onPasted: (nodes: WorkflowGraphNodeView[]) => void
+  onError: () => void
+}
+interface Fragment {
+  nodes: WorkflowGraphNode[]
+  edges: WorkflowGraphEdge[]
+  x: number; y: number; width: number; height: number
 }
 
-/** 当前编辑图内的单节点快照；不包含连线、预览状态或系统剪贴板。 */
+/** 当前文档内的配置快照，不包含预览数据、应用公开绑定或系统剪贴板。 */
 export function useWorkflowNodeClipboard(options: WorkflowNodeClipboardOptions) {
-  const snapshot = ref<{ node: WorkflowGraphNode; height: number } | null>(null)
+  const snapshot = shallowRef<Fragment | null>(null)
   let previousPosition: NodePastePosition | null = null
   let pasteCount = 0
   const canPaste = computed(() => snapshot.value !== null)
+  function clear(): void { snapshot.value = null; previousPosition = null; pasteCount = 0 }
 
-  function clear(): void {
-    snapshot.value = null
-    previousPosition = null
-    pasteCount = 0
-  }
-
-  function copy(nodeId: string | null): boolean {
+  function copy(nodeIds: readonly string[] | ReadonlySet<string>): boolean {
     if (options.isBusy()) return false
-    const source = options.graphNodes.value.find(view => view.node.node_id === nodeId)
-    if (!source || !options.commitParameters([source])) return false
-    const node = cloneWorkflowJson(source.node)
-    node.ui_state = { ...node.ui_state, x: source.x, y: source.y, width: source.width }
-    snapshot.value = { node, height: options.readHeight(source) }
-    previousPosition = null
-    pasteCount = 0
-    options.onCopied()
-    return true
+    const ids = new Set(nodeIds)
+    const sources = options.graphNodes.value.filter(view => ids.has(view.node.node_id))
+    if (!sources.length || sources.length !== ids.size || !options.commitParameters(sources)) return false
+    try {
+      const x = Math.min(...sources.map(n => n.x)), y = Math.min(...sources.map(n => n.y))
+      const next: Fragment = {
+        nodes: sources.map(source => ({ ...cloneWorkflowJson(source.node), ui_state: { ...cloneWorkflowJson(source.node.ui_state), x: source.x, y: source.y, width: source.width } })),
+        edges: cloneWorkflowJson(options.graphEdges.value.filter(edge => ids.has(edge.source_node_id) && ids.has(edge.target_node_id))),
+        x, y,
+        width: Math.max(...sources.map(n => n.x + n.width)) - x,
+        height: Math.max(...sources.map(n => n.y + options.readHeight(n))) - y,
+      }
+      snapshot.value = next
+      previousPosition = null
+      pasteCount = 0
+      options.onCopied()
+      return true
+    } catch { options.onError(); return false }
   }
 
   function paste(position?: NodePastePosition): boolean {
     if (options.isBusy() || !snapshot.value) return false
-    const node = cloneWorkflowJson(snapshot.value.node)
-    const target = position ?? options.readPastePosition({ width: Number(node.ui_state.width), height: snapshot.value.height })
-    if (!Number.isFinite(target.x) || !Number.isFinite(target.y)) return false
-    const count = previousPosition?.x === target.x && previousPosition.y === target.y ? pasteCount : 0
-    node.node_id = options.createNodeId(node.node_type_id)
-    node.ui_state = { ...node.ui_state, x: Math.round(target.x + count * 32), y: Math.round(target.y + count * 32) }
-    const view = options.buildView(node)
-    options.graphNodes.value.push(view)
+    // 整批构造完成前不能修改图，包含同类型节点的批次也必须预留唯一 ID。
+    let views: WorkflowGraphNodeView[]
+    let edges: WorkflowGraphEdge[]
+    let target: NodePastePosition
+    let count: number
+    try {
+      const fragment = cloneWorkflowJson(snapshot.value)
+      target = position ?? options.readPastePosition(fragment)
+      if (!Number.isFinite(target.x) || !Number.isFinite(target.y)) return false
+      count = previousPosition?.x === target.x && previousPosition.y === target.y ? pasteCount : 0
+      const used = new Set(options.graphNodes.value.map(n => n.node.node_id))
+      const ids = new Map<string, string>()
+      for (const node of fragment.nodes) {
+        const base = options.createNodeId(node.node_type_id)
+        let id = base, suffix = 2
+        while (used.has(id)) id = `${base}_${suffix++}`
+        used.add(id)
+        ids.set(node.node_id, id)
+      }
+      const dx = Math.round(target.x + count * 32 - fragment.x)
+      const dy = Math.round(target.y + count * 32 - fragment.y)
+      views = fragment.nodes.map(node => {
+        node.node_id = ids.get(node.node_id)!
+        node.ui_state = { ...node.ui_state, x: Number(node.ui_state.x) + dx, y: Number(node.ui_state.y) + dy }
+        const view = options.buildView(node)
+        if (!view.definition) throw new Error('missing node definition')
+        return view
+      })
+      const byId = new Map(views.map(n => [n.node.node_id, n]))
+      const edgeIds = new Set(options.graphEdges.value.map(e => e.edge_id))
+      const inputs = new Map<string, number>()
+      edges = fragment.edges.map(edge => {
+        edge.source_node_id = ids.get(edge.source_node_id)!
+        edge.target_node_id = ids.get(edge.target_node_id)!
+        const source = byId.get(edge.source_node_id)?.outputs.find(p => p.name === edge.source_port)
+        const targetPort = byId.get(edge.target_node_id)?.inputs.find(p => p.name === edge.target_port)
+        if (!source || !targetPort || !portsCanConnect(source, targetPort) || edge.source_node_id === edge.target_node_id) throw new Error('invalid fragment edge')
+        const inputKey = JSON.stringify([edge.target_node_id, edge.target_port])
+        const incoming = (inputs.get(inputKey) ?? 0) + 1
+        if (!targetPort.multiple && incoming > 1) throw new Error('duplicate input')
+        inputs.set(inputKey, incoming)
+        const base = `${edge.edge_id}_copy`
+        let id = base, suffix = 2
+        while (edgeIds.has(id)) id = `${base}_${suffix++}`
+        edgeIds.add(id)
+        return { ...edge, edge_id: id }
+      })
+    } catch { options.onError(); return false }
+    options.graphNodes.value.push(...views)
+    options.graphEdges.value.push(...edges)
     previousPosition = { ...target }
     pasteCount = count + 1
-    options.onPasted(view)
+    options.onPasted(views)
     return true
   }
-
   return { canPaste, copy, paste, clear }
 }

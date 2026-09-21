@@ -1,0 +1,55 @@
+import { ref } from 'vue'
+import { describe, expect, it, vi } from 'vitest'
+import { useWorkflowNodeClipboard } from './useWorkflowNodeClipboard'
+import type { WorkflowGraphNode, WorkflowGraphEdge, NodeDefinition, NodePortDefinition } from '../types'
+import type { WorkflowGraphNodeView } from './useWorkflowGraphNodeViews'
+
+const port = { name: 'value', payload_type_id: 'value', multiple: false } as NodePortDefinition
+function view(node: WorkflowGraphNode): WorkflowGraphNodeView {
+  return { node, x: Number(node.ui_state.x), y: Number(node.ui_state.y), width: 100, title: 'test',
+    inputs: [port], outputs: [port], definition: {} as NodeDefinition }
+}
+function setup() {
+  const nodes = ref(['a', 'b', 'outside'].map((id, i) => view({ node_id: id, node_type_id: 'same', enabled: i !== 1, metadata: {},
+    parameters: { zero: 0, empty: '', no: false, explicit: null, nested: { value: 1 } }, ui_state: { x: i * 120, y: i * 50, width: 100 } })))
+  const edges = ref<WorkflowGraphEdge[]>([
+    { edge_id: 'internal', source_node_id: 'a', source_port: 'value', target_node_id: 'b', target_port: 'value', metadata: { order: 1 } },
+    { edge_id: 'external', source_node_id: 'b', source_port: 'value', target_node_id: 'outside', target_port: 'value', metadata: {} },
+  ])
+  const options = { graphNodes: nodes, graphEdges: edges, isBusy: () => false, commitParameters: () => true,
+    createNodeId: () => 'same', buildView: view, readHeight: () => 80, readPastePosition: () => ({ x: 1000, y: 1000 }), onCopied: vi.fn(), onPasted: vi.fn(), onError: vi.fn() }
+  return { nodes, edges, options, clipboard: useWorkflowNodeClipboard(options) }
+}
+describe('fragment clipboard', () => {
+  it('copies only internal edges, preserves values and relative layout, and reserves IDs across repeated types and pastes', () => {
+    const { nodes, edges, clipboard } = setup()
+    expect(clipboard.copy(['a', 'b'])).toBe(true)
+    nodes.value[0]!.node.parameters.zero = 9
+    expect(clipboard.paste()).toBe(true)
+    expect(nodes.value.slice(3).map(n => [n.node.node_id, n.x, n.y])).toEqual([['same', 1000, 1000], ['same_2', 1120, 1050]])
+    expect(nodes.value[3]!.node.parameters).toMatchObject({ zero: 0, no: false, empty: '', explicit: null })
+    expect(nodes.value[4]!.node.enabled).toBe(false)
+    expect(edges.value.slice(2)).toEqual([{ ...edges.value[0], edge_id: 'internal_copy', source_node_id: 'same', target_node_id: 'same_2' }])
+    clipboard.paste()
+    expect(nodes.value[5]!.x).toBe(1032)
+    expect(new Set(nodes.value.map(n => n.node.node_id)).size).toBe(7)
+    expect(new Set(edges.value.map(e => e.edge_id)).size).toBe(4)
+    clipboard.clear()
+    expect(clipboard.paste()).toBe(false)
+  })
+  it('does not mutate the graph on missing catalog or invalid ports and preserves the old snapshot after parameter failure', () => {
+    const { nodes, edges, options, clipboard } = setup()
+    clipboard.copy(['a', 'b'])
+    options.commitParameters = () => false
+    expect(clipboard.copy(['outside'])).toBe(false)
+    options.buildView = node => ({ ...view(node), outputs: [] })
+    expect(clipboard.paste()).toBe(false)
+    expect(nodes.value.length).toBe(3)
+    expect(edges.value.length).toBe(2)
+    options.buildView = node => ({ ...view(node), definition: null })
+    expect(clipboard.paste()).toBe(false)
+    options.buildView = view
+    expect(clipboard.paste()).toBe(true)
+    expect(nodes.value.length).toBe(5)
+  })
+})

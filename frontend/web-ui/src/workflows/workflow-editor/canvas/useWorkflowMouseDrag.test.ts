@@ -37,7 +37,7 @@ describe('workflow 画布鼠标拖动', () => {
     expect([viewportX.value, viewportY.value]).toEqual([50, 50])
   })
 
-  it('节点忽略非左键并在检测到左键释放后立即结束拖动', () => {
+  it('节点忽略非左键并在检测到左键释放后立即结束拖动', async () => {
     const node = {
       node: { node_id: 'node-1', ui_state: {} as Record<string, unknown> },
       x: 100,
@@ -58,6 +58,7 @@ describe('workflow 画布鼠标拖动', () => {
 
     nodeDrag.startNodeDrag(new MouseEvent('mousedown', { button: 0, clientX: 110, clientY: 90, cancelable: true }), node)
     document.dispatchEvent(new MouseEvent('mousemove', { buttons: 1, clientX: 150, clientY: 130 }))
+    await new Promise(requestAnimationFrame)
     expect([node.x, node.y]).toEqual([140, 120])
 
     document.dispatchEvent(new MouseEvent('mousemove', { buttons: 0, clientX: 190, clientY: 170 }))

@@ -13,6 +13,22 @@ function createNode() {
 }
 
 describe('useWorkflowNodeDrag', () => {
+  it('整体移动保留选择、相对位置，并抑制结束后的单选 click', () => {
+    const nodes = ref([createNode(), { ...createNode(), node: { node_id: 'node-2', ui_state: {} }, x: 110, y: 220 }])
+    const selectedNodeIds = ref(new Set(['node-1', 'node-2']))
+    const selectNode = vi.fn(), onMoved = vi.fn(), onStop = vi.fn()
+    const drag = useWorkflowNodeDrag({ graphNodes: nodes, connectionDraft: ref(null), selectedNodeIds, selectNode,
+      screenToWorld: (x, y) => ({ x: x / 2, y: y / 2 }), onMoved, onStop })
+    drag.startNodeDrag(new MouseEvent('mousedown', { clientX: 20, clientY: 40 }), nodes.value[0]!)
+    document.dispatchEvent(new MouseEvent('mousemove', { buttons: 1, clientX: 60, clientY: 80 }))
+    document.dispatchEvent(new MouseEvent('mouseup'))
+    expect(nodes.value.map(n => [n.x, n.y])).toEqual([[30, 40], [130, 240]])
+    expect(selectNode).not.toHaveBeenCalled()
+    expect(onMoved).toHaveBeenCalledOnce()
+    expect(onStop).toHaveBeenCalledOnce()
+    drag.startNodeDrag(new MouseEvent('mousedown', { ctrlKey: true }), nodes.value[0]!)
+    expect(drag.nodeDragState.value).toBeNull()
+  })
   it('普通单击不触发节点组成员重算', () => {
     const onStop = vi.fn()
     const drag = useWorkflowNodeDrag({

@@ -37,15 +37,21 @@ export interface WorkflowGraphDeletionOptions<NodeView extends WorkflowDeletionG
 
 export function useWorkflowGraphDeletion<NodeView extends WorkflowDeletionGraphNode>(options: WorkflowGraphDeletionOptions<NodeView>) {
   function deleteGraphNode(nodeId: string | null | undefined): boolean {
-    if (!nodeId) return false
+    return nodeId ? deleteGraphNodes([nodeId]) : false
+  }
+
+  /** 一次清理整组选中节点及其公开绑定、连线与节点组引用。 */
+  function deleteGraphNodes(nodeIds: Iterable<string>): boolean {
+    const ids = new Set(nodeIds)
+    if (!options.graphNodes.value.some(n => ids.has(n.node.node_id))) return false
     const removedInputIds = new Set(
       options.templateInputs.value
-        .filter((input) => input.target_node_id === nodeId)
+        .filter((input) => ids.has(input.target_node_id))
         .map((input) => input.input_id),
     )
     const removedOutputIds = new Set(
       options.templateOutputs.value
-        .filter((output) => output.source_node_id === nodeId)
+        .filter((output) => ids.has(output.source_node_id))
         .map((output) => output.output_id),
     )
     const removedBindingIds = new Set(
@@ -54,10 +60,10 @@ export function useWorkflowGraphDeletion<NodeView extends WorkflowDeletionGraphN
         .map((binding) => binding.binding_id),
     )
 
-    options.graphNodes.value = options.graphNodes.value.filter((node) => node.node.node_id !== nodeId)
-    options.graphEdges.value = options.graphEdges.value.filter((edge) => edge.source_node_id !== nodeId && edge.target_node_id !== nodeId)
+    options.graphNodes.value = options.graphNodes.value.filter((node) => !ids.has(node.node.node_id))
+    options.graphEdges.value = options.graphEdges.value.filter((edge) => !ids.has(edge.source_node_id) && !ids.has(edge.target_node_id))
     options.graphGroups.value.forEach((group) => {
-      group.member_node_ids = group.member_node_ids.filter((memberNodeId) => memberNodeId !== nodeId)
+      group.member_node_ids = group.member_node_ids.filter((memberNodeId) => !ids.has(memberNodeId))
     })
     options.templateInputs.value = options.templateInputs.value.filter((input) => !removedInputIds.has(input.input_id))
     options.templateOutputs.value = options.templateOutputs.value.filter((output) => !removedOutputIds.has(output.output_id))
@@ -89,6 +95,7 @@ export function useWorkflowGraphDeletion<NodeView extends WorkflowDeletionGraphN
 
   return {
     deleteGraphNode,
+    deleteGraphNodes,
     deleteGraphEdge,
   }
 }

@@ -29,7 +29,7 @@ it('updates only the changed node and preserves node and parameter events', asyn
   expect(readPortRows.mock.calls.map((call: any) => call[0].node.node_id)).toEqual(['a'])
   expect(wrapper.findAll('.workflow-graph-node')[0]!.text()).toContain('running')
   await wrapper.findAll('.workflow-graph-node')[1]!.trigger('click')
-  expect(wrapper.emitted('nodeClick')?.[0]).toEqual(['b'])
+  expect(wrapper.emitted('nodeClick')?.[0]).toEqual(['b', expect.any(MouseEvent)])
   wrapper.findAllComponents(WorkflowNodeParameterWidgets)[1]!.vm.$emit('update-value', nodes[1], field, 'new')
   expect(wrapper.emitted('updateValueParameter')?.[0]).toEqual([nodes[1], field, 'new'])
   wrapper.unmount()
