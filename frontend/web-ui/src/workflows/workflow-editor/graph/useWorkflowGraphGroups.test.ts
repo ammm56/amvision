@@ -21,6 +21,16 @@ function createGroup(): WorkflowGraphGroup {
 }
 
 describe('useWorkflowGraphGroups', () => {
+  it('整体片段移动后保留重叠组各自仍在框内的成员', () => {
+    const first = { ...createGroup(), member_node_ids: ['a'] }
+    const second = { ...createGroup(), group_id: 'copy', member_node_ids: ['b'] }
+    const graphGroups = ref([first, second])
+    const graphNodes = ref(['a', 'b'].map(node_id => ({ node: { node_id, node_type_id: 'test', enabled: true, ui_state: {}, metadata: {} }, x: 30, y: 40, width: 100 })))
+    const groups = useWorkflowGraphGroups({ graphGroups, graphNodes, graphNotes: ref([]), readNodeHeight: () => 100,
+      screenToWorld: (x, y) => ({ x, y }), setStatusMessage: () => {}, setErrorMessage: () => {} })
+    groups.syncGroupMemberships(null, true)
+    expect(graphGroups.value.map(g => g.member_node_ids)).toEqual([['a'], ['b']])
+  })
   it('toggles the persistent group lock state and reports its interaction mode', () => {
     const group = createGroup()
     const graphGroups = ref([group])

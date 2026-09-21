@@ -2,6 +2,7 @@ import { ref, type Ref } from 'vue'
 
 import type { WorkflowConnectionDraftState } from './useWorkflowPortConnections'
 import { isPrimaryMouseButtonPressed } from './workflowMouseDrag'
+import type { WorkflowGraphGroup } from '../types'
 
 export interface WorkflowNodeDragNodeView {
   node: {
@@ -27,6 +28,8 @@ export interface WorkflowNodeDragOptions<NodeView extends WorkflowNodeDragNodeVi
   screenToWorld: (clientX: number, clientY: number) => { x: number; y: number }
   selectNode: (nodeId: string) => void
   selectedNodeIds?: Ref<Set<string>>
+  graphGroups?: Ref<WorkflowGraphGroup[]>
+  selectedGroupIds?: Ref<Set<string>>
   isBusy?: () => boolean
   onMoved?: () => void
   onStop?: () => void
@@ -35,6 +38,7 @@ export interface WorkflowNodeDragOptions<NodeView extends WorkflowNodeDragNodeVi
 export function useWorkflowNodeDrag<NodeView extends WorkflowNodeDragNodeView>(options: WorkflowNodeDragOptions<NodeView>) {
   const nodeDragState = ref<WorkflowNodeDragState | null>(null)
   let targets = new Map<string, NodeView>()
+  let groups: { group: WorkflowGraphGroup; x: number; y: number }[] = []
   let pending: { x: number; y: number } | null = null
   let frame = 0
 
@@ -44,6 +48,9 @@ export function useWorkflowNodeDrag<NodeView extends WorkflowNodeDragNodeView>(o
     if (!options.selectedNodeIds?.value.has(node.node.node_id)) options.selectNode(node.node.node_id)
     const ids = options.selectedNodeIds?.value ?? new Set([node.node.node_id])
     targets = new Map(options.graphNodes.value.filter(n => ids.has(n.node.node_id)).map(n => [n.node.node_id, n]))
+    groups = (options.graphGroups?.value ?? []).filter(g => options.selectedGroupIds?.value.has(g.group_id)
+      && g.member_node_ids.length > 0 && g.member_node_ids.every(id => ids.has(id)))
+      .map(group => ({ group, x: group.rect.x, y: group.rect.y }))
     nodeDragState.value = {
       nodeId: node.node.node_id,
       startX: worldPosition.x,
@@ -81,6 +88,11 @@ export function useWorkflowNodeDrag<NodeView extends WorkflowNodeDragNodeView>(o
       node.y = initial.y + dy
       node.node.ui_state = { ...node.node.ui_state, x: node.x, y: node.y, width: node.width }
     }
+    // 完整片段移动使用同一个偏移，锁定配置仍保留，组框不能留在原处。
+    for (const initial of groups) {
+      initial.group.rect.x = initial.x + dx
+      initial.group.rect.y = initial.y + dy
+    }
   }
 
   function stopNodeDrag(): void {
@@ -88,6 +100,7 @@ export function useWorkflowNodeDrag<NodeView extends WorkflowNodeDragNodeView>(o
     renderMove()
     pending = null
     targets.clear()
+    groups = []
     const hasMoved = nodeDragState.value?.hasMoved === true
     nodeDragState.value = null
     document.removeEventListener('mousemove', moveDraggedNode)

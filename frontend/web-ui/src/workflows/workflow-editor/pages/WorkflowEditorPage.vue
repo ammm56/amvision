@@ -77,10 +77,11 @@
         <WorkflowGraphGroupLayer
           :groups="graphGroups"
           :selected-group-id="selectedGroupId"
+          :selected-group-ids="selectedGroupIds"
           :draft-rect="draftGroupRect"
           :read-group-state="readGroupState"
           @select-group="handleGroupSelection"
-          @start-group-drag="startGroupDrag"
+          @start-group-drag="handleGroupDrag"
           @start-group-resize="startGroupResize"
           @toggle-group-enabled="toggleGroupEnabled"
           @toggle-group-locked="toggleGroupLocked"
@@ -244,7 +245,7 @@
       <WorkflowGraphOverlayLayer
         :document-disabled="documentBusy"
         :can-paste-node="nodeClipboard.canPaste.value"
-        @copy-node="nodeClipboard.copy(selectedNodeIds)"
+        @copy-node="nodeClipboard.copy(selectedNodeIds, selectedGroupIds)"
         @paste-node="pasteContextNode"
         @export-document="exportDocumentFromContextMenu"
         @import-document="openDocumentFilePicker"
@@ -728,6 +729,7 @@ const {
 })
 const {
   selectedNodeIds,
+  selectedGroupIds,
   selectNodes,
   selectedNodeId,
   selectedEdgeId,
@@ -748,6 +750,7 @@ const {
 } = useWorkflowSelectionState<GraphNodeView>({
   graphNodes,
   graphEdges,
+  graphGroups,
   readNodeId: (node) => node.node.node_id,
   clearConnectionDraft: () => {
     connectionDraft.value = null
@@ -996,9 +999,21 @@ function updateNoteContent(note: WorkflowGraphNote, value: string): void {
 }
 
 function handleGroupSelection(groupId: string): void {
+  if (selectedGroupIds.value.has(groupId)) return
   clearNoteSelection()
   setSelection({ nodeId: null, edgeId: null, boundaryKind: null })
   selectGroup(groupId)
+}
+
+function handleGroupDrag(event: MouseEvent, group: WorkflowGraphGroup): void {
+  if (event.button !== 0 || event.ctrlKey || documentBusy.value || connectionDraft.value) return
+  if (selectedGroupIds.value.has(group.group_id)) {
+    const node = graphNodes.value.find(n => group.member_node_ids.includes(n.node.node_id))
+    if (node) startNodeDrag(event, node)
+  } else {
+    handleGroupSelection(group.group_id)
+    startGroupDrag(event, group)
+  }
 }
 
 function readInputSourceLabel(nodeId: string, portName: string): string {
@@ -1062,7 +1077,7 @@ const {
   findInputEdge,
   findOutputEdge,
   readSelectedNodeIds: () => selectedNodeIds.value,
-  deleteGraphNodes,
+  deleteGraphNodes: ids => deleteGraphNodes(ids, selectedGroupIds.value),
   isBusy: () => documentBusy.value,
   readSelectedNodeId: () => selectedNodeId.value,
   readSelectedEdgeId: () => selectedEdgeId.value,
@@ -1390,7 +1405,7 @@ const {
   clearGroupSelection,
   startGroupDrag,
   startGroupResize,
-  syncMembershipAfterNodeDrag,
+  syncGroupMemberships,
   toggleGroupEnabled,
   toggleGroupLocked,
   renameGroup,
@@ -1419,9 +1434,11 @@ const {
   screenToWorld,
   selectNode,
   selectedNodeIds,
+  graphGroups,
+  selectedGroupIds,
   isBusy: () => documentBusy.value,
   onMoved: suppressNodeClickOnce,
-  onStop: syncMembershipAfterNodeDrag,
+  onStop: () => syncGroupMemberships(selectedGroupId.value, selectedGroupIds.value.size > 0),
 })
 const {
   graphLinkMidpoints,
@@ -1496,7 +1513,7 @@ const { handleKeydown } = useWorkflowEditorKeyboard({
   isBusy: () => documentBusy.value,
   clearSelection: () => selectNodes([]),
   cancelBoxSelection: () => boxSelection.cancel(),
-  copySelectedNode: () => nodeClipboard.copy(selectedNodeIds.value),
+  copySelectedNode: () => nodeClipboard.copy(selectedNodeIds.value, selectedGroupIds.value),
   pasteNode: () => nodeClipboard.paste(),
   selectedNodeId,
   selectedEdgeId,
@@ -1781,6 +1798,7 @@ const clipboardPointer = ref<{ x: number; y: number } | null>(null)
 const nodeClipboard = useWorkflowNodeClipboard({
   graphNodes,
   graphEdges,
+  graphGroups,
   isBusy: () => documentBusy.value || !workflowApp.value,
   commitParameters: commitPendingNodeParameterDrafts,
   createNodeId: createGraphNodeId,
@@ -1800,12 +1818,13 @@ const nodeClipboard = useWorkflowNodeClipboard({
   },
   onCopied: () => { clearContextMenu(); setActionStatus(t('workflowEditor.editor.nodeCopied')) },
   onError: () => setActionError(t('workflowEditor.editor.fragmentInvalid')),
-  onPasted: views => {
+  onPasted: (views, groups) => {
     clearContextMenu()
     clearNoteSelection()
     clearGroupSelection()
-    selectNodes(views.map(view => view.node.node_id))
-    syncMembershipAfterNodeDrag()
+    selectNodes(views.map(view => view.node.node_id), groups.map(group => group.group_id))
+    // 新组使用片段里的明确成员，不让重叠位置把原图节点或便签纳入新组。
+    if (!groups.length) syncGroupMemberships()
     setActionStatus(t('workflowEditor.editor.nodePasted'))
   },
 })
@@ -1908,8 +1927,10 @@ function clampNumber(value: number, minValue: number, maxValue: number): number 
 
 const boxSelection = useWorkflowBoxSelection({
   candidates: () => graphNodes.value.map(n => ({ id: n.node.node_id, x: n.x, y: n.y, width: n.width, height: nodeVisualHeight(n) })),
+  groups: () => graphGroups.value.map(g => ({ id: g.group_id, ...g.rect, memberIds: [...g.member_node_ids] })),
   readSelection: () => selectedNodeIds.value,
-  select: ids => { clearNoteSelection(); clearGroupSelection(); selectNodes(ids) },
+  readGroupSelection: () => selectedGroupIds.value,
+  select: (ids, groupIds) => { clearNoteSelection(); clearGroupSelection(); selectNodes(ids, groupIds) },
   screenToWorld,
   blocked: () => documentBusy.value || Boolean(connectionDraft.value) || groupCreateMode.value,
 })

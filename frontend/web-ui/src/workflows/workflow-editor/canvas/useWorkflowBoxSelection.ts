@@ -7,13 +7,15 @@ interface Candidate extends Box { id: string }
 /** 框选仅缓存本次手势的几何，不读取或复制节点参数。 */
 export function useWorkflowBoxSelection(options: {
   candidates: () => Candidate[]
+  groups?: () => (Candidate & { memberIds: string[] })[]
   readSelection: () => Iterable<string>
-  select: (ids: Iterable<string>) => void
+  readGroupSelection?: () => Iterable<string>
+  select: (ids: Iterable<string>, groupIds: Iterable<string>) => void
   screenToWorld: (x: number, y: number) => Point
   blocked: () => boolean
 }) {
   const rect = ref<Box | null>(null)
-  let gesture: { start: Point; previous: string[]; nodes: Candidate[] } | null = null
+  let gesture: { start: Point; previous: string[]; previousGroups: string[]; nodes: Candidate[]; groups: (Candidate & { memberIds: string[] })[] } | null = null
   let last: Point | null = null
   let frame = 0
   let suppressClick = false
@@ -24,7 +26,10 @@ export function useWorkflowBoxSelection(options: {
     const start = gesture.start
     const box = { x: Math.min(start.x, last.x), y: Math.min(start.y, last.y), width: Math.abs(start.x - last.x), height: Math.abs(start.y - last.y) }
     rect.value = box
-    options.select(gesture.nodes.filter(n => n.x >= box.x && n.y >= box.y && n.x + n.width <= box.x + box.width && n.y + n.height <= box.y + box.height).map(n => n.id))
+    const contains = (n: Candidate) => n.x >= box.x && n.y >= box.y && n.x + n.width <= box.x + box.width && n.y + n.height <= box.y + box.height
+    const ids = new Set(gesture.nodes.filter(contains).map(n => n.id))
+    const groups = gesture.groups.filter(g => contains(g) && g.memberIds.length > 0 && g.memberIds.every(id => ids.has(id)))
+    options.select(ids, groups.map(g => g.id))
   }
   function cleanup(): void {
     cancelAnimationFrame(frame)
@@ -47,9 +52,10 @@ export function useWorkflowBoxSelection(options: {
   function cancel(): boolean {
     if (!gesture) return false
     const previous = gesture.previous
+    const previousGroups = gesture.previousGroups
     cleanup()
     suppressClick = true
-    options.select(previous)
+    options.select(previous, previousGroups)
     return true
   }
   function move(event: MouseEvent): void {
@@ -66,7 +72,7 @@ export function useWorkflowBoxSelection(options: {
     event.preventDefault()
     event.stopPropagation()
     const start = options.screenToWorld(event.clientX, event.clientY)
-    gesture = { start, previous: [...options.readSelection()], nodes: options.candidates() }
+    gesture = { start, previous: [...options.readSelection()], previousGroups: [...(options.readGroupSelection?.() ?? [])], nodes: options.candidates(), groups: options.groups?.() ?? [] }
     rect.value = { ...start, width: 0, height: 0 }
     document.addEventListener('mousemove', move)
     document.addEventListener('mouseup', finish)

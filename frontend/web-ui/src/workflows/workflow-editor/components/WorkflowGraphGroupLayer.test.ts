@@ -22,6 +22,17 @@ function createGroup(locked: boolean): WorkflowGraphGroup {
 }
 
 describe('WorkflowGraphGroupLayer', () => {
+  it('框选组沿用高亮并允许完整片段从锁定组背景开始移动', async () => {
+    const group = createGroup(true)
+    const wrapper = mount(WorkflowGraphGroupLayer, { props: { groups: [group], selectedGroupId: null,
+      selectedGroupIds: new Set([group.group_id]), draftRect: null, readGroupState: () => 'enabled' } })
+    const element = wrapper.get('.workflow-graph-group')
+    expect(element.classes()).toContain('is-selected')
+    await element.trigger('mousedown', { button: 0 })
+    expect(wrapper.emitted('startGroupDrag')).toHaveLength(1)
+    expect(group.locked).toBe(true)
+    wrapper.unmount()
+  })
   it('keeps unlocked group pointer events for group dragging', async () => {
     const host = document.createElement('div')
     document.body.appendChild(host)

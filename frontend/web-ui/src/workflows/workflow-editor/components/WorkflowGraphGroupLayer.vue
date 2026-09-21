@@ -5,7 +5,7 @@
       :key="group.group_id"
       class="workflow-graph-group"
       :class="{
-        'is-selected': selectedGroupId === group.group_id,
+        'is-selected': selectedGroupId === group.group_id || selectedGroupIds?.has(group.group_id),
         'is-disabled': readGroupState(group) === 'disabled',
         'is-mixed': readGroupState(group) === 'mixed',
         'is-locked': group.locked,
@@ -128,6 +128,7 @@ const { t } = useTranslation()
 const props = defineProps<{
   groups: WorkflowGraphGroup[]
   selectedGroupId: string | null
+  selectedGroupIds?: ReadonlySet<string>
   draftRect: WorkflowGraphGroupRect | null
   readGroupState: (group: WorkflowGraphGroup) => WorkflowGraphGroupState
 }>()
@@ -176,13 +177,13 @@ function readLockTitle(group: WorkflowGraphGroup): string {
 }
 
 function handleGroupMouseDown(event: MouseEvent, group: WorkflowGraphGroup): void {
-  if (group.locked) return
+  if (group.locked && !props.selectedGroupIds?.has(group.group_id)) return
   event.stopPropagation()
   emit('startGroupDrag', event, group)
 }
 
 function handleGroupClick(event: MouseEvent, group: WorkflowGraphGroup): void {
-  if (group.locked) return
+  if (group.locked && !props.selectedGroupIds?.has(group.group_id)) return
   event.stopPropagation()
   emit('selectGroup', group.group_id)
 }

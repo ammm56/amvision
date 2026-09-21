@@ -21,6 +21,15 @@ function createGroup(memberNodeIds: string[]): WorkflowGraphGroup {
 }
 
 describe('useWorkflowGraphDeletion', () => {
+  it('删除明确选择的完整组片段，同时保留未选组框', () => {
+    const graphNodes = ref(['a', 'b'].map(node_id => ({ node: { node_id } })))
+    const graphGroups = ref([createGroup(['a']), { ...createGroup(['b']), group_id: 'keep' }])
+    const deletion = useWorkflowGraphDeletion({ graphNodes, graphGroups, graphEdges: ref([]), templateInputs: ref([]), templateOutputs: ref([]), applicationBindingsDraft: ref([]),
+      removePreviewInputStates: () => {}, setSelection: () => {}, clearTransientUi: () => {}, setStatusMessage: () => {} })
+    deletion.deleteGraphNodes(['a', 'b'], ['group-1'])
+    expect(graphGroups.value.map(g => g.group_id)).toEqual(['keep'])
+    expect(graphGroups.value[0]!.member_node_ids).toEqual([])
+  })
   it('批量清理内部及外部连线、公开绑定和组引用', () => {
     const graphNodes = ref(['a', 'b', 'c'].map(node_id => ({ node: { node_id } })))
     const graphEdges = ref(['a', 'b'].map((id, i) => ({ edge_id: id, source_node_id: id, target_node_id: i ? 'c' : 'b', source_port: 'out', target_port: 'in', metadata: {} })))

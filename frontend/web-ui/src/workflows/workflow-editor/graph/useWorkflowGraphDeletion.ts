@@ -41,9 +41,13 @@ export function useWorkflowGraphDeletion<NodeView extends WorkflowDeletionGraphN
   }
 
   /** 一次清理整组选中节点及其公开绑定、连线与节点组引用。 */
-  function deleteGraphNodes(nodeIds: Iterable<string>): boolean {
+  function deleteGraphNodes(nodeIds: Iterable<string>, groupIds: Iterable<string> = []): boolean {
     const ids = new Set(nodeIds)
     if (!options.graphNodes.value.some(n => ids.has(n.node.node_id))) return false
+    const groups = new Set(groupIds)
+    // 只删除明确选中且成员全部在本次删除集合内的组框。
+    options.graphGroups.value = options.graphGroups.value.filter(group => !groups.has(group.group_id)
+      || !group.member_node_ids.length || !group.member_node_ids.every(id => ids.has(id)))
     const removedInputIds = new Set(
       options.templateInputs.value
         .filter((input) => ids.has(input.target_node_id))

@@ -256,17 +256,30 @@ export function useWorkflowGraphGroups<NodeView extends WorkflowGraphGroupNodeVi
     if (groupId) syncGroupMemberships(groupId)
   }
 
-  function syncGroupMemberships(preferredGroupId: string | null = selectedGroupId.value): void {
+  function syncGroupMemberships(preferredGroupId: string | null = selectedGroupId.value, preserveContainedMembers = false): void {
     const orderedGroups = orderGroupsForMembership(preferredGroupId)
     const assignedNodeIds = new Set<string>()
     const assignedNoteIds = new Set<string>()
+    // 整体片段粘贴/移动时，重叠组不能抢走仍在原组内的成员。
+    const retained = new Map<string, string[]>()
+    if (preserveContainedMembers) {
+      const nodes = new Map(options.graphNodes.value.map(node => [node.node.node_id, node]))
+      for (const group of orderedGroups) {
+        const ids = group.member_node_ids.filter(id => {
+          const node = nodes.get(id)
+          return node && !assignedNodeIds.has(id) && isNodeFullyInsideGroup(node, group.rect)
+        })
+        ids.forEach(id => assignedNodeIds.add(id))
+        retained.set(group.group_id, ids)
+      }
+    }
     for (const group of orderedGroups) {
       const memberNodeIds = options.graphNodes.value
         .filter((node) => !assignedNodeIds.has(node.node.node_id))
         .filter((node) => isNodeFullyInsideGroup(node, group.rect))
         .map((node) => node.node.node_id)
       memberNodeIds.forEach((nodeId) => assignedNodeIds.add(nodeId))
-      group.member_node_ids = memberNodeIds
+      group.member_node_ids = [...(retained.get(group.group_id) ?? []), ...memberNodeIds]
       const memberNoteIds = options.graphNotes.value
         .filter((note) => !assignedNoteIds.has(note.note_id))
         .filter((note) => isRectFullyInsideGroup(note.rect, group.rect))
