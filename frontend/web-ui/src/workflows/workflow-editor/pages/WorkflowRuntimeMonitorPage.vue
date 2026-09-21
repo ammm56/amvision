@@ -1,10 +1,9 @@
 <template>
   <section class="runtime-monitor">
     <header class="runtime-monitor__toolbar">
-      <div><strong>{{ snapshot?.display_name || t('workflowEditor.runtimePreview.title') }}</strong>
-        <small>{{ snapshot?.workflow_runtime_id }}</small></div>
+      <strong>{{ snapshot?.display_name || t('workflowEditor.runtimePreview.title') }}</strong>
       <span role="status">{{ t(`workflowEditor.runtimePreview.${status}`) }}</span>
-      <span v-if="lastRun">{{ lastRun.state }} · {{ lastRun.finished_at }}<small>{{ lastRun.workflow_run_id }}</small></span>
+      <span v-if="lastRun">{{ lastRun.state }} · {{ lastRun.finished_at }}</span>
       <div class="runtime-monitor__actions">
         <Button variant="secondary" :disabled="loading" @click="load(runtimeId)">{{ t('common.refresh') }}</Button>
         <Button variant="secondary" @click="zoom = Math.max(.2, +(zoom - .1).toFixed(1))">−</Button><span>{{ Math.round(zoom * 100) }}%</span>
@@ -14,7 +13,6 @@
     </header>
     <p v-if="error" role="alert" class="runtime-monitor__error">{{ error }}</p>
     <p v-if="nodeDefinitionWarning" class="runtime-monitor__warning">{{ nodeDefinitionWarning }}</p>
-    <small v-if="snapshot" class="runtime-monitor__version">{{ t('workflowEditor.runtimePreview.readonly') }} · {{ snapshot.workflow_app_version_id }} · generation {{ snapshot.runtime_generation }}</small>
     <WorkflowRuntimeCanvas v-if="snapshot" :template="snapshot.template" :application="snapshot.application" :definitions="definitions" :zoom="zoom"
       :displays="displays.previewNodeDisplays.value" :invocations="invocations"
       @open-display="displays.openPreviewDisplayViewer" @open-image="displays.openImageViewer" />
@@ -44,12 +42,28 @@ watch(runtimeId, (id) => load(id), { immediate: true })
 </script>
 
 <style scoped>
-.runtime-monitor { --graph-node-padding-x: 12px; --graph-line: var(--am-graph-node-border); --graph-panel-soft: var(--am-graph-panel-soft); --graph-text: var(--am-graph-text); --graph-muted: var(--am-graph-text-muted); display: flex; flex-direction: column; height: calc(100dvh - 32px); min-height: 480px; gap: 8px; padding: 12px; }
+.runtime-monitor {
+  --graph-node-padding-x: 12px;
+  --graph-bg: var(--am-graph-canvas);
+  --graph-line: var(--am-graph-node-border);
+  --graph-panel: var(--am-graph-panel);
+  --graph-panel-soft: var(--am-graph-panel-soft);
+  --graph-text: var(--am-graph-text);
+  --graph-text-strong: var(--am-graph-text-strong);
+  --graph-text-muted: var(--am-graph-text-muted);
+  --graph-muted: var(--am-graph-text-muted);
+  --graph-accent: var(--am-graph-selected);
+  display: flex;
+  flex-direction: column;
+  height: calc(100dvh - 32px);
+  min-height: 480px;
+  gap: 8px;
+  padding: 12px;
+  color: var(--am-text);
+}
 .runtime-monitor__toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 18px; }
-.runtime-monitor__toolbar small { display: block; font-size: 11px; color: var(--text-secondary, #69776e); overflow-wrap: anywhere; }
-.runtime-monitor__toolbar > div, .runtime-monitor__toolbar > span { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+.runtime-monitor__toolbar > strong, .runtime-monitor__toolbar > div, .runtime-monitor__toolbar > span { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
 .runtime-monitor__actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-left: auto; }
-.runtime-monitor__version { color: var(--text-secondary, #69776e); overflow-wrap: anywhere; }
-.runtime-monitor__error { color: #b83232; margin: 0; }
-.runtime-monitor__warning { color: #8a5b00; margin: 0; }
+.runtime-monitor__error { color: var(--am-danger-text); margin: 0; }
+.runtime-monitor__warning { color: var(--am-warning-text); margin: 0; }
 </style>

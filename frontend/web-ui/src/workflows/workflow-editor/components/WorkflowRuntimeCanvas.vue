@@ -126,22 +126,22 @@ onBeforeUnmount(() => stopPan())
 </script>
 
 <style scoped>
-.runtime-canvas { height: 100%; overflow: auto; cursor: grab; background-color: var(--surface, #f8faf9); background-image: linear-gradient(#8b9b9420 1px, transparent 1px), linear-gradient(90deg, #8b9b9420 1px, transparent 1px); background-size: 20px 20px; }
+.runtime-canvas { flex: 1; min-height: 0; overflow: auto; cursor: grab; background-color: var(--am-graph-canvas); background-image: linear-gradient(var(--am-graph-grid-minor) 1px, transparent 1px), linear-gradient(90deg, var(--am-graph-grid-minor) 1px, transparent 1px); background-size: 20px 20px; }
 .runtime-canvas__world { position: relative; transform-origin: 0 0; }
 .runtime-canvas__links { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
-.runtime-canvas__links path { fill: none; stroke: var(--color-primary, #168667); stroke-width: 2; opacity: .65; }
-.runtime-canvas__node, .runtime-canvas__note { position: absolute; border: 1px solid var(--border-color, #c5d4ce); border-radius: 10px; background: var(--surface, #fff); color: var(--text-primary, #17251f); box-shadow: 0 5px 16px #19382a12; cursor: default; }
+.runtime-canvas__links path { fill: none; stroke: var(--am-graph-link); stroke-width: 2; opacity: .65; }
+.runtime-canvas__node, .runtime-canvas__note { position: absolute; border: 1px solid var(--am-graph-node-border); border-radius: 10px; background: var(--am-graph-node); color: var(--am-graph-text); box-shadow: 0 5px 16px color-mix(in srgb, var(--am-graph-node-border) 18%, transparent); cursor: default; }
 .runtime-canvas__node.is-disabled { opacity: .5; }
-.runtime-canvas__group { position: absolute; border: 1px dashed var(--border-color, #c5d4ce); border-radius: 12px; background: #829a8910; color: var(--text-secondary, #66776e); padding: 8px; pointer-events: none; }
-.runtime-canvas__node header { box-sizing: border-box; height: 54px; padding: 10px 12px; border-bottom: 1px solid var(--border-color, #dbe3df); }
+.runtime-canvas__group { position: absolute; border: 1px dashed var(--am-graph-node-border); border-radius: 12px; background: color-mix(in srgb, var(--am-graph-text-muted) 6%, transparent); color: var(--am-graph-text-muted); padding: 8px; pointer-events: none; }
+.runtime-canvas__node header { box-sizing: border-box; height: 54px; padding: 10px 12px; border-bottom: 1px solid var(--am-graph-node-border); border-radius: 9px 9px 0 0; background: var(--am-graph-node-header); }
 .runtime-canvas__node header strong, .runtime-canvas__node header small { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.runtime-canvas__node small { display: block; overflow-wrap: anywhere; color: var(--text-secondary, #6b7972); font-size: 11px; }
-.runtime-canvas__ports { display: flex; justify-content: space-between; padding: 4px 8px; gap: 6px; font-size: 11px; color: var(--text-secondary, #66776e); }
+.runtime-canvas__node small { display: block; overflow-wrap: anywhere; color: var(--am-graph-text-muted); font-size: 11px; }
+.runtime-canvas__ports { display: flex; justify-content: space-between; padding: 4px 8px; gap: 6px; font-size: 11px; color: var(--am-graph-text-muted); }
 .runtime-canvas__ports span { display: block; line-height: 22px; }
 .runtime-canvas__ports > div:last-child { text-align: right; }
 .runtime-canvas__parameters { padding: 6px 12px; font-size: 11px; }
 .runtime-canvas__parameters pre { max-height: 180px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 .runtime-canvas__identity { padding: 4px 12px; }
-.runtime-canvas__note { padding: 14px; background: #fff9e8; }
+.runtime-canvas__note { padding: 14px; background: var(--am-warning-surface); }
 .runtime-canvas__note pre { white-space: pre-wrap; }
 </style>
