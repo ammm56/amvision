@@ -113,13 +113,48 @@ def test_reducer_time_is_in_batch_budget(tmp_path, monkeypatch):
 
     def slow(*args):
         original(*args)
-        clock[0] += 0.2
+        clock[0] += 2
 
     monkeypatch.setattr(summary, "reduce_record", slow)
-    result = summarize(path, state, reducers=RULES, lock=nullcontext(True), max_ms=100)
+    result = summarize(
+        path, state, reducers=RULES, lock=nullcontext(True), max_seconds=1
+    )
     assert result["totals"]["total"] == 24
     assert result["source"]["sequence"] == 1
     assert result["complete"] is False
+
+
+def test_twenty_second_batch_budget_resumes_without_recount(tmp_path, monkeypatch):
+    """20 秒预算包含归约耗时；跨批次接续且重复读取不重复累计。"""
+    from types import SimpleNamespace
+    from backend.nodes.core_nodes.support import file_summary as summary
+    from backend.service.application.runtime.io import jsonl
+
+    path, state = tmp_path / "r.jsonl", tmp_path / "state.json"
+    for index in range(3):
+        append_record(path, {"delta": {"total": 24, "ng": 1}}, operation=str(index))
+    clock = [0.0]
+    monkeypatch.setattr(jsonl, "time", SimpleNamespace(monotonic=lambda: clock[0]))
+    original = summary.reduce_record
+
+    def slow(*args):
+        original(*args)
+        clock[0] += 10
+
+    monkeypatch.setattr(summary, "reduce_record", slow)
+    options = dict(
+        reducers=RULES,
+        max_records=1_000_000,
+        max_bytes=128 * 1024 * 1024,
+        max_seconds=20,
+    )
+    first = summarize(path, state, lock=nullcontext(True), **options)
+    assert first["totals"] == {"total": 48, "ng": 2}
+    assert first["complete"] is False
+    final = summarize(path, state, lock=nullcontext(True), **options)
+    assert final["totals"] == {"total": 72, "ng": 3}
+    assert final["complete"] is True
+    assert summarize(path, state, lock=nullcontext(True), **options) == final
 
 
 def test_checkpoint_compare_and_swap_conflict(tmp_path):

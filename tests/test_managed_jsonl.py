@@ -109,6 +109,34 @@ def test_fixed_read_boundary_and_budgets(tmp_path):
         jsonl.read_records(path, max_bytes=1)
 
 
+def test_expanded_batch_limits_and_schema_agree(tmp_path):
+    """新版上限实际可读，整数秒校验和 schema 与执行器一致。"""
+    from backend.nodes.core_nodes.support.jsonl_nodes import READ_PROPERTIES
+
+    path = tmp_path / "records.jsonl"
+    append(path, {"n": 1})
+    limits = {
+        "max_records": 1_000_000,
+        "max_bytes": 128 * 1024 * 1024,
+        "max_seconds": 20,
+    }
+    assert jsonl.read_records(path, **limits)["records"] == [{"n": 1}]
+    assert jsonl.read_records(
+        path, max_records=10000, max_bytes=4194304, max_seconds=1
+    )["records"] == [{"n": 1}]
+    for name, maximum in limits.items():
+        assert READ_PROPERTIES[name]["maximum"] == maximum
+        for invalid in (maximum + 1, 0, True, 1.5):
+            with pytest.raises(InvalidRequestError, match="预算"):
+                jsonl.read_records(path, **{name: invalid})
+    assert READ_PROPERTIES["max_bytes"]["x-ui-display-divisor"] == 1024 * 1024
+    assert "max_ms" not in READ_PROPERTIES
+    assert "x-ui-display-divisor" not in READ_PROPERTIES["max_seconds"]
+    assert READ_PROPERTIES["max_seconds"]["default"] == 1
+    with pytest.raises(TypeError, match="max_ms"):
+        jsonl.read_records(path, max_ms=100)
+
+
 def test_corruption_missing_and_replacement(tmp_path):
     """不能把损坏元数据、替换文件或坏行当成空记录。"""
     path = tmp_path / "records.jsonl"

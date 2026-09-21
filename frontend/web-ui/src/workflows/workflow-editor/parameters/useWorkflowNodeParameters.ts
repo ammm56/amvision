@@ -1,6 +1,7 @@
 import type { Ref } from 'vue'
 
 import { translate } from '@/platform/i18n'
+import { parseWorkflowNumericDisplayValue, readWorkflowNumericDisplayDivisor } from './numeric-parameter-input'
 import type { NodeDefinition, NodeParameterUiField, WorkflowGraphNode, WorkflowJsonObject } from '../types'
 
 export type WorkflowNodeParameterSelectValue = string | number | boolean | null
@@ -66,7 +67,8 @@ export function useWorkflowNodeParameters<NodeView extends WorkflowNodeParameter
   function readNodeParameterTextValue(node: NodeView, field: NodeParameterUiField): string {
     const value = readNodeParameterValue(node, field)
     if (typeof value === 'string') return value
-    if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+    if (typeof value === 'number') return String(value / readWorkflowNumericDisplayDivisor(field))
+    if (typeof value === 'boolean') return String(value)
     return ''
   }
 
@@ -97,7 +99,7 @@ export function useWorkflowNodeParameters<NodeView extends WorkflowNodeParameter
     const target = event.target
     if (!(target instanceof HTMLInputElement)) return
     const value = target.value.trim()
-    updateNodeParameter(node, field, value ? Number(value) : undefined)
+    updateNodeParameter(node, field, parseWorkflowNumericDisplayValue(field, value))
   }
 
   function updateNodeParameterFromCheckboxEvent(node: NodeView, field: NodeParameterUiField, event: Event): void {

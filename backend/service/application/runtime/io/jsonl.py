@@ -22,7 +22,11 @@ from backend.service.infrastructure.filesystem.shared_files import open_shared_r
 MAX_RECORD_BYTES = 1024 * 1024
 DEFAULT_READ_BYTES = 4 * MAX_RECORD_BYTES
 DEFAULT_READ_RECORDS = 1000
-DEFAULT_READ_MS = 100
+DEFAULT_READ_SECONDS = 1
+# 单批预算上限；不限制源文件的总大小或总记录数。
+MAX_READ_RECORDS = 1_000_000
+MAX_READ_BYTES = 128 * 1024 * 1024
+MAX_READ_SECONDS = 20
 # 元数据恢复允许扫描大日志；不改变正常增量读取的批次预算。
 COMMIT_REBUILD_TIMEOUT_SECONDS = 180
 MAX_SAFE_INTEGER = 2**53 - 1
@@ -350,7 +354,7 @@ def read_records(
     source_mode: str = "managed",
     max_records: int = DEFAULT_READ_RECORDS,
     max_bytes: int = DEFAULT_READ_BYTES,
-    max_ms: int = DEFAULT_READ_MS,
+    max_seconds: int = DEFAULT_READ_SECONDS,
     allow_missing: bool = False,
     snapshot_end: dict | None = None,
     check_control: Callable[[], None] | None = None,
@@ -369,9 +373,9 @@ def read_records(
     ):
         raise fail("JSONL 读取参数类型无效")
     for number, upper in (
-        (max_records, 100_000),
-        (max_bytes, 64 * MAX_RECORD_BYTES),
-        (max_ms, 5000),
+        (max_records, MAX_READ_RECORDS),
+        (max_bytes, MAX_READ_BYTES),
+        (max_seconds, MAX_READ_SECONDS),
     ):
         if type(number) is not int or not 1 <= number <= upper:
             raise fail("JSONL 读取预算无效")
@@ -440,7 +444,7 @@ def read_records(
             if check_control:
                 check_control()
             if rows and (
-                consumed >= max_bytes or (time.monotonic() - started) * 1000 >= max_ms
+                consumed >= max_bytes or time.monotonic() - started >= max_seconds
             ):
                 break
             line = stream.readline(min(MAX_RECORD_BYTES + 1, end["offset"] - offset))

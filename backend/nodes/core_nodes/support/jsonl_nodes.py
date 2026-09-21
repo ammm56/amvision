@@ -8,8 +8,11 @@ from backend.nodes.core_nodes.support.local_io.reading import resolve_file_sourc
 from backend.nodes.core_nodes.support.logic import require_value_payload
 from backend.service.application.runtime.io.jsonl import (
     DEFAULT_READ_BYTES,
-    DEFAULT_READ_MS,
+    DEFAULT_READ_SECONDS,
     DEFAULT_READ_RECORDS,
+    MAX_READ_BYTES,
+    MAX_READ_SECONDS,
+    MAX_READ_RECORDS,
 )
 
 READ_PORTS = tuple(
@@ -33,23 +36,27 @@ READ_PROPERTIES = {
     "max_records": {
         "type": "integer",
         "minimum": 1,
-        "maximum": 100000,
+        "maximum": MAX_READ_RECORDS,
         "default": DEFAULT_READ_RECORDS,
-        "title": "Max Records",
+        "title": "Batch Records",
+        "description": "单批最多读取、解析的记录条数，不是文件总记录数上限。",
     },
     "max_bytes": {
         "type": "integer",
         "minimum": 1,
-        "maximum": 67108864,
+        "maximum": MAX_READ_BYTES,
         "default": DEFAULT_READ_BYTES,
-        "title": "Max Bytes",
+        "title": "Batch Size (MB)",
+        "description": "单批累计读取容量；界面 1 MB = 1,048,576 字节，不限制整个文件大小。",
+        "x-ui-display-divisor": 1024 * 1024,
     },
-    "max_ms": {
+    "max_seconds": {
         "type": "integer",
         "minimum": 1,
-        "maximum": 5000,
-        "default": DEFAULT_READ_MS,
-        "title": "Max Time",
+        "maximum": MAX_READ_SECONDS,
+        "default": DEFAULT_READ_SECONDS,
+        "title": "Batch Time (s)",
+        "description": "单批读取、解析和计算的时间预算，整数秒（1–20）；完整记录之间检查，未完成则下次续读。",
     },
 }
 

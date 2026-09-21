@@ -47,6 +47,33 @@ function buildParameters() {
 }
 
 describe('useWorkflowNodeParameters color-map', () => {
+  it('容量按 MB 编辑，时间使用整数秒，保存后无损回读', () => {
+    const parameters = buildParameters()
+    for (const [name, divisor, stored, displayed] of [
+      ['max_bytes', 1048576, 4194304, '4'],
+      ['max_bytes', 1048576, 4194305, String(4194305 / 1048576)],
+      ['max_seconds', 1, 1, '1'],
+    ] as const) {
+      const field: NodeParameterUiField = {
+        ...colorMapField, parameter_name: name, widget: 'auto',
+        json_schema: { type: 'integer', 'x-ui-display-divisor': divisor },
+      }
+      const node = { node: { ...graphNode, parameters: { [name]: stored } }, definition: null }
+      expect(parameters.readNodeParameterTextValue(node, field)).toBe(displayed)
+      const input = document.createElement('input')
+      input.type = 'number'
+      input.addEventListener('input', event => parameters.updateNodeParameterFromNumberEvent(node, field, event))
+      input.value = displayed
+      input.dispatchEvent(new Event('input'))
+      expect(parameters.readNodeParameterValue(node, field)).toBe(stored)
+      input.value = name === 'max_bytes' ? '128' : '20'
+      input.dispatchEvent(new Event('input'))
+      expect(parameters.readNodeParameterValue(node, field)).toBe(name === 'max_bytes' ? 134217728 : 20)
+      input.value = ''
+      input.dispatchEvent(new Event('input'))
+      expect(parameters.readNodeParameterValue(node, field)).toBeUndefined()
+    }
+  })
   it('object-rows 使用紧凑编辑入口，与普通参数采用相同高度', () => {
     const parameters = buildParameters()
     expect(parameters.isJsonParameter({ ...jsonObjectField, json_schema: { type: 'array', 'x-ui-widget': 'object-rows' } })).toBe(false)

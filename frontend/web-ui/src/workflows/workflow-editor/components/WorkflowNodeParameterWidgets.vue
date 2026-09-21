@@ -80,6 +80,7 @@
         :min="readWorkflowNumericParameterInputAttributes(field).min"
         :max="readWorkflowNumericParameterInputAttributes(field).max"
         :step="readWorkflowNumericParameterInputAttributes(field).step"
+        :title="field.description || undefined"
         :value="readTextValue(node, field)"
         :disabled="isParameterEditorDisabled(node, field)"
         :aria-label="readLabel(field)"

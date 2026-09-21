@@ -208,6 +208,20 @@ Append JSONL 使用当前统一 save_location 参数及同名输入，复用现�
 
 ### 明细、累计与输出命名
 
+File Summary 与 Read JSONL 共用单批读取预算，界面统一显示以下名称：
+
+| 界面参数 | 默认值 | 上限 | 存储/API 字段 |
+| --- | ---: | ---: | --- |
+| Batch Records | 1,000 条 | 1,000,000 条 | max_records |
+| Batch Size (MB) | 4 MB | 128 MB | max_bytes，仍为整数字节 |
+| Batch Time (s) | 1 秒 | 20 秒 | max_seconds，整数秒，最小 1 秒 |
+
+界面容量按 1 MB = 1,048,576 字节换算，JSON Schema 通过 `x-ui-display-divisor` 声明容量显示换算。时间参数从节点、保存配置到读取器统一使用 `max_seconds` 整数秒，不再接受 `max_ms` 或小数秒，不维护旧时间参数兼容分支。开发期已有工作流需要移除 `max_ms` 并显式设置 `max_seconds`（默认 1）；已发布 Runtime 快照通过重新发布和切换版本更新，不直接修改不可变快照。容量默认值和记录数默认值不变。
+
+这些是每批处理的限制，不是整个文件的容量限制。200 万条、500 MB 的合法 JSONL 可以由多次调用分批汇总；达到任一预算即在完整记录边界保存检查点，以 `loading / complete=false` 返回，下次继续。时间预算包含本批读取、解析和归约，在记录之间检查，不是整个节点调用的硬超时；节点/工作流 deadline 仍优先。正常增量只处理新增记录，单条记录仍限制 1 MiB。首次重建的总用时取决于磁盘、规则和批次调用频率，不保证 500 MB 全量一秒完成。
+
+2026-09-21 本地 conda 隔离验证：200 万条合成记录，每条 250 字节，文件 500,000,000 字节，使用 sum/count 两条规则和上述三个预算上限。managed 模式首次缺少提交元数据，自动恢复后分四批累计到 2,000,000；耗时分别 17,779.37 ms（包含提交元数据重建）、4,897.84 ms、4,712.34 ms、3,578.43 ms。无新增重复调用 5.95 ms，追加一条后汇总 8.41 ms，累计 2,000,001，未重复计数。这是本机单次功能与耗时验证，不是最坏延迟或长期性能保证。
+
 File Summary 的 reducers 显式声明 source_path、operation、output_key、numeric_type、missing_policy。初期计数使用 integer 精确累加；bool 不视为 0/1，字符串数字不隐式转换。Array Summary 当前会转 float，因此不能直接用其实现长期整数累计。
 
 例如：source_path=delta.material_total，operation=sum，output_key=material_total。输出为 totals.material_total，而不是再次包在 totals.delta 中；输出别名重复必须拒绝。count 是匹配记录条数，sum 是字段数值之和，两者不能混淆。

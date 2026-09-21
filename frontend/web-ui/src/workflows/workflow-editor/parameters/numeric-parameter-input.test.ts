@@ -20,6 +20,14 @@ function buildField(jsonSchema: NodeParameterUiField['json_schema']): NodeParame
 }
 
 describe('readWorkflowNumericParameterInputAttributes', () => {
+  it('批次容量和时间按显示单位换算边界，不改变原始约束', () => {
+    expect(readWorkflowNumericParameterInputAttributes(buildField({
+      type: 'integer', minimum: 1, maximum: 134217728, 'x-ui-display-divisor': 1048576,
+    }))).toEqual({ min: 1 / 1048576, max: 128, step: 'any' })
+    expect(readWorkflowNumericParameterInputAttributes(buildField({
+      type: 'integer', minimum: 1, maximum: 20,
+    }))).toEqual({ min: 1, max: 20, step: 1 })
+  })
   it('integer 固定使用 1 并继承范围', () => {
     expect(readWorkflowNumericParameterInputAttributes(buildField({
       type: 'integer',
