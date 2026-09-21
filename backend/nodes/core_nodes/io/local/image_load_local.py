@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import io
 
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 
 from backend.contracts.workflows.workflow_graph import (
     NODE_IMPLEMENTATION_CORE,
@@ -45,17 +45,31 @@ def _image_load_local_handler(
     """从本地磁盘读取单张图片并注册为 memory image-ref。"""
 
     blank_reason = _read_blank_image_reason(request)
+    missing_policy = request.parameters.get("missing_file_policy", "error")
+    if not isinstance(missing_policy, str) or missing_policy not in {"error", "blank"}:
+        raise InvalidRequestError("missing_file_policy 仅支持 error 或 blank")
     if blank_reason is not None and _read_use_blank_image_when_empty(request):
         return _build_blank_image_response(request, blank_reason=blank_reason)
 
     image_path, expected = resolve_file_source(request)
-    content, record = read_local_bytes(
-        image_path,
-        expected_record=expected,
-        max_bytes=read_positive_limit(
-            request.parameters, "max_bytes", DEFAULT_IMAGE_MAX_BYTES
-        ),
-    )
+    try:
+        content, record = read_local_bytes(
+            image_path,
+            expected_record=expected,
+            max_bytes=read_positive_limit(
+                request.parameters, "max_bytes", DEFAULT_IMAGE_MAX_BYTES
+            ),
+        )
+    except InvalidRequestError as error:
+        if (
+            missing_policy == "blank"
+            and expected is None
+            and error.details.get("error_code") == "local_file_missing"
+        ):
+            return _build_blank_image_response(
+                request, blank_reason="missing-file", missing_path=str(image_path)
+            )
+        raise
     image_bytes, media_type, width, height = decode_local_image_header(
         image_path,
         content,
@@ -117,6 +131,7 @@ def _build_blank_image_response(
     request: WorkflowNodeExecutionRequest,
     *,
     blank_reason: str,
+    missing_path: str | None = None,
 ) -> dict[str, object]:
     """生成有界黑色 PNG，并按普通 image-ref 输出。"""
 
@@ -146,10 +161,20 @@ def _build_blank_image_response(
             },
         )
     with Image.new("RGB", (width, height), color=(0, 0, 0)) as blank_image:
+        if blank_reason == "missing-file":
+            draw = ImageDraw.Draw(blank_image)
+            font = ImageFont.load_default(size=max(12, min(24, width // 24)))
+            draw.text(
+                (width / 2, height / 2),
+                "Image unavailable",
+                font=font,
+                anchor="mm",
+                fill=(180, 180, 180),
+            )
         with io.BytesIO() as output:
-            blank_image.save(output, format="PNG")
+            blank_image.save(output, format="JPEG" if missing_path else "PNG")
             content = output.getvalue()
-    media_type = "image/png"
+    media_type = "image/jpeg" if missing_path else "image/png"
     return {
         "image": register_image_bytes(
             request,
@@ -163,7 +188,7 @@ def _build_blank_image_response(
                 "source_kind": "generated-blank",
                 "generated_blank": True,
                 "blank_reason": blank_reason,
-                "local_path": None,
+                "local_path": missing_path,
                 "file_name": None,
                 "media_type": media_type,
                 "width": width,
@@ -229,6 +254,21 @@ CORE_NODE_SPEC = CoreNodeSpec(
         parameter_schema={
             "type": "object",
             "properties": {
+                "missing_file_policy": {
+                    "type": "string",
+                    "title": "Missing File",
+                    "default": "error",
+                    "enum": ["error", "blank"],
+                    "description": "仅对 Path 指定但不存在的图片使用占位图；权限、损坏和版本变化仍报错。",
+                    "x-amvision-i18n": {
+                        "title": {
+                            "zh-CN": "文件不存在时",
+                            "en-US": "Missing File",
+                            "ja-JP": "ファイル欠落時",
+                            "ko-KR": "파일 누락 시",
+                        }
+                    },
+                },
                 "local_path": {
                     "type": "string",
                     "title": "本地图像路径",

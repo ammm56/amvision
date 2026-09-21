@@ -567,9 +567,7 @@ def test_conditional_delete_refuses_file_changed_after_scan(tmp_path: Path) -> N
         file_path,
         modified_time=datetime.now(tz=timezone.utc) - timedelta(days=1),
     )
-    page = next(
-        iter_local_retention_pages(target, recursive=True, page_size=512)
-    )
+    page = next(iter_local_retention_pages(target, recursive=True, page_size=512))
     scanned_item = page.items[0]
     file_path.write_bytes(b"new-version-with-another-size")
 
@@ -582,6 +580,7 @@ def test_conditional_delete_refuses_file_changed_after_scan(tmp_path: Path) -> N
     assert file_path.read_bytes() == b"new-version-with-another-size"
 
 
+@pytest.mark.skipif(os.name != "nt", reason="安全空目录删除当前仅支持 Windows")
 def test_delete_empty_directories_removes_children_but_keeps_target(
     tmp_path: Path,
 ) -> None:
@@ -607,6 +606,37 @@ def test_delete_empty_directories_removes_children_but_keeps_target(
     assert result["deleted_file_count"] == 1
     assert target.is_dir()
     assert not (target / "year").exists()
+
+
+def test_unverified_directory_adapter_fails_before_deletion(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """未验证的平台保护能力不能退化成先删除文件、再报告空目录不支持。"""
+    from types import SimpleNamespace
+    from backend.nodes.core_nodes.io.output.storage import (
+        storage_retention_cleanup as node,
+    )
+    from backend.service.application.errors import ServiceConfigurationError
+
+    storage, target = _create_filesystem_target(tmp_path)
+    file = target / "expired.json"
+    _write_file(file, modified_time=datetime.now(tz=timezone.utc) - timedelta(days=3))
+    monkeypatch.setattr(node, "os", SimpleNamespace(name="posix"))
+    with pytest.raises(ServiceConfigurationError) as error:
+        _execute(
+            storage,
+            target_directory=str(target),
+            retention_policy="age",
+            retention_value=1,
+            retention_unit="day",
+            delete_empty_directories=True,
+            dry_run=False,
+        )
+    assert (
+        error.value.details["error_code"]
+        == "storage_retention_directory_protection_unsupported"
+    )
+    assert file.is_file()
 
 
 def _create_storage(tmp_path: Path) -> LocalDatasetStorage:

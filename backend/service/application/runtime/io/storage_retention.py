@@ -110,10 +110,19 @@ def execute_storage_retention(
     iter_pages: Callable[[], Iterator[RetentionObjectPage]],
     delete_item: Callable[[RetentionObjectMetadata], RetentionDeleteState],
     delete_empty_directories: Callable[[], int],
+    checkpoint: Callable[[], None] = lambda: None,
+    progress: dict[str, object] | None = None,
 ) -> StorageRetentionResult:
     """通过一次流式扫描和有界 heap 执行一次保留清理。"""
 
     started_at = monotonic()
+    progress = progress if progress is not None else {}
+    progress.update(
+        operation="scan",
+        scanned_file_count=0,
+        deleted_file_count=0,
+        deleted_size_bytes=0,
+    )
     cutoff_time = _resolve_cutoff_time(options=options, current_time=current_time)
     cutoff_epoch_ns = (
         int(cutoff_time.timestamp() * 1_000_000_000)
@@ -125,12 +134,18 @@ def execute_storage_retention(
     matched_file_count = 0
     age_candidate_count = 0
     for page in iter_pages():
+        checkpoint()
         scanned_file_count += len(page.items)
+        progress["scanned_file_count"] = scanned_file_count
         for item in page.items:
             if not _matches_patterns(item.object_key, options.include_patterns):
                 continue
             matched_file_count += 1
-            if not options.dry_run:
+            expired = (
+                cutoff_epoch_ns is not None
+                and item.last_modified_epoch_ns < cutoff_epoch_ns
+            )
+            if not options.dry_run and (options.retention_policy != "age" or expired):
                 _retain_oldest_item(
                     oldest_heap,
                     item=item,
@@ -184,10 +199,16 @@ def execute_storage_retention(
     skipped_locked_count = 0
     skipped_missing_count = 0
     for item in selected_items:
+        progress.update(operation="delete_file", relative_path=item.object_key)
+        checkpoint()
         delete_state = delete_item(item)
         if delete_state == "deleted":
             deleted_file_count += 1
             deleted_size_bytes += item.content_length
+            progress.update(
+                deleted_file_count=deleted_file_count,
+                deleted_size_bytes=deleted_size_bytes,
+            )
         elif delete_state == "changed":
             skipped_changed_count += 1
         elif delete_state == "locked":
@@ -197,6 +218,9 @@ def execute_storage_retention(
         else:
             raise RuntimeError(f"未知保留清理删除状态: {delete_state}")
     if options.delete_empty_directories:
+        progress.update(operation="delete_empty_directory")
+        progress.pop("relative_path", None)
+        checkpoint()
         delete_empty_directories()
     has_more = (
         eligible_file_count > selection_count

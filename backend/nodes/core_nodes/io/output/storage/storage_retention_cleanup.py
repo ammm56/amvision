@@ -29,6 +29,7 @@ from backend.nodes.save_locations import (
 from backend.service.application.errors import (
     InvalidRequestError,
     ServiceConfigurationError,
+    ServiceError,
 )
 from backend.service.application.ports.object_store import (
     RetentionDeleteState,
@@ -46,11 +47,15 @@ from backend.service.application.runtime.io.storage_retention import (
 from backend.service.application.workflows.graph_executor import (
     WorkflowNodeExecutionRequest,
 )
+from backend.service.application.workflows.execution.execution_control import (
+    build_node_execution_control,
+)
 from backend.service.infrastructure.filesystem.retention_files import (
     delete_empty_local_retention_directories,
     delete_local_retention_file_if_version,
     iter_local_retention_pages,
 )
+from backend.service.infrastructure.filesystem.directory_guard import protect_directory
 
 
 _SUPPORTED_POLICIES = {"age", "count", "age-and-count"}
@@ -66,7 +71,17 @@ def _storage_retention_cleanup_handler(
     """扫描指定结果目录，并按显式策略执行一次有界清理。"""
 
     started_at = monotonic()
+    control = build_node_execution_control(request)
+    control.raise_if_cancelled_or_expired()
     options = _read_options(request)
+    if os.name != "nt" and options.delete_empty_directories and not options.dry_run:
+        raise ServiceConfigurationError(
+            "当前平台尚未验证安全的空目录删除，请关闭 Delete Empty Directories",
+            details={
+                "error_code": "storage_retention_directory_protection_unsupported",
+                "node_id": request.node_id,
+            },
+        )
     save_location = resolve_required_save_location_from_request(
         request,
         scope="directory",
@@ -74,6 +89,15 @@ def _storage_retention_cleanup_handler(
         input_name="target_directory",
     )
     current_time = datetime.now().astimezone()
+    if options.retention_policy in {"age", "age-and-count"}:
+        try:
+            calculate_retention_cutoff(
+                current_time,
+                retention_value=options.retention_value,
+                retention_unit=options.retention_unit,
+            )
+        except (ValueError, OverflowError) as error:
+            raise InvalidRequestError("保留期限超出有效日历范围") from error
     if save_location.kind == SAVE_LOCATION_FILESYSTEM:
         target_path = _require_filesystem_target(
             request,
@@ -102,12 +126,14 @@ def _storage_retention_cleanup_handler(
             target_path,
             recursive=recursive,
             page_size=_PAGE_SIZE,
+            checkpoint=control.raise_if_cancelled_or_expired,
         )
         delete_item = _build_filesystem_delete(request, target_path=target_path)
         delete_empty = partial(
             delete_empty_local_retention_directories,
             target_path,
             recursive=recursive,
+            checkpoint=control.raise_if_cancelled_or_expired,
         )
         coordination_path = target_path / _TARGET_COORDINATION_NAME
         location_kind = SAVE_LOCATION_FILESYSTEM
@@ -138,12 +164,14 @@ def _storage_retention_cleanup_handler(
             target_directory,
             recursive=recursive,
             page_size=_PAGE_SIZE,
+            checkpoint=control.raise_if_cancelled_or_expired,
         )
         delete_item = _build_object_store_delete(request, storage=storage)
         delete_empty = partial(
             storage.delete_empty_retention_prefixes,
             target_directory,
             recursive=recursive,
+            checkpoint=control.raise_if_cancelled_or_expired,
         )
         resolve = getattr(storage, "resolve", None)
         if not callable(resolve):
@@ -154,11 +182,15 @@ def _storage_retention_cleanup_handler(
         coordination_path = resolve(target_directory) / _TARGET_COORDINATION_NAME
         location_kind = SAVE_LOCATION_OBJECT_STORE
 
+    progress = {"operation": "acquire_cleanup_lock"}
     try:
-        with try_acquire_path_write_locks(
-            request,
-            (coordination_path,),
-        ) as target_lock_acquired:
+        with (
+            protect_directory(coordination_path.parent),
+            try_acquire_path_write_locks(
+                request,
+                (coordination_path,),
+            ) as target_lock_acquired,
+        ):
             if not target_lock_acquired:
                 payload = _build_empty_result(
                     options=options,
@@ -177,6 +209,8 @@ def _storage_retention_cleanup_handler(
                 iter_pages=iter_pages,
                 delete_item=delete_item,
                 delete_empty_directories=delete_empty,
+                checkpoint=control.raise_if_cancelled_or_expired,
+                progress=progress,
             )
     except OSError as error:
         raise InvalidRequestError(
@@ -185,8 +219,16 @@ def _storage_retention_cleanup_handler(
                 "node_id": request.node_id,
                 "target_directory": target_directory,
                 "error_type": type(error).__name__,
+                "error_code": "storage_retention_io_failed",
+                "errno": error.errno,
+                "winerror": getattr(error, "winerror", None),
+                **progress,
             },
         ) from error
+    except ServiceError as error:
+        error.details.update(progress)
+        error.details.setdefault("target_directory", target_directory)
+        raise
     payload = _build_result_payload(
         options=options,
         target_directory=target_directory,
@@ -263,7 +305,9 @@ def _require_filesystem_target(
         raise InvalidRequestError(
             "Storage Retention Cleanup 目标不能是符号链接或 reparse point"
         )
-    target_path = raw_target.resolve(strict=False)
+    # 保留词法路径，扫描及删除时由目录句柄逐层拒绝祖先链接。
+    # resolve 后再检查会掩盖父目录中的 junction。
+    target_path = Path(os.path.abspath(unresolved_target))
     storage = require_dataset_storage(request)
     repository_root = Path(__file__).resolve().parents[6]
     protected_paths = {
@@ -342,8 +386,7 @@ def _validate_object_store_target(
         except FileNotFoundError:
             break
         if stat.S_ISLNK(current_stat.st_mode) or bool(
-            int(getattr(current_stat, "st_file_attributes", 0))
-            & _WINDOWS_REPARSE_POINT
+            int(getattr(current_stat, "st_file_attributes", 0)) & _WINDOWS_REPARSE_POINT
         ):
             raise InvalidRequestError(
                 "Storage Retention Cleanup 的 ObjectStore 目标不能经过符号链接或 reparse point"
@@ -385,6 +428,7 @@ def _build_filesystem_delete(
             return delete_local_retention_file_if_version(
                 item_path,
                 expected_version=item.version,
+                protected_root=target_path,
             )
 
     return delete_item

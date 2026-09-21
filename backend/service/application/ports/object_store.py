@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from typing import BinaryIO, ContextManager, Literal, Protocol, runtime_checkable
 
 
@@ -182,6 +182,7 @@ class RetentionObjectStore(ObjectStore, Protocol):
         *,
         recursive: bool,
         page_size: int = 512,
+        checkpoint: Callable[[], None] = lambda: None,
     ) -> Iterator[RetentionObjectPage]:
         """分页流式列举 prefix 下的普通对象及其可验证版本。"""
 
@@ -202,6 +203,7 @@ class RetentionObjectStore(ObjectStore, Protocol):
         object_prefix: str,
         *,
         recursive: bool,
+        checkpoint: Callable[[], None] = lambda: None,
     ) -> int:
         """删除 prefix 下的空实现目录，但永远保留 prefix 自身。"""
 

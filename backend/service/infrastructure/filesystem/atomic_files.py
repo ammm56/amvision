@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 from time import monotonic, sleep
 
@@ -10,6 +11,17 @@ from backend.service.infrastructure.filesystem.shared_files import replace_share
 
 
 _TRANSIENT_WINDOWS_FILE_ERROR_CODES = frozenset({5, 32, 33})
+
+
+def discard_temporary_file(path: Path) -> None:
+    """释放临时文件，清理失败时保留正在传播的原始异常。"""
+    failure = sys.exception()
+    try:
+        path.unlink(missing_ok=True)
+    except OSError as error:
+        if failure is None:
+            raise
+        failure.add_note(f"临时文件清理失败：{error}")
 
 
 def replace_path_with_retry(

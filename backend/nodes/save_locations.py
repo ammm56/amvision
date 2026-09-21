@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.service.infrastructure.filesystem.directory_guard import protect_directory
+
 from dataclasses import dataclass, field
 from datetime import datetime
 import os
@@ -16,6 +18,7 @@ from backend.service.infrastructure.object_store.object_key_layout import (
     build_project_workflow_application_results_dir,
 )
 from backend.service.infrastructure.filesystem.atomic_files import (
+    discard_temporary_file,
     publish_path_without_overwrite,
     replace_path_with_retry,
 )
@@ -532,24 +535,25 @@ def _normalize_target_name(
 def _write_filesystem_bytes_atomically(target_path: Path, content: bytes) -> None:
     """把 bytes 原子写入本机绝对路径。"""
 
-    filesystem_target_path = to_filesystem_path(target_path)
-    filesystem_target_path.parent.mkdir(parents=True, exist_ok=True)
-    temporary_path = filesystem_target_path.with_name(
-        f".{target_path.name}.{uuid4().hex[:12]}.tmp"
-    )
-    try:
-        with temporary_path.open("wb") as output_stream:
-            output_stream.write(content)
-            output_stream.flush()
-            os.fsync(output_stream.fileno())
-        replace_path_with_retry(temporary_path, filesystem_target_path)
-        _sync_directory_after_replace(filesystem_target_path.parent)
-    except OSError as error:
-        temporary_path.unlink(missing_ok=True)
-        raise InvalidRequestError(
-            "无法写入系统保存位置",
-            details={"local_path": str(target_path)},
-        ) from error
+    with protect_directory(target_path.parent, create=True):
+        filesystem_target_path = to_filesystem_path(target_path)
+        filesystem_target_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary_path = filesystem_target_path.with_name(
+            f".{target_path.name}.{uuid4().hex[:12]}.tmp"
+        )
+        try:
+            with temporary_path.open("wb") as output_stream:
+                output_stream.write(content)
+                output_stream.flush()
+                os.fsync(output_stream.fileno())
+            replace_path_with_retry(temporary_path, filesystem_target_path)
+            _sync_directory_after_replace(filesystem_target_path.parent)
+        except OSError as error:
+            discard_temporary_file(temporary_path)
+            raise InvalidRequestError(
+                "无法写入系统保存位置",
+                details={"local_path": str(target_path)},
+            ) from error
 
 
 def _write_object_store_bytes_with_incremented_name(
@@ -673,56 +677,58 @@ def _write_filesystem_bytes_atomically_if_absent(
 ) -> bool:
     """原子创建本机文件；目标已存在时保持不变并返回 False。"""
 
-    filesystem_target_path = to_filesystem_path(target_path)
-    filesystem_target_path.parent.mkdir(parents=True, exist_ok=True)
-    temporary_path = filesystem_target_path.with_name(
-        f".{target_path.name}.{uuid4().hex[:12]}.tmp"
-    )
-    try:
-        with temporary_path.open("wb") as output_stream:
-            output_stream.write(content)
-            output_stream.flush()
-            os.fsync(output_stream.fileno())
-        published = publish_path_without_overwrite(
-            temporary_path,
-            filesystem_target_path,
+    with protect_directory(target_path.parent, create=True):
+        filesystem_target_path = to_filesystem_path(target_path)
+        filesystem_target_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary_path = filesystem_target_path.with_name(
+            f".{target_path.name}.{uuid4().hex[:12]}.tmp"
         )
-        if published:
-            _sync_directory_after_replace(filesystem_target_path.parent)
-        return published
-    except OSError as error:
-        raise InvalidRequestError(
-            "无法写入系统保存位置",
-            details={"local_path": str(target_path)},
-        ) from error
-    finally:
-        temporary_path.unlink(missing_ok=True)
+        try:
+            with temporary_path.open("wb") as output_stream:
+                output_stream.write(content)
+                output_stream.flush()
+                os.fsync(output_stream.fileno())
+            published = publish_path_without_overwrite(
+                temporary_path,
+                filesystem_target_path,
+            )
+            if published:
+                _sync_directory_after_replace(filesystem_target_path.parent)
+            return published
+        except OSError as error:
+            raise InvalidRequestError(
+                "无法写入系统保存位置",
+                details={"local_path": str(target_path)},
+            ) from error
+        finally:
+            discard_temporary_file(temporary_path)
 
 
 def _copy_filesystem_file_atomically(source_path: Path, target_path: Path) -> None:
     """把现有文件流式复制到本机绝对路径并原子替换。"""
 
-    filesystem_target_path = to_filesystem_path(target_path)
-    filesystem_target_path.parent.mkdir(parents=True, exist_ok=True)
-    temporary_path = filesystem_target_path.with_name(
-        f".{target_path.name}.{uuid4().hex[:12]}.tmp"
-    )
-    try:
-        with (
-            source_path.open("rb") as source_stream,
-            temporary_path.open("wb") as output_stream,
-        ):
-            shutil.copyfileobj(source_stream, output_stream, length=1024 * 1024)
-            output_stream.flush()
-            os.fsync(output_stream.fileno())
-        replace_path_with_retry(temporary_path, filesystem_target_path)
-        _sync_directory_after_replace(filesystem_target_path.parent)
-    except OSError as error:
-        temporary_path.unlink(missing_ok=True)
-        raise InvalidRequestError(
-            "无法写入系统保存位置",
-            details={"local_path": str(target_path)},
-        ) from error
+    with protect_directory(target_path.parent, create=True):
+        filesystem_target_path = to_filesystem_path(target_path)
+        filesystem_target_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary_path = filesystem_target_path.with_name(
+            f".{target_path.name}.{uuid4().hex[:12]}.tmp"
+        )
+        try:
+            with (
+                source_path.open("rb") as source_stream,
+                temporary_path.open("wb") as output_stream,
+            ):
+                shutil.copyfileobj(source_stream, output_stream, length=1024 * 1024)
+                output_stream.flush()
+                os.fsync(output_stream.fileno())
+            replace_path_with_retry(temporary_path, filesystem_target_path)
+            _sync_directory_after_replace(filesystem_target_path.parent)
+        except OSError as error:
+            discard_temporary_file(temporary_path)
+            raise InvalidRequestError(
+                "无法写入系统保存位置",
+                details={"local_path": str(target_path)},
+            ) from error
 
 
 def _copy_filesystem_file_atomically_if_absent(
@@ -732,33 +738,34 @@ def _copy_filesystem_file_atomically_if_absent(
 ) -> bool:
     """流式复制并原子创建本机文件，目标已存在时保持不变。"""
 
-    filesystem_target_path = to_filesystem_path(target_path)
-    filesystem_target_path.parent.mkdir(parents=True, exist_ok=True)
-    temporary_path = filesystem_target_path.with_name(
-        f".{target_path.name}.{uuid4().hex[:12]}.tmp"
-    )
-    try:
-        with (
-            source_path.open("rb") as source_stream,
-            temporary_path.open("wb") as output_stream,
-        ):
-            shutil.copyfileobj(source_stream, output_stream, length=1024 * 1024)
-            output_stream.flush()
-            os.fsync(output_stream.fileno())
-        published = publish_path_without_overwrite(
-            temporary_path,
-            filesystem_target_path,
+    with protect_directory(target_path.parent, create=True):
+        filesystem_target_path = to_filesystem_path(target_path)
+        filesystem_target_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary_path = filesystem_target_path.with_name(
+            f".{target_path.name}.{uuid4().hex[:12]}.tmp"
         )
-        if published:
-            _sync_directory_after_replace(filesystem_target_path.parent)
-        return published
-    except OSError as error:
-        raise InvalidRequestError(
-            "无法写入系统保存位置",
-            details={"local_path": str(target_path)},
-        ) from error
-    finally:
-        temporary_path.unlink(missing_ok=True)
+        try:
+            with (
+                source_path.open("rb") as source_stream,
+                temporary_path.open("wb") as output_stream,
+            ):
+                shutil.copyfileobj(source_stream, output_stream, length=1024 * 1024)
+                output_stream.flush()
+                os.fsync(output_stream.fileno())
+            published = publish_path_without_overwrite(
+                temporary_path,
+                filesystem_target_path,
+            )
+            if published:
+                _sync_directory_after_replace(filesystem_target_path.parent)
+            return published
+        except OSError as error:
+            raise InvalidRequestError(
+                "无法写入系统保存位置",
+                details={"local_path": str(target_path)},
+            ) from error
+        finally:
+            discard_temporary_file(temporary_path)
 
 
 def _sync_directory_after_replace(directory: Path) -> None:

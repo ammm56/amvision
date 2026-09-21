@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from backend.service.infrastructure.filesystem.directory_guard import protect_directory
+
 import json
 import hashlib
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from io import BytesIO
 import mimetypes
 import os
@@ -20,6 +22,7 @@ from contextlib import contextmanager
 
 from backend.service.application.errors import InvalidRequestError
 from backend.service.infrastructure.filesystem.atomic_files import (
+    discard_temporary_file,
     publish_path_without_overwrite,
     replace_path_with_retry,
 )
@@ -265,6 +268,7 @@ class LocalDatasetStorage:
         *,
         recursive: bool,
         page_size: int = 512,
+        checkpoint: Callable[[], None] = lambda: None,
     ) -> Iterator[RetentionObjectPage]:
         """分页流式列举 ObjectStore prefix 下的保留清理对象。"""
 
@@ -274,6 +278,7 @@ class LocalDatasetStorage:
             recursive=recursive,
             page_size=page_size,
             object_key_prefix=normalized_prefix,
+            checkpoint=checkpoint,
         )
 
     def retention_prefix_exists(self, object_prefix: str) -> bool:
@@ -299,12 +304,14 @@ class LocalDatasetStorage:
         object_prefix: str,
         *,
         recursive: bool,
+        checkpoint: Callable[[], None] = lambda: None,
     ) -> int:
         """删除 ObjectStore prefix 下的空实现目录并保留 prefix。"""
 
         return delete_empty_local_retention_directories(
             self.resolve(object_prefix),
             recursive=recursive,
+            checkpoint=checkpoint,
         )
 
     def resolve(self, relative_path: str) -> Path:
@@ -340,22 +347,23 @@ class LocalDatasetStorage:
 
         target_path = self.resolve(relative_path)
         self._reject_immutable_target(target_path)
-        self._mkdir(target_path.parent)
-        filesystem_target_path = to_filesystem_path(target_path)
-        temporary_path = filesystem_target_path.with_name(
-            f".{target_path.name}.{uuid.uuid4().hex[:12]}.tmp"
-        )
-        try:
-            # checkpoint 等二进制文件同样必须原子替换，避免进程中断留下半截文件。
-            with temporary_path.open("wb") as output_stream:
-                output_stream.write(content)
-                output_stream.flush()
-                os.fsync(output_stream.fileno())
-            replace_path_with_retry(temporary_path, filesystem_target_path)
-            _sync_directory_after_replace(filesystem_target_path.parent)
-        except Exception:
-            temporary_path.unlink(missing_ok=True)
-            raise
+        with protect_directory(target_path.parent, create=True):
+            self._mkdir(target_path.parent)
+            filesystem_target_path = to_filesystem_path(target_path)
+            temporary_path = filesystem_target_path.with_name(
+                f".{target_path.name}.{uuid.uuid4().hex[:12]}.tmp"
+            )
+            try:
+                # checkpoint 等二进制文件同样必须原子替换，避免进程中断留下半截文件。
+                with temporary_path.open("wb") as output_stream:
+                    output_stream.write(content)
+                    output_stream.flush()
+                    os.fsync(output_stream.fileno())
+                replace_path_with_retry(temporary_path, filesystem_target_path)
+                _sync_directory_after_replace(filesystem_target_path.parent)
+            except Exception:
+                discard_temporary_file(temporary_path)
+                raise
 
     def write_bytes_if_absent(self, relative_path: str, content: bytes) -> bool:
         """原子创建新对象，目标已经存在时保持原文件不变。
@@ -370,25 +378,26 @@ class LocalDatasetStorage:
 
         target_path = self.resolve(relative_path)
         self._reject_immutable_target(target_path)
-        self._mkdir(target_path.parent)
-        filesystem_target_path = to_filesystem_path(target_path)
-        temporary_path = filesystem_target_path.with_name(
-            f".{target_path.name}.{uuid.uuid4().hex[:12]}.tmp"
-        )
-        try:
-            with temporary_path.open("wb") as output_stream:
-                output_stream.write(content)
-                output_stream.flush()
-                os.fsync(output_stream.fileno())
-            published = publish_path_without_overwrite(
-                temporary_path,
-                filesystem_target_path,
+        with protect_directory(target_path.parent, create=True):
+            self._mkdir(target_path.parent)
+            filesystem_target_path = to_filesystem_path(target_path)
+            temporary_path = filesystem_target_path.with_name(
+                f".{target_path.name}.{uuid.uuid4().hex[:12]}.tmp"
             )
-            if published:
-                _sync_directory_after_replace(filesystem_target_path.parent)
-            return published
-        finally:
-            temporary_path.unlink(missing_ok=True)
+            try:
+                with temporary_path.open("wb") as output_stream:
+                    output_stream.write(content)
+                    output_stream.flush()
+                    os.fsync(output_stream.fileno())
+                published = publish_path_without_overwrite(
+                    temporary_path,
+                    filesystem_target_path,
+                )
+                if published:
+                    _sync_directory_after_replace(filesystem_target_path.parent)
+                return published
+            finally:
+                discard_temporary_file(temporary_path)
 
     def write_stream(
         self,
@@ -411,30 +420,34 @@ class LocalDatasetStorage:
 
         target_path = self.resolve(relative_path)
         self._reject_immutable_target(target_path)
-        self._mkdir(target_path.parent)
-        filesystem_target_path = to_filesystem_path(target_path)
-        if hasattr(source_stream, "seek"):
-            source_stream.seek(0)
+        with protect_directory(target_path.parent, create=True):
+            self._mkdir(target_path.parent)
+            filesystem_target_path = to_filesystem_path(target_path)
+            if hasattr(source_stream, "seek"):
+                source_stream.seek(0)
 
-        written_size = 0
-        try:
-            with filesystem_target_path.open("wb") as target_stream:
-                while True:
-                    chunk = source_stream.read(chunk_size)
-                    if not chunk:
-                        break
-                    if max_bytes is not None and written_size + len(chunk) > max_bytes:
-                        raise InvalidRequestError(
-                            "上传的数据集压缩包超过大小限制",
-                            details={"max_bytes": max_bytes},
-                        )
-                    target_stream.write(chunk)
-                    written_size += len(chunk)
-        except Exception:
-            filesystem_target_path.unlink(missing_ok=True)
-            raise
+            written_size = 0
+            try:
+                with filesystem_target_path.open("wb") as target_stream:
+                    while True:
+                        chunk = source_stream.read(chunk_size)
+                        if not chunk:
+                            break
+                        if (
+                            max_bytes is not None
+                            and written_size + len(chunk) > max_bytes
+                        ):
+                            raise InvalidRequestError(
+                                "上传的数据集压缩包超过大小限制",
+                                details={"max_bytes": max_bytes},
+                            )
+                        target_stream.write(chunk)
+                        written_size += len(chunk)
+            except Exception:
+                filesystem_target_path.unlink(missing_ok=True)
+                raise
 
-        return written_size
+            return written_size
 
     def write_json(self, relative_path: str, payload: object) -> None:
         """把 JSON 内容写入本地文件。
@@ -446,19 +459,20 @@ class LocalDatasetStorage:
 
         target_path = self.resolve(relative_path)
         self._reject_immutable_target(target_path)
-        self._mkdir(target_path.parent)
-        encoded_payload = json.dumps(payload, ensure_ascii=False, indent=2)
-        filesystem_target_path = to_filesystem_path(target_path)
-        temporary_path = filesystem_target_path.with_name(
-            f".{target_path.name}.{uuid.uuid4().hex[:12]}.tmp"
-        )
-        try:
-            # 同目录临时文件 + replace 可以避免进程中断时把目标 JSON 留成半截文件。
-            temporary_path.write_text(encoded_payload, encoding="utf-8")
-            replace_path_with_retry(temporary_path, filesystem_target_path)
-        except Exception:
-            temporary_path.unlink(missing_ok=True)
-            raise
+        with protect_directory(target_path.parent, create=True):
+            self._mkdir(target_path.parent)
+            encoded_payload = json.dumps(payload, ensure_ascii=False, indent=2)
+            filesystem_target_path = to_filesystem_path(target_path)
+            temporary_path = filesystem_target_path.with_name(
+                f".{target_path.name}.{uuid.uuid4().hex[:12]}.tmp"
+            )
+            try:
+                # 同目录临时文件 + replace 可以避免进程中断时把目标 JSON 留成半截文件。
+                temporary_path.write_text(encoded_payload, encoding="utf-8")
+                replace_path_with_retry(temporary_path, filesystem_target_path)
+            except Exception:
+                discard_temporary_file(temporary_path)
+                raise
 
     def read_json(self, relative_path: str) -> object:
         """读取本地文件中的 JSON 内容。
@@ -484,24 +498,25 @@ class LocalDatasetStorage:
 
         target_path = self.resolve(relative_path)
         self._reject_immutable_target(target_path)
-        self._mkdir(target_path.parent)
-        filesystem_target_path = to_filesystem_path(target_path)
-        temporary_path = filesystem_target_path.with_name(
-            f".{target_path.name}.{uuid.uuid4().hex[:12]}.tmp"
-        )
-        try:
-            # 文本 manifest 也必须先完整落盘再原子替换，避免并发读到空文件或半截内容。
-            with temporary_path.open(
-                "w", encoding="utf-8", newline=""
-            ) as output_stream:
-                output_stream.write(content)
-                output_stream.flush()
-                os.fsync(output_stream.fileno())
-            replace_path_with_retry(temporary_path, filesystem_target_path)
-            _sync_directory_after_replace(filesystem_target_path.parent)
-        except Exception:
-            temporary_path.unlink(missing_ok=True)
-            raise
+        with protect_directory(target_path.parent, create=True):
+            self._mkdir(target_path.parent)
+            filesystem_target_path = to_filesystem_path(target_path)
+            temporary_path = filesystem_target_path.with_name(
+                f".{target_path.name}.{uuid.uuid4().hex[:12]}.tmp"
+            )
+            try:
+                # 文本 manifest 也必须先完整落盘再原子替换，避免并发读到空文件或半截内容。
+                with temporary_path.open(
+                    "w", encoding="utf-8", newline=""
+                ) as output_stream:
+                    output_stream.write(content)
+                    output_stream.flush()
+                    os.fsync(output_stream.fileno())
+                replace_path_with_retry(temporary_path, filesystem_target_path)
+                _sync_directory_after_replace(filesystem_target_path.parent)
+            except Exception:
+                discard_temporary_file(temporary_path)
+                raise
 
     def copy_file(self, source_path: Path, destination_path: str) -> None:
         """把一个已存在文件流式复制并原子替换到本地文件存储目录。
@@ -513,21 +528,22 @@ class LocalDatasetStorage:
 
         target_path = self.resolve(destination_path)
         self._reject_immutable_target(target_path)
-        self._mkdir(target_path.parent)
-        filesystem_target_path = to_filesystem_path(target_path)
-        temporary_path = filesystem_target_path.with_name(
-            f".{target_path.name}.{uuid.uuid4().hex[:12]}.tmp"
-        )
-        try:
-            self._copy_file_to_temporary_path(
-                source_path=source_path,
-                temporary_path=temporary_path,
+        with protect_directory(target_path.parent, create=True):
+            self._mkdir(target_path.parent)
+            filesystem_target_path = to_filesystem_path(target_path)
+            temporary_path = filesystem_target_path.with_name(
+                f".{target_path.name}.{uuid.uuid4().hex[:12]}.tmp"
             )
-            replace_path_with_retry(temporary_path, filesystem_target_path)
-            _sync_directory_after_replace(filesystem_target_path.parent)
-        except Exception:
-            temporary_path.unlink(missing_ok=True)
-            raise
+            try:
+                self._copy_file_to_temporary_path(
+                    source_path=source_path,
+                    temporary_path=temporary_path,
+                )
+                replace_path_with_retry(temporary_path, filesystem_target_path)
+                _sync_directory_after_replace(filesystem_target_path.parent)
+            except Exception:
+                discard_temporary_file(temporary_path)
+                raise
 
     def copy_file_if_absent(
         self,
@@ -538,28 +554,29 @@ class LocalDatasetStorage:
 
         target_path = self.resolve(destination_path)
         self._reject_immutable_target(target_path)
-        self._mkdir(target_path.parent)
-        filesystem_target_path = to_filesystem_path(target_path)
-        temporary_path = filesystem_target_path.with_name(
-            f".{target_path.name}.{uuid.uuid4().hex[:12]}.tmp"
-        )
-        try:
-            self._copy_file_to_temporary_path(
-                source_path=source_path,
-                temporary_path=temporary_path,
+        with protect_directory(target_path.parent, create=True):
+            self._mkdir(target_path.parent)
+            filesystem_target_path = to_filesystem_path(target_path)
+            temporary_path = filesystem_target_path.with_name(
+                f".{target_path.name}.{uuid.uuid4().hex[:12]}.tmp"
             )
-            published = publish_path_without_overwrite(
-                temporary_path,
-                filesystem_target_path,
-            )
-            if published:
-                _sync_directory_after_replace(filesystem_target_path.parent)
-            return published
-        except Exception:
-            temporary_path.unlink(missing_ok=True)
-            raise
-        finally:
-            temporary_path.unlink(missing_ok=True)
+            try:
+                self._copy_file_to_temporary_path(
+                    source_path=source_path,
+                    temporary_path=temporary_path,
+                )
+                published = publish_path_without_overwrite(
+                    temporary_path,
+                    filesystem_target_path,
+                )
+                if published:
+                    _sync_directory_after_replace(filesystem_target_path.parent)
+                return published
+            except Exception:
+                discard_temporary_file(temporary_path)
+                raise
+            finally:
+                discard_temporary_file(temporary_path)
 
     @staticmethod
     def _copy_file_to_temporary_path(

@@ -4,6 +4,8 @@
 
 本文定义已经实现的 `core.io.storage-retention-cleanup` 节点。节点参数、输出字段和测试以本文为边界，不能在 Save 节点或 Runtime 中增加隐式清理行为。
 
+2026-09-21 审计发现的 junction/控制目录后代遍历及并发保存竞争已修复，并完成 Windows 开发环境及发行 Python 的回归。证据、实际 Workflow 配置和尚未覆盖的长期验收边界见[修复验证记录](../../operations/storage-retention-repair-20260921.md)；原始问题见[审计记录](../../operations/storage-retention-audit-20260921.md)。
+
 ## 目标
 
 生产现场保存的图片、视频、JSON、文本和其他结果文件通常只保留一个月、三个月或一年，也可能只保留最新 1000 个文件。节点用于在一次明确的 Workflow 调用中，按保存时间、最大文件数量或两者组合清理指定结果目录。
@@ -141,10 +143,10 @@ Retention target:  D:\results
 - `include_patterns` 只匹配文件名，不把文件名解释为路径。
 - 自动跳过 `.amvision-*` 控制目录、原子写入临时文件和 write journal。
 - `recursive=false` 时只处理目标目录直属文件。
-- `delete_empty_directories=true` 时按最深层优先删除已经为空的子目录；目标根目录和内部控制目录始终保留。
+- `delete_empty_directories=true` 时按最深层优先删除已经为空的子目录；目标根目录和内部控制目录及其全部后代始终保留。当前安全空目录删除仅在 Windows 启用；其他平台实际删除前明确拒绝该选项，关闭后仍可执行文件保留策略，dry-run 不受影响。
 - 单个文件已被其他实例删除时按预期并发跳过处理，不作为错误。
 - 文件被重新写入、修改或占用时不删除，计入对应 `skipped_*_count`，等待下一次外部调用重新判断。
-- 权限不足、存储损坏或未知 I/O 错误必须使节点失败；结构化错误详情只携带节点、目标目录和错误类型，不返回无界文件路径列表。
+- 权限不足、存储损坏或未知 I/O 错误必须使节点失败；详情包含 `error_code=storage_retention_io_failed`、节点、目标、阶段、errno/winerror、已完成扫描分页与已删除计数，删除阶段包含单个相对路径，不返回无界文件列表。取消与超时沿用原始错误类型并附带进度。
 
 ## 并发与原子性
 
@@ -152,12 +154,12 @@ Retention target:  D:\results
 
 同一目标目录的完整扫描和删除先获取非等待清理操作锁。另一个 Runtime 已经处理该目标时，本次调用立即返回 `state=target_locked`、`target_lock_conflict=true` 和 `has_more=true`，不排队、不启动第二次扫描，也不删除下一批文件。该目标级锁只协调清理节点，不阻塞 Save 节点写入。
 
-文件系统实现需要新增 Save 与 Retention 共用的目标文件协调机制：
+文件系统实现使用 Save 与 Retention 共用的目标文件协调机制：
 
 1. Save 节点在最终原子发布期间持有目标文件的跨进程锁。
 2. Retention 节点对候选文件尝试非等待锁；锁已被占用时立即跳过，不排队等待。
 3. 获得锁后重新读取文件标识、大小和最后修改时间。
-4. 只有文件仍与扫描记录一致且仍早于截止时间时才执行原子删除。
+4. 只有文件仍与扫描记录一致且仍符合所选时间/数量策略时才执行删除。Windows 版本标识包括真实文件 ID；删除句柄禁止并发写入和替换，重检后通过同一句柄删除。
 5. 进程退出后 byte-range lock 由操作系统释放；进程间协调统一使用系统临时目录 `amvision-path-locks/path-locks.v1`，锁位置由规范路径的 SHA-256 派生为 63-bit 稀疏偏移。Windows 和 POSIX 都允许锁定位于 EOF 之外的字节，因此共享文件本身不随路径数量增长，也不按目标文件创建 sidecar 文件。
 
 ObjectStore 的列举和条件删除通过独立可选 capability port 实现，而不是扩大现有 `ObjectStore` 基础端口：
@@ -168,6 +170,14 @@ ObjectStore 的列举和条件删除通过独立可选 capability port 实现，
 - 对象已经不存在或版本已变化时返回未删除，不得删除新版本。
 
 本地 `LocalDatasetStorage` 实现该 capability，并通过 `resolve()` 取得与 Save 节点相同的本机路径锁。当前 v1 只启用这种本地 ObjectStore 协调方式。未来云对象存储 adapter 除了使用 ETag、version id 或供应商条件删除，还必须提供同一 prefix 的非等待分布式 operation lease；在该能力落地前节点必须明确失败，不能退化为无条件 `delete_tree()`，也不能只靠条件删除让两个 Runtime 同时各删一批。
+
+### 目录保护与读取回退
+
+本机扫描使用显式 DFS，内存包含 `O(directory_depth)` 的目录句柄与迭代器，加上固定分页和有界候选 heap。取消、超时、权限错误都会退出并释放资源。`age` 策略仅将过期文件放入 heap，但仍完整扫描，保持全局最旧优先。
+
+Windows 保存端从根到叶保护父目录，防止清理在临时文件建立前删除目录；共享保护允许多个保存同时执行。清理对忙目录立即跳过。若删除句柄已先取得，保存仅在目录准备阶段对明确 WinError 32/33/303 做最多 100 ms、间隔 1 ms 的有界重试；正常路径不等待，权限错误不归类为占用。不重跑推理、文件内容写入或生产计数。
+
+`core.io.image-load-local` 的 `missing_file_policy` 默认为 `error`。显式设为 `blank` 后，Path 指定但真正不存在的图片返回 640×480 默认尺寸的 JPEG 占位（可用既有 blank_image_width/height 调整），中心标明 “Image unavailable”，summary 包含 `generated_blank=true`、`blank_reason=missing-file` 和来源路径。图内预览、应用模式及大图沿用同一图片通道；下一次读取真实文件存在时恢复正常图片。已绑定 File 观察版本、权限失败、损坏图像和资源超限不会被转换成占位图。图片清理与生产统计独立，缺图不重置计数或改变检测结论。
 
 ## 输出契约
 
@@ -230,7 +240,7 @@ ObjectStore 的列举和条件删除通过独立可选 capability port 实现，
 - `dry_run`：完成扫描但没有删除。
 - `target_not_found`：目标目录尚未创建。
 - `completed`：本次清理完成且未达到删除上限。
-- `partial`：达到 `delete_limit`，仍可能存在符合条件的文件。
+- `partial`：达到 `delete_limit`，或跳过仍存在但已变化/被占用的候选；`has_more=true` 不代表已经安排后台重试。
 - `target_locked`：另一个 Runtime 正在清理同一目标，本次调用未等待且没有扫描或删除。
 
 默认不返回删除路径列表，避免结果体和 Workflow 内存随文件数量增长。失败详情只返回节点、目标目录和错误类型。

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import atexit
+import errno
 from collections.abc import Iterator, Sequence
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field
@@ -180,7 +181,9 @@ class _InterprocessPathLock:
                 try:
                     _try_lock_file(self._file, offset=self._lock_offset)
                     return self
-                except OSError:
+                except OSError as error:
+                    if not _is_lock_contention(error):
+                        raise
                     self.control.wait_interruptibly(0.05)
         except BaseException:
             self._file.close()
@@ -193,9 +196,11 @@ class _InterprocessPathLock:
         self._open_file()
         try:
             _try_lock_file(self._file, offset=self._lock_offset)
-        except OSError:
+        except OSError as error:
             self._file.close()
             self._file = None
+            if not _is_lock_contention(error):
+                raise
             return False
         return True
 
@@ -293,10 +298,11 @@ def _try_lock_file(file_object: object, *, offset: int) -> None:
     """非阻塞获取当前平台的 1 字节文件锁。"""
 
     if os.name == "nt":
-        import msvcrt
+        from backend.service.infrastructure.filesystem.native_locks import (
+            change_windows_lock,
+        )
 
-        file_object.seek(offset)
-        msvcrt.locking(file_object.fileno(), msvcrt.LK_NBLCK, 1)
+        change_windows_lock(file_object, offset=offset)
         return
     import fcntl
 
@@ -309,14 +315,23 @@ def _try_lock_file(file_object: object, *, offset: int) -> None:
     )
 
 
+def _is_lock_contention(error: OSError) -> bool:
+    """只识别非阻塞锁竞争，不能把句柄和 I/O 故障吞成满载。"""
+    native = getattr(error, "winerror", None)
+    if native is not None:
+        return native in {32, 33}
+    return os.name != "nt" and error.errno in {errno.EACCES, errno.EAGAIN}
+
+
 def _unlock_file(file_object: object, *, offset: int) -> None:
     """释放当前平台的文件锁。"""
 
     if os.name == "nt":
-        import msvcrt
+        from backend.service.infrastructure.filesystem.native_locks import (
+            change_windows_lock,
+        )
 
-        file_object.seek(offset)
-        msvcrt.locking(file_object.fileno(), msvcrt.LK_UNLCK, 1)
+        change_windows_lock(file_object, offset=offset, unlock=True)
         return
     import fcntl
 
