@@ -272,7 +272,6 @@
               <th>{{ t('triggerSources.fields.kind') }}</th>
               <th>{{ t('triggerSources.fields.state') }}</th>
               <th>{{ t('triggerSources.fields.triggeredAt') }}</th>
-              <th>{{ t('triggerSources.fields.lastError') }}</th>
               <th>{{ t('triggerSources.fields.actions') }}</th>
             </tr>
           </thead>
@@ -288,7 +287,6 @@
               <td>
                 {{ formatLastTriggered(sourceHealth(source) ? sourceHealth(source)?.last_triggered_at : source.last_triggered_at) }}
               </td>
-              <td>{{ formatError(sourceHealth(source)?.last_error ?? source.last_error) || '-' }}</td>
               <td>
                 <div class="table-actions table-actions--wrap">
                   <Button size="sm" variant="secondary" @click="detailSourceId = source.trigger_source_id">
