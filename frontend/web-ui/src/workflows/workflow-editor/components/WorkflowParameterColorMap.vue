@@ -419,9 +419,9 @@ function skipWhitespace(source: string, startIndex: number): number {
 }
 
 .workflow-color-map-summary:focus-visible {
-  border-color: var(--am-action-primary);
+  border-color: var(--am-input-focus-ring);
   outline: none;
-  box-shadow: inset 0 0 0 1px var(--am-action-primary);
+  box-shadow: inset 0 0 0 1px var(--am-input-focus-ring);
 }
 
 .workflow-color-map-summary:disabled {

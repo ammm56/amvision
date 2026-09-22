@@ -13,12 +13,13 @@
   --am-border-strong: #5a5754;
   --am-input: #141615;
   --am-sidebar: #101010;
-  --am-sidebar-active: #1c2c26;
+  --am-sidebar-active: var(--am-action-soft);
   --am-table-header: #1a1a1a;
   --am-hover-surface: #303030;
   --am-selected-hover-surface: color-mix(in srgb, var(--am-brand-primary) 17%, var(--am-surface));
   --am-row-hover: var(--am-hover-surface);
-  --am-row-selected: #17352b;
+  --am-row-selected: var(--am-action-soft);
+  --am-row-selected-hover: var(--am-selected-hover-surface);
   --am-overlay: rgb(0 0 0 / 0.72);
   --am-code-surface: #111312;
   --am-code-text: #f5f6f7;
@@ -26,9 +27,10 @@
   --am-action-primary-hover: var(--am-brand-primary-soft);
   --am-action-primary-active: var(--am-brand-primary-deep);
   --am-action-primary-strong: var(--am-brand-primary);
-  --am-action-soft: #1c2c26;
+  --am-action-soft: color-mix(in srgb, var(--am-brand-primary) 12%, var(--am-surface));
   --am-on-action: var(--am-brand-on-primary);
   --am-focus-ring: var(--am-brand-primary-soft);
+  --am-input-focus-ring: #8b8b8b;
   --am-sidebar-link: #c9d3cd;
   --am-progress-fill: var(--am-brand-primary);
   --am-progress-text: var(--am-brand-primary);

@@ -94,11 +94,20 @@ const { t } = useI18n()
     background-color var(--am-motion-fast) var(--am-ease-standard);
 }
 
-.workflow-graph-viewport-controls button:hover,
-.workflow-graph-viewport-controls button.is-active {
+.workflow-graph-viewport-controls button:hover:not(.is-active):not(:disabled) {
   border-color: var(--graph-line);
   color: var(--graph-text-strong);
-  background: var(--graph-panel-strong);
+  background: var(--graph-hover);
+}
+
+.workflow-graph-viewport-controls button.is-active {
+  border-color: transparent;
+  color: var(--graph-accent);
+  background: var(--am-action-soft);
+}
+
+.workflow-graph-viewport-controls button.is-active:hover:not(:disabled) {
+  background: var(--am-selected-hover-surface);
 }
 
 .workflow-graph-viewport-controls button:focus-visible {

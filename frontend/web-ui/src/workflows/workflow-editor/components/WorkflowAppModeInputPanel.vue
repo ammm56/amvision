@@ -183,8 +183,8 @@ function label(input: WorkflowAppContractInput): string {
 }
 
 .app-mode-inputs textarea:focus-visible {
-  border-color: var(--am-focus-ring);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--am-focus-ring) 22%, transparent);
+  border-color: var(--am-input-focus-ring);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--am-input-focus-ring) 22%, transparent);
 }
 
 .app-mode-inputs :deep(.file-picker__dropzone) {

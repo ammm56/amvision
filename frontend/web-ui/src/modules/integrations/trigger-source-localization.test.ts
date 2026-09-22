@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { messages } from '@/platform/i18n/messages'
 
 const localizedFieldKeys = [
+  'triggeredAt',
   'triggerSourceId',
   'displayName',
   'bindEndpoint',

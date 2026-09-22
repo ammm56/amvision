@@ -425,13 +425,16 @@
 }
 
 .settings-user-item.is-selected {
-  background: var(--am-action-soft);
+  background: var(--am-row-selected);
+}
+
+.settings-user-item.is-selected:hover:not(:disabled) {
+  background: var(--am-row-selected-hover);
 }
 
 .settings-workspace-nav__item.is-active:hover:not(:disabled),
 .settings-mobile-subnav button.is-active:hover:not(:disabled),
-.settings-segmented-control button.is-active:hover:not(:disabled),
-.settings-user-item.is-selected:hover:not(:disabled) {
+.settings-segmented-control button.is-active:hover:not(:disabled) {
   background: var(--am-selected-hover-surface);
 }
 

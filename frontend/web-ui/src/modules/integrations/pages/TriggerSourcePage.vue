@@ -269,10 +269,9 @@
           <thead>
             <tr>
               <th>{{ t('triggerSources.fields.triggerSource') }}</th>
-              <th>{{ t('triggerSources.fields.runtime') }}</th>
               <th>{{ t('triggerSources.fields.kind') }}</th>
               <th>{{ t('triggerSources.fields.state') }}</th>
-              <th>{{ t('triggerSources.fields.health') }}</th>
+              <th>{{ t('triggerSources.fields.triggeredAt') }}</th>
               <th>{{ t('triggerSources.fields.lastError') }}</th>
               <th>{{ t('triggerSources.fields.actions') }}</th>
             </tr>
@@ -281,20 +280,20 @@
             <tr v-for="source in triggerSources" :key="source.trigger_source_id">
               <td>
                 <strong>{{ source.display_name || source.trigger_source_id }}</strong>
-                <span>{{ source.trigger_source_id }}</span>
               </td>
-              <td>{{ source.workflow_runtime_id }}</td>
               <td>{{ source.trigger_kind }}</td>
               <td>
                 <StatusBadge :tone="sourceStateTone(source)">{{ source.enabled ? t('triggerSources.values.enabled') : t('triggerSources.values.disabled') }} / {{ source.observed_state }}</StatusBadge>
               </td>
               <td>
-                <strong>{{ formatHealthSummary(sourceHealth(source)?.health_summary ?? source.health_summary) || '-' }}</strong>
-                <span>{{ formatLastTriggered(sourceHealth(source)?.last_triggered_at ?? source.last_triggered_at) }}</span>
+                {{ formatLastTriggered(sourceHealth(source) ? sourceHealth(source)?.last_triggered_at : source.last_triggered_at) }}
               </td>
               <td>{{ formatError(sourceHealth(source)?.last_error ?? source.last_error) || '-' }}</td>
               <td>
                 <div class="table-actions table-actions--wrap">
+                  <Button size="sm" variant="secondary" @click="detailSourceId = source.trigger_source_id">
+                    {{ t('triggerSources.actions.details') }}
+                  </Button>
                   <Button v-if="!source.enabled" size="sm" variant="secondary" :disabled="busyTriggerSourceId === source.trigger_source_id" :loading="isTriggerSourceAction(source, 'state')" @click="setTriggerSourceEnabled(source, true)">
                     <Power :size="14" />
                     {{ t('triggerSources.actions.enable') }}
@@ -331,6 +330,30 @@
       />
     </section>
 
+    <SideDrawer
+      :open="detailSource !== null"
+      :title="t('triggerSources.detailTitle')"
+      :close-label="t('common.close')"
+      @close="detailSourceId = null"
+    >
+      <template v-if="detailSource">
+        <dl class="resource-details">
+          <div v-for="field in detailFields" :key="field.label">
+            <dt>{{ field.label }}</dt>
+            <dd>{{ field.value }}</dd>
+          </div>
+        </dl>
+        <section class="resource-details__section">
+          <h3>{{ t('workflowEditor.appDetail.fields.healthSummary') }}</h3>
+          <pre class="json-view">{{ JSON.stringify(detailHealth?.health_summary ?? detailSource.health_summary, null, 2) }}</pre>
+        </section>
+        <section class="resource-details__section">
+          <h3>{{ t('triggerSources.fields.lastError') }}</h3>
+          <pre class="json-view">{{ formatError(detailHealth ? detailHealth.last_error : detailSource.last_error) || '-' }}</pre>
+        </section>
+      </template>
+    </SideDrawer>
+
     <ConfirmDialog
       v-if="pendingDeleteTriggerSource"
       :title="t('common.confirmDelete')"
@@ -359,6 +382,7 @@ import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import PaginationControls from '@/shared/ui/components/PaginationControls.vue'
 import MultiSelect from '@/shared/ui/components/MultiSelect.vue'
 import SelectField from '@/shared/ui/components/Select.vue'
+import SideDrawer from '@/shared/ui/components/SideDrawer.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
@@ -566,6 +590,26 @@ const errorMessage = ref<string | null>(null)
 const statusMessage = ref<string | null>(null)
 const runtimes = ref<WorkflowAppRuntime[]>([])
 const triggerSources = ref<WorkflowTriggerSource[]>([])
+const detailSourceId = ref<string | null>(null)
+const detailSource = computed(() => triggerSources.value.find((source) => source.trigger_source_id === detailSourceId.value) ?? null)
+const detailHealth = computed(() => detailSource.value ? sourceHealth(detailSource.value) : null)
+const detailFields = computed(() => {
+  const source = detailSource.value
+  if (!source) return []
+  const health = detailHealth.value
+  return [
+    { label: t('triggerSources.fields.displayName'), value: source.display_name || '-' },
+    { label: t('triggerSources.fields.triggerSourceId'), value: source.trigger_source_id },
+    { label: t('triggerSources.fields.runtime'), value: source.workflow_runtime_id },
+    { label: t('triggerSources.fields.kind'), value: source.trigger_kind },
+    { label: t('workflowEditor.appDetail.fields.desiredState'), value: health?.desired_state ?? source.desired_state },
+    { label: t('workflowEditor.appDetail.fields.observedState'), value: health?.observed_state ?? source.observed_state },
+    { label: t('triggerSources.fields.state'), value: (health?.enabled ?? source.enabled) ? t('triggerSources.values.enabled') : t('triggerSources.values.disabled') },
+    { label: t('triggerSources.fields.triggeredAt'), value: formatLastTriggered(health ? health.last_triggered_at : source.last_triggered_at) },
+    { label: t('workflowEditor.appDetail.fields.updatedAt'), value: formatSystemDateTime(source.updated_at) },
+    { label: t('workflowEditor.appDetail.fields.createdAt'), value: formatSystemDateTime(source.created_at) },
+  ]
+})
 const triggerSourcePagination = ref<PaginationMeta>(createPaginationState())
 const workflowApp = ref<WorkflowAppDocument | null>(null)
 const selectedRuntimeId = ref('')
@@ -1172,35 +1216,6 @@ function sourceStateTone(source: WorkflowTriggerSource): 'neutral' | 'success' |
   return 'neutral'
 }
 
-function formatHealthSummary(value: unknown): string {
-  if (!isRecord(value)) return ''
-  const adapterRunning = value.adapter_running
-  const requestCount = value.request_count
-  const successCount = value.success_count
-  const errorCount = value.error_count
-  const timeoutCount = value.timeout_count
-  const busyCount = value.busy_count
-  const capacityRejectCount = value.capacity_reject_count
-  const requestTimeoutCount = value.request_timeout_count
-  const responseAckTimeoutCount = value.response_ack_timeout_count
-  const cancelCount = value.cancel_count
-  if (adapterRunning !== undefined || requestCount !== undefined || successCount !== undefined || errorCount !== undefined) {
-    return [
-      `running=${String(adapterRunning ?? '-')}`,
-      `request=${String(requestCount ?? 0)}`,
-      `success=${String(successCount ?? 0)}`,
-      `error=${String(errorCount ?? 0)}`,
-      `timeout=${String(timeoutCount ?? 0)}`,
-      `busy=${String(busyCount ?? 0)}`,
-      `capacity=${String(capacityRejectCount ?? 0)}`,
-      `request-timeout=${String(requestTimeoutCount ?? 0)}`,
-      `ack-timeout=${String(responseAckTimeoutCount ?? 0)}`,
-      `cancel=${String(cancelCount ?? 0)}`,
-    ].join(' ')
-  }
-  return Object.keys(value).length > 0 ? JSON.stringify(value) : ''
-}
-
 function formatError(value: unknown): string {
   if (value === null || value === undefined || value === '') return ''
   if (typeof value === 'string') return value
@@ -1389,6 +1404,7 @@ function createPaginationState(): PaginationMeta {
 watch(
   () => [selectedProjectId.value, route.query.runtime_id, route.query.application_id] as const,
   (currentValue, previousValue) => {
+    detailSourceId.value = null
     const [projectId] = currentValue
     const previousProjectId = previousValue?.[0]
     void loadPage({ resetTriggerSourcePage: projectId !== previousProjectId })

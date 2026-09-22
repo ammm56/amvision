@@ -61,7 +61,6 @@
                 <RouterLink :to="detailPath(workflowApp.application.application_id)">
                   <strong>{{ workflowApp.application.display_name || workflowApp.application.application_id }}</strong>
                 </RouterLink>
-                <span>{{ workflowApp.application.application_id }}</span>
               </td>
               <td>{{ workflowApp.application.binding_count }}</td>
               <td>

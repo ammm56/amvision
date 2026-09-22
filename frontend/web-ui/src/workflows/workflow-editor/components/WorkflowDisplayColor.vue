@@ -45,5 +45,5 @@ function choose(value: string | null) { invalid.value = false; draft.value = val
 .display-color__palette { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 5px; padding: 8px; border: 1px solid var(--am-border); border-radius: var(--am-radius-sm); }
 .display-color__palette .display-color__preset { grid-column: span 4; font: inherit; }
 .display-color small { color: var(--am-danger-text); }
-.display-color :focus-visible { outline: 2px solid var(--am-focus-ring); outline-offset: 2px; }
+.display-color :focus-visible { outline: 2px solid var(--am-input-focus-ring); outline-offset: 2px; }
 </style>

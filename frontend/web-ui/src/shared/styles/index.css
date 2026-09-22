@@ -626,9 +626,9 @@
 input:not([type='hidden']):not([type='checkbox']):not([type='radio']):focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  border-color: var(--am-action-primary);
+  border-color: var(--am-input-focus-ring);
   outline: none;
-  box-shadow: inset 0 0 0 1px var(--am-action-primary);
+  box-shadow: inset 0 0 0 1px var(--am-input-focus-ring);
 }
 
 .field textarea {
@@ -675,7 +675,7 @@ textarea:focus-visible {
 
 .file-picker--dragging .file-picker__dropzone {
   border-color: var(--am-action-primary);
-  background: var(--am-row-selected);
+  background: var(--am-action-soft);
 }
 
 .file-picker--disabled .file-picker__dropzone {
@@ -1011,7 +1011,7 @@ textarea:focus-visible {
 }
 
 .ui-select__button:focus-visible {
-  outline: 2px solid var(--am-focus-ring);
+  outline: 2px solid var(--am-input-focus-ring);
   outline-offset: 2px;
 }
 
@@ -1071,7 +1071,7 @@ textarea:focus-visible {
 }
 
 .ui-select__option.is-selected {
-  background: var(--am-row-selected);
+  background: var(--am-action-soft);
   color: var(--am-action-primary);
 }
 
@@ -1110,7 +1110,7 @@ textarea:focus-visible {
 }
 
 .ui-multi-select__button:focus-visible {
-  outline: 2px solid var(--am-focus-ring);
+  outline: 2px solid var(--am-input-focus-ring);
   outline-offset: 2px;
 }
 
@@ -1135,8 +1135,8 @@ textarea:focus-visible {
   max-width: 100%;
   padding: 2px 7px;
   border-radius: 999px;
-  color: var(--am-action-primary);
-  background: var(--am-action-soft);
+  color: var(--am-text);
+  background: var(--am-surface-soft);
   font-size: 12px;
   font-weight: 700;
   overflow: hidden;
@@ -1182,7 +1182,7 @@ textarea:focus-visible {
 }
 
 .ui-multi-select__option.is-selected {
-  background: var(--am-row-selected);
+  background: var(--am-action-soft);
   color: var(--am-action-primary);
 }
 
@@ -1540,8 +1540,8 @@ textarea:focus-visible {
 }
 
 .input-with-icon:focus-within {
-  border-color: var(--am-action-primary);
-  box-shadow: inset 0 0 0 1px var(--am-action-primary);
+  border-color: var(--am-input-focus-ring);
+  box-shadow: inset 0 0 0 1px var(--am-input-focus-ring);
 }
 
 .catalog-toolbar__result {
@@ -1636,7 +1636,7 @@ textarea:focus-visible {
 }
 
 .custom-node-catalog__table tbody tr:focus-visible:not(.is-selected) {
-  outline: 2px solid var(--am-brand-primary-deep);
+  outline: 2px solid var(--am-focus-ring);
   outline-offset: -2px;
 }
 
@@ -2406,8 +2406,8 @@ textarea:focus-visible {
 }
 
 .workflow-graph-checkbox > .workflow-graph-checkbox__input:focus-visible + .workflow-graph-checkbox__control {
-  border-color: var(--graph-accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--graph-accent) 24%, transparent);
+  border-color: var(--am-input-focus-ring);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--am-input-focus-ring) 24%, transparent);
 }
 
 .workflow-graph-checkbox > .workflow-graph-checkbox__input:checked + .workflow-graph-checkbox__control {
@@ -2766,8 +2766,8 @@ textarea:focus-visible {
 }
 
 .workflow-graph-toolbar__title-editor input:focus {
-  border-color: #47b6c4;
-  outline: 2px solid rgb(71 182 196 / 0.24);
+  border-color: var(--am-input-focus-ring);
+  outline: 2px solid color-mix(in srgb, var(--am-input-focus-ring) 24%, transparent);
 }
 
 .workflow-graph-toolbar__title p,
@@ -3103,7 +3103,7 @@ textarea:focus-visible {
 }
 
 .workflow-graph-group__name-input:focus {
-  border-color: var(--graph-accent);
+  border-color: var(--am-input-focus-ring);
 }
 
 .workflow-graph-group__count {
@@ -3697,7 +3697,7 @@ textarea:focus-visible {
 }
 
 .workflow-graph-note__editor input:focus,
-.workflow-graph-note__editor textarea:focus { border-color: var(--graph-accent); }
+.workflow-graph-note__editor textarea:focus { border-color: var(--am-input-focus-ring); }
 .workflow-graph-note__editor span { color: var(--graph-text-muted); font-size: 11px; }
 
 .workflow-graph-note__resize {
@@ -4635,7 +4635,7 @@ textarea:focus-visible {
 }
 
 .workflow-node-picker__search:focus-within {
-  border-color: var(--graph-accent);
+  border-color: var(--am-input-focus-ring);
   color: var(--graph-text-strong);
 }
 
@@ -4730,11 +4730,20 @@ textarea:focus-visible {
   font-variant-numeric: tabular-nums;
 }
 
-.workflow-node-picker__sources button:hover,
-.workflow-node-picker__sources button.is-active,
-.workflow-node-picker__categories button:hover,
-.workflow-node-picker__categories button.is-active {
+.workflow-node-picker__sources button:hover:not(.is-active):not(:disabled),
+.workflow-node-picker__categories button:hover:not(.is-active):not(:disabled) {
   background: var(--graph-hover);
+}
+
+.workflow-node-picker__sources button.is-active,
+.workflow-node-picker__categories button.is-active {
+  color: var(--graph-accent);
+  background: var(--am-action-soft);
+}
+
+.workflow-node-picker__sources button.is-active:hover:not(:disabled),
+.workflow-node-picker__categories button.is-active:hover:not(:disabled) {
+  background: var(--am-selected-hover-surface);
 }
 
 .workflow-node-picker__sources span {
@@ -5041,9 +5050,9 @@ textarea:focus-visible {
 .workflow-graph-preview-field select:focus-visible,
 .workflow-graph-preview-field textarea:focus-visible,
 .workflow-graph-value-field input:focus-visible {
-  border-color: var(--graph-accent);
+  border-color: var(--am-input-focus-ring);
   outline: none;
-  box-shadow: inset 0 0 0 1px var(--graph-accent);
+  box-shadow: inset 0 0 0 1px var(--am-input-focus-ring);
 }
 
 .workflow-graph-preview-result {

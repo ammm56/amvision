@@ -138,6 +138,7 @@ function setMatchValues(index: number, event: Event) {
 .parameter-rows button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 8px; color: var(--am-text); background: var(--am-surface); border: 1px solid var(--am-border); border-radius: var(--am-radius-sm); cursor: pointer; font: inherit; min-height: 32px; }
 .parameter-rows button:hover:not(:disabled) { background: var(--am-surface-soft); }
 .parameter-rows :is(input, select, textarea, button):focus-visible { outline: 2px solid var(--am-focus-ring); outline-offset: 2px; }
+.parameter-rows :is(input, select, textarea):focus-visible { outline-color: var(--am-input-focus-ring); }
 .parameter-rows :disabled { opacity: .5; cursor: default; }
 .parameter-rows__add { justify-self: start; }
 .parameter-rows [role='alert'] { color: var(--am-danger-text); }

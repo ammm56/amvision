@@ -40,5 +40,5 @@ function apply() {
 .parameter-rows-summary span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .parameter-rows-summary span:last-child { flex: none; color: var(--am-text-muted); }
 .parameter-rows-summary:disabled { opacity: .6; cursor: default; }
-.parameter-rows-summary:focus-visible { outline: 2px solid var(--am-action-primary); outline-offset: 2px; }
+.parameter-rows-summary:focus-visible { outline: 2px solid var(--am-input-focus-ring); outline-offset: 2px; }
 </style>

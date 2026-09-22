@@ -209,10 +209,18 @@ function inputSizeLabel(inputSize: { width: number; height: number } | null | un
   cursor: pointer;
 }
 
-.workflow-deployment-picker__card:hover,
+.workflow-deployment-picker__card:hover:not(.is-selected) {
+  border-color: var(--am-border-strong);
+  background: var(--am-hover-surface);
+}
+
 .workflow-deployment-picker__card.is-selected {
   border-color: var(--am-action-primary);
   background: var(--am-row-selected);
+}
+
+.workflow-deployment-picker__card.is-selected:hover {
+  background: var(--am-row-selected-hover);
 }
 
 .workflow-deployment-picker__card-heading strong,

@@ -20,6 +20,7 @@
   --am-selected-hover-surface: color-mix(in srgb, var(--am-brand-primary) 17%, var(--am-surface));
   --am-row-hover: var(--am-hover-surface);
   --am-row-selected: var(--am-action-soft);
+  --am-row-selected-hover: var(--am-selected-hover-surface);
   --am-overlay: rgb(17 24 39 / 0.44);
   --am-code-surface: #f2f4f7;
   --am-code-text: #344054;
@@ -30,6 +31,7 @@
   --am-action-soft: color-mix(in srgb, var(--am-brand-primary) 12%, var(--am-surface));
   --am-on-action: var(--am-brand-on-primary);
   --am-focus-ring: var(--am-action-primary-strong);
+  --am-input-focus-ring: #98a2b3;
   --am-sidebar-link: #475467;
   --am-progress-fill: var(--am-brand-primary);
   --am-progress-text: var(--am-brand-primary);
