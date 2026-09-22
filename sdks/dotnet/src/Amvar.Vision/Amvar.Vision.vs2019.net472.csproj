@@ -251,25 +251,31 @@
     <Compile Include="ZeroMq\ZeroMqTriggerEnvelope.cs" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="Config\config_model_deployment_20260909085303.json">
+    <None Include="Config\config_model_deployment_20260922065340.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Include="Config\config_workflow-app-20260831130620.json">
+    <None Include="Config\config_workflow-app-20260910030059.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Include="Config\config_workflow-app-20260831130621.json">
+    <None Include="Config\config_workflow-app-20260910030110.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Include="Config\config_workflow-app-20260906010518.json">
+    <None Include="Config\config_workflow-app-20260910030132.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Include="Config\config_workflow-app-20260909065608.json">
+    <None Include="Config\config_workflow-app-20260921002208.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Include="Config\config_workflow-app-20260909072138.json">
+    <None Include="Config\config_workflow-app-20260921035856.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Include="Config\config_workflow-app-20260909082328.json">
+    <None Include="Config\config_workflow-app-20260921050151.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Include="Config\config_workflow-app-20260921055356.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Include="Config\config_workflow-app-20260921095635.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Include="Config\sdk-bootstrap.json">

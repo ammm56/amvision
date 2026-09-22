@@ -32,11 +32,24 @@ namespace AMVision.Console
             AMVisionOperationRunner runner,
             CancellationToken cancellationToken)
         {
+            // 服务状态
+            var serstatus = runner.Call(api => api.GetServiceStatus(false, cancellationToken));
+            string resultStr = JsonConvert.SerializeObject(serstatus, Formatting.Indented);
+            if (serstatus.Data?.Ready == true)
+            {
+                // 服务已就绪，可以调用模型、Runtime、Trigger。
+            }
+            else
+            {
+                // 未就绪或查询失败。
+                // 查看 Data?.Blockers、HttpResponse、Exception。
+            }
+
             // 管理与状态
             var status = await runner.CallAsync(api => api.GetModelDeploymentRuntimeStatusAsync(ModelDeploymentName, cancellationToken)).ConfigureAwait(false);
             var health = await runner.CallAsync(api => api.GetModelDeploymentRuntimeHealthAsync(ModelDeploymentName, cancellationToken)).ConfigureAwait(false);
             var start = await runner.CallAsync(api => api.StartModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken)).ConfigureAwait(false);
-            string resultStr = JsonConvert.SerializeObject(start, Formatting.Indented);
+            resultStr = JsonConvert.SerializeObject(start, Formatting.Indented);
             var warmup = await runner.CallAsync(api => api.WarmupModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken)).ConfigureAwait(false);
             //var reset = await runner.CallAsync(api => api.ResetModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken)).ConfigureAwait(false);
             //var stop = await runner.CallAsync(api => api.StopModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken)).ConfigureAwait(false);
