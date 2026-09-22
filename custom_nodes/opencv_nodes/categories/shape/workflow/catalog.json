@@ -2380,7 +2380,7 @@
       "description": "围绕参考圆径向采样亚像素边缘，使用 robust circle fitting 输出稳定圆定位和质量诊断。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -2587,7 +2587,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {}
     },
     {
@@ -2598,7 +2598,7 @@
       "description": "对输入图片提取 contour，并输出结构化 contour 集合。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -2815,7 +2815,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {}
     },
     {
@@ -2826,7 +2826,7 @@
       "description": "对 contour 集合执行多边形近似，适合把毛刺边界先规整成更稳定的工艺轮廓或多边形骨架。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -2930,7 +2930,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {}
     },
     {
@@ -2941,7 +2941,7 @@
       "description": "按面积、宽高、点数和排序规则筛选 contour 集合。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -3126,7 +3126,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {}
     },
     {
@@ -3137,7 +3137,7 @@
       "description": "把 contours.v1 规整成标准 regions.v1，便于继续接工业规则和 ROI/连续性节点。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -3214,7 +3214,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {}
     },
     {
@@ -3225,7 +3225,7 @@
       "description": "对 contour 集合计算凸包，适合先把凹陷、缺角或局部锯齿规整成更稳定的外形包络。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -3326,7 +3326,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {}
     },
     {
@@ -3337,7 +3337,7 @@
       "description": "计算每个轮廓相对凸包的凹陷位置和深度。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -3377,7 +3377,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {}
     },
     {
@@ -3388,7 +3388,7 @@
       "description": "对 contour 集合执行椭圆拟合，并输出结构化 ellipses.v1，适合孔位、椭圆件、压装位和圆孔变形检查。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -3495,7 +3495,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {}
     },
     {
@@ -3506,7 +3506,7 @@
       "description": "对 contour 集合执行拟合直线，并输出结构化 lines.v1。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -3626,7 +3626,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {}
     },
     {
@@ -3637,7 +3637,7 @@
       "description": "在 Search ROI 内执行位置无关的工业圆搜索；Reference Circle 只定义目标半径，不固定圆心，并使用径向边缘、robust fitting 和质量门槛过滤伪圆。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "thread-safe",
       "input_ports": [
         {
@@ -3977,7 +3977,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {}
     },
     {
@@ -3988,7 +3988,7 @@
       "description": "对输入图片执行概率 Hough 直线检测，并输出结构化 lines.v1。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -4195,7 +4195,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {}
     },
     {
@@ -4206,7 +4206,7 @@
       "description": "计算七个 Hu 不变矩，默认输出便于比较的有符号对数值。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -4251,7 +4251,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {}
     },
     {
@@ -4262,7 +4262,7 @@
       "description": "计算轮廓的空间矩、中心矩、归一化中心矩和质心。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -4302,7 +4302,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {}
     },
     {
@@ -4313,7 +4313,7 @@
       "description": "对 contour 集合计算最小外接旋转矩形，并输出结构化 rotated-rects.v1。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -4424,7 +4424,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {}
     },
     {
@@ -4435,7 +4435,7 @@
       "description": "对 contour 集合计算最小外接圆，并输出结构化 circles.v1。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -4541,7 +4541,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {}
     },
     {
@@ -4552,7 +4552,7 @@
       "description": "判断一个或多个点位于指定轮廓内部、边界还是外部，并可输出有符号距离。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -4621,7 +4621,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {}
     },
     {
@@ -4632,7 +4632,7 @@
       "description": "计算面积、周长、质心、方向、长短轴、偏心率、圆度、实心度和外接率等区域特征。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -4672,7 +4672,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {}
     },
     {
@@ -4683,7 +4683,7 @@
       "description": "使用 Hu 矩比较两个 contour 集合中的指定轮廓，分数越低越相似。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -4761,7 +4761,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {}
     }
   ],

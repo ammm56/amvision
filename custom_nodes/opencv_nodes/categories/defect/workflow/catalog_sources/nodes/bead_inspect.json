@@ -1,7 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.bead-inspect",
-  "version": "0.1.4",
+  "version": "0.1.8",
   "display_name": "Bead Inspect",
   "category": "opencv.inspection.difference",
   "description": "沿参考路径检查胶路或焊道宽度、缺失、溢出和位置偏差。",
@@ -27,5 +27,5 @@
   "capability_tags": ["opencv.bead-inspect", "vision.inspection", "inspection.difference"],
   "runtime_requirements": {"python_packages": ["opencv-python", "numpy"]},
   "node_pack_id": "opencv.nodes",
-  "node_pack_version": "0.1.3"
+  "node_pack_version": "0.1.8"
 }

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 
 NODE_PACK_ID = "http.nodes"
-NODE_PACK_VERSION = "0.1.3"
+NODE_PACK_VERSION = "0.1.8"
 
 HTTP_REQUEST_NODE_TYPE_ID = "custom.http.request"
 

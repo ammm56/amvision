@@ -297,7 +297,7 @@
       "description": "直接消费 crop-export.crops，逐张解码裁剪图中的 QR Code，并把每个结果的 position 回映射到原图坐标。适合 detect -> crop-export -> qr-crop-decode-remap 这条链。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -383,7 +383,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "i18n": {
           "description": {
@@ -405,7 +405,7 @@
       "description": "扫描输入图片中的全部 GS1 相关条码制式，适合带 AI 编码的供应链与追溯场景。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -506,7 +506,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "family": "gs1",
         "variant": "all-gs1",
@@ -522,7 +522,7 @@
       "description": "扫描输入图片中的全部工业条码制式，适合物流、追踪、制造与医药标识场景。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -623,7 +623,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "family": "industrial",
         "variant": "all-industrial",
@@ -639,7 +639,7 @@
       "description": "扫描输入图片中的全部一维条码制式，适合物流、零售与工业通用线性码场景。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -740,7 +740,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "family": "linear",
         "variant": "all-linear",
@@ -756,7 +756,7 @@
       "description": "扫描输入图片中的全部矩阵码制式，适合票据、证件、标签与文档二维码场景。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -857,7 +857,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "family": "matrix",
         "variant": "all-matrix",
@@ -873,7 +873,7 @@
       "description": "扫描输入图片中 zxing 当前可读取的全部条码与二维码制式，适合未知制式混扫场景。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -974,7 +974,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "family": "mixed",
         "variant": "all-readable",
@@ -990,7 +990,7 @@
       "description": "扫描输入图片中的全部零售条码制式，适合 EAN、UPC、DataBar 等零售识读场景。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -1091,7 +1091,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "family": "retail",
         "variant": "all-retail",
@@ -1107,7 +1107,7 @@
       "description": "从输入图片中解码 Aztec Code。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -1208,7 +1208,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "family": "matrix",
         "variant": "aztec-code",
@@ -1224,7 +1224,7 @@
       "description": "从输入图片中解码 Aztec Rune。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -1325,7 +1325,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "family": "matrix",
         "variant": "aztec-rune",
@@ -1341,7 +1341,7 @@
       "description": "从输入图片中解码 Codabar 条码。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -1442,7 +1442,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "family": "industrial",
         "variant": "codabar",
@@ -1458,7 +1458,7 @@
       "description": "从输入图片中解码 Code 128 条码。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -1559,7 +1559,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "family": "industrial",
         "variant": "code128",
@@ -1575,7 +1575,7 @@
       "description": "从输入图片中解码 Code 32 条码。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -1676,7 +1676,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "family": "industrial",
         "variant": "code32",
@@ -1692,7 +1692,7 @@
       "description": "从输入图片中解码 Code 39 Extended 条码。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -1793,7 +1793,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "family": "industrial",
         "variant": "code39-extended",
@@ -1809,7 +1809,7 @@
       "description": "从输入图片中解码 Code 39 Standard 条码。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -1910,7 +1910,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "family": "industrial",
         "variant": "code39-standard",
@@ -1926,7 +1926,7 @@
       "description": "从输入图片中解码 Code 93 条码。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -2027,7 +2027,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "family": "industrial",
         "variant": "code93",
@@ -2043,7 +2043,7 @@
       "description": "从输入图片中解码 Compact PDF417。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -2144,7 +2144,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "family": "matrix",
         "variant": "compact-pdf417",
@@ -2160,7 +2160,7 @@
       "description": "扫描输入图片中的 DataBar 家族条码，适合 GS1 零售与扩展属性识读场景。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -2261,7 +2261,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "family": "retail",
         "variant": "databar-family",
@@ -2277,7 +2277,7 @@
       "description": "从输入图片中解码 DataBar Expanded 条码。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -2378,7 +2378,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "family": "retail",
         "variant": "databar-expanded",
@@ -2394,7 +2394,7 @@
       "description": "从输入图片中解码 DataBar Expanded Stacked 条码。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -2495,7 +2495,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "family": "retail",
         "variant": "databar-expanded-stacked",
@@ -2511,7 +2511,7 @@
       "description": "从输入图片中解码 DataBar Limited 条码。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -2612,7 +2612,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "family": "retail",
         "variant": "databar-limited",
@@ -2628,7 +2628,7 @@
       "description": "从输入图片中解码 DataBar Omnidirectional 条码。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -2729,7 +2729,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "family": "retail",
         "variant": "databar-omnidirectional",
@@ -2745,7 +2745,7 @@
       "description": "从输入图片中解码 DataBar Stacked 条码。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -2846,7 +2846,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "family": "retail",
         "variant": "databar-stacked",
@@ -2862,7 +2862,7 @@
       "description": "从输入图片中解码 Data Matrix ECC200。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -2963,7 +2963,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "family": "matrix",
         "variant": "datamatrix-ecc200",
@@ -2979,7 +2979,7 @@
       "description": "从输入图片中解码 EAN-13 条码。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -3080,7 +3080,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "family": "retail",
         "variant": "ean13",
@@ -3096,7 +3096,7 @@
       "description": "从输入图片中解码 EAN-2 附加码。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -3197,7 +3197,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "family": "retail",
         "variant": "ean2",
@@ -3213,7 +3213,7 @@
       "description": "从输入图片中解码 EAN-5 附加码。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -3314,7 +3314,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "family": "retail",
         "variant": "ean5",
@@ -3330,7 +3330,7 @@
       "description": "从输入图片中解码 EAN-8 条码。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -3431,7 +3431,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "family": "retail",
         "variant": "ean8",
@@ -3447,7 +3447,7 @@
       "description": "扫描输入图片中的 EAN/UPC 家族条码，适合标准零售主码与附加码识读场景。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -3548,7 +3548,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "family": "retail",
         "variant": "ean-upc-family",
@@ -3564,7 +3564,7 @@
       "description": "从输入图片中解码 ISBN 图书条码。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -3665,7 +3665,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "family": "retail",
         "variant": "isbn",
@@ -3681,7 +3681,7 @@
       "description": "从输入图片中解码 ITF-14 条码。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -3782,7 +3782,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "family": "industrial",
         "variant": "itf14",
@@ -3798,7 +3798,7 @@
       "description": "从输入图片中解码 ITF 条码。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -3899,7 +3899,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "family": "industrial",
         "variant": "itf",
@@ -3915,7 +3915,7 @@
       "description": "从输入图片中解码 MaxiCode；当前运行时以 partial read support 为主。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -4016,7 +4016,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "family": "matrix",
         "variant": "maxicode",
@@ -4032,7 +4032,7 @@
       "description": "从输入图片中解码 MicroPDF417。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -4133,7 +4133,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "family": "matrix",
         "variant": "micro-pdf417",
@@ -4149,7 +4149,7 @@
       "description": "从输入图片中解码 Micro QR Code。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -4250,7 +4250,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "family": "matrix",
         "variant": "micro-qr-code",
@@ -4266,7 +4266,7 @@
       "description": "从输入图片中解码 PDF417。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -4367,7 +4367,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "family": "matrix",
         "variant": "pdf417",
@@ -4383,7 +4383,7 @@
       "description": "从输入图片中解码 PZN 医药条码。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -4484,7 +4484,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "family": "industrial",
         "variant": "pzn",
@@ -4500,7 +4500,7 @@
       "description": "从输入图片中解码 QR Code，覆盖常规 QR Code 识读场景。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -4601,7 +4601,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "family": "matrix",
         "variant": "qr-code",
@@ -4617,7 +4617,7 @@
       "description": "从输入图片中解码 QR Code Model 1。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -4718,7 +4718,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "family": "matrix",
         "variant": "qr-code-model1",
@@ -4734,7 +4734,7 @@
       "description": "从输入图片中解码 QR Code Model 2。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -4835,7 +4835,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "family": "matrix",
         "variant": "qr-code-model2",
@@ -4851,7 +4851,7 @@
       "description": "从输入图片中解码 rMQR。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -4952,7 +4952,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "family": "matrix",
         "variant": "rmqr",
@@ -4968,7 +4968,7 @@
       "description": "从输入图片中解码 UPC-A 条码。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -5069,7 +5069,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "family": "retail",
         "variant": "upca",
@@ -5085,7 +5085,7 @@
       "description": "从输入图片中解码 UPC-E 条码。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -5186,7 +5186,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "family": "retail",
         "variant": "upce",
@@ -5202,7 +5202,7 @@
       "description": "把标注图片和 Barcode 结果摘要组装成适合工作站或 REST 返回的 response-body。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -5283,7 +5283,7 @@
         "python_packages": []
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {}
     },
     {
@@ -5294,7 +5294,7 @@
       "description": "按 format、text、index 和区域范围判断 barcode-results.v1 中是否存在匹配项，并输出匹配数量。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -5391,7 +5391,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "input_kind": "barcode-results.v1",
         "output_boolean": "boolean.v1",
@@ -5406,7 +5406,7 @@
       "description": "按 format、text、index 和区域范围筛选 barcode-results.v1，输出过滤后的结果集。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -5494,7 +5494,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "input_kind": "barcode-results.v1",
         "output_kind": "barcode-results.v1"
@@ -5508,7 +5508,7 @@
       "description": "把 barcode-results.v1 转成更轻量的摘要对象，方便后续 workflow 条件分支直接读取。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -5549,7 +5549,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "input_kind": "barcode-results.v1",
         "output_kind": "response-body.v1"
@@ -5563,7 +5563,7 @@
       "description": "把 barcode-results 中的 position 轮廓和文本叠加回原图，输出新的图片引用。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -5730,7 +5730,7 @@
         ]
       },
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "i18n": {
           "display_name": {
@@ -5752,7 +5752,7 @@
       "description": "把 barcode-results.v1 包装成 value.v1，供 object-create、response-envelope 和 value-preview 继续组合或预览。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -5805,7 +5805,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "barcode.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "i18n": {
           "display_name": {

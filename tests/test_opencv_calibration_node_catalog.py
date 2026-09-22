@@ -43,4 +43,4 @@ def test_opencv_calibration_node_catalog_builder_matches_checked_in_catalog() ->
         "custom.opencv.rectification-map",
         "custom.opencv.image-rectify-stereo",
     }
-    assert {item["node_pack_version"] for item in actual["node_definitions"]} == {"0.1.3"}
+    assert {item["node_pack_version"] for item in actual["node_definitions"]} == {"0.1.8"}

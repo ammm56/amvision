@@ -1,7 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.line-segment-detect",
-  "version": "0.1.4",
+  "version": "0.1.8",
   "display_name": "Line Segment Detect",
   "category": "opencv.geometry.detection",
   "description": "使用 LSD 检测亚像素直线段并输出长度和角度。",
@@ -21,5 +21,5 @@
   "capability_tags": ["opencv.line-segment-detect", "vision.opencv", "vision.geometry"],
   "runtime_requirements": {"python_packages": ["opencv-python", "numpy"]},
   "node_pack_id": "opencv.nodes",
-  "node_pack_version": "0.1.3"
+  "node_pack_version": "0.1.8"
 }

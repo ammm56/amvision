@@ -18,7 +18,7 @@ from custom_nodes.opencv_nodes.shared.workflow.payload_contracts import (
 
 
 NODE_PACK_ID = "opencv.nodes"
-NODE_PACK_VERSION = "0.1.3"
+NODE_PACK_VERSION = "0.1.8"
 
 
 def get_workflow_dir() -> Path:

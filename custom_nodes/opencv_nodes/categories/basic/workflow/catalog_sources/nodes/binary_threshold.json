@@ -1,7 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.binary-threshold",
-  "version": "0.1.4",
+  "version": "0.1.8",
   "display_name": "Binary Threshold",
   "category": "opencv.image.threshold",
   "description": "把输入图片转为灰度后执行二值化。",
@@ -50,5 +50,5 @@
     ]
   },
   "node_pack_id": "opencv.nodes",
-  "node_pack_version": "0.1.3"
+  "node_pack_version": "0.1.8"
 }

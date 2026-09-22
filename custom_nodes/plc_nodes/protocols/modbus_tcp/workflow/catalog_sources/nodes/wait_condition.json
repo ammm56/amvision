@@ -1,7 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.plc.modbus.wait-condition",
-  "version": "0.1.4",
+  "version": "0.1.8",
   "display_name": "Wait Modbus Condition",
   "category": "integration.plc",
   "description": "轮询 Modbus TCP 点位直到满足条件，直接按 00001 / 10001 / 30001 / 400001 这类地址语义等待现场点位放行。",
@@ -168,5 +168,5 @@
     "python_packages": []
   },
   "node_pack_id": "plc.nodes",
-  "node_pack_version": "0.1.0"
+  "node_pack_version": "0.1.8"
 }

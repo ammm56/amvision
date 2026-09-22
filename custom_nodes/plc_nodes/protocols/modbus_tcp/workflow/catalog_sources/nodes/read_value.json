@@ -1,7 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.plc.modbus.read-value",
-  "version": "0.1.4",
+  "version": "0.1.8",
   "display_name": "Read Modbus Value",
   "category": "integration.plc",
   "description": "按 PLC 常见逻辑地址直接读取单个 Modbus 值，适合用 00001 / 10001 / 30001 / 400001 这类地址语义统一接现场点位。",
@@ -127,5 +127,5 @@
     "python_packages": []
   },
   "node_pack_id": "plc.nodes",
-  "node_pack_version": "0.1.0"
+  "node_pack_version": "0.1.8"
 }

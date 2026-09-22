@@ -1,7 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.ecc-align",
-  "version": "0.1.4",
+  "version": "0.1.8",
   "display_name": "ECC Align",
   "category": "opencv.matching.registration",
   "description": "通过最大化增强相关系数估计平移、欧氏、仿射或单应变换，并输出对齐图。",
@@ -75,5 +75,5 @@
     ]
   },
   "node_pack_id": "opencv.nodes",
-  "node_pack_version": "0.1.3"
+  "node_pack_version": "0.1.8"
 }

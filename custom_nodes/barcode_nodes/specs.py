@@ -7,7 +7,7 @@ from typing import Literal
 
 
 NODE_PACK_ID = "barcode.nodes"
-NODE_PACK_VERSION = "0.1.3"
+NODE_PACK_VERSION = "0.1.8"
 DRAW_BARCODE_RESULTS_NODE_TYPE_ID = "custom.barcode.draw-results"
 QR_CROP_DECODE_REMAP_NODE_TYPE_ID = "custom.barcode.qr-crop-decode-remap"
 

@@ -68,7 +68,7 @@ def test_draw_regions_exposes_signed_pixel_offsets() -> None:
     definition = next(item for item in build_custom_node_catalog_document().node_definitions
                       if item.node_type_id == "custom.opencv.draw-regions")
     effective = _with_effective_parameter_ui_schema(definition)
-    assert definition.version == "0.1.5"
+    assert definition.version == "0.1.8"
     for name in ("label_offset_x", "label_offset_y"):
         field = next(item for item in effective.parameter_ui_schema.fields if item.parameter_name == name)
         assert field.default_value == 0

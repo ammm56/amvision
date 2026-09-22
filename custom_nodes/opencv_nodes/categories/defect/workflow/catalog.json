@@ -2380,7 +2380,7 @@
       "description": "把差分图通过阈值化收成前景变化区域二值图。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -2451,7 +2451,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {}
     },
     {
@@ -2462,7 +2462,7 @@
       "description": "沿参考路径检查胶路或焊道宽度、缺失、溢出和位置偏差。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -2560,7 +2560,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {}
     },
     {
@@ -2571,7 +2571,7 @@
       "description": "对二值前景执行连通域、形状和可选灰度统计。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -2654,7 +2654,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {}
     },
     {
@@ -2665,7 +2665,7 @@
       "description": "删除与图像边界相接的二值连通域。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -2719,7 +2719,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {}
     },
     {
@@ -2730,7 +2730,7 @@
       "description": "把二值前景图分解成连通区域，并输出标准 regions.v1 与摘要。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -2832,7 +2832,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {}
     },
     {
@@ -2843,7 +2843,7 @@
       "description": "计算实测轮廓到参考轮廓的有符号偏差并标记外凸与缺口。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -2913,7 +2913,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {}
     },
     {
@@ -2924,7 +2924,7 @@
       "description": "对二值前景执行距离变换，并输出灰度预览图和距离摘要，适合胶线厚度趋势、孔腔中心性或骨架前置分析。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -3020,7 +3020,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {}
     },
     {
@@ -3031,7 +3031,7 @@
       "description": "填充白色前景内部孔洞，适合胶线、涂布、闭合区域和空腔缺口的前置规整。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -3091,7 +3091,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {}
     },
     {
@@ -3102,7 +3102,7 @@
       "description": "从种子点按颜色差容差提取连通区域 mask。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -3190,7 +3190,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {}
     },
     {
@@ -3201,7 +3201,7 @@
       "description": "使用矩形或可选初始 mask 执行交互式前景分割。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -3294,7 +3294,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {}
     },
     {
@@ -3305,7 +3305,7 @@
       "description": "把差异图、距离图或边缘强度图映射为伪彩色热力图，支持可选底图叠加，适合现场调试异常强度分布。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -3395,7 +3395,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {}
     },
     {
@@ -3406,7 +3406,7 @@
       "description": "对当前图片和参考图片执行绝对差分，生成差异图和差异摘要。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -3476,7 +3476,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {}
     },
     {
@@ -3487,7 +3487,7 @@
       "description": "按 BGR 颜色向量执行像素 K-Means 聚类分割。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -3562,7 +3562,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {}
     },
     {
@@ -3573,7 +3573,7 @@
       "description": "使用包含 -1、0、1 的结构元素在二值图中搜索像素模式。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -3658,7 +3658,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {}
     },
     {
@@ -3669,7 +3669,7 @@
       "description": "计算二值区域 A 减区域 B。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -3732,7 +3732,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {}
     },
     {
@@ -3743,7 +3743,7 @@
       "description": "计算两个同尺寸二值区域的交集。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -3806,7 +3806,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {}
     },
     {
@@ -3817,7 +3817,7 @@
       "description": "计算两个同尺寸二值区域的并集。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -3880,7 +3880,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {}
     },
     {
@@ -3891,7 +3891,7 @@
       "description": "按像素面积删除小型二值连通域。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -3958,7 +3958,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {}
     },
     {
@@ -3969,7 +3969,7 @@
       "description": "把二值前景规整成近似单像素骨架，适合细线、焊缝、胶线中心线和跨度趋势分析。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -4033,7 +4033,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {}
     },
     {
@@ -4044,7 +4044,7 @@
       "description": "使用正常样本变化模型输出异常热图、区域和统计。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -4137,7 +4137,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {}
     },
     {
@@ -4148,7 +4148,7 @@
       "description": "从同尺寸正常样本建立逐像素均值与标准差变化模型。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -4222,7 +4222,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {}
     },
     {
@@ -4233,7 +4233,7 @@
       "description": "把粘连前景通过 watershed 拆成带边界隔离的二值结果，适合相邻颗粒、连在一起的缺陷块或胶点分离前处理。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -4328,7 +4328,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {}
     },
     {
@@ -4339,7 +4339,7 @@
       "description": "使用显式 marker label 图执行 watershed 并输出区域 mask 与边界。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -4411,7 +4411,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.8",
       "metadata": {}
     }
   ],

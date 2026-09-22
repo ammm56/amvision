@@ -1,7 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.barcode.all-industrial-decode",
-  "version": "0.1.4",
+  "version": "0.1.8",
   "display_name": "Decode All Industrial Barcodes",
   "category": "barcode.decode",
   "description": "扫描输入图片中的全部工业条码制式，适合物流、追踪、制造与医药标识场景。",
@@ -97,7 +97,7 @@
     ]
   },
   "node_pack_id": "barcode.nodes",
-  "node_pack_version": "0.1.3",
+  "node_pack_version": "0.1.8",
   "metadata": {
     "family": "industrial",
     "variant": "all-industrial",

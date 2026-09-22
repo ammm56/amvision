@@ -1,7 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.gallery-preview",
-  "version": "0.1.4",
+  "version": "0.1.8",
   "display_name": "Gallery Preview",
   "category": "opencv.output.render",
   "description": "把 image-refs.v1 图片集合转换成可直接进入 HTTP 响应的 gallery body。最常见接法是直接连接 crop-export.crops，先快速检查每张裁剪图是否正确。",
@@ -73,5 +73,5 @@
   ],
   "runtime_requirements": {},
   "node_pack_id": "opencv.nodes",
-  "node_pack_version": "0.1.3"
+  "node_pack_version": "0.1.8"
 }

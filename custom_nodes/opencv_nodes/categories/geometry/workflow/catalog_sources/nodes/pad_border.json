@@ -1,7 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.pad-border",
-  "version": "0.1.4",
+  "version": "0.1.8",
   "display_name": "Pad Border",
   "category": "opencv.image.transform",
   "description": "按 constant、replicate、reflect 或 wrap 策略扩展图像边界。",
@@ -24,5 +24,5 @@
   "capability_tags": ["opencv.pad-border", "vision.opencv", "vision.geometry"],
   "runtime_requirements": {"python_packages": ["opencv-python", "numpy"]},
   "node_pack_id": "opencv.nodes",
-  "node_pack_version": "0.1.3"
+  "node_pack_version": "0.1.8"
 }

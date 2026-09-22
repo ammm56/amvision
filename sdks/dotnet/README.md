@@ -10,6 +10,7 @@
 - Target framework：`.NET Framework 4.7.2`
 - Language version：`C# 8.0`
 - Assembly：`Amvar.Vision.dll`
+- 发布版本：`0.1.8`；SDK 与 Console 示例的程序集版本、文件版本为 `0.1.8.0`，产品版本为 `0.1.8`。
 
 `apps` 和 `tests` 目录不承载 SDK 核心逻辑。Console 示例只保留调用样例和调试入口；HTTP、ZeroMQ、配置加载、Workflow runtime、Model deployment 等封装全部放在 `src/Amvar.Vision`。
 

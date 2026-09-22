@@ -1,7 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.calibration-diagnose",
-  "version": "0.1.4",
+  "version": "0.1.8",
   "display_name": "Calibration Diagnose",
   "category": "opencv.calibration.camera",
   "description": "重新计算总体和逐观察重投影误差、异常观察与姿态诊断。",
@@ -18,5 +18,5 @@
   "capability_tags": ["opencv.calibration-diagnose", "vision.opencv", "calibration.diagnostics"],
   "runtime_requirements": {"python_packages": ["opencv-python", "numpy"]},
   "node_pack_id": "opencv.nodes",
-  "node_pack_version": "0.1.3"
+  "node_pack_version": "0.1.8"
 }

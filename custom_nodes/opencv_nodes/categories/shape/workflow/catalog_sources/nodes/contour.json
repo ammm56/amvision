@@ -1,7 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.contour",
-  "version": "0.1.4",
+  "version": "0.1.8",
   "display_name": "Contour",
   "category": "opencv.geometry.contour",
   "description": "对输入图片提取 contour，并输出结构化 contour 集合。",
@@ -203,5 +203,5 @@
     ]
   },
   "node_pack_id": "opencv.nodes",
-  "node_pack_version": "0.1.3"
+  "node_pack_version": "0.1.8"
 }

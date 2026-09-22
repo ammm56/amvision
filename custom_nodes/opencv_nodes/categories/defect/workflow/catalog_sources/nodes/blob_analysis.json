@@ -1,7 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.blob-analysis",
-  "version": "0.1.4",
+  "version": "0.1.8",
   "display_name": "Blob Analysis",
   "category": "opencv.inspection.statistics",
   "description": "对二值前景执行连通域、形状和可选灰度统计。",
@@ -24,5 +24,5 @@
   "capability_tags": ["opencv.blob-analysis", "vision.analysis", "inspection.statistics"],
   "runtime_requirements": {"python_packages": ["opencv-python", "numpy"]},
   "node_pack_id": "opencv.nodes",
-  "node_pack_version": "0.1.3"
+  "node_pack_version": "0.1.8"
 }

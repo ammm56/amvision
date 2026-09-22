@@ -1,7 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.contour-deviation-inspect",
-  "version": "0.1.4",
+  "version": "0.1.8",
   "display_name": "Contour Deviation Inspect",
   "category": "opencv.inspection.difference",
   "description": "计算实测轮廓到参考轮廓的有符号偏差并标记外凸与缺口。",
@@ -22,5 +22,5 @@
   "capability_tags": ["opencv.contour-deviation", "vision.inspection", "inspection.difference"],
   "runtime_requirements": {"python_packages": ["opencv-python", "numpy"]},
   "node_pack_id": "opencv.nodes",
-  "node_pack_version": "0.1.3"
+  "node_pack_version": "0.1.8"
 }

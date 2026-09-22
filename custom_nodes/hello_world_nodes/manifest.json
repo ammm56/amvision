@@ -1,7 +1,7 @@
 {
   "format_id": "amvision.node-pack-manifest.v1",
   "id": "hello.world-nodes",
-  "version": "0.1.0",
+  "version": "0.1.8",
   "displayName": "Hello World Nodes",
   "description": "提供一个最小可运行的 hello-world 自定义节点示例。",
   "category": "custom-node-pack",

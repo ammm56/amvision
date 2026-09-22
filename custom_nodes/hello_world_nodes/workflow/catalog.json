@@ -10,7 +10,7 @@
       "description": "根据输入 name 或默认参数生成一个最小的问候消息。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.0",
+      "version": "0.1.8",
       "input_ports": [
         {
           "name": "name",
@@ -53,7 +53,7 @@
         "python_packages": []
       },
       "node_pack_id": "hello.world-nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.1.8",
       "metadata": {
         "templateSource": "custom_nodes/_scaffold/simple_node_pack"
       }

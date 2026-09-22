@@ -3,5 +3,5 @@
 from __future__ import annotations
 
 
-BACKEND_VERSION = "0.1.7"
+BACKEND_VERSION = "0.1.8"
 """当前后端发布版本。"""

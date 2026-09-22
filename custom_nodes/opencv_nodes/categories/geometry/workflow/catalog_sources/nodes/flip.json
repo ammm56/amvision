@@ -1,7 +1,7 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.flip",
-  "version": "0.1.4",
+  "version": "0.1.8",
   "display_name": "Flip",
   "category": "opencv.image.transform",
   "description": "沿水平、垂直或双轴翻转图像。",
@@ -19,5 +19,5 @@
   "capability_tags": ["opencv.flip", "vision.opencv", "vision.geometry"],
   "runtime_requirements": {"python_packages": ["opencv-python", "numpy"]},
   "node_pack_id": "opencv.nodes",
-  "node_pack_version": "0.1.3"
+  "node_pack_version": "0.1.8"
 }

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 
 NODE_PACK_ID = "camera.nodes"
-NODE_PACK_VERSION = "0.1.0"
+NODE_PACK_VERSION = "0.1.8"
 
 CAMERA_SESSION_PAYLOAD_TYPE_ID = "camera-session.v1"
 ENUMERATE_DEVICES_NODE_TYPE_ID = "custom.camera.usb.enumerate-devices"
