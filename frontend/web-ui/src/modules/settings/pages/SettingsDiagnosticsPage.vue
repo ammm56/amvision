@@ -235,7 +235,10 @@
             <span class="settings-panel__meta">{{ stringValue(about.app_version) }}</span>
           </header>
           <dl class="settings-metadata-grid">
-            <InfoRow :label="t('settingsDiagnostics.fields.appName')" :value="stringValue(about.app_name)" />
+            <div>
+              <dt>{{ t('settingsDiagnostics.fields.appName') }}</dt>
+              <dd><AnimatedBrand plain /></dd>
+            </div>
             <InfoRow :label="t('settingsDiagnostics.fields.edition')" value="Community Edition" />
             <InfoRow :label="t('settingsDiagnostics.fields.frontendVersion')" :value="frontendVersion" />
             <InfoRow :label="t('settingsDiagnostics.fields.backendVersion')" :value="stringValue(about.backend_version)" />
@@ -376,6 +379,7 @@
 
 <script setup lang="ts">
 import { computed, defineComponent, h, onMounted, ref, watch } from 'vue'
+import AnimatedBrand from '@/shared/ui/components/AnimatedBrand.vue'
 import { Cpu, HardDrive, Info, MonitorPlay, Moon, ServerCog, Settings2, ShieldCheck, Sun, UsersRound, Wrench } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'

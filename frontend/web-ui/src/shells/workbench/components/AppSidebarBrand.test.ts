@@ -2,6 +2,7 @@ import { mount, type VueWrapper } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AppSidebarBrand from './AppSidebarBrand.vue'
+import AnimatedBrand from '@/shared/ui/components/AnimatedBrand.vue'
 
 // 生命周期测试隔离动画帧；真实 Motion 进出场在浏览器中验证。
 vi.mock('motion-v', async () => {
@@ -30,7 +31,7 @@ function mountBrand() {
   })
   return wrapper
 }
-function visibleWord() { return wrapper!.get('.sidebar-brand__word').text() }
+function visibleWord() { return wrapper!.get('.animated-brand__word').text() }
 
 beforeEach(() => {
   vi.useFakeTimers()
@@ -54,6 +55,18 @@ afterEach(() => {
 })
 
 describe('AppSidebarBrand', () => {
+  it('关于页面复用动态名称，无导航链接，文字全部小写', async () => {
+    wrapper = mount(AnimatedBrand, { props: { plain: true } })
+    expect(wrapper.element.tagName).toBe('SPAN')
+    expect(wrapper.attributes('role')).toBe('img')
+    expect(wrapper.attributes('aria-label')).toBe('amvar vision')
+    expect(wrapper.find('a').exists()).toBe(false)
+    expect(wrapper.get('.animated-brand__prefix').text()).toBe('amvar')
+    expect(visibleWord()).toBe('vision')
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(visibleWord()).toBe('workflow')
+  })
+
   it('按固定顺序轮换全部词缀并循环，保持根路径和可访问名称稳定', async () => {
     const brand = mountBrand()
     expect(visibleWord()).toBe('Vision')

@@ -88,6 +88,8 @@ PNG 使用 Inkscape 按页面导出，保持圆角外透明；256 像素版本�
 
 动画按 [Vue Bits Rotating Text](https://vue-bits.dev/text-animations/rotating-text) 的 Vue 示例适配：轮换间隔为 2 秒，从末字符开始按 25 毫秒错开，采用 `damping: 30 / stiffness: 400` 的弹簧动画；旧词向上退出后，新词由下方进入，不叠加淡入淡出。悬停、键盘聚焦和页面隐藏时停止轮换；恢复后重新等待完整间隔，不补播后台动画。减少动态效果偏好下静态显示 `Vision`，关闭布局动画。收起或卸载时释放计时器和监听器。
 
+导航栏与“设置 → 关于 → 应用名称”共用 `AnimatedBrand` 组件。导航栏保留原有大小写、品牌绿底和白字；只有关于页面使用 `plain` 展示：前缀和词缀全部小写、词缀无背景、字体与相邻 Community Edition 元数据一致（不加粗）、文字继承当前主题颜色，不提供导航链接。
+
 使用本地安装的 `motion-v` 中的 `Motion` 与 `AnimatePresence` 实现，按当前 API 使用 `as="span"`，不沿用参考代码中的旧 `tag` 属性。依赖随 Vite 构建一起分发，不依赖 CDN 或外部字体。动画限制在品牌词缀内，不改变业务页面切换、Workflow、Runtime 或 Trigger 行为。
 
 宽度取自当前词的不可见测量元素，并由 Motion 弹簧直接驱动真实宽度；居中的 Flex 组合随宽度连续移动。不能只给父容器添加 `layout`：`AnimatePresence mode="wait"` 在退出完成后替换内部文字时，父容器可能没有同步更新，从而导致宽度硬跳。测量元素不占布局空间，ResizeObserver 随组件卸载清理。
