@@ -6,6 +6,7 @@ using Avalonia.Platform;
 using Avalonia.Controls.Presenters;
 using Avalonia.Media;
 using Avalonia.Styling;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Amvar.Launcher.Core.Abstractions;
 using Amvar.Launcher.Core.Application;
@@ -120,6 +121,116 @@ public sealed class NativeViewTests
             return true;
         }, CancellationToken.None);
     }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task About_links_and_popup_item_keep_their_text_color_on_hover(bool dark)
+    {
+        using var session = HeadlessUnitTestSession.StartNew(typeof(TestApplication));
+        await session.Dispatch(() =>
+        {
+            var theme = dark ? ThemeVariant.Dark : ThemeVariant.Light;
+            var about = new AboutWindow(BuildInformationReader.Read(typeof(MainWindow).Assembly))
+                { RequestedThemeVariant = theme };
+            about.Show();
+            about.UpdateLayout();
+            var links = about.GetVisualDescendants().OfType<Button>()
+                .Where(button => button.Classes.Contains("link")).ToArray();
+            Assert.Equal(3, links.Length);
+            foreach (var link in links)
+                CheckHover(about, link, Color.Parse(dark ? "#00D992" : "#087A56"));
+            about.Close();
+
+            var item = new Button { Content = "关于", Classes = { "popupItem" } };
+            var popup = new Window { Content = item, RequestedThemeVariant = theme, Width = 220, Height = 100 };
+            popup.Show();
+            popup.UpdateLayout();
+            CheckHover(popup, item, Color.Parse(dark ? "#F2F2F2" : "#344054"));
+            popup.Close();
+        }, CancellationToken.None);
+
+        static void CheckHover(Window window, Button button, Color expected)
+        {
+            var presenter = button.GetVisualDescendants().OfType<ContentPresenter>()
+                .Single(item => item.Name == "PART_ContentPresenter");
+            var bounds = button.Bounds.Size;
+            for (var iteration = 0; iteration < 3; iteration++)
+            {
+                window.MouseMove(new Point(-10, -10));
+                Assert.False(button.IsPointerOver);
+                Assert.Equal(expected, Assert.IsAssignableFrom<ISolidColorBrush>(presenter.Foreground).Color);
+                window.MouseMove(button.TranslatePoint(new Point(10, 10), window)!.Value);
+                Assert.True(button.IsPointerOver);
+                Assert.Equal(expected, Assert.IsAssignableFrom<ISolidColorBrush>(presenter.Foreground).Color);
+                Assert.Equal(bounds, button.Bounds.Size);
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task About_buttons_do_not_flash_brighter_during_hover_transition(bool dark)
+    {
+        using var session = HeadlessUnitTestSession.StartNew(typeof(TestApplication));
+        await session.Dispatch(async () =>
+        {
+            var theme = dark ? ThemeVariant.Dark : ThemeVariant.Light;
+            var hover = Color.Parse(dark ? "#242825" : "#ECEFF2");
+            var about = new AboutWindow(BuildInformationReader.Read(typeof(MainWindow).Assembly))
+                { RequestedThemeVariant = theme };
+            about.Show();
+            about.UpdateLayout();
+            foreach (var link in about.GetVisualDescendants().OfType<Button>().Where(b => b.Classes.Contains("link")))
+                await CheckFrames(about, link, Color.Parse(dark ? "#101010" : "#F6F7F9"), hover);
+            about.Close();
+
+            var surface = Color.Parse(dark ? "#171918" : "#FFFFFF");
+            var item = new Button { Content = "关于", Classes = { "popupItem" }, Margin = new Thickness(10) };
+            var popup = new Window { Content = item, Background = new SolidColorBrush(surface),
+                RequestedThemeVariant = theme, Width = 220, Height = 100 };
+            popup.Show();
+            popup.UpdateLayout();
+            await CheckFrames(popup, item, surface, hover);
+            popup.Close();
+            return true;
+        }, CancellationToken.None);
+
+        static async Task CheckFrames(Window window, Button button, Color surface, Color hover)
+        {
+            var presenter = button.GetVisualDescendants().OfType<ContentPresenter>()
+                .Single(p => p.Name == "PART_ContentPresenter");
+            // 检查真实 BrushTransition 的中间帧，不能仅断言悬停前后的最终颜色。
+            window.MouseMove(new Point(-10, -10));
+            for (var direction = 0; direction < 2; direction++)
+            {
+                window.MouseMove(direction == 0
+                    ? button.TranslatePoint(new Point(10, 10), window)!.Value : new Point(-10, -10));
+                var intermediateFrames = 0;
+                for (var frame = 0; frame < 15; frame++)
+                {
+                    await Task.Delay(16);
+                    AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+                    Dispatcher.UIThread.RunJobs();
+                    var brush = Assert.IsAssignableFrom<ISolidColorBrush>(presenter.Background);
+                    var color = brush.Color;
+                    var alpha = color.A / 255d * brush.Opacity;
+                    var actual = new[] { color.R * alpha + surface.R * (1 - alpha),
+                        color.G * alpha + surface.G * (1 - alpha), color.B * alpha + surface.B * (1 - alpha) };
+                    var start = new[] { surface.R, surface.G, surface.B };
+                    var end = new[] { hover.R, hover.G, hover.B };
+                    for (var channel = 0; channel < 3; channel++)
+                        Assert.InRange(actual[channel], Math.Min(start[channel], end[channel]) - 1d,
+                            Math.Max(start[channel], end[channel]) + 1d);
+                    if (Math.Abs(actual[0] - start[0]) > 1 && Math.Abs(actual[0] - end[0]) > 1)
+                        intermediateFrames++;
+                    Assert.Equal(direction == 0, button.IsPointerOver);
+                }
+                Assert.True(intermediateFrames > 0, "必须采样到实际动画中间帧，避免静态断言掩盖闪烁。");
+            }
+        }
+    }
+
     public sealed class TestApplication
     {
         public static AppBuilder BuildAvaloniaApp() => AppBuilder.Configure<Amvar.Launcher.Desktop.App>().UseHeadless(new());
