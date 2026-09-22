@@ -2624,13 +2624,8 @@ textarea:focus-visible {
   display: grid;
   place-items: center;
   align-content: center;
-  gap: 10px;
-  color: #b5c0c6;
+  color: var(--am-text);
   text-align: center;
-}
-
-.workflow-graph-empty strong {
-  color: #eef3f6;
 }
 
 .workflow-inspector-json {
@@ -4097,8 +4092,7 @@ textarea:focus-visible {
   background: transparent;
 }
 
-.workflow-graph-workbench .workflow-graph-toolbar__title h1,
-.workflow-graph-workbench .workflow-graph-empty strong {
+.workflow-graph-workbench .workflow-graph-toolbar__title h1 {
   color: var(--graph-text-strong);
 }
 
@@ -4109,7 +4103,6 @@ textarea:focus-visible {
 .workflow-graph-workbench .workflow-graph-node-widget span,
 .workflow-graph-workbench .workflow-graph-panel__header p,
 .workflow-graph-workbench .workflow-graph-inspector-row span,
-.workflow-graph-workbench .workflow-graph-empty,
 .workflow-graph-workbench .workflow-graph-floating-panel .empty-state p {
   color: var(--graph-muted);
 }
