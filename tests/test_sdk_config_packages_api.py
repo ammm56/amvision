@@ -45,6 +45,23 @@ def test_sdk_config_package_preview_and_download_include_project_resources(tmp_p
     )
     _seed_workflow_runtime_and_trigger_source(session_factory, dataset_storage)
 
+    # 多个目录触发源正常省略，只产生一条说明，不影响 Runtime 和 ZeroMQ 导出。
+    unit_of_work = SqlAlchemyUnitOfWork(session_factory.create_session())
+    try:
+        for index, kind in enumerate(("directory-watch", "directory-watch", "directory-poll")):
+            unit_of_work.workflow_trigger_sources.save_trigger_source(
+                WorkflowTriggerSource(
+                    trigger_source_id=f"directory-sdk-config-{index}",
+                    project_id="project-1",
+                    display_name=f"目录监听 {index}",
+                    trigger_kind=kind,
+                    workflow_runtime_id="workflow-runtime-sdk-config",
+                )
+            )
+        unit_of_work.commit()
+    finally:
+        unit_of_work.close()
+
     try:
         with client:
             create_deployment_response = client.post(
@@ -84,6 +101,10 @@ def test_sdk_config_package_preview_and_download_include_project_resources(tmp_p
     assert preview_payload["trigger_source_count"] == 1
     assert preview_payload["model_deployment_count"] == 1
     assert preview_payload["contains_access_token"] is True
+    assert preview_payload["warnings"] == []
+    assert preview_payload["notes"] == [
+        "目录监听触发源由后端自动执行，无需 SDK 调用配置，已省略。"
+    ]
     assert any(item["kind"] == "workflow-runtime" for item in preview_payload["files"])
     assert any(item["kind"] == "model-deployments" for item in preview_payload["files"])
 
@@ -103,6 +124,8 @@ def test_sdk_config_package_preview_and_download_include_project_resources(tmp_p
     assert manifest["contains_access_token"] is True
     assert manifest["workflow_runtime_count"] == 1
     assert manifest["model_deployment_count"] == 1
+    assert manifest["notes"] == preview_payload["notes"]
+    assert manifest["warnings"] == []
 
     workflow_config = json.loads(archive.read(workflow_config_name))
     assert workflow_config["backend"]["access_token"] == "amvision-default-user-token"

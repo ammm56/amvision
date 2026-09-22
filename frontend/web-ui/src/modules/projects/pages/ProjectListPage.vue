@@ -62,6 +62,9 @@
           <strong>{{ sdkConfigPackagePreview.files.length }}</strong>
         </div>
       </div>
+      <p v-for="note in sdkConfigPackagePreview.notes" :key="note" class="sdk-config-preview-panel__note">
+        {{ note }}
+      </p>
       <ul v-if="sdkConfigPackagePreview.warnings.length > 0" class="sdk-config-preview-panel__warnings">
         <li v-for="warning in sdkConfigPackagePreview.warnings" :key="warning">{{ warning }}</li>
       </ul>
@@ -447,6 +450,11 @@ function resetProjectForm(): void {
 
 .sdk-config-preview-panel {
   gap: 16px;
+}
+
+.sdk-config-preview-panel__note {
+  margin: 0;
+  color: var(--am-text-muted);
 }
 
 .sdk-config-preview-panel__warnings {

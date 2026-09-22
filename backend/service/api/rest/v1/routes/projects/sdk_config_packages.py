@@ -65,7 +65,8 @@ class SdkConfigPackagePreviewResponse(BaseModel):
     trigger_source_count: int = Field(description="导出的 TriggerSource 数量")
     model_deployment_count: int = Field(description="导出的模型 deployment key 数量")
     files: list[SdkConfigPackageFilePreviewResponse] = Field(description="zip 内文件清单")
-    warnings: list[str] = Field(default_factory=list, description="生成提示或防呆信息")
+    warnings: list[str] = Field(default_factory=list, description="需要关注的配置问题")
+    notes: list[str] = Field(default_factory=list, description="正常省略等普通说明")
 
 
 @sdk_config_packages_router.post(
@@ -241,6 +242,7 @@ def _build_preview_response(plan: SdkConfigPackagePlan) -> SdkConfigPackagePrevi
             for item in plan.files
         ],
         warnings=list(plan.warnings),
+        notes=list(plan.notes),
     )
 
 

@@ -52,7 +52,9 @@ preview 返回包名、backend-service 地址、是否包含 token、稳定 `con
 - 绑定这些 Runtime 的 ZeroMQ 与 local-shared-memory TriggerSource；
 - 已登记的模型 DeploymentInstance。
 
-不受 SDK 支持的 TriggerSource 不写入 Console 配置，并在 preview warning 中说明。模型配置按请求的 runtime mode 生成独立调用 key。
+目录监听触发源（`directory-watch`、`directory-poll`）由后端自动执行，无需 SDK 调用配置，正常省略。preview 与 zip manifest 的 `notes` 数组提供普通说明，同类说明只显示一次，页面使用中性文字，不显示为警告。对应 Runtime 仍正常导出。
+
+其他不受 SDK 支持的 TriggerSource 不写入 Console 配置，并在 `warnings` 中说明；配置问题继续使用警告样式。`notes` 是 v1 响应与 manifest 的新增说明字段，不改变调用配置和运行行为。模型配置按请求的 runtime mode 生成独立调用 key。
 
 Workflow App 切换版本不会改变稳定的 `workflow_runtime_id`、TriggerSource id 或 endpoint。公开契约兼容时不需要重新生成配置包；输入输出契约发生破坏性变化时，第三方调用配置和代码必须同步更新。
 

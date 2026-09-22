@@ -94,7 +94,8 @@ class SdkConfigPackagePlan:
     - base_api_url：配置里的 backend-service 根地址。
     - contains_access_token：配置中是否包含真实 token。
     - files：准备写入 zip 的文件列表。
-    - warnings：生成过程发现的提示。
+    - notes：正常省略等普通说明。
+    - warnings：需要关注的配置问题。
     - workflow_runtime_count：导出的 WorkflowAppRuntime 数量。
     - trigger_source_count：导出的 TriggerSource 数量。
     - model_deployment_count：导出的模型 deployment key 数量。
@@ -109,6 +110,7 @@ class SdkConfigPackagePlan:
     configuration_revision: str
     files: tuple[SdkConfigPackageFile, ...]
     warnings: tuple[str, ...] = ()
+    notes: tuple[str, ...] = ()
     workflow_runtime_count: int = 0
     trigger_source_count: int = 0
     model_deployment_count: int = 0
@@ -240,6 +242,7 @@ class _SdkConfigPackageBuilder:
         self.generated_at = datetime.now(timezone.utc)
         self.timestamp = self.generated_at.strftime("%Y%m%d%H%M%S")
         self.warnings: list[str] = []
+        self.notes: list[str] = []
         self.used_keys: dict[str, int] = {}
         self.used_paths: set[str] = set()
 
@@ -294,6 +297,7 @@ class _SdkConfigPackageBuilder:
             ),
             files=tuple(files),
             warnings=tuple(self.warnings),
+            notes=tuple(self.notes),
             workflow_runtime_count=workflow_runtime_count,
             trigger_source_count=trigger_source_count,
             model_deployment_count=model_deployment_count,
@@ -308,6 +312,11 @@ class _SdkConfigPackageBuilder:
         grouped: dict[str, list[WorkflowTriggerSource]] = {}
         for trigger_source in trigger_sources:
             if not self.request.include_disabled_trigger_sources and not trigger_source.enabled:
+                continue
+            if trigger_source.trigger_kind in {"directory-watch", "directory-poll"}:
+                note = "目录监听触发源由后端自动执行，无需 SDK 调用配置，已省略。"
+                if note not in self.notes:
+                    self.notes.append(note)
                 continue
             if trigger_source.trigger_kind not in {
                 "zeromq-topic",
@@ -685,6 +694,7 @@ def _build_manifest(plan: SdkConfigPackagePlan) -> dict[str, object]:
             for item in plan.files
         ],
         "warnings": list(plan.warnings),
+        "notes": list(plan.notes),
     }
 
 

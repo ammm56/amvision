@@ -34,6 +34,7 @@ export interface SdkConfigPackagePreview {
   model_deployment_count: number
   files: SdkConfigPackageFilePreview[]
   warnings: string[]
+  notes: string[]
 }
 
 export interface SdkConfigPackageDownload {
