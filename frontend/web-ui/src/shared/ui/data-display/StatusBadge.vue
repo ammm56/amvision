@@ -10,7 +10,7 @@ import { computed } from 'vue'
 
 import { humanizeStatusText } from './status-text'
 
-export type StatusBadgeTone = 'neutral' | 'success' | 'warning' | 'danger' | 'info'
+export type StatusBadgeTone = 'neutral' | 'brand' | 'success' | 'warning' | 'danger' | 'info'
 
 const props = withDefaults(
   defineProps<{

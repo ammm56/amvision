@@ -70,8 +70,8 @@
 
 .settings-workspace-nav__item:hover,
 .settings-mobile-subnav button:hover {
-  color: var(--am-text);
-  background: var(--am-surface-soft);
+  color: var(--am-action-primary);
+  background: var(--am-action-soft);
 }
 
 .settings-workspace-nav__item.is-active,

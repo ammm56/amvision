@@ -23,13 +23,13 @@
   --am-action-primary: var(--am-brand-primary);
   --am-action-primary-hover: var(--am-brand-primary-soft);
   --am-action-primary-active: var(--am-brand-primary-deep);
-  --am-action-primary-strong: var(--am-brand-primary-soft);
+  --am-action-primary-strong: var(--am-brand-primary);
   --am-action-soft: #1c2c26;
   --am-on-action: var(--am-brand-on-primary);
   --am-focus-ring: var(--am-brand-primary-soft);
   --am-sidebar-link: #c9d3cd;
   --am-progress-fill: var(--am-brand-primary);
-  --am-progress-text: #62d5a9;
+  --am-progress-text: var(--am-brand-primary);
   --am-progress-track: #27312d;
   --am-auth-shell-bg: linear-gradient(90deg, #0b0c0b 0%, #0b0c0b 34%, var(--am-page) 34%, var(--am-page) 100%);
   --am-shadow-floating: 0 12px 28px rgb(0 0 0 / 0.32);

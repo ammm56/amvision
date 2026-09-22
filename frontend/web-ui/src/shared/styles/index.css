@@ -241,7 +241,7 @@
 
 .app-sidebar__link:hover {
   background: var(--am-sidebar-active);
-  color: var(--am-text);
+  color: var(--am-action-primary);
   text-decoration: none;
 }
 
@@ -1047,11 +1047,16 @@ textarea:focus-visible {
 .ui-select__option.is-selected,
 .ui-select__option.is-active {
   background: var(--am-row-selected);
+  color: var(--am-action-primary);
 }
 
 .ui-select__option small {
   color: var(--am-text-muted);
   font-size: 12px;
+}
+
+.ui-select__menu .ui-select__option > span {
+  color: inherit;
 }
 
 .ui-multi-select {
@@ -1101,12 +1106,12 @@ textarea:focus-visible {
   min-width: 0;
 }
 
-.ui-multi-select__chip {
+.ui-multi-select .ui-multi-select__chip {
   max-width: 100%;
   padding: 2px 7px;
   border-radius: 999px;
-  color: var(--am-neutral-text);
-  background: var(--am-neutral-surface);
+  color: var(--am-action-primary);
+  background: var(--am-action-soft);
   font-size: 12px;
   font-weight: 700;
   overflow: hidden;
@@ -1149,6 +1154,7 @@ textarea:focus-visible {
 .ui-multi-select__option.is-selected,
 .ui-multi-select__option.is-active {
   background: var(--am-row-selected);
+  color: var(--am-action-primary);
 }
 
 .ui-multi-select__option-check {
@@ -1229,7 +1235,7 @@ textarea:focus-visible {
   font-weight: 700;
 }
 
-.resource-table td span {
+.resource-table td span:not(.status-badge, .status-badge *) {
   display: block;
   color: var(--am-text-muted);
   font-size: 12px;
@@ -1274,6 +1280,11 @@ textarea:focus-visible {
   background: var(--am-neutral-surface);
   color: var(--am-neutral-text);
   box-shadow: inset 0 0 0 1px var(--am-neutral-border);
+}
+
+.status-badge--brand {
+  background: var(--am-action-soft);
+  color: var(--am-action-primary);
 }
 
 .status-badge--success {
@@ -1533,7 +1544,7 @@ textarea:focus-visible {
   min-width: 18px;
   padding: 0 5px;
   border-radius: var(--am-radius-pill);
-  color: var(--am-brand-primary-text-light);
+  color: var(--am-brand-primary);
   background: color-mix(in srgb, var(--am-brand-primary) 16%, var(--am-surface));
   font-size: 11px;
   line-height: 18px;
@@ -2774,7 +2785,7 @@ textarea:focus-visible {
 }
 
 .workflow-graph-toolbar .ui-button--secondary.is-active {
-  color: color-mix(in srgb, var(--graph-accent, #10b981) 76%, var(--graph-text-strong));
+  color: var(--graph-accent);
   background: color-mix(in srgb, var(--graph-accent, #10b981) 16%, transparent);
 }
 
@@ -2981,7 +2992,7 @@ textarea:focus-visible {
 }
 
 .workflow-graph-group__lock.is-active {
-  color: color-mix(in srgb, var(--graph-accent) 78%, var(--graph-text-strong));
+  color: var(--graph-accent);
   background: color-mix(in srgb, var(--graph-accent) 12%, var(--graph-panel));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--graph-accent) 28%, var(--graph-line));
 }
@@ -3220,8 +3231,10 @@ textarea:focus-visible {
 }
 
 .workflow-graph-workbench .ui-select__option:hover,
-.workflow-graph-workbench .ui-select__option.is-selected {
-  background: var(--graph-panel-soft, #24292d);
+.workflow-graph-workbench .ui-select__option.is-selected,
+.workflow-graph-workbench .ui-select__option.is-active {
+  color: var(--graph-accent);
+  background: var(--am-action-soft);
 }
 
 .workflow-graph-inspector-body {
@@ -4092,7 +4105,7 @@ textarea:focus-visible {
 }
 
 .workflow-graph-workbench .workflow-graph-toolbar .ui-button--secondary.is-active {
-  color: color-mix(in srgb, var(--graph-accent) 76%, var(--graph-text-strong));
+  color: var(--graph-accent);
   background: color-mix(in srgb, var(--graph-accent) 16%, transparent);
 }
 
@@ -5840,7 +5853,7 @@ textarea:focus-visible {
 .image-viewer__tuning-control input[type='range'] {
   width: 100%;
   min-width: 0;
-  accent-color: #18a1ad;
+  accent-color: var(--am-brand-primary);
 }
 
 .image-viewer__tuning-control input[type='number'] {
@@ -5873,7 +5886,7 @@ textarea:focus-visible {
 
 .image-viewer__tuning-control input[type='checkbox'] {
   justify-self: start;
-  accent-color: #18a1ad;
+  accent-color: var(--am-brand-primary);
 }
 
 @media (max-width: 760px) {

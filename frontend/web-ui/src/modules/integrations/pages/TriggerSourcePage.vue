@@ -123,7 +123,7 @@
             <div>
               <h2>{{ t('triggerSources.inferenceTitle') }}</h2>
             </div>
-            <StatusBadge tone="info">{{ protocolTemplateDisplayName(selectedProtocolTemplate) }}</StatusBadge>
+            <StatusBadge tone="brand">{{ protocolTemplateDisplayName(selectedProtocolTemplate) }}</StatusBadge>
           </div>
           <div class="summary-grid">
             <div>
@@ -148,7 +148,7 @@
         <div v-else class="trigger-source-inference">
           <div class="section-heading">
             <div><h2>{{ t('triggerSources.directorySummaryTitle') }}</h2></div>
-            <StatusBadge tone="info">{{ protocolTemplateDisplayName(selectedProtocolTemplate) }}</StatusBadge>
+            <StatusBadge tone="brand">{{ protocolTemplateDisplayName(selectedProtocolTemplate) }}</StatusBadge>
           </div>
           <div class="summary-grid">
             <div><span>{{ t('triggerSources.fields.directory') }}</span><strong>{{ directoryPath || '-' }}</strong></div>

@@ -35,8 +35,8 @@
 }
 
 .local-tabs__tab:hover:not(:disabled) {
-  color: var(--am-text);
-  background: var(--am-surface-soft);
+  color: var(--am-action-primary);
+  background: var(--am-action-soft);
 }
 
 .local-tabs__tab.is-active {
