@@ -18,6 +18,7 @@
 }
 
 .settings-workspace__sidebar-title {
+  display: none;
   padding: 0 var(--am-space-md) var(--am-space-xl);
   color: var(--am-text-strong);
   font-size: 24px;
