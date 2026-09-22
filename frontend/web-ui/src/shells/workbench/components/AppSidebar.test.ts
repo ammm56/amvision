@@ -46,12 +46,15 @@ describe('AppSidebar', () => {
   it('shows the collapse action beside the brand when expanded', async () => {
     const wrapper = await mountSidebar(false)
 
-    expect(wrapper.get('.app-sidebar__brand').text()).toContain('amvision')
+    expect(wrapper.get('.app-sidebar__brand').attributes('aria-label')).toBe('AMVAR Vision')
+    expect(wrapper.get('.app-sidebar__brand').attributes('href')).toBe('/')
+    expect(wrapper.get('.app-sidebar__brand').find('img').exists()).toBe(false)
     expect(wrapper.find('.app-sidebar__collapsed-expand').exists()).toBe(false)
     expect(wrapper.find('.app-sidebar__collapse-toggle').exists()).toBe(false)
 
     await wrapper.get('.app-sidebar__header-collapse').trigger('click')
     expect(wrapper.emitted('toggleCollapsed')).toHaveLength(1)
+    wrapper.unmount()
   })
 
   it('uses the top brand position as the expand action when collapsed', async () => {
@@ -66,5 +69,6 @@ describe('AppSidebar', () => {
 
     await expandButton.trigger('click')
     expect(wrapper.emitted('toggleCollapsed')).toHaveLength(1)
+    wrapper.unmount()
   })
 })

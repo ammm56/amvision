@@ -23,8 +23,7 @@
   color: var(--am-text);
 }
 
-.auth-shell__brand strong,
-.app-sidebar__brand span:last-child {
+.auth-shell__brand strong {
   display: block;
   font-size: 18px;
 }
@@ -117,7 +116,8 @@
   flex: 0 0 auto;
   min-height: 34px;
   margin-bottom: 24px;
-  padding: 0 8px;
+  padding: 0;
+  gap: 2px;
 }
 
 .app-sidebar__brand {
@@ -166,7 +166,7 @@
 }
 
 .app-sidebar__header-collapse {
-  width: 34px;
+  width: 28px;
   height: 34px;
 }
 
@@ -269,7 +269,6 @@
   padding: 0;
 }
 
-.app-sidebar.is-collapsed .app-sidebar__brand-name,
 .app-sidebar.is-collapsed .app-sidebar__link-label {
   display: none;
 }

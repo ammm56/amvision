@@ -14,10 +14,7 @@
         </button>
       </template>
       <template v-else>
-        <RouterLink class="app-sidebar__brand" to="/">
-          <img class="brand-mark" :src="brandIconUrl" alt="AM" />
-          <span class="app-sidebar__brand-name">amvision</span>
-        </RouterLink>
+        <AppSidebarBrand />
         <button
           class="app-sidebar__header-collapse"
           type="button"
@@ -71,6 +68,7 @@ import { navigationItems, type NavigationItem } from '@/config/navigation.config
 import { canAccessPath, settingsPath } from '@/platform/auth/page-access'
 import { useSessionStore } from '@/app/stores/session.store'
 import UserMenu from './UserMenu.vue'
+import AppSidebarBrand from './AppSidebarBrand.vue'
 
 const route = useRoute()
 const { t } = useI18n()
