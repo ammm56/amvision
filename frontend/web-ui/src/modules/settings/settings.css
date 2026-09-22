@@ -68,10 +68,10 @@
   padding-left: var(--am-space-xl);
 }
 
-.settings-workspace-nav__item:hover,
-.settings-mobile-subnav button:hover {
-  color: var(--am-action-primary);
-  background: var(--am-action-soft);
+.settings-workspace-nav__item:hover:not(.is-active):not(:disabled),
+.settings-mobile-subnav button:hover:not(.is-active):not(:disabled) {
+  color: var(--am-text);
+  background: var(--am-hover-surface);
 }
 
 .settings-workspace-nav__item.is-active,
@@ -236,9 +236,9 @@
   transition: color var(--am-motion-fast) var(--am-ease-standard), background-color var(--am-motion-fast) var(--am-ease-standard);
 }
 
-.settings-segmented-control button:hover {
+.settings-segmented-control button:hover:not(.is-active):not(:disabled) {
   color: var(--am-text);
-  background: var(--am-neutral-surface);
+  background: var(--am-hover-surface);
 }
 
 .settings-segmented-control button.is-active {
@@ -420,12 +420,19 @@
   cursor: pointer;
 }
 
-.settings-user-item:hover {
-  background: var(--am-surface-soft);
+.settings-user-item:hover:not(.is-selected):not(:disabled) {
+  background: var(--am-hover-surface);
 }
 
 .settings-user-item.is-selected {
   background: var(--am-action-soft);
+}
+
+.settings-workspace-nav__item.is-active:hover:not(:disabled),
+.settings-mobile-subnav button.is-active:hover:not(:disabled),
+.settings-segmented-control button.is-active:hover:not(:disabled),
+.settings-user-item.is-selected:hover:not(:disabled) {
+  background: var(--am-selected-hover-surface);
 }
 
 .settings-user-item__identity {

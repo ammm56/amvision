@@ -34,14 +34,20 @@
     background-color var(--am-motion-fast) var(--am-ease-standard);
 }
 
-.local-tabs__tab:hover:not(:disabled) {
-  color: var(--am-action-primary);
-  background: var(--am-action-soft);
+.local-tabs__tab:hover:not(:disabled):not(.is-active) {
+  color: var(--am-text);
+  background: var(--am-hover-surface);
 }
 
 .local-tabs__tab.is-active {
   color: var(--am-action-primary-strong);
   background: var(--am-action-soft);
+}
+
+.local-tabs__tab.is-active:hover:not(:disabled),
+.catalog-group-button.is-active:hover:not(:disabled),
+.catalog-list-button.is-active:hover:not(:disabled) {
+  background: var(--am-selected-hover-surface);
 }
 
 .local-tabs__tab:focus-visible,
@@ -94,18 +100,17 @@
     background-color var(--am-motion-fast) var(--am-ease-standard);
 }
 
-.catalog-group-button:hover,
-.catalog-list-button:hover,
-.catalog-group-button.is-active,
-.catalog-list-button.is-active {
+.catalog-group-button:hover:not(:disabled):not(.is-active),
+.catalog-list-button:hover:not(:disabled):not(.is-active) {
   border-color: var(--am-border);
-  background: var(--am-surface-soft);
+  background: var(--am-hover-surface);
 }
 
 .catalog-group-button.is-active,
 .catalog-list-button.is-active {
   border-color: transparent;
-  color: var(--am-text-strong);
+  color: var(--am-action-primary);
+  background: var(--am-action-soft);
 }
 
 .catalog-workbench__main {

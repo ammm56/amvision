@@ -173,7 +173,7 @@
 .app-sidebar__header-collapse:hover,
 .app-sidebar__collapsed-expand:hover {
   border: none;
-  background: var(--am-sidebar-active);
+  background: var(--am-hover-surface);
   color: var(--am-text);
 }
 
@@ -239,9 +239,9 @@
   user-select: none;
 }
 
-.app-sidebar__link:hover {
-  background: var(--am-sidebar-active);
-  color: var(--am-action-primary);
+.app-sidebar__link:hover:not(.is-active) {
+  background: var(--am-hover-surface);
+  color: var(--am-text);
   text-decoration: none;
 }
 
@@ -250,6 +250,15 @@
   background: var(--am-sidebar-active);
   font-weight: 650;
   text-decoration: none;
+}
+
+.app-sidebar__link.is-active:hover {
+  background: var(--am-selected-hover-surface);
+}
+
+.app-sidebar__link:focus-visible {
+  outline: 2px solid var(--am-focus-ring);
+  outline-offset: -2px;
 }
 
 .app-sidebar__footer {
@@ -343,7 +352,7 @@
 
 .user-menu__trigger:hover,
 .user-menu__trigger[aria-expanded='true'] {
-  background: var(--am-sidebar-active);
+  background: var(--am-hover-surface);
 }
 
 .user-menu__trigger:focus-visible,
@@ -491,10 +500,18 @@
   text-align: left;
 }
 
-.user-menu__option:hover,
-.user-menu__option.is-selected {
+.user-menu__option:hover:not(.is-selected) {
   color: var(--am-text);
+  background: var(--am-hover-surface);
+}
+
+.user-menu__option.is-selected {
+  color: var(--am-action-primary);
   background: var(--am-sidebar-active);
+}
+
+.user-menu__option.is-selected:hover {
+  background: var(--am-selected-hover-surface);
 }
 
 .user-menu__option-check,
@@ -651,7 +668,11 @@ textarea:focus-visible {
   display: none;
 }
 
-.file-picker__dropzone:hover,
+.file-picker:not(.file-picker--disabled) .file-picker__dropzone:hover {
+  border-color: var(--am-border-strong);
+  background: var(--am-hover-surface);
+}
+
 .file-picker--dragging .file-picker__dropzone {
   border-color: var(--am-action-primary);
   background: var(--am-row-selected);
@@ -888,9 +909,9 @@ textarea:focus-visible {
 }
 
 .ui-button--secondary:hover:not(:disabled) {
-  border-color: var(--am-action-primary);
-  background: var(--am-action-soft);
-  color: var(--am-action-primary-strong);
+  border-color: var(--am-border-strong);
+  background: var(--am-hover-surface);
+  color: var(--am-text-strong);
 }
 
 .ui-button--ghost {
@@ -899,8 +920,8 @@ textarea:focus-visible {
 }
 
 .ui-button--ghost:hover:not(:disabled) {
-  color: var(--am-action-primary-strong);
-  background: var(--am-action-soft);
+  color: var(--am-text-strong);
+  background: var(--am-hover-surface);
 }
 
 .ui-button--danger {
@@ -1043,9 +1064,13 @@ textarea:focus-visible {
   overflow-wrap: anywhere;
 }
 
-.ui-select__option:hover,
-.ui-select__option.is-selected,
-.ui-select__option.is-active {
+.ui-select__option:hover:not(.is-selected):not(:disabled),
+.ui-select__option.is-active:not(.is-selected):not(:disabled) {
+  background: var(--am-hover-surface);
+  color: var(--am-text);
+}
+
+.ui-select__option.is-selected {
   background: var(--am-row-selected);
   color: var(--am-action-primary);
 }
@@ -1150,9 +1175,13 @@ textarea:focus-visible {
   cursor: pointer;
 }
 
-.ui-multi-select__option:hover,
-.ui-multi-select__option.is-selected,
-.ui-multi-select__option.is-active {
+.ui-multi-select__option:hover:not(.is-selected):not(:disabled),
+.ui-multi-select__option.is-active:not(.is-selected):not(:disabled) {
+  background: var(--am-hover-surface);
+  color: var(--am-text);
+}
+
+.ui-multi-select__option.is-selected {
   background: var(--am-row-selected);
   color: var(--am-action-primary);
 }
@@ -2371,8 +2400,9 @@ textarea:focus-visible {
   transition: border-color 0.12s ease, background-color 0.12s ease, color 0.12s ease, box-shadow 0.12s ease;
 }
 
-.workflow-graph-checkbox > .workflow-graph-checkbox__input:hover + .workflow-graph-checkbox__control {
-  border-color: color-mix(in srgb, var(--graph-accent) 54%, var(--graph-line));
+.workflow-graph-checkbox > .workflow-graph-checkbox__input:hover:not(:checked):not(:disabled) + .workflow-graph-checkbox__control {
+  border-color: var(--am-border-strong);
+  background: var(--graph-hover);
 }
 
 .workflow-graph-checkbox > .workflow-graph-checkbox__input:focus-visible + .workflow-graph-checkbox__control {
@@ -2461,9 +2491,9 @@ textarea:focus-visible {
 }
 
 .workflow-graph-node-widget__deployment button:hover:not(:disabled) {
-  border-color: var(--graph-accent, #10b981);
+  border-color: var(--am-border-strong);
   color: var(--graph-text-strong, #172228);
-  background: color-mix(in srgb, var(--graph-panel-soft, #eef3f5) 82%, var(--graph-accent, #10b981));
+  background: var(--graph-hover);
 }
 
 .workflow-graph-node-widget__deployment button:disabled {
@@ -3230,9 +3260,13 @@ textarea:focus-visible {
   color: var(--graph-text, #e7ecef);
 }
 
-.workflow-graph-workbench .ui-select__option:hover,
-.workflow-graph-workbench .ui-select__option.is-selected,
-.workflow-graph-workbench .ui-select__option.is-active {
+.workflow-graph-workbench .ui-select__option:hover:not(.is-selected):not(:disabled),
+.workflow-graph-workbench .ui-select__option.is-active:not(.is-selected):not(:disabled) {
+  color: var(--graph-text);
+  background: var(--graph-hover);
+}
+
+.workflow-graph-workbench .ui-select__option.is-selected {
   color: var(--graph-accent);
   background: var(--am-action-soft);
 }
@@ -3536,11 +3570,9 @@ textarea:focus-visible {
   white-space: nowrap;
 }
 
-.workflow-graph-note__actions .ui-select__option:hover,
-.workflow-graph-note__actions .ui-select__option.is-selected,
-.workflow-graph-note__actions .ui-select__option.is-active {
-  color: var(--graph-text-strong);
-  background: color-mix(in srgb, var(--workflow-note-accent) 18%, var(--graph-panel-soft));
+.workflow-graph-note__actions .ui-select__option.is-selected {
+  color: var(--graph-accent);
+  background: var(--am-action-soft);
 }
 
 .workflow-graph-note__actions > button {
@@ -4412,8 +4444,8 @@ textarea:focus-visible {
 .workflow-graph-panel__icon-button:hover,
 .workflow-graph-minimap-toggle:hover {
   color: var(--graph-text-strong);
-  border-color: var(--graph-accent);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--graph-accent) 36%, transparent);
+  border-color: var(--am-border-strong);
+  background: var(--graph-hover);
 }
 
 .workflow-graph-minimap__close:focus-visible,
@@ -4587,8 +4619,9 @@ textarea:focus-visible {
 }
 
 .workflow-node-picker__close:hover {
-  border-color: var(--graph-accent);
+  border-color: var(--am-border-strong);
   color: var(--graph-text-strong);
+  background: var(--graph-hover);
 }
 
 .workflow-node-picker__search {
@@ -5902,6 +5935,21 @@ textarea:focus-visible {
   .image-viewer__tuning-control {
     grid-template-columns: minmax(72px, 0.8fr) minmax(96px, 1fr) 70px;
   }
+}
+
+/* 悬停与键盘定位是临时反馈，只有已选中项保留品牌色。 */
+.ui-select__option.is-selected:is(:hover, .is-active):not(:disabled),
+.ui-multi-select__option.is-selected:is(:hover, .is-active):not(:disabled),
+.workflow-graph-workbench .ui-select__option.is-selected:is(:hover, .is-active):not(:disabled),
+.workflow-graph-workbench .workflow-graph-toolbar .ui-button--secondary.is-active:hover:not(:disabled) {
+  background: var(--am-selected-hover-surface);
+}
+
+.app-sidebar__link,
+.user-menu__option,
+.ui-select__option,
+.ui-multi-select__option {
+  transition: background-color 140ms ease-out, color 140ms ease-out, border-color 140ms ease-out;
 }
 
 @keyframes am-spin {

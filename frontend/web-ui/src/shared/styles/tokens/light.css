@@ -16,7 +16,9 @@
   --am-sidebar: #ffffff;
   --am-sidebar-active: var(--am-action-soft);
   --am-table-header: #ffffff;
-  --am-row-hover: color-mix(in srgb, var(--am-brand-primary) 6%, var(--am-surface));
+  --am-hover-surface: #f0f1f3;
+  --am-selected-hover-surface: color-mix(in srgb, var(--am-brand-primary) 17%, var(--am-surface));
+  --am-row-hover: var(--am-hover-surface);
   --am-row-selected: var(--am-action-soft);
   --am-overlay: rgb(17 24 39 / 0.44);
   --am-code-surface: #f2f4f7;

@@ -218,12 +218,16 @@ input[type='radio'] {
   transition: background-color var(--am-motion-fast) var(--am-ease-standard);
 }
 
-.resource-table tbody tr:hover {
-  background: var(--am-surface-soft);
+.resource-table tbody tr:hover:not(.is-selected) {
+  background: var(--am-row-hover);
 }
 
 .resource-table tr.is-selected {
   background: var(--am-row-selected);
+}
+
+.resource-table tbody tr.is-selected:hover {
+  background: var(--am-selected-hover-surface);
 }
 
 .resource-table tbody tr:last-child td {
