@@ -13,6 +13,14 @@ def _module(name: str, path: str):
     return module
 
 
+def test_worker_initialization_budget_is_separate_from_execution():
+    """训练依赖冷启动使用独立有界预算，显式配置仍可覆盖。"""
+    start = _module("launcher_start_budget", "runtimes/launchers/full/start_amvision_full.py")
+    parser = start.build_argument_parser()
+    assert parser.parse_args([]).worker_ready_timeout_seconds == 120
+    assert parser.parse_args(["--worker-ready-timeout-seconds", "45"]).worker_ready_timeout_seconds == 45
+
+
 def test_expected_identity_refuses_different_root(tmp_path, monkeypatch):
     """旧请求不能停止同目录的新实例。"""
     stop = _module("launcher_stop_contract", "runtimes/launchers/full/stop_amvision_full.py")

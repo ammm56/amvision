@@ -1,38 +1,35 @@
-# 编辑态 Preview 长执行
+# 编辑态 Preview 执行
 
-Preview 属于编辑调试控制面。它复用节点执行器、模型会话、对象存储及 Broker/Gateway 接口，使用独立常驻进程执行；不占用 FastAPI 事件循环，也不占用正式 Workflow Runtime 的执行槽位。
+Preview 属于编辑调试控制面，由 backend-service 管理内存会话，在独立、可复用的 Preview Worker 进程中执行。节点进度、图片及值通过 WebSocket 交付页面，不占用 FastAPI 事件循环或正式 Workflow Runtime 的执行槽位。
+
+完整协议、配置与容量限制以 [Workflow Preview Session v1](../../api/workflow-preview-sessions.md) 为准；实现边界与设计见 [Preview 实时执行设计](preview-streaming-design.md)。
 
 ## 执行与资源所有权
 
-1. HTTP 路由校验身份和输入、保存不可变快照；上传和同步校验通过线程执行。请求断开或反复取消，不得提前关闭正在使用的文件或 lease。
-2. 进程池在锁内登记应用占用和 Future。默认容量为两个进程，每应用最多一个活动预览，满载返回 409。首次使用延迟启动，后续复用模型和 registry。
-3. 异步上传保存为执行拥有的文件引用。返回 run id 后，文件由执行器负责清理；同步旧接口仍持有上传 lease 直到执行结束。
-4. 执行进程持久化状态、JSONL 事件与完整展示结果，异步执行的控制通道只回传结果摘要和事件；旧同步接口保留完整返回结果。父进程分发既有 WebSocket 与项目摘要事件，不重复写 JSONL。
-5. 取消或 timeout 先发协作信号，宽限后停止不响应的执行进程。确认退出之后回收输入并释放容量；无法确认退出时保留所有权并阻止依赖排空。
-6. 停止服务时先停止 Preview 接入并排空，再关闭正式 Runtime、模型依赖和共享缓冲区。父进程异常退出时，Preview 复用已有父进程 watchdog；查询以 PID 和创建时间识别遗留记录，不能按任务耗时误判。
+1. 创建已鉴权会话并收到 WebSocket 快照后，上传输入并提交应用、模板的冻结文档。文档和过程数据保存在内存及操作系统共享内存中，不生成 Preview 数据库记录、事件日志或磁盘交换文件。
+2. 每会话最多一条活动执行，全局并发受 `preview_worker_count` 限制。会话忙、并发容量不足和内存不足分别明确返回错误，不自动重放业务。
+3. 模型推理节点通过既有部署网关及 LocalBuffer 调用部署进程，不在 Preview Worker 中重新加载部署模型。显式 checkpoint/model-session 节点保持各自作用域。
+4. 节点完成后即可发布进度和显示结果，不等待整图结束。图片展示使用 JPEG；模型输入、业务结果和显式保存文件遵守节点原有规则。WebSocket 禁用 `permessage-deflate`。
+5. 执行期引用在最后一个消费者完成后释放；展示资源在浏览器完整接收并建立独立 Blob、确认接收后释放服务端持有，已有借用归零后销毁映射。分块 ACK 只控制传输，不代表完整接收。
+6. 取消先协作终止，必要时终止对应 Preview Worker；确认执行退出后才回收借用及容量。连接心跳、业务期限和节点自身 timeout 分开处理，长时间执行不等于服务故障。
+7. 会话失联、显式关闭或服务退出时回收所属资源。服务重启改变 epoch，旧会话失效，不从磁盘恢复或自动重跑。
 
-## 配置与兼容性
+只有明确配置的保存节点写业务文件。Preview 与正式执行调用相同保存节点时，仍可能写入相同目标；测试应通过工作流输入将保存路径指向隔离目录。
 
-| 配置 | 默认值 | 范围 |
-| --- | --- | --- |
-| workflow_runtime.preview_worker_count | 2 | 1–8；每进程独立模型缓存，增加容量会增加内存占用 |
-| workflow_runtime.preview_default_timeout_seconds | 1800 | 异步预览默认执行期限，1–86400 秒 |
-| workflow_runtime.preview_model_session_scope_limit | 1 | 每个 Preview 进程保留的模型 scope 上限 |
+## 页面与恢复
 
-`sync` 默认期限仍为 120 秒，显式 execution policy 按已有规则应用。自定义节点包声明的 timeout 不因 Preview 改为异步而失效。节点包版本或启用状态变化时清理旧模型并刷新 registry；开发环境代码修改仍由服务 reload 管理。
+Vue 编辑器按节点显示进度与结果，并区分业务执行完成和显示交付完成。同页 WebSocket 重连可继续使用已接收的浏览器缓存；硬刷新不能恢复已经释放的临时图片，页面应明确提示其不可用，不能重复请求已释放共享内存。
 
-这是 v1 接口的显式可选扩展：默认 sync 和默认 GET 脱敏摘要保持；新增 async、cancelled、cancel 接口及完整结果查询参数。无数据库 schema 迁移、无模型文件或前后处理变更。旧版本无法执行 async，应把前后端和启动器作为同一发行单元发布或回滚。
+旧 Preview Run REST/WS、数据库实体和磁盘结果实现已删除，不保留同步旧接口或双写分支。前后端应作为同一发行单元更新，数据库升级使用项目维护入口；迁移边界见协议文档。
 
-开发使用 `conda activate amvision`；发行由 `assemble-release` 将源码和前端打包，子进程采用同目录 Python 的 spawn，不依赖系统 Python/Node。运行中的 `release/<profile>/app` 不手工修改。
+## Runtime、部署与验证边界
 
-## 界面与健康状态
+正式 Workflow Runtime 保持独立常驻进程及原有同步调用数据面，Trigger 协议不变。Preview 和 Runtime 调用同一部署时共同遵守实例容量限制，满载明确失败，不增加业务等待队列。
 
-Vue 编辑器在提交后保持运行状态，直到查询到真实终态；取消期间显示“正在取消”。同一标签页按账号、项目、应用保存运行 ID，刷新后继续查询，不把浏览器文件对象或输入内容持久化。服务故障不会自动重放任务。
+开发使用 `conda activate amvision` 后的 Python；发行使用同目录 Python 和随包前端。当前 HTTP 服务采用单 API 进程，Preview Worker 数量独立配置；不依赖系统 Python、系统 Node 或外网 CDN。
 
-启动器 `Checking` 保留已经显示的工作台；首次启动和确认故障后的恢复不能通过 Checking 绕过就绪判断。Supervisor 明确进入 Recovering/Failed 时仍展示故障界面。外部服务连续三次探测失败才显示 Unavailable，不改变 Python Supervisor 的恢复职责和健康期限。
+长任务测试验证执行耗时与 HTTP 可用性解耦，真实分类样本提供结果回归证据。两条链路仍共享 CPU、GPU、磁盘及物理内存，短时成功不能替代标注集精度验收、受控 P99 对照或长期稳定性测试。
 
-属性面板对大型运行 JSON 使用有界摘录，完整对象继续交给查看器，避免单个长节点记录引发大量文本布局。此交互沿用 Vue 3 和现有组件，支持本地离线分发。
+## 上传失败的资源边界
 
-## 验证边界
-
-长任务延时测试只验证执行时长与 HTTP 可用性解耦。真实 YOLO11 分类结果比较提供回归证据，不能替代标注集准确率、受控 P99 对照或 24 小时长稳验收。常驻 Preview 与 Runtime 仍共享机器的 CPU、GPU、磁盘和内存，不能宣称物理资源竞争完全消失。
+WebSocket 输入分块被拒绝、提交不完整或 SHA-256 校验失败时，本次上传立即终止，释放对应上传槽位和临时共享内存。客户端收到 `protocol.error` 后可在同一连接发起新的上传；不能继续向已失败的 transfer 写入。未知 transfer 的错误不影响其他上传，已提交输入也不能被迟到的分块错误释放。断线与会话释放仍负责兜底清理，不以等待过期代替失败时的即时释放。

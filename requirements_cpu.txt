@@ -2,6 +2,9 @@
 
 # 基础依赖
 fastapi[standard]>=0.136
+# Windows HTTP loop factory 与发行校验使用同一已验证版本。
+uvicorn[standard]==0.48.0
+wsproto==1.3.2
 SQLAlchemy>=2.0
 pydantic>=2.13.2
 pydantic-settings>=2.0

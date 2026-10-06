@@ -35,6 +35,7 @@ def test_service_launcher_prefers_low_latency_websocket(monkeypatch, extra, reje
     args = captured["module_args"]
     assert args.count("--ws-per-message-deflate") == 1
     assert args[args.index("--ws-per-message-deflate")+1] == "false"
+    assert args[args.index("--ws")+1] == "wsproto"
 
 
 @pytest.mark.parametrize("platform,extra,expected", [

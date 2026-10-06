@@ -59,6 +59,8 @@
 2. 收到 `input.ready` 后发送 AMVP 二进制块，每块不超过 256 KiB；逐块确认 `input.ack`，浏览器最多预发 8 块。
 3. 发送 `input.commit`；全部块顺序、长度和 SHA-256 正确后返回 `input.committed` 与 `input_id`。
 
+已识别的上传在分块校验或提交校验失败后返回 `protocol.error`，同时立即释放该 transfer 的上传槽位和临时内存。客户端须使用新的 transfer 发起上传；同一 WebSocket 连接仍可使用。未知 transfer 或已提交输入的迟到分块不会撤销其他上传或已提交的输入。
+
 AMVP 使用网络字节序，32 字节头：`magic(4), version(1), kind(1), reserved(2), UUID(16), chunk_index(4), payload_length(4)`；version=1，kind=1 上传，kind=2 下载。
 
 `display.get` 包含 `blob_id`，返回 `display.begin`、二进制块和 `display.end`；浏览器逐块发送 `display.ack`。不返回共享内存名称或任意文件读取接口。

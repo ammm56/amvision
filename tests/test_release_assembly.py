@@ -173,6 +173,8 @@ def test_assemble_release_materializes_windows_x64_nvidia_layout(
     assert "onnxruntime>=1.22,<2" in requirements_text
     assert "openvino>=2026.1.0" in requirements_text
     assert "tensorrt-cu12==10.16.1.11" in requirements_text
+    assert "uvicorn[standard]==0.48.0" in requirements_text
+    assert "wsproto==1.3.2" in requirements_text
 
     expected_worker_profile_ids = (
         "dataset-import",
@@ -335,6 +337,8 @@ def test_assemble_release_windows_x64_cpu_excludes_nvidia_runtime_assets(
         encoding="utf-8"
     )
     assert "tensorrt-cu12==" not in requirements_text
+    assert "uvicorn[standard]==0.48.0" in requirements_text
+    assert "wsproto==1.3.2" in requirements_text
     assert "cuda-python==" not in requirements_text
     assert "onnxruntime>=1.22,<2" in requirements_text
     assert "openvino>=2026.1.0" in requirements_text

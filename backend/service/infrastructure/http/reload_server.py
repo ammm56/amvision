@@ -50,6 +50,8 @@ def build_command() -> click.Command:
     for parameter in parameters:
         if parameter.name == "ws_per_message_deflate":
             parameter.default = False
+        elif parameter.name == "ws":
+            parameter.default = "wsproto"
     return click.Command(
         "amvision-http-reload",
         params=parameters,

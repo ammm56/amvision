@@ -29,6 +29,7 @@ def test_reload_parent_never_binds_or_loads_application(monkeypatch, tmp_path):
     assert config.port == 5600 and config.host == "127.0.0.1"
     assert config.timeout_graceful_shutdown == 17 and config.ws_max_size == 2097152
     assert config.ws_per_message_deflate is False and config.access_log is False
+    assert config.ws == "wsproto"
     assert config.headers == [["X-Test", "a:b"]]
     assert config.reload_dirs == [tmp_path]
     assert reloader.call_args.kwargs["sockets"] == []

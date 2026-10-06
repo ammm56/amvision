@@ -70,7 +70,9 @@ Deployment 数量表示已发布实例，不等于同时调用数。OpenVINO CPU
 
 Workflow App 草稿发布为不可变 Version。稳定 Runtime id 通过 revision/generation 选择版本，Trigger 和第三方 SDK 始终绑定 Runtime。切版和回滚不改变第三方调用地址。
 
-Preview 在 backend-service 进程内直接执行；生产 Workflow 在独立常驻进程执行。请求固定 version/revision/generation/fingerprint/worker epoch，旧进程事件不能污染当前状态。
+编辑态 Preview 由 backend-service 管理内存会话，在独立、可复用的 Preview Worker 进程中执行；节点进度及结果通过 WebSocket 交付页面。模型节点通过既有部署网关调用已部署服务，不在 Preview Worker 中重新加载部署模型。过程数据使用内存，仅显式保存节点产生业务文件；显示图片使用 JPEG，WebSocket 禁用 permessage-deflate。
+
+生产 Workflow 在独立常驻 Runtime 进程执行。请求固定 version/revision/generation/fingerprint/worker epoch，旧进程事件不能污染当前状态。Preview 不占用正式 Runtime 的执行权，但调用同一部署时共同遵守模型实例容量限制。
 
 ### Runtime 显示与 App Mode
 

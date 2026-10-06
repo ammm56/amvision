@@ -126,6 +126,17 @@ async def stream_session(socket: WebSocket, session_id: str):
                         elif kind != "session.pong":
                             raise ValueError("preview_command_invalid")
                 except (ValueError, KeyError, TypeError, IndexError, AttributeError, StopIteration) as error:
+                    if error_context.get("request_type") in {"input.chunk", "input.commit"}:
+                        # 客户端收到协议错误即终止本次上传；同步归还槽位和内存，
+                        # 不能等待断线或过期回收，否则连续错误会占满四个上传槽位。
+                        transfer_id = error_context.get("transfer_id", "")
+                        try:
+                            transfer_id = str(UUID(transfer_id))
+                        except (ValueError, TypeError, AttributeError):
+                            transfer_id = ""
+                        blob = uploads.pop(transfer_id, None)
+                        if blob is not None:
+                            manager.buffers.release(session_id, blob)
                     await send({"type": "protocol.error", "error": str(error)[:512], **error_context})
                 receiving = asyncio.create_task(socket.receive())
             outstanding = sum(item["sent"] - item["acked"] for item in transfers)
@@ -153,7 +164,8 @@ async def stream_session(socket: WebSocket, session_id: str):
     except (TimeoutError, RuntimeError):
         try:
             await socket.close(code=1013, reason="preview_connection_interrupted")
-        except RuntimeError:
+        except (WebSocketDisconnect, OSError, RuntimeError):
+            # 超时关闭时对端可能已断开，仍须进入 finally 释放临时内存。
             pass
     finally:
         if receiving is not None:

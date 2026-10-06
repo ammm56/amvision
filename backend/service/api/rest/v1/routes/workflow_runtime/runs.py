@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request, status
+from starlette.concurrency import run_in_threadpool
 
 from backend.contracts.workflows import WorkflowRunContract, WorkflowRunEventContract
 from backend.service.api.deps.auth import (
@@ -151,9 +152,9 @@ async def create_workflow_run_upload(
 ) -> WorkflowRunContract:
     """为已启动的 runtime 创建一条支持 multipart 上传的异步 WorkflowRun。"""
 
-    workflow_app_runtime = _build_workflow_runtime_service(
-        request
-    ).get_visible_workflow_app_runtime(
+    service = _build_workflow_runtime_service(request)
+    workflow_app_runtime = await run_in_threadpool(
+        service.get_visible_workflow_app_runtime,
         workflow_runtime_id,
         visible_project_ids=principal.project_ids,
     )
@@ -162,7 +163,8 @@ async def create_workflow_run_upload(
         workflow_app_runtime=workflow_app_runtime,
         created_by=principal.principal_id,
     )
-    workflow_run = _build_workflow_runtime_service(request).create_workflow_run(
+    workflow_run = await run_in_threadpool(
+        service.create_workflow_run,
         workflow_runtime_id,
         invoke_request,
         created_by=principal.principal_id,
@@ -227,9 +229,9 @@ async def invoke_workflow_app_runtime_upload(
     """通过 multipart 上传方式发起一次同步 workflow 调用。"""
 
     response_mode = _normalize_response_mode(response_mode)
-    workflow_app_runtime = _build_workflow_runtime_service(
-        request
-    ).get_visible_workflow_app_runtime(
+    service = _build_workflow_runtime_service(request)
+    workflow_app_runtime = await run_in_threadpool(
+        service.get_visible_workflow_app_runtime,
         workflow_runtime_id,
         visible_project_ids=principal.project_ids,
     )
@@ -238,9 +240,9 @@ async def invoke_workflow_app_runtime_upload(
         workflow_app_runtime=workflow_app_runtime,
         created_by=principal.principal_id,
     )
-    invoke_result = _build_workflow_runtime_service(
-        request
-    ).invoke_workflow_app_runtime_with_response(
+    # 保持同步调用契约，但同步 IPC 等待不能占用 HTTP 事件循环。
+    invoke_result = await run_in_threadpool(
+        service.invoke_workflow_app_runtime_with_response,
         workflow_runtime_id,
         invoke_request,
         created_by=principal.principal_id,

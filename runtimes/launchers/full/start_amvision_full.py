@@ -159,8 +159,8 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--worker-ready-timeout-seconds",
         type=float,
-        default=30.0,
-        help="等待单个 backend-worker 初始化完成的最长秒数",
+        default=120.0,
+        help="等待单个 backend-worker 初始化完成的最长秒数；不改变任务执行超时",
     )
     parser.add_argument(
         "--logs-subdir",

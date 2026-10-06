@@ -85,6 +85,9 @@ def main(argv: list[str] | None = None) -> int:
     # 原始大图/JPEG 已有自己的编码；DEFLATE 会增加本地预览的 CPU 和传输延迟。
     # 仅影响 HTTP 服务的 WebSocket 扩展协商，不改变 Runtime/Trigger IPC。
     module_args.extend(["--ws-per-message-deflate", "false"])
+    # 固定使用具备发送背压的 wsproto；不让 auto 选中存在并发 drain 断言的 legacy 实现。
+    if not any(value == "--ws" or value.startswith("--ws=") for value in extra_args):
+        module_args.extend(["--ws", "wsproto"])
     if sys.platform == "win32" and not any(
         value == "--loop" or value.startswith("--loop=") for value in extra_args
     ):

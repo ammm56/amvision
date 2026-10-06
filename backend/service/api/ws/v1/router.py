@@ -154,7 +154,8 @@ async def subscribe_runtime_preview(socket: WebSocket) -> None:
         await asyncio.gather(*tasks, return_exceptions=True)
         try:
             await socket.close()
-        except RuntimeError:
+        except (WebSocketDisconnect, OSError, RuntimeError):
+            # 对端关闭与 finally 的 close 可同时发生；订阅和发送任务已先释放。
             pass
 
 

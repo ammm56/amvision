@@ -62,3 +62,47 @@ def test_websocket_upload_roundtrip_and_atomic_snapshot(tmp_path):
     finally:
         manager.close()
         sessions.engine.dispose()
+
+
+@pytest.mark.parametrize("failure", ["digest", "incomplete", "chunk_order"])
+def test_failed_upload_releases_memory_and_slot_without_disconnect(tmp_path, failure):
+    """连续损坏上传立即释放；同一连接仍可提交完整输入，不能耗尽四个槽位。"""
+    client, sessions, _ = _create_runtime_api_client(tmp_path, database_name="upload-failure.db", enable_local_buffer_broker=False)
+    manager = client.app.state.workflow_preview_sessions
+    headers = build_test_headers(scopes="workflows:read,workflows:write")
+    content = b"real-image-bytes"
+    try:
+        with client:
+            response = client.post("/api/v1/workflows/preview-sessions", headers=headers,
+                                   json={"project_id": "project-1", "application_id": "app", "editor_session_id": "editor"})
+            assert response.status_code == 201
+            sid = response.json()["session_id"]
+            with client.websocket_connect(f"/ws/v1/workflows/preview-sessions/{sid}", headers=headers) as ws:
+                assert ws.receive_json()["type"] == "session.snapshot"
+                for attempt in range(6):
+                    invalid = attempt < 5
+                    transfer = uuid4()
+                    ws.send_json({"type": "input.begin", "transfer_id": str(transfer), "byte_length": len(content),
+                                  "media_type": "image/jpeg", "sha256": "0" * 64 if invalid and failure == "digest" else hashlib.sha256(content).hexdigest()})
+                    assert ws.receive_json()["type"] == "input.ready"
+                    chunk = content[:-1] if invalid and failure == "incomplete" else content
+                    ws.send_bytes(encode_preview_frame(transfer, 1 if invalid and failure == "chunk_order" else 0, chunk, kind=1))
+                    reply = ws.receive_json()
+                    if not (invalid and failure == "chunk_order"):
+                        assert reply["type"] == "input.ack"
+                        ws.send_json({"type": "input.commit", "transfer_id": str(transfer)})
+                        reply = ws.receive_json()
+                    if invalid:
+                        assert reply["type"] == "protocol.error"
+                        expected = {"digest": "preview_input_digest_invalid", "incomplete": "preview_input_incomplete", "chunk_order": "preview_input_chunk_invalid"}
+                        assert reply["error"] == expected[failure]
+                        assert manager.buffers.stats() == {"blocks": 0, "bytes": 0, "pins": 0, "reserved_bytes": 0}
+                    else:
+                        assert reply["type"] == "input.committed"
+                        with manager.buffers.borrow(sid, reply["input_id"]) as value:
+                            assert bytes(value) == content
+            assert client.delete(f"/api/v1/workflows/preview-sessions/{sid}", headers=headers).status_code == 204
+            assert manager.buffers.stats() == {"blocks": 0, "bytes": 0, "pins": 0, "reserved_bytes": 0}
+    finally:
+        manager.close()
+        sessions.engine.dispose()

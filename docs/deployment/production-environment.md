@@ -24,6 +24,7 @@ Set-Location ../..
 ```
 
 当前 Windows 发行及验证使用 Python 3.12.x；HTTP accept 适配会拒绝未经验证的其他 Python 主次版本。Node.js 要求以 `frontend/web-ui/package.json` 为准。
+CPU 和 NVIDIA requirements 均锁定 `uvicorn[standard]==0.48.0`，与 Windows HTTP loop factory 的发行校验一致。准备 bundled Python 时按对应 requirements 安装，不单独升级 Uvicorn；旧环境若带入其他版本，需在新的发行目录中修正并重新执行 `validate-layout`。
 `assemble-release` 会执行正式 `npm run build`，不需要预先手工生成 `dist/`；这里的 `npm ci` 只负责按 lockfile 准备构建依赖。
 
 ## 2. 组装发行目录
@@ -103,7 +104,9 @@ NVIDIA 环境替换为对应目录。布局校验失败必须修正发行资产�
 
 默认监听地址为 `0.0.0.0`，默认端口为 `5600`。只有需要改变监听范围或端口时才传 `--host`、`--port`。
 
-full 脚本通过 service launcher 固定传入 `--ws-per-message-deflate false`，同时启用 Windows HTTP accept 修复所用的专用事件循环。无需给 `start-amvision-full.bat` 或桌面启动器追加这两个 Uvicorn 参数；full 脚本不提供它们的透传入口。生产不启用 `--reload`，API 保持单进程，Preview 和正式 Workflow 使用各自执行进程。已有发行包需要重新 assemble 才包含更新后的 launcher，单纯重启旧包不会更新脚本。
+full 脚本通过 service launcher 默认选择 `--ws wsproto`，固定传入 `--ws-per-message-deflate false`，同时启用 Windows HTTP accept 修复所用的专用事件循环。`wsproto==1.3.2` 随 Python 依赖一起分发；服务端不协商 WebSocket 数据压缩，保留发送背压。无需给 `start-amvision-full.bat` 或桌面启动器追加这些 Uvicorn 参数；full 脚本不提供它们的透传入口。生产不启用 `--reload`，API 保持单进程，Preview 和正式 Workflow 使用各自执行进程。已有发行包需要重新 assemble 才包含更新后的 launcher，单纯重启旧包不会更新脚本。
+
+full 启动器的 `--worker-ready-timeout-seconds` 默认值为 120 秒，仅用于等待每个 worker 完成初始化并报告就绪；不改变推理、Trigger 或 Workflow 调用超时，也不把尚未初始化的服务标记为可用。冷启动需要导入训练框架，不能以热启动耗时设置启动预算。
 
 发行前端的 API/WebSocket 地址由 `frontend/runtime-config.json` 独立配置，默认同样指向 `127.0.0.1:5600`。修改 Backend `--port` 不会隐式改写静态前端文件；使用其他端口时必须在组装前提供匹配的 runtime config。该边界避免启动过程修改发行内容，也避免浏览器误连到另一套实例。
 

@@ -36,7 +36,7 @@ def _image_base64_decode_handler(request: WorkflowNodeExecutionRequest) -> dict[
     except (binascii.Error, ValueError) as exc:
         raise InvalidRequestError(
             "image-base64 payload 不是有效的 base64 图片",
-            details={"node_id": request.node_id},
+            details={"node_id": request.node_id, "reason": str(exc)},
         ) from exc
     if not content:
         raise InvalidRequestError(
