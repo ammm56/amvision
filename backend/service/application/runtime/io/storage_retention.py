@@ -293,7 +293,8 @@ def _build_order_key(item: RetentionObjectMetadata) -> tuple[int, str]:
 def _matches_patterns(object_key: str, patterns: tuple[str, ...]) -> bool:
     """只使用文件名匹配一个或多个 include pattern。"""
 
-    file_name = PurePosixPath(object_key).name
+    # ObjectStore key 已是规范的 POSIX 相对路径，不为每条记录重复解析祖先链。
+    file_name = object_key.rsplit("/", 1)[-1]
     if os.name == "nt":
         file_name = file_name.casefold()
         return any(

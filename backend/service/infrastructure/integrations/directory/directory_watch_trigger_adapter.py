@@ -12,6 +12,7 @@ from threading import Event, RLock, Thread
 from uuid import uuid4
 
 from watchfiles import Change, watch
+from backend.service.infrastructure.filesystem.file_paths import resolve_file_location
 
 from backend.contracts.workflows import DirectoryChangeEventContract
 from backend.service.application.errors import (
@@ -379,27 +380,33 @@ class DirectoryWatchTriggerAdapter:
                 continue
             resolve_existing_path = change_kind != Change.deleted
             candidate_path = Path(raw_path)
+            # 文件可能在通知到达时已被原子替换；只解析一次稳定目录项。
+            try:
+                normalized_path = (
+                    resolve_file_location(candidate_path)
+                    if resolve_existing_path
+                    else Path(os.path.abspath(candidate_path))
+                )
+                relative_path = Path(
+                    os.path.relpath(normalized_path, config.directory_path.resolve())
+                ).as_posix()
+            except (OSError, ValueError):
+                # 单个已消失/越界路径不能终止整个目录监听线程。
+                continue
             if not matches_directory_candidate_path(
-                candidate_path,
+                normalized_path,
                 directory_path=config.directory_path,
                 recursive=config.recursive,
                 include_hidden=config.include_hidden,
                 glob_pattern=config.glob_pattern,
                 extensions=config.extensions,
-                resolve_existing_path=resolve_existing_path,
+                resolve_existing_path=False,
             ):
                 continue
-            normalized_path = (
-                candidate_path.resolve()
-                if resolve_existing_path
-                else Path(os.path.abspath(candidate_path))
-            )
             yield MatchedDirectoryChange(
                 change_type=change_type,
                 path=str(normalized_path),
-                relative_path=Path(
-                    os.path.relpath(normalized_path, config.directory_path)
-                ).as_posix(),
+                relative_path=relative_path,
                 path_key=os.path.normcase(str(normalized_path)),
             )
 

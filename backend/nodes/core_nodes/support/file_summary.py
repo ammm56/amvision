@@ -5,6 +5,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from backend.service.infrastructure.filesystem.shared_files import open_shared_read
+from backend.service.infrastructure.filesystem.file_paths import resolve_file_location
 
 from backend.nodes.core_nodes.support.condition_expression import (
     evaluate_condition_expression,
@@ -22,6 +23,45 @@ from backend.service.application.runtime.io.jsonl import (
 )
 
 MAX_CHECKPOINT_BYTES = 4 * 1024 * 1024
+
+
+def _decode_checkpoint(content: bytes | None, reducers: list[dict]) -> dict | None:
+    """读取有界、校验完整的派生状态；损坏内容交给日志重建。"""
+    if content is None or len(content) > MAX_CHECKPOINT_BYTES:
+        return None
+    from backend.service.application.errors import InvalidRequestError
+
+    try:
+        candidate = decode(content)
+        body = candidate.get("body") if isinstance(candidate, dict) else None
+        if (
+            isinstance(body, dict)
+            and hashlib.sha256(encode(body)).hexdigest() == candidate.get("checksum")
+            and isinstance(body.get("totals"), dict)
+            and set(body["totals"]) == {r["output_key"] for r in reducers}
+            and isinstance(body.get("cursor"), dict)
+            and "latest" in body
+        ):
+            return body
+    except (InvalidRequestError, ValueError):
+        pass
+    return None
+
+
+def _same_summary_source(current: dict | None, updated: dict) -> bool:
+    """只允许同日志代际、同规则的并发缓存更新，不接受相同游标的不同结果。"""
+    if current is None or current.get("signature") != updated["signature"]:
+        return False
+    cursor, proposed = current["cursor"], updated["cursor"]
+    if cursor.get("generation") != proposed["generation"]:
+        return False
+    for key in ("offset", "sequence"):
+        if type(cursor.get(key)) is not int or cursor[key] < 0:
+            return False
+    if cursor == proposed:
+        return current["totals"] == updated["totals"] and current["latest"] == updated["latest"]
+    # 同一代际的字节偏移和记录序号必须保持一致的前后关系。
+    return (cursor["offset"] - proposed["offset"]) * (cursor["sequence"] - proposed["sequence"]) > 0
 
 
 def _checkpoint_bytes(path: Path) -> bytes | None:
@@ -117,8 +157,10 @@ def summarize(
     reducers = validate_reducers(reducers)
     if condition is not None:
         validate_condition(condition)
-    resolved = path.resolve()
-    if state_path.resolve() in {resolved, *(p.resolve() for p in sidecars(resolved))}:
+    resolved = resolve_file_location(path)
+    if resolve_file_location(state_path) in {
+        resolved, *(resolve_file_location(p) for p in sidecars(resolved))
+    }:
         raise fail("检查点不能覆盖日志或提交元数据")
     signature = hashlib.sha256(
         encode(
@@ -136,28 +178,7 @@ def summarize(
     head = read_records(path, **head_options)
     source_end = head["snapshot_end"]
     previous_bytes = _checkpoint_bytes(state_path)
-    state = None
-    if previous_bytes is not None and len(previous_bytes) <= MAX_CHECKPOINT_BYTES:
-        try:
-            candidate = decode(previous_bytes)
-            checksum = (
-                candidate.get("checksum") if isinstance(candidate, dict) else None
-            )
-            body = candidate.get("body") if isinstance(candidate, dict) else None
-            if (
-                isinstance(body, dict)
-                and hashlib.sha256(encode(body)).hexdigest() == checksum
-                and isinstance(body.get("totals"), dict)
-                and set(body["totals"]) == {r["output_key"] for r in reducers}
-                and isinstance(body.get("cursor"), dict)
-                and "latest" in body
-            ):
-                state = body
-        except Exception as exc:
-            from backend.service.application.errors import InvalidRequestError
-
-            if not isinstance(exc, (InvalidRequestError, ValueError)):
-                raise
+    state = _decode_checkpoint(previous_bytes, reducers)
     if not source_end:
         return dict(
             totals=initial_totals(reducers),
@@ -230,12 +251,14 @@ def summarize(
         if len(encoded) > MAX_CHECKPOINT_BYTES:
             raise fail("汇总检查点超过 4 MiB，请减少 last 归约字段或记录大小")
         with lock as acquired:
-            if not acquired:
-                raise fail("检查点正在更新", "jsonl_checkpoint_busy")
-            current_bytes = _checkpoint_bytes(state_path)
-            if current_bytes != previous_bytes:
-                raise fail("检查点已由另一调用更新", "jsonl_checkpoint_conflict")
-            atomic_write_bytes(state_path, encoded)
+            # 检查点是加速缓存；争用时仍返回本批从权威日志计算出的完整快照。
+            # 不等待、不重试、不合并计数，也不覆盖其他调用已经发布的游标。
+            if acquired:
+                current_bytes = _checkpoint_bytes(state_path)
+                if current_bytes == previous_bytes:
+                    atomic_write_bytes(state_path, encoded)
+                elif not _same_summary_source(_decode_checkpoint(current_bytes, reducers), updated):
+                    raise fail("检查点已由另一调用更新", "jsonl_checkpoint_conflict")
     source = {
         **batch["next_cursor"],
         "snapshot_revision": revision,

@@ -358,6 +358,46 @@ def _build_config(tmp_path: Path, *, sample_limit: int = 10) -> DirectoryWatchTr
     )
 
 
+def test_replaced_file_path_does_not_break_watch_batch(tmp_path, monkeypatch):
+    """叶文件 resolve 可能返回删除区，事件应保留目标名并继续发送。"""
+    from watchfiles import Change
+
+    target = tmp_path / "summary.json"
+    target.write_text("{}")
+    original = Path.resolve
+
+    def resolve(path, *args, **kwargs):
+        if path == target:
+            raise ValueError("path is on mount '\\\\?\\W:', start on mount 'W:'")
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "resolve", resolve)
+    matched = list(DirectoryWatchTriggerAdapter._iter_matched_changes(
+        None, {(Change.modified, str(target))}, _build_config(tmp_path)
+    ))
+    assert len(matched) == 1
+    assert matched[0].path == str(target)
+    assert matched[0].relative_path == "summary.json"
+
+
+def test_unresolvable_change_does_not_abort_remaining_batch(tmp_path, monkeypatch):
+    """单条路径在通知后消失或不可解析，不中断同批其他有效变化。"""
+    from watchfiles import Change
+    from backend.service.infrastructure.integrations.directory import directory_watch_trigger_adapter as module
+
+    original = module.resolve_file_location
+    def resolve(path):
+        if path.name == "gone.json":
+            raise FileNotFoundError(str(path))
+        return original(path)
+    monkeypatch.setattr(module, "resolve_file_location", resolve)
+    matched = list(DirectoryWatchTriggerAdapter._iter_matched_changes(
+        None, {(Change.modified, str(tmp_path / "gone.json")),
+               (Change.modified, str(tmp_path / "valid.json"))}, _build_config(tmp_path)
+    ))
+    assert [item.relative_path for item in matched] == ["valid.json"]
+
+
 def _build_trigger_source(tmp_path: Path) -> WorkflowTriggerSource:
     """构造测试使用的目录 TriggerSource。"""
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from backend.service.infrastructure.filesystem.directory_guard import protect_directory
+from backend.service.infrastructure.filesystem.file_paths import resolve_file_location
 
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -232,7 +233,11 @@ def resolve_optional_save_location(
     if native_path.is_absolute():
         lexical_path = Path(os.path.abspath(native_path))
         try:
-            resolved_path = native_path.resolve(strict=False)
+            resolved_path = (
+                resolve_file_location(native_path)
+                if scope == "file"
+                else native_path.resolve(strict=False)
+            )
         except OSError as error:
             raise InvalidRequestError(
                 "系统保存位置无法解析",

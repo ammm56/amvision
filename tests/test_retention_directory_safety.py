@@ -11,9 +11,24 @@ import pytest
 from backend.nodes.save_locations import _write_filesystem_bytes_atomically
 from backend.service.infrastructure.filesystem.retention_files import (
     delete_empty_local_retention_directories,
+    iter_local_retention_pages,
 )
 
 pytestmark = pytest.mark.skipif(os.name != "nt", reason="Windows 目录生命周期保护回归")
+
+
+@pytest.mark.parametrize("prefix, expected", [("", ""), (".", ""), (" /./results// ", "results/")])
+def test_scan_directory_key_reuse_preserves_relative_paths(tmp_path, prefix, expected):
+    """目录路径复用跨 DFS 子目录、分页和根目录文件时保持键与版本完整。"""
+    names = ["root.jpg", "first/a.jpg", "first/nested/b.jpg", "second/c.jpg"]
+    for name in names:
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"image")
+    pages = list(iter_local_retention_pages(tmp_path, recursive=True, page_size=1, object_key_prefix=prefix))
+    items = [item for page in pages for item in page.items]
+    assert {item.object_key for item in items} == {expected + name for name in names}
+    assert all(item.content_length == 5 and item.version for item in items)
 
 
 def test_control_directory_descendants_are_preserved(tmp_path: Path) -> None:

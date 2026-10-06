@@ -44,13 +44,18 @@ def iter_local_retention_pages(
         return
 
     page_items: list[RetentionObjectMetadata] = []
+    previous_directory: Path | None = None
+    relative_directory = ""
+    prefix = object_key_prefix.strip().strip("/")
+    prefix = PurePosixPath(prefix).as_posix() if prefix else ""
+    if prefix == ".":
+        prefix = ""
     with _safe_walk(logical_root, recursive=recursive, checkpoint=checkpoint) as walk:
         for directory_path, entry in walk:
             if entry is None:
                 continue
             if _is_control_name(entry.name):
                 continue
-            entry_path = directory_path / entry.name
             try:
                 # 扫描阶段复用 DirEntry 缓存，避免为每个文件再次打开路径。
                 entry_stat = entry.stat(follow_symlinks=False)
@@ -68,8 +73,16 @@ def iter_local_retention_pages(
                 file_id = entry.inode()
             except FileNotFoundError:
                 continue
-            relative_key = entry_path.relative_to(logical_root).as_posix()
-            object_key = _join_object_key(object_key_prefix, relative_key)
+            # 同一目录的祖先链只计算一次；不能为每个文件重复解析深层发布路径。
+            # directory_path 来自受保护的 DFS，entry.name 来自该目录的 scandir。
+            if directory_path != previous_directory:
+                relative_directory = directory_path.relative_to(logical_root).as_posix()
+                if relative_directory == ".":
+                    relative_directory = ""
+                previous_directory = directory_path
+            relative_key = f"{relative_directory}/{entry.name}" if relative_directory else entry.name
+            # 两段已在目录边界规范化，文件名无需再次创建 PurePath 对象。
+            object_key = f"{prefix}/{relative_key}" if prefix else relative_key
             page_items.append(
                 RetentionObjectMetadata(
                     object_key=object_key,
@@ -215,15 +228,6 @@ class _safe_walk:
     def __exit__(self, *exc):
         while self.frames:
             self.frames.pop()[2].close()
-
-
-def _join_object_key(prefix: str, relative_key: str) -> str:
-    """连接可选 ObjectStore prefix 与相对文件 key。"""
-
-    normalized_prefix = prefix.strip().strip("/")
-    if not normalized_prefix:
-        return PurePosixPath(relative_key).as_posix()
-    return (PurePosixPath(normalized_prefix) / relative_key).as_posix()
 
 
 def _is_control_name(name: str) -> bool:

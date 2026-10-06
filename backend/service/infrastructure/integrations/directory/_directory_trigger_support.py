@@ -10,6 +10,7 @@ from pathlib import PurePosixPath
 from typing import Literal
 
 from pydantic import ValidationError
+from backend.service.infrastructure.filesystem.file_paths import resolve_file_location
 
 from backend.contracts.workflows import (
     DirectoryWatchTransportConfigContract,
@@ -272,7 +273,7 @@ def matches_directory_candidate_path(
 
     try:
         normalized_path = (
-            file_path.resolve()
+            resolve_file_location(file_path)
             if resolve_existing_path
             else Path(os.path.abspath(file_path))
         )
@@ -335,7 +336,7 @@ def _list_directory_files(config: DirectoryPollTriggerConfig) -> list[Path]:
             extensions=config.extensions,
         ):
             continue
-        file_paths.append(file_path.resolve())
+        file_paths.append(resolve_file_location(file_path))
     return file_paths
 
 

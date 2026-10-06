@@ -13,6 +13,8 @@ from pathlib import Path
 from tempfile import gettempdir
 from threading import RLock
 
+from backend.service.infrastructure.filesystem.file_paths import resolve_file_location
+
 from backend.service.application.runtime.resource_scope import (
     ResourceScope,
     create_process_resource_scope,
@@ -281,7 +283,7 @@ def _require_coordinator(scope: ResourceScope) -> PathWriteCoordinator:
 def _normalize_path(path: Path) -> str:
     """生成适合 Windows 和 POSIX 比较的稳定绝对路径。"""
 
-    resolved = str(path.expanduser().resolve(strict=False))
+    resolved = str(resolve_file_location(path))
     return os.path.normcase(os.path.normpath(resolved))
 
 

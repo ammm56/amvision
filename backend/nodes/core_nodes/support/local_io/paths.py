@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from backend.service.infrastructure.filesystem.file_paths import resolve_file_location
+
 from backend.nodes.core_nodes.support.logic import require_value_payload
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
@@ -26,7 +28,7 @@ def resolve_local_file_path_from_request(
             f"{description}路径必须是非空字符串",
             details={"node_id": request.node_id, "parameter_name": parameter_name},
         )
-    resolved_path = Path(raw_value.strip()).expanduser().resolve()
+    resolved_path = resolve_file_location(Path(raw_value.strip()))
     if not resolved_path.is_file():
         raise InvalidRequestError(
             f"{description}不存在",
@@ -101,7 +103,7 @@ def resolve_local_path_value_from_request(
             f"{description}路径必须是非空字符串",
             details={"node_id": request.node_id, "parameter_name": parameter_name},
         )
-    return Path(raw_value.strip()).expanduser().resolve()
+    return resolve_file_location(Path(raw_value.strip()))
 
 
 def _read_optional_path_input(

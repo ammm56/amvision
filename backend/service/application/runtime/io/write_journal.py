@@ -7,6 +7,8 @@ import json
 from pathlib import Path
 from time import time
 
+from backend.service.infrastructure.filesystem.file_paths import resolve_file_location
+
 from backend.service.application.runtime.io.atomic_files import atomic_write_bytes
 from backend.service.infrastructure.filesystem.shared_files import open_shared_read
 from backend.service.application.workflows.execution.contracts import (
@@ -31,7 +33,7 @@ class WriteJournal:
     ) -> None:
         """定位一个稳定 journal 文件。"""
 
-        self.target_path = target_path.expanduser().resolve(strict=False)
+        self.target_path = resolve_file_location(target_path)
         self.operation_id = operation_id
         self.operation_kind = operation_kind
         identity = "\0".join(

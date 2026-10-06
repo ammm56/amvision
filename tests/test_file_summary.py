@@ -36,8 +36,8 @@ def test_incremental_checkpoint_restart_rebuild(tmp_path):
     assert run()["totals"] == {"total": 144, "ng": 12}
 
 
-def test_zero_missing_invalid_numbers_and_lock_conflict(tmp_path):
-    """空源明确返回 empty，错误不发布检查点。"""
+def test_zero_missing_invalid_numbers_and_cache_contention(tmp_path):
+    """空源返回 empty；缓存争用不阻止读取，错误数据不发布检查点。"""
     path, state = tmp_path / "r.jsonl", tmp_path / "state.json"
     assert (
         summarize(
@@ -46,8 +46,9 @@ def test_zero_missing_invalid_numbers_and_lock_conflict(tmp_path):
         == "empty"
     )
     append_record(path, {"delta": {"total": 24, "ng": 1}}, operation="one")
-    with pytest.raises(InvalidRequestError, match="更新"):
-        summarize(path, state, reducers=RULES, lock=nullcontext(False))
+    result = summarize(path, state, reducers=RULES, lock=nullcontext(False))
+    assert result["totals"] == {"total": 24, "ng": 1}
+    assert result["complete"] is True
     assert not state.exists()
     append_record(path, {"delta": {"total": True, "ng": 1}}, operation="two")
     with pytest.raises(InvalidRequestError, match="数值"):
@@ -172,6 +173,47 @@ def test_checkpoint_compare_and_swap_conflict(tmp_path):
     with pytest.raises(InvalidRequestError, match="另一调用"):
         summarize(path, state, reducers=RULES, lock=concurrent_commit())
     assert state.read_bytes() == b"another checkpoint"
+
+
+@pytest.mark.parametrize("other_limit", [1, 2, 3])
+def test_concurrent_readers_return_snapshots_without_overwriting_cache(tmp_path, other_limit):
+    """另一读取者进度落后、相同或领先时均不重复计数，不倒退其缓存。"""
+    from contextlib import contextmanager
+
+    path, state = tmp_path / "r.jsonl", tmp_path / "state.json"
+    for index in range(3):
+        append_record(path, {"delta": {"total": 24, "ng": index}}, operation=str(index))
+    committed = []
+
+    @contextmanager
+    def concurrent_commit():
+        summarize(path, state, reducers=RULES, lock=nullcontext(True), max_records=other_limit)
+        committed.append(state.read_bytes())
+        yield True
+
+    result = summarize(path, state, reducers=RULES, lock=concurrent_commit(), max_records=2)
+    assert result["totals"] == {"total": 48, "ng": 1}
+    assert result["complete"] is False
+    assert state.read_bytes() == committed[0]
+    final = summarize(path, state, reducers=RULES, lock=nullcontext(True))
+    assert final["totals"] == {"total": 72, "ng": 3}
+    assert summarize(path, state, reducers=RULES, lock=nullcontext(True)) == final
+
+
+def test_concurrent_different_rules_still_rejected(tmp_path):
+    """检查点被不兼容规则更新时，不把配置冲突当作普通缓存争用。"""
+    from contextlib import contextmanager
+
+    path, state = tmp_path / "r.jsonl", tmp_path / "state.json"
+    append_record(path, {"delta": {"total": 24, "ng": 1}}, operation="one")
+
+    @contextmanager
+    def conflicting_commit():
+        summarize(path, state, reducers=RULES, condition={"operator": "gt", "path": "delta.ng", "right": 0}, lock=nullcontext(True))
+        yield True
+
+    with pytest.raises(InvalidRequestError, match="另一调用"):
+        summarize(path, state, reducers=RULES, lock=conflicting_commit())
 
 
 @pytest.mark.parametrize("cleanup", ["log", "all", "empty", "commit", "checkpoint"])
