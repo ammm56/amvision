@@ -5,6 +5,12 @@
 ## 入口
 
 - [完整发行栈排障](release-full-troubleshooting.md)
+- [0.1.8 开发环境链路验证（2026-10-05）](development-acceptance-20261005.md)
+- [0.1.8 CPU 发行验收（2026-10-05）](release-acceptance-20261005.md)
+- [NVIDIA 发行与一小时运行验收（2026-10-05）](nvidia-release-acceptance-20261005.md)
+- [NVIDIA 发行修复与续测（2026-10-06）](nvidia-release-followup-20261006.md)
+- [NVIDIA 发行性能与异常收尾验证（2026-10-06）](nvidia-release-closeout-20261006.md)
+- [未提交修改审计（2026-10-06）](uncommitted-changes-audit-20261006.md)
 - [0.1.6 生产就绪审计（2026-09-09）](production-readiness-audit-20260909.md)
 - [Windows HTTP 服务恢复修复验证](http-service-recovery-validation-20260909.md)
 - [Windows 长路径](windows-long-paths.md)

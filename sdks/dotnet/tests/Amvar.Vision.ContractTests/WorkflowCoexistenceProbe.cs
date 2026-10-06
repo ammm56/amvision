@@ -23,7 +23,10 @@ namespace Amvar.Vision.ContractTests
                 var image = File.ReadAllBytes((string?)config["image"] ?? "");
                 var iterations = (int?)config["iterations"] ?? 1;
                 var warmup = (int?)config["warmup"] ?? 0;
-                if (iterations <= 0 || warmup < 0) throw new ArgumentException("Invalid iteration count.");
+                var durationSeconds = (int?)config["duration_seconds"] ?? 0;
+                var continueOnFailure = (bool?)config["continue_on_workflow_failure"] ?? false;
+                var failedCalls = 0;
+                if (iterations <= 0 || warmup < 0 || durationSeconds < 0) throw new ArgumentException("Invalid iteration count or duration.");
                 var payload = config["payload"] as JObject ?? new JObject();
                 var ids = new HashSet<string>(StringComparer.Ordinal);
                 using (var http = mode == "runtime" ? new AMVisionClient(new AMVisionClientOptions
@@ -40,13 +43,15 @@ namespace Amvar.Vision.ContractTests
                     Timeout = TimeSpan.FromSeconds(60)
                 }) : null)
                 {
-                    for (var index = -warmup; index < iterations; index++)
+                    var duration = Stopwatch.StartNew();
+                    for (var index = -warmup; durationSeconds > 0 ? duration.Elapsed.TotalSeconds < durationSeconds : index < iterations; index++)
                     {
                         var startedAt = DateTimeOffset.UtcNow;
                         var clock = Stopwatch.StartNew();
                         string state, runId;
                         JToken result;
                         JToken metadata = new JObject();
+                        JToken error = JValue.CreateNull();
                         if (mode == "runtime")
                         {
                             var request = new WorkflowRuntimeMultipartInvokeRequest { TimeoutSeconds = 60 };
@@ -60,6 +65,7 @@ namespace Amvar.Vision.ContractTests
                             state = response.State;
                             runId = response.WorkflowRunId;
                             result = response.Results;
+                            if (response.Error != null) error = JObject.FromObject(response.Error);
                         }
                         else if (mode == "zeromq")
                         {
@@ -77,14 +83,26 @@ namespace Amvar.Vision.ContractTests
                             if ((string?)envelope["workflow_run_id"] != runId)
                                 throw new InvalidDataException("Trigger result run identity mismatch.");
                             result = envelope["results"] ?? throw new InvalidDataException("Missing trigger results.");
+                            error = response.Error != null
+                                ? JObject.FromObject(response.Error)
+                                : envelope["error"] ?? JValue.CreateNull();
                             metadata = JObject.FromObject(response.Metadata);
                         }
                         else throw new ArgumentException("Unsupported mode: " + mode);
                         clock.Stop();
-                        if (state != "succeeded" || string.IsNullOrEmpty(runId) || !ids.Add(runId))
-                            throw new InvalidDataException("Workflow state or run identity invalid: " + state);
                         // 先保留证据再校验业务值，期望值不匹配时保留实际响应。
-                        samples.Add(new { index, started_at = startedAt, elapsed_ms = clock.Elapsed.TotalMilliseconds, run_id = runId, state, result, metadata });
+                        samples.Add(new { index, started_at = startedAt, elapsed_ms = clock.Elapsed.TotalMilliseconds, run_id = runId, state, result, metadata, error });
+                        if (string.IsNullOrEmpty(runId) || !ids.Add(runId))
+                            throw new InvalidDataException("Workflow state or run identity invalid: " + state + "; " + error.ToString(Formatting.None));
+                        if (state != "succeeded")
+                        {
+                            failedCalls++;
+                            if (!continueOnFailure) throw new InvalidDataException("Workflow failed: " + error.ToString(Formatting.None));
+                            // 记录失败后发起下一次独立调用，不重试失败的生产请求。
+                            File.WriteAllText(args[2], JsonConvert.SerializeObject(new
+                            { passed = false, running = true, mode, failed_calls = failedCalls, samples }, Formatting.Indented));
+                            continue;
+                        }
                         if (config["expected"] is JObject expected)
                         {
                             foreach (var item in expected.Properties())
@@ -94,18 +112,25 @@ namespace Amvar.Vision.ContractTests
                                     throw new InvalidDataException("Unexpected business result at " + item.Name);
                             }
                         }
+                        if (durationSeconds > 0 && samples.Count % 30 == 0)
+                        {
+                            // 长时间验收定期落下已完成证据；不改变 SDK 或服务调用策略。
+                            File.WriteAllText(args[2], JsonConvert.SerializeObject(new
+                            { passed = false, running = true, mode, duration_seconds = durationSeconds, samples }, Formatting.Indented));
+                            Console.WriteLine("Completed " + samples.Count + " calls; elapsed " + duration.Elapsed.TotalSeconds.ToString("F1") + " s");
+                        }
                     }
                 }
                 using (var process = Process.GetCurrentProcess())
                 {
                     File.WriteAllText(args[2], JsonConvert.SerializeObject(new
                     {
-                        passed = true, mode, iterations, warmup, samples,
+                        passed = failedCalls == 0, mode, iterations, warmup, duration_seconds = durationSeconds, failed_calls = failedCalls, samples,
                         peak_working_set_bytes = process.PeakWorkingSet64,
                         managed_heap_bytes = GC.GetTotalMemory(false)
                     }, Formatting.Indented));
                 }
-                return 0;
+                return failedCalls == 0 ? 0 : 1;
             }
             catch (Exception error)
             {
