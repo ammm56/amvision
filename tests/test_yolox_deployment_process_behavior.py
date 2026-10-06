@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 from queue import Queue
-from threading import BoundedSemaphore, Event, Thread
+from threading import Event, Thread
 
 from backend.service.application.local_buffers import (
     DirectMmapLocalBufferReader,
@@ -327,8 +327,6 @@ def test_deployment_worker_returns_preview_only_through_localbuffer(
         preview_image_bytes=preview_bytes,
     )
     response_queue: Queue = Queue()
-    infer_slots = BoundedSemaphore(1)
-    assert infer_slots.acquire(blocking=False) is True
 
     writer = DirectMmapLocalBufferWriter(settings, root_dir=tmp_path / "buffers")
     reader = DirectMmapLocalBufferReader(settings, root_dir=tmp_path / "buffers")
@@ -366,7 +364,6 @@ def test_deployment_worker_returns_preview_only_through_localbuffer(
                 channel_id="direct-mmap",
             ),
             dataset_storage=dataset_storage,
-            infer_slots=infer_slots,
             keep_warm_state=None,
         )
     finally:
@@ -391,10 +388,10 @@ def test_deployment_worker_returns_preview_only_through_localbuffer(
     pool.close()
 
 
-def test_deployment_worker_batch_reads_ordered_mmap_views_and_releases_slot(
+def test_deployment_worker_batch_reads_ordered_mmap_views_and_releases_guards(
     tmp_path: Path,
 ) -> None:
-    """验证 infer_batch 一次占用 slot、同序返回并正确释放 mmap reader guard。"""
+    """验证 infer_batch 同序返回并正确释放 mmap reader guard；槽位由常驻线程管理。"""
 
     settings = LocalBufferBrokerSettings(
         arena_size_bytes=16 * 1024 * 1024,
@@ -428,8 +425,6 @@ def test_deployment_worker_batch_reads_ordered_mmap_views_and_releases_slot(
     execution_result = build_test_execution_result(runtime_target=runtime_target)
     runtime_pool = _BatchRuntimePool(execution_result=execution_result)
     response_queue: Queue = Queue()
-    infer_slots = BoundedSemaphore(1)
-    assert infer_slots.acquire(blocking=False) is True
     reader = DirectMmapLocalBufferReader(settings, root_dir=tmp_path / "buffers")
     health = _LocalBufferBrokerRuntimeHealth(
         connected=True,
@@ -467,7 +462,6 @@ def test_deployment_worker_batch_reads_ordered_mmap_views_and_releases_slot(
             dataset_storage=LocalDatasetStorage(
                 DatasetStorageSettings(root_dir=str(tmp_path / "objects"))
             ),
-            infer_slots=infer_slots,
             keep_warm_state=None,
         )
     finally:
@@ -480,7 +474,6 @@ def test_deployment_worker_batch_reads_ordered_mmap_views_and_releases_slot(
     assert runtime_pool.call_count == 1
     assert health.buffer_input_count == 2
     assert health.error_count == 0
-    assert infer_slots.acquire(blocking=False) is True
     pool.close()
 
 
@@ -517,8 +510,6 @@ def test_batch_prediction_failure_is_not_counted_as_local_buffer_read_error(
         refs.append(pool.commit_lease(lease=lease, media_type="image/jpeg").buffer_ref)
     runtime_target = _build_runtime_target(tmp_path)
     response_queue: Queue = Queue()
-    infer_slots = BoundedSemaphore(1)
-    assert infer_slots.acquire(blocking=False) is True
     reader = DirectMmapLocalBufferReader(settings, root_dir=tmp_path / "buffers")
     health = _LocalBufferBrokerRuntimeHealth(True, "direct-mmap")
     try:
@@ -557,7 +548,6 @@ def test_batch_prediction_failure_is_not_counted_as_local_buffer_read_error(
             dataset_storage=LocalDatasetStorage(
                 DatasetStorageSettings(root_dir=str(tmp_path / "objects"))
             ),
-            infer_slots=infer_slots,
             keep_warm_state=None,
         )
     finally:
@@ -568,7 +558,6 @@ def test_batch_prediction_failure_is_not_counted_as_local_buffer_read_error(
     assert response["error"]["details"]["item_index"] == 1
     assert health.buffer_input_count == 2
     assert health.error_count == 0
-    assert infer_slots.acquire(blocking=False) is True
     pool.close()
 
 
@@ -590,8 +579,6 @@ def test_async_deployment_worker_reads_and_writes_object_store_directly(
         preview_image_bytes=preview_bytes,
     )
     response_queue: Queue = Queue()
-    infer_slots = BoundedSemaphore(1)
-    assert infer_slots.acquire(blocking=False) is True
 
     _run_inference_request(
         response_queue=response_queue,
@@ -622,7 +609,6 @@ def test_async_deployment_worker_reads_and_writes_object_store_directly(
             channel_id=None,
         ),
         dataset_storage=dataset_storage,
-        infer_slots=infer_slots,
         keep_warm_state=None,
     )
 

@@ -28,6 +28,7 @@
 - 前端只显示目标 backend/device 支持的参数，并展示运行时实际生效配置和警告。
 - CPU device resource manager 在 worker 启动前按当前 deployment 自身的 `instance_count` 和物理核心数生成每实例 effective 线程数；其他已启动但空闲的 deployment 不扣减线程容量，也不阻止当前 deployment 启动。
 - PyTorch/TensorRT CUDA Deployment 在进程启动边界持有 GPU/MIG `shared` reservation，停止边界释放；多个 Deployment 可并存，Training/CUDA Conversion 的 `exclusive` lease 与其双向冲突。inference 请求热路径不获取设备锁。
+- Deployment 子进程按 `instance_count` 创建固定数量的常驻推理线程，单图与批量调用共用容量。只向空闲线程交接请求，满载立即返回 `deployment_inference_busy`，不维护等待队列或自动重试。线程在部署停止时退出，避免每次调用重新创建线程引起推理库线程局部资源持续增长。停机时在途调用尚未退出则不主动释放其模型和 mmap；最终退出仍受 Supervisor 的停机预算约束。
 
 当前仍有下面这些限制：
 

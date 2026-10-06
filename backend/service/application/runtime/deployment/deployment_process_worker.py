@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field
+from functools import partial
 import multiprocessing
 import os
-from threading import BoundedSemaphore, Event, Lock, Thread
+from threading import Event, Lock, Thread
 from typing import Any, Callable, Iterator
 
 from backend.contracts.buffers import BufferLease, BufferRef, FrameRef
@@ -37,6 +38,7 @@ from backend.service.application.runtime.deployment.deployment_runtime_pool impo
     DeploymentRuntimePoolConfig,
     MAX_DEPLOYMENT_RUNTIME_BATCH_ITEMS,
 )
+from backend.service.application.runtime.deployment.inference_threads import InferenceThreads
 from backend.service.application.runtime.support.safe_counter import (
     SafeCounterState,
     increment_safe_counter,
@@ -206,7 +208,9 @@ def run_deployment_process_worker(
         requested_runtime_configuration=config.runtime_configuration,
     )
     runtime_pool.ensure_deployment(runtime_pool_config)
-    infer_slots = BoundedSemaphore(max(1, config.instance_count))
+    inference_threads = InferenceThreads(
+        count=max(1, config.instance_count), name=f"deployment-infer-{config.deployment_instance_id}"
+    )
     behavior = _resolve_warmup_behavior(
         config=config, supervisor_settings=supervisor_settings
     )
@@ -237,12 +241,18 @@ def run_deployment_process_worker(
         )
 
         if action == "shutdown":
-            parent_watchdog_stop_event.set()
-            parent_watchdog_thread.join(timeout=1.0)
             _stop_keep_warm_thread(
                 keep_warm_state=keep_warm_state,
                 timeout_seconds=behavior.keep_warm_yield_timeout_seconds,
             )
+            if not inference_threads.close(timeout=behavior.keep_warm_yield_timeout_seconds):
+                _put_error_response(
+                    response_queue=response_queue, request_id=request_id,
+                    error=ServiceConfigurationError("deployment 在途推理尚未退出，不能释放模型和 mmap"),
+                )
+                continue
+            parent_watchdog_stop_event.set()
+            parent_watchdog_thread.join(timeout=1.0)
             runtime_pool.close_deployment(config.deployment_instance_id)
             if local_buffer_reader is not None:
                 local_buffer_reader.close()
@@ -378,7 +388,20 @@ def run_deployment_process_worker(
                         ),
                     )
                     continue
-            if not infer_slots.acquire(blocking=False):
+            accepted = inference_threads.try_submit(partial(
+                _run_inference_batch_request if action == "infer_batch" else _run_inference_request,
+                response_queue=response_queue,
+                request_id=request_id,
+                runtime_pool=runtime_pool,
+                runtime_pool_config=runtime_pool_config,
+                payload=payload,
+                local_buffer_reader=local_buffer_reader,
+                local_buffer_writer=local_buffer_writer,
+                local_buffer_health=local_buffer_health,
+                dataset_storage=dataset_storage,
+                keep_warm_state=keep_warm_state,
+            ))
+            if not accepted:
                 if keep_warm_state is not None:
                     _finish_real_inference(keep_warm_state)
                 _put_error_response(
@@ -393,28 +416,6 @@ def run_deployment_process_worker(
                     ),
                 )
                 continue
-            Thread(
-                target=(
-                    _run_inference_batch_request
-                    if action == "infer_batch"
-                    else _run_inference_request
-                ),
-                kwargs={
-                    "response_queue": response_queue,
-                    "request_id": request_id,
-                    "runtime_pool": runtime_pool,
-                    "runtime_pool_config": runtime_pool_config,
-                    "payload": payload,
-                    "local_buffer_reader": local_buffer_reader,
-                    "local_buffer_writer": local_buffer_writer,
-                    "local_buffer_health": local_buffer_health,
-                    "dataset_storage": dataset_storage,
-                    "infer_slots": infer_slots,
-                    "keep_warm_state": keep_warm_state,
-                },
-                daemon=True,
-                name=f"deployment-{action}-{config.deployment_instance_id}",
-            ).start()
             continue
 
         _put_error_response(
@@ -438,10 +439,9 @@ def _run_inference_request(
     local_buffer_writer: _LocalBufferWriter | None,
     local_buffer_health: _LocalBufferBrokerRuntimeHealth,
     dataset_storage: LocalDatasetStorage,
-    infer_slots: BoundedSemaphore,
     keep_warm_state: _KeepWarmState | None,
 ) -> None:
-    """在独立线程中执行一次 deployment 推理请求。"""
+    """在常驻推理槽线程中执行一次 deployment 推理请求。"""
 
     try:
         with _build_prediction_request(
@@ -510,7 +510,6 @@ def _run_inference_request(
             response_queue=response_queue, request_id=request_id, error=error
         )
     finally:
-        infer_slots.release()
         _finish_real_inference(keep_warm_state)
 
 
@@ -525,7 +524,6 @@ def _run_inference_batch_request(
     local_buffer_writer: _LocalBufferWriter | None,
     local_buffer_health: _LocalBufferBrokerRuntimeHealth,
     dataset_storage: LocalDatasetStorage,
-    infer_slots: BoundedSemaphore,
     keep_warm_state: _KeepWarmState | None,
 ) -> None:
     """在一个 worker 线程和一个实例槽位中执行完整有序批次。"""
@@ -563,7 +561,6 @@ def _run_inference_batch_request(
             error=error,
         )
     finally:
-        infer_slots.release()
         _finish_real_inference(keep_warm_state)
 
 
