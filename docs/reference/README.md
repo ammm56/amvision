@@ -10,6 +10,12 @@
 
 [模型参考索引](models/README.md)覆盖支持矩阵、命名、输入尺寸、训练参数和检测规则。训练、转换、部署的模块关系见 [模型工作流边界](../architecture/models/workflow-boundaries.md)。
 
+## 工业视觉资料
+
+[ViSCO 二维连接器检查资料与功能核对](vision/visco-connector-inspection.md)：官方资料、可确认的配置方式及证据限制。它是外部产品参考，不表示 AMVision 已实现同等功能；本项目设计见关联提案与实施基线。
+
+[工业二维检查资料与能力边界](vision/industrial-2d-measurement.md)：Cognex、MVTec、光学与产品规范资料，区分通用视觉、行业复用和具体产品配置。
+
 ## 维护规则
 
 - 支持状态必须同时有注册表、实现和自动化测试证据。

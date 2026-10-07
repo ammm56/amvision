@@ -39,3 +39,7 @@
 - [YOLOE / SAM3 资产](yoloe-sam3-assets.md)
 
 节点包开发规范见 [节点扩展](../../nodes/README.md)，生产操作见 [运维](../../operations/README.md)。
+
+## 后续设计入口
+
+[二维连接器检查与测量提案](../../decisions/ADR-0014-connector-inspection-2d.md)及[详细实施基线](../../development/connector-inspection-2d.md)：尚未实现，复用当前 Workflow/Runtime 和 OpenCV 基础；不代表本页已有能力扩展。

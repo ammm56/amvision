@@ -4,7 +4,7 @@
 
 工业能力通过可组合节点进入 Workflow，不把现场协议、相机驱动或行业规则膨胀到平台资源主链。平台提供稳定的图、payload、Runtime、版本与审计边界；具体设备和算法由 Core Node 或受控 Custom Node Pack 实现。
 
-二维工业视觉节点的扩展只进入 Core 或现有 `opencv.nodes`。当前不规划 Python Script 节点或 Python Script Node Pack；缺失能力必须形成明确、可测试的节点契约，不能以任意脚本执行代替。
+通用二维工业视觉能力继续进入 Core 或现有 `opencv.nodes`。需要稳定行业语义的专用能力在对应自定义节点包中组织，并复用通用算法；具体客户、工位和型号的参数保留在 Workflow/模板中。连接器扩展尚处于[设计提案](../../decisions/ADR-0014-connector-inspection-2d.md)，不计入下文当前能力。当前不规划 Python Script 节点或 Python Script Node Pack；缺失能力必须形成明确、可测试的节点契约，不能以任意脚本执行代替。
 
 ## 节点粒度
 
@@ -14,7 +14,7 @@
 2. 常用组合工具覆盖跨项目高频能力；当原子节点组合会形成很长流程时，可以封装特征定位、形状定位、胶路检查、轮廓偏差和标定诊断等稳定工具。
 3. Workflow App 与 Template 保存产品、工位、阈值、OK/NG 和交付方式等场景编排。
 
-常用组合工具必须复用共享算法函数，不在 handler 内嵌套执行 Workflow 或其他节点 handler。产品专用名称和规则不进入节点 Catalog。
+常用组合工具必须复用共享算法函数，不在 handler 内嵌套执行 Workflow 或其他节点 handler。具体产品专用名称和规则不进入节点 Catalog；行业节点使用可跨产品复用的名称和配置，不重复注册对应的通用工具。
 
 ## 当前节点层次
 

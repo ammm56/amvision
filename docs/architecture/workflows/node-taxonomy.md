@@ -30,9 +30,12 @@
 - 依赖、许可证、运行环境或故障边界必须独立管理。
 - 原生依赖、厂商 runtime 或故障恢复边界必须独立管理。
 - 版本和发布周期长期独立。
+- 稳定行业域需要独立的领域契约、专属配置与版本周期，且能力跨产品型号复用。行业包依赖通用包的公开算法接口，不复制通用工具，也不能被 Core/通用包反向依赖。
 - 实现来自不同厂商，且安装一个 provider 不应加载另一个 provider 的 SDK。此时可以拆 provider pack；目录和分类仍保持统一命名。
 
-禁止按 basic、geometry、measurement、单个协议或某个业务场景直接创建一级 pack。这些名称应是包内分类、provider 或 protocol。
+禁止按 basic、geometry、measurement、单个协议或具体客户、工位、产品型号直接创建一级 pack。技术功能名称应是包内分类、provider 或 protocol；产品规则和参数应是 Workflow/模板配置。
+
+通用性按能力语义判断：边缘、距离、平面标定、范围判断、记录和显示不因用于连接器而成为行业节点；PIN 身份、留空排列及按端子定义的配对可以属于独立行业包。拟议的连接器包见 [ADR-0014](../../decisions/ADR-0014-connector-inspection-2d.md)，尚未实现，不计入当前已安装能力。
 
 ## custom_nodes 目录规则
 
