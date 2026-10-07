@@ -4,6 +4,7 @@
 
 ## 验收与基准
 
+- [连接器开发图片与参考资源](connector-development-assets.md)：已准备公开图纸、实拍照片、56 张 Blender 合成图及几何真值，供连接器基础开发使用；不代替实物计量验收。
 - [Workflow 多节点复制验收](workflow-multi-node-copy.md)：实现完成，332 项回归通过；真实 82 节点整体复制与执行验证，以及浏览器工具的验证限制。
 - [LocalMessage 通道验收](local-message-channel-implementation.md)：三条结构化链路已迁移，本机压力与发行装配已完成；目标发行 24 小时混合 soak 待验收。
 - [LocalBuffer 与 Trigger 数据面验收](shared-memory-data-plane-reliability-implementation.md)：固定 arena、guard/owner 与真实图片链路的故障、容量和持续认证。

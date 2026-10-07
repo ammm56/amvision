@@ -1,0 +1,53 @@
+{
+  "verified_on": "2026-10-07",
+  "files": [
+    {
+      "path": "wuerth/61301011121.pdf",
+      "url": "https://www.we-online.com/components/products/datasheet/61301011121.pdf",
+      "role": "manufacturer drawing",
+      "rights": "manufacturer copyrighted reference; not redistributed as project assets",
+      "sha256": "8ba4e3a5bf7da88e9b9a43f9dd8505cb82742a57c0295c4c592e66dc1258a87d",
+      "bytes": 500534
+    },
+    {
+      "path": "wuerth/61301011121.stp",
+      "url": "https://www.we-online.com/components/products/download/Download_STP_61301011121%20%28rev1%29.stp",
+      "role": "manufacturer CAD reference, not consumed by generator",
+      "rights": "manufacturer copyrighted reference",
+      "sha256": "e4b2fbec2b5562ce9d5fa715e3069ae87a7d9736670cedf4533969e77bf15c4f",
+      "bytes": 236419
+    },
+    {
+      "path": "wuerth/61301011121.jpg",
+      "url": "https://www.we-online.com/components/media/o806653v214%20Single-WR-PHD-61301011121.jpg",
+      "role": "132px catalog illustration, NOT a camera original",
+      "rights": "manufacturer copyrighted reference",
+      "sha256": "0194fca875a25366de753aa43f7b74ead44caeadade314adc98585b8ba690148",
+      "bytes": 2927
+    },
+    {
+      "path": "commons/36-pin-header.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/9/90/36_Pin_Header.jpg",
+      "source_page": "https://commons.wikimedia.org/wiki/File:36_Pin_Header.jpg",
+      "author": "oomlout",
+      "license": "CC BY-SA 2.0",
+      "license_url": "https://creativecommons.org/licenses/by-sa/2.0/",
+      "modified": false,
+      "role": "real photograph at published original resolution; no matching drawing or dimensional ground truth; not sensor RAW",
+      "sha256": "423f4ee99fd86b53f28e65a9cb3cdfd58f8364055824cd0a1cb681c9a9d8163a",
+      "bytes": 163618
+    },
+    {
+      "path": "commons/16-pin-header.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/6/66/16_Pin_Header.jpg",
+      "source_page": "https://commons.wikimedia.org/wiki/File:16_Pin_Header.jpg",
+      "author": "oomlout",
+      "license": "CC BY-SA 2.0",
+      "license_url": "https://creativecommons.org/licenses/by-sa/2.0/",
+      "modified": false,
+      "role": "real photograph at published original resolution; no matching drawing or dimensional ground truth; not sensor RAW",
+      "sha256": "692ad0daad3ad114c6c08f72d52d7fe13938eb42f0afe801ef0eb78341b58090",
+      "bytes": 75554
+    }
+  ]
+}

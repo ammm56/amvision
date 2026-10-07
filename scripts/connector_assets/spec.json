@@ -1,0 +1,56 @@
+{
+  "dataset_id": "connector-engineering-v1",
+  "purpose": "Synthetic development fixtures, not real-part metrology acceptance",
+  "units": "mm",
+  "drawing_reference": {
+    "manufacturer": "Wurth Elektronik",
+    "part_number": "61301011121",
+    "revision": "003.001",
+    "date": "2025-07-22",
+    "page": 1,
+    "url": "https://www.we-online.com/components/products/datasheet/61301011121.pdf",
+    "nominal": {
+      "pins": 10,
+      "pitch_mm": 2.54,
+      "pin_width_mm": 0.64,
+      "housing_length_mm": 25.4,
+      "housing_height_mm": 2.54,
+      "mating_length_mm": 6.0,
+      "tail_length_mm": 3.0,
+      "total_pitch_mm": 22.86
+    },
+    "explicit_drawing_tolerances_mm": {
+      "pitch": 0.05,
+      "pin_width": 0.15,
+      "housing_length": 0.35,
+      "mating_length": 0.20,
+      "tail_length": 0.20,
+      "total_pitch": 0.15
+    },
+    "note": "Dimensions only. Simplified geometry/materials are authored here; not a certified replica. The PCB recommended hole span 22.8 is not the part's total pitch 22.86."
+  },
+  "engineering_rules": {
+    "source": "Project-authored synthetic checks, NOT manufacturer acceptance rules",
+    "pin_width_min_mm": 0.59,
+    "pin_width_max_mm": 0.69,
+    "pitch_min_mm": 2.49,
+    "pitch_max_mm": 2.59,
+    "max_offset_mm": 0.10,
+    "limit_inclusive": true,
+    "missing_required_pin": "ng",
+    "object_at_empty_position": "ng",
+    "extra_pin": "ng",
+    "incomplete_view": "invalid"
+  },
+  "families": [
+    {"id": "single10_front", "rows": 1, "columns": 10, "pitch_mm": 2.54, "pin_width_mm": 0.64, "view": "front", "source": "nominal dimensions from reference drawing; simplified model", "width_section_y_mm": 5.54},
+    {"id": "dual08_top", "rows": 2, "columns": 8, "pitch_mm": 2.54, "row_pitch_mm": 2.54, "pin_width_mm": 0.64, "view": "top", "source": "project-authored generic two-row fixture, not a vendor product", "width_section_y_mm": 0.0}
+  ],
+  "render": {"width": 1280, "height": 800, "ortho_width_mm": 38.0, "camera_distance_mm": 80.0, "focal_length_mm": 50.0, "sensor_width_mm": 36.0, "samples": 8, "threads": 8},
+  "calibration": {"columns_inner": 9, "rows_inner": 6, "square_size_mm": 2.0, "views": 12, "distortion_coefficients": [0, 0, 0, 0, 0]},
+  "sources": [
+    {"path": "wuerth/61301011121.pdf", "url": "https://www.we-online.com/components/products/datasheet/61301011121.pdf", "role": "manufacturer drawing", "rights": "manufacturer copyrighted reference; not redistributed as project assets"},
+    {"path": "wuerth/61301011121.stp", "url": "https://www.we-online.com/components/products/download/Download_STP_61301011121%20%28rev1%29.stp", "role": "manufacturer CAD reference, not consumed by generator", "rights": "manufacturer copyrighted reference"},
+    {"path": "wuerth/61301011121.jpg", "url": "https://www.we-online.com/components/media/o806653v214%20Single-WR-PHD-61301011121.jpg", "role": "132px catalog illustration, NOT a camera original", "rights": "manufacturer copyrighted reference"}
+  ]
+}

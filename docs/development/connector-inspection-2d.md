@@ -2,6 +2,8 @@
 
 状态：设计提案，未实现。依据 [ADR-0014](../decisions/ADR-0014-connector-inspection-2d.md) 组织；现有代码核对基于 `f5682650`。本文是本功能唯一的详细设计与实施步骤，参数名称为拟定名称，不能当作当前 Catalog/API 已公开字段。
 
+开发资源已另行准备：[连接器开发图片与参考资源](connector-development-assets.md)包含公开图纸、实拍照片、56 张尺寸受控的合成图、几何真值和可重复生成/校验脚本，可用于 S00A–S03。节点功能仍未实现；这些工程数据不表示 S00B 的实物参考量值已取得。
+
 外部资料及可确认的使用方式见 [ViSCO 功能核对](../reference/vision/visco-connector-inspection.md)和[工业二维检查资料与能力边界](../reference/vision/industrial-2d-measurement.md)。本文件描述 AMVision 自身方案，不声称复现 ViSCO 私有算法或达到相同计量性能。通用节点、行业扩展和产品配置的隔离是明确需求；本次细化不改变现有节点的公开身份。
 
 ## 1. 目标与范围
