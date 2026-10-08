@@ -9,8 +9,8 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="(row, rowIndex) in displayRows" :key="`row-${rowIndex}`" :tabindex="selectable?0:undefined" :role="selectable?'button':undefined" :aria-pressed="selectable?selectedIndex===rowIndex:undefined" :class="{selected:selectedIndex===rowIndex}" @click="selectable&&emit('select',rowIndex)" @keydown.enter="selectable&&emit('select',rowIndex)">
-            <td v-for="column in columns" :key="`${rowIndex}-${column.key}`" :title="String(row[column.key]??'')">{{ formatCell(row[column.key]) }}</td>
+          <tr v-for="(row, rowIndex) in displayRows" :key="`row-${rowIndex}`" :tabindex="selectable?0:undefined" :role="selectable?'button':undefined" :aria-pressed="selectable?selectedIndex===rowIndex+rowOffset:undefined" :class="{selected:selectedIndex===rowIndex+rowOffset}" @click="selectable&&emit('select',rowIndex+rowOffset)" @keydown.enter="selectable&&emit('select',rowIndex+rowOffset)" @keydown.space.prevent="selectable&&emit('select',rowIndex+rowOffset)">
+            <td v-for="column in columns" :key="`${rowIndex}-${column.key}`" :title="String(row[column.key]??'')">{{ formatResultCell(row[column.key],column.format,locale==='zh-CN',reasonLabels) }}</td>
           </tr>
         </tbody>
       </table>
@@ -18,18 +18,16 @@
     <small v-if="truncatedCount > 0" class="workflow-preview-table__summary">
       {{ t('workflowEditor.editor.tableTruncated', { shown: displayRows.length, total: rows.length }) }}
     </small>
+    <PaginationControls v-if="maxRows<=0 && rows.length>100" :offset="offset" :limit="100" :item-count="displayRows.length" :total-count="rows.length" @previous="offset-=100" @next="offset+=100" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed,ref,watch,inject } from 'vue'
+import PaginationControls from '@/shared/ui/components/PaginationControls.vue'
 import { useTranslation } from '@/platform/i18n'
-import {formatResultValue} from '@/shared/ui/image-viewer/result-geometry'
-
-interface PreviewTableColumnView {
-  key: string
-  label: string
-}
+import {useI18n} from 'vue-i18n'
+import {formatResultCell,resultReasonLabelsKey,type ResultColumn as PreviewTableColumnView} from '@/shared/ui/image-viewer/result-format'
 
 type PreviewTableRow = Record<string, unknown>
 
@@ -48,16 +46,15 @@ const props = withDefaults(defineProps<{
 })
 
 const { t } = useTranslation()
+const {locale}=useI18n()
+const reasonLabels=inject(resultReasonLabelsKey,{})
 const emit=defineEmits<{select:[index:number]}>()
-const displayRows = computed(() => props.maxRows > 0 ? props.rows.slice(0, props.maxRows) : props.rows)
-const truncatedCount = computed(() => Math.max(props.rows.length - displayRows.value.length, 0))
+const offset=ref(0)
+watch(()=>props.rows,()=>{offset.value=0})
+const displayRows = computed(() => props.maxRows > 0 ? props.rows.slice(0, props.maxRows) : props.rows.slice(offset.value,offset.value+100))
+const truncatedCount = computed(() => props.maxRows>0?Math.max(props.rows.length - displayRows.value.length, 0):0)
+const rowOffset=computed(()=>props.maxRows>0?0:offset.value)
 
-function formatCell(value: unknown): string {
-  if (value === null || value === undefined || value === '') return '—'
-  if (typeof value === 'string') return value
-  if (typeof value === 'number' || typeof value === 'boolean') return formatResultValue(value)
-  return JSON.stringify(value)
-}
 </script>
 
 <style scoped>

@@ -43,6 +43,7 @@ export interface WorkflowPreflightOptions<NodeView extends WorkflowPreflightNode
   clearTransientUi: () => void
   setErrorMessage: (message: string | null) => void
   setStatusMessage: (message: string | null) => void
+  validateRecipe?: (template: WorkflowGraphTemplate) => WorkflowValidationIssue | null
 }
 
 export function useWorkflowPreflight<NodeView extends WorkflowPreflightNodeView>(options: WorkflowPreflightOptions<NodeView>) {
@@ -314,7 +315,7 @@ export function useWorkflowPreflight<NodeView extends WorkflowPreflightNodeView>
         bindingId: output.output_id,
       }
     }
-    return null
+    return options.validateRecipe?.(template) ?? null
   }
 
   function applyWorkflowValidationIssue(issue: WorkflowValidationIssue): void {

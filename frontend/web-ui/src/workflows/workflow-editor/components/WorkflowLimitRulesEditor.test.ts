@@ -5,6 +5,33 @@ import Editor from './WorkflowLimitRulesEditor.vue'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import {limitRuleError,normalizeLimitRule} from '../parameters/limit-rules'
 describe('generic tolerance table',()=>{
+  it('renders a bounded page but validates invalid rules on every page',async()=>{
+    const rules=Array.from({length:8192},(_,i)=>normalizeLimitRule({item_id:`item-${i}`,unit:'unitless',lower:0,upper:i===8191?-1:1}))
+    const wrapper=mount(Editor,{props:{modelValue:rules},global:{plugins:[createI18n({legacy:false,locale:'zh-CN',messages:{}})]}})
+    await wrapper.get('button').trigger('click')
+    const dialog=wrapper.getComponent(ConfirmDialog)
+    expect(dialog.findAll('tbody tr')).toHaveLength(100)
+    expect(dialog.props('confirmDisabled')).toBe(true)
+    wrapper.unmount()
+  })
+  it('clears hidden selections when filtering and only updates the visible selected rules',async()=>{
+    const rules=['temperature','weight'].map(item_id=>normalizeLimitRule({item_id,unit:'unitless',lower:0,upper:10}))
+    const wrapper=mount(Editor,{props:{modelValue:rules},global:{plugins:[createI18n({legacy:false,locale:'zh-CN',messages:{}})]}})
+    await wrapper.get('button').trigger('click')
+    const dialog=wrapper.getComponent(ConfirmDialog)
+    await dialog.get('input[aria-label="选择 2"]').setValue(true)
+    expect(dialog.find('fieldset').exists()).toBe(true)
+    await dialog.get('input[type=search]').setValue('temperature')
+    expect(dialog.find('fieldset').exists()).toBe(false)
+    await dialog.get('input[aria-label="选择 1"]').setValue(true)
+    await dialog.get('fieldset input[type=checkbox]').setValue(true)
+    await dialog.get('fieldset input[type=number]').setValue('2')
+    await dialog.findAll('button').find(button=>button.text()==='更新所选规则')!.trigger('click')
+    dialog.vm.$emit('confirm');await wrapper.vm.$nextTick()
+    expect((wrapper.emitted('update:modelValue')![0]![0] as typeof rules).map(rule=>rule.lower)).toEqual([2,0])
+    expect(rules[0]!.lower).toBe(0)
+    wrapper.unmount()
+  })
   it('accepts zero, negative and one-sided closed bounds and rejects invalid types and open zero-width intervals',()=>{
     const rule=normalizeLimitRule({item_id:'temperature',unit:'celsius',lower:-20,upper:0})
     expect(limitRuleError(rule)).toBeNull()

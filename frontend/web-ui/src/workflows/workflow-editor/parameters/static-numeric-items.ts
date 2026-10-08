@@ -1,8 +1,9 @@
-import {connectorNumericItems} from '../../../../../../custom_nodes/connector_nodes/frontend/numeric-items'
 import type {ParameterEditorSource,ParameterEditorSources} from './editor-context'
-export interface StaticNumericItem {item_id:string;unit:string}
-/** 显式注册包的静态描述；Core 表格只消费 ID/单位，不知道任何产品概念。 */
-export function staticNumericItems(sources:ParameterEditorSources|undefined,resolve:((id:string)=>ParameterEditorSources)|undefined):StaticNumericItem[]|null {
+export interface StaticNumericItem {item_id:string;unit:string;label?:string}
+export type NumericItemProvider = (source: ParameterEditorSource) => StaticNumericItem[] | null
+export type NumericItemProviders = Readonly<Record<string, NumericItemProvider>>
+/** 只遍历明确连线；行业条目由发行组合入口提供，不读取执行结果。 */
+export function staticNumericItems(sources:ParameterEditorSources|undefined,resolve:((id:string)=>ParameterEditorSources)|undefined,providers:NumericItemProviders={}):StaticNumericItem[]|null {
   const active=new Set<string>()
   function visit(source:ParameterEditorSource):StaticNumericItem[]|null {
     if(active.has(source.nodeId)||active.size>=32)return null
@@ -14,7 +15,7 @@ export function staticNumericItems(sources:ParameterEditorSources|undefined,reso
         const items=inputs.map(visit)
         return items.some(v=>v===null)?null:items.flat() as StaticNumericItem[]
       }
-      return connectorNumericItems(source)
+      return providers[source.nodeTypeId]?.(source) ?? null
     }finally{active.delete(source.nodeId)}
   }
   const inputs=sources?.table

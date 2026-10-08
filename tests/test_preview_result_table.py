@@ -66,3 +66,14 @@ def test_generic_table_supports_temperature_and_weight_without_geometry():
             PREVIEW.handler(request(registry,{"display_mode":"table"},{"value":bad}))
     with pytest.raises(InvalidRequestError,match="Columns"):
         PREVIEW.handler(request(registry,{"display_mode":"table","path":"items","columns":[{"key":"value","label":"V"}]*2},{"value":value}))
+
+
+def test_explicit_column_formats_preserve_values_and_reject_unknown_formats():
+    """列语义只影响显示，原始数值和普通布尔值均不转换。"""
+    registry = ExecutionImageRegistry()
+    value = {"value": [{"passed": True, "value": .6900000000000001}]}
+    columns = [{"key": "passed", "label": "Result", "format": "result"}]
+    body = PREVIEW.handler(request(registry, {"display_mode": "table", "columns": columns}, {"value": value}))["body"]
+    assert body["columns"] == columns and body["rows"] == value["value"]
+    with pytest.raises(InvalidRequestError, match="Format"):
+        PREVIEW.handler(request(registry, {"display_mode": "table", "columns": [{**columns[0], "format": "custom-script"}]}, {"value": value}))

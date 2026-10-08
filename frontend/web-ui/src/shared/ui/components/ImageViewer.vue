@@ -1,6 +1,6 @@
 <template>
   <Teleport to="body">
-    <div v-if="open && image" class="image-viewer" :class="{'image-viewer--results':Boolean($slots.results)}" :style="dialogLayer ? { zIndex: 100 } : undefined" role="dialog" aria-modal="true" @keydown.esc="emit('close')">
+    <div v-if="open && image" class="image-viewer" :class="{'image-viewer--results':Boolean($slots.results)}" :style="{zIndex:dialogLayer?100:undefined,'--result-height':`${resultsHeight}vh`}" role="dialog" aria-modal="true" @keydown.esc="emit('close')">
       <div class="image-viewer__toolbar">
         <div class="image-viewer__title">
           <strong>{{ image.title }}</strong>
@@ -410,7 +410,7 @@
           :circle-annotations="circleDimensionAnnotations"
         />
       </div>
-      <div v-if="$slots.results" class="image-viewer__results"><slot name="results" /></div>
+      <div v-if="$slots.results" class="image-viewer__results"><label class="image-viewer__results-size">{{ locale==='zh-CN'?'结果区域':'Results area' }}<input v-model.number="resultsHeight" type="range" min="15" max="60" step="1" :aria-label="locale==='zh-CN'?'结果区域高度':'Results area height'"></label><slot name="results" /></div>
       <div class="image-viewer__status">
         <div class="image-viewer__status-group">
           <span>{{ Math.round(scale * 100) }}%</span>
@@ -634,7 +634,8 @@ const emit = defineEmits<{
   runPreview: []
 }>()
 
-const { t } = useI18n()
+const { t,locale } = useI18n()
+const resultsHeight=ref(28)
 
 const viewportRef = ref<HTMLElement | null>(null)
 const imageRef = ref<HTMLImageElement | null>(null)
@@ -2227,7 +2228,9 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.image-viewer--results { grid-template-rows:auto minmax(0,1fr) minmax(100px,28vh) auto; }
-.image-viewer__results { min-height:0;overflow:hidden;background:var(--am-surface); }
-.image-viewer__results > :deep(*) { height:100%;box-sizing:border-box; }
+.image-viewer--results { grid-template-rows:auto minmax(0,1fr) minmax(100px,var(--result-height,28vh)) auto; }
+.image-viewer__results { display:grid;grid-template-rows:auto minmax(0,1fr);min-height:0;overflow:hidden;background:var(--am-surface); }
+.image-viewer__results > :deep(*) { box-sizing:border-box; }
+.image-viewer__results-size { display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:2px 8px;font-size:11px;color:var(--am-text-muted); }
+.image-viewer__results-size input { width:100px; }
 </style>

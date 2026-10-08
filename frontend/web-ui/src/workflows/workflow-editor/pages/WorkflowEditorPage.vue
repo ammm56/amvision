@@ -344,7 +344,9 @@
 <script setup lang="ts">
 import { useWorkflowBoxSelection } from '../canvas/useWorkflowBoxSelection'
 import { computed, onBeforeUnmount, provide, ref, shallowRef, watch } from 'vue'
-import { parameterEditorSourcesKey, parameterPreviewStateKey, type ParameterEditorSources } from '../parameters/editor-context'
+import { parameterEditorSourcesKey, parameterPreviewStateKey, parameterNumericItemsKey, parameterDraftIssuesKey, type ParameterEditorSources } from '../parameters/editor-context'
+import { trustedNumericItemProviders, trustedRecipeValidators } from '../parameters/trusted-recipe-providers'
+import { recipeIssues } from '../parameters/recipe-validation'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
@@ -504,6 +506,11 @@ const importedUnsaved = ref(false)
 const appModeConfigEdited = ref(false)
 const appModeConfigDialogOpen = ref(false)
 const graphNodes = ref<GraphNodeView[]>([])
+provide(parameterNumericItemsKey,trustedNumericItemProviders)
+provide(parameterDraftIssuesKey,(nodeId,parameter,value)=>{
+  const nodes=graphNodes.value.map(({node})=>node.node_id===nodeId?{...node,parameters:{...node.parameters,[parameter]:value}}:node)
+  return recipeIssues(nodes,graphEdges.value,trustedNumericItemProviders,trustedRecipeValidators,locale.value==='zh-CN').map(issue=>`${issue.nodeId} / ${issue.message}`)
+})
 provide(parameterPreviewStateKey, () => ({runId:lastPreviewRun.value?.preview_run_id ?? '', succeeded:!previewing.value && lastPreviewRun.value?.state === 'succeeded'}))
 provide(parameterEditorSourcesKey, (nodeId) => {
   const sources: ParameterEditorSources = {}
@@ -1254,6 +1261,7 @@ const {
   graphEdges,
   nodeDefinitionsById,
   portsCanConnect,
+  validateRecipe:template=>recipeIssues(template.nodes,template.edges,trustedNumericItemProviders,trustedRecipeValidators,locale.value==='zh-CN')[0]??null,
   focusGraphNode,
   setSelection,
   clearTransientUi,

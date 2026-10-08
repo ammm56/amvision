@@ -4,7 +4,7 @@
   </button>
   <Teleport to="body">
     <ConfirmDialog v-if="open" :title="kind === 'localization-template' ? t('template') : t('calibration')" :confirm-label="t('apply')" :cancel-label="t('cancel')"
-      confirm-variant="primary" size="wide" scroll-body :busy="busy" :confirm-disabled="!selectedDocument || disabled" @cancel="close" @confirm="apply">
+      confirm-variant="primary" size="wide" scroll-body :busy="busy" :confirm-disabled="(!selectedDocument && !clearRequested) || disabled" @cancel="close" @confirm="apply">
       <div class="resource-workspace">
         <p v-if="error" class="resource-error" role="alert">{{ error }}</p>
         <div class="resource-modes" role="group" :aria-label="t('edit')">
@@ -12,16 +12,19 @@
         </div>
         <template v-if="mode === 'select'">
         <label>{{ t('version') }}<SelectField v-model="selected" :options="options" :disabled="busy" /></label>
-        <Button v-if="current" variant="secondary" size="sm" :disabled="busy || disabled" @click="clear">{{ t('clear') }}</Button>
-        <div v-if="selectedDocument" class="resource-version">
-          <span>{{ selectedDocument.name }} · v{{ selectedDocument.reference.version }}</span>
-          <Button v-if="selectedDocument.content.template" variant="secondary" size="sm" @click="viewStored">{{ t('view') }}</Button>
-          <Button variant="secondary" size="sm" @click="exportSelected">{{ t('export') }}</Button>
+        <p v-if="busy" role="status">{{ t('loading') }}</p>
+        <p v-else-if="clearRequested && !selectedDocument" role="status">{{ t('clearPending') }}</p>
+        <p v-else-if="selected && !selectedDocument && !error" role="alert" class="resource-error">{{ t('unavailable') }}</p>
+        <div class="resource-version">
+          <Button v-if="selectedDocument?.content.template" variant="secondary" size="sm" :disabled="busy" @click="viewStored">{{ t('view') }}</Button>
+          <Button v-if="selectedDocument" variant="secondary" size="sm" :disabled="busy" @click="exportSelected">{{ t('export') }}</Button>
+          <Button v-if="current || selectedDocument" variant="ghost" size="sm" :disabled="busy || disabled" @click="clear">{{ t('clear') }}</Button>
         </div>
         <dl v-if="selectedDocument" class="resource-summary">
           <template v-for="entry in resourceSummary" :key="entry[0]"><dt>{{ entry[0] }}</dt><dd>{{ entry[1] }}</dd></template>
         </dl>
-        <details v-if="selectedDocument"><summary>{{ t('details') }}</summary><pre>{{ selectedDocument.reference }}</pre></details>
+        <p v-if="selectedDocument?.content.calibration" class="resource-hint">{{ t('evidenceHelp') }}</p>
+        <details v-if="selectedDocument"><summary>{{ t('details') }}</summary><pre>{{ selectedDocument }}</pre></details>
         </template>
           <div v-else class="resource-create">
             <label>{{ t('name') }}<input v-model="name" maxlength="128"></label>
@@ -59,6 +62,7 @@ import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import ImageViewer from '@/shared/ui/components/ImageViewer.vue'
 import { apiRequest } from '@/shared/api/http-client'
 import { importMeasurementResource, listMeasurementResources, readMeasurementResource, readMeasurementResourceImage, resourceVersionPath, saveMeasurementResource, type MeasurementResourceDocument, type MeasurementResourceReference } from '../services/measurement-resource.service'
+import { calibrationSummary, calibrationSummaryMessages } from '../parameters/measurement-resource-summary'
 
 const props = defineProps<{ modelValue: unknown; schema: Record<string, unknown>; disabled?: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [value: MeasurementResourceReference | undefined] }>()
@@ -70,29 +74,37 @@ Object.assign(messages['zh-CN'], { clear: '清除资源引用' })
 Object.assign(messages['en-US'], { clear: 'Clear resource reference' })
 Object.assign(messages['zh-CN'], {create:'新建',details:'资源详情',spec:'原图规格',plane:'平面',unit:'单位',domain:'有效域',error:'独立验证最大误差'})
 Object.assign(messages['en-US'], {create:'Create',details:'Resource details',spec:'Image size',plane:'Plane',unit:'Unit',domain:'Valid domain',error:'Independent maximum error'})
+Object.assign(messages['zh-CN'], calibrationSummaryMessages['zh-CN'], {loading:'正在读取资源…',unavailable:'资源不可读取，请重新选择。',clearPending:'应用后清除节点引用；资源文件仍保留。'})
+Object.assign(messages['en-US'], calibrationSummaryMessages['en-US'], {loading:'Loading resource…',unavailable:'Resource unavailable. Select another version.',clearPending:'Apply to clear the node reference. The resource is retained.'})
 const { t } = useI18n({ useScope: 'local', messages, fallbackLocale: 'en-US' })
 const project = useProjectStore()
 const kind = computed(() => props.schema['x-resource-kind'] === 'localization-template' ? 'localization-template' : 'planar-calibration')
 const current = computed(() => props.modelValue as MeasurementResourceReference | undefined)
 const currentDocument=ref<MeasurementResourceDocument|null>(null)
-const currentLabel = computed(() => current.value?.resource_id ? `${currentDocument.value?.name || t(kind.value === 'localization-template' ? 'template' : 'calibration')} · v${current.value.version}` : t('none'))
+const currentLoading=ref(false),currentUnavailable=ref(false)
+const currentLabel = computed(() => currentLoading.value ? t('loading') : currentUnavailable.value ? t('unavailable') : current.value?.resource_id ? `${currentDocument.value?.name || t(kind.value === 'localization-template' ? 'template' : 'calibration')} · v${current.value.version}` : t('none'))
 watch(()=>[project.selectedProjectId,current.value?.resource_id,current.value?.version,current.value?.sha256],async(_,__,cleanup)=>{
-  currentDocument.value=null
+  currentDocument.value=null;currentLoading.value=false;currentUnavailable.value=false
   const reference=current.value
-  if(!reference||reference.project_id!==project.selectedProjectId)return
+  if(!reference)return
+  if(reference.project_id!==project.selectedProjectId){currentUnavailable.value=true;return}
   const abort=new AbortController();cleanup(()=>abort.abort())
-  try{const item=await readMeasurementResource(reference,abort.signal);if(!abort.signal.aborted)currentDocument.value=item}catch{/* 打开选择器后显示明确的资源读取错误。 */}
+  currentLoading.value=true
+  try{const item=await readMeasurementResource(reference,abort.signal);if(!abort.signal.aborted)currentDocument.value=item}
+  catch{if(!abort.signal.aborted)currentUnavailable.value=true}
+  finally{if(!abort.signal.aborted)currentLoading.value=false}
 },{immediate:true})
 const open = ref(false), busy = ref(false), error = ref(''), selected = ref<string | number | boolean | null>('')
 const documents = ref<MeasurementResourceDocument[]>([])
 const mode=ref('select')
+const clearRequested=ref(false)
 const modes=computed(()=>[{key:'select',label:t('edit')},{key:'create',label:t('create')},{key:'import',label:t('import')}])
 const options = computed(() => documents.value.filter(d => d.reference.kind === kind.value).map(d => ({ value: key(d.reference), label: `${d.name} · v${d.reference.version}` })))
 const selectedDocument = computed(() => documents.value.find(d => key(d.reference) === selected.value))
 const resourceSummary=computed(()=>{
   const item=selectedDocument.value?.content,template=item?.template,calibration=item?.calibration
   if(template)return [[t('spec'),`${template.image_width} × ${template.image_height} px`],['ROI',template.template_roi.join(', ')],['Anchor',template.anchor.join(', ')]]
-  if(calibration)return [[t('spec'),`${calibration.image_width} × ${calibration.image_height} px`],[t('plane'),String(calibration.plane_id)],[t('unit'),String(calibration.unit)],[t('domain'),JSON.stringify(calibration.valid_polygon)],[t('error'),String(calibration.validation_max_error)]]
+  if(calibration)return calibrationSummary(calibration,t)
   return []
 })
 const name = ref(''), referenceId = ref('reference'), calibrationJson = ref(''), addVersion = ref(false)
@@ -116,7 +128,7 @@ function replaceImage(blob: Blob | null) { if (imageUrl.value) URL.revokeObjectU
 function close() { generation++; controller?.abort(); controller = null; open.value = false; viewerOpen.value = false; busy.value = false; replaceImage(null); imageFile.value = null }
 async function show() {
   close(); open.value = true; error.value = ''; name.value = ''; calibrationJson.value = ''; addVersion.value = false; mode.value='select'; referenceId.value=`reference-${crypto.randomUUID().slice(0,8)}`
-  selected.value = current.value ? key(current.value) : ''; controller = new AbortController()
+  documents.value=[];clearRequested.value=false;selected.value = current.value ? key(current.value) : ''; controller = new AbortController()
   const token = generation
   await perform(async () => { const result = await listMeasurementResources(project.selectedProjectId, controller?.signal); if (token === generation) documents.value = result })
 }
@@ -125,8 +137,8 @@ async function perform(work: () => Promise<void>) {
   try { await work() } catch (e) { if (token === generation && !(e instanceof DOMException && e.name === 'AbortError')) error.value = e instanceof Error ? e.message : t('invalid') }
   finally { if (token === generation) busy.value = false }
 }
-function apply() { if (selectedDocument.value && !props.disabled) { emit('update:modelValue', selectedDocument.value.reference); close() } }
-function clear() { if (!props.disabled && !busy.value) { emit('update:modelValue', undefined); close() } }
+function apply() { if (!busy.value && !props.disabled && (selectedDocument.value || clearRequested.value)) { emit('update:modelValue', selectedDocument.value?.reference); close() } }
+function clear() { if (!props.disabled && !busy.value) { selected.value='';clearRequested.value=true } }
 async function loadImage(event: Event) {
   const file = (event.target as HTMLInputElement).files?.[0]; if (!file) return
   const token = generation
@@ -206,5 +218,6 @@ onBeforeUnmount(close)
 .resource-summary dd { margin:0; overflow-wrap:anywhere; }
 pre { white-space:pre-wrap; overflow-wrap:anywhere; }
 .resource-error { color:var(--am-danger-text); overflow-wrap:anywhere; }
+.resource-hint { margin:0; color:var(--am-text-muted); font-size:12px; }
 summary { cursor:pointer; padding:8px 0; color:var(--am-text); }
 </style>

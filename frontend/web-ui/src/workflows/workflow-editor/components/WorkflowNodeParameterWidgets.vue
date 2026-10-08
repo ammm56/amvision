@@ -119,6 +119,7 @@
         :parameters="node.node.parameters" :parameter-name="field.parameter_name"
         :preview-display="previewDisplay"
         :input-sources="editorSources?.(node.node.node_id)"
+        :draft-issues="draftIssues ? (value:unknown)=>draftIssues!(node.node.node_id,field.parameter_name,value) : undefined"
         @update:model-value="emit('update-value', node, field, $event)"
       />
       <WorkflowParameterRowsEditor
@@ -144,7 +145,7 @@
 
 <script setup lang="ts">
 import { inject } from 'vue'
-import { parameterEditorSourcesKey } from '../parameters/editor-context'
+import { parameterEditorSourcesKey, parameterDraftIssuesKey } from '../parameters/editor-context'
 import { ListFilter } from '@lucide/vue'
 import WorkflowDisplayAppearance from './WorkflowDisplayAppearance.vue'
 import { useI18n } from 'vue-i18n'
@@ -166,6 +167,7 @@ type SelectValue = string | number | boolean | null
 
 const { t } = useI18n()
 const editorSources=inject(parameterEditorSourcesKey,undefined)
+const draftIssues=inject(parameterDraftIssuesKey,undefined)
 
 interface SelectOption {
   label: string

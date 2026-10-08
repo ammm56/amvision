@@ -20,13 +20,13 @@ python -m scripts.connector_assets.workflow --assets data/development/connector-
 Image → Rigid Locate → Pin Array Locate → Connector Measure
                           checks ─┐              measurements
                                  └→ Merge Numeric Tables → Check Limits → Value Display
-Image ─────────────────────────────────→ Draw Measurements → Image Preview
-                                                annotations ↑    ↑ presentation
-                                                   Connector     Value Display
-                                                   Measure
+Image ───────────────────────────────────────────────────────→ Image Preview
+Check Limits.summary → Value Preview (Table) ────────────────→ Results
+Connector Measure.result_geometry ───────────→ Geometry
+Value Display.body ─────────────────────────────────────────→ Display Data
 ```
 
-实际图中 Check Limits.summary 同时作为公开结果，Draw Measurements.image 连接 Image Preview.image，Value Display.body 连接 Image Preview.presentation。只有显式连接才在图片上显示结果。
+完整应用生成器中，Check Limits.summary 同时作为公开结果和逐项表格输入；Connector Measure.result_geometry 与该表绑定同次观测，再连接 Image Preview.results。Image Preview.image 使用同一原图，Value Display.body 连接 Image Preview.presentation（界面名称 Display Data）。只有显式连接才显示叠加结果，选择表格条目时显示该项几何。基础算法示例仍可使用 Draw Measurements 输出绘制图；两种显示方式不混用原图坐标。
 
 - 单排 10 PIN、双排各 8 PIN；节距 2.54 mm、宽度 0.64 mm 为合成工程模型名义值。
 - 检查项包含存在性、配置带内额外候选、宽度、偏移、相邻节距、间隙及每排总节距。
@@ -75,7 +75,7 @@ python -m pytest tests/test_connector_example_workflows.py tests/test_connector_
 4. Image Preview 左上角显示本次 OK/NG、检查项数和合格项数。两项数量是规则检查数量，不是物料产量。双击图片后大图保留同次叠加。逐项尺寸及有效性、逐项判定另有 Value Preview，用于编辑调试。
 5. Runtime 应用模式可直接上传原图执行；外部系统通过既有同步调用接口传入 `image`，读取 `output_result.value.passed`、`output_measurements.value` 和 `output_image`。不增加队列、自动重试或硬件驱动。
 
-图像只绘制测量图形，避免数十个尺寸文字挤在同一截面上；完整数值保留在结果中。示例没有隐式保存图片或生产计数节点。
+完整应用的图像按选中检查项显示测量位置，避免数十个尺寸文字挤在同一截面上；完整数值保留在结果中。示例没有隐式保存图片或生产计数节点。
 
 ### 配方边界
 
@@ -96,3 +96,12 @@ python -m scripts.connector_assets.applications --assets data/development/connec
 ```
 
 该命令只导出当前文档，不修改服务。另一项目必须先导入资源并提供相应的安装清单，不能沿用旧项目资源 ID。相机标定输入是明确的本地文件路径，迁移目录后需更新 Image List Local / Load Local Image 参数。
+
+## 四条现场操作路径
+
+1. **首次建配方**：固定工位与图像空间 → 相机/平面标定并核对独立参考点 → 保存新标定资源 → 选择标准原图建立定位模板 → PIN Layout 的排列/采样 → Items 定义尺寸与方向 → Rules 定义公差 → 正常与异常图预览 → 保存、发布、显式选择 Runtime 版本。已知 Blender 合成配方使用 sRGB；未知客户图像不能自动套用编码。
+2. **换产品或调参**：先核对目标草稿、发布版本和资源；PIN 表编辑现有对象，批量排列先预览。尺寸默认显示已有项，批量新增不改已有同名项。更换模板不自动转换坐标；改 ID/设计空位后逐项处理引用提示，不自动删除下游规则。取消不写入，保存/发布前通过预检。
+3. **日常检测**：使用已发布的固定配方；每次传原始图，由既有 Runtime/Trigger 同步返回本次结果。检查项数是规则数，不是物料产量；生产记录与图像保存必须通过显式节点编排。
+4. **查看 NG**：在本次结果表勾选“仅不通过”或搜索 ID，选择条目定位到图中。虚线是预期位置，缺测数值保持 null；无几何时明确提示。双击图片进入大图，可调整结果区域高度，展开原始数据核对完整数值、公差、原因。换次执行清除旧选择。
+
+结果列可在 Value Preview 的 Columns 配置 `Format`：单位选择 `unit`，结果选择 `result`，有效性选择 `validity`，原因选择 `reason`。默认 `value` 用于普通数据；显示配置不参与测量或公差比较。

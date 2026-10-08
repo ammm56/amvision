@@ -34,17 +34,13 @@
 import { X } from '@lucide/vue'
 import { useTranslation } from '@/platform/i18n'
 import {ref,watch} from 'vue'
+import type {ResultColumn as PreviewTableColumnView} from '@/shared/ui/image-viewer/result-format'
 
 import Button from '@/shared/ui/components/Button.vue'
 
 import WorkflowPreviewTable from './WorkflowPreviewTable.vue'
 
 const { t } = useTranslation()
-
-interface PreviewTableColumnView {
-  key: string
-  label: string
-}
 
 type PreviewTableRow = Record<string, unknown>
 

@@ -62,6 +62,12 @@ def _note(identifier, title, content, x=0, y=-420, width=880, height=300):
     )
 
 
+def _result_columns(fields):
+    """显式设置通用列显示语义；不修改原始测量值或公差判定。"""
+    formats = {"unit": "unit", "passed": "result", "valid": "validity", "reason": "reason"}
+    return [dict(key=key, label=label, format=formats.get(key, "value")) for key, label in fields]
+
+
 def _application(graph, project_id, displays):
     """由模板公开端口生成应用绑定及完整的应用模式配置。"""
     return FlowApplication(
@@ -193,14 +199,14 @@ def inspection_application(
             _node(
                 "measurements",
                 "core.io.value-preview",
-                {"title": "尺寸与有效性", "path": "items", "display_mode":"table", "columns":[dict(key=k,label=v) for k,v in (("item_id","检查项"),("value","实测值"),("unit","单位"),("valid","有效"),("reason","原因"))]},
+                {"title": "尺寸与有效性", "path": "items", "display_mode":"table", "columns":_result_columns((("item_id","检查项"),("value","实测值"),("unit","单位"),("valid","有效"),("reason","原因")))},
                 2400,
                 760,
             ),
             _node(
                 "decisions",
                 "core.io.value-preview",
-                {"title": "逐项判定", "path": "items", "display_mode":"table", "columns":[dict(key=k,label=v) for k,v in (("item_id","检查项"),("value","实测值"),("unit","单位"),("lower","下限"),("upper","上限"),("passed","结果"),("reason","原因"))]},
+                {"title": "逐项判定", "path": "items", "display_mode":"table", "columns":_result_columns((("item_id","检查项"),("value","实测值"),("unit","单位"),("lower","下限"),("upper","上限"),("passed","结果"),("reason","原因")))},
                 2850,
                 760,
             ),

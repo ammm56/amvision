@@ -10,11 +10,15 @@ import { useSessionStore } from './stores/session.store'
 import { installI18n } from '@/platform/i18n'
 import { configureHttpClient } from '@/shared/api/http-client'
 import { loadRuntimeConfig } from '@/platform/runtime/runtime-config'
+import {resultReasonLabelsKey} from '@/shared/ui/image-viewer/result-format'
+import {connectorResultReasons} from '../../../../custom_nodes/connector_nodes/frontend/result-reasons'
 
 export async function bootstrapApplication(): Promise<void> {
   await loadRuntimeConfig()
 
   const app = createApp(App)
+  // 可信本地扩展的显示文本只在组合入口注册。
+  app.provide(resultReasonLabelsKey,connectorResultReasons)
   const pinia = createPinia()
   const router = createAppRouter()
 

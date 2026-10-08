@@ -7,6 +7,23 @@ import WorkflowNodePreviewDisplay from './WorkflowNodePreviewDisplay.vue'
 import type {PreviewNodeDisplay} from '../preview/useWorkflowPreviewDisplays'
 const table:ResultTable={observation_id:'run-1',columns:[{key:'item_id',label:'Item'},{key:'value',label:'Value'},{key:'passed',label:'Result'}],rows:[{item_id:'width',value:.6900000000000001,passed:false},{item_id:'missing',value:null,passed:false}],result_geometry:{observation_id:'run-1',image:{width:100,height:80},items:[{item_id:'width',kind:'line',points:[[10,20],[30,20]]},{item_id:'missing',kind:'expected-point',points:[[50,50]]}]}}
 describe('explicit result and image binding',()=>{
+  it('opens on the page of an already selected result',()=>{
+    const rows=Array.from({length:301},(_,i)=>({item_id:`item-${i}`}))
+    const wrapper=mount(WorkflowResultTable,{props:{table:{...table,rows},modelValue:'item-300'},global:{plugins:[i18n]}})
+    expect(wrapper.find('tr[aria-label="item-300"]').exists()).toBe(true)
+    expect(wrapper.findAll('tbody tr')).toHaveLength(1)
+    wrapper.unmount()
+  })
+  it('bounds large result rendering, searches all rows and brings an explicit selection into its page',async()=>{
+    const rows=Array.from({length:8192},(_,i)=>({item_id:`item-${i}`,passed:i!==8191}))
+    const wrapper=mount(WorkflowResultTable,{props:{table:{...table,rows}},global:{plugins:[i18n]}})
+    expect(wrapper.findAll('tbody tr')).toHaveLength(100)
+    await wrapper.setProps({modelValue:'item-8191'})
+    expect(wrapper.find('tr[aria-label="item-8191"]').exists()).toBe(true)
+    await wrapper.get('input[type=checkbox]').setValue(true)
+    expect(wrapper.findAll('tbody tr')).toHaveLength(1)
+    wrapper.unmount()
+  })
   it('rejects broken optional tables instead of crashing image display',()=>{
     expect(readResultTable(table)).toBe(table)
     for(const broken of [

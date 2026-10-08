@@ -1,6 +1,7 @@
 import { computed, ref, toRaw } from 'vue'
 import { ApiError } from '@/shared/api/error'
 import {readResultTable,type ResultTable} from '@/shared/ui/image-viewer/result-geometry'
+import {resultColumnFormats,type ResultColumn,type ResultColumnFormat} from '@/shared/ui/image-viewer/result-format'
 
 import { translate } from '@/platform/i18n'
 import { readProjectObjectContentBlob } from '../services/workflow-runtime.service'
@@ -136,10 +137,7 @@ export interface PreviewGalleryItemView extends PreviewViewerImage {
   cropIndex: number | null
 }
 
-export interface PreviewTableColumnView {
-  key: string
-  label: string
-}
+export type PreviewTableColumnView = ResultColumn
 
 export interface PreviewTableViewerState {
   title: string
@@ -648,7 +646,8 @@ function buildTablePreviewNodeDisplay(displayOutput: PreviewNodeOutput): Preview
       if (!isPreviewJsonObject(column)) return []
       const key = readDisplayText(column.key)
       if (!key) return []
-      return [{ key, label: readDisplayText(column.label) || key }]
+      const format=resultColumnFormats.includes(column.format as ResultColumnFormat)?column.format as ResultColumnFormat:undefined
+      return [{ key, label: readDisplayText(column.label) || key,format }]
     })
     : []
   const rows = Array.isArray(payload.rows)

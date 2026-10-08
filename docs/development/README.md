@@ -4,9 +4,9 @@
 
 ## 验收与基准
 
-- [二维连接器检查与测量实施基线](connector-inspection-2d.md)：工程闭环已实现；第 12 节规定配方易用性、结果解释和计量门禁的下一步顺序。
+- [二维连接器检查与测量实施基线](connector-inspection-2d.md)：工程闭环和首轮配方改进已实现；第 11 节为当前状态，第 13 节规定第二轮易用性、配置防错与交付门禁步骤。
 - [连接器工程验证记录](connector-implementation-validation.md)：算法、资源、Runtime、SDK、合成图片与开发应用的结果及未完成范围。
-- [连接器节点使用体验审计](connector-usability-audit.md)：开发环境实际页面、规则类型与控件问题、缺针和正常样本显示及改进优先级。
+- [连接器节点使用体验审计](connector-usability-audit.md)：保留首轮缺陷与修复后的第二轮真实页面核对，记录标定证据提示、编辑层级、显示一致性及下一步优先级。
 - [连接器配方编辑与结果解释实现记录](connector-usability-implementation.md)：U01–U07 实现边界、显示契约、浏览器核对、临界量值分析及隔离发行验证。
 - [连接器开发图片与参考资源](connector-development-assets.md)：已准备公开图纸、实拍照片、56 张 Blender 合成图及几何真值，供连接器基础开发使用；不代替实物计量验收。
 - [Workflow 多节点复制验收](workflow-multi-node-copy.md)：实现完成，332 项回归通过；真实 82 节点整体复制与执行验证，以及浏览器工具的验证限制。

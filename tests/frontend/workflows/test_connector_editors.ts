@@ -18,6 +18,18 @@ const resources=vi.hoisted(()=>({list:vi.fn(),image:vi.fn()}))
 vi.mock('@/workflows/workflow-editor/services/measurement-resource.service',async(importOriginal)=>({...await importOriginal<object>(),listMeasurementResources:resources.list,readMeasurementResourceImage:resources.image}))
 afterEach(() => { wrapper?.unmount(); wrapper = undefined; document.body.innerHTML = '';vi.unstubAllGlobals();vi.clearAllMocks() })
 describe('PIN layout editor', () => {
+  it('opens on the layout, follows keyboard focus and keeps sampling outside the default view',async()=>{
+    const layout=createPinLayout();layout.pins=generatePins(1,2,[100,100],50,50,0,'normal')
+    wrapper=mount(PinLayoutEditor,{props:{modelValue:layout},global:{plugins:[createPinia(),i18n]}})
+    await wrapper.get('.pin-edit').trigger('click')
+    const dialog=wrapper.getComponent(ConfirmDialog)
+    expect(dialog.findAll('.pin-table tbody tr')).toHaveLength(2)
+    expect(dialog.find('input[aria-label="Search Length"]').exists()).toBe(false)
+    await dialog.get('input[aria-label="PIN ID 2"]').trigger('focusin')
+    expect(dialog.findAll('.pin-table tr.selected')[0]!.text()).toContain('normal')
+    expect(dialog.get('input[aria-label="PIN ID 2"]').element.closest('tr')!.classList.contains('selected')).toBe(true)
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+  })
   it('infers only regular arrays and preserves empty positions and endpoint definitions by ID',()=>{
     const pins=generatePins(2,8,[254.489123,306.194789],85.55791,50,25,'normal')
     pins[4]!.expected_present=false
@@ -55,6 +67,7 @@ describe('PIN layout editor', () => {
     await wrapper.get('.pin-edit').trigger('click')
     const dialog=wrapper.getComponent(ConfirmDialog)
     expect(dialog.props('confirmDisabled')).toBe(true)
+    await dialog.findAll('button').find(button=>button.text()==='采样'||button.text()==='Sampling')!.trigger('click')
     const buttons=dialog.findAll('button')
     const addType=buttons.find(button=>button.text()==='添加采样类型' || button.text()==='Add sampling type')!
     expect(buttons.filter(button=>/^(生成排列|Generate array|添加端点扫描|Add endpoint scan|添加搜索带|Add search band)/.test(button.text())).every(button=>button.attributes('disabled')!==undefined)).toBe(true)

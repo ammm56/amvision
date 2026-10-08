@@ -1,41 +1,42 @@
 <template>
-  <section class="result-table" @mousedown.stop @dblclick.stop @wheel.stop>
+  <section ref="tableElement" class="result-table" @mousedown.stop @dblclick.stop @wheel.stop>
     <div class="result-table__tools">
       <input v-model="query" type="search" :placeholder="zh?'搜索检查项':'Search items'" :aria-label="zh?'搜索检查项':'Search items'">
       <label><input v-model="failedOnly" type="checkbox">{{ zh?'仅不通过':'Failed only' }}</label>
       <span>{{ visible.length }} / {{ table.rows.length }}</span>
     </div>
     <div class="result-table__scroll"><table><thead><tr><th v-for="column in table.columns" :key="column.key">{{ column.label }}</th></tr></thead><tbody>
-      <tr v-for="row in visible" :key="String(row.item_id)" tabindex="0" role="button" :aria-label="String(row.item_id)" :aria-pressed="modelValue===row.item_id" :class="{selected:modelValue===row.item_id,failed:row.passed===false}" @click="select(row)" @keydown.enter.prevent="select(row)" @keydown.space.prevent="select(row)">
-        <td v-for="column in table.columns" :key="column.key" :title="String(row[column.key]??'')">{{ cell(row,column.key) }}</td>
+      <tr v-for="row in pageRows" :key="String(row.item_id)" tabindex="0" role="button" :aria-label="String(row.item_id)" :aria-pressed="modelValue===row.item_id" :class="{selected:modelValue===row.item_id,failed:row.passed===false}" @click="select(row)" @keydown.enter.prevent="select(row)" @keydown.space.prevent="select(row)">
+        <td v-for="column in table.columns" :key="column.key" :title="String(row[column.key]??'')">{{ formatResultCell(row[column.key],column.format??resultFormats[column.key],zh,reasonLabels) }}</td>
       </tr>
     </tbody></table></div>
+    <PaginationControls v-if="visible.length>100" :offset="offset" :limit="100" :item-count="pageRows.length" :total-count="visible.length" @previous="offset-=100" @next="offset+=100" />
     <p v-if="selected && !shape">{{ zh?'此项没有可显示的几何位置。':'No geometry available for this item.' }}</p>
     <p v-if="shape?.kind==='expected-point'">{{ zh?'虚线标记为预期位置，未获得有效实测几何。':'Dashed marker is the expected position; no valid measured geometry is available.' }}</p>
     <details v-if="selected"><summary>{{ zh?'原始数据':'Raw data' }}</summary><pre>{{ JSON.stringify(selected,null,2) }}</pre></details>
   </section>
 </template>
 <script setup lang="ts">
-import {computed,ref,watch} from 'vue'
+import {computed,ref,watch,nextTick,inject} from 'vue'
+import PaginationControls from '@/shared/ui/components/PaginationControls.vue'
 import {useI18n} from 'vue-i18n'
-import {formatResultValue,selectedResultShape,type ResultTable} from '@/shared/ui/image-viewer/result-geometry'
+import {selectedResultShape,type ResultTable} from '@/shared/ui/image-viewer/result-geometry'
+import {formatResultCell,resultReasonLabelsKey,type ResultColumnFormat} from '@/shared/ui/image-viewer/result-format'
 const props=defineProps<{table:ResultTable;modelValue?:string|null}>()
 const emit=defineEmits<{'update:modelValue':[id:string|null]}>()
 const {locale}=useI18n(),zh=computed(()=>locale.value==='zh-CN')
+const reasonLabels=inject(resultReasonLabelsKey,{})
 const query=ref(''),failedOnly=ref(false)
 const visible=computed(()=>props.table.rows.filter(row=>(!failedOnly.value||row.passed===false)&&String(row.item_id??'').toLowerCase().includes(query.value.toLowerCase())))
+const offset=ref(0),pageRows=computed(()=>visible.value.slice(offset.value,offset.value+100))
+watch([query,failedOnly,()=>props.table.observation_id],()=>{offset.value=0})
+const tableElement=ref<HTMLElement>()
+watch(()=>props.modelValue,async()=>{const index=visible.value.findIndex(row=>row.item_id===props.modelValue);if(index<0)return;offset.value=Math.floor(index/100)*100;await nextTick();tableElement.value?.querySelector('[aria-pressed="true"]')?.scrollIntoView?.({block:'nearest'})},{immediate:true})
 const selected=computed(()=>props.table.rows.find(row=>row.item_id===props.modelValue))
 const shape=computed(()=>selectedResultShape(props.table,props.modelValue))
 watch(()=>props.table.observation_id,()=>{emit('update:modelValue',null)})
 function select(row:Record<string,unknown>){emit('update:modelValue',typeof row.item_id==='string'?row.item_id:null)}
-function cell(row:Record<string,unknown>,key:string){
-  if(key==='unit'){const units:Record<string,string>={millimeter:'mm',micrometer:'µm',pixel:'px',degrees:'°',unitless:'—'};return units[String(row[key])]??formatResultValue(row[key])}
-  if(key==='passed'&&typeof row[key]==='boolean')return row[key]?'OK':'NG'
-  if(key==='valid'&&typeof row[key]==='boolean')return row[key]?(zh.value?'有效':'Valid'):(zh.value?'无效':'Invalid')
-  const reasons:Record<string,string>={missing_value:'缺少数值',pin_not_found:'未找到对应 PIN',feature_missing:'缺少几何特征',endpoint_not_observed:'未观测到端点',section_not_observed:'截面超出观测范围',above_upper_limit:'超过上限',below_lower_limit:'低于下限',unit_mismatch:'单位不一致',ambiguous:'定位存在歧义',pose_not_found:'未定位到工件'}
-  if(key==='reason'&&typeof row[key]==='string'&&zh.value)return reasons[row[key]]??row[key]
-  return formatResultValue(row[key])
-}
+const resultFormats:Record<string,ResultColumnFormat>={unit:'unit',passed:'result',valid:'validity',reason:'reason'}
 </script>
 <style scoped>
 .result-table { display:flex;flex-direction:column;gap:6px;min-height:0;max-height:100%;font-size:12px;color:var(--am-text);background:var(--am-surface);padding:8px;overflow:auto; }

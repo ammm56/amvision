@@ -20,6 +20,8 @@ Runtime 监视显示实际发布图中 Image、Value、Table、Gallery Preview �
 
 ## 快照与连接
 
+Value Preview 的表格列可显式设置 `columns[].format`：`value`（省略时默认）、`unit`、`result`、`validity`、`reason`。这是现有 v1 表格正文的可选字段；后端校验格式，rows 中的原始值不变。编辑器节点、大表格、App Mode 和图片查看器使用同一格式规则。普通布尔值不自动解释为 OK/NG，只有 `result` 列按布尔值呈现 OK/NG；未知原因保留原始代码。结果表以 `observation_id` 和 `item_id` 关联同次图像几何，切换观测清除旧选择。显示精度不参与公差判定。
+
 1. `GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}/preview-snapshot`，需要现有 `workflows:read` 和 Project 可见范围。
 2. 读取返回的 `application`、`template`，它们来自实际 active revision 对应的发布版本，不能替换成编辑草稿。未激活时使用 desired revision，并通过 `active`、`observed_state` 区分。
 3. 连接 `/ws/v1/workflows/app-runtimes/preview`，query 参数为快照中的 `workflow_runtime_id`、`workflow_runtime_revision_id`、`runtime_generation`、`worker_instance_id`。

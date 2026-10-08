@@ -60,6 +60,8 @@ def _value_preview_handler(request: WorkflowNodeExecutionRequest) -> dict[str, o
             or not isinstance(column.get("label"), str) or not 1 <= len(column["label"]) <= 128 for column in columns
         ) or len({column["key"] for column in columns}) != len(columns):
             raise InvalidRequestError("Columns 需要唯一 Key 和显示名称，最多 32 列")
+        if any(column.get("format", "value") not in ("value", "unit", "result", "validity", "reason") for column in columns):
+            raise InvalidRequestError("Columns Format 需要 value/unit/result/validity/reason")
         preview_body.update(type="table-preview", rows=rows, columns=columns, row_count=len(rows))
         preview_body.pop("value", None)
         if request.input_values.get("geometry") is not None:
@@ -152,7 +154,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
             "type": "object",
             "properties": {
                 "display_mode": {"type": "string", "title": "Display Mode", "enum": ["json", "table"], "default": "json"},
-                "columns": {"type": "array", "title": "Columns", "maxItems": 32, "x-ui-widget": "object-rows", "items": {"type": "object", "required": ["key", "label"], "properties": {"key": {"type": "string", "minLength": 1, "maxLength": 128, "title": "Key"}, "label": {"type": "string", "minLength": 1, "maxLength": 128, "title": "Label"}}}},
+                "columns": {"type": "array", "title": "Columns", "maxItems": 32, "x-ui-widget": "object-rows", "items": {"type": "object", "required": ["key", "label"], "properties": {"key": {"type": "string", "minLength": 1, "maxLength": 128, "title": "Key"}, "label": {"type": "string", "minLength": 1, "maxLength": 128, "title": "Label"}, "format": {"type": "string", "title": "Format", "default": "value", "enum": ["value", "unit", "result", "validity", "reason"]}}}},
                 "title": {
                     "type": "string",
                     "minLength": 1,

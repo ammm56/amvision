@@ -31,7 +31,7 @@ export function endpointIds(layout:PinLayout,pinId:string):string[] {
 /** 返回失效的名义引用；不为缺失引用构造默认测量对象。 */
 export function invalidMeasurementReferences(items:MeasurementItem[],layout:PinLayout):string[] {
   const ids=new Set(layout.pins.map(pin=>pin.pin_id))
-  return items.filter(item=>!ids.has(item.pin_a)||(item.pin_b!==null&&!ids.has(item.pin_b))||
+  return items.filter(item=>!ids.has(item.pin_a)||(item.pin_b!=null&&!ids.has(item.pin_b))||
     (item.kind==='length'&&(!endpointIds(layout,item.pin_a).includes(item.feature_a??'')||!endpointIds(layout,item.pin_b??'').includes(item.feature_b??''))))
     .map(item=>item.item_id)
 }

@@ -1,7 +1,14 @@
 import {describe,it,expect} from 'vitest'
-import {staticNumericItems} from './static-numeric-items'
+import {staticNumericItems as readStaticItems} from './static-numeric-items'
+import {trustedNumericItemProviders} from './trusted-recipe-providers'
+const staticNumericItems=(sources:Parameters<typeof readStaticItems>[0],resolve:Parameters<typeof readStaticItems>[1])=>readStaticItems(sources,resolve,trustedNumericItemProviders)
 import type {ParameterEditorSource} from './editor-context'
 describe('static recipe items',()=>{
+  it('does not load industry behavior without explicit providers',()=>{
+    const source:ParameterEditorSource={nodeId:'temperature',nodeTypeId:'test.temperature',outputPort:'table',parameters:{}}
+    expect(readStaticItems({table:[source]},undefined)).toBeNull()
+    expect(readStaticItems({table:[source]},undefined,{'test.temperature':()=>[{item_id:'temperature',unit:'celsius'}]})).toEqual([{item_id:'temperature',unit:'celsius'}])
+  })
   it('rejects malformed saved item definitions without crashing the editor',()=>{
     const source:ParameterEditorSource={nodeId:'measure',nodeTypeId:'custom.connector.measure',outputPort:'measurements',parameters:{items:[null]}}
     expect(staticNumericItems({table:[source]},undefined)).toBeNull()
