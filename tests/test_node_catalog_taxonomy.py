@@ -25,10 +25,10 @@ EXPECTED_CORE_CATEGORY_COUNTS = {
     "core.logic.iteration": 4,
     "core.logic.parallel": 2,
     "core.logic.object": 9,
-    "core.logic.transform": 28,
+    "core.logic.transform": 30,
     "core.logic.value": 7,
     "core.logic.variable": 3,
-    "core.logic.rule": 6,
+    "core.logic.rule": 7,
     "core.model.inference": 13,
     "core.model.lifecycle": 5,
     "core.dataset.import": 1,
@@ -59,12 +59,12 @@ EXPECTED_OPENCV_CATEGORY_COUNTS = {
     "opencv.segmentation.region": 5,
     "opencv.feature.detection": 6,
     "opencv.matching.feature": 3,
-    "opencv.matching.template": 4,
+    "opencv.matching.template": 5,
     "opencv.matching.registration": 4,
     "opencv.geometry.detection": 7,
     "opencv.geometry.contour": 5,
     "opencv.geometry.shape": 18,
-    "opencv.calibration.camera": 10,
+    "opencv.calibration.camera": 11,
     "opencv.calibration.pose": 6,
     "opencv.measurement.edge": 5,
     "opencv.measurement.circle": 4,
@@ -83,12 +83,12 @@ _HAN_PATTERN = re.compile(r"[\u3400-\u9fff]")
 
 
 def test_core_catalog_uses_confirmed_two_level_taxonomy() -> None:
-    """验证 227 个 Core 节点完整落入严格两级分类。"""
+    """验证 Core 节点完整落入严格两级分类。"""
 
     definitions = get_core_workflow_node_definitions()
     category_counts = Counter(item.category for item in definitions)
 
-    assert len(definitions) == 227
+    assert len(definitions) == 230
     assert category_counts == EXPECTED_CORE_CATEGORY_COUNTS
     assert all(
         _TWO_LEVEL_CATEGORY_PATTERN.fullmatch(item.category) for item in definitions
@@ -97,12 +97,12 @@ def test_core_catalog_uses_confirmed_two_level_taxonomy() -> None:
 
 
 def test_opencv_catalog_uses_confirmed_two_level_taxonomy_and_english_names() -> None:
-    """验证 181 个 OpenCV 节点分类完整且节点标题固定为英文。"""
+    """验证 OpenCV 节点分类完整且节点标题固定为英文。"""
 
     catalog = build_custom_node_catalog_document()
     category_counts = Counter(item.category for item in catalog.node_definitions)
 
-    assert len(catalog.node_definitions) == 181
+    assert len(catalog.node_definitions) == 183
     assert category_counts == EXPECTED_OPENCV_CATEGORY_COUNTS
     assert all(
         _TWO_LEVEL_CATEGORY_PATTERN.fullmatch(item.category)
@@ -118,4 +118,4 @@ def test_opencv_catalog_uses_confirmed_two_level_taxonomy_and_english_names() ->
         for item in catalog.node_definitions
         if isinstance(item.metadata.get("i18n"), dict)
     )
-    assert {item.node_pack_version for item in catalog.node_definitions} == {"0.1.3"}
+    assert {item.node_pack_version for item in catalog.node_definitions} == {"0.1.8"}

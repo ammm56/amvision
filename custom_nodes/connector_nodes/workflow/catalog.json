@@ -1,0 +1,970 @@
+{
+  "format_id": "amvision.custom-node-catalog.v1",
+  "payload_contracts": [
+    {
+      "format_id": "amvision.workflow-payload-contract.v1",
+      "payload_type_id": "connector-pins.v1",
+      "display_name": "Connector Pins",
+      "transport_kind": "inline-json",
+      "json_schema": {
+        "$defs": {
+          "ImageIdentity": {
+            "additionalProperties": false,
+            "description": "本次输入身份：调用 ID、图像 ID、尺寸和原始矩阵类型。",
+            "properties": {
+              "run_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Run Id",
+                "type": "string"
+              },
+              "image_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Image Id",
+                "type": "string"
+              },
+              "width": {
+                "maximum": 32768,
+                "minimum": 1,
+                "title": "Width",
+                "type": "integer"
+              },
+              "height": {
+                "maximum": 32768,
+                "minimum": 1,
+                "title": "Height",
+                "type": "integer"
+              },
+              "dtype": {
+                "enum": [
+                  "uint8",
+                  "uint16",
+                  "float32"
+                ],
+                "title": "Dtype",
+                "type": "string"
+              },
+              "coordinate_space": {
+                "const": "raw-image",
+                "default": "raw-image",
+                "title": "Coordinate Space",
+                "type": "string"
+              }
+            },
+            "required": [
+              "run_id",
+              "image_id",
+              "width",
+              "height",
+              "dtype"
+            ],
+            "title": "ImageIdentity",
+            "type": "object"
+          },
+          "PinObservation": {
+            "additionalProperties": false,
+            "description": "PIN 名义要求和本次观测分开，缺失/歧义不补测量坐标。",
+            "properties": {
+              "pin_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Pin Id",
+                "type": "string"
+              },
+              "row_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Row Id",
+                "type": "string"
+              },
+              "pin_type": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Pin Type",
+                "type": "string"
+              },
+              "expected_present": {
+                "title": "Expected Present",
+                "type": "boolean"
+              },
+              "nominal_image_point": {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "title": "Nominal Image Point",
+                "type": "array"
+              },
+              "state": {
+                "enum": [
+                  "found",
+                  "not_found",
+                  "ambiguous",
+                  "out_of_view",
+                  "not_evaluated"
+                ],
+                "title": "State",
+                "type": "string"
+              },
+              "center_image_point": {
+                "anyOf": [
+                  {
+                    "maxItems": 2,
+                    "minItems": 2,
+                    "prefixItems": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ],
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Center Image Point"
+              },
+              "feature_ids": {
+                "default": [],
+                "items": {
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                  "type": "string"
+                },
+                "title": "Feature Ids",
+                "type": "array"
+              },
+              "reason": {
+                "anyOf": [
+                  {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Reason"
+              }
+            },
+            "required": [
+              "pin_id",
+              "row_id",
+              "pin_type",
+              "expected_present",
+              "nominal_image_point",
+              "state",
+              "center_image_point",
+              "reason"
+            ],
+            "title": "PinObservation",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "description": "PIN 集与 Features 通过观察 ID、原图身份及参考布局关联。",
+        "properties": {
+          "observation_id": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+            "title": "Observation Id",
+            "type": "string"
+          },
+          "image": {
+            "$ref": "#/$defs/ImageIdentity"
+          },
+          "reference_id": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+            "title": "Reference Id",
+            "type": "string"
+          },
+          "pins": {
+            "items": {
+              "$ref": "#/$defs/PinObservation"
+            },
+            "maxItems": 1024,
+            "minItems": 1,
+            "title": "Pins",
+            "type": "array"
+          },
+          "image_from_reference": {
+            "default": [
+              [
+                1.0,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                1.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "maxItems": 3,
+            "minItems": 3,
+            "prefixItems": [
+              {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              }
+            ],
+            "title": "Image From Reference",
+            "type": "array"
+          },
+          "unassigned_points": {
+            "default": [],
+            "items": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            "maxItems": 2048,
+            "title": "Unassigned Points",
+            "type": "array"
+          }
+        },
+        "required": [
+          "observation_id",
+          "image",
+          "reference_id",
+          "pins"
+        ],
+        "title": "PinObservations",
+        "type": "object"
+      },
+      "artifact_kinds": [],
+      "metadata": {}
+    }
+  ],
+  "node_definitions": [
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.connector.pin-array-locate",
+      "display_name": "Pin Array Locate",
+      "category": "connector.inspection.array",
+      "description": "按参考布局提取固定身份 PIN 和有限边缘，不判定最终 OK/NG。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.8",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "pose",
+          "display_name": "Pose",
+          "payload_type_id": "image-pose.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "pins",
+          "display_name": "Pins",
+          "payload_type_id": "connector-pins.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "features",
+          "display_name": "Features",
+          "payload_type_id": "geometric-features.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "checks",
+          "display_name": "Checks",
+          "payload_type_id": "numeric-table.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "debug_preview",
+          "display_name": "Debug Preview",
+          "payload_type_id": "response-body.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "layout"
+        ],
+        "properties": {
+          "pose_mode": {
+            "type": "string",
+            "enum": [
+              "input",
+              "fixed"
+            ],
+            "default": "input",
+            "description": "Fixed 仅用于工件和图像坐标已固定的工位。"
+          },
+          "layout": {
+            "additionalProperties": false,
+            "description": "参考像素坐标中的展开布局；间距和产品名称不写入节点类型。",
+            "properties": {
+              "reference_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Reference Id",
+                "type": "string"
+              },
+              "reference_sha256": {
+                "anyOf": [
+                  {
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Reference Sha256"
+              },
+              "pins": {
+                "items": {
+                  "additionalProperties": false,
+                  "description": "名义位置身份，不随观测排序变化；留空仍需要检查。",
+                  "properties": {
+                    "pin_id": {
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                      "title": "Pin Id",
+                      "type": "string"
+                    },
+                    "row_id": {
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                      "title": "Row Id",
+                      "type": "string"
+                    },
+                    "pin_type": {
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                      "title": "Pin Type",
+                      "type": "string"
+                    },
+                    "center": {
+                      "maxItems": 2,
+                      "minItems": 2,
+                      "prefixItems": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ],
+                      "title": "Center",
+                      "type": "array"
+                    },
+                    "expected_present": {
+                      "default": true,
+                      "title": "Expected Present",
+                      "type": "boolean"
+                    },
+                    "endpoint_pairs": {
+                      "default": [],
+                      "items": {
+                        "additionalProperties": false,
+                        "description": "相对 PIN 名义中心的一条扫描带，提取两个具名端点，不推断不可见针根。",
+                        "properties": {
+                          "first_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                            "title": "First Id",
+                            "type": "string"
+                          },
+                          "second_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                            "title": "Second Id",
+                            "type": "string"
+                          },
+                          "sampling_type": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                            "title": "Sampling Type",
+                            "type": "string"
+                          },
+                          "center_offset": {
+                            "default": [
+                              0.0,
+                              0.0
+                            ],
+                            "maxItems": 2,
+                            "minItems": 2,
+                            "prefixItems": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              }
+                            ],
+                            "title": "Center Offset",
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "first_id",
+                          "second_id",
+                          "sampling_type"
+                        ],
+                        "title": "EndpointPair",
+                        "type": "object"
+                      },
+                      "maxItems": 2,
+                      "title": "Endpoint Pairs",
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "pin_id",
+                    "row_id",
+                    "pin_type",
+                    "center"
+                  ],
+                  "title": "PinDefinition",
+                  "type": "object"
+                },
+                "maxItems": 1024,
+                "minItems": 1,
+                "title": "Pins",
+                "type": "array"
+              },
+              "types": {
+                "items": {
+                  "additionalProperties": false,
+                  "description": "某种 PIN 复用的扫描配置；长度及步距采用参考图像像素。",
+                  "properties": {
+                    "type_id": {
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                      "title": "Type Id",
+                      "type": "string"
+                    },
+                    "search_length": {
+                      "default": 48.0,
+                      "maximum": 2048,
+                      "minimum": 4,
+                      "title": "Search Length",
+                      "type": "number"
+                    },
+                    "band_width": {
+                      "default": 8.0,
+                      "maximum": 256,
+                      "minimum": 1,
+                      "title": "Band Width",
+                      "type": "number"
+                    },
+                    "scan_lines": {
+                      "default": 9,
+                      "maximum": 65,
+                      "minimum": 3,
+                      "title": "Scan Lines",
+                      "type": "integer"
+                    },
+                    "sample_step": {
+                      "default": 0.5,
+                      "maximum": 2,
+                      "minimum": 0.25,
+                      "title": "Sample Step",
+                      "type": "number"
+                    },
+                    "angle_degrees": {
+                      "default": 0.0,
+                      "title": "Angle Degrees",
+                      "type": "number"
+                    },
+                    "polarity": {
+                      "default": "bright",
+                      "enum": [
+                        "bright",
+                        "dark"
+                      ],
+                      "title": "Polarity",
+                      "type": "string"
+                    },
+                    "gradient_threshold": {
+                      "default": 0.03,
+                      "exclusiveMinimum": 0,
+                      "maximum": 1,
+                      "title": "Gradient Threshold",
+                      "type": "number"
+                    },
+                    "min_width": {
+                      "default": 2.0,
+                      "exclusiveMinimum": 0,
+                      "maximum": 2048,
+                      "title": "Min Width",
+                      "type": "number"
+                    },
+                    "max_width": {
+                      "default": 40.0,
+                      "exclusiveMinimum": 0,
+                      "maximum": 2048,
+                      "title": "Max Width",
+                      "type": "number"
+                    },
+                    "min_coverage": {
+                      "default": 0.7,
+                      "exclusiveMinimum": 0,
+                      "maximum": 1,
+                      "title": "Min Coverage",
+                      "type": "number"
+                    },
+                    "max_residual": {
+                      "default": 1.0,
+                      "exclusiveMinimum": 0,
+                      "maximum": 10,
+                      "title": "Max Residual",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "type_id"
+                  ],
+                  "title": "SamplingType",
+                  "type": "object"
+                },
+                "maxItems": 64,
+                "minItems": 1,
+                "title": "Types",
+                "type": "array"
+              },
+              "candidate_bands": {
+                "default": [],
+                "items": {
+                  "additionalProperties": false,
+                  "description": "额外候选的显式搜索域；仅声明配置范围及采样类型内的检查。",
+                  "properties": {
+                    "band_id": {
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                      "title": "Band Id",
+                      "type": "string"
+                    },
+                    "center": {
+                      "maxItems": 2,
+                      "minItems": 2,
+                      "prefixItems": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ],
+                      "title": "Center",
+                      "type": "array"
+                    },
+                    "length": {
+                      "maximum": 8190,
+                      "minimum": 4,
+                      "title": "Length",
+                      "type": "number"
+                    },
+                    "sampling_type": {
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                      "title": "Sampling Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "band_id",
+                    "center",
+                    "length",
+                    "sampling_type"
+                  ],
+                  "title": "CandidateBand",
+                  "type": "object"
+                },
+                "maxItems": 64,
+                "title": "Candidate Bands",
+                "type": "array"
+              },
+              "diagnostic_pin_id": {
+                "anyOf": [
+                  {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Diagnostic Pin Id"
+              }
+            },
+            "required": [
+              "reference_id",
+              "pins",
+              "types"
+            ],
+            "title": "PIN Layout",
+            "type": "object"
+          },
+          "debug_image_panel_enabled": {
+            "type": "boolean",
+            "title": "Debug Preview",
+            "default": false,
+            "description": "仅 Preview 生成观测几何和选中 PIN 的剖面；Runtime 不生成诊断图。"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "vision.connector",
+        "vision.measurement"
+      ],
+      "runtime_requirements": {},
+      "node_pack_id": "connector.nodes",
+      "node_pack_version": "0.1.8",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.connector.measure",
+      "display_name": "Connector Measure",
+      "category": "connector.measurement.dimension",
+      "description": "按固定身份测量指定特征；缺测和截面越界输出无效，公差交给 Check Limits。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.8",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "pins",
+          "display_name": "Pins",
+          "payload_type_id": "connector-pins.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "features",
+          "display_name": "Features",
+          "payload_type_id": "geometric-features.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "measurements",
+          "display_name": "Measurements",
+          "payload_type_id": "numeric-table.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "annotations",
+          "display_name": "Annotations",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 8192,
+            "items": {
+              "additionalProperties": false,
+              "description": "命名尺寸项；公差由通用 Check Limits 配置。",
+              "properties": {
+                "item_id": {
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                  "title": "Item Id",
+                  "type": "string"
+                },
+                "kind": {
+                  "enum": [
+                    "width",
+                    "pitch",
+                    "total_pitch",
+                    "gap",
+                    "offset",
+                    "length",
+                    "angle"
+                  ],
+                  "title": "Kind",
+                  "type": "string"
+                },
+                "enabled": {
+                  "default": true,
+                  "title": "Enabled",
+                  "type": "boolean"
+                },
+                "pin_a": {
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                  "title": "Pin A",
+                  "type": "string"
+                },
+                "pin_b": {
+                  "anyOf": [
+                    {
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Pin B"
+                },
+                "direction": {
+                  "default": [
+                    1.0,
+                    0.0
+                  ],
+                  "maxItems": 2,
+                  "minItems": 2,
+                  "prefixItems": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ],
+                  "title": "Direction",
+                  "type": "array"
+                },
+                "section": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Section"
+                },
+                "distance_mode": {
+                  "default": "projected",
+                  "enum": [
+                    "projected",
+                    "euclidean"
+                  ],
+                  "title": "Distance Mode",
+                  "type": "string"
+                },
+                "feature_a": {
+                  "anyOf": [
+                    {
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Feature A"
+                },
+                "feature_b": {
+                  "anyOf": [
+                    {
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Feature B"
+                }
+              },
+              "required": [
+                "item_id",
+                "kind",
+                "pin_a"
+              ],
+              "title": "MeasurementDefinition",
+              "type": "object"
+            },
+            "x-ui-widget": "object-rows"
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "pixel",
+              "millimeter",
+              "meter"
+            ],
+            "default": "pixel"
+          },
+          "calibration_resource": {
+            "additionalProperties": false,
+            "description": "项目内不可变资源版本与内容摘要；不能用本地路径代替引用。",
+            "properties": {
+              "project_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Project Id",
+                "type": "string"
+              },
+              "resource_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Resource Id",
+                "type": "string"
+              },
+              "version": {
+                "maximum": 2147483647,
+                "minimum": 1,
+                "title": "Version",
+                "type": "integer"
+              },
+              "sha256": {
+                "pattern": "^[0-9a-f]{64}$",
+                "title": "Sha256",
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "planar-calibration",
+                  "localization-template"
+                ],
+                "title": "Kind",
+                "type": "string"
+              }
+            },
+            "required": [
+              "project_id",
+              "resource_id",
+              "version",
+              "sha256",
+              "kind"
+            ],
+            "title": "Calibration",
+            "type": "object",
+            "x-ui-widget": "measurement-resource",
+            "x-resource-kind": "planar-calibration"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "vision.connector",
+        "vision.measurement"
+      ],
+      "runtime_requirements": {},
+      "node_pack_id": "connector.nodes",
+      "node_pack_version": "0.1.8",
+      "metadata": {}
+    }
+  ],
+  "metadata": {}
+}

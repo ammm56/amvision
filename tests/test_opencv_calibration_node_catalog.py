@@ -29,6 +29,7 @@ def test_opencv_calibration_node_catalog_builder_matches_checked_in_catalog() ->
     assert {item["node_type_id"] for item in actual["node_definitions"]} == {
         "custom.opencv.chessboard-corners",
         "custom.opencv.camera-calibrate",
+        "custom.opencv.planar-calibrate",
         "custom.opencv.solve-pnp",
         "custom.opencv.circle-grid-detect",
         "custom.opencv.corner-subpix",
@@ -43,4 +44,6 @@ def test_opencv_calibration_node_catalog_builder_matches_checked_in_catalog() ->
         "custom.opencv.rectification-map",
         "custom.opencv.image-rectify-stereo",
     }
-    assert {item["node_pack_version"] for item in actual["node_definitions"]} == {"0.1.8"}
+    assert {item["node_pack_version"] for item in actual["node_definitions"]} == {
+        "0.1.8"
+    }

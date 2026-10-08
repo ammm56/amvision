@@ -1,0 +1,30 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.planar-calibrate",
+  "version": "0.1.8",
+  "display_name": "Planar Calibrate",
+  "category": "opencv.calibration.camera",
+  "description": "从明确的图像/平面控制点求标定，并以独立验证点检查误差及覆盖。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [],
+  "output_ports": [
+    {
+      "name": "calibration",
+      "display_name": "Calibration",
+      "payload_type_id": "planar-calibration.v1"
+    },
+    {
+      "name": "summary",
+      "display_name": "Summary",
+      "payload_type_id": "value.v1"
+    }
+  ],
+  "parameter_schema": {},
+  "capability_tags": [
+    "vision.opencv",
+    "vision.calibration"
+  ],
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.1.8"
+}

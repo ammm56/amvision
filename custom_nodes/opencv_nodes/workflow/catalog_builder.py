@@ -11,6 +11,9 @@ from backend.contracts.nodes.node_pack_manifest import (
 )
 from backend.contracts.workflows.workflow_graph import validate_node_definition_catalog
 from backend.nodes.core_catalog import get_core_workflow_payload_contracts
+from custom_nodes.opencv_nodes.shared.workflow.parameter_schemas import (
+    apply_parameter_schema,
+)
 from custom_nodes.opencv_nodes.shared.workflow.payload_contracts import (
     load_shared_opencv_payload_contracts_payload,
     merge_payload_contracts_for_validation,
@@ -54,6 +57,7 @@ def build_custom_node_catalog_document() -> CustomNodeCatalogDocument:
         if not isinstance(raw_node_definition, dict):
             raise ValueError(f"节点目录碎片必须是对象: {node_file_path}")
         node_definition = dict(raw_node_definition)
+        apply_parameter_schema(node_definition)
         node_definition["node_pack_id"] = NODE_PACK_ID
         node_definition["node_pack_version"] = NODE_PACK_VERSION
         node_definitions.append(node_definition)

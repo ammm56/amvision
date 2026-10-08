@@ -1,4 +1,5 @@
 const categoryOrders: Record<string, string[]> = {
+  'custom:connector.nodes': ['connector.inspection.array', 'connector.measurement.dimension'],
   core: [
     'core.io.image',
     'core.io.file',
@@ -62,7 +63,7 @@ const categoryOrders: Record<string, string[]> = {
   ],
 }
 
-const categoryNamespaces = new Set(['core', 'opencv'])
+const categoryNamespaces = new Set(['core', 'opencv', 'connector'])
 
 export interface NodeCategoryParts {
   rootId: string

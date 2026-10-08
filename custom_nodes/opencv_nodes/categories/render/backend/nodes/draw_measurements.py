@@ -4,18 +4,24 @@ from __future__ import annotations
 
 from backend.nodes.core_nodes.support.logic import require_value_payload
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
+from backend.service.application.workflows.graph_executor import (
+    WorkflowNodeExecutionRequest,
+)
 from custom_nodes.opencv_nodes.shared.backend.runtime.images import (
     build_output_image_payload,
     encode_png_image_bytes,
     load_image_matrix,
 )
-from custom_nodes.opencv_nodes.shared.backend.runtime.geometry import extract_point_from_value
+from custom_nodes.opencv_nodes.shared.backend.runtime.geometry import (
+    extract_point_from_value,
+)
 from custom_nodes.opencv_nodes.shared.backend.runtime.validators import (
     require_non_negative_float,
     require_positive_int,
 )
-from custom_nodes.opencv_nodes.shared.backend.runtime.imports import require_opencv_imports
+from custom_nodes.opencv_nodes.shared.backend.runtime.imports import (
+    require_opencv_imports,
+)
 
 
 NODE_TYPE_ID = "custom.opencv.draw-measurements"
@@ -36,7 +42,9 @@ def _normalize_measurement_items(raw_value: object) -> list[dict[str, object]]:
                 )
             normalized_items.append(dict(item_value))
         return normalized_items
-    raise InvalidRequestError("draw-measurements 要求 measurement.value 必须是对象或对象数组")
+    raise InvalidRequestError(
+        "draw-measurements 要求 measurement.value 必须是对象或对象数组"
+    )
 
 
 def _draw_segment(
@@ -54,7 +62,14 @@ def _draw_segment(
 
     point_a = (int(round(point_a_xy[0])), int(round(point_a_xy[1])))
     point_b = (int(round(point_b_xy[0])), int(round(point_b_xy[1])))
-    cv2_module.line(image_matrix, point_a, point_b, (255, 0, 255), line_thickness, cv2_module.LINE_AA)
+    cv2_module.line(
+        image_matrix,
+        point_a,
+        point_b,
+        (255, 0, 255),
+        line_thickness,
+        cv2_module.LINE_AA,
+    )
     cv2_module.circle(image_matrix, point_a, point_radius, (255, 255, 0), thickness=-1)
     cv2_module.circle(image_matrix, point_b, point_radius, (255, 255, 0), thickness=-1)
     if label_text:
@@ -80,19 +95,47 @@ def _format_optional_label(metric_name: str, raw_value: object) -> str | None:
     return f"{metric_name}={float(raw_value):.2f}"
 
 
+def _measurement_label(item: dict, metric_name: str, metric_key: str) -> str | None:
+    """显式标签保留调用方的单位；旧量测输入继续按原指标格式绘制。"""
+    if "label" in item:
+        label = item["label"]
+        if (
+            not isinstance(label, str)
+            or len(label) > 256
+            or any(ord(c) < 32 for c in label)
+        ):
+            raise InvalidRequestError("量测 label 必须为不超过 256 字符的单行文本")
+        return label or None
+    return _format_optional_label(metric_name, item.get(metric_key))
+
+
 def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     """把通用量测 summary 绘制到图片上。"""
 
     cv2_module, _ = require_opencv_imports()
     image_payload, _, image_matrix = load_image_matrix(request)
-    image_matrix = image_matrix.copy()
-    measurement_payload = require_value_payload(request.input_values.get("measurement"), field_name="measurement")
+    measurement_payload = require_value_payload(
+        request.input_values.get("measurement"), field_name="measurement"
+    )
     measurement_items = _normalize_measurement_items(measurement_payload["value"])
+    allow_empty = request.parameters.get("allow_empty", False)
+    if not isinstance(allow_empty, bool):
+        raise InvalidRequestError("allow_empty 必须为布尔值")
+    if (
+        not measurement_items
+        and allow_empty
+        and not request.parameters.get("save_location")
+    ):
+        # 显式允许空标注时仍返回本次原图，不复用历史标注或写入临时文件。
+        return {"image": image_payload}
+    image_matrix = image_matrix.copy()
 
     raw_line_thickness = request.parameters.get("line_thickness")
     if raw_line_thickness in (None, ""):
         raw_line_thickness = 2
-    line_thickness = require_positive_int(raw_line_thickness, field_name="line_thickness")
+    line_thickness = require_positive_int(
+        raw_line_thickness, field_name="line_thickness"
+    )
 
     raw_point_radius = request.parameters.get("point_radius")
     if raw_point_radius in (None, ""):
@@ -104,18 +147,28 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         raw_font_scale = 0.5
     font_scale = require_non_negative_float(raw_font_scale, field_name="font_scale")
 
-    draw_labels = True if request.parameters.get("draw_labels") is None else bool(request.parameters.get("draw_labels"))
+    draw_labels = (
+        True
+        if request.parameters.get("draw_labels") is None
+        else bool(request.parameters.get("draw_labels"))
+    )
     drawn_segment_count = 0
     for measurement_item in measurement_items:
         if "point_a_xy" in measurement_item and "point_b_xy" in measurement_item:
             label_text = None
             if draw_labels:
-                label_text = _format_optional_label("D", measurement_item.get("distance_pixels"))
+                label_text = _measurement_label(
+                    measurement_item, "D", "distance_pixels"
+                )
             _draw_segment(
                 cv2_module=cv2_module,
                 image_matrix=image_matrix,
-                point_a_xy=extract_point_from_value(measurement_item.get("point_a_xy"), field_name="point_a_xy"),
-                point_b_xy=extract_point_from_value(measurement_item.get("point_b_xy"), field_name="point_b_xy"),
+                point_a_xy=extract_point_from_value(
+                    measurement_item.get("point_a_xy"), field_name="point_a_xy"
+                ),
+                point_b_xy=extract_point_from_value(
+                    measurement_item.get("point_b_xy"), field_name="point_b_xy"
+                ),
                 line_thickness=line_thickness,
                 point_radius=point_radius,
                 font_scale=font_scale,
@@ -126,12 +179,18 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         if "point_xy" in measurement_item and "projection_xy" in measurement_item:
             label_text = None
             if draw_labels:
-                label_text = _format_optional_label("Off", measurement_item.get("distance_pixels"))
+                label_text = _format_optional_label(
+                    "Off", measurement_item.get("distance_pixels")
+                )
             _draw_segment(
                 cv2_module=cv2_module,
                 image_matrix=image_matrix,
-                point_a_xy=extract_point_from_value(measurement_item.get("point_xy"), field_name="point_xy"),
-                point_b_xy=extract_point_from_value(measurement_item.get("projection_xy"), field_name="projection_xy"),
+                point_a_xy=extract_point_from_value(
+                    measurement_item.get("point_xy"), field_name="point_xy"
+                ),
+                point_b_xy=extract_point_from_value(
+                    measurement_item.get("projection_xy"), field_name="projection_xy"
+                ),
                 line_thickness=line_thickness,
                 point_radius=point_radius,
                 font_scale=font_scale,
@@ -139,15 +198,26 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             )
             drawn_segment_count += 1
 
-        if "circle_a_center_xy" in measurement_item and "circle_b_center_xy" in measurement_item:
+        if (
+            "circle_a_center_xy" in measurement_item
+            and "circle_b_center_xy" in measurement_item
+        ):
             label_text = None
             if draw_labels:
-                label_text = _format_optional_label("Ctr", measurement_item.get("center_distance_pixels"))
+                label_text = _format_optional_label(
+                    "Ctr", measurement_item.get("center_distance_pixels")
+                )
             _draw_segment(
                 cv2_module=cv2_module,
                 image_matrix=image_matrix,
-                point_a_xy=extract_point_from_value(measurement_item.get("circle_a_center_xy"), field_name="circle_a_center_xy"),
-                point_b_xy=extract_point_from_value(measurement_item.get("circle_b_center_xy"), field_name="circle_b_center_xy"),
+                point_a_xy=extract_point_from_value(
+                    measurement_item.get("circle_a_center_xy"),
+                    field_name="circle_a_center_xy",
+                ),
+                point_b_xy=extract_point_from_value(
+                    measurement_item.get("circle_b_center_xy"),
+                    field_name="circle_b_center_xy",
+                ),
                 line_thickness=line_thickness,
                 point_radius=point_radius,
                 font_scale=font_scale,
@@ -155,41 +225,71 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             )
             drawn_segment_count += 1
 
-        if "line_b_start_xy" in measurement_item and "start_projection_xy" in measurement_item:
+        if (
+            "line_b_start_xy" in measurement_item
+            and "start_projection_xy" in measurement_item
+        ):
             _draw_segment(
                 cv2_module=cv2_module,
                 image_matrix=image_matrix,
-                point_a_xy=extract_point_from_value(measurement_item.get("line_b_start_xy"), field_name="line_b_start_xy"),
-                point_b_xy=extract_point_from_value(measurement_item.get("start_projection_xy"), field_name="start_projection_xy"),
+                point_a_xy=extract_point_from_value(
+                    measurement_item.get("line_b_start_xy"),
+                    field_name="line_b_start_xy",
+                ),
+                point_b_xy=extract_point_from_value(
+                    measurement_item.get("start_projection_xy"),
+                    field_name="start_projection_xy",
+                ),
                 line_thickness=line_thickness,
                 point_radius=point_radius,
                 font_scale=font_scale,
                 label_text=None,
             )
             drawn_segment_count += 1
-        if "line_b_end_xy" in measurement_item and "end_projection_xy" in measurement_item:
+        if (
+            "line_b_end_xy" in measurement_item
+            and "end_projection_xy" in measurement_item
+        ):
             _draw_segment(
                 cv2_module=cv2_module,
                 image_matrix=image_matrix,
-                point_a_xy=extract_point_from_value(measurement_item.get("line_b_end_xy"), field_name="line_b_end_xy"),
-                point_b_xy=extract_point_from_value(measurement_item.get("end_projection_xy"), field_name="end_projection_xy"),
+                point_a_xy=extract_point_from_value(
+                    measurement_item.get("line_b_end_xy"), field_name="line_b_end_xy"
+                ),
+                point_b_xy=extract_point_from_value(
+                    measurement_item.get("end_projection_xy"),
+                    field_name="end_projection_xy",
+                ),
                 line_thickness=line_thickness,
                 point_radius=point_radius,
                 font_scale=font_scale,
                 label_text=None,
             )
             drawn_segment_count += 1
-        if "line_b_midpoint_xy" in measurement_item and "midpoint_projection_xy" in measurement_item:
+        if (
+            "line_b_midpoint_xy" in measurement_item
+            and "midpoint_projection_xy" in measurement_item
+        ):
             label_text = None
             if draw_labels:
-                label_text = _format_optional_label("W", measurement_item.get("midpoint_width_pixels"))
+                label_text = _format_optional_label(
+                    "W", measurement_item.get("midpoint_width_pixels")
+                )
                 if label_text is None:
-                    label_text = _format_optional_label("Off", measurement_item.get("midpoint_offset_pixels"))
+                    label_text = _format_optional_label(
+                        "Off", measurement_item.get("midpoint_offset_pixels")
+                    )
             _draw_segment(
                 cv2_module=cv2_module,
                 image_matrix=image_matrix,
-                point_a_xy=extract_point_from_value(measurement_item.get("line_b_midpoint_xy"), field_name="line_b_midpoint_xy"),
-                point_b_xy=extract_point_from_value(measurement_item.get("midpoint_projection_xy"), field_name="midpoint_projection_xy"),
+                point_a_xy=extract_point_from_value(
+                    measurement_item.get("line_b_midpoint_xy"),
+                    field_name="line_b_midpoint_xy",
+                ),
+                point_b_xy=extract_point_from_value(
+                    measurement_item.get("midpoint_projection_xy"),
+                    field_name="midpoint_projection_xy",
+                ),
                 line_thickness=line_thickness,
                 point_radius=point_radius,
                 font_scale=font_scale,
@@ -197,8 +297,10 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             )
             drawn_segment_count += 1
 
-    if drawn_segment_count <= 0:
-        raise InvalidRequestError("draw-measurements 未在输入 measurement 中识别到可绘制的量测形状")
+    if drawn_segment_count <= 0 and not (allow_empty and not measurement_items):
+        raise InvalidRequestError(
+            "draw-measurements 未在输入 measurement 中识别到可绘制的量测形状"
+        )
 
     encoded_image_bytes = encode_png_image_bytes(
         request,

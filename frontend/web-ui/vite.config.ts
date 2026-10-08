@@ -25,10 +25,14 @@ export default defineConfig({
     __AMVISION_FRONTEND_VERSION__: JSON.stringify(frontendVersion),
   },
   resolve: {
+    dedupe: ['vue', 'pinia', 'vue-i18n'],
     alias: {
       '@litegraph': path.resolve(projectDirectory, 'src/lib/litegraph/src'),
       '@': path.resolve(projectDirectory, 'src'),
     },
+  },
+  server: {
+    fs: { allow: [projectDirectory, path.resolve(projectDirectory, '../../custom_nodes/connector_nodes/frontend')] },
   },
   build: {
     outDir: 'dist',
@@ -62,6 +66,7 @@ export default defineConfig({
     root: path.resolve(projectDirectory, '../..'),
     alias: {
       'vue': path.resolve(projectDirectory, 'node_modules/vue'),
+      'vue-i18n': path.resolve(projectDirectory, 'node_modules/vue-i18n'),
       'pinia': path.resolve(projectDirectory, 'node_modules/pinia'),
       'reka-ui': path.resolve(projectDirectory, 'node_modules/reka-ui'),
       'vitest': path.resolve(projectDirectory, 'node_modules/vitest'),

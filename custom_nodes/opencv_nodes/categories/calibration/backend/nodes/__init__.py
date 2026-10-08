@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+from .planar_calibrate import (
+    NODE_TYPE_ID as PLANAR_CALIBRATE_NODE_TYPE_ID,
+    handle_node as planar_calibrate_handler,
+)
+
 from custom_nodes.opencv_nodes.categories.calibration.backend.nodes.camera_calibrate import (
     NODE_TYPE_ID as CAMERA_CALIBRATE_NODE_TYPE_ID,
     handle_node as camera_calibrate_handler,
@@ -43,6 +48,7 @@ from custom_nodes.opencv_nodes.categories.calibration.backend.nodes.undistort_po
 )
 
 NODE_HANDLERS = (
+    (PLANAR_CALIBRATE_NODE_TYPE_ID, planar_calibrate_handler),
     (CHESSBOARD_CORNERS_NODE_TYPE_ID, chessboard_corners_handler),
     (CAMERA_CALIBRATE_NODE_TYPE_ID, camera_calibrate_handler),
     (SOLVE_PNP_NODE_TYPE_ID, solve_pnp_handler),

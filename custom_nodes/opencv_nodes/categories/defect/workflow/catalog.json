@@ -2369,6 +2369,566 @@
         "matrix_order": "row-major",
         "map_storage": "object-store"
       }
+    },
+    {
+      "format_id": "amvision.workflow-payload-contract.v1",
+      "payload_type_id": "geometric-features.v1",
+      "display_name": "Geometric Features",
+      "transport_kind": "inline-json",
+      "json_schema": {
+        "$defs": {
+          "GeometricFeature": {
+            "additionalProperties": false,
+            "description": "图像中的有限观测几何；采样端点限定可测范围，不代表无限直线。",
+            "properties": {
+              "feature_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Feature Id",
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "point",
+                  "edge"
+                ],
+                "title": "Kind",
+                "type": "string"
+              },
+              "points": {
+                "items": {
+                  "maxItems": 2,
+                  "minItems": 2,
+                  "prefixItems": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ],
+                  "type": "array"
+                },
+                "maxItems": 257,
+                "minItems": 1,
+                "title": "Points",
+                "type": "array"
+              },
+              "residual_px": {
+                "default": 0.0,
+                "minimum": 0,
+                "title": "Residual Px",
+                "type": "number"
+              }
+            },
+            "required": [
+              "feature_id",
+              "kind",
+              "points"
+            ],
+            "title": "GeometricFeature",
+            "type": "object"
+          },
+          "ImageIdentity": {
+            "additionalProperties": false,
+            "description": "本次输入身份：调用 ID、图像 ID、尺寸和原始矩阵类型。",
+            "properties": {
+              "run_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Run Id",
+                "type": "string"
+              },
+              "image_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Image Id",
+                "type": "string"
+              },
+              "width": {
+                "maximum": 32768,
+                "minimum": 1,
+                "title": "Width",
+                "type": "integer"
+              },
+              "height": {
+                "maximum": 32768,
+                "minimum": 1,
+                "title": "Height",
+                "type": "integer"
+              },
+              "dtype": {
+                "enum": [
+                  "uint8",
+                  "uint16",
+                  "float32"
+                ],
+                "title": "Dtype",
+                "type": "string"
+              },
+              "coordinate_space": {
+                "const": "raw-image",
+                "default": "raw-image",
+                "title": "Coordinate Space",
+                "type": "string"
+              }
+            },
+            "required": [
+              "run_id",
+              "image_id",
+              "width",
+              "height",
+              "dtype"
+            ],
+            "title": "ImageIdentity",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "description": "一次提取产生的通用几何集，观察 ID 用于阻止错帧与错分支混接。",
+        "properties": {
+          "observation_id": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+            "title": "Observation Id",
+            "type": "string"
+          },
+          "image": {
+            "$ref": "#/$defs/ImageIdentity"
+          },
+          "reference_id": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+            "title": "Reference Id",
+            "type": "string"
+          },
+          "features": {
+            "items": {
+              "$ref": "#/$defs/GeometricFeature"
+            },
+            "maxItems": 6144,
+            "title": "Features",
+            "type": "array"
+          }
+        },
+        "required": [
+          "observation_id",
+          "image",
+          "reference_id",
+          "features"
+        ],
+        "title": "FeatureObservations",
+        "type": "object"
+      },
+      "artifact_kinds": [],
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.workflow-payload-contract.v1",
+      "payload_type_id": "image-pose.v1",
+      "display_name": "Image Pose",
+      "transport_kind": "inline-json",
+      "json_schema": {
+        "$defs": {
+          "ImageIdentity": {
+            "additionalProperties": false,
+            "description": "本次输入身份：调用 ID、图像 ID、尺寸和原始矩阵类型。",
+            "properties": {
+              "run_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Run Id",
+                "type": "string"
+              },
+              "image_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Image Id",
+                "type": "string"
+              },
+              "width": {
+                "maximum": 32768,
+                "minimum": 1,
+                "title": "Width",
+                "type": "integer"
+              },
+              "height": {
+                "maximum": 32768,
+                "minimum": 1,
+                "title": "Height",
+                "type": "integer"
+              },
+              "dtype": {
+                "enum": [
+                  "uint8",
+                  "uint16",
+                  "float32"
+                ],
+                "title": "Dtype",
+                "type": "string"
+              },
+              "coordinate_space": {
+                "const": "raw-image",
+                "default": "raw-image",
+                "title": "Coordinate Space",
+                "type": "string"
+              }
+            },
+            "required": [
+              "run_id",
+              "image_id",
+              "width",
+              "height",
+              "dtype"
+            ],
+            "title": "ImageIdentity",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "description": "定位结果：reference 像素到当前 raw-image 像素的刚性变换。",
+        "properties": {
+          "image": {
+            "$ref": "#/$defs/ImageIdentity"
+          },
+          "state": {
+            "enum": [
+              "found",
+              "not_found",
+              "ambiguous",
+              "out_of_view"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "image_from_reference": {
+            "anyOf": [
+              {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "maxItems": 3,
+                    "minItems": 3,
+                    "prefixItems": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ],
+                    "type": "array"
+                  },
+                  {
+                    "maxItems": 3,
+                    "minItems": 3,
+                    "prefixItems": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ],
+                    "type": "array"
+                  },
+                  {
+                    "maxItems": 3,
+                    "minItems": 3,
+                    "prefixItems": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ],
+                    "type": "array"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image From Reference"
+          },
+          "reference_id": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+            "title": "Reference Id",
+            "type": "string"
+          },
+          "reference_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reference Sha256"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "image",
+          "state",
+          "image_from_reference",
+          "reference_id",
+          "reason"
+        ],
+        "title": "PoseObservation",
+        "type": "object"
+      },
+      "artifact_kinds": [],
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.workflow-payload-contract.v1",
+      "payload_type_id": "planar-calibration.v1",
+      "display_name": "Planar Calibration",
+      "transport_kind": "inline-json",
+      "json_schema": {
+        "$defs": {
+          "CalibrationEvidence": {
+            "additionalProperties": false,
+            "description": "分离保存拟合点与验证点；这些证据不等于参考仪器的准确度证书。",
+            "properties": {
+              "control_points": {
+                "items": {
+                  "$ref": "#/$defs/CalibrationPointPair"
+                },
+                "maxItems": 4096,
+                "minItems": 3,
+                "title": "Control Points",
+                "type": "array"
+              },
+              "validation_points": {
+                "items": {
+                  "$ref": "#/$defs/CalibrationPointPair"
+                },
+                "maxItems": 4096,
+                "minItems": 2,
+                "title": "Validation Points",
+                "type": "array"
+              }
+            },
+            "required": [
+              "control_points",
+              "validation_points"
+            ],
+            "title": "CalibrationEvidence",
+            "type": "object"
+          },
+          "CalibrationPointPair": {
+            "additionalProperties": false,
+            "description": "原始图像点及其独立参考平面坐标，随不可变标定版本保存。",
+            "properties": {
+              "image": {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "title": "Image",
+                "type": "array"
+              },
+              "world": {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "title": "World",
+                "type": "array"
+              }
+            },
+            "required": [
+              "image",
+              "world"
+            ],
+            "title": "CalibrationPointPair",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "description": "经版本化资源保存的平面映射；有效区为当前图像中的多边形。",
+        "properties": {
+          "image_width": {
+            "maximum": 32768,
+            "minimum": 1,
+            "title": "Image Width",
+            "type": "integer"
+          },
+          "image_height": {
+            "maximum": 32768,
+            "minimum": 1,
+            "title": "Image Height",
+            "type": "integer"
+          },
+          "model": {
+            "enum": [
+              "similarity",
+              "affine",
+              "homography"
+            ],
+            "title": "Model",
+            "type": "string"
+          },
+          "world_from_image": {
+            "maxItems": 3,
+            "minItems": 3,
+            "prefixItems": [
+              {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              }
+            ],
+            "title": "World From Image",
+            "type": "array"
+          },
+          "unit": {
+            "enum": [
+              "millimeter",
+              "meter"
+            ],
+            "title": "Unit",
+            "type": "string"
+          },
+          "plane_id": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+            "title": "Plane Id",
+            "type": "string"
+          },
+          "valid_polygon": {
+            "items": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            "maxItems": 128,
+            "minItems": 3,
+            "title": "Valid Polygon",
+            "type": "array"
+          },
+          "fit_rms": {
+            "minimum": 0,
+            "title": "Fit Rms",
+            "type": "number"
+          },
+          "validation_max_error": {
+            "minimum": 0,
+            "title": "Validation Max Error",
+            "type": "number"
+          },
+          "evidence": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CalibrationEvidence"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "image_width",
+          "image_height",
+          "model",
+          "world_from_image",
+          "unit",
+          "plane_id",
+          "valid_polygon",
+          "fit_rms",
+          "validation_max_error"
+        ],
+        "title": "PlanarCalibration",
+        "type": "object"
+      },
+      "artifact_kinds": [],
+      "metadata": {}
     }
   ],
   "node_definitions": [

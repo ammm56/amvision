@@ -5,9 +5,15 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from backend.contracts.nodes.node_pack_manifest import CUSTOM_NODE_CATALOG_FORMAT, CustomNodeCatalogDocument
+from backend.contracts.nodes.node_pack_manifest import (
+    CUSTOM_NODE_CATALOG_FORMAT,
+    CustomNodeCatalogDocument,
+)
 from backend.contracts.workflows.workflow_graph import validate_node_definition_catalog
 from backend.nodes.core_catalog import get_core_workflow_payload_contracts
+from custom_nodes.opencv_nodes.shared.workflow.parameter_schemas import (
+    apply_parameter_schema,
+)
 from custom_nodes.opencv_nodes.shared.workflow.payload_contracts import (
     load_shared_opencv_payload_contracts_payload,
     merge_payload_contracts_for_validation,
@@ -51,7 +57,9 @@ def _load_json_document(file_path: Path) -> object:
     return json.loads(file_path.read_text(encoding="utf-8"))
 
 
-def build_custom_node_catalog_document(*, workflow_dir: Path | None = None) -> CustomNodeCatalogDocument:
+def build_custom_node_catalog_document(
+    *, workflow_dir: Path | None = None
+) -> CustomNodeCatalogDocument:
     """从 catalog 碎片目录构造完整的自定义节点目录文档。
 
     参数：
@@ -70,6 +78,7 @@ def build_custom_node_catalog_document(*, workflow_dir: Path | None = None) -> C
         node_payload = _load_json_document(node_file_path)
         if not isinstance(node_payload, dict):
             raise ValueError(f"节点目录碎片必须是对象: {node_file_path.name}")
+        apply_parameter_schema(node_payload)
         node_definitions_payload.append(node_payload)
 
     catalog_document = CustomNodeCatalogDocument.model_validate(
@@ -90,7 +99,9 @@ def build_custom_node_catalog_document(*, workflow_dir: Path | None = None) -> C
     return catalog_document
 
 
-def build_custom_node_catalog_payload(*, workflow_dir: Path | None = None) -> dict[str, object]:
+def build_custom_node_catalog_payload(
+    *, workflow_dir: Path | None = None
+) -> dict[str, object]:
     """构造可直接写入 catalog.json 的 JSON payload。
 
     参数：
@@ -116,7 +127,9 @@ def write_custom_node_catalog(*, workflow_dir: Path | None = None) -> Path:
 
     resolved_workflow_dir = workflow_dir or get_workflow_dir()
     catalog_path = resolved_workflow_dir / "catalog.json"
-    catalog_payload = build_custom_node_catalog_payload(workflow_dir=resolved_workflow_dir)
+    catalog_payload = build_custom_node_catalog_payload(
+        workflow_dir=resolved_workflow_dir
+    )
     catalog_path.write_text(
         json.dumps(catalog_payload, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",

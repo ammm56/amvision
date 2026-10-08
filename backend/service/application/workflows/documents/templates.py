@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from contextlib import nullcontext
 
 from backend.contracts.workflows.workflow_graph import (
     NodeDefinition,
     WorkflowGraphTemplate,
     validate_workflow_graph_template,
 )
-from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ResourceNotFoundError,
+)
 from backend.nodes.file_display_validation import validate_file_display_parameters
 from backend.service.application.workflows.documents.contracts import (
     WorkflowTemplateDocument,
@@ -30,11 +34,15 @@ from backend.service.application.workflows.documents.storage import (
     to_object_key,
     write_resource_summary,
 )
-from backend.service.application.workflows.documents.validation import summarize_workflow_template
+from backend.service.application.workflows.documents.validation import (
+    summarize_workflow_template,
+)
 from backend.service.application.workflows.execution.parallel_safety import (
     validate_parallel_template_node_definitions,
 )
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 
 class WorkflowTemplateDocumentStore:
@@ -51,7 +59,9 @@ class WorkflowTemplateDocumentStore:
         self.dataset_storage = dataset_storage
         self.node_definitions = node_definitions
 
-    def validate_template(self, template: WorkflowGraphTemplate) -> WorkflowTemplateValidationSummary:
+    def validate_template(
+        self, template: WorkflowGraphTemplate
+    ) -> WorkflowTemplateValidationSummary:
         """校验图模板。"""
 
         try:
@@ -75,8 +85,12 @@ class WorkflowTemplateDocumentStore:
         """列出指定 Project 下全部图模板摘要。"""
 
         normalized_project_id = normalize_identifier(project_id, "project_id")
-        grouped_versions: dict[str, list[WorkflowTemplateVersionSummary]] = defaultdict(list)
-        for version_summary in self._iter_template_version_summaries(project_id=normalized_project_id):
+        grouped_versions: dict[str, list[WorkflowTemplateVersionSummary]] = defaultdict(
+            list
+        )
+        for version_summary in self._iter_template_version_summaries(
+            project_id=normalized_project_id
+        ):
             grouped_versions[version_summary.template_id].append(version_summary)
 
         template_summaries: list[WorkflowTemplateSummary] = []
@@ -169,7 +183,9 @@ class WorkflowTemplateDocumentStore:
 
         normalized_project_id = normalize_identifier(project_id, "project_id")
         normalized_template_id = normalize_identifier(template_id, "template_id")
-        normalized_template_version = normalize_identifier(template_version, "template_version")
+        normalized_template_version = normalize_identifier(
+            template_version, "template_version"
+        )
         object_key = build_template_object_key(
             project_id=normalized_project_id,
             template_id=normalized_template_id,
@@ -235,6 +251,25 @@ class WorkflowTemplateDocumentStore:
     ) -> WorkflowTemplateDocument:
         """保存图模板 JSON。"""
 
+        from backend.service.application.workflows.documents.measurement_resources import (
+            MeasurementResourceService,
+            collect_measurement_references,
+        )
+
+        resources = MeasurementResourceService(self.dataset_storage)
+        references = collect_measurement_references(template)
+        with resources.mutation(project_id) if references else nullcontext():
+            if references:
+                resources.validate_template(template, project_id=project_id)
+            return self._save_template_document(
+                project_id=project_id, template=template, actor_id=actor_id
+            )
+
+    def _save_template_document(
+        self, *, project_id: str, template: WorkflowGraphTemplate, actor_id: str | None
+    ) -> WorkflowTemplateDocument:
+        """资源引用已验证后写入模板；无资源的旧模板保留原写入行为。"""
+
         normalized_project_id = normalize_identifier(project_id, "project_id")
         validation_summary = self.validate_template(template)
         object_key = build_template_object_key(
@@ -272,7 +307,9 @@ class WorkflowTemplateDocumentStore:
 
         normalized_project_id = normalize_identifier(project_id, "project_id")
         normalized_template_id = normalize_identifier(template_id, "template_id")
-        normalized_template_version = normalize_identifier(template_version, "template_version")
+        normalized_template_version = normalize_identifier(
+            template_version, "template_version"
+        )
         object_key = build_template_object_key(
             project_id=normalized_project_id,
             template_id=normalized_template_id,
@@ -287,7 +324,9 @@ class WorkflowTemplateDocumentStore:
                     "template_version": normalized_template_version,
                 },
             )
-        template = WorkflowGraphTemplate.model_validate(self.dataset_storage.read_json(object_key))
+        template = WorkflowGraphTemplate.model_validate(
+            self.dataset_storage.read_json(object_key)
+        )
         return WorkflowTemplateDocument(
             project_id=normalized_project_id,
             object_key=object_key,
@@ -343,12 +382,16 @@ class WorkflowTemplateDocumentStore:
         """复制一份图模板版本到新的 template_id/template_version。"""
 
         normalized_project_id = normalize_identifier(project_id, "project_id")
-        normalized_source_template_id = normalize_identifier(source_template_id, "source_template_id")
+        normalized_source_template_id = normalize_identifier(
+            source_template_id, "source_template_id"
+        )
         normalized_source_template_version = normalize_identifier(
             source_template_version,
             "source_template_version",
         )
-        normalized_target_template_id = normalize_identifier(target_template_id, "target_template_id")
+        normalized_target_template_id = normalize_identifier(
+            target_template_id, "target_template_id"
+        )
         normalized_target_template_version = normalize_identifier(
             target_template_version,
             "target_template_version",
@@ -394,7 +437,9 @@ class WorkflowTemplateDocumentStore:
                     or source_document.template.display_name
                 ),
                 "description": (
-                    source_document.template.description if description is None else description
+                    source_document.template.description
+                    if description is None
+                    else description
                 ),
             }
         )
@@ -411,7 +456,9 @@ class WorkflowTemplateDocumentStore:
     ) -> tuple[WorkflowTemplateVersionSummary, ...]:
         """遍历指定 Project 下全部图模板版本摘要。"""
 
-        templates_dir = self.dataset_storage.resolve(build_templates_dir_key(project_id=project_id))
+        templates_dir = self.dataset_storage.resolve(
+            build_templates_dir_key(project_id=project_id)
+        )
         if not templates_dir.is_dir():
             return ()
 
@@ -438,7 +485,9 @@ class WorkflowTemplateDocumentStore:
     ) -> WorkflowTemplateVersionSummary:
         """基于对象路径构建图模板版本摘要。"""
 
-        template = WorkflowGraphTemplate.model_validate(self.dataset_storage.read_json(object_key))
+        template = WorkflowGraphTemplate.model_validate(
+            self.dataset_storage.read_json(object_key)
+        )
         validation_summary = summarize_workflow_template(template)
         resource_summary = read_resource_summary(
             dataset_storage=self.dataset_storage,
@@ -461,4 +510,3 @@ class WorkflowTemplateDocumentStore:
             template_output_ids=validation_summary.template_output_ids,
             referenced_node_type_ids=validation_summary.referenced_node_type_ids,
         )
-

@@ -11,6 +11,13 @@ from backend.contracts.workflows.workflow_graph import (
 from backend.nodes.core_nodes import get_core_node_specs
 
 
+def _numeric_table_schema() -> dict[str, object]:
+    """独立的数值表契约，不改变既有 measurements.v1 结构。"""
+    from backend.contracts.workflows.metrology import NumericTable
+
+    return NumericTable.model_json_schema()
+
+
 def _build_image_ref_json_schema(
     *, extra_properties: dict[str, object] | None = None
 ) -> dict[str, object]:
@@ -204,6 +211,12 @@ def get_core_workflow_payload_contracts() -> tuple[WorkflowPayloadContract, ...]
     """
 
     return (
+        WorkflowPayloadContract(
+            payload_type_id="numeric-table.v1",
+            display_name="Numeric Table",
+            transport_kind="inline-json",
+            json_schema=_numeric_table_schema(),
+        ),
         WorkflowPayloadContract(
             payload_type_id="value.v1",
             display_name="Value Payload",
@@ -1004,7 +1017,7 @@ def get_core_workflow_payload_contracts() -> tuple[WorkflowPayloadContract, ...]
                             },
                             "required": ["bbox_xyxy", "score"],
                         },
-                    }
+                    },
                 },
                 "required": ["items"],
             },

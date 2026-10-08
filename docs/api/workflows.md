@@ -28,6 +28,7 @@ FlowApplication 是可变保存文档；生产发布使用不可变 WorkflowAppV
 - [docs/api/workflow-runs.md](workflow-runs.md)
 - [docs/api/workflow-execution-policies.md](workflow-execution-policies.md)
 - [docs/api/workflow-trigger-sources.md](workflow-trigger-sources.md)
+- [Workflow 计量资源](workflow-measurement-resources.md)
 
 ## service 节点语义
 

@@ -343,7 +343,8 @@
 
 <script setup lang="ts">
 import { useWorkflowBoxSelection } from '../canvas/useWorkflowBoxSelection'
-import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
+import { computed, onBeforeUnmount, provide, ref, shallowRef, watch } from 'vue'
+import { parameterEditorSourcesKey, type ParameterEditorSources } from '../parameters/editor-context'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
@@ -503,6 +504,21 @@ const importedUnsaved = ref(false)
 const appModeConfigEdited = ref(false)
 const appModeConfigDialogOpen = ref(false)
 const graphNodes = ref<GraphNodeView[]>([])
+provide(parameterEditorSourcesKey, (nodeId) => {
+  const sources: ParameterEditorSources = {}
+  for (const edge of graphEdges.value) {
+    if (edge.target_node_id !== nodeId) continue
+    const source = graphNodes.value.find((item) => item.node.node_id === edge.source_node_id)?.node
+    if (source) {
+      (sources[edge.target_port] ??= []).push({
+        nodeId: source.node_id,
+        nodeTypeId: source.node_type_id,
+        parameters: source.parameters,
+      })
+    }
+  }
+  return sources
+})
 const graphEdges = ref<WorkflowGraphEdge[]>([])
 const graphGroups = ref<WorkflowGraphGroup[]>([])
 const graphNotes = ref<WorkflowGraphNote[]>([])

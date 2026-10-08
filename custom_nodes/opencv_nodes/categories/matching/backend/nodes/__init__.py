@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+from .rigid_locate import (
+    NODE_TYPE_ID as RIGID_LOCATE_NODE_TYPE_ID,
+    handle_node as rigid_locate_handler,
+)
+
 from custom_nodes.opencv_nodes.categories.matching.backend.nodes.homography_estimate import (
     NODE_TYPE_ID as HOMOGRAPHY_ESTIMATE_NODE_TYPE_ID,
     handle_node as homography_estimate_handler,
@@ -68,6 +73,7 @@ from custom_nodes.opencv_nodes.categories.matching.backend.nodes.sift_keypoints 
 
 
 NODE_HANDLERS = (
+    (RIGID_LOCATE_NODE_TYPE_ID, rigid_locate_handler),
     (PHASE_CORRELATION_NODE_TYPE_ID, phase_correlation_handler),
     (ECC_ALIGN_NODE_TYPE_ID, ecc_align_handler),
     (MULTI_SCALE_TEMPLATE_MATCH_NODE_TYPE_ID, multi_scale_template_match_handler),

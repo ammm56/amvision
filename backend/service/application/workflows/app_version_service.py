@@ -148,6 +148,13 @@ class WorkflowAppVersionService:
             template_version=application.template_ref.template_version,
         )
         template = template_document.template
+        from backend.service.application.workflows.documents.measurement_resources import (
+            MeasurementResourceService,
+        )
+
+        MeasurementResourceService(self.dataset_storage).validate_template(
+            template, project_id=project_id
+        )
         # 再次执行完整校验，确保发布不依赖读取路径的隐式假设。
         self.workflow_json_service.validate_application(
             project_id=project_id,
@@ -368,6 +375,39 @@ class WorkflowAppVersionService:
         )
 
     def _publish_snapshot(
+        self,
+        *,
+        project_id,
+        application_id,
+        snapshot,
+        release_notes,
+        display_version,
+        created_by,
+        duplicate_behavior,
+    ):
+        """有计量资源时持有管理锁直至发布落盘，防止校验与删除竞争。"""
+        from contextlib import nullcontext
+        from backend.service.application.workflows.documents.measurement_resources import (
+            MeasurementResourceService,
+            collect_measurement_references,
+        )
+
+        resources = MeasurementResourceService(self.dataset_storage)
+        references = collect_measurement_references(snapshot.template)
+        with resources.mutation(project_id) if references else nullcontext():
+            if references:
+                resources.validate_template(snapshot.template, project_id=project_id)
+            return self._publish_snapshot_document(
+                project_id=project_id,
+                application_id=application_id,
+                snapshot=snapshot,
+                release_notes=release_notes,
+                display_version=display_version,
+                created_by=created_by,
+                duplicate_behavior=duplicate_behavior,
+            )
+
+    def _publish_snapshot_document(
         self,
         *,
         project_id: str,
@@ -1530,6 +1570,26 @@ def _build_dependency_manifest(
         manifest.node_pack_id: manifest
         for manifest in node_catalog_registry.get_node_pack_manifests()
     }
+    # 传递包依赖也属于发布身份；行业包不能只冻结自身而漏掉算法包。
+    pending = list(referenced_pack_ids)
+    while pending:
+        pack_id = pending.pop()
+        manifest = pack_index.get(pack_id)
+        if manifest is None:
+            raise InvalidRequestError(
+                "Workflow App 依赖的 node pack manifest 不存在",
+                details={"node_pack_id": pack_id},
+            )
+        for dependency in manifest.dependencies:
+            target = pack_index.get(dependency.node_pack_id)
+            if target is None or not dependency.matches_version(target.version):
+                raise InvalidRequestError(
+                    "Workflow App 的传递节点包依赖不满足版本要求",
+                    details={"node_pack_id": dependency.node_pack_id},
+                )
+            if dependency.node_pack_id not in referenced_pack_ids:
+                referenced_pack_ids.add(dependency.node_pack_id)
+                pending.append(dependency.node_pack_id)
     packs: list[dict[str, object]] = []
     pack_manifest_fingerprints: dict[str, str] = {}
     for node_pack_id in sorted(referenced_pack_ids):
@@ -1566,6 +1626,14 @@ def _build_dependency_manifest(
         for node_type_id in referenced_type_ids
     ]
     resource_references: list[dict[str, str]] = []
+    from backend.service.application.workflows.documents.measurement_resources import (
+        collect_measurement_references,
+    )
+
+    for ref in collect_measurement_references(template):
+        resource_references.append(
+            {"path": "template.measurement_resources", "value": ref.model_dump_json()}
+        )
     _collect_stable_resource_references(
         template.model_dump(mode="json"),
         path="template",

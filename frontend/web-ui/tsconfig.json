@@ -28,6 +28,9 @@
       "vue": [
         "./node_modules/vue"
       ],
+      "vue-i18n": [
+        "./node_modules/vue-i18n"
+      ],
       "pinia": [
         "./node_modules/pinia"
       ],

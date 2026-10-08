@@ -189,6 +189,7 @@ class SnapshotExecutionService:
             tuple[str, str, str], tuple[FlowApplication, WorkflowGraphTemplate]
         ] = OrderedDict()
         self._validated_snapshots_lock = Lock()
+        self._measurement_resources = None
 
     def execute(
         self,
@@ -278,7 +279,9 @@ class SnapshotExecutionService:
         )
         preview_lifetime = request.execution_metadata.get("_preview_lifetime")
         if preview_lifetime is not None:
-            preview_lifetime.adopt_bindings(application, request.input_bindings, validated_input_bindings)
+            preview_lifetime.adopt_bindings(
+                application, request.input_bindings, validated_input_bindings
+            )
         execution_metadata_payload = dict(request.execution_metadata)
         workflow_resource_scope = get_or_create_workflow_resource_scope(
             execution_metadata_payload
@@ -291,6 +294,14 @@ class SnapshotExecutionService:
         execution_metadata_payload[WORKFLOW_MODEL_SESSION_SCOPE_ID_METADATA_KEY] = (
             model_session_scope_id
         )
+        # 只为显式引用资源的新图准备资产；旧 Runtime/Trigger 不发生资源磁盘读取。
+        prepared_resources = self._prepare_measurement_resources(
+            template, request.project_id
+        )
+        if prepared_resources is not None:
+            execution_metadata_payload["prepared_measurement_resources"] = (
+                prepared_resources
+            )
         execution_metadata_payload["dataset_storage"] = self.dataset_storage
         image_registry = execution_metadata_payload.get("execution_image_registry")
         owns_image_registry = image_registry is None
@@ -427,7 +438,7 @@ class SnapshotExecutionService:
     def prepare_model_sessions(
         self, request: WorkflowSnapshotExecutionRequest
     ) -> tuple[object, ...]:
-        """只校验 snapshot 并准备图中的模型 session，不执行业务节点。"""
+        """校验 snapshot，准备不可变计量资源及模型 session，不执行业务节点。"""
 
         _application, full_template = self._load_validated_snapshots(request=request)
         target_node_id = (
@@ -443,6 +454,7 @@ class SnapshotExecutionService:
             if target_node_id
             else full_template
         )
+        self._prepare_measurement_resources(template, request.project_id)
         scope_id = self._prepare_model_sessions(
             request=request,
             full_template=full_template,
@@ -454,6 +466,23 @@ class SnapshotExecutionService:
         return tuple(
             manager.build_health_summary(scope_id=scope_id).get("sessions", ())
         )
+
+    def _prepare_measurement_resources(self, template, project_id: str):
+        """首次准备验证并解码；旧图无引用时不创建缓存或读取资源。"""
+        from backend.service.application.workflows.documents.measurement_resources import (
+            PreparedMeasurementResources,
+            collect_measurement_references,
+        )
+
+        references = collect_measurement_references(template)
+        if not references:
+            return None
+        with self._validated_snapshots_lock:
+            if self._measurement_resources is None:
+                self._measurement_resources = PreparedMeasurementResources(
+                    self.dataset_storage
+                )
+        return self._measurement_resources.prepare(references, project_id=project_id)
 
     def _prepare_model_sessions(
         self,

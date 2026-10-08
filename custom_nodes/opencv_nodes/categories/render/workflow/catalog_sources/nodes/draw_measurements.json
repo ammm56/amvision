@@ -48,6 +48,12 @@
         "type": "boolean",
         "default": true
       },
+      "allow_empty": {
+        "type": "boolean",
+        "title": "Allow Empty",
+        "description": "标注数组为空时返回本次原图；不会显示历史结果。",
+        "default": false
+      },
       "save_location": {
         "type": "string"
       }

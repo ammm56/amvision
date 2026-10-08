@@ -107,6 +107,20 @@
         :model-value="readValue(node, field)" :disabled="isParameterEditorDisabled(node, field)"
         @update:model-value="emit('update-value', node, field, $event)"
       />
+      <WorkflowMeasurementResourcePicker
+        v-else-if="field.json_schema['x-ui-widget'] === 'measurement-resource'"
+        :model-value="readValue(node, field)" :schema="field.json_schema" :disabled="isParameterEditorDisabled(node, field)"
+        @update:model-value="emit('update-value', node, field, $event)"
+      />
+      <component
+        :is="trustedParameterEditor(node.node.node_type_id, field.parameter_name)"
+        v-else-if="trustedParameterEditor(node.node.node_type_id, field.parameter_name)"
+        :model-value="readValue(node, field)" :disabled="isParameterEditorDisabled(node, field)"
+        :parameters="node.node.parameters" :parameter-name="field.parameter_name"
+        :preview-display="previewDisplay"
+        :input-sources="editorSources?.(node.node.node_id)"
+        @update:model-value="emit('update-value', node, field, $event)"
+      />
       <WorkflowParameterRowsEditor
         v-else-if="field.json_schema['x-ui-widget'] === 'object-rows'"
         :model-value="readValue(node, field)" :schema="field.json_schema" :label="readLabel(field)"
@@ -128,6 +142,8 @@
 </template>
 
 <script setup lang="ts">
+import { inject } from 'vue'
+import { parameterEditorSourcesKey } from '../parameters/editor-context'
 import { ListFilter } from '@lucide/vue'
 import WorkflowDisplayAppearance from './WorkflowDisplayAppearance.vue'
 import { useI18n } from 'vue-i18n'
@@ -136,14 +152,18 @@ import SelectField from '@/shared/ui/components/Select.vue'
 import WorkflowGraphCheckbox from './WorkflowGraphCheckbox.vue'
 import WorkflowParameterColorMap from './WorkflowParameterColorMap.vue'
 import WorkflowParameterRowsEditor from './WorkflowParameterRowsEditor.vue'
+import WorkflowMeasurementResourcePicker from './WorkflowMeasurementResourcePicker.vue'
+import { trustedParameterEditor } from '../parameters/trusted-editors'
 import { readNodeParameterInputPort } from '../parameters/parameter-input-bindings'
 import { isModelInferenceDeploymentField } from '../parameters/useWorkflowDeploymentInstancePicker'
 import { readWorkflowNumericParameterInputAttributes } from '../parameters/numeric-parameter-input'
 import type { NodeDefinition, NodeParameterUiField, NodePortDefinition, WorkflowGraphNode } from '../types'
+import type { PreviewNodeDisplay } from '../preview/useWorkflowPreviewDisplays'
 
 type SelectValue = string | number | boolean | null
 
 const { t } = useI18n()
+const editorSources=inject(parameterEditorSourcesKey,undefined)
 
 interface SelectOption {
   label: string
@@ -163,6 +183,7 @@ interface WorkflowNodeParameterNode {
 }
 
 const props = defineProps<{
+  previewDisplay?: PreviewNodeDisplay | null
   node: WorkflowNodeParameterNode
   fields: NodeParameterUiField[]
   readLabel: (field: NodeParameterUiField) => string

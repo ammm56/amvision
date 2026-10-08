@@ -6,6 +6,11 @@ import json
 from pathlib import Path
 
 from backend.contracts.workflows.workflow_graph import WorkflowPayloadContract
+from backend.contracts.workflows.metrology import (
+    FeatureObservations,
+    PlanarCalibration,
+    PoseObservation,
+)
 
 
 def get_shared_workflow_dir() -> Path:
@@ -23,9 +28,25 @@ def get_shared_payload_contracts_path() -> Path:
 def load_shared_opencv_payload_contracts_payload() -> list[object]:
     """读取共享 OpenCV payload 规则 JSON 数组。"""
 
-    payload = json.loads(get_shared_payload_contracts_path().read_text(encoding="utf-8"))
+    payload = json.loads(
+        get_shared_payload_contracts_path().read_text(encoding="utf-8")
+    )
     if not isinstance(payload, list):
         raise ValueError("OpenCV shared payload_contracts.json 必须是数组")
+    # 新计量契约独立命名，旧 measurements/localizations/calibration 消费者保持原语义。
+    for key, name, model in (
+        ("geometric-features.v1", "Geometric Features", FeatureObservations),
+        ("image-pose.v1", "Image Pose", PoseObservation),
+        ("planar-calibration.v1", "Planar Calibration", PlanarCalibration),
+    ):
+        payload.append(
+            WorkflowPayloadContract(
+                payload_type_id=key,
+                display_name=name,
+                transport_kind="inline-json",
+                json_schema=model.model_json_schema(),
+            ).model_dump(mode="json")
+        )
     return payload
 
 
@@ -48,12 +69,15 @@ def merge_payload_contracts_for_validation(
     - catalog.json 仍保留节点包自身声明，运行时合并校验时由这里统一去重，避免各节点包各自打补丁。
     """
 
-    merged_payload_contracts: list[WorkflowPayloadContract] = list(core_payload_contracts)
-    seen_payload_type_ids = {contract.payload_type_id for contract in merged_payload_contracts}
+    merged_payload_contracts: list[WorkflowPayloadContract] = list(
+        core_payload_contracts
+    )
+    seen_payload_type_ids = {
+        contract.payload_type_id for contract in merged_payload_contracts
+    }
     for contract in custom_payload_contracts:
         if contract.payload_type_id in seen_payload_type_ids:
             continue
         merged_payload_contracts.append(contract)
         seen_payload_type_ids.add(contract.payload_type_id)
     return tuple(merged_payload_contracts)
-

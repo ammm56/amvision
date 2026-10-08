@@ -1,0 +1,36 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.rigid-locate",
+  "version": "0.1.8",
+  "display_name": "Rigid Locate",
+  "category": "opencv.matching.template",
+  "description": "根据参考图 ROI 定位平移和旋转，显式输出未找到/歧义，不用缩放吸收尺寸变化。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "pose",
+      "display_name": "Pose",
+      "payload_type_id": "image-pose.v1"
+    },
+    {
+      "name": "summary",
+      "display_name": "Summary",
+      "payload_type_id": "value.v1"
+    }
+  ],
+  "parameter_schema": {},
+  "capability_tags": [
+    "vision.opencv",
+    "vision.matching"
+  ],
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.1.8"
+}

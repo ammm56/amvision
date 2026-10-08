@@ -68,6 +68,7 @@
     <WorkflowNodeParameterWidgets
       v-if="hasParameterFields(node)"
       :node="node"
+      :preview-display="previewDisplay"
       :fields="readParameterFields(node)"
       :read-label="readParameterLabel"
       :read-enum-value="readParameterEnumIndex"

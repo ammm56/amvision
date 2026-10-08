@@ -1,6 +1,6 @@
 <template>
   <Teleport to="body">
-    <div v-if="open && image" class="image-viewer" role="dialog" aria-modal="true" @keydown.esc="emit('close')">
+    <div v-if="open && image" class="image-viewer" :style="dialogLayer ? { zIndex: 100 } : undefined" role="dialog" aria-modal="true" @keydown.esc="emit('close')">
       <div class="image-viewer__toolbar">
         <div class="image-viewer__title">
           <strong>{{ image.title }}</strong>
@@ -617,6 +617,8 @@ const props = defineProps<{
   previewDisabled?: boolean
   previewRunning?: boolean
   interactionApplying?: boolean
+  /** 从配置对话框打开的大图须高于其遮罩；普通预览继续使用原有层级。 */
+  dialogLayer?: boolean
 }>()
 
 const emit = defineEmits<{

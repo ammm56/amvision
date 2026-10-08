@@ -1,8 +1,8 @@
 # 二维连接器检查与测量实施基线
 
-状态：设计提案，未实现。依据 [ADR-0014](../decisions/ADR-0014-connector-inspection-2d.md) 组织；现有代码核对基于 `f5682650`。本文是本功能唯一的详细设计与实施步骤，参数名称为拟定名称，不能当作当前 Catalog/API 已公开字段。
+状态：工程实现进行中。依据 [ADR-0014](../decisions/ADR-0014-connector-inspection-2d.md) 组织；最初代码核对基于 `f5682650`。本文件是唯一详细实施基线；当前实现与未完成门禁见第 11 节，不能将设计目标等同于已交付功能。
 
-开发资源已另行准备：[连接器开发图片与参考资源](connector-development-assets.md)包含公开图纸、实拍照片、56 张尺寸受控的合成图、几何真值和可重复生成/校验脚本，可用于 S00A–S03。节点功能仍未实现；这些工程数据不表示 S00B 的实物参考量值已取得。
+开发资源已另行准备：[连接器开发图片与参考资源](connector-development-assets.md)包含公开图纸、实拍照片、56 张尺寸受控的合成图、几何真值和可重复生成/校验脚本，可用于工程验证。这些工程数据不表示 S00B 的实物参考量值已取得。
 
 外部资料及可确认的使用方式见 [ViSCO 功能核对](../reference/vision/visco-connector-inspection.md)和[工业二维检查资料与能力边界](../reference/vision/industrial-2d-measurement.md)。本文件描述 AMVision 自身方案，不声称复现 ViSCO 私有算法或达到相同计量性能。通用节点、行业扩展和产品配置的隔离是明确需求；本次细化不改变现有节点的公开身份。
 
@@ -38,7 +38,7 @@
 | [Workflow 文档导入导出](../design/frontend/workflow-document-import-export.md) | 编辑器 JSON 定义和资源引用的便携文档 | 当前不包含二进制资产；本轮不能将现有 JSON 导出说成完整资源打包。 |
 | [Preview 执行](../../backend/service/application/workflows/preview/execution.py) | 现有内存预览执行服务 | 本轮不得重新引入另一个模型加载器或磁盘结果交换路径。 |
 
-当前连接器专用包、专属编辑器与真实计量验收尚未存在。此前治具/塑盒、CUDA/TensorRT、共享内存的验证是平台基础证据，不是连接器功能验收。
+第 2 节记录实施前的缺口；当前行业包和编辑器已进入工程验证，进展见第 11 节。真实计量验收仍未完成。此前治具/塑盒、CUDA/TensorRT、共享内存的验证是平台基础证据，不是连接器功能验收。
 
 ## 3. 分层与节点职责
 
@@ -464,7 +464,7 @@ Runtime 准备阶段校验并借用已发布资源，按需建立有界只读计
 
 ## 8. 逐步实施与完成门禁
 
-每步先核对输入与约束，再实现最小变更，检查差异、跑对应测试、记录证据。门禁不通过先定位，不把未完成内容写成“后续优化”后继续发布。下表全部为未实施，不能据此勾选完成。
+每步先核对输入与约束，再实现最小变更，检查差异、跑对应测试、记录证据。门禁不通过先定位，不把未完成内容写成“后续优化”后继续发布。下表定义实施范围和通过条件；实际完成状态见第 11 节，不能仅凭范围表勾选验收完成。
 
 | 步骤 | 代码/设计范围 | 验证与通过条件 |
 | --- | --- | --- |
@@ -505,7 +505,7 @@ Runtime 准备阶段校验并借用已发布资源，按需建立有界只读计
 
 ### 8.3 实施前必须关闭的工程细节
 
-这些是具体开发任务，不需要等待完整 ViSCO 手册。完成状态必须由代码和测试确认，当前均未完成；表中架构边界已由本文限定，不能在实现时另选一套运行架构。
+这些是具体开发任务，不需要等待完整 ViSCO 手册。完成状态必须由代码和测试确认，当前进展见第 11 节；表中架构边界已由本文限定，不能在实现时另选一套运行架构。
 
 | 截止步骤 | 必须交付 | 最小验证 |
 | --- | --- | --- |
@@ -559,7 +559,7 @@ bundled Python 的 CPU/NVIDIA profile 分别验证包发现、依赖、原生库
 
 ## 10. 尚待确认与当前可开始部分
 
-现有资料足以开始 S00A/S01 工程实现，不需要继续无边界收集厂商功能。S01 尚未完成，不能宣布所有参数和代码接口已经冻结，也不能直接将设计当作现场可用功能。
+现有资料足以开始 S00A/S01 工程实现，不需要继续无边界收集厂商功能。S01 契约与基础闭环已实现；仍不能将工程验证当作现场可用性的完整证明。
 
 仍需以下产品证据；这些影响默认参数与计量放行，不阻塞契约测试和合成算法验证：
 
@@ -571,7 +571,7 @@ bundled Python 的 CPU/NVIDIA profile 分别验证包发现、依赖、原生库
 | 成像与工位约束 | 镜头/视野、光源、测量平面与高度变化、图像处理链、最大 PIN/检查项数、CPU/内存、并发和节拍 | 标定模型选择、可观测性、误差预算及端到端性能验收。 |
 | 特定 ViSCO 操作资料 | 仅针对未能从公开材料确认、且确实影响本项目交互的操作 | 对应交互的对标结论；不阻塞现有架构和基础代码。 |
 
-资料不足时明确限制验收范围，不补造尺寸、样本或性能数字。下一步先提交 S01 契约与可运行的测试，再进入 S02/S03；S00B 同时收集。当前文件不宣布功能已实现，也不代替实现后的真实验收记录。
+资料不足时明确限制验收范围，不补造尺寸、样本或性能数字。本次代码与测试覆盖见第 11 节；S00B 继续作为真实计量验收前提，不能由合成测试替代。
 
 S00B 每条检查使用以下空白模板填实，不先虚构具体产品尺寸：
 
@@ -582,3 +582,96 @@ S00B 每条检查使用以下空白模板填实，不先虚构具体产品尺寸
 S01 同时提交节点清单、端口契约、包依赖图、复用/新增理由、旧功能影响清单和第 3.8 节隔离测试。归属不清楚的功能先澄清职责，不能先复制旧节点再改名。
 
 完成后将稳定行为并入 Workflow 架构、节点参考和用户操作文档；删去本文件中已失去作用的实施步骤，保留未完成门禁的唯一入口。
+
+## 11. 实施记录与明确接口（2026-10-07 至 2026-10-08）
+
+本节覆盖本次代码实现，前述章节保留目标及验收门禁。`connector.nodes` 暂为默认禁用的开发包；资源发布闭环已接入，现场计量及完整系统验收完成前保持默认禁用，不作为已验收生产功能启用。这里的开发测试不修改现场治具/塑盒应用及生产计数。
+
+### 11.1 契约与归属
+
+| 类型/节点 | 所有者及实现 | 固定语义 |
+| --- | --- | --- |
+| `numeric-table.v1` | Core；`backend/contracts/workflows/metrology.py` | `observation_id`、稳定 `item_id`、逐项 `unit/value/valid/reason`；无效只能为 null，禁止 NaN/Infinity/隐式零。 |
+| `geometric-features.v1` | OpenCV 公共契约 | 原图身份、参考身份、观察 ID、有限点/边证据及残差；不含产品规则。 |
+| `image-pose.v1` | OpenCV 公共契约 | 完整 reference 像素到当前 raw-image 的刚性变换；found/not_found/ambiguous/out_of_view；失败不携带矩阵。 |
+| `planar-calibration.v1` | OpenCV 公共契约 | 图像规格、平面名、单位、映射、凸有效域、拟合残差及独立验证误差。 |
+| `connector-pins.v1` | `connector.nodes` | 固定 PIN/行/类型 ID、名义要求、观测状态、特征引用；与 Features 的图像/观察/参考身份须完全一致。 |
+| Check Limits | Core `core.rule.check-limits` | `table` → `result`/`summary`；必检配置来自保存的规则，不从成功项推导。另用温度、重量表验证通用性。 |
+| Numeric Table To Value | Core `core.value.numeric-table-to-value` | 显式转换至既有 `value.v1`；Value Display/Extract Value Field 可消费。旧 `measurements.v1` 与消费者不变。 |
+| Planar Calibrate | OpenCV `custom.opencv.planar-calibrate` | 控制点/独立验证点配置 → `calibration`/`summary`；超验证门槛失败，不输出可用标定。 |
+| Rigid Locate | OpenCV `custom.opencv.rigid-locate` | `image` + 不可变 `template_resource` 参数 → `pose`/`summary`；ROI 裁剪偏移纳入变换，多可信工件明确歧义。 |
+| Pin Array Locate | `custom.connector.pin-array-locate` | `image`/`pose` → `pins`/`features`/`checks`/`summary`；fixed 必须显式配置，不作为定位失败回退。 |
+| Connector Measure | `custom.connector.measure` | `pins`/`features` → `measurements`/`summary`/`annotations`；只测已有几何，不读图、重新定位或重新采样。 |
+
+新增 Rigid Locate 的原因：既有 Shape Locate 包含尺度搜索且失败抛异常，Feature Locate 提供投影变换；二者都不满足“禁止尺度吸收尺寸错误、失败保留可连线状态、多工件歧义”的计量入口。新工具是通用刚性定位，旧工具 ID、端口、算法与失败语义保持不变；不增加 Connector Locate。已用非连接器的不对称块体、多物体和裁剪原点样例验证。
+
+尺寸配置的方向/截面使用 reference 像素坐标，先消除工件刚性姿态再取有限边缘截面。Width/Gap 不外推；Pitch/Total Pitch 使用指定身份端点；Offset 保留有符号方向；Angle 当前定义为两条无向边的锐夹角 0–90 degrees；Length 必须指定所属 PIN 的两个已观测点特征，缺少针尖/根部证据时无效。物理单位必须使用准备好的同规格、同单位平面标定资源；先映射实测端点再量测，不能将像素值冒充毫米。投影距离使用参考方向经局部 Jacobian 映射后的有符号投影；Euclidean 使用映射后端点欧氏距离。
+
+公共数组级函数仅从 `custom_nodes.opencv_nodes.shared.backend.metrology` 使用；行业包不导入 OpenCV 节点处理器。包依赖为 `connector.nodes 0.1.8 → opencv.nodes >=0.1.8,<0.2`。两节点当前沿用默认串行并发声明。关闭行业包不影响 Core/OpenCV 原有节点；不修改 Runtime/Trigger 的队列、重试、推理或通信路径。
+
+### 11.2 预算及异常
+
+- 原图不超过 6400 万像素、各边小于 32767；支持 uint8/uint16/0–1 float32。定位输入另限 1600 万像素、模板 200 万像素。
+- 最多 1024 个 PIN、64 个采样类型；每 PIN 最多 65 条扫描线、8193 个沿线采样点；总采样点数不超过 400 万。
+- 单线最多 128 个原始峰、16 个保留峰；存在多个可信边缘对的扫描线不补造边缘，剩余清晰扫描线仍须达到配置覆盖率。覆盖不足且有歧义时输出 ambiguous。
+- 定位最多 181 个角度、每角度 4 个独立候选、累计 1 亿搜索位置；超预算失败。先粗定位再在原图局部精定位，尺寸计算仍使用原始矩阵。
+- 每个值表最多 8192 项；有限几何最多 6144 项；控制点和独立验证点各最多 4096。超限不截断。
+- 取消/期限在角度、候选、扫描线、PIN 和尺寸项间检查。单次 OpenCV 原生计算仍受输入预算约束，不声称可即时中断。
+
+### 11.3 资源所有者与接入点
+
+资源服务归现有 Workflow 文档服务域，实现入口为 `backend/service/application/workflows/documents/measurement_resources.py`，存储通过既有 `LocalDatasetStorage`/ObjectStore。文件路径使用 `workflows/projects/{project_id}/measurement-resources/{resource_id}/versions/{version}/`；资源引用固定为 `project_id/resource_id/version/sha256/kind`，不接受客户端任意磁盘路径。保存产生不可变版本；参考图二进制与 JSON 描述分别保存和校验。
+
+发布入口为 `WorkflowAppVersionService.get_draft_snapshot` 和现有 dependency manifest 构造；必须验证并冻结资源及传递包依赖。Runtime/Preview 共用 `SnapshotExecutionService` 的准备边界，预读后的只读资源通过本次执行 metadata 借用；无资源引用的旧流程不进入文件读取或资源缓存路径。删除通过现有 lifecycle claim 协调，并检查草稿/已发布版本引用；资源包导入导出独立于现有 Workflow JSON，不变更旧导出含义。
+
+资源 API、完整性验证、跨项目导入、引用保护和删除失败后继续清理已实现并有测试。资源 UI 随 Vue 3 前端编译，manifest 不能加载任意 JavaScript；没有新增独立连接器页面。
+
+
+### 11.4 本轮代码闭环
+
+- Core 新增 `Check Limits`、`Numeric Table To Value`、`Merge Numeric Tables`，不写 PIN、治具或产品类别。合并只接受同一观察且无重复 item_id 的表。
+- OpenCV 新增 `Rigid Locate`、`Planar Calibrate` 及数组级采样/有限几何计算。既有 Shape Locate、Feature Locate、Caliper Edge 不改变行为。
+- `connector.nodes` 包新增 `Pin Array Locate` 和 `Connector Measure`；节点版本 0.1.8，声明依赖 OpenCV 包，默认禁用。
+- 名义布局支持单/双排、错列、逐 PIN 类型与设计留空。每个 PIN 可配置两组具名端点扫描；长度只消费实际观测到的点。
+- 多余候选检查由显式 `candidate_bands` 决定。只搜索配置带内、符合极性/宽度条件的边缘对，不宣称检查全部前景或带外物体。归属比较使用同一截面的有限边缘，禁止不同截面中心直接比较、禁止外推。候选未确认或多归属时无效。
+- `Draw Measurements` 支持显式带单位 label；`allow_empty` 默认 false。显式启用后，无有效尺寸仍返回本次原图；若配置 save_location，仍执行指定保存。没有增加隐式磁盘预览交换。
+- 两个工程 Workflow 由 `scripts/connector_assets/workflow.py` 生成。定位→PIN→尺寸/存在性值表合并→Check Limits→Value Display→Image Preview；图像与状态通过明确端口绑定。
+
+### 11.5 编辑与现场使用顺序
+
+1. 选择原图、明确视图与测量平面。需要去畸变时先使用已有 Camera Calibrate/Undistort；后续模板、PIN 坐标和标定必须全部基于同一处理后的图像空间，不能将原图标定混入去畸变图。当前不自动生成跨空间变换链。
+2. 配置 Planar Calibrate 的图像规格、单位、平面 ID、模型、拟合点和独立验证点。表格支持在原图上取点，实物平面坐标由独立参考输入。运行结果超过验证门槛直接失败。
+3. 在 Connector Measure 的资源选择器中保存 Calibration 输出为不可变版本。拟合函数输出包含控制点和验证点证据；外部导入或合成比例资源可没有这些证据，不能因此视作完成实物标定。
+4. Rigid Locate 资源选择器上传完整 PNG 原图、框选模板 ROI、指定锚点、保存版本；设置有限角度与最低匹配分数。搜索不允许尺度变动吸收尺寸偏差。
+5. Pin Array Locate 的 Layout 编辑器选择同一模板版本、生成阵列、检查固定编号、留空、类型、采样带和端点扫描。参考原图可查看 PIN、当前采样带、端点带与候选搜索带。选择诊断 PIN 并启用 Debug Preview 后，执行预览可查看平均灰度、梯度、逐线边缘对、保留点、覆盖率和拟合残差。更改采样草稿或预览过期时隐藏旧诊断，不把旧剖面用于新参数判断。
+6. Connector Measure 的 Items 编辑器配置稳定 PIN ID、尺寸类型、截面、方向、具名端点、单位和标定版本。Pins/Features 显式来自同一个 Pin Array Locate 时，可在其参考原图上设置方向/截面；这里只展示配置示意，实际测量仍从本次有限几何计算。方向需要归一化；Length 不能用中心距或框高代替。
+7. Check Limits 配置独立公差。必检缺失、无效、单位不符和无必检项都不能判 OK；业务最终结果在 Workflow 中组装。
+8. 通过现有预览调试；保存/发布/Runtime/Trigger/App Mode 使用原有入口。图片和 Value Display 显式连接。应用端仍读取 value/response-body 结果，不需要连接器专用 .NET SDK 方法。
+
+编辑器采用本地构建的可信注册表，Apply 一次提交草稿，Cancel 不修改节点。标定、模板和 PIN 的大图使用对话框之上的显式层级，普通图片预览层级不变。中文/英文切换及亮/暗主题使用既有组件和 tokens。
+
+### 11.6 性能、生命周期和兼容边界
+
+- 资源最多 64 个版本、每个 Snapshot 服务缓存上限 256 MiB。首次准备读取/hash/解码，缓存矩阵只读；运行中引用独立于缓存条目淘汰，不会把借用矩阵提前销毁。并发执行仍占有各自活跃引用，缓存上限不等于整个进程 RSS 上限。
+- Runtime 准备阶段校验并准备资源，再准备现有模型 session。Preview 首次执行准备；后续缓存命中复用。无资源的旧图不读资源磁盘、不建立资源缓存。
+- 保存新版本不改变已有发布快照。发布冻结资源 ID/version/hash 和传递包依赖；资源删除检查草稿及发布版本，无法可靠读取引用文档时拒绝删除。
+- 删除采用版本凭据；文件占用/权限/磁盘错误返回持久化错误和系统错误号。再次请求可以继续清理；版本号不会复用。已缓存的不可变内容不会每帧重新读取磁盘，手工改动不用于修改正在运行的配方。
+- 管理面读写使用现有项目生命周期门和非等待资源锁；没有加入 Runtime/Trigger 排队、自动重试或模型加载路径。
+- 没有修改 .NET 公开调用协议；连接器检查结果由现有同步调用读取。仍须完成发行环境实际 SDK 联调，不由 Python 接口测试代替。
+
+### 11.7 当前验证与未完成门禁
+
+工程自动化已覆盖：准备的单排/双排原图、旋转/位移、缺首/中/末针、设计留空、额外 PIN、无工件；位深、有限截面、具名端点、标定独立验证、错帧、错误单位、重复 ID、资源 hash/项目/版本、真实 GraphExecutor、PreviewMemoryExecutionService、SnapshotExecutionService，以及隔离 API 发布/独立 Runtime 进程调用/停止。
+
+12 张准备的棋盘图用于已有 Camera Calibrate 的实际图像检测与标定回归；这与理想平面比例的连接器示例分开报告。不能将合成棋盘拟合残差当作现场量具准确度。
+
+浏览器先在隔离组件页核对编辑器、亮暗主题、中英文、取消不写入、真实原图加载和大图取点返回，再使用本轮源码及前端构建启动隔离 HTTP 服务，验证保存、发布、独立 Runtime、App Mode 及大图。开发后端 5600 未监听，因此使用独立数据库、ObjectStore 和本地内存目录，不改动现有客户 App。验证发现并修复父对话框遮住取点大图、PIN 表格宽度不足、空采样类型操作以及示例 App Mode 未显式写出默认字段的问题。
+
+**尚未完成的门禁必须保留：**
+
+- S05 已有逐 PIN 剖面和尺寸方向/截面图形交互；诊断只在明确启用的 Preview 中生成，Runtime 不生成剖面。现场复杂采样配方的易用性仍需真实使用反馈。
+- S07 的隔离完整页面、发布 Runtime、App Mode 与大图已联调；跨项目导入和引用重新绑定有 API/组件验证，未在现场应用中替换资源。
+- S09 已验证开发 Python 及现有 bundled CPU/NVIDIA 解释器中的算法/资源测试，仓库 .NET SDK 的真实调用记录见下方报告。未重新组装两种发行包，也未完成连接器混合负载一小时压力/恢复门禁。本轮短测不能证明长期工业稳定性或全部延迟指标。
+- S00B 对应实物原图、图纸公差和独立参考量值仍缺少，不能宣布物理准确度或现场生产验收通过。S08 外观扩展按原规划后置，不伪造外观缺陷样本验收。
+
+实际测试命令与本轮计数登记在 [工程验证记录](connector-implementation-validation.md)，避免将过程中的测试失败、最终通过和待验证混为一谈。
