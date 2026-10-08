@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import AbstractContextManager, contextmanager
+from collections import deque
 from dataclasses import dataclass
 import mmap
 from pathlib import Path
@@ -91,6 +92,8 @@ class LocalBufferBrokerClient:
         self._error_count = SafeCounterState()
         self._last_error: dict[str, object] | None = None
         self._request_response_lock = Lock()
+        # 仅保存少量已超时请求的 identity；不重发请求、不增加业务等待队列。
+        self._timed_out_requests: deque[str] = deque(maxlen=64)
 
     def get_status(self) -> dict[str, object]:
         """读取 Broker arena、容量守恒和健康摘要。"""
@@ -880,9 +883,7 @@ class LocalBufferBrokerClient:
                 open_direct_mmap_local_buffer_access,
             )
 
-            access = open_direct_mmap_local_buffer_access(
-                self._direct_access_settings
-            )
+            access = open_direct_mmap_local_buffer_access(self._direct_access_settings)
             try:
                 reader = DirectMmapLocalBufferReader(
                     self._direct_access_settings,
@@ -954,22 +955,45 @@ class LocalBufferBrokerClient:
         }
         increment_safe_counter(self._request_count)
         with self._request_response_lock:
+            if self._closed:
+                raise ServiceConfigurationError("LocalBufferBroker client 已关闭")
             self.channel.request_queue.put(message)
+            started_ns = monotonic_ns()
+            deadline_ns = started_ns + int(self.channel.request_timeout_seconds * 1e9)
             try:
-                response = self.channel.response_queue.get(
-                    timeout=self.channel.request_timeout_seconds
-                )
+                while True:
+                    remaining = (deadline_ns - monotonic_ns()) / 1e9
+                    if remaining <= 0:
+                        raise Empty
+                    response = self.channel.response_queue.get(timeout=remaining)
+                    response_id = (
+                        response.get("request_id")
+                        if isinstance(response, dict)
+                        else None
+                    )
+                    if response_id == request_id:
+                        break
+                    if response_id in self._timed_out_requests:
+                        self._timed_out_requests.remove(response_id)
+                        continue
+                    error = ServiceConfigurationError(
+                        "LocalBufferBroker 响应 identity 不匹配"
+                    )
+                    self._record_error(action=action, error=error)
+                    raise error
             except Empty as error:
+                self._timed_out_requests.append(request_id)
                 timeout = OperationTimeoutError(
                     "等待 LocalBufferBroker 响应超时",
-                    details={"action": action},
+                    details={
+                        "action": action,
+                        "request_id": request_id,
+                        "timeout_seconds": self.channel.request_timeout_seconds,
+                        "elapsed_seconds": (monotonic_ns() - started_ns) / 1e9,
+                    },
                 )
                 self._record_error(action=action, error=timeout)
                 raise timeout from error
-        if not isinstance(response, dict) or response.get("request_id") != request_id:
-            error = ServiceConfigurationError("LocalBufferBroker 响应 identity 不匹配")
-            self._record_error(action=action, error=error)
-            raise error
         if not response.get("ok"):
             error_payload = response.get("error")
             details = dict(error_payload) if isinstance(error_payload, dict) else {}
@@ -987,8 +1011,7 @@ class LocalBufferBrokerClient:
                 error = LocalBufferCapacityError(
                     message,
                     contiguous=(
-                        error_code
-                        == "local_buffer_contiguous_capacity_exhausted"
+                        error_code == "local_buffer_contiguous_capacity_exhausted"
                     ),
                     details=error_details,
                 )

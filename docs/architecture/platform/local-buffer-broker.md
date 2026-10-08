@@ -22,6 +22,12 @@ LocalBuffer 是本机跨进程短期图片的共享数据面。当前 Workflow �
 
 实现位于 `backend/service/application/local_buffers/` 和 `backend/service/infrastructure/local_buffers/`。
 
+过期与撤销回收由 Broker owner 的事件循环按单调时钟推进，持续有请求和空闲时均检查到期时间。普通 TTL 使用 `expire_interval_seconds`；已撤销 lease 每 0.5 秒检查 reader guard，不因超时强行复用仍被借用的图片。HTTP Supervisor 不再通过周期性 RPC 发起清理，因此 HTTP 繁忙或控制往返超过预算不再中断后台回收。没有增加业务队列、自动重发或推理等待。
+
+`status.housekeeping` 提供 owner、清理耗时、最近成功时间、当前错误与最近错误；两个清理动作分别保留错误，只有同一动作恢复才清除当前错误。`expire_loop_running` 表示已确认的 Broker TTL 清理已启用，不再表示 HTTP 中的线程；状态查询失败时为 false。清理仍可能受操作系统调度影响，健康状态如实暴露失败，不把进程存活等同于清理成功。
+
+同步 client 超时后只记录有界的请求 identity。后续调用在原有超时预算内丢弃已知迟到响应；未知 identity 仍报错，原请求不会重发。此机制避免一次迟到响应污染后续调用，不改变 allocate/release 的业务语义、mmap 布局或 .NET SDK 协议。
+
 ## 文件目录
 
 当前共享根由中立的 `local_memory.root_dir` 配置，默认保持 `./data/buffers`，不能收窄为某个 LocalBuffer 子目录，因为 Inference/Workflow Trigger/Training Telemetry Channel 也从该根派生。LocalBuffer 只消费其中的 `local-buffer/` 子目录，且不会与 LocalMessage 共享 enable、owner 或生命周期。

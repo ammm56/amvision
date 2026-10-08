@@ -24,6 +24,59 @@ from backend.service.application.workflows.model_sessions import (
 from backend.service.application.errors import ResourceInUseError
 
 
+def test_empty_preview_scopes_release_locks_and_do_not_enter_model_lru():
+    """没有模型的短会话结束后不遗留锁句柄或 LRU 项；异常路径同样释放。"""
+    import gc
+    manager = WorkflowModelSessionManager(runtime_registry=WorkflowNodeRuntimeRegistry())
+    for index in range(1000):
+        scope = f"preview-session:empty-{index}"
+        manager.enforce_scope_limit(scope_prefix="preview-session:", current_scope_id=scope, max_scope_count=2)
+        with manager.locked_scope(scope):
+            with manager.locked_scope(scope, wait=False):
+                assert len(manager._scope_locks) == 1
+    with pytest.raises(ValueError):
+        with manager.locked_scope("preview-session:failed"):
+            raise ValueError("failed")
+    gc.collect()
+    assert len(manager._scope_locks) == 0
+    assert manager._scope_last_used_monotonic == {}
+    manager.close_all()
+
+
+def test_waiting_scope_keeps_same_lock_when_owner_exits():
+    """等待者必须保持锁身份，不能在交接时创建第二把锁绕过互斥。"""
+    manager = WorkflowModelSessionManager(runtime_registry=WorkflowNodeRuntimeRegistry())
+    waiting, acquired, release = Event(), Event(), Event()
+    failures = []
+
+    def waiter():
+        try:
+            lock = manager._get_scope_lock("runtime:shared")
+            waiting.set()
+            with lock:
+                acquired.set()
+                assert release.wait(3)
+        except Exception as error:
+            failures.append(error)
+
+    with manager.locked_scope("runtime:shared"):
+        thread = Thread(target=waiter)
+        thread.start()
+        assert waiting.wait(3)
+        assert not acquired.is_set()
+    try:
+        assert acquired.wait(3)
+        with pytest.raises(ResourceInUseError):
+            with manager.locked_scope("runtime:shared", wait=False):
+                pytest.fail("并发持有者绕过了已有 scope 锁")
+    finally:
+        release.set()
+        thread.join(3)
+    assert not thread.is_alive()
+    assert not failures
+    assert len(manager._scope_locks) == 0
+
+
 @dataclass
 class _FakeSession:
     closed: bool = False

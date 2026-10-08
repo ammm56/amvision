@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from multiprocessing import parent_process
 import os
 from pathlib import Path
+from time import monotonic
 from typing import Any
 
 from backend.contracts.buffers import BufferLease, BufferRef, FrameRef
@@ -52,6 +54,7 @@ class LocalBufferBrokerRegistry:
                 revocation_grace_seconds=self.settings.revocation_grace_seconds,
             )
         )
+        self.housekeeping = _BrokerHousekeeping(self)
 
     @property
     def broker_epoch(self) -> str:
@@ -118,7 +121,14 @@ class LocalBufferBrokerRegistry:
 
     def _handle_status(self, _payload: dict[str, object]) -> dict[str, object]:
         status = self._arena.build_status()
-        return {"process_id": os.getpid(), **status}
+        return {
+            "process_id": os.getpid(),
+            **status,
+            "state": "error"
+            if self.housekeeping.error is not None
+            else status["state"],
+            "housekeeping": self.housekeeping.describe(),
+        }
 
     def _handle_allocate_buffer(self, payload: dict[str, object]) -> dict[str, object]:
         lease = self._arena.allocate(
@@ -165,9 +175,7 @@ class LocalBufferBrokerRegistry:
             "allocations": [
                 {
                     "lease": lease.model_dump(mode="json"),
-                    "writer": self._build_writer_location(
-                        lease.descriptor_index
-                    ),
+                    "writer": self._build_writer_location(lease.descriptor_index),
                 }
                 for lease in leases
             ]
@@ -187,9 +195,7 @@ class LocalBufferBrokerRegistry:
         )
         return {
             "allocation": allocation.model_dump(mode="json"),
-            "writer": self._build_writer_location(
-                allocation.lease.descriptor_index
-            ),
+            "writer": self._build_writer_location(allocation.lease.descriptor_index),
         }
 
     def _build_writer_location(self, descriptor_index: int) -> dict[str, object]:
@@ -316,18 +322,14 @@ class LocalBufferBrokerRegistry:
             new_owner_id=_require_str(payload, "new_owner_id"),
             deadline_ns=_require_positive_int(payload, "deadline_ns"),
         )
-        return {
-            "receipts": [item.model_dump(mode="json") for item in transferred]
-        }
+        return {"receipts": [item.model_dump(mode="json") for item in transferred]}
 
     def _handle_conditional_release(
         self,
         payload: dict[str, object],
     ) -> dict[str, object]:
         return {
-            "status": self._arena.conditional_release(
-                receipt=_require_receipt(payload)
-            )
+            "status": self._arena.conditional_release(receipt=_require_receipt(payload))
         }
 
     def _handle_sweep(self, _payload: dict[str, object]) -> dict[str, object]:
@@ -370,9 +372,9 @@ class LocalBufferBrokerRegistry:
 
     def _handle_allocate_frame(self, payload: dict[str, object]) -> dict[str, object]:
         reservation = self._arena.allocate_frame(
-                stream_id=_require_str(payload, "stream_id"),
-                content_length=_require_positive_int(payload, "content_length"),
-            )
+            stream_id=_require_str(payload, "stream_id"),
+            content_length=_require_positive_int(payload, "content_length"),
+        )
         return {
             "reservation": {
                 **reservation,
@@ -488,6 +490,79 @@ class LocalBufferBrokerRegistry:
         return {"state": "stopping", "process_id": os.getpid()}
 
 
+class _BrokerHousekeeping:
+    """由 Broker owner 推进清理；繁忙时仍执行，不经过 HTTP 或 router。"""
+
+    def __init__(self, registry: LocalBufferBrokerRegistry) -> None:
+        """初始化单调期限、最近耗时与有界错误观测。"""
+        self.registry = registry
+        self.interval = max(0.1, registry.settings.expire_interval_seconds)
+        self.expire_enabled = registry.settings.expire_interval_seconds > 0
+        self.next_sweep = monotonic() + 0.5
+        self.next_expire = monotonic() + self.interval
+        self.last_success_at: str | None = None
+        self.duration_ms = 0.0
+        self.errors: dict[str, dict[str, object]] = {}
+        self.last_error: dict[str, object] | None = None
+
+    @property
+    def error(self) -> dict[str, object] | None:
+        """任一清理动作未恢复时持续报告错误，不由另一动作掩盖。"""
+        return next(iter(self.errors.values()), None)
+
+    def run_due(self) -> None:
+        """到期时执行一轮；不补跑积压轮次，异常由 health 保留并下轮恢复。"""
+        now = monotonic()
+        expire = self.expire_enabled and now >= self.next_expire
+        sweep = now >= self.next_sweep
+        if not expire and not sweep:
+            return
+        # 先移动期限，故障不能产生紧密重试；清理沿用原有 lease/reader guard。
+        if expire:
+            self.next_expire = now + self.interval
+        if sweep:
+            self.next_sweep = now + 0.5
+        for action, due, handler in (
+            ("expire-leases", expire, self.registry._arena.expire_leases),
+            ("sweep-reclaiming-leases", sweep, self.registry.sweep_reclaiming_leases),
+        ):
+            if not due:
+                continue
+            try:
+                handler()
+            except Exception as error:
+                self.errors[action] = {
+                    "action": action,
+                    "error_type": type(error).__name__,
+                    "message": str(error),
+                    "occurred_at": datetime.now(timezone.utc).isoformat(),
+                }
+                self.last_error = self.errors[action]
+            else:
+                self.errors.pop(action, None)
+        if not self.errors:
+            self.last_success_at = datetime.now(timezone.utc).isoformat()
+        self.duration_ms = (monotonic() - now) * 1000
+
+    def poll_timeout(self) -> float:
+        """空闲等待不越过最近清理期限，最多等待半秒。"""
+        deadline = self.next_sweep
+        if self.expire_enabled:
+            deadline = min(deadline, self.next_expire)
+        return max(0.0, min(0.5, deadline - monotonic()))
+
+    def describe(self) -> dict[str, object]:
+        """返回固定大小的健康观测，不积累历史明细。"""
+        return {
+            "owner": "broker",
+            "expire_enabled": self.expire_enabled,
+            "last_success_at": self.last_success_at,
+            "duration_ms": self.duration_ms,
+            "error": self.error,
+            "last_error": self.last_error,
+        }
+
+
 def run_local_buffer_broker_process(
     *,
     settings_payload: dict[str, object],
@@ -516,19 +591,30 @@ def run_local_buffer_broker_process(
             },
         )
         stop_requested = False
+        next_parent_check = monotonic() + 0.5
         while not stop_requested:
+            registry.housekeeping.run_due()
+            if monotonic() >= next_parent_check:
+                next_parent_check = monotonic() + 0.5
+                if supervisor_process is not None and not supervisor_process.is_alive():
+                    break
             try:
-                if not request_connection.poll(0.5):
-                    registry.sweep_reclaiming_leases()
-                    if supervisor_process is not None and not supervisor_process.is_alive():
-                        break
+                if not request_connection.poll(registry.housekeeping.poll_timeout()):
                     continue
                 message = request_connection.recv()
             except (EOFError, OSError):
                 break
-            request_id = str(message.get("request_id") or "") if isinstance(message, dict) else ""
+            request_id = (
+                str(message.get("request_id") or "")
+                if isinstance(message, dict)
+                else ""
+            )
             try:
-                action = str(message.get("action") or "") if isinstance(message, dict) else ""
+                action = (
+                    str(message.get("action") or "")
+                    if isinstance(message, dict)
+                    else ""
+                )
                 response_connection.send(
                     {
                         "request_id": request_id,
@@ -631,9 +717,7 @@ def _require_dict_items(
 
     value = payload.get(field_name)
     if not isinstance(value, list) or not value or len(value) > max_count:
-        raise InvalidRequestError(
-            f"{field_name} 必须包含 1 到 {max_count} 个对象"
-        )
+        raise InvalidRequestError(f"{field_name} 必须包含 1 到 {max_count} 个对象")
     if not all(isinstance(item, dict) for item in value):
         raise InvalidRequestError(f"{field_name} 的每一项都必须是对象")
     return tuple(dict(item) for item in value)

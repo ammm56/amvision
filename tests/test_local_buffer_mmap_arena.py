@@ -11,7 +11,9 @@ from time import monotonic_ns, sleep
 
 import pytest
 
-from backend.service.infrastructure.local_buffers import mmap_buffer_arena as arena_module
+from backend.service.infrastructure.local_buffers import (
+    mmap_buffer_arena as arena_module,
+)
 from backend.service.infrastructure.ipc.mmap_primitives import (
     MmapGuardFileError,
     MmapOwnerLockBusyError,
@@ -88,6 +90,17 @@ def test_arena_allocates_exact_extent_and_publishes_active_bytes(tmp_path) -> No
         status = arena.build_status()
         assert status["state"] == "healthy"
         assert status["free_capacity_bytes"] == 16 * _MIB
+
+
+def test_empty_arena_housekeeping_does_not_scan_descriptor_table(tmp_path, monkeypatch):
+    """空闲回收不随 arena 槽位数量放大控制线程成本。"""
+    with MmapBufferArena(_config(tmp_path)) as arena:
+
+        def unexpected_read(_index):
+            raise AssertionError("empty arena must not scan descriptors")
+
+        monkeypatch.setattr(arena, "_read_descriptor", unexpected_read)
+        assert arena.sweep() == {"released_count": 0, "quarantined_count": 0}
 
 
 def test_descriptor_publication_never_rewrites_fixed_header(
@@ -245,7 +258,9 @@ def test_interrupted_first_initialization_can_resume_before_header_publication(
         return original_open(*args, **kwargs)
 
     monkeypatch.setattr(arena_module, "open_mmap_guard_identity", fail_first_guard)
-    with pytest.raises(KeyboardInterrupt, match="injected guard initialization failure"):
+    with pytest.raises(
+        KeyboardInterrupt, match="injected guard initialization failure"
+    ):
         MmapBufferArena(_config(tmp_path))
 
     monkeypatch.setattr(arena_module, "open_mmap_guard_identity", original_open)
@@ -261,7 +276,9 @@ def test_unpublished_first_initialization_repairs_partial_guard(tmp_path) -> Non
     guard_path.write_bytes(b"x")
 
     with MmapBufferArena(_config(tmp_path)) as arena:
-        expected_size = arena.descriptor_count * (2 + arena.config.reader_guard_slots) + 1
+        expected_size = (
+            arena.descriptor_count * (2 + arena.config.reader_guard_slots) + 1
+        )
         assert guard_path.stat().st_size == expected_size
 
 
@@ -353,7 +370,9 @@ def test_direct_writer_and_reader_views_revalidate_after_guard(tmp_path) -> None
         assert arena.request_reclaim(transferred) == "released"
 
 
-def test_external_writer_stale_error_reports_expected_and_actual_fence(tmp_path) -> None:
+def test_external_writer_stale_error_reports_expected_and_actual_fence(
+    tmp_path,
+) -> None:
     """descriptor 复用时诊断必须包含新旧 generation、状态和 publication fence。"""
 
     with MmapBufferArena(_config(tmp_path)) as arena:

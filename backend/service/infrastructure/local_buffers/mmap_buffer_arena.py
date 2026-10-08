@@ -162,9 +162,9 @@ class MmapBufferArena:
         self._allocator_lock = RLock()
         self._publication_lock = RLock()
         self._lifecycle = Condition(RLock())
-        self._lifecycle_state: Literal[
-            "open", "closing", "close_blocked", "closed"
-        ] = "open"
+        self._lifecycle_state: Literal["open", "closing", "close_blocked", "closed"] = (
+            "open"
+        )
         self._active_borrows = 0
         self._close_blocked_count = 0
         self._allocation_disabled = False
@@ -644,6 +644,10 @@ class MmapBufferArena:
         current_ns = monotonic_ns() if now_ns is None else now_ns
         released = 0
         quarantined = 0
+        # owner 的 buddy 状态也包含旧 epoch 的待回收 extent；空 arena 无需扫描
+        # 全部 descriptor，避免后台回收在无在途图片时占用控制线程。
+        if not self._allocator.allocated_extents():
+            return {"released_count": 0, "quarantined_count": 0}
         for descriptor_index in range(self.descriptor_count):
             descriptor = self._read_descriptor(descriptor_index)
             if descriptor.state == "free":
@@ -1525,9 +1529,9 @@ class MmapBufferArenaExternalAccess:
         self.layout_fingerprint = _build_layout_fingerprint(config)
         self._lifecycle = Condition(RLock())
         self._closed = False
-        self._lifecycle_state: Literal[
-            "open", "closing", "close_blocked", "closed"
-        ] = "open"
+        self._lifecycle_state: Literal["open", "closing", "close_blocked", "closed"] = (
+            "open"
+        )
         self._active_borrows = 0
         self._guard_file: BinaryIO | None = None
         self._arena_file: BinaryIO | None = None

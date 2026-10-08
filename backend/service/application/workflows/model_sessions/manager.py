@@ -10,6 +10,7 @@ import json
 from threading import Lock, RLock
 from time import monotonic
 from typing import Iterator
+from weakref import WeakValueDictionary
 
 from backend.contracts.workflows.workflow_graph import (
     WorkflowGraphNode,
@@ -103,7 +104,8 @@ class WorkflowModelSessionManager:
         self.max_parallel_loads = int(max_parallel_loads)
         self._leases: dict[tuple[str, str], WorkflowModelSessionLease] = {}
         self._generation_by_key: dict[tuple[str, str], int] = {}
-        self._scope_locks: dict[str, RLock] = {}
+        # 持有者和等待者以局部强引用保持同一把锁；空闲 scope 不永久占用系统句柄。
+        self._scope_locks: WeakValueDictionary[str, RLock] = WeakValueDictionary()
         self._scope_last_used_monotonic: dict[str, float] = {}
         self._lock = Lock()
 
@@ -318,6 +320,7 @@ class WorkflowModelSessionManager:
                 self._generation_by_key[key] = reference.generation
                 self._leases[key] = lease
                 published_references[loader_node_id] = reference
+                self._scope_last_used_monotonic[scope_id] = monotonic()
         self._touch_scope(scope_id)
         return tuple(
             reused_references.get(loader_node.node_id)
@@ -637,16 +640,22 @@ class WorkflowModelSessionManager:
         return lease
 
     def _get_scope_lock(self, scope_id: str) -> RLock:
-        """返回 scope 的长期稳定 RLock，避免替换锁对象造成竞态。"""
+        """活跃持有者/等待者共用 RLock，无引用后才允许释放和重新创建。"""
 
         with self._lock:
-            return self._scope_locks.setdefault(scope_id, RLock())
+            scope_lock = self._scope_locks.get(scope_id)
+            if scope_lock is None:
+                scope_lock = RLock()
+                self._scope_locks[scope_id] = scope_lock
+            return scope_lock
 
     def _touch_scope(self, scope_id: str) -> None:
         """更新 scope 最近使用时间，供 Preview 容量回收使用。"""
 
         with self._lock:
-            self._scope_last_used_monotonic[scope_id] = monotonic()
+            # 没有模型 lease 的普通图不进入模型 LRU，避免每个预览会话残留键值。
+            if scope_id in self._scope_last_used_monotonic:
+                self._scope_last_used_monotonic[scope_id] = monotonic()
 
     def _remove_stale_scope_leases(
         self,
@@ -662,7 +671,10 @@ class WorkflowModelSessionManager:
                 for key in self._leases
                 if key[0] == scope_id and key[1] not in expected_loader_node_ids
             )
-            return tuple(self._leases.pop(key) for key in stale_keys)
+            removed = tuple(self._leases.pop(key) for key in stale_keys)
+            if not any(key[0] == scope_id for key in self._leases):
+                self._scope_last_used_monotonic.pop(scope_id, None)
+            return removed
 
     def _close_scope_in_locked_scope(self, scope_id: str) -> None:
         """调用方持有 scope lock 时移除并关闭全部 lease。"""

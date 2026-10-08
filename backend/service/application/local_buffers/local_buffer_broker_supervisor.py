@@ -181,8 +181,7 @@ class _LocalBufferBrokerEventRouter:
             active_forward_thread_count = sum(
                 1
                 for route in self._client_routes.values()
-                if route.forward_thread is not None
-                and route.forward_thread.is_alive()
+                if route.forward_thread is not None and route.forward_thread.is_alive()
             )
             closed_channel_snapshot = snapshot_safe_counter(self._closed_channel_count)
             forward_error_snapshot = snapshot_safe_counter(self._forward_error_count)
@@ -309,7 +308,10 @@ class _LocalBufferBrokerEventRouter:
                     if self._stop_event.is_set():
                         break
                     continue
-                if isinstance(message, dict) and str(message.get("action") or "") == "__close-client-channel__":
+                if (
+                    isinstance(message, dict)
+                    and str(message.get("action") or "") == "__close-client-channel__"
+                ):
                     break
                 self._submit_client_request(
                     channel_id=channel_id,
@@ -463,8 +465,6 @@ class LocalBufferBrokerProcessSupervisor:
         self._request_connection: Connection | None = None
         self._response_connection: Connection | None = None
         self._router: _LocalBufferBrokerEventRouter | None = None
-        self._expire_stop_event = Event()
-        self._expire_thread: Thread | None = None
         self._recent_error: dict[str, object] | None = None
         self._lock = Lock()
         self._direct_io_lock = RLock()
@@ -534,9 +534,7 @@ class LocalBufferBrokerProcessSupervisor:
                             "process_exitcode": process_exitcode,
                             "root_dir": str(self.root_dir),
                             "arena_file": str(
-                                self.root_dir
-                                / "local-buffer"
-                                / "images.mmap"
+                                self.root_dir / "local-buffer" / "images.mmap"
                             ),
                         },
                     )
@@ -570,7 +568,6 @@ class LocalBufferBrokerProcessSupervisor:
                 with self._lock:
                     self._router = router
                 self._clear_recent_error()
-                self._start_expire_loop()
                 return
 
             self.stop()
@@ -643,7 +640,6 @@ class LocalBufferBrokerProcessSupervisor:
     def stop(self, *, graceful_only: bool = False) -> None:
         """停止 Broker；自动恢复必须确认正常退出，禁止超时强杀。"""
 
-        self._stop_expire_loop()
         self._close_direct_io_client()
         with self._lock:
             process = self._process
@@ -660,8 +656,14 @@ class LocalBufferBrokerProcessSupervisor:
                 if client is not None:
                     client.close()
             process.join(timeout=max(0.1, self.settings.shutdown_timeout_seconds))
-        if graceful_only and process is not None and (process.is_alive() or process.exitcode != 0):
-            raise OperationTimeoutError("LocalBufferBroker 未确认正常退出，禁止创建新 owner")
+        if (
+            graceful_only
+            and process is not None
+            and (process.is_alive() or process.exitcode != 0)
+        ):
+            raise OperationTimeoutError(
+                "LocalBufferBroker 未确认正常退出，禁止创建新 owner"
+            )
         if process is not None and process.is_alive():
             process.terminate()
             process.join(timeout=max(0.1, self.settings.shutdown_timeout_seconds))
@@ -758,7 +760,9 @@ class LocalBufferBrokerProcessSupervisor:
                 "running": self.is_running,
                 "status": status,
                 "recent_error": self.get_recent_error(),
-                "expire_loop_running": self._is_expire_loop_running(),
+                "expire_loop_running": bool(
+                    status.get("housekeeping", {}).get("expire_enabled")
+                ),
                 "expire_interval_seconds": self.settings.expire_interval_seconds,
                 "router": self._build_router_observation(),
                 "ipc": self._build_ipc_observation(),
@@ -770,7 +774,7 @@ class LocalBufferBrokerProcessSupervisor:
                 "state": "error" if self.is_running else "stopped",
                 "running": self.is_running,
                 "recent_error": self.get_recent_error(),
-                "expire_loop_running": self._is_expire_loop_running(),
+                "expire_loop_running": False,
                 "expire_interval_seconds": self.settings.expire_interval_seconds,
                 "router": self._build_router_observation(),
                 "ipc": self._build_ipc_observation(),
@@ -1077,55 +1081,6 @@ class LocalBufferBrokerProcessSupervisor:
             raise
         finally:
             client.close()
-
-    def _start_expire_loop(self) -> None:
-        """启动周期性过期 lease 回收线程。"""
-
-        interval_seconds = float(self.settings.expire_interval_seconds)
-        if interval_seconds <= 0:
-            return
-        with self._lock:
-            if self._expire_thread is not None and self._expire_thread.is_alive():
-                return
-            self._expire_stop_event.clear()
-            self._expire_thread = Thread(
-                target=self._run_expire_loop,
-                name="local-buffer-broker-expire-loop",
-                daemon=True,
-            )
-            self._expire_thread.start()
-
-    def _stop_expire_loop(self) -> None:
-        """停止周期性过期 lease 回收线程。"""
-
-        self._expire_stop_event.set()
-        with self._lock:
-            expire_thread = self._expire_thread
-        if expire_thread is not None:
-            expire_thread.join(timeout=1.0)
-        with self._lock:
-            self._expire_thread = None
-
-    def _run_expire_loop(self) -> None:
-        """定期触发 broker expire-leases 控制动作。"""
-
-        interval_seconds = max(0.1, float(self.settings.expire_interval_seconds))
-        while not self._expire_stop_event.wait(interval_seconds):
-            if not self.is_running:
-                continue
-            try:
-                self.expire_leases()
-            except (
-                Exception
-            ) as exc:  # pragma: no cover - 后台线程错误由 health recent_error 暴露
-                self._record_recent_error(action="expire-loop", error=exc)
-
-    def _is_expire_loop_running(self) -> bool:
-        """返回周期性 expire loop 是否存活。"""
-
-        with self._lock:
-            expire_thread = self._expire_thread
-        return expire_thread is not None and expire_thread.is_alive()
 
     def _record_recent_error(self, *, action: str, error: Exception) -> None:
         """记录最近一次 broker 控制错误。"""
