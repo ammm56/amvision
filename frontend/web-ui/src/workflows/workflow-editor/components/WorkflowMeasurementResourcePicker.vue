@@ -7,6 +7,10 @@
       confirm-variant="primary" size="wide" scroll-body :busy="busy" :confirm-disabled="!selectedDocument || disabled" @cancel="close" @confirm="apply">
       <div class="resource-workspace">
         <p v-if="error" class="resource-error" role="alert">{{ error }}</p>
+        <div class="resource-modes" role="group" :aria-label="t('edit')">
+          <Button v-for="entry in modes" :key="entry.key" :variant="mode === entry.key ? 'primary' : 'secondary'" :disabled="busy" @click="mode=entry.key">{{ entry.label }}</Button>
+        </div>
+        <template v-if="mode === 'select'">
         <label>{{ t('version') }}<SelectField v-model="selected" :options="options" :disabled="busy" /></label>
         <Button v-if="current" variant="secondary" size="sm" :disabled="busy || disabled" @click="clear">{{ t('clear') }}</Button>
         <div v-if="selectedDocument" class="resource-version">
@@ -14,11 +18,15 @@
           <Button v-if="selectedDocument.content.template" variant="secondary" size="sm" @click="viewStored">{{ t('view') }}</Button>
           <Button variant="secondary" size="sm" @click="exportSelected">{{ t('export') }}</Button>
         </div>
-        <details>
-          <summary>{{ t('newVersion') }}</summary>
-          <div class="resource-create">
+        <dl v-if="selectedDocument" class="resource-summary">
+          <template v-for="entry in resourceSummary" :key="entry[0]"><dt>{{ entry[0] }}</dt><dd>{{ entry[1] }}</dd></template>
+        </dl>
+        <details v-if="selectedDocument"><summary>{{ t('details') }}</summary><pre>{{ selectedDocument.reference }}</pre></details>
+        </template>
+          <div v-else class="resource-create">
             <label>{{ t('name') }}<input v-model="name" maxlength="128"></label>
-            <label>{{ t('import') }}<input type="file" accept=".zip,application/zip" @change="importArchive"></label>
+            <label v-if="mode === 'import'">{{ t('import') }}<input type="file" accept=".zip,application/zip" @change="importArchive"></label>
+            <template v-else>
             <template v-if="kind === 'localization-template'">
               <label>{{ t('referenceId') }}<input v-model="referenceId" maxlength="128"></label>
               <label>{{ t('image') }}<input type="file" accept=".png,image/png" @change="loadImage"></label>
@@ -34,8 +42,8 @@
             </template>
             <label class="resource-check"><input v-model="addVersion" type="checkbox" :disabled="!selectedDocument">{{ t('addVersion') }}</label>
             <Button variant="primary" :disabled="!canSave" @click="save">{{ t('saveResource') }}</Button>
+            </template>
           </div>
-        </details>
       </div>
     </ConfirmDialog>
   </Teleport>
@@ -50,7 +58,7 @@ import SelectField from '@/shared/ui/components/Select.vue'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import ImageViewer from '@/shared/ui/components/ImageViewer.vue'
 import { apiRequest } from '@/shared/api/http-client'
-import { importMeasurementResource, listMeasurementResources, readMeasurementResourceImage, resourceVersionPath, saveMeasurementResource, type MeasurementResourceDocument, type MeasurementResourceReference } from '../services/measurement-resource.service'
+import { importMeasurementResource, listMeasurementResources, readMeasurementResource, readMeasurementResourceImage, resourceVersionPath, saveMeasurementResource, type MeasurementResourceDocument, type MeasurementResourceReference } from '../services/measurement-resource.service'
 
 const props = defineProps<{ modelValue: unknown; schema: Record<string, unknown>; disabled?: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [value: MeasurementResourceReference | undefined] }>()
@@ -60,15 +68,33 @@ const messages = {
 }
 Object.assign(messages['zh-CN'], { clear: '清除资源引用' })
 Object.assign(messages['en-US'], { clear: 'Clear resource reference' })
+Object.assign(messages['zh-CN'], {create:'新建',details:'资源详情',spec:'原图规格',plane:'平面',unit:'单位',domain:'有效域',error:'独立验证最大误差'})
+Object.assign(messages['en-US'], {create:'Create',details:'Resource details',spec:'Image size',plane:'Plane',unit:'Unit',domain:'Valid domain',error:'Independent maximum error'})
 const { t } = useI18n({ useScope: 'local', messages, fallbackLocale: 'en-US' })
 const project = useProjectStore()
 const kind = computed(() => props.schema['x-resource-kind'] === 'localization-template' ? 'localization-template' : 'planar-calibration')
 const current = computed(() => props.modelValue as MeasurementResourceReference | undefined)
-const currentLabel = computed(() => current.value?.resource_id ? `${t(kind.value === 'localization-template' ? 'template' : 'calibration')} · v${current.value.version}` : t('none'))
+const currentDocument=ref<MeasurementResourceDocument|null>(null)
+const currentLabel = computed(() => current.value?.resource_id ? `${currentDocument.value?.name || t(kind.value === 'localization-template' ? 'template' : 'calibration')} · v${current.value.version}` : t('none'))
+watch(()=>[project.selectedProjectId,current.value?.resource_id,current.value?.version,current.value?.sha256],async(_,__,cleanup)=>{
+  currentDocument.value=null
+  const reference=current.value
+  if(!reference||reference.project_id!==project.selectedProjectId)return
+  const abort=new AbortController();cleanup(()=>abort.abort())
+  try{const item=await readMeasurementResource(reference,abort.signal);if(!abort.signal.aborted)currentDocument.value=item}catch{/* 打开选择器后显示明确的资源读取错误。 */}
+},{immediate:true})
 const open = ref(false), busy = ref(false), error = ref(''), selected = ref<string | number | boolean | null>('')
 const documents = ref<MeasurementResourceDocument[]>([])
+const mode=ref('select')
+const modes=computed(()=>[{key:'select',label:t('edit')},{key:'create',label:t('create')},{key:'import',label:t('import')}])
 const options = computed(() => documents.value.filter(d => d.reference.kind === kind.value).map(d => ({ value: key(d.reference), label: `${d.name} · v${d.reference.version}` })))
 const selectedDocument = computed(() => documents.value.find(d => key(d.reference) === selected.value))
+const resourceSummary=computed(()=>{
+  const item=selectedDocument.value?.content,template=item?.template,calibration=item?.calibration
+  if(template)return [[t('spec'),`${template.image_width} × ${template.image_height} px`],['ROI',template.template_roi.join(', ')],['Anchor',template.anchor.join(', ')]]
+  if(calibration)return [[t('spec'),`${calibration.image_width} × ${calibration.image_height} px`],[t('plane'),String(calibration.plane_id)],[t('unit'),String(calibration.unit)],[t('domain'),JSON.stringify(calibration.valid_polygon)],[t('error'),String(calibration.validation_max_error)]]
+  return []
+})
 const name = ref(''), referenceId = ref('reference'), calibrationJson = ref(''), addVersion = ref(false)
 const imageUrl = ref(''), imageFile = ref<File | null>(null), imageWidth = ref(0), imageHeight = ref(0)
 const roi = ref<[number, number, number, number]>([0, 0, 100, 100]), anchor = ref<[number, number]>([50,50])
@@ -77,6 +103,10 @@ let controller: AbortController | null = null
 let generation = 0
 const canSave = computed(() => !busy.value && name.value.trim().length > 0 && (kind.value === 'localization-template' ? !!imageFile.value : !!calibrationJson.value.trim()))
 const viewerImage = computed(() => imageUrl.value ? { title: name.value || t('image'), nodeId: 'measurement-resource', src: imageUrl.value, width: imageWidth.value, height: imageHeight.value, mediaType: 'image/png',
+  overlays:storedView.value ? [
+    {kind:'bbox',id:'template',label:'ROI',pointsXy:[],bboxXyxy:[roi.value[0],roi.value[1],roi.value[0]+roi.value[2],roi.value[1]+roi.value[3]] as [number,number,number,number],lineXyxy:null,circle:null,targetParameters:[],parameters:{}},
+    {kind:'point',id:'anchor',label:'Anchor',pointsXy:[anchor.value],bboxXyxy:null,lineXyxy:null,circle:null,targetParameters:[],parameters:{}},
+  ] : [],
   interaction: storedView.value ? null : { mode: 'edit', coordinateSpace: 'image', tools: [
     { tool: 'bbox', label: 'Template ROI', targetParameters: ['template_roi'], initialBboxesXyxy: [[roi.value[0], roi.value[1], roi.value[0] + roi.value[2], roi.value[1] + roi.value[3]]] as Array<[number,number,number,number]> },
     { tool: 'point', label: 'Anchor', targetParameters: ['anchor'], maxPoints: 1, initialPointsXy: [anchor.value] },
@@ -85,7 +115,7 @@ function key(r: MeasurementResourceReference) { return `${r.resource_id}:${r.ver
 function replaceImage(blob: Blob | null) { if (imageUrl.value) URL.revokeObjectURL(imageUrl.value); imageUrl.value = blob ? URL.createObjectURL(blob) : '' }
 function close() { generation++; controller?.abort(); controller = null; open.value = false; viewerOpen.value = false; busy.value = false; replaceImage(null); imageFile.value = null }
 async function show() {
-  close(); open.value = true; error.value = ''; name.value = ''; calibrationJson.value = ''; addVersion.value = false
+  close(); open.value = true; error.value = ''; name.value = ''; calibrationJson.value = ''; addVersion.value = false; mode.value='select'; referenceId.value=`reference-${crypto.randomUUID().slice(0,8)}`
   selected.value = current.value ? key(current.value) : ''; controller = new AbortController()
   const token = generation
   await perform(async () => { const result = await listMeasurementResources(project.selectedProjectId, controller?.signal); if (token === generation) documents.value = result })
@@ -132,7 +162,7 @@ async function save() {
     body.set('content', JSON.stringify(content)); if (addVersion.value && selectedDocument.value) body.set('resource_id', selectedDocument.value.reference.resource_id)
     const result = await saveMeasurementResource(projectId, body, controller?.signal)
     if (generation !== token) return
-    documents.value.push(result); selected.value = key(result.reference)
+    documents.value.push(result); selected.value = key(result.reference);mode.value='select'
   })
 }
 async function importArchive(event: Event) {
@@ -143,12 +173,12 @@ async function importArchive(event: Event) {
     const body = new FormData(); body.set('name', name.value.trim() || file.name); body.set('archive', file)
     const result = await importMeasurementResource(project.selectedProjectId, body, controller?.signal)
     if (generation !== token) return
-    documents.value.push(result); if (result.reference.kind === kind.value) selected.value = key(result.reference)
+    documents.value.push(result); if (result.reference.kind === kind.value) {selected.value = key(result.reference);mode.value='select'}
   })
 }
 async function viewStored() {
   const item = selectedDocument.value, token = generation; if (!item?.content.template) return
-  await perform(async () => { const image = await readMeasurementResourceImage(item.reference, controller?.signal); if (generation !== token) return; replaceImage(image); imageFile.value = null; imageWidth.value = item.content.template!.image_width; imageHeight.value = item.content.template!.image_height; storedView.value = true; viewerOpen.value = true })
+  await perform(async () => { const image = await readMeasurementResourceImage(item.reference, controller?.signal); if (generation !== token) return; replaceImage(image); imageFile.value = null; imageWidth.value = item.content.template!.image_width; imageHeight.value = item.content.template!.image_height; roi.value=[...item.content.template!.template_roi];anchor.value=[...item.content.template!.anchor];storedView.value = true; viewerOpen.value = true })
 }
 async function exportSelected() {
   const item = selectedDocument.value, token = generation; if (!item) return
@@ -169,6 +199,12 @@ onBeforeUnmount(close)
 .resource-image { border:1px solid var(--am-border); background:var(--am-surface); color:var(--am-text); cursor:pointer; display:grid; gap:8px; padding:8px; }
 .resource-image img { max-width:100%; max-height:240px; margin:auto; object-fit:contain; }
 .resource-check { display:flex!important; align-items:center; }
+.resource-check input { width:16px; height:16px; padding:0; }
+.resource-modes { display:flex; gap:8px; }
+.resource-summary { display:grid; grid-template-columns:max-content 1fr; gap:8px 16px; margin:0; font-size:13px; }
+.resource-summary dt { color:var(--am-text-muted); }
+.resource-summary dd { margin:0; overflow-wrap:anywhere; }
+pre { white-space:pre-wrap; overflow-wrap:anywhere; }
 .resource-error { color:var(--am-danger-text); overflow-wrap:anywhere; }
 summary { cursor:pointer; padding:8px 0; color:var(--am-text); }
 </style>

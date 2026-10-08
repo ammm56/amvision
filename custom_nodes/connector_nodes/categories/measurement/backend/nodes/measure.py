@@ -75,7 +75,7 @@ def handle_node(request) -> dict:
         """将本次原图中的单点转换到配方参考像素坐标。"""
         return map_points([point], reference_from_image)[0]
 
-    values, annotations = [], []
+    values, annotations, display_shapes = [], [], []
     for definition in definitions:
         control.raise_if_cancelled_or_expired()
         if not definition.enabled:
@@ -205,6 +205,13 @@ def handle_node(request) -> dict:
                             "label": f"{definition.item_id}: {value:.3f} {unit}",
                         }
                     )
+        # 结果解释只记录位置，不填补缺测值；名义位置始终显式标为 expected。
+        missing_pin = b if a.state == "found" and b is not None and b.state != "found" else a
+        display_shapes.append({
+            "item_id": definition.item_id,
+            "kind": "line" if reason is None and endpoints is not None else "expected-point" if reason is not None else "point",
+            "points": image_points.tolist() if reason is None and endpoints is not None else [list(missing_pin.nominal_image_point if reason else a.center_image_point)],
+        })
         values.append(
             NumericItem(
                 item_id=definition.item_id,
@@ -215,8 +222,12 @@ def handle_node(request) -> dict:
             )
         )
     table = NumericTable(observation_id=observations.observation_id, items=values)
+    # 存在性与定位检查也能回到对应对象；不把名义位置伪装成实测边缘。
+    display_ids = {shape["item_id"] for shape in display_shapes}
+    display_shapes.extend({"item_id": f"presence:{pin.pin_id}", "kind": "point" if pin.state == "found" else "expected-point", "points": [list(pin.center_image_point if pin.state == "found" else pin.nominal_image_point)]} for pin in observations.pins if f"presence:{pin.pin_id}" not in display_ids)
     return {
         "measurements": table.model_dump(mode="json"),
         "summary": build_value_payload(numeric_table_to_value(table)),
         "annotations": build_value_payload(annotations),
+        "result_geometry": build_value_payload({"observation_id": observations.observation_id, "image": observations.image.model_dump(mode="json"), "items": display_shapes}),
     }

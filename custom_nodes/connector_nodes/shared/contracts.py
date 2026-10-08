@@ -30,6 +30,7 @@ class SamplingType(Contract):
     angle_degrees: Finite = 0.0
     polarity: Literal["bright", "dark"] = "bright"
     gradient_threshold: Annotated[Finite, Field(gt=0, le=1)] = 0.03
+    relative_gradient_threshold: Annotated[Finite, Field(ge=0, le=1)] = 0.0
     min_width: Annotated[Finite, Field(gt=0, le=2048)] = 2.0
     max_width: Annotated[Finite, Field(gt=0, le=2048)] = 40.0
     min_coverage: Annotated[Finite, Field(gt=0, le=1)] = 0.7

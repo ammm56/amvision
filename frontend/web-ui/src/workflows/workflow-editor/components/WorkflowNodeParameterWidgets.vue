@@ -138,6 +138,7 @@
         />
       </template>
     </div>
+    <WorkflowCalibrationResourceSave v-if="node.node.node_type_id === 'custom.opencv.planar-calibrate'" :parameters="node.node.parameters" :display="previewDisplay" />
   </div>
 </template>
 
@@ -153,6 +154,7 @@ import WorkflowGraphCheckbox from './WorkflowGraphCheckbox.vue'
 import WorkflowParameterColorMap from './WorkflowParameterColorMap.vue'
 import WorkflowParameterRowsEditor from './WorkflowParameterRowsEditor.vue'
 import WorkflowMeasurementResourcePicker from './WorkflowMeasurementResourcePicker.vue'
+import WorkflowCalibrationResourceSave from './WorkflowCalibrationResourceSave.vue'
 import { trustedParameterEditor } from '../parameters/trusted-editors'
 import { readNodeParameterInputPort } from '../parameters/parameter-input-bindings'
 import { isModelInferenceDeploymentField } from '../parameters/useWorkflowDeploymentInstancePicker'

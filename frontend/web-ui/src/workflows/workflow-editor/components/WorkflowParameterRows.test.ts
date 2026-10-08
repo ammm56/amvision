@@ -4,6 +4,30 @@ import WorkflowParameterRows from './WorkflowParameterRows.vue'
 import WorkflowValueDisplay from './WorkflowValueDisplay.vue'
 
 describe('file display parameter rows', () => {
+  it('keeps strict booleans, nullable bounds and numeric precision through editing', async () => {
+    const row = { enabled:true, lower:null, upper:.6900000000000001, count:2 }
+    const wrapper=mount(WorkflowParameterRows,{props:{modelValue:[row],schema:{items:{properties:{
+      enabled:{type:'boolean',default:true}, lower:{anyOf:[{type:'number'},{type:'null'}],default:null},
+      upper:{anyOf:[{type:'number'},{type:'null'}],default:null}, count:{type:'integer',minimum:1},
+    }}}}})
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    expect((wrapper.get('input[aria-label="upper"]').element as HTMLInputElement).value).toBe(String(row.upper))
+    await wrapper.get('input[aria-label="enabled"]').setValue(false)
+    expect(wrapper.emitted('update:modelValue')!.at(-1)![0]).toEqual([{...row,enabled:false}])
+    await wrapper.get('input[aria-label="lower"]').setValue('-0.2')
+    expect(wrapper.emitted('update:modelValue')!.at(-1)![0]).toEqual([{...row,lower:-.2}])
+    await wrapper.get('input[aria-label="upper"]').setValue('')
+    expect(wrapper.emitted('update:modelValue')!.at(-1)![0]).toEqual([{...row,upper:null}])
+    await wrapper.setProps({modelValue:[{...row,enabled:'false'}]})
+    expect(wrapper.emitted('validity-change')!.at(-1)).toEqual([false])
+    await wrapper.setProps({modelValue:[{...row,count:1.5}]})
+    expect(wrapper.find('[role=alert]').text()).toContain('count')
+    await wrapper.setProps({modelValue:[{...row,count:''}]})
+    expect(wrapper.emitted('validity-change')!.at(-1)).toEqual([false])
+    await wrapper.setProps({modelValue:[row]})
+    expect(wrapper.emitted('validity-change')!.at(-1)).toEqual([true])
+    wrapper.unmount()
+  })
   it('shows only applicable reducer controls without changing stored values', async () => {
     const row = { output_key: 'total', source_path: 'quantity', operation: 'sum', numeric_type: 'integer', missing_policy: 'error' }
     const wrapper = mount(WorkflowParameterRows, { props: { modelValue: [row], schema: { items: { properties: {

@@ -65,7 +65,7 @@ def handle_node(request) -> dict:
                 "unit": settings.unit,
             },
         )
-    return {
+    outputs = {
         "calibration": result.model_dump(mode="json"),
         "summary": build_value_payload(
             {
@@ -76,3 +76,13 @@ def handle_node(request) -> dict:
             }
         ),
     }
+    # 仅编辑预览携带完整拟合结果和参数快照，供显式保存；生产调用不复制配置。
+    if request.execution_metadata.get("debug_image_panels_enabled") is True:
+        outputs["debug_preview"] = {
+            "type": "value-preview",
+            "title": "Planar Calibration",
+            "value": outputs["summary"]["value"],
+            "calibration_resource": outputs["calibration"],
+            "parameter_snapshot": settings.model_dump(mode="json"),
+        }
+    return outputs

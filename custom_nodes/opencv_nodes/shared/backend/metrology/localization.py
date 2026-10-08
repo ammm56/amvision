@@ -88,6 +88,37 @@ def _variant(template, angle):
     return rotated, matrix, mask
 
 
+def _masked_correlation(source, template, mask, *, squared=None):
+    """二值掩膜的归一化零均值相关；复用源图平方，避免通用掩膜路径的重复卷积。"""
+    if np.all(mask):
+        return cv2.matchTemplate(source, template, cv2.TM_CCOEFF_NORMED)
+    weights = mask.astype(np.float32)
+    count = float(weights.sum())
+    centered = (
+        template - float(np.sum(template * weights, dtype=np.float64) / count)
+    ) * weights
+    energy = float(np.sum(centered * centered, dtype=np.float64))
+    cross = cv2.matchTemplate(source, centered, cv2.TM_CCORR)
+    sums = cv2.matchTemplate(source, weights, cv2.TM_CCORR)
+    squares = cv2.matchTemplate(
+        source * source if squared is None else squared, weights, cv2.TM_CCORR
+    )
+    variance = np.maximum(squares - sums * sums / count, 0)
+    # 常量区域的浮点消去误差不能产生虚假的高分。
+    valid = variance > np.maximum(squares * 1e-6, 1e-10)
+    denominator = np.sqrt(variance * energy)
+    return np.clip(
+        np.divide(
+            cross,
+            denominator,
+            out=np.full_like(cross, -1),
+            where=valid & (denominator > 0),
+        ),
+        -1,
+        1,
+    )
+
+
 def _locate_full(
     source, reference, settings: RigidLocateSettings, *, check=lambda: None
 ):
@@ -113,6 +144,7 @@ def _locate_full(
     )
     candidates = []
     search_positions = 0
+    squared = source * source
     for angle in angles:
         check()
         variant, matrix, mask = _variant(template, float(angle))
@@ -123,7 +155,7 @@ def _locate_full(
         if search_positions > 100_000_000:
             raise ValueError("定位搜索预算超过 1 亿位置，请缩小角度范围或输入图像")
         # 旋转补出的三角区没有参考证据，不参与匹配，避免背景/针脚污染定位分数。
-        scores = cv2.matchTemplate(source, variant, cv2.TM_CCOEFF_NORMED, mask=mask)
+        scores = _masked_correlation(source, variant, mask, squared=squared)
         # 常量搜索区的归一化相关没有定义，表示无候选，不是有效的完美匹配。
         scores[~np.isfinite(scores)] = -1
         # 单角度最多四个工件候选；超过上限不静默截断为唯一结果。
@@ -252,7 +284,7 @@ def locate_rigid(
         region = source[top:bottom, left:right]
         if region.shape[0] < variant.shape[0] or region.shape[1] < variant.shape[1]:
             continue
-        scores = cv2.matchTemplate(region, variant, cv2.TM_CCOEFF_NORMED, mask=mask)
+        scores = _masked_correlation(region, variant, mask)
         scores[~np.isfinite(scores)] = -1
         _, score, _, (px, py) = cv2.minMaxLoc(scores)
         offset = np.array([px + left, py + top], np.float64)

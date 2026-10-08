@@ -29,6 +29,9 @@ export function listMeasurementResources(project: string, signal?: AbortSignal) 
 export function readMeasurementResourceImage(reference: MeasurementResourceReference, signal?: AbortSignal) {
   return apiRequest<Blob>(`${resourceVersionPath(reference)}/image`, { responseType: 'blob', signal })
 }
+export function readMeasurementResource(reference:MeasurementResourceReference,signal?:AbortSignal){
+  return apiRequest<MeasurementResourceDocument>(resourceVersionPath(reference),{signal})
+}
 export function saveMeasurementResource(project: string, form: FormData, signal?: AbortSignal) {
   return apiRequest<MeasurementResourceDocument>(measurementResourceRoot(project), { method: 'POST', body: form, signal })
 }

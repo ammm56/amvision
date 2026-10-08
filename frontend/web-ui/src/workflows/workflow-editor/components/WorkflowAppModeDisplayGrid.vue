@@ -70,6 +70,8 @@ function title(slot: WorkflowAppModeDisplay): string {
 .app-mode-displays :deep(.workflow-graph-node-preview__empty) { border-color: var(--am-border); }
 .app-mode-displays__slot--image { align-self: stretch; }
 .app-mode-displays__slot--image :deep(.workflow-graph-node-preview) { height: 100%; grid-template-rows: minmax(0, 1fr); }
+.app-mode-displays__slot--image :deep(.workflow-graph-node-preview--results) { grid-template-rows:minmax(120px,1fr) minmax(100px,30%); }
+.app-mode-displays__slot--image :deep(.workflow-image-results) { max-height:none; }
 .app-mode-displays__slot--image :deep(.workflow-graph-node-preview__image-frame) { width: 100%; height: 100%; min-height: 0; }
 .app-mode-displays__slot--image :deep(.workflow-graph-node-preview__image-frame img) { display: block; width: 100%; height: 100%; min-height: 0; object-fit: contain; }
 .app-mode-displays__slot--value :deep(.workflow-graph-node-preview) { position: relative; overflow: hidden; }

@@ -27,7 +27,7 @@ import {computed} from 'vue'
 import {useI18n} from 'vue-i18n'
 const props=defineProps<{diagnostic:Record<string,unknown>}>()
 const {locale}=useI18n()
-const text=computed(()=>locale.value==='zh-CN'?{title:'上次预览剖面',coverage:'覆盖率',residual:'最大拟合残差',intensity:'平均灰度（0–1）',gradient:'按极性归一化的平均梯度',note:'曲线最多显示 1024 点；检测使用全部采样。虚线为梯度阈值。',lines:'条扫描线',across:'横向位置 px',left:'左边缘 px',right:'右边缘 px',fit:'拟合',kept:'保留',rejected:'剔除 / 无有效拟合',noProfile:'本次没有有效采样区域，不能显示剖面。'}:{title:'Last preview profile',coverage:'Coverage',residual:'Max fit residual',intensity:'Mean intensity (0–1)',gradient:'Polarity-normalized mean gradient',note:'At most 1024 display points; detection uses every sample. Dashed lines show the threshold.',lines:'scan lines',across:'Across px',left:'Left px',right:'Right px',fit:'Fit',kept:'Inlier',rejected:'Rejected / no valid fit',noProfile:'No valid sampling area in this observation.'})
+const text=computed(()=>locale.value==='zh-CN'?{title:'上次预览剖面',coverage:'覆盖率',residual:'最大拟合残差',intensity:'平均灰度（0–1）',gradient:'按极性归一化的平均梯度',note:'曲线最多显示 1024 点；检测使用全部采样。虚线为各扫描线的梯度阈值范围。',lines:'条扫描线',across:'横向位置 px',left:'左边缘 px',right:'右边缘 px',fit:'拟合',kept:'保留',rejected:'剔除 / 无有效拟合',noProfile:'本次没有有效采样区域，不能显示剖面。'}:{title:'Last preview profile',coverage:'Coverage',residual:'Max fit residual',intensity:'Mean intensity (0–1)',gradient:'Polarity-normalized mean gradient',note:'At most 1024 display points; detection uses every sample. Dashed lines show the scan-line threshold range.',lines:'scan lines',across:'Across px',left:'Left px',right:'Right px',fit:'Fit',kept:'Inlier',rejected:'Rejected / no valid fit',noProfile:'No valid sampling area in this observation.'})
 const vector=(value:unknown):number[]=>Array.isArray(value)&&value.length<=1024&&value.every(v=>typeof v==='number'&&Number.isFinite(v))?value:[]
 const distances=computed(()=>vector(props.diagnostic.distance_px))
 const intensity=computed(()=>vector(props.diagnostic.intensity)), gradient=computed(()=>vector(props.diagnostic.gradient))
@@ -38,7 +38,9 @@ const residual=computed(()=>typeof props.diagnostic.residual_px==='number'&&Numb
 const charts=computed(()=>{
   if(!available.value)return []
   const threshold=typeof props.diagnostic.gradient_threshold==='number'&&Number.isFinite(props.diagnostic.gradient_threshold)?props.diagnostic.gradient_threshold:0
-  return [{values:intensity.value,label:text.value.intensity,min:0,max:1,limits:[] as number[]},{values:gradient.value,label:text.value.gradient,min:Math.min(...gradient.value,-threshold),max:Math.max(...gradient.value,threshold),limits:[threshold,-threshold]}].map(chart=>{
+  const range=vector(props.diagnostic.gradient_threshold_range)
+  const limits=[...new Set((range.length===2?range:[threshold]).flatMap(v=>[v,-v]))]
+  return [{values:intensity.value,label:text.value.intensity,min:0,max:1,limits:[] as number[]},{values:gradient.value,label:text.value.gradient,min:Math.min(...gradient.value,...limits),max:Math.max(...gradient.value,...limits),limits}].map(chart=>{
     const span=chart.max-chart.min||1, y=(value:number)=>110-(value-chart.min)/span*100
     return {...chart,points:chart.values.map((v,i)=>`${32+(distances.value[i]!-extent.value[0]!)/(extent.value[1]!-extent.value[0]!)*592},${y(v)}`).join(' '),thresholds:chart.limits.map(y)}
   })

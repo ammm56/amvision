@@ -13,6 +13,9 @@
     <template v-if="image?.presentation" #information>
       <WorkflowValueDisplay :payload="image.presentation" overlay />
     </template>
+    <template v-if="image?.results" #results>
+      <WorkflowResultTable v-model="image.selectedResultId" :table="image.results" />
+    </template>
   </ImageViewer>
   <WorkflowPreviewTableViewer :open="Boolean(table)" :table="table" @close="emit('closeTable')" />
   <WorkflowPreviewJsonViewer :open="Boolean(json)" :viewer="json" @close="emit('closeJson')" />
@@ -21,6 +24,7 @@
 <script setup lang="ts">
 import ImageViewer from '@/shared/ui/components/ImageViewer.vue'
 import WorkflowValueDisplay from './WorkflowValueDisplay.vue'
+import WorkflowResultTable from './WorkflowResultTable.vue'
 
 import WorkflowPreviewJsonViewer from './WorkflowPreviewJsonViewer.vue'
 import WorkflowPreviewTableViewer from './WorkflowPreviewTableViewer.vue'

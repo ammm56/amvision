@@ -68,6 +68,13 @@ def build_custom_node_catalog_document() -> CustomNodeCatalogDocument:
                 "additionalProperties": False,
                 "required": ["layout"],
                 "properties": {
+                    "image_encoding": {
+                        "type": "string",
+                        "title": "Image Encoding",
+                        "enum": ["native", "srgb"],
+                        "default": "native",
+                        "description": "Native 保留相机原始强度；仅已知 sRGB 图片选择 sRGB，先线性化再提取计量边缘。",
+                    },
                     "pose_mode": {
                         "type": "string",
                         "enum": ["input", "fixed"],
@@ -97,6 +104,7 @@ def build_custom_node_catalog_document() -> CustomNodeCatalogDocument:
                 _port("measurements", "numeric-table.v1"),
                 _port("summary", "value.v1"),
                 _port("annotations", "value.v1"),
+                _port("result_geometry", "value.v1", required=False),
             ],
             {
                 "type": "object",

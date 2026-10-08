@@ -11,6 +11,7 @@ from backend.contracts.workflows.workflow_graph import (
 from backend.nodes.core_nodes.support.base import CoreNodeSpec
 from backend.nodes.core_nodes.support.display_body import validate_display_body, validate_presentation_context
 from backend.nodes.core_nodes.support.logic import require_value_payload
+from backend.nodes.core_nodes.support.preview_results import validate_result_image
 from backend.nodes.runtime_support import (
     build_preview_response_image_payload,
 )
@@ -30,6 +31,9 @@ def _image_preview_handler(request: WorkflowNodeExecutionRequest) -> dict[str, o
                 require_value_payload(request.input_values["presentation_context"], field_name="presentation_context")["value"],
                 presentation.get("context"),
             )
+    results = request.input_values.get("results")
+    if results is not None:
+        results = validate_result_image(results, request, request.input_values.get("image"))
     save_location = request.parameters.get("save_location")
     response_transport_mode = str(
         request.parameters.get("response_transport_mode", "inline-base64")
@@ -49,6 +53,8 @@ def _image_preview_handler(request: WorkflowNodeExecutionRequest) -> dict[str, o
     }
     if presentation is not None:
         preview_body["presentation"] = presentation
+    if results is not None:
+        preview_body["results"] = results
     if request.input_values.get("presentation_context") is not None:
         preview_body["presentation_context"] = require_value_payload(
             request.input_values["presentation_context"],
@@ -69,6 +75,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
         implementation_kind=NODE_IMPLEMENTATION_CORE,
         runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
         input_ports=(
+            NodePortDefinition(name="results", display_name="Results", payload_type_id="response-body.v1", required=False),
             NodePortDefinition(
                 name="presentation",
                 display_name="Display Data",

@@ -109,7 +109,9 @@ def build_example(
                 type_id="normal",
                 min_width=12.0,
                 max_width=35.0,
-                gradient_threshold=0.03,
+                # sRGB 逆变换后的线性强度梯度；固定阈值覆盖开发态的低照度工况。
+                gradient_threshold=0.005,
+                relative_gradient_threshold=0.2,
             )
         ],
         candidate_bands=[],
@@ -201,12 +203,16 @@ def build_example(
                 upper=(len(members) - 1) * 2.54 + 0.08,
             )
         )
+    # 壳体外搜索带的背景纹理不同于 PIN 截面，使用独立、固定的最低梯度。
+    layout["types"].append(
+        dict(layout["types"][0], type_id="outside", gradient_threshold=0.01)
+    )
     layout["candidate_bands"].append(
         dict(
             band_id="outside-row",
             center=[640.0, 156.0 if family == "single10_front" else 280.0],
             length=850.0,
-            sampling_type="normal",
+            sampling_type="outside",
         )
     )
     rules.extend(
@@ -225,7 +231,8 @@ def build_example(
         (
             "pins",
             "custom.connector.pin-array-locate",
-            {"layout": layout, "pose_mode": "input"},
+            # Blender Standard 输出为 sRGB；计量边缘使用显式线性化，原图显示不改变。
+            {"layout": layout, "pose_mode": "input", "image_encoding": "srgb"},
             650,
             0,
         ),

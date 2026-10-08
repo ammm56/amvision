@@ -1,7 +1,7 @@
 <template>
   <div
     class="workflow-graph-node-preview"
-    :class="{ 'workflow-graph-node-preview--fields': display.payload.type === 'value-display' }"
+    :class="{ 'workflow-graph-node-preview--fields': display.payload.type === 'value-display', 'workflow-graph-node-preview--results':Boolean(display.image?.results) }"
     :title="tooltip"
     @mousedown.stop
     @dblclick.stop="emit('open-display', display)"
@@ -26,12 +26,13 @@
         <WorkflowValueDisplay :payload="display.image.presentation" overlay />
       </div>
       <svg
-        v-if="readOverlayViewBox(display.image) && display.image.overlays.length > 0"
+        v-if="readOverlayViewBox(display.image) && (display.image.overlays.length > 0 || selectedShape)"
         class="workflow-graph-node-preview__overlay"
         :viewBox="readOverlayViewBox(display.image)"
         preserveAspectRatio="xMidYMid meet"
         aria-hidden="true"
       >
+        <ImageResultGeometry :shape="selectedShape" />
         <template v-for="(overlay, index) in display.image.overlays" :key="overlayKey(overlay, index)">
           <polygon
             v-if="overlay.pointsXy.length >= 2"
@@ -111,6 +112,7 @@
       class="json-view workflow-graph-node-preview__json"
     >{{ display.formattedValue }}</pre>
     <div v-else class="workflow-graph-node-preview__empty">{{ display.statusText }}</div>
+    <WorkflowResultTable v-if="display.image?.results" v-model="display.image.selectedResultId" class="workflow-image-results" :table="display.image.results" />
   </div>
 </template>
 
@@ -119,6 +121,9 @@ import { useTranslation } from '@/platform/i18n'
 import { computed, ref, watch } from 'vue'
 import WorkflowPreviewTable from './WorkflowPreviewTable.vue'
 import WorkflowValueDisplay from './WorkflowValueDisplay.vue'
+import WorkflowResultTable from './WorkflowResultTable.vue'
+import ImageResultGeometry from '@/shared/ui/image-viewer/ImageResultGeometry.vue'
+import {selectedResultShape} from '@/shared/ui/image-viewer/result-geometry'
 import type { PreviewImageOverlay, PreviewNodeDisplay, PreviewViewerImage } from '../preview/useWorkflowPreviewDisplays'
 import type { StyleValue } from 'vue'
 
@@ -134,6 +139,7 @@ watch(() => props.display.variants, (items) => {
   if (!items?.some(item => item.outputName === selectedOutput.value)) selectedOutput.value = props.display.outputName
 })
 const display = computed(() => props.display.variants?.find(item => item.outputName === selectedOutput.value) ?? props.display)
+const selectedShape=computed(()=>selectedResultShape(display.value.image?.results,display.value.image?.selectedResultId))
 
 const emit = defineEmits<{
   'open-display': [display: PreviewNodeDisplay]
@@ -181,5 +187,6 @@ function bboxHeight(overlay: PreviewImageOverlay): number {
 .workflow-graph-node-preview--fields { display: flex; flex-direction: column; min-width: 0; box-sizing: border-box; overflow: hidden; }
 .workflow-graph-node-preview--fields > .value-display { min-height: 0; min-width: 0; overflow: auto; border: 0; padding: 4px; background: transparent; }
 .workflow-graph-node-preview__image-frame { position: relative; }
+.workflow-image-results { max-height:220px; }
 .workflow-image-information { position: absolute; top: 8px; bottom: 8px; left: 8px; right: 8px; z-index: 2; pointer-events: none; }
 </style>

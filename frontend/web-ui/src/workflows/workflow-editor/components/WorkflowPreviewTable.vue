@@ -9,8 +9,8 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="(row, rowIndex) in displayRows" :key="`row-${rowIndex}`">
-            <td v-for="column in columns" :key="`${rowIndex}-${column.key}`">{{ formatCell(row[column.key]) }}</td>
+          <tr v-for="(row, rowIndex) in displayRows" :key="`row-${rowIndex}`" :tabindex="selectable?0:undefined" :role="selectable?'button':undefined" :aria-pressed="selectable?selectedIndex===rowIndex:undefined" :class="{selected:selectedIndex===rowIndex}" @click="selectable&&emit('select',rowIndex)" @keydown.enter="selectable&&emit('select',rowIndex)">
+            <td v-for="column in columns" :key="`${rowIndex}-${column.key}`" :title="String(row[column.key]??'')">{{ formatCell(row[column.key]) }}</td>
           </tr>
         </tbody>
       </table>
@@ -24,6 +24,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useTranslation } from '@/platform/i18n'
+import {formatResultValue} from '@/shared/ui/image-viewer/result-geometry'
 
 interface PreviewTableColumnView {
   key: string
@@ -38,6 +39,8 @@ const props = withDefaults(defineProps<{
   emptyText?: string | null
   maxRows?: number
   compact?: boolean
+  selectable?:boolean
+  selectedIndex?:number|null
 }>(), {
   emptyText: '',
   maxRows: 20,
@@ -45,13 +48,14 @@ const props = withDefaults(defineProps<{
 })
 
 const { t } = useTranslation()
+const emit=defineEmits<{select:[index:number]}>()
 const displayRows = computed(() => props.maxRows > 0 ? props.rows.slice(0, props.maxRows) : props.rows)
 const truncatedCount = computed(() => Math.max(props.rows.length - displayRows.value.length, 0))
 
 function formatCell(value: unknown): string {
   if (value === null || value === undefined || value === '') return '—'
   if (typeof value === 'string') return value
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (typeof value === 'number' || typeof value === 'boolean') return formatResultValue(value)
   return JSON.stringify(value)
 }
 </script>
@@ -92,6 +96,9 @@ function formatCell(value: unknown): string {
   vertical-align: top;
   overflow-wrap: anywhere;
 }
+.workflow-preview-table tr[role=button] { cursor:pointer; }
+.workflow-preview-table tr[role=button]:hover { background:var(--am-surface-soft); }
+.workflow-preview-table tr.selected { background:color-mix(in srgb,var(--am-brand-primary) 12%,var(--am-surface)); }
 
 .workflow-preview-table th {
   position: sticky;

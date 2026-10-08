@@ -381,6 +381,16 @@
           "layout"
         ],
         "properties": {
+          "image_encoding": {
+            "type": "string",
+            "title": "Image Encoding",
+            "enum": [
+              "native",
+              "srgb"
+            ],
+            "default": "native",
+            "description": "Native 保留相机原始强度；仅已知 sRGB 图片选择 sRGB，先线性化再提取计量边缘。"
+          },
           "pose_mode": {
             "type": "string",
             "enum": [
@@ -577,6 +587,13 @@
                       "title": "Gradient Threshold",
                       "type": "number"
                     },
+                    "relative_gradient_threshold": {
+                      "default": 0.0,
+                      "maximum": 1,
+                      "minimum": 0,
+                      "title": "Relative Gradient Threshold",
+                      "type": "number"
+                    },
                     "min_width": {
                       "default": 2.0,
                       "exclusiveMinimum": 0,
@@ -762,6 +779,15 @@
           "payload_type_id": "value.v1",
           "description": "",
           "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "result_geometry",
+          "display_name": "Result Geometry",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": false,
           "multiple": false,
           "metadata": {}
         }

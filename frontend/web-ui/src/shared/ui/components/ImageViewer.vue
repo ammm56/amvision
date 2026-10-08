@@ -1,6 +1,6 @@
 <template>
   <Teleport to="body">
-    <div v-if="open && image" class="image-viewer" :style="dialogLayer ? { zIndex: 100 } : undefined" role="dialog" aria-modal="true" @keydown.esc="emit('close')">
+    <div v-if="open && image" class="image-viewer" :class="{'image-viewer--results':Boolean($slots.results)}" :style="dialogLayer ? { zIndex: 100 } : undefined" role="dialog" aria-modal="true" @keydown.esc="emit('close')">
       <div class="image-viewer__toolbar">
         <div class="image-viewer__title">
           <strong>{{ image.title }}</strong>
@@ -206,13 +206,14 @@
             @mouseleave="finishMaskStroke"
           />
           <svg
-            v-if="overlayViewBox && hasVisibleOverlay"
+            v-if="overlayViewBox && (hasVisibleOverlay || selectedResultShape(image.results,image.selectedResultId))"
             class="image-viewer__overlay"
             :class="{ 'image-viewer__overlay--interactive': overlayPickingActive }"
             :viewBox="overlayViewBox"
             preserveAspectRatio="none"
             aria-hidden="true"
           >
+            <ImageResultGeometry :shape="selectedResultShape(image.results,image.selectedResultId)" />
             <template v-for="(overlay, index) in imageOverlays" :key="overlayKey(overlay, index)">
               <polygon
                 v-if="overlay.pointsXy.length >= 2"
@@ -409,6 +410,7 @@
           :circle-annotations="circleDimensionAnnotations"
         />
       </div>
+      <div v-if="$slots.results" class="image-viewer__results"><slot name="results" /></div>
       <div class="image-viewer__status">
         <div class="image-viewer__status-group">
           <span>{{ Math.round(scale * 100) }}%</span>
@@ -438,6 +440,8 @@
 </template>
 
 <script setup lang="ts">
+import ImageResultGeometry from '@/shared/ui/image-viewer/ImageResultGeometry.vue'
+import {selectedResultShape,type ResultTable} from '@/shared/ui/image-viewer/result-geometry'
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Check, Crosshair, Maximize2, Play, RotateCcw, Trash2, X, ZoomIn, ZoomOut } from '@lucide/vue'
@@ -510,6 +514,8 @@ interface ViewerImageInteraction {
 }
 
 interface ViewerImage {
+  results?:ResultTable|null
+  selectedResultId?:string|null
   transportKind?: string
   nodeId?: string
   title: string
@@ -2219,3 +2225,9 @@ onUnmounted(() => {
   if (fitImageAnimationFrame !== null) window.cancelAnimationFrame(fitImageAnimationFrame)
 })
 </script>
+
+<style scoped>
+.image-viewer--results { grid-template-rows:auto minmax(0,1fr) minmax(100px,28vh) auto; }
+.image-viewer__results { min-height:0;overflow:hidden;background:var(--am-surface); }
+.image-viewer__results > :deep(*) { height:100%;box-sizing:border-box; }
+</style>

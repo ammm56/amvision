@@ -344,7 +344,7 @@
 <script setup lang="ts">
 import { useWorkflowBoxSelection } from '../canvas/useWorkflowBoxSelection'
 import { computed, onBeforeUnmount, provide, ref, shallowRef, watch } from 'vue'
-import { parameterEditorSourcesKey, type ParameterEditorSources } from '../parameters/editor-context'
+import { parameterEditorSourcesKey, parameterPreviewStateKey, type ParameterEditorSources } from '../parameters/editor-context'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
@@ -504,6 +504,7 @@ const importedUnsaved = ref(false)
 const appModeConfigEdited = ref(false)
 const appModeConfigDialogOpen = ref(false)
 const graphNodes = ref<GraphNodeView[]>([])
+provide(parameterPreviewStateKey, () => ({runId:lastPreviewRun.value?.preview_run_id ?? '', succeeded:!previewing.value && lastPreviewRun.value?.state === 'succeeded'}))
 provide(parameterEditorSourcesKey, (nodeId) => {
   const sources: ParameterEditorSources = {}
   for (const edge of graphEdges.value) {
@@ -514,6 +515,7 @@ provide(parameterEditorSourcesKey, (nodeId) => {
         nodeId: source.node_id,
         nodeTypeId: source.node_type_id,
         parameters: source.parameters,
+        outputPort: edge.source_port,
       })
     }
   }

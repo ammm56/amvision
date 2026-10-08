@@ -4,6 +4,10 @@
 
 ## 验收与基准
 
+- [二维连接器检查与测量实施基线](connector-inspection-2d.md)：工程闭环已实现；第 12 节规定配方易用性、结果解释和计量门禁的下一步顺序。
+- [连接器工程验证记录](connector-implementation-validation.md)：算法、资源、Runtime、SDK、合成图片与开发应用的结果及未完成范围。
+- [连接器节点使用体验审计](connector-usability-audit.md)：开发环境实际页面、规则类型与控件问题、缺针和正常样本显示及改进优先级。
+- [连接器配方编辑与结果解释实现记录](connector-usability-implementation.md)：U01–U07 实现边界、显示契约、浏览器核对、临界量值分析及隔离发行验证。
 - [连接器开发图片与参考资源](connector-development-assets.md)：已准备公开图纸、实拍照片、56 张 Blender 合成图及几何真值，供连接器基础开发使用；不代替实物计量验收。
 - [Workflow 多节点复制验收](workflow-multi-node-copy.md)：实现完成，332 项回归通过；真实 82 节点整体复制与执行验证，以及浏览器工具的验证限制。
 - [LocalMessage 通道验收](local-message-channel-implementation.md)：三条结构化链路已迁移，本机压力与发行装配已完成；目标发行 24 小时混合 soak 待验收。
@@ -16,8 +20,6 @@
 - [模型部署导入导出实施步骤](model-deployment-import-export-implementation.md)：契约、产物归属、导出、导入、删除、页面与真实发行的分步验收。
 
 ## 待实施设计
-
-- [二维连接器检查与测量实施基线](connector-inspection-2d.md)：设计提案；现状证据、节点/测量契约、资源发布、专属编辑交互及 S00–S09 验收门禁，尚未实现。
 
 - [模型转换与 Pose 评估修复方案](model-matrix-repair-plan.md)：已知模型问题的修复实现、回归证据与待验收范围；工程测试与真实业务验收分别记录。
 - [用户页面与操作权限](user-access.md)：管理员逐项配置页面、操作和项目范围，复用现有启动页与应用模式。

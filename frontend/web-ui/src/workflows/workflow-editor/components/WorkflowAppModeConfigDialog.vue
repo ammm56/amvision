@@ -45,9 +45,10 @@
                 <span v-if="!row.presentationSource.enabled" class="app-mode-dialog__warning">{{ pt('disabled') }}</span>
                 <button type="button" :aria-label="`${pt('locate')} · ${row.presentationSource.title} · ${row.presentationSource.nodeId}`" @click="emit('locate', row.presentationSource.nodeId)">{{ pt('locate') }}</button>
               </template>
-              <span v-else>{{ pt('imageOnly') }}</span>
+              <span v-else-if="!row.resultSource">{{ pt('imageOnly') }}</span>
+              <template v-if="row.resultSource"><strong>{{ row.resultSource.title }}</strong><span v-if="!row.resultSource.enabled" class="app-mode-dialog__warning">{{ pt('disabled') }}</span><button type="button" @click="emit('locate',row.resultSource.nodeId)">{{ pt('locate') }}</button></template>
             </div>
-            <div v-if="row.node_type_id === 'core.io.value-display'" class="app-mode-dialog__usage-list" aria-live="polite">
+            <div v-if="['core.io.value-display','core.io.value-preview'].includes(row.node_type_id || '')" class="app-mode-dialog__usage-list" aria-live="polite">
               <div v-for="target in imageUses(row)" :key="target.nodeId" class="app-mode-dialog__usage">
                 <span>{{ pt(target.visible ? 'shownWith' : 'connectedHidden') }}</span>
                 <strong>{{ target.title }}</strong>
@@ -127,7 +128,7 @@ const sizeOptions = computed(() => ([
   { value: 'large', label: t('workflowEditor.appMode.sizeLarge') },
 ]))
 const selectedDisplays = computed(() => rows.value.filter((row) => row.selected))
-const hasInvalidSelection = computed(() => selectedDisplays.value.some(row => row.invalid || row.presentationSource?.enabled === false))
+const hasInvalidSelection = computed(() => selectedDisplays.value.some(row => row.invalid || row.presentationSource?.enabled === false || row.resultSource?.enabled===false))
 const canApply = computed(() => selectedDisplays.value.length > 0 && !hasInvalidSelection.value
   && title.value.trim().length <= 128
   && selectedDisplays.value.every(row => row.title.trim().length <= 128 && ['small', 'medium', 'large'].includes(row.size)))

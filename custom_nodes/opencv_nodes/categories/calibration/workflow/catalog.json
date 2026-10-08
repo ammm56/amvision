@@ -3675,6 +3675,15 @@
       "input_ports": [],
       "output_ports": [
         {
+          "name": "debug_preview",
+          "display_name": "Calibration Preview",
+          "payload_type_id": "response-body.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
           "name": "calibration",
           "display_name": "Calibration",
           "payload_type_id": "planar-calibration.v1",

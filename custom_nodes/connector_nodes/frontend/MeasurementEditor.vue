@@ -5,10 +5,30 @@
       <div class="measurement-workspace">
         <p>{{ text.help }}</p>
         <p v-if="error" role="alert" class="measurement-error">{{ error }}</p>
+        <div v-if="referenceLayout" class="measurement-batch">
+          <button v-if="referenceUrl" type="button" class="measurement-reference" @click="viewerOpen=true"><img :src="referenceUrl" :alt="text.configuration"><span>{{ text.mark }}</span></button>
+          <label>{{ batchText.row }}<SelectField v-model="batchRow" :options="[{value:'',label:batchText.all},...rows.map(row=>({value:row,label:row}))]" @update:model-value="selectRow" /></label>
+          <div class="measurement-options"><label v-for="pin in referenceLayout.pins.filter(p=>!batchRow||p.row_id===batchRow)" :key="pin.pin_id"><input v-model="batchPins" type="checkbox" :value="pin.pin_id" :disabled="!pin.expected_present">{{ pin.pin_id }}{{ pin.expected_present?'':` · ${batchText.empty}` }}</label></div>
+          <div class="measurement-options"><label v-for="kind in batchKinds" :key="kind"><input v-model="batchSelectedKinds" type="checkbox" :value="kind">{{ kind }}</label></div>
+          <Button variant="secondary" :disabled="!batchPins.length || !batchSelectedKinds.length" @click="previewBatch">{{ batchText.preview }}</Button>
+          <div v-if="pendingBatch" role="status">
+            <p>{{ pendingBatch.length }} · {{ batchText.items }} · {{ batchText.preserve }}</p>
+            <p v-if="!pendingBatch.length">{{ batchText.duplicates }}</p>
+            <div v-else class="measurement-table measurement-candidates">
+              <table><thead><tr><th>ID</th><th>{{ batchText.kind }}</th><th>PIN A</th><th>PIN B</th><th>{{ batchText.direction }}</th><th>{{ batchText.section }}</th></tr></thead>
+                <tbody><tr v-for="item in pendingBatch" :key="item.item_id"><td>{{ item.item_id }}</td><td>{{ item.kind }}</td><td>{{ item.pin_a }}</td><td>{{ item.pin_b ?? '—' }}</td><td>{{ item.direction.join(', ') }}</td><td>{{ item.section ?? '—' }}</td></tr></tbody>
+              </table>
+            </div>
+            <Button variant="secondary" :disabled="!pendingBatch.length || draft.length+pendingBatch.length>8192" @click="acceptBatch">{{ batchText.add }}</Button><Button variant="secondary" @click="pendingBatch=null">{{ text.cancel }}</Button>
+          </div>
+          <Button v-if="previousBatch" variant="secondary" @click="restoreBatch">{{ batchText.restore }}</Button>
+        </div>
+        <p v-else role="status">{{ batchText.unresolved }}</p>
+        <p v-if="invalidReferences.length" role="alert" class="measurement-error">{{ batchText.invalid }}: {{ invalidReferences.join(', ') }}</p>
         <div class="measurement-table"><table><thead><tr><th>ID</th><th>Kind</th><th>PIN A</th><th>PIN B</th><th>{{ text.enabled }}</th><th></th></tr></thead>
           <tbody><tr v-for="(item,index) in draft" :key="index" :class="{selected:index === selected}" @click="selected = index">
             <td><input v-model="item.item_id" :aria-label="`ID ${index+1}`"></td><td><SelectField :model-value="item.kind" :options="kinds" @update:model-value="setKind(item, String($event))" /></td>
-            <td><input v-model="item.pin_a" :aria-label="`PIN A ${index+1}`"></td><td><input v-model="item.pin_b" :disabled="!paired(item)" :aria-label="`PIN B ${index+1}`"></td>
+            <td><SelectField v-if="referenceLayout" v-model="item.pin_a" :options="pinOptions" :aria-label="`PIN A ${index+1}`" /><input v-else v-model="item.pin_a" :aria-label="`PIN A ${index+1}`"></td><td><SelectField v-if="referenceLayout" v-model="item.pin_b" :options="pinOptions" :disabled="!paired(item)" :aria-label="`PIN B ${index+1}`" /><input v-else v-model="item.pin_b" :disabled="!paired(item)" :aria-label="`PIN B ${index+1}`"></td>
             <td><input v-model="item.enabled" type="checkbox" :aria-label="`${text.enabled} ${index+1}`"></td><td><button type="button" :aria-label="`${text.remove} ${index+1}`" @click.stop="draft.splice(index,1); selected = Math.min(selected,draft.length-1)">×</button></td>
           </tr></tbody></table></div>
         <Button variant="secondary" :disabled="draft.length >= 8192" @click="add">{{ text.add }}</Button>
@@ -24,7 +44,7 @@
             <label v-if="active.kind !== 'angle'">Distance<SelectField v-model="active.distance_mode" :options="[{value:'projected',label:'Projected'}, {value:'euclidean',label:'Euclidean'}]" /></label>
           </div>
           <div v-if="active.kind === 'length'" class="measurement-grid">
-            <label>Start Feature<input v-model="active.feature_a" placeholder="R1P01:tip"></label><label>End Feature<input v-model="active.feature_b" placeholder="R1P01:root"></label>
+            <label>Start Feature<SelectField v-if="referenceLayout" v-model="active.feature_a" :options="endpointIds(referenceLayout,active.pin_a).map(value=>({value,label:value}))" /><input v-else v-model="active.feature_a" placeholder="R1P01:tip"></label><label>End Feature<SelectField v-if="referenceLayout" v-model="active.feature_b" :options="endpointIds(referenceLayout,active.pin_b??'').map(value=>({value,label:value}))" /><input v-else v-model="active.feature_b" placeholder="R1P01:root"></label>
           </div>
           <p>{{ active.kind === 'length' ? text.length : text.reference }}</p>
         </div>
@@ -46,15 +66,20 @@ import {listMeasurementResources,readMeasurementResourceImage} from '@/workflows
 import type {ParameterEditorSources} from '@/workflows/workflow-editor/parameters/editor-context'
 import type {PreviewImageOverlay} from '@/workflows/workflow-editor/preview/useWorkflowPreviewDisplays'
 import {hydratePinLayout,isPinLayoutValid,type PinLayout} from './pin-layout'
+import {buildMeasurementBatch,batchKinds,endpointIds,invalidMeasurementReferences,type MeasurementItem as Item} from './measurement-items'
 defineOptions({ inheritAttrs: false })
 
-interface Item { item_id:string;kind:string;enabled:boolean;pin_a:string;pin_b:string|null;direction:[number,number];section:number|null;distance_mode:string;feature_a:string|null;feature_b:string|null }
 const props = defineProps<{ modelValue:unknown; disabled?:boolean; inputSources?:ParameterEditorSources }>()
 const emit = defineEmits<{ 'update:modelValue':[value:Item[]] }>()
 const { locale } = useI18n()
 const text = computed(() => locale.value === 'zh-CN' ? {title:'尺寸项',mark:'在参考图设置方向 / 截面',configuration:'配置示意',visualHelp:'图上只显示参考配置，不代表测量结果。Pins 和 Features 须来自同一个 Pin Array Locate，并选择了参考模板。',apply:'应用',cancel:'取消',enabled:'启用',remove:'移除',add:'添加尺寸',normalize:'归一化方向',help:'按稳定 PIN ID 配置尺寸。公差在 Check Limits 中定义；未观测到的特征不会补名义值。',reference:'方向和截面采用参考原图坐标。截面为点在方向法线上的投影；Angle 输出 0–90° 无向夹角。',length:'长度端点必须是 Pin Array Locate 实际提取的具名点。不可见针根不能用检测框代替。',invalid:'请检查唯一 ID、PIN 配对、单位方向和必要的截面/端点。'} : {title:'Measurements',mark:'Set direction / section on reference',configuration:'Configuration guide',visualHelp:'Reference configuration only, not measured geometry. Pins and Features must come from the same Pin Array Locate with a reference template.',apply:'Apply',cancel:'Cancel',enabled:'Enabled',remove:'Remove',add:'Add measurement',normalize:'Normalize direction',help:'Use stable PIN IDs. Configure tolerances in Check Limits. Missing observations are never replaced by nominal values.',reference:'Direction and section use reference-image coordinates. Section is the projection onto the direction normal. Angle is an unsigned 0–90° angle.',length:'Length requires named points observed by Pin Array Locate. An invisible root is not inferred from a bounding box.',invalid:'Check unique IDs, PIN pairs, unit directions and required section/endpoints.'})
 const kinds = ['width','pitch','total_pitch','gap','offset','length','angle'].map(value => ({value,label:value.replace('_',' ').replace(/^./,c=>c.toUpperCase())}))
 const open = ref(false), selected = ref(0), error = ref(''), draft = ref<Item[]>([])
+const batchRow=ref<string|number|boolean|null>(''),batchPins=ref<string[]>([]),batchSelectedKinds=ref<string[]>([...batchKinds]),pendingBatch=ref<Item[]|null>(null),previousBatch=ref<Item[]|null>(null)
+const batchText=computed(()=>locale.value==='zh-CN'?{kind:'类型',direction:'方向',section:'截面（px）',row:'选择排列',all:'全部排列',empty:'设计留空',preview:'预览批量尺寸',items:'新增尺寸',preserve:'已存在的 ID 保持不变；默认沿参考 X 方向，截面取所选 PIN 中心。应用前核对方向和截面。',duplicates:'没有新增尺寸；相同 ID 已存在。',add:'添加到草稿',restore:'恢复批量添加前',unresolved:'无法从显式 Pins / Features 连线解析名义布局；仅可手动配置，引用将在执行前验证。',invalid:'无效 PIN / 端点引用'}:{kind:'Kind',direction:'Direction',section:'Section (px)',row:'Select row',all:'All rows',empty:'Designed empty',preview:'Preview batch',items:'new measurements',preserve:'Existing IDs are unchanged. Defaults use reference X and PIN center sections; review direction and sections.',duplicates:'No new items; IDs already exist.',add:'Add to draft',restore:'Restore before batch',unresolved:'Nominal layout cannot be resolved from explicit Pins / Features connections. Manual configuration only; references are validated before execution.',invalid:'Invalid PIN / endpoint references'})
+const rows=computed(()=>[...new Set(referenceLayout.value?.pins.map(p=>p.row_id)??[])])
+const pinOptions=computed(()=>referenceLayout.value?.pins.map(p=>({value:p.pin_id,label:p.pin_id}))??[])
+const invalidReferences=computed(()=>referenceLayout.value?invalidMeasurementReferences(draft.value,referenceLayout.value):[])
 const project=useProjectStore(), referenceUrl=ref(''), referenceError=ref(''), viewerOpen=ref(false), referenceLayout=ref<PinLayout>(), referenceSize=ref<[number,number]>()
 let referenceAbort:AbortController|undefined,referenceGeneration=0
 const count = computed(() => Array.isArray(props.modelValue) ? props.modelValue.length : 0)
@@ -62,7 +87,7 @@ const active = computed(() => draft.value[selected.value])
 const paired = (item:Item) => !['width','offset'].includes(item.kind)
 const valid = computed(() => {
   const id = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/
-  return draft.value.length > 0 && draft.value.length <= 8192 && new Set(draft.value.map(i => i.item_id)).size === draft.value.length && draft.value.every(i =>
+  return !invalidReferences.value.length && draft.value.length > 0 && draft.value.length <= 8192 && new Set(draft.value.map(i => i.item_id)).size === draft.value.length && draft.value.every(i =>
     id.test(i.item_id) && id.test(i.pin_a) && kinds.some(k => k.value === i.kind) && (paired(i) ? !!i.pin_b && id.test(i.pin_b) && (i.pin_a !== i.pin_b || i.kind === 'length') : i.pin_b === null) &&
     i.direction.every(Number.isFinite) && Math.abs(i.direction[0]**2+i.direction[1]**2-1) <= 1e-6 && ['projected','euclidean'].includes(i.distance_mode) &&
     (!['width','gap'].includes(i.kind) || (i.section !== null && Number.isFinite(i.section))) &&
@@ -72,6 +97,7 @@ function blank():Item { return {item_id:'width',kind:'width',enabled:true,pin_a:
 function show() {
   close()
   error.value = ''; selected.value = 0
+  pendingBatch.value=null;previousBatch.value=null;batchRow.value='';batchSelectedKinds.value=[...batchKinds]
   const original = Array.isArray(props.modelValue) ? props.modelValue : []
   try { draft.value = original.map(i => { if (!i || typeof i !== 'object' || ('direction' in i && (!Array.isArray(i.direction) || i.direction.length !== 2))) throw new Error(text.value.invalid); return {...blank(),...JSON.parse(JSON.stringify(i))} }); open.value = true }
   catch { draft.value = []; error.value = text.value.invalid; open.value = true }
@@ -84,11 +110,13 @@ function apply() { if (valid.value && !props.disabled) { emit('update:modelValue
 function close(){open.value=false;viewerOpen.value=false;referenceGeneration++;referenceAbort?.abort();referenceAbort=undefined;if(referenceUrl.value)URL.revokeObjectURL(referenceUrl.value);referenceUrl.value='';referenceError.value='';referenceLayout.value=undefined;referenceSize.value=undefined}
 async function loadReference(){
   const pins=props.inputSources?.pins,features=props.inputSources?.features
-  if(pins?.length!==1||features?.length!==1||pins[0]!.nodeId!==features[0]!.nodeId||pins[0]!.nodeTypeId!=='custom.connector.pin-array-locate'||!project.selectedProjectId)return
+  if(pins?.length!==1||features?.length!==1||pins[0]!.nodeId!==features[0]!.nodeId||pins[0]!.nodeTypeId!=='custom.connector.pin-array-locate')return
   const token=++referenceGeneration
   try{
     const layout=hydratePinLayout(JSON.parse(JSON.stringify(pins[0]!.parameters.layout)))
-    if(!isPinLayoutValid(layout)||!layout.reference_sha256)return
+    if(!isPinLayoutValid(layout))return
+    referenceLayout.value=layout;selectRow()
+    if(!layout.reference_sha256||!project.selectedProjectId)return
     referenceAbort=new AbortController()
     const resources=await listMeasurementResources(project.selectedProjectId,referenceAbort.signal)
     if(token!==referenceGeneration)return
@@ -99,6 +127,12 @@ async function loadReference(){
     referenceLayout.value=layout;referenceSize.value=[resource.content.template.image_width,resource.content.template.image_height];referenceUrl.value=URL.createObjectURL(image)
   }catch(e){if(token===referenceGeneration&&!referenceAbort?.signal.aborted&&open.value)referenceError.value=e instanceof Error?e.message:String(e)}
 }
+function selectRow(){batchPins.value=referenceLayout.value?.pins.filter(p=>p.expected_present&&(!batchRow.value||p.row_id===batchRow.value)).map(p=>p.pin_id)??[];pendingBatch.value=null}
+function previewBatch(){if(referenceLayout.value){const existing=new Set(draft.value.map(i=>i.item_id));pendingBatch.value=buildMeasurementBatch(referenceLayout.value,batchPins.value,batchSelectedKinds.value).filter(i=>!existing.has(i.item_id))}}
+function acceptBatch(){if(!pendingBatch.value?.length||draft.value.length+pendingBatch.value.length>8192)return;const items=pendingBatch.value;previousBatch.value=JSON.parse(JSON.stringify(draft.value));draft.value.push(...items);pendingBatch.value=null}
+function restoreBatch(){if(previousBatch.value){draft.value=previousBatch.value;previousBatch.value=null;selected.value=0}}
+watch([batchPins,batchSelectedKinds],()=>{pendingBatch.value=null},{deep:true})
+watch(draft,()=>{pendingBatch.value=null},{deep:true,flush:'sync'})
 const viewerImage=computed(()=>{
   const item=active.value,layout=referenceLayout.value
   if(!referenceUrl.value||!layout||!item)return null
@@ -140,8 +174,15 @@ th { position:sticky; top:0; background:var(--am-surface); }
 tr.selected { background:color-mix(in srgb,var(--am-brand-primary) 12%,transparent); }
 input { width:100%; min-width:60px; padding:6px; background:var(--am-input); color:var(--am-text); border:1px solid var(--am-border); border-radius:var(--am-radius-sm); font:inherit; }
 input:focus-visible { outline:2px solid var(--am-input-focus-ring); }
-input[type=checkbox] { width:auto; min-width:0; accent-color:var(--am-brand-primary); }
+input[type=checkbox] { width:16px; height:16px; min-width:16px; min-height:16px; padding:0; flex:none; }
+th { white-space:nowrap; }
 .measurement-grid { display:flex; flex-wrap:wrap; gap:12px; align-items:end; }
 label { display:grid; gap:6px; flex:1 1 130px; font-size:12px; color:var(--am-text-muted); }
 .measurement-workspace .measurement-error { color:var(--am-danger-text); }
+.measurement-batch { display:grid; gap:10px; border:1px solid var(--am-border); border-radius:var(--am-radius-sm); padding:12px; }
+.measurement-reference { display:flex; align-items:center; gap:12px; padding:8px; background:var(--am-surface); border:1px solid var(--am-border); color:var(--am-text); cursor:pointer; }
+.measurement-reference img { max-width:45%; height:120px; object-fit:contain; }
+.measurement-options { display:flex; flex-wrap:wrap; gap:10px; }
+.measurement-options label { display:flex; align-items:center; flex:0 0 auto; }
+.measurement-candidates { max-height:220px; margin:8px 0; }
 </style>

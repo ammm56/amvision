@@ -4,11 +4,11 @@ export interface CandidateBand { band_id: string; center: [number, number]; leng
 export interface PinDefinition { pin_id: string; row_id: string; pin_type: string; center: [number, number]; expected_present: boolean; endpoint_pairs?: EndpointPair[] }
 export interface SamplingType {
   type_id: string; search_length: number; band_width: number; scan_lines: number; sample_step: number;
-  angle_degrees: number; polarity: 'bright' | 'dark'; gradient_threshold: number; min_width: number; max_width: number; min_coverage: number; max_residual: number
+  angle_degrees: number; polarity: 'bright' | 'dark'; gradient_threshold: number; relative_gradient_threshold: number; min_width: number; max_width: number; min_coverage: number; max_residual: number
 }
 export interface PinLayout { reference_id: string; reference_sha256: string | null; pins: PinDefinition[]; types: SamplingType[]; candidate_bands?: CandidateBand[]; diagnostic_pin_id?: string | null }
 export function createPinLayout(): PinLayout {
-  return { reference_id: 'reference', reference_sha256: null, pins: [], types: [{ type_id: 'normal', search_length: 48, band_width: 8, scan_lines: 9, sample_step: .5, angle_degrees: 0, polarity: 'bright', gradient_threshold: .03, min_width: 2, max_width: 40, min_coverage: .7, max_residual: 1 }] }
+  return { reference_id: 'reference', reference_sha256: null, pins: [], types: [{ type_id: 'normal', search_length: 48, band_width: 8, scan_lines: 9, sample_step: .5, angle_degrees: 0, polarity: 'bright', gradient_threshold: .03, relative_gradient_threshold: 0, min_width: 2, max_width: 40, min_coverage: .7, max_residual: 1 }] }
 }
 /** 补齐当前 Schema 允许省略的默认参数，不修改导入文档或接受旧字段。 */
 export function hydratePinLayout(value: PinLayout): PinLayout {
@@ -26,6 +26,33 @@ export function generatePins(rows: number, columns: number, origin: [number, num
     return { pin_id: `R${row + 1}P${String(column + 1).padStart(2, '0')}`, row_id: `R${row + 1}`, pin_type: typeId, center: [origin[0] + column * pitch + (row % 2) * stagger, origin[1] + row * rowPitch], expected_present: true }
   })
 }
+export interface PinArraySettings { rows:number; columns:number; x:number; y:number; pitch:number; rowPitch:number; stagger:number }
+
+/** 仅反推标准编号、等间距阵列；不将不规则布局悄悄吸附到规则网格。 */
+export function inferPinArray(pins: PinDefinition[]): PinArraySettings | null {
+  if (!pins.length) return null
+  const rows = [...new Set(pins.map(p => p.row_id))]
+  const first = pins.filter(p => p.row_id === 'R1').sort((a,b) => a.center[0]-b.center[0])
+  if (first.length < 2 || pins.length !== rows.length * first.length) return null
+  const x=first[0]!.center[0], y=first[0]!.center[1], pitch=(first.at(-1)!.center[0]-x)/(first.length-1)
+  const second=pins.find(p=>p.pin_id==='R2P01')
+  const rowPitch=second ? second.center[1]-y : 50, stagger=second ? second.center[0]-x : 0
+  try {
+    const generated=generatePins(rows.length,first.length,[x,y],pitch,rowPitch,stagger,first[0]!.pin_type)
+    const actual=new Map(pins.map(p=>[p.pin_id,p]))
+    if (generated.some(p => { const a=actual.get(p.pin_id); return !a || a.row_id!==p.row_id || Math.hypot(a.center[0]-p.center[0],a.center[1]-p.center[1])>1e-3 })) return null
+    return {rows:rows.length,columns:first.length,x,y,pitch,rowPitch,stagger}
+  } catch { return null }
+}
+
+/** 同一稳定 ID 的业务属性保留，只有显式生成的中心/行位置发生变化。 */
+export function replacePinArray(previous: PinDefinition[], generated: PinDefinition[]): PinDefinition[] {
+  const old=new Map(previous.map(pin=>[pin.pin_id,pin]))
+  return generated.map(pin=>{
+    const retained=old.get(pin.pin_id)
+    return retained ? {...JSON.parse(JSON.stringify(retained)),center:pin.center,row_id:pin.row_id} : pin
+  })
+}
 export function isPinLayoutValid(layout: PinLayout): boolean {
   if (!layout || !Array.isArray(layout.pins) || !Array.isArray(layout.types)) return false
   if (layout.pins.some(p => !p || typeof p !== 'object') || layout.types.some(t => !t || typeof t !== 'object')) return false
@@ -36,8 +63,8 @@ export function isPinLayoutValid(layout: PinLayout): boolean {
   if (layout.diagnostic_pin_id != null && !layout.pins.some(p => p.pin_id === layout.diagnostic_pin_id)) return false
   let samples = 0
   for (const t of layout.types) {
-    if (!id.test(t.type_id) || ![t.search_length,t.band_width,t.scan_lines,t.sample_step,t.angle_degrees,t.gradient_threshold,t.min_width,t.max_width,t.min_coverage,t.max_residual].every(Number.isFinite)) return false
-    if (t.search_length < 4 || t.search_length > 2048 || t.band_width < 1 || t.band_width > 256 || !Number.isInteger(t.scan_lines) || t.scan_lines < 3 || t.scan_lines > 65 || t.sample_step < .25 || t.sample_step > 2 || t.gradient_threshold <= 0 || t.gradient_threshold > 1 || t.min_width <= 0 || t.max_width < t.min_width || t.max_width >= t.search_length || t.min_coverage <= 0 || t.min_coverage > 1 || t.max_residual <= 0 || t.max_residual > 10 || !['bright','dark'].includes(t.polarity)) return false
+    if (!id.test(t.type_id) || ![t.search_length,t.band_width,t.scan_lines,t.sample_step,t.angle_degrees,t.gradient_threshold,t.relative_gradient_threshold,t.min_width,t.max_width,t.min_coverage,t.max_residual].every(Number.isFinite)) return false
+    if (t.search_length < 4 || t.search_length > 2048 || t.band_width < 1 || t.band_width > 256 || !Number.isInteger(t.scan_lines) || t.scan_lines < 3 || t.scan_lines > 65 || t.sample_step < .25 || t.sample_step > 2 || t.gradient_threshold <= 0 || t.gradient_threshold > 1 || t.relative_gradient_threshold < 0 || t.relative_gradient_threshold > 1 || t.min_width <= 0 || t.max_width < t.min_width || t.max_width >= t.search_length || t.min_coverage <= 0 || t.min_coverage > 1 || t.max_residual <= 0 || t.max_residual > 10 || !['bright','dark'].includes(t.polarity)) return false
   }
   for (const p of layout.pins) {
     if (!p || !Array.isArray(p.center)) return false

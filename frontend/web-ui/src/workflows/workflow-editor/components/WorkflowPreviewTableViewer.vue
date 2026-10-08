@@ -17,7 +17,9 @@
             :rows="table.rows"
             :empty-text="table.emptyText"
             :max-rows="0"
+            selectable :selected-index="selected" @select="selected=$event"
           />
+          <details v-if="selected!==null && table.rows[selected]"><summary>JSON</summary><pre>{{ JSON.stringify(table.rows[selected],null,2) }}</pre></details>
         </div>
         <div class="workflow-preview-table-viewer__status">
           <span>{{ t('workflowEditor.editor.loadedRows', { count: table.rows.length }) }}</span>
@@ -31,6 +33,7 @@
 <script setup lang="ts">
 import { X } from '@lucide/vue'
 import { useTranslation } from '@/platform/i18n'
+import {ref,watch} from 'vue'
 
 import Button from '@/shared/ui/components/Button.vue'
 
@@ -53,10 +56,12 @@ interface PreviewTableView {
   emptyText?: string | null
 }
 
-defineProps<{
+const props=defineProps<{
   open: boolean
   table: PreviewTableView | null
 }>()
+const selected=ref<number|null>(null)
+watch(()=>props.table,()=>{selected.value=null})
 
 const emit = defineEmits<{
   close: []
@@ -78,11 +83,11 @@ const emit = defineEmits<{
   grid-template-rows: auto minmax(0, 1fr) auto;
   min-width: 0;
   min-height: 0;
-  border: 1px solid rgb(255 255 255 / 0.14);
+  border: 1px solid var(--am-border);
   border-radius: 12px;
   overflow: hidden;
-  color: #eef3f6;
-  background: #1d2225;
+  color: var(--am-text);
+  background: var(--am-surface);
   box-shadow: 0 18px 40px rgb(0 0 0 / 0.34);
 }
 
@@ -94,16 +99,16 @@ const emit = defineEmits<{
   gap: 12px;
   min-width: 0;
   padding: 10px 12px;
-  background: #1d2225;
+  background: var(--am-surface);
 }
 
 .workflow-preview-table-viewer__toolbar {
-  border-bottom: 1px solid rgb(255 255 255 / 0.14);
+  border-bottom: 1px solid var(--am-border);
 }
 
 .workflow-preview-table-viewer__status {
-  border-top: 1px solid rgb(255 255 255 / 0.14);
-  color: #b9c6cc;
+  border-top: 1px solid var(--am-border);
+  color: var(--am-text-muted);
   font-size: 12px;
 }
 
@@ -120,21 +125,28 @@ const emit = defineEmits<{
 }
 
 .workflow-preview-table-viewer__title span {
-  color: #b9c6cc;
+  color: var(--am-text-muted);
   font-size: 12px;
 }
 
 .workflow-preview-table-viewer__viewport {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   min-width: 0;
   min-height: 0;
   padding: 12px;
   overflow: hidden;
-  background: #161a1d;
+  background: var(--am-surface-soft);
 }
 
 .workflow-preview-table-viewer__viewport :deep(.workflow-preview-table) {
-  height: 100%;
+  flex: 1;
+  min-height: 0;
 }
+
+.workflow-preview-table-viewer__viewport details { flex: 0 0 auto; max-height: 30%; overflow: auto; }
+.workflow-preview-table-viewer__viewport pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 
 .workflow-preview-table-viewer__viewport :deep(.workflow-preview-table__scroller) {
   height: 100%;

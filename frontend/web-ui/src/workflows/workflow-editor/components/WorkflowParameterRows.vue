@@ -20,19 +20,21 @@
           :model-value="String(row[key] ?? property.default ?? property.enum[0])"
           :options="property.enum.map(option => ({ value: String(option), label: optionLabel(key, option) }))"
           :aria-label="String(property.title || key)" :disabled="disabled"
-          @update:model-value="set(index, key, $event)" />
+          @update:model-value="set(index, key, property.enum.find(option => String(option) === String($event)))" />
         <textarea v-else-if="property.type === 'object' || property.type === 'array'" :value="JSON.stringify(row[key] ?? {}, null, 2)" :disabled="disabled" @change="setJson(index, key, $event)" />
-        <input v-else :type="property.type === 'integer' ? 'number' : 'text'" :min="Number(property.minimum ?? 0)" :max="property.maximum == null ? undefined : Number(property.maximum)" :value="String(row[key] ?? property.default ?? '')" :disabled="disabled" @input="set(index, key, property.type === 'integer' ? Number(($event.target as HTMLInputElement).value) : ($event.target as HTMLInputElement).value)" />
+        <input v-else-if="rowScalar(property).type === 'boolean'" type="checkbox" :aria-label="String(property.title || key)" :checked="(row[key] ?? property.default) === true" :disabled="disabled" @change="set(index, key, parseRowScalar($event.target as HTMLInputElement, property))" />
+        <input v-else :type="['number','integer'].includes(String(rowScalar(property).type)) ? 'number' : 'text'" :aria-label="String(property.title || key)" :min="rowScalar(property).minimum as number | undefined" :max="rowScalar(property).maximum as number | undefined" :step="rowScalar(property).type === 'integer' ? 1 : 'any'" :placeholder="rowScalar(property).nullable ? '—' : undefined" :value="String(row[key] === undefined ? property.default ?? '' : row[key] ?? '')" :disabled="disabled" :aria-invalid="!validRowScalar(row[key], property)" @input="set(index, key, parseRowScalar($event.target as HTMLInputElement, property))" />
       </label>
     </div>
-    <span v-if="error" role="alert">{{ t(error) }}</span>
+    <span v-if="error || invalidField" role="alert">{{ invalidField ? `${invalidField} · ${t('workflowDisplay.invalidConfig')}` : t(error) }}</span>
     <button type="button" class="parameter-rows__add" :disabled="disabled || rows.length >= Number(schema.maxItems ?? 64)" @click="add"><Plus :size="16" />{{ t('workflowDisplay.addRow') }}</button>
   </div>
 </template>
 <script setup lang="ts">
 import { useTranslation } from '@/platform/i18n'
 const { t } = useTranslation()
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { rowScalar, parseRowScalar, validRowScalar } from '../parameters/row-scalar'
 import { ArrowDown, ArrowUp, Plus, Trash2 } from '@lucide/vue'
 import Select from '@/shared/ui/components/Select.vue'
 import WorkflowDisplayColor from './WorkflowDisplayColor.vue'
@@ -45,8 +47,17 @@ const error = computed(() => Object.values(errors.value)[0] ?? '')
 const advanced = ref<Record<number, boolean>>({})
 const rows = computed(() => Array.isArray(props.modelValue) ? props.modelValue as WorkflowJsonObject[] : [])
 const properties = computed(() => ((props.schema.items as WorkflowJsonObject)?.properties ?? {}) as Record<string, WorkflowJsonObject>)
+const invalidField = computed(() => {
+  const required = (props.schema.items as WorkflowJsonObject)?.required
+  for (const [index, row] of rows.value.entries()) for (const [key, spec] of Object.entries(visibleProperties(row))) {
+    if ((Array.isArray(required) && required.includes(key) && row[key] === undefined) || !validRowScalar(row[key], spec)) return `${index + 1} · ${spec.title || key}`
+  }
+  return ''
+})
+const valid = computed(() => !invalidField.value && Object.keys(errors.value).length === 0)
 // 仅识别归约配置的结构，不把生产字段或模型分类写入通用编辑器。
 const isReducer = computed(() => Boolean(properties.value.output_key && properties.value.source_path && properties.value.operation))
+watch(valid, value => emit('validity-change', value), { immediate: true })
 function visibleProperties(row: WorkflowJsonObject) {
   return Object.fromEntries(Object.entries(properties.value).filter(([key]) => {
     if (properties.value.states?.['x-ui-widget'] === 'state-colors') {
@@ -70,13 +81,11 @@ function optionLabel(key: string, value: unknown): string {
 function set(index: number, key: string, value: unknown) {
   if (key === 'format') { delete errors.value[`${index}:states`]; delete errors.value[`${index}:precision`] }
   delete errors.value[`${index}:${key}`]
-  emit('validity-change', Object.keys(errors.value).length === 0)
   emit('update:modelValue', rows.value.map((row, i) => i === index ? { ...row, [key]: value } : row))
 }
 function setValidity(index: number, key: string, valid: boolean) {
   if (valid) delete errors.value[`${index}:${key}`]
   else errors.value[`${index}:${key}`] = 'workflowDisplay.invalidConfig'
-  emit('validity-change', Object.keys(errors.value).length === 0)
 }
 function setJson(index: number, key: string, event: Event) {
   try { set(index, key, JSON.parse((event.target as HTMLTextAreaElement).value)) }
@@ -85,7 +94,8 @@ function setJson(index: number, key: string, event: Event) {
 function add() {
   const row: WorkflowJsonObject = {}
   for (const [key, spec] of Object.entries(properties.value)) {
-    row[key] = spec['x-ui-widget'] === 'display-color' ? null : spec.default ?? (Array.isArray(spec.enum) ? spec.enum[0] : key === 'condition' ? { operator: 'in', path: '', right: [] } : spec.type === 'object' ? {} : '')
+    const scalar = rowScalar(spec)
+    row[key] = spec['x-ui-widget'] === 'display-color' ? null : 'default' in spec ? structuredClone(spec.default) : scalar.nullable ? null : Array.isArray(spec.enum) ? spec.enum[0] : key === 'condition' ? { operator: 'in', path: '', right: [] } : spec.type === 'object' ? {} : spec.type === 'array' ? [] : scalar.type === 'boolean' ? false : ''
   }
   emit('update:modelValue', [...rows.value, row])
 }
@@ -94,7 +104,6 @@ function reorderErrors(order: number[]) {
     const split = key.indexOf(':'); const newIndex = order.indexOf(Number(key.slice(0, split)))
     return newIndex < 0 ? [] : [[`${newIndex}${key.slice(split)}`, message]]
   }))
-  emit('validity-change', Object.keys(errors.value).length === 0)
 }
 function remove(index: number) {
   reorderErrors(rows.value.map((_, i) => i).filter(i => i !== index))
@@ -135,6 +144,7 @@ function setMatchValues(index: number, event: Event) {
 .parameter-rows input, .parameter-rows select, .parameter-rows textarea { width: 100%; box-sizing: border-box; min-width: 0; min-height: 36px; padding: 8px 10px; background: var(--am-input); color: var(--am-text); border: 1px solid var(--am-border-strong); border-radius: var(--am-radius-sm); font: inherit; font-weight: 400; }
 .parameter-rows :deep(.ui-select__button) { min-height: 36px; padding: 8px 10px; font: inherit; font-weight: 400; }
 .parameter-rows textarea { min-height: 56px; resize: vertical; }
+.parameter-rows input[type=checkbox] { width:16px; height:16px; min-width:16px; min-height:16px; padding:0; }
 .parameter-rows button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 8px; color: var(--am-text); background: var(--am-surface); border: 1px solid var(--am-border); border-radius: var(--am-radius-sm); cursor: pointer; font: inherit; min-height: 32px; }
 .parameter-rows button:hover:not(:disabled) { background: var(--am-surface-soft); }
 .parameter-rows :is(input, select, textarea, button):focus-visible { outline: 2px solid var(--am-focus-ring); outline-offset: 2px; }

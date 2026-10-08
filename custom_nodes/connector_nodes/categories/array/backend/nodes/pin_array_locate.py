@@ -67,7 +67,14 @@ def handle_node(request) -> dict:
             matrix = np.asarray(pose.image_from_reference)
     observation_id = uuid4().hex
     try:
-        gray = prepare_gray(image) if pose_reason is None else None
+        encoding = request.parameters.get("image_encoding", "native")
+        if not isinstance(encoding, str) or encoding not in {"native", "srgb"}:
+            raise ValueError("Image Encoding 必须为 native 或 srgb")
+        gray = (
+            prepare_gray(image, image_encoding=encoding)
+            if pose_reason is None
+            else None
+        )
     except ValueError as exc:
         raise InvalidRequestError(str(exc)) from exc
     types = {t.type_id: t for t in layout.types}

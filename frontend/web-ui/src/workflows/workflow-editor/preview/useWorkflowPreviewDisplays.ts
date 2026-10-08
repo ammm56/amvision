@@ -1,5 +1,6 @@
 import { computed, ref, toRaw } from 'vue'
 import { ApiError } from '@/shared/api/error'
+import {readResultTable,type ResultTable} from '@/shared/ui/image-viewer/result-geometry'
 
 import { translate } from '@/platform/i18n'
 import { readProjectObjectContentBlob } from '../services/workflow-runtime.service'
@@ -103,6 +104,8 @@ export interface PreviewImageInteractionApplyEvent {
 }
 
 export interface PreviewViewerImage {
+  results?:ResultTable|null
+  selectedResultId?:string|null
   presentation?: WorkflowJsonObject | null
   loadSource?: () => Promise<string | null>
   nodeId: string
@@ -175,6 +178,7 @@ interface PreviewImageObjectUrlRevokeOptions {
 type PreviewNodeDisplayKind = 'image' | 'table' | 'gallery' | 'value'
 
 export interface PreviewNodeDisplay {
+  previewRunId?: string
   variants?: PreviewNodeDisplay[]
   stale?: boolean
   nodeId: string
@@ -591,14 +595,23 @@ async function buildPreviewNodeDisplay(
   displayOutput: PreviewNodeOutput,
   registerObjectUrl: (objectUrl: string, byteLength?: number) => void,
 ): Promise<PreviewNodeDisplay | null> {
+  // 大表的控制事件只带摘要；用同次内存描述符补全，不能把摘要对象渲染为结果行。
+  const descriptor = displayOutput.payload.value_descriptor
+  if (displayOutput.payload.type === 'table-preview' && displayOutput.payload.paged && isPreviewJsonObject(descriptor)
+    && descriptor.transport_kind === 'preview-memory' && typeof descriptor.blob_id === 'string' && previewRun.readMemoryBlob) {
+    const blob = await previewRun.readMemoryBlob(descriptor.blob_id, 'application/json')
+    if (blob.size > 16 * 1024 * 1024) throw new Error('preview_table_capacity')
+    const complete: unknown = JSON.parse(await blob.text())
+    if (!isPreviewJsonObject(complete) || complete.type !== 'table-preview' || !Array.isArray(complete.rows)) throw new Error('preview_table_invalid')
+    displayOutput = { ...displayOutput, payload: complete }
+  }
   const payload = displayOutput.payload
   const previewType = readDisplayText(payload.type)
-  if (previewType === 'image-preview') return buildImagePreviewNodeDisplay(previewRun, displayOutput, registerObjectUrl)
-  if (previewType === 'table-preview') return buildTablePreviewNodeDisplay(displayOutput)
-  if (previewType === 'gallery-preview') return buildGalleryPreviewNodeDisplay(previewRun, displayOutput, registerObjectUrl)
-  if (previewType === 'value-preview') return buildValuePreviewNodeDisplay(displayOutput)
-  if (previewType === 'value-display') return buildValuePreviewNodeDisplay(displayOutput)
-  return null
+  const display = previewType === 'image-preview' ? await buildImagePreviewNodeDisplay(previewRun, displayOutput, registerObjectUrl)
+    : previewType === 'table-preview' ? buildTablePreviewNodeDisplay(displayOutput)
+    : previewType === 'gallery-preview' ? await buildGalleryPreviewNodeDisplay(previewRun, displayOutput, registerObjectUrl)
+    : ['value-preview','value-display'].includes(previewType) ? buildValuePreviewNodeDisplay(displayOutput) : null
+  return display ? {...display,previewRunId:previewRun.preview_run_id} : null
 }
 
 async function buildImagePreviewNodeDisplay(
@@ -781,6 +794,8 @@ async function buildPreviewViewerImage(
     nodeId,
     loadSource,
     presentation: isPreviewJsonObject(previewPayload?.presentation) && previewPayload.presentation.type === 'value-display' ? previewPayload.presentation : null,
+    results: readResultTable(previewPayload?.results),
+    selectedResultId: null,
     title,
     src: displayImage.src,
     displaySrc: displayImage.src,

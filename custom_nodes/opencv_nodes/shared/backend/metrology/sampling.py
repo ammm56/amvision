@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 import math
 
 import cv2
@@ -19,6 +20,7 @@ class EdgePairSettings:
     sample_step: float = 0.5
     polarity: str = "bright"
     gradient_threshold: float = 0.03
+    relative_gradient_threshold: float = 0.0
     min_width: float = 2.0
     max_width: float = 40.0
     min_coverage: float = 0.7
@@ -31,6 +33,7 @@ class EdgePairSettings:
             self.band_width,
             self.sample_step,
             self.gradient_threshold,
+            self.relative_gradient_threshold,
             self.min_width,
             self.max_width,
             self.min_coverage,
@@ -49,6 +52,7 @@ class EdgePairSettings:
         if not (
             0 < self.min_width <= self.max_width < self.search_length
             and 0 < self.gradient_threshold <= 1
+            and 0 <= self.relative_gradient_threshold <= 1
             and 0 < self.min_coverage <= 1
             and 0 < self.max_residual <= 10
             and self.polarity in {"bright", "dark"}
@@ -56,8 +60,21 @@ class EdgePairSettings:
             raise ValueError("扫描阈值配置无效")
 
 
-def prepare_gray(image: np.ndarray) -> np.ndarray:
+@lru_cache(maxsize=2)
+def _srgb_table(levels: int) -> np.ndarray:
+    """整数编码的 sRGB 逆传递表；两个位深共用只读常量，不缓存图片。"""
+    encoded = np.arange(levels, dtype=np.float32) / (levels - 1)
+    result = np.where(
+        encoded <= 0.04045, encoded / 12.92, ((encoded + 0.055) / 1.055) ** 2.4
+    )
+    result.flags.writeable = False
+    return result
+
+
+def prepare_gray(image: np.ndarray, *, image_encoding: str = "native") -> np.ndarray:
     """只读输入转为 0–1 float32 灰度；uint16 不降为 uint8。"""
+    if not isinstance(image_encoding, str) or image_encoding not in {"native", "srgb"}:
+        raise ValueError("Image Encoding 必须为 native 或 srgb")
     if not isinstance(image, np.ndarray) or image.ndim not in (2, 3) or image.size == 0:
         raise ValueError("图像矩阵无效")
     if image.shape[0] * image.shape[1] > 64_000_000 or max(image.shape[:2]) >= 32767:
@@ -70,6 +87,33 @@ def prepare_gray(image: np.ndarray) -> np.ndarray:
         not np.isfinite(image).all() or image.min() < 0 or image.max() > 1
     ):
         raise ValueError("float32 图像必须是有限的 0–1 强度")
+    if image_encoding == "srgb":
+        # 必须先逐颜色通道线性化，再合成灰度；非线性灰度的逆变换并不等价。
+        table = (
+            None
+            if image.dtype == np.float32
+            else _srgb_table(256 if image.dtype == np.uint8 else 65536)
+        )
+        gray = np.zeros(image.shape[:2], np.float32)
+        channels = (
+            [(image, 1.0)]
+            if image.ndim == 2
+            else [(image[:, :, 0], 1.0)]
+            if image.shape[2] == 1
+            else [(image[:, :, i], w) for i, w in enumerate((0.114, 0.587, 0.299))]
+        )
+        for channel, weight in channels:
+            linear = (
+                table[channel]
+                if table is not None
+                else np.where(
+                    channel <= 0.04045,
+                    channel / 12.92,
+                    ((channel + 0.055) / 1.055) ** 2.4,
+                )
+            )
+            gray += linear * weight
+        return gray
     gray = (
         image
         if image.ndim == 2
@@ -207,6 +251,18 @@ def extract_edge_pair(
             intensity=strips.mean(axis=0)[indices].tolist(),
             gradient=gradient.mean(axis=0)[indices].tolist(),
             gradient_threshold=settings.gradient_threshold,
+            gradient_threshold_range=[
+                max(
+                    settings.gradient_threshold,
+                    settings.relative_gradient_threshold
+                    * float(np.abs(gradient).max(axis=1).min()),
+                ),
+                max(
+                    settings.gradient_threshold,
+                    settings.relative_gradient_threshold
+                    * float(np.abs(gradient).max()),
+                ),
+            ],
             scan_lines=settings.scan_lines,
             polarity=settings.polarity,
         )
@@ -214,8 +270,12 @@ def extract_edge_pair(
     ambiguous_lines = 0
     for row, derivative in enumerate(gradient):
         check()
-        first = _peaks(derivative, settings.gradient_threshold)
-        second = _peaks(-derivative, settings.gradient_threshold)
+        threshold = max(
+            settings.gradient_threshold,
+            settings.relative_gradient_threshold * float(np.abs(derivative).max()),
+        )
+        first = _peaks(derivative, threshold)
+        second = _peaks(-derivative, threshold)
         pairs = [
             (
                 a,
@@ -341,10 +401,14 @@ def extract_band_pairs(
     profile = cv2.GaussianBlur(strips, (5, 1), 0.8).mean(axis=0, dtype=np.float64)
     step = along[1] - along[0]
     gradient = np.gradient(profile, step) * (1 if settings.polarity == "bright" else -1)
+    threshold = max(
+        settings.gradient_threshold,
+        settings.relative_gradient_threshold * float(np.abs(gradient).max()),
+    )
     # 相邻异极性边缘形成一个候选，避免跨过其他 PIN 配对成虚假大宽度。
     transitions = sorted(
-        [(p, 1) for p in _peaks(gradient, settings.gradient_threshold, limit=2048)]
-        + [(p, -1) for p in _peaks(-gradient, settings.gradient_threshold, limit=2048)]
+        [(p, 1) for p in _peaks(gradient, threshold, limit=2048)]
+        + [(p, -1) for p in _peaks(-gradient, threshold, limit=2048)]
     )
     seeds = [
         (a + b) / 2

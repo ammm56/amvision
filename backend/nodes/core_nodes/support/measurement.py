@@ -41,6 +41,10 @@ def check_limits(table: NumericTable, rules: tuple[LimitRule, ...]) -> dict:
                 if item is not None and item.unit == rule.unit
                 else None,
                 "unit": rule.unit,
+                "lower": rule.lower,
+                "upper": rule.upper,
+                "include_lower": rule.include_lower,
+                "include_upper": rule.include_upper,
                 "actual_unit": item.unit if item is not None else None,
                 "reason": reason,
             }

@@ -8,6 +8,16 @@ vi.mock('../services/workflow-runtime.service', () => ({
 }))
 
 describe('runtime display lifecycle', () => {
+  it('reads full in-memory table rows instead of displaying paging summaries as cells', async () => {
+    const view = useWorkflowPreviewDisplays()
+    const complete = {type:'table-preview',columns:[{key:'value',label:'Value'}],rows:[{item_id:'weight',value:.6900000000000001}],row_count:1}
+    const readMemoryBlob = vi.fn().mockResolvedValue({size:250,text:async()=>JSON.stringify(complete)})
+    await view.refreshDisplayOutputs({project_id:'p',preview_run_id:'r',readMemoryBlob},[{nodeId:'table',nodeTypeId:'core.io.value-preview',outputName:'body',payload:{...complete,rows:[{summary:true}],paged:true,value_descriptor:{transport_kind:'preview-memory',blob_id:'current-blob'}}}])
+    expect(readMemoryBlob).toHaveBeenCalledWith('current-blob','application/json')
+    expect(view.previewNodeDisplays.value.table!.rows).toEqual(complete.rows)
+    expect(view.previewNodeDisplays.value.table!.payload.paged).toBeUndefined()
+    view.revokePreviewImageObjectUrls()
+  })
   it('moves image and its explicit presentation together, then clears both', async () => {
     const view = useWorkflowPreviewDisplays()
     const output = (count: number) => ({ nodeId: 'image', nodeTypeId: 'core.io.image-preview', outputName: 'body', payload: {

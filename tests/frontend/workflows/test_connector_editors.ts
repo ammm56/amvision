@@ -10,13 +10,45 @@ import MeasurementEditor from '../../../custom_nodes/connector_nodes/frontend/Me
 import CalibrationPointsEditor from '@/workflows/workflow-editor/components/WorkflowCalibrationPointsEditor.vue'
 import ImageViewer from '@/shared/ui/components/ImageViewer.vue'
 import SamplingDiagnostic from '@/workflows/workflow-editor/components/WorkflowSamplingDiagnostic.vue'
-import { createPinLayout, hydratePinLayout, generatePins, isPinLayoutValid, samePinLayout, type PinLayout } from '../../../custom_nodes/connector_nodes/frontend/pin-layout'
+import { createPinLayout, hydratePinLayout, generatePins, inferPinArray, replacePinArray, isPinLayoutValid, samePinLayout, type PinLayout } from '../../../custom_nodes/connector_nodes/frontend/pin-layout'
+import { buildMeasurementBatch, batchKinds, invalidMeasurementReferences } from '../../../custom_nodes/connector_nodes/frontend/measurement-items'
 
 let wrapper: VueWrapper | undefined
 const resources=vi.hoisted(()=>({list:vi.fn(),image:vi.fn()}))
 vi.mock('@/workflows/workflow-editor/services/measurement-resource.service',async(importOriginal)=>({...await importOriginal<object>(),listMeasurementResources:resources.list,readMeasurementResourceImage:resources.image}))
 afterEach(() => { wrapper?.unmount(); wrapper = undefined; document.body.innerHTML = '';vi.unstubAllGlobals();vi.clearAllMocks() })
 describe('PIN layout editor', () => {
+  it('infers only regular arrays and preserves empty positions and endpoint definitions by ID',()=>{
+    const pins=generatePins(2,8,[254.489123,306.194789],85.55791,50,25,'normal')
+    pins[4]!.expected_present=false
+    pins[0]!.endpoint_pairs=[{first_id:'tip',second_id:'root',sampling_type:'length',center_offset:[1.123456789,2]}]
+    const inferred=inferPinArray(pins)!
+    expect(inferred).toMatchObject({rows:2,columns:8,x:254.489123,y:306.194789,stagger:25})
+    const replaced=replacePinArray(pins,generatePins(2,7,[200,300],80,50,25,'other'))
+    expect(replaced[4]!.expected_present).toBe(false)
+    expect(replaced[0]!.pin_type).toBe('normal')
+    expect(replaced[0]!.endpoint_pairs).toEqual(pins[0]!.endpoint_pairs)
+    expect(replaced[0]!.endpoint_pairs).not.toBe(pins[0]!.endpoint_pairs)
+    pins[2]!.center[0]+=1
+    expect(inferPinArray(pins)).toBeNull()
+  })
+  it('previews array replacement and restores its previous state without committing',async()=>{
+    const layout=createPinLayout();layout.pins=generatePins(1,3,[100,100],50,50,0,'normal');layout.pins[1]!.expected_present=false
+    wrapper=mount(PinLayoutEditor,{props:{modelValue:layout},global:{plugins:[createPinia(),i18n]}})
+    await wrapper.get('.pin-edit').trigger('click')
+    const dialog=wrapper.getComponent(ConfirmDialog)
+    await dialog.get('input[aria-label="Columns"]').setValue('2')
+    await dialog.findAll('button').find(b=>/^(生成排列|Generate array)/.test(b.text()))!.trigger('click')
+    expect(dialog.text()).toContain('R1P03')
+    expect(dialog.findAll('.pin-table tbody tr')).toHaveLength(3)
+    await dialog.findAll('button').find(b=>/^(替换草稿排列|Replace draft array)/.test(b.text()))!.trigger('click')
+    expect(dialog.findAll('.pin-table tbody tr')).toHaveLength(2)
+    await dialog.findAll('button').find(b=>/^(恢复替换前排列|Restore previous array)/.test(b.text()))!.trigger('click')
+    expect(dialog.findAll('.pin-table tbody tr')).toHaveLength(3)
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    dialog.vm.$emit('confirm');await nextTick()
+    expect((wrapper.emitted('update:modelValue')![0]![0] as PinLayout).pins).toEqual(hydratePinLayout(layout).pins)
+  })
   it('allows an empty type list to be repaired without throwing or adding invalid scans',async()=>{
     const layout=createPinLayout();layout.pins=generatePins(1,1,[100,100],50,50,0,'normal');layout.types=[]
     wrapper=mount(PinLayoutEditor,{props:{modelValue:layout},global:{plugins:[createPinia(),i18n]}})
@@ -93,6 +125,19 @@ describe('sampling diagnostic display',()=>{
 })
 
 describe('measurement editor', () => {
+  it('builds both production recipes and never bridges a designed empty neighbor',()=>{
+    const layout=createPinLayout();layout.pins=generatePins(1,10,[100,100],50,50,0,'normal')
+    const all=()=>layout.pins.map(p=>p.pin_id)
+    expect(buildMeasurementBatch(layout,all(),[...batchKinds])).toHaveLength(39)
+    layout.pins=generatePins(2,8,[100,100],50,50,25,'normal')
+    expect(buildMeasurementBatch(layout,all(),[...batchKinds])).toHaveLength(62)
+    layout.pins[3]!.expected_present=false
+    const items=buildMeasurementBatch(layout,all(),[...batchKinds])
+    expect(items.some(i=>i.pin_a==='R1P04'||i.pin_b==='R1P04')).toBe(false)
+    expect(items.some(i=>i.kind==='pitch'&&i.pin_a==='R1P03'&&i.pin_b==='R1P05')).toBe(false)
+    expect(invalidMeasurementReferences([{...items[0]!,pin_a:'removed'}],layout)).toEqual([items[0]!.item_id])
+    expect(invalidMeasurementReferences([{...items[0]!,kind:'length',pin_b:items[0]!.pin_a,feature_a:'R1P01:tip',feature_b:'R1P01:root'}],layout)).toHaveLength(1)
+  })
   it('uses the explicitly connected reference and writes line coordinates only to its draft',async()=>{
     const pinia=createPinia();useProjectStore(pinia).selectedProjectId='project'
     const layout=createPinLayout();layout.reference_sha256='a'.repeat(64);layout.pins=generatePins(1,2,[100,100],50,50,0,'normal')

@@ -20,6 +20,7 @@ export interface WorkflowAppModeConfig {
 
 export interface WorkflowAppModeDisplayCandidate extends WorkflowAppModeDisplay {
   presentationSource?: { nodeId: string; title: string; enabled: boolean }
+  resultSource?: {nodeId:string;title:string;enabled:boolean}
   connectedImages?: Array<{ nodeId: string; title: string; enabled: boolean }>
   node_type_id?: string
   node_title: string
@@ -154,12 +155,15 @@ export function buildWorkflowAppModeDisplayCandidates(
       const edge = node.node_type_id === 'core.io.image-preview'
         ? edges.find(item => item.target_node_id === node.node_id && item.target_port === 'presentation') : undefined
       const source = edge ? nodesById.get(edge.source_node_id) : undefined
-      const connectedImages = node.node_type_id === 'core.io.value-display' ? edges
-        .filter(item => item.source_node_id === node.node_id && item.source_port === output.name && item.target_port === 'presentation')
+      const resultEdge=node.node_type_id==='core.io.image-preview'?edges.find(item=>item.target_node_id===node.node_id&&item.target_port==='results'):undefined
+      const resultSource=resultEdge?nodesById.get(resultEdge.source_node_id):undefined
+      const connectedImages = ['core.io.value-display','core.io.value-preview'].includes(node.node_type_id) ? edges
+        .filter(item => item.source_node_id === node.node_id && item.source_port === output.name && (item.target_port === 'presentation'||item.target_port==='results'))
         .map(item => nodesById.get(item.target_node_id))
         .filter((item): item is WorkflowGraphNode => item?.node_type_id === 'core.io.image-preview')
         .map(item => ({ nodeId: item.node_id, title: nodeTitle(item), enabled: item.enabled !== false })) : undefined
       candidates.push({
+        ...(resultEdge?{resultSource:{nodeId:resultEdge.source_node_id,title:resultSource?nodeTitle(resultSource):resultEdge.source_node_id,enabled:Boolean(resultSource&&resultSource.enabled!==false)}}:{}),
         ...(edge ? { presentationSource: { nodeId: edge.source_node_id, title: source ? nodeTitle(source) : edge.source_node_id, enabled: Boolean(source && source.enabled !== false) } } : {}),
         ...(connectedImages ? { connectedImages } : {}),
         node_type_id: node.node_type_id,

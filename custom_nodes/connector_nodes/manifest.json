@@ -7,12 +7,36 @@
   "category": "vision",
   "categoryRoot": "connector",
   "implementationLayout": "categories",
-  "capabilities": ["pipeline.node", "vision.connector", "vision.measurement"],
-  "entrypoints": {"backend": "custom_nodes.connector_nodes.backend.entry:register"},
-  "compatibility": {"api": ">=0.1.8 <0.2", "runtime": ">=3.12"},
-  "dependencies": [{"nodePackId": "opencv.nodes", "versionRange": ">=0.1.8 <0.2"}],
-  "timeout": {"defaultSeconds": 30, "maxSeconds": 30, "killGraceSeconds": 2},
-  "enabledByDefault": false,
+  "capabilities": [
+    "pipeline.node",
+    "vision.connector",
+    "vision.measurement"
+  ],
+  "entrypoints": {
+    "backend": "custom_nodes.connector_nodes.backend.entry:register"
+  },
+  "compatibility": {
+    "api": ">=0.1.8 <0.2",
+    "runtime": ">=3.12"
+  },
+  "dependencies": [
+    {
+      "nodePackId": "opencv.nodes",
+      "versionRange": ">=0.1.8 <0.2"
+    }
+  ],
+  "timeout": {
+    "defaultSeconds": 30,
+    "maxSeconds": 30,
+    "killGraceSeconds": 2
+  },
+  "enabledByDefault": true,
   "customNodeCatalogPath": "workflow/catalog.json",
-  "metadata": {"categoryRoot": "connector", "categoryModel": "two-level", "categoryDepth": 2, "layout": "categories/<implementation-module>", "developmentOnly": true}
+  "metadata": {
+    "categoryRoot": "connector",
+    "categoryModel": "two-level",
+    "categoryDepth": 2,
+    "layout": "categories/<implementation-module>",
+    "developmentOnly": true
+  }
 }
