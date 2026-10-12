@@ -8,6 +8,7 @@ import os
 import subprocess
 import sys
 
+import backend
 from backend.service.application.backends import ConversionBackendOutput
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
 from backend.service.application.models.model_artifact_metadata import (
@@ -307,9 +308,9 @@ def resolve_conversion_script_path(script_file_name: str) -> Path:
 
 
 def resolve_conversion_project_root() -> Path:
-    """返回 conversion 子进程应使用的项目根目录。"""
+    """从实际 backend 包定位代码根目录，供源码与发行 app 的子进程导入。"""
 
-    return Path(__file__).resolve().parents[3]
+    return Path(backend.__file__).resolve().parent.parent
 
 
 def normalize_model_outputs(model_outputs: object) -> list[object]:

@@ -99,6 +99,7 @@ def test_classification_training_runs_one_epoch():
     assert result.best_metric_value >= 0.0
     assert len(result.labels) == 2
     assert result.latest_checkpoint_bytes
+    assert result.metrics_payload["implementation_mode"] == "yolov8-classification-core"
     final_metrics = result.metrics_payload.get("final_metrics", {})
     assert "loss" in final_metrics
     assert "accuracy" in final_metrics

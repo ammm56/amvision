@@ -64,6 +64,7 @@ from backend.service.application.tasks.task_service import (
     TaskExecutionFence,
 )
 from backend.service.application.tasks.queue_outbox import build_queue_outbox_message
+from backend.service.domain.datasets.category_names import parse_category_names
 from backend.service.domain.datasets.dataset_import import (
     DatasetImport,
     IMPLEMENTED_DATASET_IMPORT_FORMAT_TYPES_BY_TASK_TYPE,
@@ -837,6 +838,18 @@ class SqlAlchemyDatasetImportService(
                 "当前只支持 COCO、Pascal VOC、YOLO、ImageNet classification 和 DOTA OBB",
                 details={"format_type": format_type},
             )
+        category_names = tuple(category.name for category in parsed_content.categories)
+        try:
+            normalized_names = parse_category_names(
+                category_names, field_name="categories.name"
+            )
+            if normalized_names != category_names:
+                raise ValueError("类别名称不能包含首尾空白")
+        except ValueError as error:
+            raise InvalidRequestError(
+                "数据集类别名称不合法",
+                details={"reason": str(error)},
+            ) from error
         audited_content = attach_annotation_semantics_audit(parsed_content)
         return self._attach_registered_format_profile(audited_content)
 

@@ -7,7 +7,7 @@ from dataclasses import asdict, dataclass
 from threading import Lock
 from typing import Any
 
-from backend.service.application.errors import ServiceConfigurationError
+from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
 from backend.service.domain.deployments.deployment_runtime_configuration import (
     DeploymentRuntimeConfiguration,
     OpenVinoAutoRuntimeOptions,
@@ -37,6 +37,25 @@ class OpenVinoCompilationPolicy:
 _DIAGNOSTICS_LIMIT = 256
 _DIAGNOSTICS_BY_SESSION_ID: OrderedDict[int, OpenVinoRuntimeDiagnostics] = OrderedDict()
 _DIAGNOSTICS_LOCK = Lock()
+
+
+def build_openvino_artifact_compile_properties(
+    *,
+    openvino_module: Any,
+    runtime_precision: str,
+    requested_device_name: str,
+) -> dict[object, object]:
+    """按 IR 存储精度和设备设置默认计算策略，二者不能混为一谈。"""
+
+    if runtime_precision not in {"fp16", "fp32"}:
+        raise InvalidRequestError("OpenVINO IR precision 必须是 fp16 或 fp32")
+    if requested_device_name not in {"auto", "cpu", "gpu", "npu"}:
+        raise InvalidRequestError("OpenVINO device_name 必须是 auto、cpu、gpu 或 npu")
+    # 压缩的 FP16 权重可在 CPU/AUTO 上执行；计算精度由 plugin 选择，
+    # GPU/NPU 的显式 inference_precision 仍由 runtime_configuration 覆盖。
+    if runtime_precision == "fp16" and requested_device_name in {"gpu", "npu"}:
+        return {openvino_module.properties.hint.inference_precision: openvino_module.Type.f16}
+    return {}
 
 
 def compile_openvino_model(

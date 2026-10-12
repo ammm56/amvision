@@ -68,6 +68,7 @@
 - source_kind：版本来源类型，当前预训练目录登记值为 pretrained-reference。
 - checkpoint_file_id：checkpoint 对应的 ModelFile id。
 - checkpoint_storage_uri：checkpoint 存储 URI。
+- labels_file_id / labels_storage_uri：当前 ModelVersion 自己的类别映射文件；没有登记时为空。不能使用 Model 顶层或其他版本的 labels 文件替代。
 - catalog_manifest_object_key：预训练目录 manifest 的 object key。
 
 #### 成功响应示例
@@ -130,6 +131,7 @@
 - model_version_id：当前版本 id。
 - source_kind：版本来源类型。
 - checkpoint_file_id / checkpoint_storage_uri：可直接定位 warm start 权重。
+- labels_file_id / labels_storage_uri：当前版本的有序类别映射文件。
 - catalog_manifest_object_key：可定位到预训练目录 manifest。
 - files：当前版本关联的全部文件明细。
 
@@ -156,3 +158,8 @@
 - 当前只公开读取能力，不公开平台基础模型创建、修改、删除接口。
 - 当前列表和详情返回的是数据库已登记的模型，不负责扫描磁盘或触发 seeder。
 - 当前平台基础模型接口不混入 Project 内模型，也不承担训练任务列表功能。
+- 只有 checkpoint、没有类别映射的预训练引用用于训练初始化，不能直接转换、部署或推理。不得根据训练数据集、目录名或参考仓库补造类别名称。
+- 转换页面从 `/api/v1/models/deployment-sources` 返回的实际模型版本中选择来源，不通过预训练模型的名称、参数量或父版本关系代替来源 ModelVersion。已明确登记类别映射的预训练版本也可以成为转换来源。
+- 版本必须登记类别文件或非空的 `metadata.category_names` 有序列表。两者同时存在时顺序和内容必须一致；空条目、非字符串条目和重复类别均拒绝，不能过滤条目后改变输出 class id。
+- 转换提交在创建 Task 和 Queue Outbox 前解析并检查来源版本、文件和输入契约。页面仅执行已登记字段的选择校验，磁盘文件存在性和内容一致性仍由后端检查。
+- 本次 `/api/v1` 响应新增版本级 `labels_file_id`、`labels_storage_uri` 两个可空字段，不改变持久化结构，不需要数据库迁移。checkpoint-only 预训练引用仍可用于 warm start；损坏或冲突的类别映射不再被静默忽略。

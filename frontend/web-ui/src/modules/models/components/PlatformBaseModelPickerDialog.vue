@@ -97,7 +97,7 @@
             <span class="platform-model-pill">{{ selectedModelDetail.task_type }}</span>
             <span class="platform-model-pill">{{ scaleLabel }} · {{ displayScale(selectedModelDetail.model_scale) }}</span>
           </div>
-          <div v-if="mode === 'training'" class="platform-model-detail__actions">
+          <div class="platform-model-detail__actions">
             <Button size="sm" variant="secondary" @click.stop="$emit('apply-model', selectedModelDetail)">
               {{ applyModelLabel }}
             </Button>
@@ -131,22 +131,12 @@
                 </div>
                 <div class="table-actions">
                   <Button
-                    v-if="mode === 'training'"
                     class="platform-model-version-action"
                     size="sm"
                     variant="secondary"
                     @click.stop="$emit('apply-training-version', { model: selectedModelDetail, modelVersionId: version.model_version_id })"
                   >
                     {{ applyTrainingVersionLabel }}
-                  </Button>
-                  <Button
-                    v-if="mode === 'conversion'"
-                    class="platform-model-version-action"
-                    size="sm"
-                    variant="secondary"
-                    @click.stop="$emit('apply-conversion-version', { model: selectedModelDetail, modelVersionId: version.model_version_id })"
-                  >
-                    {{ applyConversionVersionLabel }}
                   </Button>
                 </div>
               </div>
@@ -208,7 +198,6 @@ const props = defineProps<{
   open: boolean
   loading: boolean
   detailLoading: boolean
-  mode: 'training' | 'conversion'
   title: string
   closeLabel: string
   taskTypeOptions: TaskTypeOption[]
@@ -224,7 +213,6 @@ const props = defineProps<{
   scaleLabel: string
   applyModelLabel: string
   applyTrainingVersionLabel: string
-  applyConversionVersionLabel: string
   emptyTitle: string
   emptyDescription: string
   detailEmptyTitle: string
@@ -244,7 +232,6 @@ const emit = defineEmits<{
   'select-model': [modelId: string]
   'apply-model': [model: PlatformBaseModelDetail]
   'apply-training-version': [payload: VersionSelectionPayload]
-  'apply-conversion-version': [payload: VersionSelectionPayload]
 }>()
 
 const scaleOrder = new Map([

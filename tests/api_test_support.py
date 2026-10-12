@@ -34,6 +34,7 @@ from backend.service.infrastructure.queue.local_file import (
 )
 from backend.service.settings import (
     BackendServiceInferenceDaemonConfig,
+    BackendServiceQueueOutboxConfig,
     BackendServiceSettings,
     BackendServiceZeroMqTriggerConfig,
 )
@@ -113,6 +114,7 @@ def create_api_test_context(
     *,
     database_name: str,
     enable_local_buffer_broker: bool = True,
+    enable_queue_outbox_dispatcher: bool = True,
 ) -> ApiTestContext:
     """创建绑定测试数据库、本地文件存储和队列的通用 API 测试上下文。
 
@@ -120,6 +122,7 @@ def create_api_test_context(
     - tmp_path：pytest 提供的临时目录。
     - database_name：SQLite 数据库文件名。
     - enable_local_buffer_broker：是否启用 LocalBufferBroker companion process。
+    - enable_queue_outbox_dispatcher：是否启动后台投递；手动驱动 worker 的测试可关闭。
 
     返回：
     - ApiTestContext：构建完成的 API 测试上下文。
@@ -133,6 +136,9 @@ def create_api_test_context(
         # API 单元测试在同一进程内替换 supervisor/registry；正式发布配置
         # 使用 daemon，但测试必须显式选择 embedded，不能隐式读取现场 JSON。
         inference_daemon=BackendServiceInferenceDaemonConfig(runtime_owner="embedded"),
+        queue_outbox=BackendServiceQueueOutboxConfig(
+            enabled=enable_queue_outbox_dispatcher
+        ),
         zeromq_trigger=_build_test_zeromq_trigger_config(),
         local_memory=LocalMemorySettings(
             root_dir=str(tmp_path / "local-buffer-broker")

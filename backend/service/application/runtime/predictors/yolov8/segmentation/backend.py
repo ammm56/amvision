@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
+from backend.service.application.runtime.support.openvino_execution import build_openvino_artifact_compile_properties
 
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
 from backend.service.application.models.yolov8_core.inference import (
@@ -159,19 +160,12 @@ def build_yolov8_segmentation_openvino_compile_properties(
     runtime_precision: str,
     requested_device_name: str,
 ) -> dict[object, object]:
-    """按 runtime precision 构造 YOLOv8 segmentation OpenVINO compile_model 属性。"""
+    """通过共享 OpenVINO 边界区分 IR 权重精度与设备计算精度。"""
 
-    if runtime_precision == "fp32":
-        return {}
-    if runtime_precision == "fp16" and requested_device_name in {"gpu", "npu"}:
-        return {openvino_module.properties.hint.inference_precision: openvino_module.Type.f16}
-    raise InvalidRequestError(
-        "openvino fp16 仅支持 gpu 或 npu device_name；auto/cpu 仍要求 fp32",
-        details={
-            "runtime_backend": "openvino",
-            "runtime_precision": runtime_precision,
-            "device_name": requested_device_name,
-        },
+    return build_openvino_artifact_compile_properties(
+        openvino_module=openvino_module,
+        runtime_precision=runtime_precision,
+        requested_device_name=requested_device_name,
     )
 
 
@@ -203,6 +197,8 @@ def resolve_yolov8_segmentation_openvino_compiled_runtime_precision(
     precision_map = {
         "float16": "fp16",
         "float32": "fp32",
+        "bf16": "bf16",
+        "bfloat16": "bf16",
     }
     return precision_map.get(normalized, fallback_precision)
 

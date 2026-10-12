@@ -60,6 +60,8 @@ export interface PlatformBaseModelVersionSummary {
   metadata: Record<string, unknown>
   checkpoint_file_id?: string | null
   checkpoint_storage_uri?: string | null
+  labels_file_id?: string | null
+  labels_storage_uri?: string | null
   catalog_manifest_object_key?: string | null
 }
 

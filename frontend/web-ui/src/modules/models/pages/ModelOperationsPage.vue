@@ -51,7 +51,7 @@
         :training-submitting="trainingSubmitting"
         :last-training-submission="lastTrainingSubmission"
         @submit="submitTraining"
-        @open-base-model-picker="openBaseModelPicker('training')"
+        @open-base-model-picker="openBaseModelPicker"
         @open-training-dataset-export-picker="openTrainingDatasetExportPicker"
         @clear-training-warm-start="clearTrainingWarmStart"
         @update:output-model-name="outputModelName = $event"
@@ -76,7 +76,6 @@
       <ModelConversionForm
         :selected-task-type="selectedTaskType"
         :loading="loading"
-        :base-models-count="baseModels.length"
         :conversion-selected-model-summary="conversionSelectedModelSummary"
         :conversion-model-type="conversionModelType"
         :conversion-source-model-version-id="conversionSourceModelVersionId"
@@ -88,9 +87,7 @@
         :conversion-submitting="conversionSubmitting"
         :last-conversion-submission="lastConversionSubmission"
         @submit="submitConversion"
-        @open-base-model-picker="openBaseModelPicker('conversion')"
-        @update:conversion-model-type="conversionModelType = $event"
-        @update:conversion-source-model-version-id="conversionSourceModelVersionId = $event"
+        @open-source-picker="openConversionSourcePicker"
         @update:conversion-target="setConversionTarget"
         @update:conversion-runtime-profile-id="conversionRuntimeProfileId = $event"
         @update:conversion-display-name="conversionDisplayName = $event"
@@ -113,8 +110,7 @@
       :open="baseModelPickerOpen"
       :loading="loading"
       :detail-loading="selectedModelDetailLoading"
-      :mode="baseModelPickerMode"
-      :title="baseModelPickerMode === 'training' ? t('modelOps.picker.trainingTitle') : t('modelOps.picker.conversionTitle')"
+      :title="t('modelOps.picker.trainingTitle')"
       :close-label="t('modelOps.picker.close')"
       :task-type-options="taskTypeOptions"
       :selected-task-type="selectedTaskType"
@@ -123,13 +119,12 @@
       :detail-title="t('modelOps.picker.detailTitle')"
       :detail-loading-label="t('modelOps.picker.detailLoading')"
       :current-selection-label="t('modelOps.picker.currentSelectionTitle')"
-      :version-selection-label="baseModelPickerMode === 'training' ? t('modelOps.picker.trainingVersionSelectionTitle') : t('modelOps.picker.conversionVersionSelectionTitle')"
+      :version-selection-label="t('modelOps.picker.trainingVersionSelectionTitle')"
       :versions-title="t('modelOps.availableVersionsTitle')"
       :extra-versions-title="t('modelOps.picker.projectTrainingVersionsTitle')"
       :scale-label="t('modelOps.picker.modelScaleTitle')"
       :apply-model-label="t('modelOps.picker.applyModel')"
       :apply-training-version-label="t('modelOps.picker.selectTrainingVersion')"
-      :apply-conversion-version-label="t('modelOps.picker.selectConversionVersion')"
       :empty-title="t('modelOps.emptyModelsTitle')"
       :empty-description="t('modelOps.emptyModelsDescription')"
       :detail-empty-title="t('modelOps.picker.detailEmptyTitle')"
@@ -140,13 +135,21 @@
       :selected-model-id="selectedModelBrowseId || null"
       :selected-model-detail="selectedModelDetail"
       :extra-versions="selectedModelDerivedTrainingVersions"
-      :selected-version-id="baseModelPickerMode === 'training' ? warmStartModelVersionId : conversionSourceModelVersionId"
+      :selected-version-id="warmStartModelVersionId"
       @close="closeBaseModelPicker"
       @change-task-type="setTaskType"
       @select-model="selectBaseModel"
       @apply-model="applyTrainingModel"
       @apply-training-version="applyTrainingVersion"
-      @apply-conversion-version="applyConversionVersion"
+    />
+
+    <ModelConversionSourcePickerDialog
+      :open="conversionSourcePickerOpen" :loading="loading"
+      :selected-task-type="selectedTaskType" :task-type-options="taskTypeOptions"
+      :models="conversionModels" :selected-model="conversionBrowseModel"
+      :selected-version-id="conversionSourceModelVersionId"
+      @close="conversionSourcePickerOpen = false" @change-task-type="setTaskType"
+      @select-model="conversionBrowseModelId = $event" @select-version="selectConversionVersion"
     />
 
     <TrainingDatasetExportPickerDialog
@@ -211,11 +214,13 @@ import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import PageHeader from '@/shared/ui/layout/PageHeader.vue'
 import ConversionTaskList from '../components/ConversionTaskList.vue'
 import ModelConversionForm from '../components/ModelConversionForm.vue'
+import ModelConversionSourcePickerDialog from '../components/ModelConversionSourcePickerDialog.vue'
 import ModelTrainingForm from '../components/ModelTrainingForm.vue'
 import PlatformBaseModelPickerDialog from '../components/PlatformBaseModelPickerDialog.vue'
 import TrainingDatasetExportPickerDialog from '../components/TrainingDatasetExportPickerDialog.vue'
 import TrainingTaskList from '../components/TrainingTaskList.vue'
 import { useModelConversionState } from '../composables/useModelConversionState'
+import { useModelConversionSourceSelection } from '../composables/useModelConversionSourceSelection'
 import { useModelTaskLists } from '../composables/useModelTaskLists'
 import { useModelTrainingState } from '../composables/useModelTrainingState'
 import { usePlatformBaseModelSelection } from '../composables/usePlatformBaseModelSelection'
@@ -349,12 +354,8 @@ const {
   selectedModelBrowseId,
   selectedModelDetailLoading,
   baseModelPickerOpen,
-  baseModelPickerMode,
-  conversionModelType,
-  conversionSourceModelVersionId,
   warmStartModelVersionId,
   trainingSelectedModelSummary,
-  conversionSelectedModelSummary,
   selectedModelDerivedTrainingVersions,
   selectBaseModel,
   openBaseModelPicker,
@@ -362,7 +363,6 @@ const {
   applyTrainingModelSelection,
   applyTrainingVersionSelection,
   clearTrainingWarmStart,
-  applyConversionVersion,
   resetPlatformBaseModelSelection,
   ensureSelectedModelStillVisible,
 } = usePlatformBaseModelSelection({
@@ -371,6 +371,12 @@ const {
   onError: setErrorMessage,
   detailFailedMessage: () => t('modelOps.messages.detailFailed'),
 })
+
+const {
+  conversionModels, conversionSourcePickerOpen, conversionBrowseModelId, conversionBrowseModel,
+  selectedConversionSource, conversionSelectedModelSummary, conversionModelType, conversionSourceModelVersionId,
+  openConversionSourcePicker, selectConversionVersion, resetConversionSourceSelection,
+} = useModelConversionSourceSelection({ sourceModels: projectSourceModels, projectId: selectedProjectId, taskType: selectedTaskType })
 
 const resolvedTrainingManifestKey = computed(
   () => selectedTrainingDatasetExport.value?.manifest_object_key?.trim() ?? '',
@@ -496,8 +502,8 @@ const {
 } = useModelConversionState({
   selectedTaskType,
   selectedProjectId,
-  conversionModelType,
-  conversionSourceModelVersionId,
+  selectedSource: selectedConversionSource,
+  canWriteTasks,
   conversionTarget,
   conversionRuntimeProfileId,
   conversionDisplayName,
@@ -525,6 +531,8 @@ async function setTaskType(value: SelectValue): Promise<void> {
   }
   selectedTaskType.value = nextValue as ModelTaskType
   resetPlatformBaseModelSelection({ keepPickerOpen: baseModelPickerOpen.value })
+  resetConversionSourceSelection(conversionSourcePickerOpen.value)
+  lastTrainingSubmission.value = null
   resetTrainingDatasetExportSelection()
   resetSuggestedOutputModelName()
   const refreshed = await refreshPage()
@@ -541,6 +549,19 @@ async function setTaskType(value: SelectValue): Promise<void> {
 function setConversionTarget(value: SelectValue): void {
   conversionTarget.value = (normalizeSelectValue(value) || 'onnx') as ConversionTargetKey
 }
+
+watch(selectedProjectId, async () => {
+  resetPlatformBaseModelSelection()
+  resetConversionSourceSelection()
+  resetTrainingDatasetExportSelection()
+  resetSuggestedOutputModelName()
+  lastTrainingSubmission.value = null
+  projectSourceModels.value = []
+  trainingDatasetExports.value = []
+  trainingTasks.value = []
+  conversionTasks.value = []
+  await refreshPage()
+})
 
 async function refreshPage(): Promise<boolean> {
   const requestSerial = ++pageRequestSerial

@@ -197,7 +197,7 @@ onMounted(() => {
 })
 
 function isTerminalTask(state: string): boolean {
-  return ['succeeded', 'failed', 'cancelled', 'canceled', 'completed'].includes(state.toLowerCase())
+  return ['succeeded', 'failed', 'cancelled', 'timed_out'].includes(state)
 }
 
 async function loadDetail(): Promise<void> {

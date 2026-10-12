@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 import json
+import os
 import pickle
 from types import SimpleNamespace
 
@@ -147,6 +148,9 @@ def test_supervised_conversion_runner_returns_validated_staging_without_publishi
     assert storage.resolve(staged_uri).read_bytes() == b"valid-onnx"
     process_env = captured["env"]
     assert isinstance(process_env, dict)
+    project_root = Path(__file__).resolve().parents[1]
+    assert captured["cwd"] == project_root
+    assert process_env["PYTHONPATH"].split(os.pathsep)[0] == str(project_root)
     assert process_env["AMVISION_WORKER_CONVERSION__HELPER_TIMEOUT_SECONDS"] == "12.0"
 
 

@@ -14,8 +14,8 @@
             size="sm"
             variant="secondary"
             type="button"
-            :disabled="loading || baseModelsCount === 0"
-            @click="$emit('open-base-model-picker')"
+            :disabled="loading"
+            @click="$emit('open-source-picker')"
           >
             {{ t('modelOps.actions.chooseConversionSource') }}
           </Button>
@@ -39,8 +39,7 @@
             </div>
           </template>
           <template v-else>
-            <strong>{{ t('modelOps.baseModelEmptyTitle') }}</strong>
-            <span>{{ t('modelOps.baseModelEmptyDescription') }}</span>
+            <strong>{{ t('modelConversionSource.emptySelection') }}</strong>
           </template>
         </div>
       </div>
@@ -48,21 +47,16 @@
         <span>model_type</span>
         <input
           :value="conversionModelType"
-          placeholder="yolox / yolov8 / yolo11 / yolo26 / rfdetr"
-          :readonly="Boolean(conversionSelectedModelSummary)"
-          :aria-readonly="Boolean(conversionSelectedModelSummary)"
+          readonly
           required
-          @input="emitString('update:conversionModelType', $event)"
         />
       </label>
       <label class="field field--wide">
         <span>{{ t('modelOps.fields.sourceModelVersionId') }}</span>
         <input
           :value="conversionSourceModelVersionId"
-          :readonly="Boolean(conversionSelectedModelSummary)"
-          :aria-readonly="Boolean(conversionSelectedModelSummary)"
+          readonly
           required
-          @input="emitString('update:conversionSourceModelVersionId', $event)"
         />
       </label>
       <label class="field">
@@ -86,7 +80,7 @@
       <Button
         variant="primary"
         type="submit"
-        :disabled="!canWriteTasks || conversionSubmitting || !conversionSelectedModelSummary || !conversionSourceModelVersionId.trim()"
+        :disabled="loading || !canWriteTasks || conversionSubmitting || !conversionSelectedModelSummary || !conversionSourceModelVersionId.trim()"
         :loading="conversionSubmitting"
       >
         <Wand2 :size="16" />
@@ -118,15 +112,12 @@ import TaskSubmissionNotice from '@/modules/tasks/components/TaskSubmissionNotic
 
 type SelectValue = string | number | boolean | null
 type UpdateStringEvent =
-  | 'update:conversionModelType'
-  | 'update:conversionSourceModelVersionId'
   | 'update:conversionRuntimeProfileId'
   | 'update:conversionDisplayName'
 
 defineProps<{
   selectedTaskType: ModelTaskType
   loading: boolean
-  baseModelsCount: number
   conversionSelectedModelSummary: PlatformBaseModelSummary | null
   conversionModelType: string
   conversionSourceModelVersionId: string
@@ -141,9 +132,7 @@ defineProps<{
 
 const emit = defineEmits<{
   submit: []
-  'open-base-model-picker': []
-  'update:conversionModelType': [value: string]
-  'update:conversionSourceModelVersionId': [value: string]
+  'open-source-picker': []
   'update:conversionTarget': [value: string]
   'update:conversionRuntimeProfileId': [value: string]
   'update:conversionDisplayName': [value: string]
@@ -162,14 +151,6 @@ function getInputValue(event: Event): string {
 
 function emitString(eventName: UpdateStringEvent, event: Event): void {
   const value = getInputValue(event)
-  if (eventName === 'update:conversionModelType') {
-    emit('update:conversionModelType', value)
-    return
-  }
-  if (eventName === 'update:conversionSourceModelVersionId') {
-    emit('update:conversionSourceModelVersionId', value)
-    return
-  }
   if (eventName === 'update:conversionRuntimeProfileId') {
     emit('update:conversionRuntimeProfileId', value)
     return

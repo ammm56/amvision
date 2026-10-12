@@ -657,11 +657,11 @@ def test_create_openvino_gpu_deployment_keeps_fp32_artifact_with_fp16_execution_
 
 
 @pytest.mark.parametrize("device_name", ["auto", "cpu"])
-def test_create_openvino_deployment_instance_rejects_fp16_on_auto_or_cpu(
+def test_create_openvino_deployment_instance_allows_fp16_artifact_on_auto_or_cpu(
     tmp_path: Path,
     device_name: str,
 ) -> None:
-    """验证 OpenVINO Deployment 在 auto 或 cpu 上拒绝使用 fp16 runtime。"""
+    """FP16 IR 权重压缩不限制 CPU/AUTO 计算设备。"""
 
     client, session_factory, dataset_storage = _create_test_client(tmp_path)
     model_version_id = _seed_model_version(
@@ -674,6 +674,7 @@ def test_create_openvino_deployment_instance_rejects_fp16_on_auto_or_cpu(
         model_version_id=model_version_id,
         build_format="openvino-ir",
         build_uri="projects/project-1/models/builds/build-1/yolox.openvino.xml",
+        runtime_precision="fp16",
     )
     try:
         with client:
@@ -691,18 +692,11 @@ def test_create_openvino_deployment_instance_rejects_fp16_on_auto_or_cpu(
                 },
             )
 
-            assert create_response.status_code == 400
-            payload = create_response.json()["error"]
-            assert payload["code"] == "invalid_request"
-            assert (
-                payload["message"]
-                == "openvino fp16 仅支持 gpu 或 npu device_name；auto/cpu 仍要求 fp32"
-            )
-            assert payload["details"] == {
-                "runtime_backend": "openvino",
-                "runtime_precision": "fp16",
-                "device_name": device_name,
-            }
+            assert create_response.status_code == 201, create_response.text
+            payload = create_response.json()
+            assert payload["runtime_backend"] == "openvino"
+            assert payload["runtime_precision"] == "fp16"
+            assert payload["device_name"] == device_name
     finally:
         session_factory.engine.dispose()
 

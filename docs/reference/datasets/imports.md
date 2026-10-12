@@ -45,7 +45,7 @@ upload zip
 
 ## 规范化
 
-- 类别映射固定写入 DatasetVersion；
+- 类别映射固定写入 DatasetVersion；名称必须非空、唯一、无首尾空白且不包含任何换行分隔符（包括 Unicode 行分隔符），源格式及 `class_map` 映射后的名称统一在发布版本前校验，避免训练输出 `labels.txt` 后才出现类别数量或顺序冲突；
 - 内部 bbox 使用 zero-based pixel 且右下边界 exclusive；
 - segmentation 统一为可验证的 polygon/RLE 表达；
 - pose 保存 keypoint schema、visibility 和顺序；

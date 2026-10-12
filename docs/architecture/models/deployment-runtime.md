@@ -86,6 +86,8 @@ OpenVINO `performance_hint` 是设备插件可以解释的高层目标：
 
 `LATENCY` 不表示“固定使用全部核心”。以 CPU 为例，OpenVINO 会根据处理器拓扑、模型精度、P-core / E-core 和平台策略推导 `num_streams`、推理线程数、超线程和绑核行为。
 
+OpenVINO ModelBuild 的 `runtime_precision` 标识 IR 权重存储精度，必须保留转换产物的 FP32/FP16 身份；不能据此拒绝在 CPU 或 AUTO 上执行 FP16 压缩 IR。实际计算精度由设备 plugin 和 `backend_options.inference_precision` 决定，推理结果记录编译后的实际精度，包括 BF16。GPU/NPU 可显式配置计算精度，CPU/AUTO 不强制设置 F16 hint。这与 OpenVINO 的[精度控制规则](https://docs.openvino.ai/2026/openvino-workflow/running-inference/optimize-inference/precision-control.html)及[IR 权重压缩接口](https://docs.openvino.ai/2025/api/ie_python_api/_autosummary/openvino.save_model.html)一致。
+
 显式设置低层参数后，低层参数会限制或覆盖 high-level hint 推导出的部分结果。因此前端必须把 `performance_hint` 表述为“性能目标”，不能表述为“线程模式”。
 
 ### 请求值和实际值

@@ -87,6 +87,12 @@ class PlatformBaseModelVersionSummaryResponse(BaseModel):
     checkpoint_storage_uri: str | None = Field(
         default=None, description="checkpoint 存储 URI"
     )
+    labels_file_id: str | None = Field(
+        default=None, description="此 ModelVersion 的有序类别映射文件 id"
+    )
+    labels_storage_uri: str | None = Field(
+        default=None, description="此 ModelVersion 的类别映射文件 URI"
+    )
     catalog_manifest_object_key: str | None = Field(
         default=None, description="预训练目录 manifest object key"
     )

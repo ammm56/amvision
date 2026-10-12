@@ -768,6 +768,7 @@ def run_yolov8_classification_training(
             ),
             "accumulate": training_schedule.accumulate,
             "scaled_weight_decay": training_schedule.scaled_weight_decay,
+            "implementation_mode": YOLOV8_CLASSIFICATION_IMPLEMENTATION_MODE,
             "augmentation": build_yolo_classification_augmentation_summary(
                 augmentation_options
             ),

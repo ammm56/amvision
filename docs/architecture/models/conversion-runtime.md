@@ -18,6 +18,7 @@ Task/TaskAttempt
 
 ## 进程与超时
 
+- attempt 和 OpenVINO/TensorRT helper 的工作目录与 `PYTHONPATH` 均使用实际 `backend` 包的父目录，不按转换工具文件的目录深度推算。源码开发使用仓库代码根目录及当前 conda Python；发行包使用 `app/` 代码根目录及同目录 Bundled Python，不新增系统依赖。
 - 受监督 attempt 子进程使用一个硬 deadline，不按单个转换步骤重新计时；父进程验证和发布使用同一剩余预算，持久 UTC deadline 支持 lease recovery 后继续计算，不能重置计时。
 - Windows 先启动等待放行的 bootstrap，把 bootstrap 加入启用 kill-on-close 的 Job Object 后才允许真实 converter 启动；绑定失败时 converter 不会运行。POSIX 使用独立 process group。
 - timeout 或协作取消先请求进程树退出，grace 到期后终止整个 Job/process group，并有界等待强制清理完成。
@@ -33,6 +34,39 @@ Task/TaskAttempt
 - ONNX 来源数值摘要为 finite，并通过 allclose 或模型专用 accepted 容差；
 - OpenVINO 模型能在 CPU runtime 完成一次推理，结果与来源 ONNX 一致；
 - TensorRT 正式 engine 实际执行全部输出，并与同输入的来源 ONNX 通过数值门禁；只完成反序列化或创建 context 不算通过。RF-DETR 的 trtexec 路径遵守相同门禁。
+
+### 类别映射与来源选择
+
+转换、部署、推理和 workflow 使用同一 ModelVersion 的有序类别映射。`labels` 文件和 `metadata.category_names` 同时登记时必须逐项一致；缺少、空白、重复、非法类型或索引顺序冲突都在正式任务提交前拒绝。运行时快照的类别列表也使用相同校验，禁止静默过滤条目后错配模型输出索引。
+
+类别内容规则由 `domain/datasets/category_names.py` 统一定义；导入发布版本、模型登记、运行时解析复用该规则。类别名称内的 ASCII 或 Unicode 换行分隔符在导入时拒绝，不能把一个类别写成标签文件的多行；前端转换选择遵守相同的单行约束。
+
+前端的训练初始化选择和转换来源选择由各自的状态模块维护。转换来源直接绑定实际模型及版本，不依赖预训练目录是否存在，也不借用预训练模型身份显示训练产物。切换 Project 或任务类型会清空旧来源；过期请求结果不得写回新选择。
+
+### 正式链路验收
+
+`tests/integration/test_classification_conversion_publication_chain.py` 使用显式指定的真实 YOLO11 classification 训练版本，按 ONNX / ONNX-optimized / OpenVINO FP32、FP16 / TensorRT FP32、FP16 检查 API 提交、正式 worker、受监督转换子进程、文件发布、ModelBuild 登记、sync/async 独立部署进程、类别输出、workflow、reset 和 stop。每个目标会验证其全部已发布构建，不能只检查 runner 临时输出。
+
+开发环境在激活 `amvision` 后通过环境变量 `AMVISION_CLASSIFICATION_SMOKE_MODEL_VERSION_ID` 指定现有训练版本，再显式运行该 integration 测试。源模型、checkpoint 和调试数据集只读，数据库、队列、对象存储、daemon 和 worker 在 `.tmp/` 中隔离；测试结束回收自己启动的进程并按项目约定清理临时文件。TensorRT 目标需要 CUDA GPU、驱动及项目配置的同版本 TensorRT wheel / DLL，不使用 `projectsrc/` 作为运行时依赖。
+
+`tests/integration/test_classification_training_publication_chain.py` 补充训练前的验收：使用正式格式的确定性小数据集，经导入、导出，分别调用 YOLOv8 / YOLO11 / YOLO26 原生 full core 分类训练入口执行 2 个 epoch，再验证逐轮 validation、独立 test 和 evaluation、checkpoint/labels 登记、ONNX / OpenVINO / TensorRT FP32 转换、sync/async 常驻进程推理及 workflow。小数据集只用于执行链验证，不代表模型精度验收，也不替换模型实现。激活 `amvision` 后设置 `AMVISION_RUN_TRAINING_PUBLICATION_SMOKE=1`，运行该文件即可重复验收；未显式启用时跳过 GPU 集成测试。
+
+#### 2026-10-12 本地验收记录
+
+- 来源为 `model-version-208efe5760e7` 的真实 YOLO11 classification 训练 checkpoint；标签文件和版本元数据均包含同序的 3 个类别，原始训练输出保持不变。
+- Windows 环境中 OpenVINO FP32、FP16 和 TensorRT FP32、FP16 的 4 个真实用例全部通过。每个用例同时验证 ONNX、ONNX-optimized 和请求目标的正式发布构建，并逐个执行 sync/async 常驻部署、推理、workflow、reset 和 stop。
+- 转换摘要响应补全 `runtime_backend`、`runtime_precision` 后，再次运行 OpenVINO FP16 的正式链路，验证任务摘要与已登记 ModelBuild 完全一致。
+- 后端相关回归 408 项通过；前端 160 个测试文件、658 项测试通过，类型检查和生产构建通过。模型/任务契约回归覆盖当前支持的 18 个组合；这不等于 18 个组合均完成真实硬件全链路验收，也不包含重新训练或 DDP 验收。
+- 构建页面在桌面和窄屏下验证了来源选择、类别数量和表单版本身份。应用内浏览器的开发页面仍出现 HMR 反复重连，同端口原生 HMR 连接的 8 秒对照未断开；该浏览器连接问题不记为已解决，也不据此断言服务端已发生故障。
+
+#### 2026-10-12 追加全链路复审
+
+- 再次只读核对原训练版本 `model-version-208efe5760e7`：3 个类别、标签文件及顺序一致；五种任务类型的转换列表接口均返回成功。
+- 导入边界复现了 COCO、YOLO 和 ImageNet 类别映射接受多行名称的问题，共 6 个失败用例。统一类别规则后，ASCII 和 Unicode 换行名称均在 DatasetVersion 发布前拒绝，训练登记、运行时与前端使用相同单行约束；正常数据的类别顺序不变。
+- 新增三代分类真实全链路验收，发现 YOLOv8 最终训练报告遗漏 `implementation_mode`，已在其 core 执行结果中补齐并完成重训复验。三代均完成导入至三后端转换、常驻部署和 workflow；原始三分类版本另行通过 OpenVINO FP16、ONNX 和 ONNX-optimized 正式发布及 sync/async 推理复验。
+- YOLOX 转换 API 测试曾同时启用后台和手动 Outbox 投递，后台先投递成功会使手动计数断言失败；现明确由测试手动驱动，保留投递数量及最终任务结果断言，生产队列行为不变。
+- 修正后完整重跑相关后端回归：464 项通过；前端 160 个文件、668 项通过，类型检查、生产构建、ruff 和补丁格式检查通过。确认开发服务无活动任务、部署和流程后，通过正式服务接替入口加载修复，6 类 Worker 就绪，daemon 热路径探测及 API 检查通过。
+- 本轮不包含全部 18 个模型任务组合的真实 GPU 全链路、所有 GPU/NPU 设备、长时间 soak 或 DDP；其他任务组合通过公共契约、worker 和运行时回归覆盖。RF-DETR ONNX 回归实际执行 full core 导出，但其 OpenVINO/TensorRT worker 单元用例使用构建替身，不能计作硬件验收。
 
 失败和 timeout 不会发布 staging，也不会把半成品登记为 ModelBuild。
 
@@ -53,6 +87,8 @@ YOLO26 detection、segmentation、pose、obb 使用 `yolo26-topk-v3`：固定 an
 segmentation 的正式 proto 另行直接按原容差跨后端比较，记录 `public_auxiliary_validation`；正式/观测交接的多个容差不得累加后替代该检查。
 
 ## DB 登记与恢复
+
+`/api/v1` 的 detection 和其他任务类型的转换详情与列表统一返回 `builds[].runtime_backend`、`builds[].runtime_precision`，来自正式 Task result 的构建摘要，必须与已登记 ModelBuild 一致，不从文件后缀或 precision 默认值推断。本次只增加响应字段，不改变数据库结构。
 
 同一 conversion 的全部 ModelBuild 和 ModelFile 在一个 Unit of Work 中提交。任何一个目标登记失败时，整批 DB 记录回滚。
 

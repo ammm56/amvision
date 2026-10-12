@@ -40,6 +40,7 @@ from backend.service.domain.models.model_input_spec import (
     resolve_yolo_default_spatial_size,
 )
 from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
+from backend.service.domain.datasets.category_names import parse_category_names
 from backend.service.domain.models.yolox_model_spec import (
     DEFAULT_YOLOX_MODEL_SPEC,
     YoloXModelSpec,
@@ -201,6 +202,7 @@ class PlatformBaseModelVersionSummaryView:
     - metadata：附加元数据。
     - checkpoint_file_id：checkpoint 文件 id。
     - checkpoint_storage_uri：checkpoint 存储 URI。
+    - labels_file_id / labels_storage_uri：当前版本的类别映射文件，不借用其他版本。
     - catalog_manifest_object_key：预训练目录 manifest object key。
     """
 
@@ -213,6 +215,8 @@ class PlatformBaseModelVersionSummaryView:
     metadata: dict[str, object] = field(default_factory=dict)
     checkpoint_file_id: str | None = None
     checkpoint_storage_uri: str | None = None
+    labels_file_id: str | None = None
+    labels_storage_uri: str | None = None
     catalog_manifest_object_key: str | None = None
 
 
@@ -230,6 +234,7 @@ class PlatformBaseModelVersionDetailView:
     - metadata：附加元数据。
     - checkpoint_file_id：checkpoint 文件 id。
     - checkpoint_storage_uri：checkpoint 存储 URI。
+    - labels_file_id / labels_storage_uri：当前版本的类别映射文件，不借用其他版本。
     - catalog_manifest_object_key：预训练目录 manifest object key。
     - files：当前版本关联的文件明细。
     """
@@ -243,6 +248,8 @@ class PlatformBaseModelVersionDetailView:
     metadata: dict[str, object] = field(default_factory=dict)
     checkpoint_file_id: str | None = None
     checkpoint_storage_uri: str | None = None
+    labels_file_id: str | None = None
+    labels_storage_uri: str | None = None
     catalog_manifest_object_key: str | None = None
     files: tuple[PlatformBaseModelFileView, ...] = ()
 
@@ -1309,6 +1316,15 @@ class SqlAlchemyModelService:
         """把平台模型 ModelVersion 输入信息收敛为唯一显式契约。"""
 
         normalized = dict(metadata)
+        if "category_names" in normalized:
+            try:
+                normalized["category_names"] = list(
+                    parse_category_names(
+                        normalized["category_names"], field_name="category_names"
+                    )
+                )
+            except ValueError as error:
+                raise InvalidRequestError(str(error)) from error
         if self.spec.model_name not in _MODEL_INPUT_CONTRACT_TYPES:
             return normalized
 
@@ -1500,6 +1516,7 @@ class SqlAlchemyModelService:
             model_version_id=model_version.model_version_id,
         )
         checkpoint_file = self._find_checkpoint_file(model_files)
+        labels_file = self._find_labels_file(model_files)
         catalog_manifest_object_key = model_version.metadata.get(
             "catalog_manifest_object_key"
         )
@@ -1517,6 +1534,10 @@ class SqlAlchemyModelService:
             checkpoint_storage_uri=(
                 checkpoint_file.storage_uri if checkpoint_file is not None else None
             ),
+            labels_file_id=labels_file.file_id if labels_file is not None else None,
+            labels_storage_uri=labels_file.storage_uri
+            if labels_file is not None
+            else None,
             catalog_manifest_object_key=(
                 catalog_manifest_object_key
                 if isinstance(catalog_manifest_object_key, str)
@@ -1536,6 +1557,7 @@ class SqlAlchemyModelService:
             model_version_id=model_version.model_version_id,
         )
         checkpoint_file = self._find_checkpoint_file(model_files)
+        labels_file = self._find_labels_file(model_files)
         catalog_manifest_object_key = model_version.metadata.get(
             "catalog_manifest_object_key"
         )
@@ -1553,6 +1575,10 @@ class SqlAlchemyModelService:
             checkpoint_storage_uri=(
                 checkpoint_file.storage_uri if checkpoint_file is not None else None
             ),
+            labels_file_id=labels_file.file_id if labels_file is not None else None,
+            labels_storage_uri=labels_file.storage_uri
+            if labels_file is not None
+            else None,
             catalog_manifest_object_key=(
                 catalog_manifest_object_key
                 if isinstance(catalog_manifest_object_key, str)
@@ -1632,6 +1658,15 @@ class SqlAlchemyModelService:
                 return model_file
 
         return None
+
+    @staticmethod
+    def _find_labels_file(model_files: tuple[ModelFile, ...]) -> ModelFile | None:
+        """通用查询按平台 label-map 文件角色识别各模型族的类别文件。"""
+
+        return next(
+            (item for item in model_files if item.file_type.endswith("-label-map")),
+            None,
+        )
 
     @staticmethod
     def _is_checkpoint_file_type(file_type: str) -> bool:

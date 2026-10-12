@@ -20,6 +20,7 @@ from backend.service.application.models.registry.model_service import (
 )
 from backend.service.domain.files.model_file import ModelFile
 from backend.service.domain.models.model_input_spec import ModelInputSpec, SpatialSize
+from backend.service.domain.datasets.category_names import parse_category_names
 from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
@@ -625,7 +626,7 @@ def resolve_labels(
     model_version_id: str,
     labels_file: ModelFile | None,
 ) -> tuple[str, ...]:
-    """优先从 labels 文件，其次从 metadata 中解析类别名。
+    """解析版本类别信息，并校验文件与 metadata 的有序映射一致。
 
     参数：
     - dataset_storage：本地文件存储服务。
@@ -637,33 +638,55 @@ def resolve_labels(
     - tuple[str, ...]：解析后的类别列表。
     """
 
+    file_labels: tuple[str, ...] | None = None
+    metadata_labels: tuple[str, ...] | None = None
     if labels_file is not None:
         labels_path = resolve_local_file_path(
             dataset_storage=dataset_storage,
             storage_uri=labels_file.storage_uri,
             field_name="labels_storage_uri",
         )
-        labels = tuple(
-            line.strip()
-            for line in labels_path.read_text(encoding="utf-8").splitlines()
-            if line.strip()
-        )
-        if labels:
-            return labels
+        try:
+            file_labels = parse_category_names(
+                labels_path.read_text(encoding="utf-8-sig").splitlines(),
+                field_name="labels 文件",
+            )
+        except (ValueError, OSError) as error:
+            raise InvalidRequestError(
+                "ModelVersion 的 labels 文件不合法",
+                details={"model_version_id": model_version_id, "reason": str(error)},
+            ) from error
 
-    metadata_labels = model_version_metadata.get("category_names")
-    if isinstance(metadata_labels, list):
-        labels = tuple(
-            item.strip()
-            for item in metadata_labels
-            if isinstance(item, str) and item.strip()
+    if "category_names" in model_version_metadata:
+        try:
+            metadata_labels = parse_category_names(
+                model_version_metadata["category_names"], field_name="category_names"
+            )
+        except ValueError as error:
+            raise InvalidRequestError(
+                "ModelVersion 的 category_names 不合法",
+                details={"model_version_id": model_version_id, "reason": str(error)},
+            ) from error
+    if (
+        file_labels is not None
+        and metadata_labels is not None
+        and file_labels != metadata_labels
+    ):
+        raise InvalidRequestError(
+            "ModelVersion 的 labels 文件与 category_names 类别顺序不一致",
+            details={"model_version_id": model_version_id},
         )
-        if labels:
-            return labels
+    if file_labels is not None:
+        return file_labels
+    if metadata_labels is not None:
+        return metadata_labels
 
     raise InvalidRequestError(
-        "当前 ModelVersion 缺少可用 labels 信息",
-        details={"model_version_id": model_version_id},
+        "所选 ModelVersion 未登记类别映射，不能转换、部署或推理；只有 checkpoint 的预训练引用只能用于训练初始化，请选择已完成的训练输出版本",
+        details={
+            "model_version_id": model_version_id,
+            "required": ["labels 文件或 category_names"],
+        },
     )
 
 
@@ -1062,18 +1085,7 @@ def resolve_runtime_precision(
             )
         return normalized_precision
     if normalized_backend == "openvino":
-        if normalized_precision == "fp16" and normalized_device_name not in {
-            "gpu",
-            "npu",
-        }:
-            raise InvalidRequestError(
-                "openvino fp16 仅支持 gpu 或 npu device_name；auto/cpu 仍要求 fp32",
-                details={
-                    "runtime_backend": normalized_backend,
-                    "runtime_precision": normalized_precision,
-                    "device_name": normalized_device_name,
-                },
-            )
+        # ModelBuild 保存 IR 权重精度，设备计算精度由 OpenVINO plugin 配置决定。
         return normalized_precision
     if normalized_backend == "tensorrt":
         return normalized_precision
@@ -1176,15 +1188,12 @@ def _read_payload_model_input_spec(
 def _require_payload_labels(payload: dict[str, object]) -> tuple[str, ...]:
     """从快照字典中读取必填类别列表。"""
 
-    value = payload.get("labels")
-    if not isinstance(value, list):
-        raise InvalidRequestError("runtime_target_snapshot 的 labels 不合法")
-    labels = tuple(
-        item.strip() for item in value if isinstance(item, str) and item.strip()
-    )
-    if not labels:
-        raise InvalidRequestError("runtime_target_snapshot 缺少有效 labels")
-    return labels
+    try:
+        return parse_category_names(
+            payload.get("labels"), field_name="runtime_target_snapshot.labels"
+        )
+    except ValueError as error:
+        raise InvalidRequestError(str(error)) from error
 
 
 def _read_nested_value(

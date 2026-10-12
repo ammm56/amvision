@@ -2,6 +2,7 @@ import { workflowDisplayMessages } from './workflow-display'
 import { userAccessMessages } from './user-access'
 import type { SupportedLocale } from './locales'
 import { deploymentTransferMessages } from './deployment-transfers'
+import { modelConversionSourceMessages } from './model-conversion-source'
 
 export type MessageValue = string | MessageSchema
 
@@ -9336,6 +9337,7 @@ for (const locale of ['zh-CN', 'en-US', 'ja-JP', 'ko-KR'] as const) {
   baseMessages[locale].workflowDisplay = workflowDisplayMessages[locale]
   baseMessages[locale].deploymentTransfer = deploymentTransferMessages[locale]
   baseMessages[locale].userAccess = userAccessMessages[locale]
+  baseMessages[locale].modelConversionSource = modelConversionSourceMessages[locale]
 }
 
 export const messages: Record<string, MessageSchema> = {

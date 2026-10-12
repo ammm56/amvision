@@ -33,6 +33,8 @@ def build_task_conversion_task_summary_response(
             TaskConversionBuildSummaryResponse(
                 model_build_id=_read_optional_str(item, "model_build_id") or "",
                 build_format=_read_optional_str(item, "build_format") or "",
+                runtime_backend=item["runtime_backend"],
+                runtime_precision=item["runtime_precision"],
                 build_file_id=_read_optional_str(item, "build_file_id") or "",
                 build_file_uri=_read_optional_str(item, "build_file_uri") or "",
                 metadata=dict(item.get("metadata")) if isinstance(item.get("metadata"), dict) else {},

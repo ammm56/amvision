@@ -61,7 +61,7 @@ REQUIRED_CONVERSION_FORMATS = ("onnx", "openvino-ir", "tensorrt-engine")
 WORKFLOW_EXAMPLES_DIR = PROJECT_ROOT / "docs" / "examples" / "workflows"
 SMOKE_ROOT = PROJECT_ROOT / ".tmp" / "yolo-model-full-chain-smoke"
 
-TERMINAL_TASK_STATES = {"succeeded", "failed", "cancelled"}
+TERMINAL_TASK_STATES = {"succeeded", "failed", "cancelled", "timed_out"}
 TERMINAL_RESOURCE_STATES = {"completed", "failed"}
 MAX_SAMPLE_IMAGE_BYTES = 64 * 1024 * 1024
 PROCESS_WORKING_DIRECTORY_ARTIFACTS = ("kernel.errors.txt",)
@@ -782,6 +782,7 @@ def run_task_case(
     batch_max_oom_retries: int = 3,
     checkpoint_interval: int = 5,
     checkpoint_keep_periodic: int = 2,
+    storage_root: Path | None = None,
 ) -> dict[str, Any]:
     """运行单个 task_type 的完整短链路。"""
 
@@ -969,14 +970,16 @@ def run_task_case(
         "training_task_id": training["task_id"],
         "warm_start_model_version_id": warm_start_model_version_id,
         "model_version_id": model_version_id,
-        "training_test_metrics": load_training_test_metrics(training_detail),
+        "training_test_metrics": load_training_test_metrics(
+            training_detail, storage_root=storage_root
+        ),
         "evaluation_policies": (
             {
                 "training": load_registered_report(
-                    training_detail, "test_metrics_object_key"
+                    training_detail, "test_metrics_object_key", storage_root=storage_root
                 ).get("evaluation_policy"),
                 "independent": load_registered_report(
-                    evaluation_detail, "report_object_key"
+                    evaluation_detail, "report_object_key", storage_root=storage_root
                 ).get("evaluation_policy"),
             }
             if case.task_type == "pose"
@@ -987,13 +990,15 @@ def run_task_case(
     }
 
 
-def load_training_test_metrics(training_detail: dict[str, Any]) -> dict[str, float]:
+def load_training_test_metrics(
+    training_detail: dict[str, Any], *, storage_root: Path | None = None
+) -> dict[str, float]:
     """从训练任务登记的独立 test 报告读取指标。"""
 
     object_key = find_string(training_detail, ("test_metrics_object_key",))
     if object_key is None:
         raise RuntimeError("训练任务没有登记 test_metrics_object_key")
-    storage_root = (PROJECT_ROOT / "data" / "files").resolve()
+    storage_root = (storage_root or PROJECT_ROOT / "data" / "files").resolve()
     report_path = (storage_root / PurePosixPath(object_key)).resolve()
     if not report_path.is_relative_to(storage_root) or not report_path.is_file():
         raise RuntimeError(f"训练 test 指标文件不存在：{object_key}")
@@ -1029,12 +1034,14 @@ def load_training_test_metrics(training_detail: dict[str, Any]) -> dict[str, flo
     return result
 
 
-def load_registered_report(detail: dict[str, Any], field: str) -> dict[str, Any]:
+def load_registered_report(
+    detail: dict[str, Any], field: str, *, storage_root: Path | None = None
+) -> dict[str, Any]:
     """只读取正式登记且位于测试存储根目录内的报告。"""
     key = find_string(detail, (field,))
     if not key:
         raise RuntimeError(f"任务未登记 {field}")
-    root = (PROJECT_ROOT / "data/files").resolve()
+    root = (storage_root or PROJECT_ROOT / "data/files").resolve()
     path = (root / PurePosixPath(key)).resolve()
     if not path.is_relative_to(root) or not path.is_file():
         raise RuntimeError(f"登记报告不可读取：{field}")
@@ -2106,6 +2113,8 @@ def summarize_inference_payload(payload: dict[str, Any]) -> dict[str, Any]:
             "latency_ms",
             "preview_image_uri",
             "result_object_key",
+            "top_category",
+            "categories",
         )
         if key in payload
     }

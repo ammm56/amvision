@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import sys
 from types import SimpleNamespace
 
 import pytest
 
+import backend
 from backend.service.application.error_serialization import serialize_error
 from backend.service.application.errors import (
     InvalidRequestError,
@@ -29,7 +31,7 @@ from backend.service.application.conversions.runtime.model_conversion_common imp
     run_conversion_script,
 )
 from backend.workers.queue_failure_metadata import build_queue_failure_metadata
-from backend.runtime.processes import ProcessTreeResult
+from backend.runtime.processes import ProcessTreeResult, ProcessTreeSupervisor
 
 
 def test_model_conversion_common_resolves_phase_and_options() -> None:
@@ -113,10 +115,49 @@ def test_model_conversion_common_rejects_failed_onnx_simplify(tmp_path: Path) ->
         )
 
 
+@pytest.mark.parametrize("code_root_name", ("source", "release/full/app"))
+def test_conversion_project_root_follows_backend_package(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    code_root_name: str,
+) -> None:
+    """源码和发行 app 均以实际 backend 包的父目录作为转换代码根目录。"""
+
+    code_root = tmp_path / code_root_name
+    backend_init = code_root / "backend" / "__init__.py"
+    backend_init.parent.mkdir(parents=True)
+    backend_init.write_text("", encoding="utf-8")
+    monkeypatch.setattr(backend, "__file__", str(backend_init))
+
+    assert resolve_conversion_project_root() == code_root.resolve()
+
+
+def test_conversion_attempt_entrypoint_imports_in_real_process() -> None:
+    """不依赖继承的 PYTHONPATH，真实子进程必须能加载 conversion attempt 入口。"""
+
+    project_root = resolve_conversion_project_root()
+    process_env = dict(os.environ)
+    process_env["PYTHONPATH"] = str(project_root)
+    result = ProcessTreeSupervisor(timeout_seconds=30.0).run(
+        [
+            sys.executable,
+            "-m",
+            "backend.workers.conversion.attempt_entrypoint",
+            "--help",
+        ],
+        cwd=project_root,
+        env=process_env,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "--runner-kind" in result.stdout
+    assert "--dataset-root" in result.stdout
+
+
 def test_model_conversion_common_runs_scripts_from_project_root(monkeypatch: pytest.MonkeyPatch) -> None:
     """验证 conversion 子进程会带项目根目录，避免脚本无法导入 backend。"""
 
-    project_root = resolve_conversion_project_root()
+    project_root = Path(__file__).resolve().parents[1]
     captured: dict[str, object] = {}
 
     def fake_run(

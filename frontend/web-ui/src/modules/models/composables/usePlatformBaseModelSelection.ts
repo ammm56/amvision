@@ -28,19 +28,12 @@ export function usePlatformBaseModelSelection(options: {
   const selectedModelBrowseId = ref('')
   const selectedModelDetailLoading = ref(false)
   const baseModelPickerOpen = ref(false)
-  const baseModelPickerMode = ref<'training' | 'conversion'>('training')
   const trainingSelectedModelId = ref('')
-  const conversionSelectedModelId = ref('')
-  const conversionModelType = ref('')
-  const conversionSourceModelVersionId = ref('')
   const warmStartModelVersionId = ref('')
   let detailRequestSerial = 0
 
   const trainingSelectedModelSummary = computed(
     () => options.baseModels.value.find((model) => model.model_id === trainingSelectedModelId.value) ?? null,
-  )
-  const conversionSelectedModelSummary = computed(
-    () => options.baseModels.value.find((model) => model.model_id === conversionSelectedModelId.value) ?? null,
   )
 
   const selectedModelDerivedTrainingVersions = computed<PlatformBaseModelVersionListItem[]>(() => {
@@ -80,7 +73,7 @@ export function usePlatformBaseModelSelection(options: {
           continue
         }
 
-        // 训练和转换都必须从已登记 checkpoint 的版本开始，避免把仅有元数据的残缺版本暴露给用户。
+        // 继续训练从已登记 checkpoint 的版本开始。
         if (!version.checkpoint_file_id?.trim() || !version.checkpoint_storage_uri?.trim()) {
           continue
         }
@@ -119,15 +112,12 @@ export function usePlatformBaseModelSelection(options: {
     }
   }
 
-  async function openBaseModelPicker(mode: 'training' | 'conversion'): Promise<void> {
-    baseModelPickerMode.value = mode
+  async function openBaseModelPicker(): Promise<void> {
     baseModelPickerOpen.value = true
     if (options.baseModels.value.length === 0) {
       return
     }
-    const preferredModelId = mode === 'training'
-      ? trainingSelectedModelId.value || selectedModelBrowseId.value || selectedModelDetail.value?.model_id || options.baseModels.value[0].model_id
-      : conversionSelectedModelId.value || selectedModelBrowseId.value || selectedModelDetail.value?.model_id || options.baseModels.value[0].model_id
+    const preferredModelId = trainingSelectedModelId.value || selectedModelBrowseId.value || selectedModelDetail.value?.model_id || options.baseModels.value[0].model_id
     if (preferredModelId && selectedModelDetail.value?.model_id !== preferredModelId) {
       await selectBaseModel(preferredModelId)
     }
@@ -154,15 +144,6 @@ export function usePlatformBaseModelSelection(options: {
     warmStartModelVersionId.value = ''
   }
 
-  function applyConversionVersion(payload: {
-    model: PlatformBaseModelDetail
-    modelVersionId: string
-  }): void {
-    conversionSelectedModelId.value = payload.model.model_id
-    conversionModelType.value = payload.model.model_type
-    conversionSourceModelVersionId.value = payload.modelVersionId
-  }
-
   function resetPlatformBaseModelSelection(options: ResetPlatformBaseModelSelectionOptions = {}): void {
     detailRequestSerial += 1
     selectedModelDetail.value = null
@@ -172,9 +153,6 @@ export function usePlatformBaseModelSelection(options: {
       baseModelPickerOpen.value = false
     }
     trainingSelectedModelId.value = ''
-    conversionSelectedModelId.value = ''
-    conversionModelType.value = ''
-    conversionSourceModelVersionId.value = ''
     warmStartModelVersionId.value = ''
   }
 
@@ -188,6 +166,10 @@ export function usePlatformBaseModelSelection(options: {
       selectedModelDetail.value = null
       selectedModelDetailLoading.value = false
     }
+    if (!options.baseModels.value.some((model) => model.model_id === trainingSelectedModelId.value)) {
+      trainingSelectedModelId.value = ''
+      warmStartModelVersionId.value = ''
+    }
   }
 
   return {
@@ -195,14 +177,9 @@ export function usePlatformBaseModelSelection(options: {
     selectedModelBrowseId,
     selectedModelDetailLoading,
     baseModelPickerOpen,
-    baseModelPickerMode,
     trainingSelectedModelId,
-    conversionSelectedModelId,
-    conversionModelType,
-    conversionSourceModelVersionId,
     warmStartModelVersionId,
     trainingSelectedModelSummary,
-    conversionSelectedModelSummary,
     selectedModelDerivedTrainingVersions,
     selectBaseModel,
     openBaseModelPicker,
@@ -210,7 +187,6 @@ export function usePlatformBaseModelSelection(options: {
     applyTrainingModelSelection,
     applyTrainingVersionSelection,
     clearTrainingWarmStart,
-    applyConversionVersion,
     resetPlatformBaseModelSelection,
     ensureSelectedModelStillVisible,
   }

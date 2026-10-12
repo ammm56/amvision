@@ -31,6 +31,9 @@
       "vue-i18n": [
         "./node_modules/vue-i18n"
       ],
+      "vue-router": [
+        "./node_modules/vue-router"
+      ],
       "pinia": [
         "./node_modules/pinia"
       ],

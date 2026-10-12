@@ -35,9 +35,8 @@ from backend.service.application.conversions.runtime.yolox_conversion_runner imp
     YoloXConversionRunRequest,
     YoloXConversionRunResult,
 )
-from tests.api_test_support import build_test_headers
+from tests.api_test_support import build_test_headers, create_api_test_context
 from tests.yolox_test_support import (
-    create_yolox_api_test_context,
     seed_yolox_model_version,
 )
 
@@ -399,9 +398,11 @@ def _create_test_client(
 ) -> tuple[TestClient, SessionFactory, LocalDatasetStorage, LocalFileQueueBackend]:
     """创建绑定测试数据库、本地文件存储和队列的 conversion API 测试客户端。"""
 
-    context = create_yolox_api_test_context(
+    context = create_api_test_context(
         tmp_path,
         database_name="amvision-conversion-api.db",
+        enable_local_buffer_broker=False,
+        enable_queue_outbox_dispatcher=False,
     )
     return context.client, context.session_factory, context.dataset_storage, context.queue_backend
 

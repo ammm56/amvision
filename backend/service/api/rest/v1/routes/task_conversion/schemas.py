@@ -35,6 +35,8 @@ class TaskConversionBuildSummaryResponse(BaseModel):
 
     model_build_id: str = Field(description="登记后的 ModelBuild id")
     build_format: str = Field(description="build 格式")
+    runtime_backend: str = Field(min_length=1, description="构建运行后端")
+    runtime_precision: str = Field(min_length=1, description="已登记构建精度")
     build_file_id: str = Field(description="对应 ModelFile id")
     build_file_uri: str = Field(description="构建产物 object key 或本地 URI")
     metadata: dict[str, object] = Field(default_factory=dict, description="构建元数据")

@@ -93,6 +93,8 @@ def build_platform_base_model_version_summary_response(
         metadata=dict(version.metadata),
         checkpoint_file_id=version.checkpoint_file_id,
         checkpoint_storage_uri=version.checkpoint_storage_uri,
+        labels_file_id=version.labels_file_id,
+        labels_storage_uri=version.labels_storage_uri,
         catalog_manifest_object_key=version.catalog_manifest_object_key,
     )
 
