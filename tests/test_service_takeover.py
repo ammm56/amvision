@@ -7,9 +7,28 @@ import time
 import os
 import json
 import shutil
+from types import SimpleNamespace
 
 import psutil
 import pytest
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows 系统宿主边界")
+def test_takeover_ancestor_stops_at_verified_windows_system_host():
+    """核实 System32 宿主后不读取其受保护命令行；同名非系统程序不能绕过。"""
+    from backend.bootstrap.service_takeover import _has_full_launcher_ancestor
+
+    def denied():
+        """模拟无权访问祖先命令行。"""
+        raise psutil.AccessDenied(pid=123)
+
+    host = SimpleNamespace(exe=lambda: str(Path(os.environ["SystemRoot"]) / "System32/svchost.exe"), cmdline=denied)
+    assert not _has_full_launcher_ancestor(SimpleNamespace(parents=lambda: [host]))
+    unknown = SimpleNamespace(exe=lambda: str(Path.cwd() / "svchost.exe"), cmdline=denied)
+    with pytest.raises(psutil.AccessDenied):
+        _has_full_launcher_ancestor(SimpleNamespace(parents=lambda: [unknown, host]))
+    launcher = SimpleNamespace(exe=lambda: sys.executable, cmdline=lambda: [sys.executable, "start_amvision_full.py"])
+    assert _has_full_launcher_ancestor(SimpleNamespace(parents=lambda: [launcher, host]))
 
 
 @pytest.mark.parametrize("legacy", [False, True])

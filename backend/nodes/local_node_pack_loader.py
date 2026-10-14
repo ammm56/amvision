@@ -756,11 +756,25 @@ class LocalNodePackLoader:
         """
 
         directory_name = path.name
-        return not (
+        if (
             directory_name == "__pycache__"
             or directory_name.startswith(".")
             or directory_name.startswith("_")
-        )
+        ):
+            return False
+        if self._resolve_manifest_path(path) is not None:
+            return True
+        # Git 移除旧包源码后可能保留忽略的 __pycache__；字节码不是可安装节点包。
+        # 空目录、真实源码、资源或符号链接仍交给 manifest 校验，不能隐藏损坏的包。
+        found_cache = False
+        for descendant in path.rglob("*"):
+            if descendant.is_symlink():
+                return True
+            if descendant.is_file():
+                if descendant.suffix != ".pyc" or "__pycache__" not in descendant.relative_to(path).parts[:-1]:
+                    return True
+                found_cache = True
+        return not found_cache
 
     def _resolve_manifest_path(self, node_pack_dir: Path) -> Path | None:
         """解析单个节点包目录下的 manifest 文件路径。"""

@@ -165,6 +165,21 @@ def test_local_node_pack_loader_status_reports_disabled_and_missing_manifest(
     assert [issue.code for issue in missing_item.issues] == ["manifest_missing"]
 
 
+def test_local_node_pack_loader_ignores_only_orphan_python_cache(tmp_path: Path) -> None:
+    """旧包移除后只剩字节码时不报损坏；含实际源码的无 manifest 包仍报错。"""
+    custom_nodes_root_dir = _create_node_pack_fixture(tmp_path)
+    for name in ("removed_nodes", "broken_nodes"):
+        cache_dir = custom_nodes_root_dir / name / "backend" / "__pycache__"
+        cache_dir.mkdir(parents=True)
+        (cache_dir / "entry.cpython-312.pyc").write_bytes(b"old-cache")
+    (custom_nodes_root_dir / "broken_nodes" / "backend" / "entry.py").write_text("", encoding="utf-8")
+    loader = LocalNodePackLoader(custom_nodes_root_dir)
+    loader.refresh()
+    snapshot = loader.get_node_pack_status_snapshot()
+    assert all(item.node_pack_id != "removed_nodes" for item in snapshot.items)
+    assert [issue.code for issue in _find_status_item(snapshot, "broken_nodes").issues] == ["manifest_missing"]
+
+
 def test_local_node_pack_loader_reports_incompatible_pack_and_rejects_enable(
     tmp_path: Path,
 ) -> None:

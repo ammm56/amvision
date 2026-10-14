@@ -17,6 +17,7 @@
 - capability 用于声明“节点包能做什么”，不参与运行时权限限制
 - backend-service 根据 manifest 决定能否注册、启用、升级或回滚 node pack
 - 未在 manifest 中声明的能力、触发点和外部端点访问，不应被视为可用能力
+- loader 扫描时忽略只剩 `__pycache__/*.pyc` 的旧目录；空目录或仍含源码、资源的无 manifest 目录继续报告错误，不能作为有效节点包加载。
 
 ## manifest 最小结构
 

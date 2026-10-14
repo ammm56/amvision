@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes.yoloe_open_vocab_nodes.backend.payloads.types import YoloePretrainedVariant
 
 
@@ -20,48 +19,6 @@ DEFAULT_IOU_THRESHOLD = 0.7
 DEFAULT_MAX_DETECTIONS = 100
 DEFAULT_DEVICE = "cpu"
 DEFAULT_PRECISION = "fp32"
-
-
-def raise_project_native_runtime_not_implemented(
-    *,
-    mode_name: str,
-    model_series: str,
-    model_scale: str,
-    prompt_free: bool,
-) -> None:
-    """抛出统一的 project-native YOLOE runtime 未接通错误。"""
-
-    variant = resolve_yoloe_pretrained_variant(
-        model_series=model_series,
-        model_scale=model_scale,
-        prompt_free=prompt_free,
-    )
-    raise InvalidRequestError(
-        f"YOLOE {mode_name} 的 project-native 推理实现尚未接通，当前节点不会回退到外部 Python 包或 projectsrc 参考代码",
-        details={
-            "mode_name": mode_name,
-            "model_series": variant.model_series,
-            "model_scale": variant.model_scale,
-            "prompt_free": variant.prompt_free,
-            "task_type": variant.task_type,
-            "manifest_path": str(variant.manifest_path),
-            "checkpoint_path": str(variant.checkpoint_path),
-            "pretrained_root": str(YOLOE_PRETRAINED_ROOT),
-        },
-    )
-
-
-def raise_not_implemented(request: WorkflowNodeExecutionRequest, *, mode_name: str) -> dict[str, object]:
-    """抛出统一的“骨架已注册但推理未接通”错误。"""
-
-    raise InvalidRequestError(
-        f"YOLOE {mode_name} 节点骨架已注册，但 project-native 推理实现尚未接通",
-        details={
-            "node_id": request.node_id,
-            "node_type_id": request.node_type_id,
-            "pretrained_root": "data/files/models/pretrained/yoloe",
-        },
-    )
 
 
 def resolve_yoloe_pretrained_variant(
@@ -226,7 +183,5 @@ __all__ = [
     "normalize_model_scale",
     "normalize_model_series",
     "normalize_precision",
-    "raise_not_implemented",
-    "raise_project_native_runtime_not_implemented",
     "resolve_yoloe_pretrained_variant",
 ]

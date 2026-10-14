@@ -22,6 +22,23 @@ def _has_module(process: psutil.Process, module: str) -> bool:
     return any(args[i:i + 2] == ["-m", module] for i in range(len(args) - 1))
 
 
+def _has_full_launcher_ancestor(process: psutil.Process) -> bool:
+    """检查应用祖先；到达 Windows 系统宿主后结束，不查询受保护的系统命令行。"""
+    system_root = os.environ.get("SystemRoot") if os.name == "nt" else None
+    system_directory = (Path(system_root) / "System32").resolve() if system_root else None
+    for parent in process.parents():
+        if system_directory is not None:
+            executable = Path(parent.exe()).resolve()
+            if executable.parent == system_directory and executable.name.casefold() in {
+                "svchost.exe", "services.exe", "wininit.exe", "winlogon.exe", "smss.exe",
+            }:
+                return False
+        # 未知或 Python 应用祖先仍须可核实；不能把 AccessDenied 当作独立服务。
+        if any(Path(arg).name == "start_amvision_full.py" for arg in parent.cmdline()):
+            return True
+    return False
+
+
 def _request_path(lock_path: Path, pid: int) -> Path:
     """停止请求与具体锁及 PID 绑定，内容再校验进程创建时间。"""
     return lock_path.with_name(f"{lock_path.name}.stop-{pid}.json")
@@ -91,8 +108,7 @@ def replace_service_owner(
                 raise ServiceTakeoverError("owner PID 已复用，拒绝接管")
             if process.create_time() >= current.create_time():
                 raise ServiceTakeoverError("当前服务不比 owner 更新，拒绝反向接管")
-            parents = process.parents()
-            if any(Path(arg).name == "start_amvision_full.py" for parent in parents for arg in parent.cmdline()):
+            if _has_full_launcher_ancestor(process):
                 raise ServiceTakeoverError("旧服务由 full 启动器管理，请重新运行 full 启动器接替整套服务")
             if process.pid in {p.pid for p in current.parents()}:
                 raise ServiceTakeoverError("不能接管当前进程的祖先进程")
