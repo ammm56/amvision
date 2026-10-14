@@ -1,6 +1,7 @@
 """隔离 API 与真实 Runtime 进程验证，不使用开发环境的客户 App。"""
 
 import shutil
+import pytest
 
 from fastapi.testclient import TestClient
 
@@ -25,6 +26,7 @@ from tests.test_connector_nodes import ROOT, ASSETS
 from tests.test_workflow_runtime_invoke_api import _create_and_start_runtime
 
 
+@pytest.mark.skipif(not ASSETS.is_dir(), reason="缺少可选 connector synthetic-v1 开发资产")
 def test_isolated_pack_enable_publish_runtime_invoke_and_stop(tmp_path):
     """实际包启用、发布冻结、独立进程执行和停止；资源/图像留在隔离目录。"""
     factory, storage, queue = create_test_runtime(

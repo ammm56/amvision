@@ -43,7 +43,8 @@ def test_workflow_version_migration_chain_has_one_head() -> None:
     )
     script = ScriptDirectory.from_config(_build_alembic_config(settings))
 
-    assert tuple(script.get_heads()) == ("e7a9b1c3d5f8",)
+    assert len(script.get_heads()) == 1
+    assert script.get_revision("a8d6c4e2b019").down_revision == "f2b7d9a4c6e8"
     assert script.get_revision("f8a2c4e6b1d3").down_revision == "f7d1e3a5b9c2"
     assert script.get_revision("f9b3d5e7c2a4").down_revision == "f8a2c4e6b1d3"
     assert script.get_revision("fa4c6e8b1d25").down_revision == "f9b3d5e7c2a4"

@@ -9,6 +9,7 @@ import time
 import pytest
 
 import backend.workers.contracts as worker_contracts_module
+from backend.service.infrastructure.filesystem import atomic_files
 from backend.workers.contracts import (
     WORKER_HEARTBEAT_FORMAT_ID,
     WORKER_PROFILE_FORMAT_ID,
@@ -131,7 +132,7 @@ def test_worker_contract_write_retries_transient_windows_reader_lock(
     """目标契约被短暂读取占用时，应有界重试并清理临时文件。"""
 
     target_path = tmp_path / "training-profile.json"
-    original_replace = Path.replace
+    original_replace = atomic_files.replace_shared_file
     sharing_violation_count = 0
 
     def replace_with_transient_lock(
@@ -149,7 +150,7 @@ def test_worker_contract_write_retries_transient_windows_reader_lock(
             raise error
         return original_replace(source_path, current_target_path)
 
-    monkeypatch.setattr(Path, "replace", replace_with_transient_lock)
+    monkeypatch.setattr(atomic_files, "replace_shared_file", replace_with_transient_lock)
 
     write_worker_contract(target_path, _profile("training", "pose-training"))
 

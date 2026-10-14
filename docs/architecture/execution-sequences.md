@@ -9,7 +9,7 @@
 - 持久后台任务通过业务记录、Task、TaskEvent 和 Outbox 的提交进入文件队列；Worker claim 成功后才执行，结果持久化后 ACK。
 - Task 状态由专用命令和条件更新推进。普通 TaskEvent 只记录观察，训练高频遥测走独立 EventRing。
 - 同步 Deployment 使用常驻推理进程、结构化 Mailbox 和 LocalBuffer，不创建一次性推理 Task。
-- Preview 在 backend-service 当前进程执行固定快照；已发布 Workflow App Runtime 在独立常驻 Worker 中执行。
+- backend-service 管理 Preview 内存会话，固定快照由独立可复用的 Preview Worker 执行；已发布 Workflow App Runtime 使用独立常驻 Worker。
 - Runtime 请求/响应保留 Queue；显示通道使用独立有界 socket，不能替代业务响应或持久运行记录。
 
 ## 数据集导入与导出

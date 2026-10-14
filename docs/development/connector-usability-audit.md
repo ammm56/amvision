@@ -18,7 +18,7 @@
 
 状态：功能路径完整，信息层级需要优化。
 
-![节点画布](../../data/development/connector-inspection/ux-audit-20261008/01-workflow.jpg)
+本地截图（节点画布，未随仓库分发）：`data/development/connector-inspection/ux-audit-20261008/01-workflow.jpg`
 
 六个节点组已经按输入、定位、PIN、测量、判定、显示排序，并附配方边界说明。当前窗口在 44% 缩放下才能显示多个步骤，参数和说明文字很小；单节点组留白较多。应用属性面板首先展示内部应用/执行 ID 和输入类型按钮，待检图片入口在较低位置，小地图与该入口重叠。
 
@@ -28,7 +28,7 @@
 
 状态：版本引用和图形取点已实现，资源创建步骤仍偏技术化。
 
-![定位模板资源](../../data/development/connector-inspection/ux-audit-20261008/02-template.jpg)
+本地截图（定位模板资源，未随仓库分发）：`data/development/connector-inspection/ux-audit-20261008/02-template.jpg`
 
 资源可按版本选择、查看原图、导入和导出；没有直接暴露任意服务器路径。创建区域同时呈现导入 ZIP、上传 PNG、参考坐标 ID、ROI 和锚点坐标，已选资源名称又重复显示。“清除资源引用”占据一整行，层级过高。
 
@@ -38,7 +38,7 @@
 
 状态：可配置且已有真实诊断，首屏重点和重新生成行为需要修复。
 
-![PIN 布局](../../data/development/connector-inspection/ux-audit-20261008/03-pin-layout.jpg)
+本地截图（PIN 布局，未随仓库分发）：`data/development/connector-inspection/ux-audit-20261008/03-pin-layout.jpg`
 
 资源加载完成后正确恢复参考模板；初始短暂“未选择”不是模板丢失。稳定编号、设计留空、不同类型、候选带和逐线诊断都有实现。本次已有预览显示 R1P01 覆盖率 100%、最大拟合残差 0.3069 px；这是该样本的拟合信息，不是测量准确度。
 
@@ -50,7 +50,7 @@
 
 状态：图形方向与截面入口已实现，存在明确控件显示错误和防错缺口。
 
-![尺寸项编辑](../../data/development/connector-inspection/ux-audit-20261008/04-measurements.jpg)
+本地截图（尺寸项编辑，未随仓库分发）：`data/development/connector-inspection/ux-audit-20261008/04-measurements.jpg`
 
 尺寸项与独立公差节点保持正确分工。已有参考图方向/截面编辑，无需重建这项能力。但表中的启用复选框显示为细线：实际 DOM 宽度约 1.33 px，高度 16 px，`appearance:none` 与局部 `width:auto; min-width:0` 组合使其只剩边框。列标题“启用”也换行。
 
@@ -62,7 +62,7 @@ PIN A/B 和具名特征目前是自由文本；前端主要验证字符串形状
 
 状态：判定契约严格，当前编辑器有类型正确性问题，优先级 P1。
 
-![公差规则](../../data/development/connector-inspection/ux-audit-20261008/05-limits.jpg)
+本地截图（公差规则，未随仓库分发）：`data/development/connector-inspection/ux-audit-20261008/05-limits.jpg`
 
 51 条规则以长卡片排列，Item Id、Unit、Enabled、Required 和包含边界选项均为文本输入。源码 `WorkflowParameterRows.vue` 只对 integer 转为数值，其余普通输入原样写入字符串；而 `LimitRule.enabled/required/include_lower/include_upper` 使用 StrictBool。修改这些字段后，即使输入 `false`，也会产生错误类型。
 
@@ -74,7 +74,7 @@ PIN A/B 和具名特征目前是自由文本；前端主要验证字符串形状
 
 状态：资源版本化可用，标定输出到资源保存仍依赖手工交接。
 
-![平面标定资源](../../data/development/connector-inspection/ux-audit-20261008/06-calibration-resource.jpg)
+本地截图（平面标定资源，未随仓库分发）：`data/development/connector-inspection/ux-audit-20261008/06-calibration-resource.jpg`
 
 界面要求把 Planar Calibrate 的 Calibration 输出复制进文本框。虽然技术上能保存和验证，但现场人员容易选错输出、用旧结果或混淆相机内参与平面映射。当前选择界面也没有直接展示有效域、单位、图像规格及独立验证误差。
 
@@ -86,7 +86,7 @@ PIN A/B 和具名特征目前是自由文本；前端主要验证字符串形状
 
 状态：本次结果能显示，原因解释不足，优先级 P1。
 
-![缺针结果](../../data/development/connector-inspection/ux-audit-20261008/07-app-mode-ng.jpg)
+本地截图（缺针结果，未随仓库分发）：`data/development/connector-inspection/ux-audit-20261008/07-app-mode-ng.jpg`
 
 使用 `single10_front__missing_middle.png` 实际执行：NG、检查项 51、合格项 44。执行成功与业务 NG 没有混为服务错误，图片来自本次运行。当前仅有紫色测量线和汇总数字，没有直接指出缺针编号或相关无效尺寸。
 
@@ -96,7 +96,7 @@ PIN A/B 和具名特征目前是自由文本；前端主要验证字符串形状
 
 状态：结果叠加保持正确，缺少与逐项结果的关联。
 
-![缺针大图](../../data/development/connector-inspection/ux-audit-20261008/08-large-view.jpg)
+本地截图（缺针大图，未随仓库分发）：`data/development/connector-inspection/ux-audit-20261008/08-large-view.jpg`
 
 本次大图保留同一 NG/51/44，缩放与图片呈现正常，JPEG 仅用于显示。下一阶段共享同一逐项数据和选中对象，保持大图与图片栏结果一致。表格、叠加及图片通过明确节点输出/配置绑定，不按节点名称、相邻位置或“只有一个显示节点”自动关联。
 
@@ -104,7 +104,7 @@ PIN A/B 和具名特征目前是自由文本；前端主要验证字符串形状
 
 状态：本次 NG 后恢复 OK 正常。
 
-![恢复正常结果](../../data/development/connector-inspection/ux-audit-20261008/09-app-mode-ok.jpg)
+本地截图（恢复正常结果，未随仓库分发）：`data/development/connector-inspection/ux-audit-20261008/09-app-mode-ok.jpg`
 
 再执行 `single10_front__reference.png`，得到 OK/51/51，新的完成时间和图片更新，没有在完成后残留旧 NG。本次只运行两个样本，不外推长期稳定性、所有异常恢复或时延分位数。运行期间若保留上次图片，应标明“上次结果”，与正在执行的输入区分。
 
@@ -131,7 +131,7 @@ PIN A/B 和具名特征目前是自由文本；前端主要验证字符串形状
 
 状态：原应用没有被自动改写，边界正确；新功能交接不够清楚。
 
-![第二轮：原应用画布](../../data/development/connector-inspection/ux-review-followup-20261008/01-current-app.jpg)
+本地截图（第二轮：原应用画布，未随仓库分发）：`data/development/connector-inspection/ux-review-followup-20261008/01-current-app.jpg`
 
 原应用仍采用 Native 图像编码、Draw Measurements 和 JSON 预览，Image Preview 没有使用新结果绑定。新表格、图形联动及合成图 sRGB 参数在 `single10-usability` 应用中。两者差异不是代码没有生效，也不能通过自动修改所有旧图消除。
 
@@ -141,7 +141,7 @@ PIN A/B 和具名特征目前是自由文本；前端主要验证字符串形状
 
 状态：表格、失败项筛选和图片定位已经实现；多个查看入口的语言和数值格式不一致。
 
-![第二轮：结果大图与检查表](../../data/development/connector-inspection/ux-review-followup-20261008/02-result-view.jpg)
+本地截图（第二轮：结果大图与检查表，未随仓库分发）：`data/development/connector-inspection/ux-review-followup-20261008/02-result-view.jpg`
 
 大图保留本次 OK/51/51，`width:R1P05` 可对应到图片上的同一 PIN。搜索、只看失败和原始详情已有实现，不重复列为待建功能。但节点内通用表格显示 `true`、`millimeter`，大图显示 `OK`、`mm`；内部 item_id 和较长小数仍为主要信息。底部表格在当前窗口仅显示约四行，图片和表格的空间分配需要改进。
 
@@ -151,7 +151,7 @@ PIN A/B 和具名特征目前是自由文本；前端主要验证字符串形状
 
 状态：上一轮的默认排列参数、替换预览、恢复和复选框问题已处理；图像仍过小。
 
-![第二轮：PIN 配置](../../data/development/connector-inspection/ux-review-followup-20261008/03-pin-layout.jpg)
+本地截图（第二轮：PIN 配置，未随仓库分发）：`data/development/connector-inspection/ux-review-followup-20261008/03-pin-layout.jpg`
 
 当前参考图与 PIN 表并排，但参考图可用区域约 250×156，10 针工件难以辨认；表格占据大部分宽度，X/Y 输入又截断长小数的可见部分。排列、类型、端点和采样区继续向下延伸。资源异步加载期间短暂显示“未选择”，随后恢复引用，应明确区分加载中和未选择。
 
@@ -161,7 +161,7 @@ PIN A/B 和具名特征目前是自由文本；前端主要验证字符串形状
 
 状态：批量配置、上游 PIN/端点选择和引用校验已实现；默认操作顺序不合理。
 
-![第二轮：尺寸配置](../../data/development/connector-inspection/ux-review-followup-20261008/04-measurements.jpg)
+本地截图（第二轮：尺寸配置，未随仓库分发）：`data/development/connector-inspection/ux-review-followup-20261008/04-measurements.jpg`
 
 已有 39 个尺寸项，但弹窗首屏主要用于“批量新增”，已有项只露出约两行，方向/截面编辑还在更下方。批量类型使用 `total_pitch` 等内部名称，与表内标签风格不一致。Width/Offset 的 PIN B 不适用，却显示禁用的“请选择”，容易误认为配置缺失。
 
@@ -171,7 +171,7 @@ PIN A/B 和具名特征目前是自由文本；前端主要验证字符串形状
 
 状态：类型正确性、表格、搜索、分组和批量功能已实现；列语义仍需简化。
 
-![第二轮：公差配置](../../data/development/connector-inspection/ux-review-followup-20261008/05-limits.jpg)
+本地截图（第二轮：公差配置，未随仓库分发）：`data/development/connector-inspection/ux-review-followup-20261008/05-limits.jpg`
 
 51 条规则已经使用真实复选框和紧凑表格。仍有 `unitless`/`millimeter` 原始单位、较长 item_id，以及紧邻的 ≥、≤、必检、启用列。“选择”按钮实际用于选择/取消当前可见行，动作范围不明显。
 
@@ -181,7 +181,7 @@ PIN A/B 和具名特征目前是自由文本；前端主要验证字符串形状
 
 状态：存在优先级 P1 的证据展示问题。
 
-![第二轮：标定资源证据提示](../../data/development/connector-inspection/ux-review-followup-20261008/06-calibration.jpg)
+本地截图（第二轮：标定资源证据提示，未随仓库分发）：`data/development/connector-inspection/ux-review-followup-20261008/06-calibration.jpg`
 
 本次合成比例资源没有独立验证点，却显示“独立验证最大误差 0”，未注明单位或缺少验证证据。代码中 `PlanarCalibration.evidence` 可为空，而资源选择器直接显示 `validation_max_error`；工程资源生成器把该值设为 0。这个显示不能支持“实际标定无误差”的结论，也不是已经证明测量计算发生错误。
 

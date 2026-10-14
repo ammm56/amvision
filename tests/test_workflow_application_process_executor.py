@@ -17,7 +17,6 @@ import backend.service.application.workflows.worker.process as runtime_worker_mo
 from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.service.api.app import create_app
-from backend.service.application.local_buffers import LocalBufferBrokerSettings
 from backend.service.application.local_memory import LocalMemorySettings
 from backend.service.application.workflows.process_executor import (
     WorkflowApplicationExecutionRequest,

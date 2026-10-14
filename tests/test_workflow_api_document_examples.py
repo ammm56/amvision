@@ -2277,11 +2277,6 @@ def test_workflow_example_documents_postman_collection_contains_remaining_debug_
         api_run_create = _read_api_workflow_example(
             example_name, "app-runtime.run.create.request.json"
         )
-        input_binding_ids = {
-            binding["binding_id"]
-            for binding in application["bindings"]
-            if binding["direction"] == "input"
-        }
         request_payloads = _collect_postman_request_payloads(folder["item"])
         formdata_payloads = _collect_postman_formdata_payloads(folder["item"])
         create_runtime_request = _find_postman_request(

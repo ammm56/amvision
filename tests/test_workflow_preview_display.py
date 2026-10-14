@@ -91,20 +91,23 @@ def test_idle_node_pack_refresh_replaces_catalog_and_handlers_together(tmp_path)
     signature = tuple(m.model_dump_json() for m in loader.get_node_pack_manifests())
     node_id = next(d.node_type_id for d in catalog.get_workflow_node_definitions() if d.node_pack_id == "hello.world-nodes")
     registry = registry_loader.get_runtime_registry()
-    assert registry.get_node_definition(node_id).node_pack_version == "0.1.0"
+    original_version = registry.get_node_definition(node_id).node_pack_version
+    major, minor, patch = (int(part) for part in original_version.split("."))
+    updated_version = f"{major}.{minor}.{patch + 1}"
     assert refresh_node_resources(loader, catalog, registry_loader, models, cache, signature) == signature
     models.close_all.assert_not_called()
     path = root / "hello_world_nodes/manifest.json"
     manifest = json.loads(path.read_text(encoding="utf8"))
-    manifest["version"] = "0.1.1"
+    manifest["version"] = updated_version
     path.write_text(json.dumps(manifest), encoding="utf8")
     catalog_path = root / "hello_world_nodes/workflow/catalog.json"
     updated_catalog = json.loads(catalog_path.read_text(encoding="utf8"))
-    updated_catalog["node_definitions"][0]["node_pack_version"] = "0.1.1"
+    for definition in updated_catalog["node_definitions"]:
+        definition["node_pack_version"] = updated_version
     updated_catalog["node_definitions"][0]["parameter_schema"]["properties"]["new_parameter"] = {"type": "string"}
     catalog_path.write_text(json.dumps(updated_catalog), encoding="utf8")
     signature = refresh_node_resources(loader, catalog, registry_loader, models, cache, signature)
-    assert registry.get_node_definition(node_id).node_pack_version == "0.1.1"
+    assert registry.get_node_definition(node_id).node_pack_version == updated_version
     assert "new_parameter" in registry.get_node_definition(node_id).parameter_schema["properties"]
     models.close_all.assert_called_once()
     cache.clear.assert_called_once()

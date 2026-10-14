@@ -52,6 +52,7 @@ def build_registry():
 
 
 @pytest.mark.parametrize("family", ["single10_front", "dual08_top"])
+@pytest.mark.skipif(not ASSETS.is_dir(), reason="缺少可选 connector synthetic-v1 开发资产")
 @pytest.mark.parametrize(
     "condition,passed",
     [

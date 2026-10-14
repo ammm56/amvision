@@ -91,7 +91,7 @@ LocalBufferBroker 用来做本机内部隔离进程之间的图片与视频帧�
 
 #### 适合做的事
 
-- backend-service 内的 Preview、Workflow Runtime、同步 Deployment 与本机 SDK 之间传递图片引用
+- backend-service、Preview Worker、Workflow Runtime、同步 Deployment 与本机 SDK 之间传递图片引用
 - 用固定总容量 mmap arena 和 buddy allocator 动态分配连续图片 extent
 - frame channel 以 frame_count 和单帧最大长度一次预留多块 extent，全部成功才发布
 - 通过 owner receipt、epoch/generation、deadline 和 reader/writer guard 管理短期数据与回收

@@ -1,6 +1,6 @@
 # 节点系统
 
-> 当前状态：本页描述已经落地的可信节点执行边界。Preview 使用进程内协作式取消；正式 Runtime 使用 generation 级共享取消信号，并以整个 Runtime worker 作为 Node Pack 超时后的强制终止和自动恢复边界。实现不创建每节点进程、控制队列或隐藏重试。
+> 当前状态：本页描述已经落地的可信节点执行边界。Preview 在独立可复用的 Preview Worker 内执行，先协作取消，必要时终止所属 Worker；正式 Runtime 使用 generation 级共享取消信号，并以整个 Runtime worker 作为 Node Pack 超时后的强制终止和自动恢复边界。实现不创建每节点进程或隐藏重试。
 
 ## 定位
 
@@ -71,7 +71,7 @@ Node Pack 承担：
 本地工业视觉部署把 Node Pack 的安装与启用视为使用者已经完成的信任选择：
 
 - Core、内置和第三方节点使用同一套进程内 handler 调用。
-- Preview 在 backend-service 内直接执行可信节点。
+- Preview 在独立 Preview Worker 内直接执行可信节点；backend-service 管理会话、容量与显示交付。
 - 正式 Workflow App 在长期 Runtime worker 内直接执行节点。
 - 正常节点调用不创建 per-node 进程，不经过跨进程 Mailbox，也不维护 permission scope。
 - 一次性安装校验可以在辅助进程检查 import 和 handler 注册，但不进入执行热路径。
@@ -84,12 +84,12 @@ Node Pack manifest 的 `timeout` 固定包含 `defaultSeconds`、`maxSeconds` �
 
 有效执行 deadline 是 Workflow 剩余时间与 `defaultSeconds` 的较小值。Workflow 总 deadline 更早时保留 Workflow 总超时语义；Node Pack deadline 更早时返回 Node Pack 节点超时语义。
 
-Preview 保持最低开销：
+Preview 的执行边界如下：
 
 - execution context 向 handler 提供 monotonic deadline 和 cancellation Event；
 - handler 可在连接等待、循环或分批处理的安全点协作退出；
-- 不可协作的可信 Python handler 不能在同进程中安全强杀，返回后执行器仍会把本次 Preview 收敛为超时；
-- 不建立 Preview worker 队列、每节点线程或每节点子进程。
+- 超过协作退出期限时终止对应 Preview Worker，确认执行退出后释放资源和容量；
+- 不创建每节点子进程，不自动重放执行；会话和并发限制见 [编辑态 Preview 执行](preview-execution.md)。
 
 正式 Runtime 的强制边界如下：
 

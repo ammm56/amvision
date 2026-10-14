@@ -146,7 +146,6 @@ def test_versions_and_terminal_runs_do_not_block_physical_application_deletion(
     """无 Runtime 时直接物理删除版本、终态执行记录和独占 Template。"""
 
     from backend.contracts.workflows import (
-        build_workflow_preview_run_storage_dir,
         build_workflow_run_storage_dir,
     )
     from backend.service.application.workflows.documents.storage import (
@@ -154,7 +153,6 @@ def test_versions_and_terminal_runs_do_not_block_physical_application_deletion(
         build_template_version_directory_key,
     )
     from backend.service.domain.workflows.workflow_runtime_records import (
-        WorkflowPreviewRun,
         WorkflowRun,
     )
     from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
@@ -196,27 +194,9 @@ def test_versions_and_terminal_runs_do_not_block_physical_application_deletion(
             )
             assert all(path.is_file() for path in snapshot_paths)
 
-            preview_run_id = "preview-delete-with-application"
             workflow_run_id = "run-delete-with-application"
             unit_of_work = SqlAlchemyUnitOfWork(factory.create_session())
             try:
-                unit_of_work.workflow_runtime.save_preview_run(
-                    WorkflowPreviewRun(
-                        preview_run_id=preview_run_id,
-                        project_id="project-1",
-                        application_id=app.application_id,
-                        source_kind="editor-preview",
-                        application_snapshot_object_key=(
-                            f"{build_workflow_preview_run_storage_dir(preview_run_id)}"
-                            "/application.snapshot.json"
-                        ),
-                        template_snapshot_object_key=(
-                            f"{build_workflow_preview_run_storage_dir(preview_run_id)}"
-                            "/template.snapshot.json"
-                        ),
-                        state="succeeded",
-                    )
-                )
                 unit_of_work.workflow_runtime.save_workflow_run(
                     WorkflowRun(
                         workflow_run_id=workflow_run_id,
@@ -230,14 +210,7 @@ def test_versions_and_terminal_runs_do_not_block_physical_application_deletion(
                 unit_of_work.commit()
             finally:
                 unit_of_work.close()
-            preview_dir = storage.resolve(
-                build_workflow_preview_run_storage_dir(preview_run_id)
-            )
             run_dir = storage.resolve(build_workflow_run_storage_dir(workflow_run_id))
-            storage.write_json(
-                f"{build_workflow_preview_run_storage_dir(preview_run_id)}/result.json",
-                {"ok": True},
-            )
             storage.write_json(
                 f"{build_workflow_run_storage_dir(workflow_run_id)}/result.json",
                 {"ok": True},
@@ -249,7 +222,6 @@ def test_versions_and_terminal_runs_do_not_block_physical_application_deletion(
                     template_version=template.template_version,
                 )
             )
-            assert preview_dir.is_dir()
             assert run_dir.is_dir()
             assert template_dir.is_dir()
             prompt_mask_root_key = build_application_prompt_mask_root_key(
@@ -263,7 +235,6 @@ def test_versions_and_terminal_runs_do_not_block_physical_application_deletion(
             assert client.delete(base, headers=headers).status_code == 204
             assert client.get(base, headers=headers).status_code == 404
             assert all(not path.exists() for path in snapshot_paths)
-            assert not preview_dir.exists()
             assert not run_dir.exists()
             assert not template_dir.exists()
             assert not prompt_mask_dir.exists()
@@ -271,10 +242,6 @@ def test_versions_and_terminal_runs_do_not_block_physical_application_deletion(
             try:
                 assert (
                     unit_of_work.workflow_runtime.get_workflow_app_version(version_id)
-                    is None
-                )
-                assert (
-                    unit_of_work.workflow_runtime.get_preview_run(preview_run_id)
                     is None
                 )
                 assert (
@@ -437,66 +404,36 @@ def test_application_delete_preserves_template_shared_by_another_workflow(
         factory.engine.dispose()
 
 
-def test_application_delete_rejects_active_preview_without_moving_files(
-    tmp_path: Path,
-) -> None:
-    """活动 Preview 存在时删除返回冲突，数据库和草稿目录保持不变。"""
-
-    from backend.contracts.workflows import build_workflow_preview_run_storage_dir
-    from backend.service.domain.workflows.workflow_runtime_records import (
-        WorkflowPreviewRun,
-    )
-    from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
+def test_application_delete_rejects_active_preview_without_moving_files(tmp_path: Path) -> None:
+    """活动内存 Preview 阻止删除；结束后删除释放会话，不创建旧 PreviewRun。"""
+    from backend.service.application.workflows.preview.session import PreviewSessionError
 
     client, factory, storage = _create_runtime_api_client(
-        tmp_path,
-        database_name="history-active-preview.db",
-        enable_local_buffer_broker=False,
+        tmp_path, database_name="history-active-preview.db", enable_local_buffer_broker=False,
     )
     headers = build_test_headers(scopes="workflows:read,workflows:write")
     try:
         with client:
             _, app = _save_example_documents(
-                client=client,
-                dataset_storage=storage,
-                example_name="barcode_result_display",
+                client=client, dataset_storage=storage, example_name="barcode_result_display",
             )
-            preview_run_id = "preview-active-delete-guard"
-            preview_dir_key = build_workflow_preview_run_storage_dir(preview_run_id)
-            unit_of_work = SqlAlchemyUnitOfWork(factory.create_session())
-            try:
-                unit_of_work.workflow_runtime.save_preview_run(
-                    WorkflowPreviewRun(
-                        preview_run_id=preview_run_id,
-                        project_id="project-1",
-                        application_id=app.application_id,
-                        source_kind="editor-preview",
-                        application_snapshot_object_key=(
-                            f"{preview_dir_key}/application.snapshot.json"
-                        ),
-                        template_snapshot_object_key=(
-                            f"{preview_dir_key}/template.snapshot.json"
-                        ),
-                        state="running",
-                    )
-                )
-                unit_of_work.commit()
-            finally:
-                unit_of_work.close()
-            storage.write_json(f"{preview_dir_key}/state.json", {"state": "running"})
-            preview_dir = storage.resolve(preview_dir_key)
-            app_base = (
-                "/api/v1/workflows/projects/project-1/applications/"
-                f"{app.application_id}"
-            )
-
+            manager = client.app.state.workflow_preview_sessions
+            session = manager.create(principal_id="preview-owner", project_id="project-1",
+                                     application_id=app.application_id, editor_session_id="delete-test")
+            session_id = session["session_id"]
+            manager.subscribe(session_id, "preview-owner")
+            run = manager.submit(session_id, "preview-owner", {
+                "request_id": "delete-test", "document_revision": "1", "template": {"nodes": []},
+            }, start=lambda *_: None)
+            app_base = f"/api/v1/workflows/projects/project-1/applications/{app.application_id}"
             response = client.delete(app_base, headers=headers)
             assert response.status_code == 409, response.text
-            assert response.json()["error"]["details"]["preview_runs"] == [
-                {"preview_run_id": preview_run_id, "state": "running"}
-            ]
+            assert response.json()["error"]["details"]["application_id"] == app.application_id
             assert client.get(app_base, headers=headers).status_code == 200
-            assert preview_dir.is_dir()
+            manager.accept(session_id, run["run_id"], "run.finished", {"status": "succeeded", "outputs": {}})
+            assert client.delete(app_base, headers=headers).status_code == 204
+            with pytest.raises(PreviewSessionError, match="preview_session_expired"):
+                manager.authorize(session_id, "preview-owner")
     finally:
         factory.engine.dispose()
 

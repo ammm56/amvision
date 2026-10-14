@@ -7,10 +7,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from backend.maintenance.main import cleanup_runtime_storage
-from backend.service.application.auth.default_local_auth_seeder import DEFAULT_LOCAL_AUTH_USERNAME
 from backend.service.domain.workflows.workflow_runtime_records import WorkflowAppRuntime, WorkflowRun
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.service.settings import (
     BackendServiceDatabaseConfig,
     BackendServiceDatasetStorageConfig,

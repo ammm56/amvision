@@ -280,8 +280,9 @@ def test_binary_schema_python_fixture_and_dotnet_fixture_are_identical() -> None
     fixture = json.loads(LOCAL_MESSAGE_FIXTURE.read_text(encoding="utf-8"))
     schema = json.loads(LOCAL_MESSAGE_SCHEMA.read_text(encoding="utf-8"))
     assert fixture["contract_id"] == schema["contract_id"]
+    # schema 是文本资产；fixture 的摘要按 LF 生成，不受 Git 的 CRLF 检出影响。
     assert fixture["schema_sha256"] == hashlib.sha256(
-        LOCAL_MESSAGE_SCHEMA.read_bytes()
+        LOCAL_MESSAGE_SCHEMA.read_text(encoding="utf-8").encode("utf-8")
     ).hexdigest()
 
     workflow_profile = WORKFLOW_TRIGGER_MAILBOX_PROFILE_V1

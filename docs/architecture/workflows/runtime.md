@@ -4,7 +4,7 @@
 
 Workflow Runtime 是已发布 Workflow App 的长期运行执行面。它使用稳定的 Runtime id 接受同步调用、异步 Run 和 Trigger 调用，并把每次执行固定到不可变的 App Version、Runtime Revision 与 Worker epoch。
 
-编辑器 Preview 与生产 Runtime 使用同一图执行器、节点目录和图片数据面，但生命周期不同：Preview 在 backend-service 进程内直接执行；生产 Runtime 由独立常驻进程执行。
+编辑器 Preview 与生产 Runtime 使用同一图执行器、节点目录和图片数据面，但生命周期不同：Preview 由 backend-service 管理内存会话，在独立可复用的 Preview Worker 中执行；生产 Runtime 使用绑定不可变发布版本的独立常驻进程。
 
 ## 资源关系
 
@@ -28,31 +28,15 @@ Workflow App draft
 
 ## Preview 执行
 
-Preview 用于编辑态验证，不创建逐节点隔离进程，也不启动临时 Workflow Worker。核心节点与已安装的自定义节点均在 backend-service 当前进程执行，避免进程启动和大对象跨进程复制。
+Preview 使用内存会话及 WebSocket 上传输入、提交冻结文档、接收节点进度和结果。每会话最多一条活动执行，并发受 Preview Worker 数量和内存容量约束。核心节点和自定义节点在 Worker 内共享图执行器，不创建逐节点隔离进程。
 
-Preview 图片优先上传到 LocalBuffer，再以 `image-ref.v1` 引用进入执行器。节点事件追加写入本次 Preview 的 `events.jsonl`，不会在每个节点完成时读取并覆盖整个事件文件。
+过程数据保存在内存和操作系统共享内存，不创建 Preview 数据库记录、`events.jsonl` 或磁盘交换结果。显式保存节点仍可写入业务文件。图片以版本化引用进入节点数据面，模型 Deployment 调用继续交给已加载模型的部署进程。
 
-### Preview 资源所有权
+执行期资源在最后一个消费者完成后释放；展示资源在浏览器完整接收并确认后释放，分块 ACK 只用于传输控制。取消先协作终止，必要时终止所属 Preview Worker；确认执行退出后才回收资源及容量。服务重启后旧会话失效，不恢复或自动重跑。
 
-控制面 `WorkflowRuntimeService` 装配不申请 Broker 通道，也不保存未使用的通道引用。JSON Preview 和 multipart 输入契约解析都不提前创建 client。只有实际上传图片时，路由才使用 supervisor 的同进程 `create_client()`；本次上传独占该 client，不能借用 worker 的跨进程通道。
+完整协议、页面恢复和资源所有权见 [编辑态 Preview 执行](preview-execution.md) 与 [Workflow Preview Session v1](../../api/workflow-preview-sessions.md)。旧 Preview Run REST/WS 与同步执行路径已删除，不能按旧接口接入。
 
-Preview 固定同步执行。上传图片 lease 保留到执行结束，再由路由 finally 逐项释放 lease、关闭 client 和上传文件。普通 file/files 只使用 ObjectStore 上传资源，不要求 Broker。任一清理失败不跳过剩余资源；已有执行异常优先传播，同时记录清理异常；执行原本成功但清理失败时明确报告错误，不静默判为全部成功。文件输入的执行期清理和路由 finally 均只针对本次上传目录；即使首个上传文件发布失败也执行目录清理，并核对删除后不存在残留，不以“尚无发布成功文件”跳过。
-
-图执行过程中按现有执行资源作用域管理 client、mmap view 和输出 lease；生产 worker 的通道所有权不变。这里不增加通道池、后台回收线程、调用排队或自动重试。
-
-Runtime worker 管理器已有的父进程 cleanup client 按管理器生命周期复用，首次运行后可保留一个通道；停止单个 Runtime 不关闭其他 Runtime 共用的清理通道。生命周期验收应区分该固定管理器资源、活跃 worker 资源和每次 Preview 的临时资源，不能把“全部通道归零”当成运行中服务的验收条件。
-
-验证生命周期时，应在固定 backend/worker 进程和预热基线下观察 Broker 活跃通道、转发线程、lease、原生句柄类型和私有内存。成功与失败 Preview 都必须纳入；异步注销应在有限收敛窗口内回到基线。进程重启后归零或短时间句柄波动不能作为释放正确或长期稳定的证据。
-
-Preview 结果包含以下阶段耗时：
-
-- `request_parse_ms`
-- `process_startup_ms`（进程内 Preview 通常为 0）
-- `graph_execute_ms`
-- `event_persist_ms`
-- `response_serialize_ms`
-
-节点耗时按节点 id 汇总；循环节点显示最后一次单次执行耗时，For Each End、Parallel End 等汇合节点显示对应结构的总耗时。
+长期稳定性验收应固定进程和预热基线，观察 Broker 活跃通道、lease、原生句柄及私有内存，并覆盖成功、失败、取消和连接丢失。进程重启后归零或短时成功不代表运行期间没有资源泄漏。
 
 ## 生产执行
 

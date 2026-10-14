@@ -23,6 +23,7 @@ def test_common_node_packs_use_one_manifest_per_technical_domain() -> None:
     assert set(manifest_index) == {
         "barcode.nodes",
         "camera.nodes",
+        "connector.nodes",
         "database.nodes",
         "hello.world-nodes",
         "http.nodes",

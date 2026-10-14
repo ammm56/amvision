@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from tests.workflow_editor_graph_support import execute_editor_graph
 
-import base64
 from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
@@ -43,10 +41,6 @@ from backend.service.application.workflows.runtime_registry_loader import (
 from backend.service.application.workflows.service_runtime.context import (
     WorkflowServiceNodeRuntimeContext,
 )
-from backend.service.application.workflows.model_sessions import (
-    WORKFLOW_MODEL_SESSION_SCOPE_ID_METADATA_KEY,
-    WORKFLOW_MODEL_SESSION_SCOPE_WAIT_ENABLED_METADATA_KEY,
-)
 from backend.service.application.workflows.runtime_payload_sanitizer import (
     MAX_PERSISTED_COLLECTION_ITEMS,
     MAX_PERSISTED_STRING_CHARS,
@@ -74,7 +68,7 @@ from backend.service.settings import (
     BackendServiceQueueConfig,
     BackendServiceSettings,
 )
-from tests.api_test_support import build_valid_test_png_bytes, create_test_runtime
+from tests.api_test_support import create_test_runtime
 
 
 

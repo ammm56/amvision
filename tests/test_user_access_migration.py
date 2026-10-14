@@ -10,6 +10,7 @@ from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from pathlib import Path
 
 from backend.service.application.auth.local_auth_service import (
@@ -34,7 +35,7 @@ def test_empty_sqlite_database_upgrades_through_complete_revision_chain(tmp_path
         assert isinstance(column['type'], sa.JSON)
         with engine.connect() as connection:
             version = sa.Table('alembic_version', sa.MetaData(), autoload_with=connection)
-            assert connection.execute(sa.select(version.c.version_num)).scalar_one() == 'f2b7d9a4c6e8'
+            assert connection.execute(sa.select(version.c.version_num)).scalar_one() == ScriptDirectory.from_config(configuration).get_current_head()
         command.upgrade(configuration, 'head')
     finally:
         engine.dispose()

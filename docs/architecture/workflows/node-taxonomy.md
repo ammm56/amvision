@@ -35,7 +35,7 @@
 
 禁止按 basic、geometry、measurement、单个协议或具体客户、工位、产品型号直接创建一级 pack。技术功能名称应是包内分类、provider 或 protocol；产品规则和参数应是 Workflow/模板配置。
 
-通用性按能力语义判断：边缘、距离、平面标定、范围判断、记录和显示不因用于连接器而成为行业节点；PIN 身份、留空排列及按端子定义的配对可以属于独立行业包。拟议的连接器包见 [ADR-0014](../../decisions/ADR-0014-connector-inspection-2d.md)，尚未实现，不计入当前已安装能力。
+通用性按能力语义判断：边缘、距离、平面标定、范围判断、记录和显示不因用于连接器而成为行业节点；PIN 身份、留空排列及按端子定义的配对可以属于独立行业包。`connector.nodes` 已在 `custom_nodes/connector_nodes` 实现；原始设计见 [ADR-0014](../../decisions/ADR-0014-connector-inspection-2d.md)，当前能力与测试资产边界见 [连接器节点说明](../../../custom_nodes/connector_nodes/README.md)。本地示例图片不随源码分发，目录存在不代表示例资产验收已经执行。
 
 ## custom_nodes 目录规则
 
