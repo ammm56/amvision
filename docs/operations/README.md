@@ -5,6 +5,7 @@
 ## 入口
 
 - [完整发行栈排障](release-full-troubleshooting.md)
+- [代码、模型链路与架构核对（2026-10-13）](code-audit-20261013.md)
 - [0.1.8 开发环境链路验证（2026-10-05）](development-acceptance-20261005.md)
 - [0.1.8 CPU 发行验收（2026-10-05）](release-acceptance-20261005.md)
 - [NVIDIA 发行与一小时运行验收（2026-10-05）](nvidia-release-acceptance-20261005.md)

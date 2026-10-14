@@ -1,0 +1,1884 @@
+{
+  "schema_version": 1,
+  "audit_date": "2026-10-13",
+  "source_commit": "f78c4de3",
+  "source_includes_uncommitted_fixes": true,
+  "scope": "Short chain evidence, not model accuracy or long-running production acceptance",
+  "full_pytest": {
+    "passed": 4942,
+    "skipped": 106,
+    "failed": 0
+  },
+  "asset_supplement": {
+    "passed": 100,
+    "failed": 0
+  },
+  "frontend_vitest": {
+    "files": 160,
+    "passed": 668,
+    "failed": 0
+  },
+  "matrix": {
+    "run_id": "audit-20261013-all-models",
+    "started_at": "2026-10-13T21:51:59",
+    "finished_at": "2026-10-13T22:55:16",
+    "status": "failed",
+    "required_case_count": 18,
+    "selected_case_count": 18,
+    "benchmark_options": {
+      "model_scale": null,
+      "input_size": null,
+      "enable_augmentation": false,
+      "evaluation_interval": 1,
+      "max_epochs": 1,
+      "batch_mode": "fixed",
+      "batch_size": 1,
+      "batch_target_memory_fraction": 0.6,
+      "batch_minimum_size": 1,
+      "batch_maximum_size": null,
+      "batch_recover_on_oom": true,
+      "batch_max_oom_retries": 3,
+      "checkpoint_interval": 5,
+      "checkpoint_keep_periodic": 2,
+      "max_images_per_split": 4,
+      "use_pretrained_warm_start": false,
+      "training_precision": "fp32",
+      "training_num_workers": 0,
+      "training_prefetch_factor": 2,
+      "dataset_dir": null
+    },
+    "failed_case_ids": [
+      "yolo26-segmentation",
+      "rfdetr-segmentation"
+    ],
+    "missing_case_ids": []
+  },
+  "initial_matrix_sha256": "02c58035649eb90c499961e4d2450973256885f6569983e7f2535430250cc126",
+  "final_evidence_counts": {
+    "initial_chain_succeeded": 16,
+    "same_model_version_recheck_succeeded": 2
+  },
+  "cases": {
+    "yolox-detection": {
+      "model_type": "yolox",
+      "task_type": "detection",
+      "initial_status": "succeeded",
+      "initial_finished_at": "2026-10-13T21:55:37",
+      "started_at": "2026-10-13T21:52:11",
+      "dataset_import_id": "dataset-import-7142740ba3a4",
+      "dataset_version_id": "dataset-version-81d787c9ba07",
+      "dataset_export_id": "dataset-export-c4720346db13",
+      "dataset_export_format": "coco-detection-v1",
+      "training_task_id": "task-27a9e4a7a30d",
+      "model_version_id": "model-version-894dd488a9ed",
+      "training_test_metrics": {
+        "total_loss": 40.03657531738281,
+        "iou_loss": 4.989248275756836,
+        "l1_loss": 0.0,
+        "conf_loss": 34.82420349121094,
+        "cls_loss": 0.22312307357788086,
+        "num_fg": 1.0,
+        "map50": 0.0,
+        "map50_95": 0.0
+      },
+      "evaluation": {
+        "task_id": "task-e622c0d2f440",
+        "state": "succeeded",
+        "sample_count": 1,
+        "error_message": null,
+        "map50": 0.0,
+        "map50_95": 0.0,
+        "result_keys": [
+          "dataset_export_id",
+          "dataset_export_manifest_key",
+          "dataset_version_id",
+          "detections_object_key",
+          "format_id",
+          "map50",
+          "map50_95",
+          "mean_f1",
+          "mean_precision",
+          "mean_recall",
+          "model_version_id",
+          "output_object_prefix",
+          "report_object_key",
+          "report_summary",
+          "result_package_object_key",
+          "sample_count"
+        ]
+      },
+      "conversions": {
+        "onnx": {
+          "task_id": "task-564c1ecd5b89",
+          "model_build_id": "model-build-a543ac6d32d3",
+          "build_format": "onnx",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-cc26cd23c30d466da11d07351899654e",
+            "runtime_backend": "onnxruntime",
+            "sync_state": "running",
+            "sync_process_id": 3504,
+            "sync_latency_ms": 5.2,
+            "async_state": "succeeded",
+            "async_process_id": 31804,
+            "async_task_id": "task-6868279affd7",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-bc49119c703e4a18be9dca6d771cb4d1",
+            "workflow_process_id": 20464
+          }
+        },
+        "openvino-ir": {
+          "task_id": "task-f1524b7a1f48",
+          "model_build_id": "model-build-6c16a7507c12",
+          "build_format": "openvino-ir",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-e66d5085401c4fe386aa2215934be4f2",
+            "runtime_backend": "openvino",
+            "sync_state": "running",
+            "sync_process_id": 28420,
+            "sync_latency_ms": 8.236,
+            "async_state": "succeeded",
+            "async_process_id": 8216,
+            "async_task_id": "task-87902cc493db",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-8ff02efc8713431090bd8ae5f052248b",
+            "workflow_process_id": 33572
+          }
+        },
+        "tensorrt-engine": {
+          "task_id": "task-29fc3151a2aa",
+          "model_build_id": "model-build-22069f35c86e",
+          "build_format": "tensorrt-engine",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-8e7b5046e70846b98ded340803ac1016",
+            "runtime_backend": "tensorrt",
+            "sync_state": "running",
+            "sync_process_id": 14796,
+            "sync_latency_ms": 3.933,
+            "async_state": "succeeded",
+            "async_process_id": 21848,
+            "async_task_id": "task-4fc1ab972154",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-ac9fd7e9137440c98efd43b3cc4cc444",
+            "workflow_process_id": 32664
+          }
+        }
+      },
+      "final_evidence": "initial_chain_succeeded"
+    },
+    "yolov8-detection": {
+      "model_type": "yolov8",
+      "task_type": "detection",
+      "initial_status": "succeeded",
+      "initial_finished_at": "2026-10-13T21:58:52",
+      "started_at": "2026-10-13T21:55:37",
+      "dataset_import_id": "dataset-import-89b1ba28ad66",
+      "dataset_version_id": "dataset-version-ae301126176f",
+      "dataset_export_id": "dataset-export-9e8cd760b358",
+      "dataset_export_format": "yolo-detection-v1",
+      "training_task_id": "task-2d2a10a1c450",
+      "model_version_id": "model-version-e342a266ed02",
+      "training_test_metrics": {
+        "loss": 14.60153,
+        "class_loss": 4.962543,
+        "box_loss": 5.956779,
+        "dfl_loss": 3.682207,
+        "map50": 0.0,
+        "map50_95": 0.0,
+        "sample_count": 1.0
+      },
+      "evaluation": {
+        "task_id": "task-8808e46927a4",
+        "state": "succeeded",
+        "sample_count": 1,
+        "error_message": null,
+        "map50": 0.019230769230769232,
+        "map50_95": 0.0019230769230769232,
+        "result_keys": [
+          "dataset_export_id",
+          "dataset_export_manifest_key",
+          "dataset_version_id",
+          "detections_object_key",
+          "format_id",
+          "map50",
+          "map50_95",
+          "mean_f1",
+          "mean_precision",
+          "mean_recall",
+          "model_version_id",
+          "output_object_prefix",
+          "report_object_key",
+          "report_summary",
+          "result_package_object_key",
+          "sample_count"
+        ]
+      },
+      "conversions": {
+        "onnx": {
+          "task_id": "task-25b974d9b31e",
+          "model_build_id": "model-build-525b546d2b9b",
+          "build_format": "onnx",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-f00b161e1f1a4c92a2b91cfe9f7850db",
+            "runtime_backend": "onnxruntime",
+            "sync_state": "running",
+            "sync_process_id": 13260,
+            "sync_latency_ms": 6.411,
+            "async_state": "succeeded",
+            "async_process_id": 13996,
+            "async_task_id": "task-4536c7dc28b4",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-ee10404e7ddf4d14aea845c10d4efe80",
+            "workflow_process_id": 30188
+          }
+        },
+        "openvino-ir": {
+          "task_id": "task-c282a70b6d49",
+          "model_build_id": "model-build-da1c66633ebb",
+          "build_format": "openvino-ir",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-bb9c904bff7749568c28461ec478f608",
+            "runtime_backend": "openvino",
+            "sync_state": "running",
+            "sync_process_id": 32724,
+            "sync_latency_ms": 9.399,
+            "async_state": "succeeded",
+            "async_process_id": 31792,
+            "async_task_id": "task-7e2fd0b504c8",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-a0d8013d563d45218263cffb0be14c25",
+            "workflow_process_id": 30772
+          }
+        },
+        "tensorrt-engine": {
+          "task_id": "task-db3bcb90e7c8",
+          "model_build_id": "model-build-e42568a1c536",
+          "build_format": "tensorrt-engine",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-890af51e38334c6f9db653c186d947f2",
+            "runtime_backend": "tensorrt",
+            "sync_state": "running",
+            "sync_process_id": 32476,
+            "sync_latency_ms": 2.998,
+            "async_state": "succeeded",
+            "async_process_id": 32200,
+            "async_task_id": "task-5f4f50aa0610",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-1a06cf70138748a5a33f2705781740cb",
+            "workflow_process_id": 25940
+          }
+        }
+      },
+      "final_evidence": "initial_chain_succeeded"
+    },
+    "yolo11-detection": {
+      "model_type": "yolo11",
+      "task_type": "detection",
+      "initial_status": "succeeded",
+      "initial_finished_at": "2026-10-13T22:02:17",
+      "started_at": "2026-10-13T21:58:52",
+      "dataset_import_id": "dataset-import-70e96356b3a0",
+      "dataset_version_id": "dataset-version-7911f0c23f5a",
+      "dataset_export_id": "dataset-export-38b80080ab5a",
+      "dataset_export_format": "yolo-detection-v1",
+      "training_task_id": "task-27d54aed67c0",
+      "model_version_id": "model-version-6675a930141a",
+      "training_test_metrics": {
+        "loss": 14.602527,
+        "class_loss": 4.96231,
+        "box_loss": 5.957674,
+        "dfl_loss": 3.682543,
+        "map50": 0.0,
+        "map50_95": 0.0,
+        "sample_count": 1.0
+      },
+      "evaluation": {
+        "task_id": "task-ce00f4d85e66",
+        "state": "succeeded",
+        "sample_count": 1,
+        "error_message": null,
+        "map50": 0.023809523809523808,
+        "map50_95": 0.0023809523809523807,
+        "result_keys": [
+          "dataset_export_id",
+          "dataset_export_manifest_key",
+          "dataset_version_id",
+          "detections_object_key",
+          "format_id",
+          "map50",
+          "map50_95",
+          "mean_f1",
+          "mean_precision",
+          "mean_recall",
+          "model_version_id",
+          "output_object_prefix",
+          "report_object_key",
+          "report_summary",
+          "result_package_object_key",
+          "sample_count"
+        ]
+      },
+      "conversions": {
+        "onnx": {
+          "task_id": "task-adad66694129",
+          "model_build_id": "model-build-1516a07e510a",
+          "build_format": "onnx",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-86360835d8374644be22696746f80ccb",
+            "runtime_backend": "onnxruntime",
+            "sync_state": "running",
+            "sync_process_id": 31080,
+            "sync_latency_ms": 8.36,
+            "async_state": "succeeded",
+            "async_process_id": 7672,
+            "async_task_id": "task-6164eea3cdbd",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-cf376db860fe4616a2b04972c0a9556b",
+            "workflow_process_id": 21780
+          }
+        },
+        "openvino-ir": {
+          "task_id": "task-06ab922702ba",
+          "model_build_id": "model-build-df00ec480543",
+          "build_format": "openvino-ir",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-34423692c6e9470b954cb8f0f62615e8",
+            "runtime_backend": "openvino",
+            "sync_state": "running",
+            "sync_process_id": 10920,
+            "sync_latency_ms": 6.622,
+            "async_state": "succeeded",
+            "async_process_id": 31956,
+            "async_task_id": "task-4275c6f6788c",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-2afe640b38474c9cbcdc1dcb420ab935",
+            "workflow_process_id": 32324
+          }
+        },
+        "tensorrt-engine": {
+          "task_id": "task-b9a85d10bbcd",
+          "model_build_id": "model-build-170daf15c005",
+          "build_format": "tensorrt-engine",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-2870b07fcc954838bcab3013a7af4209",
+            "runtime_backend": "tensorrt",
+            "sync_state": "running",
+            "sync_process_id": 28308,
+            "sync_latency_ms": 4.594,
+            "async_state": "succeeded",
+            "async_process_id": 12920,
+            "async_task_id": "task-30b979d6ac2f",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-f9fbe4c2a64f47d69f895a7603581d76",
+            "workflow_process_id": 11852
+          }
+        }
+      },
+      "final_evidence": "initial_chain_succeeded"
+    },
+    "yolo26-detection": {
+      "model_type": "yolo26",
+      "task_type": "detection",
+      "initial_status": "succeeded",
+      "initial_finished_at": "2026-10-13T22:07:36",
+      "started_at": "2026-10-13T22:02:17",
+      "dataset_import_id": "dataset-import-fe1b8a6164bc",
+      "dataset_version_id": "dataset-version-395d8df91553",
+      "dataset_export_id": "dataset-export-b426d48b3c7a",
+      "dataset_export_format": "yolo-detection-v1",
+      "training_task_id": "task-666589170539",
+      "model_version_id": "model-version-0f50e8e857e9",
+      "training_test_metrics": {
+        "loss": 7.483162,
+        "class_loss": 3.68685,
+        "box_loss": 1.868752,
+        "l1_loss": 0.014464,
+        "map50": 0.0,
+        "map50_95": 0.0,
+        "sample_count": 1.0
+      },
+      "evaluation": {
+        "task_id": "task-18197b12aeab",
+        "state": "succeeded",
+        "sample_count": 1,
+        "error_message": null,
+        "map50": 0.020833333333333332,
+        "map50_95": 0.0020833333333333333,
+        "result_keys": [
+          "dataset_export_id",
+          "dataset_export_manifest_key",
+          "dataset_version_id",
+          "detections_object_key",
+          "format_id",
+          "map50",
+          "map50_95",
+          "mean_f1",
+          "mean_precision",
+          "mean_recall",
+          "model_version_id",
+          "output_object_prefix",
+          "report_object_key",
+          "report_summary",
+          "result_package_object_key",
+          "sample_count"
+        ]
+      },
+      "conversions": {
+        "onnx": {
+          "task_id": "task-5f26d4593b9e",
+          "model_build_id": "model-build-dda2193840b0",
+          "build_format": "onnx",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-fc12260583a642449ca8b2731479f12f",
+            "runtime_backend": "onnxruntime",
+            "sync_state": "running",
+            "sync_process_id": 28316,
+            "sync_latency_ms": 5.751,
+            "async_state": "succeeded",
+            "async_process_id": 28012,
+            "async_task_id": "task-7af141669258",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-20cd2d934ed6461aa6e20ca0ad1e32f8",
+            "workflow_process_id": 28732
+          }
+        },
+        "openvino-ir": {
+          "task_id": "task-19ec855c9be0",
+          "model_build_id": "model-build-8167fc3fbef5",
+          "build_format": "openvino-ir",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-46475898224d45e094624644dd1100c3",
+            "runtime_backend": "openvino",
+            "sync_state": "running",
+            "sync_process_id": 27292,
+            "sync_latency_ms": 9.492,
+            "async_state": "succeeded",
+            "async_process_id": 29740,
+            "async_task_id": "task-4b0e8f23122c",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-13e59478b93449ee9fad230430db4d7b",
+            "workflow_process_id": 32536
+          }
+        },
+        "tensorrt-engine": {
+          "task_id": "task-d77a9fff70d2",
+          "model_build_id": "model-build-9777f5cbd9f8",
+          "build_format": "tensorrt-engine",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-31c9821dde694dfb81b9ff3f25267624",
+            "runtime_backend": "tensorrt",
+            "sync_state": "running",
+            "sync_process_id": 30788,
+            "sync_latency_ms": 8.306,
+            "async_state": "succeeded",
+            "async_process_id": 33672,
+            "async_task_id": "task-fd5402d69b6f",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-264259de28b343b5ad942bca9814a68c",
+            "workflow_process_id": 30384
+          }
+        }
+      },
+      "final_evidence": "initial_chain_succeeded"
+    },
+    "rfdetr-detection": {
+      "model_type": "rfdetr",
+      "task_type": "detection",
+      "initial_status": "succeeded",
+      "initial_finished_at": "2026-10-13T22:12:38",
+      "started_at": "2026-10-13T22:07:36",
+      "dataset_import_id": "dataset-import-46b6a1d384de",
+      "dataset_version_id": "dataset-version-35313eb83c65",
+      "dataset_export_id": "dataset-export-2f5b9a8ab800",
+      "dataset_export_format": "coco-detection-v1",
+      "training_task_id": "task-480a0a39eb1b",
+      "model_version_id": "model-version-0559cc82b3dc",
+      "training_test_metrics": {
+        "test/loss": 20.632728576660156,
+        "test/mAP_50_95": 0.0,
+        "test/mAP_50": 0.0,
+        "test/mAP_75": 0.0,
+        "test/mAR": 0.0,
+        "test/F1": 0.0,
+        "test/precision": 0.0,
+        "test/recall": 0.0,
+        "test/AP/target": 0.0,
+        "map50": 0.0,
+        "bbox_map50": 0.0,
+        "map50_95": 0.0,
+        "bbox_map50_95": 0.0
+      },
+      "evaluation": {
+        "task_id": "task-d6262dc21043",
+        "state": "succeeded",
+        "sample_count": 1,
+        "error_message": null,
+        "map50": 0.0,
+        "map50_95": 0.0,
+        "result_keys": [
+          "dataset_export_id",
+          "dataset_export_manifest_key",
+          "dataset_version_id",
+          "detections_object_key",
+          "format_id",
+          "map50",
+          "map50_95",
+          "mean_f1",
+          "mean_precision",
+          "mean_recall",
+          "model_version_id",
+          "output_object_prefix",
+          "report_object_key",
+          "report_summary",
+          "result_package_object_key",
+          "sample_count"
+        ]
+      },
+      "conversions": {
+        "onnx": {
+          "task_id": "task-c7785e669909",
+          "model_build_id": "model-build-0c65aeb8fef8",
+          "build_format": "onnx",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-e09b6c38febb4739842ded6e13affb1d",
+            "runtime_backend": "onnxruntime",
+            "sync_state": "running",
+            "sync_process_id": 32124,
+            "sync_latency_ms": 110.092,
+            "async_state": "succeeded",
+            "async_process_id": 28008,
+            "async_task_id": "task-e0896d77a0a9",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-0733ab58dd9143a8adac4e73597a7867",
+            "workflow_process_id": 11852
+          }
+        },
+        "openvino-ir": {
+          "task_id": "task-f9cac3c9e87b",
+          "model_build_id": "model-build-be550ab6d76e",
+          "build_format": "openvino-ir",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-c624bef75aca46d7920b34eaf258be62",
+            "runtime_backend": "openvino",
+            "sync_state": "running",
+            "sync_process_id": 32416,
+            "sync_latency_ms": 165.258,
+            "async_state": "succeeded",
+            "async_process_id": 25856,
+            "async_task_id": "task-bf51ca2618cc",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-eb6584b7ee524fb6b07decfa034c2bbe",
+            "workflow_process_id": 28244
+          }
+        },
+        "tensorrt-engine": {
+          "task_id": "task-5399b4979c7f",
+          "model_build_id": "model-build-9ccbfe2a3dc8",
+          "build_format": "tensorrt-engine",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-a09b1f03d336457f92ce900d2f574f75",
+            "runtime_backend": "tensorrt",
+            "sync_state": "running",
+            "sync_process_id": 2908,
+            "sync_latency_ms": 8.023,
+            "async_state": "succeeded",
+            "async_process_id": 34316,
+            "async_task_id": "task-7a7e052e8674",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-9bb813433f1841c69e77032ac9f30106",
+            "workflow_process_id": 2828
+          }
+        }
+      },
+      "final_evidence": "initial_chain_succeeded"
+    },
+    "yolov8-classification": {
+      "model_type": "yolov8",
+      "task_type": "classification",
+      "initial_status": "succeeded",
+      "initial_finished_at": "2026-10-13T22:15:11",
+      "started_at": "2026-10-13T22:12:38",
+      "dataset_import_id": "dataset-import-a3fe287030b9",
+      "dataset_version_id": "dataset-version-cc8a86ed73d8",
+      "dataset_export_id": "dataset-export-4ed82fddc54e",
+      "dataset_export_format": "imagenet-classification-v1",
+      "training_task_id": "task-88372d668571",
+      "model_version_id": "model-version-1493823ffdaa",
+      "training_test_metrics": {
+        "top1_accuracy": 0.5,
+        "top5_accuracy": 1.0
+      },
+      "evaluation": {
+        "task_id": "task-7da99d74901f",
+        "state": "succeeded",
+        "sample_count": 2,
+        "error_message": null,
+        "top1_accuracy": 0.5,
+        "top5_accuracy": 1.0,
+        "result_keys": [
+          "output_object_prefix",
+          "predictions_object_key",
+          "report_object_key",
+          "result_package_object_key",
+          "sample_count",
+          "top1_accuracy",
+          "top5_accuracy"
+        ]
+      },
+      "conversions": {
+        "onnx": {
+          "task_id": "task-91ab52a81dc2",
+          "model_build_id": "model-build-a68ca57abbbb",
+          "build_format": "onnx",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-c0ef850465304528a9bb843f77052bcc",
+            "runtime_backend": "onnxruntime",
+            "sync_state": "running",
+            "sync_process_id": 7844,
+            "sync_latency_ms": 7.418,
+            "async_state": "succeeded",
+            "async_process_id": 34016,
+            "async_task_id": "task-016b93f36376",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-e6094f72b3cb4679a1c19965a3e65924",
+            "workflow_process_id": 29008
+          }
+        },
+        "openvino-ir": {
+          "task_id": "task-0a1580acae74",
+          "model_build_id": "model-build-dccedbfcf708",
+          "build_format": "openvino-ir",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-5cb4ea14d04a4855b29ad964884d59c3",
+            "runtime_backend": "openvino",
+            "sync_state": "running",
+            "sync_process_id": 33216,
+            "sync_latency_ms": 3.212,
+            "async_state": "succeeded",
+            "async_process_id": 31188,
+            "async_task_id": "task-edfe6663119c",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-911101a6ab77456d9806212c67156488",
+            "workflow_process_id": 34416
+          }
+        },
+        "tensorrt-engine": {
+          "task_id": "task-2943f6aa586e",
+          "model_build_id": "model-build-b4b134512b30",
+          "build_format": "tensorrt-engine",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-f622d2564236472e9ef56c2069c3f493",
+            "runtime_backend": "tensorrt",
+            "sync_state": "running",
+            "sync_process_id": 22024,
+            "sync_latency_ms": 4.057,
+            "async_state": "succeeded",
+            "async_process_id": 29520,
+            "async_task_id": "task-9684a2f945d9",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-7647bef8fff848d798fe67e3c47eeacf",
+            "workflow_process_id": 32524
+          }
+        }
+      },
+      "final_evidence": "initial_chain_succeeded"
+    },
+    "yolo11-classification": {
+      "model_type": "yolo11",
+      "task_type": "classification",
+      "initial_status": "succeeded",
+      "initial_finished_at": "2026-10-13T22:17:41",
+      "started_at": "2026-10-13T22:15:11",
+      "dataset_import_id": "dataset-import-4f74c4009e0f",
+      "dataset_version_id": "dataset-version-e28528f50961",
+      "dataset_export_id": "dataset-export-6a0f81179cd0",
+      "dataset_export_format": "imagenet-classification-v1",
+      "training_task_id": "task-086057b70f1c",
+      "model_version_id": "model-version-6e6e5e6bacb9",
+      "training_test_metrics": {
+        "top1_accuracy": 0.5,
+        "top5_accuracy": 1.0
+      },
+      "evaluation": {
+        "task_id": "task-4f1bb7f9587d",
+        "state": "succeeded",
+        "sample_count": 2,
+        "error_message": null,
+        "top1_accuracy": 0.5,
+        "top5_accuracy": 1.0,
+        "result_keys": [
+          "output_object_prefix",
+          "predictions_object_key",
+          "report_object_key",
+          "result_package_object_key",
+          "sample_count",
+          "top1_accuracy",
+          "top5_accuracy"
+        ]
+      },
+      "conversions": {
+        "onnx": {
+          "task_id": "task-93acd70c6a60",
+          "model_build_id": "model-build-8108b7d17daa",
+          "build_format": "onnx",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-8c48c3afac1245a1b455b3459242f97d",
+            "runtime_backend": "onnxruntime",
+            "sync_state": "running",
+            "sync_process_id": 16420,
+            "sync_latency_ms": 4.521,
+            "async_state": "succeeded",
+            "async_process_id": 30272,
+            "async_task_id": "task-5007e7136813",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-4476bbc514d14105bc39918e5bd643b5",
+            "workflow_process_id": 31612
+          }
+        },
+        "openvino-ir": {
+          "task_id": "task-7a9af23e32cf",
+          "model_build_id": "model-build-e0f0ede9b8f3",
+          "build_format": "openvino-ir",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-eed9fdca090846fdac0fd726bb06bc15",
+            "runtime_backend": "openvino",
+            "sync_state": "running",
+            "sync_process_id": 33000,
+            "sync_latency_ms": 3.849,
+            "async_state": "succeeded",
+            "async_process_id": 26964,
+            "async_task_id": "task-581769158884",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-cf70b487e89940919fb1e9150b3a84e0",
+            "workflow_process_id": 33324
+          }
+        },
+        "tensorrt-engine": {
+          "task_id": "task-4b2d93eb2e18",
+          "model_build_id": "model-build-c16c96ed3686",
+          "build_format": "tensorrt-engine",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-89c475275be84d4296ff69326978ae62",
+            "runtime_backend": "tensorrt",
+            "sync_state": "running",
+            "sync_process_id": 544,
+            "sync_latency_ms": 2.247,
+            "async_state": "succeeded",
+            "async_process_id": 5872,
+            "async_task_id": "task-f7e542bf40c6",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-bd5dad8481b746d6aae4c97150d8a2c8",
+            "workflow_process_id": 31152
+          }
+        }
+      },
+      "final_evidence": "initial_chain_succeeded"
+    },
+    "yolo26-classification": {
+      "model_type": "yolo26",
+      "task_type": "classification",
+      "initial_status": "succeeded",
+      "initial_finished_at": "2026-10-13T22:20:04",
+      "started_at": "2026-10-13T22:17:41",
+      "dataset_import_id": "dataset-import-e0549654b132",
+      "dataset_version_id": "dataset-version-eb9cf2e976f2",
+      "dataset_export_id": "dataset-export-3882cc49d792",
+      "dataset_export_format": "imagenet-classification-v1",
+      "training_task_id": "task-a43dda39af55",
+      "model_version_id": "model-version-b9886727ba4e",
+      "training_test_metrics": {
+        "top1_accuracy": 0.5,
+        "top5_accuracy": 1.0
+      },
+      "evaluation": {
+        "task_id": "task-0ea7c16ae9f1",
+        "state": "succeeded",
+        "sample_count": 2,
+        "error_message": null,
+        "top1_accuracy": 0.5,
+        "top5_accuracy": 1.0,
+        "result_keys": [
+          "output_object_prefix",
+          "predictions_object_key",
+          "report_object_key",
+          "result_package_object_key",
+          "sample_count",
+          "top1_accuracy",
+          "top5_accuracy"
+        ]
+      },
+      "conversions": {
+        "onnx": {
+          "task_id": "task-1126eb98ad8e",
+          "model_build_id": "model-build-0963b87c728f",
+          "build_format": "onnx",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-a26e5b7814fc40fd97f7cee02d6c6e03",
+            "runtime_backend": "onnxruntime",
+            "sync_state": "running",
+            "sync_process_id": 29144,
+            "sync_latency_ms": 2.65,
+            "async_state": "succeeded",
+            "async_process_id": 21328,
+            "async_task_id": "task-bb84ae980efe",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-97e710161e9d4a17a6e7cc601e229680",
+            "workflow_process_id": 31204
+          }
+        },
+        "openvino-ir": {
+          "task_id": "task-eaa51511671b",
+          "model_build_id": "model-build-17ea08feb7c5",
+          "build_format": "openvino-ir",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-4070b81ca8f54ee48c9dcba7cb9b5cc4",
+            "runtime_backend": "openvino",
+            "sync_state": "running",
+            "sync_process_id": 32160,
+            "sync_latency_ms": 3.503,
+            "async_state": "succeeded",
+            "async_process_id": 31680,
+            "async_task_id": "task-3a90bde7666a",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-4d42feebf25a4a3aada78600c2546919",
+            "workflow_process_id": 33540
+          }
+        },
+        "tensorrt-engine": {
+          "task_id": "task-db9ee8456ddf",
+          "model_build_id": "model-build-21859c2b6940",
+          "build_format": "tensorrt-engine",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-c9aa6b92ef204f2f969615ca32c3833d",
+            "runtime_backend": "tensorrt",
+            "sync_state": "running",
+            "sync_process_id": 4808,
+            "sync_latency_ms": 3.028,
+            "async_state": "succeeded",
+            "async_process_id": 18428,
+            "async_task_id": "task-e34e3ccd08e6",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-06b1d12e29a8410a9efee392217de36c",
+            "workflow_process_id": 32952
+          }
+        }
+      },
+      "final_evidence": "initial_chain_succeeded"
+    },
+    "yolov8-segmentation": {
+      "model_type": "yolov8",
+      "task_type": "segmentation",
+      "initial_status": "succeeded",
+      "initial_finished_at": "2026-10-13T22:23:13",
+      "started_at": "2026-10-13T22:20:04",
+      "dataset_import_id": "dataset-import-833d546b347f",
+      "dataset_version_id": "dataset-version-57907508fc30",
+      "dataset_export_id": "dataset-export-62f388e739c6",
+      "dataset_export_format": "yolo-instance-seg-v1",
+      "training_task_id": "task-7f8ec2440030",
+      "model_version_id": "model-version-0fd024b2d5f7",
+      "training_test_metrics": {
+        "map50": 0.0,
+        "map50_95": 0.0,
+        "bbox_map50": 0.041667,
+        "bbox_map50_95": 0.010049,
+        "mask_map50": 0.0,
+        "mask_map50_95": 0.0,
+        "prediction_count": 58.0
+      },
+      "evaluation": {
+        "task_id": "task-3f1592030ce2",
+        "state": "succeeded",
+        "sample_count": 1,
+        "error_message": null,
+        "map50": 0.0,
+        "map50_95": 0.0,
+        "bbox_map50": 0.0,
+        "bbox_map50_95": 0.0,
+        "mask_map50": 0.0,
+        "mask_map50_95": 0.0,
+        "result_keys": [
+          "bbox_map50",
+          "bbox_map50_95",
+          "dataset_export_id",
+          "dataset_version_id",
+          "map50",
+          "map50_95",
+          "mask_map50",
+          "mask_map50_95",
+          "model_version_id",
+          "output_object_prefix",
+          "predictions_object_key",
+          "report_object_key",
+          "report_summary",
+          "result_package_object_key",
+          "sample_count"
+        ]
+      },
+      "conversions": {
+        "onnx": {
+          "task_id": "task-8eb76e136459",
+          "model_build_id": "model-build-2fa419e9f224",
+          "build_format": "onnx",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-f4c5fb7514b94acda460382a14451f33",
+            "runtime_backend": "onnxruntime",
+            "sync_state": "running",
+            "sync_process_id": 34668,
+            "sync_latency_ms": 7.828,
+            "async_state": "succeeded",
+            "async_process_id": 27272,
+            "async_task_id": "task-31975eac34ad",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-8a059096a6b742b7902ede6528625508",
+            "workflow_process_id": 30272
+          }
+        },
+        "openvino-ir": {
+          "task_id": "task-123be2dd69af",
+          "model_build_id": "model-build-0569d7c9917f",
+          "build_format": "openvino-ir",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-97676d23391b4bcea9d00d8b567c47d5",
+            "runtime_backend": "openvino",
+            "sync_state": "running",
+            "sync_process_id": 29652,
+            "sync_latency_ms": 12.272,
+            "async_state": "succeeded",
+            "async_process_id": 28280,
+            "async_task_id": "task-d05daf4c4420",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-ba7bf0521b4d43c29f65c04fb13f067b",
+            "workflow_process_id": 31724
+          }
+        },
+        "tensorrt-engine": {
+          "task_id": "task-e85a9c7362fa",
+          "model_build_id": "model-build-6d3662f1d1dc",
+          "build_format": "tensorrt-engine",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-d2bb0d74dec74e3a8744196ee1b419f8",
+            "runtime_backend": "tensorrt",
+            "sync_state": "running",
+            "sync_process_id": 11488,
+            "sync_latency_ms": 4.269,
+            "async_state": "succeeded",
+            "async_process_id": 30548,
+            "async_task_id": "task-d031f100c619",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-4643574376b54776acea8e30b19b8bbc",
+            "workflow_process_id": 34172
+          }
+        }
+      },
+      "final_evidence": "initial_chain_succeeded"
+    },
+    "yolo11-segmentation": {
+      "model_type": "yolo11",
+      "task_type": "segmentation",
+      "initial_status": "succeeded",
+      "initial_finished_at": "2026-10-13T22:26:10",
+      "started_at": "2026-10-13T22:23:13",
+      "dataset_import_id": "dataset-import-3bd13d843ea2",
+      "dataset_version_id": "dataset-version-886c52ede32c",
+      "dataset_export_id": "dataset-export-bc3b1fc62a5b",
+      "dataset_export_format": "yolo-instance-seg-v1",
+      "training_task_id": "task-232bcaf1f9fa",
+      "model_version_id": "model-version-c844830c73ec",
+      "training_test_metrics": {
+        "map50": 0.0,
+        "map50_95": 0.0,
+        "bbox_map50": 0.029412,
+        "bbox_map50_95": 0.008824,
+        "mask_map50": 0.0,
+        "mask_map50_95": 0.0,
+        "prediction_count": 48.0
+      },
+      "evaluation": {
+        "task_id": "task-c82dc5385735",
+        "state": "succeeded",
+        "sample_count": 1,
+        "error_message": null,
+        "map50": 0.0,
+        "map50_95": 0.0,
+        "bbox_map50": 0.0,
+        "bbox_map50_95": 0.0,
+        "mask_map50": 0.0,
+        "mask_map50_95": 0.0,
+        "result_keys": [
+          "bbox_map50",
+          "bbox_map50_95",
+          "dataset_export_id",
+          "dataset_version_id",
+          "map50",
+          "map50_95",
+          "mask_map50",
+          "mask_map50_95",
+          "model_version_id",
+          "output_object_prefix",
+          "predictions_object_key",
+          "report_object_key",
+          "report_summary",
+          "result_package_object_key",
+          "sample_count"
+        ]
+      },
+      "conversions": {
+        "onnx": {
+          "task_id": "task-54bb498682e6",
+          "model_build_id": "model-build-70c7fcba5b46",
+          "build_format": "onnx",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-1f4467b7daa9455b89f3c069020dbfb8",
+            "runtime_backend": "onnxruntime",
+            "sync_state": "running",
+            "sync_process_id": 31468,
+            "sync_latency_ms": 9.504,
+            "async_state": "succeeded",
+            "async_process_id": 25000,
+            "async_task_id": "task-19b9366ca3e4",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-61080f2a810a4d858a99c1cc11adc64a",
+            "workflow_process_id": 32412
+          }
+        },
+        "openvino-ir": {
+          "task_id": "task-6f7ab288a03e",
+          "model_build_id": "model-build-7b7ab793bd8b",
+          "build_format": "openvino-ir",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-2391ef5c7fe14e249b78dfb1144db5d7",
+            "runtime_backend": "openvino",
+            "sync_state": "running",
+            "sync_process_id": 33272,
+            "sync_latency_ms": 8.324,
+            "async_state": "succeeded",
+            "async_process_id": 33092,
+            "async_task_id": "task-93c84c59b1e3",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-8bebb19eae724bac924c3d944a303f01",
+            "workflow_process_id": 34072
+          }
+        },
+        "tensorrt-engine": {
+          "task_id": "task-fdae9e3c0821",
+          "model_build_id": "model-build-3e06302abbae",
+          "build_format": "tensorrt-engine",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-74b67056db064d7a95bb6fb30c9f0a0c",
+            "runtime_backend": "tensorrt",
+            "sync_state": "running",
+            "sync_process_id": 33948,
+            "sync_latency_ms": 3.787,
+            "async_state": "succeeded",
+            "async_process_id": 31196,
+            "async_task_id": "task-ba408347fac6",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-a0403646f98d46558ed9baaf7c73650c",
+            "workflow_process_id": 11132
+          }
+        }
+      },
+      "final_evidence": "initial_chain_succeeded"
+    },
+    "yolo26-segmentation": {
+      "model_type": "yolo26",
+      "task_type": "segmentation",
+      "initial_status": "failed",
+      "initial_finished_at": "2026-10-13T22:29:54",
+      "model_version_id": "model-version-e2b818974bad",
+      "dataset_export_id": "dataset-export-5b5cf0d59f4b",
+      "dataset_version_id": "dataset-version-91a703deabeb",
+      "training_task_id": "task-bb2682dc0dc0",
+      "training_state": "succeeded",
+      "evaluation": {
+        "task_id": "task-ee88f9cd9a79",
+        "state": "succeeded",
+        "sample_count": 1
+      },
+      "initial_failure": {
+        "task_id": "task-ba79b0fbe9a1",
+        "reason": "TensorRT numerical validation rejected the engine; original structured details were lost",
+        "root_cause_confirmed": false
+      },
+      "recheck_retrained": false,
+      "conversions": {
+        "onnx": {
+          "task_id": "task-b68858f37c7c",
+          "model_build_id": "model-build-1f4c64efd326",
+          "build_format": "onnx",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-7c4734971b5f4b35a9ad44d2861d8d6d",
+            "runtime_backend": "onnxruntime",
+            "sync_state": "running",
+            "sync_process_id": 13544,
+            "sync_latency_ms": 14.638,
+            "async_state": "succeeded",
+            "async_process_id": 30564,
+            "async_task_id": "task-fae3cad50220",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-e473101cf51c4d50ada76e89336e89fc",
+            "workflow_process_id": 25436
+          }
+        },
+        "openvino-ir": {
+          "task_id": "task-4f9a22ede1fa",
+          "model_build_id": "model-build-0cdfa154dcbb",
+          "build_format": "openvino-ir",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-78e75239f4b44cdeb2facf790ebc751a",
+            "runtime_backend": "openvino",
+            "sync_state": "running",
+            "sync_process_id": 25932,
+            "sync_latency_ms": 12.014,
+            "async_state": "succeeded",
+            "async_process_id": 23408,
+            "async_task_id": "task-686fe8e8da82",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-972763b4000f4324bd60f2458764efb8",
+            "workflow_process_id": 35884
+          }
+        },
+        "tensorrt-engine": {
+          "task_id": "task-653c0c8d5cf8",
+          "model_build_id": "model-build-f2b78dd85c72",
+          "build_format": "tensorrt-engine",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-4b8fff16628a4e4094a98a5eb66cc05c",
+            "runtime_backend": "tensorrt",
+            "sync_state": "running",
+            "sync_process_id": 26684,
+            "sync_latency_ms": 5.088,
+            "async_state": "succeeded",
+            "async_process_id": 27208,
+            "async_task_id": "task-b217a7e3c9f7",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-8014b48d11de4ca393544ca86c0d6c42",
+            "workflow_process_id": 12080
+          }
+        }
+      },
+      "final_evidence": "same_model_version_recheck_succeeded"
+    },
+    "rfdetr-segmentation": {
+      "model_type": "rfdetr",
+      "task_type": "segmentation",
+      "initial_status": "failed",
+      "initial_finished_at": "2026-10-13T22:33:14",
+      "model_version_id": "model-version-d851f8658736",
+      "dataset_export_id": "dataset-export-77442901271b",
+      "dataset_version_id": "dataset-version-72ff155ffe27",
+      "training_task_id": "task-e4cd17dbbda3",
+      "training_state": "succeeded",
+      "evaluation": {
+        "task_id": "task-0b3fbc136743",
+        "state": "succeeded",
+        "sample_count": 1
+      },
+      "initial_failure": {
+        "reason": "HTTP 409 device_lease_unavailable for cuda:0 during TensorRT sync start",
+        "overlap": "Full pytest was still running; conflicting lease holder was not independently identified"
+      },
+      "recheck_retrained": false,
+      "conversions": {
+        "onnx": {
+          "task_id": "task-ff768b10ef60",
+          "model_build_id": "model-build-494c9d36414f",
+          "build_format": "onnx",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-40bebb8e92f3460aa52d6e1c3aa3f481",
+            "runtime_backend": "onnxruntime",
+            "sync_state": "running",
+            "sync_process_id": 35452,
+            "sync_latency_ms": 563.111,
+            "async_state": "succeeded",
+            "async_process_id": 28876,
+            "async_task_id": "task-b5f99f809a51",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-7d4475a129ff4de7955632bd36ac24e9",
+            "workflow_process_id": 6200
+          }
+        },
+        "openvino-ir": {
+          "task_id": "task-1381f28891bb",
+          "model_build_id": "model-build-efd5f99e1a7d",
+          "build_format": "openvino-ir",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-9ae889da44264a4f84bb19e95dd24350",
+            "runtime_backend": "openvino",
+            "sync_state": "running",
+            "sync_process_id": 27228,
+            "sync_latency_ms": 212.58,
+            "async_state": "succeeded",
+            "async_process_id": 6440,
+            "async_task_id": "task-be6fa4b59d34",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-a0c690ad4aa041d49eda8131a4e0af4e",
+            "workflow_process_id": 32700
+          }
+        },
+        "tensorrt-engine": {
+          "task_id": "task-70fe9df877ab",
+          "model_build_id": "model-build-2464583dca8a",
+          "build_format": "tensorrt-engine",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-4007c5c734f743cfb7a5c1be9855d5a0",
+            "runtime_backend": "tensorrt",
+            "sync_state": "running",
+            "sync_process_id": 16832,
+            "sync_latency_ms": 28.567,
+            "async_state": "succeeded",
+            "async_process_id": 17116,
+            "async_task_id": "task-90198568d59b",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-fd6203afcb434ab1bbad6c6a77ff4c5a",
+            "workflow_process_id": 26916
+          }
+        }
+      },
+      "final_evidence": "same_model_version_recheck_succeeded"
+    },
+    "yolov8-pose": {
+      "model_type": "yolov8",
+      "task_type": "pose",
+      "initial_status": "succeeded",
+      "initial_finished_at": "2026-10-13T22:35:51",
+      "started_at": "2026-10-13T22:33:14",
+      "dataset_import_id": "dataset-import-8f6d8749f106",
+      "dataset_version_id": "dataset-version-2918ea541799",
+      "dataset_export_id": "dataset-export-9bc97b31030c",
+      "dataset_export_format": "yolo-pose-v1",
+      "training_task_id": "task-e79f4305ab9d",
+      "model_version_id": "model-version-6a01ab2c0e76",
+      "training_test_metrics": {
+        "map50": 0.0,
+        "map50_95": 0.0,
+        "bbox_map50": 0.0,
+        "bbox_map50_95": 0.0,
+        "oks_ap50": 0.090909,
+        "oks_ap50_95": 0.042921,
+        "prediction_count": 77.0
+      },
+      "evaluation": {
+        "task_id": "task-43ff935b5c33",
+        "state": "succeeded",
+        "sample_count": 1,
+        "error_message": null,
+        "bbox_map50": 0.0,
+        "bbox_map50_95": 0.0,
+        "oks_ap50": 0.0769230769230769,
+        "oks_ap50_95": 0.0517094017094017,
+        "result_keys": [
+          "bbox_map50",
+          "bbox_map50_95",
+          "oks_ap50",
+          "oks_ap50_95",
+          "output_object_prefix",
+          "predictions_object_key",
+          "report_object_key",
+          "result_package_object_key",
+          "sample_count"
+        ]
+      },
+      "conversions": {
+        "onnx": {
+          "task_id": "task-d204b1787573",
+          "model_build_id": "model-build-0d44926f8b49",
+          "build_format": "onnx",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-08f4e8535f8944a3bb4c16aec106de32",
+            "runtime_backend": "onnxruntime",
+            "sync_state": "running",
+            "sync_process_id": 35956,
+            "sync_latency_ms": 7.796,
+            "async_state": "succeeded",
+            "async_process_id": 33032,
+            "async_task_id": "task-abddb3752d9d",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-01d3e43a94ca47b582264889e7d096f0",
+            "workflow_process_id": 34748
+          }
+        },
+        "openvino-ir": {
+          "task_id": "task-c23d67fa2e63",
+          "model_build_id": "model-build-0eea7a2b62c0",
+          "build_format": "openvino-ir",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-84d51851e32e49229c3ace5e3d4a0b96",
+            "runtime_backend": "openvino",
+            "sync_state": "running",
+            "sync_process_id": 30728,
+            "sync_latency_ms": 9.984,
+            "async_state": "succeeded",
+            "async_process_id": 36168,
+            "async_task_id": "task-ef87122b12a0",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-8995d7d4e7584808867d19aa6dd2c973",
+            "workflow_process_id": 35592
+          }
+        },
+        "tensorrt-engine": {
+          "task_id": "task-5ea7fc69e7a6",
+          "model_build_id": "model-build-1ac9455e445b",
+          "build_format": "tensorrt-engine",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-bb964660f9664df39981eb6b3de87e17",
+            "runtime_backend": "tensorrt",
+            "sync_state": "running",
+            "sync_process_id": 9712,
+            "sync_latency_ms": 4.094,
+            "async_state": "succeeded",
+            "async_process_id": 13256,
+            "async_task_id": "task-e7ac669c42b1",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-dbe8b88ae11d44bfac12d76197abeec4",
+            "workflow_process_id": 15448
+          }
+        }
+      },
+      "final_evidence": "initial_chain_succeeded"
+    },
+    "yolo11-pose": {
+      "model_type": "yolo11",
+      "task_type": "pose",
+      "initial_status": "succeeded",
+      "initial_finished_at": "2026-10-13T22:38:36",
+      "started_at": "2026-10-13T22:35:51",
+      "dataset_import_id": "dataset-import-94f6b4c06b33",
+      "dataset_version_id": "dataset-version-1eb67e636b51",
+      "dataset_export_id": "dataset-export-f7f3c3cb0920",
+      "dataset_export_format": "yolo-pose-v1",
+      "training_task_id": "task-d796e5a88231",
+      "model_version_id": "model-version-7ebc47147059",
+      "training_test_metrics": {
+        "map50": 0.0,
+        "map50_95": 0.0,
+        "bbox_map50": 0.0,
+        "bbox_map50_95": 0.0,
+        "oks_ap50": 0.083333,
+        "oks_ap50_95": 0.063994,
+        "prediction_count": 77.0
+      },
+      "evaluation": {
+        "task_id": "task-cd1d2e91db5c",
+        "state": "succeeded",
+        "sample_count": 1,
+        "error_message": null,
+        "bbox_map50": 0.0,
+        "bbox_map50_95": 0.0,
+        "oks_ap50": 0.09999999999999998,
+        "oks_ap50_95": 0.03818181818181818,
+        "result_keys": [
+          "bbox_map50",
+          "bbox_map50_95",
+          "oks_ap50",
+          "oks_ap50_95",
+          "output_object_prefix",
+          "predictions_object_key",
+          "report_object_key",
+          "result_package_object_key",
+          "sample_count"
+        ]
+      },
+      "conversions": {
+        "onnx": {
+          "task_id": "task-2d4840edefef",
+          "model_build_id": "model-build-5b22508935c3",
+          "build_format": "onnx",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-2ae3d842dba5497a8499552d32ba7512",
+            "runtime_backend": "onnxruntime",
+            "sync_state": "running",
+            "sync_process_id": 18228,
+            "sync_latency_ms": 6.504,
+            "async_state": "succeeded",
+            "async_process_id": 37500,
+            "async_task_id": "task-ba68b4ed2f33",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-025a9105fbd747daa1cf9c398b86edb0",
+            "workflow_process_id": 28384
+          }
+        },
+        "openvino-ir": {
+          "task_id": "task-2a815fdc29dd",
+          "model_build_id": "model-build-5e99df280182",
+          "build_format": "openvino-ir",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-78a09e30c111422c9e432360024c3b9c",
+            "runtime_backend": "openvino",
+            "sync_state": "running",
+            "sync_process_id": 31740,
+            "sync_latency_ms": 6.464,
+            "async_state": "succeeded",
+            "async_process_id": 33936,
+            "async_task_id": "task-8219911baede",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-e7d6e2e57a784f44b91eb070fd293592",
+            "workflow_process_id": 35604
+          }
+        },
+        "tensorrt-engine": {
+          "task_id": "task-e5f498aaaa63",
+          "model_build_id": "model-build-cf0af80d0da4",
+          "build_format": "tensorrt-engine",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-e8d68e01ed824a978624b652c74ae35f",
+            "runtime_backend": "tensorrt",
+            "sync_state": "running",
+            "sync_process_id": 37120,
+            "sync_latency_ms": 5.161,
+            "async_state": "succeeded",
+            "async_process_id": 37656,
+            "async_task_id": "task-ac9eb0cc48fc",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-2602e7b45c6c4116b9cf077fa3adeddc",
+            "workflow_process_id": 36756
+          }
+        }
+      },
+      "final_evidence": "initial_chain_succeeded"
+    },
+    "yolo26-pose": {
+      "model_type": "yolo26",
+      "task_type": "pose",
+      "initial_status": "succeeded",
+      "initial_finished_at": "2026-10-13T22:44:40",
+      "started_at": "2026-10-13T22:38:36",
+      "dataset_import_id": "dataset-import-7157b7fd4ae5",
+      "dataset_version_id": "dataset-version-09a77f8f38f3",
+      "dataset_export_id": "dataset-export-5f8536628396",
+      "dataset_export_format": "yolo-pose-v1",
+      "training_task_id": "task-8d0554da0dc4",
+      "model_version_id": "model-version-b94c53e011f8",
+      "training_test_metrics": {
+        "map50": 0.0,
+        "map50_95": 0.0,
+        "bbox_map50": 0.0,
+        "bbox_map50_95": 0.0,
+        "oks_ap50": 0.030303,
+        "oks_ap50_95": 0.02006,
+        "prediction_count": 300.0
+      },
+      "evaluation": {
+        "task_id": "task-90ad16bea348",
+        "state": "succeeded",
+        "sample_count": 1,
+        "error_message": null,
+        "bbox_map50": 0.0,
+        "bbox_map50_95": 0.0,
+        "oks_ap50": 0.02941176470588235,
+        "oks_ap50_95": 0.019354550330770607,
+        "result_keys": [
+          "bbox_map50",
+          "bbox_map50_95",
+          "oks_ap50",
+          "oks_ap50_95",
+          "output_object_prefix",
+          "predictions_object_key",
+          "report_object_key",
+          "result_package_object_key",
+          "sample_count"
+        ]
+      },
+      "conversions": {
+        "onnx": {
+          "task_id": "task-16c1bb0a6c07",
+          "model_build_id": "model-build-91e32b6b86c3",
+          "build_format": "onnx",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-e3af96ec0dc0409882c436c88ab900c1",
+            "runtime_backend": "onnxruntime",
+            "sync_state": "running",
+            "sync_process_id": 30800,
+            "sync_latency_ms": 17.531,
+            "async_state": "succeeded",
+            "async_process_id": 27248,
+            "async_task_id": "task-910bc6e2f8a3",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-81208a67e4114bdca16665d046d5ad37",
+            "workflow_process_id": 5408
+          }
+        },
+        "openvino-ir": {
+          "task_id": "task-d5a75d35c596",
+          "model_build_id": "model-build-aa4ddea10d86",
+          "build_format": "openvino-ir",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-9144b2db5b9d4cf3b7ecfedb52f31dd1",
+            "runtime_backend": "openvino",
+            "sync_state": "running",
+            "sync_process_id": 30304,
+            "sync_latency_ms": 9.312,
+            "async_state": "succeeded",
+            "async_process_id": 15120,
+            "async_task_id": "task-d66208b419e4",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-58179585c4bc4311ac8720a794c6b9ac",
+            "workflow_process_id": 22972
+          }
+        },
+        "tensorrt-engine": {
+          "task_id": "task-ac2905053eb9",
+          "model_build_id": "model-build-ce5fbd2a36d1",
+          "build_format": "tensorrt-engine",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-2a11690aaf784086a0bf22d61d3bd2d2",
+            "runtime_backend": "tensorrt",
+            "sync_state": "running",
+            "sync_process_id": 32340,
+            "sync_latency_ms": 4.941,
+            "async_state": "succeeded",
+            "async_process_id": 34244,
+            "async_task_id": "task-62fd9c55788f",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-48feeb2105fc4681b4dead3b048a6bda",
+            "workflow_process_id": 31360
+          }
+        }
+      },
+      "final_evidence": "initial_chain_succeeded"
+    },
+    "yolov8-obb": {
+      "model_type": "yolov8",
+      "task_type": "obb",
+      "initial_status": "succeeded",
+      "initial_finished_at": "2026-10-13T22:47:55",
+      "started_at": "2026-10-13T22:44:40",
+      "dataset_import_id": "dataset-import-df09d391695a",
+      "dataset_version_id": "dataset-version-868f13bcc50b",
+      "dataset_export_id": "dataset-export-987a24ff1aaa",
+      "dataset_export_format": "yolo-obb-v1",
+      "training_task_id": "task-f6f7c1e1ee9c",
+      "model_version_id": "model-version-85a181616133",
+      "training_test_metrics": {
+        "map50": 0.0,
+        "map50_95": 0.0,
+        "rotated_map50": 0.0,
+        "rotated_map50_95": 0.0,
+        "prediction_count": 19.0
+      },
+      "evaluation": {
+        "task_id": "task-16a8f7615da9",
+        "state": "succeeded",
+        "sample_count": 1,
+        "error_message": null,
+        "map50": 0.0,
+        "map50_95": 0.0,
+        "result_keys": [
+          "map50",
+          "map50_95",
+          "output_object_prefix",
+          "predictions_object_key",
+          "report_object_key",
+          "result_package_object_key",
+          "sample_count"
+        ]
+      },
+      "conversions": {
+        "onnx": {
+          "task_id": "task-6a54c082757f",
+          "model_build_id": "model-build-4066a0ad359e",
+          "build_format": "onnx",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-fe5275e62ce641249ef94bfac396d393",
+            "runtime_backend": "onnxruntime",
+            "sync_state": "running",
+            "sync_process_id": 16516,
+            "sync_latency_ms": 8.613,
+            "async_state": "succeeded",
+            "async_process_id": 26052,
+            "async_task_id": "task-86eaca323796",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-3ee469136888466397a83e9bab4be2df",
+            "workflow_process_id": 35260
+          }
+        },
+        "openvino-ir": {
+          "task_id": "task-370032a53ffb",
+          "model_build_id": "model-build-874ab5a41a21",
+          "build_format": "openvino-ir",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-7b08b84f7efb4a3cac38fb2475e685e0",
+            "runtime_backend": "openvino",
+            "sync_state": "running",
+            "sync_process_id": 27300,
+            "sync_latency_ms": 13.696,
+            "async_state": "succeeded",
+            "async_process_id": 11912,
+            "async_task_id": "task-4b12056a04d2",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-afc7eb7dd2634d14a0d6c1f5b80b4698",
+            "workflow_process_id": 26892
+          }
+        },
+        "tensorrt-engine": {
+          "task_id": "task-40a097b530e9",
+          "model_build_id": "model-build-773ffb2a14e2",
+          "build_format": "tensorrt-engine",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-f2a0cd5713a94f489eaa79ea95e1fd9a",
+            "runtime_backend": "tensorrt",
+            "sync_state": "running",
+            "sync_process_id": 35148,
+            "sync_latency_ms": 7.846,
+            "async_state": "succeeded",
+            "async_process_id": 37108,
+            "async_task_id": "task-2dea2b201d15",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-b691c87a870a4981868dea1bb304f663",
+            "workflow_process_id": 33424
+          }
+        }
+      },
+      "final_evidence": "initial_chain_succeeded"
+    },
+    "yolo11-obb": {
+      "model_type": "yolo11",
+      "task_type": "obb",
+      "initial_status": "succeeded",
+      "initial_finished_at": "2026-10-13T22:51:14",
+      "started_at": "2026-10-13T22:47:55",
+      "dataset_import_id": "dataset-import-89c1af8711c9",
+      "dataset_version_id": "dataset-version-224b6159833b",
+      "dataset_export_id": "dataset-export-eff5fd7da2a1",
+      "dataset_export_format": "yolo-obb-v1",
+      "training_task_id": "task-b133f6998e2a",
+      "model_version_id": "model-version-624308e37bb2",
+      "training_test_metrics": {
+        "map50": 0.0,
+        "map50_95": 0.0,
+        "rotated_map50": 0.0,
+        "rotated_map50_95": 0.0,
+        "prediction_count": 23.0
+      },
+      "evaluation": {
+        "task_id": "task-6544cd968ef5",
+        "state": "succeeded",
+        "sample_count": 1,
+        "error_message": null,
+        "map50": 0.0,
+        "map50_95": 0.0,
+        "result_keys": [
+          "map50",
+          "map50_95",
+          "output_object_prefix",
+          "predictions_object_key",
+          "report_object_key",
+          "result_package_object_key",
+          "sample_count"
+        ]
+      },
+      "conversions": {
+        "onnx": {
+          "task_id": "task-079335c42cc7",
+          "model_build_id": "model-build-76b41ec8f6d5",
+          "build_format": "onnx",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-62152dbdbef84f09a261ea0bfb5fadbb",
+            "runtime_backend": "onnxruntime",
+            "sync_state": "running",
+            "sync_process_id": 24468,
+            "sync_latency_ms": 9.626,
+            "async_state": "succeeded",
+            "async_process_id": 30368,
+            "async_task_id": "task-184d662b6ec2",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-8ea17f48e9104873892efbf1176cb298",
+            "workflow_process_id": 36368
+          }
+        },
+        "openvino-ir": {
+          "task_id": "task-7b61338f4f1b",
+          "model_build_id": "model-build-c76a9de12307",
+          "build_format": "openvino-ir",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-e1f8aa997fcf440cb7ef1e2e5bccbd3d",
+            "runtime_backend": "openvino",
+            "sync_state": "running",
+            "sync_process_id": 29008,
+            "sync_latency_ms": 10.713,
+            "async_state": "succeeded",
+            "async_process_id": 6316,
+            "async_task_id": "task-bdfd32db8026",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-e6be7b02a82245f9b379afa8351b7fd0",
+            "workflow_process_id": 30760
+          }
+        },
+        "tensorrt-engine": {
+          "task_id": "task-fbf17b48b18c",
+          "model_build_id": "model-build-52e4e01b81ab",
+          "build_format": "tensorrt-engine",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-baae70f91056426eb08a9f181da26f05",
+            "runtime_backend": "tensorrt",
+            "sync_state": "running",
+            "sync_process_id": 13784,
+            "sync_latency_ms": 3.802,
+            "async_state": "succeeded",
+            "async_process_id": 37780,
+            "async_task_id": "task-44b6184a08aa",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-91e9a829170649749e56d908235b8d6e",
+            "workflow_process_id": 26864
+          }
+        }
+      },
+      "final_evidence": "initial_chain_succeeded"
+    },
+    "yolo26-obb": {
+      "model_type": "yolo26",
+      "task_type": "obb",
+      "initial_status": "succeeded",
+      "initial_finished_at": "2026-10-13T22:55:15",
+      "started_at": "2026-10-13T22:51:14",
+      "dataset_import_id": "dataset-import-a60a5056eab2",
+      "dataset_version_id": "dataset-version-4738765e3364",
+      "dataset_export_id": "dataset-export-f987e16c07bf",
+      "dataset_export_format": "yolo-obb-v1",
+      "training_task_id": "task-354432a79eb2",
+      "model_version_id": "model-version-d2e1c479b4ba",
+      "training_test_metrics": {
+        "map50": 0.0,
+        "map50_95": 0.0,
+        "rotated_map50": 0.0,
+        "rotated_map50_95": 0.0,
+        "prediction_count": 96.0
+      },
+      "evaluation": {
+        "task_id": "task-76decfc33fd9",
+        "state": "succeeded",
+        "sample_count": 1,
+        "error_message": null,
+        "map50": 0.025641025641025644,
+        "map50_95": 0.007350427350427351,
+        "result_keys": [
+          "map50",
+          "map50_95",
+          "output_object_prefix",
+          "predictions_object_key",
+          "report_object_key",
+          "result_package_object_key",
+          "sample_count"
+        ]
+      },
+      "conversions": {
+        "onnx": {
+          "task_id": "task-678d24a8071b",
+          "model_build_id": "model-build-df848c62bc54",
+          "build_format": "onnx",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-968765f711a14b9e99ce740f54fdea3e",
+            "runtime_backend": "onnxruntime",
+            "sync_state": "running",
+            "sync_process_id": 360,
+            "sync_latency_ms": 6.777,
+            "async_state": "succeeded",
+            "async_process_id": 35792,
+            "async_task_id": "task-3a6e55cee3ae",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-8d70dcfc22b945f2978470fdefadb6c3",
+            "workflow_process_id": 32176
+          }
+        },
+        "openvino-ir": {
+          "task_id": "task-5744ce856387",
+          "model_build_id": "model-build-b51353785793",
+          "build_format": "openvino-ir",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-be133c587d4b40598c2a492534a9eb01",
+            "runtime_backend": "openvino",
+            "sync_state": "running",
+            "sync_process_id": 36032,
+            "sync_latency_ms": 11.413,
+            "async_state": "succeeded",
+            "async_process_id": 36176,
+            "async_task_id": "task-e465b136072d",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-f0dcda8a9aed49ddaef8106d5f49b38e",
+            "workflow_process_id": 31168
+          }
+        },
+        "tensorrt-engine": {
+          "task_id": "task-cd9fe71638f8",
+          "model_build_id": "model-build-8d467179a9cf",
+          "build_format": "tensorrt-engine",
+          "deployment": {
+            "deployment_instance_id": "deployment-instance-a4754009725e498baf202d4880a75f93",
+            "runtime_backend": "tensorrt",
+            "sync_state": "running",
+            "sync_process_id": 16144,
+            "sync_latency_ms": 8.055,
+            "async_state": "succeeded",
+            "async_process_id": 33324,
+            "async_task_id": "task-4efd50767d83",
+            "workflow_state": "succeeded",
+            "workflow_run_id": "workflow-run-870d17f040d34bfc96fe356207d27c96",
+            "workflow_process_id": 24124
+          }
+        }
+      },
+      "final_evidence": "initial_chain_succeeded"
+    }
+  },
+  "yolo26_same_onnx_diagnostic": {
+    "source_onnx_sha256": "7b8994fed2a0dffb888563f248c7279b8412d35c0e401d318a1faa05b84316c3",
+    "tolerances_changed": false,
+    "original_failure_root_cause_confirmed": false,
+    "validation": {
+      "stage": "validate-onnx",
+      "strategy": "yolo26-topk-v3",
+      "passed": true,
+      "accepted": true,
+      "allclose": true,
+      "finite": true,
+      "max_abs_diff": 3.0517578125e-05,
+      "mean_abs_diff": 3.039235195134201e-08,
+      "raw_row_allclose": false,
+      "row_max_abs_diff": 336.0001983642578,
+      "candidate_validation": {
+        "passed": true,
+        "finite": true,
+        "allclose": true,
+        "output_count": 2,
+        "max_abs_diff": 3.0517578125e-05,
+        "mean_abs_diff": 3.039235195134201e-08,
+        "relative_tolerance": 0.001,
+        "absolute_tolerance": 0.0001
+      },
+      "selection_validation": [
+        {
+          "passed": true,
+          "selected_rows_per_batch": 300,
+          "witness": "two-stage-topk"
+        },
+        {
+          "passed": true,
+          "selected_rows_per_batch": 300,
+          "witness": "two-stage-topk"
+        }
+      ],
+      "public_observation_validation": [
+        {
+          "passed": true,
+          "method": "exact-candidate-selection"
+        },
+        {
+          "passed": true,
+          "method": "complete-output-equivalence"
+        }
+      ],
+      "public_auxiliary_validation": {
+        "passed": true,
+        "finite": true,
+        "allclose": true,
+        "output_count": 1,
+        "max_abs_diff": 7.450580596923828e-09,
+        "mean_abs_diff": 8.480278814240738e-10,
+        "relative_tolerance": 0.001,
+        "absolute_tolerance": 0.0001
+      },
+      "candidate_score_max_abs_diff": 6.309710443019867e-08,
+      "output_count": 2
+    }
+  }
+}

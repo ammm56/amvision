@@ -1,6 +1,6 @@
 # 模型支持矩阵
 
-本文是当前模型与任务组合的能力入口，只描述正式代码路径。`projectsrc/` 仅用于开发期参考，不属于运行时、测试或发行包依赖。
+本文是当前模型与任务组合的能力入口，只描述正式代码路径。`projectsrc/` 仅用于开发期参考，不属于运行时、发行包或默认测试的必需依赖；可选参考数值测试在资源存在时读取它。
 
 ## 模型与任务
 
@@ -28,22 +28,24 @@ RF-DETR classification、pose 和 OBB 不属于当前公开能力。YOLOE、SAM3
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | YOLOX | detection | tested | tested | tested | tested | tested | tested | implemented |
 | YOLOv8 | detection | tested | tested | tested | tested | tested | tested | implemented |
-| YOLOv8 | classification | tested | tested | implemented | tested | implemented | tested | implemented |
-| YOLOv8 | segmentation | implemented | tested | implemented | tested | implemented | tested | implemented |
-| YOLOv8 | pose | implemented | tested | implemented | implemented | tested | tested | implemented |
-| YOLOv8 | obb | tested | implemented | implemented | implemented | implemented | tested | implemented |
+| YOLOv8 | classification | tested | tested | tested | tested | tested | tested | implemented |
+| YOLOv8 | segmentation | tested | tested | tested | tested | tested | tested | implemented |
+| YOLOv8 | pose | tested | tested | tested | tested | tested | tested | implemented |
+| YOLOv8 | obb | tested | tested | tested | tested | tested | tested | implemented |
 | YOLO11 | detection | tested | tested | tested | tested | tested | tested | implemented |
-| YOLO11 | classification | tested | tested | implemented | implemented | tested | tested | implemented |
-| YOLO11 | segmentation | implemented | implemented | implemented | implemented | implemented | tested | implemented |
-| YOLO11 | pose | implemented | implemented | implemented | implemented | implemented | tested | implemented |
-| YOLO11 | obb | tested | implemented | implemented | implemented | implemented | tested | implemented |
+| YOLO11 | classification | tested | tested | tested | tested | tested | tested | implemented |
+| YOLO11 | segmentation | tested | tested | tested | tested | tested | tested | implemented |
+| YOLO11 | pose | tested | tested | tested | tested | tested | tested | implemented |
+| YOLO11 | obb | tested | tested | tested | tested | tested | tested | implemented |
 | YOLO26 | detection | tested | tested | tested | tested | tested | tested | implemented |
-| YOLO26 | classification | tested | implemented | implemented | implemented | implemented | tested | implemented |
-| YOLO26 | segmentation | implemented | tested | implemented | implemented | tested | tested | implemented |
-| YOLO26 | pose | implemented | implemented | implemented | implemented | implemented | tested | implemented |
-| YOLO26 | obb | tested | tested | implemented | implemented | tested | tested | implemented |
+| YOLO26 | classification | tested | tested | tested | tested | tested | tested | implemented |
+| YOLO26 | segmentation | tested | tested | tested | tested | tested | tested | implemented |
+| YOLO26 | pose | tested | tested | tested | tested | tested | tested | implemented |
+| YOLO26 | obb | tested | tested | tested | tested | tested | tested | implemented |
 | RF-DETR | detection | tested | tested | tested | tested | tested | tested | implemented |
-| RF-DETR | segmentation | implemented | tested | implemented | tested | tested | tested | implemented |
+| RF-DETR | segmentation | tested | tested | tested | tested | tested | tested | implemented |
+
+2026-10-13 真实短链覆盖上述 18 组合：首轮 16 通过，YOLO26 segmentation 与 RF-DETR segmentation 使用原模型续验通过。表内 `tested` 表示当前 nano、固定 batch 1、fp32、小数据集的调用与产物验证，不代表所有 scale、精度、设备或长期运行均已验收；首次数值拒绝与 GPU 租约冲突仍保留在 [代码与链路核对](../../operations/code-audit-20261013.md) 中。前端另完成主要页面与实际节点预览验证，未逐项通过 UI 重跑全部训练组合。
 
 `implemented` 不是精度承诺。模型准确率取决于数据、标注、训练参数、checkpoint、评估口径和目标 runtime；进入现场前必须使用目标数据与硬件验收。
 
