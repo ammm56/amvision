@@ -11,6 +11,7 @@ import sys
 from backend.service.application.runtime.support.tensorrt_runtime import (
     prepare_tensorrt_python_runtime,
 )
+from backend.service.application.errors import ServiceError
 from backend.service.domain.models.tensorrt_engine_capabilities import (
     build_single_input_tensorrt_engine_capabilities,
 )
@@ -167,11 +168,18 @@ def main() -> None:
     - 无。
     """
 
-    payload = build_tensorrt_engine(
-        source_path=Path(sys.argv[1]),
-        output_path=Path(sys.argv[2]),
-        build_precision=str(sys.argv[3]),
-    )
+    try:
+        payload = build_tensorrt_engine(
+            source_path=Path(sys.argv[1]),
+            output_path=Path(sys.argv[2]),
+            build_precision=str(sys.argv[3]),
+        )
+    except ServiceError as error:
+        # 子进程 traceback 不含 details；保留数值门禁的具体原因供上层诊断。
+        print(json.dumps({"error": {
+            "code": error.code, "message": error.message, "details": error.details,
+        }}, ensure_ascii=True), flush=True)
+        raise
     print(json.dumps(payload))
 
 

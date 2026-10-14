@@ -276,6 +276,7 @@ def build_yolo_tensorrt_engine(
                 "output_object_uri": output_object_key,
                 "stdout": completed_process.stdout.strip(),
                 "stderr": completed_process.stderr.strip(),
+                "build_error": (_parse_last_json_line(completed_process.stdout) or {}).get("error"),
             },
         )
     if not output_path.is_file():

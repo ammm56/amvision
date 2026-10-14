@@ -123,14 +123,7 @@ def _list_yolo_image_paths(images_directory_path: str) -> list[str]:
 
 
 def _extract_yolo_class_names(data_file: str) -> list[str]:
-    """执行 `_extract_yolo_class_names`。
-    
-    参数：
-    - `data_file`：传入的 `data_file` 参数。
-    
-    返回：
-    - 当前函数的执行结果。
-    """
+    """从 data_file 读取按连续类别 ID 排序的名称，兼容 YAML 字符串数字键。"""
     import yaml
 
     with Path(data_file).open(encoding="utf-8") as handle:
@@ -139,37 +132,23 @@ def _extract_yolo_class_names(data_file: str) -> list[str]:
         raise ValueError(f"Expected mapping in data file {data_file!r}, got {type(data).__name__}.")
     names = data.get("names")
     if isinstance(names, dict):
-        numeric_keys: list[int] = []
-        non_numeric_keys: list[Any] = []
-        for key in names.keys():
-            key_str = str(key)
-            if key_str.isdigit():
-                numeric_keys.append(int(key_str))
-            else:
-                non_numeric_keys.append(key)
-
-        if not numeric_keys:
-            raise ValueError(
-                "Unsupported 'names' mapping in data file "
-                f"{data_file!r}: expected integer keys 0..N-1 when 'names' is a dict, "
-                f"got only non-numeric keys {list(names.keys())!r}. "
-                "Please provide 'names' as a list or as a dict with 0-based contiguous "
-                "integer keys."
-            )
-
-        unique_sorted_keys = sorted(set(numeric_keys))
-        expected_keys = list(range(len(unique_sorted_keys)))
-        if unique_sorted_keys != expected_keys or non_numeric_keys:
+        normalized_names: dict[int, str] = {}
+        for key, name in names.items():
+            key_text = str(key)
+            if not key_text.isascii() or not key_text.isdecimal():
+                raise ValueError(f"Invalid class ID {key!r} in {data_file!r}; expected integer keys 0..N-1.")
+            class_id = int(key_text)
+            if class_id in normalized_names:
+                raise ValueError(f"Duplicate class ID {class_id} in {data_file!r} after key normalization.")
+            normalized_names[class_id] = str(name)
+        expected_keys = list(range(len(normalized_names)))
+        if not normalized_names or sorted(normalized_names) != expected_keys:
             raise ValueError(
                 "Unsupported 'names' mapping in data file "
                 f"{data_file!r}: expected integer keys 0..N-1 with no gaps, "
-                f"got numeric keys {unique_sorted_keys!r} and "
-                f"non-numeric keys {non_numeric_keys!r}. "
-                "This loader assumes class IDs are contiguous 0..N-1; please remap "
-                "the 'names' keys or use the list form."
+                f"got {sorted(normalized_names)!r}."
             )
-
-        return [str(names[idx]) for idx in unique_sorted_keys]
+        return [normalized_names[idx] for idx in expected_keys]
     if isinstance(names, list):
         return [str(name) for name in names]
     raise ValueError(f"Expected 'names' to be a list or dict in {data_file!r}, got {type(names).__name__}.")

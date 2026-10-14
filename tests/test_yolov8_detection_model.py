@@ -5,17 +5,19 @@ from __future__ import annotations
 from pathlib import Path
 import sys
 import types
-from types import SimpleNamespace
 
 import torch
 
 from backend.service.application.models.yolo_core_common.modeling.detection_model import YoloDetectionModel
-from backend.service.application.models.yolo_core_common.modeling.detection_builder import (
+from backend.service.application.models.registry.yolo_builders import (
     build_yolo_detection_model_for_type,
-    load_yolo_checkpoint,
 )
-from backend.service.application.models.yolo_core_common.model_builders import build_yolo_model
+from backend.service.application.models.registry.yolo_builders import build_yolo_model
 from backend.service.application.models.yolov8_core.model import build_yolov8_model
+from backend.service.application.models.yolov8_core.weights import load_yolov8_checkpoint_file
+from backend.service.application.models.yolo11_core.weights import load_yolo11_checkpoint_file
+from backend.service.application.models.yolo26_core.weights import load_yolo26_checkpoint_file
+from backend.service.application.models.yolo_core_common.weights import YOLO_WARM_START_MINIMUM_LOADABLE_RATIO
 
 
 def test_yolov8_detection_model_forward_returns_detection_tensor() -> None:
@@ -52,14 +54,14 @@ def test_yolov8_detection_model_can_reload_project_checkpoint(tmp_path: Path) ->
         model_scale="nano",
         num_classes=1,
     )
-    load_summary = load_yolo_checkpoint(
-        imports=SimpleNamespace(torch=torch),
+    load_summary = load_yolov8_checkpoint_file(
+        torch_module=torch,
         model=target_model,
         checkpoint_path=checkpoint_path,
     )
 
-    assert load_summary["checkpoint_path"] == str(checkpoint_path)
-    assert load_summary["unexpected_keys"] == []
+    assert load_summary.checkpoint_path == str(checkpoint_path)
+    assert load_summary.unexpected_keys == ()
 
 
 def test_yolo_checkpoint_loader_prefers_ema_state_dict(tmp_path: Path) -> None:
@@ -92,13 +94,13 @@ def test_yolo_checkpoint_loader_prefers_ema_state_dict(tmp_path: Path) -> None:
         model_scale="nano",
         num_classes=1,
     )
-    load_summary = load_yolo_checkpoint(
-        imports=SimpleNamespace(torch=torch),
+    load_summary = load_yolo11_checkpoint_file(
+        torch_module=torch,
         model=target_model,
         checkpoint_path=checkpoint_path,
     )
 
-    assert load_summary["checkpoint_path"] == str(checkpoint_path)
+    assert load_summary.checkpoint_path == str(checkpoint_path)
     assert torch.equal(target_model.state_dict()[float_key], ema_state_dict[float_key])
 
 
@@ -118,15 +120,17 @@ def test_yolov8_checkpoint_loader_tolerates_class_head_shape_mismatch(tmp_path: 
         model_scale="nano",
         num_classes=1,
     )
-    load_summary = load_yolo_checkpoint(
-        imports=SimpleNamespace(torch=torch),
+    load_summary = load_yolov8_checkpoint_file(
+        torch_module=torch,
         model=target_model,
         checkpoint_path=checkpoint_path,
+        minimum_loadable_ratio=YOLO_WARM_START_MINIMUM_LOADABLE_RATIO,
+        strict_shape=False,
     )
 
-    assert load_summary["checkpoint_path"] == str(checkpoint_path)
-    assert load_summary["shape_mismatch_keys"]
-    assert any(".cv3." in key for key in load_summary["shape_mismatch_keys"])
+    assert load_summary.checkpoint_path == str(checkpoint_path)
+    assert load_summary.shape_mismatch_keys
+    assert any(".cv3." in key for key in load_summary.shape_mismatch_keys)
 
 
 def test_yolov8_detection_model_uses_legacy_class_head() -> None:
@@ -243,15 +247,15 @@ def test_yolo_checkpoint_loader_reads_ultralytics_style_model_pickle(tmp_path: P
         model_scale="m",
         num_classes=1,
     )
-    load_summary = load_yolo_checkpoint(
-        imports=SimpleNamespace(torch=torch),
+    load_summary = load_yolo26_checkpoint_file(
+        torch_module=torch,
         model=target_model,
         checkpoint_path=checkpoint_path,
     )
 
-    assert load_summary["checkpoint_path"] == str(checkpoint_path)
-    assert load_summary["loaded_key_count"] > 0
-    assert load_summary["unexpected_keys"] == []
+    assert load_summary.checkpoint_path == str(checkpoint_path)
+    assert len(load_summary.loaded_keys) > 0
+    assert load_summary.unexpected_keys == ()
 
 
 def test_yolo11_segmentation_model_forward_returns_prediction_and_proto() -> None:

@@ -9,7 +9,7 @@ import pytest
 import torch
 
 from backend.service.application.models.yolo_core_common.losses.obb_loss import compute_obb_loss
-from backend.service.application.models.yolo_core_common.model_builders import build_yolo_model
+from backend.service.application.models.registry.yolo_builders import build_yolo_model
 from backend.service.application.models.yolo_core_common.geometry import build_yolo_letterbox_transform
 from backend.service.application.runtime.predictors.yolov8.obb.postprocess import (
     build_yolov8_obb_runtime_instances,

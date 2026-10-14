@@ -27,7 +27,7 @@ from backend.service.application.conversions.yolov8_conversion_planner import (
 from backend.service.application.models.registry.model_service import ModelBuildRegistration, TrainingOutputRegistration
 from backend.service.application.models.registry.yolo11_model_service import SqlAlchemyYolo11ModelService
 from backend.service.application.models.registry.yolo26_model_service import SqlAlchemyYolo26ModelService
-from backend.service.application.models.yolo_core_common.model_builders import build_yolo_model
+from backend.service.application.models.registry.yolo_builders import build_yolo_model
 from backend.service.application.models.registry.yolov8_model_service import SqlAlchemyYoloV8ModelService
 from backend.service.application.runtime.tasks.classification_model_runtime import DefaultClassificationModelRuntime
 from backend.service.application.runtime.contracts.classification.prediction import ClassificationPredictionRequest

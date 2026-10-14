@@ -14,7 +14,7 @@ from backend.service.application.conversions.yolov8_conversion_planner import (
     DefaultYoloV8ConversionPlanner,
     YoloV8ConversionPlanningRequest,
 )
-from backend.service.application.models.yolo_core_common.model_builders import build_yolo_model
+from backend.service.application.models.registry.yolo_builders import build_yolo_model
 from backend.service.application.models.registry.yolov8_model_service import (
     SqlAlchemyYoloV8ModelService,
     YoloV8BuildRegistration,

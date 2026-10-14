@@ -46,3 +46,9 @@
 - 参考快照升级必须重新生成数值基线；不能仅修改版本号。
 
 可复用的完整检查项见 [模型 full core 验收](model-validation.md)。
+
+## 参考测试入口
+
+`tests/integration/test_yolo_detection_reference_parity.py` 与 `test_yolo_non_detection_reference_parity.py` 默认读取本地 `projectsrc/ultralytics`。核对其他已下载快照时，可以设置 `AMVISION_ULTRALYTICS_REFERENCE_ROOT`，不修改生产 import 路径。
+
+测试直接读取可信本地 checkpoint 并构建参考 core，不经过会自动加载 trainer、下载文件或安装依赖的高层入口。缺少参考目录、依赖或官方 module checkpoint 时明确跳过；项目训练状态字典不能冒充官方 module 资产。跳过项必须记录，不能计作参考一致性通过。数值对照使用的版本、文件摘要、输入和覆盖范围见对应审计记录。

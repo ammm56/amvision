@@ -8,7 +8,7 @@ import numpy as np
 import torch
 
 from backend.service.application.models.yolo_core_common.losses.pose_loss import compute_pose_loss
-from backend.service.application.models.yolo_core_common.model_builders import build_yolo_model
+from backend.service.application.models.registry.yolo_builders import build_yolo_model
 from backend.service.application.models.yolo_core_common.geometry import build_yolo_letterbox_transform
 from backend.service.application.runtime.predictors.yolov8.pose.postprocess import (
     build_yolov8_pose_runtime_instances,

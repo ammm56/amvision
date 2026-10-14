@@ -92,8 +92,12 @@ from backend.service.application.models.yolov8_core.training.savepoint import (
 from backend.service.application.models.yolo_core_common.data.tensor_transfer import (
     move_yolo_tensor_to_training_device,
 )
-from backend.service.application.models.yolo_core_common.modeling.detection_builder import (
-    load_yolo_checkpoint,
+from backend.service.application.models.yolov8_core.weights import (
+    load_yolov8_checkpoint_file,
+)
+from backend.service.application.models.yolo_core_common.weights import (
+    YOLO_WARM_START_MINIMUM_LOADABLE_RATIO,
+    build_yolo_warm_start_summary,
 )
 from backend.service.application.models.yolo_core_common.geometry import (
     scale_yolo_box_from_letterbox,
@@ -1269,19 +1273,18 @@ def _load_warm_start_checkpoint(
 ) -> dict[str, object]:
     """加载 warm start checkpoint 并返回摘要。"""
 
-    load_summary = load_yolo_checkpoint(
-        imports=imports,
+    load_result = load_yolov8_checkpoint_file(
+        torch_module=imports.torch,
         model=model,
         checkpoint_path=checkpoint_path,
+        minimum_loadable_ratio=YOLO_WARM_START_MINIMUM_LOADABLE_RATIO,
+        strict_shape=False,
+        restore_checkpoint_attributes=False,
     )
-    return {
-        "enabled": True,
-        "source_model_version_id": source_summary.get("source_model_version_id"),
-        "source_kind": source_summary.get("source_kind"),
-        "source_model_name": source_summary.get("source_model_name"),
-        "source_model_scale": source_summary.get("source_model_scale"),
-        "load_summary": load_summary,
-    }
+    return build_yolo_warm_start_summary(
+        load_result=load_result,
+        source_summary=source_summary,
+    )
 
 
 def _load_resume_checkpoint(

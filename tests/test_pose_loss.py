@@ -11,7 +11,7 @@ from backend.service.application.models.yolo26_core.losses import (
     compute_yolo26_pose_loss,
 )
 from backend.service.application.models.yolo_core_common.losses.pose_loss import compute_pose_loss
-from backend.service.application.models.yolo_core_common.model_builders import build_yolo_model
+from backend.service.application.models.registry.yolo_builders import build_yolo_model
 
 
 def test_compute_pose_loss_exposes_visibility_loss_for_standard_pose() -> None:

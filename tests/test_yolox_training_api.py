@@ -2930,14 +2930,16 @@ def _build_fake_epoch_progress(
 def _build_fake_savepoint(
     *, epoch: int, best_metric_value: float
 ) -> YoloXTrainingSavePoint:
-    """构建用于训练控制测试的最小 savepoint。"""
+    """使用真实 checkpoint 元数据模拟保存点，覆盖类别与输入配置校验。"""
 
-    return YoloXTrainingSavePoint(
+    return _build_fake_resume_checkpoint_savepoint(
         epoch=epoch,
-        latest_checkpoint_bytes=f"latest-{epoch}".encode("utf-8"),
-        best_checkpoint_bytes=f"best-{epoch}".encode("utf-8"),
-        best_metric_name="val_map50_95",
         best_metric_value=best_metric_value,
+        input_size=(64, 64),
+        evaluation_interval=1,
+        validation_split_name="val",
+        evaluation_confidence_threshold=0.01,
+        evaluation_nms_threshold=0.65,
     )
 
 

@@ -1,4 +1,4 @@
-"""YOLO 主线模型统一分发入口。"""
+"""YOLO 模型装配入口；上层按 family 分发，公共算子不反向依赖各代 core。"""
 
 from __future__ import annotations
 
@@ -72,3 +72,11 @@ def build_yolo_model(
         num_classes=num_classes,
         model_config_overrides=deepcopy(model_config_overrides),
     )
+
+
+def build_yolo_detection_model_for_type(
+    *, model_type: str, model_scale: str, num_classes: int,
+) -> Any:
+    """按 model_type 和 model_scale 构建指定类别数的 detection 模型。"""
+    return build_yolo_model(model_type=model_type, task_type="detection",
+                            model_scale=model_scale, num_classes=num_classes)

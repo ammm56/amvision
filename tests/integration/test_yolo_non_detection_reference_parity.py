@@ -7,15 +7,18 @@
 from __future__ import annotations
 
 from pathlib import Path
-import sys
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
+from tests.integration.test_yolo_detection_reference_parity import (
+    REFERENCE_ROOT,
+    _load_reference_checkpoint,
+)
+
 
 ROOT = Path(__file__).resolve().parents[2]
-REFERENCE_ROOT = ROOT / "projectsrc" / "ultralytics"
 PRETRAINED_ROOT = ROOT / "data" / "files" / "models" / "pretrained"
 FAMILIES = ("yolov8", "yolo11", "yolo26")
 
@@ -66,13 +69,7 @@ def _load_models(*, family: str, task: str, torch_module: Any) -> tuple[Any, Any
     if not checkpoint.is_file():
         pytest.skip(f"缺少开发预训练权重: {checkpoint}")
 
-    sys.path.insert(0, str(REFERENCE_ROOT))
-    try:
-        from ultralytics import YOLO
-
-        reference_model = YOLO(str(checkpoint)).model.float()
-    finally:
-        sys.path.remove(str(REFERENCE_ROOT))
+    reference_model = _load_reference_checkpoint(checkpoint, torch_module)
     num_classes = int(getattr(reference_model.model[-1], "nc", len(reference_model.names)))
     overrides: dict[str, object] = {}
     if hasattr(reference_model.model[-1], "kpt_shape"):
@@ -98,14 +95,10 @@ def _load_models(*, family: str, task: str, torch_module: Any) -> tuple[Any, Any
 def _configure_reference(reference_model: Any, **overrides: object) -> None:
     """配置参考 criterion 使用的固定超参数。"""
 
-    reference_model.args = SimpleNamespace(
-        **dict(reference_model.args),
-        box=7.5,
-        cls=0.5,
-        dfl=1.5,
-        epochs=200,
+    reference_model.args = SimpleNamespace(**{
+        **dict(reference_model.args), "box": 7.5, "cls": 0.5, "dfl": 1.5, "epochs": 200,
         **overrides,
-    )
+    })
     reference_model.criterion = reference_model.init_criterion()
     reference_model.train()
 

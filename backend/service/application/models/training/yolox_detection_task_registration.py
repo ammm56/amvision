@@ -88,6 +88,17 @@ class YoloXTrainingTaskRegistrationMixin:
     ) -> tuple[YoloXTrainingTaskResult, dict[str, object], str]:
         """把 latest checkpoint 创建或更新为当前训练任务固定的 ModelVersion。"""
 
+        # 运行中任务可能只有输出路径，尚未生成完成态 summary。类别顺序来自
+        # 本次训练固定的 DatasetExport，不能等待最终报告或用预训练类别补齐。
+        registration_summary = dict(task_result.summary)
+        if "category_names" not in registration_summary:
+            manifest = self._read_manifest_payload(
+                dataset_export.manifest_object_key or task_result.dataset_export_manifest_key
+            )
+            registration_summary["category_names"] = list(
+                self._read_str_tuple(manifest.get("category_names"))
+            )
+        task_result = replace(task_result, summary=registration_summary)
         registration_result = replace(
             task_result,
             checkpoint_object_key=latest_checkpoint_object_key,

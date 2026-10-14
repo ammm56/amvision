@@ -98,6 +98,12 @@ backend/service/application/models/
 - best 与 latest checkpoint 分开登记。
 - 训练、转换和部署都核对模型类型、任务、scale、输入尺寸、class/keypoint schema 和 artifact format。
 
+## 当前仍需收敛的边界
+
+上述分层是长期约束，并非所有历史实现已经完全满足。2026-10-13 核对时，YOLOv8 的 `training/detection_execution.py` 仍引用平台训练状态、评估和本地数据存储；YOLO11/26 的 detection 训练服务仍承载较多执行细节。`yolo_core_common/losses/pose_loss.py` 和公共 parser 默认 head 映射也仍包含 YOLO26 分支。
+
+本轮已删除重复的旧 detection builder/loader，并把跨 family 的构建分发移到 `registry/yolo_builders.py`。剩余训练循环应逐步拆为模型数值执行、可注入输入输出与控制回调、平台任务适配三层；公共算子通过注入本代 head/loss 能力消除反向依赖。拆分必须保持 checkpoint、loss、梯度、暂停恢复和转换的回归证据，不能仅按文件行数机械搬移。
+
 ## 转换
 
 ```text

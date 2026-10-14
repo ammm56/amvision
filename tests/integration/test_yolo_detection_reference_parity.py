@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
 import sys
 from types import SimpleNamespace
@@ -16,7 +17,26 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[2]
-REFERENCE_ROOT = ROOT / "projectsrc" / "ultralytics"
+REFERENCE_ROOT = Path(os.environ.get("AMVISION_ULTRALYTICS_REFERENCE_ROOT", ROOT / "projectsrc" / "ultralytics"))
+
+
+def _load_reference_checkpoint(checkpoint: Path, torch_module: Any) -> Any:
+    """直接加载官方 core，避免高层 YOLO 门面引入无关 trainer 的可选依赖。"""
+
+    sys.path.insert(0, str(REFERENCE_ROOT))
+    try:
+        from ultralytics.utils import DEFAULT_CFG_DICT
+
+        payload = torch_module.load(checkpoint, map_location="cpu", weights_only=False)
+        if not isinstance(payload.get("ema") or payload.get("model"), torch_module.nn.Module):
+            pytest.skip(f"参考权重不是官方 module checkpoint，需单独校验本地资产: {checkpoint}")
+        # 参考高层 loader 会导入所有 trainer 并尝试自动安装依赖；这里只检查
+        # 已存在的可信开发权重与 core 数值，不调用联网恢复或包安装路径。
+        reference_model = (payload.get("ema") or payload["model"]).float().eval()
+        reference_model.args = {**DEFAULT_CFG_DICT, **payload.get("train_args", {})}
+        return reference_model
+    finally:
+        sys.path.remove(str(REFERENCE_ROOT))
 
 
 @dataclass(frozen=True)
@@ -112,20 +132,10 @@ def test_detection_core_forward_and_loss_match_reference(family_index: int) -> N
     if not family.checkpoint.is_file():
         pytest.skip(f"缺少开发预训练权重: {family.checkpoint}")
 
-    sys.path.insert(0, str(REFERENCE_ROOT))
-    try:
-        from ultralytics import YOLO
-
-        reference_model = YOLO(str(family.checkpoint)).model.float()
-    finally:
-        sys.path.remove(str(REFERENCE_ROOT))
-    reference_model.args = SimpleNamespace(
-        **dict(reference_model.args),
-        box=7.5,
-        cls=0.5,
-        dfl=1.5,
-        epochs=200,
-    )
+    reference_model = _load_reference_checkpoint(family.checkpoint, torch)
+    reference_model.args = SimpleNamespace(**{
+        **dict(reference_model.args), "box": 7.5, "cls": 0.5, "dfl": 1.5, "epochs": 200,
+    })
     reference_model.criterion = reference_model.init_criterion()
     reference_model.train()
 

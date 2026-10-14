@@ -1,3 +1,8 @@
+"""RF-DETR 分割头、掩码特征和 depthwise convolution。"""
+
+from collections.abc import Iterator
+from contextlib import contextmanager
+import threading
 from typing import Any, Callable
 
 import torch
@@ -5,6 +10,21 @@ import torch.nn as nn
 import torch.nn.functional as F  # noqa: N812
 
 from backend.service.application.models.rfdetr_core.utilities.tensors import _bilinear_grid_sample
+
+
+_CUDNN_FLAGS_LOCK = threading.RLock()
+"""协调分割头前向和反向的进程级 cuDNN flags，避免交错恢复。"""
+
+
+@contextmanager
+def _depthwise_cudnn_context(x: torch.Tensor) -> Iterator[None]:
+    """仅为 CUDA 输入串行切换 cuDNN；CPU 执行不修改全局状态。"""
+
+    if not x.is_cuda:
+        yield
+        return
+    with _CUDNN_FLAGS_LOCK, torch.backends.cudnn.flags(enabled=False):
+        yield
 
 
 class _DepthwiseConvWithoutCuDNN(torch.autograd.Function):
@@ -42,7 +62,7 @@ class _DepthwiseConvWithoutCuDNN(torch.autograd.Function):
         ctx.padding = padding
         ctx.dilation = dilation
         ctx.groups = groups
-        with torch.backends.cudnn.flags(enabled=False):
+        with _depthwise_cudnn_context(x):
             return F.conv2d(x, weight, bias, stride=stride, padding=padding, dilation=dilation, groups=groups)
 
     @staticmethod
@@ -72,7 +92,7 @@ class _DepthwiseConvWithoutCuDNN(torch.autograd.Function):
 
         if needs_x_grad or needs_w_grad:
             grad_output_cast = grad_output.to(dtype=weight.dtype)
-            with torch.backends.cudnn.flags(enabled=False):
+            with _depthwise_cudnn_context(x):
                 if needs_x_grad:
                     grad_input = torch.nn.grad.conv2d_input(
                         x.shape,

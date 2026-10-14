@@ -36,6 +36,10 @@ checkpoint、数据 split、评估产物和恢复训练规则。模型实现可�
 任务执行 adapter 必须把 warm-start 和 resume 参数完整传递到模型执行层，
 不能只在 API 中接受却在执行时丢失。
 
+YOLO warm start 允许类别 head 改变造成的局部 shape 差异，但必须通过公共权重覆盖率门禁（当前最低可加载比例为 `0.85`）。YOLOv8 detection 与 YOLO11/26 使用相同门禁，不能通过空的匹配键集合继续随机初始化训练。warm start 不恢复来源模型的类别属性；当前任务类别来自 DatasetExport。
+
+YOLOX 在训练尚未结束时登记 latest checkpoint，类别名从该任务固定的 DatasetExport manifest 读取。此时 TaskResult 可能还没有最终训练摘要，不能把空摘要当作无类别模型，也不能借用预训练模型的类别表。
+
 训练期间维护两个文件：
 
 - `latest-checkpoint`：最近一次可恢复训练状态。
