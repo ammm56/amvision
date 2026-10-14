@@ -1,5 +1,5 @@
 <template>
-  <section class="workflow-graph-workbench" :class="[`workflow-graph-workbench--${graphTheme}`, { 'workflow-graph-workbench--history-open': history.open.value }]">
+  <section class="workflow-graph-workbench" :class="[`workflow-graph-workbench--${graphTheme}`, { 'workflow-graph-workbench--history-open': history.open.value, 'workflow-graph-workbench--side-panel-open': history.open.value || !inspectorCollapsed }]">
     <div
       ref="canvasRef"
       class="workflow-graph-stage"
@@ -2471,10 +2471,17 @@ useWorkflowEditorLifecycle({
 </script>
 
 <style scoped>
-/* 历史栏有自己的占位；导航小地图移到旁边，不覆盖版本列表。 */
+/* 导航小地图避开属性和历史栏，防止遮挡保存表单与版本列表。 */
 .workflow-editor-side-panel { top: var(--workflow-toolbar-bottom, 104px); right: 14px; bottom: 64px; width: 360px; max-width: calc(100% - 20px); padding: 0; gap: 0; overflow: hidden; transition: width 180ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 160ms ease, transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1); }
 .workflow-editor-side-panel--versions { width: 320px; }
 .workflow-editor-side-panel :deep(aside.workflow-graph-floating-panel) { position: relative; inset: auto; width: 100%; max-width: none; height: 100%; min-height: 0; box-sizing: border-box; border: 0; box-shadow: none; animation: workflow-panel-content 140ms ease; }
+@media (min-width: 1000px) {
+  .workflow-graph-workbench--side-panel-open :deep(.workflow-graph-navigation-dock) { right: 388px; }
+  .workflow-graph-workbench--history-open :deep(.workflow-graph-navigation-dock) { right: 348px; }
+}
+@media (max-width: 999px) {
+  .workflow-graph-workbench--side-panel-open :deep(.workflow-graph-minimap) { display: none; }
+}
 @keyframes workflow-panel-content { from { opacity: 0.6; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .workflow-editor-side-panel { transition: none; } .workflow-editor-side-panel :deep(aside.workflow-graph-floating-panel) { animation: none; } }
 </style>

@@ -1,5 +1,5 @@
-import { flushPromises, mount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { i18n } from '@/platform/i18n'
 import TrainingTaskDetailPage from './TrainingTaskDetailPage.vue'
@@ -8,6 +8,9 @@ import {
   getModelTrainingTaskDetail,
   listModelTrainingOutputFiles,
 } from '../services/model.service'
+
+enableAutoUnmount(afterEach)
+afterEach(() => vi.useRealTimers())
 
 const taskEventStreamMock = vi.hoisted(() => ({
   handler: null as ((event: Record<string, unknown>) => void) | null,
@@ -311,6 +314,7 @@ describe('TrainingTaskDetailPage', () => {
   })
 
   it('applies batch telemetry and refreshes output files at the next epoch boundary', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     vi.mocked(getModelTrainingTaskDetail).mockResolvedValue({
       task_id: 'task-classification-1',
       task_type: 'classification',
@@ -401,7 +405,7 @@ describe('TrainingTaskDetailPage', () => {
     expect(wrapper.text()).toContain('73%')
     expect(wrapper.text()).toContain('2.000 GiB')
     expect(getModelTrainingTaskDetail).toHaveBeenCalledTimes(1)
-    await new Promise((resolve) => window.setTimeout(resolve, 350))
+    await vi.advanceTimersByTimeAsync(350)
     await flushPromises()
     expect(listModelTrainingOutputFiles).toHaveBeenCalledTimes(2)
     expect(wrapper.text()).toContain('ready')

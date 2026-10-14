@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import mimetypes
+import json
 import asyncio
 import os
 import signal
@@ -13,7 +14,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from starlette.responses import FileResponse
+from starlette.requests import Request
+from starlette.responses import FileResponse, JSONResponse
 
 from backend.service.api.bootstrap import BackendServiceBootstrap
 from backend.service.api.error_handlers import register_exception_handlers
@@ -64,7 +66,7 @@ class FrontendStaticFiles(StaticFiles):
     async def get_response(self, path: str, scope):  # type: ignore[override]
         """优先返回静态文件；未命中时对无扩展名路径回退到 index.html。"""
 
-        runtime_config_response = self._resolve_runtime_config_response(path)
+        runtime_config_response = self._resolve_runtime_config_response(path, scope)
         if runtime_config_response is not None:
             return runtime_config_response
 
@@ -82,13 +84,13 @@ class FrontendStaticFiles(StaticFiles):
                 raise
             return await super().get_response("index.html", scope)
 
-    def _resolve_runtime_config_response(self, path: str) -> FileResponse | None:
+    def _resolve_runtime_config_response(self, path: str, scope) -> FileResponse | JSONResponse | None:
         """为开发态静态托管补齐 runtime-config.json。
 
         前端构建产物可能只包含 `runtime-config.template.json`。直接由 backend-service
         托管 `frontend/web-ui/dist` 时，如果 `/runtime-config.json` 返回 404，旧构建包
         会继续使用编译期默认地址，容易在后端端口调整后出现离线页。这里仅对
-        `runtime-config.json` 做受控 fallback，不影响其它静态文件和生产运行链路。
+        `runtime-config.json` 做受控 fallback；模板使用当前请求来源，显式配置保持原值。
         """
 
         if path.replace("\\", "/") != "runtime-config.json":
@@ -102,6 +104,14 @@ class FrontendStaticFiles(StaticFiles):
             ):
                 config_path = static_path / config_file_name
                 if config_path.is_file():
+                    if config_file_name == "runtime-config.template.json":
+                        payload = json.loads(config_path.read_text(encoding="utf-8"))
+                        base_url = Request(scope).base_url
+                        payload["apiBaseUrl"] = str(base_url).rstrip("/") + "/api/v1"
+                        payload["wsBaseUrl"] = str(base_url.replace(
+                            scheme="wss" if base_url.scheme == "https" else "ws"
+                        )).rstrip("/") + "/ws/v1"
+                        return JSONResponse(payload, headers={"Cache-Control": "no-store"})
                     return FileResponse(config_path, media_type="application/json")
         return None
 

@@ -110,6 +110,8 @@ full 启动器的 `--worker-ready-timeout-seconds` 默认值为 120 秒，仅用
 
 发行前端的 API/WebSocket 地址由 `frontend/runtime-config.json` 独立配置，默认同样指向 `127.0.0.1:5600`。修改 Backend `--port` 不会隐式改写静态前端文件；使用其他端口时必须在组装前提供匹配的 runtime config。该边界避免启动过程修改发行内容，也避免浏览器误连到另一套实例。
 
+源码开发态直接由 Backend 托管 `frontend/web-ui/dist`，且目录中只有 `runtime-config.template.json` 时，`/runtime-config.json` 响应按当前页面来源生成 API 与 WebSocket 地址，支持非默认端口及 HTTPS；模板文件不会被改写。已经存在的 `runtime-config.json` 或 `runtime-config.local.json` 仍优先使用其显式地址。此回退不改变 assemble-release 已生成的发行配置。
+
 启动器按顺序：
 
 1. Alembic `upgrade head`，SQLite schema 变化前创建一致性备份；
