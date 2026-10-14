@@ -58,6 +58,8 @@ Console 示例不是 SDK 边界的一部分，不能把核心封装写到 consol
 
 SDK 默认会自动查找 `Config/config*.json`，并把所有 runtime、TriggerSource、ModelDeployment 配置按 `name` 建立索引。生成的 `name` 优先保留前端用户维护的应用、触发源和部署实例展示名称。
 
+`Config` 是现场导出的可选本地资产，源码编译不要求预置该目录。工程仅复制实际存在的 `Config/*.json`，不固定开发机生成的配置文件名。Console 示例中的名称与 ID 在运行前按现场导出配置调整；缺少配置不能用于真实模型调用。
+
 ## Workflow 输入调用边界
 
 HTTP Runtime 与高性能 Trigger 是两套独立调用面：

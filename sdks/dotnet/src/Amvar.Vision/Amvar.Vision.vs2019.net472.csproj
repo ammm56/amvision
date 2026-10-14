@@ -251,35 +251,9 @@
     <Compile Include="ZeroMq\ZeroMqTriggerEnvelope.cs" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="Config\config_model_deployment_20260922065340.json">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Include="Config\config_workflow-app-20260910030059.json">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Include="Config\config_workflow-app-20260910030110.json">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Include="Config\config_workflow-app-20260910030132.json">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Include="Config\config_workflow-app-20260921002208.json">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Include="Config\config_workflow-app-20260921035856.json">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Include="Config\config_workflow-app-20260921050151.json">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Include="Config\config_workflow-app-20260921055356.json">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Include="Config\config_workflow-app-20260921095635.json">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Include="Config\sdk-bootstrap.json">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    <!-- Config 是现场导出的本地资产；干净源码构建不要求预置客户配置。 -->
+    <None Include="Config\*.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

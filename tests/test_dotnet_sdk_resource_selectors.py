@@ -171,8 +171,8 @@ def test_runner_model_runtime_commands_return_typed_responses() -> None:
         )
 
 
-def test_console_uses_non_throwing_call_boundary_and_real_config_key() -> None:
-    """Console 的每次调用都应返回结果对象，示例 deployment key 必须来自 Config。"""
+def test_console_uses_non_throwing_call_boundary() -> None:
+    """Console 的每次调用都应返回结果对象。"""
 
     name_calls = CONSOLE_NAME_CALLS.read_text(encoding="utf-8")
     id_calls = CONSOLE_ID_CALLS.read_text(encoding="utf-8")
@@ -181,10 +181,17 @@ def test_console_uses_non_throwing_call_boundary_and_real_config_key() -> None:
     assert "runner.CallAsync(api =>" in id_calls
     assert "runner.Call(api =>" in id_calls
 
+
+def test_console_example_matches_optional_local_config() -> None:
+    """本地导出配置存在时核对示例名称；SDK 编译不依赖现场资产。"""
+    config_paths = list((SDK_ROOT / "Config").glob("config*.json"))
+    if not config_paths:
+        pytest.skip("缺少现场导出的可选 SDK Config")
+    name_calls = CONSOLE_NAME_CALLS.read_text(encoding="utf-8")
     match = re.search(r'ModelDeploymentName = "([^"]+)"', name_calls)
     assert match is not None
     configured_names: set[str] = set()
-    for config_path in (SDK_ROOT / "Config").glob("config*.json"):
+    for config_path in config_paths:
         payload = json.loads(config_path.read_text(encoding="utf-8"))
         configured_names.update(
             item["name"] for item in payload.get("model_deployments", [])
