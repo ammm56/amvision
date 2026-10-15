@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 from pathlib import Path
 import socket
@@ -19,6 +20,15 @@ from urllib.request import urlopen
 import psutil
 import pytest
 
+from backend.runtime.processes.ownership import OwnershipScope
+from backend.runtime.processes.birth_identity import read_process_birth_identity
+from backend.runtime.processes.owner_control import wait_owner_exit
+from tests.integration.runtime_resource_gate import BoundedHistory, ResourceGate
+from tests.integration.release_environment import build_release_test_environment
+from tests.integration.acceptance_contract import acceptance_result, cleanup_all, read_measurement
+from tests.integration.acceptance_evidence import write_evidence
+from tests.integration.acceptance_resource_observations import ResourceObservations
+
 
 @dataclass
 class _SoakWorkloadProcess:
@@ -28,6 +38,12 @@ class _SoakWorkloadProcess:
     log_file: Path
     stdout_handle: object
     command: list[str]
+
+
+def _empty_ownership_scope(parent: Path) -> str:
+    """模拟已清空的上一代运行，不能再使用无归属的 PID-only 旧状态。"""
+    from backend.runtime.processes.ownership import OwnershipScope
+    return str(OwnershipScope.create(parent / "stale-ownership").root)
 
 
 def test_release_full_stack_start_health_openapi_and_stop() -> None:
@@ -47,15 +63,21 @@ def test_release_full_stack_start_health_openapi_and_stop() -> None:
         f"integration-full-stack-{int(time.time())}",
     )
     soak_seconds = float(os.environ.get("AMVISION_RELEASE_FULL_SOAK_SECONDS", "10"))
+    if not math.isfinite(soak_seconds) or soak_seconds <= 0:
+        pytest.fail("AMVISION_RELEASE_FULL_SOAK_SECONDS 必须是有限正数")
     sample_interval_seconds = _resolve_resource_sample_interval(soak_seconds)
     state_file = release_root / "logs" / logs_subdir / "runtime-state.json"
     resource_baseline_file = state_file.parent / "resource-baseline.json"
     supervisor_log_file = state_file.parent / "full-supervisor.log"
-    component_resource_refs: list[tuple[int, float]] = []
+    component_resource_refs: list[tuple[int, str]] = []
     base_url = f"http://127.0.0.1:{port}"
     workload_process: _SoakWorkloadProcess | None = None
+    resource_gate: ResourceGate | None = None
+    resource_observations = ResourceObservations(release_root, int(os.environ["AMVISION_ACCEPTANCE_GPU_INDEX"])
+                                               if "AMVISION_ACCEPTANCE_GPU_INDEX" in os.environ else None,
+                                               limits=json.loads(os.environ.get("AMVISION_ACCEPTANCE_OBSERVATION_LIMITS", "{}")))
 
-    state_file.parent.mkdir(parents=True, exist_ok=True)
+    state_file.parent.mkdir(parents=True, exist_ok=False)
     _assert_release_layout_valid(
         release_root=release_root,
         python_executable=python_executable,
@@ -63,7 +85,8 @@ def test_release_full_stack_start_health_openapi_and_stop() -> None:
     state_file.write_text(
         json.dumps(
             {
-                "format_id": "amvision.full-supervisor-state.v1",
+                "format_id": "amvision.full-supervisor-state.v3",
+                "ownership_scope": _empty_ownership_scope(state_file.parent),
                 "root_process": {
                     "pid": -1,
                     "create_time": 0.0,
@@ -100,6 +123,7 @@ def test_release_full_stack_start_health_openapi_and_stop() -> None:
                 "0.5",
             ],
             cwd=release_root,
+            env=build_release_test_environment(release_root),
             stdout=supervisor_log_handle,
             stderr=subprocess.STDOUT,
         )
@@ -111,6 +135,10 @@ def test_release_full_stack_start_health_openapi_and_stop() -> None:
         _wait_for_http_json(f"{base_url}/api/v1/system/health", timeout_seconds=90)
         docs_html = _wait_for_http_text(f"{base_url}/docs", timeout_seconds=30)
         assert "swagger" in docs_html.lower() or "openapi" in docs_html.lower()
+        if not (release_root / "frontend" / "runtime-config.json").exists():
+            frontend_config = _wait_for_http_json(f"{base_url}/runtime-config.json", timeout_seconds=10)
+            assert frontend_config["apiBaseUrl"] == base_url + "/api/v1"
+            assert frontend_config["wsBaseUrl"] == base_url.replace("http://", "ws://") + "/ws/v1"
 
         openapi_payload = _wait_for_http_json(
             f"{base_url}/openapi.json", timeout_seconds=30
@@ -155,26 +183,58 @@ def test_release_full_stack_start_health_openapi_and_stop() -> None:
                 target_component_name="backend-worker:dataset-export",
             )
         initial_resources = _collect_process_resources(components)
+        resource_gate = _build_release_resource_gate(start_process.pid)
         workload_process = _start_optional_soak_workload(
             release_root=release_root,
             logs_dir=state_file.parent,
             base_url=base_url,
             port=port,
         )
+        if workload_process is not None:
+            resource_gate.warmup_seconds = 0
+            resource_gate.sample_interval_seconds = sample_interval_seconds
         component_resource_refs = [
-            (int(process_ref["pid"]), float(process_ref["create_time"]))
+            (int(process_ref["pid"]), str(process_ref["birth_identity"]))
             for item in initial_resources
             for process_ref in item["process_refs"]
         ]
-        resource_samples: list[dict[str, object]] = [
-            {
+        resource_samples = BoundedHistory()
+        resource_journal = state_file.parent / "resource-samples.jsonl"
+
+        def record_resources(sample: dict[str, object]) -> None:
+            """将完整样本落盘，内存只保存最近窗口。"""
+            measuring = workload_process is None
+            if workload_process is None:
+                sample["process_tree"] = resource_gate.sample(float(sample["elapsed_seconds"]))
+            else:
+                measurement = read_measurement(state_file.parent / "workload-phases.json")
+                sample["workload_phase"] = measurement
+                if measurement["phase"] == "measure":
+                    measuring = True
+                    sample["process_tree"] = resource_gate.sample(time.monotonic() - measurement["started"])
+                if measurement["started"] is not None and measurement["ended"] is not None:
+                    resource_gate.complete_measurement(duration=measurement["ended"] - measurement["started"],
+                                                       minimum_seconds=measurement["minimum_seconds"])
+            sample["resource_observations"] = resource_observations.sample(measure=measuring)
+            # 动态子进程仅作为退出观测；停止仍必须由正式归属入口完成。
+            for process in psutil.Process(start_process.pid).children(recursive=True):
+                try:
+                    reference = (process.pid, read_process_birth_identity(process.pid))
+                    if reference not in component_resource_refs:
+                        component_resource_refs.append(reference)
+                except psutil.NoSuchProcess:
+                    pass
+            resource_samples.append(sample)
+            with resource_journal.open("a", encoding="utf-8") as stream:
+                stream.write(json.dumps(sample, ensure_ascii=True) + "\n")
+
+        record_resources({
                 "elapsed_seconds": 0.0,
                 "resources": initial_resources,
                 "system_health": _wait_for_http_json(
                     f"{base_url}/api/v1/system/health", timeout_seconds=10
                 ),
-            }
-        ]
+            })
 
         started_at = time.monotonic()
         deadline = time.monotonic() + max(0.0, soak_seconds)
@@ -187,7 +247,7 @@ def test_release_full_stack_start_health_openapi_and_stop() -> None:
             _assert_optional_workload_ok(workload_process)
             now = time.monotonic()
             if now >= next_sample_at:
-                resource_samples.append(
+                record_resources(
                     {
                         "elapsed_seconds": round(now - started_at, 3),
                         "resources": _collect_process_resources(components),
@@ -195,10 +255,12 @@ def test_release_full_stack_start_health_openapi_and_stop() -> None:
                     }
                 )
                 next_sample_at = now + sample_interval_seconds
-            time.sleep(min(2.0, max(0.1, deadline - now)))
+            time.sleep(min(2.0, max(.05, next_sample_at - time.monotonic()), max(.05, deadline - now)))
+            if workload_process is not None and workload_process.process.poll() == 0:
+                break
 
         final_resources = _collect_process_resources(components)
-        resource_samples.append(
+        record_resources(
             {
                 "elapsed_seconds": round(time.monotonic() - started_at, 3),
                 "resources": final_resources,
@@ -214,12 +276,16 @@ def test_release_full_stack_start_health_openapi_and_stop() -> None:
                     "sample_interval_seconds": sample_interval_seconds,
                     "initial": initial_resources,
                     "final": final_resources,
-                    "samples": resource_samples,
+                    "samples": list(resource_samples),
+                    "sample_count": resource_samples.total_count,
+                    "sample_journal": str(resource_journal),
+                    "resource_gate": resource_gate.summary(),
                     "summary": _summarize_resource_drift(
                         initial_resources=initial_resources,
                         final_resources=final_resources,
                     ),
                     "workload": _snapshot_optional_workload(workload_process),
+                    "service_environment": "bundled-python-system-path-no-development-overrides",
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -228,38 +294,63 @@ def test_release_full_stack_start_health_openapi_and_stop() -> None:
             encoding="utf-8",
         )
         assert resource_baseline_file.is_file()
+        assert not resource_gate.summary()["failures"], resource_gate.summary()
+        _require_optional_workload_completed(workload_process)
     finally:
-        _stop_optional_workload(workload_process)
-        stop_result = subprocess.run(
-            [
-                str(python_executable),
-                str(stop_script),
-                "--app-root",
-                str(release_root),
-                "--logs-subdir",
-                logs_subdir,
-            ],
-            cwd=release_root,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            timeout=60,
-            check=False,
-        )
-        if start_process.poll() is None:
-            start_process.terminate()
+        def save_gate() -> None:
+            """写入阶段资源门禁；保存错误不影响后续回收。"""
+            if resource_gate is not None:
+                # 性能门禁失败可让 workload 在下一次采样前退出；仍需消费其真实结束标记。
+                if workload_process is not None:
+                    resource_gate.complete_from_phases(state_file.parent / "workload-phases.json")
+                write_evidence(state_file.parent / "resource-gate.json", resource_gate.summary())
+            write_evidence(state_file.parent / "resource-observations.json", resource_observations.summary())
+
+        errors = cleanup_all([
+            ("resource-evidence", save_gate),
+            ("workload", lambda: _stop_optional_workload(workload_process)),
+            ("release-stop", lambda: _stop_release_command(release_root, python_executable, stop_script, logs_subdir)),
+            ("supervisor-exit", lambda: start_process.wait(timeout=15)),
+            ("supervisor-log", supervisor_log_handle.close),
+            ("resource-observations", resource_observations.close),
+            ("component-exit", lambda: _assert_process_refs_stopped(component_resource_refs)),
+            ("component-logs", lambda: _assert_component_logs_clean(state_file.parent)),
+        ])
+        if state_file.exists():
+            errors.append("stop 后状态文件仍存在")
+        workload_report_path = state_file.parent / "workload-result.json"
+        workload_report = json.loads(workload_report_path.read_text(encoding="utf-8")) if workload_report_path.exists() else {}
+        gates = dict(workload_report.get("gates", {}))
+        gates["resource"] = resource_gate.summary()["status"] if resource_gate else "incomplete"
+        gates["resource_observations"] = resource_observations.summary()["status"]
+        gates["cleanup"] = "failed" if errors or gates.get("cleanup") == "failed" else "passed"
+        gates["workload_exit"] = "passed" if workload_process is None or workload_process.process.returncode == 0 else "failed"
+        required = tuple(dict.fromkeys([*workload_report.get("required_gates", ("functional",)), "resource", "resource_observations", "cleanup", "workload_exit"]))
+        if candidate_manifest := os.environ.get("AMVISION_ACCEPTANCE_CANDIDATE_MANIFEST"):
+            from tests.integration.acceptance_candidate import verify_candidate
             try:
-                start_process.wait(timeout=15)
-            except subprocess.TimeoutExpired:
-                start_process.kill()
-                start_process.wait(timeout=15)
-        supervisor_log_handle.close()
-        assert stop_result.returncode == 0, stop_result.stdout
-        assert not state_file.exists()
-        _assert_process_refs_stopped(component_resource_refs)
-        _assert_component_logs_clean(state_file.parent)
+                candidate_check = verify_candidate(Path(candidate_manifest))
+            except Exception as error:
+                candidate_check = {"status": "failed", "error": str(error)}
+            write_evidence(state_file.parent / "candidate-check.json", candidate_check)
+            gates["candidate"] = candidate_check["status"]
+            required = (*required, "candidate")
+        report = acceptance_result(gates, required)
+        report["cleanup_errors"] = errors
+        write_evidence(state_file.parent / "acceptance.json", report)
+        assert not errors, errors
+        if workload_process is not None:
+            assert report["passed"], report
+
+
+def _stop_release_command(release_root: Path, python_executable: Path, stop_script: Path, logs_subdir: str) -> None:
+    """使用本轮发行 stop 脚本停止组件；超时交给调用方继续其他清理。"""
+    result = subprocess.run(
+        [str(python_executable), str(stop_script), "--app-root", str(release_root), "--logs-subdir", logs_subdir],
+        cwd=release_root, env=build_release_test_environment(release_root), text=True, encoding="utf-8",
+        errors="replace", stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60, check=False,
+    )
+    assert result.returncode == 0, result.stdout
 
 
 def _resolve_release_root() -> Path:
@@ -327,6 +418,7 @@ def _assert_release_layout_valid(
             "json",
         ],
         cwd=release_root,
+        env=build_release_test_environment(release_root),
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -453,6 +545,8 @@ def _verify_single_worker_profile_recovery(
     component_map = _index_components(components)
     target = component_map[target_component_name]
     target_identity = _require_component_process_identity(target)
+    scope = OwnershipScope(Path(_wait_for_state_payload(state_file, timeout_seconds=5)["ownership_scope"]))
+    previous_group_id = target["group_id"]
     previous_heartbeat = _load_worker_heartbeat(release_root, target)
     assert previous_heartbeat is not None
     previous_worker_instance_id = previous_heartbeat.get("worker_instance_id")
@@ -462,9 +556,9 @@ def _verify_single_worker_profile_recovery(
         for name, component in component_map.items()
         if name != target_component_name
     }
-    _terminate_exact_process_tree(
+    _terminate_exact_component_root(
         pid=int(target_identity["pid"]),
-        create_time=float(target_identity["create_time"]),
+        birth_identity=str(target_identity["birth_identity"]),
     )
 
     deadline = time.monotonic() + 90.0
@@ -491,10 +585,11 @@ def _verify_single_worker_profile_recovery(
             and _worker_heartbeat_matches_component(
                 release_root=release_root,
                 component=current_target,
-                launcher_identity=current_identity,
+                ownership_scope=scope,
                 previous_worker_instance_id=previous_worker_instance_id,
             )
         ):
+            scope.require_empty(previous_group_id)
             for name, expected_identity in stable_identities.items():
                 actual_identity = _require_component_process_identity(current_map[name])
                 assert not _process_identity_changed(
@@ -532,6 +627,7 @@ def _require_component_process_identity(
     create_time = process_identity.get("create_time")
     assert isinstance(pid, int) and pid > 0
     assert isinstance(create_time, (int, float)) and float(create_time) > 0
+    assert isinstance(process_identity.get("birth_identity"), str) and process_identity["birth_identity"]
     return process_identity
 
 
@@ -539,14 +635,14 @@ def _process_identity_changed(
     previous: dict[str, object],
     current: dict[str, object],
 ) -> bool:
-    """判断 pid/create_time 标识的进程身份是否变化。"""
+    """判断 PID 与内核出生标识是否变化。"""
 
     return (
         int(previous["pid"]),
-        float(previous["create_time"]),
+        previous["birth_identity"],
     ) != (
         int(current["pid"]),
-        float(current["create_time"]),
+        current["birth_identity"],
     )
 
 
@@ -554,10 +650,10 @@ def _worker_heartbeat_matches_component(
     *,
     release_root: Path,
     component: dict[str, object],
-    launcher_identity: dict[str, object],
+    ownership_scope: OwnershipScope,
     previous_worker_instance_id: str,
 ) -> bool:
-    """确认恢复后的 Profile 心跳属于新 launcher 的 Worker 子进程。"""
+    """确认新 Profile 心跳属于登记的受管组，不依赖父 PID 链。"""
 
     heartbeat = _load_worker_heartbeat(release_root, component)
     if heartbeat is None:
@@ -570,14 +666,7 @@ def _worker_heartbeat_matches_component(
         or worker_instance_id == previous_worker_instance_id
     ):
         return False
-    try:
-        launcher_process = psutil.Process(int(launcher_identity["pid"]))
-        descendant_pids = {
-            process.pid for process in launcher_process.children(recursive=True)
-        }
-    except psutil.Error:
-        return False
-    return process_id in descendant_pids
+    return process_id in ownership_scope.members(component["group_id"])
 
 
 def _load_worker_heartbeat(
@@ -614,24 +703,14 @@ def _load_worker_heartbeat(
     return heartbeat
 
 
-def _terminate_exact_process_tree(*, pid: int, create_time: float) -> None:
-    """只终止本次验收记录的精确进程树。"""
+def _terminate_exact_component_root(*, pid: int, birth_identity: str) -> None:
+    """只注入根崩溃，后代清理必须由被验收的监督器完成。"""
 
-    assert _process_ref_is_alive(pid, create_time), "待注入故障的进程身份已失效"
+    assert _process_ref_is_alive(pid, birth_identity), "待注入故障的进程身份已失效"
     process = psutil.Process(pid)
-    descendants = process.children(recursive=True)
-    for child in reversed(descendants):
-        with child.oneshot():
-            child.terminate()
-    _, alive_children = psutil.wait_procs(descendants, timeout=10)
-    for child in alive_children:
-        child.kill()
-    process.terminate()
-    try:
-        process.wait(timeout=10)
-    except psutil.TimeoutExpired:
-        process.kill()
-        process.wait(timeout=10)
+    assert read_process_birth_identity(pid) == birth_identity, "故障注入之前 PID 已被复用"
+    process.kill()
+    wait_owner_exit({"pid": pid, "birth_identity": birth_identity}, timeout=10)
 
 
 def _start_optional_soak_workload(
@@ -668,6 +747,8 @@ def _start_optional_soak_workload(
     env = os.environ.copy()
     env["AMVISION_RELEASE_FULL_BASE_URL"] = base_url
     env["AMVISION_RELEASE_FULL_PORT"] = str(port)
+    env["AMVISION_ACCEPTANCE_PHASE_FILE"] = str(logs_dir / "workload-phases.json")
+    env["AMVISION_ACCEPTANCE_RESULT_FILE"] = str(logs_dir / "workload-result.json")
     process = subprocess.Popen(
         command,
         cwd=cwd,
@@ -697,6 +778,17 @@ def _assert_optional_workload_ok(workload_process: _SoakWorkloadProcess | None) 
     raise AssertionError(
         "release/full soak workload 进程异常退出: "
         f"returncode={return_code}, log_tail={_read_log_tail(workload_process.log_file)}"
+    )
+
+
+def _require_optional_workload_completed(workload_process: _SoakWorkloadProcess | None) -> None:
+    """验收窗口结束时负载必须正常完成，终止尚未完成的负载不能判为通过。"""
+    if workload_process is None:
+        return
+    return_code = workload_process.process.poll()
+    assert return_code == 0, (
+        f"负载尚未正常完成（returncode={return_code}），应为准备和清理预留完整验收窗口；"
+        f"日志：{workload_process.log_file}"
     )
 
 
@@ -766,6 +858,7 @@ def _collect_process_resources(components: list[object]) -> list[dict[str, objec
                             {
                                 "pid": process.pid,
                                 "create_time": process.create_time(),
+                                "birth_identity": read_process_birth_identity(process.pid),
                                 "status": process.status(),
                                 "rss_bytes": memory_info.rss,
                                 "private_bytes": int(
@@ -798,6 +891,7 @@ def _collect_process_resources(components: list[object]) -> list[dict[str, objec
                     {
                         "pid": process_row["pid"],
                         "create_time": process_row["create_time"],
+                        "birth_identity": process_row["birth_identity"],
                     }
                     for process_row in process_rows
                 ],
@@ -829,36 +923,35 @@ def _collect_process_resources(components: list[object]) -> list[dict[str, objec
     return rows
 
 
-def _assert_process_refs_stopped(process_refs: list[tuple[int, float]]) -> None:
+def _assert_process_refs_stopped(process_refs: list[tuple[int, str]]) -> None:
     """确认 stop 脚本已经回收启动时记录的组件进程。"""
 
     deadline = time.monotonic() + 60.0
     while time.monotonic() < deadline:
         if all(
-            not _process_ref_is_alive(pid, create_time)
-            for pid, create_time in process_refs
+            not _process_ref_is_alive(pid, birth_identity)
+            for pid, birth_identity in process_refs
         ):
             return
         time.sleep(0.5)
     alive_pids = [
         pid
-        for pid, create_time in process_refs
-        if _process_ref_is_alive(pid, create_time)
+        for pid, birth_identity in process_refs
+        if _process_ref_is_alive(pid, birth_identity)
     ]
     raise AssertionError(f"stop 后仍有组件进程存活: {alive_pids}")
 
 
-def _process_ref_is_alive(pid: int, create_time: float) -> bool:
-    """按 pid 和 create_time 判断是否仍是同一个进程。"""
+def _process_ref_is_alive(pid: int, birth_identity: str) -> bool:
+    """核对内核身份与执行状态；权限错误不能当作退出。"""
 
     try:
         process = psutil.Process(pid)
         return (
-            abs(process.create_time() - create_time) < 1.0
-            and process.is_running()
+            read_process_birth_identity(pid) == birth_identity
             and process.status() != psutil.STATUS_ZOMBIE
         )
-    except psutil.Error:
+    except (psutil.NoSuchProcess, psutil.ZombieProcess):
         return False
 
 
@@ -885,7 +978,23 @@ def _resolve_resource_sample_interval(soak_seconds: float) -> float:
         interval = 10.0
     else:
         interval = max(1.0, soak_seconds)
+    if not math.isfinite(interval) or interval <= 0:
+        raise ValueError("资源采样间隔必须是有限正数")
     return max(1.0, interval)
+
+
+def _build_release_resource_gate(root_pid: int) -> ResourceGate:
+    """读取显式资源上限；未提供上限时只报告观测，不宣称长稳通过。"""
+    warmup = float(os.environ.get("AMVISION_RELEASE_FULL_RESOURCE_WARMUP_SECONDS", "300"))
+    limits = json.loads(os.environ.get("AMVISION_RELEASE_FULL_RESOURCE_LIMITS_JSON", "{}"))
+    allowed = {"rss_bytes", "private_bytes", "handles", "threads"}
+    if not math.isfinite(warmup) or warmup < 0:
+        raise ValueError("资源预热时间必须是有限非负数")
+    if (not isinstance(limits, dict) or not set(limits).issubset(allowed)
+            or any(isinstance(value, bool) or not isinstance(value, (int, float))
+                   or not math.isfinite(value) or value < 0 for value in limits.values())):
+        raise ValueError("资源增长上限必须是支持的指标及有限非负数")
+    return ResourceGate(root_pids=(root_pid,), warmup_seconds=warmup, limits=limits)
 
 
 def _summarize_resource_drift(

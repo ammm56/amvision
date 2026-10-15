@@ -106,6 +106,7 @@ class BenchmarkSettings:
     soak_iterations: int
     timeout_seconds: float
     enable_timings: bool
+    shared_poll_interval_ms: float | None = None
 
 
 @dataclass(frozen=True)
@@ -187,6 +188,11 @@ def load_settings(config_path: Path, output_override: Path | None) -> BenchmarkS
     soak_iterations = int(payload.get("soak_iterations", 10_000))
     if rounds <= 0 or warmup < 0 or iterations <= 0 or soak_iterations < 0:
         raise ValueError("rounds/iterations 必须大于 0，warmup 不能小于 0")
+    poll_interval = payload.get("shared_poll_interval_ms")
+    if poll_interval is not None and (isinstance(poll_interval, bool)
+            or not isinstance(poll_interval, (int, float))
+            or not math.isfinite(poll_interval) or poll_interval < 0.0001):
+        raise ValueError("shared_poll_interval_ms 必须是至少 0.0001 的有限毫秒数")
     if soak_iterations > 0 and (len(shared_sources) < 2 or len(image_cases) < 2):
         raise ValueError("10,000 次混合 soak 至少需要两个 Runtime/source pair 和两个图片 case")
     output_dir = (
@@ -215,6 +221,7 @@ def load_settings(config_path: Path, output_override: Path | None) -> BenchmarkS
         soak_iterations=soak_iterations,
         timeout_seconds=float(payload.get("timeout_seconds", 120.0)),
         enable_timings=bool(payload.get("enable_timings", False)),
+        shared_poll_interval_ms=poll_interval,
     )
 
 
@@ -231,29 +238,27 @@ def run_benchmark(settings: BenchmarkSettings, *, build_dotnet: bool = True) -> 
     cell_reports: list[dict[str, object]] = []
     failures: list[str] = []
     soak_report: dict[str, object] | None = None
+    execution_error: Exception | None = None
     try:
         for image_case in settings.image_cases:
             for concurrency in settings.concurrency:
                 for round_index in range(1, settings.rounds + 1):
-                    baseline = _run_transport_round(
-                        settings=settings,
-                        pairs=pairs[:concurrency],
-                        image_case=image_case,
-                        transport="zeromq-topic",
-                        round_index=round_index,
-                    )
-                    candidate = _run_transport_round(
-                        settings=settings,
-                        pairs=pairs[:concurrency],
-                        image_case=image_case,
-                        transport="local-shared-memory",
-                        round_index=round_index,
-                    )
+                    # 奇偶轮交替顺序，避免固定后测路径承担缓存或热状态偏差。
+                    order = ("zeromq-topic", "local-shared-memory")
+                    if round_index % 2 == 0:
+                        order = tuple(reversed(order))
+                    measured = {transport: _run_transport_round(
+                        settings=settings, pairs=pairs[:concurrency], image_case=image_case,
+                        transport=transport, round_index=round_index,
+                    ) for transport in order}
+                    baseline = measured["zeromq-topic"]
+                    candidate = measured["local-shared-memory"]
                     cell = {
                         "case": image_case.name,
                         "size_class": image_case.size_class,
                         "concurrency": concurrency,
                         "round": round_index,
+                        "execution_order": list(order),
                         "baseline": baseline,
                         "candidate": candidate,
                     }
@@ -264,8 +269,17 @@ def run_benchmark(settings: BenchmarkSettings, *, build_dotnet: bool = True) -> 
                     _write_partial_result(settings, cell_reports, failures, before_health)
         if settings.soak_iterations > 0:
             soak_report = _run_shared_memory_soak(settings=settings, pairs=pairs)
+    except Exception as error:
+        # 保存已经完成的轮次与原始错误，失败不能留下 running 状态的摘要。
+        execution_error = error
+        failures.append(f"execution: {error!r}")
     finally:
-        after_health = _capture_health(settings, pairs)
+        try:
+            after_health = _capture_health(settings, pairs)
+        except Exception as error:
+            execution_error = execution_error or error
+            failures.append(f"after_health: {error!r}")
+            after_health = {}
     health_failures = evaluate_health_recovery(before_health, after_health)
     failures.extend(health_failures)
     result = {
@@ -280,6 +294,9 @@ def run_benchmark(settings: BenchmarkSettings, *, build_dotnet: bool = True) -> 
         "failures": failures,
     }
     _write_json(settings.output_dir / "result.json", result)
+    _write_progress(settings, cell_reports, failures, status=str(result["status"]))
+    if execution_error is not None:
+        raise execution_error
     print(
         json.dumps(
             {
@@ -410,6 +427,7 @@ def _run_transport_round(
             "iterations": iterations,
             "timeout_seconds": settings.timeout_seconds,
             "enable_timings": settings.enable_timings,
+            "shared_poll_interval_ms": settings.shared_poll_interval_ms,
         }
         config_path = round_root / f"worker-{index}.config.json"
         report_path = round_root / f"worker-{index}.result.json"
@@ -512,6 +530,7 @@ def _run_shared_memory_soak(
                 "iterations": iterations,
                 "timeout_seconds": settings.timeout_seconds,
                 "enable_timings": settings.enable_timings,
+                "shared_poll_interval_ms": settings.shared_poll_interval_ms,
             },
         )
         completed = subprocess.run(
@@ -588,6 +607,10 @@ def _resolve_source_pairs(
                 raise RuntimeError(f"{zeromq_id} 不是 zeromq-topic")
             if shared.get("trigger_kind") != "local-shared-memory":
                 raise RuntimeError(f"{shared_id} 不是 local-shared-memory")
+            for source in (zeromq, shared):
+                metadata = source.get("default_execution_metadata", {})
+                if metadata.get("return_timing_metadata_enabled", False) is not settings.enable_timings:
+                    raise RuntimeError("SDK 与 TriggerSource 的 timing 开关不一致，拒绝混合诊断口径")
             runtime_id = str(zeromq.get("workflow_runtime_id") or "")
             if not runtime_id or runtime_id != str(shared.get("workflow_runtime_id") or ""):
                 raise RuntimeError(f"{zeromq_id}/{shared_id} 未绑定同一个 Runtime")
@@ -744,6 +767,18 @@ def _write_partial_result(
             "failures": failures,
         },
     )
+    _write_progress(settings, cells, failures, status="running")
+
+
+def _write_progress(settings: BenchmarkSettings, cells: list[dict[str, object]], failures: list[str], *, status: str) -> None:
+    """轻量进度不复制样本，状态查询无需解析不断增长的完整矩阵。"""
+    last = cells[-1] if cells else {}
+    _write_json(settings.output_dir / "progress.json", {
+        "status": status, "completed_cells": len(cells),
+        "expected_cells": len(settings.image_cases) * len(settings.concurrency) * settings.rounds,
+        "failure_count": len(failures),
+        "last_cell": {key: last.get(key) for key in ("case", "concurrency", "round")},
+    })
 
 
 def _public_settings(settings: BenchmarkSettings) -> dict[str, object]:
@@ -760,6 +795,7 @@ def _public_settings(settings: BenchmarkSettings) -> dict[str, object]:
         "iterations_per_round": settings.iterations_per_round,
         "soak_iterations": settings.soak_iterations,
         "enable_timings": settings.enable_timings,
+        "shared_poll_interval_ms": settings.shared_poll_interval_ms,
     }
 
 

@@ -59,6 +59,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--first-zeromq-port", type=int, default=5651)
     parser.add_argument("--output-json", type=Path)
     parser.add_argument("--timeout-seconds", type=float, default=60.0)
+    parser.add_argument("--enable-timings", action="store_true")
     return parser.parse_args(argv)
 
 
@@ -83,6 +84,7 @@ def main(argv: list[str] | None = None) -> int:
                 pair_count=args.pair_count,
                 first_zeromq_port=args.first_zeromq_port,
                 timeout_seconds=args.timeout_seconds,
+                enable_timings=args.enable_timings,
             )
         else:
             report = delete_assets(client)
@@ -98,6 +100,7 @@ def create_assets(
     pair_count: int,
     first_zeromq_port: int,
     timeout_seconds: float,
+    enable_timings: bool = False,
 ) -> dict[str, object]:
     """创建不可变版本、独立 Runtime 和两种成对 TriggerSource。"""
 
@@ -145,7 +148,7 @@ def create_assets(
             )
             zeromq_source_id = f"zeromq-{runtime_id}"
             shared_source_id = f"local-shared-memory-{runtime_id}"
-            common = _source_common(runtime_id=runtime_id, ordinal=ordinal)
+            common = _source_common(runtime_id=runtime_id, ordinal=ordinal, enable_timings=enable_timings)
             _post_json(
                 client,
                 "/workflows/trigger-sources",
@@ -428,7 +431,7 @@ def _publish_or_reuse_version(
     return _required_text(version, "workflow_app_version_id")
 
 
-def _source_common(*, runtime_id: str, ordinal: int) -> dict[str, object]:
+def _source_common(*, runtime_id: str, ordinal: int, enable_timings: bool = False) -> dict[str, object]:
     """构造两种 TriggerSource 完全一致的业务契约。"""
 
     return {
@@ -447,7 +450,7 @@ def _source_common(*, runtime_id: str, ordinal: int) -> dict[str, object]:
         "result_mapping": {"result_bindings": [OUTPUT_BINDING_ID]},
         "default_execution_metadata": {
             "workflow_run_record_mode": "none",
-            "return_timing_metadata_enabled": True,
+            "return_timing_metadata_enabled": enable_timings,
             "return_node_timings_enabled": False,
             "trace_level": "none",
             "retain_trace_enabled": False,

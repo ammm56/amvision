@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
 from tests.integration import workflow_trigger_transport_assets as asset_module
+from tests.integration import workflow_trigger_transport_benchmark as benchmark_module
 from tests.integration.workflow_trigger_transport_benchmark import (
     _collect_lifecycle_counts,
     _distribution,
@@ -18,6 +20,14 @@ from tests.integration.workflow_trigger_transport_benchmark import (
     evaluate_health_recovery,
     load_settings,
 )
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_source_timing_switch_is_explicit(enabled: bool) -> None:
+    """服务端诊断开关必须与 SDK 验收配置一致，默认关闭。"""
+    source = asset_module._source_common(runtime_id="runtime", ordinal=1, enable_timings=enabled)
+    assert source["default_execution_metadata"]["return_timing_metadata_enabled"] is enabled
+    assert asset_module._source_common(runtime_id="runtime", ordinal=1)["default_execution_metadata"]["return_timing_metadata_enabled"] is False
 
 
 def test_transport_assets_use_normalized_resource_and_sdk_config_names(
@@ -166,6 +176,28 @@ def test_performance_gate_applies_20mp_data_plane_and_tail_threshold() -> None:
     assert any("40%" in item for item in failures)
 
 
+@pytest.mark.parametrize("interval", [True, False, 0, -1, 0.00001, float("inf"), float("nan"), "1"])
+def test_benchmark_rejects_invalid_poll_interval(tmp_path: Path, interval: object) -> None:
+    """诊断轮询参数必须是可表示的正数，不能隐式改变生产 SDK 默认值。"""
+    image = tmp_path / "image.png"
+    image.write_bytes(b"image")
+    path = tmp_path / "benchmark.json"
+    payload = {
+        "zeromq_trigger_source_ids": ["zero-1"],
+        "shared_memory_trigger_source_ids": ["shared-1"],
+        "soak_iterations": 0,
+        "shared_poll_interval_ms": interval,
+        "image_cases": [{"name": "tiny", "size_class": "tiny", "path": image.name,
+                         "baseline_mode": "encoded-bytes", "candidate_mode": "encoded-bytes"}],
+    }
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="shared_poll_interval_ms"):
+        load_settings(path, None)
+    payload.pop("shared_poll_interval_ms")
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    assert load_settings(path, None).shared_poll_interval_ms is None
+
+
 def test_performance_gate_rejects_20mp_without_workflow_timing() -> None:
     """20MP 门禁不能退回用端到端延迟冒充图片数据面延迟。"""
 
@@ -247,3 +279,28 @@ def test_route_generation_comes_from_formal_nested_adapter_health() -> None:
         }
     ) == 9
     assert _read_route_generation({"health_summary": {}}) == 0
+
+
+def test_execution_error_preserves_failed_report_even_if_health_also_fails(tmp_path, monkeypatch):
+    """执行异常与健康读取异常同时发生时，保存双方错误并保留原始异常。"""
+    settings = SimpleNamespace(output_dir=tmp_path, image_cases=[SimpleNamespace(name="tiny")],
+                               concurrency=[1], rounds=1, soak_iterations=0)
+    monkeypatch.setattr(benchmark_module, "_resolve_source_pairs", lambda _: ((object(),), {}))
+    monkeypatch.setattr(benchmark_module, "_warmup_persistent_shared_clients", lambda **_: None)
+    calls = []
+    def health(*_):
+        calls.append(1)
+        if len(calls) > 1:
+            raise RuntimeError("health unavailable")
+        return {}
+    def fail_round(**_):
+        raise ValueError("original request failure")
+    monkeypatch.setattr(benchmark_module, "_capture_health", health)
+    monkeypatch.setattr(benchmark_module, "_run_transport_round", fail_round)
+    monkeypatch.setattr(benchmark_module, "_public_settings", lambda _: {})
+    with pytest.raises(ValueError, match="original request failure"):
+        benchmark_module.run_benchmark(settings, build_dotnet=False)
+    report = json.loads((tmp_path / "result.json").read_text(encoding="utf-8"))
+    assert report["status"] == "failed"
+    assert len(report["failures"]) == 2
+    assert "health unavailable" in report["failures"][1]

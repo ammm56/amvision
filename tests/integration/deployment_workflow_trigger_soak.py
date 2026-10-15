@@ -18,6 +18,7 @@ import sys
 import time
 import zlib
 from collections import deque
+from contextlib import contextmanager
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
@@ -25,6 +26,7 @@ from pathlib import Path
 from threading import Barrier, Event, Lock
 from typing import Any, Callable, Final
 from uuid import uuid4
+from tests.integration.runtime_resource_gate import BoundedHistory, ResourceGate
 
 import httpx
 
@@ -80,6 +82,10 @@ class RuntimeSoakConfig:
     trigger_envelope: dict[str, object] = field(default_factory=dict)
     trigger_binary_path: Path | None = None
     trigger_reply_timeout_seconds: float = 120.0
+    maximum_p99_latency_ms: float | None = None
+    resource_root_pids: tuple[int, ...] = ()
+    resource_warmup_seconds: float = 300.0
+    resource_growth_limits: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -95,6 +101,8 @@ class LaneMetrics:
     """以有界内存记录单条负载通道的计数和延迟。"""
 
     name: str
+    latency_limit_ms: float | None = None
+    over_latency_limit_count: int = 0
     lock: Lock = field(default_factory=Lock)
     started_count: int = 0
     success_count: int = 0
@@ -125,6 +133,8 @@ class LaneMetrics:
         with self.lock:
             self.inflight_count = max(0, self.inflight_count - 1)
             self.latency_ms.append(max(0.0, float(latency_ms)))
+            if self.latency_limit_ms is not None and latency_ms > self.latency_limit_ms:
+                self.over_latency_limit_count += 1
             self.last_finished_at = _utc_now()
             if error is None:
                 self.success_count += 1
@@ -160,6 +170,9 @@ class LaneMetrics:
                 "first_started_at": self.first_started_at,
                 "last_finished_at": self.last_finished_at,
                 "latency_sample_count": len(latencies),
+                "latency_sample_scope": "recent-completed-requests",
+                "latency_limit_ms": self.latency_limit_ms,
+                "over_latency_limit_count": self.over_latency_limit_count,
                 "latency_ms": {
                     "min": _round_or_none(latencies[0] if latencies else None),
                     "mean": _round_or_none(
@@ -394,6 +407,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--async-poll-interval-seconds", type=float, default=0.2)
     parser.add_argument("--max-error-rate", type=float, default=0.0)
     parser.add_argument("--minimum-requests-per-lane", type=int, default=1)
+    parser.add_argument("--maximum-p99-latency-ms", type=float)
+    parser.add_argument("--resource-root-pid", action="append", type=int, default=[])
+    parser.add_argument("--resource-warmup-seconds", type=float, default=300.0)
+    parser.add_argument("--maximum-rss-growth-mib", type=float)
+    parser.add_argument("--maximum-private-growth-mib", type=float)
+    parser.add_argument("--maximum-handle-growth", type=float)
+    parser.add_argument("--maximum-thread-growth", type=float)
     parser.add_argument("--run-id", default="")
     parser.add_argument("--output-dir", type=Path)
 
@@ -430,6 +450,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--trigger-binary", type=Path)
     parser.add_argument("--trigger-reply-timeout-seconds", type=float, default=120.0)
     args = parser.parse_args(argv)
+    for name in ("duration_seconds", "request_interval_ms", "sample_interval_seconds",
+                 "http_timeout_seconds", "task_timeout_seconds", "async_poll_interval_seconds",
+                 "trigger_reply_timeout_seconds", "max_error_rate",
+                 "maximum_p99_latency_ms", "resource_warmup_seconds", "maximum_rss_growth_mib",
+                 "maximum_private_growth_mib", "maximum_handle_growth", "maximum_thread_growth"):
+        value = getattr(args, name)
+        if value is not None and (not math.isfinite(value) or value < 0):
+            parser.error(f"{name} 必须是有限的非负数")
+    if any(value <= 0 for value in args.resource_root_pid):
+        parser.error("resource-root-pid 必须为正整数")
+    if not args.resource_root_pid and any(getattr(args, key) is not None for key in (
+        "maximum_rss_growth_mib", "maximum_private_growth_mib", "maximum_handle_growth", "maximum_thread_growth"
+    )):
+        parser.error("资源增长门禁必须显式指定本机 resource-root-pid")
 
     if args.duration_seconds <= 0:
         parser.error("duration-seconds 必须大于 0")
@@ -500,6 +534,14 @@ def build_config(args: argparse.Namespace) -> RuntimeSoakConfig:
         max_error_rate=float(args.max_error_rate),
         minimum_requests_per_lane=int(args.minimum_requests_per_lane),
         output_dir=output_dir,
+        maximum_p99_latency_ms=args.maximum_p99_latency_ms,
+        resource_root_pids=tuple(args.resource_root_pid),
+        resource_warmup_seconds=args.resource_warmup_seconds,
+        resource_growth_limits={key: value * multiplier for key, value, multiplier in (
+            ("rss_bytes", args.maximum_rss_growth_mib, 1024 ** 2),
+            ("private_bytes", args.maximum_private_growth_mib, 1024 ** 2),
+            ("handles", args.maximum_handle_growth, 1), ("threads", args.maximum_thread_growth, 1),
+        ) if value is not None},
         deployment_instance_id=_optional_text(args.deployment_instance_id),
         deployment_runtime_modes=tuple(dict.fromkeys(args.deployment_runtime_modes)),
         deployment_task_type=str(args.deployment_task_type),
@@ -540,23 +582,40 @@ def build_lanes(config: RuntimeSoakConfig) -> tuple[SoakLane, ...]:
     return tuple(lanes)
 
 
+@contextmanager
+def _stopping_executor(stop_event: Event, *, max_workers: int, thread_name_prefix: str):
+    """先通知循环停止，再等待线程退出，避免 Ctrl+C 后仍等待整个负载时长。"""
+    with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix=thread_name_prefix) as executor:
+        try:
+            yield executor
+        finally:
+            stop_event.set()
+
+
 def run_soak(config: RuntimeSoakConfig) -> int:
     """执行一轮持续负载并返回进程退出码。"""
 
     config.output_dir.mkdir(parents=True, exist_ok=True)
+    if (config.output_dir / "result.json").exists():
+        raise FileExistsError("验收输出目录已有 result.json，不能覆盖原始证据")
     result_path = config.output_dir / "result.json"
     started_at = _utc_now()
     started_monotonic = time.monotonic()
     lanes = build_lanes(config)
-    metrics = {lane.name: LaneMetrics(name=lane.name) for lane in lanes}
-    health_samples: list[dict[str, object]] = []
-    monitor_errors: list[dict[str, object]] = []
+    metrics = {lane.name: LaneMetrics(name=lane.name, latency_limit_ms=config.maximum_p99_latency_ms) for lane in lanes}
+    health_samples = BoundedHistory()
+    monitor_errors = BoundedHistory(100)
+    resource_gate = None
     stop_event = Event()
     futures: list[Future[None]] = []
     resolved_config = config
     status = "running"
 
     try:
+        if config.resource_root_pids:
+            resource_gate = ResourceGate(root_pids=config.resource_root_pids,
+                                         warmup_seconds=config.resource_warmup_seconds,
+                                         limits=config.resource_growth_limits)
         with _api_client(config) as api_client:
             resolved_config, preflight = run_preflight(config, api_client)
         _write_json_atomically(config.output_dir / "preflight.json", preflight)
@@ -569,7 +628,7 @@ def run_soak(config: RuntimeSoakConfig) -> int:
                 0, time.monotonic() + config.duration_seconds
             ),
         )
-        with ThreadPoolExecutor(
+        with _stopping_executor(stop_event,
             max_workers=worker_count,
             thread_name_prefix="runtime-soak",
         ) as executor:
@@ -591,6 +650,7 @@ def run_soak(config: RuntimeSoakConfig) -> int:
             # 所有 lane 完成 client 和输入资产准备后，再统一开始正式负载窗口。
             ready_barrier.wait(timeout=max(10.0, config.http_timeout_seconds + 5.0))
             deadline = deadline_holder[0]
+            load_started_monotonic = deadline - config.duration_seconds
             next_sample_at = time.monotonic()
             while time.monotonic() < deadline:
                 now = time.monotonic()
@@ -602,6 +662,10 @@ def run_soak(config: RuntimeSoakConfig) -> int:
                             monitor_errors=monitor_errors,
                         )
                     )
+                    if resource_gate is not None:
+                        health_samples[-1]["resources"] = resource_gate.sample(now - load_started_monotonic)
+                    with (config.output_dir / "health-samples.jsonl").open("a", encoding="utf-8") as stream:
+                        stream.write(json.dumps(health_samples[-1], ensure_ascii=True) + "\n")
                     _write_json_atomically(
                         result_path,
                         _build_result(
@@ -628,11 +692,17 @@ def run_soak(config: RuntimeSoakConfig) -> int:
                 monitor_errors=monitor_errors,
             )
         )
+        with (config.output_dir / "health-samples.jsonl").open("a", encoding="utf-8") as stream:
+            stream.write(json.dumps(health_samples[-1], ensure_ascii=True) + "\n")
         failures = _evaluate_result(
             config=resolved_config,
             metrics=metrics,
             monitor_errors=monitor_errors,
         )
+        if resource_gate is not None:
+            resource_result = resource_gate.summary()
+            _write_json_atomically(config.output_dir / "resources.json", resource_result)
+            failures.extend(resource_result["failures"])
         status = "succeeded" if not failures else "failed"
         result = _build_result(
             config=resolved_config,
@@ -690,6 +760,9 @@ def run_soak(config: RuntimeSoakConfig) -> int:
             file=sys.stderr,
         )
         return 1
+    finally:
+        if resource_gate is not None:
+            _write_json_atomically(config.output_dir / "resources.json", resource_gate.summary())
 
 
 def _build_console_summary(
@@ -724,10 +797,10 @@ def _build_console_summary(
         "result_path": str(result_path),
         "lanes": lane_summary,
         "health_sample_count": (
-            len(health_samples) if isinstance(health_samples, list) else 0
+            result.get("health_sample_count", len(health_samples) if isinstance(health_samples, list) else 0)
         ),
         "monitor_error_count": (
-            len(monitor_errors) if isinstance(monitor_errors, list) else 0
+            result.get("monitor_error_count", len(monitor_errors) if isinstance(monitor_errors, list) else 0)
         ),
         "failures": result.get("failures", []),
     }
@@ -1090,6 +1163,14 @@ def _evaluate_result(
         snapshot = lane_metrics.snapshot()
         started_count = int(snapshot["started_count"])
         error_rate = float(snapshot["error_rate"])
+        if snapshot["inflight_count"] or started_count != snapshot["success_count"] + snapshot["error_count"]:
+            failures.append(f"{lane_name} 存在未进入终态的请求")
+        if config.maximum_p99_latency_ms is not None:
+            # 完整运行期间最多 1% 请求超过延迟上限，不能用最近窗口掩盖早期慢请求。
+            completed_count = snapshot["success_count"] + snapshot["error_count"]
+            if (snapshot["latency_limit_ms"] != config.maximum_p99_latency_ms or not completed_count
+                    or snapshot["over_latency_limit_count"] * 100 > completed_count):
+                failures.append(f"{lane_name} 全程延迟门禁未通过：超过 {config.maximum_p99_latency_ms} ms 的请求占比大于 1% 或统计缺失")
         if started_count < config.minimum_requests_per_lane:
             failures.append(
                 f"{lane_name} 请求数不足: {started_count} < "
@@ -1138,6 +1219,10 @@ def _build_result(
             "sample_interval_seconds": config.sample_interval_seconds,
             "max_error_rate": config.max_error_rate,
             "minimum_requests_per_lane": config.minimum_requests_per_lane,
+            "maximum_p99_latency_ms": config.maximum_p99_latency_ms,
+            "resource_root_pids": list(config.resource_root_pids),
+            "resource_warmup_seconds": config.resource_warmup_seconds,
+            "resource_growth_limits": config.resource_growth_limits,
             "deployment_instance_id": config.deployment_instance_id,
             "deployment_runtime_modes": list(config.deployment_runtime_modes),
             "deployment_task_type": config.deployment_task_type,
@@ -1169,8 +1254,10 @@ def _build_result(
             lane_name: lane_metrics.snapshot()
             for lane_name, lane_metrics in metrics.items()
         },
-        "health_samples": health_samples,
-        "monitor_errors": monitor_errors,
+        "health_samples": list(health_samples),
+        "health_sample_count": getattr(health_samples, "total_count", len(health_samples)),
+        "monitor_errors": list(monitor_errors),
+        "monitor_error_count": getattr(monitor_errors, "total_count", len(monitor_errors)),
         "failures": failures or [],
     }
 

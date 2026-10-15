@@ -46,6 +46,9 @@ from backend.workers.contracts import (
 from tests.integration.model_task_e2e_assets import (
     ensure_model_task_e2e_archives,
 )
+from tests.integration.acceptance_evidence import (
+    create_run_directory, record_case_failure, record_case_progress, write_evidence,
+)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -235,9 +238,10 @@ def main(argv: list[str] | None = None) -> int:
     """命令行入口。"""
 
     args = parse_args(argv)
+    if not args.start_processes and args.storage_root is None:
+        raise ValueError("连接外部服务必须显式指定 --storage-root，不能隐式读取开发存储")
     run_id = args.run_id or datetime.now().strftime("%Y%m%d%H%M%S")
-    run_dir = SMOKE_ROOT / run_id
-    run_dir.mkdir(parents=True, exist_ok=True)
+    run_dir = create_run_directory(SMOKE_ROOT, run_id)
     result: dict[str, Any] = {
         "run_id": run_id,
         "started_at": datetime.now().isoformat(timespec="seconds"),
@@ -273,7 +277,7 @@ def main(argv: list[str] | None = None) -> int:
                     result["tasks"][case.task_type] = run_task_case(
                         client=client,
                         case=case,
-                        run_dir=run_dir,
+                        run_dir=run_dir / case.task_type,
                         project_id=args.project_id,
                         model_type=args.model_type,
                         model_scale=args.model_scale,
@@ -287,12 +291,14 @@ def main(argv: list[str] | None = None) -> int:
                         max_images_per_split=args.max_images_per_split,
                         enable_augmentation=args.enable_augmentation,
                         evaluation_interval=args.evaluation_interval,
+                        storage_root=(run_dir / "storage" if args.start_processes else args.storage_root),
                     )
                 except Exception as error:
                     result["tasks"][case.task_type] = {
                         "status": "failed",
                         "finished_at": datetime.now().isoformat(timespec="seconds"),
                         "error": str(error),
+                        "partial_result": record_case_failure(run_dir / case.task_type, error),
                     }
                     raise
         finally:
@@ -302,7 +308,7 @@ def main(argv: list[str] | None = None) -> int:
         result["finished_at"] = datetime.now().isoformat(timespec="seconds")
         result["status"] = "succeeded"
         write_result(run_dir=run_dir, result=result)
-        print(json.dumps(result, ensure_ascii=False, indent=2))
+        print(json.dumps(result, ensure_ascii=True, indent=2))
         return 0
     except Exception as error:
         result["finished_at"] = datetime.now().isoformat(timespec="seconds")
@@ -310,7 +316,7 @@ def main(argv: list[str] | None = None) -> int:
         result["error"] = str(error)
         result["processes"] = collect_process_snapshots(processes)
         write_result(run_dir=run_dir, result=result)
-        print(json.dumps(result, ensure_ascii=False, indent=2))
+        print(json.dumps(result, ensure_ascii=True, indent=2))
         return 1
     finally:
         stop_managed_processes(processes)
@@ -365,6 +371,8 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--port-start", type=int, default=18080)
     parser.add_argument("--port-end", type=int, default=18150)
     parser.add_argument("--run-id", default="")
+    parser.add_argument("--storage-root", type=Path, default=None,
+                        help="连接外部服务时，其 ObjectStore 的本地可读根目录")
     parser.add_argument("--http-timeout-seconds", type=float, default=120.0)
     parser.add_argument("--service-timeout-seconds", type=float, default=120.0)
     parser.add_argument("--task-timeout-seconds", type=float, default=900.0)
@@ -480,7 +488,9 @@ def start_service_processes(
                     "--worker-runtime-root",
                     str(run_dir / "runtime" / "backend-workers"),
                 ],
-                env=process_env,
+                env={**process_env, "AMVISION_WORKER_WORKSPACE__ROOT_DIR": str(
+                    (run_dir / "runtime" / "worker" / profile.profile_id).resolve()
+                )},
                 log_path=worker_log.with_name(
                     f"backend-worker-{profile.profile_id}.log"
                 ),
@@ -505,7 +515,10 @@ def build_e2e_process_environment(*, run_dir: Path, port: int) -> dict[str, str]
     queue_root = runtime_root / "queue"
     worker_root = runtime_root / "worker"
     buffer_root = runtime_root / "buffers"
-    dataset_storage_root = (PROJECT_ROOT / "data" / "files").resolve()
+    dataset_storage_root = (run_dir / "storage").resolve()
+    for owned_path in (dataset_storage_root, database_path, queue_root, worker_root, buffer_root):
+        if not owned_path.resolve().is_relative_to(run_dir.resolve()):
+            raise ValueError("E2E 存储和运行目录不能通过链接指向运行目录之外")
     sqlite_url = f"sqlite:///{database_path.as_posix()}"
     service_id = f"e2e-{port}-{os.getpid()}"
 
@@ -789,6 +802,8 @@ def run_task_case(
     validate_task_case_source(case)
 
     started_at = datetime.now().isoformat(timespec="seconds")
+    record_case_progress(run_dir, "dataset-import", model_type=model_type,
+                         task_type=case.task_type, started_at=started_at, status="running")
     if case.dataset_archive is not None:
         zip_path = case.dataset_archive
         sample_image_path = extract_sample_image_from_archive(
@@ -821,6 +836,7 @@ def run_task_case(
         format_type=case.import_format,
         zip_path=zip_path,
     )
+    record_case_progress(run_dir, "dataset-import", dataset_import_id=dataset_import["dataset_import_id"])
     dataset_import_detail = poll_resource(
         label=f"{case.task_type} dataset import",
         fetch=lambda: client.get(
@@ -832,6 +848,7 @@ def run_task_case(
     dataset_version_id = read_required_string(
         dataset_import_detail, "dataset_version_id"
     )
+    record_case_progress(run_dir, "dataset-export", dataset_version_id=dataset_version_id)
 
     dataset_export = submit_dataset_export(
         client=client,
@@ -841,6 +858,7 @@ def run_task_case(
         export_format=case.export_format,
         task_type=case.task_type,
     )
+    record_case_progress(run_dir, "dataset-export", dataset_export_id=dataset_export["dataset_export_id"])
     dataset_export_detail = poll_resource(
         label=f"{case.task_type} dataset export",
         fetch=lambda: client.get(
@@ -884,6 +902,7 @@ def run_task_case(
         checkpoint_interval=checkpoint_interval,
         checkpoint_keep_periodic=checkpoint_keep_periodic,
     )
+    record_case_progress(run_dir, "training", training_task_id=training["task_id"])
     training_detail = poll_task(
         client=client,
         task_id=read_required_string(training, "task_id"),
@@ -894,6 +913,7 @@ def run_task_case(
         training_detail,
         ("model_version_id", "output_model_version_id"),
     )
+    record_case_progress(run_dir, "evaluation", model_version_id=model_version_id)
     evaluation = submit_evaluation_task(
         client=client,
         case=case,
@@ -903,6 +923,7 @@ def run_task_case(
         dataset_export_id=dataset_export_id,
         manifest_key=manifest_key,
     )
+    record_case_progress(run_dir, "evaluation", evaluation_task_id=evaluation["task_id"])
     evaluation_detail = poll_evaluation_task(
         client=client,
         case=case,
@@ -922,6 +943,8 @@ def run_task_case(
             target_format=target_format,
         )
         conversion_task_id = read_required_string(conversion, "task_id")
+        record_case_progress(run_dir, "conversion", current_conversion_format=target_format,
+                             current_conversion_task_id=conversion_task_id, conversions=conversions)
         conversion_detail = poll_conversion_task(
             client=client,
             case=case,
@@ -936,6 +959,8 @@ def run_task_case(
             "build_format": build.get("build_format"),
             "deployment": None,
         }
+        conversions[target_format] = conversion_summary
+        record_case_progress(run_dir, "deployment", conversions=conversions)
         if not skip_deployment:
             deployment_summary = run_deployment_smoke(
                 client=client,
@@ -950,8 +975,9 @@ def run_task_case(
             )
             conversion_summary["deployment"] = deployment_summary
         conversions[target_format] = conversion_summary
+        record_case_progress(run_dir, "deployment", conversions=conversions)
 
-    return {
+    result = {
         "status": "succeeded",
         "model_type": model_type,
         "task_type": case.task_type,
@@ -988,6 +1014,8 @@ def run_task_case(
         "evaluation": summarize_evaluation_payload(evaluation_detail),
         "conversions": conversions,
     }
+    record_case_progress(run_dir, "completed", **result)
+    return result
 
 
 def load_training_test_metrics(
@@ -2066,10 +2094,7 @@ def select_conversion_build(
     for build in builds:
         if isinstance(build, dict) and build.get("build_format") == target_format:
             return build
-    for build in builds:
-        if isinstance(build, dict):
-            return build
-    raise RuntimeError(f"conversion builds 格式无效：{builds}")
+    raise RuntimeError(f"conversion 没有登记目标格式 {target_format}：{builds}")
 
 
 def resolve_runtime_backend(target_format: str) -> str:
@@ -2300,11 +2325,7 @@ def collect_process_snapshots(processes: Iterable[ManagedProcess]) -> dict[str, 
 def write_result(*, run_dir: Path, result: dict[str, Any]) -> None:
     """写入本次验收结果 JSON。"""
 
-    run_dir.mkdir(parents=True, exist_ok=True)
-    (run_dir / "result.json").write_text(
-        json.dumps(result, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    write_evidence(run_dir / "result.json", result)
 
 
 if __name__ == "__main__":

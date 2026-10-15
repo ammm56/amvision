@@ -38,6 +38,13 @@ from tests.integration.yolo_model_full_chain_smoke import (
 )
 
 
+from tests.integration.acceptance_evidence import (
+    copy_pretrained_assets,
+    create_run_directory,
+    record_case_failure,
+    write_evidence,
+)
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 MATRIX_ROOT = PROJECT_ROOT / ".tmp" / "model-task-e2e-matrix"
 MAX_TRAINING_TEST_EVALUATION_METRIC_DELTA = 0.05
@@ -99,9 +106,10 @@ def main(argv: list[str] | None = None) -> int:
     """执行选择后的矩阵，并为完整性和失败状态设置退出码。"""
 
     args = parse_args(argv)
+    if not args.start_processes and args.storage_root is None:
+        raise ValueError("连接外部服务必须显式指定 --storage-root，不能隐式读取开发存储")
     run_id = args.run_id or datetime.now().strftime("%Y%m%d%H%M%S")
-    run_dir = MATRIX_ROOT / run_id
-    run_dir.mkdir(parents=True, exist_ok=True)
+    run_dir = create_run_directory(MATRIX_ROOT, run_id)
     selected_cases = select_matrix_cases(
         model_types=set(args.models),
         task_types=set(args.tasks),
@@ -157,6 +165,15 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         if args.start_processes:
+            if args.use_pretrained_warm_start:
+                result["pretrained_assets"] = copy_pretrained_assets(
+                    source_root=args.pretrained_storage_root,
+                    destination_root=run_dir / "storage",
+                    model_version_ids={resolve_pretrained_warm_start_model_version_id(
+                        model_type=case.model_type, task_type=case.task_case.task_type,
+                        model_scale=args.model_scale or case.model_scale,
+                    ) for case in selected_cases},
+                )
             port = args.port or find_free_port(args.port_start, args.port_end)
             base_url = f"http://127.0.0.1:{port}"
             processes = start_service_processes(
@@ -227,6 +244,7 @@ def main(argv: list[str] | None = None) -> int:
                     batch_max_oom_retries=args.batch_max_oom_retries,
                     checkpoint_interval=args.checkpoint_interval,
                     checkpoint_keep_periodic=args.checkpoint_keep_periodic,
+                    storage_root=(run_dir / "storage" if args.start_processes else args.storage_root),
                 )
                 validate_case_result(
                     case_result,
@@ -242,9 +260,12 @@ def main(argv: list[str] | None = None) -> int:
                     "finished_at": datetime.now().isoformat(timespec="seconds"),
                     "error": str(error),
                     "completed_result": case_result,
+                    "partial_result": record_case_failure(case_run_dir, error),
                 }
+                write_evidence(run_dir / "result.json", result)
                 if args.fail_fast:
                     break
+            write_evidence(run_dir / "result.json", result)
     except Exception as error:  # noqa: BLE001 - 顶层必须持久化启动失败。
         result["startup_error"] = str(error)
     finally:
@@ -362,6 +383,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--port-start", type=int, default=18360)
     parser.add_argument("--port-end", type=int, default=18460)
     parser.add_argument("--run-id", default="")
+    parser.add_argument("--storage-root", type=Path, default=None,
+                        help="连接外部服务时，其 ObjectStore 的本地可读根目录")
+    parser.add_argument("--pretrained-storage-root", type=Path, default=PROJECT_ROOT / "data/files",
+                        help="只读预训练资产来源；启动隔离服务时只复制选中的版本")
     parser.add_argument("--run-workflow", action="store_true")
     parser.add_argument("--skip-deployment", action="store_true")
     parser.add_argument("--fail-fast", action="store_true")

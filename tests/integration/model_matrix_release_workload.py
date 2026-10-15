@@ -8,17 +8,24 @@ from __future__ import annotations
 
 import argparse
 import json
+import mimetypes
 import os
 from pathlib import Path
 import subprocess
 import time
+import sys
 from uuid import uuid4
+from collections import deque
 
 import httpx
 import numpy as np
 
+from tests.integration.acceptance_contract import AcceptancePhases, acceptance_result, cleanup_all, positive_seconds
+from tests.integration.acceptance_evidence import write_evidence
+
 from backend.service.domain.deployments.deployment_runtime_configuration import (
-    build_default_runtime_configuration,
+    DeploymentRuntimeConfiguration,
+    deserialize_deployment_runtime_configuration,
     serialize_deployment_runtime_configuration,
 )
 from tests.integration.yolo_model_full_chain_smoke import (
@@ -56,17 +63,19 @@ def wait_transfer(
     raise TimeoutError(operation)
 
 
-def create_model_workflow(client: SmokeApiClient, *, task: str, deployment: str) -> str:
+def create_model_workflow(client: SmokeApiClient, *, task: str, deployment: str, diagnostics: bool = False) -> str:
     """创建固定模型引用的最小真实图，所有输出依赖模型节点完成。"""
     suffix = uuid4().hex
     app_id = f"workflow-app-model-repair-{suffix}"
     template_id = f"workflow-template-model-repair-{suffix}"
-    port, payload = {
+    port, _payload = {
         "detection": ("detections", "detections.v1"),
+        "classification": ("categories", "categories.v1"),
         "segmentation": ("segments", "segments.v1"),
         "pose": ("poses", "poses.v1"),
         "obb": ("obbs", "obbs.v1"),
     }[task]
+    payload = "value.v1"
     template = {
         "format_id": "amvision.workflow-graph-template.v1",
         "template_id": template_id,
@@ -79,13 +88,29 @@ def create_model_workflow(client: SmokeApiClient, *, task: str, deployment: str)
                 "parameters": {
                     "deployment_instance_id": deployment,
                     "auto_start_process": False,
-                    "score_threshold": 0.4,
+                    **({"top_k": 5} if task == "classification" else {"score_threshold": 0.4}),
                     "save_result_image": False,
                     "return_preview_image_base64": False,
                 },
-            }
+            },
+            {
+                "node_id": "as_value",
+                "node_type_id": "core.logic.payload-to-value",
+                "parameters": {},
+            },
+            {
+                "node_id": "public_result",
+                "node_type_id": "core.logic.object-pick",
+                "parameters": {"paths": ["items", "metadata", "latency_ms", "runtime_session_info"] if diagnostics else ["items"]},
+            },
         ],
-        "edges": [],
+        # 模型 payload 带执行期 source_image，仅把推理条目作为普通 JSON 交付。
+        "edges": [
+            {"edge_id": "model-value", "source_node_id": "model", "source_port": port,
+             "target_node_id": "as_value", "target_port": port},
+            {"edge_id": "value-result", "source_node_id": "as_value", "source_port": "value",
+             "target_node_id": "public_result", "target_port": "object"},
+        ],
         "template_inputs": [
             {
                 "input_id": "request_image_ref",
@@ -101,8 +126,8 @@ def create_model_workflow(client: SmokeApiClient, *, task: str, deployment: str)
                 "output_id": "benchmark_result",
                 "display_name": "Model result",
                 "payload_type_id": payload,
-                "source_node_id": "model",
-                "source_port": port,
+                "source_node_id": "public_result",
+                "source_port": "value",
             }
         ],
         "metadata": {"test_asset": True, "asset_kind": "model-matrix-repair"},
@@ -156,10 +181,30 @@ def create_model_workflow(client: SmokeApiClient, *, task: str, deployment: str)
     return runtime_id
 
 
+def read_import_runtime_configuration(uploaded: dict, *, runtime_backend: str) -> DeploymentRuntimeConfiguration:
+    """使用公开导入摘要中的完整部署配置，不以默认值覆盖现场实例或生命周期。"""
+    package_deployment = uploaded["summary"]["deployment"]
+    if package_deployment["runtime_backend"] != runtime_backend:
+        raise ValueError("验收 runtime 必须与部署包一致")
+    return deserialize_deployment_runtime_configuration(package_deployment["runtime_configuration"])
+
+
 def run(config: dict) -> dict:
     """导入真实包并逐层验收，只有本次资源进入停止流程。"""
+    if "profile" in config:
+        raise ValueError("验收模式字段为 acceptance_profile，不能使用发行 profile 名称字段")
+    if config.get("model_diagnostics", False) and not config.get("enable_timings", False):
+        raise ValueError("model_diagnostics 要求显式 enable_timings")
     output = Path(config["output"])
-    output.mkdir(parents=True, exist_ok=True)
+    duration = positive_seconds(config.get("duration_seconds", 120), "duration_seconds")
+    warmup_seconds = positive_seconds(config.get("warmup_seconds", 20), "warmup_seconds", allow_zero=True)
+    profile = config.get("acceptance_profile", "short")
+    if profile not in {"short", "performance", "soak"}:
+        raise ValueError("acceptance_profile 必须是 short/performance/soak")
+    output.mkdir(parents=True, exist_ok=False)
+    phases = AcceptancePhases(Path(os.environ.get("AMVISION_ACCEPTANCE_PHASE_FILE", str(output / "phases.json"))),
+                              minimum_measure_seconds=duration)
+    phases.enter("prepare")
     base_url = os.environ.get(
         "AMVISION_RELEASE_FULL_BASE_URL", config.get("base_url", "")
     )
@@ -177,14 +222,14 @@ def run(config: dict) -> dict:
                 prefix + "/imports",
                 files={"file": (package.name, handle, "application/zip")},
             )["operation_id"]
-        wait_transfer(client, prefix, operation, {"ready", "needs_attention"})
+        uploaded = wait_transfer(client, prefix, operation, {"ready", "needs_attention"})
+        runtime_configuration = read_import_runtime_configuration(uploaded, runtime_backend=config["runtime"])
+        result["runtime_configuration"] = serialize_deployment_runtime_configuration(runtime_configuration)
         options = {
             "create_copy": True,
             "device_name": config["device"],
             "runtime_configuration": serialize_deployment_runtime_configuration(
-                build_default_runtime_configuration(
-                    runtime_backend=config["runtime"], device_name=config["device"]
-                )
+                runtime_configuration
             ),
         }
         client.post(f"{prefix}/imports/{operation}/analyze", json=options)
@@ -215,6 +260,17 @@ def run(config: dict) -> dict:
             sample_image_path=image,
         )
         result["sync"] = summarize_inference_payload(sync)
+        if config.get("verify_deployment_recovery", False):
+            phases.enter("fault")
+            from tests.integration.release_deployment_recovery import verify_owned_deployment_recovery
+            result["recovery"] = verify_owned_deployment_recovery(
+                client, route=route, release_root=Path(config["release_root"]),
+            )
+            result["recovery"]["inference"] = summarize_inference_payload(submit_direct_inference(
+                client=client, case=case, deployment_id=deployment,
+                model_type=config["model"], sample_image_path=image,
+            ))
+            phases.enter("recovery")
         client.post(route + "/sync/reset")
         client.post(route + "/sync/stop")
         client.post(route + "/async/start")
@@ -239,7 +295,8 @@ def run(config: dict) -> dict:
         client.post(route + "/async/stop")
         client.post(route + "/sync/start")
         runtime = create_model_workflow(
-            client, task=config["task"], deployment=deployment
+            client, task=config["task"], deployment=deployment,
+            diagnostics=bool(config.get("model_diagnostics", False)),
         )
         result["workflow_runtime_id"] = runtime
         env = {**os.environ, "AMVISION_ACCEPTANCE_INPUT_MODE": "upload"}
@@ -256,7 +313,9 @@ def run(config: dict) -> dict:
             check=True,
             timeout=180,
         )
-        common = _source_common(runtime_id=runtime, ordinal=1)
+        common = _source_common(runtime_id=runtime, ordinal=1, enable_timings=bool(config.get("enable_timings", False)))
+        # 模型验收与独立传输矩阵分别拥有测试资产，不能互相清理或误报残留。
+        common["metadata"] = {"test_asset": True, "asset_kind": "model-matrix-repair"}
         for kind in ("zeromq-topic", "local-shared-memory"):
             source_id = f"model-repair-{kind}-{uuid4().hex}"
             transport = (
@@ -293,10 +352,12 @@ def run(config: dict) -> dict:
             "workflow_runtime_ids": [runtime],
             "zeromq_trigger_source_ids": sources[:1],
             "shared_memory_trigger_source_ids": sources[1:],
-            "rounds": 1,
+            "rounds": config.get("benchmark_rounds", 5 if profile == "performance" else 1),
             "concurrency": [1],
-            "warmup_iterations": 3,
-            "iterations_per_round": 20,
+            "warmup_iterations": config.get("benchmark_warmup", 20 if profile == "performance" else 3),
+            "iterations_per_round": config.get("benchmark_iterations", 1000 if profile == "performance" else 20),
+            "enable_timings": config.get("enable_timings", False),
+            "shared_poll_interval_ms": config.get("shared_poll_interval_ms"),
             "soak_iterations": 0,
             "image_cases": [
                 {
@@ -305,7 +366,7 @@ def run(config: dict) -> dict:
                     "size_class": "small",
                     "baseline_mode": "encoded-bytes",
                     "candidate_mode": "encoded-bytes",
-                    "media_type": "image/jpeg",
+                    "media_type": mimetypes.guess_type(str(image))[0] or "application/octet-stream",
                 }
             ],
         }
@@ -334,22 +395,59 @@ def run(config: dict) -> dict:
             benchmark["before_health"], benchmark["after_health"]
         ), benchmark["failures"]
         result["sdk_trigger_performance_failures"] = benchmark["failures"]
-        samples: list[float] = []
-        duration = float(config.get("duration_seconds", 0))
-        start = time.monotonic()
+        result["performance_gate"] = "failed" if benchmark["failures"] else "passed"
+        result["acceptance_profile"] = profile
+        if matrix_config := config.get("transport_matrix"):
+            from tests.integration.workflow_trigger_transport_assets import create_assets, delete_assets
+            with httpx.Client(base_url=base_url + "/api/v1", headers={"Authorization": "Bearer amvision-default-user-token"}, timeout=120) as http:
+                assets = create_assets(http, pair_count=max(matrix_config["concurrency"]),
+                                       first_zeromq_port=config["trigger_port"] + 1, timeout_seconds=120,
+                                       enable_timings=bool(matrix_config.get("enable_timings", settings["enable_timings"])))
+                try:
+                    matrix_settings = {**settings, **matrix_config, **assets}
+                    matrix_path = output / "transport-matrix-config.json"
+                    write_evidence(matrix_path, matrix_settings)
+                    run_benchmark(load_settings(matrix_path, output / "transport-matrix"), build_dotnet=False)
+                    matrix_report = json.loads((output / "transport-matrix/result.json").read_text(encoding="utf-8"))
+                    check_errors(matrix_report)
+                    result["transport_matrix_failures"] = matrix_report["failures"]
+                    if matrix_report["failures"]:
+                        result["performance_gate"] = "failed"
+                finally:
+                    delete_assets(http)
+        if config.get("mixed_load", False):
+            from tests.integration.release_mixed_load import run_mixed_load
+            result["soak"] = run_mixed_load(
+                client=client, config=config, runtime=runtime, deployment=deployment,
+                source=sources[0], metadata=common["default_execution_metadata"], phases=phases,
+                duration=duration, warmup=warmup_seconds,
+            )
+            if result["soak"]["failures"]:
+                raise AssertionError(result["soak"]["failures"])
+            result["passed"] = True
+            return result
+        # 完整请求计数独立于最近延迟窗口，72 小时负载也不累积无界列表。
+        samples: deque[float] = deque(maxlen=100_000)
+        success_count = 0
+        phases.enter("warmup")
+        warmup_start = time.monotonic()
+        start = None
         image_bytes = image.read_bytes()
         with httpx.Client(
             base_url=base_url + "/api/v1",
             headers={"Authorization": "Bearer amvision-default-user-token"},
             timeout=120,
         ) as http:
-            while time.monotonic() - start < duration:
+            while start is None or time.monotonic() - start < duration:
+                if start is None and time.monotonic() - warmup_start >= warmup_seconds:
+                    phases.enter("measure")
+                    start = phases.events[-1]["monotonic"]
                 before = time.perf_counter()
                 response = http.post(
                     f"/workflows/app-runtimes/{runtime}/invoke/upload",
                     params={"response_mode": "run"},
                     files={
-                        "request_image_ref": (image.name, image_bytes, "image/jpeg")
+                        "request_image_ref": (image.name, image_bytes, mimetypes.guess_type(str(image))[0] or "application/octet-stream")
                     },
                     data={
                         "execution_metadata_json": json.dumps(
@@ -359,22 +457,29 @@ def run(config: dict) -> dict:
                 )
                 response.raise_for_status()
                 assert response.json()["state"] == "succeeded", response.text[:1000]
+                if start is None:
+                    time.sleep(.05)
+                    continue
                 samples.append((time.perf_counter() - before) * 1000)
-                if len(samples) % 100 == 0:
+                success_count += 1
+                if success_count % 100 == 0:
                     (output / "progress.json").write_text(
                         json.dumps(
                             {
                                 "elapsed_seconds": time.monotonic() - start,
-                                "success_count": len(samples),
+                                "success_count": success_count,
                             }
                         ),
                         encoding="utf-8",
                     )
                 time.sleep(0.05)
+        phases.enter("drain")
         result["soak"] = {
             "duration_seconds": time.monotonic() - start,
-            "success_count": len(samples),
+            "success_count": success_count,
             "error_count": 0,
+            "latency_sample_scope": "recent-completed-requests",
+            "latency_sample_count": len(samples),
             "latency_ms": dict(
                 zip(
                     ("p50", "p95", "p99"), np.percentile(samples, [50, 95, 99]).tolist()
@@ -389,12 +494,12 @@ def run(config: dict) -> dict:
         result["error"] = repr(error)
         raise
     finally:
-        cleanup_errors: list[str] = []
+        cleanup_errors = cleanup_all([("phase-cleanup", lambda: phases.enter("cleanup"))])
         for source in sources:
-            try:
-                client.post(f"/workflows/trigger-sources/{source}/disable")
-            except Exception as error:
-                cleanup_errors.append(f"trigger {source}: {error}")
+            cleanup_errors.extend(cleanup_all([
+                (f"disable trigger {source}", lambda source=source: client.post(f"/workflows/trigger-sources/{source}/disable")),
+                (f"delete trigger {source}", lambda source=source: client.client.delete(f"/workflows/trigger-sources/{source}").raise_for_status()),
+            ]))
         if runtime:
             try:
                 client.post(f"/workflows/app-runtimes/{runtime}/stop")
@@ -408,13 +513,24 @@ def run(config: dict) -> dict:
                     )
                 except Exception as error:
                     cleanup_errors.append(f"deployment {deployment}/{mode}: {error}")
-        client.close()
+        cleanup_errors.extend(cleanup_all([("client-close", client.close)]))
         result["cleanup_errors"] = cleanup_errors
         if cleanup_errors:
             result["passed"] = False
-        (output / "result.json").write_text(
-            json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        gates = {"functional": "passed" if result["passed"] else "failed",
+                 "performance": result.get("performance_gate", "incomplete") if profile == "performance" else "observed",
+                 "recovery": "passed" if "recovery" in result else "not_requested",
+                 "cleanup": "failed" if cleanup_errors else "passed",
+                 "coverage": "passed" if result.get("soak", {}).get("duration_seconds", 0) >= duration
+                 and result.get("soak", {}).get("success_count", 0) > 0 else "incomplete"}
+        required = ("functional", "cleanup", "coverage") + (("performance",) if profile == "performance" else ())
+        if config.get("verify_deployment_recovery", False):
+            required += ("recovery",)
+        result.update(acceptance_result(gates, required))
+        phases.enter("completed" if result["passed"] else "failed")
+        write_evidence(output / "result.json", result)
+        if outer_result := os.environ.get("AMVISION_ACCEPTANCE_RESULT_FILE"):
+            write_evidence(Path(outer_result), result)
         if cleanup_errors and "error" not in result:
             raise RuntimeError("; ".join(cleanup_errors))
 
@@ -424,7 +540,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, required=True)
     args = parser.parse_args()
-    run(json.loads(args.config.read_text(encoding="utf-8")))
+    result = run(json.loads(args.config.read_text(encoding="utf-8")))
+    sys.exit(0 if result["passed"] else 1)
 
 
 if __name__ == "__main__":
