@@ -307,6 +307,7 @@ def run_command(
                     "frontend_index": (app_root / "frontend" / "index.html",),
                     "frontend_runtime_config": (
                         app_root / "frontend" / "runtime-config.json",
+                        app_root / "frontend" / "runtime-config.template.json",
                     ),
                     "python_executable": (app_root / "python" / "python.exe",),
                     "start_launcher": (app_root / "start-amvision-full.bat",),

@@ -44,12 +44,12 @@ class BackendMaintenanceReleaseFrontendConfig(BaseModel):
 
     字段：
     - dist_dir：前端构建产物目录。
-    - runtime_config_source_file：优先复制为 `runtime-config.json` 的运行时配置文件。
+    - runtime_config_source_file：显式独立地址配置；为空时按浏览器当前来源返回配置。
     - runtime_config_template_file：当 source_file 不存在时使用的模板文件。
     """
 
     dist_dir: str = "./frontend/web-ui/dist"
-    runtime_config_source_file: str | None = "./frontend/web-ui/public/runtime-config.local.json"
+    runtime_config_source_file: str | None = None
     runtime_config_template_file: str = "./frontend/web-ui/public/runtime-config.template.json"
 
 

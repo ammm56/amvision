@@ -9,6 +9,7 @@ import sys
 from types import SimpleNamespace
 
 import pytest
+from backend.runtime.processes.ownership import OwnershipScope
 from tests.test_launcher_release import _package
 
 import backend.maintenance.release_assembly as release_assembly
@@ -162,7 +163,8 @@ def test_assemble_release_materializes_windows_x64_nvidia_layout(
     ).is_file()
     assert (release_dir / "tools" / "cudnn" / "LICENSE").is_file()
     assert (release_dir / "frontend" / "index.html").is_file()
-    assert (release_dir / "frontend" / "runtime-config.json").is_file()
+    assert (release_dir / "frontend" / "runtime-config.template.json").is_file()
+    assert not (release_dir / "frontend" / "runtime-config.json").exists()
     assert (release_dir / "python").is_dir()
     assert result.bundled_python_mode == "placeholder-empty"
 
@@ -664,22 +666,22 @@ def test_release_full_stop_requests_root_cleanup_before_stopping_components(
     stop_module = _load_module_from_file("release_full_stop_script", stop_script_path)
 
     state_file_path = release_dir / "logs" / "stop-test" / "runtime-state.json"
+    scope = OwnershipScope.create(tmp_path / "ownership")
     state_file_path.parent.mkdir(parents=True, exist_ok=True)
     state_file_path.write_text(
         json.dumps(
             {
-                "format_id": "amvision.full-supervisor-state.v1",
+                "format_id": "amvision.full-supervisor-state.v3",
+                "ownership_scope": str(scope.root),
                 "root_process": {"pid": 99, "kind": "root"},
                 "components": [
                     {
                         "name": "backend-service",
                         "process": {"pid": 11, "kind": "service"},
-                        "stop_mode": "process-tree",
                     },
                     {
                         "name": "backend-worker:training",
                         "process": {"pid": 12, "kind": "worker"},
-                        "stop_mode": "process-tree",
                     },
                 ],
             },
@@ -698,14 +700,13 @@ def test_release_full_stop_requests_root_cleanup_before_stopping_components(
         lambda identity: identity.get("pid") in live_pids,
     )
 
-    def _fake_stop_recorded_process(
+    def _fake_stop_owner(
         identity: dict[str, object],
         *,
-        stop_mode: str,
-        graceful_timeout_seconds: float,
+        timeout: float,
     ) -> bool:
         recorded_stop_calls.append(
-            (int(identity["pid"]), stop_mode, graceful_timeout_seconds)
+            (int(identity["pid"]), "owner", timeout)
         )
         return True
 
@@ -721,7 +722,7 @@ def test_release_full_stop_requests_root_cleanup_before_stopping_components(
         return True
 
     monkeypatch.setattr(
-        stop_module, "_stop_recorded_process", _fake_stop_recorded_process
+        "backend.runtime.processes.owner_control.stop_owner", _fake_stop_owner
     )
     monkeypatch.setattr(
         stop_module, "_wait_root_process_exit", _fake_wait_root_process_exit
@@ -740,10 +741,9 @@ def test_release_full_stop_requests_root_cleanup_before_stopping_components(
     assert exit_code == 0
     assert recorded_stop_calls == []
     assert recorded_root_wait_calls == [(99, 30.0)]
-    assert "已请求 full-stack-root 优雅停止" in captured.out
     assert "full-stack-root 未在等待窗口内退出" not in captured.out
     assert "停止 full-stack-root 超时" not in captured.out
-    assert "已停止 full-stack-root，pid=99" in captured.out
+    assert "已确认全部受管进程组退出" in captured.out
     assert not state_file_path.exists()
     assert not stop_module._resolve_shutdown_request_file(state_file_path).exists()
 
@@ -765,11 +765,13 @@ def test_release_full_stop_timeout_stops_root_before_residual_components(
         "release_full_stop_timeout", result.release_dir / "stop_amvision_full.py"
     )
     state_file_path = result.release_dir / "logs" / "timeout" / "runtime-state.json"
+    scope = OwnershipScope.create(tmp_path / "ownership")
     state_file_path.parent.mkdir(parents=True, exist_ok=True)
     state_file_path.write_text(
         json.dumps(
             {
-                "format_id": "amvision.full-supervisor-state.v1",
+                "format_id": "amvision.full-supervisor-state.v3",
+                "ownership_scope": str(scope.root),
                 "root_process": {"pid": 99},
                 "components": [
                     {"name": "service", "process": {"pid": 11}},
@@ -780,7 +782,7 @@ def test_release_full_stop_timeout_stops_root_before_residual_components(
         encoding="utf-8",
     )
     live_pids = {11, 12, 99}
-    stop_calls: list[int] = []
+    stop_calls: list[object] = []
     monkeypatch.setattr(
         stop_module,
         "process_identity_matches",
@@ -791,16 +793,27 @@ def test_release_full_stop_timeout_stops_root_before_residual_components(
     def _stop(
         identity: dict[str, object],
         *,
-        stop_mode: str,
-        graceful_timeout_seconds: float,
+        timeout: float,
     ) -> bool:
-        del stop_mode, graceful_timeout_seconds
+        del timeout
         pid = int(identity["pid"])
         stop_calls.append(pid)
         live_pids.discard(pid)
         return True
 
-    monkeypatch.setattr(stop_module, "_stop_recorded_process", _stop)
+    monkeypatch.setattr("backend.runtime.processes.owner_control.stop_owner", _stop)
+    original_stop = OwnershipScope.stop
+    original_seal = OwnershipScope.seal
+    def seal(self):
+        """先封闭登记，防止旧 owner 在停止竞态中创建进程。"""
+        stop_calls.append("seal")
+        original_seal(self)
+    def stop_groups(self, **kwargs):
+        """owner 退出后才回收登记的组。"""
+        stop_calls.append("groups")
+        original_stop(self, **kwargs)
+    monkeypatch.setattr(OwnershipScope, "seal", seal)
+    monkeypatch.setattr(OwnershipScope, "stop", stop_groups)
 
     assert (
         stop_module.main(
@@ -808,7 +821,7 @@ def test_release_full_stop_timeout_stops_root_before_residual_components(
         )
         == 0
     )
-    assert stop_calls == [99, 12, 11]
+    assert stop_calls == ["seal", 99, "groups"]
 
 
 def test_release_full_shutdown_request_targets_exact_root_identity(
@@ -1056,7 +1069,7 @@ def test_release_full_start_cleans_backend_and_daemon_when_daemon_readiness_fail
         "ensure_windows_long_paths_enabled",
         lambda **_kwargs: True,
     )
-    fake_process = SimpleNamespace(pid=321, poll=lambda: None)
+    fake_process = SimpleNamespace(pid=321, poll=lambda: None, group_id="a" * 32)
     fake_log_capture = SimpleNamespace(
         current_log_path=result.release_dir
         / "logs"
@@ -1250,11 +1263,6 @@ def _patch_release_runtime_asset_sources(
         release_assembly,
         "SOURCE_FRONTEND_RUNTIME_CONFIG_TEMPLATE_FILE",
         source_frontend_runtime_config_template_file,
-    )
-    monkeypatch.setattr(
-        release_assembly,
-        "SOURCE_FRONTEND_RUNTIME_CONFIG_LOCAL_FILE",
-        tmp_path / "runtime-config.local.json",
     )
 
     source_ffmpeg_runtime_dir = tmp_path / "source-ffmpeg"

@@ -36,7 +36,7 @@ for module_name in _ORM_MODULES:
 config = context.config
 
 # 配置日志（显式指定 UTF-8 编码，避免 Windows 中文系统下 locale 回退为 GBK）
-if config.config_file_name is not None:
+if config.config_file_name is not None and config.attributes.get("configure_logger", True):
     fileConfig(config.config_file_name, encoding="utf-8")
 
 # 目标 metadata
@@ -66,7 +66,7 @@ def _apply_resolved_database_url() -> None:
     raw_url = config.get_main_option("sqlalchemy.url")
     resolved_url = _resolve_sqlite_url_from_config_dir(raw_url)
     if resolved_url and resolved_url != raw_url:
-        config.set_main_option("sqlalchemy.url", resolved_url)
+        config.set_main_option("sqlalchemy.url", resolved_url.replace("%", "%%"))
 
 
 _apply_resolved_database_url()

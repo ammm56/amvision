@@ -23,9 +23,6 @@ SOURCE_CONFIG_DIR = REPOSITORY_ROOT / "config"
 SOURCE_CUSTOM_NODES_DIR = REPOSITORY_ROOT / "custom_nodes"
 SOURCE_FRONTEND_DIST_DIR = REPOSITORY_ROOT / "frontend" / "web-ui" / "dist"
 SOURCE_FRONTEND_PROJECT_DIR = REPOSITORY_ROOT / "frontend" / "web-ui"
-SOURCE_FRONTEND_RUNTIME_CONFIG_LOCAL_FILE = (
-    REPOSITORY_ROOT / "frontend" / "web-ui" / "public" / "runtime-config.local.json"
-)
 SOURCE_FRONTEND_RUNTIME_CONFIG_TEMPLATE_FILE = (
     REPOSITORY_ROOT / "frontend" / "web-ui" / "public" / "runtime-config.template.json"
 )
@@ -553,12 +550,12 @@ def _resolve_frontend_dist_dir(request: ReleaseAssemblyRequest) -> Path:
 def _resolve_frontend_runtime_config_source_file(
     request: ReleaseAssemblyRequest,
 ) -> Path | None:
-    """解析优先复制为 runtime-config.json 的前端运行时配置文件。"""
+    """只读取显式指定的发行配置，不隐式携带开发机 local 配置。"""
 
     return (
         request.frontend_runtime_config_source_file.resolve()
         if request.frontend_runtime_config_source_file is not None
-        else SOURCE_FRONTEND_RUNTIME_CONFIG_LOCAL_FILE.resolve()
+        else None
     )
 
 
@@ -579,7 +576,7 @@ def _copy_frontend_assets(
     *,
     request: ReleaseAssemblyRequest,
 ) -> None:
-    """复制前端构建产物，并确保发布目录存在 runtime-config.json。"""
+    """复制前端；默认由服务按请求来源返回配置，显式配置保留独立地址。"""
 
     frontend_dist_dir = _resolve_frontend_dist_dir(request)
     if not frontend_dist_dir.is_dir():
@@ -595,12 +592,14 @@ def _copy_frontend_assets(
         )
 
     runtime_config_target_path = frontend_root_dir / "runtime-config.json"
-    if runtime_config_target_path.is_file():
-        return
-
+    (frontend_root_dir / "runtime-config.local.json").unlink(missing_ok=True)
     runtime_config_source_file = _resolve_frontend_runtime_config_source_file(request)
-    if runtime_config_source_file is not None and runtime_config_source_file.is_file():
+    if runtime_config_source_file is not None:
+        if not runtime_config_source_file.is_file():
+            raise FileNotFoundError(f"显式前端发行配置不存在: {runtime_config_source_file}")
         _copy_file(runtime_config_source_file, runtime_config_target_path)
+        return
+    if runtime_config_target_path.is_file():
         return
 
     runtime_config_template_file = _resolve_frontend_runtime_config_template_file(
@@ -608,10 +607,10 @@ def _copy_frontend_assets(
     )
     if not runtime_config_template_file.is_file():
         raise FileNotFoundError(
-            "前端运行时配置模板不存在，无法生成 runtime-config.json: "
+            "前端运行时配置模板不存在: "
             f"{runtime_config_template_file}"
         )
-    _copy_file(runtime_config_template_file, runtime_config_target_path)
+    _copy_file(runtime_config_template_file, frontend_root_dir / "runtime-config.template.json")
 
 
 def _build_frontend_assets() -> None:
@@ -913,6 +912,9 @@ def assemble_release(request: ReleaseAssemblyRequest) -> ReleaseAssemblyResult:
     release_dir = request.resolve_release_dir()
     if release_dir.exists() and not request.overwrite:
         raise FileExistsError(f"release 目录已存在: {release_dir}")
+    if release_dir.exists():
+        from backend.maintenance.release_process_guard import require_release_stopped
+        require_release_stopped(release_dir)
     if launcher_manifest is not None and release_dir.exists() and any(
         directory.is_dir() and any(directory.iterdir()) for directory in (release_dir / "data", release_dir / "logs", release_dir / "launcher" / "data", release_dir / "launcher" / "logs")
     ):

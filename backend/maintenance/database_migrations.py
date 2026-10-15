@@ -34,10 +34,10 @@ def migrate_database(
 
     settings = backend_service_settings or get_backend_service_settings()
     session_factory = SessionFactory(settings.to_database_settings())
-    config = _build_alembic_config(settings)
-    script = ScriptDirectory.from_config(config)
-    target_heads = tuple(script.get_heads())
     try:
+        config = _build_alembic_config(settings)
+        script = ScriptDirectory.from_config(config)
+        target_heads = tuple(script.get_heads())
         with session_factory.engine.connect() as connection:
             current_heads = tuple(MigrationContext.configure(connection).get_current_heads())
             table_names = set(inspect(connection).get_table_names())
@@ -82,7 +82,9 @@ def _build_alembic_config(settings: BackendServiceSettings) -> Config:
 
     backend_root = Path(__file__).resolve().parents[1]
     config = Config(str(backend_root / "alembic.ini"))
-    config.set_main_option("script_location", str((backend_root / "alembic").resolve()))
+    # 作为库调用时，日志归宿主所有；Alembic CLI 仍自行配置日志。
+    config.attributes["configure_logger"] = False
+    config.set_main_option("script_location", str((backend_root / "alembic").resolve()).replace("%", "%%"))
     database_url = make_url(settings.database.url)
     if database_url.drivername.startswith("sqlite") and database_url.database not in {
         None,
@@ -93,7 +95,8 @@ def _build_alembic_config(settings: BackendServiceSettings) -> Config:
         if not database_path.is_absolute():
             database_path = (Path.cwd() / database_path).resolve()
         database_url = database_url.set(database=database_path.as_posix())
-    config.set_main_option("sqlalchemy.url", database_url.render_as_string(hide_password=False))
+    # Alembic 使用 ConfigParser；URL 的百分号编码属于连接串，不是配置插值。
+    config.set_main_option("sqlalchemy.url", database_url.render_as_string(hide_password=False).replace("%", "%%"))
     return config
 
 
