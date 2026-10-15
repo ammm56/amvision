@@ -20,6 +20,7 @@ from backend.service.application.ports.queue import (
 from backend.service.infrastructure.filesystem.atomic_files import (
     replace_path_with_retry,
 )
+from backend.service.infrastructure.filesystem.shared_files import open_shared_read
 
 _CLAIM_TRANSITION_RECOVERY_GRACE_SECONDS = 30.0
 
@@ -805,7 +806,9 @@ class LocalFileQueueBackend:
         """从任务文件恢复队列消息。"""
 
         try:
-            payload = json.loads(task_path.read_text(encoding="utf-8"))
+            # 原子发布已完成但发布端 DELETE 句柄可能仍打开，读者须共享删除。
+            with open_shared_read(task_path) as stream:
+                payload = json.loads(stream.read().decode("utf-8"))
         except (OSError, json.JSONDecodeError) as error:
             raise PersistenceOperationError(
                 "读取队列任务失败",

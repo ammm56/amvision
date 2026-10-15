@@ -9,6 +9,7 @@ import json
 import mmap
 import os
 from pathlib import Path
+import re
 from secrets import token_bytes
 import struct
 import sys
@@ -18,6 +19,8 @@ from typing import BinaryIO, Iterator, Literal
 from uuid import uuid4
 
 from backend.service.infrastructure.ipc.mmap_primitives import (
+    MmapGuardBusyError,
+    acquire_mmap_guard,
     acquire_mmap_owner_lock,
     open_mmap_guard_identity,
     release_mmap_owner_lock,
@@ -38,6 +41,7 @@ _HEADER_SIZE = 256
 _DESCRIPTOR_STRIDE = 256
 _HEADER = struct.Struct("<8sIIIIIIQQQQ16s32sQ")
 _DESCRIPTOR = struct.Struct("<IIQ16s16sQQQQQIIQ")
+_NONZERO_STATE_BYTE = re.compile(rb"[^\x00]")
 
 _STATE_FREE = 0
 _STATE_WRITING = 1
@@ -48,6 +52,21 @@ _STATE_QUARANTINED = 5
 
 _DOMAIN_GENERAL = 0
 _DOMAIN_HUGE_RESERVE = 1
+
+# Publication 只保护短暂的 descriptor 读写，不改变 writer/reader 槽位的非阻塞准入。
+_PUBLICATION_GUARD_WAIT_NS = 250_000_000
+
+
+@contextmanager
+def _hold_publication_guard(path: Path, *, offset: int) -> Iterator[None]:
+    """等待短临界区并限定 250 ms；获得锁后仍由调用方重验完整 identity。"""
+    try:
+        with acquire_mmap_guard(guard_path=path, offset=offset, length=1,
+                                deadline_ns=monotonic_ns() + _PUBLICATION_GUARD_WAIT_NS,
+                                poll_interval_seconds=0.00025):
+            yield
+    except MmapGuardBusyError as error:
+        raise MmapGuardBusyError(f"LocalBuffer publication guard 等待超时：offset={offset}") from error
 
 ArenaLeaseState = Literal[
     "free",
@@ -648,7 +667,7 @@ class MmapBufferArena:
         # 全部 descriptor，避免后台回收在无在途图片时占用控制线程。
         if not self._allocator.allocated_extents():
             return {"released_count": 0, "quarantined_count": 0}
-        for descriptor_index in range(self.descriptor_count):
+        for descriptor_index in self._nonfree_descriptor_indices():
             descriptor = self._read_descriptor(descriptor_index)
             if descriptor.state == "free":
                 continue
@@ -656,7 +675,11 @@ class MmapBufferArena:
                 if descriptor.deadline_ns > current_ns:
                     continue
             receipt = self._receipt_from_descriptor(descriptor)
-            result = self.request_reclaim(receipt, now_ns=current_ns)
+            try:
+                result = self.request_reclaim(receipt, now_ns=current_ns)
+            except MmapGuardBusyError:
+                # 锁竞争不证明 identity 失效；保留 descriptor，下一轮继续回收。
+                continue
             released += int(result == "released")
             quarantined += int(result == "quarantined")
         return {"released_count": released, "quarantined_count": quarantined}
@@ -687,7 +710,7 @@ class MmapBufferArena:
         }
         published_content = 0
         rounding_waste = 0
-        for descriptor_index in range(self.descriptor_count):
+        for descriptor_index in self._nonfree_descriptor_indices():
             item = self._read_descriptor(descriptor_index)
             if item.state == "free":
                 continue
@@ -1175,7 +1198,7 @@ class MmapBufferArena:
 
         if not 0 <= descriptor_index < self.descriptor_count:
             raise LocalBufferArenaError("descriptor_index 越界")
-        with self._external_guard(self._publication_guard_offset(descriptor_index)):
+        with _hold_publication_guard(self.guard_path, offset=self._publication_guard_offset(descriptor_index)):
             yield
 
     def _try_hold_all_external_guards(self, descriptor_index: int) -> BinaryIO | None:
@@ -1420,6 +1443,17 @@ class MmapBufferArena:
                 0,
                 publication_generation,
             )
+
+    def _nonfree_descriptor_indices(self) -> list[int]:
+        """筛选完整 uint32 state 的非零槽，保留高位损坏项供原解析器拒绝。"""
+        assert self._allocator_mmap is not None
+        candidates: set[int] = set()
+        end = _HEADER_SIZE + self.descriptor_count * _DESCRIPTOR_STRIDE
+        # 四个字节列分别在 C 层扫描；不为大量空槽构造完整快照，也不缓存状态。
+        for byte in range(4):
+            column = self._allocator_mmap[_HEADER_SIZE + byte : end : _DESCRIPTOR_STRIDE]
+            candidates.update(match.start() for match in _NONZERO_STATE_BYTE.finditer(column))
+        return sorted(candidates)
 
     def _read_descriptor(self, descriptor_index: int) -> ArenaDescriptorSnapshot:
         """读取一个固定 descriptor；state 是最后发布字段。"""
@@ -1887,7 +1921,7 @@ class MmapBufferArenaExternalAccess:
     def _publication_guard(self, descriptor_index: int) -> Iterator[None]:
         """短暂持有 publication guard。"""
 
-        with self._guard(descriptor_index * self._guard_stride):
+        with _hold_publication_guard(self.guard_path, offset=descriptor_index * self._guard_stride):
             yield
 
     @contextmanager

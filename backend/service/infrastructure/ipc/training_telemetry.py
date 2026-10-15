@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import logging
 from pathlib import Path
-from threading import Event, RLock, Thread
+from threading import Event, Lock, RLock, Thread, current_thread
 from time import monotonic, monotonic_ns
 from uuid import UUID, uuid4
 
@@ -13,6 +13,7 @@ from backend.contracts.ipc.local_message_profiles import (
     TRAINING_TELEMETRY_EVENT_PROFILE_V1,
     EventRingChannelProfile,
 )
+from backend.service.application.errors import InvalidRequestError, OperationTimeoutError
 from backend.service.application.message_channels.errors import (
     ChannelClosedError,
     ChannelCorruptMessageError,
@@ -148,39 +149,62 @@ class TrainingTelemetryMmapReceiver:
         self._pending_cleanup: dict[Path, LocalMessageChannelPaths] = {}
         self._thread: Thread | None = None
         self._stop_event = Event()
+        self._lifecycle_lock = Lock()
+        self._stop_pending = False
 
     @property
     def is_running(self) -> bool:
-        """返回 receiver 线程是否存活。"""
+        """返回 receiver 是否仍接收事件，不将停止中的线程报为可用。"""
 
-        return self._thread is not None and self._thread.is_alive()
+        return self._thread is not None and self._thread.is_alive() and not self._stop_event.is_set()
 
     def start(self) -> None:
         """启动固定策略的后台扫描与轮询线程。"""
 
-        if self.is_running:
-            return
-        self.root_dir.mkdir(parents=True, exist_ok=True)
-        self._stop_event.clear()
-        self._thread = Thread(
-            target=self._run_loop,
-            name="training-telemetry-event-ring-receiver",
-            daemon=True,
-        )
-        self._thread.start()
+        with self._lifecycle_lock:
+            if self._stop_pending:
+                raise InvalidRequestError("训练遥测接收器停止尚未确认，禁止恢复")
+            if self._thread is not None:
+                if not self._thread.is_alive():
+                    raise InvalidRequestError("训练遥测接收线程已退出，必须先完成 stop")
+                return
+            self.root_dir.mkdir(parents=True, exist_ok=True)
+            self._stop_event.clear()
+            self._thread = Thread(
+                target=self._run_loop,
+                name="training-telemetry-event-ring-receiver",
+                daemon=True,
+            )
+            try:
+                self._thread.start()
+            except BaseException:
+                self._thread = None
+                self._stop_event.set()
+                self._stop_pending = True
+                raise
 
     def stop(self) -> None:
-        """停止 receiver；不删除仍由存活 worker 持有的 EventRing。"""
+        """确认接收线程退出后释放 reader；失败保留资源并封闭恢复。"""
 
-        self._stop_event.set()
-        thread = self._thread
+        with self._lifecycle_lock:
+            self._stop_event.set()
+            self._stop_pending = True
+            thread = self._thread
         if thread is not None:
+            if thread is current_thread():
+                raise OperationTimeoutError("训练遥测接收线程不能确认自身退出")
             thread.join(timeout=max(2.0, self.poll_interval_seconds * 4))
-        self._thread = None
-        for entry in tuple(self._readers.values()):
-            entry.reader.close(deadline_ns=monotonic_ns())
-        self._readers.clear()
-        self._pending_cleanup.clear()
+            if thread.is_alive():
+                raise OperationTimeoutError("训练遥测接收尚未退出，保留 EventRing 和 broker")
+        with self._lifecycle_lock:
+            if self._thread is not thread:
+                return
+            for path, entry in tuple(self._readers.items()):
+                entry.reader.close(deadline_ns=monotonic_ns())
+                del self._readers[path]
+            self._pending_cleanup.clear()
+            self._thread = None
+            self._stop_pending = False
 
     def poll_once(self) -> int:
         """发现并转发一次，返回进入业务 broker 的有效点数。"""
@@ -240,7 +264,7 @@ class TrainingTelemetryMmapReceiver:
                 self._discard_reader(mmap_path=mmap_path, entry=entry)
                 continue
             except (OSError, ValueError, ChannelClosedError, ChannelCorruptMessageError):
-                remove_files = not self._owner_alive(entry)
+                remove_files = self._owner_alive(entry) is False
                 self._discard_reader(
                     mmap_path=mmap_path,
                     entry=entry,
@@ -257,22 +281,22 @@ class TrainingTelemetryMmapReceiver:
                     continue
                 published_count += 1
             owner_alive = self._owner_alive(entry)
-            if (batch.producer_closed or not owner_alive) and not owner_alive:
+            if owner_alive is not True:
                 self._discard_reader(
                     mmap_path=mmap_path,
                     entry=entry,
-                    remove_files=True,
+                    remove_files=owner_alive is False,
                 )
         return published_count
 
     @staticmethod
-    def _owner_alive(entry: _ReaderEntry) -> bool:
-        """使用 owner lock 判断 producer，而不是依赖 PID 或文件存在性。"""
+    def _owner_alive(entry: _ReaderEntry) -> bool | None:
+        """保留不可观测状态；只有明确无 owner 才能申请清理 Channel 文件。"""
 
         try:
             return entry.reader.owner_alive()
-        except OSError:
-            return False
+        except (OSError, ChannelClosedError, ChannelCorruptMessageError, ChannelRestartedError):
+            return None
 
     def _discard_reader(
         self,

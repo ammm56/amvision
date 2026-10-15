@@ -135,8 +135,9 @@ def test_inference_daemon_dependency_probe_requires_live_broker_and_valid_layout
     assert probe.snapshot()["ready"] is False
 
 
-def test_inference_daemon_stop_reclaims_every_component_after_one_failure() -> None:
-    """验证任一 stop 失败时仍按反序回收其余组件和数据库连接。"""
+@pytest.mark.parametrize("failure", ["control", "reconciler"])
+def test_inference_daemon_stop_preserves_dependencies_after_producer_failure(failure) -> None:
+    """生产者未确认退出时，不关闭其可继续访问的 runtime 和数据库。"""
 
     calls: list[str] = []
 
@@ -166,26 +167,28 @@ def test_inference_daemon_stop_reclaims_every_component_after_one_failure() -> N
                 sync_supervisor=_Component("sync-supervisor"),
             ),
         ),
-        deployment_runtime_reconciler=_Component("reconciler"),  # type: ignore[arg-type]
-        control_dispatcher=_Component("control", fail=True),  # type: ignore[arg-type]
+        deployment_runtime_reconciler=_Component("reconciler", fail=failure == "reconciler"),  # type: ignore[arg-type]
+        control_dispatcher=_Component("control", fail=failure == "control"),  # type: ignore[arg-type]
         local_mmap_server=_Component("mmap"),  # type: ignore[arg-type]
     )
 
-    with pytest.raises(RuntimeError, match="control"):
+    with pytest.raises(RuntimeError, match=failure):
         runtime.stop()
 
     assert calls == [
         "mmap",
         "control",
         "reconciler",
-        "gateway",
-        "async-supervisor",
-        "sync-supervisor",
-        "engine",
     ]
+    with pytest.raises(RuntimeError, match="停止"):
+        runtime.start()
+    runtime.control_dispatcher.fail = False
+    runtime.deployment_runtime_reconciler.fail = False
+    runtime.stop()
+    assert calls[-4:] == ["gateway", "async-supervisor", "sync-supervisor", "engine"]
 
 
-@pytest.mark.parametrize("failure", ["owner", "control", None])
+@pytest.mark.parametrize("failure", ["owner", "control", "status", None])
 def test_owner_is_acquired_before_starting_any_runtime(failure) -> None:
     """重复 owner 不启动业务组件；后续启动失败反序回收且释放 owner。"""
     calls = []
@@ -212,7 +215,7 @@ def test_owner_is_acquired_before_starting_any_runtime(failure) -> None:
         settings=SimpleNamespace(), session_factory=SimpleNamespace(engine=SimpleNamespace(dispose=lambda: calls.append("dispose"))),
         dataset_storage=None, queue_backend=None,
         task_runtimes=(SimpleNamespace(sync_supervisor=Component("sync"), async_supervisor=Component("async"), async_gateway_registry=Component("gateway")),),
-        deployment_runtime_reconciler=Component("reconciler"), control_dispatcher=Component("control"), local_mmap_server=Component("mmap"),
+        deployment_runtime_reconciler=Component("reconciler"), control_dispatcher=Component("control"), local_mmap_server=Component("mmap"), status_publisher=Component("status"),
     )
     if failure == "owner":
         with pytest.raises(MmapOwnerLockBusyError):
@@ -221,8 +224,13 @@ def test_owner_is_acquired_before_starting_any_runtime(failure) -> None:
     elif failure == "control":
         with pytest.raises(RuntimeError, match="startup failed"):
             runtime.start()
-        assert calls == ["owner", "sync", "async", "gateway", "reconciler", "control", "stop-reconciler", "stop-gateway", "stop-async", "stop-sync", "stop-mmap", "dispose"]
+        assert calls == ["owner", "sync", "async", "gateway", "reconciler", "control", "stop-mmap", "stop-control", "stop-reconciler", "stop-gateway", "stop-async", "stop-sync", "dispose"]
+    elif failure == "status":
+        with pytest.raises(RuntimeError, match="startup failed"):
+            runtime.start()
+        assert calls == ["owner", "sync", "async", "gateway", "reconciler", "control", "mmap", "status",
+                         "stop-status", "stop-mmap", "stop-control", "stop-reconciler", "stop-gateway", "stop-async", "stop-sync", "dispose"]
     else:
         runtime.start()
-        assert calls == ["owner", "sync", "async", "gateway", "reconciler", "control", "mmap"]
+        assert calls == ["owner", "sync", "async", "gateway", "reconciler", "control", "mmap", "status"]
         runtime.stop()

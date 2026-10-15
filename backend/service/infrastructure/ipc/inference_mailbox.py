@@ -6,7 +6,7 @@ from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from math import ceil
 from pathlib import Path
-from threading import Event, Lock, Thread
+from threading import Condition, Event, Lock, RLock, Thread, current_thread
 from time import monotonic_ns
 from typing import Callable
 from uuid import uuid4
@@ -201,8 +201,10 @@ class InferenceLocalMmapServer:
         self._executor: ThreadPoolExecutor | None = None
         self._thread: Thread | None = None
         self._stop_event = Event()
+        self._lifecycle_lock = RLock()
+        self._stop_pending = False
         self._active_count = 0
-        self._active_lock = Lock()
+        self._active_lock = Condition()
         self._metrics_lock = Lock()
         self._response_raw_sizes: deque[int] = deque(maxlen=4096)
         self._response_raw_sizes_by_task: dict[str, deque[int]] = {}
@@ -220,6 +222,14 @@ class InferenceLocalMmapServer:
 
     def prepare(self) -> None:
         """先取得唯一 Channel owner，不启动请求线程或部署执行组件。"""
+
+        with self._lifecycle_lock:
+            if self._stop_pending:
+                raise InvalidRequestError("Inference Mailbox 停止尚未确认，禁止准备")
+            self._prepare()
+
+    def _prepare(self) -> None:
+        """持有生命周期锁期间取得或复用唯一 owner。"""
 
         if self._server is not None:
             return
@@ -252,7 +262,6 @@ class InferenceLocalMmapServer:
                     lock_path=self.paths.owner_lock_path,
                     module="backend.inference_daemon.main",
                     owner_pid=header.owner_pid,
-                    owner_started_ns=header.owner_process_started_ns,
                 )
                 self._server = MmapMailboxServer(paths=self.paths, profile=INFERENCE_MAILBOX_PROFILE_V1)
                 return
@@ -263,34 +272,62 @@ class InferenceLocalMmapServer:
     def start(self) -> None:
         """在 owner 已取得、依赖已启动后开启常驻 dispatcher。"""
 
-        if self.is_running:
-            return
-        self.prepare()
-        self._executor = ThreadPoolExecutor(
-            max_workers=self.max_concurrent_requests,
-            thread_name_prefix="inference-mailbox-handler",
-        )
-        self._stop_event.clear()
-        self._thread = Thread(
-            target=self._run_loop,
-            name="inference-mailbox-dispatcher",
-            daemon=True,
-        )
-        self._thread.start()
+        with self._lifecycle_lock:
+            if self._stop_pending:
+                raise InvalidRequestError("Inference Mailbox 停止尚未确认，禁止恢复")
+            if self.is_running:
+                return
+            if self._thread is not None:
+                raise InvalidRequestError("Inference dispatcher 已退出，必须先完成 stop 再恢复")
+            self.prepare()
+            self._executor = ThreadPoolExecutor(
+                max_workers=self.max_concurrent_requests,
+                thread_name_prefix="inference-mailbox-handler",
+            )
+            self._stop_event.clear()
+            self._thread = Thread(
+                target=self._run_loop,
+                name="inference-mailbox-dispatcher",
+                daemon=True,
+            )
+            try:
+                self._thread.start()
+            except BaseException:
+                self._thread = None
+                self._stop_event.set()
+                self._stop_pending = True
+                raise
 
     def stop(self) -> None:
-        """停止接收，先发布 closed fence，再等待已 claim handler。"""
+        """确认 dispatcher 和已 claim handler 退出后才关闭 mmap；超时保留所有权。"""
 
-        self._stop_event.set()
-        thread, self._thread = self._thread, None
-        if thread is not None:
-            thread.join(timeout=5.0)
-        server, self._server = self._server, None
-        if server is not None:
-            server.close(deadline_ns=monotonic_ns() + 5_000_000_000)
-        executor, self._executor = self._executor, None
-        if executor is not None:
-            executor.shutdown(wait=True, cancel_futures=False)
+        with self._lifecycle_lock:
+            self._stop_pending = True
+            self._stop_event.set()
+            deadline_ns = monotonic_ns() + 5_000_000_000
+            if self._server is not None:
+                self._server.begin_close()
+            thread = self._thread
+            if thread is not None:
+                if thread is current_thread():
+                    raise OperationTimeoutError("Inference dispatcher 不能确认自身退出")
+                thread.join(timeout=5.0)
+                if thread.is_alive():
+                    raise OperationTimeoutError("Inference dispatcher 尚未退出，保留 mmap 和执行器")
+            with self._active_lock:
+                if not self._active_lock.wait_for(
+                    lambda: self._active_count == 0,
+                    timeout=max(0.0, (deadline_ns - monotonic_ns()) / 1e9),
+                ):
+                    raise OperationTimeoutError("Inference handler 尚未退出，保留 mmap 和模型依赖")
+            if self._executor is not None:
+                self._executor.shutdown(wait=True, cancel_futures=False)
+                self._executor = None
+            if self._server is not None:
+                self._server.close(deadline_ns=deadline_ns)
+                self._server = None
+            self._thread = None
+            self._stop_pending = False
 
     def get_health_summary(self) -> dict[str, object]:
         """把通用 Mailbox health 映射到现有 inference health 契约。"""
@@ -316,7 +353,7 @@ class InferenceLocalMmapServer:
                 },
             }
         return {
-            "ready": self.is_running,
+            "ready": self.is_running and not self._stop_event.is_set(),
             "protocol_version": 1,
             "server_epoch": health.owner_epoch,
             "descriptor_count": INFERENCE_MAILBOX_PROFILE_V1.descriptor_count,
@@ -353,7 +390,12 @@ class InferenceLocalMmapServer:
             server = self._server
             if server is None:
                 return
-            request = server.receive(deadline_ns=monotonic_ns() + 10_000_000)
+            try:
+                request = server.receive(deadline_ns=monotonic_ns() + 10_000_000)
+            except ChannelClosedError:
+                if self._stop_event.is_set():
+                    return
+                raise
             if request is None:
                 continue
             with self._active_lock:
@@ -363,7 +405,14 @@ class InferenceLocalMmapServer:
                 with self._active_lock:
                     self._active_count -= 1
                 return
-            executor.submit(self._process_request, request)
+            try:
+                executor.submit(self._process_request, request)
+            except BaseException:
+                with self._active_lock:
+                    self._active_count -= 1
+                    self._active_lock.notify_all()
+                server.publish_failure(request)
+                raise
 
     def _process_request(self, request: MailboxRequestContext) -> None:
         """执行一次业务 handler，并由通用 engine 负责 publication/ACK。"""
@@ -435,6 +484,8 @@ class InferenceLocalMmapServer:
                     ).append(raw_size)
             with self._active_lock:
                 self._active_count -= 1
+                if self._active_count == 0:
+                    self._active_lock.notify_all()
 
 
 def _read_request_task_type(payload: dict[str, object]) -> str:

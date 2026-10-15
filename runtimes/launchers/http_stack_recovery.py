@@ -59,15 +59,14 @@ def drain_owned_stack(*, components: list, identity, directory: Path,
         raise RecoveryBlocked("服务已退出，无法获得排空确认")
     try:
         actual = psutil.Process(identity.pid)
-        if service.pid not in {p.pid for p in actual.parents()} and actual.pid != service.pid:
+        if actual.pid not in service.scope.members(service.group_id):
             raise RecoveryBlocked("HTTP 服务已不属于受管组件")
         owned = {}
         for component in components:
             if component.process is None or component.process.poll() is not None:
                 continue
-            root = psutil.Process(component.process.pid)
-            for process in [root, *root.children(recursive=True)]:
-                owned[process.pid] = read_process_identity(process.pid)
+            for pid in component.process.scope.members(component.process.group_id):
+                owned[pid] = read_process_identity(pid)
     except psutil.Error as error:
         raise RecoveryBlocked("无法核实受管进程树") from error
 
@@ -112,7 +111,8 @@ def drain_owned_stack(*, components: list, identity, directory: Path,
     if daemon is None or daemon.poll() is not None:
         raise RecoveryBlocked("daemon 未提供本次正常退出确认")
     matches = []
-    for child in psutil.Process(daemon.pid).children(recursive=True):
+    for pid in daemon.scope.members(daemon.group_id):
+        child = psutil.Process(pid)
         args = child.cmdline()
         if any(args[i:i + 2] == ["-m", "backend.inference_daemon.main"] for i in range(len(args) - 1)):
             matches.append(child)
@@ -123,7 +123,8 @@ def drain_owned_stack(*, components: list, identity, directory: Path,
     if not lock.is_absolute() or not any(Path(item.path).resolve() == lock for item in target.open_files()):
         raise RecoveryBlocked("daemon 未持有排空确认中的 owner lock，拒绝发送停止请求")
     request = lock.with_name(f"{lock.name}.stop-{target.pid}.json")
-    write_full_json(request, {"pid": target.pid, "create_time": target.create_time()})
+    from backend.runtime.processes.birth_identity import read_process_birth_identity
+    write_full_json(request, {"pid": target.pid, "birth_identity": read_process_birth_identity(target.pid)})
     wait_until(lambda: daemon.poll() is not None, check_shutdown, timeout=30,
                description="daemon 未在期限内退出，禁止重启")
     if daemon.returncode != 0:
@@ -131,9 +132,8 @@ def drain_owned_stack(*, components: list, identity, directory: Path,
     command("shutdown")
     wait_until(lambda: service_phase("closed") and service.poll() is not None, check_shutdown,
                timeout=30, description="service/Broker 未确认正常关闭，禁止新 owner")
-    wait_until(lambda: all(not process_identity_matches(item) for item in owned.values()),
-               check_shutdown, timeout=10, description="旧 generation 仍有进程存活")
-    wait_until(lambda: not psutil.Process().children(recursive=True), check_shutdown,
-               timeout=10, description="Supervisor 仍拥有子进程，禁止创建下一代")
+    for component in components:
+        if component.process is not None:
+            component.process.scope.require_empty(component.process.group_id)
     for suffix in ("request.json", "status.json"):
         (directory / f"{identity.instance_id}.{suffix}").unlink(missing_ok=True)

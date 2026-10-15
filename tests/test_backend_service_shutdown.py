@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from backend.service.api.bootstrap import BackendServiceBootstrap
+import pytest
+
+from backend.service.api.bootstrap import BackendServiceBootstrap, BackendServiceRuntime
+from backend.bootstrap.core import RuntimeLifecycle
 from backend.service.application.errors import OperationTimeoutError
 
 
@@ -25,15 +28,37 @@ class _Recorder:
         self.calls.append(f"{self.name}.dispose")
 
 
-def test_backend_shutdown_continues_after_trigger_stop_timeout() -> None:
-    """Trigger 停止超时不能阻断 Workflow、LocalBuffer 与数据库清理。"""
+def test_backend_visits_every_task_type_supervisor():
+    """不同任务类型的字段命名不能导致八个 sync/async supervisor 被漏掉。"""
+    names = ["detection_sync_deployment_process_supervisor",
+             "detection_async_deployment_process_supervisor",
+             "detection_async_inference_gateway_dispatcher_registry"]
+    for task in ("classification", "segmentation", "pose", "obb"):
+        names.extend((f"{task}_sync_deployment_supervisor",
+                      f"{task}_async_deployment_supervisor",
+                      f"{task}_async_inference_gateway_registry"))
+    runtime = SimpleNamespace(**{name: object() for name in names})
+    assert list(BackendServiceRuntime.iter_all_deployment_supervisors(runtime)) == [getattr(runtime, name) for name in names]
+
+
+@pytest.mark.parametrize("failure", ["outbox", "telemetry", "trigger", "reconciler"])
+def test_backend_shutdown_preserves_dependencies_after_trigger_stop_timeout(failure) -> None:
+    """Trigger 未确认退出时保留其依赖，不能提前关闭 Workflow 与数据库。"""
 
     calls: list[str] = []
+    failing = {"active": True}
+
+    class _Producer(_Recorder):
+        def stop(self):
+            super().stop()
+            if failure == self.name and failing["active"]:
+                raise OperationTimeoutError("injected stop timeout")
 
     class _TimedOutTriggerSupervisor:
         def stop_all(self) -> None:
             calls.append("triggers.stop_all")
-            raise OperationTimeoutError("injected trigger stop timeout")
+            if failure == "trigger" and failing["active"]:
+                raise OperationTimeoutError("injected trigger stop timeout")
 
     workflow_context = SimpleNamespace(
         workflow_model_session_manager=None,
@@ -41,12 +66,13 @@ def test_backend_shutdown_continues_after_trigger_stop_timeout() -> None:
         close=lambda: calls.append("workflow_context.close"),
     )
     runtime = SimpleNamespace(
-        queue_outbox_dispatcher=_Recorder("queue_outbox", calls),
-        training_telemetry_receiver=None,
+        lifecycle=RuntimeLifecycle(),
+        queue_outbox_dispatcher=_Producer("outbox", calls),
+        training_telemetry_receiver=_Producer("telemetry", calls),
         training_telemetry_broker=_Recorder("training_broker", calls),
         trigger_source_supervisor=_TimedOutTriggerSupervisor(),
         workflow_trigger_mailbox_supervisor=None,
-        deployment_runtime_reconciler=_Recorder("deployment_reconciler", calls),
+        deployment_runtime_reconciler=_Producer("reconciler", calls),
         workflow_runtime_worker_manager=_Recorder("workflow_manager", calls),
         workflow_preview_sessions=_Recorder("preview_manager", calls),
         workflow_service_node_runtime_context=workflow_context,
@@ -56,16 +82,16 @@ def test_backend_shutdown_continues_after_trigger_stop_timeout() -> None:
         session_factory=SimpleNamespace(engine=_Recorder("database", calls)),
     )
 
-    BackendServiceBootstrap().stop_runtime(runtime)
+    with pytest.raises(OperationTimeoutError):
+        BackendServiceBootstrap().stop_runtime(runtime)
 
-    assert calls == [
-        "queue_outbox.stop",
-        "training_broker.close",
-        "triggers.stop_all",
-        "deployment_reconciler.stop",
-        "preview_manager.close",
-        "workflow_manager.stop",
-        "workflow_context.close",
-        "local_buffer.stop",
-        "database.dispose",
-    ]
+    expected = ["outbox.stop", "telemetry.stop", "training_broker.close", "triggers.stop_all", "reconciler.stop"]
+    assert calls == expected[:{"outbox": 1, "telemetry": 2, "trigger": 4, "reconciler": 5}[failure]]
+    with pytest.raises(RuntimeError, match="停止"):
+        BackendServiceBootstrap().start_runtime(runtime)
+    failing["active"] = False
+    BackendServiceBootstrap().stop_runtime(runtime)
+    assert calls[-2:] == ["local_buffer.stop", "database.dispose"]
+    completed = list(calls)
+    BackendServiceBootstrap().stop_runtime(runtime)
+    assert calls == completed

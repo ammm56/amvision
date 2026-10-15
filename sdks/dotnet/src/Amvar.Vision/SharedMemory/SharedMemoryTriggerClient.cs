@@ -549,7 +549,7 @@ namespace Amvar.Vision.SharedMemory
             WorkflowTriggerDescriptorIdentity identity,
             long localDeadline)
         {
-            var waitStartedAt = Stopwatch.GetTimestamp();
+            using var pollWaiter = new PollWaiter();
             while (Stopwatch.GetTimestamp() < localDeadline)
             {
                 var allocation = mailbox.TryReadAllocation(identity);
@@ -564,7 +564,7 @@ namespace Amvar.Vision.SharedMemory
                     ThrowResponseErrorAndAcknowledge(earlyResponse);
                 }
 
-                PausePoll(waitStartedAt);
+                pollWaiter.Wait(options.PollInterval);
             }
 
             throw new SharedMemoryTriggerException("timeout", "Timed out waiting for LocalBuffer allocation.");
@@ -574,7 +574,7 @@ namespace Amvar.Vision.SharedMemory
             WorkflowTriggerDescriptorIdentity identity,
             long localDeadline)
         {
-            var waitStartedAt = Stopwatch.GetTimestamp();
+            using var pollWaiter = new PollWaiter();
             while (Stopwatch.GetTimestamp() < localDeadline)
             {
                 var response = mailbox.TryReadResponse(identity);
@@ -583,7 +583,7 @@ namespace Amvar.Vision.SharedMemory
                     return response;
                 }
 
-                PausePoll(waitStartedAt);
+                pollWaiter.Wait(options.PollInterval);
             }
 
             throw new SharedMemoryTriggerException("timeout", "Timed out waiting for Workflow Trigger response.");
@@ -884,18 +884,6 @@ namespace Amvar.Vision.SharedMemory
             mailboxDisposed = true;
             mappingCache.Dispose();
             mailbox.Dispose();
-        }
-
-        private void PausePoll(long waitStartedAt)
-        {
-            _ = waitStartedAt;
-            // 本机 mailbox 的 publication 延迟远小于一次 Workflow 执行，但
-            // SDK 不能为等待状态持续占用一个逻辑核。多个 TriggerSource 并发时
-            // 忙轮询会和 Runtime/Broker 争抢 CPU 并放大 P99。Windows 进程已
-            // 持有 1 ms timer resolution lease，因此按显式 PollInterval 阻塞等待
-            // 只引入亚毫秒级平均观察延迟，同时保持 CPU 和尾延迟可预测。
-            var milliseconds = Math.Max(1, (int)Math.Ceiling(options.PollInterval.TotalMilliseconds));
-            Thread.Sleep(milliseconds);
         }
 
         private static IReadOnlyList<T> ParseList<T>(IDictionary<string, JToken> payload, string key)

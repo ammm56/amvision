@@ -2,10 +2,11 @@
 
 from collections.abc import Callable
 import json
-from threading import Event, Thread
+from threading import Event, Lock, Thread, current_thread
 from time import monotonic_ns
 
 from backend.contracts.ipc.local_message_profiles import EventRingChannelProfile
+from backend.service.application.errors import InvalidRequestError, OperationTimeoutError
 from backend.service.application.message_channels.models import EventPublishResult
 from backend.service.infrastructure.ipc.local_message.event_ring import (
     MmapEventRingPublisher,
@@ -44,14 +45,28 @@ class InferenceStatusPublisher:
         self._stop = Event()
         self._thread: Thread | None = None
         self._publisher: MmapEventRingPublisher | None = None
+        self._lifecycle_lock = Lock()
+        self._stop_pending = False
 
     def start(self) -> None:
         """取得独占 owner 后启动发布线程。"""
-        self._publisher = MmapEventRingPublisher(
-            paths=self.paths, profile=STATUS_PROFILE
-        )
-        self._thread = Thread(target=self._run, name="inference-status", daemon=True)
-        self._thread.start()
+        with self._lifecycle_lock:
+            if self._stop_pending:
+                raise InvalidRequestError("Inference 状态发布停止尚未确认，禁止恢复")
+            if self._thread is not None and self._thread.is_alive():
+                return
+            self._publisher = MmapEventRingPublisher(
+                paths=self.paths, profile=STATUS_PROFILE
+            )
+            self._stop.clear()
+            self._thread = Thread(target=self._run, name="inference-status", daemon=True)
+            try:
+                self._thread.start()
+            except BaseException:
+                self._thread = None
+                self._stop.set()
+                self._stop_pending = True
+                raise
 
     def _run(self) -> None:
         """发布完整状态或明确失败；过大时不能继续保留旧成功快照。"""
@@ -96,14 +111,20 @@ class InferenceStatusPublisher:
 
     def stop(self) -> None:
         """关闭发布线程和 owner；reader 会立即拒绝关闭后的状态。"""
-        self._stop.set()
-        if self._thread is not None:
-            self._thread.join(timeout=5)
-        if self._publisher is not None and (
-            self._thread is None or not self._thread.is_alive()
-        ):
-            self._publisher.close(deadline_ns=monotonic_ns())
-            self._publisher = None
+        with self._lifecycle_lock:
+            self._stop_pending = True
+            self._stop.set()
+            if self._thread is not None:
+                if self._thread is current_thread():
+                    raise OperationTimeoutError("Inference 状态线程不能确认自身退出")
+                self._thread.join(timeout=5)
+                if self._thread.is_alive():
+                    raise OperationTimeoutError("Inference 状态采集尚未退出，保留运行时依赖")
+            if self._publisher is not None:
+                self._publisher.close(deadline_ns=monotonic_ns())
+                self._publisher = None
+            self._thread = None
+            self._stop_pending = False
 
 
 def read_inference_status(buffers_root: str) -> dict[str, object]:

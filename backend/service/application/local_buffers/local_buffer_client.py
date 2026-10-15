@@ -1004,7 +1004,9 @@ class LocalBufferBrokerClient:
                 else {}
             )
             message = str(details.get("message") or "LocalBufferBroker 请求失败")
-            if error_code in {
+            if error_code == "operation_timeout":
+                error = OperationTimeoutError(message, details=error_details)
+            elif error_code in {
                 "local_buffer_capacity_exhausted",
                 "local_buffer_contiguous_capacity_exhausted",
             }:

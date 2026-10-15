@@ -5,10 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
-from threading import Event, Lock, Thread
+from threading import Event, Lock, Thread, current_thread
 from typing import Callable, Protocol
 from uuid import uuid4
 import logging
+
+from backend.service.application.errors import InvalidRequestError, OperationTimeoutError
 
 from backend.service.application.deployments.deployment_instance_service import (
     SqlAlchemyDeploymentInstanceService,
@@ -125,6 +127,8 @@ class DeploymentRuntimeReconciler:
                 self._recovery_in_progress = False
             return
         with self._lifecycle_lock:
+            if self._thread is not None and self._stop_event.is_set():
+                raise InvalidRequestError("Deployment 协调器停止尚未确认，禁止恢复")
             if self.is_running:
                 return
             self._stop_event.clear()
@@ -133,7 +137,12 @@ class DeploymentRuntimeReconciler:
                 name="deployment-runtime-reconciler",
                 daemon=True,
             )
-            self._thread.start()
+            try:
+                self._thread.start()
+            except BaseException:
+                self._thread = None
+                self._stop_event.set()
+                raise
 
     def stop(self) -> None:
         """停止协调线程，不改变持久化 desired state。"""
@@ -142,9 +151,13 @@ class DeploymentRuntimeReconciler:
             self._stop_event.set()
             thread = self._thread
         if thread is not None:
+            if thread is current_thread():
+                raise OperationTimeoutError("Deployment 协调线程不能确认自身退出")
             thread.join(
                 timeout=max(1.0, self.settings.reconcile_interval_seconds * 2)
             )
+            if thread.is_alive():
+                raise OperationTimeoutError("Deployment 协调尚未结束，保留运行时和数据库资源")
         with self._lifecycle_lock:
             if self._thread is thread and (thread is None or not thread.is_alive()):
                 self._thread = None
@@ -153,6 +166,8 @@ class DeploymentRuntimeReconciler:
         """执行一轮协调；单条 deployment 失败不会阻断其余恢复。"""
 
         dependency_snapshot = self._read_dependency_snapshot()
+        if self._stop_event.is_set():
+            return
         if dependency_snapshot.get("ready") is not True:
             with self._readiness_lock:
                 self._dependency_snapshot = dependency_snapshot
@@ -173,6 +188,8 @@ class DeploymentRuntimeReconciler:
         failure_count = 0
         not_ready_count = 0
         for state in desired_states:
+            if self._stop_event.is_set():
+                return
             try:
                 if not self._reconcile_running_state(state):
                     not_ready_count += 1
@@ -200,7 +217,8 @@ class DeploymentRuntimeReconciler:
         dependency_ready = dependency_snapshot.get("ready") is True
         return {
             "ready": (
-                dependency_ready
+                not self._stop_event.is_set()
+                and dependency_ready
                 and initial_reconcile_completed
                 and failure_count == 0
                 and not_ready_count == 0
@@ -283,6 +301,8 @@ class DeploymentRuntimeReconciler:
             current.restart_count + restart_delta,
         )
         if status.process_state != "running":
+            if self._stop_event.is_set():
+                return False
             # start_deployment 会同步完成所有实例预热。开始该阻塞操作前必须立即
             # 撤销 daemon readiness，不能在数秒预热窗口继续发布上一轮 ready。
             with self._readiness_lock:
@@ -313,6 +333,8 @@ class DeploymentRuntimeReconciler:
             deployment_instance_id=state.deployment_instance_id,
             runtime_mode=state.runtime_mode,
         )
+        if self._stop_event.is_set():
+            return False
         if latest.generation != state.generation or latest.desired_state != "running":
             supervisor.stop_deployment(process_config)
             if state.runtime_mode == "async":

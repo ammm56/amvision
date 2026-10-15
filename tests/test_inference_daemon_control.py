@@ -326,6 +326,7 @@ def test_inference_ping_reports_reconciler_and_local_buffer_readiness() -> None:
         "local_buffer": {"ready": False, "error": "broker missing"},
         "initial_reconcile_completed": False,
         "service_id": "inference-daemon",
+        "control_ready": False,
     }
 
 
@@ -1201,10 +1202,12 @@ def test_inference_read_path_requires_mmap_without_creating_queue_messages(
     assert not list(queue_root.glob("inference-control-response-*"))
 
 
+@pytest.mark.parametrize("deployment_ready", [True, False])
 def test_inference_control_mutations_do_not_use_short_read_timeout(
     tmp_path: Path,
+    deployment_ready: bool,
 ) -> None:
-    """验证 reset/stop 使用各自业务超时，不被 status/health 快速窗口截断。"""
+    """reset/stop 使用业务超时，且不能被 Deployment 恢复中的状态禁止。"""
 
     dataset_storage = create_test_dataset_storage(tmp_path)
     queue_backend = LocalFileQueueBackend(
@@ -1237,6 +1240,11 @@ def test_inference_control_mutations_do_not_use_short_read_timeout(
             )
         },
         poll_interval_seconds=0.005,
+        readiness_provider=lambda: {
+            "ready": deployment_ready,
+            "local_buffer": {"ready": True},
+            "recovery_in_progress": not deployment_ready,
+        },
     )
     buffers_root = tmp_path / "slow-mutations"
     mmap_server = InferenceLocalMmapServer(
@@ -1265,8 +1273,19 @@ def test_inference_control_mutations_do_not_use_short_read_timeout(
     dispatcher.start()
     mmap_server.start()
     try:
+        if not deployment_ready:
+            # 严格就绪 probe 仍应失败，控制操作可用不等于模型已恢复。
+            with pytest.raises(ServiceConfigurationError, match="热路径探测失败") as failure:
+                client.ping()
+            assert failure.value.details["readiness"]["recovery_in_progress"] is True
+            assert failure.value.details["readiness"]["control_ready"] is True
         assert client.reset_deployment(config).process_state == "running"
         assert client.stop_deployment(config).process_state == "stopped"
+        dispatcher.stop()
+        with pytest.raises(ServiceConfigurationError, match="热路径探测失败"):
+            client.ping()
+        with pytest.raises(ServiceConfigurationError, match="控制通道不可用"):
+            client.reset_deployment(config)
     finally:
         mmap_client.close()
         mmap_server.stop()

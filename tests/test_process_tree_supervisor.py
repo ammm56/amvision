@@ -71,7 +71,8 @@ def test_process_tree_supervisor_enforces_hard_timeout(tmp_path: Path) -> None:
     assert exc_info.value.code == "operation_timeout"
     assert exc_info.value.details["timeout_seconds"] == 0.25
     assert exc_info.value.details["stdout_log_path"] == str(stdout_log)
-    assert "started" in stdout_log.read_text(encoding="utf-8")
+    # hard deadline 包括受管启动门；冷启动耗尽预算时目标可以尚未执行。
+    assert stdout_log.read_text(encoding="utf-8").strip() in {"", "started"}
 
 
 def test_process_tree_supervisor_terminates_descendant_process(tmp_path: Path) -> None:
@@ -192,7 +193,7 @@ def test_windows_job_assignment_failure_never_releases_target(
     marker_path = tmp_path / "target-started.txt"
 
     class _FailingWindowsJob:
-        def assign(self, process: subprocess.Popen[bytes]) -> None:
+        def assign_handle(self, handle: int) -> None:
             raise OSError("assign failed")
 
         def terminate(self, exit_code: int = 1) -> None:
@@ -202,7 +203,7 @@ def test_windows_job_assignment_failure_never_releases_target(
             return None
 
     monkeypatch.setattr(
-        "backend.runtime.processes.process_tree_supervisor.WindowsJob",
+        "backend.runtime.processes.windows_job.WindowsJob",
         _FailingWindowsJob,
     )
     with pytest.raises(ServiceConfigurationError, match="bootstrap 初始化失败"):

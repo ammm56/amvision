@@ -6,6 +6,7 @@ from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field
 from functools import partial
 import multiprocessing
+import logging
 import os
 from threading import Event, Lock, Thread
 from typing import Any, Callable, Iterator
@@ -1332,13 +1333,19 @@ def _put_error_response(
             }
         )
         return
+    # 未预期异常可能没有文本（如 AssertionError）；在进程日志保留原始堆栈，
+    # IPC 仍只返回稳定错误码与异常类型，避免把内部路径放入公开响应。
+    logging.getLogger(__name__).error(
+        "deployment 请求 %s 执行失败", request_id,
+        exc_info=(type(error), error, error.__traceback__),
+    )
     response_queue.put(
         {
             "request_id": request_id,
             "ok": False,
             "error": {
                 "code": ServiceConfigurationError().code,
-                "message": str(error),
+                "message": str(error) or error.__class__.__name__,
                 "status_code": ServiceConfigurationError().status_code,
                 "details": {"error_type": error.__class__.__name__},
             },

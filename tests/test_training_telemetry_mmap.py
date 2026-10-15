@@ -95,6 +95,33 @@ def _publish_then_crash(buffers_root: str) -> None:
     os._exit(0)
 
 
+def test_owner_probe_permission_failure_never_deletes_channel(tmp_path, monkeypatch):
+    """无法观测 owner 不等于 owner 退出；真实 publisher 与文件必须保留。"""
+    publisher = TrainingTelemetryMmapPublisher(buffers_root=tmp_path, profile=_profile())
+    broker = TrainingTelemetryBroker(event_bus=InMemoryServiceEventBus())
+    receiver = TrainingTelemetryMmapReceiver(buffers_root=tmp_path, broker=broker, profile=_profile())
+    publisher.start()
+    try:
+        receiver._discover_readers()
+        entry = next(iter(receiver._readers.values()))
+
+        def fail():
+            raise PermissionError("owner probe denied")
+
+        monkeypatch.setattr(entry.reader, "owner_alive", fail)
+        receiver._poll_readers()
+        assert not receiver._readers
+        assert not receiver._pending_cleanup
+        assert publisher.paths.mmap_path.exists()
+        assert publisher.paths.owner_lock_path.exists()
+        assert publisher.publish(_point(step=1, loss=1.0))
+        receiver.poll_once()
+        assert receiver._readers
+    finally:
+        receiver.stop()
+        publisher.close()
+
+
 def test_training_telemetry_event_ring_replays_new_points_and_reports_gap(
     tmp_path,
 ) -> None:

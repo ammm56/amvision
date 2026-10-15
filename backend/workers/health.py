@@ -7,7 +7,7 @@ import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from threading import Event, Lock, Thread
+from threading import Event, Lock, Thread, current_thread
 from typing import Literal
 
 from pydantic import ValidationError
@@ -64,6 +64,7 @@ class BackendWorkerHeartbeat:
         self._failure_message: str | None = None
         self._stop_event = Event()
         self._thread: Thread | None = None
+        self._lifecycle_lock = Lock()
         self._state_lock = Lock()
         self._thread_error: BaseException | None = None
         self._topology_stopping: BackendWorkerTopologyStopping | None = None
@@ -82,23 +83,29 @@ class BackendWorkerHeartbeat:
     def start(self) -> None:
         """启动心跳线程，并先同步写入 starting 状态。"""
 
-        if self._thread is not None and self._thread.is_alive():
-            raise RuntimeError("backend-worker 心跳线程已经启动")
-        self._stop_event.clear()
-        with self._state_lock:
-            self._thread_error = None
-            self._topology_stopping = None
-            self._status = "starting"
-            self._failure_message = None
-        self._write_snapshot()
-        self._thread = Thread(
-            target=self._run,
-            name=(
-                f"backend-worker-heartbeat-{self.info.launch_bundle.profile.profile_id}"
-            ),
-            daemon=True,
-        )
-        self._thread.start()
+        with self._lifecycle_lock:
+            if self._thread is not None:
+                if self._stop_event.is_set() or not self._thread.is_alive():
+                    raise RuntimeError("backend-worker 心跳停止尚未确认，禁止恢复")
+                raise RuntimeError("backend-worker 心跳线程已经启动")
+            self._stop_event.clear()
+            with self._state_lock:
+                self._thread_error = None
+                self._topology_stopping = None
+                self._status = "starting"
+                self._failure_message = None
+            self._write_snapshot()
+            self._thread = Thread(
+                target=self._run,
+                name=f"backend-worker-heartbeat-{self.info.launch_bundle.profile.profile_id}",
+                daemon=True,
+            )
+            try:
+                self._thread.start()
+            except BaseException:
+                self._thread = None
+                self._stop_event.set()
+                raise
 
     def mark_running(self) -> None:
         """在消费者完成装配后发布 running 状态。"""
@@ -128,17 +135,25 @@ class BackendWorkerHeartbeat:
             raise RuntimeError("backend-worker 心跳写入线程意外停止")
 
     def stop(self) -> None:
-        """停止心跳线程，并尽力写入 stopped 状态。"""
+        """确认在途心跳写入退出后发布 stopped；失败保留线程归属。"""
 
-        self._stop_event.set()
-        thread = self._thread
+        with self._lifecycle_lock:
+            self._stop_event.set()
+            thread = self._thread
         if thread is not None:
+            if thread is current_thread():
+                raise RuntimeError("backend-worker 心跳线程不能确认自身退出")
             thread.join(timeout=max(0.5, self.interval_seconds * 2))
-        with self._state_lock:
+            if thread.is_alive():
+                raise RuntimeError("backend-worker 心跳写入尚未退出")
+        with self._lifecycle_lock:
+            if self._thread is not thread:
+                return
+            with self._state_lock:
+                previous_status = self._status
+            if previous_status != "failed":
+                self._set_status("stopped")
             self._thread = None
-            previous_status = self._status
-        if previous_status != "failed":
-            self._set_status("stopped")
 
     def _set_status(
         self,

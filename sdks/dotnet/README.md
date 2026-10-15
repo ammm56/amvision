@@ -84,6 +84,8 @@ C# 公共属性继续遵循 .NET 的 PascalCase；使用 Newtonsoft.Json 序列�
 
 local-shared-memory 配置只保存同机受信 `data/buffers` 根目录、TriggerSource id/generation、默认 binding 和 timeout。SDK从 `local-buffer/state.mmap` header自动发现图片共享内存容量、descriptor/reader guard几何、broker epoch和layout fingerprint，因此后端调整容量或guard数量不要求修改SDK配置。该Trigger只适用于同一台机器；远程SDK即使能访问配置HTTP接口，也必须选择HTTP或ZeroMQ调用链路。
 
+低层 `SharedMemoryTriggerClientOptions.PollInterval` 默认 0.2 ms，使用 `TimeSpan.FromTicks(2000)` 表示，避免 .NET Framework 的毫秒构造精度截断。Windows 支持高分辨率等待计时器时采用阻塞等待，不支持时回退到至少 1 ms 的 `Thread.Sleep`；实际唤醒时间受系统调度影响，不保证 0.2 ms 响应。仅实际等待时创建计时器，各等待阶段独立释放句柄；无争用的 guard 不创建计时器，客户端不再持有 `timeBeginPeriod` 全局计时分辨率租约。SDK 不要求额外厂商 DLL，且不改变 mailbox v1 的 timeout、epoch、ACK 或容量规则。
+
 无图片的 JSON/文本事件使用 `SharedMemoryTriggerClient.InvokeEvent` 或 `AMVisionOperationRunner.InvokeSharedMemoryEvent`。该方法发布 `amvision.workflow-trigger-event-request.v1`，直接进入 mailbox REQUEST，不执行图片请求的 PREPARE、不申请 LocalBuffer、不创建假图片 lease。`Payload` 仍按 TriggerSource 的 `input_binding_mapping` 映射到 Workflow 公开 binding，最终由 Runtime 固定的 App Contract 权威校验；同步结果和 ACK 生命周期与图片调用共用 response v1。
 
 `AMVisionOperationRunner` 高层 API 明确区分 name 与 id：原有不带 `ById` 后缀的方法只接收配置中的可读 `name`，对应的 `ById` 方法分别接收 `workflow_runtime_id`、`trigger_source_id` 或 `deployment_instance_id`。SDK 不在同一个字符串参数中猜测 name 或 id；模型 deployment 的管理类 `ById` 方法还要求显式传入 `sync` 或 `async` runtime mode，推理方法则由同步或异步方法语义确定 mode。

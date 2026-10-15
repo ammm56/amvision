@@ -32,8 +32,8 @@ namespace Amvar.Vision.SharedMemory
         /// <summary>请求的相对 timeout；后端仍会按 TriggerSource 上限裁剪。</summary>
         public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(5);
 
-        /// <summary>mailbox 状态轮询间隔。</summary>
-        public TimeSpan PollInterval { get; set; } = TimeSpan.FromMilliseconds(1);
+        /// <summary>mailbox 状态轮询间隔，默认 0.2 ms；旧平台阻塞等待至少 1 ms。</summary>
+        public TimeSpan PollInterval { get; set; } = TimeSpan.FromTicks(2000);
 
         internal void Validate()
         {

@@ -11,6 +11,9 @@ try {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'fixtures/full_stack.py') -Destination (Join-Path $fixture 'start_amvision_full.py')
     Set-Content -LiteralPath (Join-Path $fixture 'frontend/index.html') -Value '<html></html>'
     $env:AMVAR_LAUNCHER_TEST_ROOT = $fixture
+    New-Item -ItemType Directory -Force -Path (Join-Path $fixture 'backend/runtime'), (Join-Path $fixture 'backend/service/application') | Out-Null
+    Copy-Item -LiteralPath (Join-Path $repository 'backend/runtime/processes') -Destination (Join-Path $fixture 'backend/runtime/processes') -Recurse
+    Copy-Item -LiteralPath (Join-Path $repository 'backend/service/application/errors.py') -Destination (Join-Path $fixture 'backend/service/application/errors.py')
     dotnet test (Join-Path $PSScriptRoot 'Amvar.Launcher.Infrastructure.Tests/Amvar.Launcher.Infrastructure.Tests.csproj') -c Release --filter 'FullyQualifiedName~FullStackProcessTests'
     if ($LASTEXITCODE -ne 0) { throw '真实进程集成测试失败。' }
 } finally {

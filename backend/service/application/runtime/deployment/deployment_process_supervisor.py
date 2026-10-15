@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import multiprocessing
+from backend.runtime.processes.managed_spawn import managed_spawn_context
 import mimetypes
 import weakref
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
-from threading import Event, Lock, Thread
+from threading import Event, Lock, Thread, current_thread
 from time import monotonic
 from typing import Any, Callable
 from uuid import uuid4
@@ -440,11 +440,13 @@ class DeploymentProcessSupervisor:
             DeviceLeaseProvider.from_config(settings.device_leases)
         )
         self._resource_owner_id = uuid4().hex
-        self._context = multiprocessing.get_context("spawn")
+        self._context = managed_spawn_context()
         self._deployments: dict[str, _DeploymentProcessState] = {}
         self._lock = Lock()
         self._monitor_stop_event = Event()
         self._monitor_thread: Thread | None = None
+        self._lifecycle_lock = Lock()
+        self._stop_pending = False
         _DEPLOYMENT_PROCESS_FLEET_LIMITER.register(self)
 
     @property
@@ -456,35 +458,50 @@ class DeploymentProcessSupervisor:
     def start(self) -> None:
         """启动监督线程。"""
 
-        if self.is_running:
-            return
-        self._monitor_stop_event.clear()
-        self._monitor_thread = Thread(
-            target=self._run_monitor_loop,
-            name=f"deployment-process-supervisor-{self.runtime_mode}",
-            daemon=True,
-        )
-        self._monitor_thread.start()
+        with self._lifecycle_lock:
+            if self._stop_pending:
+                raise InvalidRequestError("deployment supervisor 停止尚未确认，禁止恢复")
+            if self.is_running:
+                return
+            self._monitor_stop_event.clear()
+            self._monitor_thread = Thread(
+                target=self._run_monitor_loop,
+                name=f"deployment-process-supervisor-{self.runtime_mode}",
+                daemon=True,
+            )
+            try:
+                self._monitor_thread.start()
+            except BaseException:
+                self._monitor_thread = None
+                self._monitor_stop_event.set()
+                self._stop_pending = True
+                raise
 
     def stop(self) -> None:
         """停止监督线程并关闭全部 deployment 子进程。"""
 
-        self._monitor_stop_event.set()
-        monitor_thread = self._monitor_thread
-        if monitor_thread is not None:
-            monitor_thread.join(
-                timeout=max(0.1, self.settings.shutdown_timeout_seconds)
-            )
-            if not monitor_thread.is_alive():
+        with self._lifecycle_lock:
+            self._stop_pending = True
+            self._monitor_stop_event.set()
+            monitor_thread = self._monitor_thread
+            if monitor_thread is not None:
+                if monitor_thread is current_thread():
+                    raise OperationTimeoutError("deployment 监控线程不能确认自身退出")
+                monitor_thread.join(
+                    timeout=max(0.1, self.settings.shutdown_timeout_seconds)
+                )
+                if monitor_thread.is_alive():
+                    raise OperationTimeoutError("deployment 监控尚未退出，保留进程及设备资源")
                 self._monitor_thread = None
-        with self._lock:
-            states = tuple(self._deployments.values())
-        for state in states:
-            with state.lock:
-                state.desired_running = False
-                self._stop_process_locked(state)
-                self._release_device_lease_locked(state)
-        self.cpu_device_resource_manager.release_owner(self._resource_owner_id)
+            with self._lock:
+                states = tuple(self._deployments.values())
+            for state in states:
+                with state.lock:
+                    state.desired_running = False
+                    self._stop_process_locked(state)
+                    self._release_device_lease_locked(state)
+            self.cpu_device_resource_manager.release_owner(self._resource_owner_id)
+            self._stop_pending = False
 
     def ensure_deployment(
         self, config: DeploymentProcessConfig
@@ -1495,6 +1512,8 @@ class DeploymentProcessSupervisor:
     ) -> None:
         """在进程级运行数量上限内启动 deployment 子进程。"""
 
+        if self._monitor_stop_event.is_set():
+            raise InvalidRequestError("deployment supervisor 已停止接入，禁止启动模型进程")
         self._validate_process_start_supported_locked(state)
         try:
             _DEPLOYMENT_PROCESS_FLEET_LIMITER.start_with_capacity(
@@ -1541,18 +1560,22 @@ class DeploymentProcessSupervisor:
                 process.join(timeout=max(0.1, self.settings.shutdown_timeout_seconds))
             except Exception:
                 pass
-        if process.is_alive():
-            process.terminate()
-            process.join(timeout=max(0.1, self.settings.shutdown_timeout_seconds))
+        process.stop_group(timeout=max(0.1, self.settings.shutdown_timeout_seconds))
         self._cleanup_process_locked(state)
 
     def _cleanup_process_locked(self, state: _DeploymentProcessState) -> None:
         """在持有状态锁时清理已退出 deployment 子进程资源。"""
 
         process = state.process
+        if process is not None:
+            process.stop_group(timeout=max(0.1, self.settings.shutdown_timeout_seconds))
         if process is not None and process.exitcode is not None:
             state.last_exit_code = process.exitcode
         state.response_stop_event.set()
+        for queue in (state.request_queue, state.response_queue):
+            if queue is not None:
+                queue.cancel_join_thread()
+                queue.close()
         state.process = None
         state.request_queue = None
         state.response_queue = None
@@ -1568,6 +1591,8 @@ class DeploymentProcessSupervisor:
             pending.error_message = "deployment 子进程已经退出"
             pending.event.set()
         state.pending_responses.clear()
+        if process is not None:
+            process.close()
 
     def _acquire_device_lease_locked(self, state: _DeploymentProcessState) -> None:
         """在 deployment 启动边界登记常驻 shared GPU reservation。"""
@@ -1651,7 +1676,13 @@ class DeploymentProcessSupervisor:
                             continue
                         state.last_exit_code = process.exitcode
                         crashed_status = self._build_status_from_locked_state(state)
-                        self._cleanup_process_locked(state)
+                        try:
+                            self._cleanup_process_locked(state)
+                        except Exception as error:
+                            state.accepting_inference = False
+                            state.desired_running = False
+                            state.last_error = f"旧进程组未回收，禁止恢复：{error}"
+                            continue
                         if state.desired_running and self.settings.auto_restart:
                             increment_safe_counter(state.restart_counter)
                             try:

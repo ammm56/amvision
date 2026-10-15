@@ -17,7 +17,7 @@ from backend.service.application.errors import (
     LocalBufferCapacityError,
     ServiceConfigurationError,
 )
-from backend.service.infrastructure.ipc.mmap_primitives import crc32_ieee
+from backend.service.infrastructure.ipc.mmap_primitives import MmapGuardBusyError, crc32_ieee
 from backend.service.infrastructure.local_buffers.buddy_allocator import (
     BuddyAllocationError,
 )
@@ -71,6 +71,7 @@ class _FrameChannel:
     next_position: int = 0
     next_sequence_id: int = 0
     frames: dict[int, FrameRef] = field(default_factory=dict)
+    closing: bool = False
 
 
 class LocalBufferArenaPool:
@@ -440,6 +441,9 @@ class LocalBufferArenaPool:
                     snapshot = self.arena.descriptor_snapshot(
                         record.low_receipt.descriptor_index
                     )
+                except MmapGuardBusyError:
+                    # 暂时不可读不能作为删除有效 lease 的依据。
+                    continue
                 except LocalBufferArenaError:
                     stale_ids.append(lease_id)
                     continue
@@ -656,10 +660,15 @@ class LocalBufferArenaPool:
         """销毁 channel；仍被 reader 使用的 extent 进入 REVOKING。"""
 
         with self._lock:
-            channel = self._channels.pop(stream_id, None)
+            channel = self._channels.get(stream_id)
+            if channel is not None:
+                channel.closing = True
         if channel is None:
             raise InvalidRequestError("frame channel 不存在")
         self.arena.destroy_frame_channel(channel.receipts)
+        with self._lock:
+            if self._channels.get(stream_id) is channel:
+                self._channels.pop(stream_id)
         return len(channel.receipts)
 
     def build_status(self) -> dict[str, object]:
@@ -772,6 +781,8 @@ class LocalBufferArenaPool:
         channel = self._channels.get(_require_text(stream_id, "stream_id"))
         if channel is None:
             raise InvalidRequestError("frame channel 不存在")
+        if channel.closing:
+            raise InvalidRequestError("frame channel 正在销毁")
         return channel
 
     def _channel_receipt(

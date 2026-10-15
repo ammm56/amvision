@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
+import sys
 
-from common import read_process_identity
+from common import read_process_identity, resolve_app_root, resolve_code_root
 
 
 def main() -> int:
@@ -13,19 +15,24 @@ def main() -> int:
 
     parser = argparse.ArgumentParser(description="launcher process identity probe")
     parser.add_argument("--pid", type=int, required=True)
+    parser.add_argument("--app-root")
     parser.add_argument("--listening-port", type=int)
     args = parser.parse_args()
+    code_root = resolve_code_root(resolve_app_root(
+        script_file=Path(__file__), explicit_app_root=args.app_root,
+    ))
+    sys.path.insert(0, str(code_root))
     import psutil
 
     try:
         process = psutil.Process(args.pid)
         payload = {
-            "format_id": "amvision.launcher-process.v1",
+            "format_id": "amvision.launcher-process.v2",
             "identity": read_process_identity(args.pid),
             "ancestor_pids": [parent.pid for parent in process.parents()],
         }
     except psutil.NoSuchProcess:
-        payload = {"format_id": "amvision.launcher-process.v1", "identity": None, "ancestor_pids": []}
+        payload = {"format_id": "amvision.launcher-process.v2", "identity": None, "ancestor_pids": []}
     if args.listening_port is not None:
         listeners = []
         pids = {

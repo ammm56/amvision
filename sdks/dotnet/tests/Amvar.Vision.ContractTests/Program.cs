@@ -19,6 +19,24 @@ namespace Amvar.Vision.ContractTests
     {
         private static int Main(string[] args)
         {
+            if (args.Length > 0 && args[0] == "--high-resolution-wait-diagnostic")
+            {
+                using var process = Process.GetCurrentProcess();
+                using var waiter = new PollWaiter();
+                var cpuBefore = process.TotalProcessorTime;
+                var samples = new List<double>();
+                for (var i = 0; i < 1000; i++)
+                {
+                    var timer = Stopwatch.StartNew();
+                    waiter.Wait(TimeSpan.FromTicks(args.Length > 1 ? long.Parse(args[1]) : 5000));
+                    samples.Add(timer.Elapsed.TotalMilliseconds);
+                }
+                samples.Sort();
+                Console.WriteLine(JsonConvert.SerializeObject(new { process_64_bit = Environment.Is64BitProcess,
+                    count = samples.Count, mean_ms = samples.Average(), p50_ms = samples[500], p99_ms = samples[990],
+                    max_ms = samples.Last(), process_cpu_ms = (process.TotalProcessorTime - cpuBefore).TotalMilliseconds }));
+                return 0;
+            }
             if (args.Length > 0 && args[0] == "--service-status") return ProbeServiceStatus(args);
             if (args.Length > 0 && args[0] == "--workflow-coexistence") return WorkflowCoexistenceProbe.Run(args);
             if (args.Length > 0 && args[0] == "--user-access-smoke") return UserAccessSdkProbe.Run(args);
@@ -69,6 +87,7 @@ namespace Amvar.Vision.ContractTests
 
         private static async Task RunAsync()
         {
+            VerifyPollWaiterLifetime();
             await VerifyServiceStatusAsync().ConfigureAwait(false);
             WorkflowTriggerMailboxV1Fixture.Verify();
             LocalMessageChannelV1Fixture.Verify();
@@ -91,6 +110,26 @@ namespace Amvar.Vision.ContractTests
             await VerifyRuntimeAndRevisionResponsesAsync().ConfigureAwait(false);
             await VerifyRunResponseAsync().ConfigureAwait(false);
             await VerifyConflictDetailsAsync().ConfigureAwait(false);
+        }
+
+        private static void VerifyPollWaiterLifetime()
+        {
+            // 反复建立和释放计时器，不能因同步阶段结束留下原生句柄。
+            using (var initial = new PollWaiter())
+            {
+                AssertThrows<ArgumentOutOfRangeException>(() => initial.Wait(TimeSpan.Zero));
+                initial.Wait(TimeSpan.FromTicks(5000));
+            }
+            using var process = Process.GetCurrentProcess();
+            var before = process.HandleCount;
+            for (var i = 0; i < 50; i++)
+            {
+                using var waiter = new PollWaiter();
+                AssertThrows<ArgumentOutOfRangeException>(() => waiter.Wait(TimeSpan.Zero));
+                waiter.Wait(TimeSpan.FromTicks(5000));
+            }
+            process.Refresh();
+            Assert(process.HandleCount <= before + 2, "poll timers must release native handles: " + before + " -> " + process.HandleCount);
         }
 
         private static async Task VerifyServiceStatusAsync()

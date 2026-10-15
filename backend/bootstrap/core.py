@@ -3,11 +3,59 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from contextlib import contextmanager
+from threading import RLock
 from typing import Generic, Protocol, TypeVar
 
 
 SettingsT = TypeVar("SettingsT")
 RuntimeT = TypeVar("RuntimeT")
+
+
+class RuntimeLifecycle:
+    """串行化单个服务资源容器的启停；不管理线程、队列或 OS 进程。"""
+
+    def __init__(self) -> None:
+        """资源容器关闭后不可复用；失败停止只允许继续清理。"""
+        self._lock = RLock()
+        self._phase = "new"
+        self._drained = False
+
+    @contextmanager
+    def starting(self):
+        """启动失败也封闭准入，避免复用部分初始化的依赖。"""
+        with self._lock:
+            if self._phase == "running":
+                yield False
+                return
+            if self._phase != "new":
+                raise RuntimeError("运行时已停止或停止未完成，禁止复用资源容器")
+            self._phase = "starting"
+            try:
+                yield True
+            except BaseException:
+                self._phase = "stop_pending"
+                raise
+            else:
+                self._phase = "running"
+
+    @contextmanager
+    def stopping(self, *, final: bool = True):
+        """失败保留 stop_pending；只在依赖清理成功后提交阶段。"""
+        with self._lock:
+            if self._phase == "stopped" or (not final and self._drained):
+                yield False
+                return
+            self._phase = "stopping"
+            try:
+                yield True
+            except BaseException:
+                self._phase = "stop_pending"
+                raise
+            else:
+                if not final:
+                    self._drained = True
+                self._phase = "stopped" if final else "drained"
 
 
 class BootstrapStep(Protocol[RuntimeT]):

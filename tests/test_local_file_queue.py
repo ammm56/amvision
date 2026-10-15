@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from threading import Event, Thread
+from threading import Event, Thread, current_thread
 from time import time
 
 import pytest
@@ -15,6 +15,70 @@ from backend.service.infrastructure.queue.local_file import (
     LocalFileQueueBackend,
     LocalFileQueueSettings,
 )
+
+
+@pytest.mark.skipif(os.name != "nt", reason="验证 Windows 发布句柄尚未关闭时的真实共享语义")
+@pytest.mark.parametrize("reader", ["claim", "get"])
+def test_reader_can_open_published_task_before_rename_handle_closes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, reader: str,
+) -> None:
+    """发布完成即允许消费，不能依赖发布线程及时关闭 DELETE 句柄。"""
+    from backend.service.infrastructure.filesystem import shared_files
+
+    settings = LocalFileQueueSettings(root_dir=str(tmp_path / "queue"))
+    producer, consumer = LocalFileQueueBackend(settings), LocalFileQueueBackend(settings)
+    published, release = Event(), Event()
+    errors = []
+    original = shared_files._set_file_information
+
+    def publish_then_hold(*args):
+        """完成真实 OS rename，只固定句柄关闭前的调度窗口。"""
+        result = original(*args)
+        if result and current_thread().name == "queue-publisher":
+            published.set()
+            if not release.wait(10):
+                raise TimeoutError("测试发布句柄没有被释放")
+        return result
+
+    def publish():
+        """在独立执行线程原子发布，异常必须被主测试观察到。"""
+        try:
+            producer.enqueue(queue_name="responses", message_id="response-1", payload={"ok": True})
+        except BaseException as error:
+            errors.append(error)
+
+    monkeypatch.setattr(shared_files, "_set_file_information", publish_then_hold)
+    thread = Thread(target=publish, name="queue-publisher")
+    thread.start()
+    try:
+        assert published.wait(5)
+        message = (
+            consumer.claim_next(queue_name="responses", worker_id="client")
+            if reader == "claim" else consumer.get_task(queue_name="responses", task_id="response-1")
+        )
+        assert message is not None and message.payload == {"ok": True}
+        if reader == "claim":
+            consumer.complete(message)
+            assert consumer.claim_next(queue_name="responses", worker_id="other") is None
+    finally:
+        release.set()
+        thread.join(10)
+    assert not thread.is_alive()
+    assert errors == []
+
+
+@pytest.mark.parametrize("content", [None, b"{not-json"])
+def test_shared_task_read_preserves_missing_and_corrupt_errors(tmp_path: Path, content):
+    """共享打开不能把文件缺失或损坏改为空队列或成功结果。"""
+    backend = LocalFileQueueBackend(LocalFileQueueSettings(root_dir=str(tmp_path / "queue")))
+    path = tmp_path / "invalid.json"
+    if content is not None:
+        path.write_bytes(content)
+    with pytest.raises(PersistenceOperationError) as caught:
+        backend._read_task(path)
+    expected = FileNotFoundError if content is None else json.JSONDecodeError
+    assert isinstance(caught.value.__cause__, expected)
+    assert caught.value.details["error_type"] == expected.__name__
 
 
 def test_local_file_queue_recovers_expired_leased_task(tmp_path: Path) -> None:

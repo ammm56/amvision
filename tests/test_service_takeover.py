@@ -11,6 +11,7 @@ from types import SimpleNamespace
 
 import psutil
 import pytest
+from backend.runtime.processes.birth_identity import read_process_birth_identity
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows 系统宿主边界")
@@ -31,8 +32,9 @@ def test_takeover_ancestor_stops_at_verified_windows_system_host():
     assert _has_full_launcher_ancestor(SimpleNamespace(parents=lambda: [launcher, host]))
 
 
-@pytest.mark.parametrize("legacy", [False, True])
-def test_new_service_replaces_old_owner_and_releases_lock(tmp_path, legacy):
+@pytest.mark.parametrize("legacy, clock_shift", [(False, False), (True, False),
+    pytest.param(False, True, marks=pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux 墙钟换算"))])
+def test_new_service_replaces_old_owner_and_releases_lock(tmp_path, legacy, clock_shift):
     """真实停止旧 owner，确认旧进程退出后新进程取得相同锁。"""
     lock = tmp_path / "owner.lock"
     ready = tmp_path / "ready"
@@ -44,7 +46,12 @@ def test_new_service_replaces_old_owner_and_releases_lock(tmp_path, legacy):
             assert owner.poll() is None
             time.sleep(0.05)
         assert ready.exists()
-        replacement = subprocess.run(command + ["replace", str(owner.pid)], capture_output=True, timeout=20)
+        replacement = subprocess.run(command + ["replace", str(owner.pid)] + (["clock-shift"] if clock_shift else []), capture_output=True, timeout=20)
+        if legacy:
+            assert replacement.returncode != 0
+            assert owner.poll() is None
+            assert "缺少可验证的启动归属" in replacement.stderr.decode()
+            return
         assert replacement.returncode == 0, replacement.stderr.decode(errors="replace")
         owner.wait(timeout=5)
         assert legacy or owner.returncode == 0
@@ -99,7 +106,7 @@ def test_actual_daemon_latest_start_replaces_old_daemon(tmp_path):
         lock = build_inference_mailbox_paths(buffers_root=tmp_path / "buffers").owner_lock_path
         for process in reversed(processes):
             if process.poll() is None:
-                _request_path(lock, process.pid).write_text(json.dumps({"pid": process.pid, "create_time": psutil.Process(process.pid).create_time()}))
+                _request_path(lock, process.pid).write_text(json.dumps({"pid": process.pid, "birth_identity": read_process_birth_identity(process.pid)}))
                 try:
                     process.wait(timeout=10)
                 except subprocess.TimeoutExpired:
@@ -116,7 +123,10 @@ if __name__ == "__main__":
     lock_path, ready_path = Path(sys.argv[1]), Path(sys.argv[2])
     if len(sys.argv) > 3 and sys.argv[3] == "replace":
         pid = int(sys.argv[4])
-        replace_service_owner(lock_path=lock_path, module="tests.test_service_takeover", owner_pid=pid, owner_started_ns=int(psutil.Process(pid).create_time() * 1e9))
+        if "clock-shift" in sys.argv:
+            original_create_time = psutil.Process.create_time
+            psutil.Process.create_time = lambda self: original_create_time(self) + 2.0
+        replace_service_owner(lock_path=lock_path, module="tests.test_service_takeover", owner_pid=pid)
         handle = acquire_mmap_owner_lock(lock_path)
         handle.release()
         print("replacement acquired")

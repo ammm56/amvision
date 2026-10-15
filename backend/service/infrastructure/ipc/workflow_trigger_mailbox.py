@@ -525,6 +525,10 @@ class WorkflowTriggerMailboxServer:
         """读取 PROCESSING descriptor 的业务 cancel reason。"""
 
         context = self._require_context(identity)
+        # 通用 probe 已核对 epoch/generation/token、deadline 和 cancel flag。
+        # 无取消时无需为了读零值反复取得文件锁；取消后的原因仍在锁内读取。
+        if not context.cancelled:
+            return contract.CANCEL_REASON_NONE
         return int(self._read_extension(context)[1])
 
     def sweep(
@@ -652,8 +656,11 @@ class WorkflowTriggerMailboxServer:
         while True:
             # Trigger supervisor 在同一次 process_once 末尾统一执行带活动集合的
             # terminal sweep；此处只扫描 request，避免每个 phase 重复全表扫描。
+            # receive 先尝试 claim，再检查等待截止时间。截止时间使用当前值，
+            # 不能加 1 ns：Windows 的 monotonic 时钟可能连续多毫秒返回同一值，
+            # 加 1 会把非阻塞轮询变成等待下一次时钟跳变，拖延 REQUEST 和 ACK。
             received = self._mailbox.receive_with_extension(
-                deadline_ns=monotonic_ns() + 1,
+                deadline_ns=monotonic_ns(),
                 sweep_before_receive=False,
             )
             if received is None:

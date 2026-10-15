@@ -14,6 +14,7 @@ from backend.contracts.buffers import BufferLease, BufferRef, FrameRef
 from backend.contracts.buffers.lease_ownership import LeaseOwnershipReceipt
 from backend.service.application.errors import (
     InvalidRequestError,
+    OperationTimeoutError,
     ServiceConfigurationError,
     ServiceError,
 )
@@ -29,6 +30,7 @@ from backend.service.infrastructure.local_buffers.local_buffer_arena_pool import
 from backend.service.infrastructure.local_buffers.mmap_buffer_arena import (
     MmapBufferArenaConfig,
 )
+from backend.service.infrastructure.ipc.mmap_primitives import MmapGuardBusyError
 
 
 @dataclass
@@ -107,7 +109,13 @@ class LocalBufferBrokerRegistry:
                 "LocalBufferBroker 收到未知控制动作",
                 details={"action": action},
             )
-        return handler(normalized_payload)
+        try:
+            return handler(normalized_payload)
+        except MmapGuardBusyError as error:
+            raise OperationTimeoutError(
+                "LocalBuffer publication guard 等待超时",
+                details={"action": action},
+            ) from error
 
     def close(self) -> None:
         """关闭唯一 arena。"""

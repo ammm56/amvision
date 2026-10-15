@@ -13,7 +13,7 @@ from time import monotonic, sleep
 from typing import Any
 from uuid import uuid4
 import logging
-import multiprocessing
+from backend.runtime.processes.managed_spawn import managed_spawn_context
 
 from backend.contracts.buffers import BufferLease, BufferRef, FrameRef
 from backend.service.application.errors import (
@@ -459,7 +459,7 @@ class LocalBufferBrokerProcessSupervisor:
 
         self.settings = settings
         self.root_dir = Path(root_dir).resolve()
-        self._context = multiprocessing.get_context("spawn")
+        self._context = managed_spawn_context()
         self._process: Any | None = None
         self._startup_queue: Queue[Any] | None = None
         self._request_connection: Connection | None = None
@@ -483,6 +483,8 @@ class LocalBufferBrokerProcessSupervisor:
         if not self.settings.enabled:
             return
         if not self.is_running:
+            if self._process is not None:
+                self.stop()
             self._close_direct_io_client()
         timeout_seconds = max(0.1, float(self.settings.startup_timeout_seconds))
         deadline = monotonic() + timeout_seconds
@@ -664,9 +666,8 @@ class LocalBufferBrokerProcessSupervisor:
             raise OperationTimeoutError(
                 "LocalBufferBroker 未确认正常退出，禁止创建新 owner"
             )
-        if process is not None and process.is_alive():
-            process.terminate()
-            process.join(timeout=max(0.1, self.settings.shutdown_timeout_seconds))
+        if process is not None:
+            process.stop_group(timeout=max(0.1, self.settings.shutdown_timeout_seconds), force=not graceful_only)
         if router is not None:
             router.stop()
         with self._lock:
@@ -674,6 +675,8 @@ class LocalBufferBrokerProcessSupervisor:
             self._cleanup_event_connections_locked()
             self._process = None
             self._router = None
+        if process is not None:
+            process.close()
 
     def get_event_channel(self) -> LocalBufferBrokerEventChannel | None:
         """返回当前 broker event channel。"""

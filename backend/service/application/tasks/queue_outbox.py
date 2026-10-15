@@ -7,10 +7,14 @@ import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from threading import Event, Lock, Thread
+from threading import Event, Lock, Thread, current_thread
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
-from backend.service.application.errors import PersistenceOperationError
+from backend.service.application.errors import (
+    InvalidRequestError,
+    OperationTimeoutError,
+    PersistenceOperationError,
+)
 from backend.service.application.ports.queue import (
     QueueBackend,
     normalize_queue_path_component,
@@ -116,6 +120,8 @@ class QueueOutboxDispatcher:
         if not self.settings.enabled:
             return
         with self._lifecycle_lock:
+            if self._thread is not None and self._stop_event.is_set():
+                raise InvalidRequestError("Outbox 停止尚未确认，禁止恢复投递线程")
             if self._thread is not None and self._thread.is_alive():
                 return
             self._stop_event.clear()
@@ -124,16 +130,25 @@ class QueueOutboxDispatcher:
                 name="queue-outbox-dispatcher",
                 daemon=True,
             )
-            self._thread.start()
+            try:
+                self._thread.start()
+            except BaseException:
+                self._thread = None
+                self._stop_event.set()
+                raise
 
     def stop(self) -> None:
-        """请求停止并有界等待线程退出。"""
+        """完成已领取批次后确认退出；超时保留依赖并禁止恢复。"""
 
         with self._lifecycle_lock:
             thread = self._thread
             self._stop_event.set()
         if thread is not None:
+            if thread is current_thread():
+                raise OperationTimeoutError("Outbox 执行线程不能确认自身退出")
             thread.join(timeout=max(0.1, self.settings.shutdown_timeout_seconds))
+            if thread.is_alive():
+                raise OperationTimeoutError("Outbox 投递尚未结束，保留队列和数据库资源")
         with self._lifecycle_lock:
             if self._thread is thread and (thread is None or not thread.is_alive()):
                 self._thread = None

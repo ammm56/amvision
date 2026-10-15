@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from tests.process_family_fixture import fake_birth_identity
 from types import SimpleNamespace
 from typing import Any
 
@@ -136,10 +137,8 @@ def test_takeover_terminates_only_verified_older_backend_process_tree(
     )
 
     assert result["replaced_service_root_process_id"] == 100
-    assert result["replaced_supervisor_process_id"] == 101
     assert result["replaced_broker_process_id"] == 102
-    assert result["terminated_process_ids"] == [100, 101, 102]
-    assert all(processes[process_id].terminate_called for process_id in (100, 101, 102))
+    assert all(processes[process_id].kill_called for process_id in (100, 101, 102))
     assert not processes[200].terminate_called
     assert not processes[201].terminate_called
 
@@ -147,7 +146,7 @@ def test_takeover_terminates_only_verified_older_backend_process_tree(
 @pytest.mark.parametrize(
     ("metadata_override", "expected_message"),
     [
-        ({"service_root_process_create_time": 999.0}, "PID 已被其他进程复用"),
+        ({"service_root_process_birth_identity": fake_birth_identity(999)}, "PID 已被其他进程复用"),
         (
             {"service_root_process_command_line": ["python", "unrelated.py"]},
             "命令与锁记录不一致",
@@ -247,39 +246,22 @@ def test_takeover_rejects_broker_that_does_not_hold_the_recorded_lock(
     assert not any(process.terminate_called for process in processes.values())
 
 
-def test_takeover_force_kills_processes_that_exceed_graceful_timeout(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    """验证 terminate 超时后会进入 kill 阶段并确认全部进程退出。"""
-
-    processes, owner_metadata = _build_process_tree(root_dir=tmp_path)
+def test_takeover_group_failure_blocks_replacement(monkeypatch, tmp_path):
+    """整组退出失败必须传播，不能按根 PID 退出宣告接替成功。"""
+    processes, metadata = _build_process_tree(root_dir=tmp_path)
     _install_fake_processes(monkeypatch, processes=processes, current_process_id=201)
-    wait_call_count = 0
-
-    def _wait_procs(
-        process_list: list[_FakeProcess],
-        timeout: float,
-    ) -> tuple[list[_FakeProcess], list[_FakeProcess]]:
-        """第一次保留全部进程，第二次确认强制退出。"""
-
-        nonlocal wait_call_count
-        _ = timeout
-        wait_call_count += 1
-        if wait_call_count == 1:
-            return [], list(process_list)
-        return list(process_list), []
-
-    monkeypatch.setattr(takeover_module.psutil, "wait_procs", _wait_procs)
-
-    takeover_module.take_over_backend_service_owner(
-        owner_metadata=owner_metadata,
-        root_dir=tmp_path,
-        timeout_seconds=1.0,
-    )
-
-    assert wait_call_count == 2
-    assert all(processes[process_id].kill_called for process_id in (100, 101, 102))
+    class BlockedScope:
+        def __init__(self, root):
+            self.root = root
+        def validate(self):
+            pass
+        def seal(self):
+            pass
+        def stop(self, **kwargs):
+            raise TimeoutError("group still alive")
+    monkeypatch.setattr(takeover_module, "OwnershipScope", BlockedScope)
+    with pytest.raises(TimeoutError, match="group still alive"):
+        takeover_module.take_over_backend_service_owner(owner_metadata=metadata, root_dir=tmp_path, timeout_seconds=1)
 
 
 @pytest.mark.parametrize("keep_supervisor", [True, False])
@@ -302,11 +284,10 @@ def test_takeover_reaps_orphaned_broker_when_old_uvicorn_root_has_exited(
         timeout_seconds=1.0,
     )
 
-    assert result["orphaned_owner"] is True
     assert result["replaced_service_root_process_id"] == 100
-    assert processes[102].terminate_called is True
+    assert processes[102].kill_called is True
     if keep_supervisor:
-        assert processes[101].terminate_called is True
+        assert processes[101].kill_called is True
 
 
 def _build_process_tree(
@@ -359,7 +340,9 @@ def _build_process_tree(
         )
     }
     owner_metadata = {
-        "owner_schema_version": 1,
+        "owner_schema_version": 3,
+        "ownership_scope": str(root_dir / "ownership"),
+        "service_group_id": None,
         "owner_kind": "amvision-backend-service",
         "root_dir": str(root_dir.resolve()),
         **_process_metadata("process", old_broker),
@@ -375,6 +358,7 @@ def _process_metadata(prefix: str, process: _FakeProcess) -> dict[str, object]:
     return {
         f"{prefix}_id": process.pid,
         f"{prefix}_create_time": process.create_time(),
+        f"{prefix}_birth_identity": fake_birth_identity(process.create_time()),
         f"{prefix}_executable": process.exe(),
         f"{prefix}_cwd": process.cwd(),
         f"{prefix}_command_line": process.cmdline(),
@@ -389,6 +373,23 @@ def _install_fake_processes(
 ) -> None:
     """把待测模块的 psutil 查询替换为可控进程表。"""
 
+    class FakeScope:
+        """只替换组适配器；身份校验继续使用被测模块的正式路径。"""
+        def __init__(self, root):
+            self.root = root
+        def validate(self):
+            pass
+        def seal(self):
+            pass
+        def stop(self, **kwargs):
+            for pid in (100, 101, 102):
+                if pid in processes:
+                    processes[pid].kill()
+        def require_empty(self, root_id):
+            assert all(processes[pid].kill_called for pid in (100, 101, 102) if pid in processes)
+    monkeypatch.setattr(takeover_module, "OwnershipScope", FakeScope)
+    monkeypatch.setattr(takeover_module, "stop_owner", lambda identity, **kwargs: processes[identity["pid"]].kill())
+
     monkeypatch.setattr(takeover_module.os, "getpid", lambda: current_process_id)
 
     def _load_process(process_id: int) -> _FakeProcess:
@@ -400,6 +401,7 @@ def _install_fake_processes(
             raise takeover_module.psutil.NoSuchProcess(process_id) from exc
 
     monkeypatch.setattr(takeover_module.psutil, "Process", _load_process)
+    monkeypatch.setattr(takeover_module, "read_process_birth_identity", lambda pid: fake_birth_identity(_load_process(pid)._create_time))
     monkeypatch.setattr(
         takeover_module.psutil,
         "wait_procs",

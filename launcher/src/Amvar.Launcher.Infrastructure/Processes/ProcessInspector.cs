@@ -13,6 +13,8 @@ public sealed class ProcessInspector
         { WorkingDirectory = root, UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true,
             StandardOutputEncoding = System.Text.Encoding.UTF8, StandardErrorEncoding = System.Text.Encoding.UTF8 };
         info.ArgumentList.Add(Path.Combine(root, "launchers", "inspect_process.py"));
+        info.ArgumentList.Add("--app-root");
+        info.ArgumentList.Add(root);
         info.ArgumentList.Add("--pid");
         info.ArgumentList.Add(pid.ToString(System.Globalization.CultureInfo.InvariantCulture));
         if (listeningPort.HasValue) { info.ArgumentList.Add("--listening-port"); info.ArgumentList.Add(listeningPort.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)); }
@@ -29,7 +31,7 @@ public sealed class ProcessInspector
             await process.WaitForExitAsync(timeout.Token);
             if (process.ExitCode != 0) throw new IOException("进程身份检查失败：" + await error);
             var document = LauncherJson.Read<ProcessInspectionDocument>(await output);
-            if (document.FormatId != "amvision.launcher-process.v1") throw new IOException("进程身份格式无效。");
+            if (document.FormatId != "amvision.launcher-process.v2") throw new IOException("进程身份格式无效。");
             return document;
         }
         finally

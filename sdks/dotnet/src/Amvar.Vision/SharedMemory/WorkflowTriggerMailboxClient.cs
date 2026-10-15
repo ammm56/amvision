@@ -4,7 +4,6 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.IO.MemoryMappedFiles;
-using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
@@ -53,7 +52,6 @@ namespace Amvar.Vision.SharedMemory
         private readonly FileStream guardFile;
         private readonly MemoryMappedFile mailboxMap;
         private readonly MemoryMappedViewAccessor view;
-        private readonly IDisposable timerResolutionLease;
         private bool disposed;
 
         internal WorkflowTriggerMailboxClient(string buffersRoot)
@@ -63,7 +61,6 @@ namespace Amvar.Vision.SharedMemory
                 throw new ArgumentException("buffersRoot cannot be empty.", nameof(buffersRoot));
             }
 
-            timerResolutionLease = WindowsLowLatencyTimer.Acquire();
             mailboxPath = Path.GetFullPath(Path.Combine(
                 buffersRoot,
                 WorkflowTriggerMailboxV1.RelativeMmapPath.Replace('/', Path.DirectorySeparatorChar)));
@@ -80,7 +77,6 @@ namespace Amvar.Vision.SharedMemory
             }
             catch (Exception error)
             {
-                timerResolutionLease.Dispose();
                 throw new SharedMemoryTriggerException(
                     "server_unavailable",
                     "Workflow Trigger mailbox is not available.",
@@ -90,7 +86,6 @@ namespace Amvar.Vision.SharedMemory
             if (mailboxFile.Length != WorkflowTriggerMailboxV1.MailboxFileSizeBytes)
             {
                 mailboxFile.Dispose();
-                timerResolutionLease.Dispose();
                 throw new SharedMemoryTriggerException(
                     "protocol_error",
                     "Workflow Trigger mailbox size does not match the frozen profile.");
@@ -126,7 +121,6 @@ namespace Amvar.Vision.SharedMemory
             {
                 guardFile?.Dispose();
                 mailboxFile.Dispose();
-                timerResolutionLease.Dispose();
                 throw;
             }
         }
@@ -644,7 +638,6 @@ namespace Amvar.Vision.SharedMemory
                 mailboxMap.Dispose();
                 mailboxFile.Dispose();
                 guardFile.Dispose();
-                timerResolutionLease.Dispose();
             }
         }
 
@@ -843,6 +836,7 @@ namespace Amvar.Vision.SharedMemory
             WorkflowTriggerDescriptorIdentity identity,
             long localDeadlineTicks)
         {
+            using var pollWaiter = new PollWaiter();
             while (Stopwatch.GetTimestamp() < localDeadlineTicks)
             {
                 lock (accessSync)
@@ -861,7 +855,7 @@ namespace Amvar.Vision.SharedMemory
                     }
                 }
 
-                Thread.Sleep(1);
+                pollWaiter.Wait(TimeSpan.FromTicks(2000));
             }
 
             throw new SharedMemoryTriggerException(
@@ -1313,87 +1307,6 @@ namespace Amvar.Vision.SharedMemory
         }
     }
 
-    internal static class WindowsLowLatencyTimer
-    {
-        private const uint PeriodMilliseconds = 1;
-        private static readonly object SyncRoot = new object();
-        private static int leaseCount;
-        private static bool periodActive;
-
-        [DllImport("winmm.dll", EntryPoint = "timeBeginPeriod")]
-        private static extern uint TimeBeginPeriod(uint periodMilliseconds);
-
-        [DllImport("winmm.dll", EntryPoint = "timeEndPeriod")]
-        private static extern uint TimeEndPeriod(uint periodMilliseconds);
-
-        internal static IDisposable Acquire()
-        {
-            lock (SyncRoot)
-            {
-                if (leaseCount == 0)
-                {
-                    periodActive = TryBeginPeriod();
-                }
-
-                leaseCount += 1;
-                return new Lease();
-            }
-        }
-
-        private static bool TryBeginPeriod()
-        {
-            if (Environment.OSVersion.Platform != PlatformID.Win32NT)
-            {
-                return false;
-            }
-
-            try
-            {
-                return TimeBeginPeriod(PeriodMilliseconds) == 0;
-            }
-            catch (DllNotFoundException)
-            {
-                return false;
-            }
-            catch (EntryPointNotFoundException)
-            {
-                return false;
-            }
-        }
-
-        private sealed class Lease : IDisposable
-        {
-            private bool disposed;
-
-            public void Dispose()
-            {
-                lock (SyncRoot)
-                {
-                    if (disposed)
-                    {
-                        return;
-                    }
-
-                    disposed = true;
-                    leaseCount -= 1;
-                    if (leaseCount != 0 || !periodActive)
-                    {
-                        return;
-                    }
-
-                    try
-                    {
-                        TimeEndPeriod(PeriodMilliseconds);
-                    }
-                    finally
-                    {
-                        periodActive = false;
-                    }
-                }
-            }
-        }
-    }
-
     internal sealed class ByteRangeGuard : IDisposable
     {
         private readonly FileStream stream;
@@ -1455,6 +1368,7 @@ namespace Amvar.Vision.SharedMemory
             long length,
             long localDeadlineTicks)
         {
+            using var pollWaiter = new PollWaiter();
             while (Stopwatch.GetTimestamp() < localDeadlineTicks)
             {
                 var guard = TryAcquire(path, offset, length);
@@ -1463,7 +1377,7 @@ namespace Amvar.Vision.SharedMemory
                     return guard;
                 }
 
-                Thread.Sleep(1);
+                pollWaiter.Wait(TimeSpan.FromMilliseconds(1));
             }
 
             throw new SharedMemoryTriggerException(
@@ -1483,7 +1397,7 @@ namespace Amvar.Vision.SharedMemory
                     "protocol_error",
                     "Reader guard slot count must be positive.");
             }
-
+            using var pollWaiter = new PollWaiter();
             while (Stopwatch.GetTimestamp() < localDeadlineTicks)
             {
                 for (var slot = 0; slot < slotCount; slot++)
@@ -1495,7 +1409,7 @@ namespace Amvar.Vision.SharedMemory
                     }
                 }
 
-                Thread.Sleep(1);
+                pollWaiter.Wait(TimeSpan.FromMilliseconds(1));
             }
 
             throw new SharedMemoryTriggerException(

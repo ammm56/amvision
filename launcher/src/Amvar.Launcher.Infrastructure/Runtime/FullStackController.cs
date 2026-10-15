@@ -34,12 +34,12 @@ public sealed class FullStackController(string requestDirectory, ILauncherLog lo
         return Task.CompletedTask;
     }
 
-    private async Task<FullSupervisorStateV1?> ReadState(string path, CancellationToken token)
+    private async Task<FullSupervisorStateV3?> ReadState(string path, CancellationToken token)
     {
         var file = StateFile(path);
         if (!File.Exists(file)) return null;
-        var state = LauncherJson.Read<FullSupervisorStateV1>(await File.ReadAllTextAsync(file, token), false);
-        if (state.FormatId != "amvision.full-supervisor-state.v1" || !ProcessIdentityDocument.SamePath(state.AppRoot, path))
+        var state = LauncherJson.Read<FullSupervisorStateV3>(await File.ReadAllTextAsync(file, token), false);
+        if (state.FormatId != "amvision.full-supervisor-state.v3" || !ProcessIdentityDocument.SamePath(state.AppRoot, path))
             throw new IOException("服务状态文件格式或项目目录不匹配。");
         return state;
     }
@@ -79,8 +79,8 @@ public sealed class FullStackController(string requestDirectory, ILauncherLog lo
             if (!knownComponents.Any(existing => existing.Matches(component))) knownComponents.Add(component);
         var statusFile = Path.Combine(path, "logs", "full-stack", "launcher-status.json");
         if (!File.Exists(statusFile)) return new(StackPhase.Starting);
-        var status = LauncherJson.Read<LauncherStatusDocumentV1>(await File.ReadAllTextAsync(statusFile, token), false);
-        if (status.FormatId is not ("amvision.launcher-status.v1" or "amvision.launcher-status.v2"))
+        var status = LauncherJson.Read<LauncherStatusDocumentV3>(await File.ReadAllTextAsync(statusFile, token), false);
+        if (status.FormatId != "amvision.launcher-status.v3")
             return new(StackPhase.Failed, "不支持的服务状态版本，请使用同一发行包的启动器。");
         if (!status.RootProcess.Matches(ownedRoot)) return new(StackPhase.Failed, "服务状态身份不匹配。");
         if (status.State == "running")
@@ -94,8 +94,8 @@ public sealed class FullStackController(string requestDirectory, ILauncherLog lo
         return status.State switch
         {
             "running" => new(StackPhase.Running), "starting" => new(StackPhase.Starting),
-            "degraded" when status.FormatId == "amvision.launcher-status.v2" => new(StackPhase.Degraded, "视觉服务接入异常，正在确认。"),
-            "recovering" when status.FormatId == "amvision.launcher-status.v2" => new(StackPhase.Recovering),
+            "degraded" => new(StackPhase.Degraded, "视觉服务接入异常，正在确认。"),
+            "recovering" => new(StackPhase.Recovering),
             "stopping" => new(StackPhase.Stopping), "failed" => new(StackPhase.Failed, status.Error?.Message),
             _ => new(StackPhase.Failed, "未知服务阶段。")
         };
@@ -112,14 +112,14 @@ public sealed class FullStackController(string requestDirectory, ILauncherLog lo
                 if (ownedRoot == null) await Task.Delay(200, token);
             }
             if (ownedRoot == null) { await launcher.WaitAsync(token); return new(true); }
-            if (await Alive(ownedRoot, token))
+            // root 已退出也必须让统一停止入口核对登记的全部进程组。
             {
                 if (stop == null || stop.Process.HasExited)
                 {
                     if (stop != null) { await stop.WaitAsync(token); stop.Dispose(); CleanupRequest(); }
                     Directory.CreateDirectory(requestDirectory);
                     stopRequest = Path.Combine(requestDirectory, Guid.NewGuid().ToString("N") + ".json");
-                    await File.WriteAllTextAsync(stopRequest, LauncherJson.Write(new StopTargetDocumentV1 { RootProcess = ownedRoot }), token);
+                    await File.WriteAllTextAsync(stopRequest, LauncherJson.Write(new StopTargetDocumentV2 { RootProcess = ownedRoot }), token);
                     stop = ScriptProcess.Start(root!, "stop-amvision-full.bat", log, stopRequest);
                 }
                 var code = await stop.WaitAsync(token);

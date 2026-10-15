@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import logging
 
 from fastapi import FastAPI
 
-from backend.bootstrap.core import BootstrapStep, RuntimeBootstrap
+from backend.bootstrap.core import BootstrapStep, RuntimeBootstrap, RuntimeLifecycle
 from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.nodes.node_pack_loader import NodePackLoader
 from backend.nodes.runtime_support import ExecutionImageRegistry
-from backend.service.application.errors import OperationTimeoutError
 from backend.service.api.seeders import BackendServiceSeeder, BackendServiceSeederRunner
 from backend.service.application.auth.default_local_auth_seeder import (
     DefaultLocalAuthSeeder,
@@ -250,30 +249,29 @@ class BackendServiceRuntime:
         ObbAsyncInferenceGatewayDispatcherRegistry | None
     ) = None
     inference_message_client: InferenceLocalMmapClient | None = None
+    lifecycle: RuntimeLifecycle = field(default_factory=RuntimeLifecycle, repr=False, compare=False)
 
     def iter_all_deployment_supervisors(self):
         """按 (task_type, mode) 遍历所有 deployment supervisor 和 gateway registry。"""
-        _FIELD_PREFIXES = ("detection", "classification", "segmentation", "pose", "obb")
-        for field_prefix in _FIELD_PREFIXES:
-            sync_sup = getattr(
-                self, f"{field_prefix}_sync_deployment_process_supervisor", None
-            )
-            async_sup = getattr(
-                self, f"{field_prefix}_async_deployment_process_supervisor", None
-            )
-            gw_reg = getattr(
-                self, f"{field_prefix}_async_inference_gateway_registry", None
-            ) or getattr(
-                self,
-                f"{field_prefix}_async_inference_gateway_dispatcher_registry",
-                None,
-            )
-            if sync_sup is not None:
-                yield sync_sup
-            if async_sup is not None:
-                yield async_sup
-            if gw_reg is not None:
-                yield gw_reg
+        for component in (
+            self.detection_sync_deployment_process_supervisor,
+            self.detection_async_deployment_process_supervisor,
+            self.detection_async_inference_gateway_dispatcher_registry,
+            self.classification_sync_deployment_supervisor,
+            self.classification_async_deployment_supervisor,
+            self.classification_async_inference_gateway_registry,
+            self.segmentation_sync_deployment_supervisor,
+            self.segmentation_async_deployment_supervisor,
+            self.segmentation_async_inference_gateway_registry,
+            self.pose_sync_deployment_supervisor,
+            self.pose_async_deployment_supervisor,
+            self.pose_async_inference_gateway_registry,
+            self.obb_sync_deployment_supervisor,
+            self.obb_async_deployment_supervisor,
+            self.obb_async_inference_gateway_registry,
+        ):
+            if component is not None:
+                yield component
 
 
 class InitializeDatabaseSchemaStep:
@@ -1006,6 +1004,12 @@ class BackendServiceBootstrap(
         )
 
     def start_runtime(self, runtime: BackendServiceRuntime) -> None:
+        """禁止启动失败或停止中的资源容器再次启动任何组件。"""
+        with runtime.lifecycle.starting() as should_start:
+            if should_start:
+                self._start_runtime(runtime)
+
+    def _start_runtime(self, runtime: BackendServiceRuntime) -> None:
         """启动 backend-service 托管的长生命周期资源。
 
         参数：
@@ -1043,24 +1047,25 @@ class BackendServiceBootstrap(
         - runtime：当前应用实例使用的运行时资源。
         """
 
-        self.drain_runtime(runtime)
-        runtime.local_buffer_broker_supervisor.stop()
-        runtime.session_factory.engine.dispose()
+        with runtime.lifecycle.stopping() as should_stop:
+            if should_stop:
+                self.drain_runtime(runtime)
+                runtime.local_buffer_broker_supervisor.stop()
+                runtime.session_factory.engine.dispose()
 
     def drain_runtime(self, runtime: BackendServiceRuntime, *, strict: bool = False) -> None:
         """先停止接入和消费者，保留 Broker，供 full 按依赖顺序关闭 daemon。"""
+        with runtime.lifecycle.stopping(final=False) as should_drain:
+            if should_drain:
+                self._drain_runtime(runtime, strict=strict)
+
+    def _drain_runtime(self, runtime: BackendServiceRuntime, *, strict: bool) -> None:
+        """依赖的使用者退出失败时立即保留依赖，不将未知退出当作成功。"""
         runtime.queue_outbox_dispatcher.stop()
         if runtime.training_telemetry_receiver is not None:
             runtime.training_telemetry_receiver.stop()
         runtime.training_telemetry_broker.close()
-        try:
-            runtime.trigger_source_supervisor.stop_all()
-        except OperationTimeoutError as error:
-            # 单个协议 listener 的有界停止超时不能阻断其余进程、mmap 和数据库资源清理。
-            # 显式 Trigger 停止仍保留原错误语义；这里仅用于整个 Backend 进程退出。
-            if strict:
-                raise
-            LOGGER.warning("Backend 退出时 TriggerSource 停止超时：%s", error)
+        runtime.trigger_source_supervisor.stop_all()
         if runtime.workflow_trigger_mailbox_supervisor is not None:
             runtime.workflow_trigger_mailbox_supervisor.stop()
         runtime.deployment_runtime_reconciler.stop()
@@ -1072,14 +1077,12 @@ class BackendServiceBootstrap(
         model_session_manager = (
             runtime.workflow_service_node_runtime_context.workflow_model_session_manager
         )
-        try:
-            if model_session_manager is not None:
-                model_session_manager.close_all()
-        finally:
-            runtime.workflow_service_node_runtime_context.close()
-            storage_image_cache = runtime.workflow_service_node_runtime_context.workflow_storage_image_cache
-            if storage_image_cache is not None:
-                storage_image_cache.clear()
+        if model_session_manager is not None:
+            model_session_manager.close_all()
+        runtime.workflow_service_node_runtime_context.close()
+        storage_image_cache = runtime.workflow_service_node_runtime_context.workflow_storage_image_cache
+        if storage_image_cache is not None:
+            storage_image_cache.clear()
         # 反序停止所有 deployment supervisor 和 gateway registry
         for component in reversed(list(runtime.iter_all_deployment_supervisors())):
             component.stop()

@@ -85,3 +85,33 @@ def test_development_supervisor_cli_defaults_to_source_root() -> None:
     assert args.app_root == "."
     assert args.ready_timeout_seconds == 120.0
     assert len(DEFAULT_PROFILE_IDS) == 6
+
+
+def test_development_supervisor_isolates_profiles_in_explicit_workspace(tmp_path, monkeypatch) -> None:
+    """显式总 workspace 下各 profile 分目录，不能退回开发数据目录。"""
+    from types import SimpleNamespace
+    from backend.workers import supervisor as module
+
+    supervisor = _build_supervisor(tmp_path)
+    profiles = supervisor._load_profiles()
+    supervisor.topology = supervisor._activate_topology(profiles)
+    workspace = tmp_path / "isolated-workspace"
+    monkeypatch.setenv("AMVISION_WORKER_WORKSPACE__ROOT_DIR", str(workspace))
+    monkeypatch.setenv("AMVISION_WORKER_QUEUE__ROOT_DIR", str(tmp_path / "queue"))
+    monkeypatch.setenv("AMVISION_WORKER_DATABASE__URL", f"sqlite:///{(tmp_path / 'worker.db').as_posix()}")
+    monkeypatch.setenv("AMVISION_WORKER_DATASET_STORAGE__ROOT_DIR", str(tmp_path / "files"))
+    monkeypatch.setenv("AMVISION_WORKER_LOCAL_MEMORY__ROOT_DIR", str(tmp_path / "buffers"))
+    monkeypatch.setenv("AMVISION_WORKER_DEVICE_LEASES__ROOT_DIR", str(tmp_path / "leases"))
+    captured = []
+
+    def start(_args, **kwargs):
+        """记录真实 supervisor 组装出的环境变量。"""
+        captured.append(kwargs["env"])
+        return SimpleNamespace(pid=100)
+
+    monkeypatch.setattr(module, "ManagedProcess", start)
+    for profile in profiles:
+        supervisor._start_worker(profile)
+    assert {Path(env["AMVISION_WORKER_WORKSPACE__ROOT_DIR"]) for env in captured} == {
+        workspace / profile.profile_id for profile in profiles
+    }

@@ -1,16 +1,12 @@
-"""Windows Job Object 放行后的目标进程 bootstrap。"""
+"""Windows Job Object 适配器；不承担业务启动或恢复编排。"""
 
 from __future__ import annotations
 
 import ctypes
 from ctypes import wintypes
-import signal
 import subprocess
 import sys
-from pathlib import Path
-from typing import Sequence
-
-_START_TOKEN = b"\x01"
+from uuid import uuid4
 
 
 class WindowsJob:
@@ -54,15 +50,30 @@ class WindowsJob:
         ("PeakJobMemoryUsed", ctypes.c_size_t),
     ]
 
-    def __init__(self) -> None:
+    def __init__(self, *, name: str | None = None, open_existing: bool = False) -> None:
         """创建并配置 Job Object。"""
 
         if sys.platform != "win32":
             raise RuntimeError("WindowsJob 只能在 Windows 使用")
         kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
         self._kernel32 = kernel32
+        self.name = name or ("Local\\amvision-process-" + uuid4().hex)
         kernel32.CreateJobObjectW.argtypes = [ctypes.c_void_p, wintypes.LPCWSTR]
         kernel32.CreateJobObjectW.restype = wintypes.HANDLE
+        kernel32.OpenJobObjectW.argtypes = [
+            wintypes.DWORD,
+            wintypes.BOOL,
+            wintypes.LPCWSTR,
+        ]
+        kernel32.OpenJobObjectW.restype = wintypes.HANDLE
+        kernel32.QueryInformationJobObject.argtypes = [
+            wintypes.HANDLE,
+            ctypes.c_int,
+            ctypes.c_void_p,
+            wintypes.DWORD,
+            ctypes.c_void_p,
+        ]
+        kernel32.QueryInformationJobObject.restype = wintypes.BOOL
         kernel32.SetInformationJobObject.argtypes = [
             wintypes.HANDLE,
             ctypes.c_int,
@@ -77,10 +88,19 @@ class WindowsJob:
         kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
         kernel32.CloseHandle.restype = wintypes.BOOL
 
-        handle = kernel32.CreateJobObjectW(None, None)
+        handle = (
+            kernel32.OpenJobObjectW(0x0004 | 0x0008, False, self.name)
+            if open_existing
+            else kernel32.CreateJobObjectW(None, self.name)
+        )
         if not handle:
             raise ctypes.WinError(ctypes.get_last_error())
         self._handle = handle
+        if open_existing:
+            return
+        if ctypes.get_last_error() == 183:
+            self.close()
+            raise FileExistsError(self.name)
         information = self._EXTENDED_LIMIT_INFORMATION()
         information.BasicLimitInformation.LimitFlags = (
             self._JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
@@ -95,69 +115,53 @@ class WindowsJob:
             self.close()
             raise error
 
+    def assign_handle(self, handle: int) -> None:
+        """绑定尚未放行的进程句柄；适用于 Popen 和 spawn。"""
+        if not self._kernel32.AssignProcessToJobObject(
+            self._handle, wintypes.HANDLE(handle)
+        ):
+            raise ctypes.WinError(ctypes.get_last_error())
+
     def assign(self, process: subprocess.Popen[bytes]) -> None:
         """把尚未获准启动真实目标的 bootstrap 加入 Job Object。"""
 
-        process_handle = wintypes.HANDLE(int(process._handle))  # type: ignore[attr-defined]
-        if not self._kernel32.AssignProcessToJobObject(self._handle, process_handle):
-            raise ctypes.WinError(ctypes.get_last_error())
+        self.assign_handle(int(process._handle))  # type: ignore[attr-defined]
+
+    def members(self) -> tuple[int, ...]:
+        """查询内核维护的成员列表；容量变化时重试，不按父子快照推断。"""
+        capacity = 64
+        while capacity <= 1_048_576:
+
+            class ProcessIds(ctypes.Structure):
+                _fields_ = [
+                    ("assigned", wintypes.DWORD),
+                    ("count", wintypes.DWORD),
+                    ("ids", ctypes.c_size_t * capacity),
+                ]
+
+            result = ProcessIds()
+            if self._kernel32.QueryInformationJobObject(
+                self._handle, 3, ctypes.byref(result), ctypes.sizeof(result), None
+            ):
+                return tuple(result.ids[: result.count])
+            error = ctypes.get_last_error()
+            if error != 234:
+                raise ctypes.WinError(error)
+            capacity = max(capacity * 2, result.assigned)
+        raise RuntimeError("进程组成员数量超出查询上限")
 
     def terminate(self, exit_code: int = 1) -> None:
         """终止 Job Object 中的全部进程。"""
 
         if self._handle:
-            self._kernel32.TerminateJobObject(self._handle, exit_code)
+            if not self._kernel32.TerminateJobObject(self._handle, exit_code):
+                raise ctypes.WinError(ctypes.get_last_error())
 
     def close(self) -> None:
         """关闭 Job；kill-on-close 会清理仍存活的成员。"""
 
         handle = getattr(self, "_handle", None)
         if handle:
-            self._kernel32.CloseHandle(handle)
+            if not self._kernel32.CloseHandle(handle):
+                raise ctypes.WinError(ctypes.get_last_error())
             self._handle = None
-
-
-def release_bootstrap(process: subprocess.Popen[bytes]) -> None:
-    """在 Job 绑定成功后仅放行一次真实目标进程。"""
-
-    if process.stdin is None:
-        raise RuntimeError("Windows bootstrap 缺少控制 pipe")
-    process.stdin.write(_START_TOKEN)
-    process.stdin.flush()
-    process.stdin.close()
-
-
-def build_bootstrap_command(command: Sequence[str]) -> list[str]:
-    """构造等待父进程放行的 bootstrap 命令。"""
-
-    normalized = [str(part) for part in command]
-    if not normalized:
-        raise ValueError("command 不能为空")
-    return [
-        sys.executable,
-        str(Path(__file__).resolve()),
-        "--",
-        *normalized,
-    ]
-
-
-def main(argv: Sequence[str] | None = None) -> int:
-    """等待单字节放行信号，再启动继承当前 Job 的真实目标进程。"""
-
-    arguments = list(sys.argv[1:] if argv is None else argv)
-    if not arguments or arguments[0] != "--" or len(arguments) == 1:
-        return 2
-    command = arguments[1:]
-    if hasattr(signal, "SIGBREAK"):
-        signal.signal(signal.SIGBREAK, signal.SIG_IGN)
-    if sys.stdin.buffer.read(1) != _START_TOKEN:
-        return 125
-    process = subprocess.Popen(command, stdin=subprocess.DEVNULL)
-    return int(process.wait())
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
-
-
-__all__ = ["WindowsJob", "build_bootstrap_command", "main", "release_bootstrap"]

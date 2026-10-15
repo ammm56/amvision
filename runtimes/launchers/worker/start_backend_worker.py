@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -100,7 +101,10 @@ def main(argv: list[str] | None = None) -> int:
         WORKER_TOPOLOGY_EPOCH_ID_ENV: args.topology_epoch_id,
         WORKER_INSTANCE_ID_ENV: args.worker_instance_id,
         "AMVISION_WORKER_APP__APP_NAME": profile.display_name,
-        "AMVISION_WORKER_WORKSPACE__ROOT_DIR": f"./data/worker/{profile.profile_id}",
+        # 显式 workspace 属于调用方配置，不能被 profile 默认路径覆盖。
+        "AMVISION_WORKER_WORKSPACE__ROOT_DIR": os.environ.get(
+            "AMVISION_WORKER_WORKSPACE__ROOT_DIR", f"./data/worker/{profile.profile_id}"
+        ),
     }
 
     return run_python_module(

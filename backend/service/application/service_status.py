@@ -6,8 +6,10 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 import json
 import logging
-from threading import Event, Thread
+from threading import Event, Lock, Thread, current_thread
 from time import monotonic
+
+from backend.service.application.errors import InvalidRequestError, OperationTimeoutError
 
 LOGGER = logging.getLogger(__name__)
 
@@ -29,6 +31,7 @@ class ServiceStatusMonitor:
         self.interval = interval
         self.max_age = max_age
         self._stop = Event()
+        self._lifecycle_lock = Lock()
         self._thread: Thread | None = None
         self._ever_ready = False
         self._last_error_type: type[Exception] | None = None
@@ -106,10 +109,22 @@ class ServiceStatusMonitor:
 
     def start(self) -> None:
         """启动唯一采集线程；不阻塞 HTTP 启动。"""
-        if self._thread is not None:
-            return
-        self._thread = Thread(target=self._run, name="service-status", daemon=True)
-        self._thread.start()
+        with self._lifecycle_lock:
+            if self._thread is not None:
+                if self._stop.is_set() or not self._thread.is_alive():
+                    raise InvalidRequestError("服务状态采集停止尚未确认，禁止恢复")
+                return
+            self._stop.clear()
+            self._ever_ready = False
+            self._last_error_type = None
+            self._snapshot = (0.0, self._encode([], "starting", "initializing"))
+            self._thread = Thread(target=self._run, name="service-status", daemon=True)
+            try:
+                self._thread.start()
+            except BaseException:
+                self._thread = None
+                self._stop.set()
+                raise
 
     def _run(self) -> None:
         """按固定间隔采集，调用数量不会增加后台采集频率。"""
@@ -118,7 +133,16 @@ class ServiceStatusMonitor:
             self._stop.wait(self.interval)
 
     def stop(self) -> None:
-        """立即撤销就绪并停止采集线程。"""
-        self._stop.set()
-        if self._thread is not None:
-            self._thread.join(timeout=self.max_age)
+        """立即撤销就绪；采集未退出时保留线程和被采集的依赖。"""
+        with self._lifecycle_lock:
+            self._stop.set()
+            thread = self._thread
+        if thread is not None:
+            if thread is current_thread():
+                raise OperationTimeoutError("服务状态采集线程不能确认自身退出")
+            thread.join(timeout=max(0.0, self.max_age))
+            if thread.is_alive():
+                raise OperationTimeoutError("服务状态采集尚未退出，保留运行资源")
+        with self._lifecycle_lock:
+            if self._thread is thread:
+                self._thread = None

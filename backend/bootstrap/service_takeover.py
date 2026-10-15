@@ -6,10 +6,12 @@ import json
 import os
 from pathlib import Path
 from threading import Event, Thread
-from time import monotonic
 from typing import Callable
 
 import psutil
+from backend.runtime.processes.ownership import OwnershipScope, PARENT_ENV
+from backend.runtime.processes.owner_control import stop_owner, wait_owner_exit
+from backend.runtime.processes.birth_identity import read_process_birth_identity, birth_identity_is_newer
 
 
 class ServiceTakeoverError(RuntimeError):
@@ -40,7 +42,7 @@ def _has_full_launcher_ancestor(process: psutil.Process) -> bool:
 
 
 def _request_path(lock_path: Path, pid: int) -> Path:
-    """停止请求与具体锁及 PID 绑定，内容再校验进程创建时间。"""
+    """停止请求与具体锁及 PID 绑定，内容再校验内核出生标识。"""
     return lock_path.with_name(f"{lock_path.name}.stop-{pid}.json")
 
 
@@ -50,13 +52,18 @@ class ServiceStopListener:
     def __init__(self, lock_path: Path, callback: Callable[[], None]):
         """保存锁位置、停止回调和本进程身份。"""
         self.path = _request_path(lock_path.resolve(), os.getpid())
-        self.created = psutil.Process().create_time()
+        self.birth_identity = read_process_birth_identity(os.getpid())
         self.callback = callback
         self.closed = Event()
         self.thread = Thread(target=self._run, daemon=True, name="service-stop-listener")
+        self.ownership_path = self.path.with_suffix(".ownership.json")
 
     def __enter__(self):
         """启动轻量停止监听。"""
+        scope = OwnershipScope.current()
+        self.ownership_path.write_text(json.dumps({"format_id": "amvision.service-ownership.v2",
+            "pid": os.getpid(), "birth_identity": self.birth_identity, "scope": str(scope.root),
+            "group_id": os.environ.get(PARENT_ENV)}), encoding="utf-8")
         self.thread.start()
         return self
 
@@ -65,7 +72,7 @@ class ServiceStopListener:
         while not self.closed.wait(0.2):
             try:
                 value = json.loads(self.path.read_text(encoding="utf-8"))
-                if value == {"pid": os.getpid(), "create_time": self.created}:
+                if value == {"pid": os.getpid(), "birth_identity": self.birth_identity}:
                     self.callback()
                     return
             except (OSError, ValueError):
@@ -80,11 +87,11 @@ class ServiceStopListener:
 
 def replace_service_owner(
     *, lock_path: Path, module: str, owner_pid: int | None = None,
-    owner_started_ns: int | None = None, timeout_seconds: float = 30,
+    timeout_seconds: float = 30,
 ) -> int | None:
     """只接替更旧、同目录同解释器且实际打开冲突锁的同类服务。
 
-    新版本先响应本地停止请求；旧版本或超时进程再按经验证的进程树结束。
+    只接受启动时的归属登记；停止请求超时后按登记组结束，不回收旧快照。
     不接替 full 管理的单个子服务，应由新 full 根进程替换旧 full。
     """
     path = lock_path.resolve()
@@ -104,9 +111,7 @@ def replace_service_owner(
                 continue
             if not any(Path(item.path).resolve() == path for item in process.open_files()):
                 continue
-            if owner_started_ns is not None and abs(process.create_time() - owner_started_ns / 1e9) > 0.01:
-                raise ServiceTakeoverError("owner PID 已复用，拒绝接管")
-            if process.create_time() >= current.create_time():
+            if not birth_identity_is_newer(read_process_birth_identity(current.pid), read_process_birth_identity(process.pid)):
                 raise ServiceTakeoverError("当前服务不比 owner 更新，拒绝反向接管")
             if _has_full_launcher_ancestor(process):
                 raise ServiceTakeoverError("旧服务由 full 启动器管理，请重新运行 full 启动器接替整套服务")
@@ -125,31 +130,29 @@ def replace_service_owner(
     if len(matches) != 1:
         raise ServiceTakeoverError("存在多个候选 owner，拒绝不明确的接管")
     target = matches[0]
-    created = target.create_time()
-    descendants = target.children(recursive=True)
+    birth_identity = read_process_birth_identity(target.pid)
     request = _request_path(path, target.pid)
-    request.write_text(json.dumps({"pid": target.pid, "create_time": created}), encoding="utf-8")
+    ownership_path = request.with_suffix(".ownership.json")
     try:
-        # 优先让新版本按正常停机顺序保存状态、回收模型和 Worker。
+        ownership = json.loads(ownership_path.read_text(encoding="utf-8"))
+        if (ownership.get("format_id"), ownership.get("pid"), ownership.get("birth_identity")) != ("amvision.service-ownership.v2", target.pid, birth_identity):
+            raise ValueError("服务归属身份不匹配")
+        scope = OwnershipScope(Path(ownership["scope"]))
+        scope.validate()
+    except (OSError, ValueError, KeyError) as error:
+        raise ServiceTakeoverError("服务缺少可验证的启动归属，拒绝接替") from error
+    request.write_text(json.dumps({"pid": target.pid, "birth_identity": birth_identity}), encoding="utf-8")
+    try:
+        # 保留完整协作窗口；旧 root 退出后仍须核对登记的全部组。
         try:
-            target.wait(timeout=min(5, timeout_seconds))
+            wait_owner_exit({"pid": target.pid, "birth_identity": birth_identity}, timeout=timeout_seconds)
         except psutil.TimeoutExpired:
-            if target.is_running() and target.create_time() == created:
-                descendants = target.children(recursive=True)
-                target.terminate()
-        deadline = monotonic() + timeout_seconds
-        for process in [target, *reversed(descendants)]:
-            if process.is_running():
-                try:
-                    process.terminate()
-                except (psutil.NoSuchProcess, psutil.ZombieProcess):
-                    pass
-        _, alive = psutil.wait_procs([target, *descendants], timeout=max(0.1, deadline - monotonic()))
-        for process in alive:
-            process.kill()
-        _, alive = psutil.wait_procs(alive, timeout=5)
-        if alive:
-            raise ServiceTakeoverError(f"旧服务未完全退出：{[p.pid for p in alive]}")
+            if ownership["group_id"] is None:
+                scope.seal()
+                stop_owner({"pid": target.pid, "birth_identity": birth_identity}, timeout=5)
+            scope.stop(root_id=ownership["group_id"], timeout=5)
+        scope.require_empty(ownership["group_id"])
+        ownership_path.unlink(missing_ok=True)
         print(f"已退出旧 {module}（PID={target.pid}），继续启动新服务。", flush=True)
         return target.pid
     finally:

@@ -72,6 +72,7 @@ from backend.service.infrastructure.ipc.local_message.paths import (
     LocalMessageChannelPaths,
 )
 from backend.service.infrastructure.ipc.mmap_primitives import (
+    MmapGuardPool,
     MmapOwnerLockHandle,
     crc32_ieee,
     new_nonzero_u64_token,
@@ -82,6 +83,15 @@ from backend.service.infrastructure.ipc.mmap_primitives import (
 
 _COMMON_FLAGS_OFFSET = 84
 _RESPONSE_COMPRESSION_MAX_RATIO = 0.875
+
+
+def _request_candidates(states: bytes, cursor: int):
+    """按原公平游标枚举状态提示，空槽扫描由 bytes.find 完成。"""
+    for start, end in ((cursor, len(states)), (0, cursor)):
+        index = states.find(b"\x02", start, end)
+        while index >= 0:
+            yield index
+            index = states.find(b"\x02", index + 1, end)
 
 
 @dataclass(frozen=True, slots=True)
@@ -200,6 +210,7 @@ class MmapMailboxServer:
         self.response_ack_timeout_ns = int(response_ack_timeout_seconds * 1e9)
         self._owner_lock: MmapOwnerLockHandle | None = None
         self._guard_file: BinaryIO | None = None
+        self._guard_pool: MmapGuardPool | None = None
         self._file: BinaryIO | None = None
         self._view: mmap.mmap | None = None
         self._page_pool: MmapResponsePagePool | None = None
@@ -391,8 +402,10 @@ class MmapMailboxServer:
             try:
                 with descriptor_guard(
                     guard_path=self.paths.guard_path,
+                    guard_pool=self._guard_pool,
                     descriptor_index=descriptor_index,
-                    deadline_ns=monotonic_ns() + 2_000_000,
+                    # 巡检不等锁，发布中的槽留到下一轮，不阻塞其他终态。
+                    deadline_ns=monotonic_ns(),
                     poll_interval_seconds=self.profile.poll_interval_seconds,
                 ):
                     header = self._read_descriptor(descriptor_index)
@@ -519,6 +532,7 @@ class MmapMailboxServer:
         self._validate_extension_range(offset=offset, size=size)
         with descriptor_guard(
             guard_path=self.paths.guard_path,
+            guard_pool=self._guard_pool,
             descriptor_index=identity.descriptor_index,
             deadline_ns=monotonic_ns() + 1_000_000_000,
             poll_interval_seconds=self.profile.poll_interval_seconds,
@@ -541,6 +555,7 @@ class MmapMailboxServer:
         self._validate_extension_range(offset=offset, size=len(payload))
         with descriptor_guard(
             guard_path=self.paths.guard_path,
+            guard_pool=self._guard_pool,
             descriptor_index=identity.descriptor_index,
             deadline_ns=monotonic_ns() + 1_000_000_000,
             poll_interval_seconds=self.profile.poll_interval_seconds,
@@ -568,6 +583,7 @@ class MmapMailboxServer:
             self._validate_extension_range(offset=0, size=len(extension))
         with descriptor_guard(
             guard_path=self.paths.guard_path,
+            guard_pool=self._guard_pool,
             descriptor_index=identity.descriptor_index,
             deadline_ns=monotonic_ns() + 1_000_000_000,
             poll_interval_seconds=self.profile.poll_interval_seconds,
@@ -617,22 +633,32 @@ class MmapMailboxServer:
             capacity_rejections_total=self._capacity_rejections_total,
         )
 
+    def begin_close(self) -> None:
+        """先发布关闭标记使 client 立即取消，保留在途 handler 的 mapping 和 owner。"""
+        with self._close_lock:
+            self._publish_closed_fence()
+
+    def _publish_closed_fence(self) -> None:
+        """在 close 锁内提交关闭标记，不回收 descriptor 或底层句柄。"""
+        if not self._closed:
+            if self._view is not None:
+                struct.pack_into("<I", self._view, _COMMON_FLAGS_OFFSET, FILE_FLAG_CLOSED)
+            self._closed = True
+
     def close(self, *, deadline_ns: int) -> None:
-        """幂等发布 closed fence 并有界回收已 ACK response。"""
+        """调用方确认 handler 退出后，有界回收 descriptor 并释放 owner。"""
 
         with self._close_lock:
-            if not self._closed:
-                self._closed = True
-                view = self._view
-                if view is not None:
-                    struct.pack_into("<I", view, _COMMON_FLAGS_OFFSET, FILE_FLAG_CLOSED)
-                    while monotonic_ns() < deadline_ns:
-                        if self._reclaim_all_descriptors_for_close(
-                            deadline_ns=deadline_ns
-                        ):
-                            break
-                        sleep(self.profile.poll_interval_seconds)
-                    view.flush()
+            self._publish_closed_fence()
+            view = self._view
+            if view is not None:
+                while monotonic_ns() < deadline_ns:
+                    if self._reclaim_all_descriptors_for_close(
+                        deadline_ns=deadline_ns
+                    ):
+                        break
+                    sleep(self.profile.poll_interval_seconds)
+                view.flush()
             self._close_handles()
 
     def _reclaim_all_descriptors_for_close(self, *, deadline_ns: int) -> bool:
@@ -650,6 +676,7 @@ class MmapMailboxServer:
             try:
                 with descriptor_guard(
                     guard_path=self.paths.guard_path,
+                    guard_pool=self._guard_pool,
                     descriptor_index=descriptor_index,
                     deadline_ns=min(deadline_ns, now_ns + 2_000_000),
                     poll_interval_seconds=self.profile.poll_interval_seconds,
@@ -679,9 +706,14 @@ class MmapMailboxServer:
             expected_size=max(self.profile.descriptor_count, 1),
             create=existing_size == 0,
         )
+        self._guard_pool = MmapGuardPool(self.paths.guard_path, self._guard_file)
         if existing_size not in {0, self.layout.file_size_bytes}:
             raise ChannelCorruptMessageError("Mailbox owner 文件长度与冻结 profile 不匹配")
-        self._file = self.paths.mmap_path.open("a+b", buffering=0)
+        # mmap 按固定偏移写回；append 在 WSL 挂载盘上会把脏页追加到 EOF。
+        try:
+            self._file = self.paths.mmap_path.open("x+b", buffering=0)
+        except FileExistsError:
+            self._file = self.paths.mmap_path.open("r+b", buffering=0)
         if existing_size == 0:
             self._file.truncate(self.layout.file_size_bytes)
         self._view = mmap.mmap(
@@ -747,15 +779,19 @@ class MmapMailboxServer:
         """公平扫描并 claim 一条已完整发布的 REQUEST。"""
 
         view = self._require_view()
-        for distance in range(self.profile.descriptor_count):
-            descriptor_index = (self._poll_cursor + distance) % self.profile.descriptor_count
-            if self._read_descriptor(descriptor_index)[0] != MAILBOX_STATE_REQUEST:
-                continue
+        start = self.layout.descriptor_region_offset
+        stride = self.layout.descriptor_stride_bytes
+        # little-endian 状态低字节仅作扫描提示；命中后仍在原 guard 中重读
+        # 完整 uint32 状态、epoch、generation、deadline 和 CRC，不据提示准入。
+        states = view[start : start + self.profile.descriptor_count * stride : stride]
+        for descriptor_index in _request_candidates(states, self._poll_cursor):
             try:
                 with descriptor_guard(
                     guard_path=self.paths.guard_path,
+                    guard_pool=self._guard_pool,
                     descriptor_index=descriptor_index,
-                    deadline_ns=monotonic_ns() + 2_000_000,
+                    # acquire_mmap_guard 先尝试一次；锁忙就继续扫描其他槽。
+                    deadline_ns=monotonic_ns(),
                     poll_interval_seconds=self.profile.poll_interval_seconds,
                 ):
                     header = self._read_descriptor(descriptor_index)
@@ -865,6 +901,7 @@ class MmapMailboxServer:
         raw_crc &= 0xFFFFFFFF
         with descriptor_guard(
             guard_path=self.paths.guard_path,
+            guard_pool=self._guard_pool,
             descriptor_index=identity.descriptor_index,
             deadline_ns=monotonic_ns() + 1_000_000_000,
             poll_interval_seconds=self.profile.poll_interval_seconds,
@@ -950,6 +987,7 @@ class MmapMailboxServer:
 
         with descriptor_guard(
             guard_path=self.paths.guard_path,
+            guard_pool=self._guard_pool,
             descriptor_index=identity.descriptor_index,
             deadline_ns=monotonic_ns() + 1_000_000_000,
             poll_interval_seconds=self.profile.poll_interval_seconds,
@@ -1220,6 +1258,9 @@ class MmapMailboxServer:
     def _close_handles(self) -> None:
         """按 view、file、owner lock 顺序幂等关闭资源。"""
 
+        if self._guard_pool is not None:
+            self._guard_pool.close()
+            self._guard_pool = None
         if self._view is not None:
             self._view.close()
             self._view = None
@@ -1251,6 +1292,7 @@ class MmapMailboxClient:
         self.layout = mailbox_layout(profile)
         self._file: BinaryIO | None = None
         self._guard_file: BinaryIO | None = None
+        self._guard_pool: MmapGuardPool | None = None
         self._view: mmap.mmap | None = None
         self._closed = False
         self._close_lock = Lock()
@@ -1260,6 +1302,7 @@ class MmapMailboxClient:
                 expected_size=max(self.profile.descriptor_count, 1),
                 create=False,
             )
+            self._guard_pool = MmapGuardPool(paths.guard_path, self._guard_file)
             self._file = paths.mmap_path.open("r+b", buffering=0)
             if self.paths.mmap_path.stat().st_size != self.layout.file_size_bytes:
                 raise ChannelCorruptMessageError("Mailbox mmap 文件长度不匹配")
@@ -1383,6 +1426,7 @@ class MmapMailboxClient:
             return None
         with descriptor_guard(
             guard_path=self.paths.guard_path,
+            guard_pool=self._guard_pool,
             descriptor_index=identity.descriptor_index,
             deadline_ns=monotonic_ns() + 1_000_000_000,
             poll_interval_seconds=self.profile.poll_interval_seconds,
@@ -1413,6 +1457,7 @@ class MmapMailboxClient:
         self._validate_extension_range(offset=0, size=len(extension))
         with descriptor_guard(
             guard_path=self.paths.guard_path,
+            guard_pool=self._guard_pool,
             descriptor_index=identity.descriptor_index,
             deadline_ns=monotonic_ns() + 1_000_000_000,
             poll_interval_seconds=self.profile.poll_interval_seconds,
@@ -1468,6 +1513,7 @@ class MmapMailboxClient:
         self._validate_extension_range(offset=0, size=len(extension))
         with descriptor_guard(
             guard_path=self.paths.guard_path,
+            guard_pool=self._guard_pool,
             descriptor_index=identity.descriptor_index,
             deadline_ns=monotonic_ns() + 1_000_000_000,
             poll_interval_seconds=self.profile.poll_interval_seconds,
@@ -1531,6 +1577,7 @@ class MmapMailboxClient:
 
         with descriptor_guard(
             guard_path=self.paths.guard_path,
+            guard_pool=self._guard_pool,
             descriptor_index=identity.descriptor_index,
             deadline_ns=monotonic_ns() + 1_000_000_000,
             poll_interval_seconds=self.profile.poll_interval_seconds,
@@ -1568,6 +1615,7 @@ class MmapMailboxClient:
             try:
                 with descriptor_guard(
                     guard_path=self.paths.guard_path,
+                    guard_pool=self._guard_pool,
                     descriptor_index=descriptor_index,
                     deadline_ns=min(guard_deadline, monotonic_ns() + 2_000_000),
                     poll_interval_seconds=self.profile.poll_interval_seconds,
@@ -1675,6 +1723,7 @@ class MmapMailboxClient:
         try:
             with descriptor_guard(
                 guard_path=self.paths.guard_path,
+                guard_pool=self._guard_pool,
                 descriptor_index=identity.descriptor_index,
                 deadline_ns=monotonic_ns() + 10_000_000,
                 poll_interval_seconds=self.profile.poll_interval_seconds,
@@ -1708,6 +1757,7 @@ class MmapMailboxClient:
         try:
             with descriptor_guard(
                 guard_path=self.paths.guard_path,
+                guard_pool=self._guard_pool,
                 descriptor_index=identity.descriptor_index,
                 deadline_ns=monotonic_ns() + 1_000_000_000,
                 poll_interval_seconds=self.profile.poll_interval_seconds,
@@ -1836,6 +1886,9 @@ class MmapMailboxClient:
     def _close_handles(self) -> None:
         """幂等关闭 client mapping。"""
 
+        if self._guard_pool is not None:
+            self._guard_pool.close()
+            self._guard_pool = None
         if self._view is not None:
             self._view.close()
             self._view = None

@@ -119,6 +119,87 @@ def _deadline(seconds: float = 2.0) -> int:
     return monotonic_ns() + int(seconds * 1e9)
 
 
+def test_idle_mailbox_scan_does_not_unpack_empty_descriptors(tmp_path, monkeypatch):
+    """空闲扫描只观察发布状态；不为每个空槽创建完整 header tuple。"""
+    server = MmapMailboxServer(paths=_paths(tmp_path, "idle-scan", "mailbox"),
+                               profile=WORKFLOW_TRIGGER_MAILBOX_PROFILE_V1)
+    try:
+        def unexpected_read(index):
+            raise AssertionError(f"empty descriptor decoded: {index}")
+
+        monkeypatch.setattr(server, "_read_descriptor", unexpected_read)
+        assert server.receive(deadline_ns=monotonic_ns(), sweep_before_receive=False) is None
+    finally:
+        monkeypatch.undo()
+        server.close(deadline_ns=_deadline())
+
+
+def test_mailbox_scan_hint_does_not_authorize_unknown_full_state(tmp_path):
+    """低字节相同的非法 uint32 状态不能通过锁内完整状态校验。"""
+    import struct
+
+    server = MmapMailboxServer(paths=_paths(tmp_path, "scan-hint", "mailbox"),
+                               profile=MAILBOX_PROFILE)
+    try:
+        offset = server.layout.descriptor_region_offset
+        struct.pack_into("<I", server._require_view(), offset, 0x10002)
+        assert server._claim_one_request() is None
+        struct.pack_into("<I", server._require_view(), offset, 0)
+    finally:
+        server.close(deadline_ns=_deadline())
+
+
+def test_mailbox_candidate_scan_preserves_cursor_fairness():
+    """扫描顺序绕回游标，不能让低位槽持续抢占高位槽。"""
+    from backend.service.infrastructure.ipc.local_message.mailbox import _request_candidates
+
+    assert list(_request_candidates(bytes([2, 0, 2, 2]), 2)) == [2, 3, 0]
+
+
+@pytest.mark.parametrize("operation", ["receive", "sweep"])
+def test_mailbox_poll_skips_busy_descriptor_without_waiting(tmp_path, monkeypatch, operation):
+    """一个正在发布的槽不得让单 poller 等锁，其他槽必须继续前进。"""
+    from backend.service.infrastructure.ipc import mmap_primitives
+    from backend.service.infrastructure.ipc.local_message.guards import descriptor_guard
+
+    paths = _paths(tmp_path, "busy-scan", "mailbox")
+    server = MmapMailboxServer(paths=paths, profile=MAILBOX_PROFILE)
+    client = MmapMailboxClient(paths=paths, profile=MAILBOX_PROFILE)
+    try:
+        identities = [client.claim_prepared(
+            request_id=uuid4(), wire_bytes=bytes([index]), claim_deadline_ns=_deadline(),
+            descriptor_extension=b"",
+        ) for index in range(2)]
+        if operation == "sweep":
+            for identity in identities:
+                client.request_cancel(identity)
+
+        def unexpected_sleep(_seconds):
+            raise AssertionError("poller waited on a busy descriptor")
+
+        with descriptor_guard(guard_path=paths.guard_path,
+                              descriptor_index=identities[0].descriptor_index,
+                              deadline_ns=_deadline(), poll_interval_seconds=.001):
+            with monkeypatch.context() as patch:
+                patch.setattr(mmap_primitives, "sleep", unexpected_sleep)
+                if operation == "receive":
+                    context = server.receive(deadline_ns=monotonic_ns(), sweep_before_receive=False)
+                    assert context is not None
+                    assert context.wire_bytes == b"\x01"
+                else:
+                    events = server.sweep()
+                    assert len(events) == 1
+                    assert events[0].identity == identities[1]
+        if operation == "receive":
+            context = server.receive(deadline_ns=monotonic_ns(), sweep_before_receive=False)
+            assert context is not None and context.wire_bytes == b"\x00"
+        else:
+            assert any(event.identity == identities[0] for event in server.sweep())
+    finally:
+        client.close(deadline_ns=_deadline())
+        server.close(deadline_ns=_deadline())
+
+
 def _cross_process_mailbox_server(
     buffers_root: str,
     ready: object,
@@ -994,6 +1075,64 @@ def test_event_ring_gap_drop_close_and_owner_restart(tmp_path: Path) -> None:
     finally:
         restarted_reader.close(deadline_ns=_deadline())
         restarted.close(deadline_ns=_deadline())
+
+
+def test_event_reader_probe_cannot_block_owner_restart(tmp_path, monkeypatch):
+    """reader 读取 handle 暂停期间，新 publisher 可启动；旧 epoch 必须被拒绝。"""
+    from threading import Event, Thread
+    from backend.service.infrastructure.ipc import mmap_primitives
+
+    paths = _paths(tmp_path, "probe-restart", "event")
+    publisher = MmapEventRingPublisher(paths=paths, profile=EVENT_PROFILE)
+    reader = MmapEventRingReader(paths=paths, profile=EVENT_PROFILE)
+    publisher.close(deadline_ns=_deadline())
+    entered, resume = Event(), Event()
+    original = mmap_primitives._owner_lock_held_on_handle
+    results = []
+
+    def paused(handle):
+        entered.set()
+        assert resume.wait(5)
+        return original(handle)
+
+    def probe():
+        try:
+            results.append(reader.owner_alive())
+        except ChannelRestartedError:
+            results.append("restarted")
+
+    monkeypatch.setattr(mmap_primitives, "_owner_lock_held_on_handle", paused)
+    thread = Thread(target=probe)
+    thread.start()
+    replacement = None
+    try:
+        assert entered.wait(5)
+        replacement = MmapEventRingPublisher(paths=paths, profile=EVENT_PROFILE)
+        resume.set()
+        thread.join(5)
+        assert not thread.is_alive()
+        assert results == ["restarted"]
+    finally:
+        resume.set()
+        thread.join(5)
+        reader.close(deadline_ns=_deadline())
+        if replacement is not None:
+            replacement.close(deadline_ns=_deadline())
+
+
+def test_event_reader_rejects_restarted_owner_probe(tmp_path):
+    """旧 reader 不得因新进程持有同一锁文件就声称原 epoch 存活。"""
+    paths = _paths(tmp_path, "probe-epoch", "event")
+    publisher = MmapEventRingPublisher(paths=paths, profile=EVENT_PROFILE)
+    reader = MmapEventRingReader(paths=paths, profile=EVENT_PROFILE)
+    publisher.close(deadline_ns=_deadline())
+    replacement = MmapEventRingPublisher(paths=paths, profile=EVENT_PROFILE)
+    try:
+        with pytest.raises(ChannelRestartedError):
+            reader.owner_alive()
+    finally:
+        reader.close(deadline_ns=_deadline())
+        replacement.close(deadline_ns=_deadline())
 
 
 def test_event_ring_forced_owner_exit_releases_os_lock(tmp_path: Path) -> None:

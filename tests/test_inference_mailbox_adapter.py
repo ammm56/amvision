@@ -54,6 +54,44 @@ def test_prepare_reserves_owner_without_accepting_requests(tmp_path) -> None:
         server.stop()
 
 
+def test_stop_preserves_mailbox_until_inflight_handler_finishes(tmp_path) -> None:
+    """停止立即取消 client，但仍保留在途模型依赖，执行退出后才能重建。"""
+    entered, release = Event(), Event()
+
+    def handle(_request):
+        entered.set()
+        assert release.wait(20)
+        return {"finished": True}
+
+    server = InferenceLocalMmapServer(buffers_root=tmp_path, service_id="test", request_handler=handle)
+    client = _client(tmp_path, timeout=15)
+    server.start()
+    try:
+        with ThreadPoolExecutor(max_workers=1) as caller:
+            response = caller.submit(client.request, {"action": "ping"})
+            try:
+                assert entered.wait(5)
+                owner, executor = server._server, server._executor
+                with pytest.raises(OperationTimeoutError, match="handler"):
+                    server.stop()
+                assert server._server is owner and server._executor is executor
+                assert server.get_health_summary()["ready"] is False
+                with pytest.raises(InvalidRequestError):
+                    server.start()
+            finally:
+                release.set()
+            with pytest.raises(OperationCancelledError):
+                response.result(timeout=5)
+        server.stop()
+        assert server._server is None and server._executor is None
+        server.start()
+        assert client.request({"action": "ping"})["result"]["finished"] is True
+    finally:
+        release.set()
+        client.close()
+        server.stop()
+
+
 def _result_with_exact_wire_size(target_size: int) -> dict[str, object]:
     """构造指定 inference response envelope 长度的不可高度压缩结果。"""
 

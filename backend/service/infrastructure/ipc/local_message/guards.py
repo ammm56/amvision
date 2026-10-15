@@ -8,6 +8,7 @@ from typing import Iterator
 
 from backend.service.infrastructure.ipc.mmap_primitives import (
     MmapGuardBusyError,
+    MmapGuardPool,
     MmapOwnerLockHandle,
     acquire_mmap_guard,
     acquire_mmap_owner_lock,
@@ -37,6 +38,7 @@ def descriptor_guard(
     descriptor_index: int,
     deadline_ns: int,
     poll_interval_seconds: float,
+    guard_pool: MmapGuardPool | None = None,
 ) -> Iterator[None]:
     """取得一个 descriptor 对应的固定 byte-range guard。
 
@@ -54,6 +56,7 @@ def descriptor_guard(
         ),
         offset=descriptor_index,
         length=1,
+        guard_pool=guard_pool,
     ):
         yield
 

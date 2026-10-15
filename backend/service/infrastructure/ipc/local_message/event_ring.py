@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import mmap
+import os
 import struct
 from threading import Lock
 from time import monotonic_ns, sleep
@@ -42,13 +43,12 @@ from backend.service.infrastructure.ipc.local_message.paths import (
     LocalMessageChannelPaths,
 )
 from backend.service.infrastructure.ipc.mmap_primitives import (
-    MmapOwnerLockBusyError,
+    MmapGuardFileError,
     MmapOwnerLockHandle,
-    acquire_mmap_owner_lock,
     crc32_ieee,
+    is_mmap_owner_lock_held,
     new_nonzero_u64_token,
     publish_u32,
-    release_mmap_owner_lock,
 )
 
 
@@ -169,7 +169,11 @@ class MmapEventRingPublisher:
         )
         if existing_size not in {0, self.layout.file_size_bytes}:
             raise ChannelCorruptMessageError("Event owner 文件长度与冻结 profile 不匹配")
-        self._file = self.paths.mmap_path.open("a+b", buffering=0)
+        # mmap 按固定偏移写回；append 在 WSL 挂载盘上会把脏页追加到 EOF。
+        try:
+            self._file = self.paths.mmap_path.open("x+b", buffering=0)
+        except FileExistsError:
+            self._file = self.paths.mmap_path.open("r+b", buffering=0)
         if existing_size == 0:
             self._file.truncate(self.layout.file_size_bytes)
         self._view = mmap.mmap(
@@ -271,6 +275,10 @@ class MmapEventRingReader:
         self._reader_gap_total = 0
         try:
             self._file = paths.mmap_path.open("r+b", buffering=0)
+            opened = os.fstat(self._file.fileno())
+            self._mmap_identity = (opened.st_dev, opened.st_ino)
+            owner_file = paths.owner_lock_path.stat()
+            self._owner_lock_identity = (owner_file.st_dev, owner_file.st_ino)
             if paths.mmap_path.stat().st_size != self.layout.file_size_bytes:
                 raise ChannelCorruptMessageError("Event mmap 文件长度不匹配")
             self._view = mmap.mmap(
@@ -336,14 +344,32 @@ class MmapEventRingReader:
             sleep(min(self.profile.poll_interval_seconds, (deadline_ns - now_ns) / 1e9))
 
     def owner_alive(self) -> bool:
-        """使用 owner lock 判断异常退出；PID 不是权威依据。"""
-
+        """只观察当前 epoch 的真实 owner，不以探测者暂占的锁冒充 publisher。"""
+        self._validate_owner_observation()
         try:
-            handle = acquire_mmap_owner_lock(self.paths.owner_lock_path)
-        except MmapOwnerLockBusyError:
-            return True
-        release_mmap_owner_lock(handle)
-        return False
+            held = is_mmap_owner_lock_held(
+                self.paths.owner_lock_path, expected_identity=self._owner_lock_identity
+            )
+        except MmapGuardFileError as error:
+            raise ChannelRestartedError("Event owner lock 文件身份已变化") from error
+        self._validate_owner_observation()
+        return held
+
+    def _validate_owner_observation(self) -> None:
+        """探测前后核对 mapping 路径、epoch 和 session，拒绝旧代观测。"""
+        if self._closed:
+            raise ChannelClosedError("Event reader 已关闭")
+        current = self.paths.mmap_path.stat()
+        if (current.st_dev, current.st_ino) != self._mmap_identity:
+            raise ChannelRestartedError("Event mmap 文件身份已变化")
+        common = unpack_common_header(
+            self._require_view(), expected_kind=CHANNEL_KIND_EVENT,
+            expected_fingerprint=self.layout.fingerprint,
+        )
+        header = EVENT_HEADER.unpack_from(self._require_view(), COMMON_HEADER_SIZE)
+        if (common.channel_id != self.channel_id or common.owner_epoch != self.owner_epoch
+                or UUID(bytes=header[10]) != self.session_id):
+            raise ChannelRestartedError("Event producer owner epoch/session 已变化")
 
     def health(self) -> EventChannelHealth:
         """返回 reader 观察到的 Event 专属 health。"""

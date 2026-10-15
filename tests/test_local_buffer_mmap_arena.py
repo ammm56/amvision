@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import ExitStack
+from threading import Thread
 from dataclasses import replace
 import multiprocessing
 import os
@@ -16,6 +17,7 @@ from backend.service.infrastructure.local_buffers import (
 )
 from backend.service.infrastructure.ipc.mmap_primitives import (
     MmapGuardFileError,
+    MmapGuardBusyError,
     MmapOwnerLockBusyError,
 )
 from backend.service.infrastructure.local_buffers.mmap_buffer_arena import (
@@ -32,6 +34,140 @@ from backend.service.infrastructure.local_buffers.buddy_allocator import (
 
 
 _MIB = 1024 * 1024
+
+
+@pytest.mark.parametrize("operation", ["build_status", "sweep"])
+def test_periodic_scan_does_not_materialize_free_descriptors(tmp_path, monkeypatch, operation):
+    """周期操作只解析非空项，不能把整表空槽转换成 Python 对象。"""
+    with MmapBufferArena(_config(tmp_path)) as arena:
+        receipt = arena.allocate(content_length=6, deadline_ns=_deadline(20))
+        arena.publish_active(receipt)
+        original = arena._read_descriptor
+        seen = []
+
+        def read(index):
+            seen.append(index)
+            return original(index)
+
+        monkeypatch.setattr(arena, "_read_descriptor", read)
+        result = getattr(arena, operation)()
+        assert seen == [receipt.descriptor_index]
+        if operation == "build_status":
+            assert result["state"] == "healthy"
+            assert result["allocated_capacity_bytes"] == _MIB
+        else:
+            assert result == {"released_count": 0, "quarantined_count": 0}
+
+
+@pytest.mark.parametrize("operation", ["build_status", "sweep"])
+@pytest.mark.parametrize("invalid_state", [0x100, 0x10000, 0x1000000, 0x10002, 0xFFFFFFFF])
+def test_periodic_scan_rejects_complete_invalid_state(tmp_path, operation, invalid_state):
+    """不能只看 state 低字节而漏掉高位损坏的非空 descriptor。"""
+    import struct
+
+    with MmapBufferArena(_config(tmp_path)) as arena:
+        receipt = arena.allocate(content_length=6, deadline_ns=_deadline(20))
+        arena.publish_active(receipt)
+        offset = arena_module._descriptor_offset(arena.descriptor_count - 1)
+        struct.pack_into("<I", arena._allocator_mmap, offset, invalid_state)
+        with pytest.raises(LocalBufferArenaError, match="state"):
+            getattr(arena, operation)()
+
+
+def _hold_publication_byte(path, offset, ready, release):
+    """独立进程持有真实 OS 锁，POSIX 和 Windows 都能形成真实竞争。"""
+    from backend.service.infrastructure.ipc.mmap_primitives import acquire_mmap_guard
+    with acquire_mmap_guard(guard_path=path, offset=offset, deadline_ns=_deadline(), poll_interval_seconds=.001):
+        ready.set()
+        release.wait(10)
+
+
+@pytest.mark.parametrize("reader_kind", ["owner", "external", "owned"])
+def test_publication_contention_waits_then_revalidates(tmp_path, reader_kind):
+    """短暂 publication 竞争不能让有效图片请求失败，也不绕开 reader 生命周期。"""
+    context = multiprocessing.get_context("spawn")
+    ready, release = context.Event(), context.Event()
+    with MmapBufferArena(_config(tmp_path)) as arena:
+        receipt = arena.allocate(content_length=6, deadline_ns=_deadline(20))
+        with arena.acquire_writer_view(receipt) as writer:
+            writer[:] = b"BGR24!"
+        arena.publish_active(receipt)
+        external = MmapBufferArenaExternalAccess(_config(tmp_path))
+        holder = context.Process(target=_hold_publication_byte,
+            args=(str(arena.guard_path), receipt.descriptor_index * (2 + arena.config.reader_guard_slots), ready, release))
+        holder.start()
+        releaser = None
+        try:
+            assert ready.wait(10)
+            releaser = Thread(target=lambda: (sleep(.05), release.set()))
+            releaser.start()
+            started = monotonic_ns()
+            if reader_kind == "owned":
+                view = external.read_owned_view(receipt)
+                try:
+                    assert bytes(view) == b"BGR24!"
+                finally:
+                    view.release()
+            else:
+                reader = arena if reader_kind == "owner" else external
+                with reader.acquire_reader_view(receipt) as view:
+                    assert bytes(view) == b"BGR24!"
+            assert monotonic_ns() - started >= 20_000_000
+        finally:
+            release.set()
+            if releaser is not None:
+                releaser.join(2)
+            holder.join(5)
+            if holder.is_alive():
+                holder.terminate()
+                holder.join(5)
+            external.close()
+        assert holder.exitcode == 0
+
+
+def test_publication_contention_has_a_deadline(tmp_path, monkeypatch):
+    """永久竞争有明确上限，且失败后释放当前进程的文件句柄。"""
+    from backend.service.infrastructure.ipc import mmap_primitives
+    with MmapBufferArena(_config(tmp_path)) as arena:
+        handles = []
+        def always_busy(handle, **_):
+            handles.append(handle)
+            raise BlockingIOError()
+        with monkeypatch.context() as patch:
+            patch.setattr(mmap_primitives, "try_lock_byte_range_file", always_busy)
+            patch.setattr(arena_module, "_PUBLICATION_GUARD_WAIT_NS", 2_000_000)
+            with pytest.raises(MmapGuardBusyError, match="publication guard 等待超时"):
+                with arena._publication_guard(0):
+                    pytest.fail("不允许未持锁进入临界区")
+        assert handles and all(handle.closed for handle in handles)
+
+
+def test_owned_view_rejects_generation_changed_during_publication_wait(tmp_path, monkeypatch):
+    """等待期间 extent 已回收复用时必须拒绝旧 locator，不能绕过 generation fence。"""
+    from backend.service.infrastructure.ipc import mmap_primitives
+    with MmapBufferArena(_config(tmp_path)) as arena:
+        receipt = arena.allocate(content_length=6, deadline_ns=_deadline())
+        arena.publish_active(receipt)
+        external = MmapBufferArenaExternalAccess(_config(tmp_path))
+        original = mmap_primitives.try_lock_byte_range_file
+        first = True
+        def transfer_before_acquire(handle, **kwargs):
+            nonlocal first
+            if first:
+                first = False
+                assert arena.request_reclaim(receipt) == "released"
+                current = arena.allocate(content_length=6, deadline_ns=_deadline())
+                assert current.descriptor_index == receipt.descriptor_index
+                arena.publish_active(current)
+                raise BlockingIOError()
+            return original(handle, **kwargs)
+        try:
+            with monkeypatch.context() as patch:
+                patch.setattr(mmap_primitives, "try_lock_byte_range_file", transfer_before_acquire)
+                with pytest.raises(LocalBufferArenaError, match="identity"):
+                    external.read_owned_view(receipt)
+        finally:
+            external.close()
 
 
 def _config(tmp_path, **changes: object) -> MmapBufferArenaConfig:

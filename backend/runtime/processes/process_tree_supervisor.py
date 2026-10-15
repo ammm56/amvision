@@ -5,9 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 import contextlib
-import os
 from pathlib import Path
-import signal
 import subprocess
 import sys
 from threading import Thread
@@ -16,11 +14,7 @@ from typing import BinaryIO
 
 from backend.runtime.processes.attempt_deadline import AttemptDeadline
 from backend.runtime.processes.bounded_log_sink import BoundedByteTail, BoundedLogSink
-from backend.runtime.processes.windows_job_bootstrap import (
-    WindowsJob,
-    build_bootstrap_command,
-    release_bootstrap,
-)
+from backend.runtime.processes.managed_process import ManagedProcess
 from backend.service.application.errors import (
     OperationCancelledError,
     OperationTimeoutError,
@@ -118,18 +112,13 @@ class ProcessTreeSupervisor:
             "stderr": subprocess.PIPE,
             "bufsize": 0,
         }
-        windows_job: WindowsJob | None = None
-        if os.name == "nt":
-            popen_kwargs["stdin"] = subprocess.PIPE
-            popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
-            launched_command = build_bootstrap_command(normalized_command)
-        else:
-            popen_kwargs["stdin"] = subprocess.DEVNULL
-            popen_kwargs["start_new_session"] = True
-            launched_command = list(normalized_command)
-
         started_at = time.monotonic()
-        process = subprocess.Popen(launched_command, **popen_kwargs)  # type: ignore[arg-type]
+        try:
+            process = ManagedProcess(normalized_command, **popen_kwargs)
+        except OSError as error:
+            raise ServiceConfigurationError(
+                "受管进程 bootstrap 初始化失败", details={"error": str(error)},
+            ) from error
         stdout_tail = BoundedByteTail(self.tail_capacity_bytes)
         stderr_tail = BoundedByteTail(self.tail_capacity_bytes)
         stdout_sink = BoundedLogSink(
@@ -143,18 +132,6 @@ class ProcessTreeSupervisor:
         stdout_thread: Thread | None = None
         stderr_thread: Thread | None = None
         try:
-            if os.name == "nt":
-                try:
-                    windows_job = WindowsJob()
-                    windows_job.assign(process)
-                    release_bootstrap(process)
-                except Exception as error:
-                    self._force_terminate_process_tree(process, windows_job=windows_job)
-                    raise ServiceConfigurationError(
-                        "Windows Job Object bootstrap 初始化失败",
-                        details={"process_id": process.pid, "error": str(error)},
-                    ) from error
-
             stdout_thread = Thread(
                 target=_drain_stream,
                 args=(process.stdout, stdout_tail, stdout_sink),
@@ -175,7 +152,6 @@ class ProcessTreeSupervisor:
                 process,
                 cancel_requested=cancel_requested,
                 command=normalized_command,
-                windows_job=windows_job,
                 stdout_tail=stdout_tail,
                 stderr_tail=stderr_tail,
                 stdout_log_path=stdout_log_path,
@@ -183,6 +159,7 @@ class ProcessTreeSupervisor:
                 stdout_sink=stdout_sink,
                 stderr_sink=stderr_sink,
             )
+            process.finish(timeout=self.force_kill_wait_seconds)
             _join_drain_threads(stdout_thread, stderr_thread)
             return ProcessTreeResult(
                 command=normalized_command,
@@ -196,10 +173,7 @@ class ProcessTreeSupervisor:
                 stderr_log_error=stderr_sink.error,
             )
         finally:
-            if process.poll() is None:
-                self._stop_process_tree(process, windows_job=windows_job)
-            if windows_job is not None:
-                windows_job.close()
+            self._stop_process_tree(process)
             stdout_sink.close()
             stderr_sink.close()
             for stream in (process.stdin, process.stdout, process.stderr):
@@ -211,11 +185,10 @@ class ProcessTreeSupervisor:
 
     def _wait_for_completion(
         self,
-        process: subprocess.Popen[bytes],
+        process: ManagedProcess,
         *,
         cancel_requested: Callable[[], bool] | None,
         command: tuple[str, ...],
-        windows_job: WindowsJob | None,
         stdout_tail: BoundedByteTail,
         stderr_tail: BoundedByteTail,
         stdout_log_path: Path | None,
@@ -227,7 +200,7 @@ class ProcessTreeSupervisor:
 
         while True:
             if cancel_requested is not None and cancel_requested():
-                self._stop_process_tree(process, windows_job=windows_job)
+                self._stop_process_tree(process)
                 raise OperationCancelledError(
                     "受监督进程执行已取消",
                     details=self._build_diagnostics(
@@ -243,7 +216,7 @@ class ProcessTreeSupervisor:
                 )
             remaining = self.deadline.remaining_seconds()
             if remaining <= 0:
-                self._stop_process_tree(process, windows_job=windows_job)
+                self._stop_process_tree(process)
                 raise self._build_timeout_error(
                     command=command,
                     process_id=process.pid,
@@ -261,45 +234,12 @@ class ProcessTreeSupervisor:
 
     def _stop_process_tree(
         self,
-        process: subprocess.Popen[bytes],
-        *,
-        windows_job: WindowsJob | None,
+        process: ManagedProcess,
     ) -> None:
         """先请求协作退出，grace 到期后强制终止完整进程树。"""
 
-        if process.poll() is not None:
-            return
-        if os.name == "nt":
-            with contextlib.suppress(Exception):
-                process.send_signal(signal.CTRL_BREAK_EVENT)
-        else:
-            with contextlib.suppress(ProcessLookupError):
-                os.killpg(process.pid, signal.SIGTERM)
-        try:
-            process.wait(timeout=max(0.1, self.termination_grace_seconds))
-            return
-        except subprocess.TimeoutExpired:
-            self._force_terminate_process_tree(process, windows_job=windows_job)
-
-    def _force_terminate_process_tree(
-        self,
-        process: subprocess.Popen[bytes],
-        *,
-        windows_job: WindowsJob | None,
-    ) -> None:
-        """强制终止完整进程树并有界等待完成。"""
-
-        if os.name == "nt":
-            if windows_job is not None:
-                windows_job.terminate(exit_code=1)
-            else:
-                with contextlib.suppress(Exception):
-                    process.kill()
-        else:
-            with contextlib.suppress(ProcessLookupError):
-                os.killpg(process.pid, signal.SIGKILL)
-        with contextlib.suppress(subprocess.TimeoutExpired):
-            process.wait(timeout=self.force_kill_wait_seconds)
+        process.stop(grace=self.termination_grace_seconds,
+                     timeout=self.termination_grace_seconds + self.force_kill_wait_seconds)
 
     def _build_timeout_error(
         self,

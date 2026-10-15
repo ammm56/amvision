@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import contextlib
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+from backend.bootstrap.core import RuntimeLifecycle
 
 from backend.inference_daemon.local_buffer_dependency import (
     LocalBufferDependencyProbe,
@@ -82,8 +83,15 @@ class InferenceDaemonRuntime:
     control_dispatcher: InferenceControlDispatcher
     local_mmap_server: InferenceLocalMmapServer | None
     status_publisher: InferenceStatusPublisher | None = None
+    lifecycle: RuntimeLifecycle = field(default_factory=RuntimeLifecycle, repr=False, compare=False)
 
     def start(self) -> None:
+        """同一容器只允许一次完整启动，停止或回滚失败时禁止恢复准入。"""
+        with self.lifecycle.starting() as should_start:
+            if should_start:
+                self._start()
+
+    def _start(self) -> None:
         """按依赖顺序启动 supervisor、gateway、恢复协调器和控制面。
 
         同步请求直接访问 backend 主 LocalBuffer；持久异步请求由 deployment
@@ -101,26 +109,30 @@ class InferenceDaemonRuntime:
                     task_runtime.async_supervisor,
                     task_runtime.async_gateway_registry,
                 ):
-                    component.start()
                     started_components.append(component)
-            self.deployment_runtime_reconciler.start()
+                    component.start()
             started_components.append(self.deployment_runtime_reconciler)
-            self.control_dispatcher.start()
+            self.deployment_runtime_reconciler.start()
             started_components.append(self.control_dispatcher)
+            self.control_dispatcher.start()
             if self.local_mmap_server is not None:
                 self.local_mmap_server.start()
             if self.status_publisher is not None:
-                self.status_publisher.start()
                 started_components.append(self.status_publisher)
+                self.status_publisher.start()
         except BaseException:
-            for component in reversed(started_components):
-                with contextlib.suppress(Exception):
-                    component.stop()
-            self.session_factory.engine.dispose()
+            # 失败的 start 也可能已有在途操作；停止失败不能释放它的依赖。
+            self._stop(only={id(component) for component in started_components})
             raise
 
     def stop(self) -> None:
-        """反序停止全部组件；单个组件失败不得跳过后续资源回收。"""
+        """先确认全部生产者停止，再关闭消费者及数据库。"""
+        with self.lifecycle.stopping() as should_stop:
+            if should_stop:
+                self._stop()
+
+    def _stop(self, *, only: set[int] | None = None) -> None:
+        """同阶段独立组件继续停止，阶段失败则保留所有下游依赖。"""
 
         components: list[object] = []
         if self.status_publisher is not None:
@@ -128,16 +140,27 @@ class InferenceDaemonRuntime:
         if self.local_mmap_server is not None:
             components.append(self.local_mmap_server)
         components.extend((self.control_dispatcher, self.deployment_runtime_reconciler))
+        self._stop_components(components, only=only)
+        gateways = [item.async_gateway_registry for item in reversed(self.task_runtimes)]
+        self._stop_components(gateways, only=only)
+        supervisors = []
         for task_runtime in reversed(self.task_runtimes):
-            components.extend(
+            supervisors.extend(
                 (
-                    task_runtime.async_gateway_registry,
                     task_runtime.async_supervisor,
                     task_runtime.sync_supervisor,
                 )
             )
+        self._stop_components(supervisors, only=only)
+        self.session_factory.engine.dispose()
+
+    @staticmethod
+    def _stop_components(components: list[object], *, only: set[int] | None = None) -> None:
+        """同阶段不相互依赖的组件逐一停止；保留首个错误报告给 owner。"""
         first_error: Exception | None = None
         for component in components:
+            if only is not None and id(component) not in only:
+                continue
             try:
                 component.stop()
             except Exception as error:  # noqa: BLE001 - 停机必须继续回收其余组件
@@ -147,7 +170,6 @@ class InferenceDaemonRuntime:
                     "停止 inference daemon 组件失败: component=%s",
                     type(component).__name__,
                 )
-        self.session_factory.engine.dispose()
         if first_error is not None:
             raise first_error
 

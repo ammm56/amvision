@@ -209,6 +209,11 @@ def create_app(
     liveness = ServiceLiveness()
     status_monitor = ServiceStatusMonitor(ServiceStatusCollector(runtime), liveness.instance_id)
 
+    def drain_application() -> None:
+        """恢复排空与正常退出同样先确认只读采集者停止。"""
+        status_monitor.stop()
+        bootstrap.drain_runtime(runtime, strict=True)
+
     @asynccontextmanager
     async def application_lifespan(_application: FastAPI):
         """在应用生命周期启动阶段执行服务级初始化。"""
@@ -229,7 +234,7 @@ def create_app(
                 loop = asyncio.get_running_loop()
                 control = HttpRecoveryControl(
                     Path(recovery_directory), liveness,
-                    lambda: bootstrap.drain_runtime(runtime, strict=True),
+                    drain_application,
                     lambda: loop.call_soon_threadsafe(signal.raise_signal, signal.SIGINT),
                     inference_owner_lock=str(build_inference_mailbox_paths(
                         buffers_root=runtime.settings.local_memory.root_dir,

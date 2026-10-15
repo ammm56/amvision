@@ -3,11 +3,8 @@
 from __future__ import annotations
 
 import argparse
-import contextlib
 import json
 import os
-import signal
-import subprocess
 import sys
 import time
 from pathlib import Path
@@ -28,11 +25,12 @@ from common import (  # noqa: E402
     full_state_guard,
     process_identity_matches,
     resolve_app_root,
+    resolve_code_root,
     resolve_path,
 )
 
 _ROOT_PROCESS_MIN_EXIT_WAIT_SECONDS = 15.0
-FULL_SUPERVISOR_STATE_FORMAT_ID = "amvision.full-supervisor-state.v1"
+FULL_SUPERVISOR_STATE_FORMAT_ID = "amvision.full-supervisor-state.v3"
 FULL_SUPERVISOR_SHUTDOWN_FORMAT_ID = "amvision.full-supervisor-shutdown.v1"
 
 
@@ -151,55 +149,6 @@ def _wait_process_exit(identity: dict[str, object], timeout_seconds: float) -> b
     return not process_identity_matches(identity)
 
 
-def _stop_recorded_process(
-    identity: dict[str, object],
-    *,
-    stop_mode: str,
-    graceful_timeout_seconds: float,
-) -> bool:
-    """按状态文件记录的方式停止一个进程或进程组。
-
-    参数：
-    - identity：状态文件记录的完整进程身份。
-    - stop_mode：停止模式；Windows 使用 process-tree，Unix 子进程使用 process-group。
-    - graceful_timeout_seconds：发送终止信号后的等待秒数。
-
-    返回：
-    - bool：停止后进程已经退出时返回 True，否则返回 False。
-    """
-
-    if not process_identity_matches(identity):
-        return True
-    pid = identity["pid"]
-    assert isinstance(pid, int)
-
-    if os.name == "nt":
-        subprocess.run(
-            ["taskkill", "/PID", str(pid), "/T", "/F"],
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        return _wait_process_exit(identity, graceful_timeout_seconds)
-
-    if stop_mode == "process-group":
-        with contextlib.suppress(ProcessLookupError):
-            os.killpg(pid, signal.SIGTERM)
-        if _wait_process_exit(identity, graceful_timeout_seconds):
-            return True
-        with contextlib.suppress(ProcessLookupError):
-            os.killpg(pid, signal.SIGKILL)
-        return _wait_process_exit(identity, 1.0)
-
-    with contextlib.suppress(ProcessLookupError):
-        os.kill(pid, signal.SIGTERM)
-    if _wait_process_exit(identity, graceful_timeout_seconds):
-        return True
-    with contextlib.suppress(ProcessLookupError):
-        os.kill(pid, signal.SIGKILL)
-    return _wait_process_exit(identity, 1.0)
-
-
 def _wait_root_process_exit(
     identity: dict[str, object],
     *,
@@ -236,6 +185,9 @@ def main(argv: list[str] | None = None) -> int:
     app_root = resolve_app_root(
         script_file=Path(__file__), explicit_app_root=args.app_root
     )
+    code_root = resolve_code_root(app_root)
+    if str(code_root) not in sys.path:
+        sys.path.insert(0, str(code_root))
     state_file_path = _resolve_stack_state_file(
         app_root,
         logs_subdir=args.logs_subdir,
@@ -246,7 +198,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.expected_root_identity_file:
         try:
             request = json.loads(Path(args.expected_root_identity_file).read_text(encoding="utf-8"))
-            if request.get("format_id") != "amvision.launcher-stop-target.v1" or not isinstance(request.get("root_process"), dict):
+            if request.get("format_id") != "amvision.launcher-stop-target.v2" or not isinstance(request.get("root_process"), dict):
                 raise ValueError("预期 root 身份格式无效")
             expected_root = request["root_process"]
         except (OSError, ValueError, AttributeError) as error:
@@ -270,148 +222,42 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     shutdown_request_file_path = _resolve_shutdown_request_file(state_file_path)
 
-    stop_targets: list[tuple[str, dict[str, object], str]] = []
-    seen_pids: set[int] = set()
-    root_identity: dict[str, object] | None = None
+    from backend.runtime.processes.ownership import OwnershipScope
+    from backend.runtime.processes.owner_control import stop_owner
 
-    components_raw = stack_state.get("components")
-    if isinstance(components_raw, list):
-        for component_raw in reversed(components_raw):
-            if not isinstance(component_raw, dict):
-                continue
-            process_identity = component_raw.get("process")
-            if not isinstance(process_identity, dict):
-                continue
-            pid_raw = process_identity.get("pid")
-            if not isinstance(pid_raw, int) or pid_raw in seen_pids:
-                continue
-            stop_targets.append(
-                (
-                    str(component_raw.get("name", f"process-{pid_raw}")),
-                    process_identity,
-                    str(component_raw.get("stop_mode", "process")),
-                )
-            )
-            seen_pids.add(pid_raw)
-
-    root_process_raw = stack_state.get("root_process")
-    if isinstance(root_process_raw, dict):
-        root_pid_raw = root_process_raw.get("pid")
-        if isinstance(root_pid_raw, int) and root_pid_raw not in seen_pids:
-            root_identity = root_process_raw
-
-    if not stop_targets and root_identity is None:
-        clear_full_state(state_file_path, None)
-        print(f"运行状态文件中没有可停止的进程，已清理：{state_file_path}", flush=True)
-        return 0
-
-    failed_targets: list[tuple[str, int]] = []
-    if root_identity is not None:
-        root_pid = root_identity["pid"]
-        assert isinstance(root_pid, int)
-        if not process_identity_matches(root_identity):
-            print(f"full-stack-root 已经退出，pid={root_pid}", flush=True)
-        else:
-            shutdown_request_written = False
-            try:
-                with full_state_guard(state_file_path):
-                    current_state = _load_stack_state(state_file_path)
-                    if current_state is None or current_state.get("root_process") != root_identity:
-                        print("停止目标已变化，请重新核对。", flush=True)
-                        return 2
-                    _write_shutdown_request(
-                        shutdown_request_file_path,
-                        root_process_identity=root_identity,
-                    )
-            except OSError as error:
-                if args.graceful_only:
-                    print(f"优雅停止请求写入失败：{error}", flush=True)
-                    return 2
-                print(
-                    f"写入 full-stack-root 优雅停止请求失败，转入强制停止：{error}",
-                    flush=True,
-                )
-            else:
-                shutdown_request_written = True
-                print(
-                    f"已请求 full-stack-root 优雅停止，pid={root_pid}",
-                    flush=True,
-                )
-            if shutdown_request_written and _wait_root_process_exit(
-                root_identity,
-                graceful_timeout_seconds=args.graceful_timeout_seconds,
-            ):
-                print(f"已停止 full-stack-root，pid={root_pid}", flush=True)
-            else:
-                if args.graceful_only:
-                    print("本次服务尚未退出，保留状态以便继续等待。", flush=True)
-                    return 2
-                print(
-                    f"full-stack-root 未在等待窗口内退出，转入强制停止，pid={root_pid}",
-                    flush=True,
-                )
-                stopped = _stop_recorded_process(
-                    root_identity,
-                    stop_mode="process",
-                    graceful_timeout_seconds=args.graceful_timeout_seconds,
-                )
-                if stopped:
-                    print(f"已停止 full-stack-root，pid={root_pid}", flush=True)
-                else:
-                    print(f"停止 full-stack-root 超时，pid={root_pid}", flush=True)
-                    failed_targets.append(("full-stack-root", root_pid))
-
-    # 根监督器已经退出或进入强制停止后，才清理残留组件，避免 Worker 被重新拉起。
-    for component_name, identity, stop_mode in stop_targets:
-        pid = identity["pid"]
-        assert isinstance(pid, int)
-        if not process_identity_matches(identity):
-            print(f"{component_name} 已经退出，pid={pid}", flush=True)
-            continue
-        if args.graceful_only:
-            failed_targets.append((component_name, pid))
-            continue
-        print(f"正在停止残留 {component_name}，pid={pid}", flush=True)
-        stopped = _stop_recorded_process(
-            identity,
-            stop_mode=stop_mode,
-            graceful_timeout_seconds=args.graceful_timeout_seconds,
-        )
-        if stopped:
-            print(f"已停止 {component_name}，pid={pid}", flush=True)
-            continue
-        print(f"停止 {component_name} 超时，pid={pid}", flush=True)
-        failed_targets.append((component_name, pid))
-
-    still_alive_targets = [
-        (component_name, pid)
-        for component_name, pid in failed_targets
-        if any(
-            isinstance(identity.get("pid"), int)
-            and identity.get("pid") == pid
-            and process_identity_matches(identity)
-            for _name, identity, _mode in stop_targets
-        )
-        or (
-            root_identity is not None
-            and root_identity.get("pid") == pid
-            and process_identity_matches(root_identity)
-        )
-    ]
-    if still_alive_targets:
-        failed_text = ", ".join(
-            f"{name}(pid={pid})" for name, pid in still_alive_targets
-        )
-        print(
-            f"仍有进程未停止，保留运行状态文件以便继续排查：{failed_text}；"
-            f"state_file={state_file_path}",
-            flush=True,
-        )
+    root_identity = stack_state.get("root_process")
+    if not isinstance(root_identity, dict) or not stack_state.get("ownership_scope"):
+        print("运行状态缺少完整归属，拒绝停止及清理。", flush=True)
         return 2
-
-    clear_full_state(state_file_path, root_identity)
-    print(f"已清理运行状态文件：{state_file_path}", flush=True)
-    return 0
+    scope = OwnershipScope(Path(stack_state["ownership_scope"]))
+    try:
+        scope.validate()
+        if process_identity_matches(root_identity):
+            with full_state_guard(state_file_path):
+                current = _load_stack_state(state_file_path)
+                if current is None or current.get("root_process") != root_identity:
+                    print("停止目标已经改变，拒绝操作。", flush=True)
+                    return 2
+                _write_shutdown_request(shutdown_request_file_path, root_process_identity=root_identity)
+            exited = _wait_root_process_exit(root_identity, graceful_timeout_seconds=args.graceful_timeout_seconds)
+            if not exited:
+                if args.graceful_only:
+                    print("本次运行尚未退出，保留归属以便重试。", flush=True)
+                    return 2
+                # 封闭组登记后停止唯一 owner，禁止它继续创建下一代。
+                scope.seal()
+                stop_owner(root_identity, timeout=args.graceful_timeout_seconds)
+        if args.graceful_only:
+            scope.require_empty()
+        else:
+            scope.stop(timeout=args.graceful_timeout_seconds)
+            scope.require_empty()
+        clear_full_state(state_file_path, root_identity)
+        print("已确认全部受管进程组退出并清理本次运行状态。", flush=True)
+        return 0
+    except (OSError, RuntimeError, ValueError, KeyError) as error:
+        print(f"停止未完成，保留归属记录：{error}", flush=True)
+        return 2
 
 
 if __name__ == "__main__":

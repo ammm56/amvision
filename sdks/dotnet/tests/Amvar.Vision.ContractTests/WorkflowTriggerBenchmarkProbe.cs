@@ -61,6 +61,7 @@ namespace Amvar.Vision.ContractTests
             var transportOverheads = new List<double>(config.Iterations);
             var gcCollectionSamples = new List<GcCollectionSample>();
             var timingTotals = new TimingTotals();
+            var errors = new List<string>();
             using (var invocation = CreateInvocation(config, input, base64))
             {
                 for (var index = 0; index < config.WarmupIterations; index += 1)
@@ -87,10 +88,20 @@ namespace Amvar.Vision.ContractTests
                         GC.CollectionCount(2)
                     };
                     var startedAt = Stopwatch.GetTimestamp();
-                    var runtimeInvokeMs = invocation.Invoke(
-                        index + config.WarmupIterations,
-                        config.EnableTimings,
-                        timingTotals);
+                    double runtimeInvokeMs;
+                    try
+                    {
+                        runtimeInvokeMs = invocation.Invoke(
+                            index + config.WarmupIterations,
+                            config.EnableTimings,
+                            timingTotals);
+                    }
+                    catch (Exception error)
+                    {
+                        // 保存失败前的样本；不重试、不将部分成功计为整轮通过。
+                        errors.Add("request_index=" + index + " " + FormatError(error));
+                        break;
+                    }
                     var latencyMs = ElapsedMilliseconds(startedAt);
                     latencies.Add(latencyMs);
                     if (runtimeInvokeMs >= 0)
@@ -127,19 +138,19 @@ namespace Amvar.Vision.ContractTests
                         Height = config.Height,
                         WarmupIterations = config.WarmupIterations,
                         Iterations = config.Iterations,
-                        SuccessCount = config.Iterations,
-                        ErrorCount = 0,
-                        LatencyMs = Distribution.From(latencies),
+                        SuccessCount = latencies.Count,
+                        ErrorCount = errors.Count,
+                        LatencyMs = latencies.Count > 0 ? Distribution.From(latencies) : null,
                         LatencySamplesMs = latencies,
-                        TransportOverheadMs = transportOverheads.Count == latencies.Count
+                        TransportOverheadMs = transportOverheads.Count > 0 && transportOverheads.Count == latencies.Count
                             ? Distribution.From(transportOverheads)
                             : null,
                         TransportOverheadSamplesMs = transportOverheads,
-                        AverageSdkTimings = timingTotals.ToAverages(config.EnableTimings ? config.Iterations : 0),
+                        AverageSdkTimings = timingTotals.ToAverages(config.EnableTimings ? latencies.Count : 0),
                         TimingDistributionsMs = timingTotals.ToDistributions(
-                            config.EnableTimings ? config.Iterations : 0),
+                            config.EnableTimings ? latencies.Count : 0),
                         TimingSamplesMs = timingTotals.ToSamples(
-                            config.EnableTimings ? config.Iterations : 0),
+                            config.EnableTimings ? latencies.Count : 0),
                         ManagedHeapBeforeBytes = managedBefore,
                         ManagedHeapAfterBytes = managedAfter,
                         ManagedHeapDeltaBytes = managedAfter - managedBefore,
@@ -148,7 +159,7 @@ namespace Amvar.Vision.ContractTests
                         Gen1Collections = GC.CollectionCount(1) - collectionsBefore[1],
                         Gen2Collections = GC.CollectionCount(2) - collectionsBefore[2],
                         GcCollectionSamples = gcCollectionSamples,
-                        Errors = Array.Empty<string>()
+                        Errors = errors
                     };
                 }
             }
@@ -179,7 +190,8 @@ namespace Amvar.Vision.ContractTests
 
         private static string FormatError(Exception error)
         {
-            return error.GetType().FullName + ": " + error.Message;
+            var code = error is SharedMemoryTriggerException shared ? " code=" + shared.ErrorCode : string.Empty;
+            return error + code;
         }
 
         private static void WriteReport(string outputPath, BenchmarkReport report)
@@ -207,14 +219,17 @@ namespace Amvar.Vision.ContractTests
                 this.input = input;
                 this.base64 = base64;
                 var buffersRoot = Path.GetFullPath(config.BuffersRoot);
-                client = new SharedMemoryTriggerClient(new SharedMemoryTriggerClientOptions
+                var options = new SharedMemoryTriggerClientOptions
                 {
                     BuffersRoot = buffersRoot,
                     TriggerSourceId = config.TriggerSourceId,
                     RouteGeneration = config.RouteGeneration,
                     DefaultInputBinding = config.InputBinding,
                     Timeout = TimeSpan.FromSeconds(config.TimeoutSeconds)
-                });
+                };
+                if (config.SharedPollIntervalMs.HasValue)
+                    options.PollInterval = TimeSpan.FromTicks((long)(config.SharedPollIntervalMs.Value * TimeSpan.TicksPerMillisecond));
+                client = new SharedMemoryTriggerClient(options);
             }
 
             public double Invoke(int sequence, bool collectTimings, TimingTotals totals)
@@ -235,13 +250,14 @@ namespace Amvar.Vision.ContractTests
                 {
                     if (!string.Equals(result.Result.State, "succeeded", StringComparison.OrdinalIgnoreCase))
                     {
-                        throw new InvalidOperationException("Shared-memory Workflow result did not succeed.");
+                        throw new InvalidOperationException("Shared-memory Workflow result did not succeed: " + JsonConvert.SerializeObject(result.Result));
                     }
 
                     timings = result.Timings;
                     if (collectTimings)
                     {
                         totals.AddBackend(result.Result.Metadata);
+                        totals.AddModel(result.Result.ResponsePayload);
                         runtimeInvokeMs = ReadRuntimeInvokeMs(result.Result.Metadata);
                     }
                 }
@@ -306,8 +322,6 @@ namespace Amvar.Vision.ContractTests
 
             public double Invoke(int sequence, bool collectTimings, TimingTotals totals)
             {
-                _ = collectTimings;
-                _ = totals;
                 var request = BuildRequest();
                 foreach (var property in config.Payload.Properties())
                 {
@@ -318,12 +332,13 @@ namespace Amvar.Vision.ContractTests
                 var result = client.InvokeImage(request);
                 if (!string.Equals(result.State, "succeeded", StringComparison.OrdinalIgnoreCase))
                 {
-                    throw new InvalidOperationException("ZeroMQ Workflow result did not succeed.");
+                    throw new InvalidOperationException("ZeroMQ Workflow result did not succeed: " + JsonConvert.SerializeObject(result));
                 }
 
                 if (collectTimings)
                 {
                     totals.AddBackend(result.Metadata);
+                    totals.AddModel(result.ResponsePayload);
                     return ReadRuntimeInvokeMs(result.Metadata);
                 }
 
@@ -403,6 +418,9 @@ namespace Amvar.Vision.ContractTests
             [JsonProperty("enable_timings")]
             public bool EnableTimings { get; set; }
 
+            [JsonProperty("shared_poll_interval_ms")]
+            public double? SharedPollIntervalMs { get; set; }
+
             internal void Validate()
             {
                 if (string.IsNullOrWhiteSpace(Transport)
@@ -419,6 +437,9 @@ namespace Amvar.Vision.ContractTests
                 {
                     throw new ArgumentOutOfRangeException(nameof(Iterations));
                 }
+                if (SharedPollIntervalMs.HasValue && (double.IsNaN(SharedPollIntervalMs.Value)
+                    || double.IsInfinity(SharedPollIntervalMs.Value) || SharedPollIntervalMs.Value < 0.0001))
+                    throw new ArgumentOutOfRangeException(nameof(SharedPollIntervalMs));
 
                 if ((InputMode == "bgr24" || InputMode == "bgr24-direct")
                     && (Width <= 0 || Height <= 0))
@@ -650,6 +671,23 @@ namespace Amvar.Vision.ContractTests
                     return;
                 }
 
+                AddNumericTimings(timings, "backend_");
+            }
+
+            internal void AddModel(IDictionary<string, JToken> payload)
+            {
+                if (!payload.TryGetValue("results", out var results)) return;
+                var value = results["benchmark_result"]?["value"];
+                if (value is JObject model) AddNumericTimings(model, "model_");
+                if (value?["metadata"]?["timings"] is JObject timings)
+                    AddNumericTimings(timings, "model_");
+                if (value?["runtime_session_info"]?["metadata"] is JObject session)
+                    AddNumericTimings(new JObject(session.Properties().Where(
+                        property => property.Name.EndsWith("_ms", StringComparison.Ordinal))), "session_");
+            }
+
+            private void AddNumericTimings(JObject timings, string prefix)
+            {
                 foreach (var property in timings.Properties())
                 {
                     if (property.Value.Type != JTokenType.Integer && property.Value.Type != JTokenType.Float)
@@ -657,7 +695,7 @@ namespace Amvar.Vision.ContractTests
                         continue;
                     }
 
-                    var key = "backend_" + property.Name;
+                    var key = prefix + property.Name;
                     var value = property.Value.Value<double>();
                     backend[key] = backend.TryGetValue(key, out var current)
                         ? current + value

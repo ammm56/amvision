@@ -5,14 +5,18 @@ from __future__ import annotations
 import os
 import errno
 import struct
+import sys
 import zlib
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
+from functools import lru_cache
 from pathlib import Path
 from secrets import randbits
 from threading import Lock
 from time import monotonic_ns, sleep
 from typing import BinaryIO, TypeVar
+
+from backend.service.infrastructure.filesystem.windows_paths import to_filesystem_path
 
 
 _UINT32 = struct.Struct("<I")
@@ -29,6 +33,71 @@ class MmapOwnerLockBusyError(Exception):
 
 class MmapGuardFileError(RuntimeError):
     """表示 guard 文件缺失、长度不符或已失去可信身份。"""
+
+
+class MmapGuardPool:
+    """在单个 mapping 生命周期内有界复用独立锁句柄，不共享活动 OFD 锁。"""
+
+    def __init__(self, guard_path: str | Path, identity_file: BinaryIO) -> None:
+        """固定 owner 已打开的文件身份；最多保留八个空闲句柄。"""
+        self.path = Path(guard_path)
+        identity = os.fstat(identity_file.fileno())
+        self._identity = (identity.st_dev, identity.st_ino)
+        self._size = identity.st_size
+        self._idle: list[BinaryIO] = []
+        self._active = 0
+        self._closed = False
+        self._lock = Lock()
+
+    def borrow(self, *, guard_path: str | Path, minimum_size: int) -> BinaryIO:
+        """立即租用独立 handle；每次仍检查文件长度，路径不匹配直接拒绝。"""
+        if Path(guard_path) != self.path or minimum_size > self._size:
+            raise MmapGuardFileError("guard pool 路径或 byte range 不匹配")
+        with self._lock:
+            if self._closed:
+                raise MmapGuardFileError("guard pool 已关闭")
+            handle = self._idle.pop() if self._idle else None
+            self._active += 1
+        try:
+            if handle is None:
+                handle = _open_existing_guard_range(self.path, minimum_size=self._size)
+            actual = os.fstat(handle.fileno())
+            if (actual.st_dev, actual.st_ino) != self._identity or actual.st_size != self._size:
+                raise MmapGuardFileError("guard 文件身份或长度已变化")
+            if os.name != "nt":
+                # Windows 活动句柄禁止删除共享；POSIX 允许替换路径，缓存 inode 不能代替路径校验。
+                try:
+                    current = self.path.stat()
+                except OSError as error:
+                    raise MmapGuardFileError("guard 文件路径身份不可读取") from error
+                if (current.st_dev, current.st_ino) != self._identity or current.st_size != self._size:
+                    raise MmapGuardFileError("guard 文件路径身份或长度已变化")
+            return handle
+        except BaseException:
+            if handle is not None:
+                handle.close()
+            with self._lock:
+                self._active -= 1
+            raise
+
+    def release(self, handle: BinaryIO, *, reusable: bool = True) -> None:
+        """归还已解锁句柄；超过固定缓存上限的句柄立即关闭。"""
+        with self._lock:
+            self._active -= 1
+            if reusable and len(self._idle) < 8:
+                self._idle.append(handle)
+                return
+        handle.close()
+
+    def close(self) -> None:
+        """活动锁未归还时拒绝关闭，禁止在操作仍使用 mapping 时释放 owner。"""
+        with self._lock:
+            if self._active:
+                raise MmapGuardBusyError("guard pool 仍有活动操作")
+            self._closed = True
+            handles, self._idle = self._idle, []
+        for handle in handles:
+            handle.close()
 
 
 class MmapOwnerLockHandle:
@@ -102,7 +171,8 @@ def build_contained_mmap_path(
     if relative.is_absolute():
         raise ValueError("mmap relative_path 不能是绝对路径")
     path = (root / relative).resolve()
-    if not path.is_relative_to(root):
+    # Windows 并发创建目录时 resolve 可返回带或不带 extended-length 前缀的同一路径。
+    if not to_filesystem_path(path).is_relative_to(to_filesystem_path(root)):
         raise ValueError("mmap 路径必须位于配置 root 内")
     return path
 
@@ -125,15 +195,7 @@ def try_lock_byte_range_file(
                 raise
             raise BlockingIOError from error
         return
-    import fcntl
-
-    fcntl.lockf(
-        guard_file.fileno(),
-        fcntl.LOCK_EX | fcntl.LOCK_NB,
-        length,
-        offset,
-        os.SEEK_SET,
-    )
+    _set_linux_handle_lock(guard_file, offset=offset, length=length, unlock=False)
 
 
 def unlock_byte_range_file(
@@ -147,20 +209,22 @@ def unlock_byte_range_file(
     if os.name == "nt":
         import msvcrt
 
-        try:
-            msvcrt.locking(guard_file.fileno(), msvcrt.LK_UNLCK, length)
-        except OSError:
-            pass
+        msvcrt.locking(guard_file.fileno(), msvcrt.LK_UNLCK, length)
         return
+    _set_linux_handle_lock(guard_file, offset=offset, length=length, unlock=True)
+
+
+def _set_linux_handle_lock(guard_file: BinaryIO, *, offset: int, length: int, unlock: bool) -> None:
+    """Linux 64-bit OFD 锁绑定独立 open handle，不因其他线程 close 同文件而消失。"""
+    if not sys.platform.startswith("linux") or struct.calcsize("P") != 8:
+        raise NotImplementedError("mmap byte-range guard 当前支持 Windows/Linux 64-bit")
     import fcntl
 
-    fcntl.lockf(
-        guard_file.fileno(),
-        fcntl.LOCK_UN,
-        length,
-        offset,
-        os.SEEK_SET,
-    )
+    # Linux x86_64/aarch64 的 struct flock：short、short、off_t、off_t、pid_t。
+    # 仅支持该明确 ABI；不回退到有线程竞争漏洞的进程级 lockf。
+    payload = struct.pack("@hhqqi4x", fcntl.F_UNLCK if unlock else fcntl.F_WRLCK,
+                          os.SEEK_SET, offset, length, 0)
+    fcntl.fcntl(guard_file.fileno(), fcntl.F_OFD_SETLK, payload)
 
 
 def open_mmap_guard_identity(
@@ -231,6 +295,7 @@ def acquire_mmap_guard(
     poll_interval_seconds: float,
     offset: int = 0,
     length: int = 1,
+    guard_pool: MmapGuardPool | None = None,
 ) -> Iterator[None]:
     """在 monotonic deadline 内取得一个跨进程短临界区 guard。"""
 
@@ -239,18 +304,24 @@ def acquire_mmap_guard(
     # guard 位于每次 descriptor claim 的热路径；正式 path builder 已完成
     # containment 和绝对化，这里不能重复执行 Windows resolve/stat。
     path = Path(guard_path)
-    guard_file = _open_existing_guard_range(
-        path,
-        minimum_size=offset + length,
+    guard_file = (
+        _open_existing_guard_range(path, minimum_size=offset + length)
+        if guard_pool is None
+        else guard_pool.borrow(guard_path=path, minimum_size=offset + length)
     )
     acquired = False
+    reusable = True
     try:
         while True:
             try:
                 try_lock_byte_range_file(guard_file, offset=offset, length=length)
                 acquired = True
                 break
-            except (BlockingIOError, OSError):
+            except (BlockingIOError, OSError) as error:
+                # 仅等待真实的锁竞争；无效句柄、磁盘故障等不能伪装为 busy。
+                if not isinstance(error, BlockingIOError) and error.errno not in {errno.EACCES, errno.EAGAIN, errno.EDEADLK}:
+                    reusable = False
+                    raise
                 if monotonic_ns() >= deadline_ns:
                     break
                 sleep(poll_interval_seconds)
@@ -258,9 +329,16 @@ def acquire_mmap_guard(
             raise MmapGuardBusyError
         yield
     finally:
-        if acquired:
-            unlock_byte_range_file(guard_file, offset=offset, length=length)
-        guard_file.close()
+        try:
+            if acquired:
+                reusable = False
+                unlock_byte_range_file(guard_file, offset=offset, length=length)
+                reusable = True
+        finally:
+            if guard_pool is None:
+                guard_file.close()
+            else:
+                guard_pool.release(guard_file, reusable=reusable)
 
 
 @contextmanager
@@ -306,9 +384,11 @@ def acquire_mmap_reader_guard(
             sleep(poll_interval_seconds)
         yield
     finally:
-        if acquired_offset is not None:
-            unlock_byte_range_file(guard_file, offset=acquired_offset, length=1)
-        guard_file.close()
+        try:
+            if acquired_offset is not None:
+                unlock_byte_range_file(guard_file, offset=acquired_offset, length=1)
+        finally:
+            guard_file.close()
 
 
 def acquire_mmap_owner_lock(lock_path: str | Path) -> MmapOwnerLockHandle:
@@ -331,6 +411,68 @@ def release_mmap_owner_lock(lock_file: MmapOwnerLockHandle) -> None:
     """幂等语义地释放 owner lock handle。"""
 
     lock_file.release()
+
+
+def is_mmap_owner_lock_held(
+    lock_path: str | Path, *, expected_identity: tuple[int, int] | None = None
+) -> bool:
+    """只读观察 owner byte-range，不取得锁；身份或 I/O 不确定时抛出异常。"""
+    path = Path(lock_path)
+    with path.open("rb", buffering=0) as handle:
+        opened = os.fstat(handle.fileno())
+        identity = (opened.st_dev, opened.st_ino)
+        if expected_identity is not None and identity != expected_identity:
+            raise MmapGuardFileError("owner lock 文件身份已变化")
+        held = _owner_lock_held_on_handle(handle)
+        current = path.stat()
+        if (current.st_dev, current.st_ino) != identity:
+            raise MmapGuardFileError("owner lock 查询期间路径身份已变化")
+        return held
+
+
+def _owner_lock_held_on_handle(handle: BinaryIO) -> bool:
+    """平台查询均不取得短暂锁，也不改变 publisher 的启动准入。"""
+    if os.name == "nt":
+        import ctypes
+        from ctypes import wintypes
+        import msvcrt
+
+        content = ctypes.create_string_buffer(1)
+        read_count = wintypes.DWORD()
+        if _windows_owner_read_file()(
+            msvcrt.get_osfhandle(handle.fileno()), content, 1,
+            ctypes.byref(read_count), None,
+        ):
+            return False
+        error = ctypes.get_last_error()
+        if error == 33:  # ERROR_LOCK_VIOLATION；EACCES 还可能表示真实权限错误。
+            return True
+        raise ctypes.WinError(error)
+    if not sys.platform.startswith("linux") or struct.calcsize("P") != 8:
+        raise NotImplementedError("owner lock 观测当前支持 Windows/Linux 64-bit")
+    import fcntl
+
+    request = struct.pack("@hhqqi4x", fcntl.F_WRLCK, os.SEEK_SET, 0, 1, 0)
+    response = fcntl.fcntl(handle.fileno(), fcntl.F_OFD_GETLK, request)
+    lock_type = struct.unpack("@hhqqi4x", response)[0]
+    if lock_type not in {fcntl.F_UNLCK, fcntl.F_WRLCK, fcntl.F_RDLCK}:
+        raise MmapGuardFileError("owner lock 查询返回未知锁类型")
+    return lock_type != fcntl.F_UNLCK
+
+
+@lru_cache(maxsize=1)
+def _windows_owner_read_file() -> Callable[..., int]:
+    """复用带完整 64-bit handle 签名的 ReadFile，避免每次探测重建 DLL 包装。"""
+    import ctypes
+    from ctypes import wintypes
+
+    read_file = ctypes.WinDLL("kernel32", use_last_error=True).ReadFile
+    read_file.argtypes = [
+        wintypes.HANDLE, wintypes.LPVOID, wintypes.DWORD,
+        ctypes.POINTER(wintypes.DWORD), wintypes.LPVOID,
+    ]
+    read_file.restype = wintypes.BOOL
+    return read_file
 
 
 def select_page_indices(

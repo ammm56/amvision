@@ -36,7 +36,9 @@ from common import (  # noqa: E402
     process_identity_matches,
     read_process_identity,
     resolve_app_root,
+    resolve_code_root,
     resolve_path,
+    resolve_python_executable,
     write_full_json,
 )
 
@@ -45,7 +47,7 @@ from http_service_monitor import HealthDecision, ProbeResult, ServiceMonitor, pr
 from http_stack_recovery import RecoveryBlocked, RecoveryBudget, ServiceRecoveryRequired, drain_owned_stack, wait_until  # noqa: E402
 
 
-FULL_SUPERVISOR_STATE_FORMAT_ID = "amvision.full-supervisor-state.v1"
+FULL_SUPERVISOR_STATE_FORMAT_ID = "amvision.full-supervisor-state.v3"
 FULL_SUPERVISOR_SHUTDOWN_FORMAT_ID = "amvision.full-supervisor-shutdown.v1"
 _active_shutdown_check: Callable[[], None] | None = None
 
@@ -294,6 +296,8 @@ def _ensure_stack_not_running(state_file_path: Path) -> None:
                     active_pids.append(pid_raw)
 
     if not active_pids:
+        from backend.runtime.processes.ownership import OwnershipScope
+        OwnershipScope(Path(stack_state["ownership_scope"])).require_empty()
         with contextlib.suppress(FileNotFoundError):
             state_file_path.unlink()
         return
@@ -317,7 +321,8 @@ def _replace_previous_stack(app_root: Path, state_file_path: Path) -> None:
             return
         if state.get("format_id") != FULL_SUPERVISOR_STATE_FORMAT_ID or Path(str(state.get("app_root", ""))).resolve() != app_root.resolve():
             raise RuntimeError("旧 full 状态的目录或格式不匹配，拒绝接管")
-        if float(root.get("create_time", 0)) >= float(current.get("create_time", 0)):
+        from backend.runtime.processes.birth_identity import birth_identity_is_newer
+        if not birth_identity_is_newer(current.get("birth_identity"), root.get("birth_identity")):
             raise RuntimeError("当前 full 不比旧实例更新，拒绝反向接管")
         if not any(Path(str(arg)).name == "start_amvision_full.py" for arg in root.get("command_line", [])):
             raise RuntimeError("旧实例不是标准 full 入口，拒绝接管")
@@ -331,6 +336,8 @@ def _replace_previous_stack(app_root: Path, state_file_path: Path) -> None:
         if time.monotonic() >= deadline:
             raise RuntimeError("旧 full 未在 90 秒内完全退出，新实例未启动")
         time.sleep(0.2)
+    from backend.runtime.processes.ownership import OwnershipScope
+    OwnershipScope(Path(state["ownership_scope"])).require_empty()
     print(f"旧 full 已退出（PID={root['pid']}），继续启动新一代。", flush=True)
 
 
@@ -738,15 +745,14 @@ def _start_component(
         logs_dir=log_file_path.parent,
         component_name=log_file_path.stem,
     )
-    creationflags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
-    process = subprocess.Popen(
+    from backend.runtime.processes.managed_process import ManagedProcess
+    process = ManagedProcess(
         command,
+        python_entrypoint=True,
         cwd=str(app_root),
         env=_build_child_process_environment(),
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        creationflags=creationflags,
-        start_new_session=os.name != "nt",
     )
     assert process.stdout is not None
     log_capture.start(process.stdout)
@@ -953,8 +959,10 @@ def _run_database_migration(
     )
     daily_log_file_path.parent.mkdir(parents=True, exist_ok=True)
     with daily_log_file_path.open("ab") as log_handle:
-        process = subprocess.Popen(
+        from backend.runtime.processes.managed_process import ManagedProcess
+        process = ManagedProcess(
             command,
+            python_entrypoint=True,
             cwd=str(app_root),
             env=_build_child_process_environment(),
             stdout=log_handle,
@@ -966,8 +974,7 @@ def _run_database_migration(
             # 数据库迁移按事务安全边界完成；退出请求在迁移结束后立即检查。
             return_code = process.wait()
         finally:
-            if process.poll() is None:
-                _stop_component(process)
+            _stop_component(process)
     _check_startup_shutdown()
     if return_code != 0:
         raise RuntimeError(
@@ -1011,6 +1018,7 @@ def _write_stack_state(
         "components": [
             _build_component_state(app_root, component) for component in components
         ],
+        "ownership_scope": os.environ["AMVISION_PROCESS_SCOPE"],
     }
     with full_state_guard(state_file_path):
         write_full_json(state_file_path, payload)
@@ -1047,7 +1055,7 @@ def _build_component_state(
             else None
         ),
         "log_pattern": log_capture.log_pattern if log_capture is not None else None,
-        "stop_mode": "process-tree" if os.name == "nt" else "process-group",
+        "group_id": process.group_id if process is not None else None,
     }
 
 
@@ -1058,27 +1066,7 @@ def _stop_component(process: subprocess.Popen[bytes]) -> None:
     - process：待停止的根子进程。
     """
 
-    if process.poll() is not None:
-        return
-
-    if os.name == "nt":
-        subprocess.run(
-            ["taskkill", "/PID", str(process.pid), "/T", "/F"],
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        with contextlib.suppress(subprocess.TimeoutExpired):
-            process.wait(timeout=10)
-        return
-
-    with contextlib.suppress(ProcessLookupError):
-        os.killpg(os.getpgid(process.pid), signal.SIGTERM)
-    with contextlib.suppress(subprocess.TimeoutExpired):
-        process.wait(timeout=10)
-        return
-    with contextlib.suppress(ProcessLookupError):
-        os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+    process.stop(grace=5, timeout=10)
 
 
 def _launch_worker_profile(
@@ -1127,7 +1115,10 @@ def _launch_worker_profile(
         # 恢复由唯一协调器排空；Worker 可能已开始任务，不能在就绪等待中强杀。
         raise
     except BaseException:
-        _stop_component(worker_process)
+        try:
+            _stop_component(worker_process)
+        except Exception as error:
+            raise RecoveryBlocked(f"Worker 启动失败且旧组未清空：{error}") from error
         worker_log_capture.close()
         raise
     return worker_process, worker_log_capture
@@ -1208,6 +1199,7 @@ def main(argv: list[str] | None = None) -> int:
     app_root = resolve_app_root(
         script_file=Path(__file__), explicit_app_root=args.app_root
     )
+    sys.path.insert(0, str(resolve_code_root(app_root)))
     if not ensure_windows_long_paths_enabled(
         app_root=app_root,
         python_executable=args.python_executable,
@@ -1227,17 +1219,7 @@ def main(argv: list[str] | None = None) -> int:
     worker_entries = _select_worker_entries(release_manifest, args.worker_profile_id)
     _validate_required_files(app_root, release_manifest, worker_entries)
 
-    bundled_python_executable = app_root / "python" / "python.exe"
-    python_executable_path = (
-        Path(args.python_executable).resolve()
-        if args.python_executable
-        else bundled_python_executable.resolve()
-    )
-    if not python_executable_path.is_file():
-        raise FileNotFoundError(
-            "full 发行目录缺少可用的 python/python.exe，禁止回退到系统 Python"
-        )
-    python_executable = str(python_executable_path)
+    python_executable = resolve_python_executable(app_root, args.python_executable)
     takeover_deadline = time.monotonic() + 120
     while True:
         _replace_previous_stack(app_root, state_file_path)
@@ -1269,6 +1251,11 @@ def main(argv: list[str] | None = None) -> int:
         topology_lock.release()
         raise
     logs_dir = app_root / "logs" / args.logs_subdir
+    from backend.runtime.processes.ownership import OwnershipScope, SCOPE_ENV, PARENT_ENV
+    ownership = OwnershipScope.create(logs_dir / "process-ownership")
+    previous_scope = os.environ.get(SCOPE_ENV)
+    previous_parent = os.environ.pop(PARENT_ENV, None)
+    os.environ[SCOPE_ENV] = str(ownership.root)
     components: list[SupervisedComponent] = []
     root_process_identity = read_process_identity(os.getpid())
     signal.signal(signal.SIGTERM, _request_stack_shutdown)
@@ -1292,7 +1279,7 @@ def main(argv: list[str] | None = None) -> int:
         """写入当前 root 的真实启动阶段，error 仅保存有界错误摘要。"""
 
         payload: dict[str, object] = {
-            "format_id": "amvision.launcher-status.v2",
+            "format_id": "amvision.launcher-status.v3",
             "root_process": root_process_identity,
             "state": state,
             "generation": generation,
@@ -1516,6 +1503,7 @@ def main(argv: list[str] | None = None) -> int:
                             if return_code is None:
                                 continue
                             component.last_return_code = return_code
+                            _stop_component(process)
                             if not component.is_worker:
                                 print(
                                     f"检测到 {component.name} 已退出，returncode={return_code}；"
@@ -1611,6 +1599,8 @@ def main(argv: list[str] | None = None) -> int:
                     drain_owned_stack(components=components, identity=service_identity,
                                       directory=recovery_directory, check_shutdown=check_shutdown)
                     for component in components:
+                        if component.process is not None:
+                            component.process.finish()
                         if component.log_capture is not None:
                             component.log_capture.close()
                     components.clear()
@@ -1672,14 +1662,18 @@ def main(argv: list[str] | None = None) -> int:
                     topology=worker_topology,
                     state="stopping",
                 )
+        stop_errors = []
         for component in reversed(components):
             if component.process is not None:
-                _stop_component(component.process)
+                try:
+                    _stop_component(component.process)
+                except Exception as error:
+                    stop_errors.append(f"{component.name}: {error}")
         for component in components:
             if component.log_capture is not None:
                 with contextlib.suppress(Exception):
                     component.log_capture.close()
-        if worker_runtime_layout is not None and worker_topology is not None:
+        if not stop_errors and worker_runtime_layout is not None and worker_topology is not None:
             with contextlib.suppress(Exception):
                 worker_topology = _update_worker_topology_state(
                     app_root,
@@ -1688,9 +1682,19 @@ def main(argv: list[str] | None = None) -> int:
                     state="stopped",
                 )
         try:
-            clear_full_state(state_file_path, root_process_identity)
+            if not stop_errors:
+                ownership.require_empty()
+                clear_full_state(state_file_path, root_process_identity)
         finally:
             topology_lock.release()
+            if previous_scope is None:
+                os.environ.pop(SCOPE_ENV, None)
+            else:
+                os.environ[SCOPE_ENV] = previous_scope
+            if previous_parent is not None:
+                os.environ[PARENT_ENV] = previous_parent
+        if stop_errors:
+            raise RuntimeError("部分组件未停止，保留状态文件供继续回收：" + "; ".join(stop_errors))
 
 
 if __name__ == "__main__":

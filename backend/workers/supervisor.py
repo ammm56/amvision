@@ -6,7 +6,6 @@ import argparse
 import _thread
 import contextlib
 import os
-import signal
 import subprocess
 import sys
 import time
@@ -37,6 +36,7 @@ from backend.workers.contracts import (
 )
 from backend.workers.profile_lock import BackendWorkerProfileLock
 from backend.bootstrap.service_takeover import ServiceStopListener, replace_service_owner
+from backend.runtime.processes.managed_process import ManagedProcess
 
 
 DEFAULT_PROFILE_IDS = (
@@ -237,18 +237,16 @@ class DevelopmentWorkerSupervisor:
                 WORKER_INSTANCE_ID_ENV: worker_instance_id,
                 "AMVISION_WORKER_APP__APP_NAME": profile.display_name,
                 "AMVISION_WORKER_WORKSPACE__ROOT_DIR": (
-                    f"./data/worker/{profile.profile_id}"
+                    str(Path(os.environ.get("AMVISION_WORKER_WORKSPACE__ROOT_DIR", "./data/worker"))
+                        / profile.profile_id)
                 ),
             }
         )
-        process = subprocess.Popen(
+        process = ManagedProcess(
             [sys.executable, "-m", "backend.workers.main"],
+            python_entrypoint=True,
             cwd=str(self.app_root),
             env=environment,
-            creationflags=(
-                subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
-            ),
-            start_new_session=os.name != "nt",
         )
         print(
             f"已启动 backend-worker:{profile.profile_id}，pid={process.pid}。",
@@ -322,12 +320,16 @@ class DevelopmentWorkerSupervisor:
     def _stop_workers(self) -> None:
         """按启动顺序的逆序停止所有子进程。"""
 
+        failed = []
         for worker in reversed(self.processes):
-            process = worker.process
-            if process.poll() is not None:
-                continue
-            _stop_process_tree(process)
-        self.processes.clear()
+            try:
+                _stop_process_tree(worker.process)
+            except Exception as error:
+                failed.append(f"{worker.profile.profile_id}: {error}")
+            else:
+                self.processes.remove(worker)
+        if failed:
+            raise RuntimeError("Worker 进程组未清空：" + "; ".join(failed))
 
     def _require_topology(self) -> WorkerTopologyManifest:
         """返回已激活的 Topology，否则明确失败。"""
@@ -360,28 +362,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
 def _stop_process_tree(process: subprocess.Popen[bytes]) -> None:
     """停止一个 Worker 根进程及其训练、转换等子进程。"""
 
-    if process.poll() is not None:
-        return
-    if os.name == "nt":
-        subprocess.run(
-            ["taskkill", "/PID", str(process.pid), "/T", "/F"],
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        with contextlib.suppress(subprocess.TimeoutExpired):
-            process.wait(timeout=10.0)
-        return
-    with contextlib.suppress(ProcessLookupError):
-        os.killpg(os.getpgid(process.pid), signal.SIGTERM)
-    try:
-        process.wait(timeout=10.0)
-        return
-    except subprocess.TimeoutExpired:
-        pass
-    with contextlib.suppress(ProcessLookupError):
-        os.killpg(os.getpgid(process.pid), signal.SIGKILL)
-    process.wait(timeout=10.0)
+    process.stop(grace=5, timeout=10)
 
 
 def main(argv: list[str] | None = None) -> int:

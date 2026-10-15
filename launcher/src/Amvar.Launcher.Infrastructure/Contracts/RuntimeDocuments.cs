@@ -6,28 +6,30 @@ public sealed class ProcessIdentityDocument
 {
     [JsonProperty("pid", Required = Required.Always)] public int Pid { get; set; }
     [JsonProperty("create_time", Required = Required.Always)] public double CreateTime { get; set; }
+    [JsonProperty("birth_identity", Required = Required.Always)] public string BirthIdentity { get; set; } = "";
     [JsonProperty("executable", Required = Required.Always)] public string Executable { get; set; } = "";
     [JsonProperty("working_directory", Required = Required.Always)] public string WorkingDirectory { get; set; } = "";
     [JsonProperty("command_line", Required = Required.Always)] public List<string> CommandLine { get; set; } = [];
-    public bool Matches(ProcessIdentityDocument other) => Pid == other.Pid && Math.Abs(CreateTime - other.CreateTime) < .01 &&
+    public bool Matches(ProcessIdentityDocument other) => Pid == other.Pid && !string.IsNullOrWhiteSpace(BirthIdentity) && BirthIdentity == other.BirthIdentity &&
         SamePath(Executable, other.Executable) && SamePath(WorkingDirectory, other.WorkingDirectory) &&
         CommandLine.SequenceEqual(other.CommandLine);
     public static bool SamePath(string a, string b) => string.Equals(Path.GetFullPath(a), Path.GetFullPath(b),
         OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
 }
-public sealed class FullSupervisorStateV1
+public sealed class FullSupervisorStateV3
 {
     [JsonProperty("format_id", Required = Required.Always)] public string FormatId { get; set; } = "";
     [JsonProperty("app_root", Required = Required.Always)] public string AppRoot { get; set; } = "";
     [JsonProperty("root_process", Required = Required.Always)] public ProcessIdentityDocument RootProcess { get; set; } = new();
     [JsonProperty("components", Required = Required.Always)] public List<SupervisedComponentDocument> Components { get; set; } = [];
+    [JsonProperty("ownership_scope", Required = Required.Always)] public string OwnershipScope { get; set; } = "";
 }
 public sealed class SupervisedComponentDocument
 {
     [JsonProperty("name", Required = Required.Always)] public string Name { get; set; } = "";
     [JsonProperty("process")] public ProcessIdentityDocument? Process { get; set; }
 }
-public sealed class LauncherStatusDocumentV1
+public sealed class LauncherStatusDocumentV3
 {
     [JsonProperty("format_id", Required = Required.Always)] public string FormatId { get; set; } = "";
     [JsonProperty("root_process", Required = Required.Always)] public ProcessIdentityDocument RootProcess { get; set; } = new();
@@ -39,9 +41,9 @@ public sealed class LauncherStatusError
     [JsonProperty("code")] public string Code { get; set; } = "";
     [JsonProperty("message")] public string Message { get; set; } = "";
 }
-public sealed class StopTargetDocumentV1
+public sealed class StopTargetDocumentV2
 {
-    [JsonProperty("format_id")] public string FormatId { get; set; } = "amvision.launcher-stop-target.v1";
+    [JsonProperty("format_id")] public string FormatId { get; set; } = "amvision.launcher-stop-target.v2";
     [JsonProperty("root_process")] public required ProcessIdentityDocument RootProcess { get; init; }
 }
 public sealed class ProcessInspectionDocument

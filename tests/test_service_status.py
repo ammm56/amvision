@@ -345,6 +345,7 @@ def test_status_channel_owner_death_staleness_and_restart(tmp_path):
         str(tmp_path), lambda: {"ready": True, "deployments": []}
     )
     publisher.start()
+    thread = publisher._thread
     try:
         # 等待独立发布线程完成首次状态写入，最多一秒。
         deadline = monotonic() + 1
@@ -358,4 +359,5 @@ def test_status_channel_owner_death_staleness_and_restart(tmp_path):
             pytest.fail("状态发布线程未启动")
     finally:
         publisher.stop()
-    assert not publisher._thread.is_alive()
+    assert publisher._thread is None
+    assert not thread.is_alive()

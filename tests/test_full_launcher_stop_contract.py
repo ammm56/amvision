@@ -3,6 +3,8 @@
 import importlib.util
 import json
 from pathlib import Path
+from tests.process_family_fixture import fake_birth_identity
+from backend.runtime.processes.ownership import OwnershipScope
 
 
 def _module(name: str, path: str):
@@ -24,11 +26,12 @@ def test_worker_initialization_budget_is_separate_from_execution():
 def test_expected_identity_refuses_different_root(tmp_path, monkeypatch):
     """旧请求不能停止同目录的新实例。"""
     stop = _module("launcher_stop_contract", "runtimes/launchers/full/stop_amvision_full.py")
+    (tmp_path / "backend").mkdir()
     state = tmp_path / "runtime-state.json"
     state.write_text(json.dumps({"format_id": stop.FULL_SUPERVISOR_STATE_FORMAT_ID, "root_process": {"pid": 20}}))
     request = tmp_path / "request.json"
-    request.write_text(json.dumps({"format_id": "amvision.launcher-stop-target.v1", "root_process": {"pid": 10}}))
-    monkeypatch.setattr(stop, "_stop_recorded_process", lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not stop")))
+    request.write_text(json.dumps({"format_id": "amvision.launcher-stop-target.v2", "root_process": {"pid": 10}}))
+    monkeypatch.setattr("backend.runtime.processes.owner_control.stop_owner", lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not stop")))
     assert stop.main(["--app-root", str(tmp_path), "--state-file", str(state), "--expected-root-identity-file", str(request), "--graceful-only"]) == 2
     assert json.loads(state.read_text())["root_process"]["pid"] == 20
 
@@ -37,10 +40,12 @@ def test_graceful_timeout_never_force_kills(tmp_path, monkeypatch):
     """等待超时保留诊断，不进入旧 CLI 强杀分支。"""
     stop = _module("launcher_stop_graceful", "runtimes/launchers/full/stop_amvision_full.py")
     state = tmp_path / "runtime-state.json"
-    state.write_text(json.dumps({"format_id": stop.FULL_SUPERVISOR_STATE_FORMAT_ID, "root_process": {"pid": 20}, "components": []}))
+    scope = OwnershipScope.create(tmp_path / "ownership")
+    (tmp_path / "backend").mkdir()
+    state.write_text(json.dumps({"format_id": stop.FULL_SUPERVISOR_STATE_FORMAT_ID, "root_process": {"pid": 20}, "components": [], "ownership_scope": str(scope.root)}))
     monkeypatch.setattr(stop, "process_identity_matches", lambda _: True)
     monkeypatch.setattr(stop, "_wait_root_process_exit", lambda *a, **k: False)
-    monkeypatch.setattr(stop, "_stop_recorded_process", lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not kill")))
+    monkeypatch.setattr("backend.runtime.processes.owner_control.stop_owner", lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not kill")))
     assert stop.main(["--app-root", str(tmp_path), "--state-file", str(state), "--graceful-only"]) == 2
     assert state.exists()
 
@@ -94,9 +99,10 @@ def test_full_replacement_requests_old_identity_before_proceeding(tmp_path, monk
     """新 full 请求旧 root 完整退出，不终止不相关端口或 PID。"""
     start = _module("launcher_replace_contract", "runtimes/launchers/full/start_amvision_full.py")
     state = tmp_path / "runtime-state.json"
-    root = {"pid": 20, "create_time": 1, "command_line": ["python", "start_amvision_full.py"]}
-    state.write_text(json.dumps({"format_id": start.FULL_SUPERVISOR_STATE_FORMAT_ID, "app_root": str(tmp_path), "root_process": root, "components": []}))
-    monkeypatch.setattr(start, "read_process_identity", lambda _: {"create_time": 2})
+    root = {"pid": 20, "create_time": 1, "birth_identity": fake_birth_identity(1), "command_line": ["python", "start_amvision_full.py"]}
+    scope = OwnershipScope.create(tmp_path / "ownership")
+    state.write_text(json.dumps({"format_id": start.FULL_SUPERVISOR_STATE_FORMAT_ID, "app_root": str(tmp_path), "root_process": root, "components": [], "ownership_scope": str(scope.root)}))
+    monkeypatch.setattr(start, "read_process_identity", lambda _: {"birth_identity": fake_birth_identity(2)})
     checks = iter([True, False])
     monkeypatch.setattr(start, "process_identity_matches", lambda _: next(checks))
     start._replace_previous_stack(tmp_path, state)
@@ -109,8 +115,8 @@ def test_full_replacement_refuses_older_contender(tmp_path, monkeypatch):
     import pytest
     start = _module("launcher_replace_old", "runtimes/launchers/full/start_amvision_full.py")
     state = tmp_path / "runtime-state.json"
-    state.write_text(json.dumps({"format_id": start.FULL_SUPERVISOR_STATE_FORMAT_ID, "app_root": str(tmp_path), "root_process": {"pid": 20, "create_time": 3}, "components": []}))
-    monkeypatch.setattr(start, "read_process_identity", lambda _: {"create_time": 2})
+    state.write_text(json.dumps({"format_id": start.FULL_SUPERVISOR_STATE_FORMAT_ID, "app_root": str(tmp_path), "root_process": {"pid": 20, "birth_identity": fake_birth_identity(3)}, "components": []}))
+    monkeypatch.setattr(start, "read_process_identity", lambda _: {"birth_identity": fake_birth_identity(2)})
     monkeypatch.setattr(start, "process_identity_matches", lambda _: True)
     with pytest.raises(RuntimeError, match="反向接管"):
         start._replace_previous_stack(tmp_path, state)

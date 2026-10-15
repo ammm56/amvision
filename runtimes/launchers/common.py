@@ -254,11 +254,13 @@ def read_process_identity(pid: int) -> dict[str, object]:
     """读取用于防止 PID 复用误操作的完整进程身份。"""
 
     import psutil
+    from backend.runtime.processes.birth_identity import read_process_birth_identity
 
     process = psutil.Process(pid)
     return {
         "pid": pid,
         "create_time": process.create_time(),
+        "birth_identity": read_process_birth_identity(pid),
         "executable": process.exe(),
         "working_directory": process.cwd(),
         "command_line": process.cmdline(),
@@ -268,14 +270,16 @@ def read_process_identity(pid: int) -> dict[str, object]:
 def process_identity_matches(identity: Mapping[str, object]) -> bool:
     """确认当前 PID 仍对应状态文件记录的同一个进程。"""
 
+    import psutil
+
     pid = identity.get("pid")
-    create_time = identity.get("create_time")
+    birth_identity = identity.get("birth_identity")
     executable = identity.get("executable")
     working_directory = identity.get("working_directory")
     command_line = identity.get("command_line")
     if (
         not isinstance(pid, int)
-        or not isinstance(create_time, int | float)
+        or not isinstance(birth_identity, str)
         or not isinstance(executable, str)
         or not isinstance(working_directory, str)
         or not isinstance(command_line, list)
@@ -284,10 +288,10 @@ def process_identity_matches(identity: Mapping[str, object]) -> bool:
         return False
     try:
         current = read_process_identity(pid)
-    except Exception:
+    except (psutil.NoSuchProcess, psutil.ZombieProcess):
         return False
     return (
-        abs(float(current["create_time"]) - float(create_time)) < 0.01
+        current["birth_identity"] == birth_identity
         and _same_runtime_path(str(current["executable"]), executable)
         and _same_runtime_path(str(current["working_directory"]), working_directory)
         and current["command_line"] == command_line
@@ -473,6 +477,24 @@ def _is_windows_pid_alive(pid: int) -> bool:
         kernel32.CloseHandle(process_handle)
 
 
+def resolve_python_executable(app_root: Path, explicit: str | None = None) -> str:
+    """解析显式或当前平台随包解释器；发行目录禁止回退系统 Python。"""
+    if explicit is not None:
+        candidate = Path(os.path.abspath(explicit))
+    elif (app_root / "manifests" / "release-profiles").is_dir():
+        paths = (
+            [app_root / "python" / "python.exe"] if os.name == "nt"
+            else [app_root / "python" / "bin" / name for name in ("python3", "python")]
+        )
+        candidate = next((path for path in paths if path.is_file()), paths[0])
+    else:
+        candidate = Path(sys.executable)
+    if not candidate.is_file():
+        raise FileNotFoundError(f"缺少可用 Python 解释器，禁止回退到系统 Python: {candidate}")
+    # POSIX venv 的 executable 常为符号链接；不能 resolve 后丢失 pyvenv.cfg 定位。
+    return str(candidate.absolute())
+
+
 def run_python_module(
     *,
     app_root: Path,
@@ -485,36 +507,41 @@ def run_python_module(
 
     runtime_env = build_python_module_environment(app_root, extra_env=extra_env)
 
-    resolved_python_executable = python_executable
-    if resolved_python_executable is not None:
-        # subprocess 的 cwd 会切换到 app_root。显式相对路径必须先按调用方当前
-        # 目录归一化，否则子进程会把发行目录前缀重复拼接到 sys.executable。
-        resolved_python_executable = str(Path(resolved_python_executable).resolve())
-    if resolved_python_executable is None:
-        bundled_python_executable = app_root / "python" / "python.exe"
-        is_release_layout = (app_root / "manifests" / "release-profiles").is_dir()
-        if is_release_layout:
-            if not bundled_python_executable.is_file():
-                raise FileNotFoundError(
-                    "发行目录缺少 python/python.exe，禁止回退到系统 Python"
-                )
-            resolved_python_executable = str(bundled_python_executable)
-        else:
-            resolved_python_executable = sys.executable
+    resolved_python_executable = resolve_python_executable(app_root, python_executable)
 
     command = [resolved_python_executable, "-m", module_name, *module_args]
+    code_root = resolve_code_root(app_root)
+    if str(code_root) not in sys.path:
+        sys.path.insert(0, str(code_root))
+    from backend.runtime.processes.ownership import OwnershipScope
+    from backend.runtime.processes.bootstrap import execute_python_entrypoint
+
+    # 同解释器且当前进程已由外层建立完整归属时，launcher 只负责配置，
+    # 不再留下第二个等待进程。独立入口或不同解释器仍由 ManagedProcess 建组。
+    if (
+        os.path.normcase(os.path.abspath(resolved_python_executable))
+        == os.path.normcase(os.path.abspath(sys.executable))
+        and OwnershipScope.current_process_is_group_root()
+    ):
+        os.environ.clear()
+        os.environ.update(runtime_env)
+        os.chdir(app_root)
+        for path in reversed(runtime_env.get("PYTHONPATH", "").split(os.pathsep)):
+            if path and path not in sys.path:
+                sys.path.insert(0, path)
+        sys.path.insert(0, str(app_root))
+        return execute_python_entrypoint(["-m", module_name, *module_args])
+
+    from backend.runtime.processes.managed_process import ManagedProcess
+    process = ManagedProcess(command, python_entrypoint=True, cwd=str(app_root), env=runtime_env)
     try:
-        completed = subprocess.run(
-            command,
-            cwd=str(app_root),
-            env=runtime_env,
-            check=False,
-        )
+        return process.wait()
     except KeyboardInterrupt:
         # 交互式 Ctrl+C 会同时传递给前台子进程。外层 launcher 只返回
         # 标准中断码，避免在正常运维停止时打印误导性的 Python 堆栈。
         return 130
-    return completed.returncode
+    finally:
+        process.stop(grace=5, timeout=15)
 
 
 def build_python_module_environment(

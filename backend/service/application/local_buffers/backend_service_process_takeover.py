@@ -9,14 +9,18 @@ import os
 
 import psutil
 
+from backend.runtime.processes.ownership import OwnershipScope, PARENT_ENV
+from backend.runtime.processes.process_group import ProcessGroup
+from backend.runtime.processes.owner_control import stop_owner
+from backend.runtime.processes.birth_identity import read_process_birth_identity, birth_identity_is_newer
+
 from backend.service.application.errors import ServiceConfigurationError
 
 
 _BACKEND_APP_TARGET = "backend.service.api.app:app"
 _BACKEND_OWNER_KIND = "amvision-backend-service"
 _BROKER_LOCK_FILE_NAME = ".local-buffer-broker.lock"
-_OWNER_SCHEMA_VERSION = 1
-_PROCESS_CREATE_TIME_TOLERANCE_SECONDS = 0.01
+_OWNER_SCHEMA_VERSION = 3
 
 
 def build_backend_service_owner_metadata(*, root_dir: Path) -> dict[str, object]:
@@ -44,6 +48,23 @@ def build_backend_service_owner_metadata(*, root_dir: Path) -> dict[str, object]
         return metadata
     metadata.update(_snapshot_process("service_root_process", service_root_process))
     metadata["owner_kind"] = _BACKEND_OWNER_KIND
+    scope = OwnershipScope.current()
+    with scope.guard():
+        records = scope.records()
+    group_id = os.environ.get(PARENT_ENV)
+    service_group_id = None
+    while group_id:
+        record = records[group_id]
+        group = ProcessGroup.open(record["group"])
+        try:
+            if service_root_process.pid in group.members():
+                service_group_id = group_id
+                break
+        finally:
+            group.release_reference()
+        group_id = record["parent"]
+    metadata["ownership_scope"] = str(scope.root)
+    metadata["service_group_id"] = service_group_id
     return metadata
 
 
@@ -56,7 +77,7 @@ def take_over_backend_service_owner(
     """校验并结束持有 broker 根目录的旧 backend-service 进程树。
 
     只有占用者与接管者都属于同一工作目录、同一 Python 解释器并使用项目标准
-    uvicorn app target 启动时才允许接管。锁文件中的 PID、进程创建时间、父子关系或
+    uvicorn app target 启动时才允许接管。锁文件中的 PID、内核出生标识、父子关系或
     命令任一不一致都会拒绝结束进程。
 
     参数：
@@ -97,18 +118,17 @@ def take_over_backend_service_owner(
         root_dir=resolved_root_dir,
     )
     current_snapshot = _snapshot_process("service_root_process", current_service_root)
-    current_create_time = _read_positive_float(
-        current_snapshot,
-        "service_root_process_create_time",
-    )
-    target_create_time = _read_positive_float(
-        owner_metadata,
-        "service_root_process_create_time",
-    )
-    if (
-        current_create_time
-        <= target_create_time + _PROCESS_CREATE_TIME_TOLERANCE_SECONDS
-    ):
+    try:
+        newer = birth_identity_is_newer(
+            current_snapshot.get("service_root_process_birth_identity"),
+            owner_metadata.get("service_root_process_birth_identity"),
+        )
+    except ValueError as error:
+        raise _unsafe_takeover_error(
+            "占用者的进程出生顺序无法验证，已拒绝接管",
+            root_dir=resolved_root_dir, owner_metadata=owner_metadata, error=error,
+        ) from error
+    if not newer:
         raise _unsafe_takeover_error(
             "当前 backend-service 不比占用者更新，已拒绝反向接管新实例",
             root_dir=resolved_root_dir,
@@ -156,69 +176,26 @@ def take_over_backend_service_owner(
             owner_metadata=owner_metadata,
         )
 
-    if target_root is None:
-        return _take_over_orphaned_broker_owner(
-            target_broker=target_broker,
-            current_service_root=current_service_root,
-            current_snapshot=current_snapshot,
-            owner_metadata=owner_metadata,
-            root_dir=resolved_root_dir,
-            timeout_seconds=timeout_seconds,
-        )
-    target_supervisor = _load_verified_process(
-        owner_metadata,
-        prefix="supervisor_process",
-        root_dir=resolved_root_dir,
-    )
-
-    if target_root.pid == current_service_root.pid:
-        raise _unsafe_takeover_error(
-            "占用者属于当前 backend-service 进程树，不能结束自身",
-            root_dir=resolved_root_dir,
-            owner_metadata=owner_metadata,
-        )
-    if _is_same_or_descendant(current_process, target_root):
-        raise _unsafe_takeover_error(
-            "占用者是当前进程的祖先进程，不能结束自身进程树",
-            root_dir=resolved_root_dir,
-            owner_metadata=owner_metadata,
-        )
-    if not _is_same_or_descendant(target_supervisor, target_root):
-        raise _unsafe_takeover_error(
-            "锁文件记录的 supervisor 不属于占用 backend-service 进程树",
-            root_dir=resolved_root_dir,
-            owner_metadata=owner_metadata,
-        )
-    if not _is_same_or_descendant(target_broker, target_supervisor):
-        raise _unsafe_takeover_error(
-            "锁文件记录的 broker 不属于占用 supervisor 进程树",
-            root_dir=resolved_root_dir,
-            owner_metadata=owner_metadata,
-        )
-
-    process_tree = _snapshot_process_tree(target_root)
-    expected_process_ids = {target_supervisor.pid, target_broker.pid}
-    process_tree_ids = {process.pid for process in process_tree}
-    if not expected_process_ids.issubset(process_tree_ids):
-        raise _unsafe_takeover_error(
-            "占用进程树在接管前发生变化，已拒绝结束进程",
-            root_dir=resolved_root_dir,
-            owner_metadata=owner_metadata,
-        )
-
-    terminated_process_ids = _terminate_process_tree(
-        target_root=target_root,
-        process_tree=process_tree,
-        timeout_seconds=max(0.1, float(timeout_seconds)),
-        root_dir=resolved_root_dir,
-        owner_metadata=owner_metadata,
-    )
+    from backend.bootstrap.service_takeover import _has_full_launcher_ancestor
+    if target_root is not None:
+        if target_root.pid == current_service_root.pid or _is_same_or_descendant(current_process, target_root):
+            raise _unsafe_takeover_error("不能接替自身或祖先运行", root_dir=resolved_root_dir, owner_metadata=owner_metadata)
+        if _has_full_launcher_ancestor(target_root):
+            raise _unsafe_takeover_error("full 管理的服务必须由整栈入口接替", root_dir=resolved_root_dir, owner_metadata=owner_metadata)
+    scope = OwnershipScope(Path(str(owner_metadata["ownership_scope"])))
+    group_id = owner_metadata["service_group_id"]
+    scope.validate()
+    if group_id is None:
+        scope.seal()
+        if target_root is not None:
+            stop_owner({"pid": target_root.pid, "birth_identity": owner_metadata["service_root_process_birth_identity"]}, timeout=timeout_seconds)
+    scope.stop(root_id=group_id, timeout=timeout_seconds)
+    scope.require_empty(group_id)
     return {
         "root_dir": str(resolved_root_dir),
-        "replaced_service_root_process_id": target_root.pid,
-        "replaced_supervisor_process_id": target_supervisor.pid,
+        "replaced_service_root_process_id": owner_metadata.get("service_root_process_id"),
         "replaced_broker_process_id": target_broker.pid,
-        "terminated_process_ids": terminated_process_ids,
+        "ownership_scope": str(scope.root),
     }
 
 
@@ -227,7 +204,8 @@ def _validate_owner_metadata(
 ) -> None:
     """校验锁文件中与进程无关的稳定身份字段。"""
 
-    if owner_metadata.get("owner_schema_version") != _OWNER_SCHEMA_VERSION:
+    if (owner_metadata.get("owner_schema_version") != _OWNER_SCHEMA_VERSION
+            or not owner_metadata.get("ownership_scope") or "service_group_id" not in owner_metadata):
         raise _unsafe_takeover_error(
             "锁文件缺少可验证的占用者版本信息",
             root_dir=root_dir,
@@ -253,16 +231,13 @@ def _load_verified_process(
     prefix: str,
     root_dir: Path,
 ) -> psutil.Process:
-    """按 PID 和创建时间加载进程，并复核锁文件中的实时身份。"""
+    """按 PID 和内核出生标识加载进程，并复核锁文件中的实时身份。"""
 
     process_id = _read_positive_int(owner_metadata, f"{prefix}_id")
-    expected_create_time = _read_positive_float(
-        owner_metadata,
-        f"{prefix}_create_time",
-    )
+    expected_birth_identity = owner_metadata.get(f"{prefix}_birth_identity")
     try:
         process = psutil.Process(process_id)
-        actual_create_time = process.create_time()
+        actual_birth_identity = read_process_birth_identity(process_id)
         actual_executable = process.exe()
         actual_cwd = process.cwd()
         actual_command_line = process.cmdline()
@@ -283,10 +258,7 @@ def _load_verified_process(
             error=exc,
         ) from exc
 
-    if (
-        abs(actual_create_time - expected_create_time)
-        > _PROCESS_CREATE_TIME_TOLERANCE_SECONDS
-    ):
+    if actual_birth_identity != expected_birth_identity:
         raise _unsafe_takeover_error(
             "占用 PID 已被其他进程复用，已拒绝结束进程",
             root_dir=root_dir,
@@ -334,78 +306,6 @@ def _try_load_verified_process(
         raise
 
 
-def _take_over_orphaned_broker_owner(
-    *,
-    target_broker: psutil.Process,
-    current_service_root: psutil.Process,
-    current_snapshot: Mapping[str, object],
-    owner_metadata: Mapping[str, object],
-    root_dir: Path,
-    timeout_seconds: float,
-) -> dict[str, object]:
-    """在旧 uvicorn 根进程已消失时回收残留 supervisor 或 broker。"""
-
-    if _is_same_or_descendant(target_broker, current_service_root):
-        raise _unsafe_takeover_error(
-            "残留 broker 属于当前 backend-service，不能结束自身进程树",
-            root_dir=root_dir,
-            owner_metadata=owner_metadata,
-        )
-    target_supervisor = _try_load_verified_process(
-        owner_metadata,
-        prefix="supervisor_process",
-        root_dir=root_dir,
-    )
-    if target_supervisor is None:
-        termination_root = target_broker
-        process_tree = [target_broker]
-    else:
-        if not _same_path(
-            current_snapshot.get("service_root_process_executable"),
-            owner_metadata.get("supervisor_process_executable"),
-        ) or not _same_path(
-            current_snapshot.get("service_root_process_cwd"),
-            owner_metadata.get("supervisor_process_cwd"),
-        ):
-            raise _unsafe_takeover_error(
-                "残留 supervisor 与当前 backend-service 不属于同一运行环境",
-                root_dir=root_dir,
-                owner_metadata=owner_metadata,
-            )
-        if not _is_same_or_descendant(target_broker, target_supervisor):
-            raise _unsafe_takeover_error(
-                "残留 broker 不属于锁记录中的 supervisor 进程树",
-                root_dir=root_dir,
-                owner_metadata=owner_metadata,
-            )
-        termination_root = target_supervisor
-        process_tree = _snapshot_process_tree(target_supervisor)
-        if target_broker.pid not in {process.pid for process in process_tree}:
-            raise _unsafe_takeover_error(
-                "残留 supervisor 进程树在接管前发生变化",
-                root_dir=root_dir,
-                owner_metadata=owner_metadata,
-            )
-
-    terminated_process_ids = _terminate_process_tree(
-        target_root=termination_root,
-        process_tree=process_tree,
-        timeout_seconds=max(0.1, float(timeout_seconds)),
-        root_dir=root_dir,
-        owner_metadata=owner_metadata,
-    )
-    return {
-        "root_dir": str(root_dir),
-        "orphaned_owner": True,
-        "replaced_service_root_process_id": owner_metadata.get(
-            "service_root_process_id"
-        ),
-        "replaced_supervisor_process_id": owner_metadata.get("supervisor_process_id"),
-        "replaced_broker_process_id": target_broker.pid,
-        "terminated_process_ids": terminated_process_ids,
-    }
-
-
 def _find_backend_service_root(process: psutil.Process) -> psutil.Process | None:
     """从当前进程向上查找项目标准 uvicorn 根进程。"""
 
@@ -442,38 +342,13 @@ def _snapshot_process(prefix: str, process: psutil.Process) -> dict[str, object]
         return {
             f"{prefix}_id": process.pid,
             f"{prefix}_create_time": process.create_time(),
+            f"{prefix}_birth_identity": read_process_birth_identity(process.pid),
             f"{prefix}_executable": process.exe(),
             f"{prefix}_cwd": process.cwd(),
             f"{prefix}_command_line": process.cmdline(),
         }
     except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess, OSError):
         return {f"{prefix}_id": process.pid}
-
-
-def _snapshot_process_tree(target_root: psutil.Process) -> list[psutil.Process]:
-    """稳定读取接管前的旧 backend-service 进程树。"""
-
-    try:
-        descendants = target_root.children(recursive=True)
-    except (psutil.NoSuchProcess, psutil.ZombieProcess) as exc:
-        raise ServiceConfigurationError(
-            "LocalBufferBroker 原占用进程已退出，请重试启动",
-            details={
-                "reason": "owner-exited-during-takeover",
-                "owner_process_id": target_root.pid,
-            },
-        ) from exc
-    except (psutil.AccessDenied, OSError) as exc:
-        raise ServiceConfigurationError(
-            "无法读取占用 backend-service 的子进程，已拒绝接管",
-            details={
-                "reason": "unsafe-owner-process",
-                "owner_process_id": target_root.pid,
-                "error_type": type(exc).__name__,
-                "error_message": str(exc) or type(exc).__name__,
-            },
-        ) from exc
-    return [target_root, *descendants]
 
 
 def _validate_broker_lock_holder(
@@ -511,94 +386,6 @@ def _validate_broker_lock_holder(
         )
 
 
-def _terminate_process_tree(
-    *,
-    target_root: psutil.Process,
-    process_tree: Sequence[psutil.Process],
-    timeout_seconds: float,
-    root_dir: Path,
-    owner_metadata: Mapping[str, object],
-) -> list[int]:
-    """先阻止旧根进程继续拉起子进程，再有界结束全部快照进程。"""
-
-    ordered_processes = [
-        target_root,
-        *(
-            process
-            for process in reversed(process_tree)
-            if process.pid != target_root.pid
-        ),
-    ]
-    requested_processes: list[psutil.Process] = []
-    termination_errors: list[dict[str, object]] = []
-    for process in ordered_processes:
-        try:
-            process.terminate()
-            requested_processes.append(process)
-        except (psutil.NoSuchProcess, psutil.ZombieProcess):
-            continue
-        except (psutil.AccessDenied, OSError) as exc:
-            termination_errors.append(
-                {
-                    "process_id": process.pid,
-                    "action": "terminate",
-                    "error_type": type(exc).__name__,
-                    "error_message": str(exc) or type(exc).__name__,
-                }
-            )
-    try:
-        _, alive_processes = psutil.wait_procs(
-            ordered_processes,
-            timeout=timeout_seconds,
-        )
-    except (psutil.AccessDenied, OSError) as exc:
-        raise _unsafe_takeover_error(
-            "等待占用 backend-service 进程树退出失败",
-            root_dir=root_dir,
-            owner_metadata=owner_metadata,
-            error=exc,
-        ) from exc
-    for process in alive_processes:
-        try:
-            process.kill()
-        except (psutil.NoSuchProcess, psutil.ZombieProcess):
-            continue
-        except (psutil.AccessDenied, OSError) as exc:
-            termination_errors.append(
-                {
-                    "process_id": process.pid,
-                    "action": "kill",
-                    "error_type": type(exc).__name__,
-                    "error_message": str(exc) or type(exc).__name__,
-                }
-            )
-    try:
-        _, alive_after_kill = psutil.wait_procs(
-            alive_processes,
-            timeout=max(1.0, min(5.0, timeout_seconds)),
-        )
-    except (psutil.AccessDenied, OSError) as exc:
-        raise _unsafe_takeover_error(
-            "等待强制结束占用 backend-service 进程树失败",
-            root_dir=root_dir,
-            owner_metadata=owner_metadata,
-            error=exc,
-        ) from exc
-
-    if alive_after_kill:
-        raise ServiceConfigurationError(
-            "结束占用 backend-service 进程树超时",
-            details={
-                "reason": "owner-termination-timeout",
-                "root_dir": str(root_dir),
-                "owner_process_id": target_root.pid,
-                "remaining_process_ids": [process.pid for process in alive_after_kill],
-                "termination_errors": termination_errors,
-            },
-        )
-    return sorted({process.pid for process in requested_processes})
-
-
 def _is_same_or_descendant(process: psutil.Process, ancestor: psutil.Process) -> bool:
     """判断 process 是否等于 ancestor 或位于其进程树中。"""
 
@@ -623,24 +410,6 @@ def _read_positive_int(metadata: Mapping[str, object], field_name: str) -> int:
     if normalized_value <= 0:
         raise ServiceConfigurationError(
             "锁文件缺少可验证的占用进程 PID",
-            details={"reason": "unsafe-owner-process", "field_name": field_name},
-        )
-    return normalized_value
-
-
-def _read_positive_float(metadata: Mapping[str, object], field_name: str) -> float:
-    """从锁元数据读取正浮点数。"""
-
-    value = metadata.get(field_name)
-    if isinstance(value, bool):
-        value = None
-    try:
-        normalized_value = float(value)  # type: ignore[arg-type]
-    except (TypeError, ValueError):
-        normalized_value = 0.0
-    if normalized_value <= 0:
-        raise ServiceConfigurationError(
-            "锁文件缺少可验证的占用进程创建时间",
             details={"reason": "unsafe-owner-process", "field_name": field_name},
         )
     return normalized_value

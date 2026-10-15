@@ -442,11 +442,17 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
     def ping(self, *, timeout_seconds: float | None = None) -> dict[str, object]:
         """通过 mmap v1 探测 daemon 和 mailbox。"""
 
-        return self._request_message_read(
+        result = self._request_message_read(
             "ping",
             None,
             timeout_seconds=timeout_seconds or self.control_read_timeout_seconds,
         )
+        if result.get("ready") is not True:
+            raise ServiceConfigurationError(
+                "inference daemon mmap 热路径探测失败",
+                details={"readiness": result},
+            )
+        return result
 
     def _request_message_read(
         self,
@@ -483,14 +489,19 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
                 "inference daemon mmap 只读响应缺少 result",
                 details={"action": action},
             )
-        if action == "ping" and result.get("ready") is not True:
-            raise ServiceConfigurationError("inference daemon mmap 热路径探测失败")
         return result
 
     def _require_daemon_available(self) -> None:
-        """在长操作或变更操作前执行短探测，避免等待完整业务超时。"""
+        """控制通道必须在线；Deployment 未就绪不能阻断其修复与停止操作。"""
 
-        self.ping(timeout_seconds=self.availability_probe_timeout_seconds)
+        result = self._request_message_read(
+            "ping", None, timeout_seconds=self.availability_probe_timeout_seconds,
+        )
+        if result.get("control_ready") is not True:
+            raise ServiceConfigurationError(
+                "inference daemon 控制通道不可用",
+                details={"readiness": result},
+            )
 
     def _request(
         self,
@@ -1024,7 +1035,13 @@ class InferenceControlDispatcher:
                 if self.readiness_provider is not None
                 else {"ready": True}
             )
-            return {**dict(readiness), "service_id": self.service_id}
+            control_ready = self.is_running and not self._stop_event.is_set()
+            return {
+                **dict(readiness),
+                "ready": readiness.get("ready") is True and control_ready,
+                "service_id": self.service_id,
+                "control_ready": control_ready,
+            }
         if action not in {"infer", "infer_batch", "status", "health"}:
             raise InvalidRequestError(
                 "inference mmap v1 action 不合法",

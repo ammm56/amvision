@@ -110,10 +110,10 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 1
-    print("inference-daemon ready", flush=True)
     paths = build_inference_mailbox_paths(buffers_root=settings.local_memory.root_dir)
     try:
         with ServiceStopListener(paths.owner_lock_path, stop_event.set):
+            print("inference-daemon ready", flush=True)
             while not stop_event.wait(1.0):
                 if not runtime.control_dispatcher.is_running:
                     return 1
