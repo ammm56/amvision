@@ -1047,7 +1047,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         emptyDescription: '保存应用后会显示在这里。',
         detail: '详情',
         delete: '删除',
-        deleteBlocked: '先删除运行记录后再删除应用',
+        deleteBlocked: '先删除运行实例后再删除应用',
         deleteHint: '删除应用；未被其他应用使用的图版本会一并删除',
         confirmDelete: '删除应用 {applicationId}？',
         confirmDeleteWithGraph: '删除应用 {applicationId}，并删除未被其他应用使用的图版本？',
@@ -1344,10 +1344,10 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       },
       runtime: {
         title: '运行摘要',
-        listKicker: '运行记录',
-        listTitle: 'Runtime 列表',
-        emptyTitle: '暂无运行记录',
-        emptyDescription: '创建运行记录后，运行状态会显示在这里。',
+        listKicker: '运行实例',
+        listTitle: '运行实例列表',
+        emptyTitle: '暂无运行实例',
+        emptyDescription: '创建运行实例后，运行状态会显示在这里。',
       },
       editor: {
         kicker: 'Editor',
@@ -1708,7 +1708,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         payloadTypes: 'Payload 类型',
         nodePacks: 'Node packs',
         applications: '应用',
-        appRuntimes: '运行记录',
+        appRuntimes: '运行实例',
         runningRuntimes: '运行中',
         failedRuntimes: '失败',
         templateId: 'Graph id',
@@ -2313,6 +2313,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       notFoundTitle: '页面不存在',
       notFoundDescription: '当前路径没有对应的前端视图。',
       requestFailed: '请求失败',
+      connectionFailed: '连接失败，请检查服务和网络；已提交的操作请先核对状态。',
     },
     ws: {
       disconnected: '连接已断开',
@@ -4625,6 +4626,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       notFoundTitle: 'Page Not Found',
       notFoundDescription: 'No frontend view matches the current path.',
       requestFailed: 'Request failed',
+      connectionFailed: 'Connection failed. Check the service and network; check the status of submitted operations before retrying.',
     },
     ws: {
       disconnected: 'Connection closed',
@@ -6779,6 +6781,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       notFoundTitle: 'ページが見つかりません',
       notFoundDescription: '現在のパスに対応するフロントエンドビューがありません。',
       requestFailed: 'リクエストに失敗しました',
+      connectionFailed: '接続に失敗しました。サービスとネットワークを確認し、送信済みの操作は状態を確認してから再試行してください。',
     },
     ws: {
       disconnected: '接続が切断されました',
@@ -8933,6 +8936,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       notFoundTitle: '페이지 없음',
       notFoundDescription: '현재 경로와 일치하는 프론트엔드 뷰가 없습니다.',
       requestFailed: '요청 실패',
+      connectionFailed: '연결에 실패했습니다. 서비스와 네트워크를 확인하고, 제출한 작업의 상태를 확인한 후 다시 시도하세요.',
     },
     ws: {
       disconnected: '연결이 종료되었습니다',

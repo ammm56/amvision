@@ -77,6 +77,17 @@ describe('http client transient read retries', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
+  it.each(['GET', 'POST'])('reports a recoverable connection error for %s without replaying writes', async (method) => {
+    const fetchMock = vi.fn<typeof fetch>().mockRejectedValue(new TypeError('Failed to fetch'))
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(apiRequest('/tasks', { method, transientRetryBaseDelayMs: 0 })).rejects.toMatchObject({
+      status: 0,
+      code: 'network_error',
+      details: { original_message: 'Failed to fetch' },
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(method === 'GET' ? 3 : 1)
+  })
+
   it('reads only the unified public error object and request id header', async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({
       error: {

@@ -283,7 +283,17 @@ async function fetchWithTransientReadRetry(
       await discardResponseBody(response)
       await waitForRetry(delayMs, requestInit.signal)
     } catch (error) {
-      if (attempt >= retryCount || isAbortError(error, requestInit.signal)) {
+      if (isAbortError(error, requestInit.signal)) {
+        throw error
+      }
+      if (attempt >= retryCount) {
+        if (error instanceof TypeError) {
+          throw new ApiError(0, {
+            code: 'network_error',
+            message: translate('errors.connectionFailed'),
+            details: { original_message: error.message },
+          })
+        }
         throw error
       }
       const delayMs = Math.min(baseDelayMs * 2 ** attempt, MAX_TRANSIENT_RETRY_DELAY_MS)

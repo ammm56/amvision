@@ -2,11 +2,11 @@
   <section class="page-stack">
     <PageHeader :title="t('workflowEditor.applications.title')">
       <template #actions>
-        <Button variant="secondary" :disabled="loading" :loading="loading" @click="refreshPage">
+        <Button variant="secondary" :disabled="loading || !selectedProjectId" :loading="loading" @click="refreshPage">
           <RefreshCw :size="16" />
           {{ t('common.refresh') }}
         </Button>
-        <Button v-if="canWriteWorkflows" variant="primary" @click="openNewGraph">
+        <Button v-if="canWriteWorkflows" :disabled="!selectedProjectId" variant="primary" @click="openNewGraph">
           <Plus :size="16" />
           {{ t('workflowEditor.actions.newWorkflowGraph') }}
         </Button>
@@ -15,7 +15,11 @@
 
     <InlineError :message="errorMessage" />
 
-    <section class="resource-section">
+    <EmptyState v-if="!selectedProjectId" :title="t('projects.messages.selectProjectRequired')">
+      <Button variant="secondary" @click="router.push('/projects')">{{ t('projects.title') }}</Button>
+    </EmptyState>
+
+    <section v-if="selectedProjectId" class="resource-section">
       <div>
         <h2>{{ t('workflowEditor.runtime.title') }}</h2>
       </div>
@@ -39,7 +43,7 @@
       </div>
     </section>
 
-    <section class="resource-section">
+    <section v-if="selectedProjectId" class="resource-section">
       <div>
         <h2>{{ t('workflowEditor.applications.listTitle') }}</h2>
       </div>
