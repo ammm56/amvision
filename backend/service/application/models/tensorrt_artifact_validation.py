@@ -72,6 +72,7 @@ def validate_tensorrt_engine_against_onnx(
     runtime: Any,
     trt: Any,
     build_precision: str,
+    observations: dict[str, Any] | None = None,
 ) -> dict[str, object]:
     """同时验证正式 engine 和候选观测 engine；不发布带额外输出的调试产物。"""
     import numpy as np
@@ -82,6 +83,7 @@ def validate_tensorrt_engine_against_onnx(
         read_topk_contract,
     )
 
+    observations = observations if observations is not None else {}
     source = ort.InferenceSession(str(source_path), providers=["CPUExecutionProvider"])
     if len(source.get_inputs()) != 1:
         raise ServiceConfigurationError("TensorRT 数值验收要求 ONNX 只有一个输入")
@@ -94,7 +96,11 @@ def validate_tensorrt_engine_against_onnx(
         )
     )
     source_outputs = source.run(None, {input_info.name: image})
+    observations["input"] = image
+    for output, value in zip(source.get_outputs(), source_outputs, strict=True):
+        observations[f"onnx:{output.name}"] = value
     public_outputs = execute_validation_engine(engine=engine, trt=trt, image=image)
+    observations.update({f"engine:{name}": value for name, value in public_outputs.items()})
     output_names = [output.name for output in source.get_outputs()]
     target_outputs = [public_outputs[name] for name in output_names]
     graph = onnx.load(str(source_path))
@@ -128,12 +134,15 @@ def validate_tensorrt_engine_against_onnx(
             observed_bytes = builder.build_serialized_network(network, config)
             if observed_bytes is None:
                 raise ServiceConfigurationError("TensorRT 候选观测 engine 构建失败")
+            # bytes 只在失败保存时复制，正常构建保留原有生命周期。
+            observations["observed_engine"] = observed_bytes
             observed_engine = runtime.deserialize_cuda_engine(observed_bytes)
             if observed_engine is None:
                 raise ServiceConfigurationError("TensorRT 候选观测 engine 加载失败")
             observed_outputs = execute_validation_engine(
                 engine=observed_engine, trt=trt, image=image
             )
+            observations.update({f"observed:{name}": value for name, value in observed_outputs.items()})
         finally:
             network.unmark_output(candidate)
         observed_source = ort.InferenceSession(
@@ -143,6 +152,7 @@ def validate_tensorrt_engine_against_onnx(
         source_observed_outputs = observed_source.run(
             [*output_names, contract.candidates_name], {input_info.name: image}
         )
+        observations["onnx:candidates"] = source_observed_outputs[-1]
         summary = validate_topk_outputs(
             source_candidates=source_observed_outputs[-1],
             target_candidates=observed_outputs[contract.candidates_name],
@@ -154,14 +164,16 @@ def validate_tensorrt_engine_against_onnx(
             build_precision=build_precision,
             np_module=np,
         )
-    if summary["passed"] is not True:
-        raise ServiceConfigurationError(
-            "TensorRT runtime smoke 数值一致性校验失败", details=summary
-        )
-    return {
+    # TopK 校验器也用于 ONNX 导出；对外阶段必须反映本次实际比较的运行时。
+    summary = {
         **summary,
         "stage": "validate-tensorrt",
         "source_runtime": "onnxruntime-cpu",
         "target_runtime": "tensorrt",
         "executed": True,
     }
+    if summary["passed"] is not True:
+        raise ServiceConfigurationError(
+            "TensorRT runtime smoke 数值一致性校验失败", details=summary
+        )
+    return summary

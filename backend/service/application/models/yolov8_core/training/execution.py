@@ -27,7 +27,7 @@ from backend.service.application.models.yolov8_core.training.samples import (
     YoloV8DetectionTrainingSamplePlan,
     plan_yolov8_detection_training_samples,
 )
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.application.ports.training_dataset import TrainingDatasetFiles
 
 
 @dataclass(frozen=True)
@@ -63,7 +63,7 @@ class YoloV8DetectionTrainingExecutionPlan:
 
 def prepare_yolov8_detection_training_data_context(
     *,
-    dataset_storage: LocalDatasetStorage,
+    dataset_storage: TrainingDatasetFiles,
     cv2_module: Any,
     manifest_payload: dict[str, object],
 ) -> YoloV8DetectionTrainingDataContext:

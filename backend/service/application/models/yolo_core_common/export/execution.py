@@ -428,15 +428,16 @@ def use_yolo_model_export_mode(model: object, *, enabled: bool):
 
 
 def _build_dummy_input(*, session: object) -> object:
-    """按 runtime target 的输入尺寸生成导出和校验使用的 dummy input。"""
+    """按输入尺寸生成固定 seed=0 的探针，与转换 runtime smoke 保持一致。
 
-    return session.imports.torch.randn(
-        1,
-        3,
-        session.runtime_target.input_size[0],
-        session.runtime_target.input_size[1],
-        device=session.device_name,
-        dtype=session.imports.torch.float32,
+    局部 NumPy generator 不改变训练或应用的全局 RNG，也不随 CPU/CUDA 改变输入。
+    固定探针只验证转换链；真实业务图片覆盖由独立精度验收提供。
+    """
+    image = session.imports.np.random.default_rng(0).standard_normal(
+        (1, 3, *session.runtime_target.input_size)
+    ).astype(session.imports.np.float32)
+    return session.imports.torch.from_numpy(image).to(
+        device=session.device_name, dtype=session.imports.torch.float32,
     )
 
 

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
 from backend.service.application.errors import InvalidRequestError
 from backend.service.domain.models.model_input_spec import (
@@ -293,3 +295,179 @@ __all__ = [
     "YoloV8DetectionResumeValidationRequest",
     "validate_yolov8_detection_resume_checkpoint",
 ]
+
+
+@dataclass(frozen=True)
+class YoloV8DetectionLoadedResumeState:
+    """描述从 latest checkpoint 解析出的恢复训练状态。"""
+
+    resume_epoch: int
+    epoch_history: list[dict[str, object]]
+    validation_history: list[dict[str, object]]
+    evaluated_epochs: tuple[int, ...]
+    best_metric_name: str
+    best_metric_value: float | None
+    best_checkpoint_state: dict[str, object] | None
+    ema_state_dict: dict[str, object] | None
+    ema_updates: int
+    warm_start_summary: dict[str, object]
+
+
+def load_yolov8_detection_resume_checkpoint(
+    *,
+    torch_module: Any,
+    model: Any,
+    optimizer: Any,
+    scheduler: Any,
+    scaler: Any,
+    checkpoint_path: Path,
+    expected_model_type: str,
+    expected_model_scale: str,
+    expected_num_classes: int,
+    expected_input_size: tuple[int, int],
+    expected_batch_size: int,
+    expected_max_epochs: int,
+    expected_precision: str,
+    expected_validation_split_name: str | None,
+    expected_evaluation_interval: int,
+    expected_evaluation_confidence_threshold: float | None,
+    expected_evaluation_nms_threshold: float | None,
+    expected_learning_rate: float,
+    expected_weight_decay: float,
+    expected_class_loss_weight: float,
+    expected_box_loss_weight: float,
+    expected_dfl_loss_weight: float,
+    expected_assign_topk: int,
+    expected_assign_alpha: float,
+    expected_assign_beta: float,
+    expected_min_lr_ratio: float,
+    expected_grad_clip_norm: float,
+) -> YoloV8DetectionLoadedResumeState:
+    """从 latest checkpoint 恢复训练状态。"""
+
+    checkpoint_payload = torch_module.load(checkpoint_path, map_location="cpu")
+    if not isinstance(checkpoint_payload, dict):
+        raise InvalidRequestError("resume checkpoint 内容不合法")
+    validate_yolov8_detection_resume_checkpoint(
+        checkpoint_payload=checkpoint_payload,
+        request=YoloV8DetectionResumeValidationRequest(
+            model_type=expected_model_type,
+            model_scale=expected_model_scale,
+            num_classes=expected_num_classes,
+            input_size=expected_input_size,
+            batch_size=expected_batch_size,
+            max_epochs=expected_max_epochs,
+            precision=expected_precision,
+            validation_split_name=expected_validation_split_name,
+            evaluation_interval=expected_evaluation_interval,
+            evaluation_confidence_threshold=expected_evaluation_confidence_threshold,
+            evaluation_nms_threshold=expected_evaluation_nms_threshold,
+            learning_rate=expected_learning_rate,
+            weight_decay=expected_weight_decay,
+            class_loss_weight=expected_class_loss_weight,
+            box_loss_weight=expected_box_loss_weight,
+            dfl_loss_weight=expected_dfl_loss_weight,
+            assign_topk=expected_assign_topk,
+            assign_alpha=expected_assign_alpha,
+            assign_beta=expected_assign_beta,
+            min_lr_ratio=expected_min_lr_ratio,
+            grad_clip_norm=expected_grad_clip_norm,
+        ),
+    )
+    model.load_state_dict(dict(checkpoint_payload.get("model_state_dict") or {}))
+    optimizer_state_dict = checkpoint_payload.get("optimizer_state_dict")
+    if isinstance(optimizer_state_dict, dict):
+        optimizer.load_state_dict(optimizer_state_dict)
+    scheduler_state_dict = checkpoint_payload.get("scheduler_state_dict")
+    if not isinstance(scheduler_state_dict, dict):
+        raise InvalidRequestError("resume checkpoint 缺少 scheduler_state_dict")
+    scheduler.load_state_dict(scheduler_state_dict)
+    scaler_state_dict = checkpoint_payload.get("scaler_state_dict")
+    if not isinstance(scaler_state_dict, dict):
+        raise InvalidRequestError("resume checkpoint 缺少 scaler_state_dict")
+    scaler.load_state_dict(scaler_state_dict)
+
+    raw_resume_epoch = checkpoint_payload.get("epoch")
+    resume_epoch = (
+        int(raw_resume_epoch)
+        if isinstance(raw_resume_epoch, int) and raw_resume_epoch >= 0
+        else 0
+    )
+    raw_best_metric_name = checkpoint_payload.get("best_metric_name")
+    best_metric_name = (
+        str(raw_best_metric_name)
+        if isinstance(raw_best_metric_name, str) and raw_best_metric_name.strip()
+        else "map50_95"
+    )
+    raw_best_metric_value = checkpoint_payload.get("best_metric_value")
+    best_metric_value = (
+        float(raw_best_metric_value)
+        if isinstance(raw_best_metric_value, int | float)
+        else None
+    )
+    warm_start_summary = checkpoint_payload.get("warm_start")
+    ema_state_dict = checkpoint_payload.get("ema_state_dict")
+    raw_ema_updates = checkpoint_payload.get("ema_updates")
+    return YoloV8DetectionLoadedResumeState(
+        resume_epoch=resume_epoch,
+        epoch_history=_normalize_history_items(
+            checkpoint_payload.get("metrics_history")
+        ),
+        validation_history=_normalize_history_items(
+            checkpoint_payload.get("validation_history")
+        ),
+        evaluated_epochs=_normalize_evaluated_epochs(
+            checkpoint_payload.get("evaluated_epochs")
+        ),
+        best_metric_name=best_metric_name,
+        best_metric_value=best_metric_value,
+        best_checkpoint_state=(
+            dict(checkpoint_payload.get("best_checkpoint_state"))
+            if isinstance(checkpoint_payload.get("best_checkpoint_state"), dict)
+            else None
+        ),
+        ema_state_dict=(
+            dict(ema_state_dict) if isinstance(ema_state_dict, dict) else None
+        ),
+        ema_updates=(
+            int(raw_ema_updates)
+            if isinstance(raw_ema_updates, int) and raw_ema_updates >= 0
+            else 0
+        ),
+        warm_start_summary=(
+            dict(warm_start_summary)
+            if isinstance(warm_start_summary, dict)
+            else {
+                "enabled": False,
+                "source_model_version_id": None,
+                "source_kind": None,
+                "source_model_name": None,
+                "source_model_scale": None,
+                "load_summary": None,
+            }
+        ),
+    )
+
+
+
+
+def _normalize_history_items(value: object) -> list[dict[str, object]]:
+    """把 checkpoint 中的指标历史归一成可继续追加的列表。"""
+
+    if not isinstance(value, list):
+        return []
+    normalized_items: list[dict[str, object]] = []
+    for item in value:
+        if isinstance(item, dict):
+            normalized_items.append(
+                {str(key): current_value for key, current_value in item.items()}
+            )
+    return normalized_items
+
+
+def _normalize_evaluated_epochs(value: object) -> tuple[int, ...]:
+    """把 checkpoint 中的验证 epoch 列表归一成整数元组。"""
+
+    if not isinstance(value, list):
+        return ()
+    return tuple(item for item in value if isinstance(item, int) and item > 0)

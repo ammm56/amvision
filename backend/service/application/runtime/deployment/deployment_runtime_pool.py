@@ -743,7 +743,7 @@ class DeploymentRuntimePool:
 
     @staticmethod
     def _read_session_pinned_output_bytes(session: object | None) -> int:
-        """读取单个 session 当前持有的 pinned output host buffer 字节数。"""
+        """读取 session 的完整 pinned 输出总量；多输出与混合内存使用同一计数契约。"""
 
         if session is None:
             return 0
@@ -752,16 +752,14 @@ class DeploymentRuntimePool:
             return 0
         try:
             snapshot = describe_memory_usage()
-        except Exception:
-            return 0
+        except Exception as error:
+            raise ServiceConfigurationError("runtime session 输出内存观测失败") from error
         if not isinstance(snapshot, dict):
-            return 0
-        if snapshot.get("output_host_memory_kind") != "pinned":
-            return 0
+            raise ServiceConfigurationError("runtime session 输出内存快照必须为对象")
         pinned_bytes = snapshot.get("output_host_pinned_bytes")
-        if isinstance(pinned_bytes, bool) or not isinstance(pinned_bytes, int | float):
-            return 0
-        return max(0, int(pinned_bytes))
+        if isinstance(pinned_bytes, bool) or not isinstance(pinned_bytes, int) or pinned_bytes < 0:
+            raise ServiceConfigurationError("runtime session 缺少合法的 output_host_pinned_bytes 总量")
+        return pinned_bytes
 
     @staticmethod
     def _validate_config(config: DeploymentRuntimePoolConfig) -> None:

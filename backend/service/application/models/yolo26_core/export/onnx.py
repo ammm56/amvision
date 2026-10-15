@@ -159,9 +159,23 @@ def validate_yolo26_onnx(
     )
     summary.update(strict_numeric_validation=True, input_tensor=input_tensor)
     if not summary["passed"]:
-        raise ServiceConfigurationError(
+        from backend.service.application.conversions.runtime.numeric_failure_evidence import (
+            preserve_conversion_failure,
+        )
+        error = ServiceConfigurationError(
             "YOLO26 ONNX 候选或 TopK 语义校验失败", details=summary
         )
+        observations = {"input": feed[input_info.name], "torch:candidates": raw_outputs[0],
+                        "onnx:candidates": observed_outputs[-1]}
+        for index, (left, right) in enumerate(zip(torch_outputs, ort_outputs, strict=True)):
+            observations[f"torch:output:{index}"] = left
+            observations[f"onnx:output:{index}"] = right
+        diagnostic = preserve_conversion_failure(
+            source_path=onnx_path, output_path=onnx_path, engine_bytes=None,
+            observations=observations, error=error, precision="fp32", stage="validate-onnx",
+            runtime_version=str(getattr(onnxruntime_module, "__version__", "unknown")),
+        )
+        raise ServiceConfigurationError(error.message, details={**summary, "failure_evidence": diagnostic})
     return summary
 
 

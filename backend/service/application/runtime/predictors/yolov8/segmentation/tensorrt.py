@@ -564,7 +564,7 @@ class TensorRTYoloV8SegmentationRuntimeSession:
     def describe_memory_usage(self) -> dict[str, object]:
         """返回当前 TensorRT segmentation session 的输出 host buffer 占用快照。"""
 
-        return {
+        snapshot = {
             "prediction_host_memory_kind": self.prediction_host_memory_kind,
             "prediction_host_buffer_bytes": _array_nbytes(self.prediction_host_array),
             "prediction_host_pinned_bytes": self._pinned_bytes(
@@ -582,6 +582,13 @@ class TensorRTYoloV8SegmentationRuntimeSession:
             "output_host_pinned_enabled": self.pinned_output_buffer_enabled,
             "output_host_pinned_max_bytes": self.pinned_output_buffer_max_bytes,
         }
+        snapshot["output_host_buffer_bytes"] = (
+            int(snapshot["prediction_host_buffer_bytes"]) + int(snapshot["proto_host_buffer_bytes"])
+        )
+        snapshot["output_host_pinned_bytes"] = (
+            int(snapshot["prediction_host_pinned_bytes"]) + int(snapshot["proto_host_pinned_bytes"])
+        )
+        return snapshot
 
     def _set_or_validate_input_shape(
         self, requested_input_shape: tuple[int, ...]

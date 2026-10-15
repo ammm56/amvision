@@ -11,6 +11,7 @@ from backend.contracts.datasets.dataset_formats import (
     YOLO_DETECTION_DATASET_FORMAT,
 )
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.ports.training_dataset import TrainingDatasetFiles
 from backend.service.application.models.yolov8_core.data.detection_types import (
     YoloV8DetectionResolvedSplit,
 )
@@ -18,7 +19,7 @@ from backend.service.application.models.yolov8_core.data.detection_types import 
 
 def resolve_yolov8_detection_splits(
     *,
-    dataset_storage: Any,
+    dataset_storage: TrainingDatasetFiles,
     cv2_module: Any,
     manifest_payload: dict[str, object],
 ) -> tuple[YoloV8DetectionResolvedSplit, ...]:
@@ -73,7 +74,7 @@ def resolve_yolov8_detection_test_split(
 
 def _resolve_coco_detection_splits(
     *,
-    dataset_storage: Any,
+    dataset_storage: TrainingDatasetFiles,
     manifest_payload: dict[str, object],
 ) -> tuple[YoloV8DetectionResolvedSplit, ...]:
     """从 DatasetExport manifest 解析 COCO detection split。"""
@@ -121,7 +122,7 @@ def _resolve_coco_detection_splits(
 
 def _resolve_yolo_detection_splits(
     *,
-    dataset_storage: Any,
+    dataset_storage: TrainingDatasetFiles,
     cv2_module: Any,
     manifest_payload: dict[str, object],
 ) -> tuple[YoloV8DetectionResolvedSplit, ...]:

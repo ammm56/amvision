@@ -119,16 +119,32 @@ def build_tensorrt_engine(
         validate_tensorrt_engine_against_onnx,
     )
 
-    runtime_smoke = validate_tensorrt_engine_against_onnx(
-        source_path=resolved_source_path,
-        engine=runtime_engine,
-        builder=builder,
-        network=network,
-        config=config,
-        runtime=runtime,
-        trt=trt,
-        build_precision=normalized_precision,
-    )
+    observations: dict[str, object] = {}
+    try:
+        runtime_smoke = validate_tensorrt_engine_against_onnx(
+            source_path=resolved_source_path,
+            engine=runtime_engine,
+            builder=builder,
+            network=network,
+            config=config,
+            runtime=runtime,
+            trt=trt,
+            build_precision=normalized_precision,
+            observations=observations,
+        )
+    except Exception as error:
+        from backend.service.application.conversions.runtime.numeric_failure_evidence import (
+            preserve_conversion_failure,
+        )
+        from backend.service.application.errors import ServiceConfigurationError
+        diagnostic = preserve_conversion_failure(
+            source_path=resolved_source_path, output_path=resolved_output_path,
+            engine_bytes=serialized_engine, observations=observations, error=error,
+            precision=normalized_precision, runtime_version=trt.__version__,
+        )
+        details = dict(error.details) if isinstance(error, ServiceError) else {}
+        details["failure_evidence"] = diagnostic
+        raise ServiceConfigurationError(str(error), details=details) from error
 
     resolved_output_path.parent.mkdir(parents=True, exist_ok=True)
     resolved_output_path.write_bytes(bytes(serialized_engine))
