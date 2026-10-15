@@ -4,6 +4,8 @@
 
 ## 验收与基准
 
+- [IPC 与运行时修复验收结果](runtime-repair-results-20261015.md)：owner 探测、准入、monitor 和停止确认修复，Windows/WSL 回归、一小时资源验收及仍失败的模型/小图 P99。
+- [工业场景可靠性实施记录](industrial-reliability-implementation.md)：隔离矩阵、失败资产、数值诊断、持续负载与发行验收。
 - [二维连接器检查与测量实施基线](connector-inspection-2d.md)：工程闭环和首轮配方改进已实现；第 11 节为当前状态，第 13 节规定第二轮易用性、配置防错与交付门禁步骤。
 - [连接器工程验证记录](connector-implementation-validation.md)：算法、资源、Runtime、SDK、合成图片与开发应用的结果及未完成范围。
 - [连接器节点使用体验审计](connector-usability-audit.md)：保留首轮缺陷与修复后的第二轮真实页面核对，记录标定证据提示、编辑层级、显示一致性及下一步优先级。

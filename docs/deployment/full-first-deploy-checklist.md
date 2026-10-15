@@ -36,7 +36,7 @@
 - `manifests/worker-profiles/dataset-import.json`
 - `python/python.exe`
 - `frontend/index.html`
-- `frontend/runtime-config.json`
+- `frontend/runtime-config.template.json`（默认按当前服务地址响应）或显式 `frontend/runtime-config.json`
 
 如果当前是 `full-windows-x64-nvidia`，还应存在：
 

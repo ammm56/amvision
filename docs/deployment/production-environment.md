@@ -108,9 +108,9 @@ full 脚本通过 service launcher 默认选择 `--ws wsproto`，固定传入 `-
 
 full 启动器的 `--worker-ready-timeout-seconds` 默认值为 120 秒，仅用于等待每个 worker 完成初始化并报告就绪；不改变推理、Trigger 或 Workflow 调用超时，也不把尚未初始化的服务标记为可用。冷启动需要导入训练框架，不能以热启动耗时设置启动预算。
 
-发行前端的 API/WebSocket 地址由 `frontend/runtime-config.json` 独立配置，默认同样指向 `127.0.0.1:5600`。修改 Backend `--port` 不会隐式改写静态前端文件；使用其他端口时必须在组装前提供匹配的 runtime config。该边界避免启动过程修改发行内容，也避免浏览器误连到另一套实例。
+默认发行保留 `frontend/runtime-config.template.json`，Backend 按浏览器当前请求来源返回 `/runtime-config.json`，API/WebSocket 随实际端口和 HTTP/HTTPS 协议变化，不改写静态文件。这样同机多个发行实例不会因固定的 `5600` 地址而误连。需要前后端独立地址时，组装前显式提供 `runtime-config.json`；显式配置保持原值。
 
-源码开发态直接由 Backend 托管 `frontend/web-ui/dist`，且目录中只有 `runtime-config.template.json` 时，`/runtime-config.json` 响应按当前页面来源生成 API 与 WebSocket 地址，支持非默认端口及 HTTPS；模板文件不会被改写。已经存在的 `runtime-config.json` 或 `runtime-config.local.json` 仍优先使用其显式地址。此回退不改变 assemble-release 已生成的发行配置。
+源码开发态由 Backend 托管 `frontend/web-ui/dist` 时沿用相同的模板响应规则；已有 `runtime-config.json` 或 `runtime-config.local.json` 优先使用显式地址。发行组装不隐式携带开发态 local 配置，Vite 开发态的独立后端地址配置不受影响。
 
 启动器按顺序：
 
@@ -152,7 +152,7 @@ liveness 的 `phase` 应为 `ready`；health 中主 LocalBufferBroker 应健康�
 .\stop-amvision-full.bat
 ```
 
-stop 会先写入绑定当前根进程完整身份的优雅停止请求，由 full Supervisor 关闭自动恢复并统一回收 Worker、backend-service 和 inference daemon。等待超时后才会先强制停止根进程树，再清理身份仍匹配的残留组件。只有全部退出才删除 runtime state 和停止请求；返回非零时必须先查看状态文件和当日日志。
+stop 会先写入绑定当前根进程完整身份的优雅停止请求，由 full Supervisor 关闭自动恢复并统一回收 Worker、backend-service 和 inference daemon。等待超时后先封闭归属登记并停止已核实的调度 owner，再按登记的受管组回收，不使用父子快照或 PID-only 降级。只有全部组退出才删除 runtime state 和停止请求；返回非零时保留状态和归属用于核对和重试。升级顺序与平台边界见[进程归属与恢复准入](../architecture/platform/process-ownership.md)。
 
 不要手工删除 `runtime-state.json`、只按 PID 杀进程或直接运行低层 Worker 来绕过失败。
 

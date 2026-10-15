@@ -23,6 +23,7 @@
 - 旧 `instance_count` 数据列和 metadata 中的 `deployment_process` 运行配置入口已经移除；迁移会删除旧 deployment 记录，不解释旧数据。
 - OpenVINO CPU、GPU、NPU、AUTO 通过统一 compile adapter 应用设备专属属性，并在 health 中返回 requested、effective 和 warnings。
 - TensorRT 通过统一 helper 校验并激活 `optimization_profile_index`，pinned output buffer 仍是明确的 session 运行参数。
+- health 的 `pinned_output_total_bytes` 汇总所有已加载 session 当前持有的 pinned 输出容量，不等于当前输出 tensor 的逻辑大小，也不包含厂商内部不可观测的内存。提供 `describe_memory_usage()` 的 session 必须返回非负整数 `output_host_pinned_bytes`；多输出模型先汇总各输出，混合 pinned/pageable 内存只计实际 pinned 容量。逐输出明细仍用于诊断，池层不按单一 memory kind 筛选总量。观测异常或损坏快照明确报错，不能伪装为零占用；不持有受管 host 输出的 runtime 保持零占用语义。
 - TensorRT conversion 会把 `input_shape_mode`、`optimization_profile_count` 和每个 profile 的输入名及 `min/opt/max shape` 写入具体 `ModelBuild.metadata`；部署表单和后端校验都读取所选 build 的能力，不按模型名或任务类型猜测。
 - capability API 按当前机器和 OpenVINO plugin 的 `SUPPORTED_PROPERTIES` 返回可用字段、设备信息和发布默认值。
 - 前端只显示目标 backend/device 支持的参数，并展示运行时实际生效配置和警告。

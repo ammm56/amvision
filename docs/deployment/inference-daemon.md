@@ -18,6 +18,8 @@
 
 `--probe` 通过实际 mmap ping 检查 mailbox、LocalBuffer owner/layout、首轮恢复以及恢复失败数。只有这些条件全部通过才返回成功。`GET /api/v1/system/diagnostics` 的 `services.inference_daemon` 使用 1 秒短探测返回 `ok` 或 `unavailable`，不会仅根据客户端对象存在就误报健康。
 
+内部 inference mmap v1 的 ping 响应显式区分 `ready` 与 `control_ready`：前者保持完整依赖和 Deployment 恢复就绪语义；后者只表示控制 dispatcher 在线且没有停止。start/stop/warmup/reset 的短探测检查 `control_ready`，不能因为待修复 Deployment 尚未就绪而拒绝其控制操作。启动门、全实例预热、归属清空和 generation 检查仍由各自 supervisor 执行；没有自动重试或旧响应字段降级。探测失败的错误详情保留原 readiness 状态。
+
 ## 恢复语义
 
 每个 DeploymentInstance 的 `sync`、`async` 通道分别持久化：

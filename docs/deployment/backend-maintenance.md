@@ -55,7 +55,7 @@
 - full 启动器只接受显式 `--python-executable` 或发布目录中的 `python/python.exe`，不会回退到系统 Python
 - 当 release profile 要求包含前端时，自动复制 `frontend/web-ui/dist/` 到发行目录里的 `frontend/`
 - maintenance CLI 会在复制前执行一次正式 `npm run build`；构建失败时禁止继续覆盖组装
-- 如果前端构建结果里没有 `runtime-config.json`，当前会优先使用 `runtime-config.local.json`，否则回退到 `runtime-config.template.json` 自动生成
+- 默认发行保留 `runtime-config.template.json`，服务按浏览器请求来源生成 `/runtime-config.json` 响应；不复制开发态 `runtime-config.local.json`。显式指定的发行配置或构建产物中的 `runtime-config.json` 保留独立地址
 - backend 与 Custom Node 源码复制时排除 `__pycache__`、`.pyc`、`.pyo`，并在组装结束前复核
 - 发行 manifest 记录产品版本、组装 UTC 时间、Git revision 和源码工作区是否有未提交修改
 - 自动生成发行目录内可直接使用的 `manifests/release-profiles/<profile_id>.json`

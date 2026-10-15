@@ -124,6 +124,8 @@ generation、epoch、owner fence 和 guard 共同防止旧引用读取/释放新
 
 producer 必须先取得 writer guard，再在 publication guard 内重验 descriptor/receipt，成功后才能创建 writable view。consumer 必须先取得一个 reader guard，再在 publication guard 内重验完整 locator，成功后才能创建 readonly view。
 
+Python owner 与 external access 对短 publication guard 采用有界阻塞等待：无竞争立即进入，发生锁竞争时按 0.25 ms 间隔等待，最多 250 ms 后明确报错。取得锁后仍核对 arena、broker epoch、descriptor generation、extent、状态与 deadline。此等待仅处理短 descriptor 临界区，writer/reader 槽位与回收探测仍保持原有非阻塞语义；真实文件 I/O 故障立即传播，不当作锁竞争重试。合法 owner 转交保持公开 locator 有效，extent 回收复用后的旧 generation 必须被拒绝。
+
 Broker 回收先在 publication guard 内发布 `REVOKING`，释放内部 guard 后按 writer、reader index升序非阻塞取得并持续持有全部外部 guards。任一 guard失败就释放本次已取得的guards并保持`REVOKING`；超过grace后进入`QUARANTINED`。只有持续持有全部外部guards时，Broker才能按`allocator lock -> publication guard`重验identity/state、提高generation、发布FREE并buddy merge；内部锁释放后才释放外部guards。禁止“探测guards为空、释放后再回收”的TOCTOU路径。Broker不能等待libzmq tracker，ZeroMQ tracker只由adapter进程的transport-lifetime registry管理。
 
 Broker 同时需要内部锁时固定使用 `allocator lock -> publication guard`；SDK 不取得 allocator lock。任何路径都不能持有 publication/allocator lock等待外部 writer/reader guard，也不能使用 `publication guard -> allocator lock` 的反向顺序。
@@ -229,6 +231,13 @@ health 必须直接校验容量守恒：`general_total = general_free + general_
 - 日志按日期轮转，异常包含 arena/descriptor/generation/owner/deadline，不记录图片内容。
 
 ## 明确边界
+
+- publication guard 的 250 ms 等待超时与失效 identity 分开处理。维护扫描保留当前租约，后续轮次继续检查；显式操作通过既有 `operation_timeout` 错误返回，不报告 `stale` 或已释放，也不隐式重放有副作用的请求。客户端超时后保留释放凭据。
+- mailbox 请求扫描和终态巡检只尝试一次 descriptor guard，锁忙即跳过，不等待其他请求的发布或 ACK。状态低字节只用于筛选请求候选，锁内仍校验完整状态、epoch、generation、deadline 和 CRC；不改变 mailbox v1 布局或回收条件。
+- 单个 mailbox mapping 在生命周期内复用独立的 guard handle，最多保留八个空闲 handle；并行或嵌套操作不能共用活动 handle。每次租借仍核对文件身份和精确长度；POSIX 还核对当前路径，防止缓存 inode 掩盖路径删除或替换。Windows 活动句柄禁止删除共享。锁 I/O 失败时关闭而不缓存。活动锁未归还时拒绝关闭 owner，不增加业务排队或模型实例容量。
+- arena 的状态查询和周期回收先扫描完整 uint32 state 的四个字节列，再按原顺序解析非空 descriptor；空槽不构造 Python 快照。筛选不缓存状态、不修改布局，未知高位状态仍由原解析器拒绝，租约、deadline、reader/writer guard 和回收规则保持不变。
+- Workflow Trigger 的普通取消检查复用通用 request 的 epoch/generation/token、deadline 和 cancel flag 探针；发现取消后才加锁读取具体原因。response publication 与资源回收仍执行完整 guard 校验。
+- mailbox 与 EventRing 的 mmap 文件使用非追加模式打开；首次创建使用独占创建，已有文件使用定位读写。Windows 和 Ubuntu/WSL 采用相同固定偏移语义，文件长度不符仍拒绝启动，不自动修复或兼容错误布局。
 
 - 不支持跨主机共享内存；跨主机使用协议 adapter 或 ObjectStore。
 - 不把短期 BufferRef 写入数据库、异步结果或长期业务资源。

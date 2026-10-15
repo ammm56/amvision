@@ -66,7 +66,7 @@ launcher/
 
 内部数据使用具名 class/record class；枚举表示有限状态。`LauncherSettings` 为不可变配置，`LauncherSnapshot` 为不可变 UI 快照。`StackStopResult` 包含成功标志与错误信息，调用方按结果及状态分支，不解析中文错误文案。
 
-Infrastructure DTO 与 Core 配置分离。主要类型为 `LauncherSettingsDocumentV1`、`WindowPreferencesDocumentV1`、`SettingsHeader`、`ServiceHealthResponse`、`FullSupervisorStateV1`、`ProcessIdentityDocument`、`LauncherStatusDocumentV1`、`StopTargetDocumentV1`、`ProcessInspectionDocument` 和发行文件清单模型。
+Infrastructure DTO 与 Core 配置分离。主要类型为 `LauncherSettingsDocumentV1`、`WindowPreferencesDocumentV1`、`SettingsHeader`、`ServiceHealthResponse`、`FullSupervisorStateV3`、`ProcessIdentityDocument`、`LauncherStatusDocumentV3`、`StopTargetDocumentV2`、`ProcessInspectionDocument` 和发行文件清单模型。进程身份以 `birth_identity` 校验，create_time 仅展示；检查协议为 `amvision.launcher-process.v2`，停止目标为 `amvision.launcher-stop-target.v2`，不接受旧身份格式。
 
 | 配置字段 | Core 属性 |
 | --- | --- |
@@ -117,7 +117,7 @@ Python full 已补齐：
 
 - 迁移前写入 root state；迁移子进程登记到组件列表。
 - 启动阶段和等待循环检查绑定 root 的停止请求；迁移先完成当前安全边界，再停止后续启动。
-- `logs/full-stack/launcher-status.json` 使用 `amvision.launcher-status.v1`，状态为 starting/running/stopping/failed。完整启动后才写 running，失败摘要保留。
+- `logs/full-stack/launcher-status.json` 使用 `amvision.launcher-status.v3`，状态为 starting/running/degraded/recovering/stopping/failed。完整启动后才写 running，失败摘要保留。
 - stop 新增 `--expected-root-identity-file` 与 `--graceful-only`。桌面使用两者，拒绝换实例，等待失败不进入 stop 的强杀后备分支。Python Supervisor 自身既有组件回收规则保持原有职责。
 - state、停止请求和阶段文件原子写入；清理持有文件锁并核对 root，旧 stop 不能删除新实例文件。
 

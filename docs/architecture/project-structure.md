@@ -48,9 +48,7 @@ backend/
 └─ workers/           六类后台任务 Profile 与 Runner
 ```
 
-`backend/runtime/processes/` 提供 deadline、进程树监督、Windows Job Object
-bootstrap 和有界日志 drain。该目录不包含 Conversion 业务规则，也不依赖 Worker
-组装层；service application 与 Worker 可以共同依赖它。
+`backend/runtime/processes/` 提供统一命令和 spawn 归属、deadline、整组停止、恢复准入与有界日志。Windows Job 和 POSIX session/group 的差异仅在底层适配器中；该目录不包含 Conversion 业务规则，也不依赖 Worker 组装层。详细契约见[进程归属与恢复准入](platform/process-ownership.md)。
 
 ### backend/service
 
@@ -98,6 +96,10 @@ backend/service/
 - `catalog/`、`registry/`（模型目录、版本、构建和能力查询）
 
 模型结构、loss、matcher、checkpoint 映射和 export forward 属于对应 `*_core`。任务提交、ObjectStore、队列、ModelVersion/ModelBuild 登记属于外层应用服务和 Worker。
+
+YOLOv8 detection 的 `training/detection_execution.py` 保留训练步骤编排；`resume.py` 负责恢复配置校验以及模型、优化器、调度器、scaler、EMA 和历史状态恢复，`checkpoint.py`、`savepoint.py` 负责权重编码和保存点。数据集读取经 `ports/training_dataset.py` 提供的只读端口进入训练，不通过模型 core 直接访问平台数据库。
+
+Workflow 的 `runtime_service.py` 保留公开门面、锁顺序、缓存与 Worker 管理器的所有权。`runtime/queries.py` 组织查询，`runtime/lifecycle.py` 组织启停事务，`runtime/completion.py` 组织异步终态提交；三者通过既有端口取得状态，不维护第二份 Runtime、revision 或锁。终态提交遵循 generation/revision/worker 校验，重复回调不能改写已经提交的终态。
 
 ### Deployment Runtime
 
