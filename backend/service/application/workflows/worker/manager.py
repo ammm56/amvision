@@ -6,13 +6,14 @@ from collections.abc import Callable, Iterable
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from queue import Empty
-from threading import Event, Lock, RLock, Thread
+from threading import Event, Lock, RLock, Thread, current_thread
 from time import monotonic, perf_counter
 from typing import TYPE_CHECKING, Any, Iterator
 from uuid import uuid4
+from weakref import WeakValueDictionary
 import logging
 import math
-import multiprocessing
+from backend.runtime.processes.managed_spawn import managed_spawn_context
 import socket
 
 from backend.service.application.workflows.runtime_preview import RuntimePreviewChannel
@@ -224,22 +225,25 @@ class WorkflowRuntimeWorkerManager:
             local_buffer_broker_event_channel_provider
         )
         self.published_inference_gateway = published_inference_gateway
-        self._context = multiprocessing.get_context("spawn")
+        self._context = managed_spawn_context()
         self._handles: dict[str, _WorkflowRuntimeProcessHandle] = {}
         self._async_runs: dict[str, _WorkflowRuntimeAsyncRunHandle] = {}
         self._execution_tokens: dict[str, WorkflowRuntimeExecutionToken] = {}
         self._execution_token_ids_by_runtime: dict[str, set[str]] = {}
         self._lock = Lock()
         self._stopping = Event()
+        self._manager_lifecycle_lock = Lock()
+        self._stop_pending = False
         self._monitor_stop_event = Event()
         self._monitor_wake_event = Event()
+        self._recovery_scan_requested = Event()
         self._monitor_thread: Thread | None = None
         self._recovery_threads: dict[str, Thread] = {}
         self._recovery_failures: dict[str, int] = {}
         self._recovery_next_attempt_at: dict[str, float] = {}
-        # 使用固定数量的分段锁串行化同一 runtime 的显式生命周期操作与
-        # monitor 自动恢复，避免为历史 runtime id 无限保留独立锁。
-        self._runtime_lifecycle_locks = tuple(RLock() for _ in range(64))
+        # 调用者持有锁的强引用；没有使用者后自动释放历史 Runtime 的锁，且不跨 ID 碰撞。
+        self._runtime_lifecycle_locks: WeakValueDictionary[str, RLock] = WeakValueDictionary()
+        self._runtime_lifecycle_registry_lock = Lock()
         self._cleanup_client_lock = Lock()
         self._cleanup_local_buffer_client: LocalBufferBrokerClient | None = None
 
@@ -267,17 +271,36 @@ class WorkflowRuntimeWorkerManager:
         TriggerSource 不会在 worker 尚未就绪时接收首批外部请求。
         """
 
-        self._stopping.clear()
-        if self._monitor_thread is None or not self._monitor_thread.is_alive():
-            self._recover_desired_runtimes_before_monitor()
-            self._monitor_stop_event.clear()
-            self._monitor_wake_event.clear()
-            self._monitor_thread = Thread(
-                target=self._run_monitor_loop,
-                name="workflow-runtime-worker-monitor",
-                daemon=True,
-            )
-            self._monitor_thread.start()
+        if not self._manager_lifecycle_lock.acquire(blocking=False):
+            raise InvalidRequestError("Workflow manager 启停尚未完成，禁止重复启动")
+        try:
+            with self._lock:
+                if self._stop_pending:
+                    raise InvalidRequestError("Workflow manager 停止尚未确认，禁止恢复")
+                if self._monitor_thread is not None and self._monitor_thread.is_alive():
+                    return
+                self._stopping.clear()
+            try:
+                self._recover_desired_runtimes_before_monitor()
+                with self._lock:
+                    if self._stopping.is_set():
+                        raise OperationCancelledError("Workflow manager 启动期间收到停止请求")
+                    self._monitor_stop_event.clear()
+                    self._monitor_wake_event.clear()
+                    thread = Thread(
+                        target=self._run_monitor_loop,
+                        name="workflow-runtime-worker-monitor",
+                        daemon=True,
+                    )
+                    thread.start()
+                    self._monitor_thread = thread
+            except BaseException:
+                with self._lock:
+                    self._stop_pending = True
+                    self._stopping.set()
+                raise
+        finally:
+            self._manager_lifecycle_lock.release()
 
     def _recover_desired_runtimes_before_monitor(self) -> None:
         """按配置并行度完成一次有界启动恢复，并等待每个恢复任务结束。"""
@@ -312,26 +335,51 @@ class WorkflowRuntimeWorkerManager:
         """停止全部 runtime worker；恢复排空时禁止取消工作或强杀。"""
 
         with self._lock:
+            self._stop_pending = True
             self._stopping.set()
-            async_handles = tuple(self._async_runs.values())
-            runtime_ids = tuple(self._handles.keys())
         self._monitor_stop_event.set()
         self._monitor_wake_event.set()
+        # 先封闭准入，使仍在首轮恢复的 start 能退出；不等待不确定的启动无限结束。
+        if not self._manager_lifecycle_lock.acquire(timeout=1.0):
+            raise OperationTimeoutError("Workflow manager 启停仍在执行，保留依赖与恢复栅栏")
+        try:
+            self._finish_stop(graceful_only=graceful_only)
+            with self._lock:
+                self._stop_pending = False
+        finally:
+            self._manager_lifecycle_lock.release()
+
+    def _finish_stop(self, *, graceful_only: bool) -> None:
+        """确认所有线程、回调和进程组退出后，才释放 cleanup 通道。"""
+        with self._lock:
+            async_handles = tuple(self._async_runs.values())
+        if not graceful_only:
+            for async_handle in async_handles:
+                async_handle.cancel_event.set()
         monitor_thread = self._monitor_thread
         if monitor_thread is not None:
+            if monitor_thread is current_thread():
+                raise OperationTimeoutError("Workflow monitor 不能确认自身退出")
             monitor_thread.join(timeout=1.0)
-            if not monitor_thread.is_alive():
-                self._monitor_thread = None
+            if monitor_thread.is_alive():
+                raise OperationTimeoutError("Workflow monitor 尚未退出，保留依赖")
+            self._monitor_thread = None
         with self._lock:
             recovery_threads = tuple(self._recovery_threads.values())
         for recovery_thread in recovery_threads:
+            if recovery_thread is current_thread():
+                raise OperationTimeoutError("Workflow recovery 不能确认自身退出")
             recovery_thread.join(timeout=1.0)
+            if recovery_thread.is_alive():
+                raise OperationTimeoutError("Workflow recovery 尚未退出，保留依赖")
+        # 启动失败的 recovery 可能登记待清理 handle；必须在线程退出后重新枚举。
+        with self._lock:
+            runtime_ids = tuple(self._handles.keys())
         for async_handle in async_handles:
             if graceful_only:
                 if not async_handle.completion_event.wait(timeout=30):
                     raise OperationTimeoutError("Workflow 异步工作尚未排空，拒绝自动恢复")
-            else:
-                async_handle.cancel_event.set()
+        first_error = None
         for workflow_runtime_id in runtime_ids:
             try:
                 if graceful_only:
@@ -339,12 +387,14 @@ class WorkflowRuntimeWorkerManager:
                         self._stop_runtime(workflow_runtime_id, graceful_only=True)
                 else:
                     self.stop_runtime(workflow_runtime_id)
-            except ServiceError:
-                if graceful_only:
-                    raise
-                continue
+            except ServiceError as error:
+                if first_error is None:
+                    first_error = error
+        if first_error is not None:
+            raise first_error
         for async_handle in async_handles:
-            async_handle.completion_event.wait(timeout=1.0)
+            if not async_handle.completion_event.wait(timeout=1.0):
+                raise OperationTimeoutError("Workflow 异步完成回调尚未退出，保留依赖")
         self._close_cleanup_local_buffer_client()
 
     def is_runtime_available(self, workflow_runtime_id: str) -> bool:
@@ -412,6 +462,8 @@ class WorkflowRuntimeWorkerManager:
         worker_instance_id = f"{workflow_app_runtime.workflow_runtime_id}-{uuid4().hex}"
 
         with self._lock:
+            if self._stopping.is_set():
+                raise InvalidRequestError("Workflow manager 已停止接入，禁止启动 worker")
             existing_handle = self._handles.get(
                 workflow_app_runtime.workflow_runtime_id
             )
@@ -581,11 +633,16 @@ class WorkflowRuntimeWorkerManager:
                 self._handles[workflow_app_runtime.workflow_runtime_id] = handle
             return runtime_state
         except Exception:
+            try:
+                self._cleanup_handle(handle)
+            except Exception:
+                with self._lock:
+                    self._handles.setdefault(workflow_app_runtime.workflow_runtime_id, handle)
+                raise
             self._remove_handle_if_current(
                 workflow_app_runtime.workflow_runtime_id,
                 handle,
             )
-            self._cleanup_handle(handle)
             raise
 
     def stop_runtime(self, workflow_runtime_id: str) -> WorkflowRuntimeWorkerState:
@@ -603,8 +660,8 @@ class WorkflowRuntimeWorkerManager:
             return WorkflowRuntimeWorkerState(observed_state="stopped")
 
         if not handle.process.is_alive():
-            self._remove_handle_if_current(workflow_runtime_id, handle)
             self._cleanup_handle(handle)
+            self._remove_handle_if_current(workflow_runtime_id, handle)
             return WorkflowRuntimeWorkerState(observed_state="stopped")
 
         with handle.state_lock:
@@ -625,6 +682,7 @@ class WorkflowRuntimeWorkerManager:
             handle.process.join(timeout=10)
             if handle.process.is_alive() or handle.process.exitcode != 0:
                 raise OperationTimeoutError("Workflow worker 未确认正常退出，拒绝自动恢复")
+            handle.process.stop_group(timeout=10, force=False)
         self._cleanup_handle(handle)
         self._remove_handle_if_current(workflow_runtime_id, handle)
         return runtime_state
@@ -693,11 +751,11 @@ class WorkflowRuntimeWorkerManager:
                 if handle is None:
                     return WorkflowRuntimeWorkerState(observed_state="stopped")
                 if not handle.process.is_alive():
+                    self._cleanup_handle(handle)
                     removed = self._remove_handle_if_current(
                         workflow_runtime_id,
                         handle,
                     )
-                    self._cleanup_handle(handle)
                     if not removed:
                         # 旧 handle 检查期间已有新 worker 接管稳定 runtime id；
                         # 重新读取新句柄，不能把旧进程失败返回成当前健康状态。
@@ -1426,13 +1484,9 @@ class WorkflowRuntimeWorkerManager:
             return
         with cleanup_lock:
             client = getattr(self, "_cleanup_local_buffer_client", None)
+            if client is not None:
+                client.close()
             self._cleanup_local_buffer_client = None
-        if client is None:
-            return
-        try:
-            client.close()
-        except Exception as exc:
-            LOGGER.warning("关闭 LocalBufferBroker cleanup client 失败: %s", exc)
 
     def _invalidate_cleanup_local_buffer_client(
         self,
@@ -1577,12 +1631,13 @@ class WorkflowRuntimeWorkerManager:
     ) -> None:
         """在同步调用超时或崩溃后强制清理句柄。"""
 
-        self._remove_handle_if_current(workflow_runtime_id, handle)
         with handle.state_lock:
             handle.expected_shutdown = True
         self._cleanup_handle(handle)
+        self._remove_handle_if_current(workflow_runtime_id, handle)
         # 同步调用线程可能在 monitor 已取得旧句柄快照后完成清理。显式唤醒
         # monitor，使其立即扫描 desired=running 且已缺失 worker 的 Runtime。
+        self._recovery_scan_requested.set()
         self._monitor_wake_event.set()
 
     def _remove_handle_if_current(
@@ -1610,12 +1665,10 @@ class WorkflowRuntimeWorkerManager:
             with handle.state_lock:
                 handle.expected_shutdown = True
 
+            handle.process.stop_group(timeout=10)
             handle.response_stop_event.set()
             if handle.preview_channel is not None:
                 handle.preview_channel.close()
-            if handle.process.is_alive():
-                handle.process.terminate()
-                handle.process.join(timeout=1.0)
             response_thread = handle.response_thread
             if response_thread is not None:
                 response_thread.join(timeout=1.0)
@@ -1875,7 +1928,10 @@ class WorkflowRuntimeWorkerManager:
     def _run_monitor_loop(self) -> None:
         """巡检 worker 心跳和异常退出，并把异常状态写入正式事件流。"""
 
+        next_recovery_scan_at = 0.0
         while not self._monitor_stop_event.is_set():
+            # 先清唤醒再观测状态，避免观测后到达的节点 deadline 或恢复请求被清掉。
+            self._monitor_wake_event.clear()
             with self._lock:
                 handles = tuple(self._handles.items())
             now = monotonic()
@@ -2007,18 +2063,31 @@ class WorkflowRuntimeWorkerManager:
                         source_handle=handle,
                     )
                 if remove_handle:
+                    try:
+                        self._cleanup_handle(handle)
+                    except Exception:
+                        LOGGER.exception("Workflow 进程组未完成回收，保留归属并阻止自动恢复")
+                        continue
                     with self._lock:
                         stored_handle = self._handles.get(workflow_runtime_id)
                         if stored_handle is handle:
                             self._handles.pop(workflow_runtime_id, None)
-                    self._cleanup_handle(handle)
-            try:
-                self._schedule_desired_runtime_recoveries()
-            except Exception:  # noqa: BLE001 - 数据库暂时不可用不能终止监控线程
-                LOGGER.exception("扫描 WorkflowAppRuntime 自动恢复状态失败")
-            wait_seconds = self._resolve_monitor_wait_seconds(handles, now=monotonic())
+                            self._recovery_scan_requested.set()
+            scan_now = monotonic()
+            if scan_now >= next_recovery_scan_at or self._recovery_scan_requested.is_set():
+                # 扫描前清标记；扫描期间产生的新恢复请求保留到下一轮，不丢唤醒。
+                self._recovery_scan_requested.clear()
+                next_recovery_scan_at = scan_now + 0.5
+                try:
+                    self._schedule_desired_runtime_recoveries()
+                except Exception:  # noqa: BLE001 - 数据库暂时不可用不能终止监控线程
+                    LOGGER.exception("扫描 WorkflowAppRuntime 自动恢复状态失败")
+            wait_now = monotonic()
+            wait_seconds = min(
+                self._resolve_monitor_wait_seconds(handles, now=wait_now),
+                max(0.0, next_recovery_scan_at - wait_now),
+            )
             self._monitor_wake_event.wait(wait_seconds)
-            self._monitor_wake_event.clear()
 
     def _monitor_node_pack_timeouts(
         self,
@@ -2465,17 +2534,36 @@ class WorkflowRuntimeWorkerManager:
         )
 
     def _resolve_runtime_lifecycle_lock(self, workflow_runtime_id: str) -> RLock:
-        """按 runtime id 返回有界分段生命周期锁。"""
+        """返回当前 Runtime 的唯一锁；活动调用持有强引用，历史 ID 不常驻。"""
 
-        lock_index = hash(workflow_runtime_id) % len(self._runtime_lifecycle_locks)
-        return self._runtime_lifecycle_locks[lock_index]
+        with self._runtime_lifecycle_registry_lock:
+            lock = self._runtime_lifecycle_locks.get(workflow_runtime_id)
+            if lock is None:
+                lock = RLock()
+                self._runtime_lifecycle_locks[workflow_runtime_id] = lock
+            return lock
 
     @contextmanager
-    def runtime_lifecycle_guard(self, workflow_runtime_id: str) -> Iterator[None]:
-        """串行化同一 Runtime 的控制面动作和调用句柄接管。"""
+    def runtime_lifecycle_guard(
+        self, workflow_runtime_id: str, *, acquisition_mode: str = "wait",
+    ) -> Iterator[None]:
+        """同一 Runtime 控制操作串行化；实时 reject 准入不等待控制锁。"""
 
-        with self._resolve_runtime_lifecycle_lock(workflow_runtime_id):
+        if acquisition_mode not in {"wait", "reject"}:
+            raise InvalidRequestError(
+                "Workflow Runtime lifecycle acquisition_mode 不合法",
+                details={"acquisition_mode": acquisition_mode},
+            )
+        lock = self._resolve_runtime_lifecycle_lock(workflow_runtime_id)
+        if not lock.acquire(blocking=acquisition_mode == "wait"):
+            raise WorkflowRuntimeBusyError(details={
+                "workflow_runtime_id": workflow_runtime_id,
+                "busy_phase": "runtime_lifecycle",
+            })
+        try:
             yield
+        finally:
+            lock.release()
 
     def acquire_execution_token(
         self,
@@ -2491,6 +2579,8 @@ class WorkflowRuntimeWorkerManager:
     ) -> WorkflowRuntimeExecutionToken:
         """按 wait/reject 模式取得唯一真实 Runtime 执行权。"""
 
+        if self._stopping.is_set():
+            raise InvalidRequestError("Workflow manager 已停止接入，禁止执行")
         if acquisition_mode not in {"wait", "reject"}:
             raise InvalidRequestError(
                 "Workflow Runtime execution acquisition_mode 不合法",
@@ -2594,6 +2684,8 @@ class WorkflowRuntimeWorkerManager:
 
             with self._lock:
                 current_handle = self._handles.get(workflow_runtime_id)
+                if self._stopping.is_set():
+                    raise InvalidRequestError("Workflow manager 已停止接入，禁止分配执行 token")
                 if current_handle is not handle:
                     raise ResourceConflictError(
                         "WorkflowAppRuntime worker 已在调用前切换版本",

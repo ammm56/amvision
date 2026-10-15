@@ -11,7 +11,7 @@ import json
 import mimetypes
 from pathlib import Path, PurePosixPath
 from threading import RLock
-from time import monotonic
+from time import perf_counter
 from typing import Any
 from uuid import uuid4
 
@@ -1763,10 +1763,10 @@ def load_image_matrix_from_payload(
 def _start_workflow_image_access_timing(
     request: WorkflowNodeExecutionRequest,
 ) -> float | None:
-    """仅在诊断模式下读取 monotonic 起点。"""
+    """仅在诊断模式下读取高分辨率单调时钟，避免亚毫秒阶段被量化。"""
 
     timings = request.execution_metadata.get(_WORKFLOW_IMAGE_ACCESS_TIMINGS_KEY)
-    return monotonic() if isinstance(timings, _WorkflowImageAccessTimings) else None
+    return perf_counter() if isinstance(timings, _WorkflowImageAccessTimings) else None
 
 
 def _record_workflow_image_access_timing(
@@ -1784,7 +1784,7 @@ def _record_workflow_image_access_timing(
         return
     timings.add(
         field_name=field_name,
-        elapsed_ms=max(0.0, monotonic() - started_at) * 1_000,
+        elapsed_ms=max(0.0, perf_counter() - started_at) * 1_000,
     )
 
 

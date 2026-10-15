@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, wait
 from dataclasses import dataclass
 import math
 import json
-import multiprocessing
+from backend.runtime.processes.managed_spawn import managed_spawn_context
 from queue import Empty, Full
 from threading import RLock
 from time import monotonic
@@ -42,7 +42,7 @@ class PreviewSessionPool:
         self.manager = manager
         self.published_inference_gateway = published_inference_gateway
         self.local_buffer_channel_provider = local_buffer_channel_provider
-        self._context = multiprocessing.get_context("spawn")
+        self._context = managed_spawn_context()
         self._lock = RLock()
         self._slots = [_PreviewSlot(self._context.Event()) for _ in range(settings.workflow_runtime.preview_worker_count)]
         self._executor = ThreadPoolExecutor(max_workers=len(self._slots), thread_name_prefix="preview-session-control")
@@ -104,13 +104,13 @@ class PreviewSessionPool:
 
     def _stop(self, slot):
         """仅终止本池拥有的进程，必须确认死亡后才能释放借用。"""
-        if slot.process is not None and slot.process.is_alive():
+        if slot.process is not None:
             slot.cancellation.set()
-            slot.process.terminate()
-            slot.process.join(5)
-            if slot.process.is_alive():
+            try:
+                slot.process.stop_group(timeout=5)
+            except Exception:
                 slot.quarantined = True
-                raise RuntimeError("preview_worker_did_not_exit")
+                raise
 
     def _start(self, slot):
         """空闲活进程直接复用，死亡进程关闭旧通道后重建。"""

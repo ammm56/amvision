@@ -30,6 +30,24 @@ from backend.service.application.message_channels.errors import (
 )
 
 
+def test_empty_phase_poll_never_waits_for_clock_tick(tmp_path, monkeypatch):
+    """粗粒度时钟不跳变时，空 PREPARE/REQUEST 也必须立即返回。"""
+    from backend.service.infrastructure.ipc import workflow_trigger_mailbox as trigger
+    from backend.service.infrastructure.ipc.local_message import mailbox
+
+    with WorkflowTriggerMailboxServer(buffers_root=tmp_path) as server:
+        with monkeypatch.context() as patch:
+            patch.setattr(trigger, "monotonic_ns", lambda: 1_000_000_000)
+            patch.setattr(mailbox, "monotonic_ns", lambda: 1_000_000_000)
+
+            def forbid_wait(seconds):
+                raise AssertionError(f"非阻塞 poll 不应 sleep({seconds})")
+
+            patch.setattr(mailbox, "sleep", forbid_wait)
+            assert server.poll_prepare() is None
+            assert server.poll_request() is None
+
+
 def test_inline_round_trip_reuses_descriptor_and_ack_recovers_capacity(
     tmp_path: Path,
 ) -> None:
@@ -52,6 +70,32 @@ def test_inline_round_trip_reuses_descriptor_and_ack_recovers_capacity(
             sweep = server.sweep()
             assert sweep["released_identities"] == (identity,)
             assert server.build_status()["descriptor_state_counts"][0] == 128
+
+
+def test_cancel_probe_uses_existing_fence_before_reading_reason(tmp_path, monkeypatch):
+    """未取消请求复用通用 cancel probe；真实取消仍读取受锁保护的原因。"""
+    with WorkflowTriggerMailboxServer(buffers_root=tmp_path) as server:
+        with WorkflowTriggerMailboxClient(buffers_root=tmp_path) as client:
+            identity = _publish_request(server, client, {})
+            request = server.poll_request()
+            assert request is not None
+            calls = []
+            original = server._read_extension
+
+            def observe(context):
+                calls.append(context)
+                return original(context)
+
+            monkeypatch.setattr(server, "_read_extension", observe)
+            for _ in range(20):
+                assert server.read_cancel_reason(identity=identity) == contract.CANCEL_REASON_NONE
+            assert calls == []
+            client.cancel(identity=identity)
+            assert server.read_cancel_reason(identity=identity) == contract.CANCEL_REASON_EXPLICIT
+            assert len(calls) == 1
+            server.sweep()
+            with pytest.raises(InvalidRequestError):
+                server.read_cancel_reason(identity=identity)
 
 
 @pytest.mark.parametrize("public_payload_bytes", (256 * 1024, 1024 * 1024))

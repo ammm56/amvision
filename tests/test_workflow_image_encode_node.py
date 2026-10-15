@@ -128,14 +128,14 @@ def test_workflow_image_access_timings_split_raw_view_and_decode(
 
     fake_clock = 0.0
 
-    def fake_monotonic() -> float:
-        """使用确定性时钟避免亚毫秒路径被三位小数舍入为零。"""
+    def fake_perf_counter() -> float:
+        """固定亚毫秒增量，不能把 Windows 粗粒度计时误认作正确耗时。"""
 
         nonlocal fake_clock
-        fake_clock += 0.001
+        fake_clock += 0.00025
         return fake_clock
 
-    monkeypatch.setattr(runtime_support_module, "monotonic", fake_monotonic)
+    monkeypatch.setattr(runtime_support_module, "perf_counter", fake_perf_counter)
 
     registry = ExecutionImageRegistry()
     request = _build_request(registry=registry, image=None)
@@ -153,7 +153,7 @@ def test_workflow_image_access_timings_split_raw_view_and_decode(
         np_module=np,
     )
     raw_timings = read_workflow_image_access_timings(request.execution_metadata)
-    assert raw_timings["workflow_raw_view_ms"] >= 0
+    assert raw_timings["workflow_raw_view_ms"] == pytest.approx(0.25)
     assert raw_timings["workflow_image_decode_ms"] == 0
 
     success, encoded = cv2.imencode(
@@ -176,7 +176,7 @@ def test_workflow_image_access_timings_split_raw_view_and_decode(
         np_module=np,
     )
     decoded_timings = read_workflow_image_access_timings(request.execution_metadata)
-    assert decoded_timings["workflow_image_decode_ms"] > 0, decoded_timings
+    assert decoded_timings["workflow_image_decode_ms"] == pytest.approx(0.25)
     load_image_matrix_from_payload(
         request,
         image_payload=encoded_payload,
@@ -186,6 +186,35 @@ def test_workflow_image_access_timings_split_raw_view_and_decode(
     assert read_workflow_image_access_timings(request.execution_metadata)[
         "workflow_image_decode_ms"
     ] == decoded_timings["workflow_image_decode_ms"]
+
+
+@pytest.mark.parametrize("encoded", [False, True])
+def test_workflow_image_access_diagnostics_off_does_not_read_clock(
+    monkeypatch: pytest.MonkeyPatch, encoded: bool,
+) -> None:
+    """关闭 diagnostics 后，raw 和 encoded 路径均不读取计时器。"""
+
+    def reject_clock() -> float:
+        """禁止在未启用的诊断路径调用高分辨率时钟。"""
+        raise AssertionError("diagnostics-off must not sample the clock")
+
+    monkeypatch.setattr(runtime_support_module, "perf_counter", reject_clock)
+    registry = ExecutionImageRegistry()
+    request = _build_request(registry=registry, image=None)
+    prepare_workflow_image_access_timings(request.execution_metadata)
+    matrix = np.zeros((4, 6, 3), dtype=np.uint8)
+    if encoded:
+        success, image_bytes = cv2.imencode(".png", matrix)
+        assert success
+        entry = registry.register_image_bytes(content=image_bytes.tobytes(), media_type="image/png")
+        payload = {"transport_kind": "memory", "image_handle": entry.image_handle, "media_type": "image/png"}
+    else:
+        payload = register_image_matrix(request, image_matrix=matrix)
+    _, decoded = load_image_matrix_from_payload(request, image_payload=payload, cv2_module=cv2, np_module=np)
+    np.testing.assert_array_equal(decoded, matrix)
+    assert read_workflow_image_access_timings(request.execution_metadata) == {
+        "workflow_raw_view_ms": 0.0, "workflow_image_decode_ms": 0.0,
+    }
 
 
 def _build_request(

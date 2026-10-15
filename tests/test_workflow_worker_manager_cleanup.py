@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from threading import Event, Lock, RLock, Thread
+from threading import Event, Lock, Thread
 from types import SimpleNamespace
+from weakref import WeakValueDictionary
 
 import backend.service.application.workflows.worker.manager as manager_module
 import pytest
@@ -289,7 +290,9 @@ def test_sync_invoke_timeout_includes_request_lock_wait() -> None:
     request_lock = Lock()
     request_lock.acquire()
     worker_manager = object.__new__(manager_module.WorkflowRuntimeWorkerManager)
-    worker_manager._runtime_lifecycle_locks = (RLock(),)  # noqa: SLF001
+    worker_manager._stopping = Event()  # noqa: SLF001
+    worker_manager._runtime_lifecycle_locks = WeakValueDictionary()  # noqa: SLF001
+    worker_manager._runtime_lifecycle_registry_lock = Lock()  # noqa: SLF001
     worker_manager._lock = Lock()  # noqa: SLF001
     worker_manager._handles = {  # noqa: SLF001
         workflow_app_runtime.workflow_runtime_id: SimpleNamespace(
@@ -337,7 +340,11 @@ def test_sync_invoke_timeout_includes_runtime_lifecycle_lock_wait() -> None:
     lifecycle_lock = Lock()
     lifecycle_lock.acquire()
     worker_manager = object.__new__(manager_module.WorkflowRuntimeWorkerManager)
-    worker_manager._runtime_lifecycle_locks = (lifecycle_lock,)  # noqa: SLF001
+    worker_manager._stopping = Event()  # noqa: SLF001
+    worker_manager._runtime_lifecycle_locks = WeakValueDictionary({  # noqa: SLF001
+        workflow_app_runtime.workflow_runtime_id: lifecycle_lock,
+    })
+    worker_manager._runtime_lifecycle_registry_lock = Lock()  # noqa: SLF001
     worker_manager._lock = Lock()  # noqa: SLF001
     worker_manager._handles = {}  # noqa: SLF001
 
@@ -381,11 +388,13 @@ def test_sync_invoke_releases_request_lock_when_identity_changes_after_wait() ->
         request_lock=request_lock,
     )
     worker_manager = object.__new__(manager_module.WorkflowRuntimeWorkerManager)
-    worker_manager._runtime_lifecycle_locks = (RLock(),)  # noqa: SLF001
+    worker_manager._runtime_lifecycle_locks = WeakValueDictionary()  # noqa: SLF001
+    worker_manager._runtime_lifecycle_registry_lock = Lock()  # noqa: SLF001
     worker_manager._lock = Lock()  # noqa: SLF001
     worker_manager._handles = {  # noqa: SLF001
         workflow_app_runtime.workflow_runtime_id: handle
     }
+    worker_manager._stopping = Event()  # noqa: SLF001
     validation_count = 0
 
     def validate_identity(*_args: object, **_kwargs: object) -> None:
@@ -422,6 +431,8 @@ def test_manager_start_waits_for_desired_runtime_recovery_before_monitor() -> No
         workflow_runtime=SimpleNamespace(model_startup_parallelism=2)
     )
     worker_manager._stopping = Event()  # noqa: SLF001
+    worker_manager._manager_lifecycle_lock = Lock()  # noqa: SLF001
+    worker_manager._stop_pending = False  # noqa: SLF001
     worker_manager._monitor_stop_event = Event()  # noqa: SLF001
     worker_manager._monitor_wake_event = Event()  # noqa: SLF001
     worker_manager._monitor_thread = None  # noqa: SLF001
@@ -531,7 +542,7 @@ def test_runtime_handle_cleanup_is_idempotent_across_competing_owners(
     )
     handle = manager_module._WorkflowRuntimeProcessHandle(  # noqa: SLF001
         workflow_runtime_id="workflow-runtime-cleanup-race",
-        process=SimpleNamespace(is_alive=lambda: False),
+        process=SimpleNamespace(is_alive=lambda: False, stop_group=lambda **_: None),
         request_queue=request_queue,
         response_queue=response_queue,
         local_buffer_broker_event_channel=SimpleNamespace(),
@@ -576,12 +587,33 @@ def test_runtime_handle_cleanup_is_idempotent_across_competing_owners(
     assert channel_close_counts == {"buffer": 1, "gateway": 1}
 
 
+def test_group_cleanup_failure_retains_handle_and_resources() -> None:
+    """整组清空失败时不得归还 IPC 或移除旧代次，恢复入口不能重建。"""
+    def fail(**_kwargs):
+        raise TimeoutError("group still occupied")
+    queue = _FakeQueue()
+    handle = manager_module._WorkflowRuntimeProcessHandle(
+        workflow_runtime_id="retained", process=SimpleNamespace(stop_group=fail),
+        request_queue=queue, response_queue=queue,
+    )
+    manager = object.__new__(manager_module.WorkflowRuntimeWorkerManager)
+    manager._lock = Lock()
+    manager._handles = {"retained": handle}
+    with pytest.raises(TimeoutError, match="still occupied"):
+        manager._terminate_failed_handle(workflow_runtime_id="retained", handle=handle)
+    assert manager._handles["retained"] is handle
+    assert not handle.cleanup_completed
+    assert handle.expected_shutdown
+    assert queue.close_count == 0
+
+
 def test_get_runtime_health_does_not_remove_replacement_handle() -> None:
     """health 检查旧死进程期间发生接管时必须返回并保留新 handle。"""
 
     workflow_runtime_id = "workflow-runtime-health-replacement"
     worker_manager = object.__new__(manager_module.WorkflowRuntimeWorkerManager)
-    worker_manager._runtime_lifecycle_locks = (RLock(),)  # noqa: SLF001
+    worker_manager._runtime_lifecycle_locks = WeakValueDictionary()  # noqa: SLF001
+    worker_manager._runtime_lifecycle_registry_lock = Lock()  # noqa: SLF001
     worker_manager._lock = Lock()  # noqa: SLF001
     worker_manager._handles = {}  # noqa: SLF001
     new_state = WorkflowRuntimeWorkerState(
@@ -627,7 +659,8 @@ def test_runtime_health_waits_for_startup_ready_publication() -> None:
 
     workflow_runtime_id = "workflow-runtime-health-startup-fence"
     worker_manager = object.__new__(manager_module.WorkflowRuntimeWorkerManager)
-    worker_manager._runtime_lifecycle_locks = (RLock(),)  # noqa: SLF001
+    worker_manager._runtime_lifecycle_locks = WeakValueDictionary()  # noqa: SLF001
+    worker_manager._runtime_lifecycle_registry_lock = Lock()  # noqa: SLF001
     worker_manager._lock = Lock()  # noqa: SLF001
     worker_manager._handles = {}  # noqa: SLF001
     startup_entered = Event()
@@ -688,6 +721,7 @@ def test_failed_old_handle_termination_does_not_remove_replacement_handle() -> N
 
     workflow_runtime_id = "workflow-runtime-terminate-replacement"
     worker_manager = object.__new__(manager_module.WorkflowRuntimeWorkerManager)
+    worker_manager._recovery_scan_requested = Event()  # noqa: SLF001
     worker_manager._lock = Lock()  # noqa: SLF001
     worker_manager._monitor_wake_event = Event()  # noqa: SLF001
     new_handle = manager_module._WorkflowRuntimeProcessHandle(  # noqa: SLF001
@@ -776,7 +810,8 @@ def test_cancelled_async_run_does_not_restart_replaced_revision() -> None:
         callbacks=callbacks,
     )
     worker_manager = object.__new__(manager_module.WorkflowRuntimeWorkerManager)
-    worker_manager._runtime_lifecycle_locks = (manager_module.RLock(),)  # noqa: SLF001
+    worker_manager._runtime_lifecycle_locks = WeakValueDictionary()  # noqa: SLF001
+    worker_manager._runtime_lifecycle_registry_lock = Lock()  # noqa: SLF001
     worker_manager._lock = Lock()  # noqa: SLF001
     worker_manager._handles = {}  # noqa: SLF001
     worker_manager._get_recoverable_runtime_target = (  # noqa: SLF001
@@ -884,10 +919,12 @@ def _build_token_worker_manager(
     """构造只用于 execution token 状态机的 manager。"""
 
     worker_manager = object.__new__(manager_module.WorkflowRuntimeWorkerManager)
-    worker_manager._runtime_lifecycle_locks = (RLock(),)  # noqa: SLF001
+    worker_manager._runtime_lifecycle_locks = WeakValueDictionary()  # noqa: SLF001
+    worker_manager._runtime_lifecycle_registry_lock = Lock()  # noqa: SLF001
     worker_manager._lock = Lock()  # noqa: SLF001
     worker_manager._execution_tokens = {}  # noqa: SLF001
     worker_manager._execution_token_ids_by_runtime = {}  # noqa: SLF001
+    worker_manager._stopping = Event()  # noqa: SLF001
     worker_manager._handles = {}  # noqa: SLF001
     _add_token_runtime_handle(worker_manager, workflow_app_runtime)
     return worker_manager
@@ -941,9 +978,11 @@ def _build_epoch_mismatch_worker_manager(
     """构造版本相同但 worker epoch 已更换的 manager。"""
 
     worker_manager = object.__new__(manager_module.WorkflowRuntimeWorkerManager)
-    worker_manager._runtime_lifecycle_locks = (RLock(),)  # noqa: SLF001
+    worker_manager._runtime_lifecycle_locks = WeakValueDictionary()  # noqa: SLF001
+    worker_manager._runtime_lifecycle_registry_lock = Lock()  # noqa: SLF001
     worker_manager._lock = Lock()  # noqa: SLF001
     worker_manager._async_runs = {}  # noqa: SLF001
+    worker_manager._stopping = Event()  # noqa: SLF001
     worker_manager._handles = {  # noqa: SLF001
         workflow_app_runtime.workflow_runtime_id: SimpleNamespace(
             process=SimpleNamespace(is_alive=lambda: True),

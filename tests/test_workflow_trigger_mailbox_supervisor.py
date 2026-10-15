@@ -8,7 +8,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
-from threading import Event
+from threading import Event, Thread
 from time import monotonic_ns, sleep
 from types import SimpleNamespace
 
@@ -27,6 +27,7 @@ from backend.contracts.workflows import (
     WorkflowTriggerRequestV1,
 )
 from backend.service.application.errors import (
+    InvalidRequestError,
     OperationCancelledError,
     WorkflowRuntimeBusyError,
 )
@@ -660,8 +661,7 @@ def test_prepare_capacity_failure_uses_local_buffer_error_code(
                     .model_dump_json()
                     .encode("utf-8"),
                 )
-                supervisor.process_once()
-                response = client.read_response(identity=identity)
+                response = _wait_response(supervisor, client, identity)
                 assert response is not None
                 assert (
                     response.error_code
@@ -1425,10 +1425,8 @@ def test_runtime_busy_releases_input_but_holds_source_until_ack(
                     .model_dump_json()
                     .encode("utf-8"),
                 )
-                supervisor.process_once()
-                response = client.read_response(identity=identity)
+                response = _wait_response(supervisor, client, identity)
 
-                assert response is not None
                 assert response.error_code == 5
                 assert pool.build_status()["active_lease_count"] == 0
                 assert (
@@ -1483,9 +1481,7 @@ def test_transfer_failure_closes_admission_and_releases_writer_receipt(
                     .model_dump_json()
                     .encode("utf-8"),
                 )
-                supervisor.process_once()
-
-                assert client.read_response(identity=identity) is not None
+                assert _wait_response(supervisor, client, identity) is not None
                 assert runtime.failed_admission_count == 1
                 assert pool.build_status()["active_lease_count"] == 0
                 assert supervisor.executor.build_status()["active_count"] == 0
@@ -1502,9 +1498,7 @@ def test_executor_busy_rejects_without_hidden_queue_and_compensates(
     release_worker = Event()
     with _build_pool(tmp_path) as pool:
         supervisor = _build_supervisor(tmp_path, pool, runtime)
-        occupied_future = supervisor.executor.submit(
-            lambda: release_worker.wait(timeout=5.0)
-        )
+        occupied_future = None
         try:
             route = supervisor.register_trigger_source(_source("source-1"))
             with WorkflowTriggerMailboxClient(buffers_root=tmp_path) as client:
@@ -1514,6 +1508,9 @@ def test_executor_busy_rejects_without_hidden_queue_and_compensates(
                     client,
                     route.route_generation,
                     content_length=len(content),
+                )
+                occupied_future = supervisor.executor.submit(
+                    lambda: release_worker.wait(timeout=5.0)
                 )
                 _write_allocation(pool, allocation, content, identity.deadline_ns)
                 client.publish_request(
@@ -1533,14 +1530,16 @@ def test_executor_busy_rejects_without_hidden_queue_and_compensates(
                     response.error_code
                     == mailbox_contract.ERROR_CODE_WORKFLOW_EXECUTOR_BUSY
                 )
-                assert runtime.failed_admission_count == 1
+                assert runtime.failed_admission_count == 0
+                assert runtime.admitted_count == 0
                 assert pool.build_status()["active_lease_count"] == 0
                 assert supervisor.executor.build_status()["active_count"] == 1
                 client.acknowledge(identity=identity)
                 supervisor.process_once()
         finally:
             release_worker.set()
-            occupied_future.result(timeout=5.0)
+            if occupied_future is not None:
+                occupied_future.result(timeout=5.0)
             supervisor.close()
 
 
@@ -1557,7 +1556,6 @@ def test_worker_submit_failure_releases_reserved_capacity_and_input(
         def _fail_submit(*_args, **_kwargs):
             raise RuntimeError("注入 worker submit 失败")
 
-        monkeypatch.setattr(supervisor.executor, "submit_reserved", _fail_submit)
         try:
             route = supervisor.register_trigger_source(_source("source-1"))
             with WorkflowTriggerMailboxClient(buffers_root=tmp_path) as client:
@@ -1568,6 +1566,7 @@ def test_worker_submit_failure_releases_reserved_capacity_and_input(
                     route.route_generation,
                     content_length=len(content),
                 )
+                monkeypatch.setattr(supervisor.executor, "submit_reserved", _fail_submit)
                 _write_allocation(pool, allocation, content, identity.deadline_ns)
                 client.publish_request(
                     identity=identity,
@@ -1583,7 +1582,8 @@ def test_worker_submit_failure_releases_reserved_capacity_and_input(
                 response = client.read_response(identity=identity)
                 assert response is not None
                 assert response.error_code == mailbox_contract.ERROR_CODE_PROTOCOL_ERROR
-                assert runtime.failed_admission_count == 1
+                assert runtime.failed_admission_count == 0
+                assert runtime.admitted_count == 0
                 assert pool.build_status()["active_lease_count"] == 0
                 assert supervisor.executor.build_status()["active_count"] == 0
                 client.acknowledge(identity=identity)
@@ -1605,13 +1605,10 @@ def test_cleanup_step_failure_does_not_block_remaining_resource_reclaim(
     with _build_pool(tmp_path) as pool:
         supervisor = _build_supervisor(tmp_path, pool, runtime)
 
-        def _fail_submit(*_args, **_kwargs):
-            raise RuntimeError("注入 worker submit 失败")
-
         def _fail_runtime_cleanup(*_args, **_kwargs):
             raise RuntimeError("注入 Runtime admission 清理失败")
 
-        monkeypatch.setattr(supervisor.executor, "submit_reserved", _fail_submit)
+        supervisor._local_buffer_client.fail_transfer = True
         monkeypatch.setattr(
             runtime,
             "fail_admitted_sync_workflow_run",
@@ -1636,9 +1633,7 @@ def test_cleanup_step_failure_does_not_block_remaining_resource_reclaim(
                     .model_dump_json()
                     .encode("utf-8"),
                 )
-                supervisor.process_once()
-
-                assert client.read_response(identity=identity) is not None
+                assert _wait_response(supervisor, client, identity) is not None
                 client.acknowledge(identity=identity)
                 supervisor.process_once()
                 assert pool.build_status()["active_lease_count"] == 0
@@ -1845,6 +1840,155 @@ def test_permanently_closed_supervisor_rejects_restart(tmp_path: Path) -> None:
             supervisor.start()
 
 
+def test_poller_stop_timeout_preserves_owner_until_thread_exits(tmp_path):
+    """停止超时不能丢失线程引用或关闭该线程仍使用的 IPC。"""
+    from backend.service.application.errors import OperationTimeoutError
+
+    with _build_pool(tmp_path) as pool:
+        supervisor = _build_supervisor(tmp_path, pool, _FakeRuntimeService())
+        thread = SimpleNamespace(is_alive=lambda: True, join=lambda **_: None)
+        mailbox = supervisor.mailbox
+        supervisor._thread = thread
+        try:
+            with pytest.raises(OperationTimeoutError, match="尚未退出"):
+                supervisor.stop()
+            assert supervisor._thread is thread
+            assert supervisor.mailbox is mailbox
+            assert not supervisor.executor.build_status()["closed"]
+            with pytest.raises(InvalidRequestError, match="停止未完成"):
+                supervisor.start()
+        finally:
+            thread.is_alive = lambda: False
+            supervisor.close()
+
+
+def test_blocked_admission_keeps_poller_available_and_input_owned(tmp_path, monkeypatch):
+    """准入阻塞时 poller 仍响应取消；执行槽位和输入保持到回调实际退出。"""
+    runtime = _FakeRuntimeService()
+    entered, release = Event(), Event()
+    admit = runtime.admit_sync_workflow_run
+    invoked = []
+
+    def blocking_admit(*args, **kwargs):
+        entered.set()
+        assert release.wait(5)
+        return admit(*args, **kwargs)
+
+    monkeypatch.setattr(runtime, "admit_sync_workflow_run", blocking_admit)
+    monkeypatch.setattr(runtime, "invoke_admitted_sync_workflow_run", lambda _: invoked.append(True))
+    with _build_pool(tmp_path) as pool:
+        supervisor = _build_supervisor(tmp_path, pool, runtime)
+        try:
+            route = supervisor.register_trigger_source(_source("source-1"))
+            with WorkflowTriggerMailboxClient(buffers_root=tmp_path) as client:
+                identity, allocation = _prepare(supervisor, client, route.route_generation, content_length=3)
+                _write_allocation(pool, allocation, b"raw", identity.deadline_ns)
+                client.publish_request(identity=identity, payload=WorkflowTriggerRequestV1(
+                    trigger_source_id="source-1", event_id="event-1").model_dump_json().encode())
+                supervisor.process_once()
+                assert entered.wait(1)
+                client.cancel(identity=identity)
+                supervisor.process_once()
+                response = client.read_response(identity=identity)
+                assert response is not None
+                client.acknowledge(identity=identity)
+                supervisor.process_once()
+                assert pool.build_status()["active_lease_count"] == 1
+                assert supervisor.executor.build_status()["active_count"] == 1
+                assert supervisor.build_status()["pending_request_count"] == 1
+                release.set()
+                for _ in range(200):
+                    supervisor.process_once()
+                    if not supervisor.executor.build_status()["active_count"]:
+                        break
+                    sleep(.005)
+                assert supervisor.executor.build_status()["active_count"] == 0
+                assert pool.build_status()["active_lease_count"] == 0
+                assert supervisor.build_status()["pending_request_count"] == 0
+                assert runtime.failed_admission_count == 1
+                assert not invoked
+        finally:
+            release.set()
+            supervisor.close()
+
+
+@pytest.mark.parametrize("terminal", ["cancel", "stop", "failure"])
+def test_prepare_does_not_block_poller_and_reclaims_allocation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, terminal: str,
+) -> None:
+    """Broker 分配阻塞不得阻塞 poller，终止后迟到 allocation 必须回收。"""
+
+    entered, release, returned = Event(), Event(), Event()
+    with _build_pool(tmp_path) as pool:
+        supervisor = _build_supervisor(tmp_path, pool, _FakeRuntimeService())
+        broker = supervisor._require_local_buffer_client()
+        allocate = broker.allocate_external_buffer
+
+        def blocked_allocate(**kwargs):
+            entered.set()
+            assert release.wait(5)
+            if terminal == "failure":
+                raise InvalidRequestError("注入分配失败")
+            return allocate(**kwargs)
+
+        monkeypatch.setattr(broker, "allocate_external_buffer", blocked_allocate)
+        route = supervisor.register_trigger_source(_source("source-1"))
+        with WorkflowTriggerMailboxClient(buffers_root=tmp_path) as client:
+            identity = client.claim(
+                timeout_ms=5000, route_generation=route.route_generation,
+                prepare_payload=_prepare_payload(4096).model_dump_json().encode(),
+            )
+
+            def poll_once():
+                supervisor.process_once()
+                returned.set()
+
+            poller = Thread(target=poll_once)
+            poller.start()
+            try:
+                assert entered.wait(2)
+                assert returned.wait(.5), "PREPARE 阻塞了 poller"
+                assert supervisor.executor.build_status()["active_count"] == 1
+                second_route = supervisor.register_trigger_source(_source("source-2"))
+                second = client.claim(
+                    timeout_ms=5000, route_generation=second_route.route_generation,
+                    prepare_payload=_prepare_payload(4096).model_copy(
+                        update={"trigger_source_id": "source-2"},
+                    ).model_dump_json().encode(),
+                )
+                supervisor.process_once()
+                response = client.read_response(identity=second)
+                assert response is not None
+                assert response.error_code == mailbox_contract.ERROR_CODE_WORKFLOW_EXECUTOR_BUSY
+                client.acknowledge(identity=second)
+                supervisor.process_once()
+                if terminal == "cancel":
+                    client.cancel(identity=identity)
+                    supervisor.process_once()
+                    assert supervisor.build_status()["pending_request_count"] == 1
+                release.set()
+                if terminal == "stop":
+                    supervisor.stop()
+                elif terminal == "failure":
+                    response = _wait_response(supervisor, client, identity)
+                    assert response.error_code != mailbox_contract.ERROR_CODE_NONE
+                    client.acknowledge(identity=identity)
+                    supervisor.process_once()
+                else:
+                    for _ in range(200):
+                        supervisor.process_once()
+                        if not supervisor.build_status()["pending_request_count"]:
+                            break
+                        sleep(.005)
+                assert supervisor.executor.build_status()["active_count"] == 0
+                assert not supervisor._pending
+                assert pool.build_status()["active_lease_count"] == 0
+            finally:
+                release.set()
+                poller.join(5)
+                supervisor.close()
+
+
 def _prepare(
     supervisor: WorkflowTriggerMailboxSupervisor,
     client: WorkflowTriggerMailboxClient,
@@ -1861,8 +2005,13 @@ def _prepare(
         .model_dump_json()
         .encode("utf-8"),
     )
-    supervisor.process_once()
-    allocation = client.read_writing_allocation(identity=identity)
+    allocation = None
+    for _ in range(200):
+        supervisor.process_once()
+        allocation = client.read_writing_allocation(identity=identity)
+        if allocation is not None:
+            break
+        sleep(.005)
     assert allocation is not None
     return allocation.identity, WorkflowTriggerAllocationV1.model_validate_json(
         allocation.payload

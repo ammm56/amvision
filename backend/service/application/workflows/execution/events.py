@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+import logging
 
 from backend.contracts.workflows.workflow_graph import NodeDefinition, WorkflowGraphNode
 from backend.service.application.errors import ServiceError
 from backend.service.application.workflows.runtime_payload_sanitizer import sanitize_runtime_mapping
+
+
+logger = logging.getLogger(__name__)
 
 
 def emit_node_event(
@@ -81,6 +85,12 @@ def build_failed_node_details(
     exc: Exception,
 ) -> dict[str, object]:
     """构造节点执行失败时对外返回的定位细节。"""
+
+    if not isinstance(exc, ServiceError):
+        # 对外错误继续经过统一脱敏；原始堆栈保留在所属 Worker 的服务端日志。
+        logger.error("Workflow 节点未预期异常：node=%s type=%s index=%s",
+                     node.node_id, node_definition.node_type_id, execution_index,
+                     exc_info=(type(exc), exc, exc.__traceback__))
 
     details: dict[str, object] = {
         "node_id": node.node_id,

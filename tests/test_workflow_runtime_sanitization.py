@@ -27,6 +27,7 @@ from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.service.application.errors import (
     OperationCancelledError,
+    OperationTimeoutError,
     ResourceConflictError,
     ResourceNotFoundError,
     ServiceConfigurationError,
@@ -426,6 +427,38 @@ def test_invoke_workflow_run_none_record_mode_skips_database_record(
     assert workflow_run.state == "succeeded"
     with pytest.raises(ResourceNotFoundError):
         service.get_workflow_run(workflow_run.workflow_run_id)
+
+
+def test_async_terminal_result_survives_post_commit_callback_failure(tmp_path: Path) -> None:
+    """完成后的附属事件失败不能将已持久化结果改写为失败或丢失输出。"""
+    worker_result = WorkflowRuntimeWorkerRunResult(
+        state="succeeded", outputs={"value": "retained"},
+        worker_state=WorkflowRuntimeWorkerState(observed_state="running"),
+    )
+    manager = _FakeWorkerManager(worker_result=worker_result)
+    service, workflow_service, _ = _build_runtime_service(tmp_path, worker_manager=manager)
+    workflow_service.save_template(project_id="project-1", template=_build_image_decode_preview_template())
+    workflow_service.save_application(project_id="project-1", application=_build_image_decode_preview_application())
+    runtime = service.create_workflow_app_runtime(WorkflowAppRuntimeCreateRequest(
+        project_id="project-1", application_id="image-decode-preview-app"), created_by="workflow-user")
+    service.start_workflow_app_runtime(runtime.workflow_runtime_id, updated_by="workflow-user")
+    run = service.create_workflow_run(runtime.workflow_runtime_id,
+        WorkflowRuntimeInvokeRequest(input_bindings={}), created_by="workflow-user")
+    callbacks = manager.last_invoke_kwargs["callbacks"]
+    callbacks.on_started()
+    callbacks.on_completed(worker_result)
+    before = service.get_workflow_run(run.workflow_run_id)
+    events_before = service.get_workflow_run_events(run.workflow_run_id)
+    callbacks.on_failed(ServiceConfigurationError("post-commit event write failed"))
+    callbacks.on_cancelled(None)
+    callbacks.on_timed_out(OperationTimeoutError("late timeout"))
+    callbacks.on_started()
+    callbacks.on_completed(worker_result)
+    assert service.get_workflow_run(run.workflow_run_id) == before
+    assert before.state == "succeeded"
+    assert before.outputs == {"value": "retained"}
+    assert service.get_workflow_run_events(run.workflow_run_id) == events_before
+    assert service.get_workflow_app_runtime(runtime.workflow_runtime_id).observed_state == "running"
 
 
 def test_transient_async_workflow_run_none_mode_skips_database_record(
@@ -1468,7 +1501,9 @@ class _FakeWorkerManager:
         self.execution_tokens: dict[str, dict[str, object]] = {}
 
     @contextmanager
-    def runtime_lifecycle_guard(self, workflow_runtime_id: str) -> Iterator[None]:
+    def runtime_lifecycle_guard(
+        self, workflow_runtime_id: str, *, acquisition_mode: str = "wait",
+    ) -> Iterator[None]:
         """模拟生产 manager 的 Runtime 生命周期锁。"""
 
         del workflow_runtime_id
