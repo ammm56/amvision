@@ -16,9 +16,9 @@
         <Button
           v-if="task && canWriteTasks"
           variant="danger"
-          :disabled="deleting || !canDeleteCurrentTask"
+          :disabled="loading || deleting || !canDeleteCurrentTask"
           :loading="deleting"
-          @click="deleteDialogOpen = true"
+          @click="openDeleteDialog"
         >
           <Trash2 :size="16" />
           {{ t('conversionDetail.actions.delete') }}
@@ -135,6 +135,7 @@
       :confirm-label="t('conversionDetail.actions.delete')"
       :cancel-label="t('common.cancel')"
       :busy="deleting"
+      :confirm-disabled="loading || !canWriteTasks || !canDeleteCurrentTask"
       confirm-variant="danger"
       @cancel="deleteDialogOpen = false"
       @confirm="deleteCurrentTask"
@@ -143,7 +144,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Activity, ArrowLeft, RefreshCw, Trash2 } from '@lucide/vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -155,6 +156,7 @@ import {
   type ModelTaskType,
 } from '../services/model.service'
 import { useSessionStore } from '@/app/stores/session.store'
+import { useModelTaskScope, type ModelTaskTarget } from '../composables/useModelTaskScope'
 import Button from '@/shared/ui/components/Button.vue'
 import ButtonLink from '@/shared/ui/components/ButtonLink.vue'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
@@ -182,6 +184,8 @@ const taskType = computed<ModelTaskType | null>(() => {
     ? value as ModelTaskType
     : null
 })
+const taskScope = useModelTaskScope(() => taskType.value, () => taskId.value)
+let deleteTarget: ModelTaskTarget | null = null
 const canWriteTasks = computed(() => sessionStore.hasScopes(['models:write', 'tasks:write']))
 const canDeleteCurrentTask = computed(() => task.value ? isTerminalTask(task.value.state) : false)
 const resultJson = computed(() => JSON.stringify(task.value?.result ?? {}, null, 2))
@@ -192,43 +196,64 @@ const deleteDialogDetails = computed(() => {
     .replace('{buildCount}', String(task.value.builds.length))
 })
 
-onMounted(() => {
+watch([() => route.params.taskType, () => route.params.taskId], () => {
+  taskScope.invalidate()
+  task.value = null
+  loading.value = false
+  deleting.value = false
+  deleteDialogOpen.value = false
+  deleteTarget = null
+  errorMessage.value = null
   void loadDetail()
-})
+}, { immediate: true, flush: 'sync' })
 
 function isTerminalTask(state: string): boolean {
   return ['succeeded', 'failed', 'cancelled', 'timed_out'].includes(state)
 }
 
 async function loadDetail(): Promise<void> {
-  if (!taskType.value) {
+  const request = taskScope.startRead('detail')
+  if (!request) {
+    if (taskType.value && taskId.value) return
     errorMessage.value = t('conversionDetail.messages.taskTypeRequired')
     return
   }
   loading.value = true
   errorMessage.value = null
   try {
-    task.value = await getModelConversionTaskDetail(taskType.value, taskId.value)
+    const detail = await getModelConversionTaskDetail(request.taskType, request.taskId, request.signal)
+    if (request.isCurrent()) task.value = detail
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : t('conversionDetail.messages.loadFailed')
+    if (request.isCurrent()) errorMessage.value = error instanceof Error ? error.message : t('conversionDetail.messages.loadFailed')
   } finally {
-    loading.value = false
+    if (request.isCurrent()) loading.value = false
   }
 }
 
+function openDeleteDialog(): void {
+  const target = taskScope.capture()
+  if (!target || task.value?.task_id !== target.taskId || loading.value || deleting.value || !canWriteTasks.value || !canDeleteCurrentTask.value) return
+  deleteTarget = target
+  deleteDialogOpen.value = true
+}
+
 async function deleteCurrentTask(): Promise<void> {
-  if (!taskType.value || !task.value || !canDeleteCurrentTask.value) return
+  const target = deleteTarget
+  if (!deleteDialogOpen.value || !target?.isCurrent() || task.value?.task_id !== target.taskId || loading.value || deleting.value || !canWriteTasks.value || !canDeleteCurrentTask.value) return
 
   deleting.value = true
   errorMessage.value = null
   try {
-    await deleteModelConversionTask(taskType.value, task.value.task_id)
-    await router.push('/models')
+    await deleteModelConversionTask(target.taskType, target.taskId)
+    if (target.isCurrent()) await router.push('/models')
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : t('conversionDetail.messages.deleteFailed')
+    if (target.isCurrent()) errorMessage.value = error instanceof Error ? error.message : t('conversionDetail.messages.deleteFailed')
   } finally {
-    deleting.value = false
-    deleteDialogOpen.value = false
+    if (target.isCurrent()) {
+      deleting.value = false
+      deleteDialogOpen.value = false
+      deleteTarget = null
+    }
   }
 }
 </script>

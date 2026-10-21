@@ -1,4 +1,4 @@
-import { onBeforeUnmount, ref } from 'vue'
+import { onBeforeUnmount, ref, watch } from 'vue'
 
 import { useSessionStore } from '@/app/stores/session.store'
 import { ResourceStreamClient } from '@/shared/ws/resource-stream-client'
@@ -12,13 +12,18 @@ export function useTaskEvents(
   const sessionStore = useSessionStore()
   const streamState = ref<ResourceStreamState | null>(null)
   let client: ResourceStreamClient | null = null
+  let disposed = false
+  let generation = 0
 
   function start(): void {
-    if (client !== null) return
+    if (disposed || client !== null) return
     if (!sessionStore.isAuthenticated || !sessionStore.websocketQueryTokenEnabled) {
       return
     }
     const taskId = getTaskId()
+    if (!taskId) return
+    const currentGeneration = generation
+    const isCurrent = () => !disposed && generation === currentGeneration && getTaskId() === taskId
     client = new ResourceStreamClient({
       stream: 'tasks.events',
       path: '/tasks/events',
@@ -27,6 +32,8 @@ export function useTaskEvents(
       getAccessToken: () => sessionStore.accessToken,
       queryTokenEnabled: () => sessionStore.websocketQueryTokenEnabled,
       onMessage: (message: WebSocketEnvelope) => {
+        if (!isCurrent()) return
+        if (message.payload.task_id !== taskId) return
         if (!message.event_type.endsWith('.connected') && !message.event_type.endsWith('.heartbeat')) {
           onTaskEvent({
             ...(message.payload as Record<string, unknown>),
@@ -37,6 +44,7 @@ export function useTaskEvents(
         }
       },
       onStateChange: (state) => {
+        if (!isCurrent()) return
         streamState.value = state
       },
     })
@@ -44,11 +52,17 @@ export function useTaskEvents(
   }
 
   function stop(): void {
+    generation += 1
     client?.close()
     client = null
+    streamState.value = null
   }
 
-  onBeforeUnmount(stop)
+  watch(getTaskId, stop, { flush: 'sync' })
+  onBeforeUnmount(() => {
+    disposed = true
+    stop()
+  })
 
   return { streamState, start, stop }
 }

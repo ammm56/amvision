@@ -436,8 +436,8 @@ export async function listModelTrainingTasks(
   })
 }
 
-export async function getModelTrainingTaskDetail(taskType: ModelTaskType, taskId: string): Promise<ModelTrainingTaskDetail> {
-  return apiRequest<ModelTrainingTaskDetail>(buildTrainingTaskPath(taskType, `/${encodeURIComponent(taskId)}`))
+export async function getModelTrainingTaskDetail(taskType: ModelTaskType, taskId: string, signal?: AbortSignal): Promise<ModelTrainingTaskDetail> {
+  return apiRequest<ModelTrainingTaskDetail>(buildTrainingTaskPath(taskType, `/${encodeURIComponent(taskId)}`), { signal })
 }
 
 export async function listTrainingParameterSchemas(
@@ -585,9 +585,10 @@ export async function registerModelTrainingLatestCheckpoint(taskType: ModelTaskT
   )
 }
 
-export async function listModelTrainingOutputFiles(taskType: ModelTaskType, taskId: string): Promise<ModelTrainingOutputFileSummary[]> {
+export async function listModelTrainingOutputFiles(taskType: ModelTaskType, taskId: string, signal?: AbortSignal): Promise<ModelTrainingOutputFileSummary[]> {
   return apiRequest<ModelTrainingOutputFileSummary[]>(
     buildTrainingTaskPath(taskType, `/${encodeURIComponent(taskId)}/output-files`),
+    { signal },
   )
 }
 
@@ -595,9 +596,11 @@ export async function getModelTrainingOutputFileDetail(
   taskType: ModelTaskType,
   taskId: string,
   fileName: string,
+  signal?: AbortSignal,
 ): Promise<ModelTrainingOutputFileDetail> {
   return apiRequest<ModelTrainingOutputFileDetail>(
     buildTrainingTaskPath(taskType, `/${encodeURIComponent(taskId)}/output-files/${encodeURIComponent(fileName)}`),
+    { signal },
   )
 }
 
@@ -630,8 +633,8 @@ export async function listModelConversionTasks(
   })
 }
 
-export async function getModelConversionTaskDetail(taskType: ModelTaskType, taskId: string): Promise<ModelConversionTaskDetail> {
-  return apiRequest<ModelConversionTaskDetail>(buildConversionTaskPath(taskType, `/${encodeURIComponent(taskId)}`))
+export async function getModelConversionTaskDetail(taskType: ModelTaskType, taskId: string, signal?: AbortSignal): Promise<ModelConversionTaskDetail> {
+  return apiRequest<ModelConversionTaskDetail>(buildConversionTaskPath(taskType, `/${encodeURIComponent(taskId)}`), { signal })
 }
 
 export async function deleteModelConversionTask(taskType: ModelTaskType, taskId: string): Promise<void> {

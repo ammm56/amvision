@@ -16,7 +16,7 @@
         <Button
           v-if="task && canDeleteTask"
           variant="danger"
-          :disabled="actionRunning !== null"
+          :disabled="loading || actionRunning !== null"
           :loading="actionRunning === 'delete'"
           @click="openDeleteDialog"
         >
@@ -64,7 +64,7 @@
           :key="action"
           size="sm"
           :variant="action === 'terminate' ? 'danger' : 'secondary'"
-          :disabled="actionRunning !== null"
+          :disabled="loading || actionRunning !== null"
           :loading="actionRunning === action"
           @click="runAction(action)"
         >
@@ -75,7 +75,7 @@
           v-if="taskType === 'detection'"
           size="sm"
           variant="secondary"
-          :disabled="!canRegisterCheckpoint || actionRunning !== null"
+          :disabled="loading || !canRegisterCheckpoint || actionRunning !== null"
           :loading="actionRunning === 'register-model-version'"
           @click="registerCheckpoint"
         >
@@ -225,8 +225,8 @@
               <tr
                 v-for="file in outputFiles"
                 :key="file.file_name"
-                :class="{ 'is-selected': file.file_name === selectedOutputFile?.file_name }"
-                @click="selectOutputFile(file.file_name)"
+                :class="{ 'is-selected': file.file_name === selectedOutputFileName }"
+                @click="!loading && selectOutputFile(file.file_name)"
               >
                 <td>
                   <strong>{{ file.file_name }}</strong>
@@ -254,6 +254,7 @@
       :confirm-label="t('trainingDetail.actions.delete')"
       :cancel-label="t('common.cancel')"
       :busy="actionRunning === 'delete'"
+      :confirm-disabled="loading || !canDeleteTask"
       confirm-variant="danger"
       @cancel="deleteDialogOpen = false"
       @confirm="deleteCurrentTask"
@@ -262,7 +263,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, ref, watch } from 'vue'
 import { Activity, ArrowLeft, Pause, Play, RefreshCw, Save, Square, Trash2, UploadCloud } from '@lucide/vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -292,6 +293,7 @@ import TaskProgress from '@/modules/tasks/components/TaskProgress.vue'
 import TaskStateBadge from '@/modules/tasks/components/TaskStateBadge.vue'
 import { useTaskEvents } from '@/modules/tasks/composables/useTaskEvents'
 import type { TaskEvent } from '@/shared/contracts'
+import { useModelTaskScope, type ModelTaskTarget } from '../composables/useModelTaskScope'
 import {
   useTrainingTelemetry,
   type TrainingTelemetryPayload,
@@ -322,6 +324,7 @@ const { t } = useI18n()
 const task = ref<ModelTrainingTaskDetail | null>(null)
 const outputFiles = ref<ModelTrainingOutputFileSummary[]>([])
 const selectedOutputFile = ref<ModelTrainingOutputFileDetail | null>(null)
+const selectedOutputFileName = ref<string | null>(null)
 const loading = ref(false)
 const actionRunning = ref<string | null>(null)
 const deleteDialogOpen = ref(false)
@@ -344,6 +347,8 @@ const taskType = computed<ModelTaskType | null>(() => {
     ? value as ModelTaskType
     : null
 })
+const taskScope = useModelTaskScope(() => taskType.value, () => taskId.value)
+let deleteTarget: ModelTaskTarget | null = null
 const visibleControlActions = computed(() => task.value?.available_actions.filter((action) => action !== 'delete') ?? [])
 const showsYoloSpatialLossHint = computed(() => (
   ['yolov8', 'yolo11', 'yolo26'].includes(String(task.value?.model_type ?? '').toLowerCase())
@@ -425,11 +430,7 @@ const runtimeHistoryEmptyText = computed(() => {
     : t('trainingDetail.charts.runtimePending')
 })
 
-onMounted(async () => {
-  await refreshPage()
-})
-
-onBeforeUnmount(() => {
+function clearRefreshTimers(): void {
   if (snapshotRefreshTimer !== null) {
     window.clearTimeout(snapshotRefreshTimer)
     snapshotRefreshTimer = null
@@ -438,7 +439,34 @@ onBeforeUnmount(() => {
     window.clearTimeout(outputFilesRefreshTimer)
     outputFilesRefreshTimer = null
   }
-})
+}
+
+watch([() => route.params.taskType, () => route.params.taskId], () => {
+  taskScope.invalidate()
+  taskEvents.stop()
+  trainingTelemetry.stop()
+  clearRefreshTimers()
+  task.value = null
+  outputFiles.value = []
+  selectedOutputFile.value = null
+  selectedOutputFileName.value = null
+  trainingMetricsPayload.value = {}
+  validationMetricsPayload.value = {}
+  runtimeMetricsPayload.value = {}
+  trainMetricHistory.value = []
+  validationMetricHistory.value = []
+  learningRateHistory.value = []
+  runtimeHistory.value = []
+  latestTaskEventCursor.value = null
+  actionRunning.value = null
+  deleteDialogOpen.value = false
+  deleteTarget = null
+  errorMessage.value = null
+  loading.value = false
+  void refreshPage()
+}, { immediate: true, flush: 'sync' })
+
+onBeforeUnmount(clearRefreshTimers)
 
 function statusTone(status: string | null | undefined): 'neutral' | 'success' | 'warning' | 'danger' | 'info' {
   const normalized = String(status ?? '').toLowerCase()
@@ -458,18 +486,23 @@ function actionIcon(action: ModelTrainingTaskActionName) {
 }
 
 async function refreshPage(): Promise<void> {
-  if (!taskType.value) {
+  const request = taskScope.startRead('snapshot')
+  if (!request) {
+    if (taskType.value && taskId.value) return
     errorMessage.value = t('trainingDetail.messages.taskTypeRequired')
     return
   }
-  const currentTaskType = taskType.value
+  taskScope.cancelRead('files')
+  taskScope.cancelRead('preview')
+  clearRefreshTimers()
   loading.value = true
   errorMessage.value = null
   try {
     const [taskDetail, files] = await Promise.all([
-      getModelTrainingTaskDetail(currentTaskType, taskId.value),
-      listModelTrainingOutputFiles(currentTaskType, taskId.value),
+      getModelTrainingTaskDetail(request.taskType, request.taskId, request.signal),
+      listModelTrainingOutputFiles(request.taskType, request.taskId, request.signal),
     ])
+    if (!request.isCurrent()) return
     task.value = taskDetail
     latestTaskEventCursor.value = buildLatestTaskEventCursor(taskDetail.events)
     outputFiles.value = files
@@ -478,15 +511,16 @@ async function refreshPage(): Promise<void> {
     const runtimeMetricsFile = files.find((file) => file.file_name === 'runtime-metrics')
     const [trainMetricsDetail, validationMetricsDetail, runtimeMetricsDetail] = await Promise.all([
       metricsFile
-        ? getModelTrainingOutputFileDetail(currentTaskType, taskId.value, metricsFile.file_name)
+        ? getModelTrainingOutputFileDetail(request.taskType, request.taskId, metricsFile.file_name, request.signal)
         : Promise.resolve(null),
       validationMetricsFile
-        ? getModelTrainingOutputFileDetail(currentTaskType, taskId.value, validationMetricsFile.file_name)
+        ? getModelTrainingOutputFileDetail(request.taskType, request.taskId, validationMetricsFile.file_name, request.signal)
         : Promise.resolve(null),
       runtimeMetricsFile?.file_status === 'ready'
-        ? getModelTrainingOutputFileDetail(currentTaskType, taskId.value, runtimeMetricsFile.file_name)
+        ? getModelTrainingOutputFileDetail(request.taskType, request.taskId, runtimeMetricsFile.file_name, request.signal)
         : Promise.resolve(null),
     ])
+    if (!request.isCurrent()) return
     trainingMetricsPayload.value = trainMetricsDetail?.payload ?? {}
     validationMetricsPayload.value = validationMetricsDetail?.payload ?? {}
     runtimeMetricsPayload.value = runtimeMetricsDetail?.payload ?? {}
@@ -495,45 +529,56 @@ async function refreshPage(): Promise<void> {
     taskDetail.events.forEach((event) => {
       appendProgressHistory(readRecord(event.payload).progress)
     })
-    const selectedFileName = selectedOutputFile.value?.file_name
+    const selectedFileName = selectedOutputFileName.value
     const nextFileName = files.some((file) => file.file_name === selectedFileName)
       ? selectedFileName
       : files[0]?.file_name
     selectedOutputFile.value = null
+    selectedOutputFileName.value = nextFileName ?? null
     if (nextFileName) {
-      await selectOutputFile(nextFileName)
+      void selectOutputFile(nextFileName)
     }
-    syncTaskEventSubscription()
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : t('trainingDetail.messages.loadFailed')
+    if (request.isCurrent()) {
+      errorMessage.value = error instanceof Error ? error.message : t('trainingDetail.messages.loadFailed')
+    }
   } finally {
-    loading.value = false
+    if (request.isCurrent()) {
+      loading.value = false
+      syncTaskEventSubscription()
+    }
   }
 }
 
+function captureLoadedTask(): ModelTaskTarget | null {
+  const target = taskScope.capture()
+  return target && task.value?.task_id === target.taskId && !loading.value && actionRunning.value === null
+    ? target
+    : null
+}
+
 async function runAction(action: ModelTrainingTaskActionName): Promise<void> {
-  if (!taskType.value) {
-    errorMessage.value = t('trainingDetail.messages.taskTypeRequired')
-    return
-  }
+  const target = captureLoadedTask()
+  if (!target || !task.value?.available_actions.includes(action)) return
   if (action === 'delete') {
     openDeleteDialog()
     return
   }
-  const currentTaskType = taskType.value
   actionRunning.value = action
   errorMessage.value = null
   try {
-    await requestModelTrainingTaskAction(currentTaskType, taskId.value, action)
-    await refreshPage()
+    await requestModelTrainingTaskAction(target.taskType, target.taskId, action)
+    if (target.isCurrent()) await refreshPage()
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : t('trainingDetail.messages.actionFailed')
+    if (target.isCurrent()) errorMessage.value = error instanceof Error ? error.message : t('trainingDetail.messages.actionFailed')
   } finally {
-    actionRunning.value = null
+    if (target.isCurrent()) actionRunning.value = null
   }
 }
 
 function handleTaskEvent(event: TaskEvent): void {
+  const target = taskScope.capture()
+  if (!target || task.value?.task_id !== target.taskId || event.task_id !== target.taskId) return
   const data = readRecord(event.payload)
   const progress = readRecord(data.progress)
   const shouldApplySnapshot = shouldApplyTaskEventSnapshot(data, progress)
@@ -621,6 +666,8 @@ function mergeCompletedEpochMetricPayloads(progress: Record<string, unknown>): v
 }
 
 function handleTrainingTelemetry(payload: TrainingTelemetryPayload): void {
+  const target = taskScope.capture()
+  if (!target || payload.task_id !== target.taskId) return
   const currentTask = task.value
   if (currentTask === null || payload.task_id !== currentTask.task_id) return
   if (payload.attempt_no < currentTask.current_attempt_no) return
@@ -724,7 +771,8 @@ function isActiveTrainingState(state: string | null | undefined): boolean {
 }
 
 function syncTaskEventSubscription(): void {
-  if (isActiveTrainingState(task.value?.state)) {
+  const target = taskScope.capture()
+  if (target && task.value?.task_id === target.taskId && isActiveTrainingState(task.value?.state)) {
     taskEvents.start()
     trainingTelemetry.start()
     return
@@ -766,34 +814,38 @@ function mergePersistedHistories(): void {
 }
 
 function scheduleSnapshotRefresh(): void {
-  if (snapshotRefreshTimer !== null) return
+  const target = taskScope.capture()
+  if (!target || snapshotRefreshTimer !== null) return
   snapshotRefreshTimer = window.setTimeout(() => {
     snapshotRefreshTimer = null
-    void refreshPage()
+    if (target.isCurrent()) void refreshPage()
   }, 300)
 }
 
 function scheduleOutputFilesRefresh(): void {
-  if (outputFilesRefreshTimer !== null) return
+  const target = taskScope.capture()
+  if (!target || outputFilesRefreshTimer !== null) return
   outputFilesRefreshTimer = window.setTimeout(() => {
     outputFilesRefreshTimer = null
-    void refreshOutputFiles()
+    if (target.isCurrent()) void refreshOutputFiles()
   }, 300)
 }
 
 async function refreshOutputFiles(): Promise<void> {
-  if (!taskType.value) return
-  const currentTaskType = taskType.value
+  if (loading.value) return
+  const request = taskScope.startRead('files')
+  if (!request) return
   try {
-    const files = await listModelTrainingOutputFiles(currentTaskType, taskId.value)
+    const files = await listModelTrainingOutputFiles(request.taskType, request.taskId, request.signal)
+    if (!request.isCurrent()) return
     outputFiles.value = files
-    const selectedFileName = selectedOutputFile.value?.file_name
+    const selectedFileName = selectedOutputFileName.value
     if (selectedFileName && files.some((file) => file.file_name === selectedFileName)) {
-      selectedOutputFile.value = await getModelTrainingOutputFileDetail(
-        currentTaskType,
-        taskId.value,
-        selectedFileName,
-      )
+      void selectOutputFile(selectedFileName)
+    } else {
+      taskScope.cancelRead('preview')
+      selectedOutputFileName.value = null
+      selectedOutputFile.value = null
     }
   } catch {
     // 后台状态同步失败不覆盖页面已有数据，后续 epoch 或手动刷新会再次获取。
@@ -801,61 +853,60 @@ async function refreshOutputFiles(): Promise<void> {
 }
 
 function openDeleteDialog(): void {
+  const target = captureLoadedTask()
+  if (!target || !canDeleteTask.value) return
+  deleteTarget = target
   deleteDialogOpen.value = true
 }
 
 async function deleteCurrentTask(): Promise<void> {
-  if (!taskType.value) {
-    errorMessage.value = t('trainingDetail.messages.taskTypeRequired')
-    return
-  }
-  const currentTaskType = taskType.value
+  const target = deleteTarget
+  if (!deleteDialogOpen.value || !target?.isCurrent() || !captureLoadedTask() || !canDeleteTask.value) return
   actionRunning.value = 'delete'
   errorMessage.value = null
   try {
-    await deleteModelTrainingTask(currentTaskType, taskId.value)
-    await router.push('/models')
+    await deleteModelTrainingTask(target.taskType, target.taskId)
+    if (target.isCurrent()) await router.push('/models')
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : t('trainingDetail.messages.actionFailed')
+    if (target.isCurrent()) errorMessage.value = error instanceof Error ? error.message : t('trainingDetail.messages.actionFailed')
   } finally {
-    actionRunning.value = null
-    deleteDialogOpen.value = false
+    if (target.isCurrent()) {
+      actionRunning.value = null
+      deleteDialogOpen.value = false
+      deleteTarget = null
+    }
   }
 }
 
 async function registerCheckpoint(): Promise<void> {
-  if (!taskType.value) {
-    errorMessage.value = t('trainingDetail.messages.taskTypeRequired')
-    return
-  }
-  if (taskType.value !== 'detection') {
-    errorMessage.value = t('trainingDetail.messages.registerDetectionOnly')
-    return
-  }
-  const currentTaskType = taskType.value
+  const target = captureLoadedTask()
+  if (!target || target.taskType !== 'detection' || !canRegisterCheckpoint.value) return
   actionRunning.value = 'register-model-version'
   errorMessage.value = null
   try {
-    task.value = await registerModelTrainingLatestCheckpoint(currentTaskType, taskId.value)
+    const detail = await registerModelTrainingLatestCheckpoint(target.taskType, target.taskId)
+    if (!target.isCurrent()) return
+    task.value = detail
     await refreshPage()
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : t('trainingDetail.messages.registerFailed')
+    if (target.isCurrent()) errorMessage.value = error instanceof Error ? error.message : t('trainingDetail.messages.registerFailed')
   } finally {
-    actionRunning.value = null
+    if (target.isCurrent()) actionRunning.value = null
   }
 }
 
 async function selectOutputFile(fileName: string): Promise<void> {
-  if (!taskType.value) {
-    errorMessage.value = t('trainingDetail.messages.taskTypeRequired')
-    return
-  }
-  const currentTaskType = taskType.value
+  if (!outputFiles.value.some((file) => file.file_name === fileName)) return
+  const request = taskScope.startRead('preview')
+  if (!request) return
+  selectedOutputFileName.value = fileName
+  selectedOutputFile.value = null
   errorMessage.value = null
   try {
-    selectedOutputFile.value = await getModelTrainingOutputFileDetail(currentTaskType, taskId.value, fileName)
+    const detail = await getModelTrainingOutputFileDetail(request.taskType, request.taskId, fileName, request.signal)
+    if (request.isCurrent()) selectedOutputFile.value = detail
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : t('trainingDetail.messages.outputFailed')
+    if (request.isCurrent()) errorMessage.value = error instanceof Error ? error.message : t('trainingDetail.messages.outputFailed')
   }
 }
 

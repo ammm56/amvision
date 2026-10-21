@@ -1,4 +1,4 @@
-import { onBeforeUnmount, ref } from 'vue'
+import { onBeforeUnmount, ref, watch } from 'vue'
 
 import { useSessionStore } from '@/app/stores/session.store'
 import type { ResourceStreamState, WebSocketEnvelope } from '@/shared/contracts'
@@ -39,12 +39,16 @@ export function useTrainingTelemetry(
   const sessionStore = useSessionStore()
   const streamState = ref<ResourceStreamState | null>(null)
   let client: ResourceStreamClient | null = null
+  let disposed = false
+  let generation = 0
 
   function start(): void {
-    if (client !== null) return
+    if (disposed || client !== null) return
     if (!sessionStore.isAuthenticated || !sessionStore.websocketQueryTokenEnabled) return
     const taskId = getTaskId()
     if (!taskId) return
+    const currentGeneration = generation
+    const isCurrent = () => !disposed && generation === currentGeneration && getTaskId() === taskId
     client = new ResourceStreamClient({
       stream: 'training.telemetry',
       path: '/training/telemetry',
@@ -53,15 +57,17 @@ export function useTrainingTelemetry(
       getAccessToken: () => sessionStore.accessToken,
       queryTokenEnabled: () => sessionStore.websocketQueryTokenEnabled,
       onMessage: (message: WebSocketEnvelope) => {
+        if (!isCurrent()) return
         if (message.event_type.endsWith('.lagging')) {
           onSnapshotRequired()
           return
         }
         if (!message.event_type.startsWith('training.')) return
         const payload = readTrainingTelemetryPayload(message.payload)
-        if (payload !== null) onTelemetry(payload)
+        if (payload !== null && payload.task_id === taskId) onTelemetry(payload)
       },
       onStateChange: (state) => {
+        if (!isCurrent()) return
         streamState.value = state
       },
     })
@@ -69,11 +75,17 @@ export function useTrainingTelemetry(
   }
 
   function stop(): void {
+    generation += 1
     client?.close()
     client = null
+    streamState.value = null
   }
 
-  onBeforeUnmount(stop)
+  watch(getTaskId, stop, { flush: 'sync' })
+  onBeforeUnmount(() => {
+    disposed = true
+    stop()
+  })
 
   return { streamState, start, stop }
 }

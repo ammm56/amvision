@@ -211,16 +211,19 @@ describe('TrainingTaskDetailPage', () => {
     expect(listModelTrainingOutputFiles).toHaveBeenCalledWith(
       'classification',
       'task-classification-1',
+      expect.any(AbortSignal),
     )
     expect(getModelTrainingOutputFileDetail).toHaveBeenCalledWith(
       'classification',
       'task-classification-1',
       'train-metrics',
+      expect.any(AbortSignal),
     )
     expect(getModelTrainingOutputFileDetail).toHaveBeenCalledWith(
       'classification',
       'task-classification-1',
       'runtime-metrics',
+      expect.any(AbortSignal),
     )
     expect(wrapper.text()).toContain('训练进度')
     expect(wrapper.text()).toContain('75.0%')
