@@ -64,11 +64,12 @@
 | model_scale | string | 是 | 训练目标的模型 scale。 |
 | output_model_name | string | 是 | 训练完成后要登记的模型名。 |
 | warm_start_model_version_id | string \| null | 否 | warm start 使用的 ModelVersion id；当前会真实沿 ModelVersion -> ModelFile -> checkpoint 链路加载来源权重。该 ModelVersion 可以来自历史训练产出，也可以来自平台级预训练模型目录。 |
-| evaluation_interval | integer \| null | 否 | 每隔多少轮执行一次真实验证评估，默认 5；最后一轮会强制补做一次评估。 |
-| max_epochs | integer \| null | 否 | 最大训练轮数。 |
-| batch_size | integer \| null | 否 | batch size。 |
-| precision | string \| null | 否 | 请求使用的训练 precision；当前接口字段只接受 fp16、fp32。未指定时默认 fp32。 |
-| input_size | object \| null | 否 | 训练输入尺寸，固定使用 `{"width": 640, "height": 384}` 这类无顺序歧义的对象；未指定时默认宽高均为 640。 |
+| execution | object | 否 | 公共执行策略；未填写时使用默认策略。 |
+| execution.validation.interval_epochs | integer | 否 | 验证间隔，默认 5；最后一轮始终评估。 |
+| execution.max_epochs | integer | 否 | 最大训练轮数，默认 100。 |
+| execution.batch | object | 否 | 默认 AutoBatch；固定模式使用 `{"mode":"fixed","size":8}`。 |
+| execution.amp | object | 否 | 默认自动混合精度，模式为 auto/enabled/disabled；dtype 为 auto/fp16/bf16。 |
+| execution.input_size | object \| null | 否 | 训练输入尺寸，例如 `{"width":640,"height":384}`；未指定时默认宽高均为 640。 |
 | parameters | object | 是 | 按 `model_type` 选择的严格参数对象；未填写内部字段时使用该模型默认值。 |
 | display_name | string | 否 | 可选的任务展示名称。 |
 
@@ -108,6 +109,12 @@ YOLOv8、YOLO11、YOLO26 和 RF-DETR 使用不同 schema。完整默认值、数
 
 当前架构固定为一任务一设备。`parameters.runtime.device` 选择 CPU 或单张 GPU，多任务 GPU 调度由 worker 设备租约负责；创建请求不再接收 `gpu_count`。
 
+YOLOX 显式轮数必须满足 `warmup_epochs + no_aug_epochs < execution.max_epochs`。
+例如总轮数 20、Warmup 5、no-aug 15 会在入队前返回 422；可显式调整为 20/2/3。
+错误的具体安全原因在 `error.details.errors[]` 中，轮数和范围规则见
+[训练参数协议](../reference/models/training-parameters.md#可公开的校验原因)。
+CUDA AutoBatch 使用带 targets 的训练 loss 探针，不改变正常训练和验证的输入输出协议。
+
 #### warm_start_model_version_id 说明
 
 - warm start 表示本次训练不会从随机初始化开始，而是先加载一个已有 ModelVersion 对应的 checkpoint，再基于当前 DatasetExport 继续训练。
@@ -122,17 +129,17 @@ YOLOv8、YOLO11、YOLO26 和 RF-DETR 使用不同 schema。完整默认值、数
   - 平台基础模型目录中登记的 pretrained-reference ModelVersion。
 - 当使用平台基础模型做 warm start 时，推荐先调用 GET /api/v1/models/platform-base 或 GET /api/v1/models/platform-base/{model_id}，再把 available_versions[].model_version_id 填入这个字段。
 
-#### evaluation_interval 说明
+#### execution.validation.interval_epochs 说明
 
-- evaluation_interval 表示“每隔多少个 epoch 才做一次真实验证评估”，默认值为 5。
+- `execution.validation.interval_epochs` 表示“每隔多少个 epoch 才做一次真实验证评估”，默认值为 5。
 - 真实验证评估会在验证集上计算 validation loss，并额外执行一次 COCO mAP 评估，当前会回写 map50 与 map50_95。
 - 即使当前 epoch 不满足整除条件，最后一轮也会强制执行一次评估，确保训练结束时一定产出最新验证结果。
 
 #### 当前默认训练配置
 
-- input_size 未显式指定时，真实训练默认使用 `{"width": 640, "height": 640}`。
+- `execution.input_size` 未显式指定时，真实训练默认使用 `{"width": 640, "height": 640}`。
 - 公开 API、任务快照、ModelVersion 和部署响应均使用 `width / height` 对象；模型 core 内部才转换为 `(height, width)`。
-- precision 未显式指定时，默认使用 fp32。
+- `execution.amp` 未显式指定时，按设备自动解析；关闭 AMP 使用 FP32。
 - parameters 内未显式指定的字段按对应模型 schema 固化默认值；`augmentation.enabled=false` 会关闭该模型的全部随机增强。
 - 当前训练支持 CPU 执行；当环境没有可用 GPU 或未分配 GPU 时，会回退到 CPU 训练。这个模式主要用于最小硬件支持和开发环境验证，训练速度会明显变慢。
 

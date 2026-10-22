@@ -1227,6 +1227,7 @@ export function validateTrainingModelLayerValues(
   modelType: string | null | undefined,
   values: TrainingParameterValues,
   options: {
+    maxEpochs?: number
     augmentationEnabled?: boolean
     parameterSchema?: TrainingParameterSchemaItem | null
   } = {},
@@ -1270,6 +1271,25 @@ export function validateTrainingModelLayerValues(
           step: String(field.step),
         })
       }
+    }
+  }
+
+  if (normalizedModelType === 'yolox' && options.maxEpochs !== undefined) {
+    const maxEpochs = options.maxEpochs
+    if (!Number.isInteger(maxEpochs) || maxEpochs < 1 || maxEpochs > 10000) {
+      return translate('modelOps.trainingParameters.invalidMaxEpochs')
+    }
+    // 空值复用后端的隐式默认解析；显式填写的值不静默截断。
+    const warmupText = String(values.warmup_epochs ?? '').trim()
+    const warmup = warmupText ? Number(warmupText) : Math.min(5, maxEpochs - 1)
+    if (warmup >= maxEpochs) {
+      return translate('modelOps.trainingParameters.yoloxWarmupInvalid')
+    }
+    const noAugText = String(values.no_aug_epochs ?? '').trim()
+    const noAug = options.augmentationEnabled === false ? 0
+      : noAugText ? Number(noAugText) : Math.min(15, maxEpochs - warmup - 1)
+    if (warmup + noAug >= maxEpochs) {
+      return translate('modelOps.trainingParameters.yoloxScheduleInvalid')
     }
   }
 

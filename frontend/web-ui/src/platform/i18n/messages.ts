@@ -405,6 +405,10 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       trainingParameters: {
         rangePairRequired: '{label} 需要同时填写最小值和最大值',
         rangeOrderInvalid: '{label} 的最小值不能大于最大值',
+        rangeOrderInvalidGeneric: '范围最小值不能大于最大值',
+        invalidMaxEpochs: '最大训练轮数必须是 1 到 10000 的整数',
+        yoloxWarmupInvalid: 'YOLOX Warmup 轮数必须小于最大训练轮数，请减少 Warmup 轮数或增加总轮数',
+        yoloxScheduleInvalid: 'YOLOX Warmup 轮数与最后 no-aug 轮数之和必须小于最大训练轮数，请减少 Warmup/no-aug 轮数或增加总轮数',
         invalidOption: '{label} 的选项无效',
         parameterOutOfRange: '{label} 必须在 {min} 到 {max} 之间',
         parameterStepMismatch: '{label} 必须按 {step} 的步长输入',
@@ -2717,6 +2721,10 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       trainingParameters: {
         rangePairRequired: '{label} requires both minimum and maximum values',
         rangeOrderInvalid: 'The minimum {label} cannot exceed its maximum',
+        rangeOrderInvalidGeneric: 'The range minimum cannot exceed its maximum',
+        invalidMaxEpochs: 'Maximum epochs must be an integer between 1 and 10000',
+        yoloxWarmupInvalid: 'YOLOX warmup epochs must be less than maximum epochs. Reduce warmup or increase total epochs.',
+        yoloxScheduleInvalid: 'YOLOX warmup + no-aug epochs must be less than maximum epochs. Reduce warmup/no-aug or increase total epochs.',
         invalidOption: 'The selected {label} option is invalid',
         parameterOutOfRange: '{label} must be between {min} and {max}',
         parameterStepMismatch: '{label} must use increments of {step}',
@@ -5026,6 +5034,10 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       trainingParameters: {
         rangePairRequired: '{label} には最小値と最大値の両方が必要です',
         rangeOrderInvalid: '{label} の最小値は最大値以下である必要があります',
+        rangeOrderInvalidGeneric: '範囲の最小値は最大値以下にしてください',
+        invalidMaxEpochs: '最大エポック数は 1～10000 の整数にしてください',
+        yoloxWarmupInvalid: 'YOLOX の Warmup は最大エポック数未満にしてください。Warmup を減らすか総数を増やしてください。',
+        yoloxScheduleInvalid: 'YOLOX の Warmup と no-aug の合計は最大エポック数未満にしてください。Warmup/no-aug を減らすか総数を増やしてください。',
         invalidOption: '{label} の選択肢が無効です',
         parameterOutOfRange: '{label} は {min} から {max} の範囲で指定してください',
         parameterStepMismatch: '{label} は {step} 刻みで指定してください',
@@ -7181,6 +7193,10 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       trainingParameters: {
         rangePairRequired: '{label}에는 최솟값과 최댓값이 모두 필요합니다',
         rangeOrderInvalid: '{label}의 최솟값은 최댓값보다 클 수 없습니다',
+        rangeOrderInvalidGeneric: '범위의 최솟값은 최댓값보다 클 수 없습니다',
+        invalidMaxEpochs: '최대 에포크 수는 1~10000 사이의 정수여야 합니다',
+        yoloxWarmupInvalid: 'YOLOX Warmup 에포크는 최대 에포크보다 작아야 합니다. Warmup을 줄이거나 총 에포크를 늘리세요.',
+        yoloxScheduleInvalid: 'YOLOX Warmup과 no-aug 에포크의 합은 최대 에포크보다 작아야 합니다. Warmup/no-aug를 줄이거나 총 에포크를 늘리세요.',
         invalidOption: '{label} 옵션이 올바르지 않습니다',
         parameterOutOfRange: '{label}은(는) {min}에서 {max} 사이여야 합니다',
         parameterStepMismatch: '{label}은(는) {step} 단위로 입력해야 합니다',

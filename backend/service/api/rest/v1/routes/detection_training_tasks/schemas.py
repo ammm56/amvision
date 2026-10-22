@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic_core import PydanticCustomError
 
 from backend.service.api.rest.v1.routes.training_execution_schemas import (
     TrainingExecutionPolicyRequest,
@@ -74,7 +75,10 @@ class DetectionTrainingTaskCreateRequestBody(BaseModel):
             available_epochs = max(0, self.execution.max_epochs - 1)
             if "warmup_epochs" in explicit_fields:
                 if optimization.warmup_epochs > available_epochs:
-                    raise ValueError("YOLOX warmup_epochs 必须小于 max_epochs")
+                    raise PydanticCustomError(
+                        "yolox_warmup_epochs_invalid",
+                        "YOLOX warmup_epochs 必须小于 max_epochs",
+                    )
             else:
                 optimization.warmup_epochs = min(
                     optimization.warmup_epochs, available_epochs
@@ -85,8 +89,9 @@ class DetectionTrainingTaskCreateRequestBody(BaseModel):
             )
             if "no_aug_epochs" in explicit_fields:
                 if optimization.no_aug_epochs > remaining_epochs:
-                    raise ValueError(
-                        "YOLOX warmup_epochs + no_aug_epochs 必须小于 max_epochs"
+                    raise PydanticCustomError(
+                        "yolox_epoch_schedule_invalid",
+                        "YOLOX warmup_epochs + no_aug_epochs 必须小于 max_epochs",
                     )
             else:
                 optimization.no_aug_epochs = min(

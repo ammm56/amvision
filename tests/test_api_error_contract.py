@@ -7,6 +7,9 @@ from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
 from backend.service.api.error_handlers import register_exception_handlers
+from backend.service.api.rest.v1.routes.detection_training_tasks.schemas import (
+    DetectionTrainingTaskCreateRequestBody,
+)
 
 
 class _RequestBody(BaseModel):
@@ -28,6 +31,11 @@ def _build_test_application() -> FastAPI:
     @application.get("/unexpected")
     async def unexpected() -> None:
         raise RuntimeError("private-runtime-marker")
+
+    @application.post("/training-validate")
+    async def training_validate(body: DetectionTrainingTaskCreateRequestBody) -> dict:
+        """只校验，不创建任务或写数据库。"""
+        return body.model_dump()
 
     return application
 
@@ -105,3 +113,34 @@ def test_framework_http_errors_use_the_same_public_shape() -> None:
             "details": {},
         }
     }
+
+
+def test_training_schedule_error_is_specific_without_echoing_inputs() -> None:
+    """安全固定文案保留具体规则和字段路径，不回显输入值。"""
+    with TestClient(_build_test_application()) as client:
+        response = client.post("/training-validate", json={
+            "project_id": "private-project-marker", "model_type": "yolox",
+            "model_scale": "m", "output_model_name": "private-model-marker",
+            "execution": {"max_epochs": 20},
+            "parameters": {"optimization": {"warmup_epochs": 5, "no_aug_epochs": 15}},
+        })
+    assert response.status_code == 422
+    payload = response.json()["error"]
+    assert payload["code"] == "request_validation_failed"
+    item = payload["details"]["errors"][0]
+    assert set(item) == {"path", "rule", "reason"}
+    assert item["path"] == ["body", "parameters", "optimization", "no_aug_epochs"]
+    assert item["rule"] == "yolox_epoch_schedule_invalid"
+    assert "warmup_epochs + no_aug_epochs" in item["reason"]
+    assert "private-" not in response.text
+
+
+def test_validation_message_whitelist_ignores_exception_context() -> None:
+    """即使异常消息和 ctx 含敏感内容，白名单也只输出固定文案。"""
+    from backend.service.api.error_handlers import _serialize_validation_errors
+    for rule in ["yolox_epoch_schedule_invalid", "value_error"]:
+        result = _serialize_validation_errors([{
+            "type": rule, "loc": ("body",), "msg": "private-secret",
+            "input": "private-secret", "ctx": {"error": "private-secret"},
+        }])
+        assert "private-secret" not in str(result)

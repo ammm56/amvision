@@ -30,6 +30,31 @@ function defaultValues(taskType: ModelTaskType, modelType: string): Record<strin
   return getDefaultTrainingModelParameterValues(taskType, modelType)
 }
 
+describe('YOLOX epoch schedule validation', () => {
+  it('rejects the enabled 20 / 5 / 15 form without silently changing it', () => {
+    const values = defaultValues('detection', 'yolox')
+    expect(validateTrainingModelLayerValues('detection', 'yolox', values, { maxEpochs: 20 }))
+      .toContain('no-aug')
+    expect(values.no_aug_epochs).toBe('15')
+  })
+
+  it('accepts disabled augmentation and validates warmup independently', () => {
+    const values = defaultValues('detection', 'yolox')
+    expect(validateTrainingModelLayerValues('detection', 'yolox', values, { maxEpochs: 20, augmentationEnabled: false })).toBeNull()
+    values.warmup_epochs = '20'
+    expect(validateTrainingModelLayerValues('detection', 'yolox', values, { maxEpochs: 20, augmentationEnabled: false })).toContain('Warmup')
+  })
+
+  it('accepts a valid short schedule and implicit defaults', () => {
+    const values = { ...defaultValues('detection', 'yolox'), warmup_epochs: '2', no_aug_epochs: '3' }
+    expect(validateTrainingModelLayerValues('detection', 'yolox', values, { maxEpochs: 20 })).toBeNull()
+    values.warmup_epochs = ''
+    values.no_aug_epochs = ''
+    expect(validateTrainingModelLayerValues('detection', 'yolox', values, { maxEpochs: 3 })).toBeNull()
+    expect(validateTrainingModelLayerValues('detection', 'yolox', values, { maxEpochs: 0 })).not.toBeNull()
+  })
+})
+
 const supportedTrainingPairs: ReadonlyArray<readonly [ModelTaskType, string]> = [
   ['detection', 'yolox'],
   ['detection', 'yolov8'],
