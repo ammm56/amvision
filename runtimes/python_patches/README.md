@@ -8,7 +8,7 @@
 | 包 | 原版 | 本项目版本 | 修改范围 |
 | --- | --- | --- | --- |
 | trimesh | 5.1.1 | 5.1.1+amvision.1 | exchange.ply 严格头部、类型化点云接口、分块读写；不修改几何算法 |
-| pypcd4 | 1.5.1 | 1.5.1+amvision.1 | 头部、字段布局、记录完整性、LZF 分组、写出及版本身份 |
+| pypcd4 | 1.5.1 | 1.5.1+amvision.2 | 头部、字段布局、记录完整性、LZF 分组、写出及版本身份；.2 修正不可压缩数据的输出容量 |
 
 `manifest.json` 固定上游源码归档及被替换文件 SHA-256。各包目录保存完整的修改文件，
 使原版未修改部分和版权声明可核对，不把它们复制进业务模块。
@@ -33,12 +33,15 @@ python -m pip install --no-index --find-links <wheelhouse> -r runtimes/python_pa
 python -m pytest tests/integration/controlled_io -q --basetemp=.tmp/io-tests
 ```
 
-已使用的构建工具为 Python 3.12、build 1.3.0、setuptools 70.2.0、wheel 0.47.0、
+初次 `.1` 构建工具为 Python 3.12、build 1.3.0、setuptools 70.2.0、wheel 0.47.0、
 hatchling 1.27.0、hatch-vcs 0.5.0、setuptools-scm 8.3.1、pyproject-hooks 1.2.0。
+PCD `.2` 构建使用 build 1.6.1、hatchling 1.32.4、setuptools-scm 10.3.4、
+pyproject-hooks 1.3.3，其余版本相同；实际源码和 wheel 身份另行固定。
 构建产物是正常的 `py3-none-any.whl`，不是 editable 安装或启动时补丁。
 每次构建输出 `.build.json`，记录源码、修复文件、wheel SHA-256。
 构建器检查 wheel 内版本和每个修改模块，防止生成文件被打包规则漏掉。
-正式固定产物身份见 [M1 I/O 验收记录](../../docs/development/3d-metrology-m1-io.md)。
+初次产物身份见 [M1 I/O 验收记录](../../docs/development/3d-metrology-m1-io.md)，
+当前 PCD `.2` 身份见[资产验证记录](../../docs/development/3d-metrology-m1-assets.md)。
 
 集成套件显式检查安装版本和模块内容；缺依赖/装原版直接失败，不 skip。
 它位于 `tests/integration/`，不使尚未启用三维依赖的常规后端测试无法收集。

@@ -113,15 +113,18 @@ class WorkflowAppVersionService:
         session_factory: SessionFactory,
         dataset_storage: LocalDatasetStorage,
         node_catalog_registry: NodeCatalogRegistry,
+        point_cloud_policy=None,
     ) -> None:
         """初始化版本服务。"""
 
         self.session_factory = session_factory
         self.dataset_storage = dataset_storage
         self.node_catalog_registry = node_catalog_registry
+        self.point_cloud_policy = point_cloud_policy
         self.workflow_json_service = LocalWorkflowJsonService(
             dataset_storage=dataset_storage,
             node_catalog_registry=node_catalog_registry,
+            point_cloud_policy=point_cloud_policy,
         )
         self.application_lifecycle = WorkflowApplicationLifecycleService(
             session_factory=session_factory,
@@ -152,7 +155,8 @@ class WorkflowAppVersionService:
             MeasurementResourceService,
         )
 
-        MeasurementResourceService(self.dataset_storage).validate_template(
+        MeasurementResourceService(self.dataset_storage,
+            cloud_policy=self.point_cloud_policy.assets() if self.point_cloud_policy is not None else None).validate_template(
             template, project_id=project_id
         )
         # 再次执行完整校验，确保发布不依赖读取路径的隐式假设。
@@ -392,7 +396,8 @@ class WorkflowAppVersionService:
             collect_measurement_references,
         )
 
-        resources = MeasurementResourceService(self.dataset_storage)
+        resources = MeasurementResourceService(self.dataset_storage,
+            cloud_policy=self.point_cloud_policy.assets() if self.point_cloud_policy is not None else None)
         references = collect_measurement_references(snapshot.template)
         with resources.mutation(project_id) if references else nullcontext():
             if references:

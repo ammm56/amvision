@@ -33,6 +33,7 @@ from backend.service.application.local_buffers import (
     LocalBufferBrokerEventChannel,
 )
 from backend.service.application.workflows.execution_cleanup import (
+    WORKFLOW_EXECUTION_CLEANUP_KIND_DATASET_STORAGE_OBJECT,
     WORKFLOW_EXECUTION_CLEANUP_KIND_DATASET_STORAGE_TREE,
     WORKFLOW_EXECUTION_CLEANUP_KIND_LOCAL_BUFFER_LEASE,
     WORKFLOW_EXECUTION_TIMEOUT_SECONDS_KEY,
@@ -41,6 +42,10 @@ from backend.service.application.workflows.execution_cleanup import (
 )
 from backend.service.application.workflows.runtime_app_events import (
     append_workflow_app_runtime_event,
+)
+from backend.service.application.workflows.trigger_sources.output_delivery import (
+    WORKFLOW_OUTPUT_DELIVERY_PLAN_METADATA_KEY,
+    WorkflowOutputDeliveryPlan,
 )
 from backend.service.application.workflows.worker.health import (
     WorkflowRuntimeWorkerInstance,
@@ -126,6 +131,7 @@ class _WorkflowRuntimeProcessHandle:
     preview_channel: RuntimePreviewChannel | None = None
     heartbeat_timeout_reported: bool = False
     background_failure_reported: bool = False
+    pending_resource_cleanups: dict[str, dict[str, object]] = field(default_factory=dict, repr=False)
 
 
 @dataclass(frozen=True)
@@ -227,6 +233,7 @@ class WorkflowRuntimeWorkerManager:
         self.published_inference_gateway = published_inference_gateway
         self._context = managed_spawn_context()
         self._handles: dict[str, _WorkflowRuntimeProcessHandle] = {}
+        self._retained_resource_handles: dict[str, _WorkflowRuntimeProcessHandle] = {}
         self._async_runs: dict[str, _WorkflowRuntimeAsyncRunHandle] = {}
         self._execution_tokens: dict[str, WorkflowRuntimeExecutionToken] = {}
         self._execution_token_ids_by_runtime: dict[str, set[str]] = {}
@@ -979,6 +986,8 @@ class WorkflowRuntimeWorkerManager:
             process_execution_metadata = build_process_safe_execution_metadata(
                 process_metadata_source
             )
+            # 分发前归属原进程；monitor 可能先于调用线程收到退出/失败消息。
+            self._retain_run_resources(handle, workflow_run_id, process_execution_metadata)
             with handle.state_lock:
                 if not handle.process.is_alive():
                     self._terminate_failed_handle(
@@ -1033,6 +1042,7 @@ class WorkflowRuntimeWorkerManager:
                         handle=handle,
                         pending=pending,
                         cancellation_grace_seconds=cancellation_grace_seconds,
+                        workflow_run_id=workflow_run_id,
                     )
                     raise OperationCancelledError(
                         "workflow run 已取消",
@@ -1048,6 +1058,7 @@ class WorkflowRuntimeWorkerManager:
                         handle=handle,
                         pending=pending,
                         cancellation_grace_seconds=cancellation_grace_seconds,
+                        workflow_run_id=workflow_run_id,
                     )
                     raise OperationTimeoutError(
                         "等待 workflow runtime worker 同步调用结果超时",
@@ -1071,7 +1082,16 @@ class WorkflowRuntimeWorkerManager:
                             },
                         )
                     message = pending.response or {}
+                    self._validate_worker_response_identity(message, handle)
                     worker_response_received = True
+                    if message.get("worker_reusable") is False:
+                        # 资源关闭失败的响应不是释放证明，先整组停止再归还输入。
+                        resource_cleanup_deferred = True
+                        self._terminate_failed_handle(
+                            workflow_runtime_id=workflow_app_runtime.workflow_runtime_id, handle=handle,
+                        )
+                    else:
+                        self._acknowledge_run_resources(handle, workflow_run_id)
                     worker_reply_wait_ms = _elapsed_ms(reply_wait_started_at)
                     break
                 if not handle.process.is_alive():
@@ -1088,6 +1108,17 @@ class WorkflowRuntimeWorkerManager:
                             "process_exit_code": process_exit_code,
                         },
                     )
+        except BaseException:
+            with handle.state_lock:
+                pending_cleanup = workflow_run_id in handle.pending_resource_cleanups
+                stopping = handle.expected_shutdown
+            if pending_cleanup:
+                resource_cleanup_deferred = True
+                if not stopping:
+                    self._terminate_failed_handle(
+                        workflow_runtime_id=workflow_app_runtime.workflow_runtime_id, handle=handle,
+                    )
+            raise
         finally:
             with handle.state_lock:
                 handle.pending_responses.pop(
@@ -1104,9 +1135,9 @@ class WorkflowRuntimeWorkerManager:
                         )
                         if invocation.workflow_run_id != workflow_run_id
                     }
-            if "message_id" in locals():
+            if "message_id" in locals() and not locals().get("resource_cleanup_deferred", False):
                 self.cleanup_workflow_run_local_buffer_owner(workflow_run_id)
-            if not locals().get("worker_response_received", False):
+            if not locals().get("worker_response_received", False) and not locals().get("resource_cleanup_deferred", False):
                 # worker 未返回时无法确认其 finally 是否运行；覆盖入队失败、取消、
                 # 超时和进程硬退出，释放 TriggerSource 输入等父进程已知 lease。
                 self.cleanup_parent_local_buffer_leases(execution_metadata)
@@ -1138,6 +1169,7 @@ class WorkflowRuntimeWorkerManager:
         handle: _WorkflowRuntimeProcessHandle,
         pending: _WorkflowRuntimePendingResponse,
         cancellation_grace_seconds: float,
+        workflow_run_id: str,
     ) -> bool:
         """先协作取消当前 Run，超出 grace 后只隔离当前 Runtime worker。"""
 
@@ -1149,11 +1181,60 @@ class WorkflowRuntimeWorkerManager:
             if remaining_seconds <= 0:
                 break
             if pending.event.wait(timeout=min(0.05, remaining_seconds)):
-                return True
+                message = pending.response or {}
+                self._validate_worker_response_identity(message, handle)
+                if message.get("worker_reusable") is not False:
+                    self._acknowledge_run_resources(handle, workflow_run_id)
+                    return True
+                break
         self._terminate_failed_handle(
             workflow_runtime_id=workflow_runtime_id,
             handle=handle,
         )
+        return False
+
+    def _retain_run_resources(
+        self, handle: _WorkflowRuntimeProcessHandle, run_id: str,
+        metadata: dict[str, object],
+    ) -> None:
+        """失败输入归属旧进程；索引只阻止上层重复清理，不接管真实资源。"""
+        with handle.cleanup_lock:
+            if handle.cleanup_completed or handle.expected_shutdown:
+                raise ServiceConfigurationError("workflow worker 已进入停止，不能交付输入资源")
+            with handle.state_lock:
+                handle.pending_resource_cleanups[run_id] = metadata
+            with self._lock:
+                retained = getattr(self, "_retained_resource_handles", None)
+                if retained is None:
+                    retained = self._retained_resource_handles = {}
+                retained[run_id] = handle
+
+    def _acknowledge_run_resources(self, handle: _WorkflowRuntimeProcessHandle, run_id: str) -> None:
+        """只接受尚未被 monitor 回收的本次释放证明，禁止交付已撤销输出。"""
+        with handle.cleanup_lock:
+            with handle.state_lock:
+                if run_id not in handle.pending_resource_cleanups:
+                    raise ServiceConfigurationError("workflow worker 资源已被回收，迟到响应不可交付")
+                handle.pending_resource_cleanups.pop(run_id)
+            with self._lock:
+                getattr(self, "_retained_resource_handles", {}).pop(run_id, None)
+
+    def _resources_await_process_exit(self, cleanup_items: tuple) -> bool:
+        """上层不能绕过仍在执行或等待整组退出的输入所有权。"""
+        if not cleanup_items or not getattr(self, "_retained_resource_handles", None):
+            return False
+        with self._lock:
+            retained = getattr(self, "_retained_resource_handles", None)
+            if not retained:
+                return False
+            owners = tuple(retained.items())
+        keys = {(item.resource_kind, item.resource_id) for item in cleanup_items}
+        for run_id, handle in owners:
+            with handle.state_lock:
+                metadata = handle.pending_resource_cleanups.get(run_id)
+            if metadata is not None and any((item.resource_kind, item.resource_id) in keys
+                   for item in list_registered_execution_cleanups(metadata)):
+                return True
         return False
 
     def _run_async_workflow(self, async_handle: _WorkflowRuntimeAsyncRunHandle) -> None:
@@ -1317,18 +1398,26 @@ class WorkflowRuntimeWorkerManager:
     def cleanup_parent_local_buffer_leases(
         self,
         execution_metadata: dict[str, object],
+        *,
+        require_complete: bool = False,
     ) -> int:
         """父进程兜底清理 worker 未能执行的输入资源。"""
 
         cleanup_items_snapshot = list_registered_execution_cleanups(execution_metadata)
+        if not require_complete and self._resources_await_process_exit(cleanup_items_snapshot):
+            return 0
         for cleanup_item in cleanup_items_snapshot:
             if (
-                cleanup_item.resource_kind
-                == WORKFLOW_EXECUTION_CLEANUP_KIND_DATASET_STORAGE_TREE
+                cleanup_item.resource_kind in {
+                    WORKFLOW_EXECUTION_CLEANUP_KIND_DATASET_STORAGE_TREE,
+                    WORKFLOW_EXECUTION_CLEANUP_KIND_DATASET_STORAGE_OBJECT,
+                }
             ):
                 try:
                     self.dataset_storage.delete_tree(cleanup_item.resource_id)
                 except Exception as exc:
+                    if require_complete:
+                        raise
                     LOGGER.warning(
                         "父进程清理 Workflow 输入目录失败: object_key=%s error=%s",
                         cleanup_item.resource_id,
@@ -1345,9 +1434,13 @@ class WorkflowRuntimeWorkerManager:
         try:
             client = self._get_cleanup_local_buffer_client()
         except Exception as exc:
+            if require_complete:
+                raise
             LOGGER.warning("创建 LocalBufferBroker cleanup client 失败: %s", exc)
             return 0
         if client is None:
+            if require_complete:
+                raise ServiceConfigurationError("待回收的输入 lease 缺少 LocalBufferBroker 通道")
             return 0
         released_count = 0
         for cleanup_item in cleanup_items:
@@ -1363,15 +1456,19 @@ class WorkflowRuntimeWorkerManager:
                     client.release(cleanup_item.resource_id)
                 released_count += 1
             except InvalidRequestError:
+                if require_complete and isinstance(ownership_receipt_payload, dict):
+                    raise
                 # worker 可能已在退出前完成 cleanup；release 保持幂等兜底语义。
                 continue
             except Exception as exc:
+                self._invalidate_cleanup_local_buffer_client(client)
+                if require_complete:
+                    raise
                 LOGGER.warning(
                     "父进程释放 LocalBufferBroker lease 失败: lease_id=%s error=%s",
                     cleanup_item.resource_id,
                     exc,
                 )
-                self._invalidate_cleanup_local_buffer_client(client)
                 break
         return released_count
 
@@ -1430,15 +1527,23 @@ class WorkflowRuntimeWorkerManager:
                 break
         return released_count
 
-    def cleanup_workflow_run_local_buffer_owner(self, workflow_run_id: str) -> int:
+    def cleanup_workflow_run_local_buffer_owner(
+        self, workflow_run_id: str, *, require_complete: bool = False,
+    ) -> int:
         """按 run owner 前缀释放 worker 可能未登记的临时 ROI lease。"""
 
         normalized_run_id = workflow_run_id.strip()
         if not normalized_run_id:
             return 0
+        if not require_complete and getattr(self, "_retained_resource_handles", None):
+            with self._lock:
+                if normalized_run_id in getattr(self, "_retained_resource_handles", {}):
+                    return 0
         try:
             client = self._get_cleanup_local_buffer_client()
         except Exception as exc:
+            if require_complete:
+                raise
             LOGGER.warning("创建 LocalBufferBroker owner cleanup client 失败: %s", exc)
             return 0
         if client is None:
@@ -1449,13 +1554,15 @@ class WorkflowRuntimeWorkerManager:
                 owner_id_prefix=f"{normalized_run_id}:",
             )
         except Exception as exc:
+            self._invalidate_cleanup_local_buffer_client(client)
+            if require_complete:
+                raise
             LOGGER.warning(
                 "父进程按 Workflow Run owner 释放 LocalBufferBroker lease 失败: "
                 "workflow_run_id=%s error=%s",
                 normalized_run_id,
                 exc,
             )
-            self._invalidate_cleanup_local_buffer_client(client)
             return 0
 
     def _get_cleanup_local_buffer_client(self) -> LocalBufferBrokerClient | None:
@@ -1475,6 +1582,23 @@ class WorkflowRuntimeWorkerManager:
             client = LocalBufferBrokerClient(channel)
             self._cleanup_local_buffer_client = client
             return client
+
+    def _cleanup_failed_run_response(self, metadata: dict[str, object]) -> None:
+        """整组退出后回收已 handoff、但因收尾失败未能交付的响应 owner。"""
+        raw_plan = metadata.get(WORKFLOW_OUTPUT_DELIVERY_PLAN_METADATA_KEY)
+        if raw_plan is None:
+            return
+        plan = WorkflowOutputDeliveryPlan.model_validate(raw_plan)
+        if plan.attachment_delivery_kind != "local-buffer":
+            return
+        client = self._get_cleanup_local_buffer_client()
+        if client is None:
+            raise ServiceConfigurationError("待回收的响应 owner 缺少 LocalBufferBroker 通道")
+        try:
+            client.release_owner(owner_kind=plan.response_owner_kind, owner_id=plan.response_owner_id)
+        except Exception:
+            self._invalidate_cleanup_local_buffer_client(client)
+            raise
 
     def _close_cleanup_local_buffer_client(self) -> None:
         """关闭管理器持有的持久化 cleanup 控制通道。"""
@@ -1666,6 +1790,17 @@ class WorkflowRuntimeWorkerManager:
                 handle.expected_shutdown = True
 
             handle.process.stop_group(timeout=10)
+            # 停止失败时此表留在原 handle，恢复/再次停止仍须完成同一归属的清理。
+            with handle.state_lock:
+                deferred = tuple(handle.pending_resource_cleanups.items())
+            for run_id, metadata in deferred:
+                self.cleanup_workflow_run_local_buffer_owner(run_id, require_complete=True)
+                self.cleanup_parent_local_buffer_leases(metadata, require_complete=True)
+                self._cleanup_failed_run_response(metadata)
+                with handle.state_lock:
+                    handle.pending_resource_cleanups.pop(run_id, None)
+                with self._lock:
+                    getattr(self, "_retained_resource_handles", {}).pop(run_id, None)
             handle.response_stop_event.set()
             if handle.preview_channel is not None:
                 handle.preview_channel.close()

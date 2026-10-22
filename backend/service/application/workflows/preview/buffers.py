@@ -10,6 +10,7 @@ from threading import RLock
 from time import monotonic
 from typing import Iterator
 from uuid import uuid4
+from pathlib import Path
 
 from backend.contracts.workflows.preview_session import PREVIEW_CHUNK_SIZE
 
@@ -22,7 +23,7 @@ class PreviewMemoryError(ValueError):
 class _Block:
     """每块只归一个 session 所有，借用结束前不能关闭映射。"""
 
-    memory: SharedMemory
+    memory: SharedMemory | None
     owner: str
     size: int
     media_type: str
@@ -35,12 +36,16 @@ class _Block:
     touched: float = 0
     file_name: str = "input"
     upload: bool = True
+    file: object = None
+    file_identity: dict | None = None
+    hasher: object = None
 
 
 class PreviewBuffers:
     """统一分配/发布/借用/释放；总容量和单会话容量同时受限。"""
 
-    def __init__(self, *, session_limit: int = 512 * 1024**2, total_limit: int = 1024**3):
+    def __init__(self, *, session_limit: int = 512 * 1024**2, total_limit: int = 1024**3,
+                 file_policy=None, file_root: Path | None = None):
         """限额只覆盖受管字节，不伪称限制第三方算法 RSS 或 GPU 工作区。"""
         if session_limit <= 0 or total_limit < session_limit:
             raise ValueError("preview_memory_limits_invalid")
@@ -52,6 +57,32 @@ class PreviewBuffers:
         self._closed = False
         self.require_registered_owner = False
         self._owners: set[str] = set()
+        self.file_policy = file_policy
+        self.file_root = file_root
+
+    def allocate_file(self, owner: str, size: int, *, media_type: str, file_name: str) -> str:
+        """完整长度先预留，文件数据不进入原图片 SHM 或 Python 副本预算。"""
+        from backend.contracts.workflows.point_cloud import MAX_POINT_CLOUD_INPUT_BYTES
+        from backend.service.infrastructure.filesystem.shared_temporary_input import SharedTemporaryInput
+
+        with self._lock:
+            if self.file_policy is None or self.file_root is None:
+                raise PreviewMemoryError("preview_file_policy_unconfigured")
+            if self._closed or owner not in self._owners:
+                raise PreviewMemoryError("preview_memory_unavailable")
+            if type(size) is not int or not 0 < size <= MAX_POINT_CLOUD_INPUT_BYTES:
+                raise PreviewMemoryError("preview_input_length_invalid")
+            files = [b for b in self._blocks.values() if b.file is not None]
+            if (sum(b.size for b in files) + size > self.file_policy.total_bytes
+                    or sum(b.size for b in files if b.owner == owner) + size > self.file_policy.session_bytes
+                    or len(self._blocks) >= 8192
+                    or sum(b.owner == owner for b in self._blocks.values()) >= 4096):
+                raise PreviewMemoryError("preview_file_capacity")
+            identity = uuid4().hex
+            file = SharedTemporaryInput(self.file_root)
+            self._blocks[identity] = _Block(None, owner, size, media_type, None,
+                touched=monotonic(), file_name=file_name, file=file, hasher=hashlib.sha256())
+            return identity
 
     def register_owner(self, owner: str) -> None:
         """会话装配启用严格所有权；撤销后禁止竞态中的新分配。"""
@@ -73,9 +104,9 @@ class PreviewBuffers:
 
     def _check_capacity(self, owner: str, additional: int) -> None:
         """SHM、控制状态与 Worker 受管副本共用同一字节预算。"""
-        own = sum(b.size for b in self._blocks.values() if b.owner == owner)
+        own = sum(b.size for b in self._blocks.values() if b.owner == owner and b.file is None)
         own += sum(size for (account, _), size in self._reservations.items() if account == owner)
-        total = sum(b.size for b in self._blocks.values()) + sum(self._reservations.values())
+        total = sum(b.size for b in self._blocks.values() if b.file is None) + sum(self._reservations.values())
         if own + additional > self.session_limit or total + additional > self.total_limit:
             raise PreviewMemoryError("preview_memory_capacity")
 
@@ -113,7 +144,11 @@ class PreviewBuffers:
                 raise PreviewMemoryError("preview_input_chunk_invalid")
             if block.written + len(content) > block.size:
                 raise PreviewMemoryError("preview_input_length_invalid")
-            block.memory.buf[block.written:block.written + len(content)] = content
+            if block.file is not None:
+                block.file.write(content)
+                block.hasher.update(content)
+            else:
+                block.memory.buf[block.written:block.written + len(content)] = content
             block.written += len(content)
             block.next_index += 1
             block.touched = monotonic()
@@ -124,7 +159,13 @@ class PreviewBuffers:
             block = self._get(owner, block_id)
             if block.written != block.size:
                 raise PreviewMemoryError("preview_input_incomplete")
-            if block.digest and hashlib.sha256(block.memory.buf[:block.size]).hexdigest() != block.digest:
+            if block.ready and block.file is not None:
+                raise PreviewMemoryError("preview_input_already_committed")
+            if block.file is not None:
+                block.file_identity = block.file.seal()
+                block.digest = block.hasher.hexdigest()
+                block.hasher = None
+            elif block.digest and hashlib.sha256(block.memory.buf[:block.size]).hexdigest() != block.digest:
                 raise PreviewMemoryError("preview_input_digest_invalid")
             block.ready = True
             block.touched = monotonic()
@@ -135,6 +176,8 @@ class PreviewBuffers:
         """单进程只读借用；先释放 view 再归还 pin，避免 BufferError 或悬空指针。"""
         with self._lock:
             block = self._get(owner, block_id)
+            if block.file is not None:
+                raise PreviewMemoryError("preview_file_not_display")
             if not block.ready:
                 raise PreviewMemoryError("preview_input_incomplete")
             block.pins += 1
@@ -155,6 +198,10 @@ class PreviewBuffers:
             if not block.ready:
                 raise PreviewMemoryError("preview_input_incomplete")
             block.pins += 1
+            if block.file is not None:
+                return {"storage_kind": "temporary-file", "file_identity": dict(block.file_identity),
+                        "byte_length": block.size, "checksum": block.digest,
+                        "blob_id": block_id, "media_type": block.media_type, "file_name": block.file_name}
             return {"name": block.memory.name, "byte_length": block.size,
                     "blob_id": block_id, "media_type": block.media_type, "file_name": block.file_name}
 
@@ -172,7 +219,7 @@ class PreviewBuffers:
         """只给受管 Worker 分配一次写借用，未发布内存对浏览器不可见。"""
         with self._lock:
             block = self._get(owner, block_id)
-            if block.ready or block.pins or block.written:
+            if block.file is not None or block.ready or block.pins or block.written:
                 raise PreviewMemoryError("preview_writer_invalid")
             block.pins += 1
             block.upload = False
@@ -218,14 +265,18 @@ class PreviewBuffers:
 
     def _destroy(self, block_id: str, block: _Block) -> None:
         """唯一所有者负责 close/unlink，成功后才移除容量计量。"""
-        block.memory.close()
-        block.memory.unlink()
+        if block.file is not None:
+            block.file.close()
+        else:
+            block.memory.close()
+            block.memory.unlink()
         del self._blocks[block_id]
 
     def stats(self) -> dict[str, int]:
         """返回验收需要的有界资源计数，不暴露内容或 SHM 名称。"""
         with self._lock:
-            return {"blocks": len(self._blocks), "bytes": sum(b.size for b in self._blocks.values()),
+            return {"blocks": len(self._blocks), "bytes": sum(b.size for b in self._blocks.values() if b.file is None),
+                    "file_bytes": sum(b.size for b in self._blocks.values() if b.file is not None),
                     "pins": sum(b.pins for b in self._blocks.values()),
                     "reserved_bytes": sum(self._reservations.values())}
 

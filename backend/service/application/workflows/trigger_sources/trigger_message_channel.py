@@ -12,6 +12,7 @@ from backend.service.application.message_channels.codec import (
 )
 
 PREPARE_SCHEMA_ID = "amvision.workflow-trigger.prepare.v1"
+CLOUD_PREPARE_SCHEMA_ID = "amvision.workflow-trigger.cloud-prepare.v1"
 ALLOCATION_SCHEMA_ID = "amvision.workflow-trigger.allocation.v1"
 REQUEST_SCHEMA_ID = "amvision.workflow-trigger.request.v1"
 EVENT_REQUEST_SCHEMA_ID = "amvision.workflow-trigger.event-request.v1"
@@ -49,6 +50,7 @@ class WorkflowTriggerMailboxPrepare:
     payload: bytes
     route_generation: int
     accepted_timeout_ms: int
+    prepare_schema_id: str = PREPARE_SCHEMA_ID
 
 
 class WorkflowTriggerMailboxServerPort(Protocol):

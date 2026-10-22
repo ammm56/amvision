@@ -1018,7 +1018,8 @@ class PointCloud:
         """
 
         size = self.pc_data.nbytes
-        if size > 0xFFFFFFFF or size * 3 > max_working_bytes:
+        output_capacity = size + (size + 31) // 32 + 1 if size else 0
+        if output_capacity > 0xFFFFFFFF or size * 2 + output_capacity > max_working_bytes:
             raise ValueError("budget: compressed writer buffers exceed capacity")
         # 三份上限计入分组列块、拼接正文和压缩输出；源数组另由 owner 计费。
         blocks = []
@@ -1036,7 +1037,7 @@ class PointCloud:
         if not size:
             compressed = b""
         else:
-            compressed = lzf.compress(uncompressed)
+            compressed = lzf.compress(uncompressed, output_capacity)
             if compressed is None:
                 raise ValueError("write: LZF compression failed; encoding was not changed")
         check_cancel(cancel)

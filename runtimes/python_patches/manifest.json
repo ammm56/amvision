@@ -14,7 +14,7 @@
     },
     "pypcd4": {
       "upstream_version": "1.5.1",
-      "version": "1.5.1+amvision.1",
+      "version": "1.5.1+amvision.2",
       "source_url": "https://files.pythonhosted.org/packages/d6/a5/8a94076ca71c0fb07241f820d93e951cb76deac021d04209ffbd93870684/pypcd4-1.5.1.tar.gz",
       "source_sha256": "5427584a1b749b2d243baa4006ca4c62b9a3880a127c838c9ac9e5c7e9486ee4",
       "original_files": {

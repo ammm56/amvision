@@ -6,6 +6,8 @@
 
 Python、Go 和 C SDK 当前没有实现，不能作为已交付能力使用。跨语言协议事实位于 `sdks/schemas/`。
 
+完整点云文件与同机数组使用不同入口，见 [Workflow 点云输入](workflow-point-cloud-input.md)。点云生产节点仍等待容量和 timeout 确认；不能套用原图片链路的性能/长稳结论。
+
 ## 能力
 
 - Workflow Runtime 查询、启停、重启、健康与 revision 分页
@@ -51,7 +53,7 @@ using (var client = AMVisionClient.CreateFromConfig())
 | --- | --- | --- |
 | HTTP Runtime | `image-ref.v1`、`image-base64.v1`、`value.v1`、`text.v1`、`file-ref.v1`、`file-refs.v1` | `WorkflowRequestBuilder` 已支持六类输入、引用和 streaming multipart |
 | ZeroMQ Trigger | `image-ref.v1`、`value.v1`、`text.v1` | 图片方法可附带 `WorkflowTriggerInputsBuilder` 生成的 JSON/文本，支持 event-only |
-| local-shared-memory Trigger | `image-ref.v1`、`value.v1`、`text.v1` | 图片与 event-only 请求共用 `WorkflowTriggerInputsBuilder` 输入对象，协议版本均为 v1 |
+| local-shared-memory Trigger | `image-ref.v1`、`value.v1`、`text.v1`、`point-cloud-ref.v1` | 图片与 event-only 使用既有 API；点云使用独立 Cloud PREPARE 和 `InvokePointCloud`，复用 owner/ACK 生命周期 |
 
 HTTP Builder 覆盖 JSON、文本、图片上传、图片引用、Base64 图片、单文件、多文件及文件引用。文件路径使用 stream factory / `StreamContent`，不使用 `File.ReadAllBytes`、完整 `MemoryStream` copy、隐藏重试、排队或 transport fallback。调用方显式选择 `BuildJson()` 或 `BuildMultipart()`，SDK 不根据输入内容猜测 transport；旧 `Build()` 等价于 `BuildMultipart()`。
 
@@ -88,7 +90,7 @@ ZeroMQ SDK 不直接操作 mmap 文件或 slot。timeout、transport error 和�
 
 `SharedMemoryTriggerRequest.EnableTimings` 默认是 `false`。显式开启后，返回结果的 `Timings` 提供 `SdkConvertToBgr24Ms`、`SdkBase64DecodeMs`、`SdkWriteLocalBufferMs`、`SdkChecksumMs`、`InvokeReturnMs`、`AttachmentAccessMs` 和 `DisposeAckMs`。`SdkChecksumMs` 只记录结果 attachment 校验；trusted-local 输入通过 writer guard 与 descriptor publication 保证一致性，不做 full-image CRC。`InvokeReturnMs` 截止结果对象可返回；零复制 attachment 的读取持有耗时与最终 ACK 只有在结果 `Dispose`/`DisposeAsync` 后才完整。JSON-only 结果在 Invoke 返回前 ACK，`DisposeAckMs` 保留该阶段耗时并累计后续 Dispose 开销，重复 Dispose 不重复累计；该阶段已包含在 `SdkResultBuildMs` 和 `InvokeReturnMs` 内，不能再次相加作为总耗时。此开关只控制 SDK 本地诊断，不会覆盖 TriggerSource 的 `return_timing_metadata_enabled` 配置；未返回服务端 timings 时，不能从总耗时推算纯传输开销。诊断关闭时不为图片写入热路径创建这些计时。
 
-v1 固定为同步调用、每次一张输入图片和 0 到 N 张输出图片。当前 Workflow Trigger mailbox 的完整 request wire 上限为 64 KiB；SDK 必须在 claim 前按实际序列化长度校验 JSON/文本 payload。图片内容不计入该 wire 大小，而是写入 LocalBuffer。SDK 必须先完成精确长度写入、销毁写 view并释放 writer guard，随后才发布 REQUEST；后端取得 guard并校验 receipt/epoch/generation/owner/deadline，在同一 Broker 锁内原子发布 lease与首次 owner transfer。SDK 不在 Workflow 执行期间继续持有输入 writer guard，也不自行写 Broker owner、lease state 或 descriptor FREE。
+v1 图片路径固定为同步调用、每次一张输入图片和 0 到 N 张输出图片；点云路径使用独立 Cloud PREPARE，不改变图片描述符。当前 Workflow Trigger mailbox 的完整 request wire 上限为 64 KiB；SDK 必须在 claim 前按实际序列化长度校验 JSON/文本 payload。图片或点云数组内容不计入该 wire 大小，而是写入 LocalBuffer。SDK 必须先完成精确长度写入、销毁写 view并释放 writer guard，随后才发布 REQUEST；后端取得 guard并校验 receipt/epoch/generation/owner/deadline，在同一 Broker 锁内原子发布 lease与首次 owner transfer。SDK 不在 Workflow 执行期间继续持有输入 writer guard，也不自行写 Broker owner、lease state 或 descriptor FREE。
 
 ### 统一结果模型
 

@@ -607,6 +607,7 @@ def test_mailbox_prepared_descriptor_reuses_identity_and_preserves_extension(
         assert len(events) == 1
         assert events[0].identity == identity
         assert events[0].reason == MailboxTerminalReason.ACKNOWLEDGED
+        assert events[0].descriptor_released
         assert server.drain_terminal_events() == events
         assert server.health().free_descriptors == MAILBOX_PROFILE.descriptor_count
     finally:

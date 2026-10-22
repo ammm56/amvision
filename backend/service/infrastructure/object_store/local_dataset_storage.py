@@ -6,6 +6,7 @@ from backend.service.infrastructure.filesystem.directory_guard import protect_di
 
 import json
 import hashlib
+import errno
 from collections.abc import Callable, Iterator
 from io import BytesIO
 import mimetypes
@@ -803,7 +804,10 @@ class LocalDatasetStorage:
                 os.fsync(stream.fileno())
             try:
                 os.rename(staging_dir, final_dir)
-            except FileExistsError:
+            except OSError as error:
+                # POSIX 对已存在的非空目录使用 ENOTEMPTY；不是其他写入错误的兜底。
+                if error.errno not in (errno.EEXIST, errno.ENOTEMPTY):
+                    raise
                 shutil.rmtree(staging_dir, ignore_errors=True)
             _sync_directory_after_replace(final_dir.parent)
             published = self.stat_object(object_key)
@@ -1198,7 +1202,8 @@ def _has_complete_immutable_identity(metadata: ObjectSnapshotMetadata) -> bool:
         and metadata.immutable_version
         and metadata.checksum_algorithm
         and metadata.checksum
-        and metadata.content_length > 0
+        and type(metadata.content_length) is int
+        and metadata.content_length >= 0
         and metadata.media_type.strip()
     )
 

@@ -99,6 +99,7 @@ class _ValidatedRuntimeContract:
     expected_snapshot_fingerprint: str
     contract_fingerprint: str
     output_payload_types: tuple[tuple[str, str], ...]
+    input_payload_types: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -1306,6 +1307,10 @@ class WorkflowTriggerSourceService:
                 (binding_id, str(item.get("payload_type_id") or "value.v1"))
                 for binding_id, item in output_contracts.items()
             ),
+            input_payload_types=tuple(
+                (binding_id, str(item["payload_type_id"]))
+                for binding_id, item in _index_contract_bindings(contract.get("inputs")).items()
+            ),
         )
 
     def _validate_trigger_source_resource_binding(
@@ -1370,9 +1375,13 @@ def _find_trigger_contract_mapping_issues(
         if bool(input_contract.get("required", True)) and not mapping_present:
             issues.append({"kind": "missing_required_input", "binding_id": binding_id})
             continue
-        if not isinstance(mapping_rule, dict):
-            continue
         expected_payload_type = str(input_contract.get("payload_type_id") or "value.v1")
+        if expected_payload_type == "point-cloud-ref.v1" and mapping_present:
+            source = mapping_rule.get("source") if isinstance(mapping_rule, dict) else None
+            if not isinstance(source, str) or not source.startswith("payload.") or source.count(".") != 1:
+                issues.append({"kind": "cloud_input_requires_prepared_payload", "binding_id": binding_id})
+        if not isinstance(mapping_rule, dict) and expected_payload_type != "point-cloud-ref.v1":
+            continue
         if not workflow_trigger_supports_input_payload_type(
             trigger_kind,
             expected_payload_type,
@@ -1385,9 +1394,12 @@ def _find_trigger_contract_mapping_issues(
                     "payload_type_id": expected_payload_type,
                     "supported_payload_type_ids": sorted(
                         HIGH_PERFORMANCE_TRIGGER_INPUT_PAYLOAD_TYPE_IDS
+                        | ({"point-cloud-ref.v1"} if trigger_kind == "local-shared-memory" else set())
                     ),
                 }
             )
+        if not isinstance(mapping_rule, dict):
+            continue
         source_value = mapping_rule.get("source")
         if (
             isinstance(source_value, str)
@@ -1471,6 +1483,7 @@ def _with_validated_runtime_contract(
             "validated_workflow_contract_fingerprint": (
                 validated_contract.contract_fingerprint
             ),
+            "validated_workflow_input_payload_types": dict(validated_contract.input_payload_types),
         }
     )
     return payload

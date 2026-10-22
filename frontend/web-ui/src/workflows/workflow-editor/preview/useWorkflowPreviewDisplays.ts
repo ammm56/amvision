@@ -173,9 +173,10 @@ interface PreviewImageObjectUrlRevokeOptions {
   closeImageViewer?: boolean
 }
 
-type PreviewNodeDisplayKind = 'image' | 'table' | 'gallery' | 'value'
+type PreviewNodeDisplayKind = 'image' | 'table' | 'gallery' | 'value' | 'cloud'
 
 export interface PreviewNodeDisplay {
+  cloudProjectId?: string
   previewRunId?: string
   variants?: PreviewNodeDisplay[]
   stale?: boolean
@@ -595,16 +596,23 @@ async function buildPreviewNodeDisplay(
 ): Promise<PreviewNodeDisplay | null> {
   // 大表的控制事件只带摘要；用同次内存描述符补全，不能把摘要对象渲染为结果行。
   const descriptor = displayOutput.payload.value_descriptor
-  if (displayOutput.payload.type === 'table-preview' && displayOutput.payload.paged && isPreviewJsonObject(descriptor)
+  if (['table-preview', 'point-cloud-preview'].includes(String(displayOutput.payload.type)) && displayOutput.payload.paged && isPreviewJsonObject(descriptor)
     && descriptor.transport_kind === 'preview-memory' && typeof descriptor.blob_id === 'string' && previewRun.readMemoryBlob) {
     const blob = await previewRun.readMemoryBlob(descriptor.blob_id, 'application/json')
     if (blob.size > 16 * 1024 * 1024) throw new Error('preview_table_capacity')
     const complete: unknown = JSON.parse(await blob.text())
-    if (!isPreviewJsonObject(complete) || complete.type !== 'table-preview' || !Array.isArray(complete.rows)) throw new Error('preview_table_invalid')
+    if (!isPreviewJsonObject(complete) || complete.type !== displayOutput.payload.type
+      || complete.type === 'table-preview' && !Array.isArray(complete.rows)) throw new Error('preview_display_invalid')
     displayOutput = { ...displayOutput, payload: complete }
   }
   const payload = displayOutput.payload
   const previewType = readDisplayText(payload.type)
+  if (previewType === 'point-cloud-preview') {
+    return { nodeId: displayOutput.nodeId, nodeTypeId: displayOutput.nodeTypeId, outputName: displayOutput.outputName,
+      title: displayOutput.nodeId, kind: 'cloud', payload, statusText: String(payload.state), formattedValue: '',
+      image: null, galleryItems: [], columns: [], rows: [], rowCount: null, emptyText: null,
+      cloudProjectId: previewRun.project_id, previewRunId: previewRun.preview_run_id }
+  }
   const display = previewType === 'image-preview' ? await buildImagePreviewNodeDisplay(previewRun, displayOutput, registerObjectUrl)
     : previewType === 'table-preview' ? buildTablePreviewNodeDisplay(displayOutput)
     : previewType === 'gallery-preview' ? await buildGalleryPreviewNodeDisplay(previewRun, displayOutput, registerObjectUrl)

@@ -13,6 +13,8 @@ export function buildWorkflowAppRequestExamples(
 ): WorkflowAppRequestExamples | null {
   if (contract?.format_id !== 'amvision.workflow-app-contract.v1' || !Array.isArray(contract.inputs)) return null
   const inputs = contract.inputs.filter(isRecord)
+  // 同机数组不能伪装成 HTTP JSON；必需数组输入时不生成不可执行的 HTTP 示例。
+  if (inputs.some(input => input.payload_type_id === 'point-cloud-ref.v1' && input.required === true)) return null
   const jsonBindings: WorkflowJsonObject = {}
   const multipartInlineBindings: WorkflowJsonObject = {}
   const multipartFields: string[] = []

@@ -2060,7 +2060,7 @@ def _wait_response(supervisor, client, identity):
     raise AssertionError("Workflow Trigger response 未按时发布")
 
 
-def _source(trigger_source_id: str) -> WorkflowTriggerSource:
+def _source(trigger_source_id: str, *, reply_timeout_seconds: int = 5) -> WorkflowTriggerSource:
     """创建带 image-ref mapping 的正式本机 source。"""
 
     response_plan = build_trigger_response_plan(
@@ -2075,7 +2075,7 @@ def _source(trigger_source_id: str) -> WorkflowTriggerSource:
         submit_mode="sync",
         result_mode="sync-reply",
         ack_policy="ack-after-run-finished",
-        reply_timeout_seconds=5,
+        reply_timeout_seconds=reply_timeout_seconds,
         response_ack_timeout_seconds=30.0,
         selected_output_payload_types={"workflow_result": "value.v1"},
     )
@@ -2097,7 +2097,7 @@ def _source(trigger_source_id: str) -> WorkflowTriggerSource:
             }
         },
         result_mapping={"result_bindings": ["workflow_result"]},
-        reply_timeout_seconds=5,
+        reply_timeout_seconds=reply_timeout_seconds,
         metadata={
             TRIGGER_RESPONSE_PLAN_METADATA_KEY: response_plan.model_dump(mode="json")
         },

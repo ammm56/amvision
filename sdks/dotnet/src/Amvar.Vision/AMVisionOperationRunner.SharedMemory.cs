@@ -1,10 +1,28 @@
 using System.Drawing;
 using Amvar.Vision.SharedMemory;
+using Newtonsoft.Json.Linq;
 
 namespace Amvar.Vision
 {
     public sealed partial class AMVisionOperationRunner
     {
+        /// <summary>按配置 key 提交完整同机点云；明确指定输入 binding，返回前释放结果并 ACK。</summary>
+        public TriggerResult InvokeSharedMemoryPointCloud(string triggerSourceName, JObject descriptor,
+            byte[] content, SharedMemoryTriggerRequest request)
+        {
+            EnsureNotDisposed();
+            return MaterializeSharedMemoryResult(localSharedMemoryTriggerOperations.InvokePointCloud(
+                triggerSourceName, descriptor, content, request));
+        }
+
+        /// <summary>在受控 Span 内直接填充点云 SoA，不建立中间点云数组。</summary>
+        public TriggerResult InvokeSharedMemoryPointCloud(string triggerSourceName, JObject descriptor,
+            SharedMemoryTriggerBufferWriter fill, SharedMemoryTriggerRequest request)
+        {
+            EnsureNotDisposed();
+            return MaterializeSharedMemoryResult(localSharedMemoryTriggerOperations.InvokePointCloud(
+                triggerSourceName, descriptor, fill, request));
+        }
         /// <summary>按配置 key 原样写入 encoded 或 raw 图片 bytes。</summary>
         public TriggerResult InvokeSharedMemoryImageBytes(
             string triggerSourceName,

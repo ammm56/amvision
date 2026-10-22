@@ -195,7 +195,7 @@ def test_writer_source_precision_organized_count(encoding):
 
 def test_compression_failure_never_changes_encoding(monkeypatch):
     pc = read(source())
-    monkeypatch.setattr(lzf, "compress", lambda data: None)
+    monkeypatch.setattr(lzf, "compress", lambda data, max_length: None)
     output = BytesIO()
     with pytest.raises(ValueError, match="encoding was not changed"):
         pc.save(

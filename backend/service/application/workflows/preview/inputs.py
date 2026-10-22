@@ -19,6 +19,25 @@ class PreviewInputStore(LocalDatasetStorage):
         self.settings, self.root_dir = storage.settings, storage.root_dir
         self.prefix = f"projects/{project_id}/preview-inputs/{session_id}/"
         self.files = {}
+        self.snapshots = {}
+
+    def register_snapshot(self, descriptor):
+        """登记父进程仍持有 pin 的只读文件；IPC 中没有文件正文。"""
+        from backend.service.infrastructure.filesystem.shared_temporary_input import open_temporary_input
+
+        with open_temporary_input(descriptor["file_identity"]):
+            pass
+        version = descriptor["blob_id"]
+        key = self.prefix + version
+        metadata = ObjectSnapshotMetadata(
+            object_key=key, content_length=descriptor["byte_length"], media_type=descriptor["media_type"],
+            checksum_algorithm="sha256", checksum=descriptor["checksum"], immutable_version=version, is_immutable=True,
+        )
+        self.snapshots[key] = (metadata, dict(descriptor["file_identity"]))
+        return {"transport_kind": "storage", "storage_ref": "object-store", "object_key": key,
+                "file_name": PurePosixPath(descriptor["file_name"].replace("\\", "/")).name or "input",
+                "media_type": metadata.media_type, "content_length": metadata.content_length,
+                "checksum_algorithm": "sha256", "checksum": metadata.checksum, "immutable_version": version}
 
     def register(self, content, *, media_type, file_name):
         """生成进程内只读引用，校验与节点读取使用同一份 identity。"""
@@ -41,12 +60,23 @@ class PreviewInputStore(LocalDatasetStorage):
 
     def stat_object(self, object_key):
         """内存对象直接读取登记元数据，不访问文件系统。"""
-        item = self.files.get(object_key)
+        item = self.snapshots.get(object_key) or self.files.get(object_key)
         return item[0] if item else super().stat_object(object_key)
 
     @contextmanager
     def open_read_snapshot(self, object_key, *, expected_version=None, expected_checksum=None):
         """读取期间内容固定，错误 identity 不得退回本地路径。"""
+        snapshot = self.snapshots.get(object_key)
+        if snapshot is not None:
+            from backend.service.infrastructure.filesystem.shared_temporary_input import open_temporary_input
+
+            metadata, identity = snapshot
+            if ((expected_version is not None and expected_version != metadata.immutable_version)
+                    or (expected_checksum is not None and expected_checksum != metadata.checksum)):
+                raise InvalidRequestError("Preview 文件引用版本或摘要不一致")
+            with open_temporary_input(identity) as stream:
+                yield ObjectReadSnapshot(stream=stream, metadata=metadata)
+            return
         item = self.files.get(object_key)
         if item is None:
             with super().open_read_snapshot(object_key, expected_version=expected_version, expected_checksum=expected_checksum) as snapshot:
@@ -61,3 +91,4 @@ class PreviewInputStore(LocalDatasetStorage):
     def clear(self):
         """图执行结束后释放上传内容，不留下持久对象。"""
         self.files.clear()
+        self.snapshots.clear()

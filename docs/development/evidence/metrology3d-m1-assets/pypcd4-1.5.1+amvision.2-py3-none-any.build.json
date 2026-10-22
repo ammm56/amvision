@@ -1,0 +1,13 @@
+{
+  "package": "pypcd4",
+  "version": "1.5.1+amvision.2",
+  "source_sha256": "5427584a1b749b2d243baa4006ca4c62b9a3880a127c838c9ac9e5c7e9486ee4",
+  "patched_files": {
+    "src/pypcd4/pypcd4.py": "5cd54f1ed970971e379d6f9430fcf625b35211442f4d19af2a7044f07180ad13",
+    "pyproject.toml": "570d81ffa4d4744319cb934aa3f4bc04f46e080471090e2a06490f7792724cf5",
+    "src/pypcd4/_version.py": "19aedbb787c52d260705368c7bb5c8347bf68f3bc81f1e4f6b458e7804da2f63",
+    "src/pypcd4/_strict_records.py": "b95bf771f6bd6bf1e1629731fe9f07a8003cf5f524cc6eba510cbd4f38f719c1"
+  },
+  "wheel_sha256": "7464babfbb6eda2be687c48f092159dd7f166ae8817e096fa00209350944909a",
+  "python": "3.12.13 | packaged by Anaconda, Inc. | (main, Mar 19 2026, 20:16:45) [MSC v.1942 64 bit (AMD64)]"
+}

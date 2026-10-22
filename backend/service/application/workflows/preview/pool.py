@@ -68,7 +68,7 @@ class PreviewSessionPool:
                     for blob_id in ids:
                         descriptors[binding].append(self.manager.buffers.pin_descriptor(session.session_id, str(blob_id).replace("-", "")))
                 self.manager.buffers.reserve(session.session_id, f"worker:{run_id}:request",
-                                             len(json.dumps(request).encode()) + sum(item["byte_length"] * 3 for items in descriptors.values() for item in items))
+                                             len(json.dumps(request).encode()) + sum(item["byte_length"] * 3 for items in descriptors.values() for item in items if item.get("storage_kind") != "temporary-file"))
             except ValueError as error:
                 for items in descriptors.values():
                     for descriptor in items:
@@ -162,6 +162,8 @@ class PreviewSessionPool:
         timed_out = False
         input_pins = [item["blob_id"] for items in message["inputs"].values() for item in items]
         input_sizes = {item["blob_id"]: item["byte_length"] for items in message["inputs"].values() for item in items}
+        input_memory_sizes = {item["blob_id"]: item["byte_length"] for items in message["inputs"].values()
+                              for item in items if item.get("storage_kind") != "temporary-file"}
         input_owned_bytes = 0
         writer_pins = set()
         published = set()
@@ -199,7 +201,7 @@ class PreviewSessionPool:
                     try:
                         if payload["action"] == "input-consumed":
                             blob = payload["blob_id"]
-                            if blob not in input_pins:
+                            if blob not in input_pins or blob not in input_memory_sizes:
                                 raise ValueError("preview_input_lease_invalid")
                             size = payload["byte_length"]
                             if type(size) is not int or not 0 <= size <= input_sizes[blob] * 3:
@@ -210,7 +212,7 @@ class PreviewSessionPool:
                             input_pins.remove(blob)
                             input_owned_bytes += size
                             self.manager.buffers.reserve(sid, f"worker:{rid}:request",
-                                len(json.dumps(message["request"]).encode()) + input_owned_bytes + sum(input_sizes[key] * 3 for key in input_pins))
+                                len(json.dumps(message["request"]).encode()) + input_owned_bytes + sum(input_memory_sizes.get(key, 0) * 3 for key in input_pins))
                             reply["result"] = {}
                         elif payload["action"] == "allocate":
                             # 释放中的会话不能继续分配结果。
@@ -241,6 +243,9 @@ class PreviewSessionPool:
                         reply["error"] = str(error)
                     slot.replies.put(reply, timeout=2)
                 elif kind == "finished":
+                    if payload.get("worker_reusable") is False:
+                        self._stop(slot)
+                        self._close_slot(slot)
                     borrowing_finished = True
                     if timed_out:
                         payload["status"] = "timed_out"

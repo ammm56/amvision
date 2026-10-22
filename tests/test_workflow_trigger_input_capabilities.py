@@ -72,9 +72,24 @@ def test_high_performance_trigger_rejects_http_only_inputs_from_contract(
             "payload_type_id": payload_type_id,
             "supported_payload_type_ids": sorted(
                 HIGH_PERFORMANCE_TRIGGER_INPUT_PAYLOAD_TYPE_IDS
+                | ({"point-cloud-ref.v1"} if trigger_kind == "local-shared-memory" else set())
             ),
         }
     ]
+
+
+def test_cloud_requires_same_host_payload_binding():
+    """点云必须由同机专用握手产生，不允许静态对象或嵌套属性绕过。"""
+    contract = _build_contract(cloud="point-cloud-ref.v1")
+    def issues(kind, mapping):
+        return _find_trigger_contract_mapping_issues(
+            contract=contract, trigger_kind=kind,
+            input_binding_mapping={"cloud": mapping}, result_mapping={}, result_mode="event-only",
+        )
+    assert issues("local-shared-memory", {"source": "payload.cloud"}) == []
+    assert issues("zeromq-topic", {"source": "payload.cloud"})
+    assert issues("local-shared-memory", {"source": "payload.cloud.positions"})
+    assert issues("local-shared-memory", {"value": {"cloud": "forged"}})
 
 
 def test_http_trigger_keeps_protocol_adapter_input_capability() -> None:

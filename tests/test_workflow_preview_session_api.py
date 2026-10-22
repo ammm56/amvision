@@ -58,7 +58,7 @@ def test_websocket_upload_roundtrip_and_atomic_snapshot(tmp_path):
             with client.websocket_connect(f"/ws/v1/workflows/preview-sessions/{sid}", headers=headers) as ws:
                 assert ws.receive_json()["payload"]["watermark"] == 0
             assert client.delete(f"/api/v1/workflows/preview-sessions/{sid}", headers=headers).status_code == 204
-            assert manager.buffers.stats() == {"blocks": 0, "bytes": 0, "pins": 0, "reserved_bytes": 0}
+            assert manager.buffers.stats() == {"blocks": 0, "bytes": 0, "file_bytes": 0, "pins": 0, "reserved_bytes": 0}
     finally:
         manager.close()
         sessions.engine.dispose()
@@ -96,13 +96,13 @@ def test_failed_upload_releases_memory_and_slot_without_disconnect(tmp_path, fai
                         assert reply["type"] == "protocol.error"
                         expected = {"digest": "preview_input_digest_invalid", "incomplete": "preview_input_incomplete", "chunk_order": "preview_input_chunk_invalid"}
                         assert reply["error"] == expected[failure]
-                        assert manager.buffers.stats() == {"blocks": 0, "bytes": 0, "pins": 0, "reserved_bytes": 0}
+                        assert manager.buffers.stats() == {"blocks": 0, "bytes": 0, "file_bytes": 0, "pins": 0, "reserved_bytes": 0}
                     else:
                         assert reply["type"] == "input.committed"
                         with manager.buffers.borrow(sid, reply["input_id"]) as value:
                             assert bytes(value) == content
             assert client.delete(f"/api/v1/workflows/preview-sessions/{sid}", headers=headers).status_code == 204
-            assert manager.buffers.stats() == {"blocks": 0, "bytes": 0, "pins": 0, "reserved_bytes": 0}
+            assert manager.buffers.stats() == {"blocks": 0, "bytes": 0, "file_bytes": 0, "pins": 0, "reserved_bytes": 0}
     finally:
         manager.close()
         sessions.engine.dispose()

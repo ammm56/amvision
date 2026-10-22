@@ -31,6 +31,7 @@ from backend.service.application.workflows.trigger_sources.trigger_message_chann
     ALLOCATION_SCHEMA_ID,
     EVENT_REQUEST_SCHEMA_ID,
     PREPARE_SCHEMA_ID,
+    CLOUD_PREPARE_SCHEMA_ID,
     REQUEST_SCHEMA_ID,
     RESPONSE_SCHEMA_ID,
     WorkflowTriggerDescriptorIdentity,
@@ -232,9 +233,15 @@ class WorkflowTriggerMailboxServer:
             "accepted_at_ns": accepted_at_ns,
         }
         try:
+            # 类型由 envelope 明确指定；不在图片解码失败后尝试点云。
+            prepare_schema_id = (
+                CLOUD_PREPARE_SCHEMA_ID
+                if context.wire_bytes.startswith(b'{"schema_id":"' + CLOUD_PREPARE_SCHEMA_ID.encode() + b'",')
+                else PREPARE_SCHEMA_ID
+            )
             payload = decode_trigger_payload(
                 context.wire_bytes,
-                expected_schema_id=PREPARE_SCHEMA_ID,
+                expected_schema_id=prepare_schema_id,
                 request_id=context.request_id,
             )
         except ChannelInvalidMessageError as error:
@@ -249,6 +256,7 @@ class WorkflowTriggerMailboxServer:
             payload=payload,
             route_generation=int(extension[4]),
             accepted_timeout_ms=accepted_timeout_ms,
+            prepare_schema_id=prepare_schema_id,
         )
 
     def tighten_accepted_timeout(
@@ -571,13 +579,9 @@ class WorkflowTriggerMailboxServer:
                 deadlines.append(identity)
             elif event.reason == MailboxTerminalReason.RESPONSE_ACK_TIMEOUT:
                 ack_timeouts.append(identity)
-            elif event.reason == MailboxTerminalReason.ACKNOWLEDGED:
+            if event.descriptor_released:
                 released.append(identity)
-            if event.reason in {
-                MailboxTerminalReason.ACKNOWLEDGED,
-                MailboxTerminalReason.RESPONSE_ACK_TIMEOUT,
-                MailboxTerminalReason.CANCELLED,
-            }:
+            if event.descriptor_released or event.reason == MailboxTerminalReason.CANCELLED:
                 with self._lock:
                     self._identities.pop(key, None)
                     self._contexts.pop(key, None)
@@ -839,6 +843,16 @@ class WorkflowTriggerMailboxClient:
             schema_id=EVENT_REQUEST_SCHEMA_ID,
             phase=contract.DESCRIPTOR_STATE_REQUEST,
             envelope_name="event-only REQUEST",
+        )
+
+    def claim_cloud(self, *, timeout_ms: int, route_generation: int,
+                    prepare_payload: bytes, request_id: UUID | None = None):
+        """以独立业务 schema 使用同一 PREPARE/REQUEST/ACK 状态机。"""
+        return self._claim(
+            timeout_ms=timeout_ms, route_generation=route_generation,
+            payload=prepare_payload, request_id=request_id,
+            schema_id=CLOUD_PREPARE_SCHEMA_ID,
+            phase=contract.DESCRIPTOR_STATE_PREPARE, envelope_name="Cloud PREPARE",
         )
 
     def _claim(

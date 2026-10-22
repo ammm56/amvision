@@ -31,7 +31,7 @@ WORKFLOW_TRIGGER_RESULT_FORMAT = "amvision.workflow-trigger-result.v1"
 DIRECTORY_CHANGE_EVENT_FORMAT = "amvision.directory-change-event.v1"
 DIRECTORY_CHANGE_EVENT_TYPES = ("created", "modified", "deleted")
 
-# 高性能 Trigger 只传递结构化小参数和 LocalBuffer 图片引用。文件、文件列表与
+# 高性能 Trigger 传递结构化小参数和 LocalBuffer 图片引用；同机额外支持点云。文件、文件列表与
 # Base64 图片由 HTTP Runtime 负责，避免在常驻 Trigger 数据面引入隐式暂存和复制。
 HIGH_PERFORMANCE_TRIGGER_KINDS = frozenset({"zeromq-topic", "local-shared-memory"})
 HIGH_PERFORMANCE_TRIGGER_INPUT_PAYLOAD_TYPE_IDS = frozenset(
@@ -45,10 +45,12 @@ def workflow_trigger_supports_input_payload_type(
 ) -> bool:
     """判断 Trigger 类型是否支持公开输入 payload 类型。
 
-    非高性能 Trigger 保持既有协议适配能力；ZeroMQ 和本机共享内存只接受
-    image-ref/value/text 三类稳定输入。
+    非高性能 Trigger 保持既有协议适配能力。点云仅使用本机共享内存的
+    独立类型握手，不进入 ZeroMQ 图片协议或普通事件 JSON。
     """
 
+    if payload_type_id == "point-cloud-ref.v1":
+        return trigger_kind == "local-shared-memory"
     return (
         trigger_kind not in HIGH_PERFORMANCE_TRIGGER_KINDS
         or payload_type_id in HIGH_PERFORMANCE_TRIGGER_INPUT_PAYLOAD_TYPE_IDS

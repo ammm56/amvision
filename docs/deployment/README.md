@@ -57,6 +57,7 @@ Alembic
 ## 边界
 
 - 项目运行时只支持64-bit进程；当前正式发行profile为Windows x64。backend、worker、Broker、独立运行时和仓库内.NET SDK不提供32-bit兼容、容量协商或降级路径。
+- Ubuntu/WSL 验收与生产运行数据使用 Ubuntu 原生文件系统，包括数据库、对象存储、控制文件、IPC/LocalBuffer 目录及运行临时文件；不使用 `/mnt/c`、`/mnt/w` 等 DrvFS/9p Windows 挂载目录。源码和只读输入样本可保留在 Windows 盘，不自动迁移现有数据。该文件系统边界不等于 Ubuntu bundled profile 已完成发行认证，核对证据见[点云输入适配记录](../development/3d-metrology-m1-input.md)。
 - backend-service 不消费后台队列。
 - 源码开发由 `python -m backend.workers.supervisor` 注入 Worker Topology；不要直接运行低层 `backend.workers.main`。
 - 生产由发行包 full Supervisor 管理 daemon、service 和 Worker Profile。

@@ -45,6 +45,20 @@ class WorkflowInputValidator:
 
         self.object_store = object_store
 
+    def validate_file_reference(
+        self, *, payload: object, project_id: str, max_file_bytes: int,
+        binding_id: str,
+    ) -> dict[str, object]:
+        """供文件消费者复用公开输入的结构、项目和不可变对象校验。"""
+        if not project_id or type(max_file_bytes) is not int or max_file_bytes <= 0:
+            raise ValueError("文件消费者必须提供项目和正数容量")
+        file_ref = require_file_ref_payload(payload, field_name=binding_id)
+        self._validate_file_ref(
+            binding_id=binding_id, file_ref=file_ref,
+            contract_item={"max_file_bytes": max_file_bytes}, project_id=project_id,
+        )
+        return file_ref
+
     def validate(
         self,
         *,
@@ -53,6 +67,7 @@ class WorkflowInputValidator:
         public_contract: dict[str, object] | None = None,
         allowed_template_input_ids: set[str] | None = None,
         project_id: str | None = None,
+        trusted_cloud_input_ids: frozenset[str] = frozenset(),
     ) -> dict[str, object]:
         """校验 binding 集合、schema、限制与对象 identity。"""
 
@@ -102,6 +117,11 @@ class WorkflowInputValidator:
                     "Workflow App 公开契约缺少输入 binding",
                     code="workflow_input_unknown_binding",
                     details={"binding_ids": [binding_id]},
+                )
+            if contract_item.get("payload_type_id") == "point-cloud-ref.v1" and binding_id not in trusted_cloud_input_ids:
+                raise WorkflowInputError(
+                    "点云数组输入只能由同机 Trigger 交接，不能从 JSON 提交运行引用",
+                    code="workflow_input_transport_invalid", details={"binding_id": binding_id},
                 )
             self._validate_payload_schema(
                 binding_id=binding_id,
@@ -581,9 +601,17 @@ def _build_input_contract_item(
             "Workflow App binding.allowed_media_types 必须是数组",
             details={"binding_id": binding.binding_id},
         )
+    payload_schema = _closed_outer_schema(payload_contract.json_schema)
+    if payload_type_id == "point-cloud-ref.v1":
+        from backend.contracts.workflows.point_cloud_trigger import WorkflowTriggerCloudInputV1
+        from backend.contracts.workflows.schema_helpers import inline_model_schema
+
+        if "transports" in config and config["transports"] != ["local-shared-memory"]:
+            raise ServiceConfigurationError("点云数组 binding 只支持 local-shared-memory")
+        payload_schema = inline_model_schema(WorkflowTriggerCloudInputV1)
     return {
         **_binding_contract_fields(binding, payload_type_id),
-        "payload_schema": _closed_outer_schema(payload_contract.json_schema),
+        "payload_schema": payload_schema,
         "request_schema": deepcopy(request_schema)
         if isinstance(request_schema, dict)
         else {},
@@ -653,6 +681,8 @@ def _request_defaults(payload_type_id: str, transport_kind: str) -> dict[str, ob
             max_files=1,
             transports=["multipart-upload"],
         )
+    elif payload_type_id == "point-cloud-ref.v1":
+        result.update(transports=["local-shared-memory"])
     elif transport_kind == "inline-json":
         result.update(max_inline_bytes=DEFAULT_INLINE_MAX_BYTES, transports=["json"])
     return result

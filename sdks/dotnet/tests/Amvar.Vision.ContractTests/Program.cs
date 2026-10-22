@@ -9,7 +9,9 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Amvar.Vision;
+using Amvar.Vision.Configuration;
 using Amvar.Vision.SharedMemory;
+using Amvar.Vision.TriggerSource.SharedMemory;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -102,6 +104,7 @@ namespace Amvar.Vision.ContractTests
             VerifyWorkflowAppContractV1();
             VerifyWorkflowHttpSixInputBuilder();
             VerifyWorkflowTriggerInputsBuilder();
+            VerifyPointCloudRequiresExplicitBinding();
             await VerifyWorkflowRequestBuilderStreamingAsync().ConfigureAwait(false);
             await VerifyCreateSelectorAsync().ConfigureAwait(false);
             await VerifySelectVersionRequestAsync().ConfigureAwait(false);
@@ -110,6 +113,27 @@ namespace Amvar.Vision.ContractTests
             await VerifyRuntimeAndRevisionResponsesAsync().ConfigureAwait(false);
             await VerifyRunResponseAsync().ConfigureAwait(false);
             await VerifyConflictDetailsAsync().ConfigureAwait(false);
+        }
+
+        private static void VerifyPointCloudRequiresExplicitBinding()
+        {
+            var runtime = new ConfiguredRuntime(new BackendConfig(),
+                new WorkflowRuntimeConfig { WorkflowRuntimeId = "cloud-runtime" }, new InvokeConfig(), "fixture");
+            var catalog = new WorkflowConfigurationCatalog(
+                new Dictionary<string, ConfiguredRuntime> { ["cloud"] = runtime },
+                new Dictionary<string, ConfiguredTriggerSource>(),
+                new Dictionary<string, ConfiguredModelDeployment>());
+            using var operations = new LocalSharedMemoryTriggerOperations(catalog);
+            foreach (var binding in new string?[] { null, "", " " })
+            {
+                var request = new SharedMemoryTriggerRequest { InputBinding = binding };
+                // 必须在读取配置或建立 client 之前失败，不能使用图片默认 binding。
+                AssertThrows<ArgumentException>(() => operations.InvokePointCloud(
+                    "cloud", new JObject(), new byte[0], request));
+                AssertThrows<ArgumentException>(() => operations.InvokePointCloud(
+                    "cloud", new JObject(), destination => { }, request));
+                Assert(request.InputBinding == binding, "invalid cloud binding must not be replaced");
+            }
         }
 
         private static void VerifyPollWaiterLifetime()

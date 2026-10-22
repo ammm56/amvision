@@ -1,6 +1,6 @@
 [project]
 name = "pypcd4"
-version = "1.5.1+amvision.1"
+version = "1.5.1+amvision.2"
 description = "Read and write PCL .pcd files in python"
 authors = [{ name = "urasakikeisuke", email = "keisuke.urasaki@map4.jp" }]
 dependencies = [

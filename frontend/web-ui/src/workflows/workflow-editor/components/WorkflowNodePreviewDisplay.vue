@@ -85,6 +85,7 @@
         </template>
       </svg>
     </div>
+    <CloudPreviewPanel v-else-if="display.kind === 'cloud' && display.cloudProjectId" :payload="display.payload" :project-id="display.cloudProjectId" :run-id="display.previewRunId" />
     <div v-else-if="display.kind === 'gallery'" class="workflow-graph-node-preview__gallery">
       <button
         v-for="item in display.galleryItems"
@@ -120,6 +121,7 @@
 import { useTranslation } from '@/platform/i18n'
 import { computed, ref, watch } from 'vue'
 import WorkflowPreviewTable from './WorkflowPreviewTable.vue'
+import CloudPreviewPanel from '../point-cloud/CloudPreviewPanel.vue'
 import WorkflowValueDisplay from './WorkflowValueDisplay.vue'
 import WorkflowResultTable from './WorkflowResultTable.vue'
 import ImageResultGeometry from '@/shared/ui/image-viewer/ImageResultGeometry.vue'

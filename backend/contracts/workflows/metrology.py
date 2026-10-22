@@ -68,7 +68,7 @@ class ResourceReference(Contract):
     resource_id: Identifier
     version: Annotated[int, Field(strict=True, ge=1, le=2147483647)]
     sha256: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
-    kind: Literal["planar-calibration", "localization-template"]
+    kind: Literal["planar-calibration", "localization-template", "point-cloud"]
 
 
 class PoseObservation(Contract):

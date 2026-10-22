@@ -54,6 +54,7 @@ class LocalWorkflowJsonService:
         node_catalog_registry: NodeCatalogRegistry | None = None,
         payload_contracts: tuple[WorkflowPayloadContract, ...] | None = None,
         node_definitions: tuple[NodeDefinition, ...] | None = None,
+        point_cloud_policy=None,
     ) -> None:
         """初始化 workflow 文件服务。"""
 
@@ -72,6 +73,7 @@ class LocalWorkflowJsonService:
         self.template_documents = WorkflowTemplateDocumentStore(
             dataset_storage=self.dataset_storage,
             node_definitions=self.node_definitions,
+            point_cloud_policy=point_cloud_policy,
         )
         self.application_documents = WorkflowApplicationDocumentStore(
             dataset_storage=self.dataset_storage,

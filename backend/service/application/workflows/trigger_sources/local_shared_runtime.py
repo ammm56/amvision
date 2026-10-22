@@ -290,6 +290,9 @@ def _build_route_fingerprint(trigger_source: WorkflowTriggerSource) -> str:
         "result_mapping": trigger_source.result_mapping,
         "default_execution_metadata": trigger_source.default_execution_metadata,
         "reply_timeout_seconds": trigger_source.reply_timeout_seconds,
+        "validated_input_payload_types": trigger_source.metadata.get(
+            "validated_workflow_input_payload_types"
+        ),
     }
     serialized = json.dumps(
         payload,

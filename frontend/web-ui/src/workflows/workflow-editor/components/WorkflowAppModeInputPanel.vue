@@ -19,7 +19,8 @@
       </div>
 
       <template v-if="states[input.binding_id]">
-        <template v-if="input.payload_type_id === 'image-ref.v1'">
+        <CloudInputNotice v-if="input.payload_type_id === 'point-cloud-ref.v1'" />
+        <template v-else-if="input.payload_type_id === 'image-ref.v1'">
           <Select
             v-if="input.transports.includes('multipart-upload') && input.transports.includes('json-reference')"
             v-model="states[input.binding_id].imageRefTransport"
@@ -85,6 +86,7 @@
 import { computed } from 'vue'
 import { Play } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
+import CloudInputNotice from '../point-cloud/CloudInputNotice.vue'
 
 import Button from '@/shared/ui/components/Button.vue'
 import FilePicker from '@/shared/ui/components/FilePicker.vue'

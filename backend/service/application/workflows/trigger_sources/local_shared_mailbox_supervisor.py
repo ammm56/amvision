@@ -26,6 +26,10 @@ from backend.contracts.workflows import (
     WorkflowTriggerPrepareV1,
     WorkflowTriggerRequestV1,
 )
+from backend.contracts.workflows.point_cloud_trigger import WorkflowTriggerCloudPrepareV1
+from backend.service.application.workflows.trigger_sources.input_buffers import (
+    buffer_length, buffer_metadata, input_payload, validate_cloud_prepare,
+)
 from backend.service.application.errors import (
     InvalidRequestError,
     LocalBufferCapacityError,
@@ -69,6 +73,8 @@ from backend.service.application.workflows.trigger_sources.error_classification 
     read_trigger_result_error_code,
 )
 from backend.service.application.workflows.trigger_sources.trigger_message_channel import (
+    CLOUD_PREPARE_SCHEMA_ID,
+    PREPARE_SCHEMA_ID,
     EVENT_REQUEST_SCHEMA_ID,
     WorkflowTriggerDescriptorIdentity,
     WorkflowTriggerMailboxRequest,
@@ -102,7 +108,7 @@ class _PendingMailboxRequest:
     event_id: str
     route: WorkflowTriggerRoute
     source_permit: WorkflowTriggerSourcePermit
-    prepare: WorkflowTriggerPrepareV1 | None = None
+    prepare: WorkflowTriggerPrepareV1 | WorkflowTriggerCloudPrepareV1 | None = None
     allocation: ExternalBufferAllocation | None = None
     current_receipt: LeaseOwnershipReceipt | None = None
     trigger_event: TriggerEventContract | None = None
@@ -312,6 +318,7 @@ class WorkflowTriggerMailboxSupervisor:
                 prepare.payload,
                 prepare.route_generation,
                 prepare.accepted_timeout_ms,
+                prepare.prepare_schema_id,
             )
         request_poll_started_at = perf_counter()
         request = self.mailbox.poll_request()
@@ -510,6 +517,7 @@ class WorkflowTriggerMailboxSupervisor:
         payload: bytes,
         route_generation: int,
         accepted_timeout_ms: int,
+        prepare_schema_id: str = PREPARE_SCHEMA_ID,
     ) -> None:
         """固定路由和 source permit；分配复用已有执行器，不阻塞 poller。"""
 
@@ -518,11 +526,19 @@ class WorkflowTriggerMailboxSupervisor:
         permit: WorkflowTriggerExecutorPermit | None = None
         try:
             prepare_decode_started_at = perf_counter()
-            prepare = WorkflowTriggerPrepareV1.model_validate_json(payload)
+            if prepare_schema_id == CLOUD_PREPARE_SCHEMA_ID:
+                prepare = WorkflowTriggerCloudPrepareV1.model_validate_json(payload)
+            elif prepare_schema_id == PREPARE_SCHEMA_ID:
+                prepare = WorkflowTriggerPrepareV1.model_validate_json(payload)
+            else:
+                raise InvalidRequestError("未知 Trigger PREPARE schema")
             route = self.routes.get_route(
                 trigger_source_id=prepare.trigger_source_id,
                 expected_generation=route_generation,
             )
+            if isinstance(prepare, WorkflowTriggerCloudPrepareV1):
+                validate_cloud_prepare(prepare, route.trigger_source,
+                                       self.runtime_service.settings.workflow_runtime.point_cloud)
             source_id = prepare.trigger_source_id
             self._record_source_request(source_id)
             identity = self.mailbox.tighten_accepted_timeout(
@@ -575,7 +591,7 @@ class WorkflowTriggerMailboxSupervisor:
             raise InvalidRequestError("Workflow Trigger 图片 PREPARE 上下文不存在")
         started_at = perf_counter()
         allocation = self._require_local_buffer_client().allocate_external_buffer(
-            content_length=prepare.image.content_length,
+            content_length=buffer_length(prepare),
             owner_kind="workflow-trigger-write",
             owner_id=f"{prepare.trigger_source_id}:{pending.identity.request_id.hex}",
             deadline_ns=pending.identity.deadline_ns,
@@ -663,7 +679,7 @@ class WorkflowTriggerMailboxSupervisor:
             # submit 成功后 permit 只由 executor 回收；不能在 task 仍运行时
             # 因取消/ACK 提前释放容量。提交失败则下方按 identity 补偿。
             pending.executor_permit = None
-            self.executor.submit_reserved(permit, lambda: self._admit_image_request(request, pending))
+            self.executor.submit_reserved(permit, lambda: self._admit_buffer_request(request, pending))
         except Exception as error:
             if permit is not None:
                 self.executor.release_reserved(permit)
@@ -671,7 +687,7 @@ class WorkflowTriggerMailboxSupervisor:
             self._publish_failure(request.identity, error, pending=pending)
             self._finish_pending_task(pending)
 
-    def _admit_image_request(
+    def _admit_buffer_request(
         self, request: WorkflowTriggerMailboxRequest, pending: _PendingMailboxRequest,
     ) -> None:
         """在同一个已有 executor 槽位完成准入、输入 handoff 和 Workflow 执行。"""
@@ -739,7 +755,7 @@ class WorkflowTriggerMailboxSupervisor:
             commit_handoff_started_at = perf_counter()
             committed = self._require_local_buffer_client().publish_and_transfer_external_buffer(
                 receipt=pending.current_receipt,
-                media_type=prepare.image.media_type,
+                **buffer_metadata(prepare),
                 new_owner_kind="workflow-runtime",
                 new_owner_id=(
                     f"{admission.workflow_run.workflow_run_id}:"
@@ -747,10 +763,6 @@ class WorkflowTriggerMailboxSupervisor:
                     f"{request.identity.request_id.hex}"
                 ),
                 deadline_ns=request.identity.deadline_ns,
-                shape=prepare.image.shape,
-                dtype=prepare.image.dtype,
-                layout=prepare.image.layout,
-                pixel_format=prepare.image.pixel_format,
             )
             pending.timings["broker_commit_owner_handoff_ms"] = _elapsed_ms(
                 commit_handoff_started_at
@@ -778,6 +790,19 @@ class WorkflowTriggerMailboxSupervisor:
                 lease_id=runtime_receipt.lease_id,
                 ownership_receipt=runtime_receipt,
             )
+            if isinstance(prepare, WorkflowTriggerCloudPrepareV1):
+                from backend.service.application.workflows.point_cloud.trigger_input import (
+                    CLOUD_HANDOFF_KEY, CloudInputHandoff,
+                )
+
+                _, value = input_payload(prepare, committed.buffer_ref)
+                bindings = tuple(
+                    key for key, item in input_bindings.items() if item == value
+                )
+                execution_metadata[CLOUD_HANDOFF_KEY] = CloudInputHandoff(
+                    run_id=admission.workflow_run.workflow_run_id,
+                    binding_ids=bindings, payload=value,
+                )
             admission = replace(admission, execution_metadata=execution_metadata)
             pending.admission = admission
             self._raise_if_request_terminal(pending)
@@ -1135,13 +1160,10 @@ class WorkflowTriggerMailboxSupervisor:
         if prepare is None:
             raise InvalidRequestError("Workflow Trigger 图片 PREPARE 上下文不存在")
         event_payload = dict(request.payload)
-        event_payload[prepare.image.event_payload_key] = {
-            "transport_kind": "buffer",
-            # image-ref.v1 的公开 schema 要求顶层 media_type。BufferRef 内虽然也
-            # 保存该字段，但不能让公开输入契约依赖定位器内部的重复元数据。
-            "media_type": prepare.image.media_type,
-            "buffer_ref": buffer_ref.model_dump(mode="json"),
-        }
+        key, value = input_payload(prepare, buffer_ref)
+        if isinstance(prepare, WorkflowTriggerCloudPrepareV1) and key in event_payload:
+            raise InvalidRequestError("REQUEST 不能替换 PREPARE 已固定的点云输入")
+        event_payload[key] = value
         return TriggerEventContract(
             trigger_source_id=request.trigger_source_id,
             trigger_kind="local-shared-memory",
@@ -1170,7 +1192,6 @@ class WorkflowTriggerMailboxSupervisor:
         prepare = pending.prepare
         if prepare is None:
             raise InvalidRequestError("Workflow Trigger 图片 PREPARE 上下文不存在")
-        image = prepare.image
         return BufferRef(
             buffer_id=lease.buffer_id,
             lease_id=lease.lease_id,
@@ -1181,11 +1202,7 @@ class WorkflowTriggerMailboxSupervisor:
             offset=lease.offset,
             content_length=lease.content_length,
             allocation_capacity_bytes=lease.allocation_capacity_bytes,
-            shape=image.shape,
-            dtype=image.dtype,
-            layout=image.layout,
-            pixel_format=image.pixel_format,
-            media_type=image.media_type,
+            **buffer_metadata(prepare),
             readonly=True,
         )
 

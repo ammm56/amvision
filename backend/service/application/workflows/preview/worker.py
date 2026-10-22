@@ -78,7 +78,8 @@ def run_preview_worker(settings_payload, requests, responses, cancellation, repl
         context = runtime_process.WorkflowServiceNodeRuntimeContext(
             session_factory=sessions, dataset_storage=storage,
             published_inference_gateway=gateway, local_buffer_reader=local_buffers,
-            workflow_model_session_manager=models, workflow_storage_image_cache=cache)
+            workflow_model_session_manager=models, workflow_storage_image_cache=cache,
+            point_cloud_policy=settings.workflow_runtime.point_cloud)
         resources.callback(context.close)
         resources.callback(models.close_all)
         responses.put(("ready", {}), timeout=2)
@@ -92,6 +93,7 @@ def run_preview_worker(settings_payload, requests, responses, cancellation, repl
             refreshing = True
             run_started = perf_counter()
             business_finished = False
+            worker_reusable = True
             completion = None
             displays = None
             images = runtime_process.ExecutionImageRegistry()
@@ -124,6 +126,11 @@ def run_preview_worker(settings_payload, requests, responses, cancellation, repl
                         raise ValueError("preview_input_file_count_invalid")
                     payloads = []
                     for descriptor in descriptors:
+                        if descriptor.get("storage_kind") == "temporary-file":
+                            if payload_type not in {"file-ref.v1", "file-refs.v1"}:
+                                raise ValueError("preview_file_input_type_invalid")
+                            payloads.append(input_store.register_snapshot(descriptor))
+                            continue
                         memory = SharedMemory(name=descriptor["name"])
                         try:
                             content = bytes(memory.buf[:descriptor["byte_length"]])
@@ -140,8 +147,9 @@ def run_preview_worker(settings_payload, requests, responses, cancellation, repl
                         retained_bytes = len(payload["image_base64"]) if payload_type == "image-base64.v1" else len(content)
                         del content
                         bridge.call("input-consumed", blob_id=descriptor["blob_id"], byte_length=retained_bytes)
+                        del payload
                     bindings[binding] = {"items": payloads, "count": len(payloads)} if payload_type == "file-refs.v1" else payloads[0]
-                    del payload, payloads
+                    del payloads
                 events = PreviewNodeEvents(emit, (node.node_id for node in template.nodes))
                 displays = PreviewDisplayCapture(bridge, emit, events)
                 scope = body.get("execution_scope", {})
@@ -179,6 +187,8 @@ def run_preview_worker(settings_payload, requests, responses, cancellation, repl
                                 "display_drain_ms": (perf_counter() - graph_started) * 1000 - graph_ms}})
                 completion = {"status": "succeeded", "outputs": outputs}
             except Exception as error:
+                from backend.service.application.workflows.resource_finalization import WorkflowResourceCleanupError
+                worker_reusable = not isinstance(error, WorkflowResourceCleanupError)
                 if business_finished:
                     emit("run.outputs", {"delivery_state": "unavailable", "delivery_error": str(error)[:1024]})
                 if displays is not None:
@@ -193,11 +203,13 @@ def run_preview_worker(settings_payload, requests, responses, cancellation, repl
                     "message": str(error)[:1024], "type": type(error).__name__,
                     "details": str(getattr(error, "details", {}))[:2048],
                     "node_id": getattr(error, "details", {}).get("node_id")}}
-                if refreshing:
+                if refreshing or not worker_reusable:
                     return
             finally:
-                images.clear()
-                input_store.clear()
+                if worker_reusable:
+                    images.clear()
+                    input_store.clear()
                 # 只有本次借用真正释放后，父进程才能归还 Worker 槽位和预算。
                 if completion is not None:
+                    completion["worker_reusable"] = worker_reusable
                     responses.put(("finished", completion), timeout=2)

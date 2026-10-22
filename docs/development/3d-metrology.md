@@ -2,13 +2,13 @@
 
 ## 1. 状态与阅读约定
 
-状态：**M0 收口；M1 受控 PLY/PCD I/O 已实现并完成双平台验证，六节点尚未接入**。更新日期为 2026-10-22，设计依据见 [ADR-0015](../decisions/ADR-0015-3d-metrology.md)，当前实现与证据见 [M1 I/O 实施记录](3d-metrology-m1-io.md)。下文历史源码检查和规格不等于全部能力已实现。
+状态：**M0 收口；M1 六节点、资源 API/固定发布依赖、同机 Trigger/.NET SDK、Preview 大文件上传及资源/三维组件已接通；显式测试配置下真实发布 Runtime 组合验收通过，生产启用未完成**。更新日期为 2026-10-22，设计依据见 [ADR-0015](../decisions/ADR-0015-3d-metrology.md)，最新进度见[真实发布运行验收](3d-metrology-m1-published.md)。历史证据见 [M1 I/O](3d-metrology-m1-io.md)、[输入适配](3d-metrology-m1-input.md)、[运行引用与生命周期](3d-metrology-m1-runtime.md)、[资产与保存导出](3d-metrology-m1-assets.md)、[节点与资源 API](3d-metrology-m1-nodes.md)和[传输与界面](3d-metrology-m1-transports.md)。下文历史源码检查和规格不等于全部能力已实现。
 
 M0 的代码核对与契约设计已收口，M1 已按后续授权开始 I/O 修复，未注册空节点。已确认每次 Workflow 调用输入完整点云，同时支持文件和同机内存二进制数组，不接收连续实时点云流；每次提交载荷最大 1 GB，不是运行内存上限。生产调用不自动保留完整点云，配方显式选择保存，结果保留数值和有界显示证据。最低机器内存、目标同时运行数和单次时限未确定，不填默认值。
 
-此前已核对 LocalBuffer、文件入口、Workflow、Preview、SDK、计量资源、规则读取方和发行边界，并补齐 M1 六节点、两入口、三维显示与持久引用规格。精度边界保持：**当前样本按 float32 保存和传递，外部文件按声明保留精度，算法按需要局部使用 float64**。PLY 基于 trimesh 5.1.1，PCD 基于 pypcd4 1.5.1；受控修复仅本项目使用，不提交上游。XYZ 使用现有 NumPy，Open3D 0.20.0 保持几何职责。M1 授权后已构建两个 `+amvision.1` wheel，完整原始 ASCII 样本和双平台 I/O 结果见实施记录；未修改现有应用链路、启用节点或发布三维 profile。RPly 自建适配、meshio、plyfile、自写解码器均不引入。
+此前已核对 LocalBuffer、文件入口、Workflow、Preview、SDK、计量资源、规则读取方和发行边界，并补齐 M1 六节点、两入口、三维显示与持久引用规格。精度边界保持：**当前样本按 float32 保存和传递，外部文件按声明保留精度，算法按需要局部使用 float64**。PLY 基于 trimesh 5.1.1，PCD 基于 pypcd4 1.5.1；受控修复仅本项目使用，不提交上游。XYZ 使用现有 NumPy，Open3D 0.20.0 保持几何职责。当前固定 wheel 为 `trimesh==5.1.1+amvision.1`、`pypcd4==1.5.1+amvision.2`；后者修正不可压缩数据的 LZF 输出容量。完整原始 ASCII 样本和双平台读写结果见实施记录。已扩展现有 Scope、Snapshot、worker 收尾和计量资源服务，仍未启用节点或发布三维 profile。RPly 自建适配、meshio、plyfile、自写解码器均不引入。
 
-本文是三维测量跨模块设计与实施步骤的唯一详细基线，不是当前节点使用手册。拟定的节点名、payload ID、字段和目录不得被视为已存在的 API；M0 设计完成后，按获准的 M1 范围实施。未实现或未验证的能力不进入可用 Catalog，不以占位节点表示支持。
+本文是三维测量跨模块设计与实施步骤的唯一详细基线，不是当前节点使用手册。设计表不等于相应 API 或页面已可用；实际实现、验证和生产启用状态以本节及分批记录为准。M0 设计完成后，按获准的 M1 范围实施。未实现或未验证的能力不进入可用 Catalog，不以占位节点表示支持。
 
 已有样本脚本是独立探索产物，未接入 amvision。本文只保留可复用的需求、证据边界和回归参考，不复制会话日志、原始点云或一次性脚本。算法测试通过、工程闭环完成、真实计量准确度通过和生产验收通过是四种不同状态。
 
@@ -794,11 +794,11 @@ M1 显示 body 的详细字段已在 9.9 定稿，覆盖格式版本、观测/�
 | `state`、`reason` | ready/empty/unavailable；ready 要求 display_point_count>0，empty 为 0（原云可非空但无有效可显示点）；二者 reason=null，unavailable 必须有 Identifier 原因；三者都不是 OK/NG |
 | `observation_id`、`cloud_id`、`revision` | 来自输入，供同一外层 run 内关联；unavailable 的 cloud_id/revision 必须 null，与 5.9 一致；不是可重新借用原云的凭据 |
 | `spatial` | 5.6 的完整空间声明，未知单位明确显示“单位未确认”；浏览器不根据坐标大小猜单位 |
-| `source_point_count`、`display_point_count`、`excluded_non_finite_count` | ready/empty 为非负整数；display 不大于实际可显示候选数；unavailable 为 null。无效点不投影成原点 |
+| `source_point_count`、`display_point_count`、`excluded_non_finite_count` | ready/empty 为非负整数；source_point_count 为最初输入总点数，不是过滤后子集点数；display 不大于实际可显示候选数；unavailable 为 null。无效点不投影成原点 |
 | `sampling` | ready/empty 必填 `{method_id:source-index-uniform-v1,requested_limit:正整数}`；unavailable 为 null；显示算法、选择数可审计，不参与正式计算 |
 | `bounds`、`render_origin` | ready 必填：bounds 为当前显示点有限坐标 min/max 三元组，render_origin 为该范围中点；empty/unavailable 为 null。原点仅供渲染局部化，不改变空间坐标或姿态 |
 | `data` | ready 为 `{encoding:base64,content_length,checksum_algorithm:sha256,checksum,fields,content}`；empty/unavailable 为 null。只装独立显示副本，不装原始云 lease/系统路径；长度与 hash 校验后才创建 TypedArray |
-| `data.fields[]` | `name/dtype/components/count/offset/byte_length`，little-endian、按 dtype 对齐、紧密分量、无重叠，填充为零且末块结束等于 content_length，count=display_point_count。必填 positions 保留源 float32/64、source_indices 为 uint64×1 且每值小于 source_point_count；rgb 模式另必填 colors:uint8×3，scalar 模式另必填 scalar:源数值 dtype×1，其他模式禁止无关块。整数属性不得经 JSON number 损失精度 |
+| `data.fields[]` | `name/dtype/components/count/offset/byte_length`，little-endian、按 dtype 对齐、紧密分量、无重叠，填充为零且末块结束等于 content_length，count=display_point_count。必填 positions 保留源 float32/64、source_indices 为最初输入原始行号的 uint64×1，过滤/重读后不重新编号，每值小于原始 source_point_count；rgb 模式另必填 colors:uint8×3，scalar 模式另必填 scalar:源数值 dtype×1，其他模式禁止无关块。整数属性不得经 JSON number 损失精度 |
 | `color` | unavailable 为 null；其他状态为严格联合 `{mode:solid}`、`{mode:rgb}` 或 `{mode:scalar,field,component,min,max,invalid_count}`。无有限标量时 min/max 为 null，否则为源 dtype 的十进制字符串，避免 int64/uint64 JSON 舍入；invalid_count 非负。finite-range 仅针对显示样本，renderer 不重新选择另一个字段 |
 | `source_asset` | ResourceReference 或 null，仅在已有独立完整资产与当前云内容/字段/空间一致且可访问时填写；仅存在原始祖先资产不够，不能由 cloud_id 或 file_name 猜出保存版本 |
 
@@ -1718,7 +1718,7 @@ M0 完成标准是实现规格明确而不是提前完成实现/安装/性能测
 | 编号 | 必须补齐的内容 | 完成证据与停止条件 |
 | --- | --- | --- |
 | G1 确定版本的文件读写方案 | **M0 设计通过，M1 I/O 基础已实现并实测通过**；版本、hash 和证据见实施记录 | 完整依赖发行及节点 owner/事务仍需验收；约 480 MB 样本不是 1 GB 全算法容量承诺 |
-| G2 M1 六节点与两入口 | **M0 规格通过，代码/UI 未实现**；7.4 参数/端口/失败，9.9 显示正文，10.13 文件/数组/持久引用及消费者，5/10 生命周期与预算 | 格式能力实现与 UI 同步启用；复用节点、Workflow、资源、发布和进程管理，实际未验证的 profile 不对外显示可用 |
+| G2 M1 六节点与两入口 | **六节点、资源 API 与固定资产发布、同机 Trigger/.NET SDK、Preview 大文件上传和资源/三维组件已接通**；最新进度见[真实发布运行验收](3d-metrology-m1-published.md)。源行号与原始总点数已覆盖跨资产恢复；完整样本已通过真实发布版本与 Runtime 准入，Windows 使用 .NET、Ubuntu 使用独立协议客户端，覆盖切版、异常退出、停止恢复与资源回收 | 格式能力实现与 UI 同步启用；复用节点、Workflow、资源、发布和进程管理，生产包仍隐藏且不填写未知 timeout/容量 |
 
 I/O 隔离安装、native import、库峰值和 wheel 身份已见实施记录；正式 schema、节点所有权和完整发行仍属后续 M1 工作。验证失败不能默许换库/降级。
 
@@ -1737,6 +1737,8 @@ I/O 隔离安装、native import、库峰值和 wheel 身份已见实施记录�
 | Ubuntu bundled 组装支持 | Ubuntu 离线发行前 | WSL 源码验证与离线发布分开；复用原 assembler，不造三维打包器 |
 
 M1 实施已获后续授权。I/O 基础完成不等于节点已可用；未迁移或删除数据，未启动本任务服务，也未执行 P99/长稳。
+
+2026-10-22 后续确认：先完成内部实现并用显式测试配置验证，生产节点启用等待 timeout 和容量数值，不自行填写默认值。Ubuntu 运行数据使用原生文件系统，源码和只读输入样本仍可位于 Windows 盘，不迁移现有数据。实现与验证进度统一记录在[输入适配记录](3d-metrology-m1-input.md)，不将内部 helper 通过等同于六节点、Trigger、SDK 或页面完成。
 
 ### 15.6 本轮文档审计记录
 

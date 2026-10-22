@@ -7,6 +7,7 @@ from threading import BoundedSemaphore, RLock
 from uuid import uuid4
 from itertools import islice
 
+from backend.contracts.workflows.point_cloud_preview import CLOUD_PREVIEW_FAILURE_REASONS
 from backend.service.application.workflows.runtime_preview import RuntimePreviewCapture, PREVIEW_TYPES, _copy_json
 from backend.service.application.workflows.preview.values import PreviewValues
 
@@ -201,15 +202,17 @@ class PreviewDisplayCapture(RuntimePreviewCapture):
             amount = 0
             reservation = f"display:{uuid4().hex}"
             try:
-                if value.get("type") in {"value-preview", "table-preview"}:
+                if value.get("type") == "point-cloud-preview" and value.get("reason") in CLOUD_PREVIEW_FAILURE_REASONS:
+                    raise ValueError(value["reason"])
+                if value.get("type") in {"value-preview", "table-preview", "point-cloud-preview"}:
                     # 完整值单独分页；画布只绘制小窗口，绝不把摘要冒充完整结果。
                     descriptor = self.values.describe(value)
                     self.emit("value.updated", {**identity, "value": descriptor})
                     if descriptor["kind"] == "json":
                         from backend.service.application.workflows.preview.values import _page
-                        field = "value" if value["type"] == "value-preview" else "rows"
-                        page = _page(value, [field], 0, 4)
-                        value = {**value, field: page["value"], "paged": True, "value_descriptor": descriptor,
+                        field = "value" if value["type"] == "value-preview" else "data" if value["type"] == "point-cloud-preview" else "rows"
+                        content = None if field == "data" else _page(value, [field], 0, 4)["value"]
+                        value = {**value, field: content, "paged": True, "value_descriptor": descriptor,
                                  "status_text": "preview_value_paged"}
                     elif descriptor["kind"] == "unavailable":
                         raise ValueError(descriptor["error"])

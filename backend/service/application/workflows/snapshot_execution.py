@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from collections import OrderedDict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Callable
 from threading import Lock
 from time import perf_counter
 from uuid import uuid4
 import logging
+from backend.service.application.runtime.exception_cleanup import (
+    release_exception_frames,
+)
 
 from backend.contracts.buffers.lease_ownership import LeaseOwnershipReceipt
 from backend.contracts.workflows.workflow_graph import (
@@ -60,6 +63,11 @@ from backend.service.application.workflows.workflow_service import (
     LocalWorkflowJsonService,
 )
 from backend.service.application.workflows.input_contracts import WorkflowInputValidator
+from backend.service.application.workflows.resource_finalization import (
+    WorkflowResourceCleanupError,
+    finalize_workflow_resources,
+    require_reusable_process_scope,
+)
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
@@ -225,6 +233,58 @@ class SnapshotExecutionService:
         request: WorkflowSnapshotExecutionRequest,
         model_session_scope_id: str,
     ) -> WorkflowSnapshotExecutionResult:
+        """把输入校验、资源准备和图执行统一纳入清理保护区。"""
+        process_scope = self.runtime_context.process_resource_scope
+        require_reusable_process_scope(process_scope)
+        metadata = dict(request.execution_metadata)
+        scope = get_or_create_workflow_resource_scope(metadata)
+        execution_error: BaseException | None = None
+        try:
+            return self._execute_snapshot_graph(
+                request=replace(request, execution_metadata=metadata),
+                model_session_scope_id=model_session_scope_id,
+            )
+        except BaseException as error:
+            execution_error = error
+            release_exception_frames(error)
+            raise
+        finally:
+            cleanup_error = finalize_workflow_resources(
+                scope=scope,
+                process_scope=process_scope,
+                execution_error=execution_error,
+                cleanup_external=lambda: execute_registered_execution_cleanups(
+                    execution_metadata=metadata,
+                    runtime_context=self.runtime_context,
+                    handlers={
+                        WORKFLOW_EXECUTION_CLEANUP_KIND_DATASET_STORAGE_OBJECT: _cleanup_dataset_storage_object,
+                        WORKFLOW_EXECUTION_CLEANUP_KIND_DATASET_STORAGE_TREE: _cleanup_dataset_storage_tree,
+                        WORKFLOW_EXECUTION_CLEANUP_KIND_DEPLOYMENT_INSTANCE: _cleanup_registered_deployment,
+                        WORKFLOW_EXECUTION_CLEANUP_KIND_LOCAL_BUFFER_LEASE: _cleanup_local_buffer_lease,
+                    },
+                ),
+            )
+            if isinstance(cleanup_error, WorkflowResourceCleanupError):
+                raise cleanup_error from execution_error
+            if cleanup_error is not None:
+                if execution_error is None:
+                    raise cleanup_error
+                if isinstance(execution_error, ServiceError):
+                    execution_error.details["cleanup_error"] = {
+                        "error_code": cleanup_error.code,
+                        "error_message": cleanup_error.message,
+                        "details": dict(cleanup_error.details),
+                    }
+                LOGGER.error(
+                    "Workflow 执行失败且外部资源清理失败: %s", cleanup_error.message
+                )
+
+    def _execute_snapshot_graph(
+        self,
+        *,
+        request: WorkflowSnapshotExecutionRequest,
+        model_session_scope_id: str,
+    ) -> WorkflowSnapshotExecutionResult:
         """执行一次固定 snapshot 的 workflow 图。
 
         参数：
@@ -259,6 +319,11 @@ class SnapshotExecutionService:
         )
 
         public_contract = self._load_public_contract(request)
+        from backend.service.application.workflows.point_cloud.trigger_input import (
+            trusted_cloud_bindings, materialize_cloud_bindings,
+        )
+
+        cloud_input_ids = trusted_cloud_bindings(request.execution_metadata, request.input_bindings)
         validated_input_bindings = WorkflowInputValidator(
             object_store=self.dataset_storage
         ).validate(
@@ -269,7 +334,15 @@ class SnapshotExecutionService:
                 item.input_id for item in template.template_inputs
             },
             project_id=request.project_id,
+            trusted_cloud_input_ids=cloud_input_ids,
         )
+        if cloud_input_ids:
+            validated_input_bindings = materialize_cloud_bindings(
+                metadata=request.execution_metadata, bindings=validated_input_bindings,
+                context=self.runtime_context,
+                scope=get_or_create_workflow_resource_scope(request.execution_metadata),
+                cancellation=self.node_cancellation_event,
+            )
         template_input_values = _build_template_input_values(
             application=application,
             input_bindings=validated_input_bindings,
@@ -282,7 +355,7 @@ class SnapshotExecutionService:
             preview_lifetime.adopt_bindings(
                 application, request.input_bindings, validated_input_bindings
             )
-        execution_metadata_payload = dict(request.execution_metadata)
+        execution_metadata_payload = request.execution_metadata
         workflow_resource_scope = get_or_create_workflow_resource_scope(
             execution_metadata_payload
         )
@@ -324,116 +397,67 @@ class SnapshotExecutionService:
             execution_metadata_payload.setdefault(
                 "local_buffer_reader", self.runtime_context.local_buffer_reader
             )
-        execution_error: Exception | None = None
-        try:
-            workflow_execute_started_at = perf_counter()
-            graph_execution_result = WorkflowGraphExecutor(
-                registry=self.runtime_registry,
-                node_pack_timeout_policies=self.node_pack_timeout_policies,
-                node_cancellation_event=self.node_cancellation_event,
-                node_lifecycle_callback=self.node_lifecycle_sink,
-            ).execute(
-                template=template,
-                input_values=template_input_values,
-                execution_metadata=execution_metadata_payload,
-                runtime_context=self.runtime_context,
-                event_callback=self.event_sink,
-                target_node_ids=(
-                    frozenset((target_node_id,)) if target_node_id else frozenset()
+        workflow_resource_scope.register(
+            ("execution-image-registry", id(image_registry)),
+            image_registry,
+            (lambda value: value.clear())
+            if owns_image_registry
+            else (lambda value: value.clear_decoded_matrices()),
+        )
+        workflow_execute_started_at = perf_counter()
+        graph_execution_result = WorkflowGraphExecutor(
+            registry=self.runtime_registry,
+            node_pack_timeout_policies=self.node_pack_timeout_policies,
+            node_cancellation_event=self.node_cancellation_event,
+            node_lifecycle_callback=self.node_lifecycle_sink,
+        ).execute(
+            template=template,
+            input_values=template_input_values,
+            execution_metadata=execution_metadata_payload,
+            runtime_context=self.runtime_context,
+            event_callback=self.event_sink,
+            target_node_ids=frozenset((target_node_id,))
+            if target_node_id
+            else frozenset(),
+        )
+        binding_outputs = (
+            {}
+            if target_node_id
+            else _build_binding_outputs(
+                application=application,
+                template_outputs=graph_execution_result.outputs,
+            )
+        )
+        workflow_execute_ms = _elapsed_ms(workflow_execute_started_at)
+        output_handoff_started_at = perf_counter()
+        prepared_trigger_result = prepare_trigger_result_before_cleanup(
+            outputs=binding_outputs,
+            output_payload_types=_build_binding_output_payload_types(
+                application=application, template=full_template
+            ),
+            execution_metadata=execution_metadata_payload,
+            dataset_storage=self.dataset_storage,
+            local_buffer_client=self.runtime_context.local_buffer_reader,
+        )
+        output_handoff_ms = _elapsed_ms(output_handoff_started_at)
+        return WorkflowSnapshotExecutionResult(
+            project_id=request.project_id,
+            application_id=request.application_id,
+            template_id=graph_execution_result.template_id,
+            template_version=graph_execution_result.template_version,
+            outputs=binding_outputs,
+            template_outputs=dict(graph_execution_result.outputs),
+            node_records=graph_execution_result.node_records,
+            prepared_trigger_result=prepared_trigger_result,
+            timings={
+                "workflow_execute_ms": workflow_execute_ms,
+                "output_handoff_ms": output_handoff_ms,
+                "response_image_encode_ms": _sum_response_image_encode_ms(
+                    graph_execution_result.node_records
                 ),
-            )
-            binding_outputs = (
-                {}
-                if target_node_id
-                else _build_binding_outputs(
-                    application=application,
-                    template_outputs=graph_execution_result.outputs,
-                )
-            )
-            workflow_execute_ms = _elapsed_ms(workflow_execute_started_at)
-            output_handoff_started_at = perf_counter()
-            prepared_trigger_result = prepare_trigger_result_before_cleanup(
-                outputs=binding_outputs,
-                output_payload_types=_build_binding_output_payload_types(
-                    application=application,
-                    template=full_template,
-                ),
-                execution_metadata=execution_metadata_payload,
-                dataset_storage=self.dataset_storage,
-                local_buffer_client=self.runtime_context.local_buffer_reader,
-            )
-            output_handoff_ms = _elapsed_ms(output_handoff_started_at)
-            snapshot_result = WorkflowSnapshotExecutionResult(
-                project_id=request.project_id,
-                application_id=request.application_id,
-                template_id=graph_execution_result.template_id,
-                template_version=graph_execution_result.template_version,
-                outputs=binding_outputs,
-                template_outputs=dict(graph_execution_result.outputs),
-                node_records=graph_execution_result.node_records,
-                prepared_trigger_result=prepared_trigger_result,
-                timings={
-                    "workflow_execute_ms": workflow_execute_ms,
-                    "output_handoff_ms": output_handoff_ms,
-                    "response_image_encode_ms": _sum_response_image_encode_ms(
-                        graph_execution_result.node_records
-                    ),
-                    **read_workflow_image_access_timings(execution_metadata_payload),
-                },
-            )
-        except Exception as exc:
-            execution_error = exc
-            raise
-        finally:
-            try:
-                cleanup_error = execute_registered_execution_cleanups(
-                    execution_metadata=execution_metadata_payload,
-                    runtime_context=self.runtime_context,
-                    handlers={
-                        WORKFLOW_EXECUTION_CLEANUP_KIND_DATASET_STORAGE_OBJECT: _cleanup_dataset_storage_object,
-                        WORKFLOW_EXECUTION_CLEANUP_KIND_DATASET_STORAGE_TREE: _cleanup_dataset_storage_tree,
-                        WORKFLOW_EXECUTION_CLEANUP_KIND_DEPLOYMENT_INSTANCE: _cleanup_registered_deployment,
-                        WORKFLOW_EXECUTION_CLEANUP_KIND_LOCAL_BUFFER_LEASE: _cleanup_local_buffer_lease,
-                    },
-                )
-            finally:
-                resource_scope_errors = workflow_resource_scope.close()
-                # Runtime worker 会长期驻留；每次 Run 必须主动断开大图矩阵引用，
-                # 不能依赖下一轮 GC 或进程退出回收。
-                if owns_image_registry:
-                    image_registry.clear()
-                else:
-                    image_registry.clear_decoded_matrices()
-            if resource_scope_errors:
-                resource_scope_error = ServiceConfigurationError(
-                    "Workflow ResourceScope 资源清理失败",
-                    details={
-                        "errors": [error.to_dict() for error in resource_scope_errors]
-                    },
-                )
-                if cleanup_error is None:
-                    cleanup_error = resource_scope_error
-                else:
-                    cleanup_error.details["resource_scope_error"] = {
-                        "error_code": resource_scope_error.code,
-                        "error_message": resource_scope_error.message,
-                        "details": dict(resource_scope_error.details),
-                    }
-            if cleanup_error is not None and execution_error is None:
-                raise cleanup_error
-            if cleanup_error is not None and execution_error is not None:
-                if isinstance(execution_error, ServiceError):
-                    execution_error.details["cleanup_error"] = {
-                        "error_code": cleanup_error.code,
-                        "error_message": cleanup_error.message,
-                        "details": dict(cleanup_error.details),
-                    }
-                LOGGER.error(
-                    "Workflow Run 执行失败后 cleanup 仍有错误: application_id=%s error=%s",
-                    request.application_id,
-                    cleanup_error.message,
-                )
-        return snapshot_result
+                **read_workflow_image_access_timings(execution_metadata_payload),
+            },
+        )
 
     def prepare_model_sessions(
         self, request: WorkflowSnapshotExecutionRequest

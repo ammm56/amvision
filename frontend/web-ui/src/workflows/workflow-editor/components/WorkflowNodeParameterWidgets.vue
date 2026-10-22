@@ -112,6 +112,11 @@
         :model-value="readValue(node, field)" :schema="field.json_schema" :disabled="isParameterEditorDisabled(node, field)"
         @update:model-value="emit('update-value', node, field, $event)"
       />
+      <CloudResourceParameter
+        v-else-if="['cloud-source', 'cloud-target'].includes(String(field.json_schema['x-ui-widget']))"
+        :model-value="readValue(node, field)" :schema="field.json_schema" :disabled="isParameterEditorDisabled(node, field)"
+        @update:model-value="emit('update-value', node, field, $event)"
+      />
       <component
         :is="trustedParameterEditor(node.node.node_type_id, field.parameter_name)"
         v-else-if="trustedParameterEditor(node.node.node_type_id, field.parameter_name)"
@@ -155,6 +160,7 @@ import WorkflowGraphCheckbox from './WorkflowGraphCheckbox.vue'
 import WorkflowParameterColorMap from './WorkflowParameterColorMap.vue'
 import WorkflowParameterRowsEditor from './WorkflowParameterRowsEditor.vue'
 import WorkflowMeasurementResourcePicker from './WorkflowMeasurementResourcePicker.vue'
+import CloudResourceParameter from '../point-cloud/CloudResourceParameter.vue'
 import WorkflowCalibrationResourceSave from './WorkflowCalibrationResourceSave.vue'
 import { trustedParameterEditor } from '../parameters/trusted-editors'
 import { readNodeParameterInputPort } from '../parameters/parameter-input-bindings'

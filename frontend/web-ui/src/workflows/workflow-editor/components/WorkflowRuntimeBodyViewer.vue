@@ -65,6 +65,8 @@
       </div>
     </section>
 
+    <CloudPreviewPanel v-for="cloud in displayClouds" :key="cloud.path" :payload="cloud.payload" :project-id="projectId" />
+
     <section v-if="primaryJsonText" class="runtime-body-viewer__group">
       <div class="runtime-body-viewer__group-heading">
         <div>
@@ -102,6 +104,7 @@ import { createProjectFileObjectUrl } from '@/shared/api/file-url'
 import Button from '@/shared/ui/components/Button.vue'
 import ImageViewer from '@/shared/ui/components/ImageViewer.vue'
 import type { WorkflowJsonObject } from '../types'
+import CloudPreviewPanel from '../point-cloud/CloudPreviewPanel.vue'
 
 const { t } = useTranslation()
 
@@ -170,6 +173,7 @@ const props = defineProps<{
 
 const displayImages = ref<RuntimeViewerImage[]>([])
 const displayVideos = ref<RuntimeViewerVideo[]>([])
+const displayClouds = computed(() => collectResponseClouds(props.body))
 const activeImage = ref<{
   title: string
   src: string | null
@@ -366,6 +370,13 @@ function collectResponseImages(value: unknown, path = 'body'): RuntimeViewerImag
   }
 
   return Object.entries(value).flatMap(([key, item]) => collectResponseImages(item, `${path}.${key}`))
+}
+
+function collectResponseClouds(value: unknown, path = 'body'): Array<{path: string; payload: Record<string, unknown>}> {
+  if (Array.isArray(value)) return value.flatMap((item, index) => collectResponseClouds(item, `${path}[${index}]`))
+  if (!isRecord(value)) return []
+  if (value.type === 'point-cloud-preview') return [{path, payload: value}]
+  return Object.entries(value).flatMap(([key, item]) => collectResponseClouds(item, `${path}.${key}`))
 }
 
 function collectResponseVideos(value: unknown, path = 'body'): RuntimeViewerVideoSource[] {

@@ -55,7 +55,7 @@ def test_large_nested_value_transfers_completely_without_truncating_false_or_zer
         assert buffers.stats()["reserved_bytes"] == 0
     finally:
         buffers.close()
-    assert buffers.stats() == {"blocks": 0, "bytes": 0, "pins": 0, "reserved_bytes": 0}
+    assert buffers.stats() == {"blocks": 0, "bytes": 0, "file_bytes": 0, "pins": 0, "reserved_bytes": 0}
 
 
 def test_unused_committed_input_expires_but_published_display_does_not():
@@ -73,4 +73,30 @@ def test_unused_committed_input_expires_but_published_display_does_not():
         with pytest.raises(PreviewMemoryError):
             buffers.allocate("session", 1, media_type="text/plain")
     finally:
+        buffers.close()
+
+
+def test_cloud_display_uses_existing_blob_channel_and_releases_reservations():
+    """二进制显示不能塞进控制事件；节点原始业务值保持不变。"""
+    from types import SimpleNamespace
+    from backend.service.application.workflows.preview.display import PreviewDisplayCapture
+    buffers = PreviewBuffers()
+    events = []
+    capture = PreviewDisplayCapture(Bridge(buffers), lambda kind, data: events.append((kind, data)))
+    body = {"type": "point-cloud-preview", "state": "ready", "data": {"content": "A" * 32000}}
+    try:
+        capture.capture(node_id="cloud", definition=SimpleNamespace(
+            node_type_id="custom.metrology3d.cloud-preview", output_ports=[SimpleNamespace(name="body")]),
+            outputs={"body": body}, invocation_id="once", duration_ms=1)
+        capture.close()
+        display = next(data["payload"] for kind, data in events if kind == "display.updated")
+        assert display["data"] is None and display["paged"] is True
+        assert len(json.dumps(display)) < 4096
+        descriptor = display["value_descriptor"]
+        with buffers.borrow("session", descriptor["blob_id"]) as view:
+            assert json.loads(bytes(view)) == body
+        assert body["data"]["content"] == "A" * 32000
+        assert buffers.stats()["reserved_bytes"] == 0
+    finally:
+        capture.close()
         buffers.close()

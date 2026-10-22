@@ -236,6 +236,17 @@ export function useWorkflowNodeParameters<NodeView extends WorkflowNodeParameter
 
   function updateNodeParameter(node: NodeView, field: NodeParameterUiField, value: unknown): void {
     const nextParameters = { ...node.node.parameters }
+    if (field.json_schema['x-ui-widget'] === 'cloud-source' && value && typeof value === 'object' && (value as Record<string, unknown>).kind === 'asset') {
+      const cleared = field.json_schema['x-asset-clears']
+      if (Array.isArray(cleared)) for (const key of cleared) if (typeof key === 'string') {
+        delete nextParameters[key]
+        const draftKey = `${node.node.node_id}:${key}`
+        const nextDrafts = { ...options.complexParameterDrafts.value }
+        delete nextDrafts[draftKey]
+        options.complexParameterDrafts.value = nextDrafts
+        editedJsonDraftKeys.delete(draftKey)
+      }
+    }
     // undefined 表示取消设置；null 和空字符串都是明确的 JSON 值。
     if (value === undefined) {
       delete nextParameters[field.parameter_name]

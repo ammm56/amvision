@@ -11,6 +11,8 @@ from backend.contracts.workflows.metrology import (
     Point,
     ResourceReference,
 )
+from backend.contracts.workflows.point_cloud import Sha256
+from backend.contracts.workflows.point_cloud_assets import PointCloudAsset
 
 
 class LocalizationTemplate(Contract):
@@ -60,12 +62,55 @@ class MeasurementResourceContent(Contract):
         return self
 
 
+class MeasurementResourceContentV2(MeasurementResourceContent):
+    """显式 v2 内容；二维字段保持原意，点云由独立 blob 承载。"""
+
+    format_id: Literal["amvision.measurement-resource.v2"] = (
+        "amvision.measurement-resource.v2"
+    )
+    kind: Literal["planar-calibration", "localization-template", "point-cloud"]
+    point_cloud: PointCloudAsset | None = None
+
+    @model_validator(mode="after")
+    def check_kind(self) -> Self:
+        """每种资源恰好一个非空分支，不静默忽略其他内容。"""
+        for kind, value in (
+            ("planar-calibration", self.calibration),
+            ("localization-template", self.template),
+            ("point-cloud", self.point_cloud),
+        ):
+            if (self.kind == kind) != (value is not None):
+                raise ValueError("计量资源类型与内容不一致")
+        return self
+
+
+ResourceContent = Annotated[
+    MeasurementResourceContent | MeasurementResourceContentV2,
+    Field(discriminator="format_id"),
+]
+
+
 class MeasurementResourceDocument(Contract):
     """版本目录的唯一提交记录；所有内容先完成再发布此记录。"""
 
     reference: ResourceReference
     name: Annotated[str, Field(min_length=1, max_length=128)]
-    content: MeasurementResourceContent
+    content: ResourceContent
     image_object_key: str | None = None
     created_at: str
     created_by: str | None = None
+    write_identity: Sha256 | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+
+    @model_validator(mode="after")
+    def check_identity(self) -> Self:
+        """提交身份只属于 v2 写入，不改变既有二维版本记录。"""
+        if self.reference.kind != self.content.kind:
+            raise ValueError("资源引用与内容类型不一致")
+        if (
+            self.write_identity is not None
+            and self.content.format_id != "amvision.measurement-resource.v2"
+        ):
+            raise ValueError("提交身份只允许用于 v2 资源")
+        return self

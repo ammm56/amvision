@@ -12,6 +12,7 @@ from typing import Any
 
 from backend.contracts.errors import ErrorContract
 from backend.contracts.workflows.workflow_graph import NodeDefinition
+from backend.contracts.workflows.point_cloud_preview import CLOUD_PREVIEW_FAILURE_REASONS
 from backend.service.application.public_errors import build_error_contract
 
 PREVIEW_CAPTURE_KEY = "_runtime_preview_capture"
@@ -25,6 +26,7 @@ PREVIEW_TYPES = frozenset(
         "table-preview",
         "gallery-preview",
         "value-display",
+        "point-cloud-preview",
     }
 )
 
@@ -106,6 +108,8 @@ class RuntimePreviewCapture:
                         or payload.get("type") not in PREVIEW_TYPES
                     ):
                         continue
+                    if payload.get("type") == "point-cloud-preview" and payload.get("reason") in CLOUD_PREVIEW_FAILURE_REASONS:
+                        raise _DisplayLimit(payload["reason"])
                     copied = _copy_json(payload, self.budget)
                     # 图像交互编辑仅属于编辑画布；运行画布不能改参数。
                     copied.pop("interaction", None)

@@ -2472,6 +2472,7 @@ class WorkflowRuntimeService:
         return LocalWorkflowJsonService(
             dataset_storage=self.dataset_storage,
             node_catalog_registry=self.node_catalog_registry,
+            point_cloud_policy=self.settings.workflow_runtime.point_cloud,
         )
 
     @contextmanager
@@ -2527,6 +2528,7 @@ class WorkflowRuntimeService:
             session_factory=self.session_factory,
             dataset_storage=self.dataset_storage,
             node_catalog_registry=self.node_catalog_registry,
+            point_cloud_policy=self.settings.workflow_runtime.point_cloud,
         )
 
     def _require_active_runtime_revision(

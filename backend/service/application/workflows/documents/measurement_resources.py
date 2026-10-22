@@ -24,6 +24,7 @@ from backend.service.application.errors import (
     ResourceConflictError,
     ResourceInUseError,
     ResourceNotFoundError,
+    ServiceConfigurationError,
 )
 from backend.service.application.runtime.io.path_write_coordinator import (
     PathWriteCoordinator,
@@ -68,6 +69,30 @@ def collect_measurement_references(template) -> tuple[ResourceReference, ...]:
     """只读取显式资源参数；旧图无引用时不访问存储。"""
     references = {}
     for node in template.nodes:
+        if node.node_type_id in {
+            "custom.metrology3d.read-cloud",
+            "custom.metrology3d.export-cloud",
+            "custom.metrology3d.save-cloud",
+        }:
+            field = (
+                "target"
+                if node.node_type_id == "custom.metrology3d.save-cloud"
+                else "source"
+            )
+            value = node.parameters.get(field)
+            if isinstance(value, dict) and value.get("kind") in (
+                "asset",
+                "new-version",
+            ):
+                try:
+                    reference = ResourceReference.model_validate(value.get("reference"))
+                    if reference.kind != "point-cloud":
+                        raise ValueError("三维节点必须引用 point-cloud")
+                except ValueError as exc:
+                    raise InvalidRequestError(
+                        str(exc), details={"node_id": node.node_id, "field": field}
+                    ) from exc
+                references[reference.model_dump_json()] = reference
         for field, kind in _RESOURCE_FIELDS.items():
             value = node.parameters.get(field)
             if value is None:
@@ -103,9 +128,10 @@ def reference_key(reference: ResourceReference) -> str:
 class MeasurementResourceService:
     """资源属于 Project；保存发布删除使用同一个跨进程非等待路径锁。"""
 
-    def __init__(self, storage):
+    def __init__(self, storage, *, cloud_policy=None):
         """保存 ObjectStore；管理接口不触发工作流执行。"""
         self.storage = storage
+        self.cloud_policy = cloud_policy
 
     def root(self, project_id: str) -> str:
         """资源路径只由校验后的项目 ID 生成。"""
@@ -150,6 +176,8 @@ class MeasurementResourceService:
         actor_id: str | None = None,
     ) -> MeasurementResourceDocument:
         """每次保存新版本，历史版本不可覆盖；最后原子提交版本 JSON。"""
+        if content.kind == "point-cloud":
+            raise InvalidRequestError("点云必须通过带显式预算的流式提交入口保存")
         if not isinstance(name, str) or not 1 <= len(name.strip()) <= 128:
             raise InvalidRequestError("计量资源名称必须为 1–128 个非空字符")
         self._validate_image(content, image_bytes)
@@ -203,6 +231,40 @@ class MeasurementResourceService:
             self.storage.write_json(key, document.model_dump(mode="json"))
             return self.read(reference, project_id=project_id)
 
+    def save_cloud(self, **kwargs) -> MeasurementResourceDocument:
+        """在同一版本服务中提交点云，明确预算和执行幂等身份。"""
+        from backend.service.application.workflows.documents.cloud_resource_writes import (
+            save_cloud_resource,
+        )
+
+        return save_cloud_resource(self, **kwargs)
+
+    def verify_cloud(self, document, *, policy, cancel) -> None:
+        """读取数据面前按显式预算核验全部 blob。"""
+        from backend.service.application.workflows.documents.cloud_resource_blobs import (
+            verify_cloud_blobs,
+        )
+
+        if document.reference.kind != "point-cloud":
+            raise InvalidRequestError("资源不是点云")
+        verify_cloud_blobs(self, document, policy=policy, cancel=cancel)
+
+    def export_cloud_archive(self, reference, **kwargs):
+        """沿原资源服务导出，归档容量与 Workflow 输入容量独立。"""
+        from backend.service.application.workflows.documents.cloud_resource_archives import (
+            export_cloud_archive,
+        )
+
+        return export_cloud_archive(self, reference, **kwargs)
+
+    def import_cloud_archive(self, **kwargs):
+        """沿原资源服务导入，不接收整包 bytes 或客户端解压路径。"""
+        from backend.service.application.workflows.documents.cloud_resource_archives import (
+            import_cloud_archive,
+        )
+
+        return import_cloud_archive(self, **kwargs)
+
     def read(
         self, reference: ResourceReference, *, project_id: str
     ) -> MeasurementResourceDocument:
@@ -237,6 +299,21 @@ class MeasurementResourceService:
                 expected = f"{key.rsplit('/', 1)[0]}/immutable/sha256-{document.content.template.image_sha256}/content.png"
             if document.image_object_key != expected:
                 raise ValueError("计量资源图片路径不匹配")
+            if document.reference.kind == "point-cloud":
+                from backend.service.application.workflows.documents.cloud_resource_blobs import (
+                    cloud_blob_key,
+                )
+
+                for blob in document.content.point_cloud.blobs:
+                    metadata = self.storage.stat_object(
+                        cloud_blob_key(self, reference, blob)
+                    )
+                    if (
+                        not metadata.is_immutable
+                        or metadata.checksum != blob.sha256
+                        or metadata.content_length != blob.content_length
+                    ):
+                        raise ValueError("点云块身份或长度不匹配")
         except ValueError as exc:
             raise InvalidRequestError(str(exc)) from exc
         return document
@@ -292,6 +369,13 @@ class MeasurementResourceService:
         refs = collect_measurement_references(template)
         for ref in refs:
             document = self.read(ref, project_id=project_id)
+            if ref.kind == "point-cloud":
+                if self.cloud_policy is None:
+                    raise ServiceConfigurationError("点云资源发布校验需要显式资产预算")
+                self.verify_cloud(
+                    document, policy=self.cloud_policy, cancel=lambda: None
+                )
+                continue
             self._validate_image(document.content, self.image_bytes(document))
         return refs
 
@@ -383,6 +467,18 @@ class MeasurementResourceService:
                 )
                 return
             document = self.read(reference, project_id=project_id)
+            for dependent in self.list_versions(project_id=project_id):
+                if (
+                    dependent.reference.kind == "point-cloud"
+                    and reference in dependent.content.point_cloud.parent_assets
+                ):
+                    raise ResourceInUseError(
+                        "计量资源仍被点云资产引用",
+                        details={
+                            "resource_id": dependent.reference.resource_id,
+                            "version": dependent.reference.version,
+                        },
+                    )
             project = self.storage.resolve(
                 f"workflows/projects/{normalize_identifier(project_id, 'project_id')}"
             )
@@ -411,14 +507,19 @@ class MeasurementResourceService:
                         details={"template_id": template.template_id},
                     )
             version_path.replace(tombstone)
-            if document.image_object_key is not None:
+            if (
+                document.image_object_key is not None
+                or document.reference.kind == "point-cloud"
+            ):
                 self.storage.delete_tree(
-                    document.image_object_key.rsplit("/immutable/", 1)[0] + "/immutable"
+                    self.version_key(reference).rsplit("/", 1)[0] + "/immutable"
                 )
 
     def export(self, reference: ResourceReference, *, project_id: str) -> bytes:
         """单资源独立归档，不改变既有 Workflow JSON 导出的语义。"""
         document = self.read(reference, project_id=project_id)
+        if reference.kind == "point-cloud":
+            raise InvalidRequestError("点云资产必须使用有界流式归档入口")
         image = self.image_bytes(document)
         output = BytesIO()
         with ZipFile(output, "w", compression=ZIP_STORED) as archive:
@@ -503,6 +604,17 @@ class PreparedMeasurementResources:
                 item = self.entries.get(key)
                 if item is None:
                     document = self.service.read(reference, project_id=project_id)
+                    if reference.kind == "point-cloud":
+                        # 只准备固定版本的元数据，数组由节点在运行 Scope 按显式预算恢复。
+                        prepared_bytes += len(canonical_bytes(document.content))
+                        if prepared_bytes > self.max_bytes:
+                            raise InvalidRequestError(
+                                "本次 Workflow 的计量资源描述超过准备预算"
+                            )
+                        prepared[key] = MappingProxyType(
+                            {"content": document.content, "reference": reference}
+                        )
+                        continue
                     expected = document.content.template
                     # PNG 最多 uint16 RGBA；以最坏解码占用预检，禁止先超量分配再报错。
                     if (

@@ -53,11 +53,13 @@ class WorkflowTemplateDocumentStore:
         *,
         dataset_storage: LocalDatasetStorage,
         node_definitions: tuple[NodeDefinition, ...],
+        point_cloud_policy=None,
     ) -> None:
         """初始化图模板文档存储服务。"""
 
         self.dataset_storage = dataset_storage
         self.node_definitions = node_definitions
+        self.point_cloud_policy = point_cloud_policy
 
     def validate_template(
         self, template: WorkflowGraphTemplate
@@ -256,7 +258,8 @@ class WorkflowTemplateDocumentStore:
             collect_measurement_references,
         )
 
-        resources = MeasurementResourceService(self.dataset_storage)
+        resources = MeasurementResourceService(self.dataset_storage,
+            cloud_policy=self.point_cloud_policy.assets() if self.point_cloud_policy is not None else None)
         references = collect_measurement_references(template)
         with resources.mutation(project_id) if references else nullcontext():
             if references:

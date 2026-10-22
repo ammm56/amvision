@@ -12,6 +12,47 @@ from tests.test_workflow_runtime_invoke_api import _build_file_metadata_applicat
 from tests.preview_worker_faults import _uncooperative_worker
 
 
+def test_resource_close_failure_retires_real_preview_worker(tmp_path, monkeypatch):
+    """真实 Snapshot 关闭失败后整组退出，输入 pin 与恢复槽位均不残留。"""
+    import hashlib
+    import backend.service.application.workflows.preview.pool as module
+    from tests.preview_worker_faults import _resource_close_failure_worker
+
+    monkeypatch.setattr(module, "run_preview_worker", _resource_close_failure_worker)
+    client, sessions, _ = _create_runtime_api_client(tmp_path, database_name="failed-close.db", enable_local_buffer_broker=False)
+    try:
+        with client:
+            manager = PreviewSessionManager()
+            pool = PreviewSessionPool(settings=client.app.state.backend_service_settings, manager=manager)
+            manager.pool = pool
+            try:
+                template, application = _build_file_metadata_application(multiple=False)
+                sid = manager.create(principal_id="test", project_id="project-1",
+                    application_id=application.application_id, editor_session_id="failed-close")["session_id"]
+                manager.subscribe(sid, "test")
+                content = b'{"value":false}'
+                blob = manager.buffers.allocate(sid, len(content), media_type="application/json",
+                    file_name="input.json", digest=hashlib.sha256(content).hexdigest())
+                manager.buffers.write_chunk(sid, blob, 0, content)
+                manager.buffers.commit(sid, blob)
+                manager.submit(sid, "test", {"request_id": str(uuid4()), "document_revision": "r",
+                    "application": application.model_dump(mode="json"), "template": template.model_dump(mode="json"),
+                    "timeout_seconds": 30, "input_ids": {"request_file": [blob]}}, pool.submit)
+                deadline = monotonic() + 30
+                while monotonic() < deadline and (pool._active or manager.authorize(sid, "test").run["state"] == "accepted"):
+                    sleep(.02)
+                run = manager.authorize(sid, "test").run
+                assert run["state"] == "failed", run
+                assert "资源" in str(run), run
+                assert all(slot.process is None and not slot.quarantined for slot in pool._slots)
+                manager.release(sid, "test")
+                assert manager.buffers.stats() == {"blocks": 0, "bytes": 0, "file_bytes": 0, "pins": 0, "reserved_bytes": 0}
+            finally:
+                manager.close()
+    finally:
+        sessions.engine.dispose()
+
+
 def test_quarantined_writer_is_reaped_only_after_confirmed_process_exit():
     """模拟首次终止失败；活进程借用不能被提前释放，稍后死亡必须回收。"""
     from types import SimpleNamespace
@@ -32,7 +73,7 @@ def test_quarantined_writer_is_reaped_only_after_confirmed_process_exit():
         assert manager.buffers.stats()["pins"] == 1 and slot.busy
         alive[0] = False
         pool.reap()
-        assert manager.buffers.stats() == {"blocks": 0, "bytes": 0, "pins": 0, "reserved_bytes": 0}
+        assert manager.buffers.stats() == {"blocks": 0, "bytes": 0, "file_bytes": 0, "pins": 0, "reserved_bytes": 0}
         assert slot.process is None and not slot.quarantined and not slot.busy
     finally:
         alive[0] = False
@@ -57,7 +98,7 @@ def test_forced_timeout_reclaims_unpublished_writer_after_process_exit(tmp_path,
             sleep(.02)
         assert manager.authorize(sid, "test").run["state"] == "timed_out"
         manager.close()
-        assert manager.buffers.stats() == {"blocks": 0, "bytes": 0, "pins": 0, "reserved_bytes": 0}
+        assert manager.buffers.stats() == {"blocks": 0, "bytes": 0, "file_bytes": 0, "pins": 0, "reserved_bytes": 0}
         assert all(slot.process is None for slot in pool._slots)
     finally:
         manager.close()
@@ -165,7 +206,7 @@ def test_memory_worker_streams_before_long_node_finishes(tmp_path):
                     sleep(.02)
                 assert pool._slots[0].process.pid == worker_pid
                 manager.release(sid, "test")
-            assert manager.buffers.stats() == {"blocks": 0, "bytes": 0, "pins": 0, "reserved_bytes": 0}
+            assert manager.buffers.stats() == {"blocks": 0, "bytes": 0, "file_bytes": 0, "pins": 0, "reserved_bytes": 0}
             assert not list(storage.root_dir.rglob("preview-runs"))
         finally:
             manager.close()

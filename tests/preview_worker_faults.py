@@ -12,3 +12,22 @@ def _uncooperative_worker(*, settings_payload, requests, responses, replies, can
     responses.put(("lifecycle", {"message_type": "node-started", "node_invocation_id": "blocked",
         "deadline_monotonic": monotonic(), "kill_grace_seconds": .1}))
     sleep(60)
+def _resource_close_failure_worker(*args, **kwargs):
+    """在真实 Snapshot 收尾阶段注入失败，不替换 Preview worker 协议。"""
+    from backend.service.application.runtime.resource_scope import get_or_create_workflow_resource_scope
+    from backend.service.application.workflows.snapshot_execution import SnapshotExecutionService
+    from backend.service.application.workflows.preview.worker import run_preview_worker
+
+    original = SnapshotExecutionService._execute_snapshot_graph
+
+    def fail_close(_):
+        raise BufferError("controlled borrowed resource")
+
+    def execute(self, *, request, model_session_scope_id):
+        result = original(self, request=request, model_session_scope_id=model_session_scope_id)
+        scope = get_or_create_workflow_resource_scope(request.execution_metadata)
+        scope.register("fault-resource", object(), fail_close, before_external_cleanup=True)
+        return result
+
+    SnapshotExecutionService._execute_snapshot_graph = execute
+    run_preview_worker(*args, **kwargs)

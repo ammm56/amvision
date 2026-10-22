@@ -6,6 +6,7 @@ using System.Security.Cryptography;
 using System.Threading;
 using Amvar.Vision.SharedMemory;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace Amvar.Vision.ContractTests
 {
@@ -28,6 +29,8 @@ namespace Amvar.Vision.ContractTests
                     return BenchmarkChecksum(args);
                 case "--invoke-shared-memory":
                     return InvokeSharedMemory(args);
+                case "--invoke-shared-memory-cloud":
+                    return InvokePointCloud(args);
                 case "--invoke-shared-memory-output":
                     return InvokeSharedMemoryOutput(args);
                 case "--invoke-shared-memory-input":
@@ -65,6 +68,40 @@ namespace Amvar.Vision.ContractTests
                 }
             }
 
+            return 0;
+        }
+
+        private static int InvokePointCloud(string[] args)
+        {
+            if (args.Length < 7 || args.Length > 9) return 64;
+            if (args[6] != "bytes" && args[6] != "fill" && args[6] != "hold-writer") return 64;
+            var options = BuildSharedMemoryOptions(args[1], args[2], long.Parse(args[3], CultureInfo.InvariantCulture));
+            if (args.Length >= 8) options.Timeout = TimeSpan.FromMilliseconds(int.Parse(args[7], CultureInfo.InvariantCulture));
+            using var client = new SharedMemoryTriggerClient(options);
+            var descriptor = JObject.Parse(File.ReadAllText(args[4]));
+            var request = new SharedMemoryTriggerRequest { InputBinding = "cloud", EventId = "event-1" };
+            using var result = args[6] == "bytes"
+                ? client.InvokePointCloud(descriptor, File.ReadAllBytes(args[5]), request)
+                : client.InvokePointCloud(descriptor, destination =>
+                {
+                    if (args[6] == "hold-writer")
+                    {
+                        if (args.Length != 9) throw new ArgumentException("hold-writer requires a ready file");
+                        File.WriteAllText(args[8], "writer-acquired");
+                        Thread.Sleep(Timeout.Infinite);
+                    }
+                    using var stream = File.OpenRead(args[5]);
+                    var chunk = new byte[4 * 1024 * 1024];
+                    var offset = 0;
+                    int count;
+                    while ((count = stream.Read(chunk, 0, chunk.Length)) > 0)
+                    {
+                        chunk.AsSpan(0, count).CopyTo(destination.Slice(offset, count));
+                        offset += count;
+                    }
+                    if (offset != destination.Length) throw new InvalidDataException("cloud file is incomplete");
+                }, request);
+            Console.WriteLine(JsonConvert.SerializeObject(result.Result));
             return 0;
         }
 

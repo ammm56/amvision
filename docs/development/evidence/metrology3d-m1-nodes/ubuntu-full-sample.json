@@ -1,0 +1,75 @@
+{
+  "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "python": "3.12.3",
+  "policy": {
+    "max_header_bytes": 65536,
+    "max_decoded_bytes": 400000000,
+    "max_working_bytes": 134217728,
+    "chunk_rows": 65536,
+    "chunk_bytes": 4194304,
+    "max_live_array_bytes": 800000000
+  },
+  "source_bytes": 479677235,
+  "source_sha256": "ff2b9e0ef2d6c45af02c4bf8d474cd82f77f86ad92bd371a4c0f71b1b90d116b",
+  "point_count": 14745099,
+  "dtype": "<f4",
+  "array_bytes": 176941188,
+  "array_sha256": "956927f058ba4a0170b1c1b93b1411b613fbe21fcbfc278ad0a7fc3cf621a1c6",
+  "non_finite_positions": 0,
+  "filter_summary": {
+    "state": "ready",
+    "reason": null,
+    "input_count": 14745099,
+    "kept_count": 14745099,
+    "removed_count": 0,
+    "invalid_counts": {
+      "mask": 0,
+      "non_finite": 0,
+      "sentinel": 0
+    }
+  },
+  "local_array_sha256": "956927f058ba4a0170b1c1b93b1411b613fbe21fcbfc278ad0a7fc3cf621a1c6",
+  "descriptor_sha256": "0b362b57f6c8fb0c0692b7024ec8e91757619ee1ea0656c3280d7251478053bd",
+  "arena_capacity_bytes": 268435456,
+  "reader_reclaim_after_close": "released",
+  "spatial_unit": null,
+  "read_verify_seconds": 11.322984984959476,
+  "recorded_array_bytes": 471843168,
+  "budget_after_close": 0,
+  "scope_closed": true,
+  "assets": {
+    "original": {
+      "content_sha256": "d94f69976d81a132c1fb39f07f243e4583a069182adfc635c9121c0f6be83d90",
+      "archive_bytes": 479678704,
+      "array_sha256": "956927f058ba4a0170b1c1b93b1411b613fbe21fcbfc278ad0a7fc3cf621a1c6",
+      "point_count": 14745099,
+      "budget_after_close": 0
+    },
+    "derived": {
+      "content_sha256": "ab010feca2bcd225e92aad2f0148f9bae40639de3a9bff0f1a526019a71077c1",
+      "archive_bytes": 235923720,
+      "array_sha256": "956927f058ba4a0170b1c1b93b1411b613fbe21fcbfc278ad0a7fc3cf621a1c6",
+      "point_count": 14745099,
+      "budget_after_close": 0
+    }
+  },
+  "exchange": null,
+  "nodes": {
+    "executed_nodes": 5,
+    "normalize_units": "unknown-unit-rejected",
+    "source_point_count": 14745099,
+    "display_point_count": 1000,
+    "display_bytes": 20000,
+    "display_checksum": "a49008f49e95a770005b57650f6c32cf64b0a3bd6d6a5f7efc1844f38d136005",
+    "preview_after_scope_close": true,
+    "budget_after_close": 0,
+    "full_array_checks": {
+      "asset": "956927f058ba4a0170b1c1b93b1411b613fbe21fcbfc278ad0a7fc3cf621a1c6",
+      "export": "956927f058ba4a0170b1c1b93b1411b613fbe21fcbfc278ad0a7fc3cf621a1c6"
+    }
+  },
+  "asset_policy": {
+    "max_asset_bytes": 600000000,
+    "max_archive_bytes": 610000000
+  }
+}

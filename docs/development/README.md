@@ -5,6 +5,12 @@
 ## 验收与基准
 
 - [3D Metrology M1 I/O 实施与验证](3d-metrology-m1-io.md)：受控 trimesh/pypcd4 构建、坏文件与精度回归、完整 ASCII PLY 样本及 Windows/WSL 资源观测；节点与完整发行尚未启用。
+- [3D Metrology M1 输入适配](3d-metrology-m1-input.md)：严格文件/数组契约、ObjectStore 和 LocalBuffer 内部读取、资源回归、Ubuntu 原生运行数据目录及剩余接入项；生产节点尚未启用。
+- [3D Metrology M1 运行引用与资源生命周期](3d-metrology-m1-runtime.md)：运行身份、分支借用、派生索引、关闭失败隔离、单位归一/有效点过滤和完整样本 mmap 验证；六节点、Trigger/SDK、资产及页面仍待接入。
+- [3D Metrology M1 资产与保存导出](3d-metrology-m1-assets.md)：资源 v2、幂等原子提交、原件/派生恢复、资产包及交换文件内部实现；双平台完整样本、强杀回归和剩余六节点/SDK/界面接入范围。
+- [3D Metrology M1 节点与资源 API](3d-metrology-m1-nodes.md)：六节点内部执行、原始行号、独立显示正文、资源管理与现有发布链路的历史批次。
+- [3D Metrology M1 传输与界面](3d-metrology-m1-transports.md)：同机 Trigger/.NET SDK、Preview 大文件上传、资源选择管理和三维组件的历史批次。
+- [3D Metrology M1 真实发布运行验收](3d-metrology-m1-published.md)：最新进度；真实发布准入、Windows .NET 完整样本、Ubuntu 服务侧生命周期、WRITING 超时清理修复及生产启用剩余条件。
 
 - [IPC 与运行时修复验收结果](runtime-repair-results-20261015.md)：owner 探测、准入、monitor 和停止确认修复，Windows/WSL 回归、一小时资源验收及仍失败的模型/小图 P99。
 - [工业场景可靠性实施记录](industrial-reliability-implementation.md)：隔离矩阵、失败资产、数值诊断、持续负载与发行验收。
@@ -25,7 +31,7 @@
 
 ## 待实施设计
 
-- [3D Metrology 设计与实施基线](3d-metrology.md)：按具体节点推进，复用 Workflow/App 发布；六节点、两入口、显示与持久引用规格见 7.4/9.9/10.13。M0 收口，受控 PLY/PCD I/O 已实施并验证；六节点与完整资源链路仍待接入，准入边界见 15.5。
+- [3D Metrology 设计与实施基线](3d-metrology.md)：按具体节点推进，复用 Workflow/App 发布；六节点、两入口、显示与持久引用规格见 7.4/9.9/10.13。M0 收口，M1 接线及显式测试配置下真实发布运行已验证；生产启用条件见 15.5。
 - [模型转换与 Pose 评估修复方案](model-matrix-repair-plan.md)：已知模型问题的修复实现、回归证据与待验收范围；工程测试与真实业务验收分别记录。
 - [用户页面与操作权限](user-access.md)：管理员逐项配置页面、操作和项目范围，复用现有启动页与应用模式。
 - [用户权限详细实施步骤](user-access-implementation.md)：通用契约、七个实施阶段和全链路、性能、真实发行验收；待实施。

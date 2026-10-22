@@ -1,0 +1,364 @@
+{
+  "$defs": {
+    "CloudAxes": {
+      "additionalProperties": false,
+      "description": "轴语义声明；标签不是隐含的坐标变换。",
+      "properties": {
+        "handedness": {
+          "enum": [
+            "right",
+            "left",
+            "unknown"
+          ],
+          "title": "Handedness",
+          "type": "string"
+        },
+        "axis_labels": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          ],
+          "title": "Axis Labels",
+          "type": "array"
+        },
+        "definition_source": {
+          "enum": [
+            "metadata",
+            "configuration",
+            "unknown"
+          ],
+          "title": "Definition Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "handedness",
+        "axis_labels",
+        "definition_source"
+      ],
+      "title": "CloudAxes",
+      "type": "object"
+    },
+    "CloudBufferDescriptor": {
+      "additionalProperties": false,
+      "description": "同机完整输入的描述，不包含 writer token 或运行内 cloud_id。",
+      "properties": {
+        "format_id": {
+          "const": "amvision.point-cloud-buffer.v1",
+          "title": "Format Id",
+          "type": "string"
+        },
+        "point_count": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "title": "Point Count",
+          "type": "integer"
+        },
+        "content_length": {
+          "exclusiveMinimum": 0,
+          "maximum": 1000000000,
+          "title": "Content Length",
+          "type": "integer"
+        },
+        "fields": {
+          "items": {
+            "$ref": "#/$defs/CloudBufferField"
+          },
+          "minItems": 1,
+          "title": "Fields",
+          "type": "array"
+        },
+        "spatial": {
+          "$ref": "#/$defs/CloudSpatial"
+        },
+        "source_observation_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Observation Id"
+        },
+        "source_metadata": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PcdSourceMetadata"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "format_id",
+        "point_count",
+        "content_length",
+        "fields",
+        "spatial"
+      ],
+      "title": "CloudBufferDescriptor",
+      "type": "object"
+    },
+    "CloudBufferField": {
+      "additionalProperties": false,
+      "description": "little-endian 连续属性块；偏移由整体布局校验。",
+      "properties": {
+        "name": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+          "title": "Name",
+          "type": "string"
+        },
+        "semantic": {
+          "enum": [
+            "position",
+            "normal",
+            "color-rgb",
+            "validity",
+            "sample-origin",
+            "scalar"
+          ],
+          "title": "Semantic",
+          "type": "string"
+        },
+        "dtype": {
+          "enum": [
+            "int8",
+            "uint8",
+            "int16",
+            "uint16",
+            "int32",
+            "uint32",
+            "int64",
+            "uint64",
+            "float32",
+            "float64"
+          ],
+          "title": "Dtype",
+          "type": "string"
+        },
+        "components": {
+          "maximum": 3,
+          "minimum": 1,
+          "title": "Components",
+          "type": "integer"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Unit"
+        },
+        "count": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "title": "Count",
+          "type": "integer"
+        },
+        "offset_bytes": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "title": "Offset Bytes",
+          "type": "integer"
+        },
+        "byte_length": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "title": "Byte Length",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "semantic",
+        "dtype",
+        "components",
+        "unit",
+        "count",
+        "offset_bytes",
+        "byte_length"
+      ],
+      "title": "CloudBufferField",
+      "type": "object"
+    },
+    "CloudSpatial": {
+      "additionalProperties": false,
+      "description": "点云长度单位、坐标系和轴定义。",
+      "properties": {
+        "length_unit": {
+          "anyOf": [
+            {
+              "enum": [
+                "m",
+                "mm",
+                "um"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Length Unit"
+        },
+        "unit_source": {
+          "enum": [
+            "metadata",
+            "configuration",
+            "unknown"
+          ],
+          "title": "Unit Source",
+          "type": "string"
+        },
+        "frame_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+          "title": "Frame Id",
+          "type": "string"
+        },
+        "axes": {
+          "$ref": "#/$defs/CloudAxes"
+        }
+      },
+      "required": [
+        "length_unit",
+        "unit_source",
+        "frame_id",
+        "axes"
+      ],
+      "title": "CloudSpatial",
+      "type": "object"
+    },
+    "PcdSourceMetadata": {
+      "additionalProperties": false,
+      "description": "原始 PCD 的组织、视点及其原坐标声明，不自动应用视点。",
+      "properties": {
+        "format": {
+          "const": "pcd",
+          "title": "Format",
+          "type": "string"
+        },
+        "width": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "title": "Width",
+          "type": "integer"
+        },
+        "height": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "title": "Height",
+          "type": "integer"
+        },
+        "viewpoint": {
+          "maxItems": 7,
+          "minItems": 7,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Viewpoint",
+          "type": "array"
+        },
+        "organized": {
+          "title": "Organized",
+          "type": "boolean"
+        },
+        "source_spatial": {
+          "$ref": "#/$defs/CloudSpatial"
+        }
+      },
+      "required": [
+        "format",
+        "width",
+        "height",
+        "viewpoint",
+        "organized",
+        "source_spatial"
+      ],
+      "title": "PcdSourceMetadata",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "调用方只提交固定布局；定位和释放权限始终由平台分配。",
+  "properties": {
+    "format_id": {
+      "const": "amvision.workflow-trigger-cloud-prepare.v1",
+      "default": "amvision.workflow-trigger-cloud-prepare.v1",
+      "title": "Format Id",
+      "type": "string"
+    },
+    "trigger_source_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+      "title": "Trigger Source Id",
+      "type": "string"
+    },
+    "event_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+      "title": "Event Id",
+      "type": "string"
+    },
+    "event_payload_key": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+      "title": "Event Payload Key",
+      "type": "string"
+    },
+    "cloud": {
+      "$ref": "#/$defs/CloudBufferDescriptor"
+    }
+  },
+  "required": [
+    "trigger_source_id",
+    "event_id",
+    "event_payload_key",
+    "cloud"
+  ],
+  "title": "WorkflowTriggerCloudPrepareV1",
+  "type": "object"
+}

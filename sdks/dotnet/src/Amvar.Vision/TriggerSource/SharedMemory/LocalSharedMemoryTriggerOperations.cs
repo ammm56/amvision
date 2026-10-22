@@ -4,6 +4,7 @@ using System.Drawing;
 using Amvar.Vision.Configuration;
 using Amvar.Vision.SharedMemory;
 using Amvar.Vision.Tools;
+using Newtonsoft.Json.Linq;
 
 namespace Amvar.Vision.TriggerSource.SharedMemory
 {
@@ -58,6 +59,26 @@ namespace Amvar.Vision.TriggerSource.SharedMemory
                     width,
                     height,
                     normalizedRequest);
+        }
+
+        /// <summary>复用配置 client 和既有身份默认值提交完整点云。</summary>
+        internal SharedMemoryTriggerResult InvokePointCloud(string name, JObject descriptor,
+            byte[] content, SharedMemoryTriggerRequest request)
+        {
+            if (request == null || string.IsNullOrWhiteSpace(request.InputBinding))
+                throw new ArgumentException("Point cloud requires an explicit InputBinding.", nameof(request));
+            var configured = RequireConfiguredSource(name);
+            return GetClient(configured).InvokePointCloud(descriptor, content, ApplyDefaults(request, configured));
+        }
+
+        /// <summary>点云 writer 与图片共用同一 client 生命周期和准入。</summary>
+        internal SharedMemoryTriggerResult InvokePointCloud(string name, JObject descriptor,
+            SharedMemoryTriggerBufferWriter fill, SharedMemoryTriggerRequest request)
+        {
+            if (request == null || string.IsNullOrWhiteSpace(request.InputBinding))
+                throw new ArgumentException("Point cloud requires an explicit InputBinding.", nameof(request));
+            var configured = RequireConfiguredSource(name);
+            return GetClient(configured).InvokePointCloud(descriptor, fill, ApplyDefaults(request, configured));
         }
 
         internal SharedMemoryTriggerResult InvokeBgr24(

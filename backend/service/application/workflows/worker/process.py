@@ -20,6 +20,7 @@ from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.nodes.runtime_support import ExecutionImageRegistry
 from backend.runtime.processes import configure_managed_child_signals
 from backend.service.application.errors import InvalidRequestError, ServiceError
+from backend.service.application.workflows.resource_finalization import WorkflowResourceCleanupError
 from backend.service.application.public_errors import (
     build_error_contract,
     build_service_error_contract,
@@ -283,6 +284,7 @@ def run_workflow_runtime_worker_process(
             published_inference_gateway=published_inference_gateway,
             workflow_model_session_manager=model_session_manager,
             workflow_storage_image_cache=storage_image_cache,
+            point_cloud_policy=settings.workflow_runtime.point_cloud,
         )
         if (
             contract_snapshot_object_key is not None
@@ -633,6 +635,24 @@ def run_workflow_runtime_worker_process(
                         }
                     )
                 )
+            except WorkflowResourceCleanupError as exc:
+                with state_lock:
+                    current_observed_state = "failed"
+                    current_last_error = exc.message
+                    current_run_id = None
+                preview_error = build_service_error_contract(exc).model_dump(mode="json")
+                response_queue.put(attach_worker_identity({
+                    **build_worker_error_message(
+                        workflow_runtime_id=workflow_runtime_id, workflow_run_id=workflow_run_id,
+                        request_id=message_id, error_message=exc.message,
+                        error_details={"error_code": exc.code, **dict(exc.details)}, state="failed",
+                        instance_id=runtime_instance_id, current_run_id=None, started_at=worker_started_at,
+                        loaded_snapshot_fingerprint=snapshot_fingerprint, observed_state="failed",
+                        worker_last_error=exc.message, health_summary=build_current_health_summary(),
+                    ),
+                    "worker_reusable": False,
+                }))
+                return
             except InvalidRequestError as exc:
                 if preview_capture is not None:
                     preview_error = build_service_error_contract(exc).model_dump(
