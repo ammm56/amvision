@@ -11,6 +11,7 @@
 - [3D Metrology M1 节点与资源 API](3d-metrology-m1-nodes.md)：六节点内部执行、原始行号、独立显示正文、资源管理与现有发布链路的历史批次。
 - [3D Metrology M1 传输与界面](3d-metrology-m1-transports.md)：同机 Trigger/.NET SDK、Preview 大文件上传、资源选择管理和三维组件的历史批次。
 - [3D Metrology M1 真实发布运行验收](3d-metrology-m1-published.md)：最新进度；真实发布准入、Windows .NET 完整样本、Ubuntu 服务侧生命周期、WRITING 超时清理修复及生产启用剩余条件。
+- [3D Metrology M2 几何节点实施记录](3d-metrology-m2.md)：四项内部几何算法、双平台真值/完整样本验证；原生 RANSAC、公开契约对齐、节点接线和前端仍未完成，生产不启用。
 
 - [IPC 与运行时修复验收结果](runtime-repair-results-20261015.md)：owner 探测、准入、monitor 和停止确认修复，Windows/WSL 回归、一小时资源验收及仍失败的模型/小图 P99。
 - [工业场景可靠性实施记录](industrial-reliability-implementation.md)：隔离矩阵、失败资产、数值诊断、持续负载与发行验收。

@@ -2,7 +2,7 @@
 
 ## 1. 状态与阅读约定
 
-状态：**M0 收口；M1 六节点、资源 API/固定发布依赖、同机 Trigger/.NET SDK、Preview 大文件上传及资源/三维组件已接通；显式测试配置下真实发布 Runtime 组合验收通过，生产启用未完成**。更新日期为 2026-10-22，设计依据见 [ADR-0015](../decisions/ADR-0015-3d-metrology.md)，最新进度见[真实发布运行验收](3d-metrology-m1-published.md)。历史证据见 [M1 I/O](3d-metrology-m1-io.md)、[输入适配](3d-metrology-m1-input.md)、[运行引用与生命周期](3d-metrology-m1-runtime.md)、[资产与保存导出](3d-metrology-m1-assets.md)、[节点与资源 API](3d-metrology-m1-nodes.md)和[传输与界面](3d-metrology-m1-transports.md)。下文历史源码检查和规格不等于全部能力已实现。
+状态：**M0 收口；M1 六节点、资源 API/固定发布依赖、同机 Trigger/.NET SDK、Preview 大文件上传及资源/三维组件已接通；显式测试配置下真实发布 Runtime 组合验收通过，生产启用未完成。M2 内部几何算法已开始实现，公开节点和界面尚未接通**。更新日期为 2026-10-22，设计依据见 [ADR-0015](../decisions/ADR-0015-3d-metrology.md)，最新进度见 [M2 几何节点实施记录](3d-metrology-m2.md)与 [M1 真实发布运行验收](3d-metrology-m1-published.md)。历史证据见 [M1 I/O](3d-metrology-m1-io.md)、[输入适配](3d-metrology-m1-input.md)、[运行引用与生命周期](3d-metrology-m1-runtime.md)、[资产与保存导出](3d-metrology-m1-assets.md)、[节点与资源 API](3d-metrology-m1-nodes.md)和[传输与界面](3d-metrology-m1-transports.md)。下文历史源码检查和规格不等于全部能力已实现。
 
 M0 的代码核对与契约设计已收口，M1 已按后续授权开始 I/O 修复，未注册空节点。已确认每次 Workflow 调用输入完整点云，同时支持文件和同机内存二进制数组，不接收连续实时点云流；每次提交载荷最大 1 GB，不是运行内存上限。生产调用不自动保留完整点云，配方显式选择保存，结果保留数值和有界显示证据。最低机器内存、目标同时运行数和单次时限未确定，不填默认值。
 
@@ -354,6 +354,8 @@ Boundary support 记录原云索引或派生来源；等值线交点是 interpol
 | `provenance` | method 或原始输入 null；parents 的稳定身份/内容摘要；source_retained:boolean | 不能仅凭 digest 声称源可读取；持久记录必须用资源引用或明确未保留标识替换 runtime 身份 |
 
 quality 的通用指标并非每个方法都必须计算；方法 schema 声明所需指标及规则，未计算指标标记无效，不伪造零。无需判定的只读显示节点不构造空 quality_policy 并声称“质量通过”。计量结果有效性、定位 state、质量 checks.state、产品 state 是四个不同层级，禁止用同一个布尔混用。
+
+2026-10-22 M2 实施确认：上表 `limit-check.v2` 是 M3.4 的目标，不是现有实现。M2 几何质量复用当前限值计算的完整逐项 `valid/passed/reason` 判断几何可用性，不发布 v2 或改变产品判定；全平台三态与消费者升级仍留 M3.4。M2 四节点的实施规格及实测状态见[几何节点实施记录](3d-metrology-m2.md)。
 
 需覆盖的契约异常：字段互斥/遗漏、ready 与 unavailable 混填、found 携 null、非 found 携旧矩阵、段重叠/缺口/越界、闭段重复尾点、错误 orientation/frame、索引跨云、质量指标超范围、参数摘要不符、过量/循环引用。它们用平台错误拒绝；合法观测不足才沿缺测分支传递。
 

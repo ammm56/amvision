@@ -1,4 +1,4 @@
-"""运行内点云身份和 M1 派生方法；不包含数组、系统路径或释放权限。"""
+"""运行内点云身份和版本化派生方法；不包含数组、系统路径或释放权限。"""
 
 from __future__ import annotations
 
@@ -23,6 +23,11 @@ from backend.contracts.workflows.point_cloud import (
     PcdSourceMetadata,
     PositiveCount,
     Sha256,
+)
+from backend.contracts.workflows.geometry3d import (
+    CropCloudParameters,
+    FitPlaneParameters,
+    TransformCloudParameters,
 )
 
 
@@ -149,8 +154,40 @@ class FilterCloudMethod(Contract):
     parameters_sha256: Sha256
 
 
+class CropCloudMethod(Contract):
+    """闭边界裁剪及全部 ROI 参数的不可变方法身份。"""
+
+    method_id: Literal["crop-roi"]
+    method_version: Annotated[int, Field(strict=True, ge=1, le=1)]
+    parameters: CropCloudParameters
+    parameters_sha256: Sha256
+
+
+class PlaneSupportMethod(Contract):
+    """稳健拟合实际支持点的索引视图，参数与特征方法一致。"""
+
+    method_id: Literal["fit-plane-support"]
+    method_version: Annotated[int, Field(strict=True, ge=1, le=1)]
+    parameters: FitPlaneParameters
+    parameters_sha256: Sha256
+
+
+class TransformCloudMethod(Contract):
+    """刚体变换记录实际矩阵和位姿摘要，不依赖可变配方。"""
+
+    method_id: Literal["transform-cloud"]
+    method_version: Annotated[int, Field(strict=True, ge=1, le=1)]
+    parameters: TransformCloudParameters
+    parameters_sha256: Sha256
+
+
 CloudMethod = Annotated[
-    NormalizeCloudMethod | FilterCloudMethod, Field(discriminator="method_id")
+    NormalizeCloudMethod
+    | FilterCloudMethod
+    | CropCloudMethod
+    | PlaneSupportMethod
+    | TransformCloudMethod,
+    Field(discriminator="method_id"),
 ]
 
 
@@ -179,7 +216,7 @@ class CloudLocalSource(Contract):
 
 
 class CloudDerivedSource(Contract):
-    """派生依赖仅引用同 run 的父云；M2 的 pose 分支尚未注册。"""
+    """资源依赖引用同 run 父云；位姿值对象快照归入变换方法。"""
 
     kind: Literal["derived"]
     parents: Annotated[tuple[CloudParent, ...], Field(min_length=1)]

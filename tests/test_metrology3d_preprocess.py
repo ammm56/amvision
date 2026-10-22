@@ -21,10 +21,10 @@ from tests.point_cloud_support import policy, spatial
 from tests.test_point_cloud_runtime import own
 
 
-def make_cloud(*, unit="m", attributes=(), coordinates=None):
+def make_cloud(*, unit="m", attributes=(), coordinates=None, runtime_policy=None):
     """显式构造源数据及元数据，不使用被测换算计算期望值。"""
     scope = ResourceScope(kind="workflow")
-    runtime = get_cloud_runtime(scope, run_id="run", policy=policy())
+    runtime = get_cloud_runtime(scope, run_id="run", policy=runtime_policy or policy())
     coordinates = (
         np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
         if coordinates is None
@@ -41,13 +41,18 @@ def make_cloud(*, unit="m", attributes=(), coordinates=None):
     ]
     arrays = {"positions": coordinates}
     for name, values, length_unit in attributes:
-        arrays[name] = np.asarray(values).reshape(len(coordinates), 1)
+        components = 3 if name in {"normals", "colors"} else 1
+        arrays[name] = np.asarray(values).reshape(len(coordinates), components)
         fields.append(
             CloudField(
                 name=name,
-                semantic="validity" if name == "validity" else "scalar",
+                semantic={
+                    "validity": "validity",
+                    "normals": "normal",
+                    "colors": "color-rgb",
+                }.get(name, "scalar"),
                 dtype=arrays[name].dtype.name,
-                components=1,
+                components=components,
                 unit=length_unit,
             )
         )

@@ -29,13 +29,18 @@ def normalize_units(
     cancel: Callable[[], None],
 ) -> CloudReference:
     """保留字段、精度与行顺序；不能用单位确认覆盖已有源声明。"""
+    cancel()
+    if reference.run_id != runtime.run_id:
+        raise InvalidRequestError("点云不属于当前运行")
+    source_unit = reference.spatial.length_unit
+    if parameters.source_unit is not None:
+        if source_unit is not None and source_unit != parameters.source_unit:
+            raise InvalidRequestError("source_unit 与源点云已声明单位不一致")
+        source_unit = parameters.source_unit
+    if reference.state == "unavailable":
+        return reference
     with runtime.borrow(reference) as cloud:
         cancel()
-        source_unit = reference.spatial.length_unit
-        if parameters.source_unit is not None:
-            if source_unit is not None and source_unit != parameters.source_unit:
-                raise InvalidRequestError("source_unit 与源点云已声明单位不一致")
-            source_unit = parameters.source_unit
         if source_unit is None:
             raise InvalidRequestError("源点云单位未知，必须显式确认")
         scaled = {

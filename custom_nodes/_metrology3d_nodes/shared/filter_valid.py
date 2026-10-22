@@ -29,6 +29,14 @@ def filter_valid(
     cancel: Callable[[], None],
 ) -> tuple[CloudReference, dict]:
     """两次扫描精确分配索引；原因计数允许重叠，保留数由联合掩码决定。"""
+    cancel()
+    if reference.run_id != runtime.run_id:
+        raise InvalidRequestError("点云不属于当前运行")
+    if reference.state == "unavailable":
+        return reference, FilterCloudSummary(
+            state="unavailable", reason=reference.reason, input_count=None,
+            kept_count=None, removed_count=None, invalid_counts=None,
+        ).model_dump(mode="json")
     with runtime.borrow(reference) as cloud:
         cancel()
         fields = {field.name: field for field in reference.fields}
