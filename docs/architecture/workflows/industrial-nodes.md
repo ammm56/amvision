@@ -61,7 +61,7 @@ Core Node 不直接持有相机、PLC、MES 或数据库连接。
 - 大型图片、rectification map、variation model 和 heatmap 使用 ImageRef、LocalBuffer 或 ObjectStore 引用，不内联到 Workflow JSON。
 - 二维定位统一输出位置、角度、尺度、score、坐标空间、二维变换和诊断信息；同一语义不因模板、特征或形状算法而使用互不兼容的松散对象。
 - 语义不明确的“联合标定”“关联标定”“补正生成”“自动删除”和“Mark 查找”不形成节点；使用 Stereo/Hand-Eye Calibration、Transform、变量和 Locate 等明确能力表达。
-- 当前工业视觉范围只覆盖二维；深度图、点云和三维量测另立里程碑。
+- 当前工业视觉范围只覆盖二维；深度图、点云和三维量测另立里程碑。三维设计见 [ADR-0015](../../decisions/ADR-0015-3d-metrology.md)和唯一的 [3D Metrology 实施基线](../../development/3d-metrology.md)，尚未作为已实现能力进入本页节点清单。
 
 ## 典型链路
 

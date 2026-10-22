@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "packages": {
+    "trimesh": {
+      "upstream_version": "5.1.1",
+      "version": "5.1.1+amvision.1",
+      "source_url": "https://files.pythonhosted.org/packages/ab/bf/a7efaef127e0f1a228a03e5d00c04f5aeb2c25a60adb4d47003d4d0855bc/trimesh-5.1.1.tar.gz",
+      "source_sha256": "56070be44cd97ac87544c9bd3da4b7a298c6f728e83183aeb1f3524d673d5fac",
+      "original_files": {
+        "trimesh/exchange/ply.py": "81359e43810d0bf94665c0ef9f56ea1abe20cbca4db369829fac98e553efcfd6",
+        "pyproject.toml": "30469e326b1bad0288108281467f90bc487c2f5e7680f3fa4c366986a3aa64b5"
+      },
+      "shared_target": "trimesh/exchange/_strict_records.py"
+    },
+    "pypcd4": {
+      "upstream_version": "1.5.1",
+      "version": "1.5.1+amvision.1",
+      "source_url": "https://files.pythonhosted.org/packages/d6/a5/8a94076ca71c0fb07241f820d93e951cb76deac021d04209ffbd93870684/pypcd4-1.5.1.tar.gz",
+      "source_sha256": "5427584a1b749b2d243baa4006ca4c62b9a3880a127c838c9ac9e5c7e9486ee4",
+      "original_files": {
+        "src/pypcd4/pypcd4.py": "06687a1174da3662d4ae79b71ba46e65a62e80267bb0f9d28893e6fef554ef31",
+        "pyproject.toml": "7521ae55ba3bde4ddb83c30d74ea4ab2ef4d387e3eb58dd86d0585ed7ef6274a"
+      },
+      "added_files": ["src/pypcd4/_version.py"],
+      "shared_target": "src/pypcd4/_strict_records.py"
+    }
+  }
+}

@@ -4,6 +4,8 @@
 
 ## 验收与基准
 
+- [3D Metrology M1 I/O 实施与验证](3d-metrology-m1-io.md)：受控 trimesh/pypcd4 构建、坏文件与精度回归、完整 ASCII PLY 样本及 Windows/WSL 资源观测；节点与完整发行尚未启用。
+
 - [IPC 与运行时修复验收结果](runtime-repair-results-20261015.md)：owner 探测、准入、monitor 和停止确认修复，Windows/WSL 回归、一小时资源验收及仍失败的模型/小图 P99。
 - [工业场景可靠性实施记录](industrial-reliability-implementation.md)：隔离矩阵、失败资产、数值诊断、持续负载与发行验收。
 - [二维连接器检查与测量实施基线](connector-inspection-2d.md)：工程闭环和首轮配方改进已实现；第 11 节为当前状态，第 13 节规定第二轮易用性、配置防错与交付门禁步骤。
@@ -23,6 +25,7 @@
 
 ## 待实施设计
 
+- [3D Metrology 设计与实施基线](3d-metrology.md)：按具体节点推进，复用 Workflow/App 发布；六节点、两入口、显示与持久引用规格见 7.4/9.9/10.13。M0 收口，受控 PLY/PCD I/O 已实施并验证；六节点与完整资源链路仍待接入，准入边界见 15.5。
 - [模型转换与 Pose 评估修复方案](model-matrix-repair-plan.md)：已知模型问题的修复实现、回归证据与待验收范围；工程测试与真实业务验收分别记录。
 - [用户页面与操作权限](user-access.md)：管理员逐项配置页面、操作和项目范围，复用现有启动页与应用模式。
 - [用户权限详细实施步骤](user-access-implementation.md)：通用契约、七个实施阶段和全链路、性能、真实发行验收；待实施。

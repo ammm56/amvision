@@ -1,0 +1,7 @@
+# M1 I/O 的可安装版本；本地 wheel 必须通过 manifest 和构建身份核对。
+# 使用 --no-index --find-links 指定完整的离线 wheelhouse，禁止上游原版回退。
+trimesh==5.1.1+amvision.1
+pypcd4==1.5.1+amvision.1
+numpy==2.4.4
+pydantic==2.13.4
+python-neo-lzf==0.3.5

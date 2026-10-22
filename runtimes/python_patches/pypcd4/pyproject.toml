@@ -1,0 +1,99 @@
+[project]
+name = "pypcd4"
+version = "1.5.1+amvision.1"
+description = "Read and write PCL .pcd files in python"
+authors = [{ name = "urasakikeisuke", email = "keisuke.urasaki@map4.jp" }]
+dependencies = [
+    "numpy>=2.4.4,<3",
+    "pydantic >=2.0.0, <3.0.0",
+    "python-neo-lzf>=0.3.5",
+]
+readme = "README.md"
+requires-python = ">= 3.12"
+license = { file = "LICENSE.txt" }
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: MacOS :: MacOS X",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Utilities",
+]
+urls."Release Notes" = "https://github.com/MapIV/pypcd4/releases"
+urls.Source = "https://github.com/MapIV/pypcd4"
+urls.Tracker = "https://github.com/MapIV/pypcd4/issues"
+
+[build-system]
+requires = ["hatchling>=1.27", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.5.1",
+    "setuptools-scm>=7.1.0",
+    "pre-commit>=3.4.0",
+    "pytest>=7.4.1",
+    "tox>=4.11.1",
+    "tox-uv>=1.36.0; python_version >= '3.10'",
+    "pytest-cov>=4.1.0",
+    "ruff>=0.3.4",
+    "lzf-stubs",
+]
+
+[tool.uv.sources]
+lzf-stubs = { path = "stubs", editable = true }
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build]
+artifacts = ["src/pypcd4/_version.py"]
+
+[tool.ruff]
+line-length = 100
+indent-width = 4
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "PLR", "B", "ANN"]
+ignore = ["PLR2004"]
+fixable = ["ALL"]
+unfixable = []
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
+docstring-code-line-length = 60
+
+[tool.mypy]
+ignore_missing_imports = true
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+
+[tool.tox]
+legacy_tox_ini = """
+    [tox]
+    min_version = 4.0
+    isolated_build = true
+    env_list =
+        py38
+        py39
+        py310
+        py311
+        py312
+        py313
+        py314
+
+    [testenv]
+    deps = pytest
+    commands = pytest tests -vv
+"""

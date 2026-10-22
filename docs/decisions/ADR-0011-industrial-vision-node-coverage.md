@@ -71,6 +71,8 @@ Workflow App / Template
 
 本轮只实施二维图片、二维几何、二维定位、二维量测和相机/双目标定。深度图、点云、三维变换、三维拟合、三维测量和三维配准需要独立 payload、内存与可视化边界，另立实施基线，不混入本轮节点清单。
 
+该独立里程碑的后续设计由 [ADR-0015：3D Metrology](ADR-0015-3d-metrology.md)承接，详细方案见 [3D Metrology 实施基线](../development/3d-metrology.md)。M1 受控 PLY/PCD I/O 已实现并通过双平台验证，六节点尚未接入，不改变本 ADR 的二维实施范围。
+
 ## 未采用方案
 
 - 新增 Python Script Node Pack：引入任意代码、依赖、超时和安全边界，且不能替代稳定节点契约。

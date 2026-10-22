@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "artifacts": [
+    {
+      "filename": "trimesh-5.1.1+amvision.1-py3-none-any.whl",
+      "sha256": "b85fd115741ba833ea22b131b678ca8f7ab4a0b749069a6d81bd75afbcb01562"
+    },
+    {
+      "filename": "pypcd4-1.5.1+amvision.1-py3-none-any.whl",
+      "sha256": "456c7b6087a8036c105561d8960ab4df54af2dd84986de0e21495f7b62e388d8"
+    }
+  ]
+}

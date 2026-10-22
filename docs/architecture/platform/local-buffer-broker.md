@@ -138,7 +138,7 @@ Broker 同时需要内部锁时固定使用 `allocator lock -> publication guard
 - 每次短 guard 只打开已经验证的文件并取得指定 byte range，guard 后仍必须重新校验 descriptor identity；文件名、路径或文件存在不能代替该校验；
 - 正常关闭顺序固定为：停止新借用、等待活动 view、关闭 view/mapping、关闭数据文件、关闭 guard identity handle，最后释放 owner lock。活动 view 或资源关闭失败时进入可重试 `close_blocked`，不得提前释放 owner lock；释放 view 后重试同一个 `close()` 完成收敛。
 
-当前正式强杀恢复和跨语言 byte-range lock 门禁以 Windows x64 为发布基线。POSIX `lockf` 代码只提供开发实现，不据此宣称 Linux/macOS 已完成同等线程与异常恢复认证；Linux 必须补齐 OFD lock 或等价的 open-file-description 语义，macOS 必须补齐进程内 range registry 与持久 handle，再分别通过同进程多线程、跨进程、强杀和路径替换门禁后才能标记为正式支持。该平台边界不改变 mmap 二进制 layout。
+当前 [mmap 原语](../../../backend/service/infrastructure/ipc/mmap_primitives.py) 已实现 Windows byte-range lock 与 Linux 64-bit `F_OFD_SETLK`，Linux 使用独立 open handle 的锁语义，不回退到进程级 `lockf`。Windows 与 WSL Ubuntu 的既有进程/IPC 验证范围见 [运行时修复结果](../../development/runtime-repair-results-20261015.md)；Windows Python/.NET 互操作结果不能推导为 Ubuntu .NET SDK 验收，也不能作为新增点云数据面的验证结果。macOS 当前不在该原语支持范围，不能仅凭相同二进制 layout 宣称支持。平台适配不改变公开 mmap layout。
 
 状态统一为：
 
