@@ -118,6 +118,37 @@ python -m pytest tests/integration/test_release_full_stack_acceptance.py -q
 
 筛选、短链或空载测试只证明对应范围，不得写成完整模型矩阵或长期负载已通过。
 
+### YOLOX 任务结束资源与工作集对照
+
+```powershell
+conda activate amvision
+python -m pytest tests/test_yolox_training_resource_boundary.py tests/test_yolox_augmentation_seed.py tests/test_training_engine.py -q
+python -m pytest tests/integration/test_yolox_training_queue_cuda_release.py -q
+python -m tests.integration.yolox_training_resource_audit --manifest-key <DatasetExport-manifest-key> --checkpoint-key <warm-start-checkpoint-key> --runs 16 --compare-working-set --output-dir .tmp/yolox-resource-audit
+```
+
+CUDA 队列用例覆盖成功、失败和取消后的真实 Tensor 释放；它与训练对照均需 GPU
+独占租约，不应并行执行。最后一条命令在独立常驻进程读取现有导出数据及 checkpoint，
+取得项目 GPU 独占租约，
+先热身两次，再执行指定次数的 YOLOX-m/640/fp16/AutoBatch 单轮训练。增强开/关
+交替，裁剪/不裁剪按四次一组交替；对照开关仅存在于验收工具，不是生产参数。
+输出目录必须是尚不存在的 `.tmp` 子目录，防止覆盖已有结果。
+
+每轮实际执行 train、validation、test，并通过正式 LocalDatasetStorage 写入 best/latest
+checkpoint；写完并释放结果后核对弱引用、CUDA 活跃/保留字节、Private、RSS、句柄、
+线程及子进程。工具不向现有任务数据库登记模型，也不重启生产 Worker。每轮仅删除
+本工具生成的两份临时 checkpoint，源数据和模型保持不变。
+
+评判时排除热身与其他重负载干扰，比较相同增强配置，并区分当前轮与前一轮的裁剪
+策略。Private 的初次高水位增长不能直接判为泄漏；需要后续平台期证据。CUDA 活跃
+字节、存活模型/EMA/optimizer/DataLoader 或子进程残留则应直接定位。成功短训循环
+不替代长 epoch、多 GPU、多日 soak 和完整 API/任务登记链路验收。Windows 工作集
+和 Private 的含义分别参考 [EmptyWorkingSet](https://learn.microsoft.com/en-us/windows/win32/api/psapi/nf-psapi-emptyworkingset)
+与 [PROCESS_MEMORY_COUNTERS_EX](https://learn.microsoft.com/en-us/windows/win32/api/psapi/ns-psapi-process_memory_counters_ex)。
+
+工具生成的 JSONL 可用于本轮统计；交付摘要后清理本次临时目录，不长期保留临时
+checkpoint 或 `.tmp` 验收缓存。
+
 ## 结果存放
 
 - 可长期复现的命令和通过标准保留在本文档或测试代码。

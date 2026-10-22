@@ -141,6 +141,10 @@ CUDA AutoBatch 使用带 targets 的训练 loss 探针，不改变正常训练�
 - 公开 API、任务快照、ModelVersion 和部署响应均使用 `width / height` 对象；模型 core 内部才转换为 `(height, width)`。
 - `execution.amp` 未显式指定时，按设备自动解析；关闭 AMP 使用 FP32。
 - parameters 内未显式指定的字段按对应模型 schema 固化默认值；`augmentation.enabled=false` 会关闭该模型的全部随机增强。
+- YOLOX 的 `parameters.runtime.seed` 控制 Torch 和 Python/NumPy 增强随机源；
+  DataLoader 子进程使用 PyTorch 分配的独立种子。相同环境、数据和配置的串行训练
+  可用于重复性对照，不承诺跨设备/版本或暂停恢复后逐位复现，也不强制切换慢速
+  确定性 CUDA 算法。该修复不改变参数格式、默认增强概率和推理预处理。
 - 当前训练支持 CPU 执行；当环境没有可用 GPU 或未分配 GPU 时，会回退到 CPU 训练。这个模式主要用于最小硬件支持和开发环境验证，训练速度会明显变慢。
 
 #### 输入边界规则

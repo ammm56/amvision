@@ -250,3 +250,26 @@ def test_training_engine_releases_runtime_resources_after_every_exit(
         execute(_Request(extra_options={"batch_mode": "fixed"}))
 
     assert release_count == 1
+
+
+def test_cleanup_keeps_cuda_cleanup_without_trimming_working_set(monkeypatch):
+    """缓存清理保留，但不能把 RSS 裁剪当成释放 Private 内存。"""
+    import ctypes
+    import sys
+
+    calls = []
+    monkeypatch.setattr(engine_module.gc, "collect", lambda: calls.append("gc"))
+    monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(cuda=SimpleNamespace(
+        is_available=lambda: True,
+        empty_cache=lambda: calls.append("cuda"),
+        ipc_collect=lambda: calls.append("ipc"),
+    )))
+
+    class ForbiddenWinDLL:
+        """任务清理不应访问 Windows 工作集 API。"""
+        def __getattr__(self, name):
+            pytest.fail(f"unexpected WinDLL: {name}")
+
+    monkeypatch.setattr(ctypes, "windll", ForbiddenWinDLL(), raising=False)
+    engine_module.release_training_runtime_resources()
+    assert calls == ["gc", "cuda", "ipc", "gc"]

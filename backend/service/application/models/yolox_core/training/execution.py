@@ -16,6 +16,9 @@ from backend.service.application.errors import (
 from backend.service.application.models.yolox_core.cfg import (
     resolve_yolox_input_size,
 )
+from backend.service.application.models.yolox_core.data.dataloading import (
+    seed_yolox_augmentation,
+)
 from backend.service.application.models.yolox_core.data.datasets import (
     CocoDetectionExportDataset as _CocoDetectionExportDataset,
     VocDetectionExportDataset as _VocDetectionExportDataset,
@@ -420,6 +423,7 @@ def run_yolox_detection_training_execution(
         "evaluation_nms_threshold",
         default=YOLOX_CORE_DEFAULT_EVAL_NMS_THRESHOLD,
     )
+    seed_yolox_augmentation(random_seed)
     imports.torch.manual_seed(random_seed)
     if runtime.device.startswith("cuda"):
         imports.torch.cuda.manual_seed_all(random_seed)
