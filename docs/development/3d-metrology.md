@@ -12,6 +12,8 @@ M0 的代码核对与契约设计已收口，M1 已按后续授权开始 I/O 修
 
 2026-10-23 最新进度：M3.1 height-query/measure-step 和 M3.2 extract-boundary/fit-line/fit-circle 均接入内部 Catalog、GraphExecutor 和 Vue 编辑器，共十五节点。见 [M3.1 实施记录](3d-metrology-m3-height.md)、[M3.2 实施记录](3d-metrology-m3-boundary.md)。CloudRuntime 有序源点/生成顶点、边界证据保存恢复及三维读取方 v2 已同批接通，不改变原始行号语义。旧三维资产保留且需重建，不执行旧格式；二维资源、数组传输 ABI 与 Workflow 发布系统不变。下文 M0/M1/M2 历史表描述设计演进；涉及运行来源、拓扑及保存/显示的当前逐字段规格以 M3.2 第 5 节为准。精确量值仍须显式 Preview 完整重算，支持域外无效、不外推。组件和图执行通过不等于完整页面、真实新配方发布或生产发行验收。
 
+基于提交 `90c94d6c` 的下一步规划见 [M3.3 长宽、边间距与孔径设计](3d-metrology-m3-dimensions.md)。边间距的域外/缺口无效、不外推，以及最小矩形局部受控扩展、并列尺寸一致时保留量值并标识方向歧义均已确认；孔径直接消费圆特征还是边界内复用拟合仍待确认。不把这些计划写成已实现能力；生产预算仍空缺，节点不启用。
+
 已有样本脚本是独立探索产物，未接入 amvision。本文只保留可复用的需求、证据边界和回归参考，不复制会话日志、原始点云或一次性脚本。算法测试通过、工程闭环完成、真实计量准确度通过和生产验收通过是四种不同状态。
 
 阅读顺序：第 3 节了解复用边界 → 第 14 节了解各阶段交付的测量功能 → 第 7 节查看具体节点/算法 → 第 9 节查看界面与操作 → 第 15.5 节查看实施前剩余条件。第 5、6、8、10、11 节提供对应的数据、数学、结果、资源和依赖详细依据，不是需要另建的五套系统。实施前还须阅读 [节点系统](../architecture/workflows/node-system.md)、[节点分类](../architecture/workflows/node-taxonomy.md)、[App 输入](../architecture/workflows/app-inputs.md)、[App 版本管理](../architecture/workflows/app-versioning.md)和 [Node Pack manifest](../nodes/node-pack-manifest.md)。
@@ -1574,7 +1576,7 @@ M1 不提前改变 Check Limits 或 Result Record 的公开语义；点云有效
 
 高度/高差可先于轮廓算法完成，不要求所有特征算法完成后才出现第一项可用尺寸。
 
-逐节点输入、算法、质量/失败、前端交互、复用源码和实施验收见 [M3 尺寸测量节点设计](3d-metrology-m3.md)。M3.1 两节点和 M3.2 三节点已内部实现，分别见[高度记录](3d-metrology-m3-height.md)和[边界记录](3d-metrology-m3-boundary.md)；M3.3 三个尺寸节点、M3.4 公开三态和 M3.5 正式尺寸配方仍待交付。有序边界沿原 CloudRuntime 扩展，不新建 Workflow 或发布版本管理。
+逐节点输入、算法、质量/失败、前端交互、复用源码和实施验收见 [M3 尺寸测量节点设计](3d-metrology-m3.md)。M3.1 两节点和 M3.2 三节点已内部实现，分别见[高度记录](3d-metrology-m3-height.md)和[边界记录](3d-metrology-m3-boundary.md)；M3.3 详细算法、参数、证据/显示及逐步验收见[尺寸节点设计](3d-metrology-m3-dimensions.md)，尚未实现。M3.4 公开三态和 M3.5 正式尺寸配方仍待交付。有序边界沿原 CloudRuntime 扩展，不新建 Workflow 或发布版本管理。
 
 | 步骤/节点 | 实现内容与算法 | 复用与扩展 | 前端操作 | 验证 |
 | --- | --- | --- | --- | --- |
