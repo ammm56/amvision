@@ -6,6 +6,7 @@
       <label>{{ t('projection') }}<select v-model="orthographic" :disabled="!scene" @change="scene?.projection(orthographic)"><option :value="false">{{ t('perspective') }}</option><option :value="true">{{ t('orthographic') }}</option></select></label>
       <label>{{ t('axis') }}<select v-model="axis" :disabled="!scene" @change="scene?.fit(axis)"><option value="iso">3D</option><option value="x">X</option><option value="y">Y</option><option value="z">Z</option></select></label>
       <label>{{ t('size') }}<input v-model.number="size" :disabled="!scene" type="range" min="1" max="8" step="1" @input="scene?.pointSize(size)"></label>
+      <template v-if="editRois?.length"><button :title="zh?'移动 ROI':'Move ROI'" :aria-label="zh?'移动 ROI':'Move ROI'" :aria-pressed="editMode==='translate'" :disabled="!scene" @click="editMode='translate'"><Move3D :size="18" /></button><button :title="zh?'旋转 ROI':'Rotate ROI'" :aria-label="zh?'旋转 ROI':'Rotate ROI'" :aria-pressed="editMode==='rotate'" :disabled="!scene" @click="editMode='rotate'"><Rotate3D :size="18" /></button></template>
     </div>
     <div class="cloud-stage">
       <div ref="host" class="cloud-canvas" />
@@ -18,22 +19,28 @@
       <span v-if="color.mode === 'scalar'">{{ color.field }}: {{ color.min ?? '-' }} .. {{ color.max ?? '-' }}</span>
       <span v-if="picked">#{{ picked.sourceIndex }} · XYZ {{ picked.xyz.join(', ') }}<template v-if="picked.scalar !== null"> · {{ picked.scalar }}</template></span>
     </div>
+    <GeometrySummary v-if="body.geometry" :geometry="displayObject(body.geometry)" />
   </section>
 </template>
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Hand, RefreshCw, RotateCcw } from '@lucide/vue'
+import { Hand, RefreshCw, RotateCcw, Move3D, Rotate3D } from '@lucide/vue'
 import { readCloudCapabilities } from '../services/measurement-resource.service'
 import { decodeCloudPreview, type CloudDisplayData } from './preview-data'
 import { createCloudRenderer } from './renderer'
+import GeometrySummary from './GeometrySummary.vue'
+import type {RoiValue} from './geometry-overlay'
 
-const props = defineProps<{ payload: Record<string, unknown>; projectId: string }>()
-const { t } = useI18n({ useScope: 'local', messages: {
+const props = defineProps<{ payload: Record<string, unknown>; projectId: string; editRois?:RoiValue[]; selectedRoiId?:string }>()
+const emit=defineEmits<{'roi-change':[value:RoiValue]}>()
+const { t,locale } = useI18n({ useScope: 'local', messages: {
   'zh-CN': { reset: '复位视角', pan: '平移', projection: '投影', perspective: '透视', orthographic: '正交', axis: '视图', size: '点大小', loading: '正在读取显示数据', retry: '重新打开', empty: '无有效显示点', unavailable: '显示不可用', unknown: '单位未确认', cloud_renderer_unconfigured: '三维显示预算尚未配置', cloud_preview_invalid: '显示数据格式无效', cloud_preview_capacity: '显示数据超过点数或字节限额', cloud_preview_checksum: '显示数据摘要不一致', cloud_cpu_capacity: '浏览器内存预算不足', cloud_gpu_capacity: '渲染缓冲预算不足', cloud_canvas_capacity: '视口超过像素预算', cloud_position_precision: '局部坐标显示误差超过配置限额', cloud_context_lost: 'WebGL 上下文已丢失' },
   'en-US': { reset: 'Reset view', pan: 'Pan', projection: 'Projection', perspective: 'Perspective', orthographic: 'Orthographic', axis: 'View', size: 'Point size', loading: 'Loading display data', retry: 'Reopen', empty: 'No valid display points', unavailable: 'Display unavailable', unknown: 'Unit unconfirmed', cloud_renderer_unconfigured: '3D display budget is not configured', cloud_preview_invalid: 'Invalid display data', cloud_preview_capacity: 'Display point or byte limit exceeded', cloud_preview_checksum: 'Display checksum mismatch', cloud_cpu_capacity: 'Browser memory budget exceeded', cloud_gpu_capacity: 'Rendering buffer budget exceeded', cloud_canvas_capacity: 'Viewport pixel budget exceeded', cloud_position_precision: 'Local coordinate display error exceeds the configured limit', cloud_context_lost: 'WebGL context lost' },
 } })
 const host = ref<HTMLElement>(), scene = shallowRef<ReturnType<typeof createCloudRenderer> | null>(null)
+const zh=computed(()=>locale.value==='zh-CN'),editMode=ref<'translate'|'rotate'>('translate')
+function updateGeometry(){scene.value?.geometry({payload:props.payload,rois:props.editRois,selectedId:props.selectedRoiId,mode:editMode.value,changed:props.editRois?roi=>emit('roi-change',roi):undefined})}
 function displayObject(value: unknown): Record<string, unknown> { return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {} }
 const body = computed(() => props.payload), color = computed(() => displayObject(body.value.color))
 const unit = computed(() => displayObject(body.value.spatial).length_unit || t('unknown'))
@@ -55,12 +62,14 @@ async function load() {
     if (signal.aborted || token !== generation || !host.value) { decoded.dispose(); return }
     data = decoded
     scene.value = createCloudRenderer(host.value, data, policy, index => { picked.value = decoded.point(index) }, failure => { release(); error.value = failure.message; loading.value = false })
+    updateGeometry()
   } catch (failure) {
     if (token === generation && !signal.aborted) { scene.value?.dispose(); scene.value = null; data?.dispose(); data = null; error.value = failure instanceof Error ? failure.message : 'unavailable' }
   } finally { if (token === generation) loading.value = false }
 }
 onMounted(load)
 watch(() => [props.payload, props.projectId], load)
+watch(()=>[props.editRois,props.selectedRoiId,editMode.value],updateGeometry,{deep:true})
 onBeforeUnmount(release)
 </script>
 <style scoped>

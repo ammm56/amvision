@@ -32,6 +32,13 @@ export function reserveGpu(bytes: number, policy: CloudRendererPolicy): () => vo
   let active = true
   return () => { if (active) { active = false; gpuBytes -= bytes } }
 }
+/** 几何显示附件与原点云显示共用浏览器总预算。 */
+export function reserveCpu(bytes: number, policy: CloudRendererPolicy): () => void {
+  if (cpuBytes + bytes > policy.max_cpu_bytes) throw new Error('cloud_cpu_capacity')
+  cpuBytes += bytes
+  let active = true
+  return () => { if (active) { active = false; cpuBytes -= bytes } }
+}
 export function rendererUsage() { return { cpuBytes, gpuBytes } }
 function scalar(view: DataView, field: Field, index: number): number | bigint {
   const offset = field.offset + index * widths[field.dtype]!

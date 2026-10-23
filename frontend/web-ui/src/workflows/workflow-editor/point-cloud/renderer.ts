@@ -2,6 +2,7 @@ import { AxesHelper, BufferAttribute, BufferGeometry, MOUSE, OrthographicCamera,
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import type { CloudRendererPolicy } from '../services/measurement-resource.service'
 import { reserveGpu, type CloudDisplayData } from './preview-data'
+import {createGeometryOverlay,type GeometryOverlayInput} from './geometry-overlay'
 
 /** 一个激活的视口一个 renderer；没有常驻动画、后台重算或原始点云请求。 */
 export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, policy: CloudRendererPolicy,
@@ -17,6 +18,7 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
   let renderer: WebGLRenderer | null = null
   let observer: ResizeObserver | null = null
   let controls: OrbitControls | null = null
+  let overlay: ReturnType<typeof createGeometryOverlay> | null = null
   let frame = 0, closed = false
   let panEnabled = false
   let viewAxis: 'iso' | 'x' | 'y' | 'z' = 'iso'
@@ -32,7 +34,7 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
   function dispose() {
     if (closed) return
     closed = true
-    cancelAnimationFrame(frame); observer?.disconnect(); controls?.dispose()
+    cancelAnimationFrame(frame); observer?.disconnect(); overlay?.dispose(); controls?.dispose()
     if (renderer) {
       renderer.domElement.removeEventListener('webglcontextlost', lost)
       renderer.domElement.removeEventListener('pointerdown', down)
@@ -44,7 +46,7 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
   function lost(event: Event) { event.preventDefault(); dispose(); failed(new Error('cloud_context_lost')) }
   function down(event: PointerEvent) { pointDown = {x: event.clientX, y: event.clientY} }
   function pick(event: PointerEvent) {
-    if (!renderer || !pointDown || Math.hypot(event.clientX - pointDown.x, event.clientY - pointDown.y) > 3) return
+    if (!renderer || overlay?.dragging() || !pointDown || Math.hypot(event.clientX - pointDown.x, event.clientY - pointDown.y) > 3) return
     const r = renderer.domElement.getBoundingClientRect(), ray = new Raycaster()
     ray.params.Points!.threshold = radius * .015
     ray.setFromCamera(new Vector2((event.clientX - r.left) / r.width * 2 - 1, -(event.clientY - r.top) / r.height * 2 + 1), camera)
@@ -75,6 +77,7 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
     geometry.setAttribute('position', new BufferAttribute(data.positions, 3)); geometry.setAttribute('color', new BufferAttribute(data.colors, 3))
     geometry.computeBoundingSphere(); radius = Math.max(geometry.boundingSphere?.radius ?? 0, 1e-6)
     renderer = new WebGLRenderer({ antialias: false, alpha: true, powerPreference: 'low-power' })
+    renderer.localClippingEnabled = true
     renderer.setPixelRatio(1); renderer.setSize(width, height)
     renderer.domElement.setAttribute('aria-label', '3D point cloud')
     renderer.domElement.addEventListener('webglcontextlost', lost)
@@ -83,6 +86,7 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
     axes = new AxesHelper(radius * .65); scene.add(points, axes)
     camera = new PerspectiveCamera(45, width / height)
     bindControls(); fit()
+    overlay = createGeometryOverlay(scene,camera,renderer.domElement,data.origin,policy,schedule,active=>{if(controls)controls.enabled=!active},error=>{dispose();failed(error)})
     observer = new ResizeObserver(entries => {
       try {
         const box = entries[0]?.contentRect
@@ -98,8 +102,10 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
     observer.observe(host)
     return {
       dispose, fit,
+      geometry(input:GeometryOverlayInput) { try { overlay?.update(input) } catch(error) { dispose(); failed(error as Error) } },
       projection(orthographic: boolean) {
         camera = orthographic ? new OrthographicCamera() : new PerspectiveCamera(45, width / height)
+        overlay?.camera(camera)
         bindControls(); fit(viewAxis)
       },
       pan(enabled: boolean) { panEnabled = enabled; controls!.mouseButtons.LEFT = enabled ? MOUSE.PAN : MOUSE.ROTATE },

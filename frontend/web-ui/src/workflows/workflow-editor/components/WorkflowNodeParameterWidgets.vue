@@ -120,6 +120,8 @@
       <component
         :is="trustedParameterEditor(node.node.node_type_id, field.parameter_name)"
         v-else-if="trustedParameterEditor(node.node.node_type_id, field.parameter_name)"
+        :key="`${node.node.node_id}:${field.parameter_name}`"
+        :node-type="node.node.node_type_id"
         :model-value="readValue(node, field)" :disabled="isParameterEditorDisabled(node, field)"
         :parameters="node.node.parameters" :parameter-name="field.parameter_name"
         :preview-display="previewDisplay"

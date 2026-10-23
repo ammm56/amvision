@@ -23,8 +23,8 @@ from backend.contracts.workflows.point_cloud import (
 )
 from backend.contracts.workflows.point_cloud_runtime import (
     CloudMethod,
-    canonical_cloud_json,
 )
+from backend.contracts.workflows.point_cloud import canonical_cloud_json
 from hashlib import sha256
 
 

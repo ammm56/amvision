@@ -6,11 +6,12 @@ from uuid import uuid4
 import numpy as np
 
 from backend.contracts.workflows.geometry3d import RansacPlane
+from backend.contracts.workflows.geometry3d_methods import PlaneFitMethod
 from backend.contracts.workflows.geometry3d_observations import Features3d, PlaneFeature
 from backend.contracts.workflows.point_cloud_runtime import (
     PlaneSupportMethod,
-    canonical_cloud_json,
 )
+from backend.contracts.workflows.point_cloud import canonical_cloud_json
 from backend.service.application.errors import (
     InvalidRequestError,
     ServiceConfigurationError,
@@ -133,7 +134,8 @@ def _ransac_support(runtime, reference, parameters, cancel):
                 block = _positions(view, start, min(start + rows, count))
                 points[start : start + len(block)] = block
             block = None
-        points -= points[0].copy()
+        with np.errstate(over="raise", invalid="raise"):
+            points -= points[0].copy()
         native = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(points))
         points = None
         cancel()
@@ -145,13 +147,15 @@ def _ransac_support(runtime, reference, parameters, cancel):
         )
         native = None
         cancel()
-        dtype = "uint32" if count <= 2**32 else "uint64"
+        dtype = "<u4" if count <= 2**32 else "<u8"
         reservation = runtime.budget.reserve(
             len(raw_indices) * np.dtype(dtype).itemsize
         )
         indices = np.asarray(raw_indices, dtype=dtype).reshape(-1, 1)
         raw_indices = None
         indices.sort(axis=0)
+        # 同参数的随机候选可能有不同支持点，摘要覆盖实际父逻辑行号。
+        indices_digest = sha256(indices).hexdigest()
         owner = OwnedCloudArrays({"indices": indices}, reservation)
         indices = None
         runtime.storage_scope.register(key, owner, lambda value: value.close())
@@ -167,6 +171,7 @@ def _ransac_support(runtime, reference, parameters, cancel):
                 parameters_sha256=sha256(
                     canonical_cloud_json(parameters.model_dump(mode="json"))
                 ).hexdigest(),
+                indices_sha256=indices_digest,
             ),
         )
     except BaseException as error:
@@ -283,10 +288,7 @@ def fit_plane(runtime, reference, parameters, *, cancel):
         geometry=geometry,
         support=support,
         quality=quality,
-        parameters=parameters,
-        parameters_sha256=sha256(
-            canonical_cloud_json(parameters.model_dump(mode="json"))
-        ).hexdigest(),
+        method=PlaneFitMethod.from_parameters(parameters),
     )
     return Features3d(
         run_id=reference.run_id,

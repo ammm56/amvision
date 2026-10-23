@@ -1,6 +1,6 @@
 <template>
-  <button type="button" class="limits-summary" :disabled="disabled" @click="show">{{ count }} · {{ text.title }}</button>
-  <Teleport to="body"><ConfirmDialog v-if="open" class="limits-dialog" :title="text.title" :confirm-label="text.apply" :cancel-label="text.cancel" size="wide" scroll-body confirm-variant="primary" :confirm-disabled="!valid || disabled" @cancel="open=false" @confirm="apply">
+  <button type="button" class="limits-summary" :disabled="disabled" @click="show">{{ count }} · {{ title }}</button>
+  <Teleport to="body"><ConfirmDialog v-if="open" class="limits-dialog" :title="title" :confirm-label="text.apply" :cancel-label="text.cancel" size="wide" scroll-body confirm-variant="primary" :confirm-disabled="!valid || disabled" @cancel="open=false" @confirm="apply">
     <div class="limits-workspace">
       <p>{{ text.help }}</p>
       <p v-if="available===null" role="status">{{ locale==='zh-CN'?'上游条目不可静态解析，请按配方定义检查 ID；不会从上次成功结果自动添加。':'Upstream items cannot be resolved statically. Review saved IDs; previous results never define required items.' }}</p>
@@ -40,7 +40,7 @@ import {parameterEditorSourcesKey,parameterNumericItemsKey,type ParameterEditorS
 import {staticNumericItems} from '../parameters/static-numeric-items'
 import {formatResultUnit} from '@/shared/ui/image-viewer/result-format'
 defineOptions({inheritAttrs:false})
-const props=defineProps<{modelValue:unknown;disabled?:boolean;inputSources?:ParameterEditorSources}>(),emit=defineEmits<{'update:modelValue':[value:LimitRule[]]}>()
+const props=defineProps<{modelValue:unknown;disabled?:boolean;inputSources?:ParameterEditorSources;quality?:boolean}>(),emit=defineEmits<{'update:modelValue':[value:LimitRule[]]}>()
 const resolve=inject(parameterEditorSourcesKey,undefined)
 const providers=inject(parameterNumericItemsKey,{})
 const available=computed(()=>staticNumericItems(props.inputSources,resolve,providers))
@@ -49,6 +49,7 @@ const availableOptions=computed(()=>(available.value??[]).map(item=>({value:item
 function itemOptions(current:string){return availableIndex.value.has(current)?availableOptions.value:[{value:current,label:current||'—'},...availableOptions.value]}
 function chooseItem(index:number,id:string){draft.value[index]!.item_id=id;const item=availableIndex.value.get(id);if(item)draft.value[index]!.unit=item.unit}
 const {locale}=useI18n()
+const title=computed(()=>props.quality?(locale.value==='zh-CN'?'几何质量规则':'Geometry quality'):text.value.title)
 const text=computed(()=>locale.value==='zh-CN'?{title:'公差规则',apply:'应用',cancel:'取消',help:'按保存的检查项 ID 判定。空白表示不限制该侧；必检集合不随本次成功结果改变。',search:'搜索检查项',group:'分组',all:'全部',select:'选择',item:'检查项',unit:'单位',lower:'下限',upper:'上限',include_lower:'包含下限',include_upper:'包含上限',required:'必检',enabled:'启用',add:'添加规则',remove:'移除',batch:'批量设置',batchApply:'更新所选规则',restore:'恢复批量设置前',keep:'保持不变',yes:'是',no:'否',invalid:'检查重复 ID、无效数值和空区间；至少启用一个必检项。',identity:'检查 ID 和单位',number:'请输入有限数值',boolean:'必须是布尔值',bound:'至少设置一侧界限',interval:'区间为空或上下限倒置',duplicate:'ID 重复'}:{title:'Limits',apply:'Apply',cancel:'Cancel',help:'Checks use saved item IDs. Blank means no bound on that side. Required items never follow only successful observations.',search:'Search items',group:'Group',all:'All',select:'Select',item:'Item',unit:'Unit',lower:'Lower',upper:'Upper',include_lower:'Include lower',include_upper:'Include upper',required:'Required',enabled:'Enabled',add:'Add rule',remove:'Remove',batch:'Batch settings',batchApply:'Update selected rules',restore:'Restore before batch',keep:'Unchanged',yes:'Yes',no:'No',invalid:'Check duplicate IDs, invalid numbers and empty intervals; enable at least one required item.',identity:'Check ID and unit',number:'Finite number required',boolean:'Boolean required',bound:'At least one bound required',interval:'Empty or reversed interval',duplicate:'Duplicate ID'})
 const bounds=['lower','upper'] as const,flags=['required','enabled'] as const
 const open=ref(false),draft=ref<LimitRule[]>([]),undo=ref<LimitRule[]|null>(null),search=ref(''),group=ref<string|number|boolean|null>(''),selection=ref<number[]>([])

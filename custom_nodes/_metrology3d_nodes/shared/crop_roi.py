@@ -8,8 +8,8 @@ import numpy as np
 from backend.contracts.workflows.geometry3d import BoxRoi, CylinderRoi, SectionRoi
 from backend.contracts.workflows.point_cloud_runtime import (
     CropCloudMethod,
-    canonical_cloud_json,
 )
+from backend.contracts.workflows.point_cloud import canonical_cloud_json
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.runtime.exception_cleanup import (
     release_exception_frames,

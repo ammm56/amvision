@@ -11,8 +11,8 @@ from backend.contracts.workflows.point_cloud_runtime import (
     CloudReference,
     NormalizeCloudMethod,
     NormalizeCloudUnits,
-    canonical_cloud_json,
 )
+from backend.contracts.workflows.point_cloud import canonical_cloud_json
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.runtime.exception_cleanup import (
     release_exception_frames,

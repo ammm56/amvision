@@ -13,7 +13,7 @@ from backend.contracts.workflows.metrology import (
     Matrix3,
     unique_ids,
 )
-from backend.contracts.workflows.point_cloud import LengthUnit, Sha256
+from backend.contracts.workflows.point_cloud import LengthUnit
 
 Point3 = tuple[Finite, Finite, Finite]
 Positive = Annotated[Finite, Field(gt=0)]
@@ -181,13 +181,18 @@ class RansacPlane(Contract):
     probability: Annotated[Finite, Field(gt=0, le=1)]
 
 
-class FitPlaneParameters(Contract):
-    """单个稳定 ID 的平面，符号与可辨识性由显式配方限定。"""
+class PlaneFitSettings(Contract):
+    """平面方法参数正文，质量策略独立记录。"""
 
     feature_id: Identifier
     positive_normal: Point3
     min_orientation_cosine: Annotated[Finite, Field(gt=0, le=1)]
     algorithm: Annotated[SvdPlane | RansacPlane, Field(discriminator="kind")]
+
+
+class FitPlaneParameters(PlaneFitSettings):
+    """节点配置将方法参数与显式质量策略一起校验。"""
+
     quality_policy: GeometryQualityPolicy
 
     @model_validator(mode="after")
@@ -270,8 +275,8 @@ class PlaneAxis(Contract):
         return self
 
 
-class BuildFrameParameters(Contract):
-    """已确认的两种原点模式；质量条件无生产默认。"""
+class FrameBuildSettings(Contract):
+    """两种显式原点的方法参数正文。"""
 
     pose_id: Identifier
     target_frame_id: Identifier
@@ -279,6 +284,11 @@ class BuildFrameParameters(Contract):
     positive_z: Point3
     origin: Annotated[AnchorOrigin | ThreePlaneOrigin, Field(discriminator="kind")]
     x_axis: Annotated[DirectionAxis | PlaneAxis, Field(discriminator="kind")]
+
+
+class BuildFrameParameters(FrameBuildSettings):
+    """已确认的两种原点模式；质量条件无生产默认。"""
+
     quality_policy: GeometryQualityPolicy
 
     @model_validator(mode="after")
@@ -316,29 +326,21 @@ Matrix4 = tuple[
 ]
 
 
-class RigidTransform3d(Contract):
+class RigidMatrix3d(Contract):
     """列向量 target_from_source，只接受 SE(3) 刚性变换。"""
 
     source_frame_id: Identifier
     target_frame_id: Identifier
     observation_id: Identifier
     length_unit: LengthUnit
-    target_from_source: Matrix4
+    matrix: Matrix4
 
     @model_validator(mode="after")
     def check_matrix(self) -> Self:
         """禁止尺度、镜像及投影分量，无隐式单位转换。"""
         if self.source_frame_id == self.target_frame_id:
             raise ValueError("变换必须显式区分源和目标坐标")
-        if self.target_from_source[3] != (0, 0, 0, 1):
+        if self.matrix[3] != (0, 0, 0, 1):
             raise ValueError("刚性变换末行必须为 0,0,0,1")
-        require_rotation(tuple(tuple(row[:3]) for row in self.target_from_source[:3]))
+        require_rotation(tuple(tuple(row[:3]) for row in self.matrix[:3]))
         return self
-
-
-class TransformCloudParameters(Contract):
-    """实际消费的位姿身份、完整结果摘要和刚体矩阵快照，不携访问权限。"""
-
-    pose_id: Identifier
-    pose_sha256: Sha256
-    transform: RigidTransform3d

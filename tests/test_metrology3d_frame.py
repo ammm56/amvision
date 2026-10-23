@@ -7,7 +7,7 @@ from pydantic import ValidationError
 from backend.contracts.workflows.geometry3d import (
     BuildFrameParameters,
     CropCloudParameters,
-    RigidTransform3d,
+    RigidMatrix3d,
 )
 from backend.service.application.errors import InvalidRequestError
 from custom_nodes._metrology3d_nodes.shared.build_frame import build_frame
@@ -111,13 +111,13 @@ def test_explicit_origin_and_axes(mode):
     assert pose.state == "found" and pose.quality.usable
     expected = np.eye(4)
     expected[:3, 3] = [-1, -2, -3]
-    np.testing.assert_allclose(pose.transform.target_from_source, expected, atol=1e-12)
+    np.testing.assert_allclose(pose.transform.matrix, expected, atol=1e-12)
     raw["positive_z"] = [0, 0, -1]
     flipped = build_frame(
         runtime, groups, BuildFrameParameters(**raw), cancel=lambda: None
     )
     np.testing.assert_allclose(
-        np.asarray(flipped.transform.target_from_source)[:3, :3],
+        np.asarray(flipped.transform.matrix)[:3, :3],
         np.diag([1, -1, -1]),
         atol=1e-12,
     )
@@ -186,12 +186,12 @@ def test_frame_schema_requires_constraints_and_rigid_matrix():
         matrix = np.eye(4)
         matrix[0, 0] = first
         with pytest.raises(ValidationError):
-            RigidTransform3d(
+            RigidMatrix3d(
                 source_frame_id="a",
                 target_frame_id="b",
                 observation_id="obs",
                 length_unit="mm",
-                target_from_source=matrix.tolist(),
+                matrix=matrix.tolist(),
             )
 
 

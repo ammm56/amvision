@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from hashlib import sha256
-import json
 from typing import Annotated, Literal, Self
 
 from pydantic import Field, JsonValue, StrictBool, StrictInt, model_validator
@@ -23,23 +22,13 @@ from backend.contracts.workflows.point_cloud import (
     PcdSourceMetadata,
     PositiveCount,
     Sha256,
+    canonical_cloud_json,
 )
 from backend.contracts.workflows.geometry3d import (
     CropCloudParameters,
     FitPlaneParameters,
-    TransformCloudParameters,
 )
-
-
-def canonical_cloud_json(value: object) -> bytes:
-    """与同机 descriptor 相同的规范 JSON，拒绝非有限 JSON 数。"""
-    return json.dumps(
-        value,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-        allow_nan=False,
-    ).encode("utf-8")
+from backend.contracts.workflows.geometry3d_methods import TransformCloudParameters
 
 
 class NormalizeCloudUnits(Contract):
@@ -164,12 +153,13 @@ class CropCloudMethod(Contract):
 
 
 class PlaneSupportMethod(Contract):
-    """稳健拟合实际支持点的索引视图，参数与特征方法一致。"""
+    """稳健支持视图；indices_sha256 覆盖递增父逻辑行号的 LE 字节。"""
 
     method_id: Literal["fit-plane-support"]
     method_version: Annotated[int, Field(strict=True, ge=1, le=1)]
     parameters: FitPlaneParameters
     parameters_sha256: Sha256
+    indices_sha256: Sha256
 
 
 class TransformCloudMethod(Contract):

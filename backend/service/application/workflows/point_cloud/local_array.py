@@ -11,7 +11,7 @@ from typing import Callable, Iterator, Mapping
 import numpy as np
 
 from backend.contracts.workflows.point_cloud import CloudBufferDescriptor
-from backend.contracts.workflows.point_cloud_runtime import canonical_cloud_json
+from backend.contracts.workflows.point_cloud import canonical_cloud_json
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.point_cloud.budget import CloudArrayBudget
 from backend.service.application.workflows.point_cloud.policy import PointCloudIoPolicy

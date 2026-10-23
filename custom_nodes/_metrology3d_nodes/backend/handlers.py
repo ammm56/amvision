@@ -39,7 +39,7 @@ def read(request):
             cancel=env.cancel,
         )
     else:
-        if "file" in request.input_values:
+        if request.input_values.get("file") is not None:
             raise InvalidRequestError("资产来源不能同时传入 file")
         cloud = read_asset(
             env.runtime,
@@ -79,11 +79,21 @@ def preview(request):
     """生成独立显示正文，现有观察层负责显示交接。"""
     p = CloudPreviewOptions.model_validate(request.parameters)
     env = require_node_runtime(request)
+    from custom_nodes._metrology3d_nodes.shared.geometry_preview import attach_geometry
+
+    cloud = cloud_input(request, env.runtime)
     return {
-        "body": build_cloud_preview(
+        "body": attach_geometry(
             env.runtime,
-            cloud_input(request, env.runtime),
-            p,
+            cloud,
+            build_cloud_preview(
+                env.runtime,
+                cloud,
+                p,
+                policy=env.policy.preview,
+                cancel=env.cancel,
+            ),
+            request.input_values,
             policy=env.policy.preview,
             cancel=env.cancel,
         )
@@ -119,7 +129,7 @@ def export(request):
     p = ExportCloudParameters.model_validate(request.parameters)
     env = require_node_runtime(request)
     if p.source.kind == "asset":
-        if "cloud" in request.input_values:
+        if request.input_values.get("cloud") is not None:
             raise InvalidRequestError("资产来源不能同时传入 cloud")
         cloud = read_asset(
             env.runtime,

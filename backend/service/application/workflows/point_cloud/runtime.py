@@ -26,8 +26,8 @@ from backend.contracts.workflows.point_cloud_runtime import (
     CloudMethod,
     CloudLocalSource,
     CloudAssetSource,
-    canonical_cloud_json,
 )
+from backend.contracts.workflows.point_cloud import canonical_cloud_json
 from backend.nodes.core_nodes.support.file_payloads import require_file_ref_payload
 from backend.service.application.errors import (
     InvalidRequestError,

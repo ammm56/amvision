@@ -1,19 +1,22 @@
 """按主面、次轴和显式原点约束建立右手坐标，不拟合额外自由度。"""
 
-from hashlib import sha256
-
 import numpy as np
 
 from backend.contracts.workflows.geometry3d import (
     AnchorOrigin,
     DirectionAxis,
-    PlaneAxis,
-    ThreePlaneOrigin,
 )
 from backend.contracts.workflows.geometry3d_observations import Pose3d
-from backend.contracts.workflows.point_cloud_runtime import canonical_cloud_json
+from backend.contracts.workflows.geometry3d_methods import (
+    FrameBuildMethod,
+    PlaneEvidence,
+)
 from backend.service.application.errors import InvalidRequestError
-from custom_nodes._metrology3d_nodes.shared.geometry_quality import geometry_quality
+from custom_nodes._metrology3d_nodes.shared.geometry_quality import (
+    geometry_quality,
+    require_quality_result,
+)
+from custom_nodes._metrology3d_nodes.shared.cloud_assets import freeze_cloud_parent
 
 
 def build_frame(runtime, groups, parameters, *, cancel):
@@ -38,15 +41,13 @@ def build_frame(runtime, groups, parameters, *, cancel):
             if item.feature_id in features:
                 raise InvalidRequestError("基准输入有重复特征 ID")
             features[item.feature_id] = item
-    selected_ids = [parameters.primary_feature_id]
-    if isinstance(parameters.x_axis, PlaneAxis):
-        selected_ids.append(parameters.x_axis.secondary_feature_id)
-    if isinstance(parameters.origin, ThreePlaneOrigin):
-        selected_ids.append(parameters.origin.tertiary_feature_id)
+    method = FrameBuildMethod.from_parameters(parameters)
+    selected_ids = method.feature_ids()
     if any(key not in features for key in selected_ids):
         raise InvalidRequestError("配置的基准特征 ID 不存在")
     selected = [features[key] for key in selected_ids]
     for feature in selected:
+        require_quality_result(feature.quality, feature.method.quality_policy)
         if feature.support.spatial.axes.handedness != "right":
             raise InvalidRequestError("建立右手基准需要明确的右手源坐标，不能隐含镜像")
         if feature.support.state == "ready":
@@ -72,7 +73,7 @@ def build_frame(runtime, groups, parameters, *, cancel):
         primary = selected[0].geometry
         z = np.asarray(primary.normal, dtype=np.float64)
         alignment = float(z @ np.asarray(parameters.positive_z))
-        values["z_alignment"] = (abs(alignment), "1")
+        values["z_alignment"] = (min(1.0, abs(alignment)), "1")
         if alignment == 0:
             state, reason = "ambiguous", "datum_z_direction_ambiguous"
         else:
@@ -85,13 +86,13 @@ def build_frame(runtime, groups, parameters, *, cancel):
                 positive_x = np.asarray(parameters.x_axis.positive_direction)
                 x = np.cross(np.asarray(selected[1].geometry.normal), z)
             sine = float(np.linalg.norm(x))
-            values["axis_sine"] = (sine, "1")
+            values["axis_sine"] = (min(1.0, sine), "1")
             if sine == 0:
                 state, reason = "underconstrained", "datum_axis_parallel"
             else:
                 x /= sine
                 x_alignment = float(x @ positive_x)
-                values["x_alignment"] = (abs(x_alignment), "1")
+                values["x_alignment"] = (min(1.0, abs(x_alignment)), "1")
                 if x_alignment == 0:
                     state, reason = "ambiguous", "datum_x_direction_ambiguous"
                 else:
@@ -141,7 +142,27 @@ def build_frame(runtime, groups, parameters, *, cancel):
             target_frame_id=parameters.target_frame_id,
             observation_id=first.observation_id,
             length_unit=first.length_unit,
-            target_from_source=matrix.tolist(),
+            matrix=matrix.tolist(),
+            provenance=dict(
+                method=method,
+                quality=quality,
+                source_retained=False,
+                parents=tuple(
+                    PlaneEvidence(
+                        feature_id=item.feature_id,
+                        observation_id=first.observation_id,
+                        frame_id=first.frame_id,
+                        length_unit=first.length_unit,
+                        geometry=item.geometry,
+                        method=item.method,
+                        quality=item.quality,
+                        support_content_sha256=freeze_cloud_parent(
+                            runtime, item.support
+                        )["content_sha256"],
+                    )
+                    for item in selected
+                ),
+            ),
         )
     cancel()
     return Pose3d(
@@ -157,8 +178,5 @@ def build_frame(runtime, groups, parameters, *, cancel):
         reference_feature_ids=tuple(selected_ids),
         support=tuple(item.support for item in selected),
         quality=quality,
-        parameters=parameters,
-        parameters_sha256=sha256(
-            canonical_cloud_json(parameters.model_dump(mode="json"))
-        ).hexdigest(),
+        method=method,
     )

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Annotated, Literal, Self
 
 from pydantic import Field, StrictBool, model_validator
@@ -12,6 +13,17 @@ from backend.contracts.workflows.metrology import (
     Identifier,
     unique_ids,
 )
+
+
+def canonical_cloud_json(value: object) -> bytes:
+    """点云描述与几何方法共用规范 JSON，拒绝非有限数。"""
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
 
 
 MAX_POINT_CLOUD_INPUT_BYTES = 1_000_000_000

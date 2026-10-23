@@ -86,10 +86,12 @@ class PublishedCloudSystem:
         )
         return response.json() if response.content else None
 
-    def publish(self, point_limit=1000):
+    def publish(self, point_limit=1000, *, documents=None):
         """以实际草稿指纹发布不可变版本。"""
-        template, app = cloud_documents()
-        template.nodes[-1].parameters["point_limit"] = point_limit
+        template, app = cloud_documents() if documents is None else documents
+        for node in template.nodes:
+            if node.node_type_id == "custom.metrology3d.cloud-preview":
+                node.parameters["point_limit"] = point_limit
         path = f"/projects/project-1/applications/{app.application_id}"
         self.call(
             "PUT",
@@ -190,9 +192,9 @@ class PublishedCloudSystem:
                     and trigger["routes"]["active_source_permit_count"] == 0
                     and broker["active_lease_count"] == 0
                     and broker["allocated_capacity_bytes"] == 0
-                and broker["revoking_capacity_bytes"] == 0
+                    and broker["revoking_capacity_bytes"] == 0
                     and broker["quarantined_capacity_bytes"] == 0
-                and broker["free_capacity_bytes"] == broker["arena_total_bytes"]
+                    and broker["free_capacity_bytes"] == broker["arena_total_bytes"]
                 )
                 else None
             )

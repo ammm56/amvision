@@ -27,12 +27,13 @@ export default defineConfig({
   resolve: {
     dedupe: ['vue', 'pinia', 'vue-i18n'],
     alias: {
+      '@lucide/vue': path.resolve(projectDirectory, 'node_modules/@lucide/vue'),
       '@litegraph': path.resolve(projectDirectory, 'src/lib/litegraph/src'),
       '@': path.resolve(projectDirectory, 'src'),
     },
   },
   server: {
-    fs: { allow: [projectDirectory, path.resolve(projectDirectory, '../../custom_nodes/connector_nodes/frontend')] },
+    fs: { allow: [projectDirectory, path.resolve(projectDirectory, '../../custom_nodes/connector_nodes/frontend'), path.resolve(projectDirectory, '../../custom_nodes/_metrology3d_nodes/frontend')] },
   },
   build: {
     outDir: 'dist',
@@ -64,15 +65,10 @@ export default defineConfig({
   },
   test: {
     root: path.resolve(projectDirectory, '../..'),
-    alias: {
-      'vue': path.resolve(projectDirectory, 'node_modules/vue'),
-      'vue-i18n': path.resolve(projectDirectory, 'node_modules/vue-i18n'),
-      'vue-router': path.resolve(projectDirectory, 'node_modules/vue-router'),
-      'pinia': path.resolve(projectDirectory, 'node_modules/pinia'),
-      'reka-ui': path.resolve(projectDirectory, 'node_modules/reka-ui'),
-      'vitest': path.resolve(projectDirectory, 'node_modules/vitest'),
-      '@vue/test-utils': path.resolve(projectDirectory, 'node_modules/@vue/test-utils'),
-    },
+    alias: [
+      {find:/^three$/,replacement:path.resolve(projectDirectory,'node_modules/three/build/three.module.js')},
+      ...['vue','vue-i18n','vue-router','pinia','reka-ui','vitest','@vue/test-utils'].map(name=>({find:name,replacement:path.resolve(projectDirectory,`node_modules/${name}`)})),
+    ],
     environment: 'jsdom',
     globals: true,
     include: ['frontend/web-ui/src/**/*.test.ts', 'tests/frontend/**/test_*.ts'],

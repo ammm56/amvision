@@ -1,8 +1,16 @@
 """几何质量仅组合既有数值和限值结果，不新增比较算法。"""
 
-from backend.contracts.workflows.geometry3d_observations import GeometryQuality
+from backend.contracts.workflows.geometry3d_quality import GeometryQuality
 from backend.contracts.workflows.metrology import NumericItem, NumericTable
 from backend.nodes.core_nodes.support.measurement import check_limits
+from backend.service.application.errors import InvalidRequestError
+
+
+def require_quality_result(quality, policy) -> None:
+    """消费者复核真实比较结果，不能仅信任外部提供的 passed 布尔值。"""
+    expected = check_limits(quality.metrics, policy.rules)
+    if expected["items"] != [item.model_dump(mode="json") for item in quality.checks]:
+        raise InvalidRequestError("几何质量证据与实际限值计算不一致")
 
 
 def geometry_quality(observation_id, values, policy, *, reason):

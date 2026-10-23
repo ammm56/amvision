@@ -11,8 +11,8 @@ from backend.contracts.workflows.point_cloud_runtime import (
     FilterCloudMethod,
     FilterCloudValid,
     FilterCloudSummary,
-    canonical_cloud_json,
 )
+from backend.contracts.workflows.point_cloud import canonical_cloud_json
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.runtime.exception_cleanup import (
     release_exception_frames,
@@ -34,8 +34,12 @@ def filter_valid(
         raise InvalidRequestError("点云不属于当前运行")
     if reference.state == "unavailable":
         return reference, FilterCloudSummary(
-            state="unavailable", reason=reference.reason, input_count=None,
-            kept_count=None, removed_count=None, invalid_counts=None,
+            state="unavailable",
+            reason=reference.reason,
+            input_count=None,
+            kept_count=None,
+            removed_count=None,
+            invalid_counts=None,
         ).model_dump(mode="json")
     with runtime.borrow(reference) as cloud:
         cancel()

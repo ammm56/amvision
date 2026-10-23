@@ -22,7 +22,7 @@ from backend.contracts.workflows.point_cloud_assets import (
     CloudSourceNames,
     OriginalCloudAsset,
 )
-from backend.contracts.workflows.point_cloud_runtime import canonical_cloud_json
+from backend.contracts.workflows.point_cloud import canonical_cloud_json
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.runtime.exception_cleanup import (
     release_exception_frames,
@@ -66,7 +66,7 @@ def _source(reference, options):
     raise InvalidRequestError("来源不是可直接保存的原始输入")
 
 
-def _frozen_parent(runtime, reference):
+def freeze_cloud_parent(runtime, reference):
     """冻结源内容描述，不把当前 run/cloud ID 当成持久摘要。"""
     if reference.source.kind == "asset":
         return {
@@ -85,7 +85,7 @@ def _frozen_parent(runtime, reference):
         "method": reference.provenance.method.model_dump(mode="json")
         if reference.provenance.method
         else None,
-        "parents": [_frozen_parent(runtime, parent)] if parent else [],
+        "parents": [freeze_cloud_parent(runtime, parent)] if parent else [],
         "source": _source(root, options).model_dump(mode="json")
         if root.source.kind != "asset"
         else root.source.model_dump(mode="json"),
@@ -252,7 +252,9 @@ def save_cloud(
             if rows < 1:
                 raise InvalidRequestError("点云保存块预算不能容纳一行")
             parent = runtime.parent_reference(selected)
-            parent_description = _frozen_parent(runtime, parent) if parent else None
+            parent_description = (
+                freeze_cloud_parent(runtime, parent) if parent else None
+            )
             parents = (parent_description,) if parent else ()
             retained = tuple(
                 p["reference"] for p in parents if p["reference"] is not None

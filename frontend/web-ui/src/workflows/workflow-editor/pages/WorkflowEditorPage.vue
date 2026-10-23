@@ -344,7 +344,7 @@
 <script setup lang="ts">
 import { useWorkflowBoxSelection } from '../canvas/useWorkflowBoxSelection'
 import { computed, onBeforeUnmount, provide, ref, shallowRef, watch } from 'vue'
-import { parameterEditorSourcesKey, parameterPreviewStateKey, parameterNumericItemsKey, parameterDraftIssuesKey, type ParameterEditorSources } from '../parameters/editor-context'
+import { parameterEditorSourcesKey, parameterPreviewStateKey, parameterCloudPreviewsKey, parameterNumericItemsKey, parameterDraftIssuesKey, type ParameterEditorSources } from '../parameters/editor-context'
 import { trustedNumericItemProviders, trustedRecipeValidators } from '../parameters/trusted-recipe-providers'
 import { recipeIssues } from '../parameters/recipe-validation'
 import { useRoute, useRouter } from 'vue-router'
@@ -716,6 +716,15 @@ const {
   closePreviewTableViewer,
   closePreviewJsonViewer,
 } = useWorkflowPreviewDisplays()
+provide(parameterCloudPreviewsKey, () => {
+  if (previewing.value || lastPreviewRun.value?.state !== 'succeeded') return []
+  return graphNodes.value.flatMap(({node}) => {
+    const display = getPreviewNodeDisplay(node.node_id)
+    return (display?.variants ?? (display ? [display] : [])).filter(d =>
+      !d.stale && d.previewRunId === lastPreviewRun.value?.preview_run_id && d.cloudProjectId && d.payload.type === 'point-cloud-preview' && d.payload.state === 'ready',
+    ).map(d => ({id:`${d.nodeId}:${d.outputName}`,label:d.title,projectId:d.cloudProjectId!,payload:d.payload}))
+  })
+})
 const {
   previewInputState,
   hasPreviewBindingValue,

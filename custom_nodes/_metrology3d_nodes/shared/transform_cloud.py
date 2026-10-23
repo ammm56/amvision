@@ -5,18 +5,22 @@ from uuid import uuid4
 
 import numpy as np
 
-from backend.contracts.workflows.geometry3d import TransformCloudParameters
+from backend.contracts.workflows.geometry3d_methods import TransformCloudParameters
 from backend.contracts.workflows.point_cloud import CloudAxes
 from backend.contracts.workflows.point_cloud_runtime import (
     CloudReference,
     TransformCloudMethod,
-    canonical_cloud_json,
 )
+from backend.contracts.workflows.point_cloud import canonical_cloud_json
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.runtime.exception_cleanup import (
     release_exception_frames,
 )
 from backend.service.application.workflows.point_cloud.arrays import OwnedCloudArrays
+from custom_nodes._metrology3d_nodes.shared.cloud_assets import freeze_cloud_parent
+from custom_nodes._metrology3d_nodes.shared.geometry_quality import (
+    require_quality_result,
+)
 
 
 def transform_cloud(runtime, reference, pose, *, cancel):
@@ -36,10 +40,19 @@ def transform_cloud(runtime, reference, pose, *, cancel):
         raise InvalidRequestError("点云与位姿运行、观测、源坐标或单位不一致")
     if reference.spatial.axes.handedness != "right":
         raise InvalidRequestError("刚体变换要求明确的右手源坐标")
+    require_quality_result(pose.quality, pose.method.quality_policy)
     for support in pose.support:
         if support.state == "ready":
             with runtime.borrow(support):
                 pass
+    if pose.state == "found":
+        for support, evidence in zip(pose.support, pose.transform.provenance.parents):
+            require_quality_result(evidence.quality, evidence.method.quality_policy)
+            if (
+                freeze_cloud_parent(runtime, support)["content_sha256"]
+                != evidence.support_content_sha256
+            ):
+                raise InvalidRequestError("位姿变换证据与当前支持点云不一致")
     if reference.state == "ready":
         with runtime.borrow(reference):
             pass
@@ -82,7 +95,7 @@ def transform_cloud(runtime, reference, pose, *, cancel):
             canonical_cloud_json(parameters.model_dump(mode="json"))
         ).hexdigest(),
     )
-    matrix = np.asarray(pose.transform.target_from_source, dtype=np.float64)
+    matrix = np.asarray(pose.transform.matrix, dtype=np.float64)
     width = sum(np.dtype(f.dtype).itemsize * f.components for f in reference.fields)
     rows = min(
         runtime.policy.chunk_rows, runtime.policy.max_working_bytes // (width * 2 + 128)

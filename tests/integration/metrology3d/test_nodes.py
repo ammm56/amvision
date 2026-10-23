@@ -162,6 +162,7 @@ def test_six_node_graph_and_persisted_asset_read(tmp_path):
                 ),
                 execution_metadata=other,
                 runtime_context=context,
+                input_values={"file": None},
             )
         )
         assert (

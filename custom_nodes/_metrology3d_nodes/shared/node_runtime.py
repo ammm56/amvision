@@ -6,8 +6,8 @@ from pydantic import TypeAdapter
 from backend.contracts.workflows.metrology import Identifier
 from backend.contracts.workflows.point_cloud_runtime import (
     CloudReference,
-    canonical_cloud_json,
 )
+from backend.contracts.workflows.point_cloud import canonical_cloud_json
 from backend.service.application.errors import (
     InvalidRequestError,
     ServiceConfigurationError,

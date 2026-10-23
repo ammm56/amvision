@@ -2,7 +2,7 @@
 
 ## 1. 状态与阅读约定
 
-状态：**M0 收口；M1 六节点、资源 API/固定发布依赖、同机 Trigger/.NET SDK、Preview 大文件上传及资源/三维组件已接通；显式测试配置下真实发布 Runtime 组合验收通过，生产启用未完成。M2 内部几何算法已开始实现，公开节点和界面尚未接通**。更新日期为 2026-10-22，设计依据见 [ADR-0015](../decisions/ADR-0015-3d-metrology.md)，最新进度见 [M2 几何节点实施记录](3d-metrology-m2.md)与 [M1 真实发布运行验收](3d-metrology-m1-published.md)。历史证据见 [M1 I/O](3d-metrology-m1-io.md)、[输入适配](3d-metrology-m1-input.md)、[运行引用与生命周期](3d-metrology-m1-runtime.md)、[资产与保存导出](3d-metrology-m1-assets.md)、[节点与资源 API](3d-metrology-m1-nodes.md)和[传输与界面](3d-metrology-m1-transports.md)。下文历史源码检查和规格不等于全部能力已实现。
+状态：**M0 收口；M1 六节点、资源 API/固定发布依赖、同机 Trigger/.NET SDK、Preview 大文件上传及资源/三维组件已接通；显式测试配置下真实发布 Runtime 组合验收通过，生产启用未完成。M2 四节点已接入内部 Catalog、handler 和 Vue 三维交互，双平台解析真值及完整样本通过；生产超时、容量和发行 profile 仍未验收，节点继续隐藏**。更新日期为 2026-10-23，设计依据见 [ADR-0015](../decisions/ADR-0015-3d-metrology.md)，最新进度见 [M2 几何节点实施记录](3d-metrology-m2.md)与 [M1 真实发布运行验收](3d-metrology-m1-published.md)。历史证据见 [M1 I/O](3d-metrology-m1-io.md)、[输入适配](3d-metrology-m1-input.md)、[运行引用与生命周期](3d-metrology-m1-runtime.md)、[资产与保存导出](3d-metrology-m1-assets.md)、[节点与资源 API](3d-metrology-m1-nodes.md)和[传输与界面](3d-metrology-m1-transports.md)。下文历史源码检查和规格不等于全部能力已实现。
 
 M0 的代码核对与契约设计已收口，M1 已按后续授权开始 I/O 修复，未注册空节点。已确认每次 Workflow 调用输入完整点云，同时支持文件和同机内存二进制数组，不接收连续实时点云流；每次提交载荷最大 1 GB，不是运行内存上限。生产调用不自动保留完整点云，配方显式选择保存，结果保留数值和有界显示证据。最低机器内存、目标同时运行数和单次时限未确定，不填默认值。
 
@@ -122,7 +122,7 @@ M0 的代码核对与契约设计已收口，M1 已按后续授权开始 I/O 修
 | R03-A 数组输入 | PREPARE 校验布局，取得写入 receipt；调用方写完关闭 writer view，再 REQUEST | 既有 LocalBuffer/Trigger 扩展，提交固定描述及分配身份 | 长度、offset、dtype、generation 与 owner 一致；写入失败按原 receipt 回收，不先生成文件 |
 | R04 运行准入 | 校验实际执行容量、source permit、数据/临时区预算；含模型时检查对应部署容量 | 现有准入机制；数组原子发布只读并交接到 runtime owner | 不增加等待队列；无模型时不加模型并发上限；内存不足不降采样后冒充原精度 |
 | R05 执行器接管 | worker 复核输入身份，登记文件/映射、reader guard、数组 owner | 本次 ResourceScope 中的受控资源 | 提交失败释放已取得资源和 permit；所有别名存活期必须被 owner 覆盖 |
-| R06 格式解码 | 文件按冻结格式能力调用 Open3D；数组校验后直接借用；平台资产按规范块读取 | 规范三维引用，包含字段、数量、源精度与来源 | 乱序字段、截断、解压量、未声明列或不支持字段明确失败；不换库重试 |
+| R06 格式解码 | PLY/PCD 使用受控 trimesh/pypcd4，XYZ 使用 NumPy；数组校验后直接借用；平台资产按规范块读取 | 规范三维引用，包含字段、数量、源精度与来源 | 乱序字段、截断、解压量、未声明列或不支持字段明确失败；不换库重试 |
 | R07 单位与有效性 | 核对源单位/坐标，显式 normalize-units、filter-valid | 带源映射的规范点云与有效性摘要 | 不猜单位、不删真实零点；无有效支持是缺测，损坏格式是执行错误 |
 | R08 选择分析区域 | 在明确 frame 中选 ROI；配方需要时才执行已公开的去噪/重采样 | 有源 owner 的索引视图或独立派生云 | 不修改原云；去噪/重采样不能隐藏在读取或显示中，未实现算子不开放 |
 | R09 建立基准 | 拟合基准面、检查支持/质量，使用原点、面内轴或次基准构建 pose | features、pose、found；平面成立与姿态完整分别表达 | 缺基准、多解、约束不足传递明确状态，不复用上次矩阵 |
@@ -269,7 +269,7 @@ PCD 与 XYZ 同属首批文件入口设计，不作为 PLY 的临时转换来源
 
 边界定义为闭集，距离计算按 float64；数值比较策略须随方法版本冻结，不能偷偷扩 ROI。任意多边形/环形/CAD ROI 留给后续明确契约，不以自由 JSON 宣称支持。
 
-`features3d.v1`：`format_id=amvision.features3d.v1`、`observation_id`、`frame_id`、`length_unit`、`items`。每项为 `feature_id`、`kind`、`valid`、`reason`、`geometry`、`support`、`quality`、`method`；ID 唯一，有效则 reason=null，几何满足对应约束；无效则 geometry=null、reason 必填，但保留支持/质量诊断。首批每个数组沿用通用数值表 8192 项的有界原则，同时受交付字节预算限制。
+`features3d.v1`：`format_id=amvision.features3d.v1`、`run_id`、`observation_id`、`frame_id`、`length_unit`、`items`。每项为 `feature_id`、`kind`、`valid`、`reason`、`geometry`、`support`、`quality`、`method`；ID 唯一，有效则 reason=null，几何满足对应约束；无效则 geometry=null、reason 必填，但保留支持/质量诊断。首批每个数组沿用通用数值表 8192 项的有界原则，同时受交付字节预算限制。M2 仅注册真实实现的 plane 分支，以下其他几何为后续阶段目标。
 
 | kind | 有效 geometry | 支持/失败信息 |
 | --- | --- | --- |
@@ -278,7 +278,7 @@ PCD 与 XYZ 同属首批文件入口设计，不作为 PLY 的临时转换来源
 | `plane` | `normal[3]`、`offset` | normal 单位化，方程 n·p+offset=0；法向正向来自参数/基准，不由本次 SVD 任意符号决定 |
 | `circle` | `center[3]`、`normal[3]`、`radius` | 正半径、单位法向；支持弧和缺口放 support，不以圆模型暗示全周有观测 |
 
-support 字段为源 cloud/revision、可选 ROI、索引资源引用和支持域，精确子结构见 5.11。quality 复用 NumericTable 和 LimitRule，记录 input_count、inlier_count、rms、max_residual、condition、适用的 angular_coverage/max_angular_gap；未知量为无效 NumericItem(null)，残差带单位，角度统一 rad，不能凭 RMS 生成 confidence。method 的方法 ID、版本、参数及质量策略也按 5.11，不再保留另一组含混的平铺质量字段。
+M2 support 直接复用只读 point-cloud-ref 子集，不另建索引资源。沿已有 CloudView 读取最初输入的 source_indices，source_point_count 为原始总点数，归属同一 Scope。quality 复用 NumericTable 和 LimitRule，记录方法实际适用的指标；未知量为无效 NumericItem(null)，残差带单位，角度统一 rad，不能凭 RMS 生成 confidence。method 的方法 ID、版本、参数及质量策略按 5.11，不保留平铺方法字段。后续边界/测量的支持域须在对应阶段定义，不作为 M2 自由扩展字段。
 
 ### 5.8 数值和三维证据
 
@@ -346,8 +346,8 @@ Boundary support 记录原云索引或派生来源；等值线交点是 interpol
 | `method` | method_id、method_version、parameters 为该方法专有严格 schema 对象、parameters_sha256；需要质量判定的几何/测量方法另必填 quality_policy，M1 数据方法禁止伪造空 quality_policy | canonical JSON hash 必须匹配参数；无自由脚本/任意算法名；版本必须出自实际节点实现 |
 | `quality_policy` | policy_id、policy_version、rules 为现有 LimitRule 列表 | 规则使用质量指标的稳定 item_id，单位一致；数值来自配方，不提供样本常量 |
 | `quality` | metrics 为 NumericTable，checks 为 8.4 的 limit-check.v2 摘要 | 同 observation；指标计数非负、inlier_count≤input_count；rms/max_residual 非负、单位明确；比率限 [0,1]，角覆盖/最大缺口限 [0,2π]；无可用条件数用无效指标，不用 Inf |
-| `support` | sources 为 cloud_id/revision 列表；roi_ids；indices 或 null；domain 或 null | 同 run/frame/observation；indices 是源行索引，不可引用显示点；多个源必须有明确索引源映射 |
-| `indices` | run_id、resource_id、revision、dtype=uint32/uint64、count、source_cloud_id/source_revision | 服务生成只读资源引用；count 与实际数组一致，每个值小于源点数；继承源 owner，不新建传输层 |
+| M2 `support` | PlaneFeature 为一个现有 CloudReference；Pose 为与 reference_feature_ids 对齐的 1–3 个 CloudReference | 同 run/frame/observation/unit；真实原始行号和总数由既有 CloudView/Runtime 提供，禁止显示索引或新增独立索引资源；有效几何只能引用 ready 支持 |
+| 稳健支持追溯 | fit-plane-support 方法增加 indices_sha256，覆盖递增父逻辑行号的 little-endian uint32/uint64 字节 | 与父描述、实际方法和点数共同确定支持身份；相同参数/点数但不同候选支持必须可区分；不改变原始行号语义 |
 | `domain` | kind=roi：roi3d；kind=boundary：feature_id；kind=interval：line_feature_id/start/end；互斥 | 只接受同观测已定义且无循环的支持域；start≤end，单位取所在几何；域缺失不能解释为无限观测 |
 | `quality` 判定映射 | 共享 Check Limits 的纯函数/LimitRule，不调用其 handler | 质量规则 ng/invalid 都使对应几何/量值不可测，但不是产品 NG；只有有效量值进入产品限值判定 |
 | `evidence.endpoints` | null 或两个有限 Point3；direction 为 null 或单位向量 | 与量值方法匹配，长度单位/frame 一致；无效项为 null，显示偏移不得写入 |
@@ -356,6 +356,8 @@ Boundary support 记录原云索引或派生来源；等值线交点是 interpol
 quality 的通用指标并非每个方法都必须计算；方法 schema 声明所需指标及规则，未计算指标标记无效，不伪造零。无需判定的只读显示节点不构造空 quality_policy 并声称“质量通过”。计量结果有效性、定位 state、质量 checks.state、产品 state 是四个不同层级，禁止用同一个布尔混用。
 
 2026-10-22 M2 实施确认：上表 `limit-check.v2` 是 M3.4 的目标，不是现有实现。M2 几何质量复用当前限值计算的完整逐项 `valid/passed/reason` 判断几何可用性，不发布 v2 或改变产品判定；全平台三态与消费者升级仍留 M3.4。M2 四节点的实施规格及实测状态见[几何节点实施记录](3d-metrology-m2.md)。
+
+M2 公开嵌套方法已收口：参数正文与 quality_policy 分开，parameters_sha256 只覆盖正文；实际节点配置复用同一参数校验器。transform3d.provenance 保存建坐标方法、完整质量证据，以及按主/次/第三顺序排列的实际平面 geometry/method/quality/support_content_sha256。该持久快照不含 run/cloud 访问引用，source_retained=false 明确其未保存源数组；不能仅凭摘要复算。Pose 自身仍是运行观测，保存派生点云时只保存变换快照。几何消费者通过既有 check_limits 重核逐项结果，不信任伪造 passed 摘要，不另写比较器。本阶段尚未发布，直接替换旧内部形状，无旧格式兼容分支。
 
 需覆盖的契约异常：字段互斥/遗漏、ready 与 unavailable 混填、found 携 null、非 found 携旧矩阵、段重叠/缺口/越界、闭段重复尾点、错误 orientation/frame、索引跨云、质量指标超范围、参数摘要不符、过量/循环引用。它们用平台错误拒绝；合法观测不足才沿缺测分支传递。
 
@@ -1209,7 +1211,7 @@ CPU 基础链路须无 CUDA 也可执行。厂商驱动和不可随包分发的�
 | open3d-0.20.0-cp312-cp312-manylinux_2_35_x86_64.whl | f5cc6106d9c0c41beb8160aa99c2b663e7f08588a598ec7d464391a4cfe684d6 |
 | trimesh-5.1.1-py3-none-any.whl | c5be85a3e31e9ff749f9b0aecc204e37a2cf7cca4e92cd066bb5f3d3c1127765 |
 
-Open3D 候选仅用于 CPU 几何/tensor，不启用 Open3D-ML、Torch 扩展或自动 CUDA。不能因仅使用几何就 --no-deps 跳过发行依赖。M1 获准后，在 Windows/WSL 分别解析完整依赖、检查许可证和 NOTICE、导入原生组件、核对 NumPy ABI/线程库，再锁所有版本/hash，随后验证 bundled Python；不降级现有模型依赖来迁就。PyPI 项目说明的系统名单不能覆盖 wheel 自身更严格的 glibc tag。本轮未下载 wheel、安装依赖、访问 WSL 或改变环境。
+Open3D 仅用于 CPU 几何，不启用 Open3D-ML、Torch 扩展或自动 CUDA。不能因仅使用几何就 --no-deps 跳过发行依赖。M2 已在隔离 Windows/WSL 环境安装并导入上述两个官方摘要对应的 wheel，原生验收见实施记录；未修改主开发 Python。Ubuntu 24.04 本机 ldd 检出缺少 libusb-1.0.so.0，测试使用官方 libusb-1.0-0 2:1.0.27-1 包解压到临时目录并显式设置本次 LD_LIBRARY_PATH，不修改系统。生产 Ubuntu 必须声明该系统依赖并在目标镜像检查全部 ldd 依赖，不能将本次单机结果当完整发行认证。完整传递依赖锁定、NOTICE 和 bundled profile 仍须正式发行验收；不降级现有模型依赖来迁就。
 
 ### 11.2 多格式 I/O 的具体源码核对
 

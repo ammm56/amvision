@@ -1,6 +1,7 @@
 """现有 NodePack context 的处理器注册，不启动独立服务。"""
 
 from custom_nodes._metrology3d_nodes.backend import handlers
+from custom_nodes._metrology3d_nodes.backend import geometry_handlers
 
 HANDLERS = {
     "read-cloud": handlers.read,
@@ -9,6 +10,10 @@ HANDLERS = {
     "cloud-preview": handlers.preview,
     "save-cloud": handlers.save,
     "export-cloud": handlers.export,
+    "crop-roi": geometry_handlers.crop,
+    "fit-plane": geometry_handlers.plane,
+    "build-frame": geometry_handlers.frame,
+    "transform-cloud": geometry_handlers.transform,
 }
 
 

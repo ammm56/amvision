@@ -5,7 +5,7 @@ from hashlib import sha256
 import numpy as np
 
 from backend.contracts.workflows.point_cloud import FIELD_WIDTHS
-from backend.contracts.workflows.point_cloud_runtime import canonical_cloud_json
+from backend.contracts.workflows.point_cloud import canonical_cloud_json
 from backend.contracts.workflows.point_cloud_preview import CloudPreviewOptions
 from backend.service.application.errors import InvalidRequestError
 

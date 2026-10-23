@@ -1,0 +1,7 @@
+.geometry-open { width:100%;padding:6px 8px;border:1px solid var(--am-border);border-radius:4px;background:var(--am-input);color:var(--am-text);font:inherit;text-align:left; }
+.geometry-workspace { display:grid;gap:12px;min-width:0; }
+.geometry-toolbar { display:flex;gap:10px;flex-wrap:wrap;align-items:end; }
+.geometry-toolbar button { display:grid;place-items:center;width:32px;height:32px;border:1px solid var(--am-border);background:var(--am-surface);color:var(--am-text);border-radius:4px; }
+label { display:grid;gap:4px;font-size:12px;min-width:0; }
+select { padding:6px;border:1px solid var(--am-border);background:var(--am-input);color:var(--am-text);border-radius:4px;min-width:0;max-width:100%; }
+p[role=alert] { color:var(--am-danger-text);font-size:12px;overflow-wrap:anywhere; }

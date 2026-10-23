@@ -24,7 +24,7 @@ it('disposes a decoded old run and does not install it after a task switch', asy
   mocks.decode.mockImplementation(()=>new Promise(resolve=>pending.push(resolve)))
   const wrapper=viewer();await flushPromises()
   await wrapper.setProps({payload:{...payload,cloud_id:'next'}});await flushPromises()
-  const old={dispose:vi.fn()},current={dispose:vi.fn(),point:vi.fn()}; const renderer={dispose:vi.fn()}
+  const old={dispose:vi.fn()},current={dispose:vi.fn(),point:vi.fn()}; const renderer={dispose:vi.fn(),geometry:vi.fn()}
   mocks.create.mockReturnValue(renderer)
   pending[0]!(old);await flushPromises();expect(old.dispose).toHaveBeenCalledOnce();expect(mocks.create).not.toHaveBeenCalled()
   pending[1]!(current);await flushPromises();expect(mocks.create).toHaveBeenCalledOnce()
@@ -32,7 +32,7 @@ it('disposes a decoded old run and does not install it after a task switch', asy
 })
 it('reports context loss, releases CPU/GPU owners and requires explicit reopen',async()=>{
   mocks.capabilities.mockResolvedValue({renderer:{}})
-  const data={dispose:vi.fn()},renderer={dispose:vi.fn()}
+  const data={dispose:vi.fn()},renderer={dispose:vi.fn(),geometry:vi.fn()}
   mocks.decode.mockResolvedValue(data);mocks.create.mockReturnValue(renderer)
   const wrapper=viewer();await flushPromises()
   mocks.create.mock.calls[0]![4](new Error('cloud_context_lost'));await nextTick()
