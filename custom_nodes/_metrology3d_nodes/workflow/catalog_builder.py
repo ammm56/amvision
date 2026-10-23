@@ -19,6 +19,11 @@ from backend.contracts.workflows.workflow_graph import (
 from backend.nodes.core_catalog import get_core_workflow_payload_contracts
 from backend.contracts.workflows.geometry3d_observations import Features3d, Pose3d
 from backend.contracts.workflows.geometry3d_methods import RigidTransform3d
+from backend.contracts.workflows.measurement3d_evidence import MeasurementEvidence3d
+from backend.contracts.workflows.measurement3d_parameters import (
+    HeightNodeParameters,
+    StepNodeParameters,
+)
 from custom_nodes._metrology3d_nodes.shared.geometry_parameters import (
     CropNodeParameters,
     PlaneNodeParameters,
@@ -49,6 +54,11 @@ def build_custom_node_catalog_document():
             ("features3d.v1", "3D Features", Features3d),
             ("pose3d.v1", "3D Pose", Pose3d),
             ("transform3d.v1", "3D Transform", RigidTransform3d),
+            (
+                "measurement-evidence3d.v1",
+                "3D Measurement Evidence",
+                MeasurementEvidence3d,
+            ),
         )
     )
 
@@ -64,6 +74,33 @@ def build_custom_node_catalog_document():
     cloud = port("cloud", "point-cloud-ref.v1")
     definitions = []
     for key, title, category, model, inputs, outputs in (
+        (
+            "height-query",
+            "Height Query",
+            "metrology3d.measurement",
+            HeightNodeParameters,
+            [cloud, port("features", "features3d.v1", multiple=True)],
+            [
+                port("measurements", "numeric-table.v1"),
+                port("evidence", "measurement-evidence3d.v1"),
+                port("features", "features3d.v1"),
+            ],
+        ),
+        (
+            "measure-step",
+            "Measure Step",
+            "metrology3d.measurement",
+            StepNodeParameters,
+            [
+                port("features", "features3d.v1", False, True),
+                port("reference", "point-cloud-ref.v1", False),
+                port("target", "point-cloud-ref.v1", False),
+            ],
+            [
+                port("measurements", "numeric-table.v1"),
+                port("evidence", "measurement-evidence3d.v1"),
+            ],
+        ),
         (
             "crop-roi",
             "Crop ROI",
@@ -129,6 +166,7 @@ def build_custom_node_catalog_document():
                 cloud,
                 port("features", "features3d.v1", False, True),
                 port("pose", "pose3d.v1", False),
+                port("evidence", "measurement-evidence3d.v1", False, True),
             ],
             [port("body", "response-body.v1")],
         ),

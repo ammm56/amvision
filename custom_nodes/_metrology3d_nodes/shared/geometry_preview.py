@@ -9,6 +9,7 @@ from custom_nodes._metrology3d_nodes.shared.geometry_quality import (
     require_quality_result,
 )
 from custom_nodes._metrology3d_nodes.shared.preview import unavailable_body
+from custom_nodes._metrology3d_nodes.shared.geometry_samples import plane_samples
 
 
 def attach_geometry(runtime, cloud, body, values, *, policy, cancel):
@@ -83,6 +84,17 @@ def _attach_geometry(runtime, cloud, body, values, *, policy, cancel):
                     quality=item.quality,
                     support_bounds=bounds,
                     support_point_count=item.support.point_count,
+                    samples=plane_samples(
+                        runtime,
+                        cloud,
+                        body,
+                        item,
+                        policy=policy,
+                        held_bytes=len(planes)
+                        * (body.get("display_point_count") or 0)
+                        * 128,
+                        cancel=cancel,
+                    ),
                 )
             )
             if len(planes) > 8192:

@@ -40,3 +40,21 @@ it('reports context loss, releases CPU/GPU owners and requires explicit reopen',
   expect(data.dispose).toHaveBeenCalledOnce();expect(renderer.dispose).toHaveBeenCalledOnce()
   expect(mocks.create).toHaveBeenCalledOnce();wrapper.unmount()
 })
+
+it('picks only explicitly and ignores callbacks from a replaced or disposed scene',async()=>{
+  mocks.capabilities.mockResolvedValue({renderer:{}})
+  const data={dispose:vi.fn(),point:vi.fn(()=>({sourceIndex:'4',xyz:[1,2,3],scalar:null}))}
+  mocks.decode.mockResolvedValue(data);mocks.create.mockImplementation(()=>({dispose:vi.fn(),geometry:vi.fn()}))
+  const wrapper=viewer();await wrapper.setProps({allowPick:true});await flushPromises()
+  const old=mocks.create.mock.calls[0]![3]
+  old(0);expect(wrapper.emitted('candidate')).toBeUndefined()
+  await wrapper.get('[aria-label="Pick candidate position"]').trigger('click')
+  old(0);expect(wrapper.emitted('candidate')).toHaveLength(1)
+  await wrapper.setProps({payload:{...payload,cloud_id:'new'}});await flushPromises()
+  old(0);expect(wrapper.emitted('candidate')).toHaveLength(1)
+  await wrapper.get('[aria-label="Pick candidate position"]').trigger('click')
+  const latest=mocks.create.mock.calls.at(-1)![3]
+  latest(0);expect(wrapper.emitted('candidate')).toHaveLength(2)
+  const calls=data.point.mock.calls.length
+  wrapper.unmount();latest(0);expect(data.point).toHaveBeenCalledTimes(calls)
+})

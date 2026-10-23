@@ -80,16 +80,25 @@ def preview(request):
     p = CloudPreviewOptions.model_validate(request.parameters)
     env = require_node_runtime(request)
     from custom_nodes._metrology3d_nodes.shared.geometry_preview import attach_geometry
+    from custom_nodes._metrology3d_nodes.shared.measurement_preview import (
+        attach_measurements,
+    )
 
     cloud = cloud_input(request, env.runtime)
     return {
-        "body": attach_geometry(
-            env.runtime,
+        "body": attach_measurements(
             cloud,
-            build_cloud_preview(
+            attach_geometry(
                 env.runtime,
                 cloud,
-                p,
+                build_cloud_preview(
+                    env.runtime,
+                    cloud,
+                    p,
+                    policy=env.policy.preview,
+                    cancel=env.cancel,
+                ),
+                request.input_values,
                 policy=env.policy.preview,
                 cancel=env.cancel,
             ),

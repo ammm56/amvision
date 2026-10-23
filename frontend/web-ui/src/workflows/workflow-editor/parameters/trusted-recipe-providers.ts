@@ -4,12 +4,17 @@ import { connectorRecipeValidator } from '../../../../../../custom_nodes/connect
 import type { NumericItemProviders } from './static-numeric-items'
 import type { RecipeValidator } from './recipe-validation'
 import {geometryRecipeValidator} from '../../../../../../custom_nodes/_metrology3d_nodes/frontend/recipe-validation'
+import {measurementNumericItems,measurementRecipeValidator} from '../../../../../../custom_nodes/_metrology3d_nodes/frontend/measurement-form'
 
 export const trustedNumericItemProviders:NumericItemProviders={
+  'custom.metrology3d.height-query':measurementNumericItems,
+  'custom.metrology3d.measure-step':measurementNumericItems,
   'custom.connector.measure':connectorNumericItems,
   'custom.connector.pin-array-locate':connectorNumericItems,
 }
 export const trustedRecipeValidators:Readonly<Record<string,RecipeValidator>>={
+  'custom.metrology3d.height-query':measurementRecipeValidator,
+  'custom.metrology3d.measure-step':measurementRecipeValidator,
   'custom.metrology3d.crop-roi':geometryRecipeValidator,
   'custom.metrology3d.fit-plane':geometryRecipeValidator,
   'custom.metrology3d.build-frame':geometryRecipeValidator,

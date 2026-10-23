@@ -2,6 +2,7 @@
 
 from custom_nodes._metrology3d_nodes.backend import handlers
 from custom_nodes._metrology3d_nodes.backend import geometry_handlers
+from custom_nodes._metrology3d_nodes.backend import measurement_handlers
 
 HANDLERS = {
     "read-cloud": handlers.read,
@@ -14,6 +15,8 @@ HANDLERS = {
     "fit-plane": geometry_handlers.plane,
     "build-frame": geometry_handlers.frame,
     "transform-cloud": geometry_handlers.transform,
+    "height-query": measurement_handlers.height,
+    "measure-step": measurement_handlers.step,
 }
 
 

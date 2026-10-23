@@ -17,6 +17,22 @@ from backend.contracts.workflows.point_cloud import LengthUnit
 
 Point3 = tuple[Finite, Finite, Finite]
 Positive = Annotated[Finite, Field(gt=0)]
+
+
+class SupportBounds(Contract):
+    """真实支持点的轴对齐边界，不代表表面拓扑。"""
+
+    min: Point3
+    max: Point3
+
+    @model_validator(mode="after")
+    def check_order(self) -> Self:
+        """允许平面零厚度，拒绝倒置边界。"""
+        if any(a > b for a, b in zip(self.min, self.max)):
+            raise ValueError("支持边界倒置")
+        return self
+
+
 # 只用于拒绝非刚性输入，算法仍按配方质量规则检查可测性。
 ORTHOGONAL_TOLERANCE = 1e-8
 

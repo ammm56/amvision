@@ -1,7 +1,8 @@
 import { AxesHelper, BufferAttribute, BufferGeometry, MOUSE, OrthographicCamera, PerspectiveCamera, Points, PointsMaterial, Raycaster, Scene, Vector2, WebGLRenderer } from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import type { CloudRendererPolicy } from '../services/measurement-resource.service'
-import { reserveGpu, type CloudDisplayData } from './preview-data'
+import { reserveCpu, reserveGpu, type CloudDisplayData } from './preview-data'
+import {fillPlaneColors,type PlaneColors} from './plane-colors'
 import {createGeometryOverlay,type GeometryOverlayInput} from './geometry-overlay'
 
 /** 一个激活的视口一个 renderer；没有常驻动画、后台重算或原始点云请求。 */
@@ -16,6 +17,7 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
   let [width, height] = dimensions(rect.width, rect.height)
   let releaseGpu = reserveGpu(data.positions.byteLength + data.colors.byteLength + width * height * 8 + 144, policy)
   let renderer: WebGLRenderer | null = null
+  let releaseColor = () => {}
   let observer: ResizeObserver | null = null
   let controls: OrbitControls | null = null
   let overlay: ReturnType<typeof createGeometryOverlay> | null = null
@@ -41,7 +43,7 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
       renderer.domElement.removeEventListener('pointerup', pick)
       renderer.dispose(); renderer.forceContextLoss(); renderer.domElement.remove(); renderer = null
     }
-    geometry.dispose(); material.dispose(); axes?.dispose(); scene.clear(); releaseGpu()
+    geometry.dispose(); material.dispose(); axes?.dispose(); scene.clear(); releaseGpu();releaseColor()
   }
   function lost(event: Event) { event.preventDefault(); dispose(); failed(new Error('cloud_context_lost')) }
   function down(event: PointerEvent) { pointDown = {x: event.clientX, y: event.clientY} }
@@ -74,7 +76,8 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
   }
   const points = new Points(geometry, material)
   try {
-    geometry.setAttribute('position', new BufferAttribute(data.positions, 3)); geometry.setAttribute('color', new BufferAttribute(data.colors, 3))
+    releaseColor=reserveCpu(data.colors.byteLength,policy)
+    geometry.setAttribute('position', new BufferAttribute(data.positions, 3)); geometry.setAttribute('color', new BufferAttribute(data.colors.slice(), 3))
     geometry.computeBoundingSphere(); radius = Math.max(geometry.boundingSphere?.radius ?? 0, 1e-6)
     renderer = new WebGLRenderer({ antialias: false, alpha: true, powerPreference: 'low-power' })
     renderer.localClippingEnabled = true
@@ -102,6 +105,11 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
     observer.observe(host)
     return {
       dispose, fit,
+      colors(samples:PlaneColors|null,mode:'original'|'support'|'residual'){
+        if(closed)return
+        const attribute=geometry.getAttribute('color') as BufferAttribute
+        fillPlaneColors(attribute.array as Float32Array,data.colors,samples,mode);attribute.needsUpdate=true;schedule()
+      },
       geometry(input:GeometryOverlayInput) { try { overlay?.update(input) } catch(error) { dispose(); failed(error as Error) } },
       projection(orthographic: boolean) {
         camera = orthographic ? new OrthographicCamera() : new PerspectiveCamera(45, width / height)

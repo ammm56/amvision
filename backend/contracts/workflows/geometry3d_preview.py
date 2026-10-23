@@ -3,7 +3,7 @@
 from typing import Annotated, Literal, Self
 from pydantic import Field, StrictBool, model_validator
 from backend.contracts.workflows.geometry3d import (
-    Point3,
+    SupportBounds,
     PlaneGeometry,
     RigidMatrix3d,
     Roi3d,
@@ -13,21 +13,30 @@ from backend.contracts.workflows.geometry3d_quality import (
     check_plane_metrics,
     check_frame_metrics,
 )
-from backend.contracts.workflows.metrology import Contract, Identifier, unique_ids
-from backend.contracts.workflows.point_cloud import LengthUnit, JsonCount
+from backend.contracts.workflows.metrology import (
+    Contract,
+    Finite,
+    Identifier,
+    unique_ids,
+)
+from backend.contracts.workflows.point_cloud import LengthUnit, JsonCount, Sha256
 
 
-class SupportBounds(Contract):
-    """真实支持点的轴对齐边界，仅限制显示范围，不代表表面拓扑。"""
+class PlaneSamples(Contract):
+    """仅对应显示正文的点分类；0 无关、1 支持、2 RANSAC 剔除。"""
 
-    min: Point3
-    max: Point3
+    data_sha256: Sha256
+    classes: tuple[Literal[0, 1, 2], ...]
+    residuals: tuple[Finite | None, ...]
 
     @model_validator(mode="after")
-    def check_order(self) -> Self:
-        """平面允许零厚度，不接受倒置边界。"""
-        if any(a > b for a, b in zip(self.min, self.max)):
-            raise ValueError("支持边界倒置")
+    def check_samples(self) -> Self:
+        """未属于当前平面输入的点不得携带该平面的测量残差。"""
+        if len(self.classes) != len(self.residuals) or any(
+            kind == 0 and residual is not None
+            for kind, residual in zip(self.classes, self.residuals)
+        ):
+            raise ValueError("平面显示分类与残差不一致")
         return self
 
 
@@ -41,6 +50,7 @@ class PlaneDisplay(Contract):
     support_bounds: SupportBounds | None
     support_point_count: JsonCount | None
     quality: GeometryQuality
+    samples: PlaneSamples | None = None
 
 
 class FrameDisplay(Contract):
@@ -82,7 +92,7 @@ class GeometryPreview(Contract):
                 plane.reason is None
             ):
                 raise ValueError("平面显示有效性不一致")
-            if plane.valid != plane.quality.usable:
+            if plane.valid and not plane.quality.usable:
                 raise ValueError("平面显示与质量状态不一致")
             count = next(
                 m for m in plane.quality.metrics.items if m.item_id == "inlier_count"
