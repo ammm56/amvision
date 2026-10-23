@@ -36,6 +36,11 @@ from custom_nodes._metrology3d_nodes.shared.parameters import (
     SaveCloudParameters,
     ExportCloudParameters,
 )
+from backend.contracts.workflows.boundary3d import (
+    ExtractBoundaryNodeParameters,
+    FitLineNodeParameters,
+    FitCircleNodeParameters,
+)
 
 
 def build_custom_node_catalog_document():
@@ -48,10 +53,10 @@ def build_custom_node_catalog_document():
             json_schema=inline_model_schema(model),
         )
         for key, title, model in (
-            ("point-cloud-ref.v1", "Point Cloud", CloudReference),
+            ("point-cloud-ref.v2", "Point Cloud", CloudReference),
             ("measurement-resource-ref.v1", "Measurement Resource", ResourceReference),
             ("roi3d.v1", "3D ROI", RoiPayload),
-            ("features3d.v1", "3D Features", Features3d),
+            ("features3d.v2", "3D Features", Features3d),
             ("pose3d.v1", "3D Pose", Pose3d),
             ("transform3d.v1", "3D Transform", RigidTransform3d),
             (
@@ -71,19 +76,43 @@ def build_custom_node_catalog_document():
             multiple=multiple,
         )
 
-    cloud = port("cloud", "point-cloud-ref.v1")
+    cloud = port("cloud", "point-cloud-ref.v2")
     definitions = []
     for key, title, category, model, inputs, outputs in (
+        (
+            "extract-boundary",
+            "Extract Boundary",
+            "metrology3d.geometry",
+            ExtractBoundaryNodeParameters,
+            [cloud, port("features", "features3d.v2", False)],
+            [cloud, port("features", "features3d.v2")],
+        ),
+        (
+            "fit-line",
+            "Fit Line",
+            "metrology3d.geometry",
+            FitLineNodeParameters,
+            [port("features", "features3d.v2")],
+            [port("features", "features3d.v2")],
+        ),
+        (
+            "fit-circle",
+            "Fit Circle",
+            "metrology3d.geometry",
+            FitCircleNodeParameters,
+            [port("features", "features3d.v2")],
+            [port("features", "features3d.v2")],
+        ),
         (
             "height-query",
             "Height Query",
             "metrology3d.measurement",
             HeightNodeParameters,
-            [cloud, port("features", "features3d.v1", multiple=True)],
+            [cloud, port("features", "features3d.v2", multiple=True)],
             [
                 port("measurements", "numeric-table.v1"),
                 port("evidence", "measurement-evidence3d.v1"),
-                port("features", "features3d.v1"),
+                port("features", "features3d.v2"),
             ],
         ),
         (
@@ -92,9 +121,9 @@ def build_custom_node_catalog_document():
             "metrology3d.measurement",
             StepNodeParameters,
             [
-                port("features", "features3d.v1", False, True),
-                port("reference", "point-cloud-ref.v1", False),
-                port("target", "point-cloud-ref.v1", False),
+                port("features", "features3d.v2", False, True),
+                port("reference", "point-cloud-ref.v2", False),
+                port("target", "point-cloud-ref.v2", False),
             ],
             [
                 port("measurements", "numeric-table.v1"),
@@ -115,14 +144,14 @@ def build_custom_node_catalog_document():
             "metrology3d.geometry",
             PlaneNodeParameters,
             [cloud],
-            [port("features", "features3d.v1")],
+            [port("features", "features3d.v2")],
         ),
         (
             "build-frame",
             "Build Frame",
             "metrology3d.geometry",
             FrameNodeParameters,
-            [port("features", "features3d.v1", multiple=True)],
+            [port("features", "features3d.v2", multiple=True)],
             [port("pose", "pose3d.v1"), port("found", "boolean.v1")],
         ),
         (
@@ -139,7 +168,7 @@ def build_custom_node_catalog_document():
             "metrology3d.data.io",
             ReadCloudParameters,
             [port("file", "file-ref.v1", False)],
-            [cloud],
+            [cloud, port("features", "features3d.v2", False)],
         ),
         (
             "normalize-units",
@@ -164,7 +193,7 @@ def build_custom_node_catalog_document():
             CloudPreviewOptions,
             [
                 cloud,
-                port("features", "features3d.v1", False, True),
+                port("features", "features3d.v2", False, True),
                 port("pose", "pose3d.v1", False),
                 port("evidence", "measurement-evidence3d.v1", False, True),
             ],
@@ -175,7 +204,7 @@ def build_custom_node_catalog_document():
             "Save Cloud",
             "metrology3d.data.io",
             SaveCloudParameters,
-            [cloud],
+            [cloud, port("features", "features3d.v2", False)],
             [port("resource", "measurement-resource-ref.v1")],
         ),
         (
@@ -183,7 +212,7 @@ def build_custom_node_catalog_document():
             "Export Cloud",
             "metrology3d.data.io",
             ExportCloudParameters,
-            [port("cloud", "point-cloud-ref.v1", False)],
+            [port("cloud", "point-cloud-ref.v2", False)],
             [port("file", "file-ref.v1"), port("summary", "value.v1")],
         ),
     ):

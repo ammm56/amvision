@@ -5,6 +5,7 @@ import type { NumericItemProviders } from './static-numeric-items'
 import type { RecipeValidator } from './recipe-validation'
 import {geometryRecipeValidator} from '../../../../../../custom_nodes/_metrology3d_nodes/frontend/recipe-validation'
 import {measurementNumericItems,measurementRecipeValidator} from '../../../../../../custom_nodes/_metrology3d_nodes/frontend/measurement-form'
+import {boundaryRecipeValidator} from '../../../../../../custom_nodes/_metrology3d_nodes/frontend/boundary-form'
 
 export const trustedNumericItemProviders:NumericItemProviders={
   'custom.metrology3d.height-query':measurementNumericItems,
@@ -13,6 +14,9 @@ export const trustedNumericItemProviders:NumericItemProviders={
   'custom.connector.pin-array-locate':connectorNumericItems,
 }
 export const trustedRecipeValidators:Readonly<Record<string,RecipeValidator>>={
+  'custom.metrology3d.extract-boundary':boundaryRecipeValidator,
+  'custom.metrology3d.fit-line':boundaryRecipeValidator,
+  'custom.metrology3d.fit-circle':boundaryRecipeValidator,
   'custom.metrology3d.height-query':measurementRecipeValidator,
   'custom.metrology3d.measure-step':measurementRecipeValidator,
   'custom.metrology3d.crop-roi':geometryRecipeValidator,

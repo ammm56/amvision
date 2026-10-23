@@ -88,6 +88,13 @@ class _ArrayBytes:
     def __init__(self, asset, blob):
         self.asset, self.blob, self.tail = asset, blob, b""
         self.ranges = []
+        self.lineage = None
+        if blob.role == "lineage":
+            from backend.service.application.workflows.documents.cloud_lineage_validation import (
+                LineageBytesValidator,
+            )
+
+            self.lineage = LineageBytesValidator(asset)
         if blob.role == "data":
             cursor = 0
             for field in asset.fields:
@@ -107,7 +114,9 @@ class _ArrayBytes:
         """分块处理掩码、对齐和无符号索引，保留跨块不足一个整数的尾部。"""
         import numpy as np
 
-        if self.blob.role == "indices":
+        if self.lineage is not None:
+            self.lineage.check(data, offset)
+        elif self.blob.role == "indices":
             dtype = np.dtype(self.asset.indices.dtype).newbyteorder("<")
             joined = self.tail + data
             end = len(joined) // dtype.itemsize * dtype.itemsize

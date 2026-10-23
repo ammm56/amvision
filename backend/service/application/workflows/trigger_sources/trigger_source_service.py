@@ -1309,7 +1309,9 @@ class WorkflowTriggerSourceService:
             ),
             input_payload_types=tuple(
                 (binding_id, str(item["payload_type_id"]))
-                for binding_id, item in _index_contract_bindings(contract.get("inputs")).items()
+                for binding_id, item in _index_contract_bindings(
+                    contract.get("inputs")
+                ).items()
             ),
         )
 
@@ -1376,11 +1378,25 @@ def _find_trigger_contract_mapping_issues(
             issues.append({"kind": "missing_required_input", "binding_id": binding_id})
             continue
         expected_payload_type = str(input_contract.get("payload_type_id") or "value.v1")
-        if expected_payload_type == "point-cloud-ref.v1" and mapping_present:
-            source = mapping_rule.get("source") if isinstance(mapping_rule, dict) else None
-            if not isinstance(source, str) or not source.startswith("payload.") or source.count(".") != 1:
-                issues.append({"kind": "cloud_input_requires_prepared_payload", "binding_id": binding_id})
-        if not isinstance(mapping_rule, dict) and expected_payload_type != "point-cloud-ref.v1":
+        if expected_payload_type == "point-cloud-ref.v2" and mapping_present:
+            source = (
+                mapping_rule.get("source") if isinstance(mapping_rule, dict) else None
+            )
+            if (
+                not isinstance(source, str)
+                or not source.startswith("payload.")
+                or source.count(".") != 1
+            ):
+                issues.append(
+                    {
+                        "kind": "cloud_input_requires_prepared_payload",
+                        "binding_id": binding_id,
+                    }
+                )
+        if (
+            not isinstance(mapping_rule, dict)
+            and expected_payload_type != "point-cloud-ref.v2"
+        ):
             continue
         if not workflow_trigger_supports_input_payload_type(
             trigger_kind,
@@ -1394,7 +1410,11 @@ def _find_trigger_contract_mapping_issues(
                     "payload_type_id": expected_payload_type,
                     "supported_payload_type_ids": sorted(
                         HIGH_PERFORMANCE_TRIGGER_INPUT_PAYLOAD_TYPE_IDS
-                        | ({"point-cloud-ref.v1"} if trigger_kind == "local-shared-memory" else set())
+                        | (
+                            {"point-cloud-ref.v2"}
+                            if trigger_kind == "local-shared-memory"
+                            else set()
+                        )
                     ),
                 }
             )
@@ -1483,7 +1503,9 @@ def _with_validated_runtime_contract(
             "validated_workflow_contract_fingerprint": (
                 validated_contract.contract_fingerprint
             ),
-            "validated_workflow_input_payload_types": dict(validated_contract.input_payload_types),
+            "validated_workflow_input_payload_types": dict(
+                validated_contract.input_payload_types
+            ),
         }
     )
     return payload

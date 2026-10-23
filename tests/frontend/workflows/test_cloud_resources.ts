@@ -14,7 +14,8 @@ import type { WorkflowAppContractInput } from '@/workflows/workflow-editor/app-m
 
 const mocks = vi.hoisted(() => ({ project: {} as {selectedProjectId:string}, list: vi.fn(), capability: vi.fn(), import: vi.fn(), remove: vi.fn() }))
 vi.mock('@/app/stores/project.store', () => ({ useProjectStore: () => mocks.project }))
-vi.mock('@/workflows/workflow-editor/services/measurement-resource.service', () => ({
+vi.mock('@/workflows/workflow-editor/services/measurement-resource.service', async importOriginal => ({
+  ...await importOriginal<typeof import('@/workflows/workflow-editor/services/measurement-resource.service')>(),
   listMeasurementResources: mocks.list, readCloudCapabilities: mocks.capability,
   importCloudResource: mocks.import, deleteMeasurementResource: mocks.remove, resourceVersionPath: () => '/resource',
 }))
@@ -26,6 +27,18 @@ let wrappers: ReturnType<typeof mount>[] = []
 beforeEach(() => { mocks.project = reactive({selectedProjectId:'p'}); mocks.list.mockResolvedValue([document]); mocks.capability.mockResolvedValue({max_archive_bytes:1024,renderer:null}) })
 afterEach(() => { for (const wrapper of wrappers) wrapper.unmount(); wrappers=[]; vi.resetAllMocks() })
 function picker() {const w=mount(CloudResourcePicker,{props:{modelValue:reference},global:global()});wrappers.push(w);return w}
+
+it('keeps retired cloud metadata visible without selecting, exporting or deleting it', async()=>{
+  mocks.list.mockResolvedValue([{reference,name:'Historical cloud',content:null,state:'rebuild-required',reason:'unsupported_point_cloud_format',stored_format_id:'amvision.point-cloud-asset.v1'}])
+  const w=picker();await w.get('button').trigger('click');await flushPromises()
+  expect(w.text()).toContain('Old format: save or import again')
+  expect((w.get('input[type=radio]').element as HTMLInputElement).disabled).toBe(true)
+  const confirm=w.findAll('button').find(b=>b.text()==='Confirm dialog')!
+  expect((confirm.element as HTMLButtonElement).disabled).toBe(true)
+  expect(w.find('button[title="Export package"]').exists()).toBe(false)
+  expect(w.find('button[title="Delete version"]').exists()).toBe(false)
+  expect(w.emitted('update:modelValue')).toBeUndefined()
+})
 
 it('cancels a pending resource list when project changes and ignores its late result', async()=>{
   let resolve!: (v:unknown)=>void
@@ -93,7 +106,7 @@ it('does not submit same-host cloud input as browser JSON or generate a false HT
   }
   const input: WorkflowAppContractInput = {
     binding_id:'cloud', template_port_id:'cloud', binding_kind:'request-point-cloud',
-    payload_type_id:'point-cloud-ref.v1', required:true, config:{}, payload_schema:{}, request_schema:{},
+    payload_type_id:'point-cloud-ref.v2', required:true, config:{}, payload_schema:{}, request_schema:{},
     allowed_media_types:[], max_inline_bytes:null, max_file_bytes:null, max_files:null,
     transports:['local-shared-memory'], charset:null,
   }

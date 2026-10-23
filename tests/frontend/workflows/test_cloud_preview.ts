@@ -17,8 +17,8 @@ export async function body(scalar = false) {
     view.setBigUint64(40, 18446744073709551614n, true); view.setBigUint64(48, 18446744073709551615n, true)
     fields.push({ name: 'scalar', dtype: 'uint64', components: 1, count: 2, offset: 40, byte_length: 16 })
   }
-  return { type: 'point-cloud-preview', format_id: 'amvision.point-cloud-preview.v1', state: 'ready',
-    display_point_count: 2, source_point_count: 100, render_origin: [1.5, 2.5, 3.5], bounds: {min:[0,1,2],max:[3,4,5]},
+  return { type: 'point-cloud-preview', format_id: 'amvision.point-cloud-preview.v2', state: 'ready',
+    display_point_count: 2, point_count: 100, vertex_kind: 'source', source_point_count: 100, render_origin: [1.5, 2.5, 3.5], bounds: {min:[0,1,2],max:[3,4,5]},
     data: { encoding: 'base64', content_length: raw.length, content: btoa(String.fromCharCode(...raw)), fields, checksum_algorithm: 'sha256', checksum: [...new Uint8Array(await crypto.subtle.digest('SHA-256',raw))].map(b=>b.toString(16).padStart(2,'0')).join('') },
     color: scalar ? { mode: 'scalar', field: 'label', component: 0, min: '18446744073709551614', max: '18446744073709551615', invalid_count: 0 } : {mode:'solid'},
   }
@@ -53,4 +53,14 @@ it('returns reservations after cancellation and refuses aggregate GPU overflow',
 it('does not allocate when capacity or policy is missing', async () => {
   await expect(decodeCloudPreview(await body(), {...policy,max_cpu_bytes:1}, new AbortController().signal)).rejects.toThrow('cloud_cpu_capacity')
   await expect(decodeCloudPreview(await body(), {...policy,max_position_error:0}, new AbortController().signal)).rejects.toThrow('cloud_renderer_unconfigured')
+})
+
+it.each(['source','generated'])('decodes ordered %s identities without conflating generated vertices with source rows',async kind=>{
+  const input=await body(),raw=Uint8Array.from(atob(input.data.content),c=>c.charCodeAt(0)),view=new DataView(raw.buffer)
+  input.vertex_kind=kind
+  if(kind==='source'){view.setBigUint64(24,99n,true);view.setBigUint64(32,0n,true)}
+  else{input.point_count=2;input.data.fields[1]!.name='vertex_indices';view.setBigUint64(24,0n,true);view.setBigUint64(32,1n,true)}
+  input.data.content=btoa(String.fromCharCode(...raw));input.data.checksum=[...new Uint8Array(await crypto.subtle.digest('SHA-256',raw))].map(b=>b.toString(16).padStart(2,'0')).join('')
+  const data=await decodeCloudPreview(input,policy,new AbortController().signal)
+  try{if(kind==='source'){expect(data.point(0).sourceIndex).toBe('99');expect(data.point(1).sourceIndex).toBe('0')}else{expect(data.point(1).sourceIndex).toBeNull();expect(data.point(1).vertexIndex).toBe('1')}}finally{data.dispose()}
 })

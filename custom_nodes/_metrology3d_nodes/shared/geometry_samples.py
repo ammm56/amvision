@@ -12,6 +12,8 @@ def plane_samples(runtime, cloud, body, feature, *, policy, held_bytes, cancel):
     """来源不同或未显示的点保持无关，不将 ROI 外点叫作拟合剔除点。"""
     if body["state"] != "ready" or feature.support.state != "ready":
         return None
+    if cloud.vertex_kind != "source" or feature.support.vertex_kind != "source":
+        return None
     root, _ = runtime.original_source(cloud)
     other, _ = runtime.original_source(feature.support)
     if root.cloud_id != other.cloud_id:
@@ -34,6 +36,8 @@ def plane_samples(runtime, cloud, body, feature, *, policy, held_bytes, cancel):
         n, dtype="<u8", buffer=raw, offset=fields["source_indices"]["offset"]
     )
     classes, residuals = np.zeros(n, dtype=np.uint8), [None] * n
+    display_order = np.argsort(indices, kind="stable")
+    sorted_indices = indices[display_order]
     method = feature.support.provenance.method
     parent = (
         runtime.parent_reference(feature.support)
@@ -54,15 +58,13 @@ def plane_samples(runtime, cloud, body, feature, *, policy, held_bytes, cancel):
                 source = view.source_indices(start, stop).reshape(-1)
                 if not len(source):
                     continue
-                first, last = np.searchsorted(
-                    indices, [source[0], source[-1]], side="left"
-                )
-                last = min(n, int(last) + 1)
-                candidate = indices[first:last]
-                locations = np.searchsorted(source, candidate)
+                # 两侧均可为有序边界，不能再假设原始行号递增。
+                source_order = np.argsort(source, kind="stable")
+                sorted_source = source[source_order]
+                locations = np.searchsorted(sorted_source, sorted_indices)
                 inside = locations < len(source)
-                display_rows = np.arange(first, last)[inside]
-                locations = locations[inside]
+                display_rows = display_order[inside]
+                locations = source_order[locations[inside]]
                 matched = source[locations] == indices[display_rows]
                 display_rows, locations = display_rows[matched], locations[matched]
                 if not len(display_rows):

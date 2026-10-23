@@ -30,7 +30,7 @@ def asset_content(data=b"\0" * 24):
     return MeasurementResourceContentV2(
         kind="point-cloud",
         point_cloud={
-            "format_id": "amvision.point-cloud-asset.v1",
+            "format_id": "amvision.point-cloud-asset.v2",
             "kind": "point-cloud",
             "representation": "array-blocks",
             "source": {
@@ -67,6 +67,9 @@ def asset_content(data=b"\0" * 24):
             ],
             "content_length": len(data),
             "indices": None,
+            "lineage": None,
+            "vertex_kind": "source",
+            "topology": None,
         },
     )
 

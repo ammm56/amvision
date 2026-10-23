@@ -14,7 +14,7 @@ def unavailable_body(reference, reason):
     """显示失败与业务 unavailable 都不伪造点数或云身份。"""
     return dict(
         type="point-cloud-preview",
-        format_id="amvision.point-cloud-preview.v1",
+        format_id="amvision.point-cloud-preview.v2",
         state="unavailable",
         reason=reason,
         observation_id=reference.observation_id,
@@ -22,6 +22,8 @@ def unavailable_body(reference, reason):
         revision=None,
         spatial=reference.spatial.model_dump(mode="json"),
         source_point_count=None,
+        point_count=None,
+        vertex_kind=None,
         display_point_count=None,
         excluded_non_finite_count=None,
         sampling=None,
@@ -79,7 +81,13 @@ def _build_cloud_preview(runtime, reference, options, *, policy, cancel):
         shown = min(count, options.point_limit)
         layout = [
             ("positions", fields["positions"].dtype, 3),
-            ("source_indices", "uint64", 1),
+            (
+                "source_indices"
+                if reference.vertex_kind == "source"
+                else "vertex_indices",
+                "uint64",
+                1,
+            ),
         ]
         if color.mode == "rgb":
             layout.append(("colors", "uint8", 3))
@@ -112,7 +120,7 @@ def _build_cloud_preview(runtime, reference, options, *, policy, cancel):
             return unavailable_body(reference, "preview_size_limit")
         body = dict(
             type="point-cloud-preview",
-            format_id="amvision.point-cloud-preview.v1",
+            format_id="amvision.point-cloud-preview.v2",
             state="ready" if shown else "empty",
             reason=None,
             observation_id=reference.observation_id,
@@ -120,10 +128,13 @@ def _build_cloud_preview(runtime, reference, options, *, policy, cancel):
             revision=reference.revision,
             spatial=reference.spatial.model_dump(mode="json"),
             source_point_count=runtime.source_point_count(reference),
+            point_count=reference.point_count,
+            vertex_kind=reference.vertex_kind,
             display_point_count=shown,
             excluded_non_finite_count=excluded,
             sampling=dict(
-                method_id="source-index-uniform-v1", requested_limit=options.point_limit
+                method_id="logical-index-uniform-v1",
+                requested_limit=options.point_limit,
             ),
             bounds=None,
             render_origin=None,
@@ -174,9 +185,12 @@ def _build_cloud_preview(runtime, reference, options, *, policy, cancel):
             selected = candidates[(targets[written:end] - seen).astype(np.intp)]
             if len(selected):
                 arrays["positions"][written:end] = block["positions"][selected]
-                arrays["source_indices"][written:end, 0] = view.source_indices(
-                    start, stop
-                )[selected]
+                if reference.vertex_kind == "source":
+                    arrays["source_indices"][written:end, 0] = view.source_indices(
+                        start, stop
+                    )[selected]
+                else:
+                    arrays["vertex_indices"][written:end, 0] = start + selected
                 if color.mode == "rgb":
                     arrays["colors"][written:end] = block["colors"][selected]
                 elif color.mode == "scalar":

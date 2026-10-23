@@ -9,6 +9,7 @@ from backend.contracts.workflows.measurement_resources import (
     MeasurementResourceContent,
     MeasurementResourceDocument,
 )
+from backend.contracts.workflows.retired_cloud_resource import RetiredCloudResource
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.storage import get_dataset_storage
 from backend.service.application.errors import InvalidRequestError
@@ -45,11 +46,15 @@ def _mutation(request, project_id, resource_id):
     )
 
 
-@measurement_resources_router.get("", response_model=list[MeasurementResourceDocument])
+@measurement_resources_router.get(
+    "", response_model=list[MeasurementResourceDocument | RetiredCloudResource]
+)
 def list_resources(project_id: str, principal: Reader, storage: Storage):
     """列出当前项目可供节点选择的不可变版本。"""
     _ensure_project_visible(principal=principal, project_id=project_id)
-    return MeasurementResourceService(storage).list_versions(project_id=project_id)
+    return MeasurementResourceService(storage).list_versions(
+        project_id=project_id, include_retired=True
+    )
 
 
 @measurement_resources_router.post(
@@ -132,16 +137,25 @@ def get_resource_image(
 
 @measurement_resources_router.get("/{resource_id}/versions/{version}/export")
 async def export_resource(
-    project_id: str, resource_id: str, version: int, request: Request, principal: Reader, storage: Storage
+    project_id: str,
+    resource_id: str,
+    version: int,
+    request: Request,
+    principal: Reader,
+    storage: Storage,
 ):
     """按当前指定版本生成归档，不复用其他版本缓存。"""
-    document = await run_in_threadpool(get_resource, project_id, resource_id, version, principal, storage)
+    document = await run_in_threadpool(
+        get_resource, project_id, resource_id, version, principal, storage
+    )
     if document.reference.kind == "point-cloud":
         from .cloud_resource_transfers import export_cloud_response
 
         return await export_cloud_response(request, storage, document)
-    content = await run_in_threadpool(MeasurementResourceService(storage).export,
-        document.reference, project_id=project_id
+    content = await run_in_threadpool(
+        MeasurementResourceService(storage).export,
+        document.reference,
+        project_id=project_id,
     )
     return Response(
         content,

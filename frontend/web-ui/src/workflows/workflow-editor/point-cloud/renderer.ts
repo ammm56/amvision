@@ -51,7 +51,9 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
     if (!renderer || overlay?.dragging() || !pointDown || Math.hypot(event.clientX - pointDown.x, event.clientY - pointDown.y) > 3) return
     const r = renderer.domElement.getBoundingClientRect(), ray = new Raycaster()
     ray.params.Points!.threshold = radius * .015
+    ray.params.Line!.threshold = radius * .015
     ray.setFromCamera(new Vector2((event.clientX - r.left) / r.width * 2 - 1, -(event.clientY - r.top) / r.height * 2 + 1), camera)
+    if(overlay?.pick(ray))return
     const hit = ray.intersectObject(points)[0]
     if (hit?.index !== undefined) picked(hit.index)
   }

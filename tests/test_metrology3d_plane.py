@@ -139,6 +139,8 @@ def test_large_offset_and_unavailable():
             point_count=None,
             fields=None,
             sample_origin=None,
+            vertex_kind=None,
+            topology=None,
         )
     )
     feature = fit_plane(

@@ -83,7 +83,7 @@ def measurement_graph(*, height=None, reference_roi=None, read=True):
     else:
         # 同一个冻结输入分别绑定；测试调用方提供相同只读引用。
         inputs = [
-            (f"cloud-{node}", "point-cloud-ref.v1", node, "cloud")
+            (f"cloud-{node}", "point-cloud-ref.v2", node, "cloud")
             for node in ("reference", "height", "preview")
         ]
     outputs = [

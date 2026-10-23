@@ -1,5 +1,7 @@
 # Workflow 点云输入
 
+M3.2 起运行引用为 `point-cloud-ref.v2`，资产内容和显示同步升级；同机 `point-cloud-buffer.v1` 与 Cloud PREPARE 二进制布局不变。旧三维配方需审核重发，旧资产保留历史并需重建，不自动迁移或回退执行。字段与保存/恢复规格见 [M3.2 实施记录](../development/3d-metrology-m3-boundary.md#5-运行引用与保存契约)。
+
 本接口扩展现有文件输入与 local-shared-memory Trigger，不新建 Workflow 或发布系统。每次提交完整输入，载荷不超过 1,000,000,000 字节。该上限不是运行内存上限，也不是已完成 1 GB 容量验收的声明。生产节点仍等待 timeout、运行和显示预算确认。
 
 ## 文件入口
@@ -17,7 +19,7 @@
 - fields 按声明顺序排列为 little-endian 连续属性块；positions 每点三个分量，类型为 float32 或 float64。每个属性块内逐点排列分量，不是 x/y/z 分开三个块。
 - count 必须等于 point_count；offset_bytes、byte_length 和 content_length 必须精确匹配。仅允许类型对齐所需的零填充，没有额外尾部。
 - spatial 显式声明单位、坐标系和轴；单位未知保持 null，不把当前样本默认解释成毫米。外部字段按声明保留精度，当前样本使用 float32。
-- TriggerSource 必须映射已发布 `point-cloud-ref.v1` 输入，路径为 `payload.<key>`。PREPARE 的 event_payload_key 与 SDK InputBinding 对应；REQUEST 的 Payload 不得覆盖该键。
+- TriggerSource 必须映射已发布 `point-cloud-ref.v2` 输入，路径为 `payload.<key>`。PREPARE 的 event_payload_key 与 SDK InputBinding 对应；REQUEST 的 Payload 不得覆盖该键。
 - source_indices 和 source_point_count 由 worker 按首次输入建立；调用方不能提交执行期 cloud_id、借用令牌或伪造普通 JSON CloudRef。
 - 不支持远程共享内存、ZeroMQ 点云、图片描述符包装或自动 HTTP fallback。浏览器数组输入不提供 JSON 编辑框。
 

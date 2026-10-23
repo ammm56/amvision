@@ -20,6 +20,7 @@ from backend.contracts.workflows.metrology import (
     unique_ids,
 )
 from backend.contracts.workflows.point_cloud import LengthUnit, JsonCount, Sha256
+from backend.contracts.workflows.boundary3d_preview import CurveDisplay
 
 
 class PlaneSamples(Contract):
@@ -70,19 +71,27 @@ class FrameDisplay(Contract):
 class GeometryPreview(Contract):
     """与显示点云同观测同空间的有限几何集合。"""
 
-    format_id: Literal["amvision.geometry-preview.v1"] = "amvision.geometry-preview.v1"
+    format_id: Literal["amvision.geometry-preview.v2"] = "amvision.geometry-preview.v2"
     observation_id: Identifier
     frame_id: Identifier
     length_unit: LengthUnit
     rois: Annotated[tuple[Roi3d, ...], Field(max_length=8192)]
     planes: Annotated[tuple[PlaneDisplay, ...], Field(max_length=8192)]
+    curves: Annotated[tuple[CurveDisplay, ...], Field(max_length=8192)]
     frame: FrameDisplay | None
 
     @model_validator(mode="after")
     def check_identity(self) -> Self:
         """拒绝错单位、跨观测、重复 ID 和旧失败矩阵。"""
         unique_ids([r.roi_id for r in self.rois], "rois")
-        unique_ids([p.feature_id for p in self.planes], "planes")
+        unique_ids([p.feature_id for p in (*self.planes, *self.curves)], "features")
+        for curve in self.curves:
+            evaluation = curve.method.parameters.evaluation
+            if curve.quality.metrics.observation_id != self.observation_id or (
+                evaluation.frame_id,
+                evaluation.length_unit,
+            ) != (self.frame_id, self.length_unit):
+                raise ValueError("曲线显示观测或空间不一致")
         for roi in self.rois:
             if (roi.frame_id, roi.length_unit) != (self.frame_id, self.length_unit):
                 raise ValueError("ROI 显示空间不一致")

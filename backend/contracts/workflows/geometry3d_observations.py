@@ -19,6 +19,11 @@ from backend.contracts.workflows.geometry3d_quality import (
 from backend.contracts.workflows.metrology import Contract, Identifier, unique_ids
 from backend.contracts.workflows.point_cloud import LengthUnit
 from backend.contracts.workflows.point_cloud_runtime import CloudReference
+from backend.contracts.workflows.boundary3d_observations import (
+    BoundaryFeature,
+    LineFeature,
+    CircleFeature,
+)
 
 
 class PlaneFeature(Contract):
@@ -61,14 +66,23 @@ class PlaneFeature(Contract):
 
 
 class Features3d(Contract):
-    """只公开真实实现的 plane 分支，不接受未实现的自由几何。"""
+    """公开已实现的平面、边界、直线及圆，不接受未实现的自由几何。"""
 
-    format_id: Literal["amvision.features3d.v1"] = "amvision.features3d.v1"
+    format_id: Literal["amvision.features3d.v2"] = "amvision.features3d.v2"
     run_id: Identifier
     observation_id: Identifier
     frame_id: Identifier
     length_unit: LengthUnit
-    items: Annotated[tuple[PlaneFeature, ...], Field(max_length=8192)]
+    items: Annotated[
+        tuple[
+            Annotated[
+                PlaneFeature | BoundaryFeature | LineFeature | CircleFeature,
+                Field(discriminator="kind"),
+            ],
+            ...,
+        ],
+        Field(max_length=8192),
+    ]
 
     @model_validator(mode="after")
     def check_identity(self) -> Self:

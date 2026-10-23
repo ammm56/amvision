@@ -139,7 +139,7 @@ def cloud_source(*, reply_timeout_seconds=5):
         input_binding_mapping={"cloud": {"source": "payload.cloud"}},
         metadata={
             **source.metadata,
-            "validated_workflow_input_payload_types": {"cloud": "point-cloud-ref.v1"},
+            "validated_workflow_input_payload_types": {"cloud": "point-cloud-ref.v2"},
         },
     )
 
@@ -240,8 +240,15 @@ def test_published_sdk_cloud_schema_matches_contract():
     """SDK 布局事实必须来自同一个 Pydantic 契约，不维护手写 schema。"""
     import json
     from pathlib import Path
-    schema = Path(__file__).resolve().parents[1] / "sdks/schemas/workflow-trigger-cloud-prepare.v1.schema.json"
-    assert json.loads(schema.read_text(encoding="utf-8")) == WorkflowTriggerCloudPrepareV1.model_json_schema()
+
+    schema = (
+        Path(__file__).resolve().parents[1]
+        / "sdks/schemas/workflow-trigger-cloud-prepare.v1.schema.json"
+    )
+    assert (
+        json.loads(schema.read_text(encoding="utf-8"))
+        == WorkflowTriggerCloudPrepareV1.model_json_schema()
+    )
 
 
 @pytest.mark.skipif(

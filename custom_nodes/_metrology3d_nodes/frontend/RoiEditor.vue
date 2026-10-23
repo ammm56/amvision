@@ -3,7 +3,7 @@
   <Teleport to="body"><ConfirmDialog v-if="open" class="geometry-dialog" :title="zh?'裁剪 ROI':'Crop ROI'" size="wide" scroll-body confirm-variant="primary" :confirm-label="zh?'应用':'Apply'" :cancel-label="zh?'取消':'Cancel'" :confirm-disabled="!!issues.length||disabled" @confirm="apply" @cancel="open=false">
     <div class="geometry-workspace roi-workspace">
       <section class="roi-config">
-      <div class="geometry-toolbar"><label>{{ zh?'ROI 来源':'ROI source' }}<select :value="draft.kind" @change="changeSource(($event.target as HTMLSelectElement).value)"><option value="parameters">{{ zh?'节点参数':'Node parameters' }}</option><option value="input">{{ zh?'输入端口':'Input port' }}</option></select></label>
+      <div class="geometry-toolbar"><label v-if="allowInput !== false">{{ zh?'ROI 来源':'ROI source' }}<select :value="draft.kind" @change="changeSource(($event.target as HTMLSelectElement).value)"><option value="parameters">{{ zh?'节点参数':'Node parameters' }}</option><option value="input">{{ zh?'输入端口':'Input port' }}</option></select></label>
         <label>{{ zh?'编辑对象':'Edit ROI' }}<select v-model="selected"><option v-if="draft.kind==='parameters'" value="target">{{ zh?'目标 ROI':'Target ROI' }}</option><option v-for="(roi,i) in bounds" :key="i" :value="String(i)">{{ String(roi.roi_id||`#${i+1}`) }}</option></select></label>
         <button :title="zh?'添加有限边界':'Add finite bound'" @click="add"><Plus :size="18" /></button><button :title="zh?'删除边界':'Remove bound'" :disabled="selected==='target'||!current" @click="remove"><Trash2 :size="18" /></button>
       </div>
@@ -29,7 +29,7 @@ import {parameterCloudPreviewsKey,parameterPreviewStateKey} from '@/workflows/wo
 import GeometryFields from './GeometryFields.vue'
 import {object,copy,newRoi,geometryIssues,roiIssues,type Form,type Field} from './form'
 defineOptions({inheritAttrs:false})
-const props=defineProps<{modelValue:unknown;disabled?:boolean;draftIssues?:(value:unknown)=>string[]}>(),emit=defineEmits<{'update:modelValue':[value:Form]}>()
+const props=defineProps<{modelValue:unknown;disabled?:boolean;allowInput?:boolean;draftIssues?:(value:unknown)=>string[]}>(),emit=defineEmits<{'update:modelValue':[value:Form]}>()
 const CloudViewer=defineAsyncComponent(()=>import('@/workflows/workflow-editor/point-cloud/CloudViewer.vue').then(module=>module.default))
 const {locale}=useI18n(),zh=computed(()=>locale.value==='zh-CN')
 const resolve=inject(parameterCloudPreviewsKey,()=>[]),state=inject(parameterPreviewStateKey,()=>({runId:'',succeeded:false}))

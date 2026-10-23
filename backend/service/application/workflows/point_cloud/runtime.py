@@ -26,6 +26,13 @@ from backend.contracts.workflows.point_cloud_runtime import (
     CloudMethod,
     CloudLocalSource,
     CloudAssetSource,
+    BoundaryCloudMethod,
+    BoundarySelectionMethod,
+)
+from backend.contracts.workflows.boundary3d import BoundaryTopology
+from backend.service.application.workflows.point_cloud.lineage import (
+    lineage_chunk,
+    validate_lineage,
 )
 from backend.contracts.workflows.point_cloud import canonical_cloud_json
 from backend.nodes.core_nodes.support.file_payloads import require_file_ref_payload
@@ -52,6 +59,7 @@ class _CloudRecord:
     indices: OwnedCloudArrays | None = None
     file_options: CloudFileOptions | None = None
     source_point_count: int | None = None
+    lineage: OwnedCloudArrays | None = None
 
 
 class CloudView:
@@ -64,6 +72,7 @@ class CloudView:
         arrays: Mapping[str, np.ndarray],
         selectors: tuple[np.ndarray, ...],
         origin_selectors: tuple[np.ndarray, ...],
+        lineage: Mapping[str, np.ndarray] | None,
         policy: PointCloudIoPolicy,
     ) -> None:
         """selectors 由叶到根排列；引用与父数组已由 Runtime 验证。"""
@@ -71,6 +80,7 @@ class CloudView:
         self._arrays = arrays
         self._selectors = selectors
         self._origin_selectors = origin_selectors
+        self._lineage = lineage
         self._policy = policy
         self._active = True
 
@@ -109,6 +119,8 @@ class CloudView:
         """取得稳定源行号，显示证据不得把其当新的测量数据。"""
         if not self._active:
             raise RuntimeError("点云借用已结束")
+        if self.reference.vertex_kind != "source":
+            raise InvalidRequestError("生成顶点没有唯一原始行号，应读取来源关系")
         if (
             type(start) is not int
             or type(stop) is not int
@@ -129,6 +141,33 @@ class CloudView:
             result = np.arange(start, stop, dtype=dtype)
         result.setflags(write=False)
         return result
+
+    def lineage_chunk(self, start: int, stop: int) -> Mapping[str, np.ndarray]:
+        """生成顶点仅暴露有界来源副本，不授予父资源访问或释放权限。"""
+        if not self._active:
+            raise RuntimeError("点云借用已结束")
+        if self._lineage is None or self.reference.vertex_kind != "generated":
+            raise InvalidRequestError("源点视图没有生成顶点来源")
+        if (
+            type(start) is not int
+            or type(stop) is not int
+            or not 0 <= start <= stop <= self.reference.point_count
+        ):
+            raise InvalidRequestError("生成顶点来源区间无效")
+        if (
+            stop - start > self._policy.chunk_rows
+            or (stop - start) * 96 > self._policy.max_working_bytes
+        ):
+            raise InvalidRequestError("生成顶点来源访问超过工作预算")
+        if self._origin_selectors:
+            selected = self._origin_selectors[0][start:stop, 0]
+            for selector in self._origin_selectors[1:]:
+                selected = selector[selected, 0]
+        else:
+            selected = np.arange(start, stop, dtype=np.uint64)
+        return lineage_chunk(
+            self._lineage, selected, max_working_bytes=self._policy.max_working_bytes
+        )
 
 
 class CloudRuntime:
@@ -182,7 +221,7 @@ class CloudRuntime:
                 raise InvalidRequestError("同一原始 owner 已登记，不允许改写来源")
             self._validate_arrays(owner, point_count, fields, cancel)
             reference = CloudReference(
-                format_id="amvision.point-cloud-ref.v1",
+                format_id="amvision.point-cloud-ref.v2",
                 state="ready",
                 reason=None,
                 run_id=self.run_id,
@@ -198,6 +237,8 @@ class CloudRuntime:
                     method=None, parents=(), source_retained=False
                 ),
                 sample_origin="measured",
+                vertex_kind="source",
+                topology=None,
             )
             self._publish(
                 reference,
@@ -244,7 +285,9 @@ class CloudRuntime:
                 else CloudReference.model_validate_json(record.reference).point_count
             )
 
-    def register_asset(self, *, owner, document, indices, cancel) -> CloudReference:
+    def register_asset(
+        self, *, owner, document, indices, cancel, lineage=None
+    ) -> CloudReference:
         """已验证资产恢复新的运行身份，历史行号与数组所有权仍归当前 Scope。"""
         from backend.contracts.workflows.point_cloud_assets import ArrayCloudAsset
 
@@ -258,15 +301,36 @@ class CloudRuntime:
                 for f in cloud.fields
             )
             self._validate_arrays(owner, cloud.point_count, fields, cancel)
+            if cloud.vertex_kind == "generated":
+                self._validate_generated_positions(owner, cancel)
             if id(owner) in self._owners:
                 raise InvalidRequestError("同一资产 owner 已登记")
             if indices is not None and not self.storage_scope.owns(indices):
                 raise InvalidRequestError("点云资产索引未归属当前运行")
             origin = (
-                "mixed" if "sample_origin" in {f.name for f in fields} else "measured"
+                "interpolated"
+                if cloud.vertex_kind == "generated"
+                else "mixed"
+                if "sample_origin" in {f.name for f in fields}
+                else "measured"
             )
+            if (lineage is not None) != (
+                isinstance(cloud, ArrayCloudAsset) and cloud.lineage is not None
+            ):
+                raise InvalidRequestError("生成来源与资产说明不一致")
+            if lineage is not None:
+                if not self.storage_scope.owns(lineage):
+                    raise InvalidRequestError("生成来源未归属当前运行")
+                with lineage.borrow() as arrays:
+                    validate_lineage(
+                        arrays,
+                        point_count=cloud.point_count,
+                        source_point_count=cloud.lineage.source_point_count,
+                        policy=self.policy,
+                        cancel=cancel,
+                    )
             reference = CloudReference(
-                format_id="amvision.point-cloud-ref.v1",
+                format_id="amvision.point-cloud-ref.v2",
                 state="ready",
                 reason=None,
                 run_id=self.run_id,
@@ -282,6 +346,8 @@ class CloudRuntime:
                     method=None, parents=(), source_retained=True
                 ),
                 sample_origin=origin,
+                vertex_kind=cloud.vertex_kind,
+                topology=cloud.topology,
             )
             if (indices is not None) != (
                 isinstance(cloud, ArrayCloudAsset) and cloud.indices is not None
@@ -294,11 +360,15 @@ class CloudRuntime:
                     owner,
                     indices=indices,
                     source_point_count=(
-                        cloud.indices.source_point_count
+                        cloud.lineage.source_point_count
+                        if isinstance(cloud, ArrayCloudAsset)
+                        and cloud.lineage is not None
+                        else cloud.indices.source_point_count
                         if isinstance(cloud, ArrayCloudAsset)
                         and cloud.indices is not None
                         else cloud.point_count
                     ),
+                    lineage=lineage,
                 ),
             )
             self._owners[id(owner)] = reference.cloud_id
@@ -401,6 +471,40 @@ class CloudRuntime:
         cancel: Callable[[], None],
     ) -> CloudReference:
         """稳定序号子集只持有索引和父 owner，不复制所有点属性。"""
+        return self._register_view(
+            parent=parent,
+            method=method,
+            indices=indices,
+            cancel=cancel,
+            topology=None,
+            ordered=False,
+        )
+
+    def register_ordered(
+        self,
+        *,
+        parent: CloudReference,
+        method: BoundaryCloudMethod | BoundarySelectionMethod,
+        indices: OwnedCloudArrays,
+        topology: BoundaryTopology,
+        cancel: Callable[[], None],
+    ) -> CloudReference:
+        """边界有序源点保留全部属性，索引顺序由已验证的连接定义。"""
+        if not isinstance(method, (BoundaryCloudMethod, BoundarySelectionMethod)) or (
+            isinstance(method, BoundaryCloudMethod) and parent.vertex_kind != "source"
+        ):
+            raise InvalidRequestError("有序源点必须来自原始点视图及边界方法")
+        return self._register_view(
+            parent=parent,
+            method=method,
+            indices=indices,
+            cancel=cancel,
+            topology=topology,
+            ordered=True,
+        )
+
+    def _register_view(self, *, parent, method, indices, cancel, topology, ordered):
+        """两种视图共用所有权和范围校验；普通裁剪明确清除连接信息。"""
         with self._lock:
             parent_record = self._resolve(parent)
             if not self.storage_scope.owns(indices):
@@ -424,15 +528,23 @@ class CloudRuntime:
                 for start in range(0, len(values), rows):
                     cancel()
                     block = values[start : start + rows, 0]
-                    if len(block) and (
-                        int(block[0]) <= previous
-                        or int(block[-1]) >= parent.point_count
-                        or np.any(block[1:] <= block[:-1])
+                    if ordered and np.any(block >= parent.point_count):
+                        raise InvalidRequestError("有序点云索引越界")
+                    if (
+                        not ordered
+                        and len(block)
+                        and (
+                            int(block[0]) <= previous
+                            or int(block[-1]) >= parent.point_count
+                            or np.any(block[1:] <= block[:-1])
+                        )
                     ):
                         raise InvalidRequestError("点云子集索引必须在源范围内严格递增")
                     if len(block):
                         previous = int(block[-1])
                 count = len(values)
+                if ordered and (topology is None or topology.point_count != count):
+                    raise InvalidRequestError("有序点云连接与数量不一致")
             reference = self._derived_reference(
                 parent,
                 method,
@@ -440,6 +552,7 @@ class CloudRuntime:
                 fields=parent.fields,
                 spatial=parent.spatial,
                 source_metadata=None,
+                topology=topology,
             )
             self._publish(
                 reference,
@@ -448,6 +561,58 @@ class CloudRuntime:
                     None,
                     parent_record,
                     indices,
+                ),
+            )
+            return reference
+
+    def register_generated(
+        self,
+        *,
+        parent: CloudReference,
+        method: BoundaryCloudMethod,
+        owner: OwnedCloudArrays,
+        lineage: OwnedCloudArrays,
+        point_count: int,
+        fields: tuple[CloudField, ...],
+        topology: BoundaryTopology,
+        cancel: Callable[[], None],
+    ) -> CloudReference:
+        """生成位置及原始行号来源共用 Scope，不把生成序号伪装成源行号。"""
+        with self._lock:
+            parent_record = self._resolve(parent)
+            if parent.vertex_kind != "source" or not isinstance(
+                method, BoundaryCloudMethod
+            ):
+                raise InvalidRequestError("边界生成只能使用有原始行号的支持点")
+            if not self.storage_scope.owns(lineage) or lineage is owner:
+                raise InvalidRequestError("生成来源必须独立归属当前运行")
+            self._validate_arrays(owner, point_count, fields, cancel)
+            with lineage.borrow() as arrays:
+                validate_lineage(
+                    arrays,
+                    point_count=point_count,
+                    source_point_count=self.source_point_count(parent),
+                    policy=self.policy,
+                    cancel=cancel,
+                )
+            self._validate_generated_positions(owner, cancel)
+            reference = self._derived_reference(
+                parent,
+                method,
+                point_count=point_count,
+                fields=fields,
+                source_metadata=None,
+                vertex_kind="generated",
+                sample_origin="interpolated",
+                topology=topology,
+            )
+            self._publish(
+                reference,
+                _CloudRecord(
+                    canonical_cloud_json(reference.model_dump(mode="json")),
+                    owner,
+                    parent_record,
+                    lineage=lineage,
                 ),
             )
             return reference
@@ -464,8 +629,12 @@ class CloudRuntime:
                 selectors = []
                 origin_selectors = []
                 index_arrays = {}
+                lineage = None
                 ancestor = record
                 while ancestor is not None:
+                    if ancestor.lineage is not None:
+                        lineage = stack.enter_context(ancestor.lineage.borrow())
+                        break
                     if ancestor.indices is not None:
                         index = stack.enter_context(ancestor.indices.borrow())[
                             "indices"
@@ -483,6 +652,7 @@ class CloudRuntime:
                     arrays=arrays,
                     selectors=tuple(selectors),
                     origin_selectors=tuple(origin_selectors),
+                    lineage=lineage,
                     policy=self.policy,
                 )
                 yield view
@@ -492,6 +662,7 @@ class CloudRuntime:
                 view._arrays = {}
                 view._selectors = ()
                 view._origin_selectors = ()
+                view._lineage = None
             with self._lock:
                 self._borrows -= 1
 
@@ -564,6 +735,18 @@ class CloudRuntime:
                         "点云存储形状、精度或只读状态不一致",
                         details={"field": field.name},
                     )
+
+    def _validate_generated_positions(self, owner, cancel):
+        """生成点不是传感器缺测占位，发布前拒绝非有限坐标。"""
+        rows = min(self.policy.chunk_rows, self.policy.max_working_bytes // 3)
+        if rows < 1:
+            raise InvalidRequestError("生成坐标校验预算不足")
+        with owner.borrow() as arrays:
+            values = arrays["positions"]
+            for start in range(0, len(values), rows):
+                cancel()
+                if not np.isfinite(values[start : start + rows]).all():
+                    raise InvalidRequestError("生成顶点坐标必须有限")
 
     def _derived_reference(self, parent, method, **changes):
         """父身份固定且不形成环，内容变化使用新的 cloud_id。"""

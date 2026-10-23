@@ -29,6 +29,11 @@ from backend.contracts.workflows.geometry3d import (
     FitPlaneParameters,
 )
 from backend.contracts.workflows.geometry3d_methods import TransformCloudParameters
+from backend.contracts.workflows.boundary3d import (
+    BoundaryTopology,
+    ExtractBoundaryParameters,
+    BoundarySelection,
+)
 
 
 class NormalizeCloudUnits(Contract):
@@ -171,12 +176,33 @@ class TransformCloudMethod(Contract):
     parameters_sha256: Sha256
 
 
+class BoundaryCloudMethod(Contract):
+    """边界参数和实际来源布局摘要共同绑定派生内容。"""
+
+    method_id: Literal["extract-boundary"]
+    method_version: Annotated[int, Field(strict=True, ge=1, le=1)]
+    parameters: ExtractBoundaryParameters
+    parameters_sha256: Sha256
+    vertices_sha256: Sha256
+
+
+class BoundarySelectionMethod(Contract):
+    """按明确段 ID 选择连接，保留实测或生成顶点来源。"""
+
+    method_id: Literal["select-boundary"]
+    method_version: Annotated[int, Field(strict=True, ge=1, le=1)]
+    parameters: BoundarySelection
+    parameters_sha256: Sha256
+
+
 CloudMethod = Annotated[
     NormalizeCloudMethod
     | FilterCloudMethod
     | CropCloudMethod
     | PlaneSupportMethod
-    | TransformCloudMethod,
+    | TransformCloudMethod
+    | BoundaryCloudMethod
+    | BoundarySelectionMethod,
     Field(discriminator="method_id"),
 ]
 
@@ -263,7 +289,7 @@ class CloudProvenance(Contract):
 class CloudReference(Contract):
     """公开结构只描述运行身份；访问权仍须通过当前 registry 完整核对。"""
 
-    format_id: Literal["amvision.point-cloud-ref.v1"]
+    format_id: Literal["amvision.point-cloud-ref.v2"]
     state: Literal["ready", "unavailable"]
     reason: Identifier | None
     run_id: Identifier
@@ -277,6 +303,8 @@ class CloudReference(Contract):
     source_metadata: PcdSourceMetadata | None
     provenance: CloudProvenance
     sample_origin: Literal["measured", "interpolated", "extrapolated", "mixed"] | None
+    vertex_kind: Literal["source", "generated"] | None
+    topology: BoundaryTopology | None
 
     @model_validator(mode="after")
     def check_state(self) -> Self:
@@ -287,10 +315,12 @@ class CloudReference(Contract):
             self.point_count,
             self.fields,
             self.sample_origin,
+            self.vertex_kind,
         )
         if self.state == "unavailable":
             if self.reason is None or any(
-                value is not None for value in (*identity, self.source_metadata)
+                value is not None
+                for value in (*identity, self.source_metadata, self.topology)
             ):
                 raise ValueError("unavailable 不能携带点云资源")
         else:
@@ -302,6 +332,15 @@ class CloudReference(Contract):
                 raise ValueError("点云必须包含 positions")
             if self.sample_origin == "mixed" and "sample_origin" not in names:
                 raise ValueError("mixed 必须有逐点来源")
+            if self.vertex_kind == "generated" and (
+                names != ["positions"] or self.sample_origin != "interpolated"
+            ):
+                raise ValueError("生成顶点只保存坐标，不自动插值原始属性")
+            if (
+                self.topology is not None
+                and self.topology.point_count != self.point_count
+            ):
+                raise ValueError("边界连接与点云数量不一致")
             if (
                 self.source_metadata is not None
                 and self.source_metadata.width * self.source_metadata.height

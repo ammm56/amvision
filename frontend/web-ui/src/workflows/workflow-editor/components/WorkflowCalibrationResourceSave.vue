@@ -27,7 +27,7 @@ import { useProjectStore } from '@/app/stores/project.store'
 import { parameterPreviewStateKey } from '../parameters/editor-context'
 import { currentCalibration } from '../parameters/calibration-preview'
 import type { PreviewNodeDisplay } from '../preview/useWorkflowPreviewDisplays'
-import { listMeasurementResources, saveMeasurementResource, type MeasurementResourceDocument } from '../services/measurement-resource.service'
+import { listMeasurementResources, saveMeasurementResource, isCurrentMeasurementResource, type MeasurementResourceDocument } from '../services/measurement-resource.service'
 const props=defineProps<{parameters:Record<string,unknown>;display?:PreviewNodeDisplay|null}>()
 const state=inject(parameterPreviewStateKey,undefined), project=useProjectStore(), {locale}=useI18n()
 const {t}=useI18n({useScope:'local',messages:calibrationSummaryMessages,fallbackLocale:'en-US'})
@@ -41,7 +41,7 @@ async function show(){
   if(!result.value)return
   close();open.value=true;name.value=String(result.value.plane_id);saved.value='';error.value='';resourceId.value='';resources.value=[]
   const token=generation;controller=new AbortController()
-  try{const items=await listMeasurementResources(project.selectedProjectId,controller.signal);if(token===generation)resources.value=[...new Map(items.filter(r=>r.reference.kind==='planar-calibration').map(r=>[r.reference.resource_id,r])).values()]}
+  try{const items=await listMeasurementResources(project.selectedProjectId,controller.signal);if(token===generation)resources.value=[...new Map(items.filter(isCurrentMeasurementResource).filter(r=>r.reference.kind==='planar-calibration').map(r=>[r.reference.resource_id,r])).values()]}
   catch(e){if(token===generation)error.value=String(e)}
 }
 async function save(){

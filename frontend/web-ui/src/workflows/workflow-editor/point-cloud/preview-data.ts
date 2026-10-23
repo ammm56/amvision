@@ -65,7 +65,7 @@ function decimal(value: unknown): Decimal {
 
 export interface CloudDisplayData {
   positions: Float32Array; colors: Float32Array; count: number; origin: number[]
-  point(index: number): { sourceIndex: string; xyz: number[]; scalar: string | null }
+  point(index: number): { sourceIndex: string | null; vertexIndex?: string; xyz: number[]; scalar: string | null }
   dispose(): void
 }
 
@@ -73,9 +73,11 @@ export interface CloudDisplayData {
 export async function decodeCloudPreview(value: unknown, policy: CloudRendererPolicy, signal: AbortSignal): Promise<CloudDisplayData> {
   validatePolicy(policy)
   const body = object(value), data = object(body.data), color = object(body.color)
-  if (body.type !== 'point-cloud-preview' || body.format_id !== 'amvision.point-cloud-preview.v1' || body.state !== 'ready') throw new Error('cloud_preview_invalid')
-  const n = count(body.display_point_count), originalCount = count(body.source_point_count), size = count(data.content_length)
-  if (!n || n > originalCount || n > policy.max_points || size > policy.max_data_bytes) throw new Error('cloud_preview_capacity')
+  if (body.type !== 'point-cloud-preview' || body.format_id !== 'amvision.point-cloud-preview.v2' || body.state !== 'ready') throw new Error('cloud_preview_invalid')
+  const n = count(body.display_point_count), originalCount = count(body.source_point_count), pointCount = count(body.point_count), size = count(data.content_length)
+  if (!['source', 'generated'].includes(String(body.vertex_kind))) throw new Error('cloud_preview_invalid')
+  const generated = body.vertex_kind === 'generated'
+  if (!n || n > pointCount || n > policy.max_points || size > policy.max_data_bytes) throw new Error('cloud_preview_capacity')
   const content = data.content
   if (typeof content !== 'string' || content.length !== 4 * Math.ceil(size / 3) || data.encoding !== 'base64' || data.checksum_algorithm !== 'sha256') throw new Error('cloud_preview_invalid')
   const cost = size * 3 + content.length * 2 + n * 24
@@ -91,7 +93,8 @@ export async function decodeCloudPreview(value: unknown, policy: CloudRendererPo
     const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', raw)), b => b.toString(16).padStart(2, '0')).join('')
     signal.throwIfAborted()
     if (hash !== data.checksum) throw new Error('cloud_preview_checksum')
-    const expected = color.mode === 'solid' ? ['positions', 'source_indices'] : color.mode === 'rgb' ? ['positions', 'source_indices', 'colors'] : color.mode === 'scalar' ? ['positions', 'source_indices', 'scalar'] : []
+    const indexField = generated ? 'vertex_indices' : 'source_indices'
+    const expected = color.mode === 'solid' ? ['positions', indexField] : color.mode === 'rgb' ? ['positions', indexField, 'colors'] : color.mode === 'scalar' ? ['positions', indexField, 'scalar'] : []
     if (!Array.isArray(data.fields) || !expected.length || data.fields.length !== expected.length) throw new Error('cloud_preview_invalid')
     let end = 0
     const fields = data.fields.map((item, index): Field => {
@@ -117,7 +120,7 @@ export async function decodeCloudPreview(value: unknown, policy: CloudRendererPo
     for (let i = 0; i < n; i++) {
       if (i % 4096 === 0) { await new Promise(resolve => setTimeout(resolve, 0)); signal.throwIfAborted() }
       const sourceIndex = scalar(view, fields[1]!, i) as bigint
-      if (sourceIndex <= previous || sourceIndex >= BigInt(originalCount)) throw new Error('cloud_preview_invalid')
+      if (sourceIndex >= BigInt(generated ? pointCount : originalCount) || generated && sourceIndex <= previous) throw new Error('cloud_preview_invalid')
       previous = sourceIndex
       for (let c = 0; c < 3; c++) {
         const position = scalar(view, fields[0]!, i * 3 + c) as number
@@ -138,7 +141,8 @@ export async function decodeCloudPreview(value: unknown, policy: CloudRendererPo
     if (actualLow.some((v, i) => v !== low[i] || actualHigh[i] !== high[i]) || color.mode === 'scalar' && (count(color.invalid_count) !== invalid || (range === null) !== (invalid === n))) throw new Error('cloud_preview_invalid')
     return { positions, colors, count: n, origin, point(index) {
       if (released || !Number.isInteger(index) || index < 0 || index >= n) throw new Error('cloud_point_unavailable')
-      return { sourceIndex: scalar(view, fields[1]!, index).toString(), xyz: [0, 1, 2].map(c => scalar(view, fields[0]!, index * 3 + c) as number), scalar: color.mode === 'scalar' ? scalar(view, fields[2]!, index).toString() : null }
+      const identity = scalar(view, fields[1]!, index).toString()
+      return { sourceIndex: generated ? null : identity, ...(generated ? { vertexIndex: identity } : {}), xyz: [0, 1, 2].map(c => scalar(view, fields[0]!, index * 3 + c) as number), scalar: color.mode === 'scalar' ? scalar(view, fields[2]!, index).toString() : null }
     }, dispose: release }
   } catch (error) { release(); throw error }
 }

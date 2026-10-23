@@ -3,9 +3,11 @@ import {TransformControls} from 'three/addons/controls/TransformControls.js'
 import {object,reserveCpu,reserveGpu} from './preview-data'
 import type {CloudRendererPolicy} from '../services/measurement-resource.service'
 import {measurementItems} from './measurement-display'
+import {curveItems,curveStrokes} from './boundary-display'
+import type {Raycaster} from 'three'
 
 export type RoiValue=Record<string,unknown>
-export interface GeometryOverlayInput { payload:Record<string,unknown>; rois?:RoiValue[]; selectedId?:string; mode?:'translate'|'rotate'; changed?:(roi:RoiValue)=>void;selectedMeasurement?:string;selectedPlane?:string;candidate?:number[] }
+export interface GeometryOverlayInput { payload:Record<string,unknown>; rois?:RoiValue[]; selectedId?:string; mode?:'translate'|'rotate'; changed?:(roi:RoiValue)=>void;selectedMeasurement?:string;selectedPlane?:string;candidate?:number[];selectedCurve?:string;selectedSegment?:string;curveSelected?:(featureId:string,segmentId:string)=>void }
 const vec=(v:unknown)=>{if(!Array.isArray(v)||v.length!==3||v.some(n=>typeof n!=='number'||!Number.isFinite(n)))throw new Error('cloud_preview_invalid');return new Vector3(v[0],v[1],v[2])}
 function matrix(v:unknown,size:number){if(!Array.isArray(v)||v.length!==size||v.some(r=>!Array.isArray(r)||r.length!==size||r.some(n=>typeof n!=='number'||!Number.isFinite(n))))throw new Error('cloud_preview_invalid');return v as number[][]}
 const positive=(n:unknown)=>{if(typeof n!=='number'||!Number.isFinite(n)||n<=0)throw new Error('cloud_preview_invalid');return n}
@@ -38,7 +40,7 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
   function buildEvidence(payload:Record<string,unknown>){
     if(!payload.geometry)return
     const g=object(payload.geometry),spatial=object(payload.spatial)
-    if(g.format_id!=='amvision.geometry-preview.v1'||g.observation_id!==payload.observation_id||g.frame_id!==spatial.frame_id||g.length_unit!==spatial.length_unit||!Array.isArray(g.planes)||g.planes.length>8192)throw new Error('cloud_preview_invalid')
+    if(g.format_id!=='amvision.geometry-preview.v2'||g.observation_id!==payload.observation_id||g.frame_id!==spatial.frame_id||g.length_unit!==spatial.length_unit||!Array.isArray(g.planes)||g.planes.length>8192)throw new Error('cloud_preview_invalid')
     for(const raw of g.planes){const p=object(raw);if(!p.valid)continue;const plane=object(p.geometry),bounds=object(p.support_bounds),low=vec(bounds.min),high=vec(bounds.max),n=vec(plane.normal),offset=plane.offset;if(typeof offset!=='number'||!Number.isFinite(offset))throw new Error('cloud_preview_invalid')
       const center=low.clone().add(high).multiplyScalar(.5);center.addScaledVector(n,-n.dot(center)-offset)
       const q=new Quaternion().setFromUnitVectors(new Vector3(0,0,1),n),inv=q.clone().invert();let x=0,y=0
@@ -52,7 +54,14 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
     const local=points.map(p=>p.clone().sub(physicalOrigin)),geometry=new BufferGeometry().setFromPoints(local)
     const position=geometry.getAttribute('position')
     for(let i=0;i<local.length;i++)for(let axis=0;axis<3;axis++)if(!Number.isFinite(position.getComponent(i,axis))||Math.abs(position.getComponent(i,axis)-local[i]!.getComponent(axis))>policy.max_position_error){geometry.dispose();throw new Error('cloud_position_precision')}
-    const line=new LineSegments(geometry,new LineBasicMaterial({color,depthTest:false}));root.add(line);account(line)
+    const line=new LineSegments(geometry,new LineBasicMaterial({color,depthTest:false}));root.add(line);account(line);return line
+  }
+  function buildCurves(next:GeometryOverlayInput){
+    for(const stroke of curveStrokes(curveItems(next.payload),policy)){
+      const selected=stroke.featureId===next.selectedCurve&&(!next.selectedSegment||stroke.segmentId===next.selectedSegment)
+      const line=lines(stroke.points.map(vec),selected?0xd18c00:stroke.fitted?0xc8558a:0x208c77)
+      line.userData.curve={featureId:stroke.featureId,segmentId:stroke.segmentId}
+    }
   }
   function buildMeasurements(next:GeometryOverlayInput){
     for(const item of measurementItems(next.payload)){
@@ -76,7 +85,7 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
     if(gizmo?.dragging)return
     clear()
     try {
-      scene.add(root);buildEvidence(next.payload);buildMeasurements(next)
+      scene.add(root);buildEvidence(next.payload);buildMeasurements(next);buildCurves(next)
       const spatial=object(next.payload.spatial),attached=next.payload.geometry?object(next.payload.geometry).rois:[],rois=next.rois??(Array.isArray(attached)?attached.map(object):[])
       if(rois.length>8192)throw new Error('cloud_preview_invalid')
       for(const roi of rois){if(roi.frame_id!==spatial.frame_id||roi.length_unit!==spatial.length_unit)throw new Error('cloud_geometry_space');buildRoi(roi,rois)}
@@ -99,5 +108,5 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
       schedule()
     }catch(error){clear();throw error}
   }
-  return {update,camera(value:Camera){camera=value;if(gizmo)gizmo.camera=value},dragging:()=>!!gizmo?.dragging,dispose(){if(!closed){closed=true;clear()}}}
+  return {update,pick(ray:Raycaster){if(closed||!input?.curveSelected)return false;const hit=ray.intersectObject(root,true).find(h=>h.object.userData.curve);if(!hit)return false;const c=hit.object.userData.curve;input.curveSelected(c.featureId,c.segmentId);return true},camera(value:Camera){camera=value;if(gizmo)gizmo.camera=value},dragging:()=>!!gizmo?.dragging,dispose(){if(!closed){closed=true;clear()}}}
 }

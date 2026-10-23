@@ -24,15 +24,17 @@ from backend.contracts.workflows.point_cloud import (
 from backend.contracts.workflows.point_cloud_runtime import (
     CloudMethod,
 )
+from backend.contracts.workflows.boundary3d import BoundaryTopology
 from backend.contracts.workflows.point_cloud import canonical_cloud_json
 from hashlib import sha256
+from backend.contracts.workflows.boundary3d_observations import BoundaryEvidence
 
 
 class CloudBlob(Contract):
-    """仅允许格式规定的三个成员，实际对象键由服务生成。"""
+    """仅允许格式规定的成员，实际对象键由服务生成。"""
 
-    role: Literal["original", "data", "indices"]
-    name: Literal["original.bin", "data.bin", "source-indices.bin"]
+    role: Literal["original", "data", "indices", "lineage"]
+    name: Literal["original.bin", "data.bin", "source-indices.bin", "lineage.bin"]
     content_length: JsonCount
     sha256: Sha256
 
@@ -45,6 +47,7 @@ class CloudBlob(Contract):
                 "original": "original.bin",
                 "data": "data.bin",
                 "indices": "source-indices.bin",
+                "lineage": "lineage.bin",
             }[self.role]
         ):
             raise ValueError("点云数据块角色与名称不一致")
@@ -148,10 +151,22 @@ class AssetIndices(Contract):
     source: AssetSource
 
 
+class AssetGeneratedLineage(Contract):
+    """固定布局：u64 源边、f64 权重、u64 CSR 偏移及 u64 源面。"""
+
+    source_point_count: JsonCount
+    face_count: JsonCount
+    source: AssetSource
+
+    def byte_length(self, point_count: int) -> int:
+        """来源块精确长度；生成位置单独保存在 data 块。"""
+        return point_count * 32 + (point_count + 1) * 8 + self.face_count * 24
+
+
 class CloudAssetBase(Contract):
     """两种存储表达的共同内容，所有字段参与内容摘要。"""
 
-    format_id: Literal["amvision.point-cloud-asset.v1"]
+    format_id: Literal["amvision.point-cloud-asset.v2"]
     kind: Literal["point-cloud"]
     source: AssetSource
     spatial: CloudSpatial
@@ -161,11 +176,29 @@ class CloudAssetBase(Contract):
     parent_assets: tuple[ResourceReference, ...]
     point_count: JsonCount
     source_metadata: PcdSourceMetadata | None
+    vertex_kind: Literal["source", "generated"]
+    topology: BoundaryTopology | None
+    boundary: BoundaryEvidence | None = None
 
     @model_validator(mode="after")
     def check_common(self) -> Self:
         """不允许遗漏属性映射、伪造父保留或组织点数。"""
         unique_ids([b.role for b in self.blobs], "blobs")
+        if self.topology is not None and self.topology.point_count != self.point_count:
+            raise ValueError("资产边界连接与数量不一致")
+        if self.boundary is not None:
+            evaluation = self.boundary.method.parameters.evaluation
+            if (
+                not self.boundary.valid
+                or self.boundary.geometry != self.topology
+                or (evaluation.frame_id, evaluation.length_unit)
+                != (self.spatial.frame_id, self.spatial.length_unit)
+            ):
+                raise ValueError("资产边界证据与保存点云不一致")
+        if self.vertex_kind == "generated" and [f.name for f in self.fields] != [
+            "positions"
+        ]:
+            raise ValueError("生成顶点不得伪造原始属性")
         unique_ids([m.name for m in self.source_field_names], "source_field_names")
         unique_ids(
             [s for m in self.source_field_names for s in m.source_names], "source_names"
@@ -220,6 +253,8 @@ class OriginalCloudAsset(CloudAssetBase):
             len(self.blobs) != 1
             or self.blobs[0].role != "original"
             or not isinstance(self.source, AssetFileSource)
+            or self.vertex_kind != "source"
+            or self.topology is not None
         ):
             raise ValueError("原文件资产需要唯一 original 数据块及文件来源")
         blob = self.blobs[0]
@@ -283,6 +318,7 @@ class ArrayCloudAsset(CloudAssetBase):
     fields: Annotated[tuple[CloudAssetField, ...], Field(min_length=1)]
     content_length: JsonCount
     indices: AssetIndices | None
+    lineage: AssetGeneratedLineage | None
 
     @model_validator(mode="after")
     def check_layout(self) -> Self:
@@ -317,6 +353,17 @@ class ArrayCloudAsset(CloudAssetBase):
             != self.point_count * FIELD_WIDTHS[self.indices.dtype]
         ):
             raise ValueError("资产索引长度不一致")
+        if (self.lineage is None) != ("lineage" not in blobs):
+            raise ValueError("生成来源说明与数据块不一致")
+        if self.vertex_kind == "generated":
+            if self.lineage is None or self.indices is not None:
+                raise ValueError("生成顶点必须保存来源而不是原始行号")
+        elif self.lineage is not None:
+            raise ValueError("源点资产不能携带生成来源")
+        if self.lineage is not None and blobs[
+            "lineage"
+        ].content_length != self.lineage.byte_length(self.point_count):
+            raise ValueError("生成来源数据长度不一致")
         return self
 
 

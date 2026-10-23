@@ -3,6 +3,7 @@
 from custom_nodes._metrology3d_nodes.backend import handlers
 from custom_nodes._metrology3d_nodes.backend import geometry_handlers
 from custom_nodes._metrology3d_nodes.backend import measurement_handlers
+from custom_nodes._metrology3d_nodes.backend import boundary_handlers
 
 HANDLERS = {
     "read-cloud": handlers.read,
@@ -17,6 +18,9 @@ HANDLERS = {
     "transform-cloud": geometry_handlers.transform,
     "height-query": measurement_handlers.height,
     "measure-step": measurement_handlers.step,
+    "extract-boundary": boundary_handlers.extract,
+    "fit-line": boundary_handlers.line,
+    "fit-circle": boundary_handlers.circle,
 }
 
 

@@ -15,7 +15,7 @@
         <p v-if="busy" role="status">{{ t('loading') }}</p>
         <div class="cloud-resource-list">
           <table><thead><tr><th>{{ t('name') }}</th><th>{{ t('version') }}</th><th>{{ t('points') }}</th><th>{{ t('unit') }}</th></tr></thead>
-            <tbody><tr v-for="item in documents" :key="key(item.reference)" :class="{selected: selected === key(item.reference)}"><td><label><input v-model="selected" type="radio" name="cloud-resource" :value="key(item.reference)" :disabled="busy">{{ item.name }}</label></td><td>{{ item.reference.version }}</td><td>{{ item.content.point_cloud?.point_count }}</td><td>{{ item.content.point_cloud?.spatial.length_unit || t('unknown') }}</td></tr></tbody>
+            <tbody><tr v-for="item in documents" :key="key(item.reference)" :class="{selected: selected === key(item.reference)}"><td><label><input v-model="selected" type="radio" name="cloud-resource" :value="key(item.reference)" :disabled="busy || !isCurrentMeasurementResource(item)">{{ item.name }}</label><span v-if="!isCurrentMeasurementResource(item)">{{ t('rebuild') }} · {{ item.stored_format_id }}</span></td><td>{{ item.reference.version }}</td><td>{{ item.content?.point_cloud?.point_count ?? '-' }}</td><td>{{ item.content?.point_cloud?.spatial.length_unit || t('unknown') }}</td></tr></tbody>
           </table>
           <p v-if="!busy && !documents.length">{{ t('empty') }}</p>
         </div>
@@ -38,18 +38,18 @@ import { useI18n } from 'vue-i18n'
 import { useProjectStore } from '@/app/stores/project.store'
 import { apiRequest } from '@/shared/api/http-client'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
-import { deleteMeasurementResource, importCloudResource, listMeasurementResources, readCloudCapabilities, resourceVersionPath, type MeasurementResourceDocument, type MeasurementResourceReference } from '../services/measurement-resource.service'
+import { deleteMeasurementResource, importCloudResource, listMeasurementResources, readCloudCapabilities, resourceVersionPath, isCurrentMeasurementResource, type MeasurementResourceListItem, type MeasurementResourceReference } from '../services/measurement-resource.service'
 const props = defineProps<{ modelValue?: MeasurementResourceReference; disabled?: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [value: MeasurementResourceReference]; cancel: [] }>()
 const project = useProjectStore()
 const { t } = useI18n({ useScope: 'local', messages: {
-  'zh-CN': { resources: '点云资源', cancel: '取消', apply: '应用', refresh: '刷新', name: '名称', import: '导入资源包', export: '导出资源包', delete: '删除版本', version: '版本', points: '点数', unit: '单位', fields: '字段', unknown: '单位未确认', loading: '处理中', empty: '暂无点云资源', select: '选择点云资源', unconfigured: '点云资产包预算尚未配置', tooLarge: '资源包超过配置限额', unavailable: '资源不可用' },
-  'en-US': { resources: 'Cloud resources', cancel: 'Cancel', apply: 'Apply', refresh: 'Refresh', name: 'Name', import: 'Import package', export: 'Export package', delete: 'Delete version', version: 'Version', points: 'Points', unit: 'Unit', fields: 'Fields', unknown: 'Unit unconfirmed', loading: 'Working', empty: 'No cloud resources', select: 'Select cloud resource', unconfigured: 'Cloud archive budget is not configured', tooLarge: 'Package exceeds configured limit', unavailable: 'Resource unavailable' },
+  'zh-CN': { rebuild: '旧格式，需重新保存或导入', resources: '点云资源', cancel: '取消', apply: '应用', refresh: '刷新', name: '名称', import: '导入资源包', export: '导出资源包', delete: '删除版本', version: '版本', points: '点数', unit: '单位', fields: '字段', unknown: '单位未确认', loading: '处理中', empty: '暂无点云资源', select: '选择点云资源', unconfigured: '点云资产包预算尚未配置', tooLarge: '资源包超过配置限额', unavailable: '资源不可用' },
+  'en-US': { rebuild: 'Old format: save or import again', resources: 'Cloud resources', cancel: 'Cancel', apply: 'Apply', refresh: 'Refresh', name: 'Name', import: 'Import package', export: 'Export package', delete: 'Delete version', version: 'Version', points: 'Points', unit: 'Unit', fields: 'Fields', unknown: 'Unit unconfirmed', loading: 'Working', empty: 'No cloud resources', select: 'Select cloud resource', unconfigured: 'Cloud archive budget is not configured', tooLarge: 'Package exceeds configured limit', unavailable: 'Resource unavailable' },
 } })
 const open = ref(false), busy = ref(false), confirmDelete = ref(false), error = ref(''), name = ref(''), selected = ref('')
-const documents = ref<MeasurementResourceDocument[]>([]), archiveLimit = ref<number | null>(null)
+const documents = ref<MeasurementResourceListItem[]>([]), archiveLimit = ref<number | null>(null)
 const key = (r: MeasurementResourceReference) => `${r.project_id}:${r.resource_id}:${r.version}:${r.sha256}`
-const selectedDocument = computed(() => documents.value.find(d => key(d.reference) === selected.value))
+const selectedDocument = computed(() => documents.value.filter(isCurrentMeasurementResource).find(d => key(d.reference) === selected.value))
 const currentLabel = computed(() => props.modelValue ? `${props.modelValue.resource_id} · v${props.modelValue.version}` : t('select'))
 let generation = 0, controller: AbortController | null = null, downloadUrl: string | null = null
 function cancelOperation() { generation++; controller?.abort(); controller = null; busy.value = false }

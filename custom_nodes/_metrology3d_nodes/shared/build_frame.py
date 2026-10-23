@@ -47,6 +47,8 @@ def build_frame(runtime, groups, parameters, *, cancel):
         raise InvalidRequestError("配置的基准特征 ID 不存在")
     selected = [features[key] for key in selected_ids]
     for feature in selected:
+        if feature.kind != "plane":
+            raise InvalidRequestError("建立基准所选特征必须是平面")
         require_quality_result(feature.quality, feature.method.quality_policy)
         if feature.support.spatial.axes.handedness != "right":
             raise InvalidRequestError("建立右手基准需要明确的右手源坐标，不能隐含镜像")

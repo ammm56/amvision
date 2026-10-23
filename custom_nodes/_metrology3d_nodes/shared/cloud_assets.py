@@ -33,6 +33,12 @@ from backend.service.application.workflows.documents.cloud_resource_blobs import
 )
 from backend.service.application.workflows.point_cloud.arrays import OwnedCloudArrays
 from custom_nodes._metrology3d_nodes.shared.io.read_file import read_cloud_file
+from custom_nodes._metrology3d_nodes.shared.cloud_lineage_assets import (
+    lineage_chunks,
+    count_lineage_faces,
+)
+from backend.service.application.workflows.point_cloud.lineage import lineage_shapes
+from backend.contracts.workflows.point_cloud_assets import AssetGeneratedLineage
 
 
 class _Chunks:
@@ -77,6 +83,10 @@ def freeze_cloud_parent(runtime, reference):
     root, options = runtime.original_source(reference)
     descriptor = {
         "point_count": reference.point_count,
+        "vertex_kind": reference.vertex_kind,
+        "topology": reference.topology.model_dump(mode="json")
+        if reference.topology
+        else None,
         "fields": [f.model_dump(mode="json") for f in reference.fields],
         "spatial": reference.spatial.model_dump(mode="json"),
         "source_metadata": reference.source_metadata.model_dump(mode="json")
@@ -164,10 +174,14 @@ def save_cloud(
     cancel,
     expected_base=None,
     actor_id=None,
+    features=None,
 ):
     """保存原件或全部派生字段；已提交版本由服务拥有，不归运行 Scope 删除。"""
     if mode not in ("original", "derived"):
         raise InvalidRequestError("点云保存模式无效")
+    from custom_nodes._metrology3d_nodes.shared.boundary_assets import freeze_boundary
+
+    boundary = freeze_boundary(reference, features, mode)
     policy = replace(
         policy,
         chunk_bytes=min(
@@ -204,7 +218,7 @@ def save_cloud(
                 sha256=source.content_sha256,
             )
             cloud = OriginalCloudAsset(
-                format_id="amvision.point-cloud-asset.v1",
+                format_id="amvision.point-cloud-asset.v2",
                 kind="point-cloud",
                 representation="file-original",
                 source=source,
@@ -229,6 +243,8 @@ def save_cloud(
                 profile_id=options.profile_id,
                 profile_version=options.profile_version,
                 fields=root.fields,
+                vertex_kind="source",
+                topology=None,
             )
             content = MeasurementResourceContentV2(
                 kind="point-cloud", point_cloud=cloud
@@ -274,7 +290,25 @@ def save_cloud(
             blobs = [_blob("data", "data.bin", data_factory())]
             streams = {"data.bin": _Chunks(data_factory())}
             indices = None
-            if parent:
+            lineage = None
+            source = (
+                _source(root, options)
+                if root.source.kind != "asset"
+                else {"kind": "derived"}
+            )
+            if selected.vertex_kind == "generated":
+                lineage = AssetGeneratedLineage(
+                    source_point_count=source_count,
+                    face_count=count_lineage_faces(view, rows, cancel),
+                    source=source,
+                )
+
+                def lineage_factory():
+                    return lineage_chunks(view, rows, cancel)
+
+                blobs.append(_blob("lineage", "lineage.bin", lineage_factory()))
+                streams["lineage.bin"] = _Chunks(lineage_factory())
+            elif parent:
 
                 def index_factory():
                     return _index_chunks(view, rows, index_dtype, cancel)
@@ -293,7 +327,7 @@ def save_cloud(
                     "source": source,
                 }
             cloud = ArrayCloudAsset(
-                format_id="amvision.point-cloud-asset.v1",
+                format_id="amvision.point-cloud-asset.v2",
                 kind="point-cloud",
                 representation="array-blocks",
                 source={"kind": "derived"} if parent else _source(root, options),
@@ -310,7 +344,7 @@ def save_cloud(
                     CloudSourceNames(name=m.target_name, source_names=m.source_names)
                     for m in options.field_mapping
                 )
-                if options
+                if options and selected.vertex_kind == "source"
                 else (),
                 parent_assets=retained,
                 point_count=selected.point_count,
@@ -318,10 +352,18 @@ def save_cloud(
                 fields=fields,
                 content_length=length,
                 indices=indices,
+                lineage=lineage,
+                vertex_kind=selected.vertex_kind,
+                topology=selected.topology,
             )
             content = MeasurementResourceContentV2(
                 kind="point-cloud", point_cloud=cloud
             )
+        # 资产原样复制保留已存证据；新增证据必须先通过完整支持身份校验。
+        if boundary is not None:
+            payload = content.model_dump(mode="json")
+            payload["point_cloud"]["boundary"] = boundary.model_dump(mode="json")
+            content = MeasurementResourceContentV2.model_validate(payload)
         return service.save_cloud(
             project_id=project_id,
             name=name,
@@ -418,11 +460,16 @@ def _read_blocks(runtime, document, service, policy, cancel):
     index_bytes = next(
         (b.content_length for b in cloud.blobs if b.role == "indices"), 0
     )
-    if array_bytes + index_bytes > runtime.policy.max_decoded_bytes:
+    lineage_bytes = next(
+        (b.content_length for b in cloud.blobs if b.role == "lineage"), 0
+    )
+    if array_bytes + index_bytes + lineage_bytes > runtime.policy.max_decoded_bytes:
         raise InvalidRequestError("资产数组超过解码预算")
-    reservation = runtime.budget.reserve(array_bytes + index_bytes)
+    reservation = runtime.budget.reserve(array_bytes + index_bytes + lineage_bytes)
     arrays, owners = {}, []
     index_reservation = None
+    lineage_reservation = None
+    lineage_arrays = {}
     try:
         for field in cloud.fields:
             cancel()
@@ -435,6 +482,12 @@ def _read_blocks(runtime, document, service, policy, cancel):
                 (cloud.indices.count, 1),
                 dtype=np.dtype(cloud.indices.dtype).newbyteorder("<"),
             )
+        if cloud.lineage:
+            for name, (shape, dtype) in lineage_shapes(
+                cloud.point_count, cloud.lineage.face_count
+            ).items():
+                cancel()
+                lineage_arrays[name] = np.empty(shape, dtype=dtype)
         for blob in cloud.blobs:
             with service.storage.open_read_snapshot(
                 cloud_blob_key(service, document.reference, blob)
@@ -466,7 +519,7 @@ def _read_blocks(runtime, document, service, policy, cancel):
                                         "资产有效性或来源编码无效"
                                     )
                         cursor = field.offset_bytes + field.byte_length
-                else:
+                elif blob.role == "indices":
                     _fill(checked, arrays["__indices"], policy.chunk_bytes, cancel)
                     for start in range(0, cloud.point_count, runtime.policy.chunk_rows):
                         cancel()
@@ -477,6 +530,11 @@ def _read_blocks(runtime, document, service, policy, cancel):
                             >= cloud.indices.source_point_count
                         ):
                             raise InvalidRequestError("资产源行号越界")
+                elif blob.role == "lineage":
+                    for value in lineage_arrays.values():
+                        _fill(checked, value, policy.chunk_bytes, cancel)
+                else:
+                    raise InvalidRequestError("数组资产含非法数据块")
                 if checked.read(1):
                     raise InvalidRequestError("资产数据块含多余字节")
         # 将一次联合准入拆成两个所有权，拆分期间不释放实际数组计费。
@@ -496,11 +554,25 @@ def _read_blocks(runtime, document, service, policy, cancel):
             runtime.storage_scope.register(
                 ("asset-indices", uuid4().hex), indices, lambda v: v.close()
             )
+        lineage = None
+        if cloud.lineage is not None:
+            lineage_reservation = reservation.split(lineage_bytes)
+            lineage = OwnedCloudArrays(lineage_arrays, lineage_reservation)
+            lineage_arrays.clear()
+            owners.append(lineage)
+            runtime.storage_scope.register(
+                ("asset-lineage", uuid4().hex), lineage, lambda v: v.close()
+            )
         return runtime.register_asset(
-            owner=owner, document=document, indices=indices, cancel=cancel
+            owner=owner,
+            document=document,
+            indices=indices,
+            lineage=lineage,
+            cancel=cancel,
         )
     except BaseException as error:
         arrays.clear()
+        lineage_arrays.clear()
         index = None
         release_exception_frames(error)
         for owner in reversed(owners):
@@ -508,6 +580,8 @@ def _read_blocks(runtime, document, service, policy, cancel):
         reservation.close()
         if index_reservation is not None:
             index_reservation.close()
+        if lineage_reservation is not None:
+            lineage_reservation.close()
         raise
 
 

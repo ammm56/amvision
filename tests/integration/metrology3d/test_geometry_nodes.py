@@ -82,15 +82,15 @@ def geometry_graph(
         links.append(("read", "cloud", "crop", "cloud"))
         inputs.append(("file", "file-ref.v1", "read", "file"))
     else:
-        inputs.append(("cloud", "point-cloud-ref.v1", "crop", "cloud"))
+        inputs.append(("cloud", "point-cloud-ref.v2", "crop", "cloud"))
     if source == "input":
         inputs.append(("roi", "roi3d.v1", "crop", "roi"))
     outputs = [
-        ("cloud", "point-cloud-ref.v1", "transform", "cloud"),
+        ("cloud", "point-cloud-ref.v2", "transform", "cloud"),
         ("pose", "pose3d.v1", "frame", "pose"),
         ("found", "boolean.v1", "frame", "found"),
-        ("features", "features3d.v1", "plane", "features"),
-        ("cropped", "point-cloud-ref.v1", "crop", "cloud"),
+        ("features", "features3d.v2", "plane", "features"),
+        ("cropped", "point-cloud-ref.v2", "crop", "cloud"),
     ]
     if preview:
         nodes["preview"] = (

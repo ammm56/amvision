@@ -192,7 +192,7 @@ async function restoreReference() {
   try {
     const items = await listMeasurementResources(project.selectedProjectId, abort.signal)
     if (token !== generation) return
-    const match = items.find(item => item.reference.sha256 === draft.value.reference_sha256 && item.content.template?.reference_id === draft.value.reference_id)
+    const match = items.find(item => item.reference.sha256 === draft.value.reference_sha256 && item.content?.template?.reference_id === draft.value.reference_id)
     if (match) await chooseReference(match.reference)
   } catch (e) { if (token === generation) error.value = e instanceof Error ? e.message : t('invalid') }
   finally { if(token===generation)referenceLoading.value=false }

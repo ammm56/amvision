@@ -10,7 +10,7 @@ M0 的代码核对与契约设计已收口，M1 已按后续授权开始 I/O 修
 
 本文是三维测量跨模块设计与实施步骤的总基线，不是当前节点使用手册。阶段细化从本文件链接，不维护平行架构。设计表不等于相应 API 或页面已可用；实际实现、验证和生产启用状态以本节及分批记录为准。未实现或未验证的能力不进入可用 Catalog，不以占位节点表示支持。
 
-2026-10-23 进度：M3.1 height-query、measure-step 已接内部 Catalog、GraphExecutor 和 Vue 编辑器，共十二个内部节点；补齐支持点/剔除点分色、逐点残差和候选查询拾取，实际契约与验证见 [M3.1 实施记录](3d-metrology-m3-height.md)。精确量值仍须显式 Preview 完整重算，支持域外无效、不允许外推。隔离组件验收不等于完整 Workflow/目标发行包验收。后续见 [M3 尺寸测量节点设计](3d-metrology-m3.md)；有序源点视图与生成顶点的 CloudRuntime 扩展已确认，随 M3.2 实现，不改变原始行号语义。
+2026-10-23 最新进度：M3.1 height-query/measure-step 和 M3.2 extract-boundary/fit-line/fit-circle 均接入内部 Catalog、GraphExecutor 和 Vue 编辑器，共十五节点。见 [M3.1 实施记录](3d-metrology-m3-height.md)、[M3.2 实施记录](3d-metrology-m3-boundary.md)。CloudRuntime 有序源点/生成顶点、边界证据保存恢复及三维读取方 v2 已同批接通，不改变原始行号语义。旧三维资产保留且需重建，不执行旧格式；二维资源、数组传输 ABI 与 Workflow 发布系统不变。下文 M0/M1/M2 历史表描述设计演进；涉及运行来源、拓扑及保存/显示的当前逐字段规格以 M3.2 第 5 节为准。精确量值仍须显式 Preview 完整重算，支持域外无效、不外推。组件和图执行通过不等于完整页面、真实新配方发布或生产发行验收。
 
 已有样本脚本是独立探索产物，未接入 amvision。本文只保留可复用的需求、证据边界和回归参考，不复制会话日志、原始点云或一次性脚本。算法测试通过、工程闭环完成、真实计量准确度通过和生产验收通过是四种不同状态。
 
@@ -182,7 +182,7 @@ PCD 与 XYZ 同属首批文件入口设计，不作为 PLY 的临时转换来源
 
 | 草案类型 | 内容 |
 | --- | --- |
-| `point-cloud-ref.v1` | 受控点数据引用、数量、字段布局、单位、坐标、源身份和有效性引用 |
+| `point-cloud-ref.v2` | 受控点数据引用、数量、字段布局、单位、坐标、源身份和有效性引用 |
 | `depth-map-ref.v1` | 未反投影深度及成像标定引用，区别于三维高度栅格 |
 | `height-map-ref.v1` | 物理网格、参考基、方向、有效掩码与采样映射 |
 | `profile-ref.v1` | 有顺序的扫描/截面点、弧长或扫描位置以及数据来源 |
@@ -190,7 +190,7 @@ PCD 与 XYZ 同属首批文件入口设计，不作为 PLY 的临时转换来源
 | `transform3d.v1` | 仅表示有效的 source/target 刚性变换；不承载定位失败或隐式单位缩放 |
 | `pose3d.v1` | 定位观测状态与可空的有效 transform；失败不得带旧矩阵，见 5.9 |
 | `roi3d.v1` | 工件坐标中的盒、柱、截面带或有明确投影语义的区域 |
-| `features3d.v1` | 类型化点/线/面/圆弧/圆柱等观测、稳定 ID、支持域、有效性 |
+| `features3d.v2` | 类型化点/线/面/圆弧/圆柱等观测、稳定 ID、支持域、有效性 |
 | `measurement-evidence3d.v1` | 与 numeric-table 同一 observation_id 的测量定义、端点、参考和质量证据 |
 
 公共元数据至少能追溯 `run_id`、输入/观测身份、坐标系、单位、资源内容版本、标定版本和处理方法。大数组、支持点集合与偏差场使用引用；小型几何和摘要可以内联。引用必须经服务端验证，不能由普通 JSON 任意构造本地路径或跨运行内存句柄。
@@ -210,11 +210,11 @@ PCD 与 XYZ 同属首批文件入口设计，不作为 PLY 的临时转换来源
 
 以下表格是首批实现的字段规格，不是另一份机器 schema。实现时复用 [Contract、Identifier、Finite](../../backend/contracts/workflows/metrology.py) 的严格类型、未知字段拒绝、不可变和有限数约束。标识最长 128 字符，摘要为小写 SHA-256；整数不接受 bool 或小数。JSON 数量/偏移限 JavaScript 可精确表示的非负整数范围，运行预算通常更小；二进制 int64/uint64 属性不转成前端 JSON number。JSON 不承载 NaN/Inf；二进制坐标可以包含非有限值，但有效性扫描必须标为无效。
 
-`point-cloud-ref.v1` 只在受控执行上下文解释，不能作为 HTTP 持久资产引用或返回给其他运行直接复用。下表描述 state=ready 分支；缺测的 unavailable 分支在 5.9 明确定义，不分配虚假资源：
+`point-cloud-ref.v2` 只在受控执行上下文解释，不能作为 HTTP 持久资产引用或返回给其他运行直接复用。下表描述 state=ready 分支；缺测的 unavailable 分支在 5.9 明确定义，不分配虚假资源：
 
 | 字段 | 类型与约束 | 责任 |
 | --- | --- | --- |
-| `format_id` | 固定 `amvision.point-cloud-ref.v1` | 平台校验版本 |
+| `format_id` | 固定 `amvision.point-cloud-ref.v2` | 平台校验版本 |
 | `state`、`reason` | ready 时 reason=null；unavailable 时按 5.9 | 状态不是产品 OK/NG |
 | `run_id`、`observation_id`、`cloud_id` | Identifier；服务生成，当前 run 内解析 | 外部 observation 仅作为来源字段，不取得资源访问权 |
 | `revision` | 正整数；同一内容发布后不可改写 | 数据、单位、坐标或有效性变化产生新引用 |
@@ -271,7 +271,7 @@ PCD 与 XYZ 同属首批文件入口设计，不作为 PLY 的临时转换来源
 
 边界定义为闭集，距离计算按 float64；数值比较策略须随方法版本冻结，不能偷偷扩 ROI。任意多边形/环形/CAD ROI 留给后续明确契约，不以自由 JSON 宣称支持。
 
-`features3d.v1`：`format_id=amvision.features3d.v1`、`run_id`、`observation_id`、`frame_id`、`length_unit`、`items`。每项为 `feature_id`、`kind`、`valid`、`reason`、`geometry`、`support`、`quality`、`method`；ID 唯一，有效则 reason=null，几何满足对应约束；无效则 geometry=null、reason 必填，但保留支持/质量诊断。首批每个数组沿用通用数值表 8192 项的有界原则，同时受交付字节预算限制。M2 仅注册真实实现的 plane 分支，以下其他几何为后续阶段目标。
+`features3d.v2`：`format_id=amvision.features3d.v2`、`run_id`、`observation_id`、`frame_id`、`length_unit`、`items`。每项为 `feature_id`、`kind`、`valid`、`reason`、`geometry`、`support`、`quality`、`method`；ID 唯一，有效则 reason=null，几何满足对应约束；无效则 geometry=null、reason 必填，但保留支持/质量诊断。首批每个数组沿用通用数值表 8192 项的有界原则，同时受交付字节预算限制。M2 仅注册真实实现的 plane 分支，以下其他几何为后续阶段目标。
 
 | kind | 有效 geometry | 支持/失败信息 |
 | --- | --- | --- |
@@ -318,7 +318,7 @@ measurement-evidence 的 frame 表示评价目标；无效时实际端点、查�
 
 ### 5.10 有序边界与支持段
 
-有序边界作为 `features3d.v1` 的 `kind=boundary` 分支，不再新建平行轮廓系统，也不能把点云行号排序当拓扑。geometry 为：
+有序边界作为 `features3d.v2` 的 `kind=boundary` 分支，不再新建平行轮廓系统，也不能把点云行号排序当拓扑。geometry 为：
 
 | 字段 | 类型/约束 |
 | --- | --- |
@@ -335,7 +335,7 @@ segments 与 features 项数采用已有 8192 项上界并同时受描述字节�
 
 Boundary support 记录原云索引或派生来源；等值线交点是 interpolated，不假称传感器实测点。导出普通点云 PLY 不自动保留段拓扑；完整边界保存为点云资产与段描述的受控证据关联，原始云未存仍可保留有界显示证据。运行结束时不可将 vertices 的瞬时引用写入历史结果，需替换为证据资产或显式保存引用。
 
-M3 源码核对：当前 CloudRuntime 子集要求索引严格递增，派生数组要求与父云等点数，不能直接实现上表的拓扑重排及任意数量交点。复用同一 CloudRuntime 的扩展方案见 [M3 设计 3.2](3d-metrology-m3.md#32-有序边界的实际缺口扩展方向已确认)，方向已确认，逐字段契约和实现随 M3.2 收口；上表是目标规格，不是现有运行能力。
+M3 开工时的源码核对：原 CloudRuntime 子集要求索引严格递增，派生数组要求与父云等点数。M3.2 已在同一 CloudRuntime 扩展有序源点和生成顶点，普通 subset 仍保持严格递增；当前来源、拓扑及保存字段以 [M3.2 实施记录](3d-metrology-m3-boundary.md#5-运行引用与保存契约)为准，不另建资源系统。
 
 ### 5.11 嵌套字段与校验矩阵
 
@@ -487,13 +487,13 @@ F1：read-cloud/同机入口 → normalize-units → filter-valid；F2：crop-ro
 
 本节冻结节点语义；`read-cloud`/`export-cloud` 的格式实现路线见 11.2.8，设计 G1 已收口，实际能力须通过 M1 I/O 验收后才能开放。不是注册六个占位节点，也不把尚未通过的格式列入可用选项。参数与嵌套对象沿用 5.4 的严格类型；下文“可选”表示可以缺省，显式 null 仅用于注明可空的字段，其他位置拒绝 null、未知字段和类型强制转换。
 
-共同约定：输入端口名、参数名和资源引用身份固定，不按显示标题匹配。输入 `cloud` 为 `point-cloud-ref.v1`，同机数组直接由 App Entry 接入该端口，不再经过文件节点。只有 `read-cloud` 负责外部文件/已有资产到运行内引用的转换。资源、timeout、线程与显示上限取已有运行配置中的显式策略，参数不得绕过上限；缺少必要策略时能力不启用，不用无限值兜底。错误沿既有 `code/message/details` 返回，details 只带阶段、binding/node、字段或行号等安全定位信息，不泄露本地绝对路径或凭据。
+共同约定：输入端口名、参数名和资源引用身份固定，不按显示标题匹配。输入 `cloud` 为 `point-cloud-ref.v2`，同机数组直接由 App Entry 接入该端口，不再经过文件节点。只有 `read-cloud` 负责外部文件/已有资产到运行内引用的转换。资源、timeout、线程与显示上限取已有运行配置中的显式策略，参数不得绕过上限；缺少必要策略时能力不启用，不用无限值兜底。错误沿既有 `code/message/details` 返回，details 只带阶段、binding/node、字段或行号等安全定位信息，不泄露本地绝对路径或凭据。
 
 #### 7.4.1 read-cloud：读取点云
 
 | 项目 | 定稿规则 |
 | --- | --- |
-| 输入/输出 | 可选 `file:file-ref.v1` → 必填 `cloud:point-cloud-ref.v1`；持久资产通过下述资源参数选择，不再建立“读取资产”节点 |
+| 输入/输出 | 可选 `file:file-ref.v1` → 必填 `cloud:point-cloud-ref.v2`；持久资产通过下述资源参数选择，不再建立“读取资产”节点 |
 | `source` | 严格联合：`{kind:file}` 或 `{kind:asset, reference:ResourceReference}`；file 分支必须有 file 输入；asset 分支禁止 file 输入，reference.kind 必须为 point-cloud |
 | `file_options` | 仅 file 分支必填：`profile_id:Identifier`、`profile_version:正整数`、`spatial:5.6 对象`、`field_mapping:数组`；asset 分支禁止该对象，不能覆盖已保存单位/字段 |
 | `field_mapping[]` | 每项含 `source_names:非空且不重复的字符串数组`、`target_name:Identifier`、`semantic/dtype/components/unit:5.5 定义`；源字段恰好覆盖所声明数据，分量数一致，目标名称唯一；不得隐式 cast 或忽略字段。源名称/列号以格式 profile 定义，不猜 RGB/强度 |
@@ -798,7 +798,7 @@ M1 显示 body 的详细字段已在 9.9 定稿，覆盖格式版本、观测/�
 
 | 字段 | 类型、必填与生产/读取责任 |
 | --- | --- |
-| `type`、`format_id` | 固定 point-cloud-preview、amvision.point-cloud-preview.v1；节点生成，Preview/Runtime 捕获与共享 renderer 显式识别 |
+| `type`、`format_id` | 固定 point-cloud-preview、amvision.point-cloud-preview.v2；节点生成，Preview/Runtime 捕获与共享 renderer 显式识别 |
 | `state`、`reason` | ready/empty/unavailable；ready 要求 display_point_count>0，empty 为 0（原云可非空但无有效可显示点）；二者 reason=null，unavailable 必须有 Identifier 原因；三者都不是 OK/NG |
 | `observation_id`、`cloud_id`、`revision` | 来自输入，供同一外层 run 内关联；unavailable 的 cloud_id/revision 必须 null，与 5.9 一致；不是可重新借用原云的凭据 |
 | `spatial` | 5.6 的完整空间声明，未知单位明确显示“单位未确认”；浏览器不根据坐标大小猜单位 |
@@ -918,7 +918,7 @@ CloudCompare 还可作为平面/局部曲面、配准和距离计算的算法参
                             配方显式 Save → 持久文件资产（可选）
 ```
 
-- 文件节点接收 `file-ref.v1`，解析后输出 `point-cloud-ref.v1`；二进制入口直接提供相同的三维类型。文件不是 BufferRef，内存点云也不伪装成 image-ref。两种入口在图模板中明确绑定，不靠 MIME 猜测分支。
+- 文件节点接收 `file-ref.v1`，解析后输出 `point-cloud-ref.v2`；二进制入口直接提供相同的三维类型。文件不是 BufferRef，内存点云也不伪装成 image-ref。两种入口在图模板中明确绑定，不靠 MIME 猜测分支。
 - 1 GB 在本设计中按十进制明确为 `1_000_000_000` 字节；GiB 专指 `2^30` 字节。文件限实际提交的整份文件，二进制限所有数组块与对齐填充的合计。描述消息有独立的小容量限制，不计作可绕过载荷上限的第二数据通道。协议/schema 中使用字节数，不使用模糊字符串。
 - 文件接收阶段校验 App/binding、总量、文件数和磁盘预算；无 Content-Length、虚假长度、分块请求、重复 binding、取消和断连也必须受限。复用框架解析器与现有上传辅助层，不手写第二套 multipart 解析器。当前 `max_part_size` 控制字段上限不能当文件上限。
 - 上传产生的 spool、暂存文件、不可变临时资产及解析后数组分开记账。当前一次性 `request.form()` 后检查不足以证明接收阶段有界，M1 必须补齐并验证；文件上限不能限制恶意 header 声称的点数或解析后的膨胀量。
@@ -1084,7 +1084,7 @@ M0 确定了复用和扩展位置、两条数据链路、二进制布局、所�
 | 派生点云 | 独立物化的所有坐标/属性、dtype、validity/sample_origin、单位/坐标、父内容摘要与方法/参数，必要的源索引 | 不保存跨运行 ndarray/view/lease；不能只存 ROI 索引而默认源永久存在 |
 | 数值/有界证据 | 结果与方法/参数、有限显示点/特征/端点、源是否保存及持久引用 | 不包含全量源，不保活 runtime owner，不伪称可原精度重算 |
 
-持久内容格式拟定 `amvision.point-cloud-asset.v1`，是既有计量资源服务的新内容类型，不是独立资源系统。平台内部使用 manifest 和二进制对象，不做 pickle、object dtype 或每点 JSON。资源外层需显式升级 `amvision.measurement-resource.v2`：原二维内容的定义不改，新增 point-cloud 分支，通用 ResourceReference 的 kind/schema/消费者同批更新；不在 `image_object_key` 塞入点云。旧资源的读取历史和审核重发按 8.6，正式版本转换另交迁移方案，不留新旧运行分支。
+持久内容格式拟定 `amvision.point-cloud-asset.v2`，是既有计量资源服务的新内容类型，不是独立资源系统。平台内部使用 manifest 和二进制对象，不做 pickle、object dtype 或每点 JSON。资源外层需显式升级 `amvision.measurement-resource.v2`：原二维内容的定义不改，新增 point-cloud 分支，通用 ResourceReference 的 kind/schema/消费者同批更新；不在 `image_object_key` 塞入点云。旧资源的读取历史和审核重发按 8.6，正式版本转换另交迁移方案，不留新旧运行分支。
 
 | 资产 manifest 字段 | 规格 |
 | --- | --- |
@@ -1136,7 +1136,7 @@ M0 确定了复用和扩展位置、两条数据链路、二进制布局、所�
 
 现有 `MeasurementResourceContent` 升为显式 `amvision.measurement-resource.v2` 时，kind 对应一个且仅一个内容分支：planar-calibration → calibration，localization-template → template，point-cloud → point_cloud；无关分支禁止携带值。document 的 reference/name/content/created_at/created_by 与既有服务保持职责一致，二维 image_object_key 不能充当云数据块。仅在需要输出 v2 内容的路径进行升级，历史文件与引用不原地改写；受影响发布按 8.6 审核重发，不为新 kind 强制全量迁移。
 
-point_cloud 内容复用 10.11 的 `amvision.point-cloud-asset.v1`；将原先“按分支”约定补齐如下。所有分支拒绝未知字段，数组长度/偏移算术不得溢出；未定容量参数不能解释为无限。
+point_cloud 内容复用 10.11 的 `amvision.point-cloud-asset.v2`；将原先“按分支”约定补齐如下。所有分支拒绝未知字段，数组长度/偏移算术不得溢出；未定容量参数不能解释为无限。
 
 | 字段/分支 | 必填与互斥规则 |
 | --- | --- |
@@ -1161,10 +1161,10 @@ PCD metadata 是需要补齐的内容，不把三维有效性 mask 当作 organi
 | --- | --- | --- |
 | file-ref.v1 | 上传/导出服务 → input validator、read-cloud、原件保存、SDK/下载 | 既有九个必填字段、项目与真实 checksum；Preview 不能偷换成可变路径 |
 | point-cloud-buffer.v1 | SDK → 同机 mailbox/Broker 入站适配 → worker | 字段布局/大小、source_metadata、generation 与所有权；拒绝和晚返回释放 |
-| point-cloud-ref.v1 | read-cloud/数组入站/预处理 → 六节点、Scope、图消费计数 | ready/unavailable、空云、run/observation/frame/unit、只读借用；不公开跨请求调用 |
+| point-cloud-ref.v2 | read-cloud/数组入站/预处理 → 六节点、Scope、图消费计数 | ready/unavailable、空云、run/observation/frame/unit、只读借用；不公开跨请求调用 |
 | measurement-resource-ref.v1 / ResourceReference | 资源服务 → 参数编辑/执行准备、read/save/export、发布依赖收集、资源导入导出与删除检查、结果链接 | 五字段身份、kind、版本/hash、受控项目与不可变依赖；所有读方纳入原服务升级，不只修改 Pydantic literal |
-| point-cloud-asset.v1 / resource.v2 | save/资源导入 → 流式导出、版本服务、执行准备、发布验证 | 原件/数组互斥、source_metadata、全部 blob 与摘要、原子提交、未知成员拒绝及受影响旧资源升级 |
-| point-cloud-preview.v1 | preview 节点/现有捕获 → 显示适配、共享 Three.js viewer、App Mode、显式结果证据保存 | 新类型识别、精确字段/大小、晚返回、所有资源释放；显示失败不篡改业务结果 |
+| point-cloud-asset.v2 / resource.v2 | save/资源导入 → 流式导出、版本服务、执行准备、发布验证 | 原件/数组互斥、source_metadata、全部 blob 与摘要、原子提交、未知成员拒绝及受影响旧资源升级 |
+| point-cloud-preview.v2 | preview 节点/现有捕获 → 显示适配、共享 Three.js viewer、App Mode、显式结果证据保存 | 新类型识别、精确字段/大小、晚返回、所有资源释放；显示失败不篡改业务结果 |
 | filter/export summary | 对应节点 → 现有 Value/Table Preview、显式 App 输出、结果记录 | 数字/null 与状态一致、完整字段集合、不能把执行状态当产品状态 |
 
 M1 审计对照本表逐个核查 schema、公开能力、SDK、前端、引用收集和清理；不把“后端节点能运行”当作整个入口/显示/保存已完成。新增公开 payload 与 source_metadata 均为待实施契约，本轮没有修改当前任何 v1 API。
@@ -1574,7 +1574,7 @@ M1 不提前改变 Check Limits 或 Result Record 的公开语义；点云有效
 
 高度/高差可先于轮廓算法完成，不要求所有特征算法完成后才出现第一项可用尺寸。
 
-逐节点输入、算法、质量/失败、前端交互、复用源码和实施验收见 [M3 尺寸测量节点设计](3d-metrology-m3.md)。M3.1 两节点已内部实现，见 [实施记录](3d-metrology-m3-height.md)；M3.2/M3.3 六节点、M3.4 公开三态和 M3.5 正式尺寸配方仍待交付。有序边界资源扩展方向已确认；不新建 Workflow 或发布版本管理。
+逐节点输入、算法、质量/失败、前端交互、复用源码和实施验收见 [M3 尺寸测量节点设计](3d-metrology-m3.md)。M3.1 两节点和 M3.2 三节点已内部实现，分别见[高度记录](3d-metrology-m3-height.md)和[边界记录](3d-metrology-m3-boundary.md)；M3.3 三个尺寸节点、M3.4 公开三态和 M3.5 正式尺寸配方仍待交付。有序边界沿原 CloudRuntime 扩展，不新建 Workflow 或发布版本管理。
 
 | 步骤/节点 | 实现内容与算法 | 复用与扩展 | 前端操作 | 验证 |
 | --- | --- | --- | --- | --- |
@@ -1775,8 +1775,8 @@ M0 历史文档审计核对了本基线、ADR 与目录入口；当时 9 份相�
 | 保存策略 | 默认不自动保留完整点云；文件原样、内存/派生平台无损保存，另提供显式 PLY/PCD/XYZ 交换导出；资产包独立限额数值待定；不能承诺未保存源的原精度复算 |
 | 规则/资源升级 | M1 点云资源 v2、保存与固定发布引用已有实现；共享 limit-check.v2/Result Record 三态升级尚未实现，留 M3.4。同批验证执行身份及启动/切换/恢复准入；受影响旧发布只读、审核重发，不重建版本管理或本轮改数据 |
 | 多格式与算法依赖 | 受控 PLY/PCD、NumPy XYZ 及 Open3D 几何的开发态双平台验证见 M1/M2 记录，包含完整样本、字段与精度。不自建原生扩展；生产原生峰值、完整离线依赖及双平台 bundled 发行未验收 |
-| 三维测量交互 | M3.1 已补支持分类/残差、候选查询和测量结果联动；边界/特征双向选择留 M3.2。精确量值须显式 Preview 重算，不新增常驻原云服务；未保存原云的历史结果不可重测 |
-| 有序边界资源 | 现有子集/派生接口不能直接表示拓扑重排和新交点；已批准扩展原 CloudRuntime，M3.2 收口来源/保存字段并实现，不假造原始行号 |
+| 三维测量交互 | M3.1 已补支持分类/残差、候选查询和测量结果联动；M3.2 已接边界/特征选择和有限拟合区间。精确量值须显式 Preview 重算，不新增常驻原云服务；未保存原云的历史结果不可重测 |
+| 有序边界资源 | M3.2 已扩展原 CloudRuntime；有序源点保留最初行号，生成顶点单独记录源边/面及权重，同批更新保存/恢复与显示，不假造原始行号 |
 | 容量与时间验收 | 最低 RAM、期望并发和单次时限未确定；预算公式已给出，默认值、库峰值与真实性能未验证 |
 | 完整形状公差 | 标准适用条件、评价算法和收敛保证需要逐方法核定，不以名字代表合规 |
 | 数据与标注一致性 | 原结果已发生粗/细算法版本变化；正式实现必须绑定方法、参数、证据版本 |

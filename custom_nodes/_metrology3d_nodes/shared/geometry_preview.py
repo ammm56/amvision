@@ -10,6 +10,7 @@ from custom_nodes._metrology3d_nodes.shared.geometry_quality import (
 )
 from custom_nodes._metrology3d_nodes.shared.preview import unavailable_body
 from custom_nodes._metrology3d_nodes.shared.geometry_samples import plane_samples
+from custom_nodes._metrology3d_nodes.shared.boundary_preview import curve_display
 
 
 def attach_geometry(runtime, cloud, body, values, *, policy, cancel):
@@ -37,6 +38,8 @@ def _attach_geometry(runtime, cloud, body, values, *, policy, cancel):
     if cloud.spatial.length_unit is None:
         raise InvalidRequestError("几何显示必须明确单位")
     planes = []
+    curves = []
+    curve_points = 0
     for raw in supplied:
         group = Features3d.model_validate(raw)
         if (group.run_id, group.observation_id, group.frame_id, group.length_unit) != (
@@ -48,6 +51,19 @@ def _attach_geometry(runtime, cloud, body, values, *, policy, cancel):
             raise InvalidRequestError("几何显示输入运行、观测或空间不一致")
         for item in group.items:
             cancel()
+            if item.kind != "plane":
+                display = curve_display(
+                    runtime,
+                    item,
+                    policy=policy,
+                    remaining_points=policy.max_points
+                    - (body.get("display_point_count") or 0)
+                    - curve_points,
+                    cancel=cancel,
+                )
+                curve_points += len(display["points"])
+                curves.append(display)
+                continue
             require_quality_result(item.quality, item.method.quality_policy)
             bounds = None
             if item.support.state == "ready":
@@ -129,6 +145,7 @@ def _attach_geometry(runtime, cloud, body, values, *, policy, cancel):
         length_unit=cloud.spatial.length_unit,
         rois=rois,
         planes=planes,
+        curves=curves,
         frame=frame,
     )
     # 显示失败保持原有失败原因；不得因附件成功恢复旧显示正文。

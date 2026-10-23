@@ -23,6 +23,12 @@ export interface CloudRendererPolicy {
   max_points: number; max_data_bytes: number; max_cpu_bytes: number; max_gpu_bytes: number
   max_canvas_pixels: number; max_position_error: number
 }
+export interface RetiredCloudResource {
+  state: 'rebuild-required'; reason: 'unsupported_point_cloud_format'; stored_format_id: string
+  reference: MeasurementResourceReference; name: string; created_at: string; content: null
+}
+export type MeasurementResourceListItem = MeasurementResourceDocument | RetiredCloudResource
+export function isCurrentMeasurementResource(item: MeasurementResourceListItem): item is MeasurementResourceDocument { return item.content !== null }
 export function readCloudCapabilities(project: string, signal?: AbortSignal) {
   return apiRequest<{ max_archive_bytes: number | null; renderer: CloudRendererPolicy | null }>(
     `${measurementResourceRoot(project)}/cloud/capabilities`, { signal })
@@ -43,7 +49,7 @@ export function resourceVersionPath(reference: MeasurementResourceReference): st
   return `${measurementResourceRoot(reference.project_id)}/${encodeURIComponent(reference.resource_id)}/versions/${reference.version}`
 }
 export function listMeasurementResources(project: string, signal?: AbortSignal) {
-  return apiRequest<MeasurementResourceDocument[]>(measurementResourceRoot(project), { signal })
+  return apiRequest<MeasurementResourceListItem[]>(measurementResourceRoot(project), { signal })
 }
 export function readMeasurementResourceImage(reference: MeasurementResourceReference, signal?: AbortSignal) {
   return apiRequest<Blob>(`${resourceVersionPath(reference)}/image`, { responseType: 'blob', signal })

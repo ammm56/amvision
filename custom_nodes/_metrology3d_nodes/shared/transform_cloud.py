@@ -78,6 +78,8 @@ def transform_cloud(runtime, reference, pose, *, cancel):
             fields=None,
             source_metadata=None,
             sample_origin=None,
+            vertex_kind=None,
+            topology=None,
         )
         return CloudReference.model_validate(raw)
     parameters = TransformCloudParameters(

@@ -29,6 +29,7 @@ def read(request):
     p = ReadCloudParameters.model_validate(request.parameters)
     env = require_node_runtime(request)
     env.cancel()
+    evidence = None
     if p.source.kind == "file":
         cloud = read_file_reference(
             runtime=env.runtime,
@@ -49,7 +50,18 @@ def read(request):
             policy=env.policy.assets(),
             cancel=env.cancel,
         )
-    return {"cloud": cloud.model_dump(mode="json")}
+        evidence = env.service.read(
+            p.source.reference, project_id=env.project_id
+        ).content.point_cloud.boundary
+    result = {"cloud": cloud.model_dump(mode="json")}
+    # 未确认物理空间的原件只能输出 cloud，不伪造 Features3d 的单位或坐标。
+    if cloud.spatial.frame_id is not None and cloud.spatial.length_unit is not None:
+        from custom_nodes._metrology3d_nodes.shared.boundary_assets import (
+            restore_boundary,
+        )
+
+        result["features"] = restore_boundary(cloud, evidence).model_dump(mode="json")
+    return result
 
 
 def normalize(request):
@@ -127,6 +139,7 @@ def save(request):
         expected_base=p.target.reference if p.target.kind == "new-version" else None,
         policy=env.policy.assets(),
         cancel=env.cancel,
+        features=request.input_values.get("features"),
     )
     return {"resource": reference.model_dump(mode="json")}
 

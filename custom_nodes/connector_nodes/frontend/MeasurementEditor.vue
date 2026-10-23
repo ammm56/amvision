@@ -137,8 +137,8 @@ async function loadReference(){
     referenceAbort=new AbortController()
     const resources=await listMeasurementResources(project.selectedProjectId,referenceAbort.signal)
     if(token!==referenceGeneration)return
-    const resource=resources.find(item=>item.reference.sha256===layout.reference_sha256&&item.content.template?.reference_id===layout.reference_id)
-    if(!resource?.content.template)return
+    const resource=resources.find(item=>item.reference.sha256===layout.reference_sha256&&item.content?.template?.reference_id===layout.reference_id)
+    if(!resource?.content?.template)return
     const image=await readMeasurementResourceImage(resource.reference,referenceAbort.signal)
     if(token!==referenceGeneration)return
     referenceLayout.value=layout;referenceSize.value=[resource.content.template.image_width,resource.content.template.image_height];referenceUrl.value=URL.createObjectURL(image)

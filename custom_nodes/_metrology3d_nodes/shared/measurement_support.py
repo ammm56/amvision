@@ -57,6 +57,8 @@ def select_planes(runtime, groups, parameters, ids, *, observation_id=None):
         raise InvalidRequestError("测量指定的特征 ID 不存在")
     selected = [features[key] for key in ids]
     for feature in selected:
+        if feature.kind != "plane":
+            raise InvalidRequestError("高度或高差基准必须选择平面特征")
         require_cloud(runtime, feature.support, parameters, observation_id)
         require_quality_result(feature.quality, feature.method.quality_policy)
     return selected
