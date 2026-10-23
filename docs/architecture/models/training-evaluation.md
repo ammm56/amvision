@@ -237,6 +237,10 @@ RF-DETR grouped-query warm-start 不允许按 Tensor 第一维做模糊 flat sli
 - YOLOX 队列在结果写入和异常处理栈退出后再执行最终清理。失败、取消的 traceback
   可能在 runner 的 `finally` 运行期间持有模型；只在该位置清理不足以验证释放。
   空闲轮询不执行这一步，不增加后台监视线程或推理请求热路径工作。
+- 队列完成/失败记录写入自身报错属于 Worker 致命故障，向监督循环传播，不进入
+  正常任务的最终清理分支，也不隐式重试训练。Worker 退出时停止 heartbeat、关闭
+  telemetry 和数据库，进程资源由操作系统释放。此路径的验收必须检查异常传播和
+  线程退出，不能把异常 traceback 仍持有对象时的快照当成常驻泄漏。
 - Windows 不再默认调用 `EmptyWorkingSet`。它减少驻留页，不释放 Private 提交内存；
   资源验证分别记录 Private、RSS、CUDA allocated/reserved、句柄、线程和子进程。
   原生运行时或分配器可保留已使用过的内存；不能仅凭高 Private 判定泄漏，也不能

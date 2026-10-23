@@ -1101,6 +1101,8 @@ def _resolve_training_runtime(
         )
 
     if not imports.torch.cuda.is_available():
+        if requested_device is not None and requested_device.startswith("cuda"):
+            raise InvalidRequestError("当前运行环境没有可用 GPU，不能使用 CUDA 训练")
         if requested_gpu_count is not None:
             raise InvalidRequestError("当前运行环境没有可用 GPU，不能指定 gpu_count")
         return _ResolvedTrainingRuntime(

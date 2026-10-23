@@ -14,8 +14,8 @@ def yolox_probe_input_size(
     if multiscale_range <= 0:
         return input_size
     height, width = input_size
-    largest = int(height / 32) + multiscale_range
-    return 32 * largest, 32 * int(largest * width / height)
+    largest = max(2, int(height / 32) + multiscale_range)
+    return 32 * largest, max(64, 32 * int(largest * width / height))
 
 
 def yolox_probe_training_loss(

@@ -120,6 +120,16 @@ python -m pytest tests/integration/test_release_full_stack_acceptance.py -q
 
 ### YOLOX 任务结束资源与工作集对照
 
+设备契约回归覆盖共享 detection API 的五个模型入口，API 不预填 GPU 数量。
+CPU 回退回归可在独立测试进程启动前设置 `CUDA_VISIBLE_DEVICES=-1`，不得修改
+正在运行的服务环境；显式 CPU、自动 CPU、单 GPU、显式 CUDA 不可用和 GPU
+占用分别检查。请求的 `gpu_count=null` 与实际执行的 `gpu_count=0/1` 不混用。
+
+```powershell
+conda activate amvision
+python -m pytest tests/test_detection_training_device_contract.py tests/test_training_device_selection.py tests/test_training_device_leases.py tests/test_yolox_training_api.py -q
+```
+
 ```powershell
 conda activate amvision
 python -m pytest tests/test_yolox_training_resource_boundary.py tests/test_yolox_augmentation_seed.py tests/test_training_engine.py -q
@@ -148,6 +158,38 @@ checkpoint；写完并释放结果后核对弱引用、CUDA 活跃/保留字节�
 
 工具生成的 JSONL 可用于本轮统计；交付摘要后清理本次临时目录，不长期保留临时
 checkpoint 或 `.tmp` 验收缓存。
+
+`test_yolox_training_resource_boundary.py` 还覆盖队列记录写入失败、heartbeat 停止
+异常、lease 丢失以及 Worker 致命故障的资源关闭。写入失败不得变成成功、继续
+消费或隐藏重训；lease 丢失不得确认或覆盖其他 attempt。正常任务资源检查与
+致命故障的进程退出检查是不同边界，不通过增加常驻线程或自动回收进程合并处理。
+
+### 真实 HTTP 训练验收
+
+`tests.integration.detection_training_live_audit` 使用当前服务、正式队列和训练 Worker，
+按 case 文件顺序提交任务。会登记真实任务、模型和训练输出文件，均保留供页面核对；
+不重启 Worker、不重试失败任务、不修改数据集。case 文件是包含 `name` 和正式训练
+`request` 的 JSON 数组，最多 20 项。输出目录必须是尚不存在的 `.tmp` 子目录。
+
+```powershell
+conda activate amvision
+python -m tests.integration.detection_training_live_audit --case-file .tmp/training-cases.json --output-dir .tmp/training-live-audit
+```
+
+默认读取本地开发凭据，也可通过 `AMVISION_AUDIT_TOKEN` 指定当前服务凭据；凭据
+不写入报告。核对请求和实际设备、轮数、模型登记、输出文件状态、Worker 身份以及
+完成后的 Private/RSS、句柄、线程、子进程。外部进程统计不能替代 CUDA 活跃字节和
+对象存活检查。CPU 短训、GPU 正常轮数、增强开关与其他训练模型应分别报告。
+超时只结束验收工具，不隐式取消已提交的任务；后续需检查页面中的任务状态。
+
+跨模型单轮资源验收可显式使用固定小 batch 和 `execution.amp.mode=disabled`，
+并核对实际摘要为 FP32。AutoBatch、AMP 和训练精度另用正常轮数验证；很少的
+训练 step 可能全部被 GradScaler 跳过，此时必须按失败记录，不能用验证指标或
+输出文件存在代替成功 optimizer step，也不能为通过验收隐式降级精度或重训。
+
+小尺寸增强回归由 `test_yolox_multiscale_bounds.py` 覆盖：生成的多尺度高宽不小于
+64 且保持 32 的倍数，避免单张批次落到 1×1 特征图。AutoBatch 使用相同上界；
+关闭多尺度仍保持请求尺寸，标准 640±160 范围和随机序列不变。
 
 ## 结果存放
 

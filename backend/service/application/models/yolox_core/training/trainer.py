@@ -428,10 +428,12 @@ def random_resize_yolox_input_size(
     input_height, input_width = base_input_size
     size_factor = input_width * 1.0 / input_height
     rng = random.Random(random_seed)
-    min_size = max(1, int(input_height / 32) - multiscale_range)
+    # 最深层 stride=32；多尺度不能生成 1×1 特征图，否则 batch=1 的
+    # BatchNorm 无法训练。高宽下限统一为 64，常用 640±160 范围不变。
+    min_size = max(2, int(input_height / 32) - multiscale_range)
     max_size = max(min_size, int(input_height / 32) + multiscale_range)
     size = rng.randint(min_size, max_size)
-    return 32 * size, 32 * int(size * size_factor)
+    return 32 * size, max(64, 32 * int(size * size_factor))
 
 
 def preprocess_yolox_training_batch(

@@ -67,7 +67,8 @@ def create_detection_training_task(
             evaluation_interval=body.execution.validation.interval_epochs,
             max_epochs=body.execution.max_epochs,
             batch_size=body.execution.fixed_batch_size,
-            gpu_count=1,
+            # API 不假定 Worker 使用 GPU；设备租约与训练 core 解析实际设备。
+            gpu_count=None,
             precision=body.execution.requested_precision,
             input_size=(
                 body.execution.input_size.hw

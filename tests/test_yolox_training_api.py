@@ -169,7 +169,7 @@ def test_create_yolox_training_task_accepts_dataset_export_id(tmp_path: Path) ->
             task_detail.task.task_spec["manifest_object_key"]
             == dataset_export.manifest_object_key
         )
-        assert task_detail.task.task_spec["gpu_count"] == 1
+        assert task_detail.task.task_spec["gpu_count"] is None
         assert task_detail.task.task_spec["precision"] == "fp16"
         assert task_detail.task.task_spec["evaluation_interval"] == 3
         assert task_detail.task.state == "queued"
@@ -532,7 +532,7 @@ def test_list_yolox_training_tasks_filters_by_dataset_export_id(tmp_path: Path) 
         assert payload[0]["dataset_export_id"] == dataset_export_a.dataset_export_id
         assert payload[0]["recipe_id"] == "yolox-default"
         assert payload[0]["model_scale"] == "s"
-        assert payload[0]["gpu_count"] == 1
+        assert payload[0]["gpu_count"] is None
         assert payload[0]["precision"] == "fp16"
         assert payload[0]["state"] == "queued"
         assert payload[0]["model_version_id"] is None

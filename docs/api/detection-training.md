@@ -109,6 +109,11 @@ YOLOv8、YOLO11、YOLO26 和 RF-DETR 使用不同 schema。完整默认值、数
 
 当前架构固定为一任务一设备。`parameters.runtime.device` 选择 CPU 或单张 GPU，多任务 GPU 调度由 worker 设备租约负责；创建请求不再接收 `gpu_count`。
 
+API 不假定 Worker 的硬件，不注入 `gpu_count=1`。新任务不指定请求 GPU 数量
+（快照中为空或省略）；实际设备以 `metadata.training_device_assignment` 和执行
+摘要为准。YOLO 系列摘要包含 `device/gpu_count`，RF-DETR 的实际设备在
+`training_summary.training_config.device`。旧任务保留创建时的请求，不改写历史。
+
 YOLOX 显式轮数必须满足 `warmup_epochs + no_aug_epochs < execution.max_epochs`。
 例如总轮数 20、Warmup 5、no-aug 15 会在入队前返回 422；可显式调整为 20/2/3。
 错误的具体安全原因在 `error.details.errors[]` 中，轮数和范围规则见
@@ -145,7 +150,9 @@ CUDA AutoBatch 使用带 targets 的训练 loss 探针，不改变正常训练�
   DataLoader 子进程使用 PyTorch 分配的独立种子。相同环境、数据和配置的串行训练
   可用于重复性对照，不承诺跨设备/版本或暂停恢复后逐位复现，也不强制切换慢速
   确定性 CUDA 算法。该修复不改变参数格式、默认增强概率和推理预处理。
-- 当前训练支持 CPU 执行；当环境没有可用 GPU 或未分配 GPU 时，会回退到 CPU 训练。这个模式主要用于最小硬件支持和开发环境验证，训练速度会明显变慢。
+- 显式 `cpu` 使用 CPU；`auto` 仅在 Worker 没有可见 CUDA 设备时选择 CPU。
+  显式 `cuda/cuda:n` 不可用时明确失败；GPU 被占用时遵守已有租约规则，
+  不隐式改用 CPU。CPU 主要用于最小硬件支持和开发环境验证，训练速度会明显变慢。
 
 #### 输入边界规则
 
@@ -1036,4 +1043,5 @@ CUDA AutoBatch 使用带 targets 的训练 loss 探针，不改变正常训练�
 - 当前训练链路是一任务一张 GPU 或 CPU；设备由 `parameters.runtime.device` 选择，不提供单任务 DataParallel 或 DDP 参数。
 - 当前 precision 字段已经纳入公开接口；当前公开值为 fp16、fp32，未指定时默认 fp32。
 - 当前 input_size 未显式指定时，真实训练默认使用 [640, 640]。
-- 当前没有可用 GPU 时会回退到 CPU 训练，用于最小硬件支持和开发环境验证。
+- 自动设备选择在 Worker 没有可见 CUDA 设备时回退到 CPU；显式 CUDA 不可用或 GPU
+  被占用时不静默回退，用于保持设备意图和资源租约规则一致。
