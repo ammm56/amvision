@@ -1,0 +1,1886 @@
+{
+  "crop-roi": {
+    "groups": [
+      {
+        "group_id": "default",
+        "display_name": "Default",
+        "description": "",
+        "order": 0
+      }
+    ],
+    "fields": [
+      {
+        "parameter_name": "source",
+        "display_name": "Source",
+        "description": "",
+        "group_id": "default",
+        "order": 0,
+        "required": true,
+        "hidden": false,
+        "readonly": false,
+        "default_value": null,
+        "enum_options": [],
+        "widget": "auto",
+        "json_schema": {
+          "discriminator": {
+            "mapping": {
+              "input": "#/$defs/InputRoiSource",
+              "parameters": "#/$defs/ParameterRoiSource"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "description": "目标与有限边界均来自显式配方。",
+              "properties": {
+                "kind": {
+                  "const": "parameters",
+                  "title": "Kind",
+                  "type": "string"
+                },
+                "roi": {
+                  "discriminator": {
+                    "mapping": {
+                      "box": "#/$defs/BoxRoi",
+                      "cylinder": "#/$defs/CylinderRoi",
+                      "section-band": "#/$defs/SectionRoi"
+                    },
+                    "propertyName": "kind"
+                  },
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "description": "有向盒 ROI。",
+                      "properties": {
+                        "format_id": {
+                          "const": "amvision.roi3d.v1",
+                          "default": "amvision.roi3d.v1",
+                          "title": "Format Id",
+                          "type": "string"
+                        },
+                        "roi_id": {
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                          "title": "Roi Id",
+                          "type": "string"
+                        },
+                        "frame_id": {
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                          "title": "Frame Id",
+                          "type": "string"
+                        },
+                        "length_unit": {
+                          "enum": [
+                            "m",
+                            "mm",
+                            "um"
+                          ],
+                          "title": "Length Unit",
+                          "type": "string"
+                        },
+                        "kind": {
+                          "const": "box",
+                          "title": "Kind",
+                          "type": "string"
+                        },
+                        "geometry": {
+                          "additionalProperties": false,
+                          "description": "以局部坐标轴为 rotation 列向量的有向盒。",
+                          "properties": {
+                            "center": {
+                              "maxItems": 3,
+                              "minItems": 3,
+                              "prefixItems": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "number"
+                                }
+                              ],
+                              "title": "Center",
+                              "type": "array"
+                            },
+                            "rotation": {
+                              "maxItems": 3,
+                              "minItems": 3,
+                              "prefixItems": [
+                                {
+                                  "maxItems": 3,
+                                  "minItems": 3,
+                                  "prefixItems": [
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "number"
+                                    }
+                                  ],
+                                  "type": "array"
+                                },
+                                {
+                                  "maxItems": 3,
+                                  "minItems": 3,
+                                  "prefixItems": [
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "number"
+                                    }
+                                  ],
+                                  "type": "array"
+                                },
+                                {
+                                  "maxItems": 3,
+                                  "minItems": 3,
+                                  "prefixItems": [
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "number"
+                                    }
+                                  ],
+                                  "type": "array"
+                                }
+                              ],
+                              "title": "Rotation",
+                              "type": "array"
+                            },
+                            "size": {
+                              "maxItems": 3,
+                              "minItems": 3,
+                              "prefixItems": [
+                                {
+                                  "exclusiveMinimum": 0,
+                                  "type": "number"
+                                },
+                                {
+                                  "exclusiveMinimum": 0,
+                                  "type": "number"
+                                },
+                                {
+                                  "exclusiveMinimum": 0,
+                                  "type": "number"
+                                }
+                              ],
+                              "title": "Size",
+                              "type": "array"
+                            }
+                          },
+                          "required": [
+                            "center",
+                            "rotation",
+                            "size"
+                          ],
+                          "title": "BoxGeometry",
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "roi_id",
+                        "frame_id",
+                        "length_unit",
+                        "kind",
+                        "geometry"
+                      ],
+                      "title": "BoxRoi",
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "description": "有限圆柱 ROI。",
+                      "properties": {
+                        "format_id": {
+                          "const": "amvision.roi3d.v1",
+                          "default": "amvision.roi3d.v1",
+                          "title": "Format Id",
+                          "type": "string"
+                        },
+                        "roi_id": {
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                          "title": "Roi Id",
+                          "type": "string"
+                        },
+                        "frame_id": {
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                          "title": "Frame Id",
+                          "type": "string"
+                        },
+                        "length_unit": {
+                          "enum": [
+                            "m",
+                            "mm",
+                            "um"
+                          ],
+                          "title": "Length Unit",
+                          "type": "string"
+                        },
+                        "kind": {
+                          "const": "cylinder",
+                          "title": "Kind",
+                          "type": "string"
+                        },
+                        "geometry": {
+                          "additionalProperties": false,
+                          "description": "中心位于轴段中点，轴向端面与径向边界均包含。",
+                          "properties": {
+                            "center": {
+                              "maxItems": 3,
+                              "minItems": 3,
+                              "prefixItems": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "number"
+                                }
+                              ],
+                              "title": "Center",
+                              "type": "array"
+                            },
+                            "axis": {
+                              "maxItems": 3,
+                              "minItems": 3,
+                              "prefixItems": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "number"
+                                }
+                              ],
+                              "title": "Axis",
+                              "type": "array"
+                            },
+                            "radius": {
+                              "exclusiveMinimum": 0,
+                              "title": "Radius",
+                              "type": "number"
+                            },
+                            "length": {
+                              "exclusiveMinimum": 0,
+                              "title": "Length",
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "center",
+                            "axis",
+                            "radius",
+                            "length"
+                          ],
+                          "title": "CylinderGeometry",
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "roi_id",
+                        "frame_id",
+                        "length_unit",
+                        "kind",
+                        "geometry"
+                      ],
+                      "title": "CylinderRoi",
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "description": "有限截面带 ROI。",
+                      "properties": {
+                        "format_id": {
+                          "const": "amvision.roi3d.v1",
+                          "default": "amvision.roi3d.v1",
+                          "title": "Format Id",
+                          "type": "string"
+                        },
+                        "roi_id": {
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                          "title": "Roi Id",
+                          "type": "string"
+                        },
+                        "frame_id": {
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                          "title": "Frame Id",
+                          "type": "string"
+                        },
+                        "length_unit": {
+                          "enum": [
+                            "m",
+                            "mm",
+                            "um"
+                          ],
+                          "title": "Length Unit",
+                          "type": "string"
+                        },
+                        "kind": {
+                          "const": "section-band",
+                          "title": "Kind",
+                          "type": "string"
+                        },
+                        "geometry": {
+                          "additionalProperties": false,
+                          "description": "有界截面带，引用同组中的有限 ROI。",
+                          "properties": {
+                            "origin": {
+                              "maxItems": 3,
+                              "minItems": 3,
+                              "prefixItems": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "number"
+                                }
+                              ],
+                              "title": "Origin",
+                              "type": "array"
+                            },
+                            "normal": {
+                              "maxItems": 3,
+                              "minItems": 3,
+                              "prefixItems": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "number"
+                                }
+                              ],
+                              "title": "Normal",
+                              "type": "array"
+                            },
+                            "thickness": {
+                              "exclusiveMinimum": 0,
+                              "title": "Thickness",
+                              "type": "number"
+                            },
+                            "bounds_roi_id": {
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                              "title": "Bounds Roi Id",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "origin",
+                            "normal",
+                            "thickness",
+                            "bounds_roi_id"
+                          ],
+                          "title": "SectionGeometry",
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "roi_id",
+                        "frame_id",
+                        "length_unit",
+                        "kind",
+                        "geometry"
+                      ],
+                      "title": "SectionRoi",
+                      "type": "object"
+                    }
+                  ],
+                  "title": "Roi"
+                },
+                "bounds": {
+                  "default": [],
+                  "items": {
+                    "discriminator": {
+                      "mapping": {
+                        "box": "#/$defs/BoxRoi",
+                        "cylinder": "#/$defs/CylinderRoi",
+                        "section-band": "#/$defs/SectionRoi"
+                      },
+                      "propertyName": "kind"
+                    },
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "description": "有向盒 ROI。",
+                        "properties": {
+                          "format_id": {
+                            "const": "amvision.roi3d.v1",
+                            "default": "amvision.roi3d.v1",
+                            "title": "Format Id",
+                            "type": "string"
+                          },
+                          "roi_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                            "title": "Roi Id",
+                            "type": "string"
+                          },
+                          "frame_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                            "title": "Frame Id",
+                            "type": "string"
+                          },
+                          "length_unit": {
+                            "enum": [
+                              "m",
+                              "mm",
+                              "um"
+                            ],
+                            "title": "Length Unit",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "const": "box",
+                            "title": "Kind",
+                            "type": "string"
+                          },
+                          "geometry": {
+                            "additionalProperties": false,
+                            "description": "以局部坐标轴为 rotation 列向量的有向盒。",
+                            "properties": {
+                              "center": {
+                                "maxItems": 3,
+                                "minItems": 3,
+                                "prefixItems": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  }
+                                ],
+                                "title": "Center",
+                                "type": "array"
+                              },
+                              "rotation": {
+                                "maxItems": 3,
+                                "minItems": 3,
+                                "prefixItems": [
+                                  {
+                                    "maxItems": 3,
+                                    "minItems": 3,
+                                    "prefixItems": [
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "number"
+                                      }
+                                    ],
+                                    "type": "array"
+                                  },
+                                  {
+                                    "maxItems": 3,
+                                    "minItems": 3,
+                                    "prefixItems": [
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "number"
+                                      }
+                                    ],
+                                    "type": "array"
+                                  },
+                                  {
+                                    "maxItems": 3,
+                                    "minItems": 3,
+                                    "prefixItems": [
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "number"
+                                      }
+                                    ],
+                                    "type": "array"
+                                  }
+                                ],
+                                "title": "Rotation",
+                                "type": "array"
+                              },
+                              "size": {
+                                "maxItems": 3,
+                                "minItems": 3,
+                                "prefixItems": [
+                                  {
+                                    "exclusiveMinimum": 0,
+                                    "type": "number"
+                                  },
+                                  {
+                                    "exclusiveMinimum": 0,
+                                    "type": "number"
+                                  },
+                                  {
+                                    "exclusiveMinimum": 0,
+                                    "type": "number"
+                                  }
+                                ],
+                                "title": "Size",
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "center",
+                              "rotation",
+                              "size"
+                            ],
+                            "title": "BoxGeometry",
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "roi_id",
+                          "frame_id",
+                          "length_unit",
+                          "kind",
+                          "geometry"
+                        ],
+                        "title": "BoxRoi",
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "description": "有限圆柱 ROI。",
+                        "properties": {
+                          "format_id": {
+                            "const": "amvision.roi3d.v1",
+                            "default": "amvision.roi3d.v1",
+                            "title": "Format Id",
+                            "type": "string"
+                          },
+                          "roi_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                            "title": "Roi Id",
+                            "type": "string"
+                          },
+                          "frame_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                            "title": "Frame Id",
+                            "type": "string"
+                          },
+                          "length_unit": {
+                            "enum": [
+                              "m",
+                              "mm",
+                              "um"
+                            ],
+                            "title": "Length Unit",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "const": "cylinder",
+                            "title": "Kind",
+                            "type": "string"
+                          },
+                          "geometry": {
+                            "additionalProperties": false,
+                            "description": "中心位于轴段中点，轴向端面与径向边界均包含。",
+                            "properties": {
+                              "center": {
+                                "maxItems": 3,
+                                "minItems": 3,
+                                "prefixItems": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  }
+                                ],
+                                "title": "Center",
+                                "type": "array"
+                              },
+                              "axis": {
+                                "maxItems": 3,
+                                "minItems": 3,
+                                "prefixItems": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  }
+                                ],
+                                "title": "Axis",
+                                "type": "array"
+                              },
+                              "radius": {
+                                "exclusiveMinimum": 0,
+                                "title": "Radius",
+                                "type": "number"
+                              },
+                              "length": {
+                                "exclusiveMinimum": 0,
+                                "title": "Length",
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "center",
+                              "axis",
+                              "radius",
+                              "length"
+                            ],
+                            "title": "CylinderGeometry",
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "roi_id",
+                          "frame_id",
+                          "length_unit",
+                          "kind",
+                          "geometry"
+                        ],
+                        "title": "CylinderRoi",
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "description": "有限截面带 ROI。",
+                        "properties": {
+                          "format_id": {
+                            "const": "amvision.roi3d.v1",
+                            "default": "amvision.roi3d.v1",
+                            "title": "Format Id",
+                            "type": "string"
+                          },
+                          "roi_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                            "title": "Roi Id",
+                            "type": "string"
+                          },
+                          "frame_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                            "title": "Frame Id",
+                            "type": "string"
+                          },
+                          "length_unit": {
+                            "enum": [
+                              "m",
+                              "mm",
+                              "um"
+                            ],
+                            "title": "Length Unit",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "const": "section-band",
+                            "title": "Kind",
+                            "type": "string"
+                          },
+                          "geometry": {
+                            "additionalProperties": false,
+                            "description": "有界截面带，引用同组中的有限 ROI。",
+                            "properties": {
+                              "origin": {
+                                "maxItems": 3,
+                                "minItems": 3,
+                                "prefixItems": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  }
+                                ],
+                                "title": "Origin",
+                                "type": "array"
+                              },
+                              "normal": {
+                                "maxItems": 3,
+                                "minItems": 3,
+                                "prefixItems": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  }
+                                ],
+                                "title": "Normal",
+                                "type": "array"
+                              },
+                              "thickness": {
+                                "exclusiveMinimum": 0,
+                                "title": "Thickness",
+                                "type": "number"
+                              },
+                              "bounds_roi_id": {
+                                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                "title": "Bounds Roi Id",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "origin",
+                              "normal",
+                              "thickness",
+                              "bounds_roi_id"
+                            ],
+                            "title": "SectionGeometry",
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "roi_id",
+                          "frame_id",
+                          "length_unit",
+                          "kind",
+                          "geometry"
+                        ],
+                        "title": "SectionRoi",
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "maxItems": 8191,
+                  "title": "Bounds",
+                  "type": "array"
+                }
+              },
+              "required": [
+                "kind",
+                "roi"
+              ],
+              "title": "ParameterRoiSource",
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "description": "目标只从 roi 端口接收，所有依赖边界仍固定在配方中。",
+              "properties": {
+                "kind": {
+                  "const": "input",
+                  "title": "Kind",
+                  "type": "string"
+                },
+                "bounds": {
+                  "default": [],
+                  "items": {
+                    "discriminator": {
+                      "mapping": {
+                        "box": "#/$defs/BoxRoi",
+                        "cylinder": "#/$defs/CylinderRoi",
+                        "section-band": "#/$defs/SectionRoi"
+                      },
+                      "propertyName": "kind"
+                    },
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "description": "有向盒 ROI。",
+                        "properties": {
+                          "format_id": {
+                            "const": "amvision.roi3d.v1",
+                            "default": "amvision.roi3d.v1",
+                            "title": "Format Id",
+                            "type": "string"
+                          },
+                          "roi_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                            "title": "Roi Id",
+                            "type": "string"
+                          },
+                          "frame_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                            "title": "Frame Id",
+                            "type": "string"
+                          },
+                          "length_unit": {
+                            "enum": [
+                              "m",
+                              "mm",
+                              "um"
+                            ],
+                            "title": "Length Unit",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "const": "box",
+                            "title": "Kind",
+                            "type": "string"
+                          },
+                          "geometry": {
+                            "additionalProperties": false,
+                            "description": "以局部坐标轴为 rotation 列向量的有向盒。",
+                            "properties": {
+                              "center": {
+                                "maxItems": 3,
+                                "minItems": 3,
+                                "prefixItems": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  }
+                                ],
+                                "title": "Center",
+                                "type": "array"
+                              },
+                              "rotation": {
+                                "maxItems": 3,
+                                "minItems": 3,
+                                "prefixItems": [
+                                  {
+                                    "maxItems": 3,
+                                    "minItems": 3,
+                                    "prefixItems": [
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "number"
+                                      }
+                                    ],
+                                    "type": "array"
+                                  },
+                                  {
+                                    "maxItems": 3,
+                                    "minItems": 3,
+                                    "prefixItems": [
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "number"
+                                      }
+                                    ],
+                                    "type": "array"
+                                  },
+                                  {
+                                    "maxItems": 3,
+                                    "minItems": 3,
+                                    "prefixItems": [
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "number"
+                                      }
+                                    ],
+                                    "type": "array"
+                                  }
+                                ],
+                                "title": "Rotation",
+                                "type": "array"
+                              },
+                              "size": {
+                                "maxItems": 3,
+                                "minItems": 3,
+                                "prefixItems": [
+                                  {
+                                    "exclusiveMinimum": 0,
+                                    "type": "number"
+                                  },
+                                  {
+                                    "exclusiveMinimum": 0,
+                                    "type": "number"
+                                  },
+                                  {
+                                    "exclusiveMinimum": 0,
+                                    "type": "number"
+                                  }
+                                ],
+                                "title": "Size",
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "center",
+                              "rotation",
+                              "size"
+                            ],
+                            "title": "BoxGeometry",
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "roi_id",
+                          "frame_id",
+                          "length_unit",
+                          "kind",
+                          "geometry"
+                        ],
+                        "title": "BoxRoi",
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "description": "有限圆柱 ROI。",
+                        "properties": {
+                          "format_id": {
+                            "const": "amvision.roi3d.v1",
+                            "default": "amvision.roi3d.v1",
+                            "title": "Format Id",
+                            "type": "string"
+                          },
+                          "roi_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                            "title": "Roi Id",
+                            "type": "string"
+                          },
+                          "frame_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                            "title": "Frame Id",
+                            "type": "string"
+                          },
+                          "length_unit": {
+                            "enum": [
+                              "m",
+                              "mm",
+                              "um"
+                            ],
+                            "title": "Length Unit",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "const": "cylinder",
+                            "title": "Kind",
+                            "type": "string"
+                          },
+                          "geometry": {
+                            "additionalProperties": false,
+                            "description": "中心位于轴段中点，轴向端面与径向边界均包含。",
+                            "properties": {
+                              "center": {
+                                "maxItems": 3,
+                                "minItems": 3,
+                                "prefixItems": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  }
+                                ],
+                                "title": "Center",
+                                "type": "array"
+                              },
+                              "axis": {
+                                "maxItems": 3,
+                                "minItems": 3,
+                                "prefixItems": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  }
+                                ],
+                                "title": "Axis",
+                                "type": "array"
+                              },
+                              "radius": {
+                                "exclusiveMinimum": 0,
+                                "title": "Radius",
+                                "type": "number"
+                              },
+                              "length": {
+                                "exclusiveMinimum": 0,
+                                "title": "Length",
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "center",
+                              "axis",
+                              "radius",
+                              "length"
+                            ],
+                            "title": "CylinderGeometry",
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "roi_id",
+                          "frame_id",
+                          "length_unit",
+                          "kind",
+                          "geometry"
+                        ],
+                        "title": "CylinderRoi",
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "description": "有限截面带 ROI。",
+                        "properties": {
+                          "format_id": {
+                            "const": "amvision.roi3d.v1",
+                            "default": "amvision.roi3d.v1",
+                            "title": "Format Id",
+                            "type": "string"
+                          },
+                          "roi_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                            "title": "Roi Id",
+                            "type": "string"
+                          },
+                          "frame_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                            "title": "Frame Id",
+                            "type": "string"
+                          },
+                          "length_unit": {
+                            "enum": [
+                              "m",
+                              "mm",
+                              "um"
+                            ],
+                            "title": "Length Unit",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "const": "section-band",
+                            "title": "Kind",
+                            "type": "string"
+                          },
+                          "geometry": {
+                            "additionalProperties": false,
+                            "description": "有界截面带，引用同组中的有限 ROI。",
+                            "properties": {
+                              "origin": {
+                                "maxItems": 3,
+                                "minItems": 3,
+                                "prefixItems": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  }
+                                ],
+                                "title": "Origin",
+                                "type": "array"
+                              },
+                              "normal": {
+                                "maxItems": 3,
+                                "minItems": 3,
+                                "prefixItems": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  }
+                                ],
+                                "title": "Normal",
+                                "type": "array"
+                              },
+                              "thickness": {
+                                "exclusiveMinimum": 0,
+                                "title": "Thickness",
+                                "type": "number"
+                              },
+                              "bounds_roi_id": {
+                                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                "title": "Bounds Roi Id",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "origin",
+                              "normal",
+                              "thickness",
+                              "bounds_roi_id"
+                            ],
+                            "title": "SectionGeometry",
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "roi_id",
+                          "frame_id",
+                          "length_unit",
+                          "kind",
+                          "geometry"
+                        ],
+                        "title": "SectionRoi",
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "maxItems": 8191,
+                  "title": "Bounds",
+                  "type": "array"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "title": "InputRoiSource",
+              "type": "object"
+            }
+          ],
+          "title": "Source"
+        }
+      }
+    ]
+  },
+  "read-cloud": {
+    "groups": [
+      {
+        "group_id": "default",
+        "display_name": "Default",
+        "description": "",
+        "order": 0
+      }
+    ],
+    "fields": [
+      {
+        "parameter_name": "source",
+        "display_name": "Source",
+        "description": "",
+        "group_id": "default",
+        "order": 0,
+        "required": true,
+        "hidden": false,
+        "readonly": false,
+        "default_value": null,
+        "enum_options": [],
+        "widget": "auto",
+        "json_schema": {
+          "discriminator": {
+            "mapping": {
+              "asset": "#/$defs/AssetSource",
+              "file": "#/$defs/FileSource"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "description": "读取本次文件输入。",
+              "properties": {
+                "kind": {
+                  "const": "file",
+                  "title": "Kind",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "title": "FileSource",
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "description": "固定具体资产版本，不解析最新版本。",
+              "properties": {
+                "kind": {
+                  "const": "asset",
+                  "title": "Kind",
+                  "type": "string"
+                },
+                "reference": {
+                  "additionalProperties": false,
+                  "description": "项目内不可变资源版本与内容摘要；不能用本地路径代替引用。",
+                  "properties": {
+                    "project_id": {
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                      "title": "Project Id",
+                      "type": "string"
+                    },
+                    "resource_id": {
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                      "title": "Resource Id",
+                      "type": "string"
+                    },
+                    "version": {
+                      "maximum": 2147483647,
+                      "minimum": 1,
+                      "title": "Version",
+                      "type": "integer"
+                    },
+                    "sha256": {
+                      "pattern": "^[0-9a-f]{64}$",
+                      "title": "Sha256",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "enum": [
+                        "planar-calibration",
+                        "localization-template",
+                        "point-cloud"
+                      ],
+                      "title": "Kind",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "project_id",
+                    "resource_id",
+                    "version",
+                    "sha256",
+                    "kind"
+                  ],
+                  "title": "ResourceReference",
+                  "type": "object"
+                }
+              },
+              "required": [
+                "kind",
+                "reference"
+              ],
+              "title": "AssetSource",
+              "type": "object"
+            }
+          ],
+          "title": "Source",
+          "x-asset-clears": [
+            "file_options"
+          ],
+          "x-live-source-kind": "file",
+          "x-ui-widget": "cloud-source"
+        }
+      },
+      {
+        "parameter_name": "file_options",
+        "display_name": "File Options",
+        "description": "",
+        "group_id": "default",
+        "order": 1,
+        "required": false,
+        "hidden": false,
+        "readonly": false,
+        "default_value": null,
+        "enum_options": [],
+        "widget": "auto",
+        "json_schema": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "description": "严格文件 profile、空间声明及全部字段映射。",
+              "properties": {
+                "profile_id": {
+                  "enum": [
+                    "ply-ascii",
+                    "ply-binary-le",
+                    "ply-binary-be",
+                    "pcd-ascii",
+                    "pcd-binary",
+                    "pcd-binary-compressed",
+                    "xyz-whitespace",
+                    "xyzn-whitespace",
+                    "xyzi-whitespace",
+                    "xyzrgb-whitespace"
+                  ],
+                  "title": "Profile Id",
+                  "type": "string"
+                },
+                "profile_version": {
+                  "maximum": 1,
+                  "minimum": 1,
+                  "title": "Profile Version",
+                  "type": "integer"
+                },
+                "spatial": {
+                  "additionalProperties": false,
+                  "description": "点云长度单位、坐标系和轴定义。",
+                  "properties": {
+                    "length_unit": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "m",
+                            "mm",
+                            "um"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "title": "Length Unit"
+                    },
+                    "unit_source": {
+                      "enum": [
+                        "metadata",
+                        "configuration",
+                        "unknown"
+                      ],
+                      "title": "Unit Source",
+                      "type": "string"
+                    },
+                    "frame_id": {
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                      "title": "Frame Id",
+                      "type": "string"
+                    },
+                    "axes": {
+                      "additionalProperties": false,
+                      "description": "轴语义声明；标签不是隐含的坐标变换。",
+                      "properties": {
+                        "handedness": {
+                          "enum": [
+                            "right",
+                            "left",
+                            "unknown"
+                          ],
+                          "title": "Handedness",
+                          "type": "string"
+                        },
+                        "axis_labels": {
+                          "maxItems": 3,
+                          "minItems": 3,
+                          "prefixItems": [
+                            {
+                              "maxLength": 128,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            {
+                              "maxLength": 128,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            {
+                              "maxLength": 128,
+                              "minLength": 1,
+                              "type": "string"
+                            }
+                          ],
+                          "title": "Axis Labels",
+                          "type": "array"
+                        },
+                        "definition_source": {
+                          "enum": [
+                            "metadata",
+                            "configuration",
+                            "unknown"
+                          ],
+                          "title": "Definition Source",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "handedness",
+                        "axis_labels",
+                        "definition_source"
+                      ],
+                      "title": "CloudAxes",
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "length_unit",
+                    "unit_source",
+                    "frame_id",
+                    "axes"
+                  ],
+                  "title": "CloudSpatial",
+                  "type": "object"
+                },
+                "field_mapping": {
+                  "items": {
+                    "additionalProperties": false,
+                    "description": "文件字段到逻辑属性的显式映射；禁止猜测或丢弃列。",
+                    "properties": {
+                      "source_names": {
+                        "items": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "minItems": 1,
+                        "title": "Source Names",
+                        "type": "array"
+                      },
+                      "target_name": {
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                        "title": "Target Name",
+                        "type": "string"
+                      },
+                      "semantic": {
+                        "enum": [
+                          "position",
+                          "normal",
+                          "color-rgb",
+                          "validity",
+                          "sample-origin",
+                          "scalar"
+                        ],
+                        "title": "Semantic",
+                        "type": "string"
+                      },
+                      "dtype": {
+                        "enum": [
+                          "int8",
+                          "uint8",
+                          "int16",
+                          "uint16",
+                          "int32",
+                          "uint32",
+                          "int64",
+                          "uint64",
+                          "float32",
+                          "float64"
+                        ],
+                        "title": "Dtype",
+                        "type": "string"
+                      },
+                      "components": {
+                        "maximum": 3,
+                        "minimum": 1,
+                        "title": "Components",
+                        "type": "integer"
+                      },
+                      "unit": {
+                        "anyOf": [
+                          {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "title": "Unit"
+                      }
+                    },
+                    "required": [
+                      "source_names",
+                      "target_name",
+                      "semantic",
+                      "dtype",
+                      "components",
+                      "unit"
+                    ],
+                    "title": "CloudFieldMapping",
+                    "type": "object"
+                  },
+                  "minItems": 1,
+                  "title": "Field Mapping",
+                  "type": "array"
+                }
+              },
+              "required": [
+                "profile_id",
+                "profile_version",
+                "spatial",
+                "field_mapping"
+              ],
+              "title": "CloudFileOptions",
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      }
+    ]
+  },
+  "cloud-preview": {
+    "groups": [
+      {
+        "group_id": "default",
+        "display_name": "Default",
+        "description": "",
+        "order": 0
+      }
+    ],
+    "fields": [
+      {
+        "parameter_name": "point_limit",
+        "display_name": "Point Limit",
+        "description": "",
+        "group_id": "default",
+        "order": 0,
+        "required": true,
+        "hidden": false,
+        "readonly": false,
+        "default_value": null,
+        "enum_options": [],
+        "widget": "auto",
+        "json_schema": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "title": "Point Limit",
+          "type": "integer"
+        }
+      },
+      {
+        "parameter_name": "color",
+        "display_name": "Color",
+        "description": "",
+        "group_id": "default",
+        "order": 1,
+        "required": true,
+        "hidden": false,
+        "readonly": false,
+        "default_value": null,
+        "enum_options": [],
+        "widget": "auto",
+        "json_schema": {
+          "discriminator": {
+            "mapping": {
+              "rgb": "#/$defs/RgbColor",
+              "scalar": "#/$defs/ScalarColor",
+              "solid": "#/$defs/SolidColor"
+            },
+            "propertyName": "mode"
+          },
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "description": "显示统一颜色。",
+              "properties": {
+                "mode": {
+                  "const": "solid",
+                  "title": "Mode",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "mode"
+              ],
+              "title": "SolidColor",
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "description": "使用声明的原始 RGB 字节。",
+              "properties": {
+                "mode": {
+                  "const": "rgb",
+                  "title": "Mode",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "mode"
+              ],
+              "title": "RgbColor",
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "description": "按显式字段、分量和范围着色，不自动换字段。",
+              "properties": {
+                "mode": {
+                  "const": "scalar",
+                  "title": "Mode",
+                  "type": "string"
+                },
+                "field": {
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                  "title": "Field",
+                  "type": "string"
+                },
+                "component": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "title": "Component",
+                  "type": "integer"
+                },
+                "range": {
+                  "discriminator": {
+                    "mapping": {
+                      "finite-range": "#/$defs/FiniteRange",
+                      "fixed": "#/$defs/FixedRange"
+                    },
+                    "propertyName": "mode"
+                  },
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "description": "从实际显示样本的有限值计算色标。",
+                      "properties": {
+                        "mode": {
+                          "const": "finite-range",
+                          "title": "Mode",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "mode"
+                      ],
+                      "title": "FiniteRange",
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "description": "精确十进制边界，不将 uint64 经浮点 JSON 往返。",
+                      "properties": {
+                        "mode": {
+                          "const": "fixed",
+                          "title": "Mode",
+                          "type": "string"
+                        },
+                        "min": {
+                          "maxLength": 128,
+                          "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$",
+                          "title": "Min",
+                          "type": "string"
+                        },
+                        "max": {
+                          "maxLength": 128,
+                          "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$",
+                          "title": "Max",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "mode",
+                        "min",
+                        "max"
+                      ],
+                      "title": "FixedRange",
+                      "type": "object"
+                    }
+                  ],
+                  "title": "Range"
+                }
+              },
+              "required": [
+                "mode",
+                "field",
+                "component",
+                "range"
+              ],
+              "title": "ScalarColor",
+              "type": "object"
+            }
+          ],
+          "title": "Color"
+        }
+      }
+    ]
+  },
+  "save-cloud": {
+    "groups": [
+      {
+        "group_id": "default",
+        "display_name": "Default",
+        "description": "",
+        "order": 0
+      }
+    ],
+    "fields": [
+      {
+        "parameter_name": "mode",
+        "display_name": "Mode",
+        "description": "",
+        "group_id": "default",
+        "order": 0,
+        "required": true,
+        "hidden": false,
+        "readonly": false,
+        "default_value": null,
+        "enum_options": [
+          {
+            "value": "original",
+            "label": "Original"
+          },
+          {
+            "value": "derived",
+            "label": "Derived"
+          }
+        ],
+        "widget": "auto",
+        "json_schema": {
+          "enum": [
+            "original",
+            "derived"
+          ],
+          "title": "Mode",
+          "type": "string"
+        }
+      },
+      {
+        "parameter_name": "target",
+        "display_name": "Target",
+        "description": "",
+        "group_id": "default",
+        "order": 1,
+        "required": true,
+        "hidden": false,
+        "readonly": false,
+        "default_value": null,
+        "enum_options": [],
+        "widget": "auto",
+        "json_schema": {
+          "discriminator": {
+            "mapping": {
+              "new": "#/$defs/NewTarget",
+              "new-version": "#/$defs/VersionTarget"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "description": "显式新建资源。",
+              "properties": {
+                "kind": {
+                  "const": "new",
+                  "title": "Kind",
+                  "type": "string"
+                },
+                "name": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "title": "Name",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "name"
+              ],
+              "title": "NewTarget",
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "description": "基于期望版本保存，冲突不自动重试。",
+              "properties": {
+                "kind": {
+                  "const": "new-version",
+                  "title": "Kind",
+                  "type": "string"
+                },
+                "reference": {
+                  "additionalProperties": false,
+                  "description": "项目内不可变资源版本与内容摘要；不能用本地路径代替引用。",
+                  "properties": {
+                    "project_id": {
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                      "title": "Project Id",
+                      "type": "string"
+                    },
+                    "resource_id": {
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                      "title": "Resource Id",
+                      "type": "string"
+                    },
+                    "version": {
+                      "maximum": 2147483647,
+                      "minimum": 1,
+                      "title": "Version",
+                      "type": "integer"
+                    },
+                    "sha256": {
+                      "pattern": "^[0-9a-f]{64}$",
+                      "title": "Sha256",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "enum": [
+                        "planar-calibration",
+                        "localization-template",
+                        "point-cloud"
+                      ],
+                      "title": "Kind",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "project_id",
+                    "resource_id",
+                    "version",
+                    "sha256",
+                    "kind"
+                  ],
+                  "title": "ResourceReference",
+                  "type": "object"
+                },
+                "name": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "title": "Name",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "reference",
+                "name"
+              ],
+              "title": "VersionTarget",
+              "type": "object"
+            }
+          ],
+          "title": "Target",
+          "x-ui-widget": "cloud-target"
+        }
+      }
+    ]
+  }
+}

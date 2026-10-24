@@ -12,7 +12,10 @@ from backend.contracts.workflows.geometry3d import PlaneGeometry
 from backend.service.application.errors import InvalidRequestError
 from custom_nodes._metrology3d_nodes.shared.boundary_section import intersect_surface
 from custom_nodes._metrology3d_nodes.shared.boundary_surface import build_surface
-from custom_nodes._metrology3d_nodes.shared.boundary_topology import order_segments
+from custom_nodes._metrology3d_nodes.shared.boundary_topology import (
+    order_segments,
+    selected_runs,
+)
 from custom_nodes._metrology3d_nodes.shared.crop_roi import roi_mask
 
 
@@ -124,21 +127,23 @@ def extract_boundary_array(
     rotation = np.asarray(evaluation.rotation)
     for target in parameters.targets:
         cancel()
-        matches = [
-            i
-            for i, candidate in enumerate(candidates)
-            if candidate.closed == target.closed
-            and roi_mask(vertices[candidate.indices], target.region).all()
-        ]
+        matches = []
+        for candidate in candidates:
+            cancel()
+            mask = roi_mask(vertices[candidate.indices], target.region)
+            for part in selected_runs(candidate, mask, cancel=cancel):
+                if part.closed == target.closed:
+                    matches.append(part)
+                    if len(matches) > 1:
+                        return missing("target_ambiguous", target.segment_id)
         if not matches:
             return missing("target_not_found", target.segment_id)
-        if len(matches) != 1:
-            return missing("target_ambiguous", target.segment_id)
-        candidate_id = matches[0]
-        if candidate_id in used:
+        candidate = matches[0]
+        if len(candidate.indices) < (3 if candidate.closed else 2):
+            return missing("insufficient_support", target.segment_id)
+        if any(int(index) in used for index in candidate.indices):
             return missing("target_conflict", target.segment_id)
-        used.add(candidate_id)
-        candidate = candidates[candidate_id]
+        used.update(map(int, candidate.indices))
         actual = vertices[candidate.indices]
         orientation = "open"
         if candidate.closed:

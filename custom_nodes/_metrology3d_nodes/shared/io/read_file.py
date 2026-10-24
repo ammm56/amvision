@@ -20,7 +20,7 @@ from backend.contracts.workflows.point_cloud_runtime import (
     CloudFileSource,
     CloudReference,
 )
-from backend.service.application.errors import InvalidRequestError
+from backend.service.application.errors import InvalidRequestError, WorkflowInputError
 from backend.service.application.ports.object_store import ObjectStore
 from backend.service.application.runtime.resource_scope import ResourceScope
 from backend.service.application.runtime.exception_cleanup import (
@@ -32,6 +32,7 @@ from backend.service.application.workflows.point_cloud.budget import CloudArrayB
 from backend.service.application.workflows.point_cloud.policy import PointCloudIoPolicy
 from backend.service.application.workflows.point_cloud.runtime import CloudRuntime
 from custom_nodes._metrology3d_nodes.shared.io.formats import inspect_cloud_file
+from custom_nodes._metrology3d_nodes.shared.io.input_errors import parsing_input
 
 
 @dataclass(frozen=True)
@@ -137,15 +138,27 @@ def read_cloud_file(
         ):
             raise InvalidRequestError("点云快照实际字节与摘要不一致")
         snapshot.stream.seek(0)
-        inspected = inspect_cloud_file(snapshot.stream, options, policy, cancel)
+        with parsing_input(options.profile_id, "header"):
+            inspected = inspect_cloud_file(snapshot.stream, options, policy, cancel)
         if inspected.count <= 0:
             raise InvalidRequestError("点云输入必须包含点")
         names = tuple(
             name for field in options.field_mapping for name in field.source_names
         )
         if set(names) != set(inspected.dtype.names or ()):
-            raise InvalidRequestError(
-                "点云字段映射必须完整覆盖源字段", details={"stage": "field_mapping"}
+            raise WorkflowInputError(
+                "点云字段映射必须完整覆盖源字段",
+                code="workflow_input_point_cloud_field_mapping_invalid",
+                details={
+                    "stage": "field_mapping",
+                    "profile_id": options.profile_id,
+                    "unmapped_fields": sorted(
+                        set(inspected.dtype.names or ()) - set(names)
+                    ),
+                    "unknown_fields": sorted(
+                        set(names) - set(inspected.dtype.names or ())
+                    ),
+                },
             )
         fields = tuple(field.to_field() for field in options.field_mapping)
         for mapping in options.field_mapping:
@@ -154,9 +167,19 @@ def read_cloud_file(
                 inspected.dtype[name].newbyteorder("=") != target
                 for name in mapping.source_names
             ):
-                raise InvalidRequestError(
+                raise WorkflowInputError(
                     "点云字段类型与文件声明不一致",
-                    details={"field": mapping.target_name},
+                    code="workflow_input_point_cloud_field_type_mismatch",
+                    details={
+                        "stage": "field_mapping",
+                        "profile_id": options.profile_id,
+                        "field": mapping.target_name,
+                        "expected_dtype": mapping.dtype,
+                        "source_dtypes": {
+                            name: inspected.dtype[name].name
+                            for name in mapping.source_names
+                        },
+                    },
                 )
         decoded_bytes = inspected.count * inspected.dtype.itemsize
         if decoded_bytes > policy.max_decoded_bytes:
@@ -177,9 +200,10 @@ def read_cloud_file(
             effective_policy = PointCloudIoPolicy.model_validate(
                 {**policy.model_dump(), "chunk_rows": rows}
             )
-            inspected = inspect_cloud_file(
-                snapshot.stream, options, effective_policy, cancel
-            )
+            with parsing_input(options.profile_id, "header"):
+                inspected = inspect_cloud_file(
+                    snapshot.stream, options, effective_policy, cancel
+                )
         # 结构数组与规范属性在重排时同时存在，不能只给最终数组计费。
         reservation = budget.reserve(decoded_bytes + normalized_bytes)
         data = None
@@ -187,7 +211,8 @@ def read_cloud_file(
         arrays: dict[str, np.ndarray] = {}
         owner = None
         try:
-            data = inspected.read()
+            with parsing_input(options.profile_id, "data"):
+                data = inspected.read()
             if data.shape != (inspected.count,) or data.dtype != inspected.dtype:
                 raise InvalidRequestError("解析结果不符合预检布局")
             invalid = 0

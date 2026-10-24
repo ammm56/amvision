@@ -28,7 +28,7 @@ def line_blocks(
             break
         row += 1
         if len(line) > policy.chunk_bytes:
-            raise ValueError(f"XYZ row {row}: line exceeds chunk_bytes")
+            raise ValueError(f"budget: XYZ row {row} exceeds chunk_bytes")
         line.decode("ascii")
         body = line[:-1] if line.endswith(b"\n") else line
         if line.endswith(b"\r\n"):
@@ -70,7 +70,7 @@ def inspect_xyz(
     for _row, lines in line_blocks(stream, policy, cancel):
         count += len(lines)
         if count * dtype.itemsize > policy.max_decoded_bytes:
-            raise ValueError("XYZ decoded array exceeds max_decoded_bytes")
+            raise ValueError("budget: XYZ decoded array exceeds max_decoded_bytes")
     stream.seek(start)
     return count, dtype
 
@@ -84,7 +84,7 @@ def read_xyz(
 ) -> np.ndarray:
     """每块由 NumPy 解码；浮点特殊值与有限数越界分别检查。"""
     if count * dtype.itemsize > policy.max_decoded_bytes:
-        raise ValueError("XYZ decoded array exceeds max_decoded_bytes")
+        raise ValueError("budget: XYZ decoded array exceeds max_decoded_bytes")
     result = np.empty(count, dtype=dtype)
     offset = 0
     names = dtype.names

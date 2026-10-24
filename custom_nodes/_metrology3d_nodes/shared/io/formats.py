@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from importlib.metadata import version
+from importlib.metadata import PackageNotFoundError, version
 from typing import BinaryIO, Callable
 
 import numpy as np
 
 from backend.contracts.workflows.point_cloud import CloudFileOptions, PcdSourceMetadata
 from backend.service.application.workflows.point_cloud.policy import PointCloudIoPolicy
+from backend.service.application.errors import ServiceConfigurationError
+from custom_nodes._metrology3d_nodes.shared.io.input_errors import format_mismatch
 from custom_nodes._metrology3d_nodes.shared.io.xyz import inspect_xyz, read_xyz
 
 
@@ -25,8 +27,19 @@ class InspectedCloudFile:
 
 def require_controlled_distribution(name: str, expected: str) -> None:
     """只接受本项目锁定的修复发行版本。"""
-    if version(name) != expected:
-        raise RuntimeError(f"{name} requires controlled version {expected}")
+    try:
+        actual = version(name)
+    except PackageNotFoundError:
+        actual = None
+    if actual != expected:
+        raise ServiceConfigurationError(
+            "点云读取依赖不满足受控版本要求",
+            details={
+                "distribution": name,
+                "expected_version": expected,
+                "actual_version": actual,
+            },
+        )
 
 
 def inspect_cloud_file(
@@ -48,7 +61,7 @@ def inspect_cloud_file(
             "ply-binary-be": "binary_big_endian",
         }[options.profile_id]
         if header.encoding != encoding:
-            raise ValueError("PLY encoding does not match profile")
+            raise format_mismatch(options.profile_id, encoding, header.encoding)
         if len(header.elements) != 1 or header.elements[0].name != "vertex":
             raise ValueError("PLY point profile cannot omit other elements")
         vertex = header.elements[0]
@@ -81,7 +94,7 @@ def inspect_cloud_file(
             "pcd-binary-compressed": "binary_compressed",
         }[options.profile_id]
         if metadata.data.value != encoding:
-            raise ValueError("PCD encoding does not match profile")
+            raise format_mismatch(options.profile_id, encoding, metadata.data.value)
         source = (
             None
             if metadata.points == 0

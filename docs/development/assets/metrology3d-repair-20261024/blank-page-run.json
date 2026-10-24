@@ -1,0 +1,49 @@
+{
+  "authoring": "empty graph via browser; no preseeded workflow",
+  "first_invoke": {
+    "workflow_run_id": "workflow-run-6c01524341384eedbeeeb4e03d3dee7b",
+    "workflow_runtime_id": "workflow-runtime-5e81bbbb90ef43d597bae54fec93aef4",
+    "workflow_app_version_id": "workflow-app-version-fc9367b087b94000b9058b50ed4279b9",
+    "state": "succeeded",
+    "assigned_process_id": 29468
+  },
+  "cloud": {
+    "state": "ready",
+    "source_point_count": 14745099,
+    "point_count": 178089,
+    "display_point_count": 1000,
+    "spatial": {
+      "length_unit": "mm",
+      "unit_source": "configuration",
+      "frame_id": "fixture",
+      "axes": {
+        "handedness": "right",
+        "axis_labels": [
+          "X",
+          "Y",
+          "Z"
+        ],
+        "definition_source": "configuration"
+      }
+    },
+    "bounds": {
+      "min": [
+        -44.98800277709961,
+        -144.99000549316406,
+        -16.546001434326172
+      ],
+      "max": [
+        -37.00800323486328,
+        -125.01000213623047,
+        -16.326000213623047
+      ]
+    }
+  },
+  "display_checksum": "62b6b5491bf732c40f82b054cc4f46e0700771a7b43f6d88a3bc338b24928bea",
+  "final_runtime": {
+    "workflow_runtime_id": "workflow-runtime-5e81bbbb90ef43d597bae54fec93aef4",
+    "observed_state": "stopped",
+    "desired_state": "stopped",
+    "worker_process_id": null
+  }
+}

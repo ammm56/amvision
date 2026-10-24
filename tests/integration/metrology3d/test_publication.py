@@ -2,6 +2,7 @@
 
 from io import BytesIO
 from dataclasses import replace
+from custom_nodes._metrology3d_nodes import PACK_VERSION
 
 from backend.contracts.nodes.node_pack_manifest import NodePackManifest
 from backend.service.application.workflows.documents.measurement_resources import (
@@ -42,7 +43,7 @@ def test_asset_draft_publish_and_corruption_gate(tmp_path):
     catalog = build_custom_node_catalog_document()
     manifest = NodePackManifest(
         id="metrology3d.nodes",
-        version="0.1.9",
+        version=PACK_VERSION,
         displayName="3D Metrology test",
         category="vision",
         categoryRoot="metrology3d",

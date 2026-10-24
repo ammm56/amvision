@@ -180,7 +180,7 @@ class BoundaryCloudMethod(Contract):
     """边界参数和实际来源布局摘要共同绑定派生内容。"""
 
     method_id: Literal["extract-boundary"]
-    method_version: Annotated[int, Field(strict=True, ge=1, le=1)]
+    method_version: Annotated[int, Field(strict=True, ge=2, le=2)]
     parameters: ExtractBoundaryParameters
     parameters_sha256: Sha256
     vertices_sha256: Sha256

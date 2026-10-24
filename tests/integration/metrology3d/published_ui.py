@@ -17,7 +17,14 @@ def main():
     parser.add_argument("--port", type=int, required=True)
     parser.add_argument(
         "--recipe",
-        choices=("boundary-circle", "extents", "edge-pair", "hole", "dimensions"),
+        choices=(
+            "empty",
+            "boundary-circle",
+            "extents",
+            "edge-pair",
+            "hole",
+            "dimensions",
+        ),
         default="boundary-circle",
     )
     args = parser.parse_args()
@@ -31,7 +38,7 @@ def main():
             if args.recipe == "dimensions"
             else (args.recipe,)
         )
-        for kind in kinds:
+        for kind in () if args.recipe == "empty" else kinds:
             if kind == "boundary-circle":
                 documents, _, points = boundary_documents("circle", file=True)
             else:

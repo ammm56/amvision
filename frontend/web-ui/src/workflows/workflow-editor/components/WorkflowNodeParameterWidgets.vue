@@ -37,8 +37,50 @@
           :title="readParameterInputSourceTitle(node, field)"
         >{{ t('workflowEditor.feedback.parameterFromConnection') }}</small>
       </div>
+      <component
+        :is="trustedParameterEditor(node.node.node_type_id, field.parameter_name)"
+        v-if="trustedParameterEditor(node.node.node_type_id, field.parameter_name)"
+        :key="`${node.node.node_id}:${field.parameter_name}`"
+        :node-type="node.node.node_type_id"
+        :model-value="readValue(node, field)" :disabled="isParameterEditorDisabled(node, field)"
+        :parameters="node.node.parameters" :parameter-name="field.parameter_name"
+        :preview-display="previewDisplay"
+        :input-sources="editorSources?.(node.node.node_id)"
+        :draft-issues="draftIssues ? (value:unknown)=>draftIssues!(node.node.node_id,field.parameter_name,value) : undefined"
+        @update:model-value="emit('update-value', node, field, $event)"
+      />
+      <WorkflowDisplayAppearance
+        v-else-if="field.json_schema['x-ui-widget'] === 'display-appearance'"
+        :model-value="readValue(node, field)" :disabled="isParameterEditorDisabled(node, field)"
+        @update:model-value="emit('update-value', node, field, $event)"
+      />
+      <WorkflowMeasurementResourcePicker
+        v-else-if="field.json_schema['x-ui-widget'] === 'measurement-resource'"
+        :model-value="readValue(node, field)" :schema="field.json_schema" :disabled="isParameterEditorDisabled(node, field)"
+        @update:model-value="emit('update-value', node, field, $event)"
+      />
+      <CloudResourceParameter
+        v-else-if="['cloud-source', 'cloud-target'].includes(String(field.json_schema['x-ui-widget']))"
+        :model-value="readValue(node, field)" :schema="field.json_schema" :disabled="isParameterEditorDisabled(node, field)"
+        @update:model-value="emit('update-value', node, field, $event)"
+      />
+      <WorkflowParameterRowsEditor
+        v-else-if="field.json_schema['x-ui-widget'] === 'object-rows'"
+        :model-value="readValue(node, field)" :schema="field.json_schema" :label="readLabel(field)"
+        :disabled="isParameterEditorDisabled(node, field)"
+        @update:model-value="emit('update-value', node, field, $event)"
+      />
+      <WorkflowParameterColorMap
+        v-else-if="isColorMap(field)"
+        :model-value="readValue(node, field)"
+        :label="readLabel(field)"
+        :key-label="readColorMapSchemaTitle(field, 'propertyNames', t('workflowEditor.colorMap.keyLabel'))"
+        :value-label="readColorMapSchemaTitle(field, 'additionalProperties', t('workflowEditor.colorMap.valueLabel'))"
+        :disabled="isParameterEditorDisabled(node, field)"
+        @update:model-value="emit('update-value', node, field, $event)"
+      />
       <SelectField
-        v-if="field.enum_options.length"
+        v-else-if="field.enum_options.length"
         :model-value="readEnumValue(node, field)"
         :options="readEnumOptions(field)"
         :disabled="isParameterEditorDisabled(node, field)"
@@ -92,48 +134,6 @@
         :disabled="isParameterEditorDisabled(node, field)"
         :aria-label="readLabel(field)"
         @input="emit('update-text', node, field, $event)"
-      />
-      <WorkflowParameterColorMap
-        v-else-if="isColorMap(field)"
-        :model-value="readValue(node, field)"
-        :label="readLabel(field)"
-        :key-label="readColorMapSchemaTitle(field, 'propertyNames', t('workflowEditor.colorMap.keyLabel'))"
-        :value-label="readColorMapSchemaTitle(field, 'additionalProperties', t('workflowEditor.colorMap.valueLabel'))"
-        :disabled="isParameterEditorDisabled(node, field)"
-        @update:model-value="emit('update-value', node, field, $event)"
-      />
-      <WorkflowDisplayAppearance
-        v-else-if="field.json_schema['x-ui-widget'] === 'display-appearance'"
-        :model-value="readValue(node, field)" :disabled="isParameterEditorDisabled(node, field)"
-        @update:model-value="emit('update-value', node, field, $event)"
-      />
-      <WorkflowMeasurementResourcePicker
-        v-else-if="field.json_schema['x-ui-widget'] === 'measurement-resource'"
-        :model-value="readValue(node, field)" :schema="field.json_schema" :disabled="isParameterEditorDisabled(node, field)"
-        @update:model-value="emit('update-value', node, field, $event)"
-      />
-      <CloudResourceParameter
-        v-else-if="['cloud-source', 'cloud-target'].includes(String(field.json_schema['x-ui-widget']))"
-        :model-value="readValue(node, field)" :schema="field.json_schema" :disabled="isParameterEditorDisabled(node, field)"
-        @update:model-value="emit('update-value', node, field, $event)"
-      />
-      <component
-        :is="trustedParameterEditor(node.node.node_type_id, field.parameter_name)"
-        v-else-if="trustedParameterEditor(node.node.node_type_id, field.parameter_name)"
-        :key="`${node.node.node_id}:${field.parameter_name}`"
-        :node-type="node.node.node_type_id"
-        :model-value="readValue(node, field)" :disabled="isParameterEditorDisabled(node, field)"
-        :parameters="node.node.parameters" :parameter-name="field.parameter_name"
-        :preview-display="previewDisplay"
-        :input-sources="editorSources?.(node.node.node_id)"
-        :draft-issues="draftIssues ? (value:unknown)=>draftIssues!(node.node.node_id,field.parameter_name,value) : undefined"
-        @update:model-value="emit('update-value', node, field, $event)"
-      />
-      <WorkflowParameterRowsEditor
-        v-else-if="field.json_schema['x-ui-widget'] === 'object-rows'"
-        :model-value="readValue(node, field)" :schema="field.json_schema" :label="readLabel(field)"
-        :disabled="isParameterEditorDisabled(node, field)"
-        @update:model-value="emit('update-value', node, field, $event)"
       />
       <template v-else-if="isJson(field)">
         <textarea

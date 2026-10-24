@@ -31,7 +31,7 @@ class BoundaryMethod(Contract):
     """完整参数只有一个来源，质量策略不再重复保存第二份。"""
 
     method_id: Literal["extract-boundary"] = "extract-boundary"
-    method_version: Literal[1] = 1
+    method_version: Literal[2] = 2
     parameters: ExtractBoundaryParameters
     parameters_sha256: Sha256
 
@@ -52,6 +52,7 @@ class LineMethod(BoundaryMethod):
     """明确面内 TLS 参数。"""
 
     method_id: Literal["fit-line"] = "fit-line"
+    method_version: Literal[1] = 1
     parameters: FitLineParameters
 
 
@@ -59,6 +60,7 @@ class CircleMethod(BoundaryMethod):
     """明确几何圆求解参数。"""
 
     method_id: Literal["fit-circle"] = "fit-circle"
+    method_version: Literal[1] = 1
     parameters: FitCircleParameters
 
 

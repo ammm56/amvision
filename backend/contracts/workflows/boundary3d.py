@@ -86,7 +86,7 @@ class ContourBoundary(Contract):
 
 
 class BoundaryTarget(Contract):
-    """目标必须匹配唯一完整候选，区域只选择而不裁断段。"""
+    """ROI 仅保留已有顶点的连续段；缺口断开，单目标多段无效。"""
 
     segment_id: Identifier
     region: CropCloudParameters

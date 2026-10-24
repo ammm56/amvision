@@ -26,7 +26,10 @@ from custom_nodes._metrology3d_nodes.shared.extract_boundary import (
 )
 from custom_nodes._metrology3d_nodes.shared.filter_valid import filter_valid
 from custom_nodes._metrology3d_nodes.shared.io.read_file import read_file_reference
-from tests.integration.metrology3d.test_boundary_extraction import extract_parameters
+from tests.integration.metrology3d.test_boundary_extraction import (
+    extract_parameters,
+    region as box_region,
+)
 from tests.point_cloud_support import options, policy
 from tests.test_metrology3d_boundary_contracts import (
     circle_parameters,
@@ -153,6 +156,30 @@ def test_complete_sample_kernel_sources_precision_and_release(tmp_path, request)
             cancel=lambda: None,
         )
         assert projected.reason is None, projected.reason
+        # 仅验证有限选段契约，不把人工窗口当工件孔边或产品尺寸。
+        target_region = box_region(
+            center=(center[0] + 0.15, center[1], center[2]), size=(0.3, 1, 2)
+        )
+        finite_parameters = parameters.model_dump(mode="json")
+        finite_parameters["targets"] = [
+            dict(
+                segment_id="finite-arc", region=target_region, closed=False, role="open"
+            )
+        ]
+        finite = extract_boundary_array(
+            points,
+            type(parameters).model_validate(finite_parameters),
+            max_working_bytes=limits.max_working_bytes,
+            cancel=lambda: None,
+        )
+        assert finite.reason is None, finite.reason
+        assert not finite.topology.segments[0].closed
+        expected = projected.positions[:, 0] >= center[0]
+        assert set(map(tuple, finite.positions)) == set(
+            map(tuple, projected.positions[expected])
+        )
+        assert 2 <= len(finite.positions) < len(projected.positions)
+        np.testing.assert_array_equal(finite.positions, points[finite.source_rows])
         with runtime.borrow(cloud) as view:
             for parent_row, xyz in zip(
                 source_rows[projected.source_rows], projected.positions

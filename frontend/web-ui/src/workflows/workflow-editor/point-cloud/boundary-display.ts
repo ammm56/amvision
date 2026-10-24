@@ -27,6 +27,7 @@ export function curveItems(payload: Record<string, unknown>): CurveDisplay[] {
     if (typeof f.feature_id !== 'string' || !f.feature_id || ids.has(f.feature_id) || !['boundary','line','circle'].includes(String(f.kind)) || typeof f.valid !== 'boolean') throw invalid()
     ids.add(f.feature_id)
     const method = object(f.method), evaluation = object(object(method.parameters).evaluation), spatial = object(payload.spatial)
+    if (method.method_id !== ({ boundary: 'extract-boundary', line: 'fit-line', circle: 'fit-circle' }[String(f.kind)]) || method.method_version !== (f.kind === 'boundary' ? 2 : 1)) throw invalid()
     if (evaluation.frame_id !== spatial.frame_id || evaluation.length_unit !== spatial.length_unit || object(object(f.quality).metrics).observation_id !== payload.observation_id) throw invalid()
     if (!Array.isArray(f.points)) throw invalid()
     const points = f.points.map(xyz)

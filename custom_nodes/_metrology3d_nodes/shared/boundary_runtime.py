@@ -254,7 +254,7 @@ def extract_boundary(runtime, reference, parameters, *, cancel, contour_plane=No
                     digest.update(np.ascontiguousarray(array).tobytes())
             method = BoundaryCloudMethod(
                 method_id="extract-boundary",
-                method_version=1,
+                method_version=2,
                 parameters=parameters,
                 parameters_sha256=parameter_digest(parameters),
                 vertices_sha256=digest.hexdigest(),

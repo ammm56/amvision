@@ -115,8 +115,9 @@ def test_ply_precision_order_and_close(context, profile, encoding, endian):
     ],
 )
 def test_bad_files_never_publish_arrays(context, body):
-    with pytest.raises(ValueError):
+    with pytest.raises(WorkflowInputError) as error:
         run(context, ply(body))
+    assert error.value.code == "workflow_input_point_cloud_data_invalid"
     assert context[2].used == 0 and context[3].resource_count == 0
 
 
@@ -124,9 +125,9 @@ def test_unmapped_fields_and_dtype_narrowing_rejected(context):
     extra = (
         "property float x\nproperty float y\nproperty float z\nproperty uint label\n"
     )
-    with pytest.raises(InvalidRequestError, match="完整覆盖"):
+    with pytest.raises(WorkflowInputError, match="完整覆盖"):
         run(context, ply(b"1 2 3 4\n5 6 7 8\n", fields=extra))
-    with pytest.raises(InvalidRequestError, match="类型"):
+    with pytest.raises(WorkflowInputError, match="类型"):
         run(context, ply(), options(dtype="float64"))
 
 
@@ -171,8 +172,10 @@ def test_project_scope_and_wrong_profile(context):
             scope=scope,
             cancel=lambda: None,
         )
-    with pytest.raises(ValueError, match="encoding"):
+    with pytest.raises(WorkflowInputError, match="编码") as error:
         run(context, ply(), options("ply-binary-le"))
+    assert error.value.code == "workflow_input_point_cloud_format_mismatch"
+    assert error.value.details["actual_encoding"] == "ascii"
 
 
 def test_cancel_after_decode_and_before_registration_releases(context):
@@ -233,7 +236,7 @@ def test_pcd_organization_and_uint64(context):
     ],
 )
 def test_xyz_rejects_bad_rows(context, body):
-    with pytest.raises(ValueError):
+    with pytest.raises(WorkflowInputError):
         run(context, body, options("xyz-whitespace"))
     assert context[2].used == 0
 
@@ -280,7 +283,7 @@ def test_retained_failure_does_not_retain_decoded_arrays(context, monkeypatch):
         return result
 
     monkeypatch.setattr(np, "empty", traced)
-    with pytest.raises(ValueError) as failure:
+    with pytest.raises(WorkflowInputError) as failure:
         run(context, ply(b"1 2 3\nbad 4 5\n"))
     assert failure.value is not None
     assert references and all(reference() is None for reference in references)
@@ -352,12 +355,13 @@ def test_xyz_rgb_rejects_lossy_quantization(context, color):
         "components": 3,
         "unit": "1",
     }
-    with pytest.raises(ValueError, match="RGB"):
+    with pytest.raises(WorkflowInputError) as error:
         run(
             context,
             b"1 2 3 " + color + b"\n",
             options("xyzrgb-whitespace", extra=(extra,)),
         )
+    assert "RGB" in error.value.details["parser_error"]
 
 
 @pytest.mark.parametrize("compressed", [False, True])

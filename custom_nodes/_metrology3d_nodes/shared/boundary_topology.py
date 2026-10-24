@@ -15,6 +15,28 @@ class OrderedSegment:
     closed: bool
 
 
+def selected_runs(segment, mask, *, cancel):
+    """按既有连接截取实测段；环的序列起点不是缺口，不插值 ROI 交点。"""
+    cancel()
+    mask = np.asarray(mask, dtype=bool)
+    if mask.shape != segment.indices.shape:
+        raise InvalidRequestError("边界选择掩码与顶点数量不一致")
+    if mask.all():
+        yield segment
+        return
+    # 闭环从一个排除点后遍历，避免跨数组末尾的同一段被错误拆成两段。
+    indices = segment.indices
+    if segment.closed:
+        start = int(np.flatnonzero(~mask)[0]) + 1
+        mask = np.roll(mask, -start)
+        indices = np.roll(indices, -start)
+    changes = np.flatnonzero(np.diff(np.r_[False, mask, False]))
+    for start, stop in changes.reshape(-1, 2):
+        cancel()
+        # 单点也保留为候选，由上层报告少点或多段，不能静默丢弃。
+        yield OrderedSegment(indices[start:stop], False)
+
+
 def order_segments(positions, edges, *, max_working_bytes, cancel):
     """无向边仅允许度一/二的链或环；返回原因及全部候选，不擅自选第一个。"""
     cancel()

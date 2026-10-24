@@ -2,6 +2,7 @@ import type { Ref } from 'vue'
 
 import { translate } from '@/platform/i18n'
 import { parseWorkflowNumericDisplayValue, readWorkflowNumericDisplayDivisor } from './numeric-parameter-input'
+import { rowScalar } from './row-scalar'
 import type { NodeDefinition, NodeParameterUiField, WorkflowGraphNode, WorkflowJsonObject } from '../types'
 
 export type WorkflowNodeParameterSelectValue = string | number | boolean | null
@@ -33,9 +34,8 @@ export function useWorkflowNodeParameters<NodeView extends WorkflowNodeParameter
 
   function isJsonParameter(field: NodeParameterUiField): boolean {
     return (field.widget ?? 'auto') === 'auto'
-      && field.json_schema['x-ui-widget'] !== 'object-rows'
-      && field.json_schema['x-ui-widget'] !== 'display-appearance'
-      && (field.json_schema.type === 'object' || field.json_schema.type === 'array')
+      && !['object-rows', 'display-appearance', 'measurement-resource', 'cloud-source', 'cloud-target'].includes(String(field.json_schema['x-ui-widget']))
+      && !isStringParameter(field) && !isNumberParameter(field) && !isBooleanParameter(field)
   }
 
   function isColorMapParameter(field: NodeParameterUiField): boolean {
@@ -43,17 +43,17 @@ export function useWorkflowNodeParameters<NodeView extends WorkflowNodeParameter
   }
 
   function isStringParameter(field: NodeParameterUiField): boolean {
-    const type = field.json_schema.type
-    return type === 'string' || type === undefined || (Array.isArray(type) && type.includes('string') && type.includes('null'))
+    return rowScalar(field.json_schema).type === 'string'
   }
 
   function isNumberParameter(field: NodeParameterUiField): boolean {
-    const type = field.json_schema.type
+    const type = rowScalar(field.json_schema).type
     return type === 'number' || type === 'integer'
   }
 
   function isBooleanParameter(field: NodeParameterUiField): boolean {
-    return field.json_schema.type === 'boolean'
+    const schema = rowScalar(field.json_schema)
+    return schema.type === 'boolean' && !schema.nullable
   }
 
   function readNodeParameterValue(node: NodeView, field: NodeParameterUiField): unknown {
@@ -91,8 +91,7 @@ export function useWorkflowNodeParameters<NodeView extends WorkflowNodeParameter
   function updateNodeParameterFromTextEvent(node: NodeView, field: NodeParameterUiField, event: Event): void {
     const target = event.target
     if (!(target instanceof HTMLInputElement)) return
-    const type = field.json_schema.type
-    updateNodeParameter(node, field, target.value === '' && Array.isArray(type) && type.includes('null') ? null : target.value)
+    updateNodeParameter(node, field, target.value === '' && rowScalar(field.json_schema).nullable ? null : target.value)
   }
 
   function updateNodeParameterFromNumberEvent(node: NodeView, field: NodeParameterUiField, event: Event): void {

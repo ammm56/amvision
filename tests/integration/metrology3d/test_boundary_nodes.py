@@ -74,7 +74,8 @@ def graph(nodes, links, outputs, file=True):
 
 
 @pytest.mark.parametrize("kind", ["line", "circle"])
-def test_graph_extract_save_restore_fit(tmp_path, kind):
+@pytest.mark.parametrize("finite", [False, True])
+def test_graph_extract_save_restore_fit(tmp_path, kind, finite):
     """独立解析真值，包含新运行恢复、显示与所有权清理。"""
     service = create_resource_service(tmp_path)
     configured = execution_policy().model_copy(
@@ -129,6 +130,16 @@ def test_graph_extract_save_restore_fit(tmp_path, kind):
             ],
         )
         fit = circle_parameters()
+    if finite:
+        settings = extract.model_dump(mode="json")
+        settings["targets"][0].update(
+            closed=False,
+            role="open",
+            region=region(center=(0.5, 1, 0.5), size=(2, 1.1, 2))
+            if kind == "line"
+            else region(center=(0, 2.5, 0), size=(10, 5, 2)),
+        )
+        extract = type(extract).model_validate(settings)
     initial = graph(
         [
             (

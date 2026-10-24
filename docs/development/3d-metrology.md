@@ -2,17 +2,21 @@
 
 ## 1. 状态与阅读约定
 
-状态：**M0 收口；M1、M2 与 M3.1–M3.3 共十八节点已内部接通，测量证据 v2 与前端同步；显式测试配置下双平台独立真值、完整样本和真实发布 Runtime 定向验收通过。生产超时、容量和发行 profile 仍未验收，节点继续隐藏；M3.4、M3.5 未完成**。更新日期为 2026-10-24，设计依据见 [ADR-0015](../decisions/ADR-0015-3d-metrology.md)，最新进度见 [M3.3 实施记录](3d-metrology-m33-acceptance.md)。历史证据见 [M2 几何节点](3d-metrology-m2.md)、[M1 真实发布运行](3d-metrology-m1-published.md)、[M1 I/O](3d-metrology-m1-io.md)、[输入适配](3d-metrology-m1-input.md)、[运行引用与生命周期](3d-metrology-m1-runtime.md)、[资产与保存导出](3d-metrology-m1-assets.md)、[节点与资源 API](3d-metrology-m1-nodes.md)和[传输与界面](3d-metrology-m1-transports.md)。下文历史源码检查和规格不等于全部能力已实现。
+状态：**M0 收口；M1、M2 与 M3.1–M3.3 共十八节点已内部接通，测量证据 v2 与前端同步；历史定向验收不等于现场完整测量通过。2026-10-24 真实工件审计发现联合参数编辑分发错误、局部边段选择与测量定义缺口，十二钢片和两半圆配方尚未验收完成。生产超时、容量和发行 profile 仍未验收，节点继续隐藏；M3.4、M3.5 未完成**。设计依据见 [ADR-0015](../decisions/ADR-0015-3d-metrology.md)，当前修正顺序见 [真实工件审计](3d-metrology-audit-20261024.md)，已完成实现见 [M3.3 实施记录](3d-metrology-m33-acceptance.md)。历史证据见 [M2 几何节点](3d-metrology-m2.md)、[M1 真实发布运行](3d-metrology-m1-published.md)、[M1 I/O](3d-metrology-m1-io.md)、[输入适配](3d-metrology-m1-input.md)、[运行引用与生命周期](3d-metrology-m1-runtime.md)、[资产与保存导出](3d-metrology-m1-assets.md)、[节点与资源 API](3d-metrology-m1-nodes.md)和[传输与界面](3d-metrology-m1-transports.md)。下文历史源码检查和规格不等于全部能力已实现。
 
 M0 的代码核对与契约设计已收口，M1 已按后续授权开始 I/O 修复，未注册空节点。已确认每次 Workflow 调用输入完整点云，同时支持文件和同机内存二进制数组，不接收连续实时点云流；每次提交载荷最大 1 GB，不是运行内存上限。生产调用不自动保留完整点云，配方显式选择保存，结果保留数值和有界显示证据。最低机器内存、目标同时运行数和单次时限未确定，不填默认值。
 
-此前已核对 LocalBuffer、文件入口、Workflow、Preview、SDK、计量资源、规则读取方和发行边界，并补齐 M1 六节点、两入口、三维显示与持久引用规格。精度边界保持：**当前样本按 float32 保存和传递，外部文件按声明保留精度，算法按需要局部使用 float64**。PLY 基于 trimesh 5.1.1，PCD 基于 pypcd4 1.5.1；受控修复仅本项目使用，不提交上游。XYZ 使用现有 NumPy，Open3D 0.20.0 保持几何职责。当前固定 wheel 为 `trimesh==5.1.1+amvision.1`、`pypcd4==1.5.1+amvision.2`；后者修正不可压缩数据的 LZF 输出容量。完整原始 ASCII 样本和双平台读写结果见实施记录。已扩展现有 Scope、Snapshot、worker 收尾和计量资源服务，仍未启用节点或发布三维 profile。RPly 自建适配、meshio、plyfile、自写解码器均不引入。
+此前已核对 LocalBuffer、文件入口、Workflow、Preview、SDK、计量资源、规则读取方和发行边界，并补齐 M1 六节点、两入口、三维显示与持久引用规格。精度边界保持：**当前样本按 float32 保存和传递，外部文件按声明保留精度，算法按需要局部使用 float64**。PLY 基于 trimesh 5.1.1，PCD 基于 pypcd4 1.5.1；受控修复仅本项目使用，不提交上游。XYZ 使用现有 NumPy，Open3D 0.20.0 保持几何职责。当前固定 wheel 为 `trimesh==5.1.1+amvision.2`、`pypcd4==1.5.1+amvision.2`；前者含 M3.3 已授权的最小矩形受控扩展，后者修正不可压缩数据的 LZF 输出容量。完整原始 ASCII 样本和双平台读写结果见实施记录。已扩展现有 Scope、Snapshot、worker 收尾和计量资源服务，仍未启用节点或发布三维 profile。RPly 自建适配、meshio、plyfile、自写解码器均不引入。
 
 本文是三维测量跨模块设计与实施步骤的总基线，不是当前节点使用手册。阶段细化从本文件链接，不维护平行架构。设计表不等于相应 API 或页面已可用；实际实现、验证和生产启用状态以本节及分批记录为准。未实现或未验证的能力不进入可用 Catalog，不以占位节点表示支持。
 
 2026-10-23 阶段记录：M3.1 height-query/measure-step 和 M3.2 extract-boundary/fit-line/fit-circle 均接入内部 Catalog、GraphExecutor 和 Vue 编辑器，当时共十五节点。见 [M3.1 实施记录](3d-metrology-m3-height.md)、[M3.2 实施记录](3d-metrology-m3-boundary.md)。CloudRuntime 有序源点/生成顶点、边界证据保存恢复及三维读取方 v2 已同批接通，不改变原始行号语义。旧三维资产保留且需重建，不执行旧格式；二维资源、数组传输 ABI 与 Workflow 发布系统不变。下文 M0/M1/M2 历史表描述设计演进；涉及运行来源、拓扑及保存/显示的当前逐字段规格以 M3.2 第 5 节为准。精确量值仍须显式 Preview 完整重算，支持域外无效、不外推。组件和图执行通过不等于完整页面、真实新配方发布或生产发行验收。
 
-M3.3 的实施规格见 [长宽、边间距与孔径设计](3d-metrology-m3-dimensions.md)。2026-10-24 已补 M3.2 真实发布/页面验收，完成矩形库扩展、三个尺寸节点、测量证据 v2 和前端，当前共十八个内部节点。边间距域外/缺口无效、不外推；最小矩形并列尺寸一致时保留量值并标识方向歧义；孔径直接消费 fit-circle 的 CircleFeature，不重复拟合。Windows 与 WSL Ubuntu 原生文件系统的定向组合各 362 项通过，见[实施记录](3d-metrology-m33-acceptance.md)。生产预算仍空缺，节点不启用；下一阶段为 M3.4，不能把内部验收等同于生产或现场计量验收。
+M3.3 的实施规格见 [长宽、边间距与孔径设计](3d-metrology-m3-dimensions.md)。2026-10-24 已补 M3.2 真实发布/页面验收，完成矩形库扩展、三个尺寸节点、测量证据 v2 和前端，当前共十八个内部节点。边间距域外/缺口无效、不外推；最小矩形并列尺寸一致时保留量值并标识方向歧义；孔径直接消费 fit-circle 的 CircleFeature，不重复拟合。Windows 与 WSL Ubuntu 原生文件系统的历史定向组合各 362 项通过，见[实施记录](3d-metrology-m33-acceptance.md)。生产预算仍空缺，节点不启用；先完成本轮审计 R1–R5 修正与真实配方验证，再继续 M3.4，不能把内部验收等同于生产或现场计量验收。
+
+2026-10-24 修复进度：公共参数分发、严格输入错误分类和有限连续边段选择已完成，内部包 `0.1.10`；边界方法升 v2，旧方法资产只读且需重建。Windows 501 项、Ubuntu 499 项（另 2 项 Windows .NET 条件跳过）、前端 209 项通过；双平台完整样本和空白页面至 App Mode 发布运行已验证。详见[本轮修复记录](3d-metrology-repair-20261024.md)，开头所列真实工件审计保留为修复前依据，不代表上述代码缺陷仍未处理。十二钢片/两半圆的同定义有效量值验收仍未完成。
+
+基准延伸设计已确认两种显式模式：基准也需实测支持，或基准平面延伸并由配方给出最大距离；被测面始终需要真实支持。逐字段设计、距离定义、证据读取方与实施门禁见[修复记录第 5 节](3d-metrology-repair-20261024.md#5-r4-基准延伸契约)。本轮只定设计，现有高度算法和支持域拒绝规则未改动，不能将这一确认解释为已允许被测面外推。
 
 已有样本脚本是独立探索产物，未接入 amvision。本文只保留可复用的需求、证据边界和回归参考，不复制会话日志、原始点云或一次性脚本。算法测试通过、工程闭环完成、真实计量准确度通过和生产验收通过是四种不同状态。
 

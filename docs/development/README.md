@@ -4,13 +4,16 @@
 
 ## 验收与基准
 
+- [3D Metrology 参数与有限边段修复](3d-metrology-repair-20261024.md)：公共参数分发、输入错误分类、连续实测段选择，双平台与空白页面至发布运行验收；基准延伸显式距离上限设计，尚未修改高度算法。
+- [3D Metrology 真实工件审计与修正计划](3d-metrology-audit-20261024.md)：2026-10-24 完整点云、实际十二钢片/两半圆、页面与发布 Runtime 的新验证；联合参数编辑错误、测量定义与边段选择缺口、修正顺序及验收限制。
+- [3D Metrology M3.3 实施与验收](3d-metrology-m33-acceptance.md)：十八内部节点、测量证据 v2、前端与历史双平台定向回归；不是所有现场尺寸已通过。
 - [3D Metrology M1 I/O 实施与验证](3d-metrology-m1-io.md)：受控 trimesh/pypcd4 构建、坏文件与精度回归、完整 ASCII PLY 样本及 Windows/WSL 资源观测；节点与完整发行尚未启用。
 - [3D Metrology M1 输入适配](3d-metrology-m1-input.md)：严格文件/数组契约、ObjectStore 和 LocalBuffer 内部读取、资源回归、Ubuntu 原生运行数据目录及剩余接入项；生产节点尚未启用。
 - [3D Metrology M1 运行引用与资源生命周期](3d-metrology-m1-runtime.md)：运行身份、分支借用、派生索引、关闭失败隔离、单位归一/有效点过滤和完整样本 mmap 验证；六节点、Trigger/SDK、资产及页面仍待接入。
 - [3D Metrology M1 资产与保存导出](3d-metrology-m1-assets.md)：资源 v2、幂等原子提交、原件/派生恢复、资产包及交换文件内部实现；双平台完整样本、强杀回归和剩余六节点/SDK/界面接入范围。
 - [3D Metrology M1 节点与资源 API](3d-metrology-m1-nodes.md)：六节点内部执行、原始行号、独立显示正文、资源管理与现有发布链路的历史批次。
 - [3D Metrology M1 传输与界面](3d-metrology-m1-transports.md)：同机 Trigger/.NET SDK、Preview 大文件上传、资源选择管理和三维组件的历史批次。
-- [3D Metrology M1 真实发布运行验收](3d-metrology-m1-published.md)：最新进度；真实发布准入、Windows .NET 完整样本、Ubuntu 服务侧生命周期、WRITING 超时清理修复及生产启用剩余条件。
+- [3D Metrology M1 真实发布运行验收](3d-metrology-m1-published.md)：M1 历史进度；真实发布准入、Windows .NET 完整样本、Ubuntu 服务侧生命周期、WRITING 超时清理修复及生产启用剩余条件。
 - [3D Metrology M2 几何节点实施记录](3d-metrology-m2.md)：四节点、公开契约、原生 RANSAC 和 Vue 三维交互已内部接通，双平台真值/完整样本及真实 Runtime 通过；支持分类/残差已随 M3.1 补齐，完整页面及生产发行仍待验收。
 - [3D Metrology M3.1 高度与高差](3d-metrology-m3-height.md)：两节点、严格证据、支持域检查、精确统计、候选拾取和结果显示；双平台真值/完整样本及剩余生产边界。
 - [3D Metrology M3.2 边界与拟合](3d-metrology-m3-boundary.md)：有序/生成来源、三维格式 v2、边界证据保存恢复、三节点和前端接线；双平台真值/完整样本与剩余真实发布验收，生产不启用。
@@ -36,7 +39,7 @@
 
 - [3D Metrology 设计与实施基线](3d-metrology.md)：按具体节点推进，复用 Workflow/App 发布；六节点、两入口、显示与持久引用规格见 7.4/9.9/10.13。M0 收口，M1 接线及显式测试配置下真实发布运行已验证；生产启用条件见 15.5。
 - [3D Metrology M3 尺寸测量节点设计](3d-metrology-m3.md)：M3.1/M3.2 已内部接通；保留总体阶段、三态及正式配方计划，第 10 节为 M3.2 历史安排与当前实施状态。
-- [3D Metrology M3.3 长宽、边间距与孔径设计](3d-metrology-m3-dimensions.md)：按 `90c94d6c` 核对 M3.2 和剩余验收；详细列出三个尺寸节点的算法、参数、证据/读取方、前端、双平台验证与实施顺序。边距不外推、矩形受控扩展及并列规则已确认，孔径输入待确认；尚未实现，生产不启用。
+- [3D Metrology M3.3 长宽、边间距与孔径设计](3d-metrology-m3-dimensions.md)：保留阶段设计；三节点、证据 v2 和前端已内部接通，孔径直接消费 CircleFeature。当前真实配方缺口以最新审计为准，生产不启用。
 - [模型转换与 Pose 评估修复方案](model-matrix-repair-plan.md)：已知模型问题的修复实现、回归证据与待验收范围；工程测试与真实业务验收分别记录。
 - [用户页面与操作权限](user-access.md)：管理员逐项配置页面、操作和项目范围，复用现有启动页与应用模式。
 - [用户权限详细实施步骤](user-access-implementation.md)：通用契约、七个实施阶段和全链路、性能、真实发行验收；待实施。

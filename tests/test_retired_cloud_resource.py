@@ -9,12 +9,20 @@ from tests.test_point_cloud_assets import save
 from tests.point_cloud_support import create_resource_service
 
 
-def test_old_asset_is_listed_readonly_but_rejected_for_use(tmp_path):
+@pytest.mark.parametrize("retired", ["format", "provenance", "boundary"])
+def test_old_asset_is_listed_readonly_but_rejected_for_use(tmp_path, retired):
     """仅改测试数据，生产旧文件保持不动。"""
     service = create_resource_service(tmp_path)
     document = save(service)
     raw = document.model_dump(mode="json")
-    raw["content"]["point_cloud"]["format_id"] = "amvision.point-cloud-asset.v1"
+    cloud = raw["content"]["point_cloud"]
+    if retired == "format":
+        cloud["format_id"] = "amvision.point-cloud-asset.v1"
+    else:
+        # 旧方法仅核验封装摘要；这里不以旧结构执行算法或读取 blob。
+        cloud[retired] = {
+            "method": {"method_id": "extract-boundary", "method_version": 1}
+        }
     raw["reference"]["sha256"] = sha256(
         canonical_cloud_json(raw["content"])
     ).hexdigest()
