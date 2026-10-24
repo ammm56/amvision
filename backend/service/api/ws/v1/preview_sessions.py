@@ -10,6 +10,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from backend.contracts.workflows.preview_session import PreviewInputBegin, PREVIEW_CHUNK_SIZE, decode_preview_frame, encode_preview_frame
 from backend.service.application.workflows.preview.session import PreviewSessionError
+from backend.service.application.errors import AuthenticationRequiredError, PermissionDeniedError
 
 preview_sessions_ws_router = APIRouter()
 
@@ -20,7 +21,14 @@ async def stream_session(socket: WebSocket, session_id: str):
     from backend.service.api.ws.v1.router import _get_socket_principal, _scope_granted
     # 浏览器只能在握手后接收到应用关闭码；握手前关闭会变成不透明的 1006。
     await socket.accept()
-    principal = _get_socket_principal(socket)
+    try:
+        principal = _get_socket_principal(socket)
+    except AuthenticationRequiredError:
+        await socket.close(code=4401)
+        return
+    except PermissionDeniedError:
+        await socket.close(code=4403)
+        return
     if principal is None or not _scope_granted(principal.scopes, "workflows:read"):
         await socket.close(code=4401 if principal is None else 4403)
         return
