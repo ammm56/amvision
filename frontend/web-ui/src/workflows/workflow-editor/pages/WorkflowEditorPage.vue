@@ -518,11 +518,16 @@ provide(parameterEditorSourcesKey, (nodeId) => {
     if (edge.target_node_id !== nodeId) continue
     const source = graphNodes.value.find((item) => item.node.node_id === edge.source_node_id)?.node
     if (source) {
+      const outputs = !previewing.value && !previewResultsExpired.value && lastPreviewRun.value?.state === 'succeeded'
+        ? lastPreviewRun.value.node_records.find(record => record.node_id === source.node_id)?.outputs
+        : undefined;
       (sources[edge.target_port] ??= []).push({
         nodeId: source.node_id,
         nodeTypeId: source.node_type_id,
         parameters: source.parameters,
         outputPort: edge.source_port,
+        previewOutput: outputs && typeof outputs === 'object' && !Array.isArray(outputs)
+          ? (outputs as Record<string, unknown>)[edge.source_port] : undefined,
       })
     }
   }

@@ -14,7 +14,7 @@ AMVision 是面向本地工作站、工控机和边缘设备的工业视觉服�
 | 调用 REST、WebSocket、ZeroMQ 或 SDK | [API 与集成](api/README.md) |
 | 核对模型和数据格式支持范围 | [参考资料](reference/README.md) |
 | 开发 Core Node、Custom Node 或 Node Pack | [节点扩展](nodes/README.md) |
-| 规划三维测量节点、算法及工程师/现场操作 | [3D Metrology 实施基线](development/3d-metrology.md)；[M3.1 高度/高差](development/3d-metrology-m3-height.md)（十二节点内部接通，生产未启用）；[M3 尺寸节点设计](development/3d-metrology-m3.md)（后续六节点、三态与正式配方） |
+| 规划三维测量节点、算法及工程师/现场操作 | [3D Metrology 实施基线](development/3d-metrology.md)；[M3.2 边界/拟合](development/3d-metrology-m3-boundary.md)；[M3.3 设计](development/3d-metrology-m3-dimensions.md)及[实施验收](development/3d-metrology-m33-acceptance.md)（十八节点内部接通，生产未启用） |
 | 配置 YOLOE / SAM3 Node Pack 与本地模型资产 | [YOLOE / SAM3 资产](architecture/workflows/yoloe-sam3-assets.md) |
 | 排查日志、服务和现场集成 | [运维与排障](operations/README.md) |
 | 查看关键设计取舍 | [架构决策记录](decisions/README.md) |

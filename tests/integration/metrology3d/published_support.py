@@ -5,6 +5,7 @@ from pathlib import Path
 import shutil
 
 from fastapi.testclient import TestClient
+from custom_nodes._metrology3d_nodes import PACK_VERSION
 
 from backend.contracts.nodes.node_pack_manifest import NodePackManifest
 from backend.service.api.app import create_app
@@ -43,7 +44,7 @@ def install_test_pack(root: Path):
     manifest = NodePackManifest.model_validate(
         dict(
             id="metrology3d.nodes",
-            version="0.1.8",
+            version=PACK_VERSION,
             displayName="3D Metrology test",
             category="vision",
             capabilities=["pipeline.node", "vision.metrology3d"],

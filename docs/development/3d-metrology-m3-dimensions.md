@@ -1,6 +1,6 @@
 # M3.3 长宽、边间距与孔径测量设计
 
-更新：2026-10-23。源码核对基点为 `90c94d6c`，工作区核对时无未提交代码。本文承接[总实施基线](3d-metrology.md)、[M3 总体设计](3d-metrology-m3.md)及 [M3.2 实施记录](3d-metrology-m3-boundary.md)，只规划下一阶段，不代表 M3.3 已实现或通过测试。本轮不修改运行代码、不安装依赖、不启动服务、不重新运行应用测试。
+更新：2026-10-24。规划基点为 `90c94d6c`，实施基点为 `a5f19018`。本文承接[总实施基线](3d-metrology.md)、[M3 总体设计](3d-metrology-m3.md)及 [M3.2 实施记录](3d-metrology-m3-boundary.md)。三个尺寸节点、测量证据 v2、所有读取方及 Vue 编辑/显示已内部接通。精确验证范围见[实施记录](3d-metrology-m33-acceptance.md)，本设计中的验收目标不自动等于全部通过。生产包仍隐藏。
 
 ## 1. M3.2 完成情况与剩余范围
 
@@ -8,7 +8,7 @@
 
 | 范围 | 当前实现 | 对 M3.3 的意义 |
 | --- | --- | --- |
-| 节点接线 | [entry.py](../../custom_nodes/_metrology3d_nodes/backend/entry.py)、[catalog_builder.py](../../custom_nodes/_metrology3d_nodes/workflow/catalog_builder.py) 共十五节点，包括 extract-boundary、fit-line、fit-circle | 三个尺寸节点均未实现；完成后才加入同一内部 Catalog，共十八节点 |
+| 节点接线 | [entry.py](../../custom_nodes/_metrology3d_nodes/backend/entry.py)、[catalog_builder.py](../../custom_nodes/_metrology3d_nodes/workflow/catalog_builder.py) 共十八节点 | 三个尺寸节点已内部注册；节点包版本 0.1.9，无生产 manifest |
 | 边界与拟合 | [boundary3d.py](../../backend/contracts/workflows/boundary3d.py)、[boundary3d_observations.py](../../backend/contracts/workflows/boundary3d_observations.py) 已有严格参数、段角色/开闭、有限直线区间、支持弧、质量和求解终态 | 消费已有特征，不重新提取边界、拟合直线或建设圆求解器 |
 | 所有权 | 原 [CloudRuntime](../../backend/service/application/workflows/point_cloud/runtime.py) 已接有序源点、生成顶点、来源数组及 Scope 释放 | 只借用完整支持；新工作数组沿原预算和取消机制，不新增资源服务 |
 | 保存恢复 | [cloud_assets.py](../../custom_nodes/_metrology3d_nodes/shared/cloud_assets.py) 与原资源服务保存点数据、拓扑、生成来源及可选边界证据；read-cloud 恢复 features | 保存边界后关闭旧运行，在新运行重读、拟合和测量；不把运行 ref 写进历史 |
@@ -21,13 +21,13 @@ M3.2 接线批次已有 Windows 定向组合 378 项、共享资源/Trigger 契�
 
 | 缺口 | 下一步处理 |
 | --- | --- |
-| 新三节点配方的真实发布、依赖准入、独立 WorkflowAppRuntime、Trigger/.NET 组合 | 在 M3.3 第一批实现前补验 M3.2 配方；Windows 验现有 .NET 路径，Ubuntu 按实际支持范围验服务端。覆盖停止、版本切换、恢复、客户端退出及释放 |
-| 完整 Workflow 页面操作 | 现有浏览器证据为真实组件的隔离页，不是完整登录页面。补编辑→Preview→保存/发布→App Mode，并验证受影响页面生命周期 |
+| 新三节点配方的真实发布、依赖准入、独立 WorkflowAppRuntime、Trigger/.NET 组合 | 三个尺寸配方均已通过正式发布/Runtime/Trigger；完整样本覆盖 Windows .NET、Ubuntu Python 同机协议及停止、切版、客户端退出、释放 |
+| 完整 Workflow 页面操作 | 隔离开发环境的操作及截图见实施记录；目标发行环境仍未验收，不将组件测试称为全部现场流程通过 |
 | 离线发行 | 目标 profile 的 bundled Python、Open3D 系统依赖、受控 wheel、NOTICE 未完成目标机闭环；复用原 assembler，不另建发布器 |
 | 工业计量与容量 | 标准件、标定、重复扫描、图纸公差、节拍和生产预算未确认；完整样本自一致不能替代这些验收 |
 | 前端分块警告 | WorkflowEditor/CloudViewer 仍有大于 500 kB 的构建警告；按需加载保留，不能把警告当测量失败，也不能写成已完成体积优化 |
 
-结论：M3.2 内部实现可以供下一阶段复用，但完整交付尚未完成。本次未定位到需要重建资源或发布系统的依据；上述主要是已知验收缺口，而非新增的已复现算法错误。不将有限静态核对表述为“全项目无错误”。
+结论：M3.2 内部实现和已补真实链路可以供下一阶段复用，但发行/工业交付尚未完成。页面已定位并修复一个文件选择问题；未发现需要重建资源或发布系统的依据，不将本批定向验证表述为“全项目无错误”。
 
 ## 2. 已确认与待确认
 
@@ -36,7 +36,7 @@ M3.2 接线批次已有 Windows 定向组合 378 项、共享资源/Trigger 契�
 | 边间距支持域 | 已确认：交点在任一实际支持区间外或段间缺口内无效，M3.3 不允许外推；不增加外推参数 |
 | 最小面积矩形的依赖扩展 | 已确认：允许在现有受控 trimesh 中局部扩展 `oriented_bounds_2D` 的同一算法，补分块预算、取消检查和并列最优证据；须独立回归后使用。仅项目内维护，不提交上游 |
 | 并列最优矩形 | 已确认：所有最优候选长短边一致时保留尺寸，方向不唯一单独标识；尺寸不一致时无效。一致性和面积比较容差显式配置，不猜数值 |
-| measure-hole 接线 | **待确认**：建议接 fit-circle 已输出的 CircleFeature，不再次拟合；原基线为接边界并调用同一拟合函数。确认前不冻结该节点输入，不同时实现两条路径。第 6 节按推荐方向列设计，不视为授权 |
+| measure-hole 接线 | 已确认：直接消费 fit-circle 已输出的 CircleFeature，不再次拟合；替代原基线的边界内拟合设计，不同时实现两条路径 |
 | 生产运行参数 | 仍未确定，不重复索取或用测试数值代填。内部开发/验收不意味着生产启用 |
 
 精度、原始行号、同机输入、显式 Preview、旧资产保留且需重建等已确认规则保持不变。当前 float32 样本不整体转 float64，外部声明精度保留；仅已准入的局部算法工作数组可用 float64。
@@ -49,7 +49,7 @@ M3.2 接线批次已有 Windows 定向组合 378 项、共享资源/Trigger 契�
 | --- | --- | --- | --- |
 | measure-extents | 参数显式选择 cloud 或 boundary；只允许对应端口有效。boundary 模式指定 feature_id/segment_ids | 既有 `numeric-table.v1` + 新版同一测量证据 | 复用完整支持读取、坐标、来源、质量；新增轴向跨度及受控最小矩形调用 |
 | measure-edge-pair | features 的现有多连接端口；显式 A/B line feature_id，必须唯一解析 | 一个配置的距离项 + 测量证据 | 消费现有有限线区间，新增确定的解析求交，不再次 TLS 拟合 |
-| measure-hole | 待确认，推荐 features 中唯一的 circle feature_id | 启用的直径/圆心坐标项 + 测量证据 | 消费已求得的圆及支持/求解终态，新增测量角色检查和数值/证据输出 |
+| measure-hole | features 中唯一的 circle feature_id | 启用的直径/圆心坐标项 + 测量证据 | 消费已求得的圆及支持/求解终态，新增测量角色检查和数值/证据输出 |
 
 新节点不产生新点云，不新增线圆特征种类，不以复制输入特征作为必须输出。上游 features 可直接分支至 cloud-preview；测量 evidence 走已有多连接输入。完整源点、边界和来源仍由原 Scope 管理。
 
@@ -57,7 +57,7 @@ M3.2 接线批次已有 Windows 定向组合 378 项、共享资源/Trigger 契�
 
 ### 3.2 公共参数
 
-以下是待编码规格，字段结构沿现有 Contract/Schema 和编辑器规则收口，不是新的自由 JSON 配置。
+以下规格已对应 [参数 DTO](../../backend/contracts/workflows/dimension3d_parameters.py)；字段结构沿现有 Contract/Schema 和编辑器规则，不是自由 JSON 配置。全部物理条件仍由配方显式提供。
 
 | 字段组 | 要求 |
 | --- | --- |
@@ -153,7 +153,7 @@ M3.2 接线批次已有 Windows 定向组合 378 项、共享资源/Trigger 契�
 
 ## 6. measure-hole：孔径与圆心
 
-**接线尚待确认。** 以下推荐消费 M3.2 已有 CircleFeature 的设计；不据此编码，确认后再替换总设计第 4.8 节原有“边界输入”定义。不并行维护便捷内拟合和外部圆特征两种模式。
+**接线已确认。** 直接消费 M3.2 已有 CircleFeature，替代总设计第 4.8 节原有“边界输入”定义。不并行维护便捷内拟合和外部圆特征两种模式。
 
 ### 6.1 参数和计算
 
@@ -182,9 +182,15 @@ M3.2 接线批次已有 Windows 定向组合 378 项、共享资源/Trigger 契�
 
 ### 7.1 必要扩展，不重建
 
-[现有测量证据](../../backend/contracts/workflows/measurement3d_evidence.py) 只支持高度/高差，支持数组固定为 reference/target 两项，几何为方向距离/统计差；[前端读取方](../../frontend/web-ui/src/workflows/workflow-editor/point-cloud/measurement-display.ts) 也按此校验。因此长宽、边对、圆尺寸不能直接塞进旧结构。
+[原测量证据](../../backend/contracts/workflows/measurement3d_evidence.py) 的 v1 仅支持高度/高差和 reference/target 两项。现已按 kind 分发五类测量，尺寸部分的有限几何与一致性校验位于 [dimension3d_evidence.py](../../backend/contracts/workflows/dimension3d_evidence.py)；不把新尺寸塞进旧平面支持结构。
 
-计划将同一公开证据升级为 `measurement-evidence3d.v2` / `amvision.measurement-evidence3d.v2`，以严格方法/几何分支表达各量；M3.1 的数学语义不变，同批更新其输出。保留 NumericTable v1、Features3d v2、点云引用/资产 v2、LocalBuffer 和 SDK 传输布局，不因新尺寸节点重新升级无关格式。
+已将同一公开证据升级为 `measurement-evidence3d.v2` / `amvision.measurement-evidence3d.v2`，以严格方法/几何分支表达各量；M3.1 的数学语义不变，同批更新输出、Catalog、Preview、显示读取方。保留 NumericTable v1、Features3d v2、点云引用/资产 v2、LocalBuffer 和 SDK 传输布局，不因新尺寸节点升级无关格式。v1 明确拒绝，不保留兼容分支。
+
+尺寸参数的 outputs 保存 component/item_id，证据的同一组启用量必须完整，方法、支持、质量和几何完全一致。
+`geometry_usable` 为必需质量项；指标集合、单位、整数计数和标志范围在契约中检查。`span_u/span_v`
+在轴向模式对应评价 U/V，在最小矩形模式对应代表框的长/短轴；对外量仍明确命名 length/width。
+候选计数是上游凸包边枚举数量，含符号等价表示；方向唯一性单独按模 pi 比较，不把计数当唯一姿态数。
+生成极值接触保存原始 source_edge、weights、邻面数量/hash，不伪造单个源行号。
 
 | 证据内容 | 长宽 | 边间距 | 孔径/圆心 |
 | --- | --- | --- | --- |
@@ -267,9 +273,9 @@ Windows 与 WSL Ubuntu 原生运行目录分别验文件/同机数组及释放�
 
 ## 10. 开始条件与边界结论
 
-可以推进 M3.3 的详细规格和已确认的长宽/边间距准备；当前仍有 **measure-hole 输入接线一项语义待确认**。确认后按第 9 节先补 M3.2 真实准入，再依次实现三个节点，不要求先启用生产包，也不跳过各步验证。
+measure-hole 输入接线已确认，按第 9 节先补 M3.2 真实准入和页面验收，再依次实现三个节点，不要求先启用生产包，也不跳过各步验证。实现中发现新的测量定义疑问仍须确认，生产参数不得自行填入。
 
-本轮文档计划不改变现有代码、资产、发布和精度。未来实现可能影响证据读取、局部工作内存和前端生命周期，已明确同批消费者/资源测试；不能在未实现、未实测前承诺性能无变化或达到工业标准。最终量值准确度仍需可追溯标准件及现场验证。
+本批实际改动包括文件选择、受控矩形路径、三个尺寸节点、测量证据 v2、前端及真实链路回归，另修复页面验收暴露的 Preview 失效 token 关闭码问题，详见实施记录。内部实现和资源释放已定向验证；不能据此承诺任意数据规模的性能、硬实时或工业计量合格。最终量值准确度仍需可追溯标准件及现场验证。
 
 仍不属于本次交付：M3.4 公开三态及全部结果读取方升级、M3.5 含最终规则的全配方交付、生产预算批准、目标发行验收与工业计量合格结论。节点继续隐藏，不增加等待队列、不放宽已有门禁。
 
@@ -277,4 +283,4 @@ Windows 与 WSL Ubuntu 原生运行目录分别验文件/同机数组及释放�
 
 仅新增本文并同步四份既有文档，共五份 Markdown；188 个本地文件/目录链接、代码围栏和冲突标记核对通过，新增文档空白检查及已跟踪变更 `git diff --check` 通过。修正了总设计中仍将已完成的有序/生成资源写成待实现的表述，保留历史测试范围，没有增加未经执行的通过记录。
 
-未修改运行代码、依赖、生产配置或业务数据，未启动/停止用户服务、未运行应用测试。仓库 `.tmp/` 核对为空，本轮没有需要回收的测试进程或临时文件。孔径输入仍待确认，其余已收到的测量边界已同步；本文件不是实施授权或生产验收结论。
+上述为提交 `a5f19018` 前的规划批次审计：当时未修改运行代码、依赖、生产配置或业务数据，未运行应用测试，`.tmp/` 为空。后续已确认孔径输入并授权开始实施；本节历史记录不能作为后续代码或环境通过证据。

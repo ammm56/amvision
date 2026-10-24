@@ -1,7 +1,7 @@
 <template>
   <div class="measurement-summary">
-    <table><thead><tr><th>{{ zh?'测量项':'Measurement' }}</th><th>{{ zh?'数值':'Value' }}</th><th>{{ zh?'状态 / 原因':'State / reason' }}</th><th>{{ zh?'支持点数（基准 / 目标）':'Support (reference / target)' }}</th></tr></thead>
-      <tbody><tr v-for="item in items" :key="item.item_id" :class="{selected:item.item_id===selected}"><td><button :aria-pressed="item.item_id===selected" @click="$emit('select',item.item_id)">{{ item.item_id }}</button></td><td>{{ item.valid?item.value:'-' }} {{ unit }}</td><td>{{ item.valid?(zh?'有效':'Valid'):item.reason }}</td><td>{{ item.support[0]?.point_count??'-' }} / {{ item.support[1]?.point_count??'-' }}</td></tr></tbody>
+    <table><thead><tr><th>{{ zh?'测量项':'Measurement' }}</th><th>{{ zh?'数值':'Value' }}</th><th>{{ zh?'状态 / 原因':'State / reason' }}</th><th>{{ zh?'支持点数':'Support points' }}</th></tr></thead>
+      <tbody><tr v-for="item in items" :key="item.item_id" :class="{selected:item.item_id===selected}"><td><button :aria-pressed="item.item_id===selected" @click="$emit('select',item.item_id)">{{ item.item_id }}</button><div v-if="item.component">{{ componentLabel(item.component) }}</div></td><td>{{ item.valid?item.value:'-' }} {{ unit }}</td><td>{{ item.valid?(zh?'有效':'Valid'):item.reason }}<div v-if="ambiguous(item)">{{ zh?'尺寸一致，方向不唯一':'Consistent size, ambiguous orientation' }}</div></td><td>{{ item.support.map(s=>s.point_count??'-').join(' / ') }}</td></tr></tbody>
     </table>
     <details v-if="current"><summary>{{ zh?'质量证据':'Quality evidence' }} · {{ current.item_id }}</summary><table><tbody><tr v-for="metric in metrics" :key="String(metric.item_id)"><th>{{ metric.item_id }}</th><td>{{ metric.valid?metric.value:metric.reason }} {{ metric.unit??'' }}</td></tr></tbody></table></details>
   </div>
@@ -15,6 +15,8 @@ const props=defineProps<{items:MeasurementDisplay[];unit:string;selected:string}
 defineEmits<{select:[id:string]}>()
 const {locale}=useI18n(),zh=computed(()=>locale.value==='zh-CN')
 const current=computed(()=>props.items.find(i=>i.item_id===props.selected)),metrics=computed(()=>{const raw=current.value?object(current.value.quality.metrics).items:[];return Array.isArray(raw)?raw.map(object):[]})
+function componentLabel(key:string){return zh.value?({u:'U 投影跨度',v:'V 投影跨度',length:'包络长边',width:'包络短边',distance:'指定位置边间距',diameter:'拟合圆直径',center_x:'圆心 X',center_y:'圆心 Y',center_z:'圆心 Z'} as Record<string,string>)[key]??key:key}
+function ambiguous(item:MeasurementDisplay){return item.valid&&item.geometry?.kind==='projected-extents'&&item.geometry.candidates&&object(item.geometry.candidates).orientation_unique===false}
 </script>
 <style scoped>
 .measurement-summary{overflow:auto;max-height:200px;font-size:12px;min-width:0;overflow-wrap:anywhere}

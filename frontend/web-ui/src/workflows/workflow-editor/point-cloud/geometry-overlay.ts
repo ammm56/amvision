@@ -66,10 +66,19 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
   function buildMeasurements(next:GeometryOverlayInput){
     for(const item of measurementItems(next.payload)){
       const selected=item.item_id===next.selectedMeasurement,color=selected?0xd18c00:0x508691
-      if(item.valid&&item.geometry?.kind==='directional-distance'){
+      if(item.valid&&item.geometry&&['directional-distance','edge-pair-distance'].includes(String(item.geometry.kind))){
         const endpoints=item.geometry.endpoints
         if(!Array.isArray(endpoints)||endpoints.length!==2)throw new Error('cloud_preview_invalid')
         lines(endpoints.map(vec),color)
+      }
+      if(item.valid&&item.geometry?.kind==='projected-extents'){
+        const p=(item.geometry.corners as unknown[]).map(vec)
+        if(selected)lines([p[0]!,p[1]!,p[1]!,p[2]!,p[2]!,p[3]!,p[3]!,p[0]!],0x508691)
+        lines(['u','length'].includes(item.component??'')?[p[0]!,p[1]!]:[p[0]!,p[3]!],color)
+      }
+      if(item.valid&&item.geometry?.kind==='circle-dimensions'){
+        if(item.component==='diameter')lines((item.geometry.diameter_endpoints as unknown[]).map(vec),color)
+        else if(selected){const circle=object(item.geometry.circle),center=vec(circle.center),size=positive(circle.radius)*.05,points:Vector3[]=[];for(let i=0;i<3;i++){const delta=new Vector3().setComponent(i,size);points.push(center.clone().sub(delta),center.clone().add(delta))}lines(points,color)}
       }
       if(!selected)continue
       for(const side of item.support){

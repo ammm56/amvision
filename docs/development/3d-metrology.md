@@ -2,7 +2,7 @@
 
 ## 1. 状态与阅读约定
 
-状态：**M0 收口；M1 六节点、资源 API/固定发布依赖、同机 Trigger/.NET SDK、Preview 大文件上传及资源/三维组件已接通；显式测试配置下真实发布 Runtime 组合验收通过，生产启用未完成。M2 四节点已接入内部 Catalog、handler 和 Vue 三维交互，双平台解析真值及完整样本通过；生产超时、容量和发行 profile 仍未验收，节点继续隐藏**。更新日期为 2026-10-23，设计依据见 [ADR-0015](../decisions/ADR-0015-3d-metrology.md)，最新进度见 [M2 几何节点实施记录](3d-metrology-m2.md)与 [M1 真实发布运行验收](3d-metrology-m1-published.md)。历史证据见 [M1 I/O](3d-metrology-m1-io.md)、[输入适配](3d-metrology-m1-input.md)、[运行引用与生命周期](3d-metrology-m1-runtime.md)、[资产与保存导出](3d-metrology-m1-assets.md)、[节点与资源 API](3d-metrology-m1-nodes.md)和[传输与界面](3d-metrology-m1-transports.md)。下文历史源码检查和规格不等于全部能力已实现。
+状态：**M0 收口；M1、M2 与 M3.1–M3.3 共十八节点已内部接通，测量证据 v2 与前端同步；显式测试配置下双平台独立真值、完整样本和真实发布 Runtime 定向验收通过。生产超时、容量和发行 profile 仍未验收，节点继续隐藏；M3.4、M3.5 未完成**。更新日期为 2026-10-24，设计依据见 [ADR-0015](../decisions/ADR-0015-3d-metrology.md)，最新进度见 [M3.3 实施记录](3d-metrology-m33-acceptance.md)。历史证据见 [M2 几何节点](3d-metrology-m2.md)、[M1 真实发布运行](3d-metrology-m1-published.md)、[M1 I/O](3d-metrology-m1-io.md)、[输入适配](3d-metrology-m1-input.md)、[运行引用与生命周期](3d-metrology-m1-runtime.md)、[资产与保存导出](3d-metrology-m1-assets.md)、[节点与资源 API](3d-metrology-m1-nodes.md)和[传输与界面](3d-metrology-m1-transports.md)。下文历史源码检查和规格不等于全部能力已实现。
 
 M0 的代码核对与契约设计已收口，M1 已按后续授权开始 I/O 修复，未注册空节点。已确认每次 Workflow 调用输入完整点云，同时支持文件和同机内存二进制数组，不接收连续实时点云流；每次提交载荷最大 1 GB，不是运行内存上限。生产调用不自动保留完整点云，配方显式选择保存，结果保留数值和有界显示证据。最低机器内存、目标同时运行数和单次时限未确定，不填默认值。
 
@@ -10,9 +10,9 @@ M0 的代码核对与契约设计已收口，M1 已按后续授权开始 I/O 修
 
 本文是三维测量跨模块设计与实施步骤的总基线，不是当前节点使用手册。阶段细化从本文件链接，不维护平行架构。设计表不等于相应 API 或页面已可用；实际实现、验证和生产启用状态以本节及分批记录为准。未实现或未验证的能力不进入可用 Catalog，不以占位节点表示支持。
 
-2026-10-23 最新进度：M3.1 height-query/measure-step 和 M3.2 extract-boundary/fit-line/fit-circle 均接入内部 Catalog、GraphExecutor 和 Vue 编辑器，共十五节点。见 [M3.1 实施记录](3d-metrology-m3-height.md)、[M3.2 实施记录](3d-metrology-m3-boundary.md)。CloudRuntime 有序源点/生成顶点、边界证据保存恢复及三维读取方 v2 已同批接通，不改变原始行号语义。旧三维资产保留且需重建，不执行旧格式；二维资源、数组传输 ABI 与 Workflow 发布系统不变。下文 M0/M1/M2 历史表描述设计演进；涉及运行来源、拓扑及保存/显示的当前逐字段规格以 M3.2 第 5 节为准。精确量值仍须显式 Preview 完整重算，支持域外无效、不外推。组件和图执行通过不等于完整页面、真实新配方发布或生产发行验收。
+2026-10-23 阶段记录：M3.1 height-query/measure-step 和 M3.2 extract-boundary/fit-line/fit-circle 均接入内部 Catalog、GraphExecutor 和 Vue 编辑器，当时共十五节点。见 [M3.1 实施记录](3d-metrology-m3-height.md)、[M3.2 实施记录](3d-metrology-m3-boundary.md)。CloudRuntime 有序源点/生成顶点、边界证据保存恢复及三维读取方 v2 已同批接通，不改变原始行号语义。旧三维资产保留且需重建，不执行旧格式；二维资源、数组传输 ABI 与 Workflow 发布系统不变。下文 M0/M1/M2 历史表描述设计演进；涉及运行来源、拓扑及保存/显示的当前逐字段规格以 M3.2 第 5 节为准。精确量值仍须显式 Preview 完整重算，支持域外无效、不外推。组件和图执行通过不等于完整页面、真实新配方发布或生产发行验收。
 
-基于提交 `90c94d6c` 的下一步规划见 [M3.3 长宽、边间距与孔径设计](3d-metrology-m3-dimensions.md)。边间距的域外/缺口无效、不外推，以及最小矩形局部受控扩展、并列尺寸一致时保留量值并标识方向歧义均已确认；孔径直接消费圆特征还是边界内复用拟合仍待确认。不把这些计划写成已实现能力；生产预算仍空缺，节点不启用。
+M3.3 的实施规格见 [长宽、边间距与孔径设计](3d-metrology-m3-dimensions.md)。2026-10-24 已补 M3.2 真实发布/页面验收，完成矩形库扩展、三个尺寸节点、测量证据 v2 和前端，当前共十八个内部节点。边间距域外/缺口无效、不外推；最小矩形并列尺寸一致时保留量值并标识方向歧义；孔径直接消费 fit-circle 的 CircleFeature，不重复拟合。Windows 与 WSL Ubuntu 原生文件系统的定向组合各 362 项通过，见[实施记录](3d-metrology-m33-acceptance.md)。生产预算仍空缺，节点不启用；下一阶段为 M3.4，不能把内部验收等同于生产或现场计量验收。
 
 已有样本脚本是独立探索产物，未接入 amvision。本文只保留可复用的需求、证据边界和回归参考，不复制会话日志、原始点云或一次性脚本。算法测试通过、工程闭环完成、真实计量准确度通过和生产验收通过是四种不同状态。
 
@@ -193,7 +193,7 @@ PCD 与 XYZ 同属首批文件入口设计，不作为 PLY 的临时转换来源
 | `pose3d.v1` | 定位观测状态与可空的有效 transform；失败不得带旧矩阵，见 5.9 |
 | `roi3d.v1` | 工件坐标中的盒、柱、截面带或有明确投影语义的区域 |
 | `features3d.v2` | 类型化点/线/面/圆弧/圆柱等观测、稳定 ID、支持域、有效性 |
-| `measurement-evidence3d.v1` | 与 numeric-table 同一 observation_id 的测量定义、端点、参考和质量证据 |
+| `measurement-evidence3d.v2` | 与 numeric-table 同一 observation_id 的测量定义、有限几何、支持和质量证据；kind 分发高度/高差/长宽/边距/孔径 |
 
 公共元数据至少能追溯 `run_id`、输入/观测身份、坐标系、单位、资源内容版本、标定版本和处理方法。大数组、支持点集合与偏差场使用引用；小型几何和摘要可以内联。引用必须经服务端验证，不能由普通 JSON 任意构造本地路径或跨运行内存句柄。
 
@@ -286,7 +286,7 @@ M2 support 直接复用只读 point-cloud-ref 子集，不另建索引资源。�
 
 ### 5.8 数值和三维证据
 
-量值继续使用 `numeric-table.v1`，不新增三维 NumericTable。`measurement-evidence3d.v1` 为 `format_id=amvision.measurement-evidence3d.v1`、`observation_id`、`frame_id`、`length_unit` 和 `items`；items 与量值以 item_id 关联，不靠数组顺序。
+量值继续使用 `numeric-table.v1`，不新增三维 NumericTable。M3.3 将证据升级为 `measurement-evidence3d.v2`，包含 `format_id=amvision.measurement-evidence3d.v2`、`observation_id`、`frame_id`、`length_unit` 和 `items`；items 用 kind 分发测量方法，与量值以 item_id 关联，不靠数组顺序。旧测量配方审核重发，不保留 v1 算法/读取兼容分支；无测量部分的点云资产不因此升级。
 
 M3.1 每项实际字段为 `item_id`、`value`、`valid`、`reason`、`method`、`geometry`、`support`、`quality`、`sample_origin`。特征 ID 和查询定义位于强类型 `method.parameters`；方向/实际端点位于有判别字段的 `geometry`，避免重复散落字段产生矛盾，完整定义见 [M3.1](3d-metrology-m3-height.md)。无效结果 geometry=null；独立 ROI 统计差没有唯一物理点对，endpoints=null，保留双方支持和统计定义，不用质心连线代替。未来圆直径分支给圆心/圆模型与所显示直径方向；面积/体积不硬塞两个端点。显示文本位置/线偏移放前端呈现配置，不进入物理端点。
 
@@ -333,7 +333,7 @@ measurement-evidence 的 frame 表示评价目标；无效时实际端点、查�
 
 每个开段至少两个不同点，闭段至少三个不同点；闭段首点不重复存为尾点，闭合边由 closed 明确表达。段间没有连接边，缺扫/断口须断段；不按距离阈值悄悄跨洞。方向不确定的开放边不能假称孔边界。内外角色和 segment_id 来自显式几何/匹配规则，不使用本次连通域返回顺序作长期身份。自交、多重轮廓和覆盖不足由方法的质量检查明确拒绝对应测量，不统一修复成凸包。
 
-segments 与 features 项数采用已有 8192 项上界并同时受描述字节预算约束；超限拒绝该结果，不截断后继续测量。小范围拟合可按明确段 ID 取子集；fit-line/fit-circle/measure-hole 输入冻结为 features 中指定 boundary ID/segment IDs，内部借用 vertices，不再让外部任意无序 cloud 冒充边缘。其他调用者确需对无序点拟合时须显式声明方法，不改变这些测量工具的边缘定义。
+segments 与 features 项数采用已有 8192 项上界并同时受描述字节预算约束；超限拒绝该结果，不截断后继续测量。小范围拟合可按明确段 ID 取子集；fit-line/fit-circle 输入冻结为 features 中指定 boundary ID/segment IDs，内部借用 vertices，不再让外部任意无序 cloud 冒充边缘。measure-hole 只消费既有 CircleFeature，不重选支持或拟合。其他调用者确需对无序点拟合时须显式声明方法，不改变这些测量工具的边缘定义。
 
 Boundary support 记录原云索引或派生来源；等值线交点是 interpolated，不假称传感器实测点。导出普通点云 PLY 不自动保留段拓扑；完整边界保存为点云资产与段描述的受控证据关联，原始云未存仍可保留有界显示证据。运行结束时不可将 vertices 的瞬时引用写入历史结果，需替换为证据资产或显式保存引用。
 
@@ -473,7 +473,7 @@ Open3D 等成熟库负责基础几何，不等于已经实现全部计量算法�
 | `measure-step` / M3 | 参考/目标 cloud，方向面法另需 features → table + evidence | directional-planes 指定查询位置/方向；roi-statistic 指定统计量/投影基准；互斥参数 | 不平行面位置效应、交换变号；独立统计真值 |
 | `measure-extents` / M3 | 指定 boundary 的 features + 评价坐标 → table + evidence | 轴向跨度/投影包络定义、两个 item_id；借用 vertices，不冒充图纸边距 | 只称可见范围；旋转矩形/凹形/遮挡 |
 | `measure-edge-pair` / M3 | features → table + evidence | 两边 ID、方向、位置/区间、平行性门槛 | 非平行无评价位置不能给唯一宽度；相交、缺边、外推 |
-| `measure-hole` / M3 | 指定 boundary/segments 的 features + 评价平面 → table + evidence + features | 目标轮廓 ID、内孔/外圆、截面与圆质量策略；共享算法，不调用 handler | 多候选不能取第一个；圆心/直径逐项证据；多孔、部分孔、缺扫 |
+| `measure-hole` / M3 | 指定 CircleFeature → table + evidence | 圆特征 ID、闭孔/开放弧、上游质量与求解终态；不再次拟合 | 多候选不能取第一个；圆心/直径逐项证据；多孔、部分孔、缺扫 |
 
 失败定位和有序边界已有 5.9/5.10 的明确设计，不再保留上表的旧端口。剩余核对是严格参数 schema、跨节点状态/身份传播、失败必检项补齐和资源消费矩阵；不是重新选一套定位/轮廓系统。不能把失败定位伪装成合法矩阵，也不能用无序 cloud 暗示有序边，不创建占位节点绕过。
 
@@ -481,7 +481,7 @@ Open3D 等成熟库负责基础几何，不等于已经实现全部计量算法�
 
 ### 7.3 组合与独立真值
 
-F1：read-cloud/同机入口 → normalize-units → filter-valid；F2：crop-roi → fit-plane → 明确基准建立；F3：height-query；F4：两 ROI 与 measure-step；F5：extract-boundary → fit-line/measure-edge-pair，或显式 measure-extents；F6：extract-boundary → measure-hole；F7：NumericTablesMerge → Check Limits → 版本化记录/既有交付节点。需要三维显示时显式接 cloud-preview，数值表仍接现有预览节点；不自动把所有中间云上传页面。save/export 是显式旁路，不是默认副作用。
+F1：read-cloud/同机入口 → normalize-units → filter-valid；F2：crop-roi → fit-plane → 明确基准建立；F3：height-query；F4：两 ROI 与 measure-step；F5：extract-boundary → fit-line/measure-edge-pair，或显式 measure-extents；F6：extract-boundary → fit-circle → measure-hole；F7：NumericTablesMerge → Check Limits → 版本化记录/既有交付节点。需要三维显示时显式接 cloud-preview，数值表仍接现有预览节点；不自动把所有中间云上传页面。save/export 是显式旁路，不是默认副作用。
 
 真值用公式及人工构造坐标产生，不调用被测拟合器。平面交点按 6.2 直接求解，平行面间隔、旋转矩形跨度、已知圆和单位比例分别验证。噪声/外点例与精确解析例分开，固定随机种子/生成参数；0/1/多个特征、相反法向、近竖直面、短弧、缺失必检分别断言 reason，不只断言布尔。真实样本报告用于方法核对，不作准确度真值。
 
@@ -1576,7 +1576,7 @@ M1 不提前改变 Check Limits 或 Result Record 的公开语义；点云有效
 
 高度/高差可先于轮廓算法完成，不要求所有特征算法完成后才出现第一项可用尺寸。
 
-逐节点输入、算法、质量/失败、前端交互、复用源码和实施验收见 [M3 尺寸测量节点设计](3d-metrology-m3.md)。M3.1 两节点和 M3.2 三节点已内部实现，分别见[高度记录](3d-metrology-m3-height.md)和[边界记录](3d-metrology-m3-boundary.md)；M3.3 详细算法、参数、证据/显示及逐步验收见[尺寸节点设计](3d-metrology-m3-dimensions.md)，尚未实现。M3.4 公开三态和 M3.5 正式尺寸配方仍待交付。有序边界沿原 CloudRuntime 扩展，不新建 Workflow 或发布版本管理。
+逐节点输入、算法、质量/失败、前端交互、复用源码和实施验收见 [M3 尺寸测量节点设计](3d-metrology-m3.md)。M3.1 两节点、M3.2 三节点、M3.3 三个尺寸节点已内部实现，分别见[高度记录](3d-metrology-m3-height.md)、[边界记录](3d-metrology-m3-boundary.md)、[尺寸设计](3d-metrology-m3-dimensions.md)和[本批验收](3d-metrology-m33-acceptance.md)。M3.4 公开三态和 M3.5 含最终规则的正式配方仍待交付。有序边界沿原 CloudRuntime 扩展，不新建 Workflow 或发布版本管理；生产节点仍未启用。
 
 | 步骤/节点 | 实现内容与算法 | 复用与扩展 | 前端操作 | 验证 |
 | --- | --- | --- | --- | --- |

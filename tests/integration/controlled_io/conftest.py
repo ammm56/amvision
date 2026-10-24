@@ -11,7 +11,7 @@ import pytest
 @pytest.fixture(scope="session", autouse=True)
 def require_controlled_versions():
     """测试解释器必须安装当前受控 wheel。"""
-    assert version("trimesh") == "5.1.1+amvision.1"
+    assert version("trimesh") == "5.1.1+amvision.2"
     assert version("pypcd4") == "1.5.1+amvision.2"
     assert version("numpy") == "2.4.4"
     root = Path(__file__).resolve().parents[3] / "runtimes" / "python_patches"

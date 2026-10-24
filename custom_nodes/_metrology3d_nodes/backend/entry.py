@@ -4,6 +4,7 @@ from custom_nodes._metrology3d_nodes.backend import handlers
 from custom_nodes._metrology3d_nodes.backend import geometry_handlers
 from custom_nodes._metrology3d_nodes.backend import measurement_handlers
 from custom_nodes._metrology3d_nodes.backend import boundary_handlers
+from custom_nodes._metrology3d_nodes.backend import dimension_handlers
 
 HANDLERS = {
     "read-cloud": handlers.read,
@@ -21,6 +22,9 @@ HANDLERS = {
     "extract-boundary": boundary_handlers.extract,
     "fit-line": boundary_handlers.line,
     "fit-circle": boundary_handlers.circle,
+    "measure-extents": dimension_handlers.extents,
+    "measure-edge-pair": dimension_handlers.edge_pair,
+    "measure-hole": dimension_handlers.hole,
 }
 
 

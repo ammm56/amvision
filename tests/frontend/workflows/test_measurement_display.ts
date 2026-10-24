@@ -5,11 +5,12 @@ import {createGeometryOverlay} from '@/workflows/workflow-editor/point-cloud/geo
 import {rendererUsage} from '@/workflows/workflow-editor/point-cloud/preview-data'
 import {planeColorData,fillPlaneColors,planeColorSummary} from '@/workflows/workflow-editor/point-cloud/plane-colors'
 const policy={max_points:100,max_data_bytes:10000,max_cpu_bytes:100000,max_gpu_bytes:100000,max_canvas_pixels:10000,max_position_error:.001}
-function payload(valid=true){return {observation_id:'obs',spatial:{frame_id:'fixture',length_unit:'mm'},bounds:{min:[0,0,0],max:[1,1,5]},measurements:{format_id:'amvision.measurement-evidence3d.v1',observation_id:'obs',frame_id:'fixture',length_unit:'mm',items:[{item_id:'height',valid,value:valid?5:null,reason:valid?null:'outside_support',geometry:valid?{kind:'directional-distance',endpoints:[[0,0,0],[0,0,5]]}:null,support:[{role:'reference',coverage:{triangle:[[0,0,0],[1,0,0],[0,1,0]]}},{role:'target',coverage:{triangle:[[0,0,5],[1,0,5],[0,1,5]]}}],quality:{usable:valid,metrics:{observation_id:'obs',items:[]}}}]}}}
+function payload(valid=true){return {observation_id:'obs',spatial:{frame_id:'fixture',length_unit:'mm'},bounds:{min:[0,0,0],max:[1,1,5]},measurements:{format_id:'amvision.measurement-evidence3d.v2',observation_id:'obs',frame_id:'fixture',length_unit:'mm',items:[{kind:'height-query',method:{method_id:'height-query'},item_id:'height',valid,value:valid?5:null,reason:valid?null:'outside_support',geometry:valid?{kind:'directional-distance',endpoints:[[0,0,0],[0,0,5]]}:null,support:[{role:'reference',coverage:{triangle:[[0,0,0],[1,0,0],[0,1,0]]}},{role:'target',coverage:{triangle:[[0,0,5],[1,0,5],[0,1,5]]}}],quality:{usable:valid,metrics:{observation_id:'obs',items:[]}}}]}}}
 it('rejects cross-observation evidence and stale valid values in invalid results',()=>{
   expect(measurementItems(payload())[0]!.value).toBe(5)
   const wrong=payload();wrong.measurements.observation_id='old';expect(()=>measurementItems(wrong)).toThrow()
   const failed=payload(false);failed.measurements.items[0]!.value=5;expect(()=>measurementItems(failed)).toThrow()
+  const previous=payload();previous.measurements.format_id='amvision.measurement-evidence3d.v1';expect(()=>measurementItems(previous)).toThrow()
 })
 it('draws actual endpoints, clears invalid measurements and releases bounded overlay buffers',()=>{
   const scene=new Scene(),overlay=createGeometryOverlay(scene,new PerspectiveCamera(),document.createElement('canvas'),[0,0,0],policy,()=>{},()=>{},e=>{throw e})

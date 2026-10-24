@@ -235,11 +235,27 @@ def test_published_writer_crash(tmp_path, expire_while_held):
 
 def test_published_full_sample_and_lifecycle(tmp_path, request):
     """完整样本真实发布调用、切版、异常退出及恢复，平台 SDK 范围显式记录。"""
+    published_full_sample_lifecycle(tmp_path, request)
+
+
+def published_full_sample_lifecycle(
+    tmp_path,
+    request,
+    *,
+    prepare=None,
+    check_body=None,
+    report_name="",
+    point_limits=(1000, 500),
+):
+    """复用同一真实生命周期验收；扩展配方仅提供配置及独立结果断言。"""
     value = request.config.getoption("--cloud-sample")
     if not value:
         pytest.skip("通过 --cloud-sample 显式提供完整样本")
     path = tmp_path / "cloud.bin"
     cloud = sample_array(Path(value), path)
+    documents = None
+    if prepare is not None:
+        cloud, documents = prepare(cloud, path)
     cloud_path = tmp_path / "descriptor.json"
     cloud_path.write_text(cloud.model_dump_json(), encoding="utf-8")
     report = {
@@ -251,7 +267,8 @@ def test_published_full_sample_and_lifecycle(tmp_path, request):
         "calls": [],
     }
     with published_system(tmp_path) as system:
-        version1 = system.publish()
+        first_limit, second_limit = point_limits
+        version1 = system.publish(point_limit=first_limit, documents=documents)
         runtime1 = system.start(version1)
         generation1 = system.enable_source(create=True)
 
@@ -273,7 +290,9 @@ def test_published_full_sample_and_lifecycle(tmp_path, request):
                 body["source_point_count"] == POINTS
                 and body["display_point_count"] == display_count
             )
-            if display_count == 1000:
+            if check_body is not None:
+                check_body(body)
+            elif display_count == 1000:
                 assert (
                     body["data"]["checksum"]
                     == "a49008f49e95a770005b57650f6c32cf64b0a3bd6d6a5f7efc1844f38d136005"
@@ -300,8 +319,8 @@ def test_published_full_sample_and_lifecycle(tmp_path, request):
                 }
             )
 
-        call(generation1, version1, 1000)
-        version2 = system.publish(point_limit=500)
+        call(generation1, version1, first_limit)
+        version2 = system.publish(point_limit=second_limit, documents=documents)
         system.call(
             "POST",
             f"/app-runtimes/{system.runtime_id}/select-version",
@@ -335,7 +354,7 @@ def test_published_full_sample_and_lifecycle(tmp_path, request):
         rejected = invoke_cloud(system, generation1, cloud, path, expect_error=True)
         assert rejected["state"] == "failed"
         system.assert_reclaimed()
-        call(generation2, version2, 500, mode="bytes")
+        call(generation2, version2, second_limit, mode="bytes")
         # writer guard 必须由真实客户端持有，进程强制退出后才能回收并恢复。
         ready = tmp_path / "writer-ready"
         with external_client(
@@ -353,7 +372,7 @@ def test_published_full_sample_and_lifecycle(tmp_path, request):
             process.communicate(timeout=15)
         system.assert_reclaimed()
         report["writer_crash_reclaimed"] = True
-        call(generation2, version2, 500)
+        call(generation2, version2, second_limit)
         # 从独立 worker 的上报确认执行开始，不能以 REQUEST 发出代替执行。
         with external_client(system, generation2, cloud_path, path) as process:
             active = wait_executing(system, process)
@@ -364,7 +383,7 @@ def test_published_full_sample_and_lifecycle(tmp_path, request):
             "run_id": active["current_run_id"],
             "reclaimed": True,
         }
-        call(generation2, version2, 500)
+        call(generation2, version2, second_limit)
         with external_client(system, generation2, cloud_path, path) as process:
             active = wait_executing(system, process)
             stopped = system.call("POST", f"/app-runtimes/{system.runtime_id}/stop")
@@ -377,7 +396,7 @@ def test_published_full_sample_and_lifecycle(tmp_path, request):
             "process_exited": True,
         }
         system.start()
-        call(generation2, version2, 500)
+        call(generation2, version2, second_limit)
         report["running_switch_rejected"] = True
         report["enabled_source_switch_rejected"] = True
         report["stopped_admission_rejected"] = True
@@ -388,6 +407,6 @@ def test_published_full_sample_and_lifecycle(tmp_path, request):
     if folder:
         out = Path(folder)
         out.mkdir(parents=True, exist_ok=True)
-        (out / f"{platform.system().lower()}.json").write_text(
+        (out / f"{report_name}{platform.system().lower()}.json").write_text(
             json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
         )

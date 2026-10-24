@@ -1,6 +1,6 @@
 # 3D Metrology M3 尺寸测量节点设计
 
-更新：2026-10-23。M2 规划基点为 `2901df4f`，M3.2 开工基点为 `1b91b05f`，最新进度核对基点为 M3.2 提交 `90c94d6c`。本文件细化[实施基线](3d-metrology.md)第 14.3 节，承接 [M2 实施记录](3d-metrology-m2.md)，不是另一套架构，也不是已实现能力清单。第 10 节保留 M3.2 计划与实施状态，下一步具体规格和顺序见 [M3.3 长宽、边间距与孔径设计](3d-metrology-m3-dimensions.md)。
+更新：2026-10-24。M2 规划基点为 `2901df4f`，M3.2 开工基点为 `1b91b05f`，M3.3 实施前进度核对基点为 M3.2 提交 `90c94d6c`。本文件细化[实施基线](3d-metrology.md)第 14.3 节，承接 [M2 实施记录](3d-metrology-m2.md)，不是另一套架构，也不是全部已实现能力清单。第 10 节保留 M3.2 计划与实施状态；M3.3 规格和本批结果见[尺寸设计](3d-metrology-m3-dimensions.md)及[实施记录](3d-metrology-m33-acceptance.md)。下一阶段是 M3.4，生产启用仍未完成。
 
 本文保留 M3 整体实施方案。M3.1 高度/高差及 M3.2 边界/直线/圆已内部实现，实际契约、接线与验证见 [M3.1 实施记录](3d-metrology-m3-height.md)和 [M3.2 实施记录](3d-metrology-m3-boundary.md)。后续尺寸、公开三态和正式配方验收仍待推进；生产配置未改，不运行 P99 或长稳。
 
@@ -15,7 +15,7 @@
 | build-frame | 显式锚点投影或三基准面交点；稳定面 ID、正方向、退化拒绝 | `shared/build_frame.py`、pose3d、GeometrySettingsEditor |
 | transform-cloud | SE(3) 变换位置/法向，保留其他字段、原始行号和方法追溯；缺测不复用旧矩阵 | `shared/transform_cloud.py`、CloudRuntime 派生数组与资产 |
 
-四节点已接内部 Catalog、handler 和 Vue 参数/三维显示；加上 M1 六节点、M3.1 两节点和 M3.2 三节点，当前为十五个内部节点。目录仍为 `custom_nodes/_metrology3d_nodes`，生产 manifest 不存在，不可发现、不可启用。M3.3 三个尺寸节点尚未实现。
+四节点已接内部 Catalog、handler 和 Vue 参数/三维显示；加上 M1 六节点、M3.1 两节点、M3.2 三节点及 M3.3 三个尺寸节点，当前为十八个内部节点。目录仍为 `custom_nodes/_metrology3d_nodes`，生产 manifest 不存在，不可发现、不可启用。M3.3 及证据 v2 的本批验证见[实施记录](3d-metrology-m33-acceptance.md)。
 
 既有验证记录：Windows/WSL Ubuntu 原生目录组合各 372 项；完整 14,745,099 点样本每平台 SVD/RANSAC 两项；正式 REST 发布、依赖准入、独立 WorkflowAppRuntime、同机 Trigger、四节点每平台一项；前端相关 112 项及类型检查、构建通过。这些是 M2 已有结果，本次没有重复执行。隔离浏览器页使用正式组件，不等于完整 Workflow 页面或目标发行包已验收。
 
@@ -67,7 +67,7 @@ M3.4 升级已有 Check Limits、Result Record 和实际读取其结果的模块
 
 源码入口：[几何算法目录](../../custom_nodes/_metrology3d_nodes/shared/)、[handler](../../custom_nodes/_metrology3d_nodes/backend/geometry_handlers.py)、[Catalog](../../custom_nodes/_metrology3d_nodes/workflow/catalog_builder.py)、[运行资源](../../backend/service/application/workflows/point_cloud/runtime.py)、[数值契约](../../backend/contracts/workflows/metrology.py)、[三维特征](../../backend/contracts/workflows/geometry3d_observations.py)、[三维前端](../../frontend/web-ui/src/workflows/workflow-editor/point-cloud/)。
 
-现有二维工具不能直接替换三维规格：[二维工业测量](../../custom_nodes/opencv_nodes/categories/measurement/backend/nodes/industrial_measurement.py)的直线分支使用 float32/像素条件、圆分支是代数最小二乘；[稳健圆工具](../../custom_nodes/opencv_nodes/shared/backend/runtime/circle_measurement.py)含像素阈值与分箱覆盖率。三维按物理坐标、原精度和明确几何目标实现，不复制这些默认数值，也不顺带重构二维调用。成熟数值内核继续使用 NumPy/SciPy；fit-circle 保持唯一的三维圆拟合实现，measure-hole 消费现成圆特征还是直接复用该函数，按 4.8 的接线确认收口，不复制拟合器。
+现有二维工具不能直接替换三维规格：[二维工业测量](../../custom_nodes/opencv_nodes/categories/measurement/backend/nodes/industrial_measurement.py)的直线分支使用 float32/像素条件、圆分支是代数最小二乘；[稳健圆工具](../../custom_nodes/opencv_nodes/shared/backend/runtime/circle_measurement.py)含像素阈值与分箱覆盖率。三维按物理坐标、原精度和明确几何目标实现，不复制这些默认数值，也不顺带重构二维调用。成熟数值内核继续使用 NumPy/SciPy；fit-circle 保持唯一的三维圆拟合实现，measure-hole 已确认只消费其 CircleFeature，不再次拟合。
 
 ### 3.2 有序边界：扩展已实现
 
@@ -172,7 +172,7 @@ trimesh 的 `mesh_plane` 可返回相交线段及源面号，但源码使用库�
 1. **轴向跨度**：在固定工件轴上计算完整支持投影的 max-min。轴是配方定义，不使用源屏幕方向。输出轴向尺寸及接触支持点/支撑线。
 2. **最小面积矩形**：在评价面内调用 `trimesh.bounds.oriented_bounds_2D`，核对返回矩阵方向、实际支撑边和尺寸。凸包用于包络计算是允许的，但不反向充当真实边界；PCA 框不是最小面积矩形。
 
-已核对 5.1.1 源码会分配凸包顶点数与候选方向数的乘积数组，且只返回一个最优框。已确认允许在现有受控 trimesh 中局部扩展同一函数，补分块预算、取消和并列最优证据，独立回归后使用；本轮未修改依赖。凸包及工作数组完整计费，不够则按现有容量错误拒绝，不降采样、不静默换近似方法。并列候选长短边一致时保留尺寸并标识方向歧义，尺寸不一致则无效；比较条件显式配置。详细参数、证据和验证见 M3.3 第 4 节。[trimesh 5.1.1 bounds](https://github.com/mikedh/trimesh/blob/5.1.1/trimesh/bounds.py)
+已核对 5.1.1 源码会分配凸包顶点数与候选方向数的乘积数组，且只返回一个最优框。已确认并在受控 trimesh `.2` 局部扩展同一函数，补分块预算、取消和全部并列候选，双平台独立回归见[实施记录](3d-metrology-m33-acceptance.md)。节点已接入：凸包及工作数组按现有预算计费，不够则按容量错误拒绝，不降采样、不静默换近似方法；这不是原生库 RSS 硬上限保证。并列候选长短边一致时保留尺寸并标识方向歧义，尺寸不一致则无效；比较条件显式配置。详细参数、证据和验证见 M3.3 第 4 节。[trimesh 5.1.1 bounds](https://github.com/mikedh/trimesh/blob/5.1.1/trimesh/bounds.py)
 
 前端明确显示“轴向跨度”或“最小面积包络”，两项尺寸可独立命名和配置限值。支撑线、接触点与尺寸线关联；矩形角不冒充实测点。验证旋转长方形、带圆角/缺边轮廓、正方形方向歧义、凹形和细长退化；报告的是可见支持包络，不推断遮挡后的实体长宽。
 
@@ -188,7 +188,7 @@ trimesh 的 `mesh_plane` 可返回相交线段及源面号，但源码使用库�
 
 ### 4.8 measure-hole：测量孔与圆弧
 
-接线待确认：原设计为输入指定边界及段并复用 4.5 同一拟合函数；M3.2 已输出完整 CircleFeature，现推荐直接消费该特征及质量，不再次拟合。确认前不冻结输入，不并行实现两种接线。推荐规格详见 M3.3 第 6 节。
+接线已确认：直接消费 fit-circle 输出的 CircleFeature 及质量，不再次拟合。替代原设计的边界内拟合路径，不并行实现两种接线，详见 M3.3 第 6 节。
 
 无论接线选择，评价面、闭孔边/开放圆弧、内外角色、唯一选择和质量条件都须明确；不调用 fit-circle handler、不复制拟合器。开放圆弧允许用于半圆槽，但不能称为完整闭孔或完整圆周观测。输出配置的直径和圆心坐标项；直径为 `2r`，坐标在明确评价 frame 中。证据保留圆模型、支持弧、缺口、选定显示方向和方法；显示直径辅助线不表示两端均有实测点。
 
@@ -322,13 +322,13 @@ M3.4 先为真实发布版本建立反例：发布旧规则 → 更新节点定�
 | --- | --- | --- |
 | 精确拾取走显式 Preview | 已确认 | 不做常驻原云/实时查询；可据此细化 M3.1 参数和前端回归 |
 | 有序源点与生成顶点复用 CloudRuntime 扩展 | M3.2 已接入原运行时和保存恢复 | 沿当前 v2 契约复用，不再作为待建系统 |
-| 方法参数、质量/缺口条件 | M3.1/M3.2 已有严格契约；M3.3 边对不外推及矩形并列规则已确认，孔径输入待确认 | 具体参数/证据及全部读取方见 M3.3 设计；不填生产数值 |
-| 最小矩形受控扩展 | 已授权局部扩展，尚未实现或验收 | 不把 I/O wheel 的既有通过记录算作该算法通过 |
+| 方法参数、质量/缺口条件 | M3.1/M3.2 已有严格契约；M3.3 边对不外推、矩形并列规则及孔径消费 CircleFeature 均已确认 | 具体参数/证据及全部读取方见 M3.3 设计；不填生产数值 |
+| 最小矩形受控扩展 | 已实现、独立回归并接入 measure-extents | 候选范围与方向歧义有独立证据；工作数组预算不是原生 RSS 硬上限 |
 | 三态/消费者和升级 | 基线方向已确认，尚未实现 | M3.4 同批交付；不阻塞 M3.1 算法，不在测量节点另写判定器 |
 | 生产 timeout、容量、节拍 | 尚未批准 | 生产包继续隐藏；不反复索取已答未定的参数 |
 | bundled 双平台、原生峰值与工业准确度 | 尚未完成 | 不能把内部测试通过标为现场可放行 |
 
-当前结论：M3.1/M3.2 已内部接通；M3.2 新三节点真实发布组合和完整页面仍须补验。下一阶段 M3.3 开发长宽、边间距及孔径，复用现有边界、线、圆、资源与发布系统；按 [M3.3 设计](3d-metrology-m3-dimensions.md)先确认剩余接线再逐项实施。不宣称全部 M3 已实现或生产启用完成。
+当前结论：M3.1–M3.3 已内部接通；2026-10-24 完成受控矩形扩展、三个尺寸节点、证据 v2 和前端，双平台包含完整样本的定向组合各 362 项通过，见[本批记录](3d-metrology-m33-acceptance.md)。下一阶段为 M3.4 既有规则和消费者三态升级；生产预算、发行和现场验收仍未完成，不宣称全部 M3 已实现或生产启用完成。
 
 早期 M3 规划批次的文档审计记录：当时五份变更文档的 184 个本地文件/目录链接及代码围栏检查通过；空白/冲突检查通过，修正了 M2、Trigger 和资源 v2 的过期状态。当时未重跑应用测试或启动任务服务。此记录不代表本次 M3.3 新规划的测试或环境状态。
 
@@ -391,7 +391,7 @@ trimesh 5.1.1 的相交入口能返回源面索引，但使用 `tol.merge`，共
 
 SciPy least_squares 提供有界非线性最小二乘；本项目仍负责径向残差定义、明确终止参数及几何可辨识性，求解成功不替代质量判定。方法/缩放/容差不依赖库版本的隐式默认值；实现时记录本项目环境中实际依赖版本，本次不升级依赖。[求解器官方说明](https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.least_squares.html)
 
-每个节点按“严格 DTO → 纯计算 → 内部 handler/Catalog → 编辑与显示 → 组合回归 → 审计”完成，再进入下一个节点。fit-circle 的纯计算函数供后续 measure-hole 复用，不调用另一个节点 handler，也不提前实现重复拟合器。
+每个节点按“严格 DTO → 纯计算 → 内部 handler/Catalog → 编辑与显示 → 组合回归 → 审计”完成，再进入下一个节点。measure-hole 消费 fit-circle 的 CircleFeature，不调用其 handler 或重新运行拟合函数。
 
 ### 10.5 工程师与现场交互
 

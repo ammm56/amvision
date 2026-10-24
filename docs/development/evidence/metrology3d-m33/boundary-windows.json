@@ -1,0 +1,197 @@
+{
+  "platform": "Windows-11-10.0.26300-SP0",
+  "points": 14745099,
+  "array_sha256": "956927f058ba4a0170b1c1b93b1411b613fbe21fcbfc278ad0a7fc3cf621a1c6",
+  "admission": "WorkflowRuntimeService",
+  "worker": "WorkflowRuntimeWorkerManager",
+  "calls": [
+    {
+      "run_id": "workflow-run-766ea57d9cc244d297947ea303038724",
+      "version_id": "workflow-app-version-c51bd46d8a744a9ba6962dc85cf6cbb4",
+      "worker_instance_id": "workflow-runtime-281b2ff0a55b4c2aa8dab6826eac21a5-275e2bdfaabb487f99e50c40796f984a",
+      "display_points": 500,
+      "client": "dotnet-fill"
+    },
+    {
+      "run_id": "workflow-run-70f54e3dfd97453e9bb4bea772984376",
+      "version_id": "workflow-app-version-3fdf8ab2a7c7410193ef82995b3089c2",
+      "worker_instance_id": "workflow-runtime-281b2ff0a55b4c2aa8dab6826eac21a5-b1b4fdf532e14ba58f3dd9b73ff8a5e1",
+      "display_points": 250,
+      "client": "dotnet-bytes"
+    },
+    {
+      "run_id": "workflow-run-91f977995f8045cf8caa905566068d59",
+      "version_id": "workflow-app-version-3fdf8ab2a7c7410193ef82995b3089c2",
+      "worker_instance_id": "workflow-runtime-281b2ff0a55b4c2aa8dab6826eac21a5-b1b4fdf532e14ba58f3dd9b73ff8a5e1",
+      "display_points": 250,
+      "client": "dotnet-fill"
+    },
+    {
+      "run_id": "workflow-run-db42b6db46334484b15a782d6e30321b",
+      "version_id": "workflow-app-version-3fdf8ab2a7c7410193ef82995b3089c2",
+      "worker_instance_id": "workflow-runtime-281b2ff0a55b4c2aa8dab6826eac21a5-b1b4fdf532e14ba58f3dd9b73ff8a5e1",
+      "display_points": 250,
+      "client": "dotnet-fill"
+    },
+    {
+      "run_id": "workflow-run-29e17aae38524b3e95800717e148d8e9",
+      "version_id": "workflow-app-version-3fdf8ab2a7c7410193ef82995b3089c2",
+      "worker_instance_id": "workflow-runtime-281b2ff0a55b4c2aa8dab6826eac21a5-276b2105b0e542d19cab8ff7c3314dbc",
+      "display_points": 250,
+      "client": "dotnet-fill"
+    }
+  ],
+  "writer_crash_reclaimed": true,
+  "executing_client_crash": {
+    "run_id": "workflow-run-e4cfb950a1814b0685f444f0a3554a45",
+    "reclaimed": true
+  },
+  "stop_during_execution": {
+    "run_id": "workflow-run-685d126b5e0b485888b48025be4e98e7",
+    "process_exited": true
+  },
+  "running_switch_rejected": true,
+  "enabled_source_switch_rejected": true,
+  "stopped_admission_rejected": true,
+  "stale_route_rejected": true,
+  "stopped_switch_verified": true,
+  "resources": [
+    {
+      "running": true,
+      "pending_request_count": 0,
+      "active_task_count": 0,
+      "mailbox": {
+        "contract_id": "amvision.workflow-trigger-mailbox.v1",
+        "server_epoch": 11654212079248037194,
+        "file_size_bytes": 151060992,
+        "descriptor_state_counts": [
+          128,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "free_page_count": 512,
+        "used_page_count": 0,
+        "last_timeout_diagnostic": {
+          "requested_timeout_ms": 120000,
+          "accepted_timeout_ms": 120000,
+          "accepted_at_ns": 687859703000000
+        }
+      },
+      "routes": {
+        "route_count": 1,
+        "active_source_permit_count": 0
+      },
+      "executor": {
+        "max_workers": 16,
+        "active_count": 0,
+        "available_count": 16,
+        "closed": false
+      },
+      "recent_poller_error": null,
+      "recent_request_error": {
+        "error_type": "InvalidRequestError",
+        "error_code": "invalid_request",
+        "published_error_code": "mailbox_error_1",
+        "occurred_at": "2026-10-23T16:37:36.693336+00:00"
+      },
+      "completed_request_count": 7,
+      "failed_request_count": 3,
+      "source_health_entry_count": 1,
+      "idle_poll_sleep_count": 38620,
+      "latest_timings": {
+        "prepare_decode_route_admission_ms": 0.157,
+        "broker_allocate_ms": 0.615,
+        "mailbox_publish_writing_ms": 0.071,
+        "mailbox_prepare_ms": 0.849,
+        "mailbox_request_detect_ms": 0.035,
+        "input_publish_wait_ms": 148.297,
+        "executor_reserve_ms": 0.015,
+        "executor_start_wait_ms": 0.06,
+        "request_decode_validate_ms": 0.04,
+        "input_binding_map_ms": 0.016,
+        "runtime_admission_ms": 1.83,
+        "broker_commit_owner_handoff_ms": 0.665,
+        "request_admission_submit_ms": 2.88,
+        "workflow_runtime_invoke_ms": 4695.316,
+        "trigger_result_build_ms": 0.186,
+        "response_serialize_ms": 0.086,
+        "mailbox_publish_response_ms": 0.15,
+        "lease_reclaim_ms": 0.008
+      }
+    },
+    {
+      "process_id": 2608,
+      "state": "healthy",
+      "arena_id": "local-buffer-main",
+      "broker_epoch": "1bd7a56b4ca0476e9d76b6a3fb345e10",
+      "lifecycle_state": "open",
+      "active_borrow_count": 0,
+      "close_blocked_count": 0,
+      "layout_version": 1,
+      "layout_fingerprint": "7bc9d52480ee80346619f65af0cf16e6de339b504fdbba0c29765f9359a4fd4d",
+      "arena_total_bytes": 536870912,
+      "general_total_bytes": 536870912,
+      "huge_reserved_total_bytes": 0,
+      "general": {
+        "reserved_writing": 0,
+        "active": 0,
+        "frame_reserved": 0,
+        "revoking": 0,
+        "quarantined": 0,
+        "free": 536870912
+      },
+      "huge_reserve": {
+        "reserved_writing": 0,
+        "active": 0,
+        "frame_reserved": 0,
+        "revoking": 0,
+        "quarantined": 0,
+        "free": 0
+      },
+      "free_capacity_bytes": 536870912,
+      "allocated_capacity_bytes": 0,
+      "published_content_bytes": 0,
+      "rounding_waste_bytes": 0,
+      "frame_reserved_capacity_bytes": 0,
+      "revoking_capacity_bytes": 0,
+      "quarantined_capacity_bytes": 0,
+      "largest_general_free_block_bytes": 268435456,
+      "general_external_fragmentation": 0.5,
+      "free_blocks_by_order": {
+        "20": 0,
+        "21": 0,
+        "22": 0,
+        "23": 0,
+        "24": 0,
+        "25": 0,
+        "26": 0,
+        "27": 0,
+        "28": 2
+      },
+      "allocation_failure_counts": {
+        "total_capacity": 0,
+        "contiguous_capacity": 0,
+        "maximum_allocation": 0,
+        "huge_reserve": 0,
+        "integrity": 0
+      },
+      "active_lease_count": 0,
+      "frame_channel_count": 0,
+      "stale_fence_count": 0,
+      "frame_channels": [],
+      "housekeeping": {
+        "owner": "broker",
+        "expire_enabled": true,
+        "last_success_at": "2026-10-23T16:38:14.970585+00:00",
+        "duration_ms": 0.0,
+        "error": null,
+        "last_error": null
+      }
+    }
+  ]
+}

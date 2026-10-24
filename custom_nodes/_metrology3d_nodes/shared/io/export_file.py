@@ -154,7 +154,7 @@ def export_cloud_file(runtime, reference, options, *, stream, max_output_bytes, 
 def _write(data, stream, options, reference, rows, max_working_bytes, cancel):
     """唯一格式分派；失败不换库、编码或精度。"""
     if options.profile_id.startswith("ply-"):
-        require_controlled_distribution("trimesh", "5.1.1+amvision.1")
+        require_controlled_distribution("trimesh", "5.1.1+amvision.2")
         from trimesh.exchange.ply import write_ply_points
 
         write_ply_points(

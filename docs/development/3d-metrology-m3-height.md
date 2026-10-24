@@ -40,11 +40,11 @@
 
 ## 逐字段证据
 
-源码以 `backend/contracts/workflows/measurement3d_parameters.py` 和 `measurement3d_evidence.py` 为准。M3.1 是尚未生产公开的三维 v1 分支收口，不更改既有 NumericTable 或资源 v2 语义，不新增数据库表或数据迁移。
+源码以 `backend/contracts/workflows/measurement3d_parameters.py` 和 `measurement3d_evidence.py` 为准。M3.1 首次实现使用测量证据 v1；2026-10-24 在 M3.3 同批升级为 v2，并为高度/高差增加明确 kind，原几何数学不变。以下契约按当前 v2 记录；历史验收仍对应当时版本。不更改既有 NumericTable 或资源 v2 语义，不新增数据库表或数据迁移。
 
 | 对象 | 字段与含义 |
 | --- | --- |
-| 顶层 | `format_id=amvision.measurement-evidence3d.v1`、observation_id、frame_id、length_unit、items；不包含 run_id/CloudReference |
+| 顶层 | `format_id=amvision.measurement-evidence3d.v2`、observation_id、frame_id、length_unit、items；各项显式 kind 区分高度、高差及后续尺寸；不包含 run_id/CloudReference |
 | item | item_id、value、valid、reason、method、geometry、support、quality、sample_origin；ID 与方法配置一致 |
 | method | method_id、method_version=1、完整强类型 parameters、parameters_sha256；高度保留完整局部拟合配置 |
 | geometry / directional-distance | query_position、direction、两个实际平面交点；检查端点在指定测量线及对应平面上，并与量值一致 |

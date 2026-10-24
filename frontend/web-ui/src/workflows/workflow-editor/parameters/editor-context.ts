@@ -8,6 +8,8 @@ export interface ParameterEditorSource {
   nodeTypeId: string
   parameters: WorkflowJsonObject
   outputPort?: string
+  /** 仅当前成功且未过期的 Preview 原端口输出，不作为配置持久化。 */
+  previewOutput?: unknown
 }
 
 export type ParameterEditorSources = Record<string, ParameterEditorSource[]>

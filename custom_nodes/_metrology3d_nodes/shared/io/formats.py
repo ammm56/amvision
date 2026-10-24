@@ -38,7 +38,7 @@ def inspect_cloud_file(
     """由显式 profile 选择唯一读取器，不根据扩展名猜测。"""
     cancel()
     if options.profile_id.startswith("ply-"):
-        require_controlled_distribution("trimesh", "5.1.1+amvision.1")
+        require_controlled_distribution("trimesh", "5.1.1+amvision.2")
         from trimesh.exchange.ply import read_ply_data, read_ply_header
 
         header = read_ply_header(stream, max_header_bytes=policy.max_header_bytes)

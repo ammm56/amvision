@@ -36,6 +36,11 @@ from backend.contracts.workflows.metrology import (
     unique_ids,
 )
 from backend.contracts.workflows.point_cloud import JsonCount, LengthUnit, Sha256
+from backend.contracts.workflows.dimension3d_evidence import (
+    EdgePairEvidenceItem,
+    ExtentsEvidenceItem,
+    HoleEvidenceItem,
+)
 
 NonNegative = Annotated[Finite, Field(ge=0)]
 
@@ -199,6 +204,7 @@ class StatisticalMeasurement(Contract):
 class MeasurementEvidenceItem(Contract):
     """量值、方法、双方支持和几何质量作为一个不可变结果核对。"""
 
+    kind: Literal["height-query", "measure-step"]
     item_id: Identifier
     value: Finite | None
     valid: StrictBool
@@ -218,6 +224,8 @@ class MeasurementEvidenceItem(Contract):
     def check_item(self) -> Self:
         """缺测保留 item，质量和实际测量定义必须一致。"""
         parameters = self.method.parameters
+        if self.kind != self.method.method_id:
+            raise ValueError("测量类型与方法不一致")
         if self.item_id != parameters.item_id or (
             parameter_digest(parameters) != self.method.parameters_sha256
         ):
@@ -378,13 +386,25 @@ class MeasurementEvidenceItem(Contract):
 class MeasurementEvidence3d(Contract):
     """三维量值证据；可独立落盘，支持摘要不是历史运行访问引用。"""
 
-    format_id: Literal["amvision.measurement-evidence3d.v1"] = (
-        "amvision.measurement-evidence3d.v1"
+    format_id: Literal["amvision.measurement-evidence3d.v2"] = (
+        "amvision.measurement-evidence3d.v2"
     )
     observation_id: Identifier
     frame_id: Identifier
     length_unit: LengthUnit
-    items: Annotated[tuple[MeasurementEvidenceItem, ...], Field(max_length=8192)]
+    items: Annotated[
+        tuple[
+            Annotated[
+                MeasurementEvidenceItem
+                | ExtentsEvidenceItem
+                | EdgePairEvidenceItem
+                | HoleEvidenceItem,
+                Field(discriminator="kind"),
+            ],
+            ...,
+        ],
+        Field(max_length=8192),
+    ]
 
     @model_validator(mode="after")
     def check_identity(self) -> Self:
@@ -398,6 +418,23 @@ class MeasurementEvidence3d(Contract):
                 self.observation_id,
             ):
                 raise ValueError("测量证据空间或观测不一致")
+        groups = {}
+        for item in self.items:
+            if isinstance(item, MeasurementEvidenceItem):
+                continue
+            groups.setdefault(item.method.parameters_sha256, []).append(item)
+        for siblings in groups.values():
+            first = siblings[0]
+            if {i.item_id for i in siblings} != {
+                o.item_id for o in first.method.parameters.outputs
+            }:
+                raise ValueError("同一尺寸测量的启用输出必须完整保存")
+            common = first.model_dump(exclude={"item_id", "component", "value"})
+            if any(
+                i.model_dump(exclude={"item_id", "component", "value"}) != common
+                for i in siblings[1:]
+            ):
+                raise ValueError("同一尺寸测量的几何、质量和支持必须一致")
         return self
 
     def numeric_table(self) -> NumericTable:

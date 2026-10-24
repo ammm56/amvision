@@ -3,10 +3,11 @@
   "packages": {
     "trimesh": {
       "upstream_version": "5.1.1",
-      "version": "5.1.1+amvision.1",
+      "version": "5.1.1+amvision.2",
       "source_url": "https://files.pythonhosted.org/packages/ab/bf/a7efaef127e0f1a228a03e5d00c04f5aeb2c25a60adb4d47003d4d0855bc/trimesh-5.1.1.tar.gz",
       "source_sha256": "56070be44cd97ac87544c9bd3da4b7a298c6f728e83183aeb1f3524d673d5fac",
       "original_files": {
+        "trimesh/bounds.py": "7ba1498f70216c66fa6da5ccc8b2641de91dbd9185a6369c4cd795ae9d4d6619",
         "trimesh/exchange/ply.py": "81359e43810d0bf94665c0ef9f56ea1abe20cbca4db369829fac98e553efcfd6",
         "pyproject.toml": "30469e326b1bad0288108281467f90bc487c2f5e7680f3fa4c366986a3aa64b5"
       },

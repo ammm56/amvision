@@ -24,7 +24,7 @@ class CloudTestCatalog(NodeCatalogRegistry):
         manifest = NodePackManifest.model_validate(
             dict(
                 id="metrology3d.nodes",
-                version="0.1.8",
+                version="0.1.9",
                 displayName="3D test",
                 category="vision",
                 capabilities=("workflow-nodes",),

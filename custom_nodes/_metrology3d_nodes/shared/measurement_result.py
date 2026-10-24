@@ -80,6 +80,7 @@ def measurement_result(parameters, observation_id, supports, geometry, *, reason
         length_unit=parameters.length_unit,
         items=[
             dict(
+                kind="height-query" if height else "measure-step",
                 item_id=parameters.item_id,
                 value=value,
                 valid=valid,

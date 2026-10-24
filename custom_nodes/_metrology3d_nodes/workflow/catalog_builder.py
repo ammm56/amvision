@@ -17,6 +17,12 @@ from backend.contracts.workflows.workflow_graph import (
     validate_node_definition_catalog,
 )
 from backend.nodes.core_catalog import get_core_workflow_payload_contracts
+from custom_nodes._metrology3d_nodes import PACK_VERSION
+from backend.contracts.workflows.dimension3d_parameters import (
+    ExtentsNodeParameters,
+    EdgePairNodeParameters,
+    HoleNodeParameters,
+)
 from backend.contracts.workflows.geometry3d_observations import Features3d, Pose3d
 from backend.contracts.workflows.geometry3d_methods import RigidTransform3d
 from backend.contracts.workflows.measurement3d_evidence import MeasurementEvidence3d
@@ -60,7 +66,7 @@ def build_custom_node_catalog_document():
             ("pose3d.v1", "3D Pose", Pose3d),
             ("transform3d.v1", "3D Transform", RigidTransform3d),
             (
-                "measurement-evidence3d.v1",
+                "measurement-evidence3d.v2",
                 "3D Measurement Evidence",
                 MeasurementEvidence3d,
             ),
@@ -79,6 +85,42 @@ def build_custom_node_catalog_document():
     cloud = port("cloud", "point-cloud-ref.v2")
     definitions = []
     for key, title, category, model, inputs, outputs in (
+        (
+            "measure-extents",
+            "Measure Extents",
+            "metrology3d.measurement",
+            ExtentsNodeParameters,
+            [
+                port("cloud", "point-cloud-ref.v2", False),
+                port("features", "features3d.v2", False, True),
+            ],
+            [
+                port("measurements", "numeric-table.v1"),
+                port("evidence", "measurement-evidence3d.v2"),
+            ],
+        ),
+        (
+            "measure-edge-pair",
+            "Measure Edge Pair",
+            "metrology3d.measurement",
+            EdgePairNodeParameters,
+            [port("features", "features3d.v2", multiple=True)],
+            [
+                port("measurements", "numeric-table.v1"),
+                port("evidence", "measurement-evidence3d.v2"),
+            ],
+        ),
+        (
+            "measure-hole",
+            "Measure Hole",
+            "metrology3d.measurement",
+            HoleNodeParameters,
+            [port("features", "features3d.v2", multiple=True)],
+            [
+                port("measurements", "numeric-table.v1"),
+                port("evidence", "measurement-evidence3d.v2"),
+            ],
+        ),
         (
             "extract-boundary",
             "Extract Boundary",
@@ -111,7 +153,7 @@ def build_custom_node_catalog_document():
             [cloud, port("features", "features3d.v2", multiple=True)],
             [
                 port("measurements", "numeric-table.v1"),
-                port("evidence", "measurement-evidence3d.v1"),
+                port("evidence", "measurement-evidence3d.v2"),
                 port("features", "features3d.v2"),
             ],
         ),
@@ -127,7 +169,7 @@ def build_custom_node_catalog_document():
             ],
             [
                 port("measurements", "numeric-table.v1"),
-                port("evidence", "measurement-evidence3d.v1"),
+                port("evidence", "measurement-evidence3d.v2"),
             ],
         ),
         (
@@ -195,7 +237,7 @@ def build_custom_node_catalog_document():
                 cloud,
                 port("features", "features3d.v2", False, True),
                 port("pose", "pose3d.v1", False),
-                port("evidence", "measurement-evidence3d.v1", False, True),
+                port("evidence", "measurement-evidence3d.v2", False, True),
             ],
             [port("body", "response-body.v1")],
         ),
@@ -219,14 +261,24 @@ def build_custom_node_catalog_document():
         definitions.append(
             dict(
                 node_type_id="custom.metrology3d." + key,
-                version="0.1.8",
+                version="0.1.9"
+                if key
+                in {
+                    "height-query",
+                    "measure-step",
+                    "cloud-preview",
+                    "measure-extents",
+                    "measure-edge-pair",
+                    "measure-hole",
+                }
+                else "0.1.8",
                 display_name=title,
                 category=category,
                 description=title,
                 implementation_kind="custom-node",
                 runtime_kind="python-callable",
                 node_pack_id="metrology3d.nodes",
-                node_pack_version="0.1.8",
+                node_pack_version=PACK_VERSION,
                 input_ports=inputs,
                 output_ports=outputs,
                 parameter_schema=inline_model_schema(model),

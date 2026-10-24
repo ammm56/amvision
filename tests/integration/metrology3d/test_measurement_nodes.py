@@ -89,7 +89,7 @@ def measurement_graph(*, height=None, reference_roi=None, read=True):
     outputs = [
         ("height", "numeric-table.v1", "height", "measurements"),
         ("step", "numeric-table.v1", "step", "measurements"),
-        ("evidence", "measurement-evidence3d.v1", "height", "evidence"),
+        ("evidence", "measurement-evidence3d.v2", "height", "evidence"),
         ("body", "response-body.v1", "preview", "body"),
     ]
     return WorkflowGraphTemplate.model_validate(

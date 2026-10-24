@@ -43,8 +43,8 @@ def intersect_surface(
     from trimesh.intersections import mesh_plane
 
     cancel()
-    if version("trimesh") != "5.1.1+amvision.1":
-        raise RuntimeError("截面要求受控 trimesh 5.1.1+amvision.1")
+    if version("trimesh") != "5.1.1+amvision.2":
+        raise RuntimeError("截面要求受控 trimesh 5.1.1+amvision.2")
     vertices, faces = np.asarray(vertices), np.asarray(faces)
     origin, normal = np.asarray(origin, dtype=float), np.asarray(normal, dtype=float)
     if (

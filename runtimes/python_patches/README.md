@@ -1,13 +1,13 @@
-# 受控 Python I/O 依赖
+# 受控 Python 点云依赖
 
 此目录仅保存构建材料，不加入运行时 `sys.path`，不由 backend 或节点直接导入。
-当前范围是 M1 的 PLY/PCD I/O；不代表六个 3D Metrology 节点已可用。
+当前范围为 PLY/PCD 严格 I/O 及 M3.3 最小面积矩形扩展；不代表节点包已生产启用。
 
 ## 来源与修改
 
 | 包 | 原版 | 本项目版本 | 修改范围 |
 | --- | --- | --- | --- |
-| trimesh | 5.1.1 | 5.1.1+amvision.1 | exchange.ply 严格头部、类型化点云接口、分块读写；不修改几何算法 |
+| trimesh | 5.1.1 | 5.1.1+amvision.2 | 保留 .1 的严格 PLY；oriented_bounds_2D 沿用凸包边投影算法，增加工作预算、分块取消及全部并列候选 |
 | pypcd4 | 1.5.1 | 1.5.1+amvision.2 | 头部、字段布局、记录完整性、LZF 分组、写出及版本身份；.2 修正不可压缩数据的输出容量 |
 
 `manifest.json` 固定上游源码归档及被替换文件 SHA-256。各包目录保存完整的修改文件，
@@ -43,6 +43,10 @@ pyproject-hooks 1.3.3，其余版本相同；实际源码和 wheel 身份另行�
 初次产物身份见 [M1 I/O 验收记录](../../docs/development/3d-metrology-m1-io.md)，
 当前 PCD `.2` 身份见[资产验证记录](../../docs/development/3d-metrology-m1-assets.md)。
 
+trimesh `.2` 使用 Python 3.12.13、build 1.3.0、setuptools 70.2.0、wheel 0.47.0、
+pyproject-hooks 1.3.3 构建；当前身份由 `wheels.lock.json` 固定。
+几何扩展验证见 [M3.3 实施记录](../../docs/development/3d-metrology-m33-acceptance.md)。
+
 集成套件显式检查安装版本和模块内容；缺依赖/装原版直接失败，不 skip。
 它位于 `tests/integration/`，不使尚未启用三维依赖的常规后端测试无法收集。
 同目录 Python 发行态也必须安装同一固定 wheel；本轮尚未启用 release profile，
@@ -72,6 +76,12 @@ PCD COUNT 和 VIEWPOINT 的省略值来自 PCD 0.7 格式规定，不是解析�
 库不能识别语义上谎报的端序，只按声明端序解码，不猜测或自动交换。
 
 ## 后续维护
+
+`oriented_bounds_2D(return_candidates=True)` 要求显式预算、取消回调和绝对/相对面积容差，
+只接受 float32/float64 与不扰动输入的 `QbB`。第一遍求全局最低面积，第二遍返回完整并列集合。
+同一矩形的轴交换/符号等价由节点按显式角度条件判别，库不假定方向唯一。
+预算约束已知 NumPy 数组，不是 Qhull 原生内存或 RSS 硬上限；Qhull 内部不能即时取消，
+仍由既有执行器超时及整组停止控制。未修改其余几何函数、全局精度或 PLY 修复。
 
 修改需更新受控身份并重跑双平台格式回归。代码模块未变化的构建工具修正需单独核对 wheel 身份。
 正式 wheel 放本地 `runtimes/third_party/python-io/`，不入 git；源码和验证记录入 git。
