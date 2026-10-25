@@ -4,6 +4,8 @@
 
 ## 使用顺序
 
+模型最新要求：使用[模型提示词](模型.md)、[完整页面规划](../model-pages-design.md)和[复核记录](../model-design-review.md)。首批12组亮暗、24张静态稿，配套24份合并修订后的中文规格，见[设计总览](../generated/模型/设计总览.html)；当前图片与规格哈希记录在清单。未出图状态另列，不能用首批代表页面代替完整交互验收。
+
 数据集最新要求：使用[数据集提示词](数据集.md)、[工作区规格](../dataset-workspace-completion-design.md)、[向导规格](../dataset-wizard-states-design.md)及[管理规格](../dataset-management-states-design.md)。截至2026-10-25，56组亮暗、112张静态稿，对应112份中文规格，位于 `数据集完整设计请求/`。本轮48份规格先写后生成，逐图修订已合并；末次实际请求另存在清单。见[设计总览](../generated/数据集/设计总览.html)和[逐图检查](../dataset-design-review.md)。
 
 最新项目稿按[完整产品目标](../project-complete-design.md)生成，见[项目图检查](../project-complete-design-review.md)。[项目完整设计请求](项目完整设计请求/项目列表-亮色.txt) 目录现为 30 份当前有效中文规格，与 15 组亮暗、30 张图一一对应；已合并历次局部修订，不重复保留被替代的请求文件。这些规格用于复用最新设计，不声称是未经整理的逐次工具请求。本次新增删除确认/依赖阻止暗色规格及 SDK 长列表亮暗规格。

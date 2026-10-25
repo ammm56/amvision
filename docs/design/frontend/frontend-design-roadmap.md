@@ -11,6 +11,8 @@
 
 ## 1. 设计依据与交付范围
 
+模型最新进展（2026-10-25）：[bak1模型13图复核](model-design-review.md)已完成，按[完整页面规划](model-pages-design.md)生成首批12组/24张亮暗图，见[总览](generated/模型/设计总览.html)。本批覆盖主结构与代表状态，待用户审阅。接下来依次补训练完整步骤与任务管理、转换/导入完整步骤、评估比较与各任务指标、资源生命周期及短屏；这些不计入已完成图数。
+
 - 当前事实：[信息架构](information-architecture.md)、[当前页面规格](page-specifications.md)。
 - 目标结构：[整体重设计方案](frontend-redesign-plan.md)；完整功能内容：[页面规划](navigation-and-page-plan.md)。
 - 专题：[数据集管理](dataset-management-plan.md)、[视觉工作流扩展](workflow-vision-ui-plan.md)。

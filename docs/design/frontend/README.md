@@ -10,6 +10,8 @@
 
 ## 文档
 
+**当前模型设计：** 2026-10-25已检查bak1模型13图，完成[完整页面规划](model-pages-design.md)、[中文提示词](prompts/模型.md)及首批**12组亮暗配对、24张静态稿**，待用户审阅。见[设计总览](generated/模型/设计总览.html)、[生成清单](generated/模型/生成清单.json)和[逐张复核](model-design-review.md)。覆盖模型版本、训练参数/运行、转换与导入、评估及代表异常；向导其余步骤、资源生命周期、其他任务报告和短屏仍按规划补齐。本批不等同模型分类全部状态完成或产品功能已实现。
+
 **当前数据集设计：** 截至 2026-10-25，累计 **56 组亮暗配对、112 张静态稿**，待用户审阅。最新同名修订8图：编辑信息及文件关联样本抽屉整屏遮罩、空态重复入口、版本分组检查说明；同步纠正24份提示词中的遮罩范围错误。见[设计总览](generated/数据集/设计总览.html)、[页面方案](dataset-pages-design.md)、[工作区与状态规格](dataset-workspace-completion-design.md)、[管理规格](dataset-management-states-design.md)、[向导规格](dataset-wizard-states-design.md)、[复核记录第11节](dataset-design-review.md)和[中文提示词](prompts/数据集.md)。主要页面与代表状态已有设计，可以进入[模型分类设计准备](prompts/模型.md)；数据集真实滚动、焦点、权限和错误组合仍需交互原型验证。
 
 **当前项目设计：** 15 组亮暗配对、共 30 张图，统一从[设计总览](generated/项目/设计总览.html)查看；图片直接放在 `generated/项目/` 根层。见[检查记录](project-complete-design-review.md)、[生成清单](generated/项目/生成清单.json)和[完整产品规格](project-complete-design.md)。本次补齐删除确认、依赖阻止的暗色稿，以及 SDK 长资源列表亮暗稿。目录只有 30 张 PNG、一个总览、一个清单，没有子目录；中文规格一图一份，共 30 份。新版待审阅，未修改产品代码。
