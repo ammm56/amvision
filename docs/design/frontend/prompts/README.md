@@ -4,7 +4,7 @@
 
 ## 使用顺序
 
-模型最新要求：使用[模型提示词](模型.md)、[完整页面规划](../model-pages-design.md)和[复核记录](../model-design-review.md)。首批12组亮暗、24张静态稿，配套24份合并修订后的中文规格，见[设计总览](../generated/模型/设计总览.html)；当前图片与规格哈希记录在清单。未出图状态另列，不能用首批代表页面代替完整交互验收。
+模型最新要求：使用[模型提示词](模型.md)、[页面规划](../model-pages-design.md)、[完整流程规格](../model-workflows-completion-design.md)与[复核记录](../model-design-review.md)。当前59组亮暗、118张静态稿和118份合并修订后的中文规格，见[设计总览](../generated/模型/设计总览.html)；清单记录图片/规格哈希，剩余条件分支与原型验证另列。
 
 数据集最新要求：使用[数据集提示词](数据集.md)、[工作区规格](../dataset-workspace-completion-design.md)、[向导规格](../dataset-wizard-states-design.md)及[管理规格](../dataset-management-states-design.md)。截至2026-10-25，56组亮暗、112张静态稿，对应112份中文规格，位于 `数据集完整设计请求/`。本轮48份规格先写后生成，逐图修订已合并；末次实际请求另存在清单。见[设计总览](../generated/数据集/设计总览.html)和[逐图检查](../dataset-design-review.md)。
 

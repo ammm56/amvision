@@ -10,7 +10,7 @@
 
 ## 文档
 
-**当前模型设计：** 2026-10-25已检查bak1模型13图，完成[完整页面规划](model-pages-design.md)、[中文提示词](prompts/模型.md)及首批**12组亮暗配对、24张静态稿**，待用户审阅。见[设计总览](generated/模型/设计总览.html)、[生成清单](generated/模型/生成清单.json)和[逐张复核](model-design-review.md)。覆盖模型版本、训练参数/运行、转换与导入、评估及代表异常；向导其余步骤、资源生命周期、其他任务报告和短屏仍按规划补齐。本批不等同模型分类全部状态完成或产品功能已实现。
+**当前模型设计：** 2026-10-25累计**59组亮暗配对、118张静态稿**，本轮新增47组；主要向导、任务管理、转换/导入导出、评估比较与多任务报告、版本管理和代表短屏已逐张内部查看，待用户审阅。见[页面规划](model-pages-design.md)、[完整流程规格](model-workflows-completion-design.md)、[中文提示词](prompts/模型.md)、[设计总览](generated/模型/设计总览.html)、[生成清单](generated/模型/生成清单.json)及[复核记录](model-design-review.md#7-本轮补图与逐张复核)。条件分支和真实交互仍按[剩余范围](model-design-review.md#8-完整性结论与剩余范围)推进，不把静态稿称为全部功能验收。
 
 **当前数据集设计：** 截至 2026-10-25，累计 **56 组亮暗配对、112 张静态稿**，待用户审阅。最新同名修订8图：编辑信息及文件关联样本抽屉整屏遮罩、空态重复入口、版本分组检查说明；同步纠正24份提示词中的遮罩范围错误。见[设计总览](generated/数据集/设计总览.html)、[页面方案](dataset-pages-design.md)、[工作区与状态规格](dataset-workspace-completion-design.md)、[管理规格](dataset-management-states-design.md)、[向导规格](dataset-wizard-states-design.md)、[复核记录第11节](dataset-design-review.md)和[中文提示词](prompts/数据集.md)。主要页面与代表状态已有设计，可以进入[模型分类设计准备](prompts/模型.md)；数据集真实滚动、焦点、权限和错误组合仍需交互原型验证。
 
