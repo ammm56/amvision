@@ -99,6 +99,7 @@ def support_snapshot(runtime, cloud, role, *, cancel, plane=None, statistic=None
         else None,
         coverage=None,
         statistic=statistic,
+        extension=None,
     )
 
 

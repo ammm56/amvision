@@ -166,7 +166,7 @@ class AssetGeneratedLineage(Contract):
 class CloudAssetBase(Contract):
     """两种存储表达的共同内容，所有字段参与内容摘要。"""
 
-    format_id: Literal["amvision.point-cloud-asset.v2"]
+    format_id: Literal["amvision.point-cloud-asset.v1"]
     kind: Literal["point-cloud"]
     source: AssetSource
     spatial: CloudSpatial

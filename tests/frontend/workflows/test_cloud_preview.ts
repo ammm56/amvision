@@ -17,7 +17,7 @@ export async function body(scalar = false) {
     view.setBigUint64(40, 18446744073709551614n, true); view.setBigUint64(48, 18446744073709551615n, true)
     fields.push({ name: 'scalar', dtype: 'uint64', components: 1, count: 2, offset: 40, byte_length: 16 })
   }
-  return { type: 'point-cloud-preview', format_id: 'amvision.point-cloud-preview.v2', state: 'ready',
+  return { type: 'point-cloud-preview', format_id: 'amvision.point-cloud-preview.v1', state: 'ready',
     display_point_count: 2, point_count: 100, vertex_kind: 'source', source_point_count: 100, render_origin: [1.5, 2.5, 3.5], bounds: {min:[0,1,2],max:[3,4,5]},
     data: { encoding: 'base64', content_length: raw.length, content: btoa(String.fromCharCode(...raw)), fields, checksum_algorithm: 'sha256', checksum: [...new Uint8Array(await crypto.subtle.digest('SHA-256',raw))].map(b=>b.toString(16).padStart(2,'0')).join('') },
     color: scalar ? { mode: 'scalar', field: 'label', component: 0, min: '18446744073709551614', max: '18446744073709551615', invalid_count: 0 } : {mode:'solid'},

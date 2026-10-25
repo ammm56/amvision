@@ -4,7 +4,7 @@ from contextlib import ExitStack
 from zipfile import BadZipFile, ZipFile, ZIP_STORED
 
 from backend.contracts.workflows.measurement_resources import (
-    MeasurementResourceContentV2,
+    MeasurementResourceContent,
 )
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.runtime.io.bounded_output import BoundedBinaryOutput
@@ -78,7 +78,7 @@ def import_cloud_archive(
                     raise ValueError("点云资产包不能包含压缩、加密、链接或目录")
             if archive.getinfo("resource.json").file_size > _MAX_DOCUMENT_BYTES:
                 raise ValueError("点云资产描述超过限额")
-            content = MeasurementResourceContentV2.model_validate_json(
+            content = MeasurementResourceContent.model_validate_json(
                 archive.read("resource.json")
             )
             if content.kind != "point-cloud":

@@ -48,28 +48,12 @@ class MeasurementResourceContent(Contract):
     format_id: Literal["amvision.measurement-resource.v1"] = (
         "amvision.measurement-resource.v1"
     )
-    kind: Literal["planar-calibration", "localization-template"]
+    kind: Literal["planar-calibration", "localization-template", "point-cloud"]
     calibration: PlanarCalibration | None = None
     template: LocalizationTemplate | None = None
-
-    @model_validator(mode="after")
-    def check_kind(self) -> Self:
-        """每个版本只承载一种内容，不能忽略与类型无关的字段。"""
-        if (self.kind == "planar-calibration") != (self.calibration is not None) or (
-            self.kind == "localization-template"
-        ) != (self.template is not None):
-            raise ValueError("计量资源类型与内容不一致")
-        return self
-
-
-class MeasurementResourceContentV2(MeasurementResourceContent):
-    """显式 v2 内容；二维字段保持原意，点云由独立 blob 承载。"""
-
-    format_id: Literal["amvision.measurement-resource.v2"] = (
-        "amvision.measurement-resource.v2"
+    point_cloud: PointCloudAsset | None = Field(
+        default=None, exclude_if=lambda value: value is None
     )
-    kind: Literal["planar-calibration", "localization-template", "point-cloud"]
-    point_cloud: PointCloudAsset | None = None
 
     @model_validator(mode="after")
     def check_kind(self) -> Self:
@@ -84,10 +68,7 @@ class MeasurementResourceContentV2(MeasurementResourceContent):
         return self
 
 
-ResourceContent = Annotated[
-    MeasurementResourceContent | MeasurementResourceContentV2,
-    Field(discriminator="format_id"),
-]
+ResourceContent = MeasurementResourceContent
 
 
 class MeasurementResourceDocument(Contract):
@@ -105,12 +86,9 @@ class MeasurementResourceDocument(Contract):
 
     @model_validator(mode="after")
     def check_identity(self) -> Self:
-        """提交身份只属于 v2 写入，不改变既有二维版本记录。"""
+        """提交身份只属于点云写入，不改变既有二维版本记录。"""
         if self.reference.kind != self.content.kind:
             raise ValueError("资源引用与内容类型不一致")
-        if (
-            self.write_identity is not None
-            and self.content.format_id != "amvision.measurement-resource.v2"
-        ):
-            raise ValueError("提交身份只允许用于 v2 资源")
+        if self.write_identity is not None and self.content.kind != "point-cloud":
+            raise ValueError("提交身份只允许用于点云资源")
         return self

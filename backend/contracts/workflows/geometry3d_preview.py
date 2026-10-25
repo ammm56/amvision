@@ -71,7 +71,7 @@ class FrameDisplay(Contract):
 class GeometryPreview(Contract):
     """与显示点云同观测同空间的有限几何集合。"""
 
-    format_id: Literal["amvision.geometry-preview.v2"] = "amvision.geometry-preview.v2"
+    format_id: Literal["amvision.geometry-preview.v1"] = "amvision.geometry-preview.v1"
     observation_id: Identifier
     frame_id: Identifier
     length_unit: LengthUnit

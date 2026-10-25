@@ -73,7 +73,7 @@ export interface CloudDisplayData {
 export async function decodeCloudPreview(value: unknown, policy: CloudRendererPolicy, signal: AbortSignal): Promise<CloudDisplayData> {
   validatePolicy(policy)
   const body = object(value), data = object(body.data), color = object(body.color)
-  if (body.type !== 'point-cloud-preview' || body.format_id !== 'amvision.point-cloud-preview.v2' || body.state !== 'ready') throw new Error('cloud_preview_invalid')
+  if (body.type !== 'point-cloud-preview' || body.format_id !== 'amvision.point-cloud-preview.v1' || body.state !== 'ready') throw new Error('cloud_preview_invalid')
   const n = count(body.display_point_count), originalCount = count(body.source_point_count), pointCount = count(body.point_count), size = count(data.content_length)
   if (!['source', 'generated'].includes(String(body.vertex_kind))) throw new Error('cloud_preview_invalid')
   const generated = body.vertex_kind === 'generated'

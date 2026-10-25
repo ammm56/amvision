@@ -5,7 +5,7 @@ from hashlib import sha256
 from pydantic import TypeAdapter
 
 from backend.contracts.workflows.measurement_resources import (
-    MeasurementResourceContentV2,
+    MeasurementResourceContent,
     MeasurementResourceDocument,
 )
 from backend.contracts.workflows.metrology import ResourceReference
@@ -27,7 +27,7 @@ def save_cloud_resource(
     *,
     project_id: str,
     name: str,
-    content: MeasurementResourceContentV2,
+    content: MeasurementResourceContent,
     streams,
     write_identity: str,
     policy: CloudAssetPolicy,
@@ -41,7 +41,7 @@ def save_cloud_resource(
         _MAX_DOCUMENT_BYTES,
     )
 
-    content = MeasurementResourceContentV2.model_validate(content)
+    content = MeasurementResourceContent.model_validate(content)
     identity = TypeAdapter(Sha256).validate_python(write_identity)
     if (
         content.kind != "point-cloud"

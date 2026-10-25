@@ -87,17 +87,17 @@ Windows 使用独立 `.tmp/m32-env`，继承现有 amvision 环境并安装仓�
 
 | 契约 | 本批格式与消费者 |
 | --- | --- |
-| 点云运行引用 | `point-cloud-ref.v2` / `amvision.point-cloud-ref.v2`；Graph、Trigger 入站、App Contract/Mode、节点及 Scope 同批更新 |
-| 点云资产内容 | `amvision.point-cloud-asset.v2`；资源外层仍为 `amvision.measurement-resource.v2`，不升级二维内容 |
-| 特征 | `features3d.v2` / `amvision.features3d.v2`；严格区分 plane/boundary/line/circle；原平面消费者拒绝其他类型 |
-| 显示 | `amvision.point-cloud-preview.v2`、`amvision.geometry-preview.v2`；Preview/Runtime 捕获、共享 viewer、编辑器同批更新 |
+| 点云运行引用 | `point-cloud-ref.v1` / `amvision.point-cloud-ref.v1`；Graph、Trigger 入站、App Contract/Mode、节点及 Scope 同批更新 |
+| 点云资产内容 | `amvision.point-cloud-asset.v1`；资源外层仍为 `amvision.measurement-resource.v1`，不升级二维内容 |
+| 特征 | `features3d.v1` / `amvision.features3d.v1`；严格区分 plane/boundary/line/circle；原平面消费者拒绝其他类型 |
+| 显示 | `amvision.point-cloud-preview.v1`、`amvision.geometry-preview.v1`；Preview/Runtime 捕获、共享 viewer、编辑器同批更新 |
 | 不变的传输 | `point-cloud-buffer.v1`、Cloud PREPARE、LocalBuffer ABI 和 .NET 数组传输布局不变；它们传原始数组，不传运行 ref |
 
 运行引用新增 `vertex_kind=source/generated` 和可空 `topology`。unavailable 分支二者均为 null。有序源点沿 `register_ordered` 保留全部原始字段和最初行号，普通 subset 仍严格递增且裁剪后清除旧拓扑。生成点沿 `register_generated` 注册位置和独立来源 owner；两者均归已有 Scope，不新增句柄系统。变换只改位置，来源继续指向最初输入；生成点禁止调用 `source_indices()`。
 
 来源块采用固定 little-endian 布局：N×2 uint64 `source_edges`、N×2 float64 `weights`、(N+1)×1 uint64 `face_offsets`、K×3 uint64 `source_faces`。`lineage.bin` 长度严格为 `40*N+8+24*K`，保留原始 source_point_count；CSR 每点必须有支持面，权重有限且和为 1，行号范围、面顶点和源边归属逐项核验。源点资产仍使用 data.bin 和可选 source-indices.bin；生成点使用 data.bin 和 lineage.bin，不伪造原始行号。分块写出、摘要检查与恢复沿已有 ObjectStore/资源服务；全部活数组计入原预算，工作估算不是进程 RSS 硬上限。
 
-已确认并实现扩展原 `save-cloud` 的可选 `features:features3d.v2` 输入：仅派生模式接受一个有效 boundary，且 support 必须等于保存的完整 cloud。资产 `boundary` 保存方法、逐段质量、拓扑和原观测证据，不保存运行权限。`read-cloud` 增加可选 features 输出，恢复时绑定新的 run/observation/support；普通已知物理空间点云输出空特征集，单位未确认的原件不伪造 Features3d。只存普通点云不能凭空恢复边界质量；重存已有资产可原样保留已存证据。
+已确认并实现扩展原 `save-cloud` 的可选 `features:features3d.v1` 输入：仅派生模式接受一个有效 boundary，且 support 必须等于保存的完整 cloud。资产 `boundary` 保存方法、逐段质量、拓扑和原观测证据，不保存运行权限。`read-cloud` 增加可选 features 输出，恢复时绑定新的 run/observation/support；普通已知物理空间点云输出空特征集，单位未确认的原件不伪造 Features3d。只存普通点云不能凭空恢复边界质量；重存已有资产可原样保留已存证据。
 
 旧三维资产保留原文件、不自动迁移。列表返回明确 `rebuild-required` 元数据，不执行旧内容；使用新节点须从原件重新导入/保存。依赖删除检查仅读取已核验历史父引用，既保护其父资产，也不阻止删除不相关资源。不保留旧格式执行分支。旧三维显示和旧图输入类型明确拒绝，受影响配方审核重发。
 
@@ -127,7 +127,7 @@ Windows 使用独立 `.tmp/m32-env`，继承现有 amvision 环境并安装仓�
 
 浏览器使用真实组件和后端生成的显示正文，能力接口采用显式测试配置。1280×720 桌面与 390px 宽 iframe 内检查拟合参数、Preview 选择、支持段高亮、滚动和取消；画布截图像素非空，无框架错误遮罩。修正测试入口的 API base 后没有新增相关控制台错误；早期错误配置留下的 404/i18n 日志不计为应用通过证据。该验证不等于已登录生产页面或真实发布准入。生产构建仍报告大于 500 kB 的 WorkflowEditor/CloudViewer 分块警告，未调整警告门槛，查看器继续按需加载。
 
-本轮最终审计补齐并验证了生成坐标有限性、源边归属支持面、质量支持计数及旧资产父引用保护。旧资产只读不能运行，但仍保护所引用父资产；无关资源删除不受阻。源码消费者中不再保留受影响的 v1 三维格式路径，v1 只作为明确拒绝的测试输入。生产 manifest 仍不存在，未写入生产预算。
+本阶段最终审计补齐并验证了生成坐标有限性、源边归属支持面、质量支持计数及旧资产父引用保护。旧资产只读不能运行，但仍保护所引用父资产；无关资源删除不受阻。2026-10-25 已按 [R4 当前契约](3d-metrology-r4.md)将全部三维格式统一 v1；不符合当前完整结构的旧数据拒绝执行，不以版本名代替字段校验。生产 manifest 仍不存在，未写入生产预算。
 
 临时 5619 Vite 和浏览器测试页已关闭，测试子进程均结束。仓库 `.tmp/` 测试目录、构建产物及 Windows 隔离环境已清理，WSL 六个本轮 `amvision-m32-runtime-*` 临时目录已清理；原有 pip 缓存、用户 5600/5601 服务、原始样本和业务资产未改动。截图仅保留在工作区外的可视化目录，不把临时样本作为交付资产。
 

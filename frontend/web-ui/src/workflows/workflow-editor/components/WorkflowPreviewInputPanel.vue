@@ -20,7 +20,7 @@
           </StatusBadge>
         </div>
       </div>
-      <CloudInputNotice v-if="getPayloadTypeId(binding) === 'point-cloud-ref.v2'" />
+      <CloudInputNotice v-if="getPayloadTypeId(binding) === 'point-cloud-ref.v1'" />
       <template v-else-if="states[binding.binding_id] && (usesJsonPreviewEditor(binding) || usesStructuredJsonPreviewEditor(getPayloadTypeId(binding)))">
         <label class="workflow-graph-preview-field">
           <textarea

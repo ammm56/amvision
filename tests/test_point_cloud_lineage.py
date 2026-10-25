@@ -43,7 +43,7 @@ def boundary_method():
     parameters = extract_parameters()
     return BoundaryCloudMethod(
         method_id="extract-boundary",
-        method_version=2,
+        method_version=1,
         parameters=parameters,
         parameters_sha256=sha256(
             canonical_cloud_json(parameters.model_dump(mode="json"))

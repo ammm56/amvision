@@ -1,12 +1,12 @@
-"""旧三维资产仅保留管理元数据，不提供旧算法或旧内容执行入口。"""
+"""资源列表的拒绝状态，不提供其他格式的内容读取入口。"""
 
 from typing import Annotated, Literal
 from pydantic import Field
 from backend.contracts.workflows.metrology import Contract, ResourceReference
 
 
-class RetiredCloudResource(Contract):
-    """列表中的明确重建状态；不将旧内容伪装成当前资源文档。"""
+class UnavailableCloudResource(Contract):
+    """不可用资源只保留身份与依赖，避免误用或误删其来源。"""
 
     state: Literal["rebuild-required"] = "rebuild-required"
     reason: Literal["unsupported_point_cloud_format"] = "unsupported_point_cloud_format"

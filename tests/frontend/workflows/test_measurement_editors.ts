@@ -47,3 +47,21 @@ it('requires matching current preview, ignores late picks and invalidates on run
   button('Apply').click();await flushPromises();expect(w.emitted('update:modelValue')).toHaveLength(1)
   await w.get('button').trigger('click');await w.setProps({disabled:true});expect(document.querySelector('[role=dialog]')).toBeNull();w.unmount()
 })
+it('requires an explicit extension bound and discards it when returning to measured support',async()=>{
+  const w=mount(MeasurementSettingsEditor,{props:{modelValue:settings(),nodeType:'custom.metrology3d.measure-step'},attachTo:document.body,global:{plugins:[plugin()]}})
+  await w.get('button').trigger('click');select('plane-extension');await flushPromises()
+  const input=document.querySelector<HTMLInputElement>('[aria-label="Maximum datum extension (mm)"]')!
+  expect(input.value).toBe('');expect(button('Apply').disabled).toBe(true)
+  input.value='10';input.dispatchEvent(new Event('input',{bubbles:true}));await flushPromises()
+  expect(button('Apply').disabled).toBe(false)
+  button('Apply').click();await flushPromises()
+  const result=w.emitted('update:modelValue')![0]![0] as ReturnType<typeof settings>
+  expect((result.mode as Record<string,unknown>).reference_policy).toEqual({kind:'plane-extension',max_extension_distance:10})
+  await w.setProps({modelValue:result});await w.get('button').trigger('click');select('measured-support');await flushPromises()
+  expect(document.querySelector('[aria-label="Maximum datum extension (mm)"]')).toBeNull()
+  button('Apply').click();await flushPromises()
+  expect(((w.emitted('update:modelValue')![1]![0] as ReturnType<typeof settings>).mode as Record<string,unknown>).reference_policy).toEqual({kind:'measured-support'})
+  await w.get('button').trigger('click');select('roi-statistic');await flushPromises()
+  expect([...document.querySelectorAll('option')].some(o=>o.value==='plane-extension')).toBe(false)
+  w.unmount()
+})

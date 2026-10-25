@@ -180,7 +180,7 @@ class BoundaryCloudMethod(Contract):
     """边界参数和实际来源布局摘要共同绑定派生内容。"""
 
     method_id: Literal["extract-boundary"]
-    method_version: Annotated[int, Field(strict=True, ge=2, le=2)]
+    method_version: Annotated[int, Field(strict=True, ge=1, le=1)]
     parameters: ExtractBoundaryParameters
     parameters_sha256: Sha256
     vertices_sha256: Sha256
@@ -289,7 +289,7 @@ class CloudProvenance(Contract):
 class CloudReference(Contract):
     """公开结构只描述运行身份；访问权仍须通过当前 registry 完整核对。"""
 
-    format_id: Literal["amvision.point-cloud-ref.v2"]
+    format_id: Literal["amvision.point-cloud-ref.v1"]
     state: Literal["ready", "unavailable"]
     reason: Identifier | None
     run_id: Identifier

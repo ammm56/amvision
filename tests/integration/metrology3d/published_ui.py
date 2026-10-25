@@ -24,6 +24,7 @@ def main():
             "edge-pair",
             "hole",
             "dimensions",
+            "datum-extension",
         ),
         default="boundary-circle",
     )
@@ -39,6 +40,17 @@ def main():
             else (args.recipe,)
         )
         for kind in () if args.recipe == "empty" else kinds:
+            if kind == "datum-extension":
+                from tests.integration.metrology3d.test_reference_extension_published import (
+                    extension_documents,
+                )
+
+                version = system.publish(documents=extension_documents(file=True))
+                print(
+                    f"Published {version}; provide the complete original sample through the UI",
+                    flush=True,
+                )
+                continue
             if kind == "boundary-circle":
                 documents, _, points = boundary_documents("circle", file=True)
             else:

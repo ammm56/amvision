@@ -68,7 +68,7 @@ class PlaneFeature(Contract):
 class Features3d(Contract):
     """公开已实现的平面、边界、直线及圆，不接受未实现的自由几何。"""
 
-    format_id: Literal["amvision.features3d.v2"] = "amvision.features3d.v2"
+    format_id: Literal["amvision.features3d.v1"] = "amvision.features3d.v1"
     run_id: Identifier
     observation_id: Identifier
     frame_id: Identifier

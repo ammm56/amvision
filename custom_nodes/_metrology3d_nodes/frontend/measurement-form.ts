@@ -13,7 +13,7 @@ export function measurementMetrics(statistic:boolean, lengthUnit:string) {
 }
 export function newMeasurementMode(statistic=false):Form {
   const quality_policy = {policy_id:'',policy_version:null,rules:measurementMetrics(statistic,'').map(normalizeLimitRule)}
-  return statistic?{kind:'roi-statistic',origin:[null,null,null],direction:[null,null,null],statistic:{kind:'mean'},quality_policy}:{kind:'directional-planes',reference_feature_id:'',target_feature_id:'',query_position:[null,null,null],direction:[null,null,null],support_radius:null,quality_policy}
+  return statistic?{kind:'roi-statistic',origin:[null,null,null],direction:[null,null,null],statistic:{kind:'mean'},quality_policy}:{kind:'directional-planes',reference_feature_id:'',target_feature_id:'',query_position:[null,null,null],direction:[null,null,null],support_radius:null,reference_policy:{kind:'measured-support'},quality_policy}
 }
 export function newMeasurement(height:boolean):Form {
   const {kind:_,target_feature_id:__,...directional}=newMeasurementMode()
@@ -25,12 +25,17 @@ export function measurementIssues(height:boolean, value:unknown):string[] {
   if(!height&&!['directional-planes','roi-statistic'].includes(String(s.kind)))issues.push('mode')
   if(!unit(s.direction))issues.push('direction')
   if(stat){
+    if('reference_policy' in s)issues.push('reference_policy')
     const method=object(s.statistic)
     if(!vector(s.origin))issues.push('origin')
     if(method.kind==='quantile'){
       if(!finite(method.probability)||method.probability<0||method.probability>1||!quantileMethods.includes(String(method.method)))issues.push('quantile')
     }else if(!['mean','median'].includes(String(method.kind)))issues.push('statistic')
   }else{
+    const policy=object(s.reference_policy)
+    if(policy.kind==='plane-extension'){
+      if(!finite(policy.max_extension_distance)||policy.max_extension_distance<=0)issues.push('reference_policy / max_extension_distance')
+    }else if(policy.kind!=='measured-support'||Object.keys(policy).length!==1)issues.push('reference_policy')
     if(!vector(s.query_position)||!finite(s.support_radius)||s.support_radius<=0)issues.push('query_position / support_radius')
     if(!id(s.reference_feature_id)||!height&&(!id(s.target_feature_id)||s.reference_feature_id===s.target_feature_id))issues.push('feature IDs')
   }

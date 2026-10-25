@@ -14,7 +14,7 @@ def unavailable_body(reference, reason):
     """显示失败与业务 unavailable 都不伪造点数或云身份。"""
     return dict(
         type="point-cloud-preview",
-        format_id="amvision.point-cloud-preview.v2",
+        format_id="amvision.point-cloud-preview.v1",
         state="unavailable",
         reason=reason,
         observation_id=reference.observation_id,
@@ -120,7 +120,7 @@ def _build_cloud_preview(runtime, reference, options, *, policy, cancel):
             return unavailable_body(reference, "preview_size_limit")
         body = dict(
             type="point-cloud-preview",
-            format_id="amvision.point-cloud-preview.v2",
+            format_id="amvision.point-cloud-preview.v1",
             state="ready" if shown else "empty",
             reason=None,
             observation_id=reference.observation_id,

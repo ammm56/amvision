@@ -225,9 +225,8 @@ def test_fit_rejects_budget_bad_selection_and_propagates_cancellation(monkeypatc
     def failed(*args, **kwargs):
         raise RuntimeError("solver failed")
 
-    monkeypatch.setattr(
-        "custom_nodes._metrology3d_nodes.shared.boundary_fitting.least_squares", failed
-    )
+    # 真实包加载会清空模块缓存，故障必须注入本测试实际调用函数的命名空间。
+    monkeypatch.setitem(fit_boundary_circle.__globals__, "least_squares", failed)
     with pytest.raises(RuntimeError, match="solver failed"):
         fit_circle(points)
 
@@ -239,10 +238,7 @@ def test_undefined_radial_derivative_is_geometry_failure(monkeypatch):
         kwargs["jac"](np.array([0.0, 0.0, 1.0]))
         raise AssertionError("不可微状态不应继续")
 
-    monkeypatch.setattr(
-        "custom_nodes._metrology3d_nodes.shared.boundary_fitting.least_squares",
-        visit_support,
-    )
+    monkeypatch.setitem(fit_boundary_circle.__globals__, "least_squares", visit_support)
     result = fit_circle([[1, 0, 0], [0, 1, 0], [-1, 0, 0], [0, -1, 0], [0, 0, 0]])
     assert result.reason == "undefined_radial_derivative" and result.geometry is None
 

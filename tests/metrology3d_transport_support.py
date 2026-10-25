@@ -154,7 +154,7 @@ def cloud_documents(file_options=None):
                 dict(
                     input_id="input",
                     display_name="Input",
-                    payload_type_id="file-ref.v1" if file else "point-cloud-ref.v2",
+                    payload_type_id="file-ref.v1" if file else "point-cloud-ref.v1",
                     target_node_id="read" if file else "filter",
                     target_port="file" if file else "cloud",
                 )

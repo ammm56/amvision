@@ -5,7 +5,7 @@
 ## 已确认
 
 - 有序源点视图和生成顶点在现有 CloudRuntime 内扩展，保持实测点原始行号语义，不建新资源系统；实际扩展随 M3.2 边界节点交付，不为 M3.1 提前加入未使用接口。
-- M3.1 查询位置/两面交点落在实际支持域外一律无效，不允许外推。
+- 被测表面始终要求实测支持；基准侧按 R4 的显式策略选择实测支持或有限延伸，见 [R4 当前契约](3d-metrology-r4.md)。
 - 显示拾取只填写候选位置，显式 Preview 从完整输入重新计算；历史未保存原云不能重测。
 - 测量值复用 NumericTable；产品三态留 M3.4，当前只输出测量有效性与几何质量。
 
@@ -40,11 +40,11 @@
 
 ## 逐字段证据
 
-源码以 `backend/contracts/workflows/measurement3d_parameters.py` 和 `measurement3d_evidence.py` 为准。M3.1 首次实现使用测量证据 v1；2026-10-24 在 M3.3 同批升级为 v2，并为高度/高差增加明确 kind，原几何数学不变。以下契约按当前 v2 记录；历史验收仍对应当时版本。不更改既有 NumericTable 或资源 v2 语义，不新增数据库表或数据迁移。
+源码以 `backend/contracts/workflows/measurement3d_parameters.py` 和 `measurement3d_evidence.py` 为准。开发阶段全部三维契约统一 v1，kind 区分高度/高差/尺寸。逐侧 extension 及适用质量详见 [R4 当前契约](3d-metrology-r4.md)；历史验收对应当时构建，不新增数据库表或自动迁移。
 
 | 对象 | 字段与含义 |
 | --- | --- |
-| 顶层 | `format_id=amvision.measurement-evidence3d.v2`、observation_id、frame_id、length_unit、items；各项显式 kind 区分高度、高差及后续尺寸；不包含 run_id/CloudReference |
+| 顶层 | `format_id=amvision.measurement-evidence3d.v1`、observation_id、frame_id、length_unit、items；各项显式 kind 区分高度、高差及后续尺寸；不包含 run_id/CloudReference |
 | item | item_id、value、valid、reason、method、geometry、support、quality、sample_origin；ID 与方法配置一致 |
 | method | method_id、method_version=1、完整强类型 parameters、parameters_sha256；高度保留完整局部拟合配置 |
 | geometry / directional-distance | query_position、direction、两个实际平面交点；检查端点在指定测量线及对应平面上，并与量值一致 |
@@ -55,7 +55,7 @@
 | statistic | count、value、mean、std、min、max；std 为总体离散程度，不是测量不确定度；计数与完整支持一致 |
 | quality | 复用 GeometryQuality 和既有逐项 Check Limits；检查指标集合/单位、质量策略及观测身份，Preview 再执行真实性核对 |
 
-方向交点标为 interpolated；统计保留输入来源，双方来源不同为 mixed，不把全部实测统计误标为 mixed。双方 support 另存输入来源摘要；该字段不赋予历史数组访问权。M3.1 不生成外推点、不开放允许外推参数；未来输入的来源记录不能被覆盖为“实测”。
+实测支持的方向交点标为 interpolated；采用基准有限延伸时总体为 mixed。统计保留输入来源，双方来源不同为 mixed。双方 support 另存输入来源摘要；该字段不赋予历史数组访问权，模型交点不能覆盖为“实测”。
 
 NumericTable 从同一个证据对象生成，不再算一次量值。有界证据可独立 JSON 序列化，运行关闭后不持有数组/索引/mmap。原始/派生云保存继续使用 M1 的显式保存节点，不自动保存完整输入。
 

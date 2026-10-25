@@ -221,7 +221,7 @@ class CloudRuntime:
                 raise InvalidRequestError("同一原始 owner 已登记，不允许改写来源")
             self._validate_arrays(owner, point_count, fields, cancel)
             reference = CloudReference(
-                format_id="amvision.point-cloud-ref.v2",
+                format_id="amvision.point-cloud-ref.v1",
                 state="ready",
                 reason=None,
                 run_id=self.run_id,
@@ -330,7 +330,7 @@ class CloudRuntime:
                         cancel=cancel,
                     )
             reference = CloudReference(
-                format_id="amvision.point-cloud-ref.v2",
+                format_id="amvision.point-cloud-ref.v1",
                 state="ready",
                 reason=None,
                 run_id=self.run_id,

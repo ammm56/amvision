@@ -38,7 +38,7 @@ export function dimensionFeatureChoices(sources:ParameterEditorSources):Dimensio
     if(kind&&id(p.feature_id))return [{id:String(p.feature_id),kind,segments:kind==='boundary'&&Array.isArray(p.targets)?p.targets.map(t=>String(object(t).segment_id)).filter(id):[],nodeId:source.nodeId}]
     // 恢复资产的身份只取该连线端口本次输出，不能借用其他预览窗口的同名特征。
     const output=object(source.previewOutput)
-    if(output.format_id!=='amvision.features3d.v2'||!Array.isArray(output.items))return []
+    if(output.format_id!=='amvision.features3d.v1'||!Array.isArray(output.items))return []
     return output.items.flatMap(raw=>{const f=object(raw),g=object(f.geometry);return id(f.feature_id)&&['line','circle','boundary'].includes(String(f.kind))?[{id:String(f.feature_id),kind:String(f.kind),nodeId:source.nodeId,segments:Array.isArray(g.segments)?g.segments.map(s=>String(object(s).segment_id)).filter(id):[]}]:[]})
   })
 }
@@ -87,7 +87,7 @@ export const dimensionRecipeValidator:RecipeValidator=(node,sources,zh)=>{
   const selection=object(object(p.source).selection)
   const ids=kind==='measure-extents'?(object(p.source).kind==='boundary'?[selection.feature_id]:[]):kind==='measure-edge-pair'?[p.reference_feature_id,p.target_feature_id]:[p.feature_id]
   // read-cloud 的恢复特征只能由本次预览提供；尚无输出时不伪造候选。
-  const complete=(sources.features??[]).every(s=>['custom.metrology3d.fit-line','custom.metrology3d.fit-circle','custom.metrology3d.extract-boundary'].includes(s.nodeTypeId)||object(s.previewOutput).format_id==='amvision.features3d.v2')
+  const complete=(sources.features??[]).every(s=>['custom.metrology3d.fit-line','custom.metrology3d.fit-circle','custom.metrology3d.extract-boundary'].includes(s.nodeTypeId)||object(s.previewOutput).format_id==='amvision.features3d.v1')
   if(complete&&ids.some(id=>!choices.some(c=>c.id===id&&c.kind===expected)))issues.push(zh?'所选特征不在当前输入中':'Selected feature is not in current inputs')
   const boundary=choices.find(c=>c.id===selection.feature_id&&c.kind==='boundary')
   if(boundary&&Array.isArray(selection.segment_ids)&&selection.segment_ids.some(id=>!boundary.segments.includes(String(id))))issues.push(zh?'所选边界段不在当前输入中':'Selected segment is not in current boundary')

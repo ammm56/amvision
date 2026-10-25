@@ -31,7 +31,7 @@ class BoundaryMethod(Contract):
     """完整参数只有一个来源，质量策略不再重复保存第二份。"""
 
     method_id: Literal["extract-boundary"] = "extract-boundary"
-    method_version: Literal[2] = 2
+    method_version: Literal[1] = 1
     parameters: ExtractBoundaryParameters
     parameters_sha256: Sha256
 

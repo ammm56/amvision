@@ -125,7 +125,7 @@ class WorkflowInputValidator:
                     details={"binding_ids": [binding_id]},
                 )
             if (
-                contract_item.get("payload_type_id") == "point-cloud-ref.v2"
+                contract_item.get("payload_type_id") == "point-cloud-ref.v1"
                 and binding_id not in trusted_cloud_input_ids
             ):
                 raise WorkflowInputError(
@@ -612,7 +612,7 @@ def _build_input_contract_item(
             details={"binding_id": binding.binding_id},
         )
     payload_schema = _closed_outer_schema(payload_contract.json_schema)
-    if payload_type_id == "point-cloud-ref.v2":
+    if payload_type_id == "point-cloud-ref.v1":
         from backend.contracts.workflows.point_cloud_trigger import (
             WorkflowTriggerCloudInputV1,
         )
@@ -695,7 +695,7 @@ def _request_defaults(payload_type_id: str, transport_kind: str) -> dict[str, ob
             max_files=1,
             transports=["multipart-upload"],
         )
-    elif payload_type_id == "point-cloud-ref.v2":
+    elif payload_type_id == "point-cloud-ref.v1":
         result.update(transports=["local-shared-memory"])
     elif transport_kind == "inline-json":
         result.update(max_inline_bytes=DEFAULT_INLINE_MAX_BYTES, transports=["json"])

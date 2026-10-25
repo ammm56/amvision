@@ -49,7 +49,7 @@ def workflow_trigger_supports_input_payload_type(
     独立类型握手，不进入 ZeroMQ 图片协议或普通事件 JSON。
     """
 
-    if payload_type_id == "point-cloud-ref.v2":
+    if payload_type_id == "point-cloud-ref.v1":
         return trigger_kind == "local-shared-memory"
     return (
         trigger_kind not in HIGH_PERFORMANCE_TRIGGER_KINDS

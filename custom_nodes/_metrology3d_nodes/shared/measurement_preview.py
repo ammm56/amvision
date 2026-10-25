@@ -1,7 +1,12 @@
 """测量显示只附加有限持久证据，不建立历史原云会话。"""
 
 from backend.contracts.workflows.measurement3d_evidence import MeasurementEvidence3d
-from backend.contracts.workflows.measurement3d_parameters import MeasureStepParameters
+from backend.contracts.workflows.measurement3d_parameters import (
+    MeasureStepParameters,
+    StatisticalStep,
+    directional_quality_policy,
+)
+from backend.contracts.workflows.measurement3d_reference import reference_uses_extension
 from backend.contracts.workflows.point_cloud import canonical_cloud_json
 from backend.service.application.errors import InvalidRequestError
 from custom_nodes._metrology3d_nodes.shared.geometry_quality import (
@@ -30,7 +35,16 @@ def attach_measurements(cloud, body, values, *, policy, cancel):
                 if isinstance(parameters, MeasureStepParameters)
                 else parameters
             )
-            require_quality_result(item.quality, settings.quality_policy)
+            quality_policy = settings.quality_policy
+            if item.kind in {"height-query", "measure-step"} and not isinstance(
+                settings, StatisticalStep
+            ):
+                quality_policy = directional_quality_policy(
+                    settings,
+                    parameters.length_unit,
+                    extension=reference_uses_extension(item.support[0]),
+                )
+            require_quality_result(item.quality, quality_policy)
             for side in item.support:
                 if item.kind in {"height-query", "measure-step"} and side.plane:
                     require_quality_result(

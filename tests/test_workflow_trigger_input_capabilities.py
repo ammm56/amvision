@@ -76,7 +76,7 @@ def test_high_performance_trigger_rejects_http_only_inputs_from_contract(
             "supported_payload_type_ids": sorted(
                 HIGH_PERFORMANCE_TRIGGER_INPUT_PAYLOAD_TYPE_IDS
                 | (
-                    {"point-cloud-ref.v2"}
+                    {"point-cloud-ref.v1"}
                     if trigger_kind == "local-shared-memory"
                     else set()
                 )
@@ -87,7 +87,7 @@ def test_high_performance_trigger_rejects_http_only_inputs_from_contract(
 
 def test_cloud_requires_same_host_payload_binding():
     """点云必须由同机专用握手产生，不允许静态对象或嵌套属性绕过。"""
-    contract = _build_contract(cloud="point-cloud-ref.v2")
+    contract = _build_contract(cloud="point-cloud-ref.v1")
 
     def issues(kind, mapping):
         return _find_trigger_contract_mapping_issues(

@@ -32,6 +32,7 @@ def measurement_graph(*, height=None, reference_roi=None, read=True):
         query_position=height.query_position,
         direction=height.direction,
         support_radius=height.support_radius,
+        reference_policy=height.reference_policy,
         quality_policy=height.quality_policy,
         reference_feature_id=height.reference_feature_id,
         target_feature_id=height.plane_fit.feature_id,
@@ -83,13 +84,13 @@ def measurement_graph(*, height=None, reference_roi=None, read=True):
     else:
         # 同一个冻结输入分别绑定；测试调用方提供相同只读引用。
         inputs = [
-            (f"cloud-{node}", "point-cloud-ref.v2", node, "cloud")
+            (f"cloud-{node}", "point-cloud-ref.v1", node, "cloud")
             for node in ("reference", "height", "preview")
         ]
     outputs = [
         ("height", "numeric-table.v1", "height", "measurements"),
         ("step", "numeric-table.v1", "step", "measurements"),
-        ("evidence", "measurement-evidence3d.v2", "height", "evidence"),
+        ("evidence", "measurement-evidence3d.v1", "height", "evidence"),
         ("body", "response-body.v1", "preview", "body"),
     ]
     return WorkflowGraphTemplate.model_validate(

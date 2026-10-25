@@ -139,7 +139,7 @@ def cloud_source(*, reply_timeout_seconds=5):
         input_binding_mapping={"cloud": {"source": "payload.cloud"}},
         metadata={
             **source.metadata,
-            "validated_workflow_input_payload_types": {"cloud": "point-cloud-ref.v2"},
+            "validated_workflow_input_payload_types": {"cloud": "point-cloud-ref.v1"},
         },
     )
 

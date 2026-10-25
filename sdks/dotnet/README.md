@@ -65,7 +65,7 @@ SDK 默认会自动查找 `Config/config*.json`，并把所有 runtime、Trigger
 HTTP Runtime 与高性能 Trigger 是两套独立调用面：
 
 - HTTP Runtime 支持 `request_image_ref`、`request_image_base64`、`request_json`、`request_text`、`request_file` 和 `request_files`；JSON 与 multipart 可以组合多个 binding。
-- ZeroMQ Trigger 支持图片、JSON 和文本。local-shared-memory 在这些类型之外支持 `point-cloud-ref.v2`，通过独立 Cloud PREPARE 与同一 LocalBuffer 所有权协议提交完整数组，不把点云伪装成图片。公开 binding 名称以实际 App Contract 为准。
+- ZeroMQ Trigger 支持图片、JSON 和文本。local-shared-memory 在这些类型之外支持 `point-cloud-ref.v1`，通过独立 Cloud PREPARE 与同一 LocalBuffer 所有权协议提交完整数组，不把点云伪装成图片。公开 binding 名称以实际 App Contract 为准。
 - Trigger 不支持 `request_image_base64`、`request_file` 或 `request_files`，不增加文件 staging、普通文件图片帧、普通文件 LocalBuffer 或自动 HTTP fallback。
 
 App Entry 声明某种输入表示该 Workflow 可以接收这种 binding，不表示每次调用都必须提交。只有公开契约中 `required=true` 的 binding 才是调用级必填项；`required=false` 的 binding 可以省略，Runtime 只校验本次实际提交的数据。如果后续流程把一个未提交的 optional binding 接到节点的必需输入端口，执行会在该节点明确失败。

@@ -143,9 +143,8 @@ def test_limits_cancellation_and_qhull_failure_propagate(monkeypatch):
     def failed(*args, **kwargs):
         raise RuntimeError("Qhull failed")
 
-    monkeypatch.setattr(
-        "custom_nodes._metrology3d_nodes.shared.boundary_surface.Delaunay", failed
-    )
+    # 按实际调用函数注入，避免前面的真实节点包重载使模块名指向新对象。
+    monkeypatch.setitem(build_surface.__globals__, "Delaunay", failed)
     with pytest.raises(RuntimeError, match="Qhull failed"):
         surface(points)
 

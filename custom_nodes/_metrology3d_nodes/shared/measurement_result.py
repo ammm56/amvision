@@ -7,11 +7,16 @@ from backend.contracts.workflows.measurement3d_evidence import MeasurementEviden
 from backend.contracts.workflows.measurement3d_parameters import (
     HeightQueryParameters,
     StatisticalStep,
-    distance_metric_units,
+    directional_metric_units,
+    directional_quality_policy,
     statistic_metric_units,
 )
 from custom_nodes._metrology3d_nodes.shared.geometry_quality import geometry_quality
 from custom_nodes._metrology3d_nodes.shared.measurement_support import plane_coverage
+from backend.contracts.workflows.measurement3d_reference import reference_uses_extension
+from custom_nodes._metrology3d_nodes.shared.measurement_reference import (
+    reference_coverage,
+)
 
 
 def measurement_result(parameters, observation_id, supports, geometry, *, reason=None):
@@ -19,8 +24,18 @@ def measurement_result(parameters, observation_id, supports, geometry, *, reason
     height = isinstance(parameters, HeightQueryParameters)
     settings = parameters if height else parameters.mode
     statistic = isinstance(settings, StatisticalStep)
-    units = (statistic_metric_units if statistic else distance_metric_units)(
-        parameters.length_unit
+    extension = not statistic and reference_uses_extension(supports[0])
+    units = (
+        statistic_metric_units(parameters.length_unit)
+        if statistic
+        else directional_metric_units(parameters.length_unit, extension=extension)
+    )
+    policy = (
+        settings.quality_policy
+        if statistic
+        else directional_quality_policy(
+            settings, parameters.length_unit, extension=extension
+        )
     )
     values = {}
     for side in supports:
@@ -44,6 +59,11 @@ def measurement_result(parameters, observation_id, supports, geometry, *, reason
                     )
                 },
             }
+        if extension and side.role == "reference":
+            metrics = {
+                "direction_cosine": side.coverage.direction_cosine,
+                "extension_distance": side.extension.distance,
+            }
         values.update(
             {
                 f"{side.role}_{key}": (value, units[f"{side.role}_{key}"])
@@ -53,7 +73,7 @@ def measurement_result(parameters, observation_id, supports, geometry, *, reason
     quality = geometry_quality(
         observation_id,
         values,
-        settings.quality_policy,
+        policy,
         reason=reason or "measurement_support_unavailable",
     )
     valid = quality.usable
@@ -72,6 +92,8 @@ def measurement_result(parameters, observation_id, supports, geometry, *, reason
     sample_origin = (
         (next(iter(origins)) if len(origins) == 1 else "mixed")
         if statistic
+        else "mixed"
+        if supports[0].extension and supports[0].extension.used_extension
         else "interpolated"
     )
     return MeasurementEvidence3d(
@@ -108,12 +130,28 @@ def directional_measurement(runtime, planes, parameters, *, cancel):
     supports, endpoints = [], []
     reason = None
     for role, plane in zip(("reference", "target"), planes):
-        side, point = plane_coverage(runtime, plane, settings, role, cancel=cancel)
+        side, point = (
+            reference_coverage(runtime, plane, settings, cancel=cancel)
+            if role == "reference"
+            else plane_coverage(runtime, plane, settings, role, cancel=cancel)
+        )
         supports.append(side)
         endpoints.append(point)
         if not plane.valid and reason is None:
             reason = f"{role}_{plane.reason}"
-        elif (point is None or not side.coverage.covered) and reason is None:
+        elif (
+            side.extension
+            and side.extension.state == "limit-exceeded"
+            and reason is None
+        ):
+            reason = "reference_extension_limit_exceeded"
+        elif (
+            point is None
+            or not (
+                side.coverage.covered
+                or (side.extension and side.extension.used_extension)
+            )
+        ) and reason is None:
             reason = f"{role}_support_unavailable"
     geometry = (
         dict(

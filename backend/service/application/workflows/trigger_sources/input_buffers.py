@@ -75,6 +75,6 @@ def validate_cloud_prepare(prepare, source, policy):
         and rule.get("source") == f"payload.{prepare.event_payload_key}"
     ]
     if not mapped or any(
-        types.get(binding) != "point-cloud-ref.v2" for binding in mapped
+        types.get(binding) != "point-cloud-ref.v1" for binding in mapped
     ):
         raise InvalidRequestError("点云 PREPARE 未映射到已发布的同机数组 binding")

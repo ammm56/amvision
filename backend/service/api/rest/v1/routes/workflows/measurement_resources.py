@@ -9,7 +9,7 @@ from backend.contracts.workflows.measurement_resources import (
     MeasurementResourceContent,
     MeasurementResourceDocument,
 )
-from backend.contracts.workflows.retired_cloud_resource import RetiredCloudResource
+from backend.contracts.workflows.cloud_resource_errors import UnavailableCloudResource
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.storage import get_dataset_storage
 from backend.service.application.errors import InvalidRequestError
@@ -47,13 +47,13 @@ def _mutation(request, project_id, resource_id):
 
 
 @measurement_resources_router.get(
-    "", response_model=list[MeasurementResourceDocument | RetiredCloudResource]
+    "", response_model=list[MeasurementResourceDocument | UnavailableCloudResource]
 )
 def list_resources(project_id: str, principal: Reader, storage: Storage):
     """列出当前项目可供节点选择的不可变版本。"""
     _ensure_project_visible(principal=principal, project_id=project_id)
     return MeasurementResourceService(storage).list_versions(
-        project_id=project_id, include_retired=True
+        project_id=project_id, include_unavailable=True
     )
 
 

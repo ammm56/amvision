@@ -1,4 +1,4 @@
-"""M3.1 高度和高差参数；质量阈值显式配置，不允许支持域外推。"""
+"""高度和高差参数；基准有限延伸显式配置，被测面必须实测支持。"""
 
 from typing import Annotated, Literal, Self
 
@@ -11,7 +11,12 @@ from backend.contracts.workflows.geometry3d import (
     Positive,
     require_unit,
 )
-from backend.contracts.workflows.metrology import Contract, Finite, Identifier
+from backend.contracts.workflows.metrology import (
+    Contract,
+    Finite,
+    Identifier,
+    LimitRule,
+)
 from backend.contracts.workflows.point_cloud import LengthUnit
 
 
@@ -69,6 +74,19 @@ class MeasurementIdentity(Contract):
     length_unit: LengthUnit
 
 
+class MeasuredReference(Contract):
+    """基准交点必须有满足原质量条件的实际支持。"""
+
+    kind: Literal["measured-support"]
+
+
+class ExtendedReference(Contract):
+    """只延伸有效基准平面，距离上限来自配方而不是默认值。"""
+
+    kind: Literal["plane-extension"]
+    max_extension_distance: Positive
+
+
 class DirectionalSettings(Contract):
     """同一测量直线及交点附近的有限支持搜索半径。"""
 
@@ -76,12 +94,49 @@ class DirectionalSettings(Contract):
     direction: Point3
     support_radius: Positive
     quality_policy: GeometryQualityPolicy
+    reference_policy: Annotated[
+        MeasuredReference | ExtendedReference, Field(discriminator="kind")
+    ]
 
     @model_validator(mode="after")
     def check_direction(self) -> Self:
         """方向不可从相机朝向或源 Z 推测。"""
         require_unit(self.direction)
         return self
+
+
+def directional_quality_policy(settings, length_unit: str, *, extension: bool):
+    """同一规则比较器按证据路径核验；不把不存在的实测三角形标为通过。"""
+    if not extension:
+        return settings.quality_policy
+    if not isinstance(settings.reference_policy, ExtendedReference):
+        raise ValueError("配方未允许基准延伸")
+    rules = tuple(
+        rule
+        for rule in settings.quality_policy.rules
+        if rule.item_id.startswith("target_")
+        or rule.item_id == "reference_direction_cosine"
+    ) + (
+        LimitRule(
+            item_id="reference_extension_distance",
+            unit=length_unit,
+            upper=settings.reference_policy.max_extension_distance,
+        ),
+    )
+    return settings.quality_policy.model_copy(update={"rules": rules})
+
+
+def directional_metric_units(unit: str, *, extension: bool):
+    """指标集合与上方适用规则保持一致，所有读取方共用。"""
+    units = distance_metric_units(unit)
+    if extension:
+        units = {
+            name: value
+            for name, value in units.items()
+            if name.startswith("target_") or name == "reference_direction_cosine"
+        }
+        units["reference_extension_distance"] = unit
+    return units
 
 
 class HeightQueryParameters(MeasurementIdentity, DirectionalSettings):

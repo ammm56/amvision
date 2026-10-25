@@ -20,14 +20,14 @@ function finite(value: unknown): number { if (typeof value !== 'number' || !Numb
 export function curveItems(payload: Record<string, unknown>): CurveDisplay[] {
   if (!payload.geometry) return []
   const g = object(payload.geometry)
-  if (g.format_id !== 'amvision.geometry-preview.v2' || !Array.isArray(g.curves) || g.curves.length > 8192) throw invalid()
+  if (g.format_id !== 'amvision.geometry-preview.v1' || !Array.isArray(g.curves) || g.curves.length > 8192) throw invalid()
   const ids = new Set<string>()
   return g.curves.map(raw => {
     const f = object(raw)
     if (typeof f.feature_id !== 'string' || !f.feature_id || ids.has(f.feature_id) || !['boundary','line','circle'].includes(String(f.kind)) || typeof f.valid !== 'boolean') throw invalid()
     ids.add(f.feature_id)
     const method = object(f.method), evaluation = object(object(method.parameters).evaluation), spatial = object(payload.spatial)
-    if (method.method_id !== ({ boundary: 'extract-boundary', line: 'fit-line', circle: 'fit-circle' }[String(f.kind)]) || method.method_version !== (f.kind === 'boundary' ? 2 : 1)) throw invalid()
+    if (method.method_id !== ({ boundary: 'extract-boundary', line: 'fit-line', circle: 'fit-circle' }[String(f.kind)]) || method.method_version !== 1) throw invalid()
     if (evaluation.frame_id !== spatial.frame_id || evaluation.length_unit !== spatial.length_unit || object(object(f.quality).metrics).observation_id !== payload.observation_id) throw invalid()
     if (!Array.isArray(f.points)) throw invalid()
     const points = f.points.map(xyz)

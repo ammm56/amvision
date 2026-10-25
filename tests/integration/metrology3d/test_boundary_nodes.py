@@ -192,7 +192,7 @@ def test_graph_extract_save_restore_fit(tmp_path, kind, finite):
             ("fit", "fit-" + kind, dict(settings=fit.model_dump(mode="json"))),
         ],
         [("read", "features", "fit", "features")],
-        [("features", "features3d.v2", "fit", "features")],
+        [("features", "features3d.v1", "fit", "features")],
         file=False,
     )
     metadata = dict(project_id="test", workflow_run_id="second")

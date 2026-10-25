@@ -8,7 +8,7 @@ from uuid import uuid4
 import numpy as np
 
 from backend.contracts.workflows.measurement_resources import (
-    MeasurementResourceContentV2,
+    MeasurementResourceContent,
 )
 from backend.contracts.workflows.metrology import ResourceReference
 from backend.contracts.workflows.point_cloud import FIELD_WIDTHS
@@ -218,7 +218,7 @@ def save_cloud(
                 sha256=source.content_sha256,
             )
             cloud = OriginalCloudAsset(
-                format_id="amvision.point-cloud-asset.v2",
+                format_id="amvision.point-cloud-asset.v1",
                 kind="point-cloud",
                 representation="file-original",
                 source=source,
@@ -246,9 +246,7 @@ def save_cloud(
                 vertex_kind="source",
                 topology=None,
             )
-            content = MeasurementResourceContentV2(
-                kind="point-cloud", point_cloud=cloud
-            )
+            content = MeasurementResourceContent(kind="point-cloud", point_cloud=cloud)
             streams = {
                 "original.bin": stack.enter_context(
                     service.storage.open_read_snapshot(
@@ -327,7 +325,7 @@ def save_cloud(
                     "source": source,
                 }
             cloud = ArrayCloudAsset(
-                format_id="amvision.point-cloud-asset.v2",
+                format_id="amvision.point-cloud-asset.v1",
                 kind="point-cloud",
                 representation="array-blocks",
                 source={"kind": "derived"} if parent else _source(root, options),
@@ -356,14 +354,12 @@ def save_cloud(
                 vertex_kind=selected.vertex_kind,
                 topology=selected.topology,
             )
-            content = MeasurementResourceContentV2(
-                kind="point-cloud", point_cloud=cloud
-            )
+            content = MeasurementResourceContent(kind="point-cloud", point_cloud=cloud)
         # 资产原样复制保留已存证据；新增证据必须先通过完整支持身份校验。
         if boundary is not None:
             payload = content.model_dump(mode="json")
             payload["point_cloud"]["boundary"] = boundary.model_dump(mode="json")
-            content = MeasurementResourceContentV2.model_validate(payload)
+            content = MeasurementResourceContent.model_validate(payload)
         return service.save_cloud(
             project_id=project_id,
             name=name,

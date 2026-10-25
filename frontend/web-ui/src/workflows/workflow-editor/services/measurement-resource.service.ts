@@ -11,7 +11,7 @@ export interface MeasurementResourceDocument {
   reference: MeasurementResourceReference
   name: string
   content: {
-    format_id?: 'amvision.measurement-resource.v1' | 'amvision.measurement-resource.v2'
+    format_id?: 'amvision.measurement-resource.v1'
     kind: MeasurementResourceReference['kind']
     calibration: Record<string, unknown> | null
     template: { reference_id: string; image_width: number; image_height: number; template_roi: [number, number, number, number]; anchor: [number, number]; image_sha256: string } | null
@@ -23,11 +23,11 @@ export interface CloudRendererPolicy {
   max_points: number; max_data_bytes: number; max_cpu_bytes: number; max_gpu_bytes: number
   max_canvas_pixels: number; max_position_error: number
 }
-export interface RetiredCloudResource {
+export interface UnavailableCloudResource {
   state: 'rebuild-required'; reason: 'unsupported_point_cloud_format'; stored_format_id: string
   reference: MeasurementResourceReference; name: string; created_at: string; content: null
 }
-export type MeasurementResourceListItem = MeasurementResourceDocument | RetiredCloudResource
+export type MeasurementResourceListItem = MeasurementResourceDocument | UnavailableCloudResource
 export function isCurrentMeasurementResource(item: MeasurementResourceListItem): item is MeasurementResourceDocument { return item.content !== null }
 export function readCloudCapabilities(project: string, signal?: AbortSignal) {
   return apiRequest<{ max_archive_bytes: number | null; renderer: CloudRendererPolicy | null }>(

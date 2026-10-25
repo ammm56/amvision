@@ -110,7 +110,7 @@ def extent_evidence():
         ),
     )
     return dict(
-        format_id="amvision.measurement-evidence3d.v2",
+        format_id="amvision.measurement-evidence3d.v1",
         observation_id="scan",
         frame_id="fixture",
         length_unit="mm",
@@ -130,7 +130,7 @@ def test_v2_roundtrip_and_numeric_table():
 @pytest.mark.parametrize(
     "case",
     [
-        "v1",
+        "unsupported-version",
         "missing-output",
         "value",
         "swapped-component",
@@ -146,8 +146,8 @@ def test_v2_roundtrip_and_numeric_table():
 def test_reject_tampered_evidence(case):
     raw = extent_evidence()
     item = raw["items"][0]
-    if case == "v1":
-        raw["format_id"] = "amvision.measurement-evidence3d.v1"
+    if case == "unsupported-version":
+        raw["format_id"] = "amvision.measurement-evidence3d.v2"
     elif case == "missing-output":
         raw["items"].pop()
     elif case == "value":

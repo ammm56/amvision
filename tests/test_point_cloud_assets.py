@@ -8,7 +8,7 @@ from zipfile import ZipFile, ZIP_DEFLATED
 import pytest
 
 from backend.contracts.workflows.measurement_resources import (
-    MeasurementResourceContentV2,
+    MeasurementResourceContent,
 )
 from backend.service.application.errors import (
     InvalidRequestError,
@@ -27,10 +27,10 @@ service = pytest.fixture(name="service")(create_resource_service)
 def asset_content(data=b"\0" * 24):
     """独立构造已知二进制布局，测试预算不写入生产。"""
     count = len(data) // 12
-    return MeasurementResourceContentV2(
+    return MeasurementResourceContent(
         kind="point-cloud",
         point_cloud={
-            "format_id": "amvision.point-cloud-asset.v2",
+            "format_id": "amvision.point-cloud-asset.v1",
             "kind": "point-cloud",
             "representation": "array-blocks",
             "source": {
@@ -273,7 +273,7 @@ def test_bad_asset_schema(change):
     content = deepcopy(asset_content().model_dump(mode="json"))
     change(content)
     with pytest.raises(ValueError):
-        MeasurementResourceContentV2.model_validate(content)
+        MeasurementResourceContent.model_validate(content)
 
 
 def test_stream_archive_roundtrip_and_budget(service):

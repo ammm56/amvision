@@ -20,7 +20,7 @@ vi.mock('@/workflows/workflow-editor/services/measurement-resource.service', asy
   importCloudResource: mocks.import, deleteMeasurementResource: mocks.remove, resourceVersionPath: () => '/resource',
 }))
 const reference = {project_id:'p',resource_id:'cloud-1',kind:'point-cloud' as const,version:1,sha256:'a'.repeat(64)}
-const document = {reference,name:'Fixture cloud',content:{format_id:'amvision.measurement-resource.v2',point_cloud:{point_count:3,spatial:{length_unit:null},fields:[]}}}
+const document = {reference,name:'Fixture cloud',content:{format_id:'amvision.measurement-resource.v1',point_cloud:{point_count:3,spatial:{length_unit:null},fields:[]}}}
 const dialog = {props:['title','confirmDisabled','showConfirm'],emits:['confirm','cancel'],template:`<div role="dialog"><h2>{{title}}</h2><slot/><button @click="$emit('cancel')">Cancel dialog</button><button v-if="showConfirm !== false" :disabled="confirmDisabled" @click="$emit('confirm')">Confirm dialog</button></div>`}
 const global = () => ({plugins:[createI18n({legacy:false,locale:'en-US'})],stubs:{Teleport:true,ConfirmDialog:dialog}})
 let wrappers: ReturnType<typeof mount>[] = []
@@ -115,7 +115,7 @@ it('does not submit same-host cloud input as browser JSON or generate a false HT
   }
   const input: WorkflowAppContractInput = {
     binding_id:'cloud', template_port_id:'cloud', binding_kind:'request-point-cloud',
-    payload_type_id:'point-cloud-ref.v2', required:true, config:{}, payload_schema:{}, request_schema:{},
+    payload_type_id:'point-cloud-ref.v1', required:true, config:{}, payload_schema:{}, request_schema:{},
     allowed_media_types:[], max_inline_bytes:null, max_file_bytes:null, max_files:null,
     transports:['local-shared-memory'], charset:null,
   }

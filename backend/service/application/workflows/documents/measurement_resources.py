@@ -284,17 +284,17 @@ class MeasurementResourceService:
         if path.stat().st_size > _MAX_DOCUMENT_BYTES:
             raise InvalidRequestError("计量资源描述超过 4 MB")
         try:
-            from backend.service.application.workflows.documents.retired_cloud_resource import (
-                retired_cloud_metadata,
+            from backend.service.application.workflows.documents.cloud_resource_errors import (
+                unavailable_cloud_metadata,
             )
 
-            retired = retired_cloud_metadata(path.read_bytes())
-            if retired is not None:
+            unavailable = unavailable_cloud_metadata(path.read_bytes())
+            if unavailable is not None:
                 raise InvalidRequestError(
-                    "点云资产格式已升级，旧资产仅保留历史，请重新保存或导入",
+                    "点云资产不符合当前格式，请重新保存或导入",
                     details={
                         "reason": "unsupported_point_cloud_format",
-                        "format_id": retired.stored_format_id,
+                        "format_id": unavailable.stored_format_id,
                     },
                 )
             document = MeasurementResourceDocument.model_validate_json(
@@ -392,7 +392,7 @@ class MeasurementResourceService:
             self._validate_image(document.content, self.image_bytes(document))
         return refs
 
-    def list_versions(self, *, project_id: str, include_retired: bool = False):
+    def list_versions(self, *, project_id: str, include_unavailable: bool = False):
         """列表仅显示已提交的版本，损坏文件明确报错。"""
         root = self.storage.resolve(self.root(project_id))
         paths = sorted(islice(root.glob("*/versions/*/version.json"), 4097))
@@ -405,7 +405,7 @@ class MeasurementResourceService:
                 project_id=project_id,
                 resource_id=p.parent.parent.parent.name,
                 version=int(p.parent.name),
-                include_retired=include_retired,
+                include_unavailable=include_unavailable,
             )
             for p in paths
         ]
@@ -417,7 +417,7 @@ class MeasurementResourceService:
         resource_id: str,
         version: int,
         include_deleted: bool = False,
-        include_retired: bool = False,
+        include_unavailable: bool = False,
     ):
         """管理接口按明确版本读取，随后按记录中的完整引用复核。"""
         if (
@@ -438,25 +438,25 @@ class MeasurementResourceService:
         if path.stat().st_size > _MAX_DOCUMENT_BYTES:
             raise InvalidRequestError("计量资源描述超过 4 MB")
         try:
-            from backend.service.application.workflows.documents.retired_cloud_resource import (
-                retired_cloud_metadata,
+            from backend.service.application.workflows.documents.cloud_resource_errors import (
+                unavailable_cloud_metadata,
             )
 
-            retired = retired_cloud_metadata(path.read_bytes())
-            if retired is not None:
+            unavailable = unavailable_cloud_metadata(path.read_bytes())
+            if unavailable is not None:
                 if (
-                    retired.reference.project_id,
-                    retired.reference.resource_id,
-                    retired.reference.version,
+                    unavailable.reference.project_id,
+                    unavailable.reference.resource_id,
+                    unavailable.reference.version,
                 ) != (project_id, resource_id, version):
                     raise InvalidRequestError("历史资产路径与身份不一致")
-                if include_retired:
-                    return retired
+                if include_unavailable:
+                    return unavailable
                 raise InvalidRequestError(
-                    "点云资产格式已升级，旧资产仅保留历史，请重新保存或导入",
+                    "点云资产不符合当前格式，请重新保存或导入",
                     details={
                         "reason": "unsupported_point_cloud_format",
-                        "format_id": retired.stored_format_id,
+                        "format_id": unavailable.stored_format_id,
                     },
                 )
             document = MeasurementResourceDocument.model_validate_json(
@@ -503,16 +503,16 @@ class MeasurementResourceService:
                 )
                 return
             document = self.read(reference, project_id=project_id)
-            from backend.contracts.workflows.retired_cloud_resource import (
-                RetiredCloudResource,
+            from backend.contracts.workflows.cloud_resource_errors import (
+                UnavailableCloudResource,
             )
 
             for dependent in self.list_versions(
-                project_id=project_id, include_retired=True
+                project_id=project_id, include_unavailable=True
             ):
                 parents = (
                     dependent.parent_assets
-                    if isinstance(dependent, RetiredCloudResource)
+                    if isinstance(dependent, UnavailableCloudResource)
                     else (
                         dependent.content.point_cloud.parent_assets
                         if dependent.reference.kind == "point-cloud"

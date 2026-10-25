@@ -24,8 +24,14 @@ from backend.contracts.workflows.measurement3d_parameters import (
     HeightQueryParameters,
     MeasureStepParameters,
     StatisticalStep,
-    distance_metric_units,
+    directional_metric_units,
+    directional_quality_policy,
     statistic_metric_units,
+)
+from backend.contracts.workflows.measurement3d_reference import (
+    ReferenceExtension,
+    check_reference_extension,
+    reference_uses_extension,
 )
 from backend.contracts.workflows.metrology import (
     Contract,
@@ -148,6 +154,7 @@ class MeasurementSupport(Contract):
     plane: PlaneSupportEvidence | None
     coverage: CoverageEvidence | None
     statistic: ProjectionStatistics | None
+    extension: ReferenceExtension | None
 
     @model_validator(mode="after")
     def check_support(self) -> Self:
@@ -162,8 +169,10 @@ class MeasurementSupport(Contract):
             raise ValueError("测量支持边界与点数不一致")
         if self.point_count is not None and self.point_count > self.source_point_count:
             raise ValueError("测量支持点数超出原始总点数")
-        if self.statistic and (self.plane or self.coverage):
+        if self.statistic and (self.plane or self.coverage or self.extension):
             raise ValueError("统计支持不能携带平面测距证据")
+        if self.extension is not None and self.role != "reference":
+            raise ValueError("被测表面不允许延伸")
         if self.statistic and self.statistic.count != self.point_count:
             raise ValueError("统计支持计数不一致")
         if self.coverage:
@@ -252,14 +261,25 @@ class MeasurementEvidenceItem(Contract):
         expected_origin = (
             (next(iter(origins)) if len(origins) == 1 else "mixed")
             if statistic
+            else "mixed"
+            if self.support[0].extension and self.support[0].extension.used_extension
             else "interpolated"
         )
         if self.sample_origin != expected_origin:
             raise ValueError("测量来源与方法及输入支持不一致")
-        policy = settings.quality_policy
+        extension = not statistic and reference_uses_extension(self.support[0])
+        policy = (
+            settings.quality_policy
+            if statistic
+            else directional_quality_policy(
+                settings, parameters.length_unit, extension=extension
+            )
+        )
         check_geometry_policy(self.quality, policy)
-        units = (statistic_metric_units if statistic else distance_metric_units)(
-            parameters.length_unit
+        units = (
+            statistic_metric_units(parameters.length_unit)
+            if statistic
+            else directional_metric_units(parameters.length_unit, extension=extension)
         )
         metrics = {m.item_id: m for m in self.quality.metrics.items}
         if set(metrics) != set(units) or any(
@@ -267,6 +287,10 @@ class MeasurementEvidenceItem(Contract):
         ):
             raise ValueError("测量质量指标集合或单位不一致")
         for side in self.support:
+            if not statistic:
+                check_reference_extension(side, settings)
+            elif side.extension is not None:
+                raise ValueError("统计测量不能携带基准延伸")
             if side.plane:
                 check_plane_metrics(side.plane.quality, parameters.length_unit)
                 selected_id = (
@@ -329,6 +353,11 @@ class MeasurementEvidenceItem(Contract):
                         )
                     },
                 }
+            if extension and side.role == "reference":
+                values = {
+                    "direction_cosine": side.coverage.direction_cosine,
+                    "extension_distance": side.extension.distance,
+                }
             if any(
                 metrics[f"{side.role}_{key}"].value != value
                 for key, value in values.items()
@@ -360,7 +389,14 @@ class MeasurementEvidenceItem(Contract):
                         not side.plane
                         or not side.plane.valid
                         or not side.coverage
-                        or not side.coverage.covered
+                        or not (
+                            side.coverage.covered
+                            or (
+                                side.role == "reference"
+                                and side.extension is not None
+                                and side.extension.used_extension
+                            )
+                        )
                     ):
                         raise ValueError("有效测距缺少域内平面支持")
                     plane = side.plane.geometry
@@ -386,8 +422,8 @@ class MeasurementEvidenceItem(Contract):
 class MeasurementEvidence3d(Contract):
     """三维量值证据；可独立落盘，支持摘要不是历史运行访问引用。"""
 
-    format_id: Literal["amvision.measurement-evidence3d.v2"] = (
-        "amvision.measurement-evidence3d.v2"
+    format_id: Literal["amvision.measurement-evidence3d.v1"] = (
+        "amvision.measurement-evidence3d.v1"
     )
     observation_id: Identifier
     frame_id: Identifier

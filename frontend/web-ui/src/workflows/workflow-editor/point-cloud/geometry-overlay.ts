@@ -1,8 +1,8 @@
-import {AxesHelper,BoxGeometry,BufferGeometry,Camera,CylinderGeometry,DoubleSide,EdgesGeometry,Group,LineBasicMaterial,LineSegments,Matrix4,Mesh,MeshBasicMaterial,Object3D,Plane,Quaternion,Vector3,type Material} from 'three'
+import {AxesHelper,BoxGeometry,BufferGeometry,Camera,CylinderGeometry,DoubleSide,EdgesGeometry,Group,LineBasicMaterial,LineDashedMaterial,LineSegments,Matrix4,Mesh,MeshBasicMaterial,Object3D,Plane,Quaternion,Vector3,type Material} from 'three'
 import {TransformControls} from 'three/addons/controls/TransformControls.js'
 import {object,reserveCpu,reserveGpu} from './preview-data'
 import type {CloudRendererPolicy} from '../services/measurement-resource.service'
-import {measurementItems} from './measurement-display'
+import {measurementItems,referenceExtension} from './measurement-display'
 import {curveItems,curveStrokes} from './boundary-display'
 import type {Raycaster} from 'three'
 
@@ -40,7 +40,7 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
   function buildEvidence(payload:Record<string,unknown>){
     if(!payload.geometry)return
     const g=object(payload.geometry),spatial=object(payload.spatial)
-    if(g.format_id!=='amvision.geometry-preview.v2'||g.observation_id!==payload.observation_id||g.frame_id!==spatial.frame_id||g.length_unit!==spatial.length_unit||!Array.isArray(g.planes)||g.planes.length>8192)throw new Error('cloud_preview_invalid')
+    if(g.format_id!=='amvision.geometry-preview.v1'||g.observation_id!==payload.observation_id||g.frame_id!==spatial.frame_id||g.length_unit!==spatial.length_unit||!Array.isArray(g.planes)||g.planes.length>8192)throw new Error('cloud_preview_invalid')
     for(const raw of g.planes){const p=object(raw);if(!p.valid)continue;const plane=object(p.geometry),bounds=object(p.support_bounds),low=vec(bounds.min),high=vec(bounds.max),n=vec(plane.normal),offset=plane.offset;if(typeof offset!=='number'||!Number.isFinite(offset))throw new Error('cloud_preview_invalid')
       const center=low.clone().add(high).multiplyScalar(.5);center.addScaledVector(n,-n.dot(center)-offset)
       const q=new Quaternion().setFromUnitVectors(new Vector3(0,0,1),n),inv=q.clone().invert();let x=0,y=0
@@ -50,11 +50,12 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
     }
     if(g.frame){const f=object(g.frame);if(f.state==='found'){const t=object(f.transform),m=new Matrix4().set(...matrix(t.matrix,4).flat() as Parameters<Matrix4['set']>);if(t.source_frame_id===spatial.frame_id)m.invert();else if(t.target_frame_id===spatial.frame_id)m.identity();else throw new Error('cloud_preview_invalid');const bounds=object(payload.bounds),length=vec(bounds.max).sub(vec(bounds.min)).length()*.25;const axes=new AxesHelper(length);axes.applyMatrix4(m);axes.position.sub(physicalOrigin);root.add(axes);account(axes)}}
   }
-  function lines(points:Vector3[],color:number){
+  function lines(points:Vector3[],color:number,dashed=false){
     const local=points.map(p=>p.clone().sub(physicalOrigin)),geometry=new BufferGeometry().setFromPoints(local)
     const position=geometry.getAttribute('position')
     for(let i=0;i<local.length;i++)for(let axis=0;axis<3;axis++)if(!Number.isFinite(position.getComponent(i,axis))||Math.abs(position.getComponent(i,axis)-local[i]!.getComponent(axis))>policy.max_position_error){geometry.dispose();throw new Error('cloud_position_precision')}
-    const line=new LineSegments(geometry,new LineBasicMaterial({color,depthTest:false}));root.add(line);account(line);return line
+    const size=dashed?Math.max(points[0]!.distanceTo(points[1]!)/20,Number.EPSILON):0
+    const line=new LineSegments(geometry,dashed?new LineDashedMaterial({color,depthTest:false,dashSize:size,gapSize:size}):new LineBasicMaterial({color,depthTest:false}));root.add(line);if(dashed)line.computeLineDistances();account(line);return line
   }
   function buildCurves(next:GeometryOverlayInput){
     for(const stroke of curveStrokes(curveItems(next.payload),policy)){
@@ -81,6 +82,10 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
         else if(selected){const circle=object(item.geometry.circle),center=vec(circle.center),size=positive(circle.radius)*.05,points:Vector3[]=[];for(let i=0;i<3;i++){const delta=new Vector3().setComponent(i,size);points.push(center.clone().sub(delta),center.clone().add(delta))}lines(points,color)}
       }
       if(!selected)continue
+      const extension=referenceExtension(item.support)
+      if(extension?.datum_point&&extension.projected_support_point){
+        lines([vec(extension.projected_support_point),vec(extension.datum_point)],extension.state==='used'?0xc8558a:0xc33b3b,true)
+      }
       for(const side of item.support){
         const coverage=side.coverage?object(side.coverage):null
         if(coverage?.triangle){const raw=coverage.triangle;if(!Array.isArray(raw)||raw.length!==3)throw new Error('cloud_preview_invalid');const p=raw.map(vec);lines([p[0]!,p[1]!,p[1]!,p[2]!,p[2]!,p[0]!],side.role==='reference'?0x287bb8:0x339653)}
