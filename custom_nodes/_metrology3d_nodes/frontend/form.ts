@@ -1,5 +1,6 @@
 /** 仅组织配方字段；几何计算、完整契约校验仍属于后端。 */
 import { limitRuleError, normalizeLimitRule } from '@/workflows/workflow-editor/parameters/limit-rules'
+import {roiGraphIssues} from '@/workflows/workflow-editor/point-cloud/roi-graph'
 export type Form = Record<string, unknown>
 export interface Field { path: string; label: string; type?: 'number' | 'vector' | 'pair' | 'matrix' | 'select'; options?: string[] }
 export function object(value: unknown): Form { return value && typeof value === 'object' && !Array.isArray(value) ? value as Form : {} }
@@ -12,7 +13,7 @@ export function put(value: Form, path: string, next: unknown): Form {
 }
 export const identity = () => [[1,0,0],[0,1,0],[0,0,1]]
 export function newRoi(kind='box'): Form {
-  return { format_id:'amvision.roi3d.v1', roi_id:'', frame_id:'', length_unit:null, kind, geometry: kind==='box' ? {center:[null,null,null],size:[null,null,null],rotation:identity()} : kind==='cylinder' ? {center:[null,null,null],axis:[null,null,null],radius:null,length:null} : {origin:[null,null,null],normal:[null,null,null],thickness:null,bounds_roi_id:''} }
+  return { format_id:'amvision.roi3d.v1', roi_id:'', frame_id:'', length_unit:null, kind, geometry: kind==='union'?{roi_ids:[]}:kind==='box' ? {center:[null,null,null],size:[null,null,null],rotation:identity()} : kind==='cylinder' ? {center:[null,null,null],axis:[null,null,null],radius:null,length:null} : {origin:[null,null,null],normal:[null,null,null],thickness:null,bounds_roi_id:''} }
 }
 export const planeMetrics = ['inlier_count','tangent_ratio','normal_gap','rms','max_residual']
 export const frameMetrics = ['axis_sine','x_alignment','z_alignment']
@@ -25,11 +26,9 @@ const identifier = (v: unknown) => typeof v==='string' && /^[A-Za-z0-9][A-Za-z0-
 export function vector(v: unknown): v is number[] { return Array.isArray(v) && v.length===3 && v.every(finite) }
 function unit(v: unknown) { return vector(v) && Math.abs(v.reduce((a,b)=>a+b*b,0)-1)<=1e-8 }
 export function roiIssues(rois: Form[]): string[] {
-  const issues: string[] = [], ids = new Set<string>()
+  const issues: string[] = roiGraphIssues(rois)
   for (const r of rois) {
     const g=object(r.geometry), id=String(r.roi_id||'?')
-    if (!identifier(r.roi_id)||ids.has(id)||!identifier(r.frame_id)||!['m','mm','um'].includes(String(r.length_unit))) issues.push(`${id}: ID / frame / unit`)
-    ids.add(id)
     if(r.kind==='box') {
       const rows=g.rotation
       if(!vector(g.center)||!vector(g.size)||g.size.some(n=>n<=0)||!Array.isArray(rows)||rows.length!==3||!rows.every(unit)) issues.push(`${id}: box`)
@@ -43,13 +42,6 @@ export function roiIssues(rois: Form[]): string[] {
       if(!vector(g.center)||!unit(g.axis)||!finite(g.radius)||g.radius<=0||!finite(g.length)||g.length<=0)issues.push(`${id}: cylinder`)
     } else if(r.kind==='section-band') {
       if(!vector(g.origin)||!unit(g.normal)||!finite(g.thickness)||g.thickness<=0)issues.push(`${id}: section-band`)
-    } else issues.push(`${id}: kind`)
-    if(rois[0]&&(r.frame_id!==rois[0].frame_id||r.length_unit!==rois[0].length_unit))issues.push(`${id}: space`)
-    const seen=new Set<unknown>();let next:Form|undefined=r
-    while(next?.kind==='section-band') {
-      if(seen.has(next.roi_id)){issues.push(`${id}: cycle`);break}
-      seen.add(next.roi_id);next=rois.find(x=>x.roi_id===object(next!.geometry).bounds_roi_id)
-      if(!next)issues.push(`${id}: bounds_roi_id`)
     }
   }
   return issues

@@ -16,7 +16,7 @@ from custom_nodes._metrology3d_nodes.shared.boundary_topology import (
     order_segments,
     selected_runs,
 )
-from custom_nodes._metrology3d_nodes.shared.crop_roi import roi_mask
+from custom_nodes._metrology3d_nodes.shared.roi_mask import roi_mask
 
 
 @dataclass(frozen=True)
@@ -54,8 +54,11 @@ def extract_boundary_array(
     ):
         raise InvalidRequestError("等高方法必须且仅使用明确的基准平面")
     # 保守计入剖分、两向求交、来源字典和段数组同时存活，不等同原生 RSS 限额。
-    if len(points) * 12288 > max_working_bytes:
+    geometry_working_bytes = len(points) * 12288
+    if geometry_working_bytes > max_working_bytes:
         raise InvalidRequestError("边界完整局部支持超过显式工作预算")
+    # ROI 计划可能远大于点数；不能与仍存活的几何工作集重复使用同一额度。
+    roi_working_bytes = max_working_bytes - geometry_working_bytes
     if not np.isfinite(points).all():
         raise InvalidRequestError("边界输入包含无效坐标，请先执行 Filter Valid")
     metrics = dict(
@@ -73,7 +76,14 @@ def extract_boundary_array(
             reason, None, None, None, None, None, None, None, metrics, segment_id
         )
 
-    selected = np.flatnonzero(roi_mask(points, parameters.region))
+    selected = np.flatnonzero(
+        roi_mask(
+            points,
+            parameters.region,
+            max_working_bytes=roi_working_bytes,
+            cancel=cancel,
+        )
+    )
     local_points = points[selected]
     metrics["surface_point_count"] = len(selected)
     evaluation = parameters.evaluation
@@ -130,7 +140,12 @@ def extract_boundary_array(
         matches = []
         for candidate in candidates:
             cancel()
-            mask = roi_mask(vertices[candidate.indices], target.region)
+            mask = roi_mask(
+                vertices[candidate.indices],
+                target.region,
+                max_working_bytes=roi_working_bytes,
+                cancel=cancel,
+            )
             for part in selected_runs(candidate, mask, cancel=cancel):
                 if part.closed == target.closed:
                     matches.append(part)

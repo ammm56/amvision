@@ -5,6 +5,7 @@ import type {CloudRendererPolicy} from '../services/measurement-resource.service
 import {measurementItems,referenceExtension} from './measurement-display'
 import {curveItems,curveStrokes} from './boundary-display'
 import type {Raycaster} from 'three'
+import {roiDependencies,roiGraphIssues} from './roi-graph'
 
 export type RoiValue=Record<string,unknown>
 export interface GeometryOverlayInput { payload:Record<string,unknown>; rois?:RoiValue[]; selectedId?:string; mode?:'translate'|'rotate'; changed?:(roi:RoiValue)=>void;selectedMeasurement?:string;selectedPlane?:string;candidate?:number[];selectedCurve?:string;selectedSegment?:string;curveSelected?:(featureId:string,segmentId:string)=>void }
@@ -16,7 +17,7 @@ const orientation=(g:RoiValue,kind:unknown)=>kind==='box'?new Quaternion().setFr
 /** 只显示有限几何；所有坐标先减 render_origin，显示缓冲统一计费。 */
 export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLElement,origin:number[],policy:CloudRendererPolicy,schedule:()=>void,drag:(active:boolean)=>void,failed:(error:Error)=>void) {
   let root=new Group(),gizmo:TransformControls|null=null, releases:(()=>void)[]=[],input:GeometryOverlayInput|undefined,closed=false
-  const physicalOrigin=new Vector3(...origin),targets=new Map<string,Object3D>(),updates=new Map<string,(roi:RoiValue)=>void>()
+  const physicalOrigin=new Vector3(...origin),targets=new Map<string,Object3D>(),updates=new Map<string,((roi:RoiValue)=>void)[]>()
   function resources(object:Object3D){const geometries=new Set<BufferGeometry>(),materials=new Set<Material>();object.traverse(o=>{const item=o as Mesh;if(item.geometry)geometries.add(item.geometry);if(item.material)for(const m of Array.isArray(item.material)?item.material:[item.material])materials.add(m)});return {geometries,materials}}
   function account(object:Object3D){const buffers=new Set<ArrayBufferLike>();for(const g of resources(object).geometries){for(const a of Object.values(g.attributes))buffers.add(a.array.buffer);if(g.index)buffers.add(g.index.array.buffer)}const bytes=[...buffers].reduce((s,b)=>s+b.byteLength,0);releases.push(reserveCpu(bytes,policy));releases.push(reserveGpu(bytes,policy))}
   function clear(){drag(false);gizmo?.detach();gizmo?.dispose();gizmo=null;for(const g of resources(root).geometries)g.dispose();for(const m of resources(root).materials)m.dispose();root.removeFromParent();root.clear();targets.clear();updates.clear();for(const release of releases)release();releases=[];root=new Group()}
@@ -30,12 +31,39 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
     account(target);return {target,material,edge}
   }
   function sectionPlanes(roi:RoiValue){const g=object(roi.geometry),n=vec(g.normal),p=vec(g.origin).sub(physicalOrigin),half=positive(g.thickness)/2;return [new Plane(n,n.dot(p.clone().negate())+half),new Plane(n.clone().negate(),n.dot(p)+half)]}
-  function buildRoi(roi:RoiValue,rois:RoiValue[]){
-    if(roi.kind!=='section-band'){targets.set(String(roi.roi_id),finiteMesh(roi,0xd18c00).target);return}
-    let bounded=roi;const sections:RoiValue[]=[],seen=new Set<unknown>()
-    while(bounded.kind==='section-band'){if(seen.has(bounded.roi_id))throw new Error('cloud_preview_invalid');seen.add(bounded.roi_id);sections.push(bounded);const next=rois.find(r=>r.roi_id===object(bounded.geometry).bounds_roi_id);if(!next)throw new Error('cloud_preview_invalid');bounded=next}
-    const shape=finiteMesh(bounded,0xc8558a,sections.flatMap(sectionPlanes)),anchor=new Group();pose(roi,anchor);root.add(anchor);targets.set(String(roi.roi_id),anchor)
-    updates.set(String(roi.roi_id),next=>{const clips=[next,...sections.slice(1)].flatMap(sectionPlanes);shape.material.clippingPlanes=clips;(shape.edge.material as LineBasicMaterial).clippingPlanes=clips})
+  function buildRois(rois:RoiValue[],selectedId?:string){
+    if(roiGraphIssues(rois).length)throw new Error('cloud_preview_invalid')
+    const byId=new Map(rois.map(r=>[String(r.roi_id),r])),referenced=new Set(rois.flatMap(roiDependencies)),seen=new Set<string>()
+    const pending:{roi:RoiValue;sections:RoiValue[];release:()=>void}[]=[]
+    function enqueue(roi:RoiValue,sections:RoiValue[]){
+      const release=reserveCpu(256+sections.length*16,policy)
+      pending.push({roi,sections,release})
+    }
+    try{
+      for(const roi of rois)if(!referenced.has(String(roi.roi_id))||roi.roi_id===selectedId)enqueue(roi,[])
+      while(pending.length){
+        const item=pending.pop()!,{roi,sections}=item,id=String(roi.roi_id)
+        try{
+          const key=JSON.stringify([id,...sections.map(s=>String(s.roi_id)).sort()])
+          if(seen.has(key))continue
+          releases.push(reserveCpu(256+key.length*2,policy));seen.add(key)
+          if(roi.kind==='union'){
+            for(const child of roiDependencies(roi))enqueue(byId.get(child)!,sections)
+          }else if(roi.kind==='section-band'){
+            if(!targets.has(id)){const anchor=new Group();pose(roi,anchor);root.add(anchor);targets.set(id,anchor)}
+            enqueue(byId.get(roiDependencies(roi)[0]!)!,[...sections,roi])
+          }else{
+            const shape=finiteMesh(roi,sections.length?0xc8558a:0xd18c00,sections.flatMap(sectionPlanes))
+            if(!sections.length)targets.set(id,shape.target)
+            for(const section of sections){
+              const sectionId=String(section.roi_id),list=updates.get(sectionId)??[]
+              list.push(next=>{const clips=sections.map(s=>s.roi_id===next.roi_id?next:s).flatMap(sectionPlanes);shape.material.clippingPlanes=clips;(shape.edge.material as LineBasicMaterial).clippingPlanes=clips})
+              updates.set(sectionId,list)
+            }
+          }
+        }finally{item.release()}
+      }
+    }finally{for(const item of pending)item.release()}
   }
   function buildEvidence(payload:Record<string,unknown>){
     if(!payload.geometry)return
@@ -102,7 +130,8 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
       scene.add(root);buildEvidence(next.payload);buildMeasurements(next);buildCurves(next)
       const spatial=object(next.payload.spatial),attached=next.payload.geometry?object(next.payload.geometry).rois:[],rois=next.rois??(Array.isArray(attached)?attached.map(object):[])
       if(rois.length>8192)throw new Error('cloud_preview_invalid')
-      for(const roi of rois){if(roi.frame_id!==spatial.frame_id||roi.length_unit!==spatial.length_unit)throw new Error('cloud_geometry_space');buildRoi(roi,rois)}
+      for(const roi of rois)if(roi.frame_id!==spatial.frame_id||roi.length_unit!==spatial.length_unit)throw new Error('cloud_geometry_space')
+      buildRois(rois,next.selectedId)
       const target=targets.get(next.selectedId??'')
       if(target&&next.changed){gizmo=new TransformControls(camera,canvas);gizmo.setMode(next.mode??'translate');gizmo.attach(target);const helper=gizmo.getHelper();root.add(helper);account(helper)
         gizmo.addEventListener('change',schedule)
@@ -116,7 +145,7 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
         })
         gizmo.addEventListener('objectChange',()=>{const roi=input?.rois?.find(r=>r.roi_id===input?.selectedId);if(!roi)return;const g={...object(roi.geometry)},position=target.position.clone().add(physicalOrigin).toArray(),q=target.quaternion
           if(roi.kind==='section-band'){g.origin=position;g.normal=new Vector3(0,1,0).applyQuaternion(q).toArray()}else {g.center=position;if(roi.kind==='cylinder')g.axis=new Vector3(0,1,0).applyQuaternion(q).toArray();else {const m=new Matrix4().makeRotationFromQuaternion(q).elements;g.rotation=[[m[0],m[4],m[8]],[m[1],m[5],m[9]],[m[2],m[6],m[10]]]}}
-          const changed={...roi,geometry:g};updates.get(String(roi.roi_id))?.(changed);input?.changed?.(changed);schedule()
+          const changed={...roi,geometry:g};for(const update of updates.get(String(roi.roi_id))??[])update(changed);input?.changed?.(changed);schedule()
         })
       }
       schedule()

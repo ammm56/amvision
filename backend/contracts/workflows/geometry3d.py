@@ -104,6 +104,18 @@ class SectionGeometry(Contract):
         return self
 
 
+class UnionGeometry(Contract):
+    """同一父云上的有限 ROI 并集；成员正文位于同组依赖集合。"""
+
+    roi_ids: Annotated[tuple[Identifier, ...], Field(min_length=1, max_length=8192)]
+
+    @model_validator(mode="after")
+    def check_members(self) -> Self:
+        """重复成员不能隐含额外权重。"""
+        unique_ids(list(self.roi_ids), "union.roi_ids")
+        return self
+
+
 class RoiIdentity(Contract):
     """ROI 是配方坐标，不携本次观测或瞬时存储权限。"""
 
@@ -134,7 +146,55 @@ class SectionRoi(RoiIdentity):
     geometry: SectionGeometry
 
 
-Roi3d = Annotated[BoxRoi | CylinderRoi | SectionRoi, Field(discriminator="kind")]
+class UnionRoi(RoiIdentity):
+    """有限成员的逻辑并集，不自带包围盒或变换。"""
+
+    kind: Literal["union"]
+    geometry: UnionGeometry
+
+
+Roi3d = Annotated[
+    BoxRoi | CylinderRoi | SectionRoi | UnionRoi, Field(discriminator="kind")
+]
+
+
+def roi_dependencies(roi: Roi3d) -> tuple[str, ...]:
+    """契约校验与求值共用依赖边，不复制形状分发规则。"""
+    if isinstance(roi, SectionRoi):
+        return (roi.geometry.bounds_roi_id,)
+    if isinstance(roi, UnionRoi):
+        return roi.geometry.roi_ids
+    return ()
+
+
+def roi_dependency_order(rois, roots, *, cancel=None):
+    """迭代后序遍历 DAG；深链不依赖 Python 递归深度。"""
+    by_id = {roi.roi_id: roi for roi in rois}
+    states, ordered = {}, []
+    for root in roots:
+        if root not in by_id:
+            raise ValueError("目标 ROI 不存在")
+        if states.get(root) == 2:
+            continue
+        states[root] = 1
+        stack = [(root, iter(roi_dependencies(by_id[root])))]
+        while stack:
+            if cancel is not None:
+                cancel()
+            key, children = stack[-1]
+            child = next(children, None)
+            if child is None:
+                stack.pop()
+                states[key] = 2
+                ordered.append(by_id[key])
+            elif child not in by_id:
+                raise ValueError(f"ROI {key} 缺少有限依赖 {child}")
+            elif states.get(child) == 1:
+                raise ValueError("ROI 依赖存在循环")
+            elif states.get(child) != 2:
+                states[child] = 1
+                stack.append((child, iter(roi_dependencies(by_id[child]))))
+    return tuple(ordered)
 
 
 class CropCloudParameters(Contract):
@@ -154,14 +214,7 @@ class CropCloudParameters(Contract):
         for roi in self.rois:
             if (roi.frame_id, roi.length_unit) != (first.frame_id, first.length_unit):
                 raise ValueError("ROI 依赖坐标或单位不一致")
-            seen = set()
-            while isinstance(roi, SectionRoi):
-                if roi.roi_id in seen:
-                    raise ValueError("ROI 依赖存在循环")
-                seen.add(roi.roi_id)
-                roi = by_id.get(roi.geometry.bounds_roi_id)
-                if roi is None:
-                    raise ValueError("截面带缺少有限边界 ROI")
+        roi_dependency_order(self.rois, by_id)
         return self
 
 

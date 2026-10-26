@@ -25,6 +25,7 @@ def main():
             "hole",
             "dimensions",
             "datum-extension",
+            "roi-union",
         ),
         default="boundary-circle",
     )
@@ -51,7 +52,13 @@ def main():
                     flush=True,
                 )
                 continue
-            if kind == "boundary-circle":
+            if kind == "roi-union":
+                from tests.integration.metrology3d.test_roi_union_published import (
+                    union_documents,
+                )
+
+                documents, _, points = union_documents(file=True)
+            elif kind == "boundary-circle":
                 documents, _, points = boundary_documents("circle", file=True)
             else:
                 from tests.integration.metrology3d.test_dimension_nodes import (

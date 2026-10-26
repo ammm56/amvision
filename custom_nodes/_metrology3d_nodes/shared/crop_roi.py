@@ -5,7 +5,6 @@ from uuid import uuid4
 
 import numpy as np
 
-from backend.contracts.workflows.geometry3d import BoxRoi, CylinderRoi, SectionRoi
 from backend.contracts.workflows.point_cloud_runtime import (
     CropCloudMethod,
 )
@@ -15,34 +14,7 @@ from backend.service.application.runtime.exception_cleanup import (
     release_exception_frames,
 )
 from backend.service.application.workflows.point_cloud.arrays import OwnedCloudArrays
-
-
-def roi_mask(positions, parameters):
-    """所有比较使用 float64 和闭边界，不增大 ROI 容纳浮点误差。"""
-    by_id = {roi.roi_id: roi for roi in parameters.rois}
-    roi = by_id[parameters.roi_id]
-    mask = np.ones(len(positions), dtype=bool)
-    with np.errstate(over="raise", invalid="raise"):
-        while True:
-            g = roi.geometry
-            if isinstance(roi, BoxRoi):
-                local = (positions - g.center) @ np.asarray(g.rotation)
-                mask &= (np.abs(local) <= np.asarray(g.size) / 2).all(axis=1)
-                return mask
-            if isinstance(roi, CylinderRoi):
-                relative = positions - g.center
-                axial = relative @ np.asarray(g.axis)
-                radial = relative - axial[:, None] * g.axis
-                # hypot 避免大坐标平方溢出被错误识别为普通 ROI 外点。
-                radius = np.hypot(np.hypot(radial[:, 0], radial[:, 1]), radial[:, 2])
-                mask &= (np.abs(axial) <= g.length / 2) & (radius <= g.radius)
-                return mask
-            if isinstance(roi, SectionRoi):
-                mask &= (
-                    np.abs((positions - g.origin) @ np.asarray(g.normal))
-                    <= g.thickness / 2
-                )
-                roi = by_id[g.bounds_roi_id]
+from custom_nodes._metrology3d_nodes.shared.roi_mask import RoiMaskPlan
 
 
 def crop_roi(runtime, reference, parameters, *, cancel):
@@ -65,9 +37,13 @@ def crop_roi(runtime, reference, parameters, *, cancel):
             removed_count=None,
         )
     row_bytes = sum(np.dtype(f.dtype).itemsize * f.components for f in reference.fields)
+    plan = RoiMaskPlan(
+        parameters, max_working_bytes=runtime.policy.max_working_bytes, cancel=cancel
+    )
     rows = min(
         runtime.policy.chunk_rows,
-        runtime.policy.max_working_bytes // (row_bytes * 2 + 128),
+        (runtime.policy.max_working_bytes - plan.metadata_bytes)
+        // (row_bytes * 2 + plan.row_bytes),
     )
     if rows < 1:
         raise InvalidRequestError("ROI 工作预算不能容纳一行")
@@ -87,7 +63,7 @@ def crop_roi(runtime, reference, parameters, *, cancel):
                     raise InvalidRequestError(
                         "ROI 输入包含无效位置，请先执行 Filter Valid"
                     )
-                mask = roi_mask(positions, parameters)
+                mask = plan.mask(positions, cancel=cancel)
                 kept += int(np.count_nonzero(mask))
             block = positions = mask = None
             dtype = np.dtype("uint32" if reference.point_count <= 2**32 else "uint64")
@@ -98,7 +74,7 @@ def crop_roi(runtime, reference, parameters, *, cancel):
                 cancel()
                 block = view.chunk(start, min(start + rows, reference.point_count))
                 positions = np.asarray(block["positions"], dtype=np.float64)
-                selected = np.flatnonzero(roi_mask(positions, parameters))
+                selected = np.flatnonzero(plan.mask(positions, cancel=cancel))
                 indices[offset : offset + len(selected), 0] = selected + start
                 offset += len(selected)
             block = positions = selected = None

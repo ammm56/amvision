@@ -1,6 +1,7 @@
 """在源 Scope 内冻结有限几何显示附件，浏览器不借用原云。"""
 
 import numpy as np
+from backend.contracts.workflows.geometry3d import roi_dependency_order
 from backend.contracts.workflows.geometry3d_observations import Features3d, Pose3d
 from backend.contracts.workflows.geometry3d_preview import GeometryPreview
 from backend.contracts.workflows.point_cloud import canonical_cloud_json
@@ -32,7 +33,19 @@ def _attach_geometry(runtime, cloud, body, values, *, policy, cancel):
         else None
     )
     method = cloud.provenance.method
-    rois = method.parameters.rois if method and method.method_id == "crop-roi" else ()
+    rois = (
+        tuple(
+            reversed(
+                roi_dependency_order(
+                    method.parameters.rois,
+                    (method.parameters.roi_id,),
+                    cancel=cancel,
+                )
+            )
+        )
+        if method and method.method_id == "crop-roi"
+        else ()
+    )
     if not supplied and pose is None and not rois:
         return body
     if cloud.spatial.length_unit is None:

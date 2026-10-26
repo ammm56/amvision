@@ -44,7 +44,8 @@
                     "mapping": {
                       "box": "#/$defs/BoxRoi",
                       "cylinder": "#/$defs/CylinderRoi",
-                      "section-band": "#/$defs/SectionRoi"
+                      "section-band": "#/$defs/SectionRoi",
+                      "union": "#/$defs/UnionRoi"
                     },
                     "propertyName": "kind"
                   },
@@ -405,6 +406,72 @@
                       ],
                       "title": "SectionRoi",
                       "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "description": "有限成员的逻辑并集，不自带包围盒或变换。",
+                      "properties": {
+                        "format_id": {
+                          "const": "amvision.roi3d.v1",
+                          "default": "amvision.roi3d.v1",
+                          "title": "Format Id",
+                          "type": "string"
+                        },
+                        "roi_id": {
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                          "title": "Roi Id",
+                          "type": "string"
+                        },
+                        "frame_id": {
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                          "title": "Frame Id",
+                          "type": "string"
+                        },
+                        "length_unit": {
+                          "enum": [
+                            "m",
+                            "mm",
+                            "um"
+                          ],
+                          "title": "Length Unit",
+                          "type": "string"
+                        },
+                        "kind": {
+                          "const": "union",
+                          "title": "Kind",
+                          "type": "string"
+                        },
+                        "geometry": {
+                          "additionalProperties": false,
+                          "description": "同一父云上的有限 ROI 并集；成员正文位于同组依赖集合。",
+                          "properties": {
+                            "roi_ids": {
+                              "items": {
+                                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                "type": "string"
+                              },
+                              "maxItems": 8192,
+                              "minItems": 1,
+                              "title": "Roi Ids",
+                              "type": "array"
+                            }
+                          },
+                          "required": [
+                            "roi_ids"
+                          ],
+                          "title": "UnionGeometry",
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "roi_id",
+                        "frame_id",
+                        "length_unit",
+                        "kind",
+                        "geometry"
+                      ],
+                      "title": "UnionRoi",
+                      "type": "object"
                     }
                   ],
                   "title": "Roi"
@@ -416,7 +483,8 @@
                       "mapping": {
                         "box": "#/$defs/BoxRoi",
                         "cylinder": "#/$defs/CylinderRoi",
-                        "section-band": "#/$defs/SectionRoi"
+                        "section-band": "#/$defs/SectionRoi",
+                        "union": "#/$defs/UnionRoi"
                       },
                       "propertyName": "kind"
                     },
@@ -776,6 +844,72 @@
                           "geometry"
                         ],
                         "title": "SectionRoi",
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "description": "有限成员的逻辑并集，不自带包围盒或变换。",
+                        "properties": {
+                          "format_id": {
+                            "const": "amvision.roi3d.v1",
+                            "default": "amvision.roi3d.v1",
+                            "title": "Format Id",
+                            "type": "string"
+                          },
+                          "roi_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                            "title": "Roi Id",
+                            "type": "string"
+                          },
+                          "frame_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                            "title": "Frame Id",
+                            "type": "string"
+                          },
+                          "length_unit": {
+                            "enum": [
+                              "m",
+                              "mm",
+                              "um"
+                            ],
+                            "title": "Length Unit",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "const": "union",
+                            "title": "Kind",
+                            "type": "string"
+                          },
+                          "geometry": {
+                            "additionalProperties": false,
+                            "description": "同一父云上的有限 ROI 并集；成员正文位于同组依赖集合。",
+                            "properties": {
+                              "roi_ids": {
+                                "items": {
+                                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                  "type": "string"
+                                },
+                                "maxItems": 8192,
+                                "minItems": 1,
+                                "title": "Roi Ids",
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "roi_ids"
+                            ],
+                            "title": "UnionGeometry",
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "roi_id",
+                          "frame_id",
+                          "length_unit",
+                          "kind",
+                          "geometry"
+                        ],
+                        "title": "UnionRoi",
                         "type": "object"
                       }
                     ]
@@ -808,7 +942,8 @@
                       "mapping": {
                         "box": "#/$defs/BoxRoi",
                         "cylinder": "#/$defs/CylinderRoi",
-                        "section-band": "#/$defs/SectionRoi"
+                        "section-band": "#/$defs/SectionRoi",
+                        "union": "#/$defs/UnionRoi"
                       },
                       "propertyName": "kind"
                     },
@@ -1168,6 +1303,72 @@
                           "geometry"
                         ],
                         "title": "SectionRoi",
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "description": "有限成员的逻辑并集，不自带包围盒或变换。",
+                        "properties": {
+                          "format_id": {
+                            "const": "amvision.roi3d.v1",
+                            "default": "amvision.roi3d.v1",
+                            "title": "Format Id",
+                            "type": "string"
+                          },
+                          "roi_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                            "title": "Roi Id",
+                            "type": "string"
+                          },
+                          "frame_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                            "title": "Frame Id",
+                            "type": "string"
+                          },
+                          "length_unit": {
+                            "enum": [
+                              "m",
+                              "mm",
+                              "um"
+                            ],
+                            "title": "Length Unit",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "const": "union",
+                            "title": "Kind",
+                            "type": "string"
+                          },
+                          "geometry": {
+                            "additionalProperties": false,
+                            "description": "同一父云上的有限 ROI 并集；成员正文位于同组依赖集合。",
+                            "properties": {
+                              "roi_ids": {
+                                "items": {
+                                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                  "type": "string"
+                                },
+                                "maxItems": 8192,
+                                "minItems": 1,
+                                "title": "Roi Ids",
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "roi_ids"
+                            ],
+                            "title": "UnionGeometry",
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "roi_id",
+                          "frame_id",
+                          "length_unit",
+                          "kind",
+                          "geometry"
+                        ],
+                        "title": "UnionRoi",
                         "type": "object"
                       }
                     ]

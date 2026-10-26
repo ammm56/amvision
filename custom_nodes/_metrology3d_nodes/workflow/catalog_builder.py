@@ -261,7 +261,17 @@ def build_custom_node_catalog_document():
         definitions.append(
             dict(
                 node_type_id="custom.metrology3d." + key,
-                version="0.1.9"
+                version="0.1.10"
+                if key
+                in {
+                    "crop-roi",
+                    "extract-boundary",
+                    "cloud-preview",
+                    "read-cloud",
+                    "save-cloud",
+                    "export-cloud",
+                }
+                else "0.1.9"
                 if key
                 in {
                     "height-query",

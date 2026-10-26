@@ -7,6 +7,7 @@ from backend.contracts.workflows.geometry3d import (
     PlaneGeometry,
     RigidMatrix3d,
     Roi3d,
+    roi_dependency_order,
 )
 from backend.contracts.workflows.geometry3d_quality import (
     GeometryQuality,
@@ -84,6 +85,7 @@ class GeometryPreview(Contract):
     def check_identity(self) -> Self:
         """拒绝错单位、跨观测、重复 ID 和旧失败矩阵。"""
         unique_ids([r.roi_id for r in self.rois], "rois")
+        roi_dependency_order(self.rois, (r.roi_id for r in self.rois))
         unique_ids([p.feature_id for p in (*self.planes, *self.curves)], "features")
         for curve in self.curves:
             evaluation = curve.method.parameters.evaluation
