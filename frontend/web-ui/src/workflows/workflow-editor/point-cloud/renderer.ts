@@ -1,14 +1,22 @@
-import { AxesHelper, BufferAttribute, BufferGeometry, MOUSE, OrthographicCamera, PerspectiveCamera, Points, PointsMaterial, Raycaster, Scene, Vector2, WebGLRenderer } from 'three'
+import { AxesHelper, BufferAttribute, BufferGeometry, Matrix4, MOUSE, OrthographicCamera, PerspectiveCamera, Points, PointsMaterial, Quaternion, Raycaster, Scene, Vector2, Vector3, WebGLRenderer } from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import type { CloudRendererPolicy } from '../services/measurement-resource.service'
 import { reserveCpu, reserveGpu, type CloudDisplayData } from './preview-data'
 import {fillPlaneColors,type PlaneColors} from './plane-colors'
 import {createGeometryOverlay,type GeometryOverlayInput} from './geometry-overlay'
 export type CloudViewAxis = 'iso' | 'x' | '-x' | 'y' | '-y' | 'z' | '-z'
+export type CloudViewState = CloudViewAxis | 'free'
+
+const directions:Record<CloudViewAxis,[number,number,number]>={iso:[1,-1,.8],x:[1,0,0],'-x':[-1,0,0],y:[0,-1,0],'-y':[0,1,0],z:[0,0,1],'-z':[0,0,-1]}
+const presetRotations = (Object.keys(directions) as CloudViewAxis[]).map(axis => {
+  const up = axis === 'z' || axis === '-z' ? new Vector3(0, 1, 0) : new Vector3(0, 0, 1)
+  const rotation = new Quaternion().setFromRotationMatrix(new Matrix4().lookAt(new Vector3(...directions[axis]), new Vector3(), up))
+  return {axis, rotation}
+})
 
 /** 一个激活的视口一个 renderer；没有常驻动画、后台重算或原始点云请求。 */
 export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, policy: CloudRendererPolicy,
-  picked: (index: number) => void, failed: (error: Error) => void) {
+  picked: (index: number) => void, failed: (error: Error) => void, viewChanged: (view: CloudViewState) => void) {
   const rect = host.getBoundingClientRect()
   function dimensions(width: number, height: number) {
     const w = Math.max(1, Math.floor(width)), h = Math.max(1, Math.floor(height))
@@ -27,16 +35,28 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
   const scene = new Scene(), geometry = new BufferGeometry(), material = new PointsMaterial({ size: 2, sizeAttenuation: false, vertexColors: true })
   let axes: AxesHelper | null = null
   let camera: PerspectiveCamera | OrthographicCamera
+  let reportedView: CloudViewState | undefined
   let radius = 1
   let pointDown: {x: number; y: number} | null = null
   function render() {
     if (!closed && renderer) renderer.render(scene, camera)
   }
   function schedule() { if (!closed && !frame) frame = requestAnimationFrame(() => { frame = 0; render() }) }
+  function publishView() {
+    if (closed) return
+    // 仅容纳 OrbitControls 在极轴处的浮点偏移，不是计量方向容差。
+    const view = presetRotations.find(preset => 1 - Math.abs(camera.quaternion.dot(preset.rotation)) <= 1e-12)?.axis ?? 'free'
+    if (view !== reportedView) { reportedView = view; viewChanged(view) }
+  }
+  function controlsChanged() { publishView(); schedule() }
+  function releaseControls() {
+    controls?.removeEventListener('change', controlsChanged)
+    controls?.dispose(); controls = null
+  }
   function dispose() {
     if (closed) return
     closed = true
-    cancelAnimationFrame(frame); observer?.disconnect(); overlay?.dispose(); controls?.dispose()
+    cancelAnimationFrame(frame); observer?.disconnect(); overlay?.dispose(); releaseControls()
     if (renderer) {
       renderer.domElement.removeEventListener('webglcontextlost', lost)
       renderer.domElement.removeEventListener('pointerdown', down)
@@ -58,15 +78,15 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
     if (hit?.index !== undefined) picked(hit.index)
   }
   function bindControls() {
-    controls?.dispose()
+    releaseControls()
     controls = new OrbitControls(camera, renderer!.domElement)
     controls.enableDamping = false
     controls.zoomToCursor = true
     controls.mouseButtons.LEFT = panEnabled ? MOUSE.PAN : MOUSE.ROTATE
-    controls.addEventListener('change', schedule)
+    controls.addEventListener('change', controlsChanged)
   }
   function fit(axis: CloudViewAxis = 'iso') {
-    const directions:Record<CloudViewAxis,[number,number,number]>={iso:[1,-1,.8],x:[1,0,0],'-x':[-1,0,0],y:[0,-1,0],'-y':[0,1,0],z:[0,0,1],'-z':[0,0,-1]}
+    if (closed) return
     const direction = directions[axis],top=axis==='z'||axis==='-z'
     camera.up.set(0, top ? 1 : 0, top ? 0 : 1)
     camera.position.set(...direction as [number, number, number]).normalize().multiplyScalar(radius * 3 / Math.min(1, width / height))
@@ -77,7 +97,7 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
     } else camera.aspect = width / height
     camera.updateProjectionMatrix()
     // OrbitControls 在构造时冻结 up 的变换，换轴必须同步重建控制器。
-    bindControls(); controls!.target.set(0, 0, 0); controls!.update(); schedule()
+    bindControls(); controls!.target.set(0, 0, 0); controls!.update(); publishView(); schedule()
   }
   const points = new Points(geometry, material)
   try {
@@ -127,7 +147,7 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
         camera.up.copy(old.up);camera.position.copy(old.position);camera.quaternion.copy(old.quaternion)
         if(camera instanceof PerspectiveCamera)camera.position.copy(old.position).sub(target).normalize().multiplyScalar(half/Math.tan(camera.fov*Math.PI/360)).add(target)
         overlay?.camera(camera)
-        bindControls();controls!.target.copy(target);controls!.update();camera.updateProjectionMatrix();schedule()
+        bindControls();controls!.target.copy(target);controls!.update();camera.updateProjectionMatrix();publishView();schedule()
       },
       zoom(inward:boolean){if(closed)return;if(inward)controls!.dollyIn(.8);else controls!.dollyOut(.8);controls!.update();schedule()},
       pan(enabled: boolean) { panEnabled = enabled; controls!.mouseButtons.LEFT = enabled ? MOUSE.PAN : MOUSE.ROTATE },

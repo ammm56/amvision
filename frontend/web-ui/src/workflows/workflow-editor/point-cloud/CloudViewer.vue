@@ -1,14 +1,14 @@
 <template>
   <section class="cloud-viewer" :class="{'show-details':showDetails}" :style="showDetails?{height:'auto'}:undefined">
     <div class="cloud-tools">
-      <button :title="t('reset')" :aria-label="t('reset')" :disabled="!scene" @click="axis = 'iso'; scene?.fit()"><RotateCcw :size="18" /></button>
+      <button :title="t('reset')" :aria-label="t('reset')" :disabled="!scene" @click="scene?.fit()"><RotateCcw :size="18" /></button>
       <button :title="zh?'放大':'Zoom in'" :aria-label="zh?'放大':'Zoom in'" :disabled="!scene" @click="scene?.zoom(true)"><ZoomIn :size="18" /></button>
       <button :title="zh?'缩小':'Zoom out'" :aria-label="zh?'缩小':'Zoom out'" :disabled="!scene" @click="scene?.zoom(false)"><ZoomOut :size="18" /></button>
       <button v-if="body.geometry||curves.length||measurements.length" :title="zh?'测量与质量详情':'Measurement and quality details'" :aria-label="zh?'测量与质量详情':'Measurement and quality details'" :aria-pressed="showDetails" @click="showDetails=!showDetails"><List :size="18" /></button>
       <div class="cloud-modes" role="group" :aria-label="zh?'视角操作':'View navigation'"><button :title="zh?'旋转视角':'Rotate view'" :aria-label="zh?'旋转视角':'Rotate view'" :aria-pressed="!pan" :disabled="!scene" @click="pan=false; scene?.pan(false)"><Orbit :size="18" /></button><button :title="t('pan')" :aria-label="t('pan')" :aria-pressed="pan" :disabled="!scene" @click="pan=true; scene?.pan(true)"><Hand :size="18" /></button></div>
       <button v-if="allowPick" :title="zh?'拾取候选位置':'Pick candidate position'" :aria-label="zh?'拾取候选位置':'Pick candidate position'" :aria-pressed="picking" :disabled="!scene" @click="picking=!picking"><Crosshair :size="18" /></button>
       <label>{{ t('projection') }}<select v-model="orthographic" :disabled="!scene" @change="scene?.projection(orthographic)"><option :value="false">{{ t('perspective') }}</option><option :value="true">{{ t('orthographic') }}</option></select></label>
-      <label>{{ t('axis') }}<select v-model="axis" :disabled="!scene" @change="scene?.fit(axis)"><option value="iso">3D</option><option value="z">{{ zh?'顶视 +Z':'Top +Z' }}</option><option value="-z">{{ zh?'底视 -Z':'Bottom -Z' }}</option><option value="y">{{ zh?'前视 -Y':'Front -Y' }}</option><option value="-y">{{ zh?'后视 +Y':'Back +Y' }}</option><option value="x">{{ zh?'右视 +X':'Right +X' }}</option><option value="-x">{{ zh?'左视 -X':'Left -X' }}</option></select></label>
+      <label>{{ t('axis') }}<select :value="axis" :disabled="!scene" @change="selectView"><option value="free" disabled>{{ zh?'自由视图':'Free view' }}</option><option value="iso">3D</option><option value="z">{{ zh?'顶视 +Z':'Top +Z' }}</option><option value="-z">{{ zh?'底视 -Z':'Bottom -Z' }}</option><option value="y">{{ zh?'前视 -Y':'Front -Y' }}</option><option value="-y">{{ zh?'后视 +Y':'Back +Y' }}</option><option value="x">{{ zh?'右视 +X':'Right +X' }}</option><option value="-x">{{ zh?'左视 -X':'Left -X' }}</option></select></label>
       <label>{{ t('size') }}<input v-model.number="size" :disabled="!scene" type="range" min="1" max="8" step="1" @input="scene?.pointSize(size)"></label>
       <template v-if="planes.length"><label>{{ zh?'平面':'Plane' }}<select v-model="selectedPlane"><option value="">{{ zh?'未选择':'None' }}</option><option v-for="plane in planes" :key="String(plane.feature_id)" :value="String(plane.feature_id)">{{ plane.feature_id }}</option></select></label><label>{{ zh?'颜色':'Color' }}<select v-model="colorMode" :disabled="!selectedPlane||!scene"><option value="original">{{ zh?'原始':'Original' }}</option><option value="support">{{ zh?'支持 / 剔除':'Support / rejected' }}</option><option value="residual">{{ zh?'有符号残差':'Signed residual' }}</option></select></label></template>
       <template v-if="editRois?.length"><button :title="zh?'移动 ROI':'Move ROI'" :aria-label="zh?'移动 ROI':'Move ROI'" :aria-pressed="editMode==='translate'" :disabled="!scene" @click="editMode='translate'"><Move3D :size="18" /></button><button :title="zh?'旋转 ROI':'Rotate ROI'" :aria-label="zh?'旋转 ROI':'Rotate ROI'" :aria-pressed="editMode==='rotate'" :disabled="!scene" @click="editMode='rotate'"><Rotate3D :size="18" /></button></template>
@@ -37,7 +37,7 @@ import { useI18n } from 'vue-i18n'
 import { Hand, RefreshCw, RotateCcw, Move3D, Rotate3D, Crosshair, ZoomIn, ZoomOut, Orbit, List } from '@lucide/vue'
 import { readCloudCapabilities } from '../services/measurement-resource.service'
 import { decodeCloudPreview, type CloudDisplayData } from './preview-data'
-import { createCloudRenderer, type CloudViewAxis } from './renderer'
+import { createCloudRenderer, type CloudViewState } from './renderer'
 import GeometrySummary from './GeometrySummary.vue'
 import MeasurementSummary from './MeasurementSummary.vue'
 import BoundarySummary from './BoundarySummary.vue'
@@ -62,7 +62,11 @@ const body = computed(() => props.payload), color = computed(() => displayObject
 const unit = computed(() => displayObject(body.value.spatial).length_unit || t('unknown'))
 const frame = computed(() => displayObject(body.value.spatial).frame_id)
 const loading = ref(false), error = ref(''), pan = ref(false), orthographic = ref(false), size = ref(2)
-const axis = ref<CloudViewAxis>('iso')
+const axis = ref<CloudViewState>('iso')
+function selectView(event: Event) {
+  const selected = (event.target as HTMLSelectElement).value as CloudViewState
+  if (selected !== 'free') scene.value?.fit(selected)
+}
 const showDetails=ref(false)
 const picked = ref<ReturnType<CloudDisplayData['point']> | null>(null)
 const picking=ref(false),measurements=ref<MeasurementDisplay[]>([]),selectedMeasurement=ref('')
@@ -91,7 +95,13 @@ async function load() {
       if(token!==generation||signal.aborted||props.payload!==payload)return
       picked.value = decoded.point(index)
       if(props.allowPick&&picking.value)emit('candidate',{payload,xyz:[...picked.value.xyz]})
-    }, failure => { release(); error.value = failure.message; loading.value = false })
+    }, failure => {
+      if(token!==generation||signal.aborted||props.payload!==payload)return
+      release(); error.value = failure.message; loading.value = false
+    }, view => {
+      if(token!==generation||signal.aborted||props.payload!==payload)return
+      axis.value = view
+    })
     updateGeometry()
   } catch (failure) {
     if (token === generation && !signal.aborted) { scene.value?.dispose(); scene.value = null; data?.dispose(); data = null; error.value = failure instanceof Error ? failure.message : 'unavailable' }

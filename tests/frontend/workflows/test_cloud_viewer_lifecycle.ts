@@ -58,3 +58,34 @@ it('picks only explicitly and ignores callbacks from a replaced or disposed scen
   const calls=data.point.mock.calls.length
   wrapper.unmount();latest(0);expect(data.point).toHaveBeenCalledTimes(calls)
 })
+
+it('uses renderer view state and rejects stale view and failure callbacks',async()=>{
+  mocks.capabilities.mockResolvedValue({renderer:{}})
+  const owners: {dispose:ReturnType<typeof vi.fn>}[]=[]
+  const scenes: {dispose:ReturnType<typeof vi.fn>;geometry:ReturnType<typeof vi.fn>;fit:ReturnType<typeof vi.fn>}[]=[]
+  mocks.decode.mockImplementation(async()=>{const owner={dispose:vi.fn()};owners.push(owner);return owner})
+  mocks.create.mockImplementation((_host,_data,_policy,_pick,_failed,changed)=>{
+    const scene={dispose:vi.fn(),geometry:vi.fn(),fit:vi.fn((axis='iso')=>changed(axis))}
+    scenes.push(scene);changed('iso');return scene
+  })
+  const wrapper=viewer();await flushPromises()
+  const select=wrapper.get('select option[value="free"]').element.parentElement as HTMLSelectElement
+  const oldChanged=mocks.create.mock.calls[0]![5],oldFailed=mocks.create.mock.calls[0]![4]
+  expect(select.value).toBe('iso')
+  oldChanged('free');await nextTick();expect(select.value).toBe('free')
+  select.value='z';select.dispatchEvent(new Event('change'));await nextTick()
+  expect(scenes[0]!.fit).toHaveBeenLastCalledWith('z');expect(select.value).toBe('z')
+  oldChanged('free');await nextTick()
+  select.value='z';select.dispatchEvent(new Event('change'));await nextTick()
+  expect(scenes[0]!.fit).toHaveBeenCalledTimes(2)
+  await wrapper.get('[aria-label="Reset view"]').trigger('click')
+  expect(select.value).toBe('iso')
+  await wrapper.setProps({payload:{...payload,cloud_id:'replacement'}});await flushPromises()
+  oldChanged('x');oldFailed(new Error('cloud_context_lost'));await nextTick()
+  expect(select.value).toBe('iso');expect(wrapper.find('[role=alert]').exists()).toBe(false)
+  expect(scenes[0]!.dispose).toHaveBeenCalledOnce();expect(owners[0]!.dispose).toHaveBeenCalledOnce()
+  expect(scenes[1]!.dispose).not.toHaveBeenCalled();expect(owners[1]!.dispose).not.toHaveBeenCalled()
+  const latest=mocks.create.mock.calls.at(-1)!
+  wrapper.unmount();latest[5]('free');latest[4](new Error('cloud_context_lost'))
+  expect(scenes[1]!.dispose).toHaveBeenCalledOnce();expect(owners[1]!.dispose).toHaveBeenCalledOnce()
+})

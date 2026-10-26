@@ -67,6 +67,7 @@ export default defineConfig({
     root: path.resolve(projectDirectory, '../..'),
     alias: [
       {find:/^three$/,replacement:path.resolve(projectDirectory,'node_modules/three/build/three.module.js')},
+      {find:'three/addons',replacement:path.resolve(projectDirectory,'node_modules/three/examples/jsm')},
       ...['vue','vue-i18n','vue-router','pinia','reka-ui','vitest','@vue/test-utils'].map(name=>({find:name,replacement:path.resolve(projectDirectory,`node_modules/${name}`)})),
     ],
     environment: 'jsdom',
