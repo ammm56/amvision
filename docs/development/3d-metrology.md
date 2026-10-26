@@ -2,7 +2,11 @@
 
 ## 1. 状态与阅读约定
 
-状态：**M0 收口；M1、M2 与 M3.1–M3.3 共十八节点已内部接通，R1–R4 修复已提交，三维契约统一 v1。R5 A 联合 ROI、B 本次 pose/U/V 已实现；C 动态截面尚未实施，十二钢片和两半圆尚未完成同定义实测验收。生产超时、容量和发行 profile 仍未验收，节点继续隐藏；M3.4、M3.5 未完成**。设计依据见 [ADR-0015](../decisions/ADR-0015-3d-metrology.md)，修正依据见 [真实工件审计](3d-metrology-audit-20261024.md)，当前进度见 [R4 实施记录](3d-metrology-r4.md)和 [R5 配方设计](3d-metrology-r5.md)。历史证据见 [M3.3 实施记录](3d-metrology-m33-acceptance.md)、[M2 几何节点](3d-metrology-m2.md)、[M1 真实发布运行](3d-metrology-m1-published.md)、[M1 I/O](3d-metrology-m1-io.md)、[输入适配](3d-metrology-m1-input.md)、[运行引用与生命周期](3d-metrology-m1-runtime.md)、[资产与保存导出](3d-metrology-m1-assets.md)、[节点与资源 API](3d-metrology-m1-nodes.md)和[传输与界面](3d-metrology-m1-transports.md)。下文历史源码检查和规格不等于全部能力已实现。
+下一批执行依据为 [R5 D/E 详细实施计划](3d-metrology-r5-de-plan.md)，按视角修复、实际支持、容量核定、代表量值、全部对象和正式发布顺序推进；不重建已有平台边界。
+
+2026-10-26 最新执行见 [R5 D0/D1](3d-metrology-r5-d0-d1.md)：视角状态和旧实例错误回调已修复，21 区逐行支持及独立拟面在 Windows/WSL 复验一致；四份真实候选图与审核表已整理。正式支持/质量/容量仍待审核，尚未进入代表量值和全页面发布验收。[前序工件审计](3d-metrology-audit-20261026.md)保留发现依据，不重做已完成节点或平台边界。
+
+状态：**M0 收口；M1、M2 与 M3.1–M3.3 共十八节点已内部接通，R1–R4 已提交，三维契约统一 v1。R5 A 联合 ROI、B 本次 pose/U/V、C 动态截面与评价面继承已内部实现；十二钢片/两半圆尚未完成同定义实测验收。生产超时、容量及发行 profile 未验收，节点隐藏；M3.4、M3.5 未完成**。设计依据见 [ADR-0015](../decisions/ADR-0015-3d-metrology.md)，修正依据见 [真实工件审计](3d-metrology-audit-20261024.md)，当前进度见 [R4](3d-metrology-r4.md)、[R5 配方](3d-metrology-r5.md)和 [R5 C 验证及未决项](3d-metrology-r5-c.md)。历史证据见 [M3.3](3d-metrology-m33-acceptance.md)、[M2](3d-metrology-m2.md)、[M1 发布](3d-metrology-m1-published.md)、[I/O](3d-metrology-m1-io.md)、[输入](3d-metrology-m1-input.md)、[生命周期](3d-metrology-m1-runtime.md)、[资产](3d-metrology-m1-assets.md)、[资源 API](3d-metrology-m1-nodes.md)和[界面](3d-metrology-m1-transports.md)。历史规格不等于全部能力已实现。
 
 M0 的代码核对与契约设计已收口，M1 已按后续授权开始 I/O 修复，未注册空节点。已确认每次 Workflow 调用输入完整点云，同时支持文件和同机内存二进制数组，不接收连续实时点云流；每次提交载荷最大 1 GB，不是运行内存上限。生产调用不自动保留完整点云，配方显式选择保存，结果保留数值和有界显示证据。最低机器内存、目标同时运行数和单次时限未确定，不填默认值。
 
@@ -24,7 +28,9 @@ R4 已实现两种显式基准模式：基准也需实测支持，或基准平�
 
 2026-10-26 R5 A：已扩展现有 ROI 并集和编辑器，沿用只读子集、原始行号、预算、取消和 Scope 回收；参数/端口、资产方法及显示依赖同批核对。Windows 与 WSL 原生目录的完整文件逐行选择一致，真实发布/Trigger 与页面 Preview 已验证，详见 R5 第 7.5 节。下一步实施 B/C 的本次 pose 与动态截面接线，再冻结 A_top_L/S1 工程窗口；没有冻结生产参数或启用节点。
 
-2026-10-26 R5 B：内部包 `0.1.13`，height-query/方向 measure-step 接本次位姿及固定 U/V，共用原位姿支持准入和 R4 数值内核；持久证据保存配置、源身份和解析线。旧开发配置需重建，无兼容分支。完整 14,745,099 点输入在双平台验证，页面改用真实百万点有界显示，修正大 Base64 校验、旋转轴和窗口重置问题，补缩放/平移/六向视图与详情展开。具体测试及限制见 [R5 第 7.6 节](3d-metrology-r5.md#76-b-批次契约与验证2026-10-26)。下一步为 C，生产继续隐藏。
+2026-10-26 R5 B：内部包 `0.1.13`，height-query/方向 measure-step 接本次位姿及固定 U/V，共用原位姿支持准入和 R4 内核；完整 14,745,099 点双平台验证、百万点显示及交互见 [R5 第 7.6 节](3d-metrology-r5.md#76-b-批次契约与验证2026-10-26)。
+
+2026-10-26 R5 C：内部包 `0.1.14`，接通固定/测量比例等高、above/below 严格顺序、下游实际评价面继承和保存读取。独立真值、真实发布、完整样本及前端通过范围见 [C 记录](3d-metrology-r5-c.md)。完整样本局部诊断截线为 target_ambiguous，窄屏容器初次加载异常来源未定，不能算正式工件或全页面通过。下一步审核 D 的 A_top_L/S1 窗口和配置，不重做 A–C，生产仍隐藏。
 
 已有样本脚本是独立探索产物，未接入 amvision。本文只保留可复用的需求、证据边界和回归参考，不复制会话日志、原始点云或一次性脚本。算法测试通过、工程闭环完成、真实计量准确度通过和生产验收通过是四种不同状态。
 
