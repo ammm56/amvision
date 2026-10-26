@@ -28,10 +28,10 @@
           <fieldset v-if="extents&&object(draft.source).kind==='boundary'" class="segments"><legend>{{ label('支持段','Support segments') }}</legend>
             <label v-for="segment in segments" :key="segment"><input type="checkbox" :checked="selectedSegments.includes(segment)" @change="toggleSegment(segment,($event.target as HTMLInputElement).checked)">{{ segment }}</label>
           </fieldset>
-          <GeometryFields v-if="edge" v-model="draft" :fields="edgeFields" />
+          <template v-if="edge"><label>{{ label('查询坐标','Query coordinates') }}<select :value="object(draft.query_position).kind==='plane-uv'?'plane-uv':'xyz'" @change="changeQuery(($event.target as HTMLSelectElement).value)"><option value="xyz">XYZ</option><option value="plane-uv">{{ label('评价面 U/V','Evaluation U/V') }}</option></select></label><GeometryFields v-model="draft" :fields="edgeFields" /><EvaluationDirectionEditor v-model="draft.direction" :label="label('测量方向','Measurement direction')" /></template>
           <label v-if="edge">{{ label('距离符号','Distance sign') }}<select v-model="draft.value_mode"><option value="signed">{{ label('有符号','Signed') }}</option><option value="absolute">{{ label('绝对值','Absolute') }}</option></select></label>
           <label v-if="hole">{{ label('目标定义','Target definition') }}<select v-model="draft.target_kind"><option value="closed-hole">{{ label('闭合圆孔','Closed hole') }}</option><option value="open-arc">{{ label('开放圆弧','Open arc') }}</option></select></label>
-          <GeometryFields v-if="hole" v-model="draft" :fields="holeFields" />
+          <EvaluationDirectionEditor v-if="hole" v-model="draft.display_direction" :label="label('直径辅助方向','Diameter display direction')" />
           <fieldset class="outputs"><legend>{{ label('输出量','Output quantities') }}</legend>
             <label v-for="component in outputComponents" :key="component">
               <input v-if="hole" type="checkbox" :checked="outputs.some(o=>o.component===component)" @change="toggleOutput(component,($event.target as HTMLInputElement).checked)">
@@ -39,7 +39,7 @@
               <input :aria-label="`${componentLabel(component)} ID`" :value="outputs.find(o=>o.component===component)?.item_id??''" :disabled="!outputs.some(o=>o.component===component)" @input="setOutput(component,($event.target as HTMLInputElement).value)">
             </label>
           </fieldset>
-          <details><summary>{{ label('评价空间','Evaluation space') }}</summary><GeometryFields v-model="draft" :fields="evaluationFields" /></details>
+          <EvaluationEditor v-model="draft.evaluation" :allow-feature="!extents||object(draft.source).kind==='boundary'" />
         </section>
         <section class="dimension-view">
           <label>{{ label('点云显示','Point cloud view') }}<select v-model="previewId"><option value="">{{ label('未选择','None') }}</option><option v-for="view in previews" :key="view.id" :value="view.id">{{ view.label }}</option></select></label>
@@ -66,6 +66,9 @@ import WorkflowLimitRulesEditor from '@/workflows/workflow-editor/components/Wor
 import {parameterCloudPreviewsKey,parameterPreviewStateKey,type ParameterEditorSources} from '@/workflows/workflow-editor/parameters/editor-context'
 import {curveItems} from '@/workflows/workflow-editor/point-cloud/boundary-display'
 import GeometryFields from './GeometryFields.vue'
+import EvaluationEditor from './EvaluationEditor.vue'
+import EvaluationDirectionEditor from './EvaluationDirectionEditor.vue'
+import {newEvaluation} from './evaluation-form'
 import {copy,get,object,put,vector,type Form,type Field} from './form'
 import {dimensionComponents,dimensionFeatureChoices,dimensionIssues,newDimension,newExtentMode} from './dimension-form'
 
@@ -87,24 +90,36 @@ const segments=computed(()=>choices.value.find(c=>c.id===get(draft.value,'source
 const selectedSegments=computed(()=>(get(draft.value,'source.selection.segment_ids')??[]) as string[])
 const outputs=computed(()=>(Array.isArray(draft.value.outputs)?draft.value.outputs:[]).map(object))
 const outputComponents=computed(()=>hole.value?dimensionComponents:extents.value?(object(draft.value.mode).kind==='axis-spans'?['u','v']:['length','width']):['distance'])
-const canPick=computed(()=>edge.value&&!!preview.value&&get(draft.value,'evaluation.frame_id')===object(preview.value.payload.spatial).frame_id&&get(draft.value,'evaluation.length_unit')===object(preview.value.payload.spatial).length_unit)
+const pickPlane=computed(()=>{
+  const e=object(draft.value.evaluation)
+  if(e.kind!=='feature')return e
+  const matches=(props.inputSources?.features??[]).flatMap(s=>{const output=object(s.previewOutput);return Array.isArray(output.items)?output.items.map(object).filter(f=>f.feature_id===draft.value.reference_feature_id&&f.kind==='line'&&f.valid===true&&object(f.support).observation_id===preview.value?.payload.observation_id):[]})
+  return matches.length===1?object(object(matches[0]!.method).evaluation):{}
+})
+const canPick=computed(()=>edge.value&&!!preview.value&&get(draft.value,'evaluation.frame_id')===object(preview.value.payload.spatial).frame_id&&get(draft.value,'evaluation.length_unit')===object(preview.value.payload.spatial).length_unit&&(object(draft.value.query_position).kind!=='plane-uv'||vector(pickPlane.value.origin)&&Array.isArray(pickPlane.value.rotation)&&pickPlane.value.rotation.length===3&&pickPlane.value.rotation.every(vector)))
 const componentLabel=(c:string)=>({u:'U',v:'V',length:label('长边 L','Length L'),width:label('短边 W','Width W'),distance:label('距离','Distance'),diameter:label('直径','Diameter'),center_x:label('圆心 X','Center X'),center_y:label('圆心 Y','Center Y'),center_z:label('圆心 Z','Center Z')}[c]??c)
-const evaluationFields=computed<Field[]>(()=>[{path:'evaluation.frame_id',label:label('坐标系','Frame')},{path:'evaluation.length_unit',label:label('长度单位','Length unit'),type:'select',options:['m','mm','um']},{path:'evaluation.origin',label:label('评价原点 XYZ','Evaluation origin XYZ'),type:'vector'},{path:'evaluation.rotation',label:label('评价 U/V/N','Evaluation U/V/N'),type:'matrix'}])
-const edgeFields=computed<Field[]>(()=>[{path:'query_position',label:label('查询位置 XYZ','Query XYZ'),type:'vector'},{path:'direction',label:label('测量单位方向','Measurement unit direction'),type:'vector'}])
-const holeFields=computed<Field[]>(()=>[{path:'display_direction',label:label('直径辅助方向','Diameter display direction'),type:'vector'}])
+const edgeFields=computed<Field[]>(()=>object(draft.value.query_position).kind==='plane-uv'?[{path:'query_position.uv',label:label('查询位置 U/V','Query U/V'),type:'pair'}]:[{path:'query_position',label:label('查询位置 XYZ','Query XYZ'),type:'vector'}])
 const rectangleFields=computed<Field[]>(()=>[['area_abs_tolerance','面积绝对容差（单位²）','Absolute area tolerance (unit squared)'],['area_rel_tolerance','面积相对容差','Relative area tolerance'],['dimension_abs_tolerance','尺寸绝对容差（长度单位）','Absolute dimension tolerance (length unit)'],['dimension_rel_tolerance','尺寸相对容差','Relative dimension tolerance'],['orientation_tolerance_radians','方向等价角 rad','Equivalent direction angle rad']].map(([key,cn,en])=>({path:`mode.${key}`,label:label(cn!,en!),type:'number'})))
 const conditionFields=computed<Field[]>(()=>[['max_plane_distance','最大共面距离','Maximum plane distance'],['max_plane_angle_radians','最大共面夹角 rad','Maximum plane angle rad'],['min_crossing_sine','最小求交正弦','Minimum crossing sine']].map(([path,cn,en])=>({path:path!,label:label(cn!,en!),type:'number'})))
 const qualityFields=computed<Field[]>(()=>[{path:'quality_policy.policy_id',label:label('质量策略 ID','Quality policy ID')},{path:'quality_policy.policy_version',label:label('策略版本','Policy version'),type:'number'}])
 function show(){draft.value=Object.keys(object(props.modelValue)).length?copy(object(props.modelValue)):newDimension(kind.value);resetView();open.value=true}
 function resetView(){previewId.value='';activeSlot.value='';candidate.value=null}
 function changeMode(mode:string){draft.value={...draft.value,mode:newExtentMode(mode),outputs:(mode==='axis-spans'?['u','v']:['length','width']).map(component=>({component,item_id:''}))};candidate.value=null}
-function changeSource(kind:string){draft.value={...draft.value,source:kind==='cloud'?{kind}:{kind,selection:{feature_id:'',segment_ids:[]}}};activeSlot.value=''}
+function changeSource(kind:string){draft.value={...draft.value,source:kind==='cloud'?{kind}:{kind,selection:{feature_id:'',segment_ids:[]}},evaluation:kind==='cloud'&&object(draft.value.evaluation).kind==='feature'?newEvaluation('configured',draft.value.evaluation):draft.value.evaluation};activeSlot.value='';candidate.value=null}
+function changeQuery(kind:string){draft.value={...draft.value,query_position:kind==='plane-uv'?{kind,uv:[null,null]}:[null,null,null]};candidate.value=null}
 function selectFeature(path:string,id:string){draft.value=put(draft.value,path,id);if(extents.value)draft.value=put(draft.value,'source.selection.segment_ids',[]);candidate.value=null}
 function toggleSegment(id:string,on:boolean){draft.value=put(draft.value,'source.selection.segment_ids',on?[...selectedSegments.value,id]:selectedSegments.value.filter(s=>s!==id))}
 function toggleOutput(component:string,on:boolean){draft.value={...draft.value,outputs:on?[...outputs.value,{component,item_id:''}]:outputs.value.filter(o=>o.component!==component)}}
 function setOutput(component:string,item_id:string){draft.value={...draft.value,outputs:outputs.value.map(o=>o.component===component?{...o,item_id}:o)}}
 function swap(){draft.value={...draft.value,reference_feature_id:draft.value.target_feature_id,target_feature_id:draft.value.reference_feature_id};candidate.value=null;activeSlot.value=''}
-function pick(value:{payload:Form;xyz:number[]}){if(!open.value||props.disabled||!canPick.value||value.payload!==preview.value?.payload||!vector(value.xyz))return;candidate.value=[...value.xyz];draft.value={...draft.value,query_position:[...value.xyz]}}
+function pick(value:{payload:Form;xyz:number[]}){
+  if(!open.value||props.disabled||!canPick.value||value.payload!==preview.value?.payload||!vector(value.xyz))return
+  if(object(draft.value.query_position).kind==='plane-uv'){
+    const e=pickPlane.value,origin=e.origin as number[],rotation=e.rotation as number[][],delta=value.xyz.map((v,i)=>v-origin[i]!)
+    draft.value={...draft.value,query_position:{kind:'plane-uv',uv:[0,1].map(j=>delta.reduce((s,v,i)=>s+v*rotation[i]![j]!,0))}}
+  }else draft.value={...draft.value,query_position:[...value.xyz]}
+  candidate.value=[...value.xyz]
+}
 function chooseFeature(value:{payload:Form;featureId:string;segmentId:string}){
   if(!open.value||props.disabled||!activeSlot.value||value.payload!==preview.value?.payload||choices.value.filter(c=>c.id===value.featureId).length!==1)return
   if(!curveItems(value.payload).some(f=>f.kind===wantedKind.value&&f.feature_id===value.featureId))return
@@ -115,7 +130,7 @@ function chooseFeature(value:{payload:Form;featureId:string;segmentId:string}){
 function apply(){if(!issues.value.length&&!referenceIssues.value.length&&!props.disabled){emit('update:modelValue',copy(draft.value));open.value=false;resetView()}}
 watch(()=>[props.modelValue,props.nodeType,props.disabled,JSON.stringify(props.inputSources)],()=>{open.value=false;resetView()})
 watch(()=>[state().runId,state().succeeded],resetView)
-watch(()=>[previewId.value,get(draft.value,'evaluation.frame_id'),get(draft.value,'evaluation.length_unit')],()=>{candidate.value=null;activeSlot.value=''})
+watch(()=>[previewId.value,JSON.stringify(draft.value.evaluation)],()=>{candidate.value=null;activeSlot.value=''})
 </script>
 <style src="./editor.css" scoped></style>
 <style scoped>

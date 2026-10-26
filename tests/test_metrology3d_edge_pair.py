@@ -18,20 +18,22 @@ from tests.test_metrology3d_dimension_contracts import dimension_policy
 def pair_parameters(**changes):
     """测试平面和求交条件均显式给定。"""
     return MeasureEdgePairParameters(
-        **dict(
-            evaluation=evaluation(),
-            outputs=[dict(component="distance", item_id="gap")],
-            quality_policy=dimension_policy(),
-            reference_feature_id="a",
-            target_feature_id="b",
-            query_position=(0, 0, 0),
-            direction=(1, 0, 0),
-            value_mode="signed",
-            max_plane_distance=1e-8,
-            max_plane_angle_radians=1e-8,
-            min_crossing_sine=0.01,
+        **{
+            **dict(
+                evaluation=evaluation(),
+                outputs=[dict(component="distance", item_id="gap")],
+                quality_policy=dimension_policy(),
+                reference_feature_id="a",
+                target_feature_id="b",
+                query_position=(0, 0, 0),
+                direction=(1, 0, 0),
+                value_mode="signed",
+                max_plane_distance=1e-8,
+                max_plane_angle_radians=1e-8,
+                min_crossing_sine=0.01,
+            ),
             **changes,
-        )
+        }
     )
 
 
@@ -43,9 +45,7 @@ def line(origin=(4, 0, 0), direction=(0, 1, 0), intervals=((-2, 2),), plane=None
             LineInterval(segment_id=f"segment-{i}", start=a, end=b)
             for i, (a, b) in enumerate(intervals)
         ],
-        method=SimpleNamespace(
-            parameters=SimpleNamespace(evaluation=plane or evaluation())
-        ),
+        method=SimpleNamespace(evaluation=plane or evaluation()),
     )
 
 

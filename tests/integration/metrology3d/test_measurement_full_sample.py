@@ -154,6 +154,22 @@ def test_complete_file_height_step_evidence_and_release(tmp_path, request):
             origin=dict(kind="anchor-projection", anchor=query),
         )
         graph = measurement_graph(height=p, reference_roi=roi, read=False, frame=frame)
+        raw_graph = graph.model_dump(mode="json")
+        raw_graph["template_outputs"].extend(
+            dict(
+                output_id=name,
+                display_name=name,
+                payload_type_id=kind,
+                source_node_id=node,
+                source_port=port,
+            )
+            for name, kind, node, port in (
+                ("reference-feature", "features3d.v1", "plane", "features"),
+                ("target-feature", "features3d.v1", "height", "features"),
+                ("current-pose", "pose3d.v1", "frame", "pose"),
+            )
+        )
+        graph = type(graph).model_validate(raw_graph)
         for node in graph.nodes:
             if node.node_id == "preview":
                 node.parameters["point_limit"] = 1000000
@@ -212,6 +228,13 @@ def test_complete_file_height_step_evidence_and_release(tmp_path, request):
         assert display["state"] == "ready" and display["display_point_count"] == 1000000
         assert item.method.query_resolution.pose.pose_id == "datum"
         assert decode(display)["positions"].dtype == np.dtype("float32")
+        from tests.integration.metrology3d.dynamic_contour_sample import (
+            check_sample_contours,
+        )
+
+        contours, contour_display = check_sample_contours(
+            runtime, filtered, result, item, roi, preview, display
+        )
         report = dict(
             input_bytes=meta.content_length,
             input_points=cloud.point_count,
@@ -222,6 +245,7 @@ def test_complete_file_height_step_evidence_and_release(tmp_path, request):
             height=item.value,
             elapsed_seconds=monotonic() - started,
             live_array_bytes=runtime.budget.used,
+            dynamic_contours=contours,
         )
         destination = request.config.getoption("--cloud-report-dir")
         if destination:
@@ -229,6 +253,9 @@ def test_complete_file_height_step_evidence_and_release(tmp_path, request):
             directory.mkdir(parents=True, exist_ok=True)
             (directory / "m3-height-preview.json").write_text(
                 json.dumps(display), encoding="utf-8"
+            )
+            (directory / "r5-c-preview.json").write_text(
+                json.dumps(contour_display), encoding="utf-8"
             )
             (directory / "m3-height-parameters.json").write_text(
                 p.model_dump_json(), encoding="utf-8"

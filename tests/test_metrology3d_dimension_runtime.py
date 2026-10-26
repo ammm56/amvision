@@ -10,6 +10,8 @@ from backend.contracts.workflows.boundary3d_observations import (
     CircleMethod,
     LineFeature,
     LineMethod,
+    BoundaryEvidence,
+    BoundaryMethod,
 )
 from backend.contracts.workflows.geometry3d_methods import parameter_digest
 from backend.contracts.workflows.geometry3d_observations import Features3d
@@ -29,6 +31,90 @@ from tests.test_metrology3d_boundary_contracts import (
 from tests.test_metrology3d_dimension_contracts import dimension_policy
 from tests.test_metrology3d_edge_pair import pair_parameters
 from tests.test_metrology3d_preprocess import make_cloud
+from tests.integration.metrology3d.test_boundary_extraction import (
+    extract_parameters,
+    region,
+)
+from custom_nodes._metrology3d_nodes.shared.cloud_assets import freeze_cloud_parent
+
+
+def analytic_fit_method(runtime, support, parameters, *, circle=False):
+    """为独立解析特征记录同一实际支持，不调用被测拟合器生成真值。"""
+    with runtime.borrow(support) as view:
+        points = np.concatenate(
+            [view.chunk(i, i + 1)["positions"] for i in range(support.point_count)]
+        ).astype(float)
+    checks, length = [], 0.0
+    p = extract_parameters(
+        feature_id=parameters.selection.feature_id,
+        evaluation=parameters.evaluation,
+        targets=[
+            dict(segment_id=s.segment_id, region=region(), closed=s.closed, role=s.role)
+            for s in support.topology.segments
+        ],
+    )
+    for part in support.topology.segments:
+        local = points[part.start : part.start + part.count]
+        distance = float(np.linalg.norm(np.diff(local, axis=0), axis=1).sum())
+        if part.closed:
+            distance += float(np.linalg.norm(local[-1] - local[0]))
+        length += distance
+        quality = geometry_quality(
+            support.observation_id,
+            {
+                "input_count": (support.point_count, "1"),
+                "surface_point_count": (support.point_count, "1"),
+                "face_count": (0, "1"),
+                "candidate_count": (len(support.topology.segments), "1"),
+                "support_count": (part.count, "1"),
+                "length": (distance, "mm"),
+            },
+            p.quality_policy,
+            reason="missing",
+        )
+        checks.append(dict(segment_id=part.segment_id, quality=quality))
+    quality = geometry_quality(
+        support.observation_id,
+        {
+            "input_count": (support.point_count, "1"),
+            "surface_point_count": (support.point_count, "1"),
+            "face_count": (0, "1"),
+            "candidate_count": (len(checks), "1"),
+            "support_count": (support.point_count, "1"),
+            "length": (length, "mm"),
+        },
+        p.quality_policy,
+        reason="missing",
+    )
+    boundary = BoundaryEvidence(
+        feature_id=p.feature_id,
+        valid=True,
+        reason=None,
+        failed_segment_id=None,
+        geometry=support.topology,
+        quality=quality,
+        segments=checks,
+        method=BoundaryMethod(
+            parameters=p,
+            parameters_sha256=parameter_digest(p),
+            resolution=dict(
+                observation_id=support.observation_id,
+                evaluation=p.evaluation,
+                height=None,
+                pose=None,
+                datum=None,
+                measurement=None,
+                reason=None,
+            ),
+        ),
+    )
+    return (CircleMethod if circle else LineMethod)(
+        parameters=parameters,
+        parameters_sha256=parameter_digest(parameters),
+        evaluation=parameters.evaluation,
+        boundary=boundary,
+        boundary_content_sha256=freeze_cloud_parent(runtime, support)["content_sha256"],
+    )
 
 
 def ordered(runtime, root, rows, segments):
@@ -104,7 +190,7 @@ def analytic_edges(runtime, root):
                 geometry=dict(origin=(x, 0, 0), direction=(0, 1, 0)),
                 support=support,
                 quality=quality,
-                method=LineMethod(parameters=p, parameters_sha256=parameter_digest(p)),
+                method=analytic_fit_method(runtime, support, p),
                 intervals=[dict(segment_id="side", start=-2, end=2)],
             )
         )
@@ -166,7 +252,7 @@ def analytic_circle(runtime, root, *, closed=True, role="inner"):
         reason=None,
         geometry=dict(center=(0, 0, 0), normal=(0, 0, 1), radius=4),
         support=support,
-        method=CircleMethod(parameters=p, parameters_sha256=parameter_digest(p)),
+        method=analytic_fit_method(runtime, support, p, circle=True),
         quality=quality,
         intervals=[
             dict(segment_id="arc", start_angle=0, sweep=2 * np.pi if closed else np.pi)

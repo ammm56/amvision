@@ -29,6 +29,12 @@ export function curveItems(payload: Record<string, unknown>): CurveDisplay[] {
     const method = object(f.method), evaluation = object(object(method.parameters).evaluation), spatial = object(payload.spatial)
     if (method.method_id !== ({ boundary: 'extract-boundary', line: 'fit-line', circle: 'fit-circle' }[String(f.kind)]) || method.method_version !== 1) throw invalid()
     if (evaluation.frame_id !== spatial.frame_id || evaluation.length_unit !== spatial.length_unit || object(object(f.quality).metrics).observation_id !== payload.observation_id) throw invalid()
+    const resolved = f.kind==='boundary'?object(method.resolution).evaluation:method.evaluation
+    if(resolved!==null){
+      const e=object(resolved)
+      if(e.frame_id!==spatial.frame_id||e.length_unit!==spatial.length_unit||!Array.isArray(e.rotation)||e.rotation.length!==3)throw invalid()
+      xyz(e.origin); e.rotation.forEach(xyz)
+    }else if(f.valid)throw invalid()
     if (!Array.isArray(f.points)) throw invalid()
     const points = f.points.map(xyz)
     if (!f.valid) {
@@ -76,7 +82,7 @@ export function curveStrokes(items: CurveDisplay[], policy: CloudRendererPolicy)
       const origin = xyz(g.origin), direction = xyz(g.direction)
       for (const interval of f.intervals) push(f, String(interval.segment_id), [finite(interval.start), finite(interval.end)].map(t => origin.map((v, i) => v + t * direction[i]!)), true)
     } else {
-      const center = xyz(g.center), radius = finite(g.radius), rotation = object(object(f.method).parameters).evaluation
+      const center = xyz(g.center), radius = finite(g.radius), rotation = f.method.evaluation
       const rows = object(rotation).rotation
       if (radius <= 0 || !Array.isArray(rows) || rows.length !== 3) throw invalid()
       const basis = rows.map(xyz)

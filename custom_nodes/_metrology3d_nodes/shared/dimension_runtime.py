@@ -15,6 +15,10 @@ from backend.contracts.workflows.dimension3d_evidence import (
     LineSnapshot,
 )
 from backend.contracts.workflows.geometry3d_methods import parameter_digest
+from backend.contracts.workflows.evaluation3d import FeatureEvaluation3d
+from backend.contracts.workflows.dimension3d_parameters import (
+    resolve_dimension_parameters,
+)
 from backend.contracts.workflows.measurement3d_evidence import MeasurementEvidence3d
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.runtime.exception_cleanup import (
@@ -27,6 +31,28 @@ from custom_nodes._metrology3d_nodes.shared.geometry_quality import (
     require_quality_result,
 )
 from custom_nodes._metrology3d_nodes.shared.measurement_support import require_cloud
+
+
+def dimension_evaluation(parameters, feature):
+    """长宽/孔取选中特征，边对取 reference，并沿原门禁核对 target。"""
+    if isinstance(parameters.evaluation, FeatureEvaluation3d):
+        if feature is None:
+            raise InvalidRequestError("继承评价面需要选中特征")
+        evaluation = (
+            (
+                feature.method.resolution.evaluation
+                if feature.kind == "boundary"
+                else feature.method.evaluation
+            )
+            if feature.valid
+            else None
+        )
+    else:
+        evaluation = parameters.evaluation
+    try:
+        return evaluation, resolve_dimension_parameters(parameters, evaluation)
+    except ValueError as error:
+        raise InvalidRequestError(str(error)) from error
 
 
 def select_features(runtime, groups, parameters, identities, kind):
@@ -121,6 +147,7 @@ def dimension_result(
     stage="geometry",
     candidates=None,
     feature_id=None,
+    evaluation,
 ):
     """唯一量值来源；失败保留全部启用项，质量比较复用 check_limits。"""
     metric_values = {"geometry_usable": (int(reason is None), "1"), **metrics}
@@ -150,7 +177,9 @@ def dimension_result(
         else "interpolated"
     )
     method = method_type(
-        parameters=parameters, parameters_sha256=parameter_digest(parameters)
+        parameters=parameters,
+        parameters_sha256=parameter_digest(parameters),
+        evaluation=evaluation,
     )
     items = tuple(
         item_type(

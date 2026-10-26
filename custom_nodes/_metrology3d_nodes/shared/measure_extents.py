@@ -132,6 +132,11 @@ def _measure_extents(runtime, parameters, *, cloud=None, groups=(), cancel):
     support = dimension_support(
         runtime, cloud, "source", feature=boundary, cancel=cancel
     )
+    from custom_nodes._metrology3d_nodes.shared.dimension_runtime import (
+        dimension_evaluation,
+    )
+
+    evaluation, _ = dimension_evaluation(parameters, boundary)
     reason = (
         cloud.reason
         if cloud.state == "unavailable"
@@ -144,8 +149,8 @@ def _measure_extents(runtime, parameters, *, cloud=None, groups=(), cancel):
     values = {}
     stage = "input"
     if reason is None:
-        origin = np.asarray(parameters.evaluation.origin)
-        rotation = np.asarray(parameters.evaluation.rotation)
+        origin = np.asarray(evaluation.origin)
+        rotation = np.asarray(evaluation.rotation)
         basis = rotation[:, :2]
         scan = _scan(runtime, cloud, origin, basis, cancel)
         if not scan[-1]:
@@ -216,4 +221,5 @@ def _measure_extents(runtime, parameters, *, cloud=None, groups=(), cancel):
         reason=reason,
         stage=stage,
         candidates=candidates,
+        evaluation=evaluation,
     )

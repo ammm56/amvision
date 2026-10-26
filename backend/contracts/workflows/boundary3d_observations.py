@@ -25,6 +25,13 @@ from backend.contracts.workflows.metrology import (
 from backend.contracts.workflows.point_cloud import Sha256
 from backend.contracts.workflows.point_cloud_runtime import CloudReference
 from backend.contracts.workflows.boundary3d_quality import check_boundary_metrics
+from backend.contracts.workflows.boundary3d_resolution import BoundaryResolution
+from backend.contracts.workflows.evaluation3d import (
+    EvaluationPlane3d,
+    FeatureEvaluation3d,
+    evaluation_direction,
+    require_same_evaluation,
+)
 
 
 class BoundaryMethod(Contract):
@@ -34,6 +41,7 @@ class BoundaryMethod(Contract):
     method_version: Literal[1] = 1
     parameters: ExtractBoundaryParameters
     parameters_sha256: Sha256
+    resolution: BoundaryResolution
 
     @property
     def quality_policy(self):
@@ -45,23 +53,8 @@ class BoundaryMethod(Contract):
         """拒绝参数正文与摘要不一致。"""
         if parameter_digest(self.parameters) != self.parameters_sha256:
             raise ValueError("边界方法参数摘要不一致")
+        self.resolution.check_parameters(self.parameters)
         return self
-
-
-class LineMethod(BoundaryMethod):
-    """明确面内 TLS 参数。"""
-
-    method_id: Literal["fit-line"] = "fit-line"
-    method_version: Literal[1] = 1
-    parameters: FitLineParameters
-
-
-class CircleMethod(BoundaryMethod):
-    """明确几何圆求解参数。"""
-
-    method_id: Literal["fit-circle"] = "fit-circle"
-    method_version: Literal[1] = 1
-    parameters: FitCircleParameters
 
 
 class SegmentQuality(Contract):
@@ -125,6 +118,10 @@ class BoundaryEvidence(Contract):
                 raise ValueError("有效边界包含质量失败的段")
         if self.valid and self.failed_segment_id is not None:
             raise ValueError("有效边界不能携带失败段")
+        if self.method.resolution.reason is not None and (
+            self.valid or self.reason != self.method.resolution.reason or self.segments
+        ):
+            raise ValueError("来源失败不能保留有效边界或逐段计算")
         if self.valid:
             counts = {s.segment_id: s.count for s in self.geometry.segments}
             for count, quality in [
@@ -155,6 +152,74 @@ class BoundaryFeature(BoundaryEvidence):
         if self.valid and self.geometry != self.support.topology:
             raise ValueError("边界支持拓扑不一致")
         return self
+
+
+class LineMethod(Contract):
+    """TLS 配方与实际继承面分开，来源是有限边界证据而非运行引用。"""
+
+    method_id: Literal["fit-line"] = "fit-line"
+    method_version: Literal[1] = 1
+    parameters: FitLineParameters
+    parameters_sha256: Sha256
+    evaluation: EvaluationPlane3d | None
+    boundary: BoundaryEvidence
+    boundary_content_sha256: Sha256 | None
+
+    @property
+    def quality_policy(self):
+        """沿用既有逐项质量接口。"""
+        return self.parameters.quality_policy
+
+    @model_validator(mode="after")
+    def check_method(self) -> Self:
+        """继承面不可改原点、旋转或观测来源。"""
+        p = self.parameters
+        if parameter_digest(p) != self.parameters_sha256:
+            raise ValueError("拟合方法参数摘要不一致")
+        if p.selection.feature_id != self.boundary.feature_id:
+            raise ValueError("拟合评价来源不是选中的边界")
+        expected = (
+            (
+                self.boundary.method.resolution.evaluation
+                if self.boundary.valid
+                else None
+            )
+            if isinstance(p.evaluation, FeatureEvaluation3d)
+            else p.evaluation
+        )
+        require_same_evaluation(self.evaluation, expected)
+        space = self.boundary.method.parameters.evaluation
+        if (p.evaluation.frame_id, p.evaluation.length_unit) != (
+            space.frame_id,
+            space.length_unit,
+        ):
+            raise ValueError("拟合评价空间与边界不一致")
+        if self.boundary.valid and self.boundary_content_sha256 is None:
+            raise ValueError("有效边界缺少内容身份")
+        if self.boundary.valid and any(
+            s not in {v.segment_id for v in self.boundary.geometry.segments}
+            for s in p.selection.segment_ids
+        ):
+            raise ValueError("拟合选择不在来源边界中")
+        return self
+
+    def resolved_parameters(self):
+        """仅供数值内核使用的解析值，不覆盖持久配方。"""
+        if self.evaluation is None:
+            return None
+        values = dict(evaluation=self.evaluation)
+        if isinstance(self.parameters, FitLineParameters):
+            values["positive_direction"] = evaluation_direction(
+                self.parameters.positive_direction, self.evaluation
+            )
+        return self.parameters.model_copy(update=values)
+
+
+class CircleMethod(LineMethod):
+    """圆复用评价来源核对，不重复边界或求解算法。"""
+
+    method_id: Literal["fit-circle"] = "fit-circle"
+    parameters: FitCircleParameters
 
 
 class LineGeometry(Contract):
@@ -280,6 +345,12 @@ def _check_common(feature):
         not feature.quality.usable or feature.support.state != "ready"
     ):
         raise ValueError("有效几何缺少实际支持或质量")
+    if (
+        isinstance(feature.method, LineMethod)
+        and feature.valid
+        and (feature.method.evaluation is None or not feature.method.boundary.valid)
+    ):
+        raise ValueError("有效拟合缺少有效边界或实际评价面")
     if feature.feature_id != feature.method.parameters.feature_id:
         raise ValueError("几何 ID 与参数不一致")
     if feature.quality.metrics.observation_id != feature.support.observation_id:

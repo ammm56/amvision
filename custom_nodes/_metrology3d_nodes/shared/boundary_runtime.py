@@ -23,12 +23,14 @@ from backend.service.application.runtime.exception_cleanup import (
 )
 from backend.service.application.workflows.point_cloud.arrays import OwnedCloudArrays
 from custom_nodes._metrology3d_nodes.shared.crop_roi import crop_roi
+from custom_nodes._metrology3d_nodes.shared.boundary_source import (
+    resolve_boundary_source,
+)
 from custom_nodes._metrology3d_nodes.shared.extract_boundary import (
     extract_boundary_array,
 )
 from custom_nodes._metrology3d_nodes.shared.geometry_quality import (
     geometry_quality,
-    require_quality_result,
 )
 
 
@@ -166,23 +168,39 @@ def _extraction_quality(values, parameters, observation_id, reason):
     )
 
 
-def extract_boundary(runtime, reference, parameters, *, cancel, contour_plane=None):
+def extract_boundary(
+    runtime,
+    reference,
+    parameters,
+    *,
+    cancel,
+    contour_plane=None,
+    pose=None,
+    measurement=None,
+    measurement_planes=(),
+):
     """ROI 分块裁剪后运行真实内核，统一发布引用、质量和失败目标。"""
     require_space(runtime, reference, parameters.evaluation)
     if reference.vertex_kind not in (None, "source"):
         raise InvalidRequestError("边界表面提取需要原始实测支持点，不递归插值生成点")
-    if (parameters.method.kind == "contour") != (contour_plane is not None):
-        raise InvalidRequestError("等高提取必须且仅连接所选基准平面")
-    if contour_plane is not None:
-        require_space(runtime, contour_plane.support, parameters.evaluation)
-        if contour_plane.support.observation_id != reference.observation_id:
-            raise InvalidRequestError("等高基准与点云不是同一观测")
-        require_quality_result(
-            contour_plane.quality, contour_plane.method.quality_policy
-        )
-    support, _ = crop_roi(runtime, reference, parameters.region, cancel=cancel)
-    reason = support.reason if support.state == "unavailable" else None
-    if contour_plane is not None and not contour_plane.valid:
+    resolution, kernel = resolve_boundary_source(
+        runtime,
+        reference,
+        parameters,
+        datum=contour_plane,
+        pose=pose,
+        measurement=measurement,
+        measurement_planes=measurement_planes,
+        cancel=cancel,
+    )
+    if resolution.reason:
+        support = reference.unavailable(resolution.reason)
+    else:
+        support, _ = crop_roi(runtime, reference, parameters.region, cancel=cancel)
+    reason = resolution.reason or (
+        support.reason if support.state == "unavailable" else None
+    )
+    if reason is None and contour_plane is not None and not contour_plane.valid:
         reason = contour_plane.reason
     values = dict(
         input_count=support.point_count,
@@ -202,12 +220,14 @@ def extract_boundary(runtime, reference, parameters, *, cancel, contour_plane=No
             )
             result = extract_boundary_array(
                 positions,
-                parameters,
+                kernel,
                 max_working_bytes=runtime.policy.max_working_bytes
                 - positions.nbytes
                 - sources.nbytes,
                 cancel=cancel,
-                contour_plane=contour_plane.geometry if contour_plane else None,
+                contour_plane=contour_plane.geometry
+                if parameters.method.kind == "contour"
+                else None,
             )
             reason, values, failed = (
                 result.reason,
@@ -258,6 +278,7 @@ def extract_boundary(runtime, reference, parameters, *, cancel, contour_plane=No
                 parameters=parameters,
                 parameters_sha256=parameter_digest(parameters),
                 vertices_sha256=digest.hexdigest(),
+                resolution=resolution,
             )
             if result.source_rows is not None:
                 dtype = "<u4" if support.point_count <= 2**32 else "<u8"
@@ -309,7 +330,9 @@ def extract_boundary(runtime, reference, parameters, *, cancel, contour_plane=No
             quality=quality,
             segments=segment_checks,
             method=BoundaryMethod(
-                parameters=parameters, parameters_sha256=parameter_digest(parameters)
+                parameters=parameters,
+                parameters_sha256=parameter_digest(parameters),
+                resolution=resolution,
             ),
         )
         return Features3d(

@@ -8,6 +8,8 @@ function vector(value:unknown):number[] {if(!Array.isArray(value)||value.length!
 function points(value:unknown,length:number):number[][] {if(!Array.isArray(value)||value.length!==length)fail();return value.map(vector)}
 
 export function validateDimensionGeometry(item:Record<string,unknown>,geometry:Record<string,unknown>|null,support:Record<string,unknown>[]):void{
+  const evaluation=object(item.method).evaluation
+  if(evaluation!==null){const e=object(evaluation);if(typeof e.frame_id!=='string'||!['m','mm','um'].includes(String(e.length_unit)))fail();vector(e.origin);points(e.rotation,3)}else if(item.valid)fail()
   const allowed=item.kind==='measure-extents'?['u','v','length','width']:item.kind==='measure-edge-pair'?['distance']:['diameter','center_x','center_y','center_z']
   if(!allowed.includes(String(item.component))||(item.valid?item.diagnostic!==null:!item.diagnostic))fail()
   for(const side of support){

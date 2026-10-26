@@ -9,7 +9,7 @@ from backend.contracts.workflows.measurement3d_parameters import (
     distance_metric_units,
     statistic_metric_units,
 )
-from backend.contracts.workflows.measurement3d_evidence import (
+from backend.contracts.workflows.measurement3d_directional import (
     CoverageEvidence,
     ProjectionStatistics,
 )

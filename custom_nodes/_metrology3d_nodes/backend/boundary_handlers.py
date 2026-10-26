@@ -5,7 +5,12 @@ from backend.contracts.workflows.boundary3d import (
     FitLineNodeParameters,
     FitCircleNodeParameters,
 )
-from backend.contracts.workflows.geometry3d_observations import Features3d, PlaneFeature
+from backend.contracts.workflows.geometry3d_observations import Features3d, Pose3d
+from backend.contracts.workflows.measurement3d_evidence import MeasurementEvidence3d
+from backend.contracts.workflows.measurement3d_directional import (
+    MeasurementEvidenceItem,
+)
+from custom_nodes._metrology3d_nodes.shared.measurement_support import select_planes
 from backend.service.application.errors import InvalidRequestError
 from custom_nodes._metrology3d_nodes.shared.node_runtime import (
     require_node_runtime,
@@ -21,48 +26,83 @@ def extract(request):
         request.parameters
     ).settings
     env = require_node_runtime(request)
-    raw = request.input_values.get("features")
-    plane = None
-    if parameters.method.kind == "contour":
-        if raw is None:
-            raise InvalidRequestError("等高提取缺少基准特征")
-        group = Features3d.model_validate(raw)
-        matches = [
-            item
-            for item in group.items
-            if item.feature_id == parameters.method.reference_feature_id
-        ]
-        if len(matches) != 1 or not isinstance(matches[0], PlaneFeature):
-            raise InvalidRequestError("等高基准必须是指定的唯一平面")
-        plane = matches[0]
-    elif raw is not None:
+    values = request.input_values
+    groups = [Features3d.model_validate(raw) for raw in values.get("features") or ()]
+    reference = cloud_input(request, env.runtime)
+    pose = (
+        Pose3d.model_validate(values["pose"])
+        if values.get("pose") is not None
+        else None
+    )
+    evidence = [
+        MeasurementEvidence3d.model_validate(raw)
+        for raw in values.get("evidence") or ()
+    ]
+    plane, measurement, measurement_planes = None, None, ()
+    method = parameters.method
+    if method.kind in {"contour", "pose-contour"}:
+        ids = [method.reference_feature_id]
+        ratio = (
+            method.kind == "pose-contour" and method.height.kind == "measurement-ratio"
+        )
+        if ratio:
+            ids.extend(
+                (method.height.reference_feature_id, method.height.target_feature_id)
+            )
+        unique = list(dict.fromkeys(ids))
+        planes = dict(
+            zip(
+                unique,
+                select_planes(
+                    env.runtime,
+                    groups,
+                    parameters.evaluation,
+                    unique,
+                    observation_id=reference.observation_id,
+                ),
+            )
+        )
+        plane = planes[ids[0]]
+        if ratio:
+            selected = []
+            seen = set()
+            for group in evidence:
+                if (group.observation_id, group.frame_id, group.length_unit) != (
+                    reference.observation_id,
+                    parameters.evaluation.frame_id,
+                    parameters.evaluation.length_unit,
+                ):
+                    raise InvalidRequestError("等高测量证据观测或空间不一致")
+                for item in group.items:
+                    if item.item_id in seen:
+                        raise InvalidRequestError("等高测量证据 ID 重复")
+                    seen.add(item.item_id)
+                    if item.item_id == method.height.item_id:
+                        selected.append(item)
+            if len(selected) != 1 or not isinstance(
+                selected[0], MeasurementEvidenceItem
+            ):
+                raise InvalidRequestError("比例等高必须选择唯一的高度或方向高差")
+            measurement = selected[0]
+            measurement_planes = tuple(planes[key] for key in ids[1:])
+        elif evidence:
+            raise InvalidRequestError("固定等高不能连接测量证据")
+    elif groups or pose is not None or evidence:
         raise InvalidRequestError("投影和截面不接受多余基准特征输入")
     result = extract_boundary(
         env.runtime,
-        cloud_input(request, env.runtime),
+        reference,
         parameters,
         cancel=env.cancel,
         contour_plane=plane,
+        pose=pose,
+        measurement=measurement,
+        measurement_planes=measurement_planes,
     )
     feature = result.items[0]
     cloud = feature.support
     if not feature.valid:
-        from backend.contracts.workflows.point_cloud_runtime import CloudReference
-
-        raw = cloud.model_dump(mode="json")
-        raw.update(
-            state="unavailable",
-            reason=feature.reason,
-            cloud_id=None,
-            revision=None,
-            point_count=None,
-            fields=None,
-            source_metadata=None,
-            sample_origin=None,
-            vertex_kind=None,
-            topology=None,
-        )
-        cloud = CloudReference.model_validate(raw)
+        cloud = cloud.unavailable(feature.reason)
     return {
         "features": result.model_dump(mode="json"),
         "cloud": cloud.model_dump(mode="json"),

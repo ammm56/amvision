@@ -3,7 +3,8 @@ import {normalizeLimitRule,limitRuleError} from '@/workflows/workflow-editor/par
 import type {ParameterEditorSources} from '@/workflows/workflow-editor/parameters/editor-context'
 import type {RecipeValidator} from '@/workflows/workflow-editor/parameters/recipe-validation'
 import type {NumericItemProvider} from '@/workflows/workflow-editor/parameters/static-numeric-items'
-import {identity,newRoi,object,roiIssues,vector,type Form} from './form'
+import {identity,object,vector,type Form} from './form'
+import {evaluationIssues,axisDirection,planePosition} from './evaluation-form'
 
 const finite=(v:unknown):v is number=>typeof v==='number'&&Number.isFinite(v)
 const id=(v:unknown)=>typeof v==='string'&&/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/.test(v)
@@ -45,8 +46,7 @@ export function dimensionFeatureChoices(sources:ParameterEditorSources):Dimensio
 
 export function dimensionIssues(kind:string,value:unknown):string[]{
   const p=object(value),e=object(p.evaluation),q=object(p.quality_policy),issues:string[]=[]
-  if(!id(e.frame_id)||!['m','mm','um'].includes(String(e.length_unit))||!vector(e.origin))issues.push('evaluation')
-  if(roiIssues([{...newRoi(),roi_id:'evaluation',frame_id:e.frame_id,length_unit:e.length_unit,geometry:{center:[0,0,0],size:[1,1,1],rotation:e.rotation}}]).length)issues.push('evaluation / rotation')
+  issues.push(...evaluationIssues(e,kind==='measure-extents'&&object(p.source).kind==='cloud'?[]:['feature']))
   const outputs=Array.isArray(p.outputs)?p.outputs.map(object):[]
   const allowed=kind==='measure-extents'?(object(p.mode).kind==='axis-spans'?['u','v']:['length','width']):kind==='measure-edge-pair'?['distance']:dimensionComponents
   if(!outputs.length||outputs.some(o=>!id(o.item_id)||!allowed.includes(String(o.component)))||new Set(outputs.map(o=>o.item_id)).size!==outputs.length||new Set(outputs.map(o=>o.component)).size!==outputs.length||kind!=='measure-hole'&&outputs.length!==allowed.length)issues.push('outputs')
@@ -66,11 +66,11 @@ export function dimensionIssues(kind:string,value:unknown):string[]{
     if(m.kind==='minimum-area-rectangle'&&['area_abs_tolerance','area_rel_tolerance','dimension_abs_tolerance','dimension_rel_tolerance','orientation_tolerance_radians'].some(k=>!finite(m[k])||Number(m[k])<0||k==='orientation_tolerance_radians'&&Number(m[k])>=Math.PI/4))issues.push('rectangle / tolerances')
   }else if(kind==='measure-edge-pair'){
     if(!id(p.reference_feature_id)||!id(p.target_feature_id)||p.reference_feature_id===p.target_feature_id)issues.push('line IDs')
-    if(!vector(p.query_position)||!unit(p.direction)||!['signed','absolute'].includes(String(p.value_mode)))issues.push('query / direction / value_mode')
+    if((!vector(p.query_position)&&!planePosition(p.query_position))||(!unit(p.direction)&&!axisDirection(p.direction))||!['signed','absolute'].includes(String(p.value_mode)))issues.push('query / direction / value_mode')
     if(!finite(p.max_plane_distance)||p.max_plane_distance<0||!finite(p.max_plane_angle_radians)||p.max_plane_angle_radians<0||p.max_plane_angle_radians>=Math.PI/2||!finite(p.min_crossing_sine)||p.min_crossing_sine<=0||p.min_crossing_sine>1)issues.push('intersection conditions')
     const query=p.query_position,origin=e.origin
     if(normal&&vector(query)&&vector(origin)&&finite(p.max_plane_distance)&&Math.abs(normal.reduce((s,n,i)=>s+n*(query[i]!-origin[i]!),0))>p.max_plane_distance)issues.push('query / evaluation plane')
-  }else if(!id(p.feature_id)||!['closed-hole','open-arc'].includes(String(p.target_kind))||!unit(p.display_direction))issues.push('circle / role / direction')
+  }else if(!id(p.feature_id)||!['closed-hole','open-arc'].includes(String(p.target_kind))||(!unit(p.display_direction)&&!axisDirection(p.display_direction)))issues.push('circle / role / direction')
   return issues
 }
 

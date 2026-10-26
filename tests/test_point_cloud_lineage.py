@@ -49,6 +49,15 @@ def boundary_method():
             canonical_cloud_json(parameters.model_dump(mode="json"))
         ).hexdigest(),
         vertices_sha256="a" * 64,
+        resolution=dict(
+            observation_id="test-source",
+            evaluation=parameters.evaluation,
+            height=None,
+            pose=None,
+            datum=None,
+            measurement=None,
+            reason=None,
+        ),
     )
 
 

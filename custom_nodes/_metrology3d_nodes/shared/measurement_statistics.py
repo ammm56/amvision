@@ -4,7 +4,7 @@ from math import fsum, sqrt
 
 import numpy as np
 
-from backend.contracts.workflows.measurement3d_evidence import ProjectionStatistics
+from backend.contracts.workflows.measurement3d_directional import ProjectionStatistics
 from backend.service.application.errors import InvalidRequestError
 from custom_nodes._metrology3d_nodes.shared.fit_plane import _positions, _rows
 

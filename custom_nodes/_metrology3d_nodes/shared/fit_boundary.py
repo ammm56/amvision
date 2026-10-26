@@ -3,6 +3,7 @@
 from backend.contracts.workflows.boundary3d import FitLineParameters
 from backend.contracts.workflows.boundary3d_observations import (
     BoundaryFeature,
+    BoundaryEvidence,
     LineFeature,
     CircleFeature,
     LineMethod,
@@ -10,6 +11,8 @@ from backend.contracts.workflows.boundary3d_observations import (
 )
 from backend.contracts.workflows.geometry3d_methods import parameter_digest
 from backend.contracts.workflows.geometry3d_observations import Features3d
+from backend.contracts.workflows.evaluation3d import FeatureEvaluation3d
+from custom_nodes._metrology3d_nodes.shared.cloud_assets import freeze_cloud_parent
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.runtime.exception_cleanup import (
     release_exception_frames,
@@ -47,6 +50,25 @@ def fit_boundary(runtime, group, parameters, *, cancel):
         require_quality_result(item.quality, boundary.method.quality_policy)
     support = boundary.support
     line = isinstance(parameters, FitLineParameters)
+    method_type, feature_type = (
+        (LineMethod, LineFeature) if line else (CircleMethod, CircleFeature)
+    )
+    evaluation = (
+        (boundary.method.resolution.evaluation if boundary.valid else None)
+        if isinstance(parameters.evaluation, FeatureEvaluation3d)
+        else parameters.evaluation
+    )
+    method = method_type(
+        parameters=parameters,
+        parameters_sha256=parameter_digest(parameters),
+        evaluation=evaluation,
+        boundary=BoundaryEvidence.model_validate(
+            boundary.model_dump(exclude={"support"})
+        ),
+        boundary_content_sha256=freeze_cloud_parent(runtime, support)["content_sha256"]
+        if support.state == "ready"
+        else None,
+    )
     positions = None
     try:
         if boundary.valid:
@@ -60,7 +82,7 @@ def fit_boundary(runtime, group, parameters, *, cancel):
             result = kernel(
                 positions,
                 support.topology,
-                parameters,
+                method.resolved_parameters(),
                 max_working_bytes=runtime.policy.max_working_bytes - positions.nbytes,
                 cancel=cancel,
             )
@@ -75,9 +97,6 @@ def fit_boundary(runtime, group, parameters, *, cancel):
             result, parameters, observation_id=support.observation_id
         )
         reason = result.reason or (None if quality.usable else "insufficient_quality")
-        method_type, feature_type = (
-            (LineMethod, LineFeature) if line else (CircleMethod, CircleFeature)
-        )
         feature = feature_type(
             feature_id=parameters.feature_id,
             valid=reason is None,
@@ -85,9 +104,7 @@ def fit_boundary(runtime, group, parameters, *, cancel):
             geometry=result.geometry if reason is None else None,
             support=support,
             quality=quality,
-            method=method_type(
-                parameters=parameters, parameters_sha256=parameter_digest(parameters)
-            ),
+            method=method,
             intervals=result.intervals if reason is None else (),
             **({} if line else {"solver": result.solver}),
         )

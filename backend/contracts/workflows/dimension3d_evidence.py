@@ -22,6 +22,12 @@ from backend.contracts.workflows.dimension3d_parameters import (
     MeasureExtentsParameters,
     MeasureHoleParameters,
     dimension_metric_units,
+    resolve_dimension_parameters,
+)
+from backend.contracts.workflows.evaluation3d import (
+    EvaluationPlane3d,
+    FeatureEvaluation3d,
+    require_same_evaluation,
 )
 from backend.contracts.workflows.geometry3d import Point3, SupportBounds, require_unit
 from backend.contracts.workflows.geometry3d_methods import parameter_digest
@@ -172,6 +178,7 @@ class ExtentsMethod(Contract):
     method_version: Literal[1] = 1
     parameters: MeasureExtentsParameters
     parameters_sha256: Sha256
+    evaluation: EvaluationPlane3d | None
 
 
 class EdgePairMethod(Contract):
@@ -181,6 +188,7 @@ class EdgePairMethod(Contract):
     method_version: Literal[1] = 1
     parameters: MeasureEdgePairParameters
     parameters_sha256: Sha256
+    evaluation: EvaluationPlane3d | None
 
 
 class HoleMethod(Contract):
@@ -190,6 +198,7 @@ class HoleMethod(Contract):
     method_version: Literal[1] = 1
     parameters: MeasureHoleParameters
     parameters_sha256: Sha256
+    evaluation: EvaluationPlane3d | None
 
 
 class ContactLineage(Contract):
@@ -430,7 +439,29 @@ class DimensionEvidenceItem(Contract):
             for s in self.support
         ):
             raise ValueError("有效尺寸缺少有效完整支持")
-        return p
+        if isinstance(p.evaluation, FeatureEvaluation3d):
+            source = self.support[0].feature
+            if source is None:
+                raise ValueError("继承评价面缺少支持特征")
+            expected = (
+                (
+                    source.method.resolution.evaluation
+                    if source.kind == "boundary"
+                    else source.method.evaluation
+                )
+                if source.valid
+                else None
+            )
+        else:
+            expected = p.evaluation
+        require_same_evaluation(self.method.evaluation, expected)
+        if self.valid and self.method.evaluation is None:
+            raise ValueError("有效尺寸缺少解析评价面")
+        return (
+            resolve_dimension_parameters(p, self.method.evaluation)
+            if self.method.evaluation is not None
+            else p
+        )
 
 
 class ExtentsEvidenceItem(DimensionEvidenceItem):

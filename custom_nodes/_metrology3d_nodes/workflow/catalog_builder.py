@@ -126,7 +126,12 @@ def build_custom_node_catalog_document():
             "Extract Boundary",
             "metrology3d.geometry",
             ExtractBoundaryNodeParameters,
-            [cloud, port("features", "features3d.v1", False)],
+            [
+                cloud,
+                port("features", "features3d.v1", False, True),
+                port("pose", "pose3d.v1", False),
+                port("evidence", "measurement-evidence3d.v1", False, True),
+            ],
             [cloud, port("features", "features3d.v1")],
         ),
         (
@@ -266,7 +271,21 @@ def build_custom_node_catalog_document():
         definitions.append(
             dict(
                 node_type_id="custom.metrology3d." + key,
-                version="0.1.11"
+                version="0.1.12"
+                if key
+                in {
+                    "extract-boundary",
+                    "fit-line",
+                    "fit-circle",
+                    "measure-extents",
+                    "measure-edge-pair",
+                    "measure-hole",
+                    "read-cloud",
+                    "save-cloud",
+                    "export-cloud",
+                    "cloud-preview",
+                }
+                else "0.1.11"
                 if key in {"height-query", "measure-step", "cloud-preview"}
                 else "0.1.10"
                 if key

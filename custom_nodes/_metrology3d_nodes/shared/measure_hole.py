@@ -7,6 +7,7 @@ from custom_nodes._metrology3d_nodes.shared.dimension_runtime import (
     dimension_result,
     dimension_support,
     select_features,
+    dimension_evaluation,
 )
 
 
@@ -18,6 +19,7 @@ def measure_hole(runtime, groups, parameters, *, cancel):
     support = dimension_support(
         runtime, feature.support, "source", feature=feature, cancel=cancel
     )
+    evaluation, kernel = dimension_evaluation(parameters, feature)
     reason, stage = feature.reason, "input"
     geometry = None
     values = {}
@@ -33,7 +35,7 @@ def measure_hole(runtime, groups, parameters, *, cancel):
             reason, stage = "invalid_boundary_role", "support"
         else:
             model = feature.geometry
-            direction = np.asarray(parameters.display_direction)
+            direction = np.asarray(kernel.display_direction)
             if abs(float(direction @ model.normal)) > 1e-8:
                 reason, stage = "display_direction_out_of_plane", "geometry"
             else:
@@ -67,4 +69,5 @@ def measure_hole(runtime, groups, parameters, *, cancel):
         reason=reason,
         stage=stage,
         feature_id=feature.feature_id if reason else None,
+        evaluation=evaluation,
     )

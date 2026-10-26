@@ -207,7 +207,7 @@ class PublishedCloudSystem:
 
 
 @contextmanager
-def published_system(root):
+def published_system(root, *, point_cloud_policy=None):
     """本轮数据库、节点包、共享内存和结果全部位于隔离目录。"""
     packs = root / "cloud_test_nodes"
     install_test_pack(packs)
@@ -223,7 +223,7 @@ def published_system(root):
         inference_daemon=BackendServiceInferenceDaemonConfig(runtime_owner="embedded"),
         local_buffer_broker=broker_settings(),
         workflow_runtime=BackendServiceWorkflowRuntimeConfig(
-            point_cloud=full_policy(),
+            point_cloud=point_cloud_policy or full_policy(),
             local_shared_trigger_response_ack_timeout_seconds=2,
         ),
     )

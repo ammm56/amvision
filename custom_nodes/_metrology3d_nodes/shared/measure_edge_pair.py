@@ -7,6 +7,7 @@ from custom_nodes._metrology3d_nodes.shared.dimension_runtime import (
     dimension_result,
     dimension_support,
     select_features,
+    dimension_evaluation,
 )
 
 
@@ -15,7 +16,7 @@ def _intersection(feature, parameters):
     evaluation = parameters.evaluation
     rotation = np.asarray(evaluation.rotation)
     basis, normal = rotation[:, :2], rotation[:, 2]
-    source_plane = feature.method.parameters.evaluation
+    source_plane = feature.method.evaluation
     source_normal = np.asarray(source_plane.rotation)[:, 2]
     angle = float(
         np.arctan2(
@@ -82,6 +83,7 @@ def measure_edge_pair(runtime, groups, parameters, *, cancel):
         dimension_support(runtime, f.support, role, feature=f, cancel=cancel)
         for f, role in zip(features, ("reference", "target"))
     )
+    evaluation, kernel = dimension_evaluation(parameters, features[0])
     metrics, hits, reason, stage, failed = {}, [], None, "geometry", None
     for feature, side in zip(features, support):
         cancel()
@@ -93,9 +95,9 @@ def measure_edge_pair(runtime, groups, parameters, *, cancel):
             supported=0,
         )
         error, local, hit = (
-            _intersection(feature, parameters)
-            if feature.valid
-            else (feature.reason, missing, None)
+            _intersection(feature, kernel)
+            if feature.valid and kernel is not None
+            else (feature.reason or "evaluation_unavailable", missing, None)
         )
         for name, value in local.items():
             unit = (
@@ -130,8 +132,8 @@ def measure_edge_pair(runtime, groups, parameters, *, cancel):
             reason = "coincident_edges"
         else:
             geometry = EdgePairGeometry(
-                query_position=parameters.query_position,
-                direction=parameters.direction,
+                query_position=kernel.query_position,
+                direction=kernel.direction,
                 endpoints=[h[2] for h in hits],
                 line_parameters=[h[1] for h in hits],
                 query_parameters=[h[0] for h in hits],
@@ -157,4 +159,5 @@ def measure_edge_pair(runtime, groups, parameters, *, cancel):
         reason=reason,
         stage=stage,
         feature_id=failed,
+        evaluation=evaluation,
     )

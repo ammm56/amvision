@@ -7,6 +7,13 @@ from pydantic import Field, model_validator
 
 from backend.contracts.workflows.boundary3d import BoundarySelection, EvaluationPlane3d
 from backend.contracts.workflows.boundary3d_quality import boundary_metric_units
+from backend.contracts.workflows.evaluation3d import (
+    FeatureEvaluation3d,
+    EvaluationAxis,
+    EvaluationUv,
+    evaluation_direction,
+    evaluation_position,
+)
 from backend.contracts.workflows.geometry3d import (
     GeometryQualityPolicy,
     Point3,
@@ -42,7 +49,7 @@ class DimensionOutput(Contract):
 class DimensionParameters(Contract):
     """共同空间、输出及质量配置，不包含执行器生产预算。"""
 
-    evaluation: EvaluationPlane3d
+    evaluation: EvaluationPlane3d | FeatureEvaluation3d
     outputs: Annotated[tuple[DimensionOutput, ...], Field(min_length=1, max_length=4)]
     quality_policy: GeometryQualityPolicy
 
@@ -120,6 +127,10 @@ class MeasureExtentsParameters(DimensionParameters):
         if {o.component for o in self.outputs} != expected:
             raise ValueError("长宽必须明确配置当前模式的两个量")
         check_dimension_policy(self)
+        if self.source.kind == "cloud" and isinstance(
+            self.evaluation, FeatureEvaluation3d
+        ):
+            raise ValueError("普通点云没有可继承的特征评价面")
         return self
 
 
@@ -128,8 +139,8 @@ class MeasureEdgePairParameters(DimensionParameters):
 
     reference_feature_id: Identifier
     target_feature_id: Identifier
-    query_position: Point3
-    direction: Point3
+    query_position: Point3 | EvaluationUv
+    direction: Point3 | EvaluationAxis
     value_mode: Literal["signed", "absolute"]
     max_plane_distance: NonNegative
     max_plane_angle_radians: Annotated[Finite, Field(ge=0, lt=pi / 2)]
@@ -142,13 +153,18 @@ class MeasureEdgePairParameters(DimensionParameters):
             raise ValueError("边间距必须选择两个不同的直线特征")
         if [o.component for o in self.outputs] != ["distance"]:
             raise ValueError("边间距必须且仅配置 distance")
-        require_unit(self.direction)
+        if not isinstance(self.direction, EvaluationAxis):
+            require_unit(self.direction)
+        check_dimension_policy(self)
+        if isinstance(self.evaluation, FeatureEvaluation3d):
+            return self
+        direction = evaluation_direction(self.direction, self.evaluation)
+        position = evaluation_position(self.query_position, self.evaluation)
         normal = tuple(row[2] for row in self.evaluation.rotation)
-        if abs(fsum(a * b for a, b in zip(normal, self.direction))) > 1e-8:
+        if abs(fsum(a * b for a, b in zip(normal, direction))) > 1e-8:
             raise ValueError("测量方向必须位于评价平面")
         residual = fsum(
-            (a - b) * n
-            for a, b, n in zip(self.query_position, self.evaluation.origin, normal)
+            (a - b) * n for a, b, n in zip(position, self.evaluation.origin, normal)
         )
         if abs(residual) > self.max_plane_distance:
             raise ValueError("查询位置不在评价平面内")
@@ -161,7 +177,7 @@ class MeasureHoleParameters(DimensionParameters):
 
     feature_id: Identifier
     target_kind: Literal["closed-hole", "open-arc"]
-    display_direction: Point3
+    display_direction: Point3 | EvaluationAxis
 
     @model_validator(mode="after")
     def check_circle(self) -> Self:
@@ -171,12 +187,34 @@ class MeasureHoleParameters(DimensionParameters):
             for o in self.outputs
         ):
             raise ValueError("圆测量输出类型不合法")
-        require_unit(self.display_direction)
+        if not isinstance(self.display_direction, EvaluationAxis):
+            require_unit(self.display_direction)
+        check_dimension_policy(self)
+        if isinstance(self.evaluation, FeatureEvaluation3d):
+            return self
+        direction = evaluation_direction(self.display_direction, self.evaluation)
         normal = tuple(row[2] for row in self.evaluation.rotation)
-        if abs(fsum(a * b for a, b in zip(normal, self.display_direction))) > 1e-8:
+        if abs(fsum(a * b for a, b in zip(normal, direction))) > 1e-8:
             raise ValueError("直径辅助方向必须位于评价平面")
         check_dimension_policy(self)
         return self
+
+
+def resolve_dimension_parameters(parameters, evaluation):
+    """数值内核参数不改变已保存的来源选择，并重验面内几何约束。"""
+    if evaluation is None:
+        return None
+    values = dict(evaluation=evaluation.model_dump(mode="json"))
+    if isinstance(parameters, MeasureEdgePairParameters):
+        values.update(
+            query_position=evaluation_position(parameters.query_position, evaluation),
+            direction=evaluation_direction(parameters.direction, evaluation),
+        )
+    elif isinstance(parameters, MeasureHoleParameters):
+        values["display_direction"] = evaluation_direction(
+            parameters.display_direction, evaluation
+        )
+    return type(parameters).model_validate({**parameters.model_dump(), **values})
 
 
 def dimension_metric_units(parameters):

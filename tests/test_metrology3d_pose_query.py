@@ -22,7 +22,7 @@ from tests.test_metrology3d_preprocess import make_cloud
 from tests.point_cloud_support import policy
 
 
-def tilted_fixture(dtype=np.float64):
+def tilted_fixture(dtype=np.float64, *, extra=None, limits=None):
     """独立构造旋转后的 z=0 / z=5+0.2x；不调用测量解算产生真值。"""
     a, b = 0.37, -0.28
     rz = np.array([[np.cos(a), -np.sin(a), 0], [np.sin(a), np.cos(a), 0], [0, 0, 1]])
@@ -36,10 +36,12 @@ def tilted_fixture(dtype=np.float64):
             for y in np.linspace(-2, 2, 9)
         ]
     )
+    if extra is not None:
+        local = np.vstack((local, extra))
     scope, runtime, cloud = make_cloud(
         unit="mm",
         coordinates=(local @ rotation.T + origin).astype(dtype),
-        runtime_policy=policy(max_working_bytes=1024 * 1024),
+        runtime_policy=limits or policy(max_working_bytes=1024 * 1024),
     )
     groups = []
     for name, z in (("reference", 0), ("target", 5)):

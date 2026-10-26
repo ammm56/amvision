@@ -107,6 +107,7 @@ def extent_evidence():
             method_version=1,
             parameters=p.model_dump(mode="json"),
             parameters_sha256=parameter_digest(p),
+            evaluation=p.evaluation.model_dump(mode="json"),
         ),
     )
     return dict(

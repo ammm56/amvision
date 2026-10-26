@@ -34,6 +34,7 @@ from backend.contracts.workflows.boundary3d import (
     ExtractBoundaryParameters,
     BoundarySelection,
 )
+from backend.contracts.workflows.boundary3d_resolution import BoundaryResolution
 
 
 class NormalizeCloudUnits(Contract):
@@ -184,6 +185,15 @@ class BoundaryCloudMethod(Contract):
     parameters: ExtractBoundaryParameters
     parameters_sha256: Sha256
     vertices_sha256: Sha256
+    resolution: BoundaryResolution
+
+    @model_validator(mode="after")
+    def check_resolution(self) -> Self:
+        """原始边界数组的派生方法也必须冻结实际评价来源。"""
+        self.resolution.check_parameters(self.parameters)
+        if self.resolution.reason is not None:
+            raise ValueError("来源未解析不能生成边界数组")
+        return self
 
 
 class BoundarySelectionMethod(Contract):

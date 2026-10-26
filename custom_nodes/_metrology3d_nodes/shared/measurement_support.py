@@ -3,7 +3,7 @@
 import numpy as np
 from scipy.spatial import Delaunay
 
-from backend.contracts.workflows.measurement3d_evidence import (
+from backend.contracts.workflows.measurement3d_directional import (
     CoverageEvidence,
     MeasurementSupport,
     PlaneSupportEvidence,

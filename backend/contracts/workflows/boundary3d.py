@@ -10,32 +10,57 @@ from backend.contracts.workflows.geometry3d import (
     GeometryQualityPolicy,
     Point3,
     Positive,
-    require_rotation,
     require_unit,
 )
 from backend.contracts.workflows.metrology import (
     Contract,
     Finite,
     Identifier,
-    Matrix3,
     unique_ids,
 )
-from backend.contracts.workflows.point_cloud import JsonCount, LengthUnit, PositiveCount
+from backend.contracts.workflows.point_cloud import JsonCount, PositiveCount
+from backend.contracts.workflows.evaluation3d import (
+    EvaluationPlane3d,
+    FeatureEvaluation3d,
+    PoseEvaluation3d,
+    EvaluationAxis,
+)
 
 
-class EvaluationPlane3d(Contract):
-    """rotation 的列是明确的面内 X/Y 与正法向，单位沿输入空间。"""
+class FixedContourHeight(Contract):
+    """本次基准以上的有符号固定高度，单位沿评价空间。"""
 
-    frame_id: Identifier
-    length_unit: LengthUnit
-    origin: Point3
-    rotation: Matrix3
+    kind: Literal["fixed"]
+    value: Finite
+
+
+class MeasurementContourHeight(Contract):
+    """只选择一个方向测量项及明确的两面，不允许比例外推。"""
+
+    kind: Literal["measurement-ratio"]
+    item_id: Identifier
+    reference_feature_id: Identifier
+    target_feature_id: Identifier
+    ratio: Annotated[Finite, Field(gt=0, lt=1)]
+    order: Literal["target-above", "target-below"]
 
     @model_validator(mode="after")
-    def check_rotation(self) -> Self:
-        """不根据屏幕、质心或库返回次序猜评价方向。"""
-        require_rotation(self.rotation)
+    def check_roles(self) -> Self:
+        """同一特征不能同时充当基体和目标。"""
+        if self.reference_feature_id == self.target_feature_id:
+            raise ValueError("比例等高需要不同的基体和目标")
         return self
+
+
+class PoseContourBoundary(Contract):
+    """沿本次台面法向解析等高，实际评价面随高度同步平移。"""
+
+    kind: Literal["pose-contour"]
+    reference_feature_id: Identifier
+    height: Annotated[
+        FixedContourHeight | MeasurementContourHeight, Field(discriminator="kind")
+    ]
+    numeric_tolerance: Positive
 
 
 class BoundarySurfaceSettings(Contract):
@@ -107,11 +132,11 @@ class ExtractBoundaryParameters(Contract):
     """投影、截面和等高互斥；目标不能绑定本次候选返回序号。"""
 
     feature_id: Identifier
-    evaluation: EvaluationPlane3d
+    evaluation: EvaluationPlane3d | PoseEvaluation3d
     region: CropCloudParameters
     surface: BoundarySurfaceSettings
     method: Annotated[
-        ProjectionBoundary | SectionBoundary | ContourBoundary,
+        ProjectionBoundary | SectionBoundary | ContourBoundary | PoseContourBoundary,
         Field(discriminator="kind"),
     ]
     targets: Annotated[tuple[BoundaryTarget, ...], Field(min_length=1, max_length=8192)]
@@ -120,6 +145,10 @@ class ExtractBoundaryParameters(Contract):
     @model_validator(mode="after")
     def check_space(self) -> Self:
         """主 ROI 和目标选择必须处于同一已确认的物理空间。"""
+        if isinstance(self.evaluation, PoseEvaluation3d) != isinstance(
+            self.method, PoseContourBoundary
+        ):
+            raise ValueError("本次 pose 评价面必须且仅用于本次基准等高")
         unique_ids([target.segment_id for target in self.targets], "targets")
         for region in (self.region, *(target.region for target in self.targets)):
             if any(
@@ -175,15 +204,16 @@ class FitLineParameters(Contract):
 
     feature_id: Identifier
     selection: BoundarySelection
-    evaluation: EvaluationPlane3d
-    positive_direction: Point3
+    evaluation: EvaluationPlane3d | FeatureEvaluation3d
+    positive_direction: Point3 | EvaluationAxis
     min_orientation_cosine: Annotated[Finite, Field(gt=0, le=1)]
     quality_policy: GeometryQualityPolicy
 
     @model_validator(mode="after")
     def check_quality(self) -> Self:
         """面外偏差、可辨识性和跨度不可被小残差掩盖。"""
-        require_unit(self.positive_direction)
+        if not isinstance(self.positive_direction, EvaluationAxis):
+            require_unit(self.positive_direction)
         _require_quality(
             self.quality_policy,
             lower={"support_count": 2, "span": 0, "direction_gap": 0},
@@ -207,7 +237,7 @@ class FitCircleParameters(Contract):
 
     feature_id: Identifier
     selection: BoundarySelection
-    evaluation: EvaluationPlane3d
+    evaluation: EvaluationPlane3d | FeatureEvaluation3d
     radius_range: tuple[Positive, Positive]
     max_arc_step: Annotated[Finite, Field(gt=0, lt=pi)]
     solver: CircleSolverSettings
