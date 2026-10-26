@@ -3,6 +3,12 @@
     <table><thead><tr><th>{{ zh?'测量项':'Measurement' }}</th><th>{{ zh?'数值':'Value' }}</th><th>{{ zh?'状态 / 原因':'State / reason' }}</th><th>{{ zh?'支持点数':'Support points' }}</th></tr></thead>
       <tbody><tr v-for="item in items" :key="item.item_id" :class="{selected:item.item_id===selected}"><td><button :aria-pressed="item.item_id===selected" @click="$emit('select',item.item_id)">{{ item.item_id }}</button><div v-if="item.component">{{ componentLabel(item.component) }}</div></td><td>{{ item.valid?item.value:'-' }} {{ unit }}</td><td>{{ item.valid?(zh?'有效':'Valid'):item.reason }}<div v-if="ambiguous(item)">{{ zh?'尺寸一致，方向不唯一':'Consistent size, ambiguous orientation' }}</div></td><td>{{ item.support.map(s=>s.point_count??'-').join(' / ') }}</td></tr></tbody>
     </table>
+    <dl v-if="current?.query" class="extension-evidence">
+      <dt>{{ zh?'查询来源':'Query source' }}</dt><dd>{{ current.query.kind==='pose-uv'?(zh?'本次基准坐标':'Current datum'):(zh?'配置位置和方向':'Configured position and direction') }}</dd>
+      <template v-if="current.query.kind==='pose-uv'"><dt>{{ zh?'位姿 / 坐标系':'Pose / frame' }}</dt><dd>{{ current.query.poseId }} / {{ current.query.frameId }}</dd><dt>U / V</dt><dd>{{ current.query.uv?.join(', ') }} {{ unit }}</dd></template>
+      <template v-if="current.query.position"><dt>{{ zh?'本次源坐标 XYZ':'Resolved source XYZ' }}</dt><dd>{{ current.query.position.join(', ') }} {{ unit }}</dd><dt>{{ zh?'本次测量方向':'Resolved direction' }}</dt><dd>{{ current.query.direction?.join(', ') }}</dd></template>
+      <template v-else><dt>{{ zh?'来源无效':'Source unavailable' }}</dt><dd>{{ current.query.reason }}</dd></template>
+    </dl>
     <dl v-if="extension" class="extension-evidence">
       <dt>{{ zh?'基准支持':'Datum support' }}</dt><dd>{{ extensionLabel(extension.state) }}</dd>
       <dt>{{ zh?'实际延伸 / 上限':'Extension / limit' }}</dt><dd>{{ extension.distance??'-' }} / {{ extension.max_distance }} {{ unit }}</dd>

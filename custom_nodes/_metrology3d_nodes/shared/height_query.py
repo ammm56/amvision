@@ -15,9 +15,10 @@ from custom_nodes._metrology3d_nodes.shared.measurement_support import (
     require_cloud,
     select_planes,
 )
+from custom_nodes._metrology3d_nodes.shared.measurement_query import resolve_query
 
 
-def height_query(runtime, cloud, groups, parameters, *, cancel):
+def height_query(runtime, cloud, groups, parameters, *, pose=None, cancel):
     """高度为同线目标交点减基准交点；返回局部面供现有显示复用。"""
     try:
         cancel()
@@ -29,11 +30,29 @@ def height_query(runtime, cloud, groups, parameters, *, cancel):
             [parameters.reference_feature_id],
             observation_id=cloud.observation_id,
         )[0]
+        resolution = resolve_query(
+            runtime, parameters, parameters, pose, cloud.observation_id, cancel=cancel
+        )
+        if resolution.line is None:
+            target = fit_plane(
+                runtime,
+                cloud.unavailable("query_pose_unavailable"),
+                parameters.plane_fit,
+                cancel=cancel,
+            )
+            return directional_measurement(
+                runtime,
+                [reference, target.items[0]],
+                parameters,
+                resolution,
+                cancel=cancel,
+            ), target
+        line = resolution.line
         low, high = parameters.search_interval
         with np.errstate(over="raise", invalid="raise"):
-            center = np.asarray(parameters.query_position) + (
+            center = np.asarray(line.query_position) + (
                 low / 2 + high / 2
-            ) * np.asarray(parameters.direction)
+            ) * np.asarray(line.direction)
         roi = CropCloudParameters(
             roi_id=parameters.item_id,
             rois=[
@@ -44,7 +63,7 @@ def height_query(runtime, cloud, groups, parameters, *, cancel):
                     length_unit=parameters.length_unit,
                     geometry=dict(
                         center=center,
-                        axis=parameters.direction,
+                        axis=line.direction,
                         radius=parameters.search_radius,
                         length=high - low,
                     ),
@@ -54,7 +73,7 @@ def height_query(runtime, cloud, groups, parameters, *, cancel):
         local, _ = crop_roi(runtime, cloud, roi, cancel=cancel)
         target = fit_plane(runtime, local, parameters.plane_fit, cancel=cancel)
         evidence = directional_measurement(
-            runtime, [reference, target.items[0]], parameters, cancel=cancel
+            runtime, [reference, target.items[0]], parameters, resolution, cancel=cancel
         )
         cancel()
         return evidence, target

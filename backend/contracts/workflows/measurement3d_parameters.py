@@ -18,6 +18,11 @@ from backend.contracts.workflows.metrology import (
     LimitRule,
 )
 from backend.contracts.workflows.point_cloud import LengthUnit
+from backend.contracts.workflows.measurement3d_query import (
+    MeasurementQuery,
+    PoseUvQuery,
+    QueryLine,
+)
 
 
 def distance_metric_units(unit: str) -> dict[str, str]:
@@ -87,22 +92,35 @@ class ExtendedReference(Contract):
     max_extension_distance: Positive
 
 
-class DirectionalSettings(Contract):
-    """同一测量直线及交点附近的有限支持搜索半径。"""
+class DirectionalPolicy(Contract):
+    """解析测量线前后保持不变的支持和质量策略。"""
 
-    query_position: Point3
-    direction: Point3
     support_radius: Positive
     quality_policy: GeometryQualityPolicy
     reference_policy: Annotated[
         MeasuredReference | ExtendedReference, Field(discriminator="kind")
     ]
 
-    @model_validator(mode="after")
-    def check_direction(self) -> Self:
-        """方向不可从相机朝向或源 Z 推测。"""
-        require_unit(self.direction)
-        return self
+
+class DirectionalSettings(DirectionalPolicy):
+    """同一测量线的显式来源。"""
+
+    query: MeasurementQuery
+
+
+class DirectionalEvaluation(DirectionalPolicy, QueryLine):
+    """数值内核只消费成功解析的测量线及原策略。"""
+
+    @classmethod
+    def from_settings(cls, settings, line: QueryLine) -> Self:
+        """不修改或回写配方，不覆盖任何质量限值。"""
+        return cls(
+            query_position=line.query_position,
+            direction=line.direction,
+            support_radius=settings.support_radius,
+            reference_policy=settings.reference_policy,
+            quality_policy=settings.quality_policy,
+        )
 
 
 def directional_quality_policy(settings, length_unit: str, *, extension: bool):
@@ -150,6 +168,11 @@ class HeightQueryParameters(MeasurementIdentity, DirectionalSettings):
     @model_validator(mode="after")
     def check_parameters(self) -> Self:
         """保留搜索方向/轴向窗口，拒绝倒置窗口及同名参考/目标。"""
+        if (
+            isinstance(self.query, PoseUvQuery)
+            and self.query.target_frame_id == self.frame_id
+        ):
+            raise ValueError("查询目标坐标系不能与源坐标系相同")
         if self.search_interval[0] >= self.search_interval[1]:
             raise ValueError("高度搜索区间必须严格递增")
         if self.reference_feature_id == self.plane_fit.feature_id:
@@ -236,6 +259,12 @@ class MeasureStepParameters(MeasurementIdentity):
     def check_policy(self) -> Self:
         """不能用另一模式的质量指标或单位放行当前测量。"""
         statistic = isinstance(self.mode, StatisticalStep)
+        if (
+            not statistic
+            and isinstance(self.mode.query, PoseUvQuery)
+            and self.mode.query.target_frame_id == self.frame_id
+        ):
+            raise ValueError("查询目标坐标系不能与源坐标系相同")
         require_measurement_policy(
             self.mode.quality_policy,
             (statistic_metric_units if statistic else distance_metric_units)(

@@ -1,11 +1,30 @@
 import {expect,it} from 'vitest'
 import {Scene,PerspectiveCamera,LineSegments,LineDashedMaterial} from 'three'
 import {measurementItems} from '@/workflows/workflow-editor/point-cloud/measurement-display'
+import {queryDisplay} from '@/workflows/workflow-editor/point-cloud/query-display'
 import {createGeometryOverlay} from '@/workflows/workflow-editor/point-cloud/geometry-overlay'
 import {rendererUsage} from '@/workflows/workflow-editor/point-cloud/preview-data'
 import {planeColorData,fillPlaneColors,planeColorSummary} from '@/workflows/workflow-editor/point-cloud/plane-colors'
 const policy={max_points:100,max_data_bytes:10000,max_cpu_bytes:100000,max_gpu_bytes:100000,max_canvas_pixels:10000,max_position_error:.001}
-function payload(valid=true){return {observation_id:'obs',spatial:{frame_id:'fixture',length_unit:'mm'},bounds:{min:[0,0,0],max:[1,1,5]},measurements:{format_id:'amvision.measurement-evidence3d.v1',observation_id:'obs',frame_id:'fixture',length_unit:'mm',items:[{kind:'height-query',method:{method_version:1,method_id:'height-query'},item_id:'height',valid,value:valid?5:null,reason:valid?null:'outside_support',geometry:valid?{kind:'directional-distance',endpoints:[[0,0,0],[0,0,5]]}:null,support:[{role:'reference',coverage:{triangle:[[0,0,0],[1,0,0],[0,1,0]]}},{role:'target',coverage:{triangle:[[0,0,5],[1,0,5],[0,1,5]]}}],quality:{usable:valid,metrics:{observation_id:'obs',items:[]}}}]}}}
+it('reads pose UV evidence and rejects missing transforms, stale identity and forged lines',()=>{
+  const pose={pose_id:'datum',target_frame_id:'part',source_frame_id:'fixture',length_unit:'mm',observation_id:'obs',state:'found',reason:null,transform:{matrix:[[1,0,0,-2],[0,1,0,-3],[0,0,1,-4],[0,0,0,1]]}}
+  const item={kind:'height-query',valid:true,reason:null,method:{parameters:{query:{kind:'pose-uv',pose_id:'datum',target_frame_id:'part',uv:[.25,-.25]}},query_resolution:{pose,line:{query_position:[2.25,2.75,4],direction:[0,0,1]}}}}
+  const display=queryDisplay(item,payload())!
+  expect(display.position).toEqual([2.25,2.75,4]);expect(display.uv).toEqual([.25,-.25])
+  for(const change of ['transform','observation','line']){
+    const broken=structuredClone(item)
+    if(change==='transform')Object.assign(broken.method.query_resolution.pose,{transform:undefined})
+    if(change==='observation')broken.method.query_resolution.pose.observation_id='old'
+    if(change==='line')broken.method.query_resolution.line.query_position[0]=0
+    expect(()=>queryDisplay(broken,payload())).toThrow('cloud_preview_invalid')
+  }
+  const failed=structuredClone(item)
+  Object.assign(failed,{valid:false,reason:'query_pose_unavailable'})
+  Object.assign(failed.method.query_resolution,{line:null,pose:{...pose,state:'underconstrained',reason:'axis_parallel',transform:null}})
+  expect(queryDisplay(failed,payload())?.position).toBeNull()
+  failed.valid=true;expect(()=>queryDisplay(failed,payload())).toThrow()
+})
+function payload(valid=true){return {observation_id:'obs',spatial:{frame_id:'fixture',length_unit:'mm'},bounds:{min:[0,0,0],max:[1,1,5]},measurements:{format_id:'amvision.measurement-evidence3d.v1',observation_id:'obs',frame_id:'fixture',length_unit:'mm',items:[{kind:'height-query',method:{method_version:1,method_id:'height-query',parameters:{query:{kind:'configured',query_position:[0,0,0],direction:[0,0,1]}},query_resolution:{line:{query_position:[0,0,0],direction:[0,0,1]},pose:null}},item_id:'height',valid,value:valid?5:null,reason:valid?null:'outside_support',geometry:valid?{kind:'directional-distance',endpoints:[[0,0,0],[0,0,5]]}:null,support:[{role:'reference',coverage:{triangle:[[0,0,0],[1,0,0],[0,1,0]]}},{role:'target',coverage:{triangle:[[0,0,5],[1,0,5],[0,1,5]]}}],quality:{usable:valid,metrics:{observation_id:'obs',items:[]}}}]}}}
 it('rejects cross-observation evidence and stale valid values in invalid results',()=>{
   expect(measurementItems(payload())[0]!.value).toBe(5)
   const wrong=payload();wrong.measurements.observation_id='old';expect(()=>measurementItems(wrong)).toThrow()

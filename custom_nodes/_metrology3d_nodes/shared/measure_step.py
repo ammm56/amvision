@@ -17,10 +17,11 @@ from custom_nodes._metrology3d_nodes.shared.measurement_support import (
     select_planes,
     support_snapshot,
 )
+from custom_nodes._metrology3d_nodes.shared.measurement_query import resolve_query
 
 
 def measure_step(
-    runtime, parameters, *, groups=(), reference=None, target=None, cancel
+    runtime, parameters, *, groups=(), reference=None, target=None, pose=None, cancel
 ):
     """端口按模式互斥，拒绝隐藏连接；预先核对双方再执行重计算。"""
     try:
@@ -35,8 +36,18 @@ def measure_step(
                 parameters,
                 [settings.reference_feature_id, settings.target_feature_id],
             )
-            return directional_measurement(runtime, planes, parameters, cancel=cancel)
-        if groups or reference is None or target is None:
+            resolution = resolve_query(
+                runtime,
+                parameters,
+                settings,
+                pose,
+                planes[0].support.observation_id,
+                cancel=cancel,
+            )
+            return directional_measurement(
+                runtime, planes, parameters, resolution, cancel=cancel
+            )
+        if groups or pose is not None or reference is None or target is None:
             raise InvalidRequestError("统计高差必须连接双方点云，不能连接平面特征端口")
         for cloud in (reference, target):
             require_cloud(runtime, cloud, parameters, reference.observation_id)

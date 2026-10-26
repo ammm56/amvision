@@ -29,11 +29,12 @@ from tests.test_metrology3d_measurement_contracts import (
     measurement_policy,
 )
 from tests.test_metrology3d_plane import plane_parameters
+from tests.test_metrology3d_frame import frame_parameters
 from tests.test_metrology3d_preview import preview_policy, decode
 
 
 def test_complete_file_height_step_evidence_and_release(tmp_path, request):
-    """全输入严格读取，原行号/dtype 不变；同一局部面的高度应为零。"""
+    """全输入严格读取，原行号/dtype 不变；本次法向测量与平面方程一致。"""
     supplied = request.config.getoption("--cloud-sample")
     if not supplied:
         pytest.skip("完整样本必须显式提供")
@@ -64,16 +65,16 @@ def test_complete_file_height_step_evidence_and_release(tmp_path, request):
     limits = policy(
         max_header_bytes=65536,
         max_decoded_bytes=400000000,
-        max_working_bytes=134217728,
+        max_working_bytes=536870912,
         chunk_rows=65536,
         chunk_bytes=4194304,
         max_live_array_bytes=800000000,
     )
     preview = preview_policy(
-        max_points=10000,
-        max_data_bytes=1000000,
-        max_body_bytes=4000000,
-        max_working_bytes=134217728,
+        max_points=1000000,
+        max_data_bytes=32000000,
+        max_body_bytes=64000000,
+        max_working_bytes=536870912,
     )
     configured = execution_policy().model_copy(
         update={"io": limits, "preview": preview}
@@ -125,7 +126,9 @@ def test_complete_file_height_step_evidence_and_release(tmp_path, request):
             if rule["item_id"] == "max_residual":
                 rule["upper"] = 0.1
         p = height_parameters(
-            query_position=query,
+            query=dict(
+                kind="pose-uv", pose_id="datum", target_frame_id="part", uv=(0, 0)
+            ),
             search_radius=0.3,
             search_interval=(-0.5, 0.5),
             support_radius=0.3,
@@ -146,10 +149,20 @@ def test_complete_file_height_step_evidence_and_release(tmp_path, request):
             length_unit="mm",
             geometry=dict(center=query, axis=[0, 0, 1], radius=0.3, length=1),
         )
-        graph = measurement_graph(height=p, reference_roi=roi, read=False)
+        frame = frame_parameters(
+            primary_feature_id=p.reference_feature_id,
+            origin=dict(kind="anchor-projection", anchor=query),
+        )
+        graph = measurement_graph(height=p, reference_roi=roi, read=False, frame=frame)
         for node in graph.nodes:
             if node.node_id == "preview":
-                node.parameters["point_limit"] = 10000
+                node.parameters["point_limit"] = 1000000
+                node.parameters["color"] = dict(
+                    mode="scalar",
+                    field="positions",
+                    component=2,
+                    range=dict(mode="finite-range"),
+                )
         registry, _ = build_chain()
         result = WorkflowGraphExecutor(registry=registry).execute(
             template=graph,
@@ -167,8 +180,27 @@ def test_complete_file_height_step_evidence_and_release(tmp_path, request):
         evidence = MeasurementEvidence3d.model_validate(result.outputs["evidence"])
         item = evidence.items[0]
         assert item.valid, item.model_dump_json()
-        assert abs(item.value) < 1e-9
-        assert abs(result.outputs["step"]["items"][0]["value"]) < 1e-9
+        line = item.method.query_resolution.line
+        position, direction = (
+            np.asarray(line.query_position),
+            np.asarray(line.direction),
+        )
+        independent = []
+        for side in item.support:
+            plane = side.plane.geometry
+            distance = -(np.dot(plane.normal, position) + plane.offset) / np.dot(
+                plane.normal, direction
+            )
+            independent.append(position + distance * direction)
+        np.testing.assert_allclose(
+            item.geometry.endpoints, independent, atol=1e-10, rtol=0
+        )
+        assert item.value == pytest.approx(
+            np.dot(independent[1] - independent[0], direction), abs=1e-10
+        )
+        assert result.outputs["step"]["items"][0]["value"] == pytest.approx(
+            item.value, abs=1e-10
+        )
         for side in item.support:
             assert side.source_point_count == 14745099
             for index, xyz in zip(side.coverage.source_indices, side.coverage.triangle):
@@ -177,12 +209,16 @@ def test_complete_file_height_step_evidence_and_release(tmp_path, request):
                         view.chunk(index, index + 1)["positions"][0], xyz
                     )
         display = result.outputs["body"]
-        assert display["state"] == "ready" and display["display_point_count"] == 10000
+        assert display["state"] == "ready" and display["display_point_count"] == 1000000
+        assert item.method.query_resolution.pose.pose_id == "datum"
         assert decode(display)["positions"].dtype == np.dtype("float32")
         report = dict(
             input_bytes=meta.content_length,
             input_points=cloud.point_count,
             query=query,
+            frame=frame.model_dump(mode="json"),
+            display_points=display["display_point_count"],
+            display_bounds=display["bounds"],
             height=item.value,
             elapsed_seconds=monotonic() - started,
             live_array_bytes=runtime.budget.used,

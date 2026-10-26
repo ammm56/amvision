@@ -1,6 +1,6 @@
 """M3.1 接线只解析严格契约，计算和所有权继续由共享运行模块负责。"""
 
-from backend.contracts.workflows.geometry3d_observations import Features3d
+from backend.contracts.workflows.geometry3d_observations import Features3d, Pose3d
 from backend.contracts.workflows.measurement3d_parameters import (
     HeightNodeParameters,
     StepNodeParameters,
@@ -33,6 +33,12 @@ def _outputs(evidence):
     }
 
 
+def _pose(request):
+    """可选连线不隐含可选来源；按配方模式在测量入口严格准入。"""
+    value = request.input_values.get("pose")
+    return Pose3d.model_validate(value) if value is not None else None
+
+
 def height(request):
     """局部平面也通过已有 features 端口交付，不另造显示算法。"""
     p = HeightNodeParameters.model_validate(request.parameters)
@@ -42,6 +48,7 @@ def height(request):
         cloud_input(request, env.runtime),
         _groups(request),
         p.settings,
+        pose=_pose(request),
         cancel=env.cancel,
     )
     return {**_outputs(evidence), "features": features.model_dump(mode="json")}
@@ -58,6 +65,11 @@ def step(request):
         for name in ("reference", "target")
     }
     evidence = measure_step(
-        env.runtime, p.settings, groups=_groups(request), **clouds, cancel=env.cancel
+        env.runtime,
+        p.settings,
+        groups=_groups(request),
+        pose=_pose(request),
+        **clouds,
+        cancel=env.cancel,
     )
     return _outputs(evidence)

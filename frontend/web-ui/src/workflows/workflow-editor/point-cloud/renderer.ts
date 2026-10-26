@@ -4,6 +4,7 @@ import type { CloudRendererPolicy } from '../services/measurement-resource.servi
 import { reserveCpu, reserveGpu, type CloudDisplayData } from './preview-data'
 import {fillPlaneColors,type PlaneColors} from './plane-colors'
 import {createGeometryOverlay,type GeometryOverlayInput} from './geometry-overlay'
+export type CloudViewAxis = 'iso' | 'x' | '-x' | 'y' | '-y' | 'z' | '-z'
 
 /** 一个激活的视口一个 renderer；没有常驻动画、后台重算或原始点云请求。 */
 export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, policy: CloudRendererPolicy,
@@ -23,7 +24,6 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
   let overlay: ReturnType<typeof createGeometryOverlay> | null = null
   let frame = 0, closed = false
   let panEnabled = false
-  let viewAxis: 'iso' | 'x' | 'y' | 'z' = 'iso'
   const scene = new Scene(), geometry = new BufferGeometry(), material = new PointsMaterial({ size: 2, sizeAttenuation: false, vertexColors: true })
   let axes: AxesHelper | null = null
   let camera: PerspectiveCamera | OrthographicCamera
@@ -61,20 +61,23 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
     controls?.dispose()
     controls = new OrbitControls(camera, renderer!.domElement)
     controls.enableDamping = false
+    controls.zoomToCursor = true
     controls.mouseButtons.LEFT = panEnabled ? MOUSE.PAN : MOUSE.ROTATE
     controls.addEventListener('change', schedule)
   }
-  function fit(axis: 'iso' | 'x' | 'y' | 'z' = 'iso') {
-    viewAxis = axis
-    const direction = axis === 'x' ? [1, 0, 0] : axis === 'y' ? [0, -1, 0] : axis === 'z' ? [0, 0, 1] : [1, -1, .8]
-    camera.up.set(0, axis === 'z' ? 1 : 0, axis === 'z' ? 0 : 1)
+  function fit(axis: CloudViewAxis = 'iso') {
+    const directions:Record<CloudViewAxis,[number,number,number]>={iso:[1,-1,.8],x:[1,0,0],'-x':[-1,0,0],y:[0,-1,0],'-y':[0,1,0],z:[0,0,1],'-z':[0,0,-1]}
+    const direction = directions[axis],top=axis==='z'||axis==='-z'
+    camera.up.set(0, top ? 1 : 0, top ? 0 : 1)
     camera.position.set(...direction as [number, number, number]).normalize().multiplyScalar(radius * 3 / Math.min(1, width / height))
     camera.near = radius / 1000; camera.far = radius * 10000
     if (camera instanceof OrthographicCamera) {
       const y = radius * 1.15 / Math.min(1, width / height), x = y * width / height
       camera.left = -x; camera.right = x; camera.top = y; camera.bottom = -y; camera.zoom = 1
     } else camera.aspect = width / height
-    camera.updateProjectionMatrix(); controls!.target.set(0, 0, 0); controls!.update(); schedule()
+    camera.updateProjectionMatrix()
+    // OrbitControls 在构造时冻结 up 的变换，换轴必须同步重建控制器。
+    bindControls(); controls!.target.set(0, 0, 0); controls!.update(); schedule()
   }
   const points = new Points(geometry, material)
   try {
@@ -90,7 +93,7 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
     host.append(renderer.domElement)
     axes = new AxesHelper(radius * .65); scene.add(points, axes)
     camera = new PerspectiveCamera(45, width / height)
-    bindControls(); fit()
+    fit()
     overlay = createGeometryOverlay(scene,camera,renderer.domElement,data.origin,policy,schedule,active=>{if(controls)controls.enabled=!active},error=>{dispose();failed(error)})
     observer = new ResizeObserver(entries => {
       try {
@@ -101,7 +104,10 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
         // 先释放旧画布计量；新预算失败时整个 renderer 关闭，不能保持未计费画布。
         releaseGpu(); releaseGpu = () => {}
         releaseGpu = reserveGpu(data.positions.byteLength + data.colors.byteLength + w * h * 8 + 144, policy)
-        width = w; height = h; renderer.setSize(w, h); fit(viewAxis)
+        width = w; height = h; renderer.setSize(w, h)
+        if(camera instanceof OrthographicCamera){const half=(camera.top-camera.bottom)/2;camera.left=-half*w/h;camera.right=half*w/h}
+        else camera.aspect=w/h
+        camera.updateProjectionMatrix();schedule()
       } catch (error) { dispose(); failed(error as Error) }
     })
     observer.observe(host)
@@ -114,10 +120,16 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
       },
       geometry(input:GeometryOverlayInput) { try { overlay?.update(input) } catch(error) { dispose(); failed(error as Error) } },
       projection(orthographic: boolean) {
-        camera = orthographic ? new OrthographicCamera() : new PerspectiveCamera(45, width / height)
+        if(closed||(camera instanceof OrthographicCamera)===orthographic)return
+        const old=camera,target=controls!.target.clone(),distance=old.position.distanceTo(target)
+        const half=old instanceof OrthographicCamera?(old.top-old.bottom)/(2*old.zoom):distance*Math.tan(old.fov*Math.PI/360)/old.zoom
+        camera = orthographic ? new OrthographicCamera(-half*width/height,half*width/height,half,-half,old.near,old.far) : new PerspectiveCamera(45, width / height,old.near,old.far)
+        camera.up.copy(old.up);camera.position.copy(old.position);camera.quaternion.copy(old.quaternion)
+        if(camera instanceof PerspectiveCamera)camera.position.copy(old.position).sub(target).normalize().multiplyScalar(half/Math.tan(camera.fov*Math.PI/360)).add(target)
         overlay?.camera(camera)
-        bindControls(); fit(viewAxis)
+        bindControls();controls!.target.copy(target);controls!.update();camera.updateProjectionMatrix();schedule()
       },
+      zoom(inward:boolean){if(closed)return;if(inward)controls!.dollyIn(.8);else controls!.dollyOut(.8);controls!.update();schedule()},
       pan(enabled: boolean) { panEnabled = enabled; controls!.mouseButtons.LEFT = enabled ? MOUSE.PAN : MOUSE.ROTATE },
       pointSize(size: number) { material.size = size; schedule() },
     }

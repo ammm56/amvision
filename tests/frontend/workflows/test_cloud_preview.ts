@@ -55,6 +55,12 @@ it('does not allocate when capacity or policy is missing', async () => {
   await expect(decodeCloudPreview(await body(), {...policy,max_position_error:0}, new AbortController().signal)).rejects.toThrow('cloud_renderer_unconfigured')
 })
 
+it('validates multi-megabyte base64 without regex stack overflow and releases on checksum failure',async()=>{
+  const input=await body()
+  input.data.content='AAAA'.repeat(4_000_000);input.data.content_length=12_000_000
+  await expect(decodeCloudPreview(input,{...policy,max_data_bytes:12_000_000,max_cpu_bytes:100_000_000},new AbortController().signal)).rejects.toThrow('cloud_preview_checksum')
+})
+
 it.each(['source','generated'])('decodes ordered %s identities without conflating generated vertices with source rows',async kind=>{
   const input=await body(),raw=Uint8Array.from(atob(input.data.content),c=>c.charCodeAt(0)),view=new DataView(raw.buffer)
   input.vertex_kind=kind

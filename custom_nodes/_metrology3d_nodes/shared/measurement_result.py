@@ -6,20 +6,32 @@ from backend.contracts.workflows.geometry3d_methods import parameter_digest
 from backend.contracts.workflows.measurement3d_evidence import MeasurementEvidence3d
 from backend.contracts.workflows.measurement3d_parameters import (
     HeightQueryParameters,
+    DirectionalEvaluation,
     StatisticalStep,
     directional_metric_units,
     directional_quality_policy,
     statistic_metric_units,
 )
 from custom_nodes._metrology3d_nodes.shared.geometry_quality import geometry_quality
-from custom_nodes._metrology3d_nodes.shared.measurement_support import plane_coverage
+from custom_nodes._metrology3d_nodes.shared.measurement_support import (
+    plane_coverage,
+    support_snapshot,
+)
 from backend.contracts.workflows.measurement3d_reference import reference_uses_extension
 from custom_nodes._metrology3d_nodes.shared.measurement_reference import (
     reference_coverage,
 )
 
 
-def measurement_result(parameters, observation_id, supports, geometry, *, reason=None):
+def measurement_result(
+    parameters,
+    observation_id,
+    supports,
+    geometry,
+    *,
+    reason=None,
+    query_resolution=None,
+):
     """不测得时保留稳定 ID/null 和失败证据，不能借用上一帧量值。"""
     height = isinstance(parameters, HeightQueryParameters)
     settings = parameters if height else parameters.mode
@@ -82,7 +94,9 @@ def measurement_result(parameters, observation_id, supports, geometry, *, reason
             value = supports[1].statistic.value - supports[0].statistic.value
         else:
             a, b = geometry["endpoints"]
-            value = fsum((y - x) * v for x, y, v in zip(a, b, settings.direction))
+            value = fsum(
+                (y - x) * v for x, y, v in zip(a, b, query_resolution.line.direction)
+            )
     else:
         value, geometry = None, None
     origins = {
@@ -112,6 +126,7 @@ def measurement_result(parameters, observation_id, supports, geometry, *, reason
                     method_version=1,
                     parameters=parameters,
                     parameters_sha256=parameter_digest(parameters),
+                    query_resolution=query_resolution,
                 ),
                 geometry=geometry,
                 support=supports,
@@ -122,11 +137,25 @@ def measurement_result(parameters, observation_id, supports, geometry, *, reason
     )
 
 
-def directional_measurement(runtime, planes, parameters, *, cancel):
+def directional_measurement(runtime, planes, parameters, query_resolution, *, cancel):
     """两个交点采用同一条显式测量线和同一局部支持定义。"""
-    settings = (
+    configured = (
         parameters if isinstance(parameters, HeightQueryParameters) else parameters.mode
     )
+    if query_resolution.line is None:
+        supports = [
+            support_snapshot(runtime, plane.support, role, cancel=cancel, plane=plane)
+            for role, plane in zip(("reference", "target"), planes)
+        ]
+        return measurement_result(
+            parameters,
+            planes[0].support.observation_id,
+            supports,
+            None,
+            reason="query_pose_unavailable",
+            query_resolution=query_resolution,
+        )
+    settings = DirectionalEvaluation.from_settings(configured, query_resolution.line)
     supports, endpoints = [], []
     reason = None
     for role, plane in zip(("reference", "target"), planes):
@@ -164,5 +193,10 @@ def directional_measurement(runtime, planes, parameters, *, cancel):
         else None
     )
     return measurement_result(
-        parameters, planes[0].support.observation_id, supports, geometry, reason=reason
+        parameters,
+        planes[0].support.observation_id,
+        supports,
+        geometry,
+        reason=reason,
+        query_resolution=query_resolution,
     )

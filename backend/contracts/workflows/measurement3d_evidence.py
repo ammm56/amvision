@@ -22,12 +22,14 @@ from backend.contracts.workflows.geometry3d_quality import (
 )
 from backend.contracts.workflows.measurement3d_parameters import (
     HeightQueryParameters,
+    DirectionalEvaluation,
     MeasureStepParameters,
     StatisticalStep,
     directional_metric_units,
     directional_quality_policy,
     statistic_metric_units,
 )
+from backend.contracts.workflows.measurement3d_query import QueryResolution
 from backend.contracts.workflows.measurement3d_reference import (
     ReferenceExtension,
     check_reference_extension,
@@ -58,6 +60,7 @@ class HeightMethod(Contract):
     method_version: Literal[1] = 1
     parameters: HeightQueryParameters
     parameters_sha256: Sha256
+    query_resolution: QueryResolution
 
 
 class StepMethod(Contract):
@@ -67,6 +70,7 @@ class StepMethod(Contract):
     method_version: Literal[1] = 1
     parameters: MeasureStepParameters
     parameters_sha256: Sha256
+    query_resolution: QueryResolution | None
 
 
 class CoverageEvidence(Contract):
@@ -257,6 +261,36 @@ class MeasurementEvidenceItem(Contract):
             else parameters.mode
         )
         statistic = isinstance(settings, StatisticalStep)
+        resolution = self.method.query_resolution
+        evaluation = None
+        if statistic:
+            if resolution is not None:
+                raise ValueError("统计测量不能携带方向查询来源")
+        else:
+            if resolution is None:
+                raise ValueError("方向测量缺少查询解析证据")
+            resolution.check_source(
+                settings.query,
+                observation_id=self.quality.metrics.observation_id,
+                frame_id=parameters.frame_id,
+                length_unit=parameters.length_unit,
+            )
+            if resolution.line is None:
+                if (
+                    self.valid
+                    or self.reason != "query_pose_unavailable"
+                    or any(
+                        s.coverage is not None
+                        or s.extension is not None
+                        or s.statistic is not None
+                        for s in self.support
+                    )
+                ):
+                    raise ValueError("查询位姿失败不能携带测量几何或支持计算")
+            else:
+                evaluation = DirectionalEvaluation.from_settings(
+                    settings, resolution.line
+                )
         origins = {s.sample_origin for s in self.support if s.sample_origin is not None}
         expected_origin = (
             (next(iter(origins)) if len(origins) == 1 else "mixed")
@@ -287,8 +321,8 @@ class MeasurementEvidenceItem(Contract):
         ):
             raise ValueError("测量质量指标集合或单位不一致")
         for side in self.support:
-            if not statistic:
-                check_reference_extension(side, settings)
+            if not statistic and evaluation is not None:
+                check_reference_extension(side, evaluation)
             elif side.extension is not None:
                 raise ValueError("统计测量不能携带基准延伸")
             if side.plane:
@@ -367,7 +401,8 @@ class MeasurementEvidenceItem(Contract):
             if statistic != isinstance(self.geometry, StatisticalMeasurement):
                 raise ValueError("测量几何与方法模式不一致")
             require_unit(self.geometry.direction)
-            if self.geometry.direction != settings.direction:
+            line = settings if statistic else evaluation
+            if self.geometry.direction != line.direction:
                 raise ValueError("测量方向与方法不一致")
             if statistic:
                 if self.geometry.origin != settings.origin or any(
@@ -378,12 +413,10 @@ class MeasurementEvidenceItem(Contract):
                     self.support[1].statistic.value - self.support[0].statistic.value
                 )
             else:
-                if self.geometry.query_position != settings.query_position:
+                if self.geometry.query_position != line.query_position:
                     raise ValueError("测量查询位置不一致")
                 a, b = self.geometry.endpoints
-                expected = fsum(
-                    (y - x) * v for x, y, v in zip(a, b, settings.direction)
-                )
+                expected = fsum((y - x) * v for x, y, v in zip(a, b, line.direction))
                 for side, point in zip(self.support, (a, b)):
                     if (
                         not side.plane
@@ -407,11 +440,11 @@ class MeasurementEvidenceItem(Contract):
                     # 浮点舍入核对，不是图纸公差；禁止大平移放宽到毫米级。
                     if abs(residual) > max(1e-8, 32 * 2.220446049250313e-16 * scale):
                         raise ValueError("测量端点不在对应平面上")
-                    delta = tuple(x - p for x, p in zip(point, settings.query_position))
-                    along = fsum(x * v for x, v in zip(delta, settings.direction))
+                    delta = tuple(x - p for x, p in zip(point, line.query_position))
+                    along = fsum(x * v for x, v in zip(delta, line.direction))
                     if any(
                         not isclose(x, along * v, rel_tol=1e-8, abs_tol=1e-8)
-                        for x, v in zip(delta, settings.direction)
+                        for x, v in zip(delta, line.direction)
                     ):
                         raise ValueError("测量端点不在指定测量线上")
             if not isclose(self.value, expected, rel_tol=1e-8, abs_tol=1e-8):

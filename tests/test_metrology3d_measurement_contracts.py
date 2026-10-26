@@ -45,8 +45,9 @@ def height_parameters(**changes):
             "item_id": "height",
             "frame_id": "fixture",
             "length_unit": "mm",
-            "query_position": (0, 0, 0),
-            "direction": (0, 0, 1),
+            "query": dict(
+                kind="configured", query_position=(0, 0, 0), direction=(0, 0, 1)
+            ),
             "support_radius": 2,
             "reference_policy": {"kind": "measured-support"},
             "quality_policy": measurement_policy(),
@@ -64,8 +65,9 @@ def step_parameters(*, statistic=None, **changes):
     mode = (
         dict(
             kind="directional-planes",
-            query_position=(0, 0, 0),
-            direction=(0, 0, 1),
+            query=dict(
+                kind="configured", query_position=(0, 0, 0), direction=(0, 0, 1)
+            ),
             support_radius=2,
             reference_policy={"kind": "measured-support"},
             quality_policy=measurement_policy(),
@@ -89,7 +91,11 @@ def step_parameters(*, statistic=None, **changes):
 @pytest.mark.parametrize(
     "changes",
     [
-        {"direction": (0, 0, 2)},
+        {
+            "query": dict(
+                kind="configured", query_position=(0, 0, 0), direction=(0, 0, 2)
+            )
+        },
         {"search_interval": (6, 4)},
         {"search_radius": 0},
         {"support_radius": 0},

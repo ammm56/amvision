@@ -45,6 +45,16 @@ def attach_measurements(cloud, body, values, *, policy, cancel):
                     extension=reference_uses_extension(item.support[0]),
                 )
             require_quality_result(item.quality, quality_policy)
+            if item.kind in {"height-query", "measure-step"}:
+                resolution = item.method.query_resolution
+                if resolution is not None and resolution.pose is not None:
+                    pose = resolution.pose
+                    require_quality_result(pose.quality, pose.method.quality_policy)
+                    if pose.transform is not None:
+                        for parent in pose.transform.provenance.parents:
+                            require_quality_result(
+                                parent.quality, parent.method.quality_policy
+                            )
             for side in item.support:
                 if item.kind in {"height-query", "measure-step"} and side.plane:
                     require_quality_result(

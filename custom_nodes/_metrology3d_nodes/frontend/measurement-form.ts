@@ -11,9 +11,12 @@ const unit = (v:unknown) => vector(v)&&Math.abs(v.reduce((a,b)=>a+b*b,0)-1)<=1e-
 export function measurementMetrics(statistic:boolean, lengthUnit:string) {
   return ['reference','target'].flatMap(side=>(statistic?['count','std']:['count','covered','direction_cosine','nearest_distance','triangle_edge','max_residual']).map(key=>({item_id:`${side}_${key}`,unit:['count','covered','direction_cosine'].includes(key)?'1':lengthUnit})))
 }
+export function newMeasurementQuery(kind='configured'):Form {
+  return kind==='pose-uv'?{kind,pose_id:'',target_frame_id:'',uv:[null,null]}:{kind:'configured',query_position:[null,null,null],direction:[null,null,null]}
+}
 export function newMeasurementMode(statistic=false):Form {
   const quality_policy = {policy_id:'',policy_version:null,rules:measurementMetrics(statistic,'').map(normalizeLimitRule)}
-  return statistic?{kind:'roi-statistic',origin:[null,null,null],direction:[null,null,null],statistic:{kind:'mean'},quality_policy}:{kind:'directional-planes',reference_feature_id:'',target_feature_id:'',query_position:[null,null,null],direction:[null,null,null],support_radius:null,reference_policy:{kind:'measured-support'},quality_policy}
+  return statistic?{kind:'roi-statistic',origin:[null,null,null],direction:[null,null,null],statistic:{kind:'mean'},quality_policy}:{kind:'directional-planes',reference_feature_id:'',target_feature_id:'',query:newMeasurementQuery(),support_radius:null,reference_policy:{kind:'measured-support'},quality_policy}
 }
 export function newMeasurement(height:boolean):Form {
   const {kind:_,target_feature_id:__,...directional}=newMeasurementMode()
@@ -23,8 +26,9 @@ export function measurementIssues(height:boolean, value:unknown):string[] {
   const p=object(value),s=height?p:object(p.mode),stat=s.kind==='roi-statistic',issues:string[]=[]
   if(!id(p.item_id)||!id(p.frame_id)||!['m','mm','um'].includes(String(p.length_unit)))issues.push('item_id / frame_id / length_unit')
   if(!height&&!['directional-planes','roi-statistic'].includes(String(s.kind)))issues.push('mode')
-  if(!unit(s.direction))issues.push('direction')
   if(stat){
+    if(!unit(s.direction))issues.push('direction')
+    if('query' in s)issues.push('query')
     if('reference_policy' in s)issues.push('reference_policy')
     const method=object(s.statistic)
     if(!vector(s.origin))issues.push('origin')
@@ -36,7 +40,14 @@ export function measurementIssues(height:boolean, value:unknown):string[] {
     if(policy.kind==='plane-extension'){
       if(!finite(policy.max_extension_distance)||policy.max_extension_distance<=0)issues.push('reference_policy / max_extension_distance')
     }else if(policy.kind!=='measured-support'||Object.keys(policy).length!==1)issues.push('reference_policy')
-    if(!vector(s.query_position)||!finite(s.support_radius)||s.support_radius<=0)issues.push('query_position / support_radius')
+    const query=object(s.query)
+    if('direction' in s||'query_position' in s)issues.push('query / obsolete fields')
+    if(query.kind==='configured'){
+      if(!vector(query.query_position)||!unit(query.direction)||Object.keys(query).length!==3)issues.push('query / position / direction')
+    }else if(query.kind==='pose-uv'){
+      if(!id(query.pose_id)||!id(query.target_frame_id)||query.target_frame_id===p.frame_id||!Array.isArray(query.uv)||query.uv.length!==2||!query.uv.every(finite)||Object.keys(query).length!==4)issues.push('query / pose / U/V')
+    }else issues.push('query / source')
+    if(!finite(s.support_radius)||s.support_radius<=0)issues.push('support_radius')
     if(!id(s.reference_feature_id)||!height&&(!id(s.target_feature_id)||s.reference_feature_id===s.target_feature_id))issues.push('feature IDs')
   }
   if(height){
@@ -62,6 +73,16 @@ export const measurementNumericItems:NumericItemProvider=source=>{
 export const measurementRecipeValidator:RecipeValidator=(node,sources,zh)=>{
   const height=node.node_type_id.endsWith('height-query'),p=object(node.parameters.settings),s=height?p:object(p.mode),stat=s.kind==='roi-statistic'
   const issues=measurementIssues(height,p)
+  const query=object(s.query),poses=sources.pose??[]
+  if(stat||query.kind==='configured'){
+    if(poses.length)issues.push(zh?'当前测量来源不能连接位姿端口':'This measurement source cannot connect a pose')
+  }else if(query.kind==='pose-uv'){
+    if(poses.length!==1)issues.push(zh?'基准坐标查询需要连接一个本次位姿':'Datum queries require one current pose input')
+    else if(poses[0]!.nodeTypeId==='custom.metrology3d.build-frame'){
+      const source=object(poses[0]!.parameters.settings)
+      if(query.pose_id!==source.pose_id||query.target_frame_id!==source.target_frame_id)issues.push(zh?'位姿 ID 或基准坐标与连接不一致':'Pose ID or datum frame differs from the connected input')
+    }
+  }
   if(stat&&(sources.features?.length||!sources.reference?.length||!sources.target?.length)||!stat&&(sources.reference?.length||sources.target?.length||!sources.features?.length))issues.push(zh?'测量模式与输入连接不一致':'Measurement mode and input connections do not match')
   const features=sources.features??[]
   if(!stat&&features.length&&features.every(f=>['custom.metrology3d.fit-plane','custom.metrology3d.height-query'].includes(f.nodeTypeId))){

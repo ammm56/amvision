@@ -150,7 +150,11 @@ def build_custom_node_catalog_document():
             "Height Query",
             "metrology3d.measurement",
             HeightNodeParameters,
-            [cloud, port("features", "features3d.v1", multiple=True)],
+            [
+                cloud,
+                port("features", "features3d.v1", multiple=True),
+                port("pose", "pose3d.v1", False),
+            ],
             [
                 port("measurements", "numeric-table.v1"),
                 port("evidence", "measurement-evidence3d.v1"),
@@ -166,6 +170,7 @@ def build_custom_node_catalog_document():
                 port("features", "features3d.v1", False, True),
                 port("reference", "point-cloud-ref.v1", False),
                 port("target", "point-cloud-ref.v1", False),
+                port("pose", "pose3d.v1", False),
             ],
             [
                 port("measurements", "numeric-table.v1"),
@@ -261,7 +266,9 @@ def build_custom_node_catalog_document():
         definitions.append(
             dict(
                 node_type_id="custom.metrology3d." + key,
-                version="0.1.10"
+                version="0.1.11"
+                if key in {"height-query", "measure-step", "cloud-preview"}
+                else "0.1.10"
                 if key
                 in {
                     "crop-roi",

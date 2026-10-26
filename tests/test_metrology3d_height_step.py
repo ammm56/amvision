@@ -90,7 +90,11 @@ def test_directional_and_height_independent_truth(dtype, slope):
         for direction, expected in (((0, 0, 1), 5), ((0, 0, -1), -5)):
             step = measure_step(
                 runtime,
-                step_parameters(direction=direction),
+                step_parameters(
+                    query=dict(
+                        kind="configured", query_position=(0, 0, 0), direction=direction
+                    )
+                ),
                 groups=groups,
                 cancel=lambda: None,
             )
@@ -147,7 +151,13 @@ def test_vertical_planes_with_large_coordinate_translation(shift):
             )
         result = measure_step(
             runtime,
-            step_parameters(query_position=(shift, shift, shift), direction=(1, 0, 0)),
+            step_parameters(
+                query=dict(
+                    kind="configured",
+                    query_position=(shift, shift, shift),
+                    direction=(1, 0, 0),
+                )
+            ),
             groups=groups,
             cancel=lambda: None,
         )
@@ -165,7 +175,11 @@ def test_parallel_and_empty_support_are_explicitly_invalid():
     try:
         result = measure_step(
             runtime,
-            step_parameters(direction=(1, 0, 0)),
+            step_parameters(
+                query=dict(
+                    kind="configured", query_position=(0, 0, 0), direction=(1, 0, 0)
+                )
+            ),
             groups=groups,
             cancel=lambda: None,
         )
@@ -232,7 +246,12 @@ def test_outside_support_and_hole_are_invalid():
     try:
         outside = measure_step(
             runtime,
-            step_parameters(query_position=(2, 0, 0), support_radius=5),
+            step_parameters(
+                query=dict(
+                    kind="configured", query_position=(2, 0, 0), direction=(0, 0, 1)
+                ),
+                support_radius=5,
+            ),
             groups=groups,
             cancel=lambda: None,
         )

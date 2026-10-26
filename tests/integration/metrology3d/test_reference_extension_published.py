@@ -29,7 +29,11 @@ def sample_height_parameters():
         if rule["item_id"] == "max_residual":
             rule["upper"] = 0.1
     return height_parameters(
-        query_position=(-33.0880012936612, -18.59026520051255, -15),
+        query=dict(
+            kind="configured",
+            query_position=(-33.0880012936612, -18.59026520051255, -15),
+            direction=(0, 0, 1),
+        ),
         search_radius=0.3,
         search_interval=(-1, 1),
         support_radius=0.3,

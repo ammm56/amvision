@@ -306,6 +306,23 @@ class CloudReference(Contract):
     vertex_kind: Literal["source", "generated"] | None
     topology: BoundaryTopology | None
 
+    def unavailable(self, reason: str, *, spatial=None) -> Self:
+        """保留输入追溯但清除资源身份，不伪造未执行算法的支持点。"""
+        raw = self.model_dump()
+        raw.update(state="unavailable", reason=reason, spatial=spatial or self.spatial)
+        for name in (
+            "cloud_id",
+            "revision",
+            "point_count",
+            "fields",
+            "source_metadata",
+            "sample_origin",
+            "vertex_kind",
+            "topology",
+        ):
+            raw[name] = None
+        return type(self).model_validate(raw)
+
     @model_validator(mode="after")
     def check_state(self) -> Self:
         """缺测不分配假资源；空派生云仍是有真实身份的 ready。"""

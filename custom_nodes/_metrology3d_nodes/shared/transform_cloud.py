@@ -8,7 +8,6 @@ import numpy as np
 from backend.contracts.workflows.geometry3d_methods import TransformCloudParameters
 from backend.contracts.workflows.point_cloud import CloudAxes
 from backend.contracts.workflows.point_cloud_runtime import (
-    CloudReference,
     TransformCloudMethod,
 )
 from backend.contracts.workflows.point_cloud import canonical_cloud_json
@@ -17,10 +16,7 @@ from backend.service.application.runtime.exception_cleanup import (
     release_exception_frames,
 )
 from backend.service.application.workflows.point_cloud.arrays import OwnedCloudArrays
-from custom_nodes._metrology3d_nodes.shared.cloud_assets import freeze_cloud_parent
-from custom_nodes._metrology3d_nodes.shared.geometry_quality import (
-    require_quality_result,
-)
+from custom_nodes._metrology3d_nodes.shared.pose_source import require_pose
 
 
 def transform_cloud(runtime, reference, pose, *, cancel):
@@ -40,19 +36,14 @@ def transform_cloud(runtime, reference, pose, *, cancel):
         raise InvalidRequestError("点云与位姿运行、观测、源坐标或单位不一致")
     if reference.spatial.axes.handedness != "right":
         raise InvalidRequestError("刚体变换要求明确的右手源坐标")
-    require_quality_result(pose.quality, pose.method.quality_policy)
-    for support in pose.support:
-        if support.state == "ready":
-            with runtime.borrow(support):
-                pass
-    if pose.state == "found":
-        for support, evidence in zip(pose.support, pose.transform.provenance.parents):
-            require_quality_result(evidence.quality, evidence.method.quality_policy)
-            if (
-                freeze_cloud_parent(runtime, support)["content_sha256"]
-                != evidence.support_content_sha256
-            ):
-                raise InvalidRequestError("位姿变换证据与当前支持点云不一致")
+    require_pose(
+        runtime,
+        pose,
+        observation_id=reference.observation_id,
+        frame_id=reference.spatial.frame_id,
+        length_unit=reference.spatial.length_unit,
+        cancel=cancel,
+    )
     if reference.state == "ready":
         with runtime.borrow(reference):
             pass
@@ -67,21 +58,7 @@ def transform_cloud(runtime, reference, pose, *, cancel):
         )
     )
     if reference.state == "unavailable" or pose.state != "found":
-        raw = reference.model_dump(mode="json")
-        raw.update(
-            state="unavailable",
-            reason=reference.reason or pose.reason,
-            spatial=spatial.model_dump(mode="json"),
-            cloud_id=None,
-            revision=None,
-            point_count=None,
-            fields=None,
-            source_metadata=None,
-            sample_origin=None,
-            vertex_kind=None,
-            topology=None,
-        )
-        return CloudReference.model_validate(raw)
+        return reference.unavailable(reference.reason or pose.reason, spatial=spatial)
     parameters = TransformCloudParameters(
         pose_id=pose.pose_id,
         pose_sha256=sha256(

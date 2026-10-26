@@ -22,15 +22,14 @@ from tests.test_metrology3d_measurement_contracts import (
 from tests.test_metrology3d_preview import preview_policy
 
 
-def measurement_graph(*, height=None, reference_roi=None, read=True):
+def measurement_graph(*, height=None, reference_roi=None, read=True, frame=None):
     """完整图复用真实处理器；参数可以由完整样本测试显式提供。"""
     height = height or height_parameters()
     plane = height.plane_fit.model_copy(
         update={"feature_id": height.reference_feature_id}
     )
     step = step_parameters(
-        query_position=height.query_position,
-        direction=height.direction,
+        query=height.query,
         support_radius=height.support_radius,
         reference_policy=height.reference_policy,
         quality_policy=height.quality_policy,
@@ -68,6 +67,12 @@ def measurement_graph(*, height=None, reference_roi=None, read=True):
             ("height", "features", "preview", "features"),
         ]
     )
+    if frame is not None:
+        nodes["frame"] = ("build-frame", dict(settings=frame.model_dump(mode="json")))
+        links.append(("plane", "features", "frame", "features"))
+        links.extend(
+            ("frame", "pose", node, "pose") for node in ("height", "step", "preview")
+        )
     inputs = []
     if read:
         nodes["read"] = (

@@ -155,7 +155,8 @@ def test_rigid_frame_normal_sign_and_units_preserve_independent_height(
         raw = step_parameters(reference_policy=extension(1.01 * scale)).model_dump()
         raw["length_unit"] = unit
         raw["mode"].update(
-            query_position=shift, direction=matrix[:, 2], support_radius=0.25 * scale
+            query=dict(kind="configured", query_position=shift, direction=matrix[:, 2]),
+            support_radius=0.25 * scale,
         )
         for rule in raw["mode"]["quality_policy"]["rules"]:
             if rule["unit"] == "mm":
@@ -220,7 +221,12 @@ def test_target_missing_and_parallel_reference_remain_invalid():
         assert result.items[0].support[1].extension is None
         parallel = measure_step(
             runtime,
-            step_parameters(direction=(1, 0, 0), reference_policy=extension(2)),
+            step_parameters(
+                query=dict(
+                    kind="configured", query_position=(0, 0, 0), direction=(1, 0, 0)
+                ),
+                reference_policy=extension(2),
+            ),
             groups=groups,
             cancel=lambda: None,
         )

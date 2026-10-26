@@ -87,7 +87,8 @@ export async function decodeCloudPreview(value: unknown, policy: CloudRendererPo
   const release = () => { if (!released) { released = true; cpuBytes -= cost } }
   try {
     signal.throwIfAborted()
-    if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(content)) throw new Error('cloud_preview_invalid')
+    // 不重复捕获四字符组，避免大显示载荷在正则引擎中耗尽调用栈。
+    if (!/^[A-Za-z0-9+/]*={0,2}$/.test(content)) throw new Error('cloud_preview_invalid')
     const raw = Uint8Array.from(atob(content), c => c.charCodeAt(0))
     if (raw.length !== size) throw new Error('cloud_preview_invalid')
     const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', raw)), b => b.toString(16).padStart(2, '0')).join('')

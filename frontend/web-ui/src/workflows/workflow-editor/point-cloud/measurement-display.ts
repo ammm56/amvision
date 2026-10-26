@@ -1,8 +1,9 @@
 /** 显示结构与空间校验，不在浏览器重做测量或公差判定。 */
 import {object} from './preview-data'
 import {validateDimensionGeometry} from './dimension-display'
+import {queryDisplay,type QueryDisplay} from './query-display'
 export type MeasurementKind='height-query'|'measure-step'|'measure-extents'|'measure-edge-pair'|'measure-hole'
-export interface MeasurementDisplay { kind:MeasurementKind;component:string|null;item_id:string;valid:boolean;value:number|null;reason:string|null;geometry:Record<string,unknown>|null;support:Record<string,unknown>[];quality:Record<string,unknown> }
+export interface MeasurementDisplay { kind:MeasurementKind;component:string|null;item_id:string;valid:boolean;value:number|null;reason:string|null;geometry:Record<string,unknown>|null;support:Record<string,unknown>[];quality:Record<string,unknown>;query:QueryDisplay|null }
 export interface ReferenceExtensionDisplay {state:'covered'|'used'|'limit-exceeded'|'unavailable';distance:number|null;max_distance:number;source_index:number|null;datum_point:number[]|null;projected_support_point:number[]|null;nearest_support_point:number[]|null}
 export function referenceExtension(support:Record<string,unknown>[]):ReferenceExtensionDisplay|null {
   let result:ReferenceExtensionDisplay|null=null
@@ -40,6 +41,6 @@ export function measurementItems(payload:Record<string,unknown>):MeasurementDisp
     if(extension&&(dimensions||geometry?.kind==='statistic-difference'))throw new Error('cloud_preview_invalid')
     if(dimensions)validateDimensionGeometry(item,geometry,support)
     else if(geometry&&(!['directional-distance','statistic-difference'].includes(String(geometry.kind))||geometry.kind==='statistic-difference'&&geometry.endpoints!==null))throw new Error('cloud_preview_invalid')
-    return {kind:item.kind as MeasurementKind,component:dimensions?String(item.component):null,item_id:item.item_id,valid,value:item.value as number|null,reason:item.reason as string|null,geometry,support,quality}
+    return {kind:item.kind as MeasurementKind,component:dimensions?String(item.component):null,item_id:item.item_id,valid,value:item.value as number|null,reason:item.reason as string|null,geometry,support,quality,query:dimensions?null:queryDisplay(item,payload)}
   })
 }
