@@ -24,6 +24,10 @@
           <dd>{{ runtime.revision_generation }}</dd>
         </div>
         <div>
+          <dt>{{ t('workflowEditor.appDetail.fields.requestTimeoutSeconds') }}</dt>
+          <dd>{{ runtime.request_timeout_seconds }}</dd>
+        </div>
+        <div>
           <dt>{{ t('workflowEditor.appDetail.fields.desiredState') }}</dt>
           <dd>{{ runtime.desired_state }}</dd>
         </div>

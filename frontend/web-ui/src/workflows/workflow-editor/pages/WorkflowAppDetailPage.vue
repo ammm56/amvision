@@ -644,6 +644,7 @@ interface WorkflowRuntimeCreateDialogValue {
   workflowAppVersionId: string
   workflowRunRecordMode: WorkflowRunRecordMode
   returnDiagnostics: boolean
+  requestTimeoutSeconds: number | null
 }
 
 const route = useRoute()
@@ -1546,6 +1547,7 @@ async function createRuntime(value: WorkflowRuntimeCreateDialogValue): Promise<v
       projectId: selectedProjectId.value,
       workflowAppVersionId: value.workflowAppVersionId,
       displayName: `${application.value.display_name || application.value.application_id} runtime`,
+      requestTimeoutSeconds: value.requestTimeoutSeconds,
       metadata: {
         source: 'web-ui-app-detail',
         default_execution_metadata: buildRuntimeDefaultExecutionMetadata(value),

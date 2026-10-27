@@ -51,6 +51,8 @@ describe('WorkflowRuntimeDetailsDrawer', () => {
     expect(drawer.textContent).toContain('3')
     expect(drawer.textContent).toContain('local_buffer_broker')
     expect(drawer.textContent).toContain('healthy')
+    const timeout = Array.from(drawer.querySelectorAll('dt')).find((item) => item.textContent === i18n.global.t('workflowEditor.appDetail.fields.requestTimeoutSeconds'))
+    expect(timeout?.nextElementSibling?.textContent).toBe('30')
     expect(drawer.textContent).toContain('2')
     wrapper.unmount()
   })

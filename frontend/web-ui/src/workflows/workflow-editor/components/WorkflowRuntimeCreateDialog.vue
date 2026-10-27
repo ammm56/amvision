@@ -5,7 +5,7 @@
     :confirm-label="t('workflowEditor.appDetail.actions.createRuntime')"
     :cancel-label="t('common.cancel')"
     :busy="busy"
-    :confirm-disabled="!selectedVersionId"
+    :confirm-disabled="!selectedVersionId || !timeoutValid"
     confirm-variant="primary"
     initial-focus="first-field"
     @cancel="emit('cancel')"
@@ -35,6 +35,20 @@
         @update:model-value="returnDiagnostics = readString($event) === 'true' ? 'true' : 'false'"
       />
     </label>
+    <label class="workflow-dialog-field">
+      <span>{{ t('workflowEditor.appDetail.fields.requestTimeoutSeconds') }}</span>
+      <input
+        v-model="requestTimeoutSeconds"
+        type="number"
+        min="1"
+        step="1"
+        :max="Number.MAX_SAFE_INTEGER"
+        :disabled="busy"
+        :aria-invalid="!timeoutValid"
+        :placeholder="t('workflowEditor.appDetail.fields.serviceDefaultTimeout')"
+      />
+    </label>
+    <InlineError v-if="!timeoutValid" :message="t('workflowEditor.appDetail.fields.invalidRequestTimeout')" />
     <InlineError v-if="errorMessage" :message="errorMessage" />
   </ConfirmDialog>
 </template>
@@ -54,6 +68,7 @@ interface WorkflowRuntimeCreateDialogValue {
   workflowAppVersionId: string
   workflowRunRecordMode: WorkflowRunRecordMode
   returnDiagnostics: boolean
+  requestTimeoutSeconds: number | null
 }
 
 interface SelectOption {
@@ -79,6 +94,12 @@ const { t } = useI18n()
 const selectedVersionId = ref('')
 const workflowRunRecordMode = ref<WorkflowRunRecordMode>('none')
 const returnDiagnostics = ref('false')
+const requestTimeoutSeconds = ref<number | string>('')
+const timeoutValid = computed(() => requestTimeoutSeconds.value === '' || (
+  typeof requestTimeoutSeconds.value === 'number'
+  && Number.isSafeInteger(requestTimeoutSeconds.value)
+  && requestTimeoutSeconds.value > 0
+))
 
 const workflowRunRecordModeOptions = computed<SelectOption[]>(() => [
   { label: 'none', value: 'none', description: t('workflowEditor.appDetail.options.recordNone') },
@@ -98,6 +119,7 @@ watch(
     selectedVersionId.value = props.defaultVersionId
     workflowRunRecordMode.value = 'none'
     returnDiagnostics.value = 'false'
+    requestTimeoutSeconds.value = ''
   },
   { immediate: true },
 )
@@ -112,11 +134,12 @@ function readRecordMode(value: SelectValue): WorkflowRunRecordMode {
 }
 
 function confirmCreate(): void {
-  if (!selectedVersionId.value) return
+  if (!selectedVersionId.value || !timeoutValid.value || props.busy) return
   emit('create', {
     workflowAppVersionId: selectedVersionId.value,
     workflowRunRecordMode: workflowRunRecordMode.value,
     returnDiagnostics: returnDiagnostics.value === 'true',
+    requestTimeoutSeconds: requestTimeoutSeconds.value === '' ? null : Number(requestTimeoutSeconds.value),
   })
 }
 </script>
