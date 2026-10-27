@@ -15,6 +15,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--port", type=int, required=True)
+    parser.add_argument("--point-cloud-policy", type=Path)
     parser.add_argument(
         "--recipe",
         choices=(
@@ -34,7 +35,16 @@ def main():
         parser.error("验收必须使用独立的非业务端口")
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
-    with published_system(root) as system:
+    policy = None
+    if args.point_cloud_policy:
+        from backend.service.application.workflows.point_cloud.execution_policy import (
+            PointCloudExecutionPolicy,
+        )
+
+        policy = PointCloudExecutionPolicy.model_validate_json(
+            args.point_cloud_policy.read_text("utf-8")
+        )
+    with published_system(root, point_cloud_policy=policy) as system:
         kinds = (
             ("extents", "edge-pair", "hole")
             if args.recipe == "dimensions"

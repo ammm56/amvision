@@ -56,7 +56,16 @@ def extract_boundary_array(
     # 保守计入剖分、两向求交、来源字典和段数组同时存活，不等同原生 RSS 限额。
     geometry_working_bytes = len(points) * 12288
     if geometry_working_bytes > max_working_bytes:
-        raise InvalidRequestError("边界完整局部支持超过显式工作预算")
+        raise InvalidRequestError(
+            f"边界完整局部支持超过显式工作预算：点数 {len(points)}，"
+            f"预计 {geometry_working_bytes} B，上限 {max_working_bytes} B",
+            details=dict(
+                stage="extract_boundary_array",
+                point_count=len(points),
+                estimated_bytes=geometry_working_bytes,
+                limit_bytes=max_working_bytes,
+            ),
+        )
     # ROI 计划可能远大于点数；不能与仍存活的几何工作集重复使用同一额度。
     roi_working_bytes = max_working_bytes - geometry_working_bytes
     if not np.isfinite(points).all():

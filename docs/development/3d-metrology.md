@@ -4,7 +4,7 @@
 
 下一批执行依据为 [R5 D/E 详细实施计划](3d-metrology-r5-de-plan.md)，按视角修复、实际支持、容量核定、代表量值、全部对象和正式发布顺序推进；不重建已有平台边界。
 
-2026-10-26 最新执行见 [R5 D0/D1](3d-metrology-r5-d0-d1.md)：视角状态和旧实例错误回调已修复，21 区逐行支持及独立拟面在 Windows/WSL 复验一致；四份真实候选图与审核表已整理。正式支持/质量/容量仍待审核，尚未进入代表量值和全页面发布验收。[前序工件审计](3d-metrology-audit-20261026.md)保留发现依据，不重做已完成节点或平台边界。
+2026-10-26 最新执行见 [R5 D3 断线审计与代表配方验收](3d-metrology-r5-d3.md)：继承 [D2](3d-metrology-r5-d2.md) 的工作集修复与本工件参数，独立核对 50 个断点，确认不是求交漏线或当前 ROI 裁切，而是采样不满足冻结连接条件；用户已确认保留 L/W 无效。完整 14,745,099 点输入下 A_top_L 的 H/Z、S1.D 通过独立对照、Windows/WSL 正式发布/Trigger 生命周期及 Windows 实际页面文件运行。页面沿现有导入、编辑、保存和发布路径完成，未替代逐节点手工建图；全部对象及最终 E2 尚未完成。前序 [D0/D1](3d-metrology-r5-d0-d1.md) 的视角修复与候选图不重复实现；[前序工件审计](3d-metrology-audit-20261026.md)保留发现依据。生产默认和节点隐藏边界不变。
 
 状态：**M0 收口；M1、M2 与 M3.1–M3.3 共十八节点已内部接通，R1–R4 已提交，三维契约统一 v1。R5 A 联合 ROI、B 本次 pose/U/V、C 动态截面与评价面继承已内部实现；十二钢片/两半圆尚未完成同定义实测验收。生产超时、容量及发行 profile 未验收，节点隐藏；M3.4、M3.5 未完成**。设计依据见 [ADR-0015](../decisions/ADR-0015-3d-metrology.md)，修正依据见 [真实工件审计](3d-metrology-audit-20261024.md)，当前进度见 [R4](3d-metrology-r4.md)、[R5 配方](3d-metrology-r5.md)和 [R5 C 验证及未决项](3d-metrology-r5-c.md)。历史证据见 [M3.3](3d-metrology-m33-acceptance.md)、[M2](3d-metrology-m2.md)、[M1 发布](3d-metrology-m1-published.md)、[I/O](3d-metrology-m1-io.md)、[输入](3d-metrology-m1-input.md)、[生命周期](3d-metrology-m1-runtime.md)、[资产](3d-metrology-m1-assets.md)、[资源 API](3d-metrology-m1-nodes.md)和[界面](3d-metrology-m1-transports.md)。历史规格不等于全部能力已实现。
 

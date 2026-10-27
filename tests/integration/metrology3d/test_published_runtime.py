@@ -246,6 +246,7 @@ def published_full_sample_lifecycle(
     check_body=None,
     report_name="",
     point_limits=(1000, 500),
+    point_cloud_policy=None,
 ):
     """复用同一真实生命周期验收；扩展配方仅提供配置及独立结果断言。"""
     value = request.config.getoption("--cloud-sample")
@@ -266,7 +267,7 @@ def published_full_sample_lifecycle(
         "worker": "WorkflowRuntimeWorkerManager",
         "calls": [],
     }
-    with published_system(tmp_path) as system:
+    with published_system(tmp_path, point_cloud_policy=point_cloud_policy) as system:
         first_limit, second_limit = point_limits
         version1 = system.publish(point_limit=first_limit, documents=documents)
         runtime1 = system.start(version1)
@@ -378,9 +379,19 @@ def published_full_sample_lifecycle(
             active = wait_executing(system, process)
             process.kill()
             process.communicate(timeout=15)
+        # 强杀客户端不会发送 CANCEL；已接收的调用仍受原始 120 秒 deadline 约束。
+        # 先等待真实运行终态，再验证既有 15 秒回收窗口，不把运算时间当回收时间。
+        def abandoned_run_finished():
+            run = system.call(
+                "GET", f"/runs/{active['current_run_id']}?response_mode=run"
+            )
+            return run if run["state"] in {"succeeded", "failed", "cancelled"} else None
+
+        abandoned_run = wait_for(abandoned_run_finished, timeout=120)
         system.assert_reclaimed()
         report["executing_client_crash"] = {
             "run_id": active["current_run_id"],
+            "terminal_state": abandoned_run["state"],
             "reclaimed": True,
         }
         call(generation2, version2, second_limit)

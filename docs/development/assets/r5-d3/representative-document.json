@@ -1,0 +1,2161 @@
+{
+  "format_id": "amvision.workflow-app-document.v1",
+  "application": {
+    "format_id": "amvision.flow-application.v1",
+    "application_id": "cloud-transport-app",
+    "display_name": "R5 A_top_L / S1",
+    "template_ref": {
+      "template_id": "cloud-transport",
+      "template_version": "0.1.8",
+      "source_kind": "json-file",
+      "source_uri": "unused",
+      "metadata": {}
+    },
+    "runtime_mode": "python-json-workflow",
+    "description": "",
+    "bindings": [
+      {
+        "binding_id": "cloud",
+        "direction": "input",
+        "template_port_id": "input",
+        "binding_kind": "api-request",
+        "required": true,
+        "config": {
+          "allowed_media_types": [
+            "application/octet-stream"
+          ],
+          "max_file_bytes": 1000000000
+        },
+        "metadata": {}
+      },
+      {
+        "binding_id": "body",
+        "direction": "output",
+        "template_port_id": "body",
+        "binding_kind": "http-response",
+        "required": true,
+        "config": {},
+        "metadata": {}
+      }
+    ],
+    "metadata": {
+      "project_id": "project-1"
+    }
+  },
+  "template": {
+    "format_id": "amvision.workflow-graph-template.v1",
+    "template_id": "cloud-transport",
+    "template_version": "0.1.8",
+    "display_name": "R5 representative measurements",
+    "description": "",
+    "nodes": [
+      {
+        "node_id": "read",
+        "node_type_id": "custom.metrology3d.read-cloud",
+        "parameters": {
+          "source": {
+            "kind": "file"
+          },
+          "file_options": {
+            "profile_id": "ply-ascii",
+            "profile_version": 1,
+            "spatial": {
+              "length_unit": "mm",
+              "unit_source": "configuration",
+              "frame_id": "fixture",
+              "axes": {
+                "handedness": "right",
+                "axis_labels": [
+                  "X",
+                  "Y",
+                  "Z"
+                ],
+                "definition_source": "configuration"
+              }
+            },
+            "field_mapping": [
+              {
+                "source_names": [
+                  "x",
+                  "y",
+                  "z"
+                ],
+                "target_name": "positions",
+                "semantic": "position",
+                "dtype": "float32",
+                "components": 3,
+                "unit": null
+              }
+            ]
+          }
+        },
+        "enabled": true,
+        "ui_state": {
+          "x": 0,
+          "y": 500
+        },
+        "metadata": {}
+      },
+      {
+        "node_id": "filter",
+        "node_type_id": "custom.metrology3d.filter-valid",
+        "parameters": {
+          "finite_fields": [
+            "positions"
+          ],
+          "sentinels": []
+        },
+        "enabled": true,
+        "ui_state": {
+          "x": 350,
+          "y": 500
+        },
+        "metadata": {}
+      },
+      {
+        "node_id": "preview",
+        "node_type_id": "custom.metrology3d.cloud-preview",
+        "parameters": {
+          "point_limit": 500000,
+          "color": {
+            "mode": "solid"
+          }
+        },
+        "enabled": true,
+        "ui_state": {
+          "x": 3150,
+          "y": 500
+        },
+        "metadata": {}
+      },
+      {
+        "node_id": "D-crop",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "parameters": {
+          "source": {
+            "kind": "parameters",
+            "roi": {
+              "format_id": "amvision.roi3d.v1",
+              "roi_id": "D",
+              "frame_id": "fixture",
+              "length_unit": "mm",
+              "kind": "union",
+              "geometry": {
+                "roi_ids": [
+                  "D1",
+                  "D2",
+                  "D3",
+                  "D4",
+                  "D5"
+                ]
+              }
+            },
+            "bounds": [
+              {
+                "format_id": "amvision.roi3d.v1",
+                "roi_id": "D1",
+                "frame_id": "fixture",
+                "length_unit": "mm",
+                "kind": "box",
+                "geometry": {
+                  "center": [
+                    -41.0,
+                    -135.0,
+                    -16.5
+                  ],
+                  "rotation": [
+                    [
+                      1.0,
+                      0.0,
+                      0.0
+                    ],
+                    [
+                      0.0,
+                      1.0,
+                      0.0
+                    ],
+                    [
+                      0.0,
+                      0.0,
+                      1.0
+                    ]
+                  ],
+                  "size": [
+                    8.0,
+                    20.0,
+                    1.0
+                  ]
+                }
+              },
+              {
+                "format_id": "amvision.roi3d.v1",
+                "roi_id": "D2",
+                "frame_id": "fixture",
+                "length_unit": "mm",
+                "kind": "box",
+                "geometry": {
+                  "center": [
+                    4.0,
+                    -138.5,
+                    -15.75
+                  ],
+                  "rotation": [
+                    [
+                      1.0,
+                      0.0,
+                      0.0
+                    ],
+                    [
+                      0.0,
+                      1.0,
+                      0.0
+                    ],
+                    [
+                      0.0,
+                      0.0,
+                      1.0
+                    ]
+                  ],
+                  "size": [
+                    32.0,
+                    13.0,
+                    1.5
+                  ]
+                }
+              },
+              {
+                "format_id": "amvision.roi3d.v1",
+                "roi_id": "D3-left",
+                "frame_id": "fixture",
+                "length_unit": "mm",
+                "kind": "box",
+                "geometry": {
+                  "center": [
+                    25.0,
+                    -17.0,
+                    -15.25
+                  ],
+                  "rotation": [
+                    [
+                      1.0,
+                      0.0,
+                      0.0
+                    ],
+                    [
+                      0.0,
+                      1.0,
+                      0.0
+                    ],
+                    [
+                      0.0,
+                      0.0,
+                      1.0
+                    ]
+                  ],
+                  "size": [
+                    6.0,
+                    26.0,
+                    1.5
+                  ]
+                }
+              },
+              {
+                "format_id": "amvision.roi3d.v1",
+                "roi_id": "D3-right",
+                "frame_id": "fixture",
+                "length_unit": "mm",
+                "kind": "box",
+                "geometry": {
+                  "center": [
+                    41.5,
+                    -17.0,
+                    -15.25
+                  ],
+                  "rotation": [
+                    [
+                      1.0,
+                      0.0,
+                      0.0
+                    ],
+                    [
+                      0.0,
+                      1.0,
+                      0.0
+                    ],
+                    [
+                      0.0,
+                      0.0,
+                      1.0
+                    ]
+                  ],
+                  "size": [
+                    5.0,
+                    26.0,
+                    1.5
+                  ]
+                }
+              },
+              {
+                "format_id": "amvision.roi3d.v1",
+                "roi_id": "D4",
+                "frame_id": "fixture",
+                "length_unit": "mm",
+                "kind": "box",
+                "geometry": {
+                  "center": [
+                    6.0,
+                    -14.5,
+                    -15.75
+                  ],
+                  "rotation": [
+                    [
+                      1.0,
+                      0.0,
+                      0.0
+                    ],
+                    [
+                      0.0,
+                      1.0,
+                      0.0
+                    ],
+                    [
+                      0.0,
+                      0.0,
+                      1.0
+                    ]
+                  ],
+                  "size": [
+                    36.0,
+                    21.0,
+                    1.5
+                  ]
+                }
+              },
+              {
+                "format_id": "amvision.roi3d.v1",
+                "roi_id": "D5",
+                "frame_id": "fixture",
+                "length_unit": "mm",
+                "kind": "box",
+                "geometry": {
+                  "center": [
+                    -40.5,
+                    -7.5,
+                    -16.5
+                  ],
+                  "rotation": [
+                    [
+                      1.0,
+                      0.0,
+                      0.0
+                    ],
+                    [
+                      0.0,
+                      1.0,
+                      0.0
+                    ],
+                    [
+                      0.0,
+                      0.0,
+                      1.0
+                    ]
+                  ],
+                  "size": [
+                    7.0,
+                    9.0,
+                    1.0
+                  ]
+                }
+              },
+              {
+                "format_id": "amvision.roi3d.v1",
+                "roi_id": "D3",
+                "frame_id": "fixture",
+                "length_unit": "mm",
+                "kind": "union",
+                "geometry": {
+                  "roi_ids": [
+                    "D3-left",
+                    "D3-right"
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        "enabled": true,
+        "ui_state": {
+          "x": 700,
+          "y": 0
+        },
+        "metadata": {}
+      },
+      {
+        "node_id": "D",
+        "node_type_id": "custom.metrology3d.fit-plane",
+        "parameters": {
+          "settings": {
+            "feature_id": "D",
+            "positive_normal": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "min_orientation_cosine": 0.99,
+            "algorithm": {
+              "kind": "svd"
+            },
+            "quality_policy": {
+              "policy_id": "r5-D",
+              "policy_version": 1,
+              "rules": [
+                {
+                  "item_id": "inlier_count",
+                  "unit": "1",
+                  "enabled": true,
+                  "required": true,
+                  "lower": 100.0,
+                  "upper": null,
+                  "include_lower": true,
+                  "include_upper": true
+                },
+                {
+                  "item_id": "tangent_ratio",
+                  "unit": "1",
+                  "enabled": true,
+                  "required": true,
+                  "lower": 0.01,
+                  "upper": null,
+                  "include_lower": true,
+                  "include_upper": true
+                },
+                {
+                  "item_id": "normal_gap",
+                  "unit": "1",
+                  "enabled": true,
+                  "required": true,
+                  "lower": 0.01,
+                  "upper": null,
+                  "include_lower": true,
+                  "include_upper": true
+                },
+                {
+                  "item_id": "rms",
+                  "unit": "mm",
+                  "enabled": true,
+                  "required": true,
+                  "lower": null,
+                  "upper": 0.025,
+                  "include_lower": true,
+                  "include_upper": true
+                },
+                {
+                  "item_id": "max_residual",
+                  "unit": "mm",
+                  "enabled": true,
+                  "required": true,
+                  "lower": null,
+                  "upper": 0.12,
+                  "include_lower": true,
+                  "include_upper": true
+                }
+              ]
+            }
+          }
+        },
+        "enabled": true,
+        "ui_state": {
+          "x": 1050,
+          "y": 0
+        },
+        "metadata": {}
+      },
+      {
+        "node_id": "B-crop",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "parameters": {
+          "source": {
+            "kind": "parameters",
+            "roi": {
+              "format_id": "amvision.roi3d.v1",
+              "roi_id": "B",
+              "frame_id": "fixture",
+              "length_unit": "mm",
+              "kind": "union",
+              "geometry": {
+                "roi_ids": [
+                  "B-0"
+                ]
+              }
+            },
+            "bounds": [
+              {
+                "format_id": "amvision.roi3d.v1",
+                "roi_id": "B-0",
+                "frame_id": "fixture",
+                "length_unit": "mm",
+                "kind": "box",
+                "geometry": {
+                  "center": [
+                    -29.0,
+                    -27.0,
+                    -15.95
+                  ],
+                  "rotation": [
+                    [
+                      1.0,
+                      0.0,
+                      0.0
+                    ],
+                    [
+                      0.0,
+                      1.0,
+                      0.0
+                    ],
+                    [
+                      0.0,
+                      0.0,
+                      1.0
+                    ]
+                  ],
+                  "size": [
+                    10.0,
+                    2.0,
+                    1.0999999999999996
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        "enabled": true,
+        "ui_state": {
+          "x": 700,
+          "y": 400
+        },
+        "metadata": {}
+      },
+      {
+        "node_id": "B",
+        "node_type_id": "custom.metrology3d.fit-plane",
+        "parameters": {
+          "settings": {
+            "feature_id": "B",
+            "positive_normal": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "min_orientation_cosine": 0.99,
+            "algorithm": {
+              "kind": "svd"
+            },
+            "quality_policy": {
+              "policy_id": "r5-B",
+              "policy_version": 1,
+              "rules": [
+                {
+                  "item_id": "inlier_count",
+                  "unit": "1",
+                  "enabled": true,
+                  "required": true,
+                  "lower": 100.0,
+                  "upper": null,
+                  "include_lower": true,
+                  "include_upper": true
+                },
+                {
+                  "item_id": "tangent_ratio",
+                  "unit": "1",
+                  "enabled": true,
+                  "required": true,
+                  "lower": 0.01,
+                  "upper": null,
+                  "include_lower": true,
+                  "include_upper": true
+                },
+                {
+                  "item_id": "normal_gap",
+                  "unit": "1",
+                  "enabled": true,
+                  "required": true,
+                  "lower": 0.01,
+                  "upper": null,
+                  "include_lower": true,
+                  "include_upper": true
+                },
+                {
+                  "item_id": "rms",
+                  "unit": "mm",
+                  "enabled": true,
+                  "required": true,
+                  "lower": null,
+                  "upper": 0.02,
+                  "include_lower": true,
+                  "include_upper": true
+                },
+                {
+                  "item_id": "max_residual",
+                  "unit": "mm",
+                  "enabled": true,
+                  "required": true,
+                  "lower": null,
+                  "upper": 0.08,
+                  "include_lower": true,
+                  "include_upper": true
+                }
+              ]
+            }
+          }
+        },
+        "enabled": true,
+        "ui_state": {
+          "x": 1050,
+          "y": 400
+        },
+        "metadata": {}
+      },
+      {
+        "node_id": "T-crop",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "parameters": {
+          "source": {
+            "kind": "parameters",
+            "roi": {
+              "format_id": "amvision.roi3d.v1",
+              "roi_id": "T",
+              "frame_id": "fixture",
+              "length_unit": "mm",
+              "kind": "union",
+              "geometry": {
+                "roi_ids": [
+                  "T-0"
+                ]
+              }
+            },
+            "bounds": [
+              {
+                "format_id": "amvision.roi3d.v1",
+                "roi_id": "T-0",
+                "frame_id": "fixture",
+                "length_unit": "mm",
+                "kind": "box",
+                "geometry": {
+                  "center": [
+                    -34.5,
+                    -19.25,
+                    -14.6
+                  ],
+                  "rotation": [
+                    [
+                      1.0,
+                      0.0,
+                      0.0
+                    ],
+                    [
+                      0.0,
+                      1.0,
+                      0.0
+                    ],
+                    [
+                      0.0,
+                      0.0,
+                      1.0
+                    ]
+                  ],
+                  "size": [
+                    2.0,
+                    3.5,
+                    1.1999999999999993
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        "enabled": true,
+        "ui_state": {
+          "x": 700,
+          "y": 800
+        },
+        "metadata": {}
+      },
+      {
+        "node_id": "T",
+        "node_type_id": "custom.metrology3d.fit-plane",
+        "parameters": {
+          "settings": {
+            "feature_id": "T",
+            "positive_normal": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "min_orientation_cosine": 0.99,
+            "algorithm": {
+              "kind": "svd"
+            },
+            "quality_policy": {
+              "policy_id": "r5-T",
+              "policy_version": 1,
+              "rules": [
+                {
+                  "item_id": "inlier_count",
+                  "unit": "1",
+                  "enabled": true,
+                  "required": true,
+                  "lower": 100.0,
+                  "upper": null,
+                  "include_lower": true,
+                  "include_upper": true
+                },
+                {
+                  "item_id": "tangent_ratio",
+                  "unit": "1",
+                  "enabled": true,
+                  "required": true,
+                  "lower": 0.01,
+                  "upper": null,
+                  "include_lower": true,
+                  "include_upper": true
+                },
+                {
+                  "item_id": "normal_gap",
+                  "unit": "1",
+                  "enabled": true,
+                  "required": true,
+                  "lower": 0.01,
+                  "upper": null,
+                  "include_lower": true,
+                  "include_upper": true
+                },
+                {
+                  "item_id": "rms",
+                  "unit": "mm",
+                  "enabled": true,
+                  "required": true,
+                  "lower": null,
+                  "upper": 0.02,
+                  "include_lower": true,
+                  "include_upper": true
+                },
+                {
+                  "item_id": "max_residual",
+                  "unit": "mm",
+                  "enabled": true,
+                  "required": true,
+                  "lower": null,
+                  "upper": 0.08,
+                  "include_lower": true,
+                  "include_upper": true
+                }
+              ]
+            }
+          }
+        },
+        "enabled": true,
+        "ui_state": {
+          "x": 1050,
+          "y": 800
+        },
+        "metadata": {}
+      },
+      {
+        "node_id": "frame",
+        "node_type_id": "custom.metrology3d.build-frame",
+        "parameters": {
+          "settings": {
+            "pose_id": "datum",
+            "target_frame_id": "part",
+            "primary_feature_id": "D",
+            "positive_z": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "origin": {
+              "kind": "anchor-projection",
+              "anchor": [
+                0.0,
+                0.0,
+                0.0
+              ]
+            },
+            "x_axis": {
+              "kind": "direction",
+              "direction": [
+                1.0,
+                0.0,
+                0.0
+              ]
+            },
+            "quality_policy": {
+              "policy_id": "r5-frame",
+              "policy_version": 1,
+              "rules": [
+                {
+                  "item_id": "axis_sine",
+                  "unit": "1",
+                  "enabled": true,
+                  "required": true,
+                  "lower": 0.99,
+                  "upper": null,
+                  "include_lower": true,
+                  "include_upper": true
+                },
+                {
+                  "item_id": "x_alignment",
+                  "unit": "1",
+                  "enabled": true,
+                  "required": true,
+                  "lower": 0.99,
+                  "upper": null,
+                  "include_lower": true,
+                  "include_upper": true
+                },
+                {
+                  "item_id": "z_alignment",
+                  "unit": "1",
+                  "enabled": true,
+                  "required": true,
+                  "lower": 0.99,
+                  "upper": null,
+                  "include_lower": true,
+                  "include_upper": true
+                }
+              ]
+            }
+          }
+        },
+        "enabled": true,
+        "ui_state": {
+          "x": 1400,
+          "y": 0
+        },
+        "metadata": {}
+      },
+      {
+        "node_id": "H",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "parameters": {
+          "settings": {
+            "item_id": "H",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "mode": {
+              "support_radius": 0.15,
+              "quality_policy": {
+                "policy_id": "r5-local-support",
+                "policy_version": 1,
+                "rules": [
+                  {
+                    "item_id": "reference_count",
+                    "unit": "1",
+                    "enabled": true,
+                    "required": true,
+                    "lower": 10.0,
+                    "upper": null,
+                    "include_lower": true,
+                    "include_upper": true
+                  },
+                  {
+                    "item_id": "reference_covered",
+                    "unit": "1",
+                    "enabled": true,
+                    "required": true,
+                    "lower": 1.0,
+                    "upper": null,
+                    "include_lower": true,
+                    "include_upper": true
+                  },
+                  {
+                    "item_id": "reference_direction_cosine",
+                    "unit": "1",
+                    "enabled": true,
+                    "required": true,
+                    "lower": 0.99,
+                    "upper": null,
+                    "include_lower": true,
+                    "include_upper": true
+                  },
+                  {
+                    "item_id": "reference_nearest_distance",
+                    "unit": "mm",
+                    "enabled": true,
+                    "required": true,
+                    "lower": null,
+                    "upper": 0.05,
+                    "include_lower": true,
+                    "include_upper": true
+                  },
+                  {
+                    "item_id": "reference_triangle_edge",
+                    "unit": "mm",
+                    "enabled": true,
+                    "required": true,
+                    "lower": null,
+                    "upper": 0.1,
+                    "include_lower": true,
+                    "include_upper": true
+                  },
+                  {
+                    "item_id": "reference_max_residual",
+                    "unit": "mm",
+                    "enabled": true,
+                    "required": true,
+                    "lower": null,
+                    "upper": 0.08,
+                    "include_lower": true,
+                    "include_upper": true
+                  },
+                  {
+                    "item_id": "target_count",
+                    "unit": "1",
+                    "enabled": true,
+                    "required": true,
+                    "lower": 10.0,
+                    "upper": null,
+                    "include_lower": true,
+                    "include_upper": true
+                  },
+                  {
+                    "item_id": "target_covered",
+                    "unit": "1",
+                    "enabled": true,
+                    "required": true,
+                    "lower": 1.0,
+                    "upper": null,
+                    "include_lower": true,
+                    "include_upper": true
+                  },
+                  {
+                    "item_id": "target_direction_cosine",
+                    "unit": "1",
+                    "enabled": true,
+                    "required": true,
+                    "lower": 0.99,
+                    "upper": null,
+                    "include_lower": true,
+                    "include_upper": true
+                  },
+                  {
+                    "item_id": "target_nearest_distance",
+                    "unit": "mm",
+                    "enabled": true,
+                    "required": true,
+                    "lower": null,
+                    "upper": 0.05,
+                    "include_lower": true,
+                    "include_upper": true
+                  },
+                  {
+                    "item_id": "target_triangle_edge",
+                    "unit": "mm",
+                    "enabled": true,
+                    "required": true,
+                    "lower": null,
+                    "upper": 0.1,
+                    "include_lower": true,
+                    "include_upper": true
+                  },
+                  {
+                    "item_id": "target_max_residual",
+                    "unit": "mm",
+                    "enabled": true,
+                    "required": true,
+                    "lower": null,
+                    "upper": 0.08,
+                    "include_lower": true,
+                    "include_upper": true
+                  }
+                ]
+              },
+              "reference_policy": {
+                "kind": "plane-extension",
+                "max_extension_distance": 10.0
+              },
+              "query": {
+                "kind": "pose-uv",
+                "pose_id": "datum",
+                "target_frame_id": "part",
+                "uv": [
+                  -34.75,
+                  -19.0
+                ]
+              },
+              "kind": "directional-planes",
+              "reference_feature_id": "B",
+              "target_feature_id": "T"
+            }
+          }
+        },
+        "enabled": true,
+        "ui_state": {
+          "x": 1750,
+          "y": 400
+        },
+        "metadata": {}
+      },
+      {
+        "node_id": "Z",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "parameters": {
+          "settings": {
+            "item_id": "Z",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "mode": {
+              "support_radius": 0.15,
+              "quality_policy": {
+                "policy_id": "r5-local-support",
+                "policy_version": 1,
+                "rules": [
+                  {
+                    "item_id": "reference_count",
+                    "unit": "1",
+                    "enabled": true,
+                    "required": true,
+                    "lower": 10.0,
+                    "upper": null,
+                    "include_lower": true,
+                    "include_upper": true
+                  },
+                  {
+                    "item_id": "reference_covered",
+                    "unit": "1",
+                    "enabled": true,
+                    "required": true,
+                    "lower": 1.0,
+                    "upper": null,
+                    "include_lower": true,
+                    "include_upper": true
+                  },
+                  {
+                    "item_id": "reference_direction_cosine",
+                    "unit": "1",
+                    "enabled": true,
+                    "required": true,
+                    "lower": 0.99,
+                    "upper": null,
+                    "include_lower": true,
+                    "include_upper": true
+                  },
+                  {
+                    "item_id": "reference_nearest_distance",
+                    "unit": "mm",
+                    "enabled": true,
+                    "required": true,
+                    "lower": null,
+                    "upper": 0.05,
+                    "include_lower": true,
+                    "include_upper": true
+                  },
+                  {
+                    "item_id": "reference_triangle_edge",
+                    "unit": "mm",
+                    "enabled": true,
+                    "required": true,
+                    "lower": null,
+                    "upper": 0.1,
+                    "include_lower": true,
+                    "include_upper": true
+                  },
+                  {
+                    "item_id": "reference_max_residual",
+                    "unit": "mm",
+                    "enabled": true,
+                    "required": true,
+                    "lower": null,
+                    "upper": 0.08,
+                    "include_lower": true,
+                    "include_upper": true
+                  },
+                  {
+                    "item_id": "target_count",
+                    "unit": "1",
+                    "enabled": true,
+                    "required": true,
+                    "lower": 10.0,
+                    "upper": null,
+                    "include_lower": true,
+                    "include_upper": true
+                  },
+                  {
+                    "item_id": "target_covered",
+                    "unit": "1",
+                    "enabled": true,
+                    "required": true,
+                    "lower": 1.0,
+                    "upper": null,
+                    "include_lower": true,
+                    "include_upper": true
+                  },
+                  {
+                    "item_id": "target_direction_cosine",
+                    "unit": "1",
+                    "enabled": true,
+                    "required": true,
+                    "lower": 0.99,
+                    "upper": null,
+                    "include_lower": true,
+                    "include_upper": true
+                  },
+                  {
+                    "item_id": "target_nearest_distance",
+                    "unit": "mm",
+                    "enabled": true,
+                    "required": true,
+                    "lower": null,
+                    "upper": 0.05,
+                    "include_lower": true,
+                    "include_upper": true
+                  },
+                  {
+                    "item_id": "target_triangle_edge",
+                    "unit": "mm",
+                    "enabled": true,
+                    "required": true,
+                    "lower": null,
+                    "upper": 0.1,
+                    "include_lower": true,
+                    "include_upper": true
+                  },
+                  {
+                    "item_id": "target_max_residual",
+                    "unit": "mm",
+                    "enabled": true,
+                    "required": true,
+                    "lower": null,
+                    "upper": 0.08,
+                    "include_lower": true,
+                    "include_upper": true
+                  }
+                ]
+              },
+              "reference_policy": {
+                "kind": "plane-extension",
+                "max_extension_distance": 10.0
+              },
+              "query": {
+                "kind": "pose-uv",
+                "pose_id": "datum",
+                "target_frame_id": "part",
+                "uv": [
+                  -34.75,
+                  -19.0
+                ]
+              },
+              "kind": "directional-planes",
+              "reference_feature_id": "D",
+              "target_feature_id": "T"
+            }
+          }
+        },
+        "enabled": true,
+        "ui_state": {
+          "x": 1750,
+          "y": 800
+        },
+        "metadata": {}
+      },
+      {
+        "node_id": "A_top_L",
+        "node_type_id": "custom.metrology3d.extract-boundary",
+        "parameters": {
+          "settings": {
+            "feature_id": "A_top_L-boundary",
+            "evaluation": {
+              "kind": "pose",
+              "frame_id": "fixture",
+              "length_unit": "mm",
+              "pose_id": "datum",
+              "target_frame_id": "part"
+            },
+            "region": {
+              "roi_id": "A_top_L",
+              "rois": [
+                {
+                  "format_id": "amvision.roi3d.v1",
+                  "roi_id": "A_top_L-0",
+                  "frame_id": "fixture",
+                  "length_unit": "mm",
+                  "kind": "box",
+                  "geometry": {
+                    "center": [
+                      -33.2,
+                      -18.4,
+                      -15.3
+                    ],
+                    "rotation": [
+                      [
+                        1.0,
+                        0.0,
+                        0.0
+                      ],
+                      [
+                        0.0,
+                        1.0,
+                        0.0
+                      ],
+                      [
+                        0.0,
+                        0.0,
+                        1.0
+                      ]
+                    ],
+                    "size": [
+                      8.399999999999999,
+                      9.2,
+                      2.6000000000000014
+                    ]
+                  }
+                },
+                {
+                  "format_id": "amvision.roi3d.v1",
+                  "roi_id": "A_top_L",
+                  "frame_id": "fixture",
+                  "length_unit": "mm",
+                  "kind": "union",
+                  "geometry": {
+                    "roi_ids": [
+                      "A_top_L-0"
+                    ]
+                  }
+                }
+              ]
+            },
+            "surface": {
+              "alpha_radius": 0.06,
+              "max_edge_length": 0.1,
+              "max_normal_step": 2.0,
+              "min_projected_area": 1e-08
+            },
+            "method": {
+              "kind": "pose-contour",
+              "reference_feature_id": "D",
+              "height": {
+                "kind": "measurement-ratio",
+                "item_id": "H",
+                "reference_feature_id": "B",
+                "target_feature_id": "T",
+                "ratio": 0.5,
+                "order": "target-above"
+              },
+              "numeric_tolerance": 1e-08
+            },
+            "targets": [
+              {
+                "segment_id": "A_top_L",
+                "region": {
+                  "roi_id": "A_top_L",
+                  "rois": [
+                    {
+                      "format_id": "amvision.roi3d.v1",
+                      "roi_id": "A_top_L-0",
+                      "frame_id": "fixture",
+                      "length_unit": "mm",
+                      "kind": "box",
+                      "geometry": {
+                        "center": [
+                          -33.2,
+                          -18.4,
+                          -15.3
+                        ],
+                        "rotation": [
+                          [
+                            1.0,
+                            0.0,
+                            0.0
+                          ],
+                          [
+                            0.0,
+                            1.0,
+                            0.0
+                          ],
+                          [
+                            0.0,
+                            0.0,
+                            1.0
+                          ]
+                        ],
+                        "size": [
+                          8.399999999999999,
+                          9.2,
+                          2.6000000000000014
+                        ]
+                      }
+                    },
+                    {
+                      "format_id": "amvision.roi3d.v1",
+                      "roi_id": "A_top_L",
+                      "frame_id": "fixture",
+                      "length_unit": "mm",
+                      "kind": "union",
+                      "geometry": {
+                        "roi_ids": [
+                          "A_top_L-0"
+                        ]
+                      }
+                    }
+                  ]
+                },
+                "closed": true,
+                "role": "outer"
+              }
+            ],
+            "quality_policy": {
+              "policy_id": "r5-boundary",
+              "policy_version": 1,
+              "rules": [
+                {
+                  "item_id": "support_count",
+                  "unit": "1",
+                  "enabled": true,
+                  "required": true,
+                  "lower": 10.0,
+                  "upper": null,
+                  "include_lower": true,
+                  "include_upper": true
+                },
+                {
+                  "item_id": "length",
+                  "unit": "mm",
+                  "enabled": true,
+                  "required": true,
+                  "lower": 1.0,
+                  "upper": null,
+                  "include_lower": true,
+                  "include_upper": true
+                }
+              ]
+            }
+          }
+        },
+        "enabled": true,
+        "ui_state": {
+          "x": 2100,
+          "y": 400
+        },
+        "metadata": {}
+      },
+      {
+        "node_id": "S1",
+        "node_type_id": "custom.metrology3d.extract-boundary",
+        "parameters": {
+          "settings": {
+            "feature_id": "S1-boundary",
+            "evaluation": {
+              "kind": "pose",
+              "frame_id": "fixture",
+              "length_unit": "mm",
+              "pose_id": "datum",
+              "target_frame_id": "part"
+            },
+            "region": {
+              "roi_id": "S1",
+              "rois": [
+                {
+                  "format_id": "amvision.roi3d.v1",
+                  "roi_id": "S1-0",
+                  "frame_id": "fixture",
+                  "length_unit": "mm",
+                  "kind": "box",
+                  "geometry": {
+                    "center": [
+                      1.75,
+                      -77.0,
+                      -15.3
+                    ],
+                    "rotation": [
+                      [
+                        1.0,
+                        0.0,
+                        0.0
+                      ],
+                      [
+                        0.0,
+                        1.0,
+                        0.0
+                      ],
+                      [
+                        0.0,
+                        0.0,
+                        1.0
+                      ]
+                    ],
+                    "size": [
+                      21.5,
+                      10.0,
+                      3.6000000000000014
+                    ]
+                  }
+                },
+                {
+                  "format_id": "amvision.roi3d.v1",
+                  "roi_id": "S1",
+                  "frame_id": "fixture",
+                  "length_unit": "mm",
+                  "kind": "union",
+                  "geometry": {
+                    "roi_ids": [
+                      "S1-0"
+                    ]
+                  }
+                }
+              ]
+            },
+            "surface": {
+              "alpha_radius": 0.06,
+              "max_edge_length": 0.1,
+              "max_normal_step": 0.75,
+              "min_projected_area": 1e-08
+            },
+            "method": {
+              "kind": "pose-contour",
+              "reference_feature_id": "D",
+              "height": {
+                "kind": "fixed",
+                "value": 0.25
+              },
+              "numeric_tolerance": 1e-08
+            },
+            "targets": [
+              {
+                "segment_id": "S1",
+                "region": {
+                  "roi_id": "S1-arc",
+                  "rois": [
+                    {
+                      "format_id": "amvision.roi3d.v1",
+                      "roi_id": "S1-arc-0",
+                      "frame_id": "fixture",
+                      "length_unit": "mm",
+                      "kind": "box",
+                      "geometry": {
+                        "center": [
+                          -7.2,
+                          -75.3,
+                          -15.3
+                        ],
+                        "rotation": [
+                          [
+                            1.0,
+                            0.0,
+                            0.0
+                          ],
+                          [
+                            0.0,
+                            1.0,
+                            0.0
+                          ],
+                          [
+                            0.0,
+                            0.0,
+                            1.0
+                          ]
+                        ],
+                        "size": [
+                          2.4000000000000004,
+                          5.400000000000006,
+                          3.6000000000000014
+                        ]
+                      }
+                    },
+                    {
+                      "format_id": "amvision.roi3d.v1",
+                      "roi_id": "S1-arc-1",
+                      "frame_id": "fixture",
+                      "length_unit": "mm",
+                      "kind": "box",
+                      "geometry": {
+                        "center": [
+                          1.75,
+                          -78.65,
+                          -15.3
+                        ],
+                        "rotation": [
+                          [
+                            1.0,
+                            0.0,
+                            0.0
+                          ],
+                          [
+                            0.0,
+                            1.0,
+                            0.0
+                          ],
+                          [
+                            0.0,
+                            0.0,
+                            1.0
+                          ]
+                        ],
+                        "size": [
+                          16.5,
+                          5.299999999999997,
+                          3.6000000000000014
+                        ]
+                      }
+                    },
+                    {
+                      "format_id": "amvision.roi3d.v1",
+                      "roi_id": "S1-arc-2",
+                      "frame_id": "fixture",
+                      "length_unit": "mm",
+                      "kind": "box",
+                      "geometry": {
+                        "center": [
+                          11.1,
+                          -75.3,
+                          -15.3
+                        ],
+                        "rotation": [
+                          [
+                            1.0,
+                            0.0,
+                            0.0
+                          ],
+                          [
+                            0.0,
+                            1.0,
+                            0.0
+                          ],
+                          [
+                            0.0,
+                            0.0,
+                            1.0
+                          ]
+                        ],
+                        "size": [
+                          2.1999999999999993,
+                          5.400000000000006,
+                          3.6000000000000014
+                        ]
+                      }
+                    },
+                    {
+                      "format_id": "amvision.roi3d.v1",
+                      "roi_id": "S1-arc",
+                      "frame_id": "fixture",
+                      "length_unit": "mm",
+                      "kind": "union",
+                      "geometry": {
+                        "roi_ids": [
+                          "S1-arc-0",
+                          "S1-arc-1",
+                          "S1-arc-2"
+                        ]
+                      }
+                    }
+                  ]
+                },
+                "closed": false,
+                "role": "open"
+              }
+            ],
+            "quality_policy": {
+              "policy_id": "r5-boundary",
+              "policy_version": 1,
+              "rules": [
+                {
+                  "item_id": "support_count",
+                  "unit": "1",
+                  "enabled": true,
+                  "required": true,
+                  "lower": 10.0,
+                  "upper": null,
+                  "include_lower": true,
+                  "include_upper": true
+                },
+                {
+                  "item_id": "length",
+                  "unit": "mm",
+                  "enabled": true,
+                  "required": true,
+                  "lower": 1.0,
+                  "upper": null,
+                  "include_lower": true,
+                  "include_upper": true
+                }
+              ]
+            }
+          }
+        },
+        "enabled": true,
+        "ui_state": {
+          "x": 2100,
+          "y": 1000
+        },
+        "metadata": {}
+      },
+      {
+        "node_id": "extents",
+        "node_type_id": "custom.metrology3d.measure-extents",
+        "parameters": {
+          "settings": {
+            "evaluation": {
+              "kind": "feature",
+              "frame_id": "fixture",
+              "length_unit": "mm"
+            },
+            "outputs": [
+              {
+                "component": "u",
+                "item_id": "W"
+              },
+              {
+                "component": "v",
+                "item_id": "L"
+              }
+            ],
+            "quality_policy": {
+              "policy_id": "dimension-test",
+              "policy_version": 1,
+              "rules": [
+                {
+                  "item_id": "geometry_usable",
+                  "unit": "1",
+                  "enabled": true,
+                  "required": true,
+                  "lower": 1.0,
+                  "upper": null,
+                  "include_lower": true,
+                  "include_upper": true
+                }
+              ]
+            },
+            "source": {
+              "kind": "boundary",
+              "selection": {
+                "feature_id": "A_top_L-boundary",
+                "segment_ids": [
+                  "A_top_L"
+                ]
+              }
+            },
+            "mode": {
+              "kind": "axis-spans"
+            }
+          }
+        },
+        "enabled": true,
+        "ui_state": {
+          "x": 2450,
+          "y": 400
+        },
+        "metadata": {}
+      },
+      {
+        "node_id": "circle",
+        "node_type_id": "custom.metrology3d.fit-circle",
+        "parameters": {
+          "settings": {
+            "feature_id": "S1-circle",
+            "selection": {
+              "feature_id": "S1-boundary",
+              "segment_ids": [
+                "S1"
+              ]
+            },
+            "evaluation": {
+              "kind": "feature",
+              "frame_id": "fixture",
+              "length_unit": "mm"
+            },
+            "radius_range": [
+              9.0,
+              11.0
+            ],
+            "max_arc_step": 0.1,
+            "solver": {
+              "ftol": 1e-12,
+              "xtol": 1e-12,
+              "gtol": 1e-12,
+              "max_nfev": 500,
+              "x_scale": [
+                1.0,
+                1.0,
+                1.0
+              ]
+            },
+            "quality_policy": {
+              "policy_id": "r5-circle",
+              "policy_version": 1,
+              "rules": [
+                {
+                  "item_id": "support_count",
+                  "unit": "1",
+                  "enabled": true,
+                  "required": true,
+                  "lower": 100.0,
+                  "upper": null,
+                  "include_lower": true,
+                  "include_upper": true
+                },
+                {
+                  "item_id": "angular_coverage",
+                  "unit": "rad",
+                  "enabled": true,
+                  "required": true,
+                  "lower": 2.5,
+                  "upper": null,
+                  "include_lower": true,
+                  "include_upper": true
+                },
+                {
+                  "item_id": "jacobian_ratio",
+                  "unit": "1",
+                  "enabled": true,
+                  "required": true,
+                  "lower": 0.05,
+                  "upper": null,
+                  "include_lower": true,
+                  "include_upper": true
+                },
+                {
+                  "item_id": "max_gap",
+                  "unit": "rad",
+                  "enabled": true,
+                  "required": true,
+                  "lower": null,
+                  "upper": 3.8,
+                  "include_lower": true,
+                  "include_upper": true
+                },
+                {
+                  "item_id": "plane_max_residual",
+                  "unit": "mm",
+                  "enabled": true,
+                  "required": true,
+                  "lower": null,
+                  "upper": 1e-07,
+                  "include_lower": true,
+                  "include_upper": true
+                },
+                {
+                  "item_id": "rms",
+                  "unit": "mm",
+                  "enabled": true,
+                  "required": true,
+                  "lower": null,
+                  "upper": 0.03,
+                  "include_lower": true,
+                  "include_upper": true
+                },
+                {
+                  "item_id": "max_residual",
+                  "unit": "mm",
+                  "enabled": true,
+                  "required": true,
+                  "lower": null,
+                  "upper": 0.1,
+                  "include_lower": true,
+                  "include_upper": true
+                }
+              ]
+            }
+          }
+        },
+        "enabled": true,
+        "ui_state": {
+          "x": 2450,
+          "y": 1000
+        },
+        "metadata": {}
+      },
+      {
+        "node_id": "diameter",
+        "node_type_id": "custom.metrology3d.measure-hole",
+        "parameters": {
+          "settings": {
+            "evaluation": {
+              "kind": "feature",
+              "frame_id": "fixture",
+              "length_unit": "mm"
+            },
+            "outputs": [
+              {
+                "component": "diameter",
+                "item_id": "S1.D"
+              }
+            ],
+            "quality_policy": {
+              "policy_id": "r5-diameter",
+              "policy_version": 1,
+              "rules": [
+                {
+                  "item_id": "geometry_usable",
+                  "unit": "1",
+                  "enabled": true,
+                  "required": true,
+                  "lower": 1.0,
+                  "upper": null,
+                  "include_lower": true,
+                  "include_upper": true
+                }
+              ]
+            },
+            "feature_id": "S1-circle",
+            "target_kind": "open-arc",
+            "display_direction": {
+              "kind": "axis",
+              "axis": "u"
+            }
+          }
+        },
+        "enabled": true,
+        "ui_state": {
+          "x": 2800,
+          "y": 1000
+        },
+        "metadata": {}
+      },
+      {
+        "node_id": "plane-preview",
+        "node_type_id": "custom.metrology3d.cloud-preview",
+        "parameters": {
+          "point_limit": 1000,
+          "color": {
+            "mode": "solid"
+          }
+        },
+        "enabled": true,
+        "ui_state": {
+          "x": 1400,
+          "y": 1300
+        },
+        "metadata": {}
+      }
+    ],
+    "edges": [
+      {
+        "edge_id": "read-filter",
+        "source_node_id": "read",
+        "source_port": "cloud",
+        "target_node_id": "filter",
+        "target_port": "cloud",
+        "metadata": {}
+      },
+      {
+        "edge_id": "display",
+        "source_node_id": "filter",
+        "source_port": "cloud",
+        "target_node_id": "preview",
+        "target_port": "cloud",
+        "metadata": {}
+      },
+      {
+        "edge_id": "r5-2",
+        "source_node_id": "filter",
+        "source_port": "cloud",
+        "target_node_id": "D-crop",
+        "target_port": "cloud",
+        "metadata": {}
+      },
+      {
+        "edge_id": "r5-3",
+        "source_node_id": "D-crop",
+        "source_port": "cloud",
+        "target_node_id": "D",
+        "target_port": "cloud",
+        "metadata": {}
+      },
+      {
+        "edge_id": "r5-4",
+        "source_node_id": "D",
+        "source_port": "features",
+        "target_node_id": "plane-preview",
+        "target_port": "features",
+        "metadata": {}
+      },
+      {
+        "edge_id": "r5-5",
+        "source_node_id": "filter",
+        "source_port": "cloud",
+        "target_node_id": "B-crop",
+        "target_port": "cloud",
+        "metadata": {}
+      },
+      {
+        "edge_id": "r5-6",
+        "source_node_id": "B-crop",
+        "source_port": "cloud",
+        "target_node_id": "B",
+        "target_port": "cloud",
+        "metadata": {}
+      },
+      {
+        "edge_id": "r5-7",
+        "source_node_id": "B",
+        "source_port": "features",
+        "target_node_id": "plane-preview",
+        "target_port": "features",
+        "metadata": {}
+      },
+      {
+        "edge_id": "r5-8",
+        "source_node_id": "filter",
+        "source_port": "cloud",
+        "target_node_id": "T-crop",
+        "target_port": "cloud",
+        "metadata": {}
+      },
+      {
+        "edge_id": "r5-9",
+        "source_node_id": "T-crop",
+        "source_port": "cloud",
+        "target_node_id": "T",
+        "target_port": "cloud",
+        "metadata": {}
+      },
+      {
+        "edge_id": "r5-10",
+        "source_node_id": "T",
+        "source_port": "features",
+        "target_node_id": "plane-preview",
+        "target_port": "features",
+        "metadata": {}
+      },
+      {
+        "edge_id": "r5-11",
+        "source_node_id": "D",
+        "source_port": "features",
+        "target_node_id": "frame",
+        "target_port": "features",
+        "metadata": {}
+      },
+      {
+        "edge_id": "r5-12",
+        "source_node_id": "B",
+        "source_port": "features",
+        "target_node_id": "H",
+        "target_port": "features",
+        "metadata": {}
+      },
+      {
+        "edge_id": "r5-13",
+        "source_node_id": "T",
+        "source_port": "features",
+        "target_node_id": "H",
+        "target_port": "features",
+        "metadata": {}
+      },
+      {
+        "edge_id": "r5-14",
+        "source_node_id": "frame",
+        "source_port": "pose",
+        "target_node_id": "H",
+        "target_port": "pose",
+        "metadata": {}
+      },
+      {
+        "edge_id": "r5-15",
+        "source_node_id": "H",
+        "source_port": "evidence",
+        "target_node_id": "preview",
+        "target_port": "evidence",
+        "metadata": {}
+      },
+      {
+        "edge_id": "r5-16",
+        "source_node_id": "D",
+        "source_port": "features",
+        "target_node_id": "Z",
+        "target_port": "features",
+        "metadata": {}
+      },
+      {
+        "edge_id": "r5-17",
+        "source_node_id": "T",
+        "source_port": "features",
+        "target_node_id": "Z",
+        "target_port": "features",
+        "metadata": {}
+      },
+      {
+        "edge_id": "r5-18",
+        "source_node_id": "frame",
+        "source_port": "pose",
+        "target_node_id": "Z",
+        "target_port": "pose",
+        "metadata": {}
+      },
+      {
+        "edge_id": "r5-19",
+        "source_node_id": "Z",
+        "source_port": "evidence",
+        "target_node_id": "preview",
+        "target_port": "evidence",
+        "metadata": {}
+      },
+      {
+        "edge_id": "r5-20",
+        "source_node_id": "filter",
+        "source_port": "cloud",
+        "target_node_id": "A_top_L",
+        "target_port": "cloud",
+        "metadata": {}
+      },
+      {
+        "edge_id": "r5-21",
+        "source_node_id": "frame",
+        "source_port": "pose",
+        "target_node_id": "A_top_L",
+        "target_port": "pose",
+        "metadata": {}
+      },
+      {
+        "edge_id": "r5-22",
+        "source_node_id": "D",
+        "source_port": "features",
+        "target_node_id": "A_top_L",
+        "target_port": "features",
+        "metadata": {}
+      },
+      {
+        "edge_id": "r5-23",
+        "source_node_id": "B",
+        "source_port": "features",
+        "target_node_id": "A_top_L",
+        "target_port": "features",
+        "metadata": {}
+      },
+      {
+        "edge_id": "r5-24",
+        "source_node_id": "T",
+        "source_port": "features",
+        "target_node_id": "A_top_L",
+        "target_port": "features",
+        "metadata": {}
+      },
+      {
+        "edge_id": "r5-25",
+        "source_node_id": "A_top_L",
+        "source_port": "features",
+        "target_node_id": "preview",
+        "target_port": "features",
+        "metadata": {}
+      },
+      {
+        "edge_id": "r5-26",
+        "source_node_id": "filter",
+        "source_port": "cloud",
+        "target_node_id": "S1",
+        "target_port": "cloud",
+        "metadata": {}
+      },
+      {
+        "edge_id": "r5-27",
+        "source_node_id": "frame",
+        "source_port": "pose",
+        "target_node_id": "S1",
+        "target_port": "pose",
+        "metadata": {}
+      },
+      {
+        "edge_id": "r5-28",
+        "source_node_id": "D",
+        "source_port": "features",
+        "target_node_id": "S1",
+        "target_port": "features",
+        "metadata": {}
+      },
+      {
+        "edge_id": "r5-29",
+        "source_node_id": "S1",
+        "source_port": "features",
+        "target_node_id": "preview",
+        "target_port": "features",
+        "metadata": {}
+      },
+      {
+        "edge_id": "r5-30",
+        "source_node_id": "H",
+        "source_port": "evidence",
+        "target_node_id": "A_top_L",
+        "target_port": "evidence",
+        "metadata": {}
+      },
+      {
+        "edge_id": "r5-31",
+        "source_node_id": "A_top_L",
+        "source_port": "features",
+        "target_node_id": "extents",
+        "target_port": "features",
+        "metadata": {}
+      },
+      {
+        "edge_id": "r5-32",
+        "source_node_id": "S1",
+        "source_port": "features",
+        "target_node_id": "circle",
+        "target_port": "features",
+        "metadata": {}
+      },
+      {
+        "edge_id": "r5-33",
+        "source_node_id": "circle",
+        "source_port": "features",
+        "target_node_id": "diameter",
+        "target_port": "features",
+        "metadata": {}
+      },
+      {
+        "edge_id": "r5-34",
+        "source_node_id": "circle",
+        "source_port": "features",
+        "target_node_id": "preview",
+        "target_port": "features",
+        "metadata": {}
+      },
+      {
+        "edge_id": "r5-35",
+        "source_node_id": "extents",
+        "source_port": "evidence",
+        "target_node_id": "preview",
+        "target_port": "evidence",
+        "metadata": {}
+      },
+      {
+        "edge_id": "r5-36",
+        "source_node_id": "diameter",
+        "source_port": "evidence",
+        "target_node_id": "preview",
+        "target_port": "evidence",
+        "metadata": {}
+      },
+      {
+        "edge_id": "plane-inspection",
+        "source_node_id": "filter",
+        "source_port": "cloud",
+        "target_node_id": "plane-preview",
+        "target_port": "cloud",
+        "metadata": {}
+      }
+    ],
+    "template_inputs": [
+      {
+        "input_id": "input",
+        "display_name": "Input",
+        "payload_type_id": "file-ref.v1",
+        "target_node_id": "read",
+        "target_port": "file",
+        "required": true,
+        "metadata": {}
+      }
+    ],
+    "template_outputs": [
+      {
+        "output_id": "body",
+        "display_name": "Cloud",
+        "payload_type_id": "response-body.v1",
+        "source_node_id": "preview",
+        "source_port": "body",
+        "metadata": {}
+      }
+    ],
+    "groups": [],
+    "notes": [],
+    "metadata": {}
+  }
+}

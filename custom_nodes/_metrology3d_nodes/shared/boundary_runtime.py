@@ -51,7 +51,16 @@ def materialize_positions(runtime, reference, *, factor, cancel, with_sources=Fa
     """物化前核验完整局部工作集，保留原坐标 dtype，不整云隐式升精度。"""
     count = reference.point_count
     if count * factor > runtime.policy.max_working_bytes:
-        raise InvalidRequestError("完整局部支持超过工作预算，请缩小 ROI")
+        raise InvalidRequestError(
+            f"完整局部支持超过工作预算（物化）：点数 {count}，"
+            f"预计 {count * factor} B，上限 {runtime.policy.max_working_bytes} B",
+            details=dict(
+                stage="materialize_positions",
+                point_count=count,
+                estimated_bytes=count * factor,
+                limit_bytes=runtime.policy.max_working_bytes,
+            ),
+        )
     field = next(f for f in reference.fields if f.name == "positions")
     positions = np.empty((count, 3), dtype=field.dtype)
     sources = np.empty(count, dtype="<u8") if with_sources else None
