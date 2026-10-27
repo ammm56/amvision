@@ -13,7 +13,9 @@
 
 ## 1. 设计依据与交付范围
 
-推理最新进展（2026-10-27）：累计58组116张亮暗稿，本批12组24张补单项失败/大图切换/部分清理失败与长内容及关键边界。见[总览](generated/推理/设计总览.html)、[逐图复核](inference-design-review.md)、[收尾与原型验证](inference-closure-design.md)。[页面矩阵](inference-pages-design.md#4-页面与状态矩阵)核对后可进入交互原型；静态图不等同功能验收。
+推理最新进展（2026-10-27）：累计67组134张及134份中文规格。本轮补分类、实例分割、语义分割、关键点、旋转框、异常检测六类详情；短屏Logo展开、实例页签与关键点状态已修正。见[总览](generated/推理/设计总览.html)、[任务详情](inference-result-details-design.md)、[本轮复核](inference-design-review.md#18-任务详情与折叠导航复核)。
+
+推理收尾复核（2026-10-27）：先前仅以主视图覆盖任务类型的判断过宽，现按主视图、详情内容及公共状态分别核对。当前定义的七类任务均有结果主视图与详情依据；同构异常按规格复用。可以继续图编辑通用流程设计，再进入应用列表、版本、Runtime及应用模式。静态图不替代键盘、响应式、模型契约和实际性能验证。
 
 部署最新进展（2026-10-26）：累计74组亮暗配对、148张静态图与148份中文规格，第四批已补11组22张交互收尾图。保留完整布局和操作，仅压缩冗余说明。见[总览](generated/部署/设计总览.html)、[页面矩阵](deployment-pages-design.md)、[异常恢复与后端参数](deployment-closure-states-design.md)、[交互收尾](deployment-interaction-completion-design.md)和[复核](deployment-design-review.md)。启停异常、导入冲突/回滚、记录清理、其他后端和长内容已补齐，下一步审阅与交互原型核对。
 

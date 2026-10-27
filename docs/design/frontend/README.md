@@ -12,7 +12,7 @@
 
 ## 文档
 
-**当前推理设计：** 2026-10-27，累计58组116张亮暗图及116份中文规格。本批补齐单项失败、大图切换、清理结果、长内容和关键边界12组24张，已逐图核对。见[页面规划](inference-pages-design.md)、[收尾与原型验证](inference-closure-design.md)、[中文提示词](prompts/推理.md)、[设计总览](generated/推理/设计总览.html)和[逐图复核](inference-design-review.md)。已定义的关键静态状态形成设计基线；下一步为交互原型、响应式与服务联调，不能视为功能验收。
+**当前推理设计：** 2026-10-27，累计67组134张亮暗图及134份中文规格。本轮补六类任务结果详情12张，修订四张短屏导航、两张实例分割长JSON页签及两张关键点主图。见[页面规划](inference-pages-design.md)、[任务详情定义](inference-result-details-design.md)、[中文提示词](prompts/推理.md)、[设计总览](generated/推理/设计总览.html)和[本轮复核](inference-design-review.md#18-任务详情与折叠导航复核)。当前清单中的独立布局已有对应图，同构状态有复用规则；真实交互、响应式和服务契约仍须实现验证。
 
 **当前部署设计：** 2026-10-26，累计74组亮暗配对、148张静态图与148份中文规格，第四批已补11组22张交互收尾图。保留完整布局和操作，仅压缩冗余说明。待用户审阅。见[页面规划](deployment-pages-design.md)、[异常恢复与后端参数](deployment-closure-states-design.md)、[交互收尾](deployment-interaction-completion-design.md)、[中文提示词](prompts/部署.md)、[设计总览](generated/部署/设计总览.html)和[逐图复核](deployment-design-review.md)。指定的主要流程和恢复分支已补齐；真实交互及功能实现另行验证。
 
