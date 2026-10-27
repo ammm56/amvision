@@ -1,6 +1,8 @@
 # 前端产品与界面设计
 
 本目录保存产品原则、信息架构、设计系统和页面规格，作为实现约束和评审基线。设计审查及出图要求单独记录，不能把设计图当作已经实现的功能或运行验收证据。
+部署收尾复核：主流程和关键状态已覆盖，可开始推理分类设计；版本类别数、导入资源和协议入口8张图已修订，亮暗配对保留。见[收尾复核与推理衔接](deployment-design-review.md#13-收尾复核与推理分类衔接)。
+
 
 **最新要求（2026-10-23）：以 `bak1` 中大部分合理设计为基础统一风格、修正局部错误。左侧导航参考现有简洁平级形式，顶部没有独立栏；旧宽屏图右侧是按需展开的抽屉。刚才的五入口合并和固定列表详情方案已否决，见[修订要求](redesign-brief.md)与[修订方案](frontend-redesign-plan.md)。**
 
@@ -10,7 +12,11 @@
 
 ## 文档
 
-**当前模型设计：** 2026-10-25累计**59组亮暗配对、118张静态稿**，本轮新增47组；主要向导、任务管理、转换/导入导出、评估比较与多任务报告、版本管理和代表短屏已逐张内部查看，待用户审阅。见[页面规划](model-pages-design.md)、[完整流程规格](model-workflows-completion-design.md)、[中文提示词](prompts/模型.md)、[设计总览](generated/模型/设计总览.html)、[生成清单](generated/模型/生成清单.json)及[复核记录](model-design-review.md#7-本轮补图与逐张复核)。条件分支和真实交互仍按[剩余范围](model-design-review.md#8-完整性结论与剩余范围)推进，不把静态稿称为全部功能验收。
+**当前推理设计：** 2026-10-27，累计58组116张亮暗图及116份中文规格。本批补齐单项失败、大图切换、清理结果、长内容和关键边界12组24张，已逐图核对。见[页面规划](inference-pages-design.md)、[收尾与原型验证](inference-closure-design.md)、[中文提示词](prompts/推理.md)、[设计总览](generated/推理/设计总览.html)和[逐图复核](inference-design-review.md)。已定义的关键静态状态形成设计基线；下一步为交互原型、响应式与服务联调，不能视为功能验收。
+
+**当前部署设计：** 2026-10-26，累计74组亮暗配对、148张静态图与148份中文规格，第四批已补11组22张交互收尾图。保留完整布局和操作，仅压缩冗余说明。待用户审阅。见[页面规划](deployment-pages-design.md)、[异常恢复与后端参数](deployment-closure-states-design.md)、[交互收尾](deployment-interaction-completion-design.md)、[中文提示词](prompts/部署.md)、[设计总览](generated/部署/设计总览.html)和[逐图复核](deployment-design-review.md)。指定的主要流程和恢复分支已补齐；真实交互及功能实现另行验证。
+
+**当前模型设计：** 2026-10-26，模型分类共90组亮暗配对、180张静态图。本轮修订转换与导入列表，补7组操作去向和提交状态；中文规格与图稿已逐张核对，待用户审阅。见[页面规划](model-pages-design.md)、[操作去向与提交状态](model-flow-closure-design.md)、[中文提示词](prompts/模型.md)、[设计总览](generated/模型/设计总览.html)及[当前复核](model-design-review.md#12-操作闭环复核与当前结论)。静态范围可进入Vue 3原型，真实交互与可访问性另行验收。
 
 **当前数据集设计：** 截至 2026-10-25，累计 **56 组亮暗配对、112 张静态稿**，待用户审阅。最新同名修订8图：编辑信息及文件关联样本抽屉整屏遮罩、空态重复入口、版本分组检查说明；同步纠正24份提示词中的遮罩范围错误。见[设计总览](generated/数据集/设计总览.html)、[页面方案](dataset-pages-design.md)、[工作区与状态规格](dataset-workspace-completion-design.md)、[管理规格](dataset-management-states-design.md)、[向导规格](dataset-wizard-states-design.md)、[复核记录第11节](dataset-design-review.md)和[中文提示词](prompts/数据集.md)。主要页面与代表状态已有设计，可以进入[模型分类设计准备](prompts/模型.md)；数据集真实滚动、焦点、权限和错误组合仍需交互原型验证。
 
