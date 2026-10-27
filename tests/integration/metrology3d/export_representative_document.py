@@ -36,6 +36,10 @@ def main():
         "circle": (2450, 1000),
         "diameter": (2800, 1000),
         "preview": (3150, 500),
+        "results": (3150, 1100),
+        "values": (3500, 1100),
+        "response": (3850, 1300),
+        "table": (3850, 900),
     }
     for node in template.nodes:
         x, y = positions[node.node_id]

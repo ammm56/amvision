@@ -287,17 +287,18 @@ def published_full_sample_lifecycle(
                 reply = invoke_cloud(system, generation, cloud, path)
             assert reply["state"] == "succeeded", reply
             body = reply["response_payload"]["results"]["body"]
-            assert (
-                body["source_point_count"] == POINTS
-                and body["display_point_count"] == display_count
-            )
             if check_body is not None:
                 check_body(body)
-            elif display_count == 1000:
+            else:
                 assert (
-                    body["data"]["checksum"]
-                    == "a49008f49e95a770005b57650f6c32cf64b0a3bd6d6a5f7efc1844f38d136005"
+                    body["source_point_count"] == POINTS
+                    and body["display_point_count"] == display_count
                 )
+                if display_count == 1000:
+                    assert (
+                        body["data"]["checksum"]
+                        == "a49008f49e95a770005b57650f6c32cf64b0a3bd6d6a5f7efc1844f38d136005"
+                    )
             run = system.call(
                 "GET", f"/runs/{reply['workflow_run_id']}?response_mode=run"
             )
@@ -313,7 +314,8 @@ def published_full_sample_lifecycle(
                     "run_id": run["workflow_run_id"],
                     "version_id": version,
                     "worker_instance_id": run["worker_instance_id"],
-                    "display_points": display_count,
+                    "configured_preview_points": display_count,
+                    "response_body_bytes": len(json.dumps(body).encode("utf-8")),
                     "client": "dotnet-" + mode
                     if sys.platform == "win32"
                     else "python-protocol",
@@ -379,6 +381,7 @@ def published_full_sample_lifecycle(
             active = wait_executing(system, process)
             process.kill()
             process.communicate(timeout=15)
+
         # 强杀客户端不会发送 CANCEL；已接收的调用仍受原始 120 秒 deadline 约束。
         # 先等待真实运行终态，再验证既有 15 秒回收窗口，不把运算时间当回收时间。
         def abandoned_run_finished():

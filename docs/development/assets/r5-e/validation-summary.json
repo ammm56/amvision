@@ -1,0 +1,64 @@
+{
+  "file_sha256": "ff2b9e0ef2d6c45af02c4bf8d474cd82f77f86ad92bd371a4c0f71b1b90d116b",
+  "source_points": 14745099,
+  "valid_count": 23,
+  "invalid_count": 27,
+  "support_row_hashes_identical": 19,
+  "max_windows_ubuntu_valid_value_delta_mm": 4.31118252208762e-10,
+  "closed_scope_restore": {
+    "windows": {
+      "independent_diameter": 20.14782366608963,
+      "restored_value": 20.14782366565865,
+      "source_closed_before_restore": true
+    },
+    "ubuntu": {
+      "independent_diameter": 20.14782366608964,
+      "restored_value": 20.147823666089767,
+      "source_closed_before_restore": true
+    }
+  },
+  "graph_diagnostic": {
+    "before_windows_seconds": 161.98499999998603,
+    "after_windows_seconds": 105.17200000002049,
+    "ubuntu_seconds": 38.03535353206098,
+    "performance_gate": false
+  },
+  "output": {
+    "response_bytes_windows": 6582,
+    "response_bytes_ubuntu": 6586,
+    "preview_values": 17505,
+    "preview_accounted_bytes": 13670383,
+    "display_points": 500000
+  },
+  "browser": {
+    "visible_cloud_pixels": {
+      "initial": 30046,
+      "rotated": 23192,
+      "panned": 15838
+    },
+    "changed_pixels_rotate_and_pan": [
+      45706,
+      50009
+    ],
+    "console_warnings_errors": [],
+    "successful_page_runtime": "workflow-runtime-e4e2f498419d4fd9a89ac137848a7dd1",
+    "page_version": "workflow-app-version-af701eb571cd471b994ce9278064cad6",
+    "page_revision": "workflow-runtime-revision-4607843ba3b9438d9c8aaa0e5453495c",
+    "generation": 2,
+    "completed_at_local": "2026-10-27 15:45:58",
+    "expected_timeout_page_runtime": "workflow-runtime-26b02698143744c984b633ea982d3588",
+    "timeout_test_seconds": 1,
+    "timeout_shown_after_worker_recovery": true,
+    "all_test_runtimes_stopped": true
+  },
+  "source_hashes": {
+    "tests/integration/metrology3d/workpiece_recipe.py": "bd5414f18f27aa8b3637582af128f44d7f90778fabd740cc8987581e526914d6",
+    "tests/integration/metrology3d/workpiece_workflow.py": "6ebf1a00d2e6c19b86ebc2b1f6b04cfed1944b3f75848c26014dec916536733d",
+    "tests/integration/metrology3d/measurement_output.py": "a1d4a996c7ca492f350b9e333a29f023c0eee35b578ce3a41c4f26679b4fd6cd",
+    "frontend/web-ui/src/workflows/workflow-editor/pages/WorkflowRuntimeAppModePage.vue": "4fd5ee82b2c903b689a0c66daf9de6f308a4054a4b06ee28e11101a211c9d53c",
+    "frontend/web-ui/src/workflows/workflow-editor/components/WorkflowRuntimeCreateDialog.vue": "fc802f873941cb5c04af5264d73261fc02f02a06d0ffb0d93b8926b691a697e3",
+    "docs/development/assets/r5-e/workpiece-published-workflow.json": "5aff7eba24fc7179df5a65ed6dbac1e0a1b0425eaf6ab784b9c547a14a2da798",
+    "docs/development/assets/r5-e/manual-workflow.json": "f842bb64c978b85e90079caa59ca2fcaf3ae97c4a8a0340b3990ad190d154df8",
+    "docs/development/assets/r5-e/workpiece-matrix.json": "10427f8fe43f3ca1b2973fda336a4e9c4a7489fabbe821698c98674d0e94e611"
+  }
+}

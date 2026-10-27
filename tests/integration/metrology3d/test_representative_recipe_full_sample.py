@@ -40,11 +40,17 @@ from tests.test_metrology3d_dimension_contracts import extent_parameters
 from tests.test_point_cloud_assets import POLICY
 
 
-def verify_circle(runtime, boundary, fitted, diameter, service):
+def verify_circle(runtime, boundary, fitted, diameter, service, *, close_source=None):
     """两参数中心优化独立核对三参数拟圆，再验证生成点来源的保存重读一致性。"""
     feature = boundary.items[0]
     with runtime.borrow(feature.support) as view:
         points = view.chunk(0, feature.support.point_count)["positions"].copy()
+        lineage = {
+            name: values.copy()
+            for name, values in view.lineage_chunk(
+                0, feature.support.point_count
+            ).items()
+        }
     evaluation = feature.method.resolution.evaluation
     uv = ((points - evaluation.origin) @ np.asarray(evaluation.rotation))[:, :2]
 
@@ -88,6 +94,12 @@ def verify_circle(runtime, boundary, fitted, diameter, service):
         policy=asset_policy,
         cancel=lambda: None,
     )
+    if close_source is not None:
+        assert not close_source()
+        assert runtime.budget.used == 0
+        with pytest.raises(RuntimeError, match="点云运行资源不可用"):
+            with runtime.borrow(feature.support):
+                pytest.fail("已关闭运行仍可借用旧引用")
     second = ResourceScope(kind="workflow")
     restored_runtime = get_cloud_runtime(
         second, run_id="r5-restored", policy=runtime.policy
@@ -107,19 +119,21 @@ def verify_circle(runtime, boundary, fitted, diameter, service):
         actual = measure_hole(restored_runtime, [again], hole(), cancel=lambda: None)
         assert again.items[0].geometry == fitted.items[0].geometry
         assert actual.items[0].value == diameter.items[0].value
-        with (
-            runtime.borrow(feature.support) as before,
-            restored_runtime.borrow(restored) as after,
-        ):
-            for name, values in before.lineage_chunk(
-                0, feature.support.point_count
-            ).items():
+        with restored_runtime.borrow(restored) as after:
+            np.testing.assert_array_equal(
+                after.chunk(0, restored.point_count)["positions"], points
+            )
+            for name, values in lineage.items():
                 np.testing.assert_array_equal(
                     after.lineage_chunk(0, restored.point_count)[name], values
                 )
     finally:
         assert not second.close() and restored_runtime.budget.used == 0
-    return dict(independent_diameter=expected, restored_value=actual.items[0].value)
+    return dict(
+        independent_diameter=expected,
+        restored_value=actual.items[0].value,
+        source_closed_before_restore=close_source is not None,
+    )
 
 
 def independent_support(runtime, root, selected, region):

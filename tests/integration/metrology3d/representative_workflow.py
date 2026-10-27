@@ -14,6 +14,7 @@ from tests.integration.metrology3d.test_transport_full_sample import full_policy
 from tests.metrology3d_transport_support import cloud_documents
 from tests.point_cloud_support import options
 from tests.test_metrology3d_dimension_contracts import extent_parameters
+from tests.integration.metrology3d.measurement_output import connect_measurement_output
 
 
 def representative_policy():
@@ -127,6 +128,7 @@ def representative_documents(*, file=False):
     link("circle", "features", "preview", "features")
     for name in ("extents", "diameter"):
         link(name, "evidence", "preview", "evidence")
+    connect_measurement_output(graph, ("H", "Z", "extents", "diameter"))
     return WorkflowGraphTemplate.model_validate(graph), app
 
 
@@ -134,9 +136,12 @@ def check_representative_body(body):
     """在实际返回体上检查身份、量值和缺测；不把 null 当零或旧值。"""
     import pytest
 
-    assert body["source_point_count"] == 14745099
-    assert body["measurements"]["length_unit"] == "mm"
-    items = {item["item_id"]: item for item in body["measurements"]["items"]}
+    assert set(body) == {"code", "message", "data"}
+    assert body["code"] == 0 and body["message"] == "measured"
+    data = body["data"]
+    assert set(data) == {"observation_id", "values", "items"}
+    assert data["observation_id"]
+    items = {item["item_id"]: item for item in data["items"]}
     assert set(items) == {"H", "Z", "W", "L", "S1.D"}
     for key, value in (
         ("H", 1.128335845558628),
@@ -148,4 +153,5 @@ def check_representative_body(body):
     for key in ("W", "L"):
         assert not items[key]["valid"] and items[key]["value"] is None
         assert items[key]["reason"] == "target_not_found"
-    assert body["measurements"]["observation_id"] == body["observation_id"]
+    assert all(item["unit"] == "mm" for item in items.values())
+    assert data["values"] == {key: item["value"] for key, item in items.items()}

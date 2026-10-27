@@ -14,7 +14,7 @@ AMVision 是面向本地工作站、工控机和边缘设备的工业视觉服�
 | 调用 REST、WebSocket、ZeroMQ 或 SDK | [API 与集成](api/README.md) |
 | 核对模型和数据格式支持范围 | [参考资料](reference/README.md) |
 | 开发 Core Node、Custom Node 或 Node Pack | [节点扩展](nodes/README.md) |
-| 规划三维测量节点、算法及工程师/现场操作 | [3D Metrology 基线](development/3d-metrology.md)；[M3.2](development/3d-metrology-m3-boundary.md)；[M3.3 设计](development/3d-metrology-m3-dimensions.md)及[验收](development/3d-metrology-m33-acceptance.md)；[R4 与 v1 契约](development/3d-metrology-r4.md)；[R5 工件配方](development/3d-metrology-r5.md)及 [C 动态等高验证](development/3d-metrology-r5-c.md)；[D0 修复与 D1 候选审核](development/3d-metrology-r5-d0-d1.md)（A–C 内部接通，D0 已验；工程支持、容量、正式量值和全页面验收未完成；生产隐藏） |
+| 规划三维测量节点、算法及工程师/现场操作 | [3D Metrology 基线](development/3d-metrology.md)；[M3.3 节点验收](development/3d-metrology-m33-acceptance.md)；[R4 与 v1 契约](development/3d-metrology-r4.md)；[R5 工件配方](development/3d-metrology-r5.md)；[E 全工件验收](development/3d-metrology-r5-e-results.md)（十八内部节点；50 项为 23 有效、27 明确无效，双平台发布及真实页面已验；三态消费者、生产容量与现场计量仍待完成，生产隐藏） |
 | 配置 YOLOE / SAM3 Node Pack 与本地模型资产 | [YOLOE / SAM3 资产](architecture/workflows/yoloe-sam3-assets.md) |
 | 排查日志、服务和现场集成 | [运维与排障](operations/README.md) |
 | 查看关键设计取舍 | [架构决策记录](decisions/README.md) |
