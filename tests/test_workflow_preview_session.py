@@ -70,6 +70,37 @@ def test_rerun_retains_stale_images_until_replaced(manager):
     assert blob not in manager.buffers.live_ids(sid)
 
 
+def test_inline_loop_values_do_not_rescan_all_session_resources(manager, monkeypatch):
+    """大量循环普通值没有资源所有权，不能阻塞其他节点的内存交接。"""
+    sid, _, _, rid = _begin(manager)
+    def unexpected_scan(*args):
+        raise AssertionError("普通值更新不应扫描整会话")
+    monkeypatch.setattr(manager, "referenced_blobs", unexpected_scan)
+    for index in range(100):
+        manager.accept(sid, rid, "value.updated", {
+            "node_id": "loop", "output_port": "value",
+            "value": {"kind": "inline", "value": {"index": index, "rows": [1, 2, 3]}},
+        })
+    assert manager.authorize(sid, "alice").values["loop:value"]["value"]["value"]["index"] == 99
+
+
+def test_replaced_blob_remains_live_while_another_port_references_it(manager):
+    """不同节点共享同一图像，最后一个引用替换后才回收。"""
+    sid, _, _, rid = _begin(manager)
+    blob = manager.buffers.allocate(sid, 4, media_type="image/png")
+    manager.buffers.write_chunk(sid, blob, 0, b"test")
+    descriptor = {"transport_kind": "preview-memory", **manager.buffers.commit(sid, blob)}
+    for node_id in ("a", "b"):
+        manager.accept(sid, rid, "value.updated", {
+            "node_id": node_id, "output_port": "value", "value": {"nested": [descriptor]},
+        })
+    for node_id in ("a", "b"):
+        manager.accept(sid, rid, "value.updated", {
+            "node_id": node_id, "output_port": "value", "value": {"kind": "inline", "value": 0},
+        })
+        assert (blob in manager.buffers.live_ids(sid)) == (node_id == "a")
+
+
 def test_deletion_guard_covers_project_and_app_without_blocking_other_projects(manager):
     """活动执行阻止删除；删除期间不能并发新建同项目执行。"""
     from backend.service.application.errors import ResourceInUseError

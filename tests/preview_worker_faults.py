@@ -1,6 +1,15 @@
 """仅依赖标准库的独立 Preview 故障进程，隔离测试模块导入开销。"""
 from time import monotonic, sleep
 
+
+def _broken_memory_worker(*, settings_payload, requests, responses, replies, cancellation):
+    """故障注入：本次业务失败且 RPC 已失步，旧进程不能进入下一次执行。"""
+    responses.put(("ready", {}))
+    requests.get()
+    responses.put(("finished", {"status": "failed", "worker_reusable": False,
+        "error": {"type": "RuntimeError", "message": "preview_memory_channel_failed"}}))
+    sleep(60)
+
 def _uncooperative_worker(*, settings_payload, requests, responses, replies, cancellation):
     """故障注入：持有未发布写映射并忽略取消，验证父进程强制回收。"""
     from multiprocessing.shared_memory import SharedMemory

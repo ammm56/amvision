@@ -153,3 +153,48 @@ def test_nested_custom_display_converts_binary_and_pages_values(definitions):
     finally:
         capture.close()
         buffers.close()
+
+
+def test_encoded_large_images_queue_bytes_and_survive_registry_release():
+    """18 张大 JPEG 在编码前只保留字节；节点释放后仍交付原尺寸取参图。"""
+    from threading import Event
+    from types import SimpleNamespace
+    import cv2
+    import numpy as np
+    from backend.nodes.runtime_support import ExecutionImageRegistry, build_memory_image_payload
+
+    height, width = 4080, 3400
+    ok, encoded = cv2.imencode(".jpg", np.full((height, width, 3), 117, np.uint8))
+    assert ok
+    content = encoded.tobytes()
+    images, buffers = ExecutionImageRegistry(), PreviewBuffers()
+    capture = PreviewDisplayCapture(Bridge(buffers), lambda *args: None)
+    gate = Event()
+    capture.encoder.submit(gate.wait)
+    request = SimpleNamespace(execution_metadata={"execution_image_registry": images})
+    try:
+        pending = []
+        for _ in range(18):
+            entry = images.register_image_bytes(content=content, media_type="image/jpeg", width=width, height=height)
+            payload = build_memory_image_payload(image_handle=entry.image_handle, media_type="image/jpeg", width=width, height=height)
+            item = capture.image(request, image_payload=payload)
+            assert "unavailable" not in item
+            assert capture.image(request, image_payload=payload) == item
+            pending.append(item)
+        assert capture.bytes == len(content) * 18
+        assert capture.bytes < 256 * 1024**2
+        images.clear()
+        gate.set()
+        capture.close()
+        for resolved in capture.resolve_outputs(pending):
+            assert (resolved["source_width"], resolved["source_height"]) == (width, height)
+            source = resolved["source_image"]
+            with buffers.borrow("session", source["blob_id"]) as data:
+                assert bytes(data) == content
+        assert capture.bytes == 0
+        assert buffers.stats()["reserved_bytes"] == 0
+    finally:
+        gate.set()
+        capture.close()
+        images.clear()
+        buffers.close()

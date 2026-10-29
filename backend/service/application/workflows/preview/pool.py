@@ -241,6 +241,10 @@ class PreviewSessionPool:
                         reply["error"] = str(error)
                     slot.replies.put(reply, timeout=2)
                 elif kind == "finished":
+                    if payload.get("worker_reusable") is False:
+                        # 迟到 RPC 回复使旧队列不可复用。先确认退出，再归还执行容量。
+                        self._stop(slot)
+                        self._close_slot(slot)
                     borrowing_finished = True
                     if timed_out:
                         payload["status"] = "timed_out"

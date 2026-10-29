@@ -94,6 +94,7 @@ def run_preview_worker(settings_payload, requests, responses, cancellation, repl
             business_finished = False
             completion = None
             displays = None
+            bridge = None
             images = runtime_process.ExecutionImageRegistry()
             lifetimes = PreviewLifetimes(images)
             input_store = PreviewInputStore(storage, message["project_id"], message["session_id"])
@@ -200,4 +201,6 @@ def run_preview_worker(settings_payload, requests, responses, cancellation, repl
                 input_store.clear()
                 # 只有本次借用真正释放后，父进程才能归还 Worker 槽位和预算。
                 if completion is not None:
+                    if bridge is not None and bridge.failed:
+                        completion["worker_reusable"] = False
                     responses.put(("finished", completion), timeout=2)

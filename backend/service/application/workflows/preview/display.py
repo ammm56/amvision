@@ -45,15 +45,19 @@ class PreviewDisplayCapture(RuntimePreviewCapture):
             if location is not None:
                 _, content = load_encoded_image_bytes_from_payload(request, image_payload=image_payload)
                 saved_output = save_bytes(request, save_location=location, content=content).to_payload()
-        _, matrix, width, height = _load_preview_image_matrix(request, image_payload=image_payload)
+        matrix = None
+        width = height = None
         source_key = None
         source_jpeg = None
         if isinstance(image_payload, dict) and image_payload.get("transport_kind") == "memory":
             entry = require_execution_image_registry(request).get_entry(image_payload.get("image_handle"))
             if isinstance(entry.content, bytes):
                 source_key = entry.image_handle
-                if entry.media_type == "image/jpeg":
+                if entry.media_type == "image/jpeg" and entry.width and entry.height:
                     source_jpeg = entry.content
+                    width, height = entry.width, entry.height
+        if source_jpeg is None:
+            _, matrix, width, height = _load_preview_image_matrix(request, image_payload=image_payload)
         with self.lock:
             result = self._schedule_image(matrix, width, height, source_key, source_jpeg)
             if saved_output is not None:
@@ -69,7 +73,9 @@ class PreviewDisplayCapture(RuntimePreviewCapture):
                 return {"transport_kind": "preview-memory", "pending_image_id": pending, "width": width, "height": height}
             if len(self.images) >= 4096:
                 return {"transport_kind": "preview-memory", "unavailable": "preview_image_descriptor_capacity", "width": width, "height": height}
-        amount = matrix.nbytes
+        # 已编码 JPEG 只排队不可变字节；单编码线程开始处理时才展开矩阵。
+        # 原始矩阵仍复制快照，避免节点后续修改影响显示内容。
+        amount = len(source_jpeg) if source_jpeg is not None else matrix.nbytes
         with self.lock:
             if self.bytes + amount > 256 * 1024**2 or not self.capacity.acquire(blocking=False):
                 return {"transport_kind": "preview-memory", "unavailable": "preview_encoding_capacity", "width": width, "height": height}
@@ -78,7 +84,7 @@ class PreviewDisplayCapture(RuntimePreviewCapture):
         try:
             # 排队任务只持有一份矩阵；编码工作区只由当前编码任务预留。
             self.bridge.reserve(identity, amount)
-            owned = matrix.copy()
+            owned = None if source_jpeg is not None else matrix.copy()
         except Exception as error:
             with self.lock:
                 self.bytes -= amount
@@ -101,16 +107,23 @@ class PreviewDisplayCapture(RuntimePreviewCapture):
         def encode():
             """先交付缩略图，再编码全尺寸 JPEG；两阶段不阻塞业务图。"""
             try:
-                self.bridge.reserve("image-encoder", amount * 2 + 64 * 1024)
+                working_bytes = width * height * 3 if source_jpeg is not None else amount
+                self.bridge.reserve("image-encoder", working_bytes * 2 + 64 * 1024)
+                pixels = owned
+                if source_jpeg is not None:
+                    import numpy as np
+                    pixels = cv2.imdecode(np.frombuffer(source_jpeg, dtype=np.uint8), cv2.IMREAD_COLOR)
+                    if pixels is None or pixels.shape[:2] != (height, width):
+                        raise ValueError("preview_image_decode_failed")
                 scale = min(1.0, 1920 / max(width, height))
-                small = cv2.resize(owned, (max(1, round(width * scale)), max(1, round(height * scale))), interpolation=cv2.INTER_AREA) if scale < 1 else owned
+                small = cv2.resize(pixels, (max(1, round(width * scale)), max(1, round(height * scale))), interpolation=cv2.INTER_AREA) if scale < 1 else pixels
                 display = publish_jpeg(small)
                 metadata = {**display, "display_image": display, "source_width": width, "source_height": height,
                             "display_width": display["width"], "display_height": display["height"], "display_scale": scale}
                 thumbnail.set_result({**metadata, "source_image": {"transport_kind": "preview-memory", "pending_image_id": identity,
                                                                   "width": width, "height": height, "pending_source": True}} if scale < 1 else {**metadata, "source_image": display})
                 source = ({"transport_kind": "preview-memory", **self.bridge.publish(source_jpeg, "image/jpeg"), "width": width, "height": height}
-                          if scale < 1 and source_jpeg is not None else publish_jpeg(owned) if scale < 1 else display)
+                          if scale < 1 and source_jpeg is not None else publish_jpeg(pixels) if scale < 1 else display)
                 return {**metadata, "source_image": source}
             except Exception as error:
                 # Future 只保留错误描述，不能通过 traceback 长期持有大矩阵。
