@@ -2,6 +2,21 @@
 
 from __future__ import annotations
 
+from . import (
+    roi_mask_extract,
+    mask_items_difference,
+    mask_items_properties,
+    pose_items_difference,
+    measurement_items_check,
+    inspection_items_merge,
+    draw_inspection_items,
+)
+
+from .roi_foreground_compare import (
+    NODE_TYPE_ID as ROI_FOREGROUND_COMPARE_NODE_TYPE_ID,
+    handle_node as roi_foreground_compare_handler,
+)
+
 from custom_nodes.opencv_nodes.categories.defect.backend.nodes.absdiff_threshold import (
     NODE_TYPE_ID as ABSDIFF_THRESHOLD_NODE_TYPE_ID,
     handle_node as absdiff_threshold_handler,
@@ -83,6 +98,19 @@ from custom_nodes.opencv_nodes.categories.defect.backend.nodes.variation_model i
 
 
 NODE_HANDLERS = (
+    *(
+        (module.NODE_TYPE_ID, module.handle_node)
+        for module in (
+            roi_mask_extract,
+            mask_items_difference,
+            mask_items_properties,
+            pose_items_difference,
+            measurement_items_check,
+            inspection_items_merge,
+            draw_inspection_items,
+        )
+    ),
+    (ROI_FOREGROUND_COMPARE_NODE_TYPE_ID, roi_foreground_compare_handler),
     (IMAGE_DIFF_NODE_TYPE_ID, image_diff_handler),
     (ABSDIFF_THRESHOLD_NODE_TYPE_ID, absdiff_threshold_handler),
     (CONNECTED_COMPONENTS_NODE_TYPE_ID, connected_components_handler),

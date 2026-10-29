@@ -3585,6 +3585,76 @@
     },
     {
       "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.draw-inspection-items",
+      "display_name": "Draw Inspection Items",
+      "category": "opencv.inspection.measurement",
+      "description": "使用已有测量和判定绘制逐 ROI 原图、证据、数值与阈值；不重新计算判定。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.8",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "checks",
+          "display_name": "Checks",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "masks",
+          "display_name": "Masks",
+          "payload_type_id": "image-refs.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "images",
+          "display_name": "Images",
+          "payload_type_id": "image-refs.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "vision.inspection",
+        "opencv.measurement-items"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.8",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.fill-holes",
       "display_name": "Fill Holes",
       "category": "opencv.mask.operation",
@@ -4041,6 +4111,76 @@
     },
     {
       "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.inspection-items-merge",
+      "display_name": "Inspection Items Merge",
+      "category": "opencv.inspection.measurement",
+      "description": "按命名检查集合和 ROI ID 汇总，缺项、错位或空集合拒绝执行。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.8",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "checks",
+          "display_name": "Checks",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "regions",
+          "display_name": "Regions",
+          "payload_type_id": "regions.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "vision.inspection",
+        "opencv.measurement-items"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.8",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.kmeans-segment",
       "display_name": "K-Means Segment",
       "category": "opencv.segmentation.image",
@@ -4114,6 +4254,222 @@
         "opencv.kmeans-segment",
         "vision.opencv",
         "vision.segmentation"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.8",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.mask-items-difference",
+      "display_name": "Mask Items Difference",
+      "category": "opencv.inspection.measurement",
+      "description": "按 ROI ID 计算 A 减去容差膨胀后的 B；输出差集图及明确分母的比例。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.8",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "masks_a",
+          "display_name": "Masks A",
+          "payload_type_id": "image-refs.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "masks_b",
+          "display_name": "Masks B",
+          "payload_type_id": "image-refs.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "masks",
+          "display_name": "Masks",
+          "payload_type_id": "image-refs.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "metrics",
+          "display_name": "Metrics",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "tolerance_pixels": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 64,
+            "default": 0,
+            "title": "边缘容差（像素）"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "vision.inspection",
+        "opencv.measurement-items"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.8",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.mask-items-properties",
+      "display_name": "Mask Items Properties",
+      "category": "opencv.inspection.measurement",
+      "description": "测量前景像素面积、公共图像坐标质心及无向主轴，不作合格判定。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.8",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "masks",
+          "display_name": "Masks",
+          "payload_type_id": "image-refs.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "metrics",
+          "display_name": "Metrics",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "min_axis_anisotropy": {
+            "type": "number",
+            "title": "最小主轴各向异性",
+            "default": 0.1,
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "vision.inspection",
+        "opencv.measurement-items"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.8",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.measurement-items-check",
+      "display_name": "Measurement Items Check",
+      "category": "opencv.inspection.measurement",
+      "description": "对明确字段执行闭区间检查，保留测量值、单位、上下限及不可测状态。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.8",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "metrics",
+          "display_name": "Metrics",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "checks",
+          "display_name": "Checks",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "check_id": {
+            "type": "string",
+            "title": "检查标识"
+          },
+          "metric": {
+            "type": "string",
+            "title": "测量字段"
+          },
+          "minimum": {
+            "type": "number",
+            "title": "下限"
+          },
+          "maximum": {
+            "type": "number",
+            "title": "上限"
+          },
+          "unit": {
+            "type": "string",
+            "title": "单位",
+            "default": ""
+          }
+        },
+        "required": [
+          "check_id",
+          "metric"
+        ]
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "vision.inspection",
+        "opencv.measurement-items"
       ],
       "runtime_requirements": {
         "python_packages": [
@@ -4210,6 +4566,67 @@
         "opencv.morphology-hitmiss",
         "vision.opencv",
         "vision.region"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.8",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.pose-items-difference",
+      "display_name": "Pose Items Difference",
+      "category": "opencv.inspection.measurement",
+      "description": "按 ID 计算质心 dx/dy、距离和无向轴角差；不可测时保留 null。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.8",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "current",
+          "display_name": "Current",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "reference",
+          "display_name": "Reference",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "metrics",
+          "display_name": "Metrics",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "vision.inspection",
+        "opencv.measurement-items"
       ],
       "runtime_requirements": {
         "python_packages": [
@@ -4510,6 +4927,263 @@
         "opencv.remove-small-components",
         "vision.opencv",
         "vision.region"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.8",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.roi-foreground-compare",
+      "display_name": "ROI Foreground Compare",
+      "category": "opencv.inspection.difference",
+      "description": "在共同坐标系内比较各 ROI 前景的缺失和溢出；不自动对齐，不测量高度。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.8",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "reference_image",
+          "display_name": "Reference Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "rois",
+          "display_name": "ROIs",
+          "payload_type_id": "roi-list.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "summary",
+          "display_name": "Comparison",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "regions",
+          "display_name": "Regions",
+          "payload_type_id": "regions.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "comparison_images",
+          "display_name": "Comparison Images",
+          "payload_type_id": "image-refs.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "threshold": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 255,
+            "default": 80,
+            "title": "灰度阈值"
+          },
+          "foreground": {
+            "type": "string",
+            "enum": [
+              "dark",
+              "light"
+            ],
+            "default": "dark",
+            "title": "前景明暗"
+          },
+          "tolerance_pixels": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 64,
+            "default": 2,
+            "title": "边缘容差（输入图像素）"
+          },
+          "min_reference_area": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 100,
+            "title": "最小参考前景面积"
+          },
+          "max_missing_ratio": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.05,
+            "title": "最大缺失比例"
+          },
+          "max_excess_ratio": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.05,
+            "title": "最大溢出比例"
+          },
+          "check_pose": {
+            "type": "boolean",
+            "default": false,
+            "title": "检查质心和主轴"
+          },
+          "max_centroid_shift_pixels": {
+            "type": "number",
+            "minimum": 0,
+            "default": 8,
+            "title": "最大质心偏移（像素）"
+          },
+          "max_axis_angle_degrees": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 90,
+            "default": 3,
+            "title": "最大主轴角差（度）"
+          },
+          "emit_comparison_images": {
+            "type": "boolean",
+            "default": false,
+            "title": "输出逐 ROI 差异图"
+          },
+          "check_boundary": {
+            "type": "boolean",
+            "default": false,
+            "title": "检查前景是否越过 ROI"
+          },
+          "search_margin_pixels": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 128,
+            "default": 8,
+            "title": "边界外搜索余量（像素）"
+          },
+          "max_outside_ratio": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.02,
+            "title": "最大越界前景比例"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "vision.inspection",
+        "opencv.foreground-comparison"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.8",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.roi-mask-extract",
+      "display_name": "ROI Mask Extract",
+      "category": "opencv.inspection.measurement",
+      "description": "在显式允许 ROI 和搜索余量中提取二值前景与允许域，不执行阈值分割。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.8",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "mask",
+          "display_name": "Mask",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "rois",
+          "display_name": "Rois",
+          "payload_type_id": "roi-list.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "masks",
+          "display_name": "Masks",
+          "payload_type_id": "image-refs.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "allowed_masks",
+          "display_name": "Allowed Masks",
+          "payload_type_id": "image-refs.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "search_margin_pixels": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 128,
+            "default": 0,
+            "title": "搜索余量（像素）"
+          },
+          "coordinate_space": {
+            "type": "string",
+            "title": "共同坐标系名称",
+            "default": "input-image"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "vision.inspection",
+        "opencv.measurement-items"
       ],
       "runtime_requirements": {
         "python_packages": [

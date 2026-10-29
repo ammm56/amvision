@@ -1,0 +1,68 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.roi-mask-extract",
+  "version": "0.1.8",
+  "display_name": "ROI Mask Extract",
+  "category": "opencv.inspection.measurement",
+  "description": "在显式允许 ROI 和搜索余量中提取二值前景与允许域，不执行阈值分割。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "mask",
+      "display_name": "Mask",
+      "payload_type_id": "image-ref.v1",
+      "required": true
+    },
+    {
+      "name": "rois",
+      "display_name": "Rois",
+      "payload_type_id": "roi-list.v1",
+      "required": true
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "masks",
+      "display_name": "Masks",
+      "payload_type_id": "image-refs.v1",
+      "required": true
+    },
+    {
+      "name": "allowed_masks",
+      "display_name": "Allowed Masks",
+      "payload_type_id": "image-refs.v1",
+      "required": true
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "search_margin_pixels": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 128,
+        "default": 0,
+        "title": "搜索余量（像素）"
+      },
+      "coordinate_space": {
+        "type": "string",
+        "title": "共同坐标系名称",
+        "default": "input-image"
+      }
+    }
+  },
+  "capability_tags": [
+    "vision.inspection",
+    "opencv.measurement-items"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.1.8"
+}

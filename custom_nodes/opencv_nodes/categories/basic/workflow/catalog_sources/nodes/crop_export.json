@@ -17,6 +17,14 @@
   "runtime_kind": "python-callable",
   "input_ports": [
     {
+      "name": "roi_items", "display_name": "ROI Items", "payload_type_id": "value.v1", "required": false,
+      "description": "显式 ROI 记录数组；允许空数组，输出空图集。连接时不得同时连接其他裁剪来源。"
+    },
+    {
+      "name": "regions", "display_name": "Regions", "payload_type_id": "regions.v1", "required": false,
+      "description": "按 regions 的外接矩形裁剪并保留 region_id；连接时不得同时连接其他裁剪来源。"
+    },
+    {
       "name": "image",
       "display_name": "Image",
       "payload_type_id": "image-ref.v1",

@@ -8989,6 +8989,7 @@ const imageViewerMessages: Record<SupportedLocale, MessageSchema> = {
       bbox: '矩形 ROI', rect: '矩形区域', polygon: '多边形 ROI', contour: '轮廓区域', circle: '圆',
       line: '线段', grid: '网格', templateRegion: '模板区域', matchLine: '匹配线', pointPair: '手动点对',
       homographyOverlay: '投影框',
+      columnStep: '列步距', rowStep: '行步距', firstRoiPolygon: '首槽多边形',
     },
     status: {
       tuningAvailableNotEnabled: '可调参；取参未启用', notEnabled: '取参未启用',
@@ -9056,6 +9057,7 @@ const imageViewerMessages: Record<SupportedLocale, MessageSchema> = {
       bbox: 'Rectangle ROI', rect: 'Rectangle', polygon: 'Polygon ROI', contour: 'Contour', circle: 'Circle',
       line: 'Line', grid: 'Grid', templateRegion: 'Template Region', matchLine: 'Match Line', pointPair: 'Manual Point Pair',
       homographyOverlay: 'Homography Overlay',
+      columnStep: 'Column step', rowStep: 'Row step', firstRoiPolygon: 'First ROI polygon',
     },
     status: {
       tuningAvailableNotEnabled: 'Parameters available; image picking is disabled', notEnabled: 'Image picking is disabled',
@@ -9123,6 +9125,7 @@ const imageViewerMessages: Record<SupportedLocale, MessageSchema> = {
       bbox: 'Rectangle ROI', rect: 'Rectangle', polygon: 'Polygon ROI', contour: 'Contour', circle: 'Circle',
       line: 'Line', grid: 'Grid', templateRegion: 'Template Region', matchLine: 'Match Line', pointPair: 'Manual Point Pair',
       homographyOverlay: 'Homography Overlay',
+      columnStep: '列間隔', rowStep: '行間隔', firstRoiPolygon: '先頭 ROI 多角形',
     },
     status: {
       tuningAvailableNotEnabled: '調整可能；画像取得は無効', notEnabled: '画像取得は無効',
@@ -9190,6 +9193,7 @@ const imageViewerMessages: Record<SupportedLocale, MessageSchema> = {
       bbox: 'Rectangle ROI', rect: 'Rectangle', polygon: 'Polygon ROI', contour: 'Contour', circle: 'Circle',
       line: 'Line', grid: 'Grid', templateRegion: 'Template Region', matchLine: 'Match Line', pointPair: 'Manual Point Pair',
       homographyOverlay: 'Homography Overlay',
+      columnStep: '열 간격', rowStep: '행 간격', firstRoiPolygon: '첫 ROI 다각형',
     },
     status: {
       tuningAvailableNotEnabled: '조정 가능; 이미지 선택 비활성화', notEnabled: '이미지 선택 비활성화',

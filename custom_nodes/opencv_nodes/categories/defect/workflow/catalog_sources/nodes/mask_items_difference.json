@@ -1,0 +1,63 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.mask-items-difference",
+  "version": "0.1.8",
+  "display_name": "Mask Items Difference",
+  "category": "opencv.inspection.measurement",
+  "description": "按 ROI ID 计算 A 减去容差膨胀后的 B；输出差集图及明确分母的比例。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "masks_a",
+      "display_name": "Masks A",
+      "payload_type_id": "image-refs.v1",
+      "required": true
+    },
+    {
+      "name": "masks_b",
+      "display_name": "Masks B",
+      "payload_type_id": "image-refs.v1",
+      "required": true
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "masks",
+      "display_name": "Masks",
+      "payload_type_id": "image-refs.v1",
+      "required": true
+    },
+    {
+      "name": "metrics",
+      "display_name": "Metrics",
+      "payload_type_id": "value.v1",
+      "required": true
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "tolerance_pixels": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 64,
+        "default": 0,
+        "title": "边缘容差（像素）"
+      }
+    }
+  },
+  "capability_tags": [
+    "vision.inspection",
+    "opencv.measurement-items"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.1.8"
+}

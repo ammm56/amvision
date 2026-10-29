@@ -24,6 +24,7 @@ export interface PreviewImageCircleOverlay {
 
 export interface PreviewImageOverlay {
   kind: string
+  pickable?: boolean
   id: string | null
   label: string | null
   pointsXy: Array<[number, number]>
@@ -925,6 +926,7 @@ function buildPreviewImageOverlay(rawOverlay: WorkflowJsonObject): PreviewImageO
   if (pointsXy.length === 0 && bboxXyxy === null && lineXyxy === null && circle === null) return null
   return {
     kind,
+    pickable: rawOverlay.pickable !== false,
     id: readDisplayText(rawOverlay.id) || null,
     label: readDisplayText(rawOverlay.label) || null,
     pointsXy,

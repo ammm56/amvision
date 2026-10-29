@@ -46,6 +46,10 @@ from custom_nodes.opencv_nodes.categories.basic.backend.nodes.image_refs_statist
     NODE_TYPE_ID as IMAGE_REFS_STATISTICS_NODE_TYPE_ID,
     handle_node as image_refs_statistics_handler,
 )
+from custom_nodes.opencv_nodes.categories.basic.backend.nodes.image_decode import (
+    NODE_TYPE_ID as IMAGE_DECODE_NODE_TYPE_ID,
+    handle_node as image_decode_handler,
+)
 from custom_nodes.opencv_nodes.categories.basic.backend.nodes.image_refs_slot_metrics import (
     NODE_TYPE_ID as IMAGE_REFS_SLOT_METRICS_NODE_TYPE_ID,
     handle_node as image_refs_slot_metrics_handler,
@@ -176,6 +180,7 @@ from custom_nodes.opencv_nodes.categories.basic.backend.nodes.scharr import (
 
 
 NODE_HANDLERS = (
+    (IMAGE_DECODE_NODE_TYPE_ID, image_decode_handler),
     (COLOR_CONVERT_NODE_TYPE_ID, color_convert_handler),
     (COLOR_RANGE_THRESHOLD_NODE_TYPE_ID, color_range_threshold_handler),
     (CHANNEL_SPLIT_NODE_TYPE_ID, channel_split_handler),

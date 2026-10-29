@@ -5,6 +5,8 @@ from __future__ import annotations
 import math
 
 from backend.nodes.core_nodes.support.roi import iter_roi_payloads
+from backend.nodes.core_nodes.support.logic import require_value_payload
+from backend.nodes.core_nodes.support.region import require_regions_payload
 from backend.nodes.save_locations import resolve_optional_save_location
 from backend.nodes.parameter_utils import is_empty_parameter
 from backend.nodes.image_identity import build_image_identity
@@ -145,6 +147,43 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             )
         elif crop_spec.get("class_name") is not None:
             crop_payload["class_name"] = crop_spec.get("class_name")
+        if crop_spec.get("region_id") is not None:
+            crop_payload["region_id"] = crop_spec["region_id"]
+        # 连续裁剪保留显式原图坐标链；不能把透视/旋转裁剪降为 bbox 平移。
+        mapped_source = image_payload.get("mapped_source")
+        if isinstance(mapped_source, dict):
+            parent_matrix = np_module.asarray(
+                mapped_source.get("source_from_crop"), dtype=float
+            )
+            if (
+                parent_matrix.shape != (3, 3)
+                or not np_module.isfinite(parent_matrix).all()
+            ):
+                raise InvalidRequestError("Crop Export 的 mapped_source 变换矩阵无效")
+            matrix = parent_matrix @ np_module.array(
+                [[1, 0, crop_x1], [0, 1, crop_y1], [0, 0, 1]]
+            )
+            corners = (
+                np_module.array(
+                    [
+                        [0, 0, 1],
+                        [crop_x2 - crop_x1 - 1, 0, 1],
+                        [crop_x2 - crop_x1 - 1, crop_y2 - crop_y1 - 1, 1],
+                        [0, crop_y2 - crop_y1 - 1, 1],
+                    ]
+                )
+                @ matrix.T
+            )
+            if abs(np_module.linalg.det(matrix)) <= 1e-12 or np_module.any(
+                abs(corners[:, 2]) <= 1e-12
+            ):
+                raise InvalidRequestError("Crop Export 的 mapped_source 变换不可逆")
+            crop_payload["mapped_source"] = {
+                **mapped_source,
+                "source_from_crop": matrix.tolist(),
+                "crop_from_source": np_module.linalg.inv(matrix).tolist(),
+                "polygon_xy": (corners[:, :2] / corners[:, 2, None]).tolist(),
+            }
         exported_crops.append(crop_payload)
     return {
         "crops": {
@@ -165,6 +204,37 @@ def _resolve_crop_specs(
 ) -> list[dict[str, object]]:
     """按优先级解析 ROI list 或 detections 裁剪来源。"""
 
+    alternatives = [
+        name
+        for name in ("roi_items", "regions")
+        if request.input_values.get(name) is not None
+    ]
+    if (
+        alternatives
+        and sum(
+            request.input_values.get(name) is not None
+            for name in ("roi_items", "regions", "rois", "detections")
+        )
+        > 1
+    ):
+        raise InvalidRequestError(
+            "Crop Export 的 roi_items / regions 必须作为唯一裁剪来源"
+        )
+    raw_items = request.input_values.get("roi_items")
+    if raw_items is not None:
+        items = require_value_payload(raw_items, field_name="roi_items")["value"]
+        if not isinstance(items, list):
+            raise InvalidRequestError("Crop Export 的 roi_items 必须是 ROI 记录数组")
+        return _build_roi_crop_specs(items, node_id=request.node_id)
+    raw_regions = request.input_values.get("regions")
+    if raw_regions is not None:
+        regions = require_regions_payload(raw_regions, node_id=request.node_id)
+        # regions 使用外接矩形裁剪；不把 polygon 当作掩膜，保持条码安静区。
+        specs = _build_detection_crop_specs({"items": list(regions["items"])})
+        for spec, region in zip(specs, regions["items"], strict=True):
+            spec["source_kind"] = "region"
+            spec["region_id"] = region.get("region_id")
+        return specs
     raw_rois = request.input_values.get("rois")
     if raw_rois is not None:
         return _build_roi_crop_specs(raw_rois, node_id=request.node_id)

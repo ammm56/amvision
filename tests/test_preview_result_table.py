@@ -34,6 +34,19 @@ def test_missing_pin_table_keeps_values_limits_and_expected_geometry():
     paired = measure(request(registry, {"items":[{"item_id":"pair", "kind":"pitch", "pin_a":present["pin_id"], "pin_b":missing["pin_id"]}]}, {"pins":found["pins"], "features":found["features"]}))
     assert paired["result_geometry"]["value"]["items"][0]["points"] == [missing["nominal_image_point"]]
     assert validate_result_image(table, request(registry), payload) is table
+    # 嵌套列投影保留原始 item_id，几何关联仍使用业务 ID 而不是显示列名称。
+    projected = PREVIEW.handler(request(
+        registry,
+        {"display_mode": "table", "path": "items", "columns": [
+            {"key": "name", "label": "项目", "path": "item_id"},
+            {"key": "limit", "label": "上限", "path": "upper"},
+        ]},
+        {"value": checked["summary"], "geometry": measured["result_geometry"]},
+    ))["body"]
+    assert [row["item_id"] for row in projected["rows"]] == [row["item_id"] for row in table["rows"]]
+    assert all(row["name"] == row["item_id"] and row["limit"] == row["upper"] for row in projected["rows"])
+    assert projected["result_geometry"] == table["result_geometry"]
+    assert validate_result_image(projected, request(registry), payload) is projected
     wrong_run = request(registry)
     wrong_run.execution_metadata["workflow_run_id"] = "another-run"
     with pytest.raises(InvalidRequestError,match="不匹配"):

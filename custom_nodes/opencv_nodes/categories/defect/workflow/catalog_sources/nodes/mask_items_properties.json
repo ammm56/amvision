@@ -1,0 +1,51 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.mask-items-properties",
+  "version": "0.1.8",
+  "display_name": "Mask Items Properties",
+  "category": "opencv.inspection.measurement",
+  "description": "测量前景像素面积、公共图像坐标质心及无向主轴，不作合格判定。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "masks",
+      "display_name": "Masks",
+      "payload_type_id": "image-refs.v1",
+      "required": true
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "metrics",
+      "display_name": "Metrics",
+      "payload_type_id": "value.v1",
+      "required": true
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "min_axis_anisotropy": {
+        "type": "number",
+        "title": "最小主轴各向异性",
+        "default": 0.1,
+        "minimum": 0,
+        "maximum": 1
+      }
+    }
+  },
+  "capability_tags": [
+    "vision.inspection",
+    "opencv.measurement-items"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.1.8"
+}

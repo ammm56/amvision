@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+from .circle_pattern_locate import (
+    NODE_TYPE_ID as CIRCLE_PATTERN_LOCATE_NODE_TYPE_ID,
+    handle_node as circle_pattern_locate_handler,
+)
+
 from .rigid_locate import (
     NODE_TYPE_ID as RIGID_LOCATE_NODE_TYPE_ID,
     handle_node as rigid_locate_handler,
@@ -73,6 +78,7 @@ from custom_nodes.opencv_nodes.categories.matching.backend.nodes.sift_keypoints 
 
 
 NODE_HANDLERS = (
+    (CIRCLE_PATTERN_LOCATE_NODE_TYPE_ID, circle_pattern_locate_handler),
     (RIGID_LOCATE_NODE_TYPE_ID, rigid_locate_handler),
     (PHASE_CORRELATION_NODE_TYPE_ID, phase_correlation_handler),
     (ECC_ALIGN_NODE_TYPE_ID, ecc_align_handler),
