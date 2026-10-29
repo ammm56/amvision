@@ -590,6 +590,7 @@ def test_node_execution_scope_excludes_editor_notes() -> None:
     scoped = build_node_execution_scope_template(
         template=template,
         target_node_id="detect",
+        get_node_definition=lambda node_type_id: None,
     )
 
     assert scoped.notes == ()

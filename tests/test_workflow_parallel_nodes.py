@@ -95,7 +95,7 @@ def test_node_preview_inside_parallel_does_not_execute_unrelated_branches(target
         visited.append(request.node_id)
         return {"value": request.input_values["value"]}
     template = _build_parallel_template(branch_count=3, max_concurrency=3)
-    scoped = build_node_execution_scope_template(template=template, target_node_id=target)
+    scoped = build_node_execution_scope_template(template=template, target_node_id=target, get_node_definition=_build_registry(handler).get_node_definition)
     result = WorkflowGraphExecutor(registry=_build_registry(handler)).execute(
         template=scoped, input_values={"source_items": {"value": list(range(6))}}, target_node_ids=frozenset((target,)))
     assert target in {record.node_id for record in result.node_records}
@@ -359,6 +359,64 @@ def test_parallel_boundary_preserves_failed_branch_context() -> None:
     assert exc_info.value.details["parallel_branch_index"] == 2
     assert exc_info.value.details["parallel_start_node_id"] == "parallel_start"
     assert exc_info.value.details["parallel_end_node_id"] == "parallel_end"
+
+
+@pytest.mark.parametrize("preview_lifetime", [False, True])
+@pytest.mark.parametrize("items", [[], [11, 22, 33]])
+@pytest.mark.parametrize("target", ["branch_1_start", "branch_1_work"])
+def test_node_preview_inside_loop_keeps_iteration_without_downstream_work(items, target, preview_lifetime):
+    """循环内 ROI 等目标按项预览，裁掉后续副作用以及其他并行分支。"""
+    from backend.service.application.workflows.execution.topology import build_node_execution_scope_template
+
+    visited = []
+
+    def handler(request):
+        """记录节点和收到的每轮真实输入。"""
+        visited.append((request.node_id, request.input_values["value"]["value"]))
+        return {"value": request.input_values["value"]}
+
+    registry = _build_registry(handler)
+    template = _build_parallel_template(branch_count=1, max_concurrency=1)
+    downstream = WorkflowGraphNode(node_id="save_result", node_type_id=PASSTHROUGH_NODE_TYPE_ID)
+    edges = tuple(
+        edge.model_copy(update={"target_node_id": "save_result", "target_port": "value"})
+        if edge.source_node_id == "branch_1_work" else edge
+        for edge in template.edges
+    ) + (WorkflowGraphEdge(edge_id="save-to-end", source_node_id="save_result", source_port="value",
+                          target_node_id="branch_1_end", target_port="result"),)
+    template = template.model_copy(update={"nodes": (*template.nodes, downstream), "edges": edges})
+    before = template.model_dump()
+    scoped = build_node_execution_scope_template(template=template, target_node_id=target,
+                                                 get_node_definition=registry.get_node_definition)
+    assert template.model_dump() == before
+    assert "save_result" not in {node.node_id for node in scoped.nodes}
+    from backend.nodes.runtime_support import ExecutionImageRegistry
+    from backend.service.application.workflows.preview.lifetime import PreviewLifetimes
+    images = ExecutionImageRegistry()
+    result = WorkflowGraphExecutor(registry=registry).execute(
+        template=scoped, input_values={"source_items": {"value": items}},
+        target_node_ids=frozenset((target,)),
+        execution_metadata={"_preview_lifetime": PreviewLifetimes(images)} if preview_lifetime else {},
+    )
+    images.clear()
+    assert visited == ([("branch_1_work", item) for item in items] if target.endswith("work") else [])
+    assert result.outputs == {}
+    assert not any("save_result" in record.node_id for record in result.node_records)
+
+
+def test_node_preview_does_not_repair_an_invalid_original_loop():
+    """完整图缺少 End 时仍报错，不能借局部预览绕过边界校验。"""
+    from backend.service.application.workflows.execution.topology import build_node_execution_scope_template
+
+    registry = _build_registry(lambda request: {"value": request.input_values["value"]})
+    template = _build_parallel_template(branch_count=1, max_concurrency=1)
+    template = template.model_copy(update={
+        "nodes": tuple(node for node in template.nodes if node.node_id != "branch_1_end"),
+        "edges": tuple(edge for edge in template.edges if "branch_1_end" not in (edge.source_node_id, edge.target_node_id)),
+    })
+    with pytest.raises(InvalidRequestError, match="for-each start 必须"):
+        build_node_execution_scope_template(template=template, target_node_id="branch_1_work",
+                                            get_node_definition=registry.get_node_definition)
 
 
 def _build_registry(
