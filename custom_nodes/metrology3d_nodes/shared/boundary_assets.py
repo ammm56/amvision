@@ -33,6 +33,8 @@ def restore_boundary(reference, evidence):
         data["quality"]["metrics"]["observation_id"] = reference.observation_id
         for segment in data["segments"]:
             segment["quality"]["metrics"]["observation_id"] = reference.observation_id
+        for group in data["groups"]:
+            group["quality"]["metrics"]["observation_id"] = reference.observation_id
         items = (BoundaryFeature.model_validate({**data, "support": reference}),)
     return Features3d(
         run_id=reference.run_id,

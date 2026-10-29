@@ -242,6 +242,14 @@ def analytic_circle(runtime, root, *, closed=True, role="inner"):
         "angular_coverage": (2 * np.pi if closed else np.pi, "rad"),
         "max_gap": (0 if closed else np.pi, "rad"),
         "jacobian_ratio": (0.5, "1"),
+        "weighted_rms": (None, "mm"),
+        "inlier_fraction": (None, "1"),
+        "occupied_sector_count": (None, "1"),
+        "sector_coverage": (None, "1"),
+        "target_max_gap": (None, "rad"),
+        "inlier_angular_coverage": (None, "rad"),
+        "inlier_max_gap": (None, "rad"),
+        "inlier_jacobian_ratio": (None, "1"),
     }
     quality = geometry_quality(
         root.observation_id, values, p.quality_policy, reason="missing"

@@ -32,13 +32,11 @@ class EnvelopeGrid(Contract):
         return self
 
 
-class EnvelopeSelection(Contract):
-    """种子窗口选择唯一连通目标；形态学仅改变归属，不制造观测格。"""
+class EnvelopeSeed(Contract):
+    """当前评价面中的有限种子窗口，必须只命中一个物理目标。"""
 
     seed_min: Point2
     seed_max: Point2
-    connectivity: Literal[4, 8]
-    closing_radius_cells: JsonCount
 
     @model_validator(mode="after")
     def check_seed(self) -> Self:
@@ -46,6 +44,21 @@ class EnvelopeSelection(Contract):
         if any(a >= b for a, b in zip(self.seed_min, self.seed_max)):
             raise ValueError("种子窗口必须严格递增")
         return self
+
+
+class EnvelopeSelection(EnvelopeSeed):
+    """栅格连通归属；形态学不制造观测格。"""
+
+    kind: Literal["grid-connected"]
+    connectivity: Literal[4, 8]
+    closing_radius_cells: JsonCount
+
+
+class MetricEnvelopeSelection(EnvelopeSeed):
+    """完整局部正/负高度点在面内按明确距离连通，不受分箱相位支配。"""
+
+    kind: Literal["distance-connected"]
+    connection_distance: Positive
 
 
 class EnvelopeProfiles(Contract):
@@ -60,7 +73,7 @@ class VisibleEnvelopeSettings(Contract):
     """本次高度已由既有来源解析；内核使用截面相对高度零点。"""
 
     grid: EnvelopeGrid
-    selection: EnvelopeSelection
+    selection: EnvelopeSelection | MetricEnvelopeSelection
     profiles: EnvelopeProfiles
 
     @model_validator(mode="after")

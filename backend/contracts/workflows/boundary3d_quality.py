@@ -30,6 +30,16 @@ def boundary_metric_units(kind, unit):
         result.update(span=unit, direction_gap="1", max_gap=unit)
     elif kind == "circle":
         result.update(jacobian_ratio="1", angular_coverage="rad", max_gap="rad")
+        result.update(
+            weighted_rms=unit,
+            inlier_fraction="1",
+            occupied_sector_count="1",
+            sector_coverage="1",
+            target_max_gap="rad",
+            inlier_angular_coverage="rad",
+            inlier_max_gap="rad",
+            inlier_jacobian_ratio="1",
+        )
     else:
         raise ValueError("未知边界指标类型")
     return result
@@ -58,6 +68,9 @@ def check_boundary_metrics(quality, kind, unit):
                 "profile_coverage",
                 "estimated_fraction",
                 "missing_neighbor_fraction",
+                "inlier_fraction",
+                "sector_coverage",
+                "inlier_jacobian_ratio",
             )
             and item.value > 1
         ):

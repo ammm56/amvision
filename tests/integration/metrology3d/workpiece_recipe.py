@@ -1,6 +1,7 @@
 """R5 完整工件的显式工程配置；仅用于固定装夹样本，不提供生产默认值。"""
 
 from copy import deepcopy
+from math import pi
 
 from tests.integration.metrology3d import representative_recipe as representative
 from tests.test_metrology3d_dimension_contracts import extent_parameters
@@ -12,49 +13,49 @@ STEEL = {
     "A_top_L": (
         [-35.5, -33.5, -21, -17.5, -15.2, -14],
         [-34.75, -19],
-        10,
+        60,
         [-37.4, -29, -23, -13.8],
     ),
     "A_top_R": (
         [-24, -22.5, -21, -17.5, -15.2, -13.8],
         [-23.5, -19],
-        10,
+        60,
         [-29.3, -21, -23, -13.8],
     ),
     "B_top_L": (
         [-5, -3.5, -38.5, -34.5, -14.6, -12.8],
         [-4.5, -36.5],
-        20,
+        60,
         [-6.8, 1.5, -40.4, -31.2],
     ),
     "B_top_R": (
         [6.5, 8, -38.5, -34.5, -14.6, -12.8],
         [7, -36.5],
-        20,
+        60,
         [1.3, 9.6, -40.4, -31.2],
     ),
     "A_bottom_L": (
         [-35, -33.5, -53, -51, -15.2, -13.4],
         [-34.5, -52],
-        30,
+        60,
         [-37.1, -28.6, -58.4, -48.9],
     ),
     "A_bottom_R": (
         [-24, -22.5, -54, -51, -15, -13],
         [-23.5, -52],
-        30,
+        60,
         [-29, -20.5, -58.4, -48.9],
     ),
     "B_bottom_L": (
         [-4.5, -3, -71.5, -68.5, -14.8, -12.8],
         [-4, -70],
-        50,
+        60,
         [-6.4, 2, -75.8, -66.1],
     ),
     "B_bottom_R": (
         [6.7, 8.2, -71.5, -68.5, -14.8, -12.8],
         [7.2, -70],
-        50,
+        60,
         [1.6, 9.9, -75.8, -66.1],
     ),
     "C_top_L": (
@@ -72,13 +73,13 @@ STEEL = {
     "C_bottom_L": (
         [26.5, 28, -124.2, -121.2, -14, -11.8],
         [27, -123],
-        25,
+        60,
         [24.5, 33, -128.2, -118.4],
     ),
     "C_bottom_R": (
         [38, 39.4, -124.2, -121.2, -14, -11.8],
         [38.45, -123],
-        25,
+        60,
         [32.4, 41, -128.2, -118.4],
     ),
 }
@@ -94,6 +95,17 @@ BODY = {
     "C_top": [[28, 38, -100, -97, -15.7, -13.6]],
     "C_bottom": [[28, 38, -116, -112, -15.7, -13.6]],
 }
+
+
+def s2_arc():
+    """固定装夹下的当前台面 U/V 搜索角域，不使用运行拟合圆心反选点。"""
+    return dict(
+        center=[32.13, -88.51],
+        radius_range=[9.5, 10.6],
+        start_angle=pi / 18,
+        sweep=8 * pi / 9,
+        max_overlap_angle=pi / 180,
+    )
 
 
 def group_regions():
@@ -163,7 +175,7 @@ def step(name, component):
 
 
 def contour(name):
-    """每片动态中间高度和有限实测闭边界；S2 显式选择两侧开弧，不补缺口。"""
+    """每片动态中间高度和有限实测闭边界；S2 选择同一目标的真实断弧组。"""
     base = representative.contour("A_top_L" if name in STEEL else "S1")
     data = deepcopy(base.model_dump(mode="json"))
     data["feature_id"] = name + "-boundary"
@@ -187,14 +199,18 @@ def contour(name):
         ).model_dump(mode="json")
         data["targets"] = [
             dict(
-                segment_id=segment,
-                closed=False,
+                group_id="S2",
                 role="open",
-                region=representative.boxes(segment, [bounds]).model_dump(mode="json"),
-            )
-            for segment, bounds in (
-                ("S2-left", [22, 27, -87, -80.5, -16, -12]),
-                ("S2-right", [37.8, 43, -87, -80.5, -16, -12]),
+                region=data["region"],
+                arc=s2_arc(),
+                fragment_quality_policy=dict(
+                    policy_id="r5-S2-fragments",
+                    policy_version=1,
+                    rules=[
+                        dict(item_id="support_count", unit="1", lower=2),
+                        dict(item_id="length", unit="mm", lower=1e-6),
+                    ],
+                ),
             )
         ]
     elif name != "S1":
@@ -203,14 +219,39 @@ def contour(name):
 
 
 def circle(name):
-    """S2 不降低角覆盖、辨识性或残差门禁，质量不足须保留无效。"""
+    """S1 原完整弧不变；S2 是已确认的部分实测圆弧估计，不补全缺弧。"""
     base = representative.circle()
     data = base.model_dump(mode="json")
     data["feature_id"] = name + "-circle"
     data["selection"] = dict(
         feature_id=name + "-boundary",
-        segment_ids=[name] if name == "S1" else ["S2-left", "S2-right"],
+        **(dict(segment_ids=[name]) if name == "S1" else dict(group_ids=[name])),
     )
+    if name == "S2":
+        arc = s2_arc()
+        data["robust"] = dict(
+            kind="angular-soft-l1",
+            **{k: arc[k] for k in ("center", "start_angle", "sweep")},
+            sector_count=32,
+            loss_scale=0.02,
+            inlier_residual=0.06,
+        )
+        data["quality_policy"]["policy_id"] = "r5-S2-partial-arcs"
+        # 部分弧的实际覆盖与整周缺口分开约束；原 RMS/最大残差/整周跨度均不变。
+        for rule in data["quality_policy"]["rules"]:
+            if rule["item_id"] == "angular_coverage":
+                rule["lower"] = 0.9
+            if rule["item_id"] == "jacobian_ratio":
+                rule["lower"] = 0.1
+        data["quality_policy"]["rules"] += [
+            dict(item_id="inlier_fraction", unit="1", lower=0.9),
+            dict(item_id="sector_coverage", unit="1", lower=0.45),
+            dict(item_id="inlier_angular_coverage", unit="rad", lower=0.9),
+            dict(item_id="inlier_jacobian_ratio", unit="1", lower=0.1),
+            dict(item_id="target_max_gap", unit="rad", upper=pi / 2),
+            dict(item_id="inlier_max_gap", unit="rad", upper=pi / 2),
+            dict(item_id="weighted_rms", unit="mm", upper=0.03),
+        ]
     return type(base).model_validate(data)
 
 
@@ -258,8 +299,8 @@ def envelope(name, *, grid_step=0.03, ratio=0.5):
             selection=dict(
                 seed_min=[v - 0.15 for v in uv],
                 seed_max=[v + 0.15 for v in uv],
-                connectivity=8,
-                closing_radius_cells=1,
+                kind="distance-connected",
+                connection_distance=0.15,
             ),
             profiles=dict(
                 foreground="above",

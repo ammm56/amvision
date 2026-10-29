@@ -51,6 +51,10 @@ def fit_boundary(runtime, group, parameters, *, cancel):
     require_space(runtime, boundary.support, parameters.evaluation)
     require_quality_result(boundary.quality, boundary.method.quality_policy)
     for item in boundary.segments:
+        require_quality_result(
+            item.quality, boundary.method.parameters.fragment_policy(item.group_id)
+        )
+    for item in boundary.groups:
         require_quality_result(item.quality, boundary.method.quality_policy)
     support = boundary.support
     line = isinstance(parameters, FitLineParameters)

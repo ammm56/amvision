@@ -5,11 +5,14 @@ from typing import Annotated, Literal, Self
 from pydantic import Field, StrictBool, model_validator
 
 from backend.contracts.workflows.boundary3d import (
+    BoundarySelection,
     BoundaryTopology,
     ExtractBoundaryParameters,
     FitLineParameters,
     FitCircleParameters,
 )
+from backend.contracts.workflows.boundary3d_selection import BoundaryFragmentTarget
+from backend.contracts.workflows.circle3d_fit import AngularSpan, CircleWeightEvidence
 from backend.contracts.workflows.geometry3d import Point3, Positive, require_unit
 from backend.contracts.workflows.geometry3d_methods import parameter_digest
 from backend.contracts.workflows.geometry3d_quality import (
@@ -61,6 +64,14 @@ class SegmentQuality(Contract):
     """每个目标独立评价，不能由另一个长边界掩盖少点或短段。"""
 
     segment_id: Identifier
+    group_id: Identifier | None = Field(default=None, exclude_if=lambda v: v is None)
+    quality: GeometryQuality
+
+
+class GroupQuality(Contract):
+    """目标组整体质量，不能用整体足够掩盖每片段失败。"""
+
+    group_id: Identifier
     quality: GeometryQuality
 
 
@@ -75,6 +86,7 @@ class BoundaryEvidence(Contract):
     geometry: BoundaryTopology | None
     quality: GeometryQuality
     segments: tuple[SegmentQuality, ...]
+    groups: tuple[GroupQuality, ...] = ()
     method: BoundaryMethod
 
     @model_validator(mode="after")
@@ -98,22 +110,43 @@ class BoundaryEvidence(Contract):
             self.quality, metric_kind, self.method.parameters.evaluation.length_unit
         )
         ids = self.method.parameters.target_ids
+        parameters = self.method.parameters
+        group_ids = tuple(
+            t.group_id
+            for t in parameters.targets
+            if isinstance(t, BoundaryFragmentTarget)
+        )
+        unique_ids([g.group_id for g in self.groups], "groups")
         unique_ids([s.segment_id for s in self.segments], "segments")
         if self.failed_segment_id is not None and self.failed_segment_id not in ids:
             raise ValueError("失败段不属于目标")
-        if self.valid and (
-            tuple(s.segment_id for s in self.geometry.segments) != ids
-            or tuple(s.segment_id for s in self.segments) != ids
-        ):
-            raise ValueError("边界支持连接或目标不一致")
+        if self.valid:
+            actual = self.geometry.segments
+            if (
+                tuple(s.segment_id for s in actual)
+                != tuple(s.segment_id for s in self.segments)
+                or tuple(s.group_id for s in actual)
+                != tuple(s.group_id for s in self.segments)
+                or tuple(dict.fromkeys(s.group_id or s.segment_id for s in actual))
+                != ids
+                or tuple(g.group_id for g in self.groups) != group_ids
+                or any(
+                    s.group_id is not None and s.group_id not in group_ids
+                    for s in actual
+                )
+                or any(s.group_id is None and s.segment_id in group_ids for s in actual)
+            ):
+                raise ValueError("边界支持连接或目标不一致")
         for segment in self.segments:
             if (
-                segment.segment_id not in ids
+                (segment.group_id or segment.segment_id) not in ids
                 or segment.quality.metrics.observation_id
                 != self.quality.metrics.observation_id
             ):
                 raise ValueError("边界逐段质量身份不一致")
-            check_geometry_policy(segment.quality, self.method.quality_policy)
+            check_geometry_policy(
+                segment.quality, parameters.fragment_policy(segment.group_id)
+            )
             check_boundary_metrics(
                 segment.quality,
                 metric_kind,
@@ -121,10 +154,26 @@ class BoundaryEvidence(Contract):
             )
             if self.valid and not segment.quality.usable:
                 raise ValueError("有效边界包含质量失败的段")
+        for group in self.groups:
+            if (
+                group.group_id not in group_ids
+                or group.quality.metrics.observation_id
+                != self.quality.metrics.observation_id
+            ):
+                raise ValueError("边界组质量身份不一致")
+            check_geometry_policy(group.quality, self.method.quality_policy)
+            check_boundary_metrics(
+                group.quality, "boundary", parameters.evaluation.length_unit
+            )
+            if self.valid and not group.quality.usable:
+                raise ValueError("有效边界包含质量失败的组")
         if self.valid and self.failed_segment_id is not None:
             raise ValueError("有效边界不能携带失败段")
         if self.method.resolution.reason is not None and (
-            self.valid or self.reason != self.method.resolution.reason or self.segments
+            self.valid
+            or self.reason != self.method.resolution.reason
+            or self.segments
+            or self.groups
         ):
             raise ValueError("来源失败不能保留有效边界或逐段计算")
         if self.valid:
@@ -135,6 +184,17 @@ class BoundaryEvidence(Contract):
             for count, quality in [
                 (self.geometry.point_count, self.quality),
                 *((counts[s.segment_id], s.quality) for s in self.segments),
+                *(
+                    (
+                        sum(
+                            s.count
+                            for s in self.geometry.segments
+                            if s.group_id == g.group_id
+                        ),
+                        g.quality,
+                    )
+                    for g in self.groups
+                ),
             ]:
                 if (
                     next(
@@ -204,18 +264,29 @@ class LineMethod(Contract):
             raise ValueError("拟合评价空间与边界不一致")
         if self.boundary.valid and self.boundary_content_sha256 is None:
             raise ValueError("有效边界缺少内容身份")
-        if self.boundary.valid and any(
-            s not in {v.segment_id for v in self.boundary.geometry.segments}
-            for s in p.selection.segment_ids
-        ):
-            raise ValueError("拟合选择不在来源边界中")
+        if self.boundary.valid:
+            p.selection.resolve(self.boundary.geometry)
         return self
+
+    @property
+    def resolved_segment_ids(self):
+        """持久来源中的真实组成员，不按运行输出序号猜测。"""
+        return (
+            self.parameters.selection.resolve(self.boundary.geometry)
+            if self.boundary.valid
+            else ()
+        )
 
     def resolved_parameters(self):
         """仅供数值内核使用的解析值，不覆盖持久配方。"""
         if self.evaluation is None:
             return None
         values = dict(evaluation=self.evaluation)
+        if self.boundary.valid:
+            values["selection"] = BoundarySelection(
+                feature_id=self.parameters.selection.feature_id,
+                segment_ids=self.resolved_segment_ids,
+            )
         if isinstance(self.parameters, FitLineParameters):
             values["positive_direction"] = evaluation_direction(
                 self.parameters.positive_direction, self.evaluation
@@ -276,8 +347,24 @@ class ArcInterval(Contract):
     """面内角度遵循 method.evaluation 的 X/Y，保留有符号扫角。"""
 
     segment_id: Identifier
-    start_angle: Finite
-    sweep: Annotated[Finite, Field(ge=-6.283185307179587, le=6.283185307179587)]
+    start_angle: Finite | None
+    sweep: Annotated[Finite, Field(ge=-6.283185307179587, le=6.283185307179587)] | None
+    pieces: Annotated[tuple[AngularSpan, ...], Field(max_length=8192)] = ()
+
+    @model_validator(mode="after")
+    def check_pieces(self) -> Self:
+        """单调弧和逐边角区并集二选一，不能以包围区间补齐缺口。"""
+        if self.pieces:
+            if self.start_angle is not None or self.sweep is not None:
+                raise ValueError("分段角支持不能同时携带整段扫角")
+            end = -1.0
+            for piece in self.pieces:
+                if piece.start_angle < end:
+                    raise ValueError("分段角支持不可重叠或乱序")
+                end = piece.start_angle + piece.sweep
+        elif self.start_angle is None or self.sweep is None:
+            raise ValueError("拟圆缺少角支持")
+        return self
 
 
 class CircleSolverEvidence(Contract):
@@ -288,6 +375,34 @@ class CircleSolverEvidence(Contract):
     cost: Annotated[Finite, Field(ge=0)]
     optimality: Annotated[Finite, Field(ge=0)]
     radius_at_bound: StrictBool
+    weighting: CircleWeightEvidence | None = None
+
+
+def check_circle_solver(*, valid, solver, parameters, intervals, quality):
+    """运行特征与持久快照共用求解、权重、支持和质量一致性校验。"""
+    if valid and (solver is None or solver.status <= 0 or solver.radius_at_bound):
+        raise ValueError("有效圆缺少收敛证据")
+    if solver is not None:
+        robust, weighting = parameters.robust, solver.weighting
+        if (robust is None) != (weighting is None):
+            raise ValueError("圆方法与角区权重证据不一致")
+        if weighting is not None:
+            values = {item.item_id: item.value for item in quality.metrics.items}
+            occupied = sum(count > 0 for count in weighting.sector_counts)
+            if (
+                weighting.candidate_count != values["support_count"]
+                or not weighting.candidate_count
+                or len(weighting.sector_counts) != robust.sector_count
+                or values["inlier_fraction"]
+                != weighting.inlier_count / weighting.candidate_count
+                or values["occupied_sector_count"] != occupied
+                or values["sector_coverage"] != occupied / robust.sector_count
+            ):
+                raise ValueError("圆角区证据与实际支持不一致")
+    if valid and any(
+        bool(i.pieces) != (parameters.robust is not None) for i in intervals
+    ):
+        raise ValueError("圆方法与角支持表达不一致")
 
 
 class LineFeature(Contract):
@@ -310,13 +425,13 @@ class LineFeature(Contract):
         if (not self.valid and self.intervals) or (
             self.valid
             and tuple(i.segment_id for i in self.intervals)
-            != self.method.parameters.selection.segment_ids
+            != self.method.resolved_segment_ids
         ):
             raise ValueError("拟合支持区间与选择不一致")
         if self.valid and (
             self.support.topology is None
             or tuple(s.segment_id for s in self.support.topology.segments)
-            != self.method.parameters.selection.segment_ids
+            != self.method.resolved_segment_ids
         ):
             raise ValueError("拟合支持连接与选择不一致")
         return self
@@ -334,12 +449,13 @@ class CircleFeature(LineFeature):
     @model_validator(mode="after")
     def check_solver(self) -> Self:
         """有效圆必须有真实收敛且未命中半径边界的证据。"""
-        if self.valid and (
-            self.solver is None
-            or self.solver.status <= 0
-            or self.solver.radius_at_bound
-        ):
-            raise ValueError("有效圆缺少收敛证据")
+        check_circle_solver(
+            valid=self.valid,
+            solver=self.solver,
+            parameters=self.method.parameters,
+            intervals=self.intervals,
+            quality=self.quality,
+        )
         return self
 
 

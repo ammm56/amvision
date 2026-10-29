@@ -9296,6 +9296,7 @@ for (const locale of ['zh-CN', 'en-US', 'ja-JP', 'ko-KR'] as const) {
 
 const workflowAppModeMessages: Record<SupportedLocale, MessageSchema> = {
   'zh-CN': {
+    openDisplay: '展开 {title}',
     action: '应用模式', title: 'Workflow App', configTitle: '应用模式配置', pageTitle: '页面标题', displays: '显示输出',
     noPreviewOutputs: '当前画布没有可用的 Preview 输出', apply: '应用', remove: '移除配置', configured: '应用模式配置已更新，保存并发布后生效', removed: '应用模式配置已移除，保存并发布后生效', invalidReference: '引用已失效，取消选择后可保存', moveUp: '上移', moveDown: '下移',
     sizeSmall: '小', sizeMedium: '中', sizeLarge: '大', inputs: '输入', noInputs: '此 Workflow 没有输入', run: '运行',
@@ -9305,6 +9306,7 @@ const workflowAppModeMessages: Record<SupportedLocale, MessageSchema> = {
     waitingOutput: '等待 Runtime 执行结果', noCurrentOutput: '本次执行没有此输出', notConfigured: '当前发布版本未配置应用模式', runtimeResult: '运行结果',
   },
   'en-US': {
+    openDisplay: 'Expand {title}',
     action: 'App Mode', title: 'Workflow App', configTitle: 'App Mode settings', pageTitle: 'Page title', displays: 'Display outputs',
     noPreviewOutputs: 'No Preview outputs are available on this graph', apply: 'Apply', remove: 'Remove settings', configured: 'App Mode settings updated; save and publish to apply', removed: 'App Mode settings removed; save and publish to apply', invalidReference: 'This reference is no longer valid; deselect it before saving', moveUp: 'Move up', moveDown: 'Move down',
     sizeSmall: 'Small', sizeMedium: 'Medium', sizeLarge: 'Large', inputs: 'Inputs', noInputs: 'This Workflow has no inputs', run: 'Run',
@@ -9314,6 +9316,7 @@ const workflowAppModeMessages: Record<SupportedLocale, MessageSchema> = {
     waitingOutput: 'Waiting for a Runtime result', noCurrentOutput: 'No output for this run', notConfigured: 'The published version has no App Mode settings', runtimeResult: 'Run result',
   },
   'ja-JP': {
+    openDisplay: '{title} を拡大',
     action: 'アプリモード', title: 'Workflow App', configTitle: 'アプリモード設定', pageTitle: 'ページタイトル', displays: '表示出力',
     noPreviewOutputs: '現在のグラフに使用可能な Preview 出力がありません', apply: '適用', remove: '設定を削除', configured: 'アプリモード設定を更新しました。保存して公開すると反映されます', removed: 'アプリモード設定を削除しました。保存して公開すると反映されます', invalidReference: '参照は無効です。選択を解除してから保存してください', moveUp: '上へ移動', moveDown: '下へ移動',
     sizeSmall: '小', sizeMedium: '中', sizeLarge: '大', inputs: '入力', noInputs: 'この Workflow には入力がありません', run: '実行',
@@ -9323,6 +9326,7 @@ const workflowAppModeMessages: Record<SupportedLocale, MessageSchema> = {
     waitingOutput: 'Runtime の実行結果を待機中', noCurrentOutput: '今回の実行にはこの出力がありません', notConfigured: '現在の公開バージョンにはアプリモード設定がありません', runtimeResult: '実行結果',
   },
   'ko-KR': {
+    openDisplay: '{title} 확대',
     runtimeResult: '실행 결과',
     action: '앱 모드', title: 'Workflow App', configTitle: '앱 모드 설정', pageTitle: '페이지 제목', displays: '표시 출력',
     noPreviewOutputs: '현재 그래프에 사용할 수 있는 Preview 출력이 없습니다', apply: '적용', remove: '설정 제거', configured: '앱 모드 설정이 업데이트되었습니다. 저장 및 게시 후 적용됩니다', removed: '앱 모드 설정이 제거되었습니다. 저장 및 게시 후 적용됩니다', invalidReference: '참조가 유효하지 않습니다. 선택을 해제한 후 저장하세요', moveUp: '위로 이동', moveDown: '아래로 이동',

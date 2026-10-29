@@ -25,7 +25,7 @@ def test_envelope_published_full_sample_lifecycle(tmp_path, request):
         check_workpiece_body(
             body,
             matrix=Path(__file__).parents[3]
-            / "docs/development/assets/r5-f3/workpiece-matrix.json",
+            / "docs/development/assets/r5-f4/workpiece-windows.json",
         )
 
     published_full_sample_lifecycle(

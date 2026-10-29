@@ -8,6 +8,7 @@ from scipy import ndimage, stats
 
 from backend.contracts.workflows.envelope3d import VisibleEnvelopeSettings
 from backend.service.application.errors import InvalidRequestError
+from custom_nodes.metrology3d_nodes.shared.envelope_selection import metric_membership
 
 
 @dataclass(frozen=True)
@@ -27,7 +28,11 @@ class EnvelopeGridResult:
 def grid_working_bytes(point_count, settings):
     """保守包含投影、SciPy 分箱/排序、标签和来源排序；不是进程 RSS 限额。"""
     cells = int(settings.grid.shape[0]) * int(settings.grid.shape[1])
-    radius = settings.selection.closing_radius_cells
+    radius = (
+        settings.selection.closing_radius_cells
+        if settings.selection.kind == "grid-connected"
+        else 0
+    )
     profiles = 2 * sum(settings.grid.shape)
     return point_count * 256 + cells * 256 + profiles * 2048 + (2 * radius + 1) ** 2 * 8
 
@@ -89,6 +94,38 @@ def build_envelope_grid(positions, evaluation, settings, *, max_working_bytes, c
     foreground = usable & (
         median > 0 if settings.profiles.foreground == "above" else median < 0
     )
+    if selection.kind == "distance-connected":
+        reason, members, evidence, component_count = metric_membership(
+            uvh,
+            settings,
+            max_working_bytes=max_working_bytes
+            - grid_working_bytes(len(points), settings),
+            cancel=cancel,
+        )
+        selected = np.zeros(g.shape, dtype=bool)
+        if reason is None:
+            if np.any(flat[members] < 0):
+                reason = "roi_clipped"
+            else:
+                selected.ravel()[flat[members]] = True
+                rows, labels, target = evidence
+                other = flat[rows[labels != target]]
+                other = other[other >= 0]
+                if np.any(selected.ravel()[other]):
+                    reason = "mixed_target_cell"
+                selected &= foreground
+                if not selected.any():
+                    reason = "insufficient_support"
+                elif (
+                    selected[0].any()
+                    or selected[-1].any()
+                    or selected[:, 0].any()
+                    or selected[:, -1].any()
+                ):
+                    reason = "roi_clipped"
+        return EnvelopeGridResult(
+            reason, median, counts, spread, selected, flat, component_count, 0
+        )
     grouped = foreground
     radius = selection.closing_radius_cells
     if radius:

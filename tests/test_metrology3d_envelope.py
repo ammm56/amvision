@@ -24,7 +24,11 @@ def settings(**changes):
     data = dict(
         grid=dict(origin=[0, 0], step=1, shape=[10, 12], min_cell_count=1),
         selection=dict(
-            seed_min=[4, 5], seed_max=[5, 6], connectivity=4, closing_radius_cells=0
+            kind="grid-connected",
+            seed_min=[4, 5],
+            seed_max=[5, 6],
+            connectivity=4,
+            closing_radius_cells=0,
         ),
         profiles=dict(
             foreground="above",

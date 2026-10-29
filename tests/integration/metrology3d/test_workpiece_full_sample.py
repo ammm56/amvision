@@ -309,6 +309,27 @@ def test_workpiece_full_sample_truth(tmp_path, request, visible):
             if name == "S1":
                 saved_circle = boundary, fitted, diameter
             else:
+                from tests.integration.metrology3d.test_fragment_full_sample import (
+                    independent_circle_checks,
+                )
+
+                circle = fitted.items[0]
+                assert circle.valid, circle.reason
+                support, _ = materialize_positions(
+                    runtime, circle.support, factor=1024, cancel=lambda: None
+                )
+                uv = (support - circle.method.evaluation.origin) @ np.asarray(
+                    circle.method.evaluation.rotation
+                )[:, :2]
+                report["boundaries"][name]["independent_fit"] = (
+                    independent_circle_checks(
+                        uv,
+                        recipe.circle(name).robust.model_dump(),
+                        circle.geometry,
+                        circle.method.evaluation,
+                    )
+                )
+                del support, uv
                 config = recipe.contour(name)
                 selected, _ = crop_roi(
                     runtime, cloud, config.region, cancel=lambda: None
@@ -359,6 +380,10 @@ def test_workpiece_full_sample_truth(tmp_path, request, visible):
         )
         assert report["items"].keys() == frozen["items"].keys()
         for name, item in report["items"].items():
+            if name in {"S2.D", "A_top_R.Z", "A_bottom_L.Z"}:
+                # 改定义/工程适用范围的三项由上面的独立拟合及同线交点核对，不复用旧无效状态。
+                assert item["valid"], (name, item["reason"])
+                continue
             if visible and name.rsplit(".", 1)[1] in {"L", "W"}:
                 assert item["valid"], (name, item["reason"])
                 continue

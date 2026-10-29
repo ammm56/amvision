@@ -6,10 +6,11 @@ export interface CurveDisplay {
   geometry: Record<string, unknown> | null; method: Record<string, unknown>; quality: Record<string, unknown>
   points: number[][]; topology: { segments: Segment[]; point_count: number } | null
   intervals?: Record<string, unknown>[]; vertex_kind: 'source' | 'generated' | null
-  failed_segment_id?: string | null; segments?: Record<string, unknown>[]
+  failed_segment_id?: string | null; segments?: Record<string, unknown>[]; groups?: Record<string, unknown>[]
   profile_kinds?: number[]
+  inlier_flags?:boolean[]; solver?:Record<string,unknown>
 }
-export interface Segment { segment_id: string; start: number; count: number; closed: boolean; role: string; orientation: string; profile?: {side:string;breaks:number[]} }
+export interface Segment { segment_id: string; group_id?:string; start: number; count: number; closed: boolean; role: string; orientation: string; profile?: {side:string;breaks:number[]} }
 const invalid = () => new Error('cloud_preview_invalid')
 export function xyz(value: unknown): number[] {
   if (!Array.isArray(value) || value.length !== 3 || value.some(v => typeof v !== 'number' || !Number.isFinite(v))) throw invalid()
@@ -50,6 +51,7 @@ export function curveItems(payload: Record<string, unknown>): CurveDisplay[] {
         const s = object(rawSegment)
         const profile=s.profile?object(s.profile):null
         if (typeof s.segment_id !== 'string' || seen.has(s.segment_id) || s.start !== cursor || !Number.isSafeInteger(s.count) || typeof s.closed !== 'boolean' || Number(s.count) < (s.closed ? 3 : profile?1:2)) throw invalid()
+        if(s.group_id!==undefined&&(typeof s.group_id!=='string'||!s.group_id||s.closed||s.role!=='open'||profile))throw invalid()
         if(profile){
           if(!visible||profile.side!==s.segment_id||!['u-min','u-max','v-min','v-max'].includes(String(profile.side))||s.closed||s.role!=='open'||s.orientation!=='open'||!Array.isArray(profile.breaks))throw invalid()
           let previous=0
@@ -60,21 +62,38 @@ export function curveItems(payload: Record<string, unknown>): CurveDisplay[] {
       if (cursor !== points.length) throw invalid()
       const segments = t.segments
       if (f.kind !== 'boundary' && (!Array.isArray(f.intervals) || f.intervals.length !== segments.length || f.intervals.some((v,i)=>object(v).segment_id!==object(segments[i]).segment_id))) throw invalid()
+      if(f.kind==='circle')for(const interval of f.intervals as unknown[])arcPieces(object(interval),!!object(method.parameters).robust)
     }
     const profile=f.valid&&visible
     if(profile?(!Array.isArray(f.profile_kinds)||f.profile_kinds.length!==points.length||f.profile_kinds.some(k=>!Number.isInteger(k)||Number(k)<0||Number(k)>3)):f.profile_kinds!==undefined)throw invalid()
+    const robust=f.valid&&f.kind==='circle'&&!!object(method.parameters).robust
+    if(robust?(!Array.isArray(f.inlier_flags)||f.inlier_flags.length!==points.length||f.inlier_flags.some(v=>typeof v!=='boolean')):f.inlier_flags!==undefined)throw invalid()
     return { ...f, points } as unknown as CurveDisplay
   })
 }
 
-export interface CurveStroke { featureId: string; segmentId: string; fitted: boolean; points: number[][]; markers?:boolean; estimate?:'center'|'edge' }
+/** 分段角域保持空隙；不使用首末角将部分圆弧重建为整段。 */
+function arcPieces(interval:Record<string,unknown>,robust:boolean):{start_angle:number;sweep:number}[]{
+  const pieces=interval.pieces
+  if(robust){
+    if(interval.start_angle!==null||interval.sweep!==null||!Array.isArray(pieces)||!pieces.length||pieces.length>8192)throw invalid()
+    let end=-1
+    return pieces.map(raw=>{const p=object(raw),start=finite(p.start_angle),sweep=finite(p.sweep);if(start<0||start>=2*Math.PI||sweep<=0||start+sweep>2*Math.PI+1e-14||start<end)throw invalid();end=start+sweep;return {start_angle:start,sweep}})
+  }
+  if(pieces!==undefined&&(!Array.isArray(pieces)||pieces.length))throw invalid()
+  const start=finite(interval.start_angle),sweep=finite(interval.sweep)
+  if(Math.abs(sweep)>2*Math.PI+1e-14)throw invalid()
+  return [{start_angle:start,sweep}]
+}
+
+export interface CurveStroke { featureId: string; segmentId: string; groupId?:string; fitted: boolean; points: number[][]; markers?:boolean; estimate?:'center'|'edge'; outlier?:boolean }
 /** 实测边按实际连接绘制；模型只绘制支持区间，不跨段连接。 */
 export function curveStrokes(items: CurveDisplay[], policy: CloudRendererPolicy): CurveStroke[] {
   let count = 0; const result: CurveStroke[] = []
   function push(item: CurveDisplay, segmentId: string, points: number[][], fitted: boolean) {
     count += points.length
     if (count > policy.max_points * 8) throw new Error('cloud_preview_capacity')
-    result.push({ featureId: item.feature_id, segmentId, fitted, points })
+    result.push({ featureId: item.feature_id, segmentId, groupId:item.topology?.segments.find(s=>s.segment_id===segmentId)?.group_id, fitted, points })
   }
   for (const f of items) {
     if (!f.valid || !f.topology) continue
@@ -101,6 +120,7 @@ export function curveStrokes(items: CurveDisplay[], policy: CloudRendererPolicy)
       for (let i = 0; i < s.count - 1; i++) points.push(f.points[s.start + i]!, f.points[s.start + i + 1]!)
       if (s.closed) points.push(f.points[s.start + s.count - 1]!, f.points[s.start]!)
       push(f, s.segment_id, points, false)
+      if(f.inlier_flags){const rejected=f.points.slice(s.start,s.start+s.count).filter((_,i)=>!f.inlier_flags![s.start+i]);if(rejected.length){push(f,s.segment_id,rejected,false);Object.assign(result.at(-1)!,{markers:true,outlier:true})}}
     }
     if (f.kind === 'boundary') continue
     if (!Array.isArray(f.intervals)) throw invalid()
@@ -114,8 +134,8 @@ export function curveStrokes(items: CurveDisplay[], policy: CloudRendererPolicy)
       if (radius <= 0 || !Array.isArray(rows) || rows.length !== 3) throw invalid()
       const basis = rows.map(xyz)
       const step = Math.min(Math.PI, 2 * Math.acos(Math.max(-1, 1 - policy.max_position_error / (2 * radius))))
-      for (const interval of f.intervals) {
-        const start = finite(interval.start_angle), sweep = finite(interval.sweep), segments = Math.max(1, Math.ceil(Math.abs(sweep) / step))
+      for (const interval of f.intervals) for(const piece of arcPieces(interval,!!object(f.method.parameters).robust)) {
+        const start = piece.start_angle, sweep = piece.sweep, segments = Math.max(1, Math.ceil(Math.abs(sweep) / step))
         if (!Number.isFinite(segments) || count + segments * 2 > policy.max_points * 8) throw new Error('cloud_preview_capacity')
         const point = (angle: number) => center.map((v, i) => v + radius * (basis[i]![0]! * Math.cos(angle) + basis[i]![1]! * Math.sin(angle)))
         const points: number[][] = []

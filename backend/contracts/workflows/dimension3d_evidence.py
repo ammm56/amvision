@@ -78,7 +78,7 @@ class LineSnapshot(Contract):
         if (not self.valid and self.intervals) or (
             self.valid
             and tuple(i.segment_id for i in self.intervals)
-            != self.method.parameters.selection.segment_ids
+            != self.method.resolved_segment_ids
         ):
             raise ValueError("拟合快照区间与选段不一致")
         check_geometry_policy(self.quality, self.method.quality_policy)
@@ -100,12 +100,17 @@ class CircleSnapshot(LineSnapshot):
     @model_validator(mode="after")
     def check_solver(self) -> Self:
         """有效圆必须具有真实收敛、未碰半径界的求解证据。"""
-        if self.valid and (
-            self.solver is None
-            or self.solver.status <= 0
-            or self.solver.radius_at_bound
-        ):
-            raise ValueError("有效圆快照缺少收敛证据")
+        from backend.contracts.workflows.boundary3d_observations import (
+            check_circle_solver,
+        )
+
+        check_circle_solver(
+            valid=self.valid,
+            solver=self.solver,
+            parameters=self.method.parameters,
+            intervals=self.intervals,
+            quality=self.quality,
+        )
         return self
 
 
@@ -171,7 +176,7 @@ class DimensionSupport(Contract):
                         raise ValueError("边界选段与完整证据不一致")
             elif (
                 tuple(s.segment_id for s in self.topology.segments)
-                != self.feature.method.parameters.selection.segment_ids
+                != self.feature.method.resolved_segment_ids
             ):
                 raise ValueError("拟合快照与支持选段不一致")
         return self
@@ -512,7 +517,7 @@ class ExtentsEvidenceItem(DimensionEvidenceItem):
             p.source.kind == "boundary"
             and self.valid
             and tuple(v.segment_id for v in s.topology.segments)
-            != p.source.selection.segment_ids
+            != p.source.selection.resolve(s.feature.geometry)
         ):
             raise ValueError("长宽支持必须对应明确选段")
         origins = {s.sample_origin for s in self.support if s.sample_origin is not None}

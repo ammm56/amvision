@@ -5,6 +5,32 @@ from math import floor, ceil
 
 import numpy as np
 from scipy.ndimage import binary_closing
+from scipy.spatial import KDTree
+
+
+def independent_metric_rows(values, settings):
+    """分批半径洪泛核对目标行；不使用生产 query_pairs/稀疏连通分量。"""
+    s = settings.selection
+    foreground = (
+        values[:, 2] > 0
+        if settings.profiles.foreground == "above"
+        else values[:, 2] < 0
+    )
+    rows = np.flatnonzero(foreground)
+    uv = values[rows, :2]
+    seeds = np.flatnonzero(np.all((uv >= s.seed_min) & (uv <= s.seed_max), axis=1))
+    assert len(seeds), "independent target not found"
+    tree = KDTree(uv)
+    visited = np.zeros(len(uv), dtype=bool)
+    visited[seeds[0]] = True
+    pending = seeds[:1]
+    while len(pending):
+        neighbors = tree.query_ball_point(uv[pending], s.connection_distance, eps=0)
+        reached = np.unique(np.concatenate(neighbors).astype(np.int64))
+        pending = reached[~visited[reached]]
+        visited[pending] = True
+    assert visited[seeds].all(), "independent ambiguous target"
+    return rows[visited]
 
 
 def independent_envelope(points, evaluation, settings):
@@ -29,6 +55,16 @@ def independent_envelope(points, evaluation, settings):
         heights > 0 if p.foreground == "above" else heights < 0
     )
     grouped = mask.copy()
+    if s.kind == "distance-connected":
+        grouped[:] = False
+        for row in independent_metric_rows(values, settings):
+            ij = tuple(
+                floor((v - o) / g.step) for v, o in zip(values[row, :2], g.origin)
+            )
+            assert all(0 <= index < count for index, count in zip(ij, g.shape))
+            grouped[ij] = True
+        selected = grouped & mask
+        return _profiles(heights, selected, g, p, evaluation)
     if s.closing_radius_cells:
         grouped |= binary_closing(
             mask, structure=np.ones((s.closing_radius_cells * 2 + 1,) * 2)
@@ -65,6 +101,11 @@ def independent_envelope(points, evaluation, settings):
                 pending.append((x, y))
     assert all(selected[ij] for ij in seeds), "independent ambiguous target"
     selected &= mask
+    return _profiles(heights, selected, g, p, evaluation)
+
+
+def _profiles(heights, selected, g, p, evaluation):
+    """逐站位标量交点与分位计算，供两种已独立核验的归属方法复用。"""
     sides = []
     for axis, sign in ((0, -1), (0, 1), (1, -1), (1, 1)):
         side = []

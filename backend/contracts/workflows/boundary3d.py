@@ -25,6 +25,8 @@ from backend.contracts.workflows.metrology import (
     unique_ids,
 )
 from backend.contracts.workflows.point_cloud import JsonCount, PositiveCount
+from backend.contracts.workflows.boundary3d_selection import BoundaryFragmentTarget
+from backend.contracts.workflows.circle3d_fit import AngularCircleFit
 from backend.contracts.workflows.evaluation3d import (
     EvaluationPlane3d,
     FeatureEvaluation3d,
@@ -141,6 +143,11 @@ class BoundaryTarget(Contract):
     closed: StrictBool
     role: Literal["outer", "inner", "open", "unknown"]
 
+    @property
+    def target_id(self):
+        """单连续段的稳定配方目标。"""
+        return self.segment_id
+
     @model_validator(mode="after")
     def check_role(self) -> Self:
         """角色由配方明确；开段不能伪装完整内外轮廓。"""
@@ -166,7 +173,9 @@ class ExtractBoundaryParameters(Contract):
         | VisibleEnvelopeBoundary,
         Field(discriminator="kind"),
     ]
-    targets: Annotated[tuple[BoundaryTarget, ...], Field(max_length=8192)]
+    targets: Annotated[
+        tuple[BoundaryTarget | BoundaryFragmentTarget, ...], Field(max_length=8192)
+    ]
     quality_policy: GeometryQualityPolicy
 
     @property
@@ -175,8 +184,20 @@ class ExtractBoundaryParameters(Contract):
         return (
             PROFILE_SIDES
             if isinstance(self.method, VisibleEnvelopeBoundary)
-            else tuple(t.segment_id for t in self.targets)
+            else tuple(t.target_id for t in self.targets)
         )
+
+    def fragment_policy(self, group_id):
+        """普通段使用整体策略，组片段使用已配置的独立策略。"""
+        if group_id is None:
+            return self.quality_policy
+        for target in self.targets:
+            if (
+                isinstance(target, BoundaryFragmentTarget)
+                and target.group_id == group_id
+            ):
+                return target.fragment_quality_policy
+        raise ValueError("片段不属于已配置目标组")
 
     @model_validator(mode="after")
     def check_space(self) -> Self:
@@ -207,7 +228,7 @@ class ExtractBoundaryParameters(Contract):
                         raise ValueError("剖面比例限值必须在 0 到 1 之间")
         elif self.surface is None or not self.targets:
             raise ValueError("表面边界必须配置剖分和目标段")
-        unique_ids([target.segment_id for target in self.targets], "targets")
+        unique_ids([target.target_id for target in self.targets], "targets")
         for region in (self.region, *(target.region for target in self.targets)):
             if any(
                 (roi.frame_id, roi.length_unit)
@@ -225,16 +246,39 @@ class ExtractBoundaryParameters(Contract):
 
 
 class BoundarySelection(Contract):
-    """从一个稳定边界特征选择明确的段，不接受候选数组下标。"""
+    """显式选择配方段或目标组，不接受候选数组下标或混合重复计权。"""
 
     feature_id: Identifier
-    segment_ids: Annotated[tuple[Identifier, ...], Field(min_length=1, max_length=8192)]
+    segment_ids: Annotated[tuple[Identifier, ...], Field(max_length=8192)] = ()
+    group_ids: Annotated[tuple[Identifier, ...], Field(max_length=8192)] = ()
 
     @model_validator(mode="after")
     def check_ids(self) -> Self:
         """重复段不能增加拟合权重。"""
         unique_ids(self.segment_ids, "segment_ids")
+        unique_ids(self.group_ids, "group_ids")
+        if bool(self.segment_ids) == bool(self.group_ids):
+            raise ValueError("边界段和目标组必须且仅选择一种")
         return self
+
+    def resolve(self, topology):
+        """从本次真实拓扑解析组成员，空组和失效引用明确拒绝。"""
+        if topology is None:
+            raise ValueError("边界选择缺少实际拓扑")
+        segments = topology.segments
+        if self.segment_ids:
+            if any(
+                key not in {s.segment_id for s in segments} for key in self.segment_ids
+            ):
+                raise ValueError("边界指定的段不存在")
+            return self.segment_ids
+        result = []
+        for key in self.group_ids:
+            members = [s.segment_id for s in segments if s.group_id == key]
+            if not members:
+                raise ValueError("边界指定的目标组不存在")
+            result.extend(members)
+        return tuple(result)
 
 
 def _require_quality(policy, *, lower, upper):
@@ -299,6 +343,7 @@ class FitCircleParameters(Contract):
     radius_range: tuple[Positive, Positive]
     max_arc_step: Annotated[Finite, Field(gt=0, lt=pi)]
     solver: CircleSolverSettings
+    robust: AngularCircleFit | None = None
     quality_policy: GeometryQualityPolicy
 
     @model_validator(mode="after")
@@ -311,6 +356,17 @@ class FitCircleParameters(Contract):
             lower={"support_count": 3, "angular_coverage": 0, "jacobian_ratio": 0},
             upper=("plane_max_residual", "rms", "max_residual", "max_gap"),
         )
+        if self.robust is not None:
+            _require_quality(
+                self.quality_policy,
+                lower={
+                    "inlier_fraction": 0,
+                    "sector_coverage": 0,
+                    "inlier_angular_coverage": 0,
+                    "inlier_jacobian_ratio": 0,
+                },
+                upper=("target_max_gap", "inlier_max_gap", "weighted_rms"),
+            )
         return self
 
 
@@ -318,6 +374,7 @@ class BoundarySegment(Contract):
     """逻辑顶点区间；闭段首点不重复写到末尾。"""
 
     segment_id: Identifier
+    group_id: Identifier | None = Field(default=None, exclude_if=lambda v: v is None)
     start: JsonCount
     count: PositiveCount
     closed: StrictBool
@@ -331,13 +388,16 @@ class BoundarySegment(Contract):
     def check_shape(self) -> Self:
         """只有闭合且至少三点的段才允许声明旋向。"""
         if self.profile is not None and (
-            self.closed
+            self.group_id is not None
+            or self.closed
             or self.role != "open"
             or self.orientation != "open"
             or self.segment_id != self.profile.side
             or any(v >= self.count for v in self.profile.breaks)
         ):
             raise ValueError("格剖面必须保持明确的开侧及合法断点")
+        if self.group_id is not None and (self.closed or self.role != "open"):
+            raise ValueError("片段组只能包含真实开弧")
         if self.count < (
             1 if self.profile is not None else 3 if self.closed else 2
         ) or self.closed == (self.orientation == "open"):

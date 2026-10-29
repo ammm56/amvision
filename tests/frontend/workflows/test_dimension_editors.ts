@@ -22,7 +22,7 @@ it('only uses connected source output for restored boundary candidates',()=>{
   const source={nodeId:'saved',nodeTypeId:'custom.metrology3d.read-cloud',parameters:{},outputPort:'features'}
   expect(dimensionFeatureChoices({features:[source]})).toEqual([])
   const output={format_id:'amvision.features3d.v1',items:[{feature_id:'saved-boundary',kind:'boundary',geometry:{segments:[{segment_id:'inner'}]}}]}
-  expect(dimensionFeatureChoices({features:[{...source,previewOutput:output}]})).toEqual([{id:'saved-boundary',kind:'boundary',segments:['inner'],nodeId:'saved'}])
+  expect(dimensionFeatureChoices({features:[{...source,previewOutput:output}]})).toEqual([{id:'saved-boundary',kind:'boundary',segments:['inner'],groups:[],nodeId:'saved'}])
   expect(dimensionFeatureChoices({cloud:[{...source,previewOutput:output}]})).toEqual([])
 })
 it('rejects out-of-plane settings and unknown quality metric units before Apply',()=>{

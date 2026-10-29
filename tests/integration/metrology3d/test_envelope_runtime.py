@@ -25,7 +25,7 @@ from tests.test_metrology3d_measurement_contracts import step_parameters
 from tests.test_metrology3d_dimension_contracts import extent_parameters
 
 
-def fixture():
+def fixture(partition="grid-connected"):
     """解析长宽 4/6，原始行号前置162个独立拟面支持，不从输出生成真值。"""
     values = tilted_fixture(
         extra=points() + [10, 0, 2.525],
@@ -46,6 +46,12 @@ def fixture():
     config = settings(
         grid=dict(origin=[10, 0]), selection=dict(seed_min=[14, 5], seed_max=[15, 6])
     )
+    if partition == "distance-connected":
+        raw = config.model_dump()
+        raw["selection"] = dict(
+            kind=partition, seed_min=[14, 5], seed_max=[15, 6], connection_distance=1.01
+        )
+        config = type(config).model_validate(raw)
     region = dict(
         roi_id="target",
         rois=[
@@ -137,8 +143,9 @@ def extents(runtime, group):
     return measure_extents(runtime, p, groups=[group], cancel=lambda: None)
 
 
-def test_true_pose_sources_original_rows_and_dimension_evidence():
-    values, p, measured = fixture()
+@pytest.mark.parametrize("partition", ["grid-connected", "distance-connected"])
+def test_true_pose_sources_original_rows_and_dimension_evidence(partition):
+    values, p, measured = fixture(partition)
     scope, runtime, *_ = values
     try:
         group = extract(values, p, measured)
@@ -168,8 +175,11 @@ def test_true_pose_sources_original_rows_and_dimension_evidence():
         assert not scope.close() and runtime.budget.used == 0
 
 
-def test_profile_save_restore_keeps_all_lineage_quality_and_dimensions(tmp_path):
-    values, p, measured = fixture()
+@pytest.mark.parametrize("partition", ["grid-connected", "distance-connected"])
+def test_profile_save_restore_keeps_all_lineage_quality_and_dimensions(
+    tmp_path, partition
+):
+    values, p, measured = fixture(partition)
     scope, runtime, *_ = values
     limits = runtime.policy
     service = create_resource_service(tmp_path)

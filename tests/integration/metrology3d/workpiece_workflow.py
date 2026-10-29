@@ -147,6 +147,11 @@ def check_workpiece_body(body, *, matrix=None):
         Path(__file__).parents[3] / "docs/development/assets/r5-e/workpiece-matrix.json"
     )
     expected = json.loads((matrix or path).read_text("utf-8"))["items"]
+    if matrix is None:
+        # 严格截线仍保留旧 L/W 缺测真值；只更新已独立核验的两项基准范围和部分弧定义。
+        current = json.loads((Path(__file__).parents[3] / "docs/development/assets/r5-f4/workpiece-windows.json").read_text("utf-8"))["items"]
+        for key in ("A_top_R.Z", "A_bottom_L.Z", "S2.D"):
+            expected[key] = current[key]
     assert set(body) == {"code", "message", "data"}
     assert body["code"] == 0 and body["message"] == "measured"
     data = body["data"]

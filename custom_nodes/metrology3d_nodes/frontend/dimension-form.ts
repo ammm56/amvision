@@ -6,6 +6,7 @@ import type {NumericItemProvider} from '@/workflows/workflow-editor/parameters/s
 import {identity,object,vector,type Form} from './form'
 import {evaluationIssues,axisDirection,planePosition} from './evaluation-form'
 import {profileSides} from './envelope-form'
+import {selectionIssues} from './circle-form'
 
 const finite=(v:unknown):v is number=>typeof v==='number'&&Number.isFinite(v)
 const id=(v:unknown)=>typeof v==='string'&&/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/.test(v)
@@ -19,7 +20,7 @@ function metricUnits(kind:string,p:Form):Record<string,string>{
     if(object(p.mode).kind==='minimum-area-rectangle')for(const key of ['hull_point_count','candidate_count','tied_count','dimensions_consistent','orientation_unique'])units[key]='1'
   }else if(kind==='measure-edge-pair'){
     for(const role of ['reference','target'])for(const [key,u] of Object.entries({count:'1',plane_angle:'rad',plane_distance:length,crossing_sine:'1',intersection_residual:length,supported:'1'}))units[`${role}_${key}`]=u
-  }else Object.assign(units,{support_count:'1',plane_max_residual:length,rms:length,max_residual:length,jacobian_ratio:'1',angular_coverage:'rad',max_gap:'rad',role_usable:'1'})
+  }else Object.assign(units,{support_count:'1',plane_max_residual:length,rms:length,max_residual:length,jacobian_ratio:'1',angular_coverage:'rad',max_gap:'rad',role_usable:'1',weighted_rms:length,inlier_fraction:'1',occupied_sector_count:'1',sector_coverage:'1',target_max_gap:'rad',inlier_angular_coverage:'rad',inlier_max_gap:'rad',inlier_jacobian_ratio:'1'})
   return units
 }
 export function newExtentMode(kind:string):Form{
@@ -33,16 +34,16 @@ export function newDimension(kind:string):Form{
   return {...common,feature_id:'',target_kind:'closed-hole',display_direction:[null,null,null]}
 }
 
-export interface DimensionFeatureChoice {id:string;kind:string;segments:string[];nodeId:string}
+export interface DimensionFeatureChoice {id:string;kind:string;segments:string[];groups:string[];nodeId:string}
 export function dimensionFeatureChoices(sources:ParameterEditorSources):DimensionFeatureChoice[]{
   return (sources.features??[]).flatMap(source=>{
     const p=object(source.parameters.settings)
     const kind=source.nodeTypeId==='custom.metrology3d.fit-circle'?'circle':source.nodeTypeId==='custom.metrology3d.fit-line'?'line':source.nodeTypeId==='custom.metrology3d.extract-boundary'?'boundary':null
-    if(kind&&id(p.feature_id))return [{id:String(p.feature_id),kind,segments:kind==='boundary'&&object(p.method).kind==='visible-envelope'?[...profileSides]:kind==='boundary'&&Array.isArray(p.targets)?p.targets.map(t=>String(object(t).segment_id)).filter(id):[],nodeId:source.nodeId}]
+    if(kind&&id(p.feature_id))return [{id:String(p.feature_id),kind,segments:kind==='boundary'&&object(p.method).kind==='visible-envelope'?[...profileSides]:kind==='boundary'&&Array.isArray(p.targets)?p.targets.map(t=>object(t).segment_id).filter(id) as string[]:[],groups:kind==='boundary'&&Array.isArray(p.targets)?p.targets.map(t=>object(t).group_id).filter(id) as string[]:[],nodeId:source.nodeId}]
     // 恢复资产的身份只取该连线端口本次输出，不能借用其他预览窗口的同名特征。
     const output=object(source.previewOutput)
     if(output.format_id!=='amvision.features3d.v1'||!Array.isArray(output.items))return []
-    return output.items.flatMap(raw=>{const f=object(raw),g=object(f.geometry);return id(f.feature_id)&&['line','circle','boundary'].includes(String(f.kind))?[{id:String(f.feature_id),kind:String(f.kind),nodeId:source.nodeId,segments:Array.isArray(g.segments)?g.segments.map(s=>String(object(s).segment_id)).filter(id):[]}]:[]})
+    return output.items.flatMap(raw=>{const f=object(raw),g=object(f.geometry);return id(f.feature_id)&&['line','circle','boundary'].includes(String(f.kind))?[{id:String(f.feature_id),kind:String(f.kind),nodeId:source.nodeId,segments:Array.isArray(g.segments)?g.segments.map(s=>String(object(s).segment_id)).filter(id):[],groups:Array.isArray(g.segments)?[...new Set(g.segments.map(s=>object(s).group_id).filter(id) as string[])]:[]}]:[]})
   })
 }
 
@@ -63,7 +64,7 @@ export function dimensionIssues(kind:string,value:unknown):string[]{
   if(kind==='measure-extents'){
     const s=object(p.source),selection=object(s.selection),m=object(p.mode)
     if(!['cloud','boundary'].includes(String(s.kind)))issues.push('source')
-    if(s.kind==='boundary'&&(!id(selection.feature_id)||!Array.isArray(selection.segment_ids)||!selection.segment_ids.length||selection.segment_ids.some(v=>!id(v))||new Set(selection.segment_ids).size!==selection.segment_ids.length))issues.push('source / selection')
+    if(s.kind==='boundary')issues.push(...selectionIssues(selection))
     if(!['axis-spans','minimum-area-rectangle','robust-profile-spans'].includes(String(m.kind)))issues.push('mode')
     if(m.kind==='robust-profile-spans'){
       if(s.kind!=='boundary'||e.kind!=='feature'||!Array.isArray(selection.segment_ids)||selection.segment_ids.length!==4||profileSides.some(side=>!(selection.segment_ids as unknown[]).includes(side)))issues.push('profiles / selection / evaluation')
@@ -97,5 +98,6 @@ export const dimensionRecipeValidator:RecipeValidator=(node,sources,zh)=>{
   if(complete&&ids.some(id=>!choices.some(c=>c.id===id&&c.kind===expected)))issues.push(zh?'所选特征不在当前输入中':'Selected feature is not in current inputs')
   const boundary=choices.find(c=>c.id===selection.feature_id&&c.kind==='boundary')
   if(boundary&&Array.isArray(selection.segment_ids)&&selection.segment_ids.some(id=>!boundary.segments.includes(String(id))))issues.push(zh?'所选边界段不在当前输入中':'Selected segment is not in current boundary')
+  if(boundary&&Array.isArray(selection.group_ids)&&selection.group_ids.some(id=>!boundary.groups.includes(String(id))))issues.push(zh?'所选片段组不在当前输入中':'Selected fragment group is not in current boundary')
   return issues
 }

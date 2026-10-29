@@ -96,8 +96,8 @@
             -34.6,
             -18.85
           ],
-          "connectivity": 8,
-          "closing_radius_cells": 1
+          "kind": "distance-connected",
+          "connection_distance": 0.15
         },
         "profiles": {
           "foreground": "above",
@@ -215,7 +215,8 @@
           "u-max",
           "v-min",
           "v-max"
-        ]
+        ],
+        "group_ids": []
       }
     },
     "mode": {
@@ -226,7 +227,7 @@
     }
   },
   "payload": {
-    "observation_id": "e5c10fee71da400ba7dee95df012c997",
+    "observation_id": "65b41f105d5447e6b2c878a919613d68",
     "spatial": {
       "length_unit": "mm",
       "unit_source": "configuration",
@@ -255,7 +256,7 @@
     },
     "geometry": {
       "format_id": "amvision.geometry-preview.v1",
-      "observation_id": "e5c10fee71da400ba7dee95df012c997",
+      "observation_id": "65b41f105d5447e6b2c878a919613d68",
       "frame_id": "fixture",
       "length_unit": "mm",
       "planes": [],
@@ -268,7 +269,7 @@
           "reason": null,
           "quality": {
             "metrics": {
-              "observation_id": "e5c10fee71da400ba7dee95df012c997",
+              "observation_id": "65b41f105d5447e6b2c878a919613d68",
               "items": [
                 {
                   "item_id": "input_count",
@@ -452,7 +453,7 @@
             "usable": true
           },
           "support_point_count": 20,
-          "support_content_sha256": "449cd933ff06f2d5405c3b4cdf4da67b5783079f3d2a9b7ce6ab19147db7e039",
+          "support_content_sha256": "5bda69313c3073eeb403239a06ce4d4d488024d4ee99b7c41b62470c17847215",
           "vertex_kind": "generated",
           "points": [
             [
@@ -753,6 +754,7 @@
                       15.0,
                       6.0
                     ],
+                    "kind": "grid-connected",
                     "connectivity": 4,
                     "closing_radius_cells": 0
                   },
@@ -831,9 +833,9 @@
                 ]
               }
             },
-            "parameters_sha256": "3086d77e4f630a35ac129a0901d6cebf5152172057af45d1dfa9602fb293df55",
+            "parameters_sha256": "b4cb926c0f18329a117d2da0414f05e7adf1b9382e69e2f1f54798850db2f8d6",
             "resolution": {
-              "observation_id": "e5c10fee71da400ba7dee95df012c997",
+              "observation_id": "65b41f105d5447e6b2c878a919613d68",
               "evaluation": {
                 "frame_id": "fixture",
                 "length_unit": "mm",
@@ -863,7 +865,7 @@
               "height": 2.5249999999999995,
               "pose": {
                 "pose_id": "datum",
-                "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                "observation_id": "65b41f105d5447e6b2c878a919613d68",
                 "source_frame_id": "fixture",
                 "target_frame_id": "part",
                 "length_unit": "mm",
@@ -872,7 +874,7 @@
                 "transform": {
                   "source_frame_id": "fixture",
                   "target_frame_id": "part",
-                  "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                  "observation_id": "65b41f105d5447e6b2c878a919613d68",
                   "length_unit": "mm",
                   "matrix": [
                     [
@@ -972,7 +974,7 @@
                     "parents": [
                       {
                         "feature_id": "reference",
-                        "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                        "observation_id": "65b41f105d5447e6b2c878a919613d68",
                         "frame_id": "fixture",
                         "length_unit": "mm",
                         "geometry": {
@@ -1058,7 +1060,7 @@
                         },
                         "quality": {
                           "metrics": {
-                            "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                            "observation_id": "65b41f105d5447e6b2c878a919613d68",
                             "items": [
                               {
                                 "item_id": "input_count",
@@ -1190,7 +1192,7 @@
                     ],
                     "quality": {
                       "metrics": {
-                        "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                        "observation_id": "65b41f105d5447e6b2c878a919613d68",
                         "items": [
                           {
                             "item_id": "axis_sine",
@@ -1340,7 +1342,7 @@
                 },
                 "quality": {
                   "metrics": {
-                    "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                    "observation_id": "65b41f105d5447e6b2c878a919613d68",
                     "items": [
                       {
                         "item_id": "axis_sine",
@@ -1508,7 +1510,7 @@
                   },
                   "quality": {
                     "metrics": {
-                      "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                      "observation_id": "65b41f105d5447e6b2c878a919613d68",
                       "items": [
                         {
                           "item_id": "input_count",
@@ -1811,7 +1813,7 @@
                     },
                     "pose": {
                       "pose_id": "datum",
-                      "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                      "observation_id": "65b41f105d5447e6b2c878a919613d68",
                       "source_frame_id": "fixture",
                       "target_frame_id": "part",
                       "length_unit": "mm",
@@ -1820,7 +1822,7 @@
                       "transform": {
                         "source_frame_id": "fixture",
                         "target_frame_id": "part",
-                        "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                        "observation_id": "65b41f105d5447e6b2c878a919613d68",
                         "length_unit": "mm",
                         "matrix": [
                           [
@@ -1920,7 +1922,7 @@
                           "parents": [
                             {
                               "feature_id": "reference",
-                              "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                              "observation_id": "65b41f105d5447e6b2c878a919613d68",
                               "frame_id": "fixture",
                               "length_unit": "mm",
                               "geometry": {
@@ -2006,7 +2008,7 @@
                               },
                               "quality": {
                                 "metrics": {
-                                  "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                                  "observation_id": "65b41f105d5447e6b2c878a919613d68",
                                   "items": [
                                     {
                                       "item_id": "input_count",
@@ -2138,7 +2140,7 @@
                           ],
                           "quality": {
                             "metrics": {
-                              "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                              "observation_id": "65b41f105d5447e6b2c878a919613d68",
                               "items": [
                                 {
                                   "item_id": "axis_sine",
@@ -2288,7 +2290,7 @@
                       },
                       "quality": {
                         "metrics": {
-                          "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                          "observation_id": "65b41f105d5447e6b2c878a919613d68",
                           "items": [
                             {
                               "item_id": "axis_sine",
@@ -2499,7 +2501,7 @@
                       },
                       "quality": {
                         "metrics": {
-                          "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                          "observation_id": "65b41f105d5447e6b2c878a919613d68",
                           "items": [
                             {
                               "item_id": "input_count",
@@ -2764,7 +2766,7 @@
                       },
                       "quality": {
                         "metrics": {
-                          "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                          "observation_id": "65b41f105d5447e6b2c878a919613d68",
                           "items": [
                             {
                               "item_id": "input_count",
@@ -2928,7 +2930,7 @@
                 ],
                 "quality": {
                   "metrics": {
-                    "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                    "observation_id": "65b41f105d5447e6b2c878a919613d68",
                     "items": [
                       {
                         "item_id": "reference_count",
@@ -3198,7 +3200,7 @@
               "segment_id": "u-min",
               "quality": {
                 "metrics": {
-                  "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                  "observation_id": "65b41f105d5447e6b2c878a919613d68",
                   "items": [
                     {
                       "item_id": "input_count",
@@ -3386,7 +3388,7 @@
               "segment_id": "u-max",
               "quality": {
                 "metrics": {
-                  "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                  "observation_id": "65b41f105d5447e6b2c878a919613d68",
                   "items": [
                     {
                       "item_id": "input_count",
@@ -3574,7 +3576,7 @@
               "segment_id": "v-min",
               "quality": {
                 "metrics": {
-                  "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                  "observation_id": "65b41f105d5447e6b2c878a919613d68",
                   "items": [
                     {
                       "item_id": "input_count",
@@ -3762,7 +3764,7 @@
               "segment_id": "v-max",
               "quality": {
                 "metrics": {
-                  "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                  "observation_id": "65b41f105d5447e6b2c878a919613d68",
                   "items": [
                     {
                       "item_id": "input_count",
@@ -3947,6 +3949,7 @@
               }
             }
           ],
+          "groups": [],
           "failed_segment_id": null,
           "profile_kinds": [
             0,
@@ -3975,7 +3978,7 @@
     },
     "measurements": {
       "format_id": "amvision.measurement-evidence3d.v1",
-      "observation_id": "e5c10fee71da400ba7dee95df012c997",
+      "observation_id": "65b41f105d5447e6b2c878a919613d68",
       "frame_id": "fixture",
       "length_unit": "mm",
       "items": [
@@ -3987,7 +3990,7 @@
           "reason": null,
           "quality": {
             "metrics": {
-              "observation_id": "e5c10fee71da400ba7dee95df012c997",
+              "observation_id": "65b41f105d5447e6b2c878a919613d68",
               "items": [
                 {
                   "item_id": "geometry_usable",
@@ -4040,7 +4043,7 @@
           "support": [
             {
               "role": "source",
-              "content_sha256": "449cd933ff06f2d5405c3b4cdf4da67b5783079f3d2a9b7ce6ab19147db7e039",
+              "content_sha256": "5bda69313c3073eeb403239a06ce4d4d488024d4ee99b7c41b62470c17847215",
               "point_count": 20,
               "source_point_count": 282,
               "vertex_kind": "generated",
@@ -4173,7 +4176,7 @@
                 },
                 "quality": {
                   "metrics": {
-                    "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                    "observation_id": "65b41f105d5447e6b2c878a919613d68",
                     "items": [
                       {
                         "item_id": "input_count",
@@ -4361,7 +4364,7 @@
                     "segment_id": "u-min",
                     "quality": {
                       "metrics": {
-                        "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                        "observation_id": "65b41f105d5447e6b2c878a919613d68",
                         "items": [
                           {
                             "item_id": "input_count",
@@ -4549,7 +4552,7 @@
                     "segment_id": "u-max",
                     "quality": {
                       "metrics": {
-                        "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                        "observation_id": "65b41f105d5447e6b2c878a919613d68",
                         "items": [
                           {
                             "item_id": "input_count",
@@ -4737,7 +4740,7 @@
                     "segment_id": "v-min",
                     "quality": {
                       "metrics": {
-                        "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                        "observation_id": "65b41f105d5447e6b2c878a919613d68",
                         "items": [
                           {
                             "item_id": "input_count",
@@ -4925,7 +4928,7 @@
                     "segment_id": "v-max",
                     "quality": {
                       "metrics": {
-                        "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                        "observation_id": "65b41f105d5447e6b2c878a919613d68",
                         "items": [
                           {
                             "item_id": "input_count",
@@ -5110,6 +5113,7 @@
                     }
                   }
                 ],
+                "groups": [],
                 "method": {
                   "method_id": "extract-boundary",
                   "method_version": 1,
@@ -5198,6 +5202,7 @@
                             15.0,
                             6.0
                           ],
+                          "kind": "grid-connected",
                           "connectivity": 4,
                           "closing_radius_cells": 0
                         },
@@ -5276,9 +5281,9 @@
                       ]
                     }
                   },
-                  "parameters_sha256": "3086d77e4f630a35ac129a0901d6cebf5152172057af45d1dfa9602fb293df55",
+                  "parameters_sha256": "b4cb926c0f18329a117d2da0414f05e7adf1b9382e69e2f1f54798850db2f8d6",
                   "resolution": {
-                    "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                    "observation_id": "65b41f105d5447e6b2c878a919613d68",
                     "evaluation": {
                       "frame_id": "fixture",
                       "length_unit": "mm",
@@ -5308,7 +5313,7 @@
                     "height": 2.5249999999999995,
                     "pose": {
                       "pose_id": "datum",
-                      "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                      "observation_id": "65b41f105d5447e6b2c878a919613d68",
                       "source_frame_id": "fixture",
                       "target_frame_id": "part",
                       "length_unit": "mm",
@@ -5317,7 +5322,7 @@
                       "transform": {
                         "source_frame_id": "fixture",
                         "target_frame_id": "part",
-                        "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                        "observation_id": "65b41f105d5447e6b2c878a919613d68",
                         "length_unit": "mm",
                         "matrix": [
                           [
@@ -5417,7 +5422,7 @@
                           "parents": [
                             {
                               "feature_id": "reference",
-                              "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                              "observation_id": "65b41f105d5447e6b2c878a919613d68",
                               "frame_id": "fixture",
                               "length_unit": "mm",
                               "geometry": {
@@ -5503,7 +5508,7 @@
                               },
                               "quality": {
                                 "metrics": {
-                                  "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                                  "observation_id": "65b41f105d5447e6b2c878a919613d68",
                                   "items": [
                                     {
                                       "item_id": "input_count",
@@ -5635,7 +5640,7 @@
                           ],
                           "quality": {
                             "metrics": {
-                              "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                              "observation_id": "65b41f105d5447e6b2c878a919613d68",
                               "items": [
                                 {
                                   "item_id": "axis_sine",
@@ -5785,7 +5790,7 @@
                       },
                       "quality": {
                         "metrics": {
-                          "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                          "observation_id": "65b41f105d5447e6b2c878a919613d68",
                           "items": [
                             {
                               "item_id": "axis_sine",
@@ -5953,7 +5958,7 @@
                         },
                         "quality": {
                           "metrics": {
-                            "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                            "observation_id": "65b41f105d5447e6b2c878a919613d68",
                             "items": [
                               {
                                 "item_id": "input_count",
@@ -6256,7 +6261,7 @@
                           },
                           "pose": {
                             "pose_id": "datum",
-                            "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                            "observation_id": "65b41f105d5447e6b2c878a919613d68",
                             "source_frame_id": "fixture",
                             "target_frame_id": "part",
                             "length_unit": "mm",
@@ -6265,7 +6270,7 @@
                             "transform": {
                               "source_frame_id": "fixture",
                               "target_frame_id": "part",
-                              "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                              "observation_id": "65b41f105d5447e6b2c878a919613d68",
                               "length_unit": "mm",
                               "matrix": [
                                 [
@@ -6365,7 +6370,7 @@
                                 "parents": [
                                   {
                                     "feature_id": "reference",
-                                    "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                                    "observation_id": "65b41f105d5447e6b2c878a919613d68",
                                     "frame_id": "fixture",
                                     "length_unit": "mm",
                                     "geometry": {
@@ -6451,7 +6456,7 @@
                                     },
                                     "quality": {
                                       "metrics": {
-                                        "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                                        "observation_id": "65b41f105d5447e6b2c878a919613d68",
                                         "items": [
                                           {
                                             "item_id": "input_count",
@@ -6583,7 +6588,7 @@
                                 ],
                                 "quality": {
                                   "metrics": {
-                                    "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                                    "observation_id": "65b41f105d5447e6b2c878a919613d68",
                                     "items": [
                                       {
                                         "item_id": "axis_sine",
@@ -6733,7 +6738,7 @@
                             },
                             "quality": {
                               "metrics": {
-                                "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                                "observation_id": "65b41f105d5447e6b2c878a919613d68",
                                 "items": [
                                   {
                                     "item_id": "axis_sine",
@@ -6944,7 +6949,7 @@
                             },
                             "quality": {
                               "metrics": {
-                                "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                                "observation_id": "65b41f105d5447e6b2c878a919613d68",
                                 "items": [
                                   {
                                     "item_id": "input_count",
@@ -7209,7 +7214,7 @@
                             },
                             "quality": {
                               "metrics": {
-                                "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                                "observation_id": "65b41f105d5447e6b2c878a919613d68",
                                 "items": [
                                   {
                                     "item_id": "input_count",
@@ -7373,7 +7378,7 @@
                       ],
                       "quality": {
                         "metrics": {
-                          "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                          "observation_id": "65b41f105d5447e6b2c878a919613d68",
                           "items": [
                             {
                               "item_id": "reference_count",
@@ -7688,7 +7693,8 @@
                     "u-max",
                     "v-min",
                     "v-max"
-                  ]
+                  ],
+                  "group_ids": []
                 }
               },
               "mode": {
@@ -7698,7 +7704,7 @@
                 "quantile_method": "linear"
               }
             },
-            "parameters_sha256": "b92ac4008c153ab68e35c75828f206fcfe6d19f6261e2e44c53cfb79cccf3250",
+            "parameters_sha256": "a9b1beeef98a62de93bfd6a974b2ea4c77ec623ec7e95d8a8aa4be0c55b91499",
             "evaluation": {
               "frame_id": "fixture",
               "length_unit": "mm",
@@ -7898,7 +7904,7 @@
           "reason": null,
           "quality": {
             "metrics": {
-              "observation_id": "e5c10fee71da400ba7dee95df012c997",
+              "observation_id": "65b41f105d5447e6b2c878a919613d68",
               "items": [
                 {
                   "item_id": "geometry_usable",
@@ -7951,7 +7957,7 @@
           "support": [
             {
               "role": "source",
-              "content_sha256": "449cd933ff06f2d5405c3b4cdf4da67b5783079f3d2a9b7ce6ab19147db7e039",
+              "content_sha256": "5bda69313c3073eeb403239a06ce4d4d488024d4ee99b7c41b62470c17847215",
               "point_count": 20,
               "source_point_count": 282,
               "vertex_kind": "generated",
@@ -8084,7 +8090,7 @@
                 },
                 "quality": {
                   "metrics": {
-                    "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                    "observation_id": "65b41f105d5447e6b2c878a919613d68",
                     "items": [
                       {
                         "item_id": "input_count",
@@ -8272,7 +8278,7 @@
                     "segment_id": "u-min",
                     "quality": {
                       "metrics": {
-                        "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                        "observation_id": "65b41f105d5447e6b2c878a919613d68",
                         "items": [
                           {
                             "item_id": "input_count",
@@ -8460,7 +8466,7 @@
                     "segment_id": "u-max",
                     "quality": {
                       "metrics": {
-                        "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                        "observation_id": "65b41f105d5447e6b2c878a919613d68",
                         "items": [
                           {
                             "item_id": "input_count",
@@ -8648,7 +8654,7 @@
                     "segment_id": "v-min",
                     "quality": {
                       "metrics": {
-                        "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                        "observation_id": "65b41f105d5447e6b2c878a919613d68",
                         "items": [
                           {
                             "item_id": "input_count",
@@ -8836,7 +8842,7 @@
                     "segment_id": "v-max",
                     "quality": {
                       "metrics": {
-                        "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                        "observation_id": "65b41f105d5447e6b2c878a919613d68",
                         "items": [
                           {
                             "item_id": "input_count",
@@ -9021,6 +9027,7 @@
                     }
                   }
                 ],
+                "groups": [],
                 "method": {
                   "method_id": "extract-boundary",
                   "method_version": 1,
@@ -9109,6 +9116,7 @@
                             15.0,
                             6.0
                           ],
+                          "kind": "grid-connected",
                           "connectivity": 4,
                           "closing_radius_cells": 0
                         },
@@ -9187,9 +9195,9 @@
                       ]
                     }
                   },
-                  "parameters_sha256": "3086d77e4f630a35ac129a0901d6cebf5152172057af45d1dfa9602fb293df55",
+                  "parameters_sha256": "b4cb926c0f18329a117d2da0414f05e7adf1b9382e69e2f1f54798850db2f8d6",
                   "resolution": {
-                    "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                    "observation_id": "65b41f105d5447e6b2c878a919613d68",
                     "evaluation": {
                       "frame_id": "fixture",
                       "length_unit": "mm",
@@ -9219,7 +9227,7 @@
                     "height": 2.5249999999999995,
                     "pose": {
                       "pose_id": "datum",
-                      "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                      "observation_id": "65b41f105d5447e6b2c878a919613d68",
                       "source_frame_id": "fixture",
                       "target_frame_id": "part",
                       "length_unit": "mm",
@@ -9228,7 +9236,7 @@
                       "transform": {
                         "source_frame_id": "fixture",
                         "target_frame_id": "part",
-                        "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                        "observation_id": "65b41f105d5447e6b2c878a919613d68",
                         "length_unit": "mm",
                         "matrix": [
                           [
@@ -9328,7 +9336,7 @@
                           "parents": [
                             {
                               "feature_id": "reference",
-                              "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                              "observation_id": "65b41f105d5447e6b2c878a919613d68",
                               "frame_id": "fixture",
                               "length_unit": "mm",
                               "geometry": {
@@ -9414,7 +9422,7 @@
                               },
                               "quality": {
                                 "metrics": {
-                                  "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                                  "observation_id": "65b41f105d5447e6b2c878a919613d68",
                                   "items": [
                                     {
                                       "item_id": "input_count",
@@ -9546,7 +9554,7 @@
                           ],
                           "quality": {
                             "metrics": {
-                              "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                              "observation_id": "65b41f105d5447e6b2c878a919613d68",
                               "items": [
                                 {
                                   "item_id": "axis_sine",
@@ -9696,7 +9704,7 @@
                       },
                       "quality": {
                         "metrics": {
-                          "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                          "observation_id": "65b41f105d5447e6b2c878a919613d68",
                           "items": [
                             {
                               "item_id": "axis_sine",
@@ -9864,7 +9872,7 @@
                         },
                         "quality": {
                           "metrics": {
-                            "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                            "observation_id": "65b41f105d5447e6b2c878a919613d68",
                             "items": [
                               {
                                 "item_id": "input_count",
@@ -10167,7 +10175,7 @@
                           },
                           "pose": {
                             "pose_id": "datum",
-                            "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                            "observation_id": "65b41f105d5447e6b2c878a919613d68",
                             "source_frame_id": "fixture",
                             "target_frame_id": "part",
                             "length_unit": "mm",
@@ -10176,7 +10184,7 @@
                             "transform": {
                               "source_frame_id": "fixture",
                               "target_frame_id": "part",
-                              "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                              "observation_id": "65b41f105d5447e6b2c878a919613d68",
                               "length_unit": "mm",
                               "matrix": [
                                 [
@@ -10276,7 +10284,7 @@
                                 "parents": [
                                   {
                                     "feature_id": "reference",
-                                    "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                                    "observation_id": "65b41f105d5447e6b2c878a919613d68",
                                     "frame_id": "fixture",
                                     "length_unit": "mm",
                                     "geometry": {
@@ -10362,7 +10370,7 @@
                                     },
                                     "quality": {
                                       "metrics": {
-                                        "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                                        "observation_id": "65b41f105d5447e6b2c878a919613d68",
                                         "items": [
                                           {
                                             "item_id": "input_count",
@@ -10494,7 +10502,7 @@
                                 ],
                                 "quality": {
                                   "metrics": {
-                                    "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                                    "observation_id": "65b41f105d5447e6b2c878a919613d68",
                                     "items": [
                                       {
                                         "item_id": "axis_sine",
@@ -10644,7 +10652,7 @@
                             },
                             "quality": {
                               "metrics": {
-                                "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                                "observation_id": "65b41f105d5447e6b2c878a919613d68",
                                 "items": [
                                   {
                                     "item_id": "axis_sine",
@@ -10855,7 +10863,7 @@
                             },
                             "quality": {
                               "metrics": {
-                                "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                                "observation_id": "65b41f105d5447e6b2c878a919613d68",
                                 "items": [
                                   {
                                     "item_id": "input_count",
@@ -11120,7 +11128,7 @@
                             },
                             "quality": {
                               "metrics": {
-                                "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                                "observation_id": "65b41f105d5447e6b2c878a919613d68",
                                 "items": [
                                   {
                                     "item_id": "input_count",
@@ -11284,7 +11292,7 @@
                       ],
                       "quality": {
                         "metrics": {
-                          "observation_id": "e5c10fee71da400ba7dee95df012c997",
+                          "observation_id": "65b41f105d5447e6b2c878a919613d68",
                           "items": [
                             {
                               "item_id": "reference_count",
@@ -11599,7 +11607,8 @@
                     "u-max",
                     "v-min",
                     "v-max"
-                  ]
+                  ],
+                  "group_ids": []
                 }
               },
               "mode": {
@@ -11609,7 +11618,7 @@
                 "quantile_method": "linear"
               }
             },
-            "parameters_sha256": "b92ac4008c153ab68e35c75828f206fcfe6d19f6261e2e44c53cfb79cccf3250",
+            "parameters_sha256": "a9b1beeef98a62de93bfd6a974b2ea4c77ec623ec7e95d8a8aa4be0c55b91499",
             "evaluation": {
               "frame_id": "fixture",
               "length_unit": "mm",

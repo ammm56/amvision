@@ -80,7 +80,12 @@ def select_features(runtime, groups, parameters, identities, kind):
         require_quality_result(feature.quality, feature.method.quality_policy)
         if kind == "boundary":
             for segment in feature.segments:
-                require_quality_result(segment.quality, feature.method.quality_policy)
+                require_quality_result(
+                    segment.quality,
+                    feature.method.parameters.fragment_policy(segment.group_id),
+                )
+            for group in feature.groups:
+                require_quality_result(group.quality, feature.method.quality_policy)
         selected.append(feature)
     return selected
 

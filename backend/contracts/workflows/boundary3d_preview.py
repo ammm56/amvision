@@ -14,6 +14,8 @@ from backend.contracts.workflows.boundary3d_observations import (
     ArcInterval,
     CircleSolverEvidence,
     SegmentQuality,
+    GroupQuality,
+    check_circle_solver,
 )
 from backend.contracts.workflows.geometry3d import Point3
 from backend.contracts.workflows.geometry3d_quality import (
@@ -66,6 +68,7 @@ class BoundaryDisplay(CurveDisplayBase):
     geometry: BoundaryTopology | None
     method: BoundaryMethod
     segments: tuple[SegmentQuality, ...]
+    groups: tuple[GroupQuality, ...] = ()
     failed_segment_id: Identifier | None
     profile_kinds: tuple[Literal[0, 1, 2, 3], ...] | None = Field(
         default=None, exclude_if=lambda value: value is None
@@ -104,6 +107,26 @@ class CircleDisplay(CurveDisplayBase):
     method: CircleMethod
     intervals: tuple[ArcInterval, ...]
     solver: CircleSolverEvidence | None
+    inlier_flags: tuple[StrictBool, ...] | None = Field(
+        default=None, exclude_if=lambda v: v is None
+    )
+
+    @model_validator(mode="after")
+    def check_solver(self) -> Self:
+        """显示证据沿用运行与保存读取的相同语义。"""
+        check_circle_solver(
+            valid=self.valid,
+            solver=self.solver,
+            parameters=self.method.parameters,
+            intervals=self.intervals,
+            quality=self.quality,
+        )
+        if self.valid and self.method.parameters.robust is not None:
+            if self.inlier_flags is None or len(self.inlier_flags) != len(self.points):
+                raise ValueError("稳健圆显示缺少完整内点标记")
+        elif self.inlier_flags is not None:
+            raise ValueError("非有效稳健圆不能携带内点标记")
+        return self
 
 
 CurveDisplay = Annotated[

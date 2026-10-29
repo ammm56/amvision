@@ -11,11 +11,17 @@ def curve_display(runtime, feature, *, policy, remaining_points, cancel):
     """只允许完整连接进入有界显示；超过容量不抽样后重新连线。"""
     points = []
     profile_kinds = []
+    inlier_flags = []
     cloud = feature.support
     require_quality_result(feature.quality, feature.method.quality_policy)
     if feature.kind == "boundary":
         for segment in feature.segments:
-            require_quality_result(segment.quality, feature.method.quality_policy)
+            require_quality_result(
+                segment.quality,
+                feature.method.parameters.fragment_policy(segment.group_id),
+            )
+        for group in feature.groups:
+            require_quality_result(group.quality, feature.method.quality_policy)
     if cloud.state == "ready":
         with runtime.borrow(cloud) as view:
             if feature.valid:
@@ -35,11 +41,24 @@ def curve_display(runtime, feature, *, policy, remaining_points, cancel):
                     raise MemoryError("preview_size_limit")
                 for start in range(0, cloud.point_count, rows):
                     cancel()
-                    points.extend(
-                        view.chunk(start, min(start + rows, cloud.point_count))[
-                            "positions"
-                        ].tolist()
-                    )
+                    block = view.chunk(start, min(start + rows, cloud.point_count))[
+                        "positions"
+                    ]
+                    points.extend(block.tolist())
+                    if (
+                        feature.kind == "circle"
+                        and feature.method.parameters.robust is not None
+                    ):
+                        basis = np.asarray(feature.method.evaluation.rotation)[:, :2]
+                        radial = np.linalg.norm(
+                            (block - feature.geometry.center) @ basis, axis=1
+                        )
+                        inlier_flags.extend(
+                            (
+                                abs(radial - feature.geometry.radius)
+                                <= feature.method.parameters.robust.inlier_residual
+                            ).tolist()
+                        )
                     if cloud.sample_origin == "estimated":
                         profile_kinds.extend(
                             view.lineage_chunk(
@@ -51,6 +70,8 @@ def curve_display(runtime, feature, *, policy, remaining_points, cancel):
     raw = feature.model_dump(mode="json", exclude={"support"})
     if profile_kinds:
         raw["profile_kinds"] = profile_kinds
+    if inlier_flags:
+        raw["inlier_flags"] = inlier_flags
     raw.update(
         points=points,
         topology=cloud.topology if feature.valid else None,

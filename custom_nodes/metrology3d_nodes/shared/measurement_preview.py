@@ -68,7 +68,14 @@ def attach_measurements(cloud, body, values, *, policy, cancel):
                     if feature.kind == "boundary":
                         for segment in feature.segments:
                             require_quality_result(
-                                segment.quality, feature.method.quality_policy
+                                segment.quality,
+                                feature.method.parameters.fragment_policy(
+                                    segment.group_id
+                                ),
+                            )
+                        for group in feature.groups:
+                            require_quality_result(
+                                group.quality, feature.method.quality_policy
                             )
             items.append(item)
             if len(items) > 8192:

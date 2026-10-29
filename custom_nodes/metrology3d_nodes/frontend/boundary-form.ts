@@ -3,6 +3,8 @@ import {normalizeLimitRule,limitRuleError} from '@/workflows/workflow-editor/par
 import type {RecipeValidator} from '@/workflows/workflow-editor/parameters/recipe-validation'
 import {evaluationIssues,axisDirection} from './evaluation-form'
 import {newEnvelope,envelopeIssues} from './envelope-form'
+import {fragmentIssues,selectionIssues,robustIssues} from './circle-form'
+import {dimensionFeatureChoices} from './dimension-form'
 
 export const boundaryRecipeValidator:RecipeValidator=(node,sources,zh)=>{
   const kind=node.node_type_id.split('.').at(-1)!,p=object(node.parameters.settings),issues=boundaryIssues(kind,p)
@@ -23,6 +25,12 @@ export const boundaryRecipeValidator:RecipeValidator=(node,sources,zh)=>{
   }
   if(kind!=='extract-boundary'&&!sources.features?.length)issues.push(zh?'必须连接边界特征':'Boundary features input is required')
   if(kind!=='extract-boundary'&&(sources.features??[]).some(s=>object(object(s.parameters.settings).method).kind==='visible-envelope'))issues.push(zh?'格剖面不能作为实测截线拟合':'Grid profiles are not measured sections for fitting')
+  if(kind!=='extract-boundary'){
+    const choices=dimensionFeatureChoices(sources),selection=object(p.selection),selected=choices.filter(c=>c.id===selection.feature_id&&c.kind==='boundary')
+    const complete=(sources.features??[]).every(s=>s.nodeTypeId==='custom.metrology3d.extract-boundary'||object(s.previewOutput).format_id==='amvision.features3d.v1')
+    if(complete&&selected.length!==1)issues.push(zh?'边界来源缺失或重复':'Boundary source is missing or duplicated')
+    if(selected.length===1){const c=selected[0]!;if(Array.isArray(selection.segment_ids)&&selection.segment_ids.some(id=>!c.segments.includes(String(id)))||Array.isArray(selection.group_ids)&&selection.group_ids.some(id=>!c.groups.includes(String(id))))issues.push(zh?'支持选择不在当前边界中':'Selected support is not in current boundary')}
+  }
   return issues
 }
 
@@ -74,11 +82,11 @@ export function boundaryIssues(kind:string,value:unknown):string[]{
       const h=object(m.height),foreground=object(object(m.envelope).profiles).foreground
       if(h.kind==='measurement-ratio'&&((h.order==='target-above')!==(foreground==='above')))issues.push('foreground / order')
       for(const key of ['profile_coverage','estimated_fraction','profile_max_gap','max_cell_span']){const rule=byId.get(key);if(!rule||rule.unit!==(['profile_coverage','estimated_fraction'].includes(key)?'1':e.length_unit)||(key==='profile_coverage'?rule.lower===null||rule.lower<=0||rule.lower>1:rule.upper===null||rule.upper<0||key==='estimated_fraction'&&rule.upper>1))issues.push(`quality / ${key}`)}
-    }else if(!targets.length||new Set(targets.map(t=>t.segment_id)).size!==targets.length)issues.push('targets')
-    for(const t of targets){if(!id(t.segment_id)||typeof t.closed!=='boolean'||!['outer','inner','open','unknown'].includes(String(t.role))||(t.closed?t.role==='open':['outer','inner'].includes(String(t.role))))issues.push('target / identity');issues.push(...regionErrors(t.region,e))}
+    }else if(!targets.length||new Set(targets.map(t=>t.group_id??t.segment_id)).size!==targets.length)issues.push('targets')
+    for(const t of targets){if('group_id' in t)issues.push(...fragmentIssues(t));else if(!id(t.segment_id)||typeof t.closed!=='boolean'||!['outer','inner','open','unknown'].includes(String(t.role))||(t.closed?t.role==='open':['outer','inner'].includes(String(t.role))))issues.push('target / identity');issues.push(...regionErrors(t.region,e))}
   }else{
-    const s=object(p.selection),ids=s.segment_ids
-    if(!id(s.feature_id)||!Array.isArray(ids)||!ids.length||ids.some(v=>!id(v))||new Set(ids).size!==ids.length)issues.push('selection')
+    issues.push(...selectionIssues(p.selection))
+    if(kind==='fit-circle')issues.push(...robustIssues(p.robust,q))
     if(kind==='fit-line'){if((!unit(p.positive_direction)&&!axisDirection(p.positive_direction))||!positive(p.min_orientation_cosine)||Number(p.min_orientation_cosine)>1)issues.push('direction')}
     else{const r=p.radius_range,solver=object(p.solver);if(!Array.isArray(r)||r.length!==2||!r.every(positive)||!(r[0]<r[1])||!positive(p.max_arc_step)||Number(p.max_arc_step)>=Math.PI)issues.push('circle / radius / arc');if(['ftol','xtol','gtol'].some(k=>!finite(solver[k])||Number(solver[k])<=Number.EPSILON||Number(solver[k])>=1)||!Number.isSafeInteger(solver.max_nfev)||Number(solver.max_nfev)<1||!vector(solver.x_scale)||!solver.x_scale.every(positive))issues.push('solver')}
   }

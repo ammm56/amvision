@@ -111,7 +111,7 @@ def test_full_sample_compute_profile(tmp_path, request, visible):
             **(
                 {
                     "matrix": Path(__file__).parents[3]
-                    / "docs/development/assets/r5-f3/workpiece-matrix.json"
+                    / "docs/development/assets/r5-f4/workpiece-windows.json"
                 }
                 if visible
                 else {}

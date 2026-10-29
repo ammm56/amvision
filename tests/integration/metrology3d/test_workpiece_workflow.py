@@ -126,11 +126,12 @@ def test_published_page_document_matches_frozen_workpiece():
     """页面保存并发布的导出物保持全部参数、端口和接线，不只核对节点数量。"""
     path = (
         Path(__file__).parents[3]
-        / "docs/development/assets/r5-e/workpiece-published-workflow.json"
+        / "docs/development/assets/r5-f4/workpiece-published-workflow.json"
     )
     document = json.loads(path.read_text("utf-8"))
     graph = WorkflowGraphTemplate.model_validate(document["template"])
-    expected, _ = workpiece_documents(file=True)
+    assert document["state"] == "published"
+    expected, _ = workpiece_documents(file=True, visible=True)
     assert {
         node.node_id: (node.node_type_id, node.parameters) for node in graph.nodes
     } == {node.node_id: (node.node_type_id, node.parameters) for node in expected.nodes}

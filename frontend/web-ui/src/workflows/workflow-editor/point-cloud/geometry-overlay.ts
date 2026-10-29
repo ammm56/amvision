@@ -92,9 +92,9 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
   }
   function buildCurves(next:GeometryOverlayInput){
     for(const stroke of curveStrokes(curveItems(next.payload),policy)){
-      const selected=stroke.featureId===next.selectedCurve&&(!next.selectedSegment||stroke.segmentId===next.selectedSegment)
-      const color=selected?0xd18c00:stroke.estimate==='edge'?0xc8558a:stroke.estimate==='center'?0x287bb8:stroke.fitted?0xc8558a:0x208c77
-      const line=stroke.markers?new Points(pointGeometry(stroke.points.map(vec)),new PointsMaterial({color,size:4,sizeAttenuation:false,depthTest:false})):lines(stroke.points.map(vec),color,stroke.estimate==='edge')
+      const selected=stroke.featureId===next.selectedCurve&&(!next.selectedSegment||stroke.segmentId===next.selectedSegment||stroke.groupId===next.selectedSegment)
+      const color=stroke.outlier?0xc33b3b:selected?0xd18c00:stroke.estimate==='edge'?0xc8558a:stroke.estimate==='center'?0x287bb8:stroke.fitted?0xc8558a:0x208c77
+      const line=stroke.markers?new Points(pointGeometry(stroke.points.map(vec)),new PointsMaterial({color,size:4,sizeAttenuation:false,depthTest:false})):lines(stroke.points.map(vec),color,stroke.estimate==='edge'||stroke.fitted)
       if(stroke.markers){root.add(line);account(line)}
       line.userData.curve={featureId:stroke.featureId,segmentId:stroke.segmentId}
     }

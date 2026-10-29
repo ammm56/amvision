@@ -117,18 +117,20 @@ def select_boundary(runtime, reference, selection, *, cancel):
     if topology is None:
         raise InvalidRequestError("拟合输入缺少真实边界连接")
     available = {s.segment_id: s for s in topology.segments}
-    if any(key not in available for key in selection.segment_ids):
-        raise InvalidRequestError("拟合指定的边界段不存在")
-    if tuple(available) == selection.segment_ids:
+    try:
+        selected_ids = selection.resolve(topology)
+    except ValueError as error:
+        raise InvalidRequestError(str(error)) from error
+    if tuple(available) == selected_ids:
         return reference
-    count = sum(available[key].count for key in selection.segment_ids)
+    count = sum(available[key].count for key in selected_ids)
     dtype = "<u4" if reference.point_count <= 2**32 else "<u8"
     if count * 16 > runtime.policy.max_working_bytes:
         raise InvalidRequestError("边界段索引超过工作预算")
     indices = np.empty((count, 1), dtype=dtype)
     cursor, segments, keys = 0, [], []
     try:
-        for key in selection.segment_ids:
+        for key in selected_ids:
             cancel()
             part = available[key]
             rows = min(
@@ -163,7 +165,7 @@ def select_boundary(runtime, reference, selection, *, cancel):
         raise
 
 
-def _extraction_quality(values, parameters, observation_id, reason):
+def _extraction_quality(values, parameters, observation_id, reason, *, policy=None):
     """边界计数与长度使用现有逐项限值，不增加产品三态实现。"""
     units = boundary_metric_units(
         "visible-envelope"
@@ -171,15 +173,13 @@ def _extraction_quality(values, parameters, observation_id, reason):
         else "boundary",
         parameters.evaluation.length_unit,
     )
-    if any(
-        r.item_id not in units or r.unit != units[r.item_id]
-        for r in parameters.quality_policy.rules
-    ):
+    policy = parameters.quality_policy if policy is None else policy
+    if any(r.item_id not in units or r.unit != units[r.item_id] for r in policy.rules):
         raise InvalidRequestError("边界质量规则包含未知指标或错误单位")
     return geometry_quality(
         observation_id,
         {key: (value, units[key]) for key, value in values.items()},
-        parameters.quality_policy,
+        policy,
         reason=reason or "metric_unavailable",
     )
 
@@ -238,7 +238,7 @@ def extract_boundary(
                 if k not in values
             }
         )
-    keys, segment_checks = [], []
+    keys, segment_checks, group_checks = [], [], []
     failed = None
     try:
         if reason is None:
@@ -316,12 +316,41 @@ def extract_boundary(
                     parameters,
                     reference.observation_id,
                     None,
+                    policy=parameters.fragment_policy(segment.group_id),
                 )
                 segment_checks.append(
-                    dict(segment_id=segment.segment_id, quality=checked)
+                    dict(
+                        segment_id=segment.segment_id,
+                        group_id=segment.group_id,
+                        quality=checked,
+                    )
                 )
                 if not checked.usable and reason is None:
-                    reason, failed = "insufficient_quality", segment.segment_id
+                    reason, failed = (
+                        "insufficient_quality",
+                        segment.group_id or segment.segment_id,
+                    )
+            for group_id in dict.fromkeys(
+                s.group_id for s in topology.segments if s.group_id
+            ):
+                members = [s for s in segment_checks if s["group_id"] == group_id]
+                total = {
+                    name: sum(
+                        next(
+                            m.value
+                            for m in s["quality"].metrics.items
+                            if m.item_id == name
+                        )
+                        for s in members
+                    )
+                    for name in ("support_count", "length")
+                }
+                checked = _extraction_quality(
+                    {**values, **total}, parameters, reference.observation_id, None
+                )
+                group_checks.append(dict(group_id=group_id, quality=checked))
+                if not checked.usable and reason is None:
+                    reason, failed = "insufficient_quality", group_id
             if reason is None and not quality.usable:
                 reason = "insufficient_quality"
         if reason is None:
@@ -406,6 +435,7 @@ def extract_boundary(
             support=support,
             quality=quality,
             segments=segment_checks,
+            groups=group_checks,
             method=BoundaryMethod(
                 parameters=parameters,
                 parameters_sha256=parameter_digest(parameters),

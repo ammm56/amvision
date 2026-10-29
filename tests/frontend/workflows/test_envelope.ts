@@ -9,7 +9,9 @@ import BoundaryEditor from '../../../custom_nodes/metrology3d_nodes/frontend/Bou
 import DimensionEditor from '../../../custom_nodes/metrology3d_nodes/frontend/DimensionSettingsEditor.vue'
 import {boundaryIssues} from '../../../custom_nodes/metrology3d_nodes/frontend/boundary-form'
 import {dimensionIssues,dimensionFeatureChoices} from '../../../custom_nodes/metrology3d_nodes/frontend/dimension-form'
-import {newEnvelope} from '../../../custom_nodes/metrology3d_nodes/frontend/envelope-form'
+import {newEnvelope,envelopeIssues,selectEnvelopePartition} from '../../../custom_nodes/metrology3d_nodes/frontend/envelope-form'
+import EnvelopeEditor from '../../../custom_nodes/metrology3d_nodes/frontend/EnvelopeSettingsEditor.vue'
+import {object} from '../../../custom_nodes/metrology3d_nodes/frontend/form'
 import {curveItems,curveStrokes} from '@/workflows/workflow-editor/point-cloud/boundary-display'
 import {measurementItems} from '@/workflows/workflow-editor/point-cloud/measurement-display'
 import {createGeometryOverlay} from '@/workflows/workflow-editor/point-cloud/geometry-overlay'
@@ -19,6 +21,25 @@ vi.mock('@/workflows/workflow-editor/point-cloud/CloudViewer.vue',()=>({__esModu
 const plugins=[createI18n({legacy:false,locale:'en-US'})]
 const policy={max_points:100,max_data_bytes:100000,max_cpu_bytes:1000000,max_gpu_bytes:1000000,max_canvas_pixels:10000,max_position_error:.001}
 afterEach(()=>{document.body.innerHTML=''})
+
+it('switches partition methods explicitly without retained grid fields or an invented distance',async()=>{
+  const source=fixture.boundary.method.envelope
+  const next=selectEnvelopePartition(source,'distance-connected')
+  expect(next.selection).toEqual({kind:'distance-connected',seed_min:source.selection.seed_min,seed_max:source.selection.seed_max,connection_distance:null})
+  expect(envelopeIssues(next)).toContain('selection')
+  next.selection={...object(next.selection),connection_distance:.15}
+  expect(envelopeIssues(next)).toEqual([])
+  expect(envelopeIssues({...next,selection:{...object(next.selection),connectivity:8}})).toContain('selection')
+  const w=mount(EnvelopeEditor,{props:{modelValue:next},global:{plugins}})
+  try{
+    expect(w.text()).toContain('In-plane connection distance')
+    expect(w.text()).not.toContain('Closing radius')
+    await w.get('select').setValue('grid-connected')
+    const update=w.emitted('update:modelValue')![0]![0] as Record<string,unknown>
+    expect(update.selection).not.toHaveProperty('connection_distance')
+    expect(update.selection).toMatchObject({kind:'grid-connected',connectivity:null,closing_radius_cells:null})
+  }finally{w.unmount()}
+})
 
 it('shows the statistical method and contact evidence instead of implying raw extrema',async()=>{
   const items=measurementItems(fixture.payload)

@@ -14,6 +14,13 @@ from backend.contracts.workflows.boundary3d import (
 )
 from backend.service.application.errors import InvalidRequestError
 from custom_nodes.metrology3d_nodes.shared.geometry_quality import geometry_quality
+from custom_nodes.metrology3d_nodes.shared.circle_weighting import (
+    angular_weights,
+    weighted_soft_l1,
+    measured_arc_support,
+    target_gap,
+    weighting_evidence,
+)
 
 
 @dataclass(frozen=True)
@@ -76,7 +83,11 @@ def _prepare(positions, topology, parameters, max_working_bytes, cancel):
     if not np.isfinite(points).all():
         raise InvalidRequestError("边界拟合支持包含无效坐标")
     actual = tuple(segment.segment_id for segment in topology.segments)
-    if actual != parameters.selection.segment_ids:
+    try:
+        selected = parameters.selection.resolve(topology)
+    except ValueError as exc:
+        raise InvalidRequestError("边界拟合选择不存在") from exc
+    if actual != selected:
         raise InvalidRequestError("边界拟合支持与明确选择的段不一致")
     with np.errstate(over="raise", invalid="raise"):
         rotation = np.asarray(parameters.evaluation.rotation)
@@ -213,7 +224,12 @@ def fit_boundary_circle(positions, topology, parameters, *, max_working_bytes, c
     if not isinstance(parameters, FitCircleParameters):
         raise InvalidRequestError("圆拟合需要已校验参数")
     local, uv, anchor, rotation = _prepare(
-        positions, topology, parameters, max_working_bytes, cancel
+        positions,
+        topology,
+        parameters,
+        max_working_bytes
+        - (parameters.robust.sector_count * 64 if parameters.robust else 0),
+        cancel,
     )
     metrics = dict(
         support_count=len(uv),
@@ -223,9 +239,23 @@ def fit_boundary_circle(positions, topology, parameters, *, max_working_bytes, c
         jacobian_ratio=None,
         angular_coverage=None,
         max_gap=None,
+        weighted_rms=None,
+        inlier_fraction=None,
+        occupied_sector_count=None,
+        sector_coverage=None,
+        target_max_gap=None,
+        inlier_angular_coverage=None,
+        inlier_max_gap=None,
+        inlier_jacobian_ratio=None,
     )
     if len(uv) < 3:
         return BoundaryFit("insufficient_support", None, metrics, ())
+    robust = parameters.robust
+    weights = bins = counts = None
+    if robust is not None:
+        reason, weights, bins, counts = angular_weights(uv, robust, anchor)
+        if reason:
+            return BoundaryFit(reason, None, metrics, ())
     with np.errstate(over="raise", invalid="raise", divide="raise"):
         offset = uv.mean(axis=0)
         centered = uv - offset
@@ -263,8 +293,8 @@ def fit_boundary_circle(positions, topology, parameters, *, max_working_bytes, c
                 bounds=([-np.inf, -np.inf, lower], [np.inf, np.inf, upper]),
                 method="trf",
                 tr_solver="exact",
-                loss="linear",
-                f_scale=1.0,
+                loss="linear" if robust is None else weighted_soft_l1(weights),
+                f_scale=1.0 if robust is None else robust.loss_scale,
                 ftol=parameters.solver.ftol,
                 xtol=parameters.solver.xtol,
                 gtol=parameters.solver.gtol,
@@ -280,12 +310,32 @@ def fit_boundary_circle(positions, topology, parameters, *, max_working_bytes, c
             cost=float(result.cost),
             optimality=float(result.optimality),
             radius_at_bound=bool(result.active_mask[2]),
+            weighting=None,
         )
+        inliers = np.ones(len(uv), dtype=bool)
+        if robust is not None:
+            inliers, details["weighting"] = weighting_evidence(
+                result.fun, weights, bins, counts, robust
+            )
+            metrics.update(
+                weighted_rms=float(
+                    np.sqrt(np.sum(weights * result.fun**2) / weights.sum())
+                ),
+                inlier_fraction=float(inliers.mean()),
+                occupied_sector_count=int(np.count_nonzero(counts)),
+                sector_coverage=float(np.count_nonzero(counts) / robust.sector_count),
+            )
         metrics.update(
             rms=float(np.sqrt(np.mean(result.fun**2))),
             max_residual=float(np.max(np.abs(result.fun))),
         )
-        singular = np.linalg.svd(result.jac, compute_uv=False)
+        try:
+            raw_jacobian = jacobian(result.x)
+        except _UndefinedRadialDerivative:
+            return BoundaryFit(
+                "undefined_radial_derivative", None, metrics, (), details
+            )
+        singular = np.linalg.svd(raw_jacobian, compute_uv=False)
         metrics["jacobian_ratio"] = (
             float(singular[-1] / singular[0]) if singular[0] else 0.0
         )
@@ -294,9 +344,47 @@ def fit_boundary_circle(positions, topology, parameters, *, max_working_bytes, c
         if result.active_mask[2]:
             return BoundaryFit("radius_at_bound", None, metrics, (), details)
         center = result.x[:2] + offset
-        reason, intervals, coverage, gap = _circle_intervals(
-            uv, center, topology, parameters.max_arc_step
-        )
+        if robust is None:
+            reason, intervals, coverage, gap = _circle_intervals(
+                uv, center, topology, parameters.max_arc_step
+            )
+        else:
+            reason, intervals, spans, supported = measured_arc_support(
+                uv, center, topology, parameters.max_arc_step, inliers, cancel=cancel
+            )
+            coverage = sum(hi - lo for lo, hi in spans) if spans else None
+            gap = (
+                max(
+                    [spans[i + 1][0] - spans[i][1] for i in range(len(spans) - 1)]
+                    + [2 * pi - spans[-1][1] + spans[0][0]]
+                )
+                if spans
+                else None
+            )
+            singular_inliers = np.linalg.svd(raw_jacobian[inliers], compute_uv=False)
+            # 目标角域属于配方参考圆心；拟合圆心下的覆盖不能拿来比较另一原点的角窗。
+            target_reason, _, target_spans, target_supported = measured_arc_support(
+                uv,
+                np.asarray(robust.center) - anchor,
+                topology,
+                pi,
+                inliers,
+                cancel=cancel,
+            )
+            if target_reason and reason is None:
+                reason = target_reason
+            metrics.update(
+                inlier_jacobian_ratio=float(singular_inliers[-1] / singular_inliers[0])
+                if len(singular_inliers) == 3 and singular_inliers[0]
+                else 0.0,
+                target_max_gap=target_gap(
+                    target_spans, robust.start_angle, robust.sweep
+                ),
+                inlier_angular_coverage=sum(hi - lo for lo, hi in supported),
+                inlier_max_gap=target_gap(
+                    target_supported, robust.start_angle, robust.sweep
+                ),
+            )
         metrics.update(angular_coverage=coverage, max_gap=gap)
         if reason:
             return BoundaryFit(reason, None, metrics, (), details)

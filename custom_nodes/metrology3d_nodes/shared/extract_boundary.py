@@ -14,8 +14,8 @@ from custom_nodes.metrology3d_nodes.shared.boundary_section import intersect_sur
 from custom_nodes.metrology3d_nodes.shared.boundary_surface import build_surface
 from custom_nodes.metrology3d_nodes.shared.boundary_topology import (
     order_segments,
-    selected_runs,
 )
+from custom_nodes.metrology3d_nodes.shared.boundary_targets import select_targets
 from custom_nodes.metrology3d_nodes.shared.roi_mask import roi_mask
 
 
@@ -142,63 +142,24 @@ def extract_boundary_array(
     if reason:
         return missing(reason)
     metrics["candidate_count"] = len(candidates)
-    chosen, layouts, used, cursor, length = [], [], set(), 0, 0.0
-    rotation = np.asarray(evaluation.rotation)
-    for target in parameters.targets:
+    reason, failed, ordered, topology = select_targets(
+        vertices,
+        candidates,
+        parameters,
+        max_working_bytes=roi_working_bytes,
+        cancel=cancel,
+    )
+    if reason:
+        return missing(reason, failed)
+    length = 0.0
+    for segment in topology.segments:
         cancel()
-        matches = []
-        for candidate in candidates:
-            cancel()
-            mask = roi_mask(
-                vertices[candidate.indices],
-                target.region,
-                max_working_bytes=roi_working_bytes,
-                cancel=cancel,
-            )
-            for part in selected_runs(candidate, mask, cancel=cancel):
-                if part.closed == target.closed:
-                    matches.append(part)
-                    if len(matches) > 1:
-                        return missing("target_ambiguous", target.segment_id)
-        if not matches:
-            return missing("target_not_found", target.segment_id)
-        candidate = matches[0]
-        if len(candidate.indices) < (3 if candidate.closed else 2):
-            return missing("insufficient_support", target.segment_id)
-        if any(int(index) in used for index in candidate.indices):
-            return missing("target_conflict", target.segment_id)
-        used.update(map(int, candidate.indices))
-        actual = vertices[candidate.indices]
-        orientation = "open"
-        if candidate.closed:
-            uv = ((actual.astype(np.float64) - actual[0]) @ rotation)[:, :2]
-            area2 = float(
-                np.sum(
-                    uv[:, 0] * np.roll(uv[:, 1], -1) - uv[:, 1] * np.roll(uv[:, 0], -1)
-                )
-            )
-            if abs(area2) < 2 * parameters.surface.min_projected_area:
-                return missing("degenerate_boundary_projection", target.segment_id)
-            orientation = "ccw" if area2 > 0 else "cw"
-        length += float(
-            np.linalg.norm(np.diff(actual.astype(np.float64), axis=0), axis=1).sum()
-        )
-        if candidate.closed:
-            length += float(np.linalg.norm(actual[-1].astype(float) - actual[0]))
-        chosen.append(candidate.indices)
-        layouts.append(
-            dict(
-                segment_id=target.segment_id,
-                start=cursor,
-                count=len(actual),
-                closed=candidate.closed,
-                role=target.role,
-                orientation=orientation,
-            )
-        )
-        cursor += len(actual)
-    ordered = np.concatenate(chosen)
-    topology = BoundaryTopology(point_count=len(ordered), segments=layouts)
+        actual = vertices[
+            ordered[segment.start : segment.start + segment.count]
+        ].astype(np.float64)
+        length += float(np.linalg.norm(np.diff(actual, axis=0), axis=1).sum())
+        if segment.closed:
+            length += float(np.linalg.norm(actual[-1] - actual[0]))
     metrics.update(support_count=len(ordered), length=length)
     if section is None:
         return BoundaryExtraction(
