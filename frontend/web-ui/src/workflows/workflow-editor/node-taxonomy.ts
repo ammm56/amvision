@@ -142,6 +142,7 @@ export function humanizeNodeCategoryToken(token: string): string {
     cv: 'CV',
     http: 'HTTP',
     io: 'IO',
+    metrology3d: '3D Metrology',
     opencv: 'OpenCV',
     plc: 'PLC',
     roi: 'ROI',

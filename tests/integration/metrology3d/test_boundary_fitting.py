@@ -7,7 +7,7 @@ import pytest
 
 from backend.contracts.workflows.boundary3d import BoundaryTopology
 from backend.service.application.errors import InvalidRequestError
-from custom_nodes._metrology3d_nodes.shared.boundary_fitting import (
+from custom_nodes.metrology3d_nodes.shared.boundary_fitting import (
     evaluate_fit_quality,
     fit_boundary_circle,
     fit_boundary_line,

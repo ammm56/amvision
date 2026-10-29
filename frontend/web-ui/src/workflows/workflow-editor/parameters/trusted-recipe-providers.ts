@@ -3,10 +3,10 @@ import { connectorNumericItems } from '../../../../../../custom_nodes/connector_
 import { connectorRecipeValidator } from '../../../../../../custom_nodes/connector_nodes/frontend/recipe-validation'
 import type { NumericItemProviders } from './static-numeric-items'
 import type { RecipeValidator } from './recipe-validation'
-import {geometryRecipeValidator} from '../../../../../../custom_nodes/_metrology3d_nodes/frontend/recipe-validation'
-import {measurementNumericItems,measurementRecipeValidator} from '../../../../../../custom_nodes/_metrology3d_nodes/frontend/measurement-form'
-import {boundaryRecipeValidator} from '../../../../../../custom_nodes/_metrology3d_nodes/frontend/boundary-form'
-import {dimensionNumericItems,dimensionRecipeValidator} from '../../../../../../custom_nodes/_metrology3d_nodes/frontend/dimension-form'
+import {geometryRecipeValidator} from '../../../../../../custom_nodes/metrology3d_nodes/frontend/recipe-validation'
+import {measurementNumericItems,measurementRecipeValidator} from '../../../../../../custom_nodes/metrology3d_nodes/frontend/measurement-form'
+import {boundaryRecipeValidator} from '../../../../../../custom_nodes/metrology3d_nodes/frontend/boundary-form'
+import {dimensionNumericItems,dimensionRecipeValidator} from '../../../../../../custom_nodes/metrology3d_nodes/frontend/dimension-form'
 
 export const trustedNumericItemProviders:NumericItemProviders={
   'custom.metrology3d.measure-extents':dimensionNumericItems,

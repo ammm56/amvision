@@ -1,18 +1,12 @@
 """点云固定资源进入现有草稿、发布指纹与删除保护，不另建版本系统。"""
 
 from io import BytesIO
-from dataclasses import replace
-from custom_nodes._metrology3d_nodes import PACK_VERSION
 
-from backend.contracts.nodes.node_pack_manifest import NodePackManifest
 from backend.service.application.workflows.documents.measurement_resources import (
     MeasurementResourceService,
 )
 from backend.service.application.workflows.documents.cloud_resource_blobs import (
     cloud_blob_key,
-)
-from custom_nodes._metrology3d_nodes.workflow.catalog_builder import (
-    build_custom_node_catalog_document,
 )
 from tests.api_test_support import create_api_test_context, build_test_headers
 from tests.integration.metrology3d.test_nodes import execution_policy
@@ -20,7 +14,7 @@ from tests.test_point_cloud_assets import asset_content
 
 
 def test_asset_draft_publish_and_corruption_gate(tmp_path):
-    """显式测试 Catalog；生产包仍不可发现，不写生产 timeout。"""
+    """真实 Catalog 校验固定资产；不注入测试 manifest 或重复节点定义。"""
     ctx = create_api_test_context(
         tmp_path,
         database_name="cloud-publish.db",
@@ -39,20 +33,6 @@ def test_asset_draft_publish_and_corruption_gate(tmp_path):
         write_identity="c" * 64,
         policy=execution_policy().assets(),
         cancel=lambda: None,
-    )
-    catalog = build_custom_node_catalog_document()
-    manifest = NodePackManifest(
-        id="metrology3d.nodes",
-        version=PACK_VERSION,
-        displayName="3D Metrology test",
-        category="vision",
-        categoryRoot="metrology3d",
-        capabilities=["pipeline.node", "vision.metrology3d"],
-        entrypoints={
-            "backend": "custom_nodes._metrology3d_nodes.backend.entry:register"
-        },
-        compatibility={"api": ">=0.1 <1.0", "runtime": ">=3.12"},
-        timeout={"defaultSeconds": 30, "maxSeconds": 30, "killGraceSeconds": 2},
     )
     template = dict(
         template_id="cloud-asset",
@@ -85,18 +65,14 @@ def test_asset_draft_publish_and_corruption_gate(tmp_path):
         with ctx.client as client:
             registry = client.app.state.node_catalog_registry
             snapshot = registry.get_catalog_snapshot()
-            registry._catalog_snapshot = replace(
-                snapshot,
-                node_pack_manifests=(*snapshot.node_pack_manifests, manifest),
-                payload_contracts=(
-                    *snapshot.payload_contracts,
-                    *catalog.payload_contracts,
-                ),
-                node_definitions=(
-                    *snapshot.node_definitions,
-                    *catalog.node_definitions,
-                ),
-            )
+            assert sum(
+                manifest.node_pack_id == "metrology3d.nodes"
+                for manifest in snapshot.node_pack_manifests
+            ) == 1
+            assert sum(
+                definition.node_pack_id == "metrology3d.nodes"
+                for definition in snapshot.node_definitions
+            ) == 18
             saved = client.put(
                 base + "/applications/cloud-app",
                 headers=headers,

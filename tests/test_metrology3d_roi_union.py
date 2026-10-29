@@ -7,8 +7,8 @@ import pytest
 from pydantic import ValidationError
 
 from backend.service.application.errors import InvalidRequestError
-from custom_nodes._metrology3d_nodes.shared.crop_roi import crop_roi
-from custom_nodes._metrology3d_nodes.shared.roi_mask import roi_mask
+from custom_nodes.metrology3d_nodes.shared.crop_roi import crop_roi
+from custom_nodes.metrology3d_nodes.shared.roi_mask import roi_mask
 from tests.point_cloud_support import policy
 from tests.test_metrology3d_crop import box, parameters
 from tests.test_metrology3d_preprocess import make_cloud

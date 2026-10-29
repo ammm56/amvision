@@ -15,7 +15,7 @@
 | build-frame | 显式锚点投影或三基准面交点；稳定面 ID、正方向、退化拒绝 | `shared/build_frame.py`、pose3d、GeometrySettingsEditor |
 | transform-cloud | SE(3) 变换位置/法向，保留其他字段、原始行号和方法追溯；缺测不复用旧矩阵 | `shared/transform_cloud.py`、CloudRuntime 派生数组与资产 |
 
-四节点已接内部 Catalog、handler 和 Vue 参数/三维显示；加上 M1 六节点、M3.1 两节点、M3.2 三节点及 M3.3 三个尺寸节点，当前为十八个内部节点。目录仍为 `custom_nodes/_metrology3d_nodes`，生产 manifest 不存在，不可发现、不可启用。M3.3 及证据 v2 的本批验证见[实施记录](3d-metrology-m33-acceptance.md)。
+四节点已接内部 Catalog、handler 和 Vue 参数/三维显示；加上 M1 六节点、M3.1 两节点、M3.2 三节点及 M3.3 三个尺寸节点，当前为十八个内部节点。目录仍为 `custom_nodes/metrology3d_nodes`，生产 manifest 不存在，不可发现、不可启用。M3.3 及证据 v2 的本批验证见[实施记录](3d-metrology-m33-acceptance.md)。
 
 既有验证记录：Windows/WSL Ubuntu 原生目录组合各 372 项；完整 14,745,099 点样本每平台 SVD/RANSAC 两项；正式 REST 发布、依赖准入、独立 WorkflowAppRuntime、同机 Trigger、四节点每平台一项；前端相关 112 项及类型检查、构建通过。这些是 M2 已有结果，本次没有重复执行。隔离浏览器页使用正式组件，不等于完整 Workflow 页面或目标发行包已验收。
 
@@ -65,7 +65,7 @@ M3.4 升级已有 Check Limits、Result Record 和实际读取其结果的模块
 | Workflow | Catalog、GraphExecutor、参数绑定、发布/Runtime/版本切换/恢复、进程归属 | 同一接线和准入；只补经验证的缺口 |
 | 前端 | Vue 参数编辑、当前草稿、共享 Three.js viewer、Preview、结果表、App Mode | 查询/特征选择和尺寸覆盖层；不另做 3D 应用或编辑器 |
 
-源码入口：[几何算法目录](../../custom_nodes/_metrology3d_nodes/shared/)、[handler](../../custom_nodes/_metrology3d_nodes/backend/geometry_handlers.py)、[Catalog](../../custom_nodes/_metrology3d_nodes/workflow/catalog_builder.py)、[运行资源](../../backend/service/application/workflows/point_cloud/runtime.py)、[数值契约](../../backend/contracts/workflows/metrology.py)、[三维特征](../../backend/contracts/workflows/geometry3d_observations.py)、[三维前端](../../frontend/web-ui/src/workflows/workflow-editor/point-cloud/)。
+源码入口：[几何算法目录](../../custom_nodes/metrology3d_nodes/shared/)、[handler](../../custom_nodes/metrology3d_nodes/backend/geometry_handlers.py)、[Catalog](../../custom_nodes/metrology3d_nodes/workflow/catalog_builder.py)、[运行资源](../../backend/service/application/workflows/point_cloud/runtime.py)、[数值契约](../../backend/contracts/workflows/metrology.py)、[三维特征](../../backend/contracts/workflows/geometry3d_observations.py)、[三维前端](../../frontend/web-ui/src/workflows/workflow-editor/point-cloud/)。
 
 现有二维工具不能直接替换三维规格：[二维工业测量](../../custom_nodes/opencv_nodes/categories/measurement/backend/nodes/industrial_measurement.py)的直线分支使用 float32/像素条件、圆分支是代数最小二乘；[稳健圆工具](../../custom_nodes/opencv_nodes/shared/backend/runtime/circle_measurement.py)含像素阈值与分箱覆盖率。三维按物理坐标、原精度和明确几何目标实现，不复制这些默认数值，也不顺带重构二维调用。成熟数值内核继续使用 NumPy/SciPy；fit-circle 保持唯一的三维圆拟合实现，measure-hole 已确认只消费其 CircleFeature，不再次拟合。
 

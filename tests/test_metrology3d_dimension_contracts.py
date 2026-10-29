@@ -8,7 +8,7 @@ from pydantic import ValidationError
 from backend.contracts.workflows.dimension3d_parameters import MeasureExtentsParameters
 from backend.contracts.workflows.geometry3d_methods import parameter_digest
 from backend.contracts.workflows.measurement3d_evidence import MeasurementEvidence3d
-from custom_nodes._metrology3d_nodes.shared.geometry_quality import geometry_quality
+from custom_nodes.metrology3d_nodes.shared.geometry_quality import geometry_quality
 from tests.test_metrology3d_boundary_contracts import evaluation
 
 

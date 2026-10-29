@@ -6,7 +6,7 @@ import pytest
 from backend.contracts.workflows.boundary3d import ExtractBoundaryParameters
 from backend.contracts.workflows.geometry3d import PlaneGeometry
 from backend.service.application.errors import InvalidRequestError
-from custom_nodes._metrology3d_nodes.shared.extract_boundary import (
+from custom_nodes.metrology3d_nodes.shared.extract_boundary import (
     extract_boundary_array,
 )
 from tests.test_metrology3d_boundary_contracts import evaluation

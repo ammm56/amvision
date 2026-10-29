@@ -1,6 +1,6 @@
 # R5 F 工件测量、计算速度与节点启用
 
-日期：2026-10-27。核对基点：`d91632e2`。本文修正 R5 后续实施顺序，尚未实现下列改动。R5 E 的代码和历史结果保留，但 **23 项有效、27 项无效不是工件测量任务完成**，约 105 秒文件图也不是现场节拍验收通过。
+日期：2026-10-27。核对基点：`d91632e2`。本文定义 R5 F 实施顺序；2026-10-28 已开始正式包启用、计时和 ROI/支持摘要优化，当前证据见 [实施与验收](3d-metrology-r5-f-implementation.md)。未完成项仍按本文推进。R5 E 的代码和历史结果保留，但 **23 项有效、27 项无效不是工件测量任务完成**，约 105 秒文件图也不是现场节拍验收通过。
 
 ## 1. 本轮确认与完成标准
 
@@ -38,10 +38,10 @@ R5 E 保留了 Windows 文件图约 161.985 → 105.172 秒、Ubuntu 约 38.035 
 
 已由源码确认的重复工作：
 
-1. [crop_roi.py](../../custom_nodes/_metrology3d_nodes/shared/crop_roi.py) 每次先计数再收集索引，两次扫描；六个粗 ROI 仍各自遍历全云，台面和两个半圆还会分别访问全云。ROI 并集每块内部已复用成员掩码，不能重复实现这部分。
-2. [measurement_support.py](../../custom_nodes/_metrology3d_nodes/shared/measurement_support.py) 为每次测量重新扫描同一支持的包围盒，再两遍扫描邻域；[measurement_reference.py](../../custom_nodes/_metrology3d_nodes/shared/measurement_reference.py) 在延伸时另扫最近投影支持。十二次 Z 反复访问同一 1,822,289 点台面，H/Z 也重复访问同一顶面。
-3. [boundary_surface.py](../../custom_nodes/_metrology3d_nodes/shared/boundary_surface.py) 对每个局部边界执行完整 Delaunay、唯一化和面/边处理。对一般散乱点云有意义，但不应成为所有高度场、扫描线及可见包络方法的唯一计算路线。
-4. [dimension_runtime.py](../../custom_nodes/_metrology3d_nodes/shared/dimension_runtime.py) 等消费者重新计算支持摘要。证据需要保留，但不可变支持的相同摘要可以在本次 Run 内复用。`freeze_cloud_parent` 哈希的是描述，不是每次重哈希完整点数组，不能把它错误描述为大数组哈希瓶颈。
+1. [crop_roi.py](../../custom_nodes/metrology3d_nodes/shared/crop_roi.py) 每次先计数再收集索引，两次扫描；六个粗 ROI 仍各自遍历全云，台面和两个半圆还会分别访问全云。ROI 并集每块内部已复用成员掩码，不能重复实现这部分。
+2. [measurement_support.py](../../custom_nodes/metrology3d_nodes/shared/measurement_support.py) 为每次测量重新扫描同一支持的包围盒，再两遍扫描邻域；[measurement_reference.py](../../custom_nodes/metrology3d_nodes/shared/measurement_reference.py) 在延伸时另扫最近投影支持。十二次 Z 反复访问同一 1,822,289 点台面，H/Z 也重复访问同一顶面。
+3. [boundary_surface.py](../../custom_nodes/metrology3d_nodes/shared/boundary_surface.py) 对每个局部边界执行完整 Delaunay、唯一化和面/边处理。对一般散乱点云有意义，但不应成为所有高度场、扫描线及可见包络方法的唯一计算路线。
+4. [dimension_runtime.py](../../custom_nodes/metrology3d_nodes/shared/dimension_runtime.py) 等消费者重新计算支持摘要。证据需要保留，但不可变支持的相同摘要可以在本次 Run 内复用。`freeze_cloud_parent` 哈希的是描述，不是每次重哈希完整点数组，不能把它错误描述为大数组哈希瓶颈。
 
 以上是明确的结构性重复，不等于已经量化各自占 105 秒的比例。Windows/Ubuntu 的差异尚不能归因于某种系统、BLAS 或调度问题；现有 worker 已有算子线程配置，应先记录实际生效状态，不再增加平行线程管理器。
 
@@ -59,7 +59,7 @@ R5 E 保留了 Windows 文件图约 161.985 → 105.172 秒、Ubuntu 约 38.035 
 
 ### 2.3 节点隐藏是交付接入未完成
 
-- [加载器](../../backend/nodes/local_node_pack_loader.py) 跳过下划线目录；实现仍在 `custom_nodes/_metrology3d_nodes/`，只有内部 Catalog 构建器，没有正式 manifest。
+- 核对基点的[加载器](../../backend/nodes/local_node_pack_loader.py) 跳过下划线目录；当时实现处于内部目录，没有正式 manifest。2026-10-28 已收敛到 `custom_nodes/metrology3d_nodes/`，按真实 manifest/Catalog 发现，未保留两套实现。
 - [配置](../../backend/service/settings.py) 的 `workflow_runtime.point_cloud` 默认为 None；节点因此拒绝执行。这是明确的启用配置，不是算法错误。
 - 本轮查询开发 amvision 环境的发行包元数据：NumPy 2.4.4、SciPy 1.18.0 已有；trimesh、pypcd4、Open3D、ContourPy 未安装。前序验收使用隔离环境，不能当作正常开发/发行环境已可用。
 - 生产启用需要把依赖、节点包、运行配置、前端和发行接通，不能只将目录改名，也不能继续把全部功能隐藏作为最终交付。
@@ -137,10 +137,10 @@ SciPy 分箱统计、已有 OpenCV/SciPy 区域处理负责成熟基础算法；
 
 F1 不等待所有高级功能完成；F2 和 F3 都是实用目标的组成，不为性能只修读文件、不为出数只改配方阈值。每步先验证再进入下一步，发现问题定位到该步，不反复重做未变化的历史全链。
 
-剩余需收口的是具体计算秒数上限、工作站启用配置和新增方法的逐字段参数；后两项由实现阶段基于资源证据提出，不再要求用户提供本工件每个 ROI 或质量数值。实际开始实现前不安装依赖、修改生产配置或启动业务服务。
+工作站启用配置已于 2026-10-28 获确认并进入验证：活跃数组 1 GiB、工作预算 4 GiB、显示 100 万点、节点超时 180/180 秒、停止宽限 2 秒，仅用于本机工程配置。具体计算秒数上限和新增方法的逐字段参数仍需记录，不能把容量上限当节拍目标。不再要求外部提供本工件每个 ROI 或质量数值。
 
 ## 7. 本轮范围与参考
 
-本轮只读核对源码/报告、读取真实样本的小块进行三次对照，并更新本文和入口文档。未跑全文件图、模型 P99、长稳或双平台新回归；未启动测试服务、未安装依赖、未启用节点，也未生成临时资产。速度结论只限上述样本对照，新增方法和页面设计尚未验收。
+2026-10-27 规划轮只读核对源码/报告、读取真实样本的小块进行三次对照，未实施或启用。后续实现、测试及清理记录单独保存在 [2026-10-28 实施记录](3d-metrology-r5-f-implementation.md)，不覆盖历史结果。
 
 外部方法核对：[CloudCompare Rasterize](https://cloudcompare.org/doc/wiki/index.php?title=Rasterize) 将点云转为 2.5D 栅格并生成等高线，空格处理是明确选项；[Extract Sections](https://www.cloudcompare.org/doc/wiki/index.php/Extract_Sections) 提供有限厚度截面及上下包络/断段；[SciPy 分箱统计](https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.binned_statistic_2d.html) 提供包括中位数在内的分箱统计。参考其方法与交互，不复制 CloudCompare 源码或将其作为运行依赖。

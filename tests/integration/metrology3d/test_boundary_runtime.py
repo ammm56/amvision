@@ -4,10 +4,10 @@ import numpy as np
 import pytest
 
 from backend.service.application.errors import InvalidRequestError
-from custom_nodes._metrology3d_nodes.shared.boundary_runtime import extract_boundary
-from custom_nodes._metrology3d_nodes.shared.fit_boundary import fit_boundary
-from custom_nodes._metrology3d_nodes.shared.geometry_preview import attach_geometry
-from custom_nodes._metrology3d_nodes.shared.preview import build_cloud_preview
+from custom_nodes.metrology3d_nodes.shared.boundary_runtime import extract_boundary
+from custom_nodes.metrology3d_nodes.shared.fit_boundary import fit_boundary
+from custom_nodes.metrology3d_nodes.shared.geometry_preview import attach_geometry
+from custom_nodes.metrology3d_nodes.shared.preview import build_cloud_preview
 from tests.test_metrology3d_preprocess import make_cloud
 from tests.point_cloud_support import policy
 from tests.test_metrology3d_preview import preview_policy
@@ -170,11 +170,11 @@ def test_real_projection_circle_with_all_attributes_and_invalid_quality():
 
 def test_boundary_save_restore_features_fit_and_wrong_support(tmp_path):
     """保存证据不含运行引用，跨运行恢复后仍可拟合，错误支持不落盘。"""
-    from custom_nodes._metrology3d_nodes.shared.cloud_assets import (
+    from custom_nodes.metrology3d_nodes.shared.cloud_assets import (
         save_cloud,
         read_asset,
     )
-    from custom_nodes._metrology3d_nodes.shared.boundary_assets import restore_boundary
+    from custom_nodes.metrology3d_nodes.shared.boundary_assets import restore_boundary
     from tests.point_cloud_support import create_resource_service
     from tests.test_point_cloud_assets import POLICY
     from dataclasses import replace

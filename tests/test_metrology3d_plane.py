@@ -7,7 +7,7 @@ from pydantic import ValidationError
 from backend.contracts.workflows.geometry3d import FitPlaneParameters
 from backend.contracts.workflows.geometry3d_observations import PlaneFeature
 from backend.service.application.errors import InvalidRequestError
-from custom_nodes._metrology3d_nodes.shared.fit_plane import fit_plane
+from custom_nodes.metrology3d_nodes.shared.fit_plane import fit_plane
 from tests.point_cloud_support import policy
 from tests.test_metrology3d_preprocess import make_cloud
 

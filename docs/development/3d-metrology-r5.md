@@ -498,9 +498,9 @@ R4 可作为 R5 基点，无证据要求重复实现延伸、资源或发布管�
 
 ## 9. 复用源码索引
 
-- [ROI / 平面 / 坐标参数](../../backend/contracts/workflows/geometry3d.py)、[裁剪](../../custom_nodes/_metrology3d_nodes/shared/crop_roi.py)、[共享 ROI 求值](../../custom_nodes/_metrology3d_nodes/shared/roi_mask.py)、[平面拟合](../../custom_nodes/_metrology3d_nodes/shared/fit_plane.py)。
-- [高度参数](../../backend/contracts/workflows/measurement3d_parameters.py)、[基准延伸](../../custom_nodes/_metrology3d_nodes/shared/measurement_reference.py)、[测量接线](../../custom_nodes/_metrology3d_nodes/backend/measurement_handlers.py)。
-- [边界与线/圆参数](../../backend/contracts/workflows/boundary3d.py)、[边界拟合/角覆盖](../../custom_nodes/_metrology3d_nodes/shared/boundary_fitting.py)、[尺寸参数](../../backend/contracts/workflows/dimension3d_parameters.py)。
-- [三维 Catalog](../../custom_nodes/_metrology3d_nodes/workflow/catalog_builder.py)、[已有参数绑定执行](../../backend/service/application/workflows/execution/parameters.py)、[数值表合并](../../backend/nodes/core_nodes/logic/value/numeric_tables_merge.py)。
-- [变换与所有权](../../custom_nodes/_metrology3d_nodes/shared/transform_cloud.py)、[边界保存恢复](../../custom_nodes/_metrology3d_nodes/shared/boundary_assets.py)、[R4 真实发布测试](../../tests/integration/metrology3d/test_reference_extension_published.py)。
-- [本次基准坐标构建](../../custom_nodes/_metrology3d_nodes/shared/build_frame.py)、[测量交点与持久证据](../../backend/contracts/workflows/measurement3d_evidence.py)、[等高截面解算](../../custom_nodes/_metrology3d_nodes/shared/extract_boundary.py)、[线/圆运行入口](../../custom_nodes/_metrology3d_nodes/shared/fit_boundary.py)。
+- [ROI / 平面 / 坐标参数](../../backend/contracts/workflows/geometry3d.py)、[裁剪](../../custom_nodes/metrology3d_nodes/shared/crop_roi.py)、[共享 ROI 求值](../../custom_nodes/metrology3d_nodes/shared/roi_mask.py)、[平面拟合](../../custom_nodes/metrology3d_nodes/shared/fit_plane.py)。
+- [高度参数](../../backend/contracts/workflows/measurement3d_parameters.py)、[基准延伸](../../custom_nodes/metrology3d_nodes/shared/measurement_reference.py)、[测量接线](../../custom_nodes/metrology3d_nodes/backend/measurement_handlers.py)。
+- [边界与线/圆参数](../../backend/contracts/workflows/boundary3d.py)、[边界拟合/角覆盖](../../custom_nodes/metrology3d_nodes/shared/boundary_fitting.py)、[尺寸参数](../../backend/contracts/workflows/dimension3d_parameters.py)。
+- [三维 Catalog](../../custom_nodes/metrology3d_nodes/workflow/catalog_builder.py)、[已有参数绑定执行](../../backend/service/application/workflows/execution/parameters.py)、[数值表合并](../../backend/nodes/core_nodes/logic/value/numeric_tables_merge.py)。
+- [变换与所有权](../../custom_nodes/metrology3d_nodes/shared/transform_cloud.py)、[边界保存恢复](../../custom_nodes/metrology3d_nodes/shared/boundary_assets.py)、[R4 真实发布测试](../../tests/integration/metrology3d/test_reference_extension_published.py)。
+- [本次基准坐标构建](../../custom_nodes/metrology3d_nodes/shared/build_frame.py)、[测量交点与持久证据](../../backend/contracts/workflows/measurement3d_evidence.py)、[等高截面解算](../../custom_nodes/metrology3d_nodes/shared/extract_boundary.py)、[线/圆运行入口](../../custom_nodes/metrology3d_nodes/shared/fit_boundary.py)。

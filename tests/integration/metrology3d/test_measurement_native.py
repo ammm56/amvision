@@ -1,8 +1,8 @@
 """原生 RANSAC 后仍检查完整局部候选，不误把选中一层当唯一表面。"""
 
-from custom_nodes._metrology3d_nodes.shared.height_query import height_query
-from custom_nodes._metrology3d_nodes.shared.geometry_preview import attach_geometry
-from custom_nodes._metrology3d_nodes.shared.preview import build_cloud_preview
+from custom_nodes.metrology3d_nodes.shared.height_query import height_query
+from custom_nodes.metrology3d_nodes.shared.geometry_preview import attach_geometry
+from custom_nodes.metrology3d_nodes.shared.preview import build_cloud_preview
 from tests.test_metrology3d_height_step import two_planes
 from tests.test_metrology3d_measurement_contracts import height_parameters
 from tests.test_metrology3d_plane import plane_parameters

@@ -2,13 +2,13 @@
 
 import pytest
 
-from custom_nodes._metrology3d_nodes.shared.fit_plane import fit_plane
-from custom_nodes._metrology3d_nodes.shared.geometry_preview import attach_geometry
-from custom_nodes._metrology3d_nodes.shared.measure_step import measure_step
-from custom_nodes._metrology3d_nodes.shared.measurement_preview import (
+from custom_nodes.metrology3d_nodes.shared.fit_plane import fit_plane
+from custom_nodes.metrology3d_nodes.shared.geometry_preview import attach_geometry
+from custom_nodes.metrology3d_nodes.shared.measure_step import measure_step
+from custom_nodes.metrology3d_nodes.shared.measurement_preview import (
     attach_measurements,
 )
-from custom_nodes._metrology3d_nodes.shared.preview import build_cloud_preview
+from custom_nodes.metrology3d_nodes.shared.preview import build_cloud_preview
 from tests.test_metrology3d_height_step import two_planes
 from tests.test_metrology3d_measurement_contracts import step_parameters
 from tests.test_metrology3d_plane import plane_parameters

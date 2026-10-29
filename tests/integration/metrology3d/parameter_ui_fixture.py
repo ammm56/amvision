@@ -6,7 +6,7 @@ from pathlib import Path
 from backend.service.api.rest.v1.routes.workflows.node_catalog_helpers import (
     _with_effective_parameter_ui_schema,
 )
-from custom_nodes._metrology3d_nodes.workflow.catalog_builder import (
+from custom_nodes.metrology3d_nodes.workflow.catalog_builder import (
     build_custom_node_catalog_document,
 )
 

@@ -8,7 +8,7 @@
 
 **M1 尚未完成。** 本批完成资源 v2、运行点云保存/恢复、流式资产包及交换文件编码的内部实现。六节点处理器与 Catalog、Trigger/SDK、资源管理 API 和三维界面尚未完成接入。不能在页面中使用内部 helper，不宣称完整 Workflow 已验收。
 
-生产 timeout、数组容量、资产包限额和预览容量仍未填写。没有新增 Broker、执行器、资产系统、等待队列或另一套发布管理。内部目录仍为 `_metrology3d_nodes`，沿现有 loader 的隐藏目录规则保持不可启用；没有用伪造默认值注册空节点。
+生产 timeout、数组容量、资产包限额和预览容量仍未填写。没有新增 Broker、执行器、资产系统、等待队列或另一套发布管理。内部目录仍为 `metrology3d_nodes`，沿现有 loader 的隐藏目录规则保持不可启用；没有用伪造默认值注册空节点。
 
 ## 实现边界
 
@@ -30,7 +30,7 @@
 
 - [点云资产契约](../../backend/contracts/workflows/point_cloud_assets.py)
 - [资源服务](../../backend/service/application/workflows/documents/measurement_resources.py)、[提交](../../backend/service/application/workflows/documents/cloud_resource_writes.py)、[blob 检查](../../backend/service/application/workflows/documents/cloud_resource_blobs.py)、[资产包](../../backend/service/application/workflows/documents/cloud_resource_archives.py)
-- [运行保存与恢复](../../custom_nodes/_metrology3d_nodes/shared/cloud_assets.py)、[交换文件 writer 适配](../../custom_nodes/_metrology3d_nodes/shared/io/export_file.py)
+- [运行保存与恢复](../../custom_nodes/metrology3d_nodes/shared/cloud_assets.py)、[交换文件 writer 适配](../../custom_nodes/metrology3d_nodes/shared/io/export_file.py)
 
 原始及派生资产保持全部字段；交换文件只包含显式选择的字段，未选字段列在摘要中。PCD 当前空间与原始 VIEWPOINT 所属空间不一致时明确拒绝，不粘贴错误元数据。PCD 交换输出将逻辑分量展开为标量字段，不宣称逐字节保留原 PCD 的 COUNT 表达；需要原格式原样传递时使用原件资产。
 

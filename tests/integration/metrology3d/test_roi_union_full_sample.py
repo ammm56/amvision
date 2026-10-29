@@ -8,9 +8,9 @@ import pytest
 from backend.contracts.workflows.point_cloud_runtime import FilterCloudValid
 from backend.service.application.runtime.resource_scope import ResourceScope
 from backend.service.application.workflows.point_cloud.runtime import get_cloud_runtime
-from custom_nodes._metrology3d_nodes.shared.crop_roi import crop_roi
-from custom_nodes._metrology3d_nodes.shared.filter_valid import filter_valid
-from custom_nodes._metrology3d_nodes.shared.io.read_file import read_file_reference
+from custom_nodes.metrology3d_nodes.shared.crop_roi import crop_roi
+from custom_nodes.metrology3d_nodes.shared.filter_valid import filter_valid
+from custom_nodes.metrology3d_nodes.shared.io.read_file import read_file_reference
 from tests.point_cloud_support import create_resource_service, options, policy
 from tests.test_metrology3d_crop import box, parameters
 from tests.test_metrology3d_roi_union import union

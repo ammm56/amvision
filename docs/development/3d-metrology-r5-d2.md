@@ -88,9 +88,9 @@ S1 使用三框并集明确选择下半圆实测弧，均沿原有连续段规�
 
 根因：原实现对全部三角面同时物化 uv、边向量、长度、面积、高度和掩码，Qhull 对象及这些中间数组一直活到边集合去重阶段；浮点64输入还有不必要的类型复制。容量拒绝仅提示缩小 ROI，未说明点数、阶段和预算。
 
-在原 [boundary_surface.py](../../custom_nodes/_metrology3d_nodes/shared/boundary_surface.py) 中保留一次完整全局 Delaunay，仅将原四项支持判定分成每块 4,096 面处理，提前释放 Qhull/局部数组，块间检查取消。4,096 是内部临时向量规模，不是点数上限、采样数或生产参数。全局剖分、面次序、几何条件、源点及拓扑没有换算法。
+在原 [boundary_surface.py](../../custom_nodes/metrology3d_nodes/shared/boundary_surface.py) 中保留一次完整全局 Delaunay，仅将原四项支持判定分成每块 4,096 面处理，提前释放 Qhull/局部数组，块间检查取消。4,096 是内部临时向量规模，不是点数上限、采样数或生产参数。全局剖分、面次序、几何条件、源点及拓扑没有换算法。
 
-原 [boundary_runtime.py](../../custom_nodes/_metrology3d_nodes/shared/boundary_runtime.py) 与 [extract_boundary.py](../../custom_nodes/_metrology3d_nodes/shared/extract_boundary.py) 的容量错误沿现有 InvalidRequestError 保留阶段、实际点数、估算字节和配置字节。仍在物化前拒绝，不转成几何无效，不新增错误服务或兼容路径。12544/12288/2048 的预算系数均不降低。
+原 [boundary_runtime.py](../../custom_nodes/metrology3d_nodes/shared/boundary_runtime.py) 与 [extract_boundary.py](../../custom_nodes/metrology3d_nodes/shared/extract_boundary.py) 的容量错误沿现有 InvalidRequestError 保留阶段、实际点数、估算字节和配置字节。仍在物化前拒绝，不转成几何无效，不新增错误服务或兼容路径。12544/12288/2048 的预算系数均不降低。
 
 隔离进程的同一 100,000 点 float32 平面对照，保留 199,295 面，新旧面/边输出 SHA-256 相同：`fa54e330707b063e18ed5e1b221feb3ccaca709d299b6f6c155a1a2b0395f7fd`。
 

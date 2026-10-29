@@ -391,11 +391,18 @@ class WorkflowAppVersionService:
     ):
         """有计量资源时持有管理锁直至发布落盘，防止校验与删除竞争。"""
         from contextlib import nullcontext
+        from backend.service.application.workflows.execution.inputs import (
+            validate_required_input_connections,
+        )
         from backend.service.application.workflows.documents.measurement_resources import (
             MeasurementResourceService,
             collect_measurement_references,
         )
 
+        validate_required_input_connections(
+            template=snapshot.template,
+            node_definitions=self.node_catalog_registry.get_workflow_node_definitions(),
+        )
         resources = MeasurementResourceService(self.dataset_storage,
             cloud_policy=self.point_cloud_policy.assets() if self.point_cloud_policy is not None else None)
         references = collect_measurement_references(snapshot.template)

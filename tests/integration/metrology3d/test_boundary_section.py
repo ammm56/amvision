@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from backend.service.application.errors import InvalidRequestError
-from custom_nodes._metrology3d_nodes.shared.boundary_section import intersect_surface
+from custom_nodes.metrology3d_nodes.shared.boundary_section import intersect_surface
 
 
 def section(points, faces=((0, 1, 2),), *, sign=1, scale=1, **changes):

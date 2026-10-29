@@ -354,8 +354,8 @@ def test_runtime_save_filter_restore_exact_fields_and_indices(service):
         get_cloud_runtime,
     )
     from backend.contracts.workflows.point_cloud_runtime import FilterCloudValid
-    from custom_nodes._metrology3d_nodes.shared.filter_valid import filter_valid
-    from custom_nodes._metrology3d_nodes.shared.cloud_assets import (
+    from custom_nodes.metrology3d_nodes.shared.filter_valid import filter_valid
+    from custom_nodes.metrology3d_nodes.shared.cloud_assets import (
         save_cloud,
         read_asset,
     )
@@ -443,11 +443,11 @@ def test_parent_delete_protection_and_original_recovery(service):
     from backend.contracts.workflows.point_cloud_runtime import FilterCloudValid
     from backend.service.application.errors import ResourceInUseError
     from tests.test_metrology3d_preprocess import make_cloud
-    from custom_nodes._metrology3d_nodes.shared.cloud_assets import (
+    from custom_nodes.metrology3d_nodes.shared.cloud_assets import (
         save_cloud,
         read_asset,
     )
-    from custom_nodes._metrology3d_nodes.shared.filter_valid import filter_valid
+    from custom_nodes.metrology3d_nodes.shared.filter_valid import filter_valid
 
     limits = CloudAssetPolicy(
         max_asset_bytes=8192, max_archive_bytes=16384, chunk_bytes=128

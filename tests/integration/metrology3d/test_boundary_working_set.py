@@ -7,10 +7,10 @@ import pytest
 from scipy.spatial import Delaunay
 
 from backend.service.application.errors import InvalidRequestError
-from custom_nodes._metrology3d_nodes.shared.boundary_runtime import (
+from custom_nodes.metrology3d_nodes.shared.boundary_runtime import (
     materialize_positions,
 )
-from custom_nodes._metrology3d_nodes.shared.boundary_surface import build_surface
+from custom_nodes.metrology3d_nodes.shared.boundary_surface import build_surface
 from tests.integration.metrology3d.test_boundary_surface_topology import surface
 from tests.point_cloud_support import policy
 from tests.test_metrology3d_preprocess import make_cloud

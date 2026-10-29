@@ -15,17 +15,17 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
     LocalDatasetStorage,
 )
-from custom_nodes._metrology3d_nodes.shared.boundary_fitting import (
+from custom_nodes.metrology3d_nodes.shared.boundary_fitting import (
     evaluate_fit_quality,
     fit_boundary_circle,
     fit_boundary_line,
 )
-from custom_nodes._metrology3d_nodes.shared.crop_roi import crop_roi
-from custom_nodes._metrology3d_nodes.shared.extract_boundary import (
+from custom_nodes.metrology3d_nodes.shared.crop_roi import crop_roi
+from custom_nodes.metrology3d_nodes.shared.extract_boundary import (
     extract_boundary_array,
 )
-from custom_nodes._metrology3d_nodes.shared.filter_valid import filter_valid
-from custom_nodes._metrology3d_nodes.shared.io.read_file import read_file_reference
+from custom_nodes.metrology3d_nodes.shared.filter_valid import filter_valid
+from custom_nodes.metrology3d_nodes.shared.io.read_file import read_file_reference
 from tests.integration.metrology3d.test_boundary_extraction import (
     extract_parameters,
     region as box_region,
@@ -265,17 +265,17 @@ def test_complete_sample_kernel_sources_precision_and_release(tmp_path, request)
         from backend.service.application.workflows.documents.measurement_resources import (
             MeasurementResourceService,
         )
-        from custom_nodes._metrology3d_nodes.shared.boundary_runtime import (
+        from custom_nodes.metrology3d_nodes.shared.boundary_runtime import (
             extract_boundary,
         )
-        from custom_nodes._metrology3d_nodes.shared.cloud_assets import (
+        from custom_nodes.metrology3d_nodes.shared.cloud_assets import (
             save_cloud,
             read_asset,
         )
-        from custom_nodes._metrology3d_nodes.shared.boundary_assets import (
+        from custom_nodes.metrology3d_nodes.shared.boundary_assets import (
             restore_boundary,
         )
-        from custom_nodes._metrology3d_nodes.shared.fit_boundary import fit_boundary
+        from custom_nodes.metrology3d_nodes.shared.fit_boundary import fit_boundary
         from tests.test_point_cloud_assets import POLICY
 
         service = MeasurementResourceService(storage)

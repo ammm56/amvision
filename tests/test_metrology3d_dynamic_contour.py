@@ -11,13 +11,13 @@ from backend.contracts.workflows.boundary3d_observations import BoundaryEvidence
 from backend.contracts.workflows.geometry3d_observations import Features3d
 from backend.contracts.workflows.measurement3d_evidence import MeasurementEvidence3d
 from backend.service.application.errors import InvalidRequestError
-from custom_nodes._metrology3d_nodes.shared.boundary_runtime import extract_boundary
-from custom_nodes._metrology3d_nodes.shared.fit_boundary import fit_boundary
-from custom_nodes._metrology3d_nodes.shared.fit_plane import fit_plane
-from custom_nodes._metrology3d_nodes.shared.measure_edge_pair import measure_edge_pair
-from custom_nodes._metrology3d_nodes.shared.measure_extents import measure_extents
-from custom_nodes._metrology3d_nodes.shared.measure_step import measure_step
-from custom_nodes._metrology3d_nodes.shared.measure_hole import measure_hole
+from custom_nodes.metrology3d_nodes.shared.boundary_runtime import extract_boundary
+from custom_nodes.metrology3d_nodes.shared.fit_boundary import fit_boundary
+from custom_nodes.metrology3d_nodes.shared.fit_plane import fit_plane
+from custom_nodes.metrology3d_nodes.shared.measure_edge_pair import measure_edge_pair
+from custom_nodes.metrology3d_nodes.shared.measure_extents import measure_extents
+from custom_nodes.metrology3d_nodes.shared.measure_step import measure_step
+from custom_nodes.metrology3d_nodes.shared.measure_hole import measure_hole
 from tests.integration.metrology3d.test_boundary_extraction import extract_parameters
 from tests.point_cloud_support import policy
 from tests.test_metrology3d_boundary_contracts import line_parameters, evaluation

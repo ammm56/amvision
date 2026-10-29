@@ -1,4 +1,4 @@
-"""全对象配方接线及正式发布回归，生产包仍隐藏。"""
+"""全对象配方接线及正式节点包发布回归。"""
 
 import json
 from pathlib import Path

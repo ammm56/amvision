@@ -8,12 +8,12 @@
 
 | 范围 | 当前实现 | 对 M3.3 的意义 |
 | --- | --- | --- |
-| 节点接线 | [entry.py](../../custom_nodes/_metrology3d_nodes/backend/entry.py)、[catalog_builder.py](../../custom_nodes/_metrology3d_nodes/workflow/catalog_builder.py) 共十八节点 | 三个尺寸节点已内部注册；节点包版本 0.1.9，无生产 manifest |
+| 节点接线 | [entry.py](../../custom_nodes/metrology3d_nodes/backend/entry.py)、[catalog_builder.py](../../custom_nodes/metrology3d_nodes/workflow/catalog_builder.py) 共十八节点 | 三个尺寸节点已内部注册；节点包版本 0.1.9，无生产 manifest |
 | 边界与拟合 | [boundary3d.py](../../backend/contracts/workflows/boundary3d.py)、[boundary3d_observations.py](../../backend/contracts/workflows/boundary3d_observations.py) 已有严格参数、段角色/开闭、有限直线区间、支持弧、质量和求解终态 | 消费已有特征，不重新提取边界、拟合直线或建设圆求解器 |
 | 所有权 | 原 [CloudRuntime](../../backend/service/application/workflows/point_cloud/runtime.py) 已接有序源点、生成顶点、来源数组及 Scope 释放 | 只借用完整支持；新工作数组沿原预算和取消机制，不新增资源服务 |
-| 保存恢复 | [cloud_assets.py](../../custom_nodes/_metrology3d_nodes/shared/cloud_assets.py) 与原资源服务保存点数据、拓扑、生成来源及可选边界证据；read-cloud 恢复 features | 保存边界后关闭旧运行，在新运行重读、拟合和测量；不把运行 ref 写进历史 |
+| 保存恢复 | [cloud_assets.py](../../custom_nodes/metrology3d_nodes/shared/cloud_assets.py) 与原资源服务保存点数据、拓扑、生成来源及可选边界证据；read-cloud 恢复 features | 保存边界后关闭旧运行，在新运行重读、拟合和测量；不把运行 ref 写进历史 |
 | 前端 | 可信参数编辑器、共享 CloudViewer、边界段选择及有限拟合显示已接入 | 扩展原编辑器入口和查看器，不新建三维工作站 |
-| 发布范围 | `custom_nodes/_metrology3d_nodes` 仍隐藏，无生产 manifest | 不猜 timeout、kill grace、容量或节拍；继续显式测试配置 |
+| 发布范围 | `custom_nodes/metrology3d_nodes` 仍隐藏，无生产 manifest | 不猜 timeout、kill grace、容量或节拍；继续显式测试配置 |
 
 M3.2 接线批次已有 Windows 定向组合 378 项、共享资源/Trigger 契约 22 项，WSL Ubuntu 219 项；完整样本每平台各一项；前端 21 个文件、126 项及类型检查、构建通过。详细范围见 M3.2 记录第 7 节。两平台测试集不完全相同，本轮只核对记录和源码，未重跑，不能相加后宣称新的验证结果。
 
@@ -208,7 +208,7 @@ M3.2 接线批次已有 Windows 定向组合 378 项、共享资源/Trigger 契�
 
 1. 后端严格证据、方法、Schema、内部 Catalog 的三个新节点、M3.1 两节点和 cloud-preview 端口；同时更新测试配方，不接受旧类型混接。
 2. 原 `measurement_result.py` 按真实共同字段复用；高度专有计算保留原边界。新增量值分支按节点拆分，不把所有算法堆成一个大函数。
-3. 原 [measurement_preview.py](../../custom_nodes/_metrology3d_nodes/shared/measurement_preview.py) 按新方法复核各类质量和支持，不再假设每项都恰有两个 plane 支持。
+3. 原 [measurement_preview.py](../../custom_nodes/metrology3d_nodes/shared/measurement_preview.py) 按新方法复核各类质量和支持，不再假设每项都恰有两个 plane 支持。
 4. 前端 `measurement-display.ts`、`MeasurementSummary.vue`、`geometry-overlay.ts`、CloudViewer 联动及可信编辑器注册，同批接受新版证据、明确未知版本错误。
 5. Preview/Runtime 结果捕获、结果导出及 App Mode 中实际透传/读取 evidence 的路径作组合回归；不因为某读取方只透传 JSON 就将其排除在验证之外。SDK 不新增点云协议，只验证真实结果中的数值/新证据。
 6. 点云显示正文的 measurements 使用 v1 和严格内容校验；不假定旧前端能读取新结构。前后端需同批更新，点数组布局不变。

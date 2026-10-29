@@ -6,7 +6,7 @@
 
 本批已接入同机数组 Trigger、.NET SDK、Preview 流式文件上传、Workflow 资源选择管理和共享 Three.js 查看器。没有重复创建 Broker、Workflow、节点执行器或发布版本系统。
 
-**生产包仍未启用；M1 生产验收尚未完成。** `_metrology3d_nodes` 继续隐藏，没有填写生产 timeout、容量或显示预算。本页保留传输与界面批次的证据边界；后续真实已发布 WorkflowAppRuntime、.NET 完整样本及异常退出验收已完成，见[真实发布运行验收](3d-metrology-m1-published.md)。
+**生产包仍未启用；M1 生产验收尚未完成。** `metrology3d_nodes` 继续隐藏，没有填写生产 timeout、容量或显示预算。本页保留传输与界面批次的证据边界；后续真实已发布 WorkflowAppRuntime、.NET 完整样本及异常退出验收已完成，见[真实发布运行验收](3d-metrology-m1-published.md)。
 
 ## 实现边界
 

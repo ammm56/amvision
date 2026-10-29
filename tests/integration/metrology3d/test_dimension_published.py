@@ -1,4 +1,4 @@
-"""尺寸节点经过真实发布、独立 Worker 与 Trigger；生产包仍不可发现。"""
+"""尺寸节点经过正式包发现、真实发布、独立 Worker 与 Trigger。"""
 
 from pathlib import Path
 
@@ -14,11 +14,14 @@ from tests.integration.metrology3d.test_dimension_nodes import (
 from tests.integration.metrology3d.test_published_runtime import assert_process_exited
 
 
-def test_internal_pack_is_not_a_production_candidate():
+def test_formal_pack_is_discovered():
     root = Path(__file__).resolve().parents[3] / "custom_nodes"
     loader = LocalNodePackLoader(root)
-    assert not (root / "_metrology3d_nodes/manifest.json").exists()
-    assert root / "_metrology3d_nodes" not in loader._discover_node_pack_directories()
+    loader.refresh()
+    assert (root / "metrology3d_nodes/manifest.json").is_file()
+    assert root / "metrology3d_nodes" in loader._discover_node_pack_directories()
+    definitions = loader.get_catalog_snapshot().node_definitions
+    assert len([d for d in definitions if d.node_pack_id == "metrology3d.nodes"]) == 18
 
 
 @pytest.mark.parametrize("kind", ["extents", "edge-pair", "hole"])

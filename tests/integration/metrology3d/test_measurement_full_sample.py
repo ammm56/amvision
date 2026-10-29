@@ -19,8 +19,8 @@ from backend.service.application.workflows.point_cloud.runtime import get_cloud_
 from backend.service.application.workflows.service_runtime.context import (
     WorkflowServiceNodeRuntimeContext,
 )
-from custom_nodes._metrology3d_nodes.shared.filter_valid import filter_valid
-from custom_nodes._metrology3d_nodes.shared.io.read_file import read_file_reference
+from custom_nodes.metrology3d_nodes.shared.filter_valid import filter_valid
+from custom_nodes.metrology3d_nodes.shared.io.read_file import read_file_reference
 from tests.integration.metrology3d.test_measurement_nodes import measurement_graph
 from tests.integration.metrology3d.test_nodes import build_chain, execution_policy
 from tests.point_cloud_support import create_resource_service, options, policy

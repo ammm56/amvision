@@ -18,7 +18,7 @@ from backend.service.application.workflows.point_cloud.runtime import get_cloud_
 from backend.service.application.workflows.service_runtime.context import (
     WorkflowServiceNodeRuntimeContext,
 )
-from custom_nodes._metrology3d_nodes.backend.entry import HANDLERS
+from custom_nodes.metrology3d_nodes.backend.entry import HANDLERS
 from tests.integration.metrology3d.test_nodes import build_chain, execution_policy
 from tests.integration.metrology3d.test_file_read import ply, publish
 from tests.point_cloud_support import create_resource_service, options
@@ -247,7 +247,7 @@ def test_roi_conflicting_missing_and_invalid_dependencies(tmp_path):
                     request, parameters=dict(source=dict(kind="input")), input_values={}
                 )
             )
-        from custom_nodes._metrology3d_nodes.shared.geometry_parameters import (
+        from custom_nodes.metrology3d_nodes.shared.geometry_parameters import (
             CropNodeParameters,
         )
 

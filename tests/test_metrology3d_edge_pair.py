@@ -10,7 +10,7 @@ from backend.contracts.workflows.boundary3d_observations import (
     LineInterval,
 )
 from backend.contracts.workflows.dimension3d_parameters import MeasureEdgePairParameters
-from custom_nodes._metrology3d_nodes.shared.measure_edge_pair import _intersection
+from custom_nodes.metrology3d_nodes.shared.measure_edge_pair import _intersection
 from tests.test_metrology3d_boundary_contracts import evaluation
 from tests.test_metrology3d_dimension_contracts import dimension_policy
 

@@ -12,9 +12,9 @@ from backend.service.application.workflows.point_cloud.execution_policy import (
     CloudPreviewPolicy,
 )
 from backend.service.application.errors import InvalidRequestError
-from custom_nodes._metrology3d_nodes.shared.preview import build_cloud_preview
-from custom_nodes._metrology3d_nodes.shared.filter_valid import filter_valid
-from custom_nodes._metrology3d_nodes.shared.normalize_units import normalize_units
+from custom_nodes.metrology3d_nodes.shared.preview import build_cloud_preview
+from custom_nodes.metrology3d_nodes.shared.filter_valid import filter_valid
+from custom_nodes.metrology3d_nodes.shared.normalize_units import normalize_units
 from tests.test_metrology3d_preprocess import make_cloud
 
 
@@ -176,7 +176,7 @@ def test_restored_subset_preserves_original_rows_and_count(tmp_path):
     from backend.service.application.workflows.point_cloud.runtime import (
         get_cloud_runtime,
     )
-    from custom_nodes._metrology3d_nodes.shared.cloud_assets import (
+    from custom_nodes.metrology3d_nodes.shared.cloud_assets import (
         save_cloud,
         read_asset,
     )
@@ -275,7 +275,7 @@ def test_restored_subset_preserves_original_rows_and_count(tmp_path):
 
 def test_display_allocation_failure_and_empty_body_limit(monkeypatch):
     """显示分配失败不能影响计算云；空正文也受已配置的字节预算约束。"""
-    from custom_nodes._metrology3d_nodes.shared import preview
+    from custom_nodes.metrology3d_nodes.shared import preview
 
     scope, runtime, cloud = make_cloud()
     try:

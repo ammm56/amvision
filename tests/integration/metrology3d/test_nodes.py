@@ -25,10 +25,10 @@ from backend.service.application.workflows.runtime_preview import (
     RuntimePreviewCapture,
     PREVIEW_CAPTURE_KEY,
 )
-from custom_nodes._metrology3d_nodes.workflow.catalog_builder import (
+from custom_nodes.metrology3d_nodes.workflow.catalog_builder import (
     build_custom_node_catalog_document,
 )
-from custom_nodes._metrology3d_nodes.backend.entry import HANDLERS
+from custom_nodes.metrology3d_nodes.backend.entry import HANDLERS
 from tests.point_cloud_support import create_resource_service, options, policy
 from tests.test_metrology3d_preview import preview_policy, decode
 from tests.integration.metrology3d.test_file_read import ply, publish

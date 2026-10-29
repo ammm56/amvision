@@ -4,11 +4,11 @@ import numpy as np
 
 from backend.contracts.workflows.boundary3d import ExtractBoundaryParameters
 from backend.contracts.workflows.geometry3d_observations import Features3d, Pose3d
-from custom_nodes._metrology3d_nodes.shared.boundary_runtime import extract_boundary
-from custom_nodes._metrology3d_nodes.shared.fit_boundary import fit_boundary
-from custom_nodes._metrology3d_nodes.shared.geometry_preview import attach_geometry
-from custom_nodes._metrology3d_nodes.shared.measure_extents import measure_extents
-from custom_nodes._metrology3d_nodes.shared.measure_hole import measure_hole
+from custom_nodes.metrology3d_nodes.shared.boundary_runtime import extract_boundary
+from custom_nodes.metrology3d_nodes.shared.fit_boundary import fit_boundary
+from custom_nodes.metrology3d_nodes.shared.geometry_preview import attach_geometry
+from custom_nodes.metrology3d_nodes.shared.measure_extents import measure_extents
+from custom_nodes.metrology3d_nodes.shared.measure_hole import measure_hole
 from tests.integration.metrology3d.test_boundary_extraction import extract_parameters
 from tests.test_metrology3d_boundary_contracts import line_parameters, circle_parameters
 from tests.test_metrology3d_dimension_contracts import extent_parameters

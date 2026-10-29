@@ -12,13 +12,13 @@ from backend.service.application.workflows.point_cloud.runtime import get_cloud_
 from backend.service.application.workflows.documents.cloud_resource_blobs import (
     CloudAssetPolicy,
 )
-from custom_nodes._metrology3d_nodes.shared.cloud_assets import save_cloud, read_asset
-from custom_nodes._metrology3d_nodes.shared.io.export_file import (
+from custom_nodes.metrology3d_nodes.shared.cloud_assets import save_cloud, read_asset
+from custom_nodes.metrology3d_nodes.shared.io.export_file import (
     CloudExportOptions,
     export_cloud_file,
 )
-from custom_nodes._metrology3d_nodes.shared.io.read_file import read_file_reference
-from custom_nodes._metrology3d_nodes.shared.io.formats import inspect_cloud_file
+from custom_nodes.metrology3d_nodes.shared.io.read_file import read_file_reference
+from custom_nodes.metrology3d_nodes.shared.io.formats import inspect_cloud_file
 from tests.point_cloud_support import options, policy, create_resource_service
 from tests.test_metrology3d_preprocess import make_cloud
 from tests.integration.metrology3d.test_file_read import publish, ply
@@ -27,7 +27,7 @@ from backend.contracts.workflows.point_cloud_runtime import (
     CloudLocalSource,
     FilterCloudValid,
 )
-from custom_nodes._metrology3d_nodes.shared.filter_valid import filter_valid
+from custom_nodes.metrology3d_nodes.shared.filter_valid import filter_valid
 from tests.test_point_cloud_runtime import own
 from tests.point_cloud_support import spatial
 

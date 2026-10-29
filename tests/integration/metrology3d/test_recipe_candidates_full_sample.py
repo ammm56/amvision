@@ -13,14 +13,14 @@ import pytest
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.runtime.resource_scope import ResourceScope
 from backend.service.application.workflows.point_cloud.runtime import get_cloud_runtime
-from custom_nodes._metrology3d_nodes.shared.boundary_runtime import (
+from custom_nodes.metrology3d_nodes.shared.boundary_runtime import (
     materialize_positions,
 )
-from custom_nodes._metrology3d_nodes.shared.crop_roi import crop_roi
-from custom_nodes._metrology3d_nodes.shared.fit_plane import _orthogonal_fit, fit_plane
-from custom_nodes._metrology3d_nodes.shared.geometry_preview import attach_geometry
-from custom_nodes._metrology3d_nodes.shared.io.read_file import read_file_reference
-from custom_nodes._metrology3d_nodes.shared.preview import build_cloud_preview
+from custom_nodes.metrology3d_nodes.shared.crop_roi import crop_roi
+from custom_nodes.metrology3d_nodes.shared.fit_plane import _orthogonal_fit, fit_plane
+from custom_nodes.metrology3d_nodes.shared.geometry_preview import attach_geometry
+from custom_nodes.metrology3d_nodes.shared.io.read_file import read_file_reference
+from custom_nodes.metrology3d_nodes.shared.preview import build_cloud_preview
 from tests.point_cloud_support import create_resource_service, options, policy
 from tests.test_metrology3d_crop import box, parameters
 from tests.test_metrology3d_plane import plane_parameters

@@ -16,13 +16,13 @@ from backend.contracts.workflows.dimension3d_parameters import (
 )
 from backend.service.application.runtime.resource_scope import ResourceScope
 from backend.service.application.workflows.point_cloud.runtime import get_cloud_runtime
-from custom_nodes._metrology3d_nodes.shared.boundary_assets import restore_boundary
-from custom_nodes._metrology3d_nodes.shared.cloud_assets import save_cloud, read_asset
-from custom_nodes._metrology3d_nodes.shared.boundary_runtime import extract_boundary
-from custom_nodes._metrology3d_nodes.shared.fit_boundary import fit_boundary
-from custom_nodes._metrology3d_nodes.shared.measure_extents import measure_extents
-from custom_nodes._metrology3d_nodes.shared.measure_edge_pair import measure_edge_pair
-from custom_nodes._metrology3d_nodes.shared.measure_hole import measure_hole
+from custom_nodes.metrology3d_nodes.shared.boundary_assets import restore_boundary
+from custom_nodes.metrology3d_nodes.shared.cloud_assets import save_cloud, read_asset
+from custom_nodes.metrology3d_nodes.shared.boundary_runtime import extract_boundary
+from custom_nodes.metrology3d_nodes.shared.fit_boundary import fit_boundary
+from custom_nodes.metrology3d_nodes.shared.measure_extents import measure_extents
+from custom_nodes.metrology3d_nodes.shared.measure_edge_pair import measure_edge_pair
+from custom_nodes.metrology3d_nodes.shared.measure_hole import measure_hole
 from tests.integration.metrology3d.test_dimension_nodes import dimension_documents
 from tests.point_cloud_support import create_resource_service, policy
 from tests.test_metrology3d_dimension_contracts import extent_parameters

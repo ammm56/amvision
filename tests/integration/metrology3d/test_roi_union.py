@@ -19,8 +19,8 @@ from backend.service.application.workflows.point_cloud.runtime import get_cloud_
 from backend.service.application.workflows.service_runtime.context import (
     WorkflowServiceNodeRuntimeContext,
 )
-from custom_nodes._metrology3d_nodes.shared.cloud_assets import read_asset, save_cloud
-from custom_nodes._metrology3d_nodes.shared.crop_roi import crop_roi
+from custom_nodes.metrology3d_nodes.shared.cloud_assets import read_asset, save_cloud
+from custom_nodes.metrology3d_nodes.shared.crop_roi import crop_roi
 from tests.integration.metrology3d.test_file_read import ply, publish
 from tests.integration.metrology3d.test_geometry_nodes import box, geometry_graph
 from tests.integration.metrology3d.test_nodes import build_chain, execution_policy

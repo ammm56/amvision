@@ -4,8 +4,8 @@ import numpy as np
 import pytest
 
 from backend.service.application.errors import InvalidRequestError
-from custom_nodes._metrology3d_nodes.shared.boundary_surface import build_surface
-from custom_nodes._metrology3d_nodes.shared.boundary_topology import order_segments
+from custom_nodes.metrology3d_nodes.shared.boundary_surface import build_surface
+from custom_nodes.metrology3d_nodes.shared.boundary_topology import order_segments
 
 
 def surface(points, **changes):

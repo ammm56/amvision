@@ -21,8 +21,8 @@ from backend.service.application.workflows.graph_executor import WorkflowGraphEx
 from backend.service.application.workflows.service_runtime.context import (
     WorkflowServiceNodeRuntimeContext,
 )
-from custom_nodes._metrology3d_nodes.shared.filter_valid import filter_valid
-from custom_nodes._metrology3d_nodes.shared.io.read_file import read_file_reference
+from custom_nodes.metrology3d_nodes.shared.filter_valid import filter_valid
+from custom_nodes.metrology3d_nodes.shared.io.read_file import read_file_reference
 from tests.integration.metrology3d.test_geometry_nodes import geometry_graph
 from tests.integration.metrology3d.test_nodes import build_chain, execution_policy
 from tests.test_metrology3d_preview import preview_policy, decode

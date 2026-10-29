@@ -7,10 +7,10 @@ from pydantic import ValidationError
 from backend.contracts.workflows.geometry3d import CropCloudParameters
 from backend.contracts.workflows.measurement3d_evidence import MeasurementEvidence3d
 from backend.service.application.errors import InvalidRequestError
-from custom_nodes._metrology3d_nodes.shared.crop_roi import crop_roi
-from custom_nodes._metrology3d_nodes.shared.fit_plane import fit_plane
-from custom_nodes._metrology3d_nodes.shared.height_query import height_query
-from custom_nodes._metrology3d_nodes.shared.measure_step import measure_step
+from custom_nodes.metrology3d_nodes.shared.crop_roi import crop_roi
+from custom_nodes.metrology3d_nodes.shared.fit_plane import fit_plane
+from custom_nodes.metrology3d_nodes.shared.height_query import height_query
+from custom_nodes.metrology3d_nodes.shared.measure_step import measure_step
 from tests.point_cloud_support import policy
 from tests.test_metrology3d_measurement_contracts import (
     height_parameters,
@@ -209,7 +209,7 @@ def test_parallel_and_empty_support_are_explicitly_invalid():
 
 def test_native_failure_and_work_budget_are_not_silently_downgraded(monkeypatch):
     """原生异常和容量不足作为执行错误传播，并归还全部借用。"""
-    import custom_nodes._metrology3d_nodes.shared.measurement_support as support
+    import custom_nodes.metrology3d_nodes.shared.measurement_support as support
 
     scope, runtime, _, _, _, groups = two_planes()
     try:

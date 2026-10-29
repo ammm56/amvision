@@ -5,10 +5,10 @@ import pytest
 
 from backend.contracts.workflows.geometry3d import CropCloudParameters
 from backend.service.application.errors import InvalidRequestError
-from custom_nodes._metrology3d_nodes.shared.build_frame import build_frame
-from custom_nodes._metrology3d_nodes.shared.crop_roi import crop_roi
-from custom_nodes._metrology3d_nodes.shared.fit_plane import fit_plane
-from custom_nodes._metrology3d_nodes.shared.transform_cloud import transform_cloud
+from custom_nodes.metrology3d_nodes.shared.build_frame import build_frame
+from custom_nodes.metrology3d_nodes.shared.crop_roi import crop_roi
+from custom_nodes.metrology3d_nodes.shared.fit_plane import fit_plane
+from custom_nodes.metrology3d_nodes.shared.transform_cloud import transform_cloud
 from tests.test_metrology3d_frame import frame_parameters
 from tests.test_metrology3d_plane import plane_parameters
 from tests.test_metrology3d_preprocess import make_cloud

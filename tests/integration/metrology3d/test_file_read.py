@@ -14,7 +14,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
     LocalDatasetStorage,
 )
-from custom_nodes._metrology3d_nodes.shared.io.read_file import read_cloud_file
+from custom_nodes.metrology3d_nodes.shared.io.read_file import read_cloud_file
 from tests.point_cloud_support import options, policy
 
 

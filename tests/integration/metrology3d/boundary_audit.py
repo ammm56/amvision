@@ -5,9 +5,9 @@ from collections import Counter
 import numpy as np
 from scipy.spatial import Delaunay
 
-from custom_nodes._metrology3d_nodes.shared.boundary_section import intersect_surface
-from custom_nodes._metrology3d_nodes.shared.boundary_surface import build_surface
-from custom_nodes._metrology3d_nodes.shared.boundary_topology import order_segments
+from custom_nodes.metrology3d_nodes.shared.boundary_section import intersect_surface
+from custom_nodes.metrology3d_nodes.shared.boundary_surface import build_surface
+from custom_nodes.metrology3d_nodes.shared.boundary_topology import order_segments
 
 
 def audit_surface(points, source_rows, evaluation, surface, *, budget, tolerance):

@@ -6,7 +6,7 @@
 
 **本记录对应六节点内部接线、独立显示正文、资源管理 API 和固定资产发布批次。** 当时 Trigger/SDK、Preview 大文件上传、三维查看器和资源管理页面尚未接通；后续实现与验证见[传输与界面](3d-metrology-m1-transports.md)。下文的剩余步骤保留为该批历史记录，当前状态以最新记录为准。不能把本批实际执行器测试当作页面或外部调用协议已验收。
 
-生产目录仍为 `_metrology3d_nodes`，现有 loader 不发现此隐藏目录。内部 Catalog 使用真实处理器和参数模型，但没有填入猜测的 timeout 或生成生产 manifest。`workflow_runtime.point_cloud` 未配置时为 null，节点运行、点云包传输和固定资产发布校验明确拒绝；没有设置生产容量默认值。
+生产目录仍为 `metrology3d_nodes`，现有 loader 不发现此隐藏目录。内部 Catalog 使用真实处理器和参数模型，但没有填入猜测的 timeout 或生成生产 manifest。`workflow_runtime.point_cloud` 未配置时为 null，节点运行、点云包传输和固定资产发布校验明确拒绝；没有设置生产容量默认值。
 
 ## 实现与审计
 

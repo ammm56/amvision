@@ -5,7 +5,7 @@ import pytest
 
 from backend.contracts.workflows.measurement3d_evidence import MeasurementEvidence3d
 from backend.service.application.errors import InvalidRequestError
-from custom_nodes._metrology3d_nodes.shared.measure_extents import measure_extents
+from custom_nodes.metrology3d_nodes.shared.measure_extents import measure_extents
 from tests.point_cloud_support import policy
 from tests.test_metrology3d_dimension_contracts import extent_parameters
 from tests.test_metrology3d_preprocess import make_cloud

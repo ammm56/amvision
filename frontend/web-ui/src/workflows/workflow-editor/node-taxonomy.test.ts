@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   compareNodeCategories,
+  humanizeNodeCategoryToken,
   readNodeCategoryLabel,
   readNodeCategoryParts,
   readNodeVisualCategory,
@@ -21,6 +22,8 @@ describe('workflow node taxonomy', () => {
     })
     expect(readNodeCategoryLabel('opencv.matching.registration')).toBe('Matching / Registration')
     expect(readNodeCategoryLabel('core.vision.roi')).toBe('Vision / ROI')
+    expect(humanizeNodeCategoryToken('metrology3d')).toBe('3D Metrology')
+    expect(readNodeCategoryLabel('metrology3d.measurement')).toBe('3D Metrology / Measurement')
   })
 
   it('uses the confirmed OpenCV category order', () => {

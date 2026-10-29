@@ -6,10 +6,10 @@ from pydantic import ValidationError
 
 from backend.contracts.workflows.measurement3d_evidence import MeasurementEvidence3d
 from backend.contracts.workflows.measurement3d_parameters import HeightQueryParameters
-from custom_nodes._metrology3d_nodes.shared.crop_roi import crop_roi
-from custom_nodes._metrology3d_nodes.shared.fit_plane import fit_plane
-from custom_nodes._metrology3d_nodes.shared.height_query import height_query
-from custom_nodes._metrology3d_nodes.shared.measure_step import measure_step
+from custom_nodes.metrology3d_nodes.shared.crop_roi import crop_roi
+from custom_nodes.metrology3d_nodes.shared.fit_plane import fit_plane
+from custom_nodes.metrology3d_nodes.shared.height_query import height_query
+from custom_nodes.metrology3d_nodes.shared.measure_step import measure_step
 from tests.test_metrology3d_height_step import roi, two_planes
 from tests.test_metrology3d_measurement_contracts import (
     height_parameters,
@@ -240,7 +240,7 @@ def test_nearest_support_is_not_shifted_by_uneven_sampling_and_cancel_releases_b
     monkeypatch,
 ):
     """远处重复采样不能改变最近距离；取消不能遗留持有者。"""
-    from custom_nodes._metrology3d_nodes.shared import measurement_reference
+    from custom_nodes.metrology3d_nodes.shared import measurement_reference
 
     scope, runtime, _, groups = offset_planes(nonuniform=True)
     p = step_parameters(support_radius=0.25, reference_policy=extension(2))

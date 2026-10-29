@@ -1,48 +1,22 @@
-"""仅测试进程内注册 M1 六节点；不生成或启用生产 manifest。"""
+"""点云传输验收助手；真实 Catalog/注册，仅对传输样本附加完整性断言。"""
 
-from dataclasses import replace
 from hashlib import sha256
+from pathlib import Path
+from unittest.mock import patch
 import os
 
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
-from backend.contracts.nodes.node_pack_manifest import NodePackManifest
 from backend.service.application.workflows.runtime_registry_loader import (
     WorkflowNodeRuntimeRegistryLoader,
 )
-from custom_nodes._metrology3d_nodes.workflow.catalog_builder import (
-    build_custom_node_catalog_document,
-)
-from custom_nodes._metrology3d_nodes.backend.entry import HANDLERS
+from custom_nodes.metrology3d_nodes.backend.entry import HANDLERS
 
-
-class CloudTestCatalog(NodeCatalogRegistry):
-    """测试值只存在于此夹具；生产 timeout 仍待确认。"""
-
-    def _build_catalog_snapshot(self):
-        base = super()._build_catalog_snapshot()
-        cloud = build_custom_node_catalog_document()
-        manifest = NodePackManifest.model_validate(
-            dict(
-                id="metrology3d.nodes",
-                version="0.1.9",
-                displayName="3D test",
-                category="vision",
-                capabilities=("workflow-nodes",),
-                compatibility=dict(api=">=0.1 <1.0", runtime=">=3.12"),
-                timeout=dict(defaultSeconds=180, maxSeconds=180, killGraceSeconds=2),
-            )
-        )
-        return replace(
-            base,
-            payload_contracts=(*base.payload_contracts, *cloud.payload_contracts),
-            node_definitions=(*base.node_definitions, *cloud.node_definitions),
-            node_pack_manifests=(*base.node_pack_manifests, manifest),
-        )
+_PREVIEW = HANDLERS["cloud-preview"]
 
 
 def checked_preview(request):
     """同一真实 handler 执行前全量核验，测试输出数组留给另一路入口复验。"""
-    from custom_nodes._metrology3d_nodes.shared.node_runtime import (
+    from custom_nodes.metrology3d_nodes.shared.node_runtime import (
         require_node_runtime,
         cloud_input,
     )
@@ -70,29 +44,15 @@ def checked_preview(request):
                             assert stream.write(data) == len(data)
                     block = None
         assert digest.hexdigest() == expected
-    return HANDLERS["cloud-preview"](request)
-
-
-class CloudTestRegistryLoader(WorkflowNodeRuntimeRegistryLoader):
-    """复用正式 registry，增加内部 Catalog 的真实 handler。"""
-
-    def refresh(self):
-        super().refresh()
-        for definition in build_custom_node_catalog_document().node_definitions:
-            key = definition.node_type_id.rsplit(".", 1)[1]
-            self._runtime_registry.register_python_callable(
-                definition, checked_preview if key == "cloud-preview" else HANDLERS[key]
-            )
+    return _PREVIEW(request)
 
 
 def cloud_preview_worker(**kwargs):
-    """测试 bootstrap，只替换注册来源，不替换文件、执行或退出路径。"""
-    from backend.service.application.workflows.worker import process
+    """正常发现与加载，只附加样本数组摘要断言，不绕过准入。"""
     from backend.service.application.workflows.preview.worker import run_preview_worker
 
-    process.NodeCatalogRegistry = CloudTestCatalog
-    process.WorkflowNodeRuntimeRegistryLoader = CloudTestRegistryLoader
-    run_preview_worker(**kwargs)
+    with patch.dict(HANDLERS, {"cloud-preview": checked_preview}):
+        run_preview_worker(**kwargs)
 
 
 def cloud_documents(file_options=None):
@@ -234,12 +194,17 @@ def cloud_snapshot_child(
         ),
     )
     try:
-        catalog = CloudTestCatalog()
-        loader = CloudTestRegistryLoader(
-            node_catalog_registry=catalog,
-            node_pack_loader=LocalNodePackLoader(storage_root / "empty-packs"),
+        packs = LocalNodePackLoader(
+            Path(__file__).resolve().parents[1] / "custom_nodes"
         )
-        loader.refresh()
+        packs.refresh()
+        catalog = NodeCatalogRegistry(node_pack_loader=packs)
+        loader = WorkflowNodeRuntimeRegistryLoader(
+            node_catalog_registry=catalog,
+            node_pack_loader=packs,
+        )
+        with patch.dict(HANDLERS, {"cloud-preview": checked_preview}):
+            loader.refresh()
         template, application = cloud_documents()
         # 协议回复由父 supervisor 完成；此子进程只验证正式 Snapshot 输入及图执行。
         metadata = {

@@ -1,10 +1,10 @@
 import {afterEach,expect,it,vi} from 'vitest'
 import {flushPromises,mount} from '@vue/test-utils'
 import {createI18n} from 'vue-i18n'
-import BoundarySettingsEditor from '../../../custom_nodes/_metrology3d_nodes/frontend/BoundarySettingsEditor.vue'
-import EvaluationEditor from '../../../custom_nodes/_metrology3d_nodes/frontend/EvaluationEditor.vue'
-import {boundaryIssues,boundaryRecipeValidator,newBoundaryMethod,newBoundarySettings,newContourHeight} from '../../../custom_nodes/_metrology3d_nodes/frontend/boundary-form'
-import {evaluationIssues,newEvaluation,axisDirection,planePosition} from '../../../custom_nodes/_metrology3d_nodes/frontend/evaluation-form'
+import BoundarySettingsEditor from '../../../custom_nodes/metrology3d_nodes/frontend/BoundarySettingsEditor.vue'
+import EvaluationEditor from '../../../custom_nodes/metrology3d_nodes/frontend/EvaluationEditor.vue'
+import {boundaryIssues,boundaryRecipeValidator,newBoundaryMethod,newBoundarySettings,newContourHeight} from '../../../custom_nodes/metrology3d_nodes/frontend/boundary-form'
+import {evaluationIssues,newEvaluation,axisDirection,planePosition} from '../../../custom_nodes/metrology3d_nodes/frontend/evaluation-form'
 import type {RecipeValidator} from '@/workflows/workflow-editor/parameters/recipe-validation'
 vi.mock('@/workflows/workflow-editor/point-cloud/CloudViewer.vue',()=>({default:{template:'<div />'}}))
 afterEach(()=>{document.body.innerHTML=''})

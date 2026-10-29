@@ -12,9 +12,9 @@ from backend.contracts.workflows.point_cloud_runtime import (
     NormalizeCloudUnits,
 )
 from backend.service.application.errors import InvalidRequestError
-from custom_nodes._metrology3d_nodes.shared.crop_roi import crop_roi
-from custom_nodes._metrology3d_nodes.shared.filter_valid import filter_valid
-from custom_nodes._metrology3d_nodes.shared.normalize_units import normalize_units
+from custom_nodes.metrology3d_nodes.shared.crop_roi import crop_roi
+from custom_nodes.metrology3d_nodes.shared.filter_valid import filter_valid
+from custom_nodes.metrology3d_nodes.shared.normalize_units import normalize_units
 from tests.test_metrology3d_preprocess import make_cloud
 
 
@@ -25,12 +25,12 @@ def box(**geometry):
         roi_id="roi",
         frame_id="fixture",
         length_unit="mm",
-        geometry=dict(
-            center=[0, 0, 0],
-            size=[2, 4, 6],
-            rotation=[[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+        geometry={
+            "center": [0, 0, 0],
+            "size": [2, 4, 6],
+            "rotation": [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
             **geometry,
-        ),
+        },
     )
 
 
@@ -211,3 +211,70 @@ def test_unavailable_consumers_do_not_borrow_or_allocate():
             cancel=lambda: None,
         )
     assert not scope.close()
+
+
+def test_single_source_pass_and_transient_mask_accounting(monkeypatch):
+    """一次读点，索引仍为原始顺序；掩码与最终索引同时存活时均已计费。"""
+    from backend.service.application.workflows.point_cloud.runtime import CloudView
+    from tests.point_cloud_support import policy
+
+    points = np.arange(51, dtype=np.float64).reshape(17, 3)
+    scope, runtime, source = make_cloud(
+        unit="mm", coordinates=points, runtime_policy=policy(chunk_rows=4)
+    )
+    original = CloudView.chunk
+    reads, charges = [], []
+    before = runtime.budget.used
+
+    def chunk(view, start, stop):
+        if view.reference.cloud_id == source.cloud_id:
+            reads.append((start, stop))
+            charges.append(runtime.budget.used - before)
+        return original(view, start, stop)
+
+    monkeypatch.setattr(CloudView, "chunk", chunk)
+    try:
+        cropped, _ = crop_roi(
+            runtime,
+            source,
+            parameters(
+                box(
+                    center=[15, 15, 15],
+                    size=[20, 20, 20],
+                )
+            ),
+            cancel=lambda: None,
+        )
+        assert reads == [(0, 4), (4, 8), (8, 12), (12, 16), (16, 17)]
+        assert charges == [17] * 5
+        expected = np.flatnonzero((np.abs(points - 15) <= 10).all(axis=1))
+        assert runtime.budget.used - before == len(expected) * 4
+        with runtime.borrow(cropped) as view:
+            actual = np.concatenate(
+                [
+                    view.source_indices(i, min(i + 4, len(expected)))
+                    for i in range(0, len(expected), 4)
+                ]
+            )
+        np.testing.assert_array_equal(actual, expected)
+    finally:
+        assert not scope.close() and runtime.budget.used == 0
+
+
+@pytest.mark.parametrize("center", [0.1, 1e9, -1e9])
+def test_axis_aligned_fast_path_has_identical_closed_boundary(center):
+    """比较减中心后的原定义，覆盖端点两侧一个 ULP，不能改成 center +/- size 比较。"""
+    from custom_nodes.metrology3d_nodes.shared.roi_mask import RoiMaskPlan
+
+    values = np.array([center - 1, center + 1, center])
+    points = np.concatenate(
+        [
+            np.tile(values[:, None], (1, 3)),
+            np.tile(np.nextafter(values, -np.inf)[:, None], (1, 3)),
+            np.tile(np.nextafter(values, np.inf)[:, None], (1, 3)),
+        ]
+    )
+    config = parameters(box(center=[center] * 3, size=[2] * 3))
+    plan = RoiMaskPlan(config, max_working_bytes=65536, cancel=lambda: None)
+    expected = (np.abs((points - center) @ np.eye(3)) <= 1).all(axis=1)
+    np.testing.assert_array_equal(plan.mask(points, cancel=lambda: None), expected)

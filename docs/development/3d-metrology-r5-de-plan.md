@@ -95,7 +95,7 @@ Windows 从 amvision 环境显式创建临时测试环境；Ubuntu 先核对可�
 
 ### 5.1 先解释预算，再决定改什么
 
-沿已有 [fit_plane.py](../../custom_nodes/_metrology3d_nodes/shared/fit_plane.py)、[boundary_runtime.py](../../custom_nodes/_metrology3d_nodes/shared/boundary_runtime.py)、[boundary_surface.py](../../custom_nodes/_metrology3d_nodes/shared/boundary_surface.py)、[extract_boundary.py](../../custom_nodes/_metrology3d_nodes/shared/extract_boundary.py)、[boundary_topology.py](../../custom_nodes/_metrology3d_nodes/shared/boundary_topology.py) 逐项核查生命周期。
+沿已有 [fit_plane.py](../../custom_nodes/metrology3d_nodes/shared/fit_plane.py)、[boundary_runtime.py](../../custom_nodes/metrology3d_nodes/shared/boundary_runtime.py)、[boundary_surface.py](../../custom_nodes/metrology3d_nodes/shared/boundary_surface.py)、[extract_boundary.py](../../custom_nodes/metrology3d_nodes/shared/extract_boundary.py)、[boundary_topology.py](../../custom_nodes/metrology3d_nodes/shared/boundary_topology.py) 逐项核查生命周期。
 
 列明同时存活的输入物化、float64 局部数组、源行、Delaunay/Qhull 数据、三角面、交点、连接关系、Python 容器、输出和显示副本。区分保留数组计费、工作预算和整个进程 RSS；不能把 `12544*N` 或 RANSAC 公式当成实测内存。
 
@@ -231,10 +231,10 @@ D2 已按本工件授权设置显式 4 GiB 工作预算并完成代表支持验�
 
 代码核对依据：
 
-- [extract_boundary.py](../../custom_nodes/_metrology3d_nodes/shared/extract_boundary.py) 对每个 target 先做有限 ROI 连续段截取，再比较 `part.closed == target.closed`；没有匹配返回 `target_not_found`，多于一段返回 `target_ambiguous`。
-- [measure_extents.py](../../custom_nodes/_metrology3d_nodes/shared/measure_extents.py) 在指定边界支持上计算投影极值，保留四个极值点及原始行/生成来源，不要求边界闭合；它表达有限可见支持的包络，不保证被遮挡实体的完整尺寸。
-- [select_boundary](../../custom_nodes/_metrology3d_nodes/shared/boundary_runtime.py) 已能选择多个有名段，保留各段拓扑与来源，不把分离段连接成一条线，不需要新增组合资源或节点。
-- [measure_edge_pair.py](../../custom_nodes/_metrology3d_nodes/shared/measure_edge_pair.py) 消费已有有限 LineFeature，交点落在缺口或支持外时返回无效。边对定向距离不等于整体投影跨度。
+- [extract_boundary.py](../../custom_nodes/metrology3d_nodes/shared/extract_boundary.py) 对每个 target 先做有限 ROI 连续段截取，再比较 `part.closed == target.closed`；没有匹配返回 `target_not_found`，多于一段返回 `target_ambiguous`。
+- [measure_extents.py](../../custom_nodes/metrology3d_nodes/shared/measure_extents.py) 在指定边界支持上计算投影极值，保留四个极值点及原始行/生成来源，不要求边界闭合；它表达有限可见支持的包络，不保证被遮挡实体的完整尺寸。
+- [select_boundary](../../custom_nodes/metrology3d_nodes/shared/boundary_runtime.py) 已能选择多个有名段，保留各段拓扑与来源，不把分离段连接成一条线，不需要新增组合资源或节点。
+- [measure_edge_pair.py](../../custom_nodes/metrology3d_nodes/shared/measure_edge_pair.py) 消费已有有限 LineFeature，交点落在缺口或支持外时返回无效。边对定向距离不等于整体投影跨度。
 
 因此，D2 的直接失败是“代表配方要求闭合目标，但当前搜索结果只有开段”。这还没有证明缺口全部来自原始采集缺测：搜索区裁切、表面支持判定、求交和拓扑都需要逐层核对。不得直接把 `closed` 改成 false 后取一段作为工件 L/W，也不能因没有闭环就认定所有长宽定义均不可测。
 

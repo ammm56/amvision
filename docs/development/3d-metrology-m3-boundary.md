@@ -40,11 +40,11 @@
 
 计算责任分为五个已有包内模块，不新增服务或资源管理器：
 
-1. [boundary_surface.py](../../custom_nodes/_metrology3d_nodes/shared/boundary_surface.py)：SciPy Delaunay；拒绝重复投影、多层同 XY、退化和遗漏顶点；按显式半径、边长、法向跳变和面积条件保留支持面。
-2. [boundary_section.py](../../custom_nodes/_metrology3d_nodes/shared/boundary_section.py)：受控 trimesh `mesh_plane` 的局部尺度适配；正反法向分别求交后按源身份合并。保留全部关联源面，而不是只记录去重前的第一个面。
-3. [boundary_topology.py](../../custom_nodes/_metrology3d_nodes/shared/boundary_topology.py)：按实际边邻接组织开链/闭环，拒绝分叉、重复边、自环和零长边；不作最近邻补线。大量独立段使用一次排序，避免重复扫描剩余顶点。
-4. [extract_boundary.py](../../custom_nodes/_metrology3d_nodes/shared/extract_boundary.py)：组合三种方法，复用 `roi_mask`；执行目标唯一匹配，返回失败的稳定 segment_id；生成点记录源边权重及逐顶点完整源面关联。
-5. [boundary_fitting.py](../../custom_nodes/_metrology3d_nodes/shared/boundary_fitting.py)：中心化 TLS、几何圆最小二乘、逐段有限区间/弧段、真实缺口与质量指标。
+1. [boundary_surface.py](../../custom_nodes/metrology3d_nodes/shared/boundary_surface.py)：SciPy Delaunay；拒绝重复投影、多层同 XY、退化和遗漏顶点；按显式半径、边长、法向跳变和面积条件保留支持面。
+2. [boundary_section.py](../../custom_nodes/metrology3d_nodes/shared/boundary_section.py)：受控 trimesh `mesh_plane` 的局部尺度适配；正反法向分别求交后按源身份合并。保留全部关联源面，而不是只记录去重前的第一个面。
+3. [boundary_topology.py](../../custom_nodes/metrology3d_nodes/shared/boundary_topology.py)：按实际边邻接组织开链/闭环，拒绝分叉、重复边、自环和零长边；不作最近邻补线。大量独立段使用一次排序，避免重复扫描剩余顶点。
+4. [extract_boundary.py](../../custom_nodes/metrology3d_nodes/shared/extract_boundary.py)：组合三种方法，复用 `roi_mask`；执行目标唯一匹配，返回失败的稳定 segment_id；生成点记录源边权重及逐顶点完整源面关联。
+5. [boundary_fitting.py](../../custom_nodes/metrology3d_nodes/shared/boundary_fitting.py)：中心化 TLS、几何圆最小二乘、逐段有限区间/弧段、真实缺口与质量指标。
 
 源面关联采用 offsets + faces 的变长数组，源面保存三个父逻辑顶点；共面共享边的两侧来源都保留。前批此结构仅为内核工作结果；本批已将其映射到最初输入行号并接通 CloudRuntime 所有权及资产，见第 5 节。
 

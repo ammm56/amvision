@@ -9,13 +9,13 @@ from backend.service.application.workflows.point_cloud.runtime import get_cloud_
 from backend.service.application.workflows.documents.cloud_resource_blobs import (
     CloudAssetPolicy,
 )
-from custom_nodes._metrology3d_nodes.shared.cloud_assets import save_cloud, read_asset
-from custom_nodes._metrology3d_nodes.shared.io.export_file import (
+from custom_nodes.metrology3d_nodes.shared.cloud_assets import save_cloud, read_asset
+from custom_nodes.metrology3d_nodes.shared.io.export_file import (
     CloudExportOptions,
     export_cloud_file,
 )
-from custom_nodes._metrology3d_nodes.shared.io.formats import inspect_cloud_file
-from custom_nodes._metrology3d_nodes.shared.transform_cloud import transform_cloud
+from custom_nodes.metrology3d_nodes.shared.io.formats import inspect_cloud_file
+from custom_nodes.metrology3d_nodes.shared.transform_cloud import transform_cloud
 from tests.point_cloud_support import create_resource_service, policy
 from tests.test_metrology3d_transform import transform_source, cloud_pose
 

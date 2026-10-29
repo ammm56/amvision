@@ -6,10 +6,10 @@ import pytest
 
 from backend.service.application.runtime.resource_scope import ResourceScope
 from backend.service.application.workflows.point_cloud.runtime import get_cloud_runtime
-from custom_nodes._metrology3d_nodes.shared.boundary_assets import restore_boundary
-from custom_nodes._metrology3d_nodes.shared.cloud_assets import save_cloud, read_asset
-from custom_nodes._metrology3d_nodes.shared.fit_boundary import fit_boundary
-from custom_nodes._metrology3d_nodes.shared.measure_extents import measure_extents
+from custom_nodes.metrology3d_nodes.shared.boundary_assets import restore_boundary
+from custom_nodes.metrology3d_nodes.shared.cloud_assets import save_cloud, read_asset
+from custom_nodes.metrology3d_nodes.shared.fit_boundary import fit_boundary
+from custom_nodes.metrology3d_nodes.shared.measure_extents import measure_extents
 from tests.point_cloud_support import create_resource_service
 from tests.test_point_cloud_assets import POLICY
 from tests.test_metrology3d_dynamic_contour import fixture, extract, inherited

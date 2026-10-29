@@ -2,12 +2,8 @@
 
 from contextlib import contextmanager
 from pathlib import Path
-import shutil
 
 from fastapi.testclient import TestClient
-from custom_nodes._metrology3d_nodes import PACK_VERSION
-
-from backend.contracts.nodes.node_pack_manifest import NodePackManifest
 from backend.service.api.app import create_app
 from backend.service.application.local_memory import LocalMemorySettings
 from backend.service.settings import (
@@ -19,50 +15,10 @@ from backend.service.settings import (
     BackendServiceInferenceDaemonConfig,
     BackendServiceWorkflowRuntimeConfig,
 )
-from custom_nodes._metrology3d_nodes.workflow.catalog_builder import (
-    build_custom_node_catalog_document,
-)
 from tests.api_test_support import create_test_runtime, build_test_headers
 from tests.metrology3d_transport_support import cloud_documents
 from tests.integration.metrology3d.test_transport_full_sample import full_policy
 from tests.integration.metrology3d.published_client import wait_for, broker_settings
-
-
-def install_test_pack(root: Path):
-    """正常生成测试 manifest/Catalog；复制正式源码，不注入测试 handler。"""
-    source = Path(__file__).resolve().parents[3] / "custom_nodes/_metrology3d_nodes"
-    target = root / "metrology3d_nodes"
-    shutil.copytree(source, target, ignore=shutil.ignore_patterns("__pycache__"))
-    # 仅安装路径改名；测试包所有内部引用仍指向同一份正式实现。
-    for path in target.rglob("*.py"):
-        path.write_text(
-            path.read_text("utf-8").replace(
-                "custom_nodes._metrology3d_nodes", "cloud_test_nodes.metrology3d_nodes"
-            ),
-            encoding="utf-8",
-        )
-    manifest = NodePackManifest.model_validate(
-        dict(
-            id="metrology3d.nodes",
-            version=PACK_VERSION,
-            displayName="3D Metrology test",
-            category="vision",
-            capabilities=["pipeline.node", "vision.metrology3d"],
-            entrypoints={
-                "backend": "cloud_test_nodes.metrology3d_nodes.backend.entry:register"
-            },
-            compatibility={"api": ">=0.1 <1.0", "runtime": ">=3.12"},
-            timeout={"defaultSeconds": 180, "maxSeconds": 180, "killGraceSeconds": 2},
-            enabledByDefault=True,
-            customNodeCatalogPath="workflow/catalog.json",
-        )
-    )
-    (target / "manifest.json").write_text(
-        manifest.model_dump_json(by_alias=True), encoding="utf-8"
-    )
-    (target / "workflow/catalog.json").write_text(
-        build_custom_node_catalog_document().model_dump_json(), encoding="utf-8"
-    )
 
 
 class PublishedCloudSystem:
@@ -208,9 +164,8 @@ class PublishedCloudSystem:
 
 @contextmanager
 def published_system(root, *, point_cloud_policy=None):
-    """本轮数据库、节点包、共享内存和结果全部位于隔离目录。"""
-    packs = root / "cloud_test_nodes"
-    install_test_pack(packs)
+    """读取正式节点包；数据库、共享内存和结果全部位于隔离目录。"""
+    packs = Path(__file__).resolve().parents[3] / "custom_nodes"
     sessions, storage, queue = create_test_runtime(root, database_name="published.db")
     settings = BackendServiceSettings(
         database=BackendServiceDatabaseConfig(url=sessions.settings.url),

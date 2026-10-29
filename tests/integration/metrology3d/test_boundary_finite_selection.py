@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from custom_nodes._metrology3d_nodes.shared.boundary_topology import (
+from custom_nodes.metrology3d_nodes.shared.boundary_topology import (
     OrderedSegment,
     selected_runs,
 )

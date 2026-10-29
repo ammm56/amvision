@@ -120,19 +120,19 @@ Runtime run：`workflow-run-a8bf2a846f41461d86ecec61d0148e31`。
 
 ### A02：完整连通候选不等于局部测量边段
 
-[extract_boundary.py](../../custom_nodes/_metrology3d_nodes/shared/extract_boundary.py) 第 143–159 行附近，以 `candidate.closed == target.closed` 和目标 ROI 对整条候选的 `all()` 选择；零个或多个直接拒绝。这是当前明确语义，但缺少从一个闭合轮廓选择局部直边/圆弧的通用表达。
+[extract_boundary.py](../../custom_nodes/metrology3d_nodes/shared/extract_boundary.py) 第 143–159 行附近，以 `candidate.closed == target.closed` 和目标 ROI 对整条候选的 `all()` 选择；零个或多个直接拒绝。这是当前明确语义，但缺少从一个闭合轮廓选择局部直边/圆弧的通用表达。
 
-[boundary_surface.py](../../custom_nodes/_metrology3d_nodes/shared/boundary_surface.py) 使用投影 Delaunay 与显式 alpha、边长、高度跳变过滤；[boundary_section.py](../../custom_nodes/_metrology3d_nodes/shared/boundary_section.py) 只对留下的实际支持三角面求交。没有支持的截线不会自动补全。十二个无效结果的直接原因已由输出定位，但本轮没有证明调整哪一项表面参数即可得到合格真实轮廓，不把这种未完成的因果验证写成结论。
+[boundary_surface.py](../../custom_nodes/metrology3d_nodes/shared/boundary_surface.py) 使用投影 Delaunay 与显式 alpha、边长、高度跳变过滤；[boundary_section.py](../../custom_nodes/metrology3d_nodes/shared/boundary_section.py) 只对留下的实际支持三角面求交。没有支持的截线不会自动补全。十二个无效结果的直接原因已由输出定位，但本轮没有证明调整哪一项表面参数即可得到合格真实轮廓，不把这种未完成的因果验证写成结论。
 
 ### A03：参考角色与被测角色没有区分延伸策略
 
-[measurement_result.py](../../custom_nodes/_metrology3d_nodes/shared/measurement_result.py) 对两侧调用 [measurement_support.py](../../custom_nodes/_metrology3d_nodes/shared/measurement_support.py) 的 `plane_coverage`。此前要求双方支持域外无效，代码没有擅自偏离此要求。
+[measurement_result.py](../../custom_nodes/metrology3d_nodes/shared/measurement_result.py) 对两侧调用 [measurement_support.py](../../custom_nodes/metrology3d_nodes/shared/measurement_support.py) 的 `plane_coverage`。此前要求双方支持域外无效，代码没有擅自偏离此要求。
 
 2026-10-24 已确认后续方向：**区分基准平面的延伸与被测表面的外推，单独设计审核**。本轮不修改算法，不把该确认解释为允许任何拟合面无限外推。发布契约、基准质量、延伸证据和现场显示仍须明确后实施。
 
 ### A04：严格解析失败没有转换成输入错误
 
-[io/formats.py](../../custom_nodes/_metrology3d_nodes/shared/io/formats.py) 第 51 行附近直接抛出 `ValueError("PLY encoding does not match profile")`；既有读取清理会释放资源，但没有转换为平台类型化输入错误。
+[io/formats.py](../../custom_nodes/metrology3d_nodes/shared/io/formats.py) 第 51 行附近直接抛出 `ValueError("PLY encoding does not match profile")`；既有读取清理会释放资源，但没有转换为平台类型化输入错误。
 [graph_executor.py](../../backend/service/application/workflows/graph_executor.py) 第 592–613 行附近将非 ServiceError 包装为 ServiceConfigurationError。严格拒绝正确，错误分类和可操作信息不完整。
 
 审计过程中曾把 binary LE 导出配上 ASCII 读取参数；这是诊断脚本配置错误，不能算项目导出失败。正确 profile 的最终往返通过；错误路径仍暴露上述信息丢失问题。

@@ -18,7 +18,7 @@
 
 没有替换 `WorkflowRuntimeService`、worker manager、NodePackLoader 或节点 handler。测试仅复用既有图文档构造和显式预算数据，不使用旧的 FakeRuntime/测试 Catalog 替代准入。控制面通过 FastAPI TestClient 调用正式路由及 lifespan，数据面、Broker 和 worker 是真实跨进程执行；不宣称本轮另外验收了 TCP HTTP 部署。
 
-源目录 `_metrology3d_nodes` 仍隐藏，没有新增生产 manifest。临时 manifest 的启用只影响本轮隔离节点目录，结束后删除。
+源目录 `metrology3d_nodes` 仍隐藏，没有新增生产 manifest。临时 manifest 的启用只影响本轮隔离节点目录，结束后删除。
 
 ## 样本与测试配置
 

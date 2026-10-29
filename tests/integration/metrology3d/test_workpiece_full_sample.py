@@ -9,18 +9,18 @@ import pytest
 
 from backend.service.application.runtime.resource_scope import ResourceScope
 from backend.service.application.workflows.point_cloud.runtime import get_cloud_runtime
-from custom_nodes._metrology3d_nodes.shared.boundary_runtime import (
+from custom_nodes.metrology3d_nodes.shared.boundary_runtime import (
     extract_boundary,
     materialize_positions,
 )
-from custom_nodes._metrology3d_nodes.shared.build_frame import build_frame
-from custom_nodes._metrology3d_nodes.shared.crop_roi import crop_roi
-from custom_nodes._metrology3d_nodes.shared.fit_plane import fit_plane
-from custom_nodes._metrology3d_nodes.shared.fit_boundary import fit_boundary
-from custom_nodes._metrology3d_nodes.shared.io.read_file import read_file_reference
-from custom_nodes._metrology3d_nodes.shared.measure_step import measure_step
-from custom_nodes._metrology3d_nodes.shared.measure_hole import measure_hole
-from custom_nodes._metrology3d_nodes.shared.measure_extents import measure_extents
+from custom_nodes.metrology3d_nodes.shared.build_frame import build_frame
+from custom_nodes.metrology3d_nodes.shared.crop_roi import crop_roi
+from custom_nodes.metrology3d_nodes.shared.fit_plane import fit_plane
+from custom_nodes.metrology3d_nodes.shared.fit_boundary import fit_boundary
+from custom_nodes.metrology3d_nodes.shared.io.read_file import read_file_reference
+from custom_nodes.metrology3d_nodes.shared.measure_step import measure_step
+from custom_nodes.metrology3d_nodes.shared.measure_hole import measure_hole
+from custom_nodes.metrology3d_nodes.shared.measure_extents import measure_extents
 from tests.integration.metrology3d import (
     representative_recipe,
     workpiece_recipe as recipe,

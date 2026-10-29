@@ -15,8 +15,8 @@ from backend.contracts.workflows.point_cloud_runtime import (
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.runtime.resource_scope import ResourceScope
 from backend.service.application.workflows.point_cloud.runtime import get_cloud_runtime
-from custom_nodes._metrology3d_nodes.shared.normalize_units import normalize_units
-from custom_nodes._metrology3d_nodes.shared.filter_valid import filter_valid
+from custom_nodes.metrology3d_nodes.shared.normalize_units import normalize_units
+from custom_nodes.metrology3d_nodes.shared.filter_valid import filter_valid
 from tests.point_cloud_support import policy, spatial
 from tests.test_point_cloud_runtime import own
 

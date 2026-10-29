@@ -5,7 +5,7 @@ import pytest
 from concurrent.futures import ThreadPoolExecutor
 from hashlib import sha256
 
-from custom_nodes._metrology3d_nodes.shared.fit_plane import fit_plane
+from custom_nodes.metrology3d_nodes.shared.fit_plane import fit_plane
 from tests.point_cloud_support import policy
 from tests.test_metrology3d_plane import plane_parameters
 from tests.test_metrology3d_preprocess import make_cloud

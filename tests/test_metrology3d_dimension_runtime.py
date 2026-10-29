@@ -19,10 +19,10 @@ from backend.contracts.workflows.dimension3d_parameters import MeasureHoleParame
 from backend.contracts.workflows.point_cloud_runtime import BoundarySelectionMethod
 from backend.contracts.workflows.measurement3d_evidence import MeasurementEvidence3d
 from backend.service.application.errors import InvalidRequestError
-from custom_nodes._metrology3d_nodes.shared.boundary_runtime import own_output
-from custom_nodes._metrology3d_nodes.shared.geometry_quality import geometry_quality
-from custom_nodes._metrology3d_nodes.shared.measure_edge_pair import measure_edge_pair
-from custom_nodes._metrology3d_nodes.shared.measure_hole import measure_hole
+from custom_nodes.metrology3d_nodes.shared.boundary_runtime import own_output
+from custom_nodes.metrology3d_nodes.shared.geometry_quality import geometry_quality
+from custom_nodes.metrology3d_nodes.shared.measure_edge_pair import measure_edge_pair
+from custom_nodes.metrology3d_nodes.shared.measure_hole import measure_hole
 from tests.test_metrology3d_boundary_contracts import (
     circle_parameters,
     line_parameters,
@@ -35,7 +35,7 @@ from tests.integration.metrology3d.test_boundary_extraction import (
     extract_parameters,
     region,
 )
-from custom_nodes._metrology3d_nodes.shared.cloud_assets import freeze_cloud_parent
+from custom_nodes.metrology3d_nodes.shared.cloud_assets import freeze_cloud_parent
 
 
 def analytic_fit_method(runtime, support, parameters, *, circle=False):
@@ -304,19 +304,20 @@ def test_pair_real_runtime_swapping_signed_absolute_and_missing():
 
 def test_support_scan_cancellation_does_not_pin_array_in_traceback(monkeypatch):
     """调用方保留异常时，已退出的扫描帧也不能持有数组块。"""
-    import custom_nodes._metrology3d_nodes.shared.dimension_runtime as module
+    import custom_nodes.metrology3d_nodes.shared.dimension_runtime as module
+    import custom_nodes.metrology3d_nodes.shared.support_bounds as bounds_module
 
     scope, runtime, root = make_cloud(unit="mm", coordinates=np.ones((4, 3)))
     refs = []
-    original = module._positions
+    original = bounds_module._positions
 
     def positions(*args):
         block = original(*args)
         refs.append(weakref.ref(block))
         return block
 
-    monkeypatch.setattr(module, "_rows", lambda *args: 1)
-    monkeypatch.setattr(module, "_positions", positions)
+    monkeypatch.setattr(bounds_module, "_rows", lambda *args: 1)
+    monkeypatch.setattr(bounds_module, "_positions", positions)
 
     def cancel():
         if refs:
@@ -354,7 +355,7 @@ def test_hole_consumes_circle_without_refitting_and_preserves_zero(
             raise AssertionError("measurement must not fit again")
 
         monkeypatch.setattr(
-            "custom_nodes._metrology3d_nodes.shared.boundary_fitting.least_squares",
+            "custom_nodes.metrology3d_nodes.shared.boundary_fitting.least_squares",
             forbidden,
         )
         result = measure_hole(

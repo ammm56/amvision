@@ -4,7 +4,7 @@
 
 本记录承接 [真实工件审计](3d-metrology-audit-20261024.md)，不覆盖或改写该次只读审计的历史结果。
 R1 公共参数分发、R2 输入错误分类、R3 有限边段选择已实现；2026-10-25 R4 基准有限延伸已内部实现，精确范围及结果见 [R4 记录](3d-metrology-r4.md)。
-内部节点包版本为 `0.1.10`，仍位于 `_metrology3d_nodes`，未新增生产 manifest 或启用节点。
+内部节点包版本为 `0.1.10`，仍位于 `metrology3d_nodes`，未新增生产 manifest 或启用节点。
 未改变受控 wheel、点云输入精度、模型训练/推理、调度、准入、队列或进程管理。
 
 本次工程验证通过不等于十二钢片和两半圆的现场尺寸验收完成。真实支持不足、测量定义不同、
@@ -213,12 +213,12 @@ R4 内部实现后完成 R5 的真实测量定义与配方验证，之后进入 
 | 现有源码 | R4 前的行为 | R4 实施边界 |
 | --- | --- | --- |
 | [measurement3d_parameters.py](../../backend/contracts/workflows/measurement3d_parameters.py) | 方向测距双方使用相同必需指标，covered 下限必须为 1 | 第 5 节的 reference_policy；实测与延伸路径的质量项、单位和适用条件显式区分，统计差不接受策略 |
-| [measurement_support.py](../../custom_nodes/_metrology3d_nodes/shared/measurement_support.py) | 在 support_radius 内统计邻点、残差并建立三角覆盖；现有 nearest_distance 不是全基准支持上的最近距离 | 复用分块借用与切平面投影，补有限基准支持的最近点/原始行号；不能直接拿现有局部 nearest_distance 作延伸距离 |
-| [measurement_result.py](../../custom_nodes/_metrology3d_nodes/shared/measurement_result.py) | 双方都走 plane_coverage，固定覆盖质量决定 valid | 只给 reference 增加已确认模式；沿原交点和有符号距离公式计算，不重写高度算法或放松 target |
+| [measurement_support.py](../../custom_nodes/metrology3d_nodes/shared/measurement_support.py) | 在 support_radius 内统计邻点、残差并建立三角覆盖；现有 nearest_distance 不是全基准支持上的最近距离 | 复用分块借用与切平面投影，补有限基准支持的最近点/原始行号；不能直接拿现有局部 nearest_distance 作延伸距离 |
+| [measurement_result.py](../../custom_nodes/metrology3d_nodes/shared/measurement_result.py) | 双方都走 plane_coverage，固定覆盖质量决定 valid | 只给 reference 增加已确认模式；沿原交点和有符号距离公式计算，不重写高度算法或放松 target |
 | [measurement3d_evidence.py](../../backend/contracts/workflows/measurement3d_evidence.py) | 有效结果必须双方 covered；支持、指标、参数摘要严格相符 | 方法与证据统一 v1，增加逐侧延伸证据；校验器和计算使用同一适用质量定义，拒绝假三角形/假原始行号 |
-| [measurement_preview.py](../../custom_nodes/_metrology3d_nodes/shared/measurement_preview.py) | 显示前重新核验配置质量，不能只信 usable | 同步适用质量集合，避免计算成功但 Preview 按旧实测规则拒绝，或反向放行错误证据 |
-| [catalog_builder.py](../../custom_nodes/_metrology3d_nodes/workflow/catalog_builder.py)、dimension_runtime | 五类尺寸共用 MeasurementEvidence3d 与端口 | 同批更新证据封装/端口，回归长宽、边距、孔径；它们的数值公式及方法版本不因封装升级而变更 |
-| [MeasurementSettingsEditor.vue](../../custom_nodes/_metrology3d_nodes/frontend/MeasurementSettingsEditor.vue)、measurement-form、[measurement-display.ts](../../frontend/web-ui/src/workflows/workflow-editor/point-cloud/measurement-display.ts) | 已有原子草稿、候选拾取和三维显示 | 原编辑器增加两种基准模式、单位化距离上限、适用质量及延伸标识；同批更新共享查看器和所有实际读取方 |
+| [measurement_preview.py](../../custom_nodes/metrology3d_nodes/shared/measurement_preview.py) | 显示前重新核验配置质量，不能只信 usable | 同步适用质量集合，避免计算成功但 Preview 按旧实测规则拒绝，或反向放行错误证据 |
+| [catalog_builder.py](../../custom_nodes/metrology3d_nodes/workflow/catalog_builder.py)、dimension_runtime | 五类尺寸共用 MeasurementEvidence3d 与端口 | 同批更新证据封装/端口，回归长宽、边距、孔径；它们的数值公式及方法版本不因封装升级而变更 |
+| [MeasurementSettingsEditor.vue](../../custom_nodes/metrology3d_nodes/frontend/MeasurementSettingsEditor.vue)、measurement-form、[measurement-display.ts](../../frontend/web-ui/src/workflows/workflow-editor/point-cloud/measurement-display.ts) | 已有原子草稿、候选拾取和三维显示 | 原编辑器增加两种基准模式、单位化距离上限、适用质量及延伸标识；同批更新共享查看器和所有实际读取方 |
 
 继续使用 CloudRuntime、Scope、既有质量比较器、Workflow 发布和 Runtime。只增加本次必要的契约与计算分支，不新增节点、原云常驻会话、Broker、队列、发布管理器或依赖包。
 本轮确认覆盖全部三维契约：普通点云、边界资产、特征、显示、测量证据及方法统一 v1。二维序列化/摘要不变，旧三维文件保留但不符合新结构的内容拒绝执行，重新导入/保存；不自动迁移数据。

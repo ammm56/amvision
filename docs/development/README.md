@@ -4,7 +4,8 @@
 
 ## 验收与基准
 
-- [3D Metrology R5 E 全工件配方与结果验收](3d-metrology-r5-e-results.md)：独立数值输出、空白页面建图、50 项结果矩阵、ROI 复用和双平台发布生命周期；23 有效、27 明确无效，生产隐藏。
+- [3D Metrology R5 F 实施与验收](3d-metrology-r5-f-implementation.md)：十八节点正式入口、本机容量、单遍 ROI、支持摘要复用和发布端口校验；Windows/Ubuntu 完整样本及停止回收通过，可见包络与全工件秒级目标尚未完成。
+- [3D Metrology R5 E 全工件配方与结果验收](3d-metrology-r5-e-results.md)：历史批次的独立数值输出、空白页面建图、50 项结果矩阵、ROI 复用和双平台发布生命周期；23 有效、27 明确无效，当时尚未正式启用。
 - [3D Metrology R5 D0 与 D1 候选审核](3d-metrology-r5-d0-d1.md)：历史候选阶段，视角/旧回调修复、双平台 21 区完整点云复验和参数候选；最新工程配方以 E 验收为准。
 
 - [3D Metrology 参数与有限边段修复](3d-metrology-repair-20261024.md)：公共参数分发、输入错误分类、连续实测段选择，双平台与空白页面至发布运行验收；基准延伸显式距离上限设计，尚未修改高度算法。

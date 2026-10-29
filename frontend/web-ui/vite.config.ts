@@ -33,7 +33,7 @@ export default defineConfig({
     },
   },
   server: {
-    fs: { allow: [projectDirectory, path.resolve(projectDirectory, '../../custom_nodes/connector_nodes/frontend'), path.resolve(projectDirectory, '../../custom_nodes/_metrology3d_nodes/frontend')] },
+    fs: { allow: [projectDirectory, path.resolve(projectDirectory, '../../custom_nodes/connector_nodes/frontend'), path.resolve(projectDirectory, '../../custom_nodes/metrology3d_nodes/frontend')] },
   },
   build: {
     outDir: 'dist',

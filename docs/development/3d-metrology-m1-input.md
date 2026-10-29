@@ -18,7 +18,7 @@ Ubuntu 后续验收与生产运行数据使用 Ubuntu 原生文件系统。源�
 | --- | --- |
 | 严格内部契约 | `backend/contracts/workflows/point_cloud.py`：字段、单位、轴声明、PCD 组织信息、文件 profile/完整字段映射、同机块布局；拒绝未知字段、bool 数量、重叠、额外尾部和外部伪造派生来源 |
 | 文件来源校验 | `WorkflowInputValidator.validate_file_reference` 复用既有项目权限、file-ref、长度及不可变身份校验，不另建文件输入服务，不改变已有图片/文件默认限额 |
-| 文件解析 | `custom_nodes/_metrology3d_nodes/shared/io/` 复用 ObjectStore snapshot 和受控 PLY/PCD 公开接口；NumPy 处理四种明确的 XYZ 文本 profile；检查真实字节摘要、字段全覆盖、精度和分块取消 |
+| 文件解析 | `custom_nodes/metrology3d_nodes/shared/io/` 复用 ObjectStore snapshot 和受控 PLY/PCD 公开接口；NumPy 处理四种明确的 XYZ 文本 profile；检查真实字节摘要、字段全覆盖、精度和分块取消 |
 | 数组预算 | `PointCloudIoPolicy` 全部参数必填；`CloudArrayBudget` 在分配前立即准入，文件重排同时计入源结构数组和目标属性；没有队列、自动溢出或全云 float64 提升 |
 | 文件数组生命周期 | `OwnedCloudArrays` 只读借用、活跃借用时拒绝关闭、正常关闭幂等；复用 ResourceScope，解析失败、分配失败及登记时 scope 已关闭都收回本次数组和预留 |
 | 同机内部读取 | `borrow_cloud_buffer` 接受现有 acquire-view guard，核对固定描述摘要、实际长度、零填充与 validity，分块计算内容摘要和非有限坐标数；`np.frombuffer` 保留 readonly memoryview，未复制成完整 bytes |

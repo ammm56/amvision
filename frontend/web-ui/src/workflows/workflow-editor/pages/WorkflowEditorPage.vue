@@ -444,6 +444,7 @@ import { useWorkflowSaveRunOrchestration } from '../actions/useWorkflowSaveRunOr
 import { useWorkflowSelectionState } from '../selection/useWorkflowSelectionState'
 import type { WorkflowAppDocument } from '../services/workflow-app.service'
 import { publishWorkflowAppVersion, updateWorkflowApplicationMetadata } from '../services/workflow-application.service'
+import { validateRequiredInputConnections } from '../validation/required-inputs'
 import { uploadWorkflowPromptMask } from '../services/workflow-runtime.service'
 import {
   buildAppliedMaskBinding,
@@ -1758,6 +1759,14 @@ async function publishCurrentWorkflowApp(releaseNotes: string): Promise<void> {
     const app = workflowApp.value
     if (!saved || !app || errorMessage.value || !saved.result.applicationDocument.draft_fingerprint) {
       publishDialogError.value = `${t('workflowEditor.history.saveFailed')}: ${errorMessage.value || t('workflowEditor.feedback.publishFailed')}`
+      return
+    }
+    const template = buildCurrentTemplate()
+    if (!template) return
+    const connectionIssue = validateRequiredInputConnections(template, nodeDefinitionsById.value)
+    if (connectionIssue) {
+      applyWorkflowValidationIssue(connectionIssue)
+      publishDialogError.value = connectionIssue.message
       return
     }
     const version = await publishWorkflowAppVersion(

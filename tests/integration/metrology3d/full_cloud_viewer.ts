@@ -8,9 +8,9 @@ import '../../../frontend/web-ui/src/shared/styles/base.css'
 import CloudViewer from '../../../frontend/web-ui/src/workflows/workflow-editor/point-cloud/CloudViewer.vue'
 import {rendererUsage} from '../../../frontend/web-ui/src/workflows/workflow-editor/point-cloud/preview-data'
 import {loadRuntimeConfig} from '../../../frontend/web-ui/src/platform/runtime/runtime-config'
-import BoundarySettingsEditor from '../../../custom_nodes/_metrology3d_nodes/frontend/BoundarySettingsEditor.vue'
-import DimensionSettingsEditor from '../../../custom_nodes/_metrology3d_nodes/frontend/DimensionSettingsEditor.vue'
-import {newDimension} from '../../../custom_nodes/_metrology3d_nodes/frontend/dimension-form'
+import BoundarySettingsEditor from '../../../custom_nodes/metrology3d_nodes/frontend/BoundarySettingsEditor.vue'
+import DimensionSettingsEditor from '../../../custom_nodes/metrology3d_nodes/frontend/DimensionSettingsEditor.vue'
+import {newDimension} from '../../../custom_nodes/metrology3d_nodes/frontend/dimension-form'
 import {parameterCloudPreviewsKey,parameterPreviewStateKey} from '../../../frontend/web-ui/src/workflows/workflow-editor/parameters/editor-context'
 
 await loadRuntimeConfig()
