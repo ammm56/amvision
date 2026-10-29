@@ -40,10 +40,11 @@ def extract(request):
     ]
     plane, measurement, measurement_planes = None, None, ()
     method = parameters.method
-    if method.kind in {"contour", "pose-contour"}:
+    if method.kind in {"contour", "pose-contour", "visible-envelope"}:
         ids = [method.reference_feature_id]
         ratio = (
-            method.kind == "pose-contour" and method.height.kind == "measurement-ratio"
+            method.kind in {"pose-contour", "visible-envelope"}
+            and method.height.kind == "measurement-ratio"
         )
         if ratio:
             ids.extend(

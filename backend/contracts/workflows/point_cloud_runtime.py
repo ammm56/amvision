@@ -312,7 +312,9 @@ class CloudReference(Contract):
     source: CloudSource
     source_metadata: PcdSourceMetadata | None
     provenance: CloudProvenance
-    sample_origin: Literal["measured", "interpolated", "extrapolated", "mixed"] | None
+    sample_origin: (
+        Literal["measured", "interpolated", "extrapolated", "mixed", "estimated"] | None
+    )
     vertex_kind: Literal["source", "generated"] | None
     topology: BoundaryTopology | None
 
@@ -360,7 +362,8 @@ class CloudReference(Contract):
             if self.sample_origin == "mixed" and "sample_origin" not in names:
                 raise ValueError("mixed 必须有逐点来源")
             if self.vertex_kind == "generated" and (
-                names != ["positions"] or self.sample_origin != "interpolated"
+                names != ["positions"]
+                or self.sample_origin not in ("interpolated", "estimated")
             ):
                 raise ValueError("生成顶点只保存坐标，不自动插值原始属性")
             if (

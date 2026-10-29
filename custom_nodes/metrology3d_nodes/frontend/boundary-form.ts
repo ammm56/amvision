@@ -2,11 +2,12 @@ import {identity,newRoi,object,roiIssues,vector,type Form} from './form'
 import {normalizeLimitRule,limitRuleError} from '@/workflows/workflow-editor/parameters/limit-rules'
 import type {RecipeValidator} from '@/workflows/workflow-editor/parameters/recipe-validation'
 import {evaluationIssues,axisDirection} from './evaluation-form'
+import {newEnvelope,envelopeIssues} from './envelope-form'
 
 export const boundaryRecipeValidator:RecipeValidator=(node,sources,zh)=>{
   const kind=node.node_type_id.split('.').at(-1)!,p=object(node.parameters.settings),issues=boundaryIssues(kind,p)
   if(kind==='extract-boundary'){
-    const m=object(p.method),e=object(p.evaluation),h=object(m.height),dynamic=m.kind==='pose-contour',ratio=dynamic&&h.kind==='measurement-ratio'
+    const m=object(p.method),e=object(p.evaluation),h=object(m.height),dynamic=['pose-contour','visible-envelope'].includes(String(m.kind)),ratio=dynamic&&h.kind==='measurement-ratio'
     if((m.kind==='contour'||dynamic)!==!!sources.features?.length)issues.push(zh?'等高提取需要当前平面特征':'Contour extraction requires current plane features')
     if(dynamic?(sources.pose?.length!==1):!!sources.pose?.length)issues.push(zh?'评价来源与位姿连接不一致':'Evaluation source and pose connection differ')
     if(ratio?!sources.evidence?.length:!!sources.evidence?.length)issues.push(zh?'等高来源与测量证据连接不一致':'Contour source and measurement evidence differ')
@@ -21,6 +22,7 @@ export const boundaryRecipeValidator:RecipeValidator=(node,sources,zh)=>{
     if(ratio&&(sources.evidence??[]).every(s=>['custom.metrology3d.measure-step','custom.metrology3d.height-query'].includes(s.nodeTypeId))&&!(sources.evidence??[]).some(s=>object(s.parameters.settings).item_id===h.item_id))issues.push(zh?'测量量不在当前证据输入中':'Measurement item is not in current evidence inputs')
   }
   if(kind!=='extract-boundary'&&!sources.features?.length)issues.push(zh?'必须连接边界特征':'Boundary features input is required')
+  if(kind!=='extract-boundary'&&(sources.features??[]).some(s=>object(object(s.parameters.settings).method).kind==='visible-envelope'))issues.push(zh?'格剖面不能作为实测截线拟合':'Grid profiles are not measured sections for fitting')
   return issues
 }
 
@@ -33,7 +35,7 @@ export function newRegion():Form{return {roi_id:'',rois:[newRoi()]}}
 export function regionSource(value:unknown):Form{const p=object(value),rois=Array.isArray(p.rois)?p.rois.map(object):[];return {kind:'parameters',roi:rois.find(r=>r.roi_id===p.roi_id)??newRoi(),bounds:rois.filter(r=>r.roi_id!==p.roi_id)}}
 export function regionValue(value:Form):Form{if(value.kind!=='parameters')throw new Error('boundary_roi_source');return {roi_id:object(value.roi).roi_id,rois:[value.roi,...(Array.isArray(value.bounds)?value.bounds:[])]}}
 export function newContourHeight(kind:string):Form{return kind==='fixed'?{kind,value:null}:{kind:'measurement-ratio',item_id:'',reference_feature_id:'',target_feature_id:'',ratio:null,order:null}}
-export function newBoundaryMethod(kind:string):Form{return kind==='projection'?{kind}:kind==='section'?{kind,origin:[null,null,null],normal:[null,null,null],numeric_tolerance:null}:kind==='pose-contour'?{kind,reference_feature_id:'',height:newContourHeight('fixed'),numeric_tolerance:null}:{kind,reference_feature_id:'',positive_normal:[null,null,null],min_orientation_cosine:null,height:null,numeric_tolerance:null}}
+export function newBoundaryMethod(kind:string):Form{return kind==='projection'?{kind}:kind==='section'?{kind,origin:[null,null,null],normal:[null,null,null],numeric_tolerance:null}:['pose-contour','visible-envelope'].includes(kind)?{kind,reference_feature_id:'',height:newContourHeight('fixed'),numeric_tolerance:null,...(kind==='visible-envelope'?{envelope:newEnvelope()}:{})}:{kind,reference_feature_id:'',positive_normal:[null,null,null],min_orientation_cosine:null,height:null,numeric_tolerance:null}}
 export function newBoundarySettings(kind:string):Form{
   const common={feature_id:'',evaluation:{frame_id:'',length_unit:null,origin:[null,null,null],rotation:identity()},quality_policy:{policy_id:'',policy_version:null,rules:(boundaryMetrics[kind]??[]).map(item_id=>normalizeLimitRule({item_id,unit:['support_count','direction_gap','jacobian_ratio'].includes(item_id)?'1':item_id==='angular_coverage'||kind==='fit-circle'&&item_id==='max_gap'?'rad':''}))}}
   if(kind==='extract-boundary')return {...common,region:newRegion(),surface:{alpha_radius:null,max_edge_length:null,max_normal_step:null,min_projected_area:null},method:{kind:null},targets:[]}
@@ -54,18 +56,25 @@ export function boundaryIssues(kind:string,value:unknown):string[]{
   for(const key of boundaryMetrics[kind]??[]){const rule=byId.get(key),upper=['plane_max_residual','rms','max_residual','max_gap'].includes(key);if(!rule||(upper?rule.upper===null||rule.upper<0:rule.lower===null||rule.lower<=0||key==='support_count'&&rule.lower<(kind==='fit-circle'?3:2)))issues.push(`quality / ${key}`)}
   if(kind==='extract-boundary'){
     issues.push(...regionErrors(p.region,e));const s=object(p.surface),m=object(p.method),targets=Array.isArray(p.targets)?p.targets.map(object):[]
-    if(['alpha_radius','max_edge_length','max_normal_step','min_projected_area'].some(k=>!positive(s[k])))issues.push('surface')
-    if(!['projection','section','contour','pose-contour'].includes(String(m.kind)))issues.push('method')
-    if((m.kind==='pose-contour')!==(e.kind==='pose'))issues.push('method / evaluation source')
+    const visible=m.kind==='visible-envelope'
+    if(visible?p.surface!==null:['alpha_radius','max_edge_length','max_normal_step','min_projected_area'].some(k=>!positive(s[k])))issues.push('surface')
+    if(!['projection','section','contour','pose-contour','visible-envelope'].includes(String(m.kind)))issues.push('method')
+    if(['pose-contour','visible-envelope'].includes(String(m.kind))!==(e.kind==='pose'))issues.push('method / evaluation source')
     if(m.kind!=='projection'&&!positive(m.numeric_tolerance))issues.push('numeric_tolerance')
     if(m.kind==='section'&&(!vector(m.origin)||!unit(m.normal)))issues.push('section')
     if(m.kind==='contour'&&(!id(m.reference_feature_id)||!unit(m.positive_normal)||!finite(m.height)||!positive(m.min_orientation_cosine)||Number(m.min_orientation_cosine)>1))issues.push('contour')
-    if(m.kind==='pose-contour'){
+    if(m.kind==='pose-contour'||visible){
       const h=object(m.height)
       if(!id(m.reference_feature_id))issues.push('contour / datum')
       if(h.kind==='fixed'?(!finite(h.value)||Object.keys(h).length!==2):h.kind==='measurement-ratio'?(!id(h.item_id)||!id(h.reference_feature_id)||!id(h.target_feature_id)||h.reference_feature_id===h.target_feature_id||!finite(h.ratio)||h.ratio<=0||h.ratio>=1||!['target-above','target-below'].includes(String(h.order))||Object.keys(h).length!==6):true)issues.push('contour / height source')
     }
-    if(!targets.length||new Set(targets.map(t=>t.segment_id)).size!==targets.length)issues.push('targets')
+    if(visible){
+      issues.push(...envelopeIssues(m.envelope))
+      if(targets.length||!Array.isArray(p.targets))issues.push('profiles / targets')
+      const h=object(m.height),foreground=object(object(m.envelope).profiles).foreground
+      if(h.kind==='measurement-ratio'&&((h.order==='target-above')!==(foreground==='above')))issues.push('foreground / order')
+      for(const key of ['profile_coverage','estimated_fraction','profile_max_gap','max_cell_span']){const rule=byId.get(key);if(!rule||rule.unit!==(['profile_coverage','estimated_fraction'].includes(key)?'1':e.length_unit)||(key==='profile_coverage'?rule.lower===null||rule.lower<=0||rule.lower>1:rule.upper===null||rule.upper<0||key==='estimated_fraction'&&rule.upper>1))issues.push(`quality / ${key}`)}
+    }else if(!targets.length||new Set(targets.map(t=>t.segment_id)).size!==targets.length)issues.push('targets')
     for(const t of targets){if(!id(t.segment_id)||typeof t.closed!=='boolean'||!['outer','inner','open','unknown'].includes(String(t.role))||(t.closed?t.role==='open':['outer','inner'].includes(String(t.role))))issues.push('target / identity');issues.push(...regionErrors(t.region,e))}
   }else{
     const s=object(p.selection),ids=s.segment_ids

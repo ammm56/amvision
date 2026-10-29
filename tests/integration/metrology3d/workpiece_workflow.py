@@ -14,7 +14,7 @@ from tests.metrology3d_transport_support import cloud_documents
 from tests.point_cloud_support import options
 
 
-def workpiece_documents(*, file=False, inspection="A_top_L"):
+def workpiece_documents(*, file=False, inspection="A_top_L", visible=False):
     """所有数值都计算；仅将指定对象的证据接到显示，未声称隐藏面板能减少捕获。"""
     if inspection not in {*recipe.STEEL, "S1", "S2"}:
         raise ValueError(inspection)
@@ -94,13 +94,21 @@ def workpiece_documents(*, file=False, inspection="A_top_L"):
             outputs.append(item)
             if name == inspection:
                 link(item, "evidence", "preview", "evidence")
-        node(name + ".boundary", "extract-boundary", recipe.contour(name))
+        node(
+            name + ".boundary",
+            "extract-boundary",
+            recipe.envelope(name) if visible else recipe.contour(name),
+        )
         link(name.rsplit("_", 1)[0] + ".context", "cloud", name + ".boundary", "cloud")
         link("frame", "pose", name + ".boundary", "pose")
         for source in ("D", base, top):
             link(source, "features", name + ".boundary", "features")
         link(name + ".H", "evidence", name + ".boundary", "evidence")
-        node(name + ".extents", "measure-extents", recipe.extents(name))
+        node(
+            name + ".extents",
+            "measure-extents",
+            recipe.profile_extents(name) if visible else recipe.extents(name),
+        )
         link(name + ".boundary", "features", name + ".extents", "features")
         outputs.append(name + ".extents")
         if name == inspection:
@@ -131,14 +139,14 @@ def workpiece_documents(*, file=False, inspection="A_top_L"):
     )
 
 
-def check_workpiece_body(body):
+def check_workpiece_body(body, *, matrix=None):
     """发布响应逐项对照独立几何已核查的冻结矩阵，不以运行成功代替量值正确。"""
     import pytest
 
     path = (
         Path(__file__).parents[3] / "docs/development/assets/r5-e/workpiece-matrix.json"
     )
-    expected = json.loads(path.read_text("utf-8"))["items"]
+    expected = json.loads((matrix or path).read_text("utf-8"))["items"]
     assert set(body) == {"code", "message", "data"}
     assert body["code"] == 0 and body["message"] == "measured"
     data = body["data"]
@@ -162,11 +170,14 @@ def main():
     """导出正式页面可读取的配方文档，不写业务数据库。"""
     parser = argparse.ArgumentParser()
     parser.add_argument("output", type=Path)
+    parser.add_argument("--visible", action="store_true")
     parser.add_argument(
         "--inspection", default="A_top_L", choices=[*recipe.STEEL, "S1", "S2"]
     )
     args = parser.parse_args()
-    template, app = workpiece_documents(file=True, inspection=args.inspection)
+    template, app = workpiece_documents(
+        file=True, inspection=args.inspection, visible=args.visible
+    )
     args.output.write_text(
         json.dumps(
             dict(

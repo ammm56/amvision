@@ -10,6 +10,7 @@ from custom_nodes.metrology3d_nodes.shared.geometry_quality import (
 def curve_display(runtime, feature, *, policy, remaining_points, cancel):
     """只允许完整连接进入有界显示；超过容量不抽样后重新连线。"""
     points = []
+    profile_kinds = []
     cloud = feature.support
     require_quality_result(feature.quality, feature.method.quality_policy)
     if feature.kind == "boundary":
@@ -39,7 +40,17 @@ def curve_display(runtime, feature, *, policy, remaining_points, cancel):
                             "positions"
                         ].tolist()
                     )
+                    if cloud.sample_origin == "estimated":
+                        profile_kinds.extend(
+                            view.lineage_chunk(
+                                start, min(start + rows, cloud.point_count)
+                            )["profile_kinds"]
+                            .reshape(-1)
+                            .tolist()
+                        )
     raw = feature.model_dump(mode="json", exclude={"support"})
+    if profile_kinds:
+        raw["profile_kinds"] = profile_kinds
     raw.update(
         points=points,
         topology=cloud.topology if feature.valid else None,

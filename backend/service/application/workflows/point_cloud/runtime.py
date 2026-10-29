@@ -166,7 +166,31 @@ class CloudView:
         else:
             selected = np.arange(start, stop, dtype=np.uint64)
         return lineage_chunk(
-            self._lineage, selected, max_working_bytes=self._policy.max_working_bytes
+            self._lineage,
+            selected,
+            max_working_bytes=self._policy.max_working_bytes,
+            kind="grid-profile"
+            if self.reference.sample_origin == "estimated"
+            else "surface",
+        )
+
+    def profile_lineage_snapshot(self):
+        """资产保存需要去重格表；完整快照限于半个工作预算，不绕过 Scope 借用。"""
+        if not self._active or self._lineage is None:
+            raise RuntimeError("点云借用已结束或缺少生成来源")
+        if self.reference.sample_origin != "estimated":
+            raise InvalidRequestError("当前点云不是格剖面来源")
+        n = self.reference.point_count
+        if n * 256 > self._policy.max_working_bytes // 2:
+            raise InvalidRequestError("格剖面保存快照超过工作预算")
+        selected = np.arange(n, dtype=np.uint64)
+        for selector in self._origin_selectors:
+            selected = selector[selected, 0]
+        return lineage_chunk(
+            self._lineage,
+            selected,
+            max_working_bytes=self._policy.max_working_bytes // 2,
+            kind="grid-profile",
         )
 
 
@@ -289,7 +313,10 @@ class CloudRuntime:
         self, *, owner, document, indices, cancel, lineage=None
     ) -> CloudReference:
         """已验证资产恢复新的运行身份，历史行号与数组所有权仍归当前 Scope。"""
-        from backend.contracts.workflows.point_cloud_assets import ArrayCloudAsset
+        from backend.contracts.workflows.point_cloud_assets import (
+            ArrayCloudAsset,
+            AssetProfileLineage,
+        )
 
         with self._lock:
             self._require_open()
@@ -308,7 +335,10 @@ class CloudRuntime:
             if indices is not None and not self.storage_scope.owns(indices):
                 raise InvalidRequestError("点云资产索引未归属当前运行")
             origin = (
-                "interpolated"
+                "estimated"
+                if isinstance(cloud, ArrayCloudAsset)
+                and isinstance(cloud.lineage, AssetProfileLineage)
+                else "interpolated"
                 if cloud.vertex_kind == "generated"
                 else "mixed"
                 if "sample_origin" in {f.name for f in fields}
@@ -328,6 +358,7 @@ class CloudRuntime:
                         source_point_count=cloud.lineage.source_point_count,
                         policy=self.policy,
                         cancel=cancel,
+                        kind="grid-profile" if origin == "estimated" else "surface",
                     )
             reference = CloudReference(
                 format_id="amvision.point-cloud-ref.v1",
@@ -594,6 +625,9 @@ class CloudRuntime:
                     source_point_count=self.source_point_count(parent),
                     policy=self.policy,
                     cancel=cancel,
+                    kind="grid-profile"
+                    if method.parameters.method.kind == "visible-envelope"
+                    else "surface",
                 )
             self._validate_generated_positions(owner, cancel)
             reference = self._derived_reference(
@@ -603,7 +637,9 @@ class CloudRuntime:
                 fields=fields,
                 source_metadata=None,
                 vertex_kind="generated",
-                sample_origin="interpolated",
+                sample_origin="estimated"
+                if method.parameters.method.kind == "visible-envelope"
+                else "interpolated",
                 topology=topology,
             )
             self._publish(

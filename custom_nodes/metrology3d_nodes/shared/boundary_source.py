@@ -1,6 +1,10 @@
 """等高来源沿现有 Scope 准入，历史测量快照不能单独驱动新输入。"""
 
-from backend.contracts.workflows.boundary3d import PoseContourBoundary, SectionBoundary
+from backend.contracts.workflows.boundary3d import (
+    PoseContourBoundary,
+    SectionBoundary,
+    VisibleEnvelopeBoundary,
+)
 from backend.contracts.workflows.boundary3d_resolution import (
     BoundaryResolution,
     ContourDatum,
@@ -38,7 +42,9 @@ def resolve_boundary_source(
     """准入所有 live 支持后解析；不重拟合、不重新测高、不改配方。"""
     e, method = parameters.evaluation, parameters.method
     dynamic = isinstance(method, PoseContourBoundary)
-    if (method.kind in {"contour", "pose-contour"}) != (datum is not None):
+    if (method.kind in {"contour", "pose-contour", "visible-envelope"}) != (
+        datum is not None
+    ):
         raise InvalidRequestError("等高必须且仅连接所选基准平面")
     snapshot = None
     if datum is not None:
@@ -137,7 +143,9 @@ def resolve_boundary_source(
         else parameters.model_copy(
             update={
                 "evaluation": plane,
-                "method": SectionBoundary(
+                "method": method
+                if isinstance(method, VisibleEnvelopeBoundary)
+                else SectionBoundary(
                     kind="section",
                     origin=plane.origin,
                     normal=tuple(row[2] for row in plane.rotation),

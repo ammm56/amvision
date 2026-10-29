@@ -7,6 +7,7 @@ import numpy as np
 from backend.contracts.workflows.dimension3d_evidence import (
     ContactEvidence,
     ExtentsGeometry,
+    StatisticalContactEvidence,
 )
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.runtime.exception_cleanup import (
@@ -24,6 +25,7 @@ from custom_nodes.metrology3d_nodes.shared.dimension_runtime import (
 from custom_nodes.metrology3d_nodes.shared.extents_rectangle import rectangle_axes
 from custom_nodes.metrology3d_nodes.shared.fit_plane import _positions, _rows
 from custom_nodes.metrology3d_nodes.shared.measurement_support import require_cloud
+from custom_nodes.metrology3d_nodes.shared.envelope_statistics import profile_spans
 
 
 def _scan(runtime, cloud, origin, basis, cancel):
@@ -114,6 +116,8 @@ def _measure_extents(runtime, parameters, *, cloud=None, groups=(), cancel):
         if cloud is None or groups:
             raise InvalidRequestError("点云长宽必须且仅连接 cloud")
         require_cloud(runtime, cloud, parameters, cloud.observation_id)
+        if cloud.sample_origin == "estimated":
+            raise InvalidRequestError("格剖面必须连接完整边界特征并使用稳健剖面跨度")
     else:
         if cloud is not None:
             raise InvalidRequestError("边界长宽不能同时连接 cloud")
@@ -125,6 +129,12 @@ def _measure_extents(runtime, parameters, *, cloud=None, groups=(), cancel):
             "boundary",
         )[0]
         cloud = boundary.support
+        if (parameters.mode.kind == "robust-profile-spans") != (
+            boundary.method.parameters.method.kind == "visible-envelope"
+        ):
+            raise InvalidRequestError(
+                "格剖面必须使用明确的稳健剖面跨度，不能混用极值方法"
+            )
         if boundary.valid:
             cloud = select_boundary(
                 runtime, cloud, parameters.source.selection, cancel=cancel
@@ -145,6 +155,18 @@ def _measure_extents(runtime, parameters, *, cloud=None, groups=(), cancel):
         else None
     )
     metrics = {"support_count": (support.point_count, "1")}
+    if parameters.mode.kind == "robust-profile-spans":
+        return _profile_result(
+            runtime,
+            cloud,
+            boundary,
+            parameters,
+            support,
+            evaluation,
+            reason,
+            metrics,
+            cancel,
+        )
     geometry = candidates = None
     values = {}
     stage = "input"
@@ -221,5 +243,74 @@ def _measure_extents(runtime, parameters, *, cloud=None, groups=(), cancel):
         reason=reason,
         stage=stage,
         candidates=candidates,
+        evaluation=evaluation,
+    )
+
+
+def _profile_result(
+    runtime, cloud, boundary, parameters, support, evaluation, reason, metrics, cancel
+):
+    """与原极值内核分开计算，复用同一尺寸结果、质量和持久证据出口。"""
+    geometry, values, result = None, {}, None
+    if reason is None:
+        if cloud.sample_origin != "estimated" or any(
+            s.profile is None for s in cloud.topology.segments
+        ):
+            raise InvalidRequestError("稳健跨度输入缺少格剖面来源")
+        positions, _ = materialize_positions(runtime, cloud, factor=512, cancel=cancel)
+        result = profile_spans(
+            positions,
+            [s.model_dump() for s in cloud.topology.segments],
+            evaluation,
+            parameters.mode,
+            max_working_bytes=runtime.policy.max_working_bytes - positions.nbytes,
+            cancel=cancel,
+        )
+        if result is None:
+            reason = "degenerate_envelope"
+        else:
+            # 既有几何按 u-min/v-min/u-max/v-max 保存；剖面内部按四侧分组。
+            order = (0, 2, 1, 3)
+            limits = [result["limits"][i] for i in order]
+            origin, basis = (
+                np.asarray(evaluation.origin),
+                np.asarray(evaluation.rotation)[:, :2],
+            )
+            a, b, c, d = limits
+            contacts = tuple(
+                StatisticalContactEvidence(
+                    point=result["coordinates"][i],
+                    projected=result["coordinates"][i],
+                    statistic=result["contacts"][i],
+                )
+                for i in order
+            )
+            geometry = ExtentsGeometry(
+                origin=origin,
+                axes=basis.T,
+                limits=limits,
+                corners=[
+                    origin + basis @ (u, v) for u, v in ((a, b), (c, b), (c, d), (a, d))
+                ],
+                contacts=contacts,
+                candidates=None,
+            )
+            values = dict(u=result["span_u"], v=result["span_v"])
+    for key in ("span_u", "span_v"):
+        metrics[key] = (
+            result[key] if result is not None else None,
+            parameters.length_unit,
+        )
+    cancel()
+    return dimension_result(
+        "measure-extents",
+        parameters,
+        cloud.observation_id,
+        (support,),
+        geometry=geometry,
+        metrics=metrics,
+        values=values,
+        reason=reason,
+        stage="input" if boundary and not boundary.valid else "geometry",
         evaluation=evaluation,
     )

@@ -4,7 +4,7 @@
 
 ## 验收与基准
 
-- [3D Metrology R5 F 实施与验收](3d-metrology-r5-f-implementation.md)：十八节点正式入口、本机容量、单遍 ROI、支持摘要复用和发布端口校验；Windows/Ubuntu 完整样本及停止回收通过，可见包络与全工件秒级目标尚未完成。
+- [3D Metrology R5 F 实施与验收](3d-metrology-r5-f-implementation.md)：十八节点正式入口、本机容量、单遍 ROI、支持摘要复用和发布端口校验；可见包络后续结果见 F3 实施记录。
 - [3D Metrology R5 E 全工件配方与结果验收](3d-metrology-r5-e-results.md)：历史批次的独立数值输出、空白页面建图、50 项结果矩阵、ROI 复用和双平台发布生命周期；23 有效、27 明确无效，当时尚未正式启用。
 - [3D Metrology R5 D0 与 D1 候选审核](3d-metrology-r5-d0-d1.md)：历史候选阶段，视角/旧回调修复、双平台 21 区完整点云复验和参数候选；最新工程配方以 E 验收为准。
 
@@ -41,6 +41,8 @@
 
 ## 待实施设计
 
+- [3D Metrology R5 F3 设计](3d-metrology-r5-f3-plan.md)：现有边界/长宽节点扩展栅格剖面与稳健跨度，来源、保存和前端同批更新。
+- [3D Metrology R5 F3 实施与验收](3d-metrology-r5-f3-implementation.md)：24 项 L/W 有效，47/50 主项有效；独立真值、完整样本、Windows/Ubuntu 发布生命周期、页面及剩余精度/节拍边界。
 - [3D Metrology R5 F 工件测量、速度与启用](3d-metrology-r5-f-plan.md)：已确认可见投影包络和纯计算秒级目标；核对读取与重复扫描、片段集合及正常节点启用，按实际工件尺寸交付，不以无效传递代替完成。
 
 - [3D Metrology 设计与实施基线](3d-metrology.md)：按具体节点推进，复用 Workflow/App 发布；六节点、两入口、显示与持久引用规格见 7.4/9.9/10.13。M0 收口，M1 接线及显式测试配置下真实发布运行已验证；生产启用条件见 15.5。

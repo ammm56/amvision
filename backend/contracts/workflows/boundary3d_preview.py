@@ -67,6 +67,24 @@ class BoundaryDisplay(CurveDisplayBase):
     method: BoundaryMethod
     segments: tuple[SegmentQuality, ...]
     failed_segment_id: Identifier | None
+    profile_kinds: tuple[Literal[0, 1, 2, 3], ...] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+
+    @model_validator(mode="after")
+    def check_profiles(self) -> Self:
+        """估计剖面保留逐点方法；普通曲线不能携带不对应的标记。"""
+        expected = (
+            self.valid and self.method.parameters.method.kind == "visible-envelope"
+        )
+        if expected:
+            if self.profile_kinds is None or len(self.profile_kinds) != len(
+                self.points
+            ):
+                raise ValueError("可见包络显示缺少逐点估计方法")
+        elif self.profile_kinds is not None:
+            raise ValueError("非有效可见包络不能携带估计方法")
+        return self
 
 
 class LineDisplay(CurveDisplayBase):

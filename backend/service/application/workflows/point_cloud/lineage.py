@@ -17,9 +17,23 @@ def lineage_shapes(point_count, face_count):
     }
 
 
-def validate_lineage(arrays, *, point_count, source_point_count, policy, cancel):
+def validate_lineage(
+    arrays, *, point_count, source_point_count, policy, cancel, kind="surface"
+):
     """验证原始行号、插值和 CSR；不把邻面多次出现误判为重复数据。"""
-    if set(arrays) != set(lineage_shapes(0, 0)):
+    if kind == "grid-profile":
+        from backend.service.application.workflows.point_cloud.profile_lineage import (
+            validate_profile_lineage,
+        )
+
+        return validate_profile_lineage(
+            arrays,
+            point_count=point_count,
+            source_point_count=source_point_count,
+            policy=policy,
+            cancel=cancel,
+        )
+    if kind != "surface" or set(arrays) != set(lineage_shapes(0, 0)):
         raise InvalidRequestError("生成顶点来源字段不完整")
     faces = arrays["source_faces"]
     for name, (shape, dtype) in lineage_shapes(point_count, len(faces)).items():
@@ -79,8 +93,18 @@ def validate_lineage(arrays, *, point_count, source_point_count, policy, cancel)
             raise InvalidRequestError("生成顶点源边不属于记录的支持面")
 
 
-def lineage_chunk(arrays, selected, *, max_working_bytes):
+def lineage_chunk(arrays, selected, *, max_working_bytes, kind="surface"):
     """按当前逻辑行重建有界 CSR，裁剪和变换不改变最初来源行号。"""
+    if kind == "grid-profile":
+        from backend.service.application.workflows.point_cloud.profile_lineage import (
+            profile_lineage_chunk,
+        )
+
+        return profile_lineage_chunk(
+            arrays, selected, max_working_bytes=max_working_bytes
+        )
+    if kind != "surface":
+        raise InvalidRequestError("未知生成来源种类")
     selected = np.asarray(selected, dtype=np.uint64)
     offsets = arrays["face_offsets"][:, 0]
     counts = offsets[selected + 1] - offsets[selected]

@@ -236,3 +236,68 @@ def extents(name):
             dict(component="v", item_id=name + ".L"),
         ],
     )
+
+
+def envelope(name, *, grid_step=0.03, ratio=0.5):
+    """F3 显式可见高度场方法；空间窗口固定，运行中不按结果缩窗。"""
+    from math import ceil, floor
+
+    base = contour(name)
+    data = base.model_dump(mode="json")
+    xy, uv = STEEL[name][3], STEEL[name][1]
+    # 源 XY 到固定台面 U/V 的最大偏移小于 0.3 mm，额外留 1 mm 格阵边界。
+    origin = [floor((xy[axis * 2] - 1) / grid_step) * grid_step for axis in range(2)]
+    shape = [
+        ceil((xy[axis * 2 + 1] + 1 - origin[axis]) / grid_step) for axis in range(2)
+    ]
+    data["surface"], data["targets"] = None, []
+    data["method"].update(
+        kind="visible-envelope",
+        envelope=dict(
+            grid=dict(origin=origin, step=grid_step, shape=shape, min_cell_count=1),
+            selection=dict(
+                seed_min=[v - 0.15 for v in uv],
+                seed_max=[v + 0.15 for v in uv],
+                connectivity=8,
+                closing_radius_cells=1,
+            ),
+            profiles=dict(
+                foreground="above",
+                edge_policy="interpolate-or-cell-edge",
+                min_observed_length=0.30,
+            ),
+        ),
+    )
+    data["method"]["height"]["ratio"] = ratio
+    # 可见包络允许缺少低侧邻点，故估计占比可至 1；不能据此删掉缺测证据。
+    # 每侧至少 30 站、1 mm 相邻观测连线累计长度、90% 站位覆盖，缺口不超过 .3 mm。
+    # 格内最大跨度 2 mm 是本工件陡边的工程筛选值，不是平面噪声或计量误差上限。
+    data["quality_policy"] = dict(
+        policy_id="r5-visible-envelope",
+        policy_version=1,
+        rules=[
+            dict(item_id="support_count", unit="1", lower=30),
+            dict(item_id="length", unit="mm", lower=1),
+            dict(item_id="profile_coverage", unit="1", lower=0.9),
+            dict(item_id="estimated_fraction", unit="1", upper=1),
+            dict(item_id="profile_max_gap", unit="mm", upper=0.3),
+            dict(item_id="max_cell_span", unit="mm", upper=2),
+        ],
+    )
+    return type(base).model_validate(data)
+
+
+def profile_extents(name):
+    """四侧独立分位数，U 对应 W、V 对应 L；不是原截线的极值跨度。"""
+    from backend.contracts.workflows.envelope3d import PROFILE_SIDES
+
+    base = extents(name)
+    data = base.model_dump(mode="json")
+    data["source"]["selection"]["segment_ids"] = PROFILE_SIDES
+    data["mode"] = dict(
+        kind="robust-profile-spans",
+        lower_quantile=0.02,
+        upper_quantile=0.98,
+        quantile_method="linear",
+    )
+    return type(base).model_validate(data)

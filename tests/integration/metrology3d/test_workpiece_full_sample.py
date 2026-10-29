@@ -35,7 +35,8 @@ from tests.integration.metrology3d.test_transport_full_sample import FILE_SHA, P
 from tests.point_cloud_support import create_resource_service, options
 
 
-def test_workpiece_full_sample_truth(tmp_path, request):
+@pytest.mark.parametrize("visible", [False, True], ids=["strict", "visible"])
+def test_workpiece_full_sample_truth(tmp_path, request, visible):
     """只读一次原云，共用 D/本组 B；逐项检验固定查询、质量及失败来源。"""
     supplied = request.config.getoption("--cloud-sample")
     if not supplied:
@@ -172,7 +173,7 @@ def test_workpiece_full_sample_truth(tmp_path, request):
                 else:
                     assert item.value is None and item.reason
                 report["items"][item.item_id] = item.model_dump(mode="json")
-            config = recipe.contour(name)
+            config = recipe.envelope(name) if visible else recipe.contour(name)
             boundary = extract_boundary(
                 runtime,
                 contexts[name.rsplit("_", 1)[0]],
@@ -191,7 +192,11 @@ def test_workpiece_full_sample_truth(tmp_path, request):
                 quality=feature.quality.model_dump(mode="json"),
             )
             # 原 A_top_L 的同一端点诊断已有独立证据，不重复计算；新对象分别核对。
-            if name != "A_top_L" and feature.method.resolution.reason is None:
+            if (
+                not visible
+                and name != "A_top_L"
+                and feature.method.resolution.reason is None
+            ):
                 selected, _ = crop_roi(
                     runtime, cloud, config.region, cancel=lambda: None
                 )
@@ -216,8 +221,52 @@ def test_workpiece_full_sample_truth(tmp_path, request):
                 del points, rows, audit
             report["boundaries"][name] = summary
             result = measure_extents(
-                runtime, recipe.extents(name), groups=[boundary], cancel=lambda: None
+                runtime,
+                recipe.profile_extents(name) if visible else recipe.extents(name),
+                groups=[boundary],
+                cancel=lambda: None,
             )
+            if visible and feature.valid:
+                from tests.integration.metrology3d.envelope_audit import (
+                    independent_envelope,
+                )
+
+                selected, _ = crop_roi(
+                    runtime, cloud, config.region, cancel=lambda: None
+                )
+                points, _ = materialize_positions(
+                    runtime, selected, factor=512, cancel=lambda: None
+                )
+                expected_points, expected_values = independent_envelope(
+                    points, feature.method.resolution.evaluation, config.method.envelope
+                )
+                with runtime.borrow(feature.support) as view:
+                    np.testing.assert_allclose(
+                        view.chunk(0, feature.support.point_count)["positions"],
+                        expected_points,
+                        rtol=0,
+                        atol=1e-10,
+                    )
+                np.testing.assert_allclose(
+                    [item.value for item in result.items],
+                    expected_values,
+                    rtol=0,
+                    atol=1e-10,
+                )
+                summary["independent_profile_spans"] = list(expected_values)
+                if name == "A_top_L":
+                    from tests.integration.metrology3d.envelope_sample_checks import (
+                        sensitivity,
+                        save_restore,
+                    )
+
+                    summary["sensitivity"] = sensitivity(
+                        points, feature, config, runtime.policy.max_working_bytes
+                    )
+                    summary["saved_restored"] = save_restore(
+                        runtime, boundary, service, name
+                    )
+                del points, expected_points
             for item in result.items:
                 assert item.valid or (item.value is None and item.reason)
                 report["items"][item.item_id] = item.model_dump(mode="json")
@@ -300,7 +349,8 @@ def test_workpiece_full_sample_truth(tmp_path, request):
         assert report["items"]["S1.D"]["value"] == pytest.approx(
             20.14782366565865, abs=1e-7
         )
-        assert not report["items"]["A_top_L.L"]["valid"]
+        if not visible:
+            assert not report["items"]["A_top_L.L"]["valid"]
         frozen = json.loads(
             (
                 Path(__file__).parents[3]
@@ -309,6 +359,9 @@ def test_workpiece_full_sample_truth(tmp_path, request):
         )
         assert report["items"].keys() == frozen["items"].keys()
         for name, item in report["items"].items():
+            if visible and name.rsplit(".", 1)[1] in {"L", "W"}:
+                assert item["valid"], (name, item["reason"])
+                continue
             expected = frozen["items"][name]
             assert (item["valid"], item["reason"]) == (
                 expected["valid"],
@@ -324,7 +377,10 @@ def test_workpiece_full_sample_truth(tmp_path, request):
         )
         directory = Path(request.config.getoption("--cloud-report-dir") or tmp_path)
         directory.mkdir(parents=True, exist_ok=True)
-        (directory / f"workpiece-{platform.system().lower()}.json").write_text(
+        (
+            directory
+            / f"workpiece-{'visible-' if visible else ''}{platform.system().lower()}.json"
+        ).write_text(
             json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
         )
         assert not errors and runtime.budget.used == 0

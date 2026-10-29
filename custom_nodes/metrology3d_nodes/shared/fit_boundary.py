@@ -44,6 +44,10 @@ def fit_boundary(runtime, group, parameters, *, cancel):
     if len(selected) != 1 or not isinstance(selected[0], BoundaryFeature):
         raise InvalidRequestError("拟合输入必须包含指定的唯一边界特征")
     boundary = selected[0]
+    if boundary.method.parameters.method.kind == "visible-envelope":
+        raise InvalidRequestError(
+            "当前拟合方法不接受估计格剖面，请使用明确的稳健剖面跨度"
+        )
     require_space(runtime, boundary.support, parameters.evaluation)
     require_quality_result(boundary.quality, boundary.method.quality_policy)
     for item in boundary.segments:

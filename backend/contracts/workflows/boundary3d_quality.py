@@ -3,8 +3,8 @@
 
 def boundary_metric_units(kind, unit):
     """返回各方法实际公开的完整指标集合。"""
-    if kind == "boundary":
-        return dict(
+    if kind in ("boundary", "visible-envelope"):
+        result = dict(
             input_count="1",
             surface_point_count="1",
             face_count="1",
@@ -12,6 +12,17 @@ def boundary_metric_units(kind, unit):
             support_count="1",
             length=unit,
         )
+        if kind == "visible-envelope":
+            result.update(
+                profile_coverage="1",
+                estimated_fraction="1",
+                missing_neighbor_fraction="1",
+                profile_max_gap=unit,
+                profile_max_jump=unit,
+                max_cell_span=unit,
+                added_cell_count="1",
+            )
+        return result
     result = dict(
         support_count="1", plane_max_residual=unit, rms=unit, max_residual=unit
     )
@@ -40,7 +51,14 @@ def check_boundary_metrics(quality, kind, unit):
             raise ValueError("边界计数必须为整数")
         if (
             item.valid
-            and item.item_id in ("direction_gap", "jacobian_ratio")
+            and item.item_id
+            in (
+                "direction_gap",
+                "jacobian_ratio",
+                "profile_coverage",
+                "estimated_fraction",
+                "missing_neighbor_fraction",
+            )
             and item.value > 1
         ):
             raise ValueError("边界比率超过范围")

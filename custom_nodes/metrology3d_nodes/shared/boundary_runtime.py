@@ -32,6 +32,11 @@ from custom_nodes.metrology3d_nodes.shared.extract_boundary import (
 from custom_nodes.metrology3d_nodes.shared.geometry_quality import (
     geometry_quality,
 )
+from custom_nodes.metrology3d_nodes.shared.envelope_profiles import (
+    extract_envelope_profiles,
+)
+from custom_nodes.metrology3d_nodes.shared.envelope_grid import grid_working_bytes
+from backend.contracts.workflows.boundary3d_quality import boundary_metric_units
 
 
 def require_space(runtime, reference, evaluation):
@@ -160,10 +165,12 @@ def select_boundary(runtime, reference, selection, *, cancel):
 
 def _extraction_quality(values, parameters, observation_id, reason):
     """边界计数与长度使用现有逐项限值，不增加产品三态实现。"""
-    units = {
-        name: parameters.evaluation.length_unit if name == "length" else "1"
-        for name in values
-    }
+    units = boundary_metric_units(
+        "visible-envelope"
+        if parameters.method.kind == "visible-envelope"
+        else "boundary",
+        parameters.evaluation.length_unit,
+    )
     if any(
         r.item_id not in units or r.unit != units[r.item_id]
         for r in parameters.quality_policy.rules
@@ -220,34 +227,77 @@ def extract_boundary(
         length=None,
     )
     result = positions = sources = None
+    visible = parameters.method.kind == "visible-envelope"
+    if visible:
+        values.update(
+            {
+                k: None
+                for k in boundary_metric_units(
+                    "visible-envelope", parameters.evaluation.length_unit
+                )
+                if k not in values
+            }
+        )
     keys, segment_checks = [], []
     failed = None
     try:
         if reason is None:
+            if (
+                visible
+                and grid_working_bytes(support.point_count, parameters.method.envelope)
+                + support.point_count * 32
+                > runtime.policy.max_working_bytes
+            ):
+                raise InvalidRequestError("可见包络物化与完整工作集超过预算")
             positions, sources = materialize_positions(
-                runtime, support, factor=12544, with_sources=True, cancel=cancel
-            )
-            result = extract_boundary_array(
-                positions,
-                kernel,
-                max_working_bytes=runtime.policy.max_working_bytes
-                - positions.nbytes
-                - sources.nbytes,
+                runtime,
+                support,
+                factor=512 if visible else 12544,
+                with_sources=True,
                 cancel=cancel,
-                contour_plane=contour_plane.geometry
-                if parameters.method.kind == "contour"
-                else None,
             )
-            reason, values, failed = (
-                result.reason,
-                result.metrics,
-                result.failed_segment_id,
-            )
+            if visible:
+                result = extract_envelope_profiles(
+                    positions,
+                    kernel.evaluation,
+                    parameters.method.envelope,
+                    region=parameters.region,
+                    max_working_bytes=runtime.policy.max_working_bytes
+                    - positions.nbytes
+                    - sources.nbytes,
+                    cancel=cancel,
+                )
+                reason, values = result.reason, result.metrics
+                topology = (
+                    BoundaryTopology(
+                        point_count=len(result.positions), segments=result.profiles
+                    )
+                    if reason is None
+                    else None
+                )
+            else:
+                result = extract_boundary_array(
+                    positions,
+                    kernel,
+                    max_working_bytes=runtime.policy.max_working_bytes
+                    - positions.nbytes
+                    - sources.nbytes,
+                    cancel=cancel,
+                    contour_plane=contour_plane.geometry
+                    if parameters.method.kind == "contour"
+                    else None,
+                )
+                reason, values, failed = (
+                    result.reason,
+                    result.metrics,
+                    result.failed_segment_id,
+                )
+                topology = result.topology
         quality = _extraction_quality(
             values, parameters, reference.observation_id, reason
         )
         if result is not None and result.reason is None:
-            for segment in result.topology.segments:
+            for index, segment in enumerate(topology.segments):
                 part = result.positions[
                     segment.start : segment.start + segment.count
                 ].astype(np.float64)
@@ -255,7 +305,14 @@ def extract_boundary(
                 if segment.closed:
                     length += float(np.linalg.norm(part[-1] - part[0]))
                 checked = _extraction_quality(
-                    {**values, "support_count": segment.count, "length": length},
+                    {
+                        **values,
+                        **(
+                            result.side_metrics[index]
+                            if visible
+                            else {"support_count": segment.count, "length": length}
+                        ),
+                    },
                     parameters,
                     reference.observation_id,
                     None,
@@ -268,17 +325,20 @@ def extract_boundary(
             if reason is None and not quality.usable:
                 reason = "insufficient_quality"
         if reason is None:
-            digest = sha256(
-                canonical_cloud_json(result.topology.model_dump(mode="json"))
+            digest = sha256(canonical_cloud_json(topology.model_dump(mode="json")))
+            arrays = (
+                (result.positions, *result.lineage.values())
+                if visible
+                else (
+                    result.positions,
+                    result.source_rows,
+                    result.source_edges,
+                    result.weights,
+                    result.face_offsets,
+                    result.source_faces,
+                )
             )
-            for array in (
-                result.positions,
-                result.source_rows,
-                result.source_edges,
-                result.weights,
-                result.face_offsets,
-                result.source_faces,
-            ):
+            for array in arrays:
                 if array is not None:
                     digest.update(np.ascontiguousarray(array).tobytes())
             method = BoundaryCloudMethod(
@@ -289,7 +349,7 @@ def extract_boundary(
                 vertices_sha256=digest.hexdigest(),
                 resolution=resolution,
             )
-            if result.source_rows is not None:
+            if not visible and result.source_rows is not None:
                 dtype = "<u4" if support.point_count <= 2**32 else "<u8"
                 owner = own_output(
                     runtime,
@@ -300,18 +360,26 @@ def extract_boundary(
                     parent=support,
                     method=method,
                     indices=owner,
-                    topology=result.topology,
+                    topology=topology,
                     cancel=cancel,
                 )
             else:
-                lineage = own_output(
-                    runtime,
-                    dict(
+                lineage_arrays = (
+                    {
+                        **result.lineage,
+                        "cell_sources": sources[result.lineage["cell_sources"]],
+                    }
+                    if visible
+                    else dict(
                         source_edges=sources[result.source_edges],
                         weights=result.weights.astype("<f8", copy=False),
                         face_offsets=result.face_offsets.astype("<u8").reshape(-1, 1),
                         source_faces=sources[result.source_faces],
-                    ),
+                    )
+                )
+                lineage = own_output(
+                    runtime,
+                    lineage_arrays,
                     keys,
                 )
                 owner = own_output(runtime, {"positions": result.positions}, keys)
@@ -325,7 +393,7 @@ def extract_boundary(
                     lineage=lineage,
                     point_count=len(result.positions),
                     fields=(field,),
-                    topology=result.topology,
+                    topology=topology,
                     cancel=cancel,
                 )
         cancel()
@@ -334,7 +402,7 @@ def extract_boundary(
             valid=reason is None,
             reason=reason,
             failed_segment_id=failed,
-            geometry=result.topology if reason is None else None,
+            geometry=topology if reason is None else None,
             support=support,
             quality=quality,
             segments=segment_checks,
@@ -352,7 +420,7 @@ def extract_boundary(
             items=(feature,),
         )
     except BaseException as error:
-        result = positions = sources = None
+        result = positions = sources = arrays = lineage_arrays = array = part = None
         release_exception_frames(error)
         for key in reversed(keys):
             runtime.storage_scope.close_resource(key)

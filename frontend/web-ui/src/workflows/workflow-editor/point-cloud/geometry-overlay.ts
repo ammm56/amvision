@@ -1,4 +1,5 @@
 import {AxesHelper,BoxGeometry,BufferGeometry,Camera,CylinderGeometry,DoubleSide,EdgesGeometry,Group,LineBasicMaterial,LineDashedMaterial,LineSegments,Matrix4,Mesh,MeshBasicMaterial,Object3D,Plane,Quaternion,Vector3,type Material} from 'three'
+import {Points,PointsMaterial} from 'three'
 import {TransformControls} from 'three/addons/controls/TransformControls.js'
 import {object,reserveCpu,reserveGpu} from './preview-data'
 import type {CloudRendererPolicy} from '../services/measurement-resource.service'
@@ -78,17 +79,23 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
     }
     if(g.frame){const f=object(g.frame);if(f.state==='found'){const t=object(f.transform),m=new Matrix4().set(...matrix(t.matrix,4).flat() as Parameters<Matrix4['set']>);if(t.source_frame_id===spatial.frame_id)m.invert();else if(t.target_frame_id===spatial.frame_id)m.identity();else throw new Error('cloud_preview_invalid');const bounds=object(payload.bounds),length=vec(bounds.max).sub(vec(bounds.min)).length()*.25;const axes=new AxesHelper(length);axes.applyMatrix4(m);axes.position.sub(physicalOrigin);root.add(axes);account(axes)}}
   }
-  function lines(points:Vector3[],color:number,dashed=false){
+  function pointGeometry(points:Vector3[]){
     const local=points.map(p=>p.clone().sub(physicalOrigin)),geometry=new BufferGeometry().setFromPoints(local)
     const position=geometry.getAttribute('position')
     for(let i=0;i<local.length;i++)for(let axis=0;axis<3;axis++)if(!Number.isFinite(position.getComponent(i,axis))||Math.abs(position.getComponent(i,axis)-local[i]!.getComponent(axis))>policy.max_position_error){geometry.dispose();throw new Error('cloud_position_precision')}
+    return geometry
+  }
+  function lines(points:Vector3[],color:number,dashed=false){
+    const geometry=pointGeometry(points)
     const size=dashed?Math.max(points[0]!.distanceTo(points[1]!)/20,Number.EPSILON):0
     const line=new LineSegments(geometry,dashed?new LineDashedMaterial({color,depthTest:false,dashSize:size,gapSize:size}):new LineBasicMaterial({color,depthTest:false}));root.add(line);if(dashed)line.computeLineDistances();account(line);return line
   }
   function buildCurves(next:GeometryOverlayInput){
     for(const stroke of curveStrokes(curveItems(next.payload),policy)){
       const selected=stroke.featureId===next.selectedCurve&&(!next.selectedSegment||stroke.segmentId===next.selectedSegment)
-      const line=lines(stroke.points.map(vec),selected?0xd18c00:stroke.fitted?0xc8558a:0x208c77)
+      const color=selected?0xd18c00:stroke.estimate==='edge'?0xc8558a:stroke.estimate==='center'?0x287bb8:stroke.fitted?0xc8558a:0x208c77
+      const line=stroke.markers?new Points(pointGeometry(stroke.points.map(vec)),new PointsMaterial({color,size:4,sizeAttenuation:false,depthTest:false})):lines(stroke.points.map(vec),color,stroke.estimate==='edge')
+      if(stroke.markers){root.add(line);account(line)}
       line.userData.curve={featureId:stroke.featureId,segmentId:stroke.segmentId}
     }
   }
@@ -102,7 +109,7 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
       }
       if(item.valid&&item.geometry?.kind==='projected-extents'){
         const p=(item.geometry.corners as unknown[]).map(vec)
-        if(selected)lines([p[0]!,p[1]!,p[1]!,p[2]!,p[2]!,p[3]!,p[3]!,p[0]!],0x508691)
+        if(selected)lines([p[0]!,p[1]!,p[1]!,p[2]!,p[2]!,p[3]!,p[3]!,p[0]!],0x508691,item.support.some(s=>s.sample_origin==='estimated'))
         lines(['u','length'].includes(item.component??'')?[p[0]!,p[1]!]:[p[0]!,p[3]!],color)
       }
       if(item.valid&&item.geometry?.kind==='circle-dimensions'){

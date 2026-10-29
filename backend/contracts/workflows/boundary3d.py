@@ -5,6 +5,12 @@ from typing import Annotated, Literal, Self
 
 from pydantic import Field, StrictBool, model_validator
 
+from backend.contracts.workflows.envelope3d import (
+    PROFILE_SIDES,
+    ProfileLayout,
+    VisibleEnvelopeSettings,
+)
+
 from backend.contracts.workflows.geometry3d import (
     CropCloudParameters,
     GeometryQualityPolicy,
@@ -61,6 +67,23 @@ class PoseContourBoundary(Contract):
         FixedContourHeight | MeasurementContourHeight, Field(discriminator="kind")
     ]
     numeric_tolerance: Positive
+
+
+class VisibleEnvelopeBoundary(PoseContourBoundary):
+    """复用本次高度来源；格剖面不是三角表面截线。"""
+
+    kind: Literal["visible-envelope"]
+    envelope: VisibleEnvelopeSettings
+
+    @model_validator(mode="after")
+    def check_foreground(self) -> Self:
+        """比例来源的目标次序必须与选定前景方向一致。"""
+        if self.height.kind == "measurement-ratio" and (
+            (self.height.order == "target-above")
+            != (self.envelope.profiles.foreground == "above")
+        ):
+            raise ValueError("可见包络前景与比例高度方向不一致")
+        return self
 
 
 class BoundarySurfaceSettings(Contract):
@@ -134,13 +157,26 @@ class ExtractBoundaryParameters(Contract):
     feature_id: Identifier
     evaluation: EvaluationPlane3d | PoseEvaluation3d
     region: CropCloudParameters
-    surface: BoundarySurfaceSettings
+    surface: BoundarySurfaceSettings | None
     method: Annotated[
-        ProjectionBoundary | SectionBoundary | ContourBoundary | PoseContourBoundary,
+        ProjectionBoundary
+        | SectionBoundary
+        | ContourBoundary
+        | PoseContourBoundary
+        | VisibleEnvelopeBoundary,
         Field(discriminator="kind"),
     ]
-    targets: Annotated[tuple[BoundaryTarget, ...], Field(min_length=1, max_length=8192)]
+    targets: Annotated[tuple[BoundaryTarget, ...], Field(max_length=8192)]
     quality_policy: GeometryQualityPolicy
+
+    @property
+    def target_ids(self):
+        """栅格四侧属于稳定特征，不绑定本次碎片数量。"""
+        return (
+            PROFILE_SIDES
+            if isinstance(self.method, VisibleEnvelopeBoundary)
+            else tuple(t.segment_id for t in self.targets)
+        )
 
     @model_validator(mode="after")
     def check_space(self) -> Self:
@@ -149,6 +185,28 @@ class ExtractBoundaryParameters(Contract):
             self.method, PoseContourBoundary
         ):
             raise ValueError("本次 pose 评价面必须且仅用于本次基准等高")
+        visible = isinstance(self.method, VisibleEnvelopeBoundary)
+        if visible:
+            if self.surface is not None or self.targets:
+                raise ValueError("可见包络不接受表面剖分或闭合段选择参数")
+            _require_quality(
+                self.quality_policy,
+                lower={"profile_coverage": 0},
+                upper=("estimated_fraction", "profile_max_gap", "max_cell_span"),
+            )
+            for rule in self.quality_policy.rules:
+                if rule.enabled and rule.item_id in {
+                    "profile_coverage",
+                    "estimated_fraction",
+                    "missing_neighbor_fraction",
+                }:
+                    if rule.unit != "1" or any(
+                        value is not None and not 0 <= value <= 1
+                        for value in (rule.lower, rule.upper)
+                    ):
+                        raise ValueError("剖面比例限值必须在 0 到 1 之间")
+        elif self.surface is None or not self.targets:
+            raise ValueError("表面边界必须配置剖分和目标段")
         unique_ids([target.segment_id for target in self.targets], "targets")
         for region in (self.region, *(target.region for target in self.targets)):
             if any(
@@ -265,13 +323,24 @@ class BoundarySegment(Contract):
     closed: StrictBool
     role: Literal["outer", "inner", "open", "unknown"]
     orientation: Literal["cw", "ccw", "open"]
+    profile: ProfileLayout | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
     @model_validator(mode="after")
     def check_shape(self) -> Self:
         """只有闭合且至少三点的段才允许声明旋向。"""
-        if self.count < (3 if self.closed else 2) or self.closed == (
-            self.orientation == "open"
+        if self.profile is not None and (
+            self.closed
+            or self.role != "open"
+            or self.orientation != "open"
+            or self.segment_id != self.profile.side
+            or any(v >= self.count for v in self.profile.breaks)
         ):
+            raise ValueError("格剖面必须保持明确的开侧及合法断点")
+        if self.count < (
+            1 if self.profile is not None else 3 if self.closed else 2
+        ) or self.closed == (self.orientation == "open"):
             raise ValueError("边界段数量或旋向与开闭状态不一致")
         if (self.closed and self.role == "open") or (
             not self.closed and self.role in ("inner", "outer")

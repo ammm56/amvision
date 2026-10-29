@@ -4,6 +4,7 @@ from math import fsum, pi
 from typing import Annotated, Literal, Self
 
 from pydantic import Field, model_validator
+from backend.contracts.workflows.envelope3d import PROFILE_SIDES, RobustProfileSpans
 
 from backend.contracts.workflows.boundary3d import BoundarySelection, EvaluationPlane3d
 from backend.contracts.workflows.boundary3d_quality import boundary_metric_units
@@ -118,15 +119,28 @@ class MeasureExtentsParameters(DimensionParameters):
     source: Annotated[
         CloudExtentSource | BoundaryExtentSource, Field(discriminator="kind")
     ]
-    mode: Annotated[AxisSpans | MinimumAreaRectangle, Field(discriminator="kind")]
+    mode: Annotated[
+        AxisSpans | MinimumAreaRectangle | RobustProfileSpans,
+        Field(discriminator="kind"),
+    ]
 
     @model_validator(mode="after")
     def check_mode(self) -> Self:
         """切换方法不能沿用另一种量的身份。"""
-        expected = {"u", "v"} if self.mode.kind == "axis-spans" else {"length", "width"}
+        expected = (
+            {"length", "width"}
+            if self.mode.kind == "minimum-area-rectangle"
+            else {"u", "v"}
+        )
         if {o.component for o in self.outputs} != expected:
             raise ValueError("长宽必须明确配置当前模式的两个量")
         check_dimension_policy(self)
+        if self.mode.kind == "robust-profile-spans" and (
+            self.source.kind != "boundary"
+            or self.source.selection.segment_ids != PROFILE_SIDES
+            or not isinstance(self.evaluation, FeatureEvaluation3d)
+        ):
+            raise ValueError("稳健剖面跨度必须继承完整四侧边界的评价面")
         if self.source.kind == "cloud" and isinstance(
             self.evaluation, FeatureEvaluation3d
         ):
@@ -204,6 +218,12 @@ def resolve_dimension_parameters(parameters, evaluation):
     """数值内核参数不改变已保存的来源选择，并重验面内几何约束。"""
     if evaluation is None:
         return None
+    if (
+        isinstance(parameters, MeasureExtentsParameters)
+        and parameters.mode.kind == "robust-profile-spans"
+    ):
+        # 公开配方必须继承特征；已校验的内部评价面只供代数核对，不重新作为公开配方准入。
+        return parameters.model_copy(update={"evaluation": evaluation})
     values = dict(evaluation=evaluation.model_dump(mode="json"))
     if isinstance(parameters, MeasureEdgePairParameters):
         values.update(

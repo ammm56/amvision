@@ -89,10 +89,15 @@ class BoundaryEvidence(Contract):
         ):
             raise ValueError("边界身份或质量不一致")
         check_geometry_policy(self.quality, self.method.quality_policy)
-        check_boundary_metrics(
-            self.quality, "boundary", self.method.parameters.evaluation.length_unit
+        metric_kind = (
+            "visible-envelope"
+            if self.method.parameters.method.kind == "visible-envelope"
+            else "boundary"
         )
-        ids = tuple(target.segment_id for target in self.method.parameters.targets)
+        check_boundary_metrics(
+            self.quality, metric_kind, self.method.parameters.evaluation.length_unit
+        )
+        ids = self.method.parameters.target_ids
         unique_ids([s.segment_id for s in self.segments], "segments")
         if self.failed_segment_id is not None and self.failed_segment_id not in ids:
             raise ValueError("失败段不属于目标")
@@ -111,7 +116,7 @@ class BoundaryEvidence(Contract):
             check_geometry_policy(segment.quality, self.method.quality_policy)
             check_boundary_metrics(
                 segment.quality,
-                "boundary",
+                metric_kind,
                 self.method.parameters.evaluation.length_unit,
             )
             if self.valid and not segment.quality.usable:
@@ -123,6 +128,9 @@ class BoundaryEvidence(Contract):
         ):
             raise ValueError("来源失败不能保留有效边界或逐段计算")
         if self.valid:
+            visible = metric_kind == "visible-envelope"
+            if any((s.profile is not None) != visible for s in self.geometry.segments):
+                raise ValueError("边界方法与剖面布局不一致")
             counts = {s.segment_id: s.count for s in self.geometry.segments}
             for count, quality in [
                 (self.geometry.point_count, self.quality),
@@ -362,7 +370,13 @@ def _check_common(feature):
     ):
         raise ValueError("几何评价空间与支持不一致")
     check_geometry_policy(feature.quality, feature.method.quality_policy)
-    check_boundary_metrics(feature.quality, feature.kind, evaluation.length_unit)
+    metric_kind = (
+        "visible-envelope"
+        if feature.kind == "boundary"
+        and feature.method.parameters.method.kind == "visible-envelope"
+        else feature.kind
+    )
+    check_boundary_metrics(feature.quality, metric_kind, evaluation.length_unit)
     if feature.valid:
         count = next(
             item.value

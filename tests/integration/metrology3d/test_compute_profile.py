@@ -43,7 +43,8 @@ def test_numerical_graph_preserves_measurement_parameters():
     assert all("preview" not in n.node_type_id for n in numeric.nodes)
 
 
-def test_full_sample_compute_profile(tmp_path, request):
+@pytest.mark.parametrize("visible", [False, True], ids=["strict", "visible"])
+def test_full_sample_compute_profile(tmp_path, request, visible):
     """完整读取一次后执行纯数值图，保留原结果矩阵作同算法优化基线。"""
     sample = request.config.getoption("--cloud-sample")
     if not sample:
@@ -84,7 +85,7 @@ def test_full_sample_compute_profile(tmp_path, request):
         )
         read_seconds = perf_counter() - started
         assert cloud.point_count == POINTS
-        graph = numerical_graph(workpiece_documents()[0])
+        graph = numerical_graph(workpiece_documents(visible=visible)[0])
         registry = measurement_registry()
         context = WorkflowServiceNodeRuntimeContext(
             session_factory=None,
@@ -105,7 +106,17 @@ def test_full_sample_compute_profile(tmp_path, request):
             runtime_context=context,
         )
         elapsed = perf_counter() - started
-        check_workpiece_body(result.outputs["body"])
+        check_workpiece_body(
+            result.outputs["body"],
+            **(
+                {
+                    "matrix": Path(__file__).parents[3]
+                    / "docs/development/assets/r5-f3/workpiece-matrix.json"
+                }
+                if visible
+                else {}
+            ),
+        )
         report = dict(
             platform=platform.platform(),
             file_sha256=FILE_SHA,
@@ -116,7 +127,9 @@ def test_full_sample_compute_profile(tmp_path, request):
             body=result.outputs["body"],
             live_array_bytes=runtime.budget.used,
             display_enabled=False,
-            scope="same-method-regression-not-new-envelope",
+            scope="visible-envelope"
+            if visible
+            else "same-method-regression-not-new-envelope",
         )
     finally:
         assert not scope.close()
@@ -126,7 +139,10 @@ def test_full_sample_compute_profile(tmp_path, request):
     if destination:
         path = Path(destination)
         path.mkdir(parents=True, exist_ok=True)
-        (path / f"compute-{platform.system().lower()}.json").write_text(
+        (
+            path
+            / f"compute-{'visible-' if visible else ''}{platform.system().lower()}.json"
+        ).write_text(
             json.dumps(report, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )

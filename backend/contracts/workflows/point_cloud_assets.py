@@ -163,6 +163,20 @@ class AssetGeneratedLineage(Contract):
         return point_count * 32 + (point_count + 1) * 8 + self.face_count * 24
 
 
+class AssetProfileLineage(Contract):
+    """格表、原始支持 CSR 和逐顶点运算；不冒用源面布局。"""
+
+    kind: Literal["grid-profile"]
+    source_point_count: JsonCount
+    cell_count: JsonCount
+    source_count: JsonCount
+    source: AssetSource
+
+    def byte_length(self, point_count: int) -> int:
+        """LE 格索引/偏移/高度与顶点格对/权重/种类/站位/侧序的总长度。"""
+        return self.cell_count * 32 + 8 + self.source_count * 8 + point_count * 42
+
+
 class CloudAssetBase(Contract):
     """两种存储表达的共同内容，所有字段参与内容摘要。"""
 
@@ -318,7 +332,7 @@ class ArrayCloudAsset(CloudAssetBase):
     fields: Annotated[tuple[CloudAssetField, ...], Field(min_length=1)]
     content_length: JsonCount
     indices: AssetIndices | None
-    lineage: AssetGeneratedLineage | None
+    lineage: AssetGeneratedLineage | AssetProfileLineage | None
 
     @model_validator(mode="after")
     def check_layout(self) -> Self:

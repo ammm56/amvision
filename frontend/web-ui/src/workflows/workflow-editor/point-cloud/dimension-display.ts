@@ -27,9 +27,17 @@ export function validateDimensionGeometry(item:Record<string,unknown>,geometry:R
     if(!Array.isArray(geometry.limits)||geometry.limits.length!==4||!Array.isArray(geometry.contacts)||geometry.contacts.length!==4)fail()
     const limits=geometry.limits.map(finite)
     if(limits[0]!>=limits[2]!||limits[1]!>=limits[3]!)fail()
-    for(const raw of geometry.contacts){
+    const mode=object(object(object(item.method).parameters).mode),robust=mode.kind==='robust-profile-spans'
+    for(const [index,raw] of geometry.contacts.entries()){
       const c=object(raw)
-      vector(c.point);vector(c.projected);count(c.vertex_index)
+      vector(c.point);vector(c.projected)
+      if(robust){
+        const s=object(c.statistic),n=count(s.sample_count),q=finite(s.quantile),rank=(n-1)*q
+        if(s.kind!=='profile-quantile'||s.side!==['u-min','v-min','u-max','v-max'][index]||n<1||q!==(index<2?mode.lower_quantile:mode.upper_quantile)||s.method!=='linear'||!Array.isArray(s.ranks)||s.ranks.length!==2||s.ranks[0]!==Math.floor(rank)||s.ranks[1]!==Math.min(Math.floor(rank)+1,n-1)||Math.abs(finite(s.weight)-(rank-Math.floor(rank)))>1e-12||!Array.isArray(s.vertex_indices)||s.vertex_indices.length!==2||s.vertex_indices.some(v=>count(v)>=Number(support[0]?.point_count))||support[0]?.sample_origin!=='estimated')fail()
+        continue
+      }
+      if(c.statistic!==undefined)fail()
+      count(c.vertex_index)
       if(count(c.tied_count)<1)fail()
       if(support[0]?.vertex_kind==='source'){
         count(c.source_index)

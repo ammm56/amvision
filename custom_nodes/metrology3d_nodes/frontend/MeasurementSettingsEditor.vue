@@ -38,6 +38,7 @@ import GeometryFields from './GeometryFields.vue'
 import GeometrySettingsEditor from './GeometrySettingsEditor.vue'
 import {object,copy,put,vector,type Form,type Field} from './form'
 import {newMeasurement,newMeasurementMode,newMeasurementQuery,measurementIssues,quantileMethods} from './measurement-form'
+import {candidateUV} from './pose-pick'
 defineOptions({inheritAttrs:false})
 const props=defineProps<{modelValue:unknown;nodeType:string;disabled?:boolean;inputSources?:ParameterEditorSources;draftIssues?:(value:unknown)=>string[]}>()
 const emit=defineEmits<{'update:modelValue':[value:Form]}>()
@@ -75,9 +76,8 @@ function changeReference(kind:string){setSettings({...settings.value,reference_p
 function pick(value:{payload:Record<string,unknown>;xyz:number[]}){
   if(!open.value||props.disabled||!canPick.value||value.payload!==preview.value?.payload||!vector(value.xyz))return
   if(query.value.kind==='pose-uv'){
-    const matrix=object(previewFrame.value.transform).matrix
-    if(!Array.isArray(matrix)||matrix.length!==4||!matrix.every(row=>Array.isArray(row)&&row.length===4&&row.every(v=>typeof v==='number'&&Number.isFinite(v))))return
-    const uv=matrix.slice(0,2).map(row=>row[0]*value.xyz[0]!+row[1]*value.xyz[1]!+row[2]*value.xyz[2]!+row[3])
+    const uv=candidateUV(previewFrame.value,value.xyz)
+    if(!uv)return
     setSettings({...settings.value,query:{...query.value,uv}})
   }else setSettings({...settings.value,query:{...query.value,query_position:[...value.xyz]}})
   candidate.value=[...value.xyz]

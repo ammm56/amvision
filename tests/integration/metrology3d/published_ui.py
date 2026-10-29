@@ -27,6 +27,7 @@ def main():
             "dimensions",
             "datum-extension",
             "roi-union",
+            "visible-envelope",
         ),
         default="boundary-circle",
     )
@@ -44,6 +45,12 @@ def main():
         policy = PointCloudExecutionPolicy.model_validate_json(
             args.point_cloud_policy.read_text("utf-8")
         )
+    elif args.recipe == "visible-envelope":
+        from tests.integration.metrology3d.representative_workflow import (
+            representative_policy,
+        )
+
+        policy = representative_policy()
     with published_system(root, point_cloud_policy=policy) as system:
         kinds = (
             ("extents", "edge-pair", "hole")
@@ -51,6 +58,20 @@ def main():
             else (args.recipe,)
         )
         for kind in () if args.recipe == "empty" else kinds:
+            if kind == "visible-envelope":
+                from tests.integration.metrology3d.workpiece_workflow import (
+                    workpiece_documents,
+                )
+
+                version = system.publish(
+                    point_limit=500000,
+                    documents=workpiece_documents(file=True, visible=True),
+                )
+                print(
+                    f"Published {version}; provide the complete original sample through the UI",
+                    flush=True,
+                )
+                continue
             if kind == "datum-extension":
                 from tests.integration.metrology3d.test_reference_extension_published import (
                     extension_documents,

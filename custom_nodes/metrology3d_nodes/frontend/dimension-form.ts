@@ -5,6 +5,7 @@ import type {RecipeValidator} from '@/workflows/workflow-editor/parameters/recip
 import type {NumericItemProvider} from '@/workflows/workflow-editor/parameters/static-numeric-items'
 import {identity,object,vector,type Form} from './form'
 import {evaluationIssues,axisDirection,planePosition} from './evaluation-form'
+import {profileSides} from './envelope-form'
 
 const finite=(v:unknown):v is number=>typeof v==='number'&&Number.isFinite(v)
 const id=(v:unknown)=>typeof v==='string'&&/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/.test(v)
@@ -22,6 +23,7 @@ function metricUnits(kind:string,p:Form):Record<string,string>{
   return units
 }
 export function newExtentMode(kind:string):Form{
+  if(kind==='robust-profile-spans')return {kind,lower_quantile:null,upper_quantile:null,quantile_method:'linear'}
   return kind==='axis-spans'?{kind}:{kind,area_abs_tolerance:null,area_rel_tolerance:null,dimension_abs_tolerance:null,dimension_rel_tolerance:null,orientation_tolerance_radians:null}
 }
 export function newDimension(kind:string):Form{
@@ -36,7 +38,7 @@ export function dimensionFeatureChoices(sources:ParameterEditorSources):Dimensio
   return (sources.features??[]).flatMap(source=>{
     const p=object(source.parameters.settings)
     const kind=source.nodeTypeId==='custom.metrology3d.fit-circle'?'circle':source.nodeTypeId==='custom.metrology3d.fit-line'?'line':source.nodeTypeId==='custom.metrology3d.extract-boundary'?'boundary':null
-    if(kind&&id(p.feature_id))return [{id:String(p.feature_id),kind,segments:kind==='boundary'&&Array.isArray(p.targets)?p.targets.map(t=>String(object(t).segment_id)).filter(id):[],nodeId:source.nodeId}]
+    if(kind&&id(p.feature_id))return [{id:String(p.feature_id),kind,segments:kind==='boundary'&&object(p.method).kind==='visible-envelope'?[...profileSides]:kind==='boundary'&&Array.isArray(p.targets)?p.targets.map(t=>String(object(t).segment_id)).filter(id):[],nodeId:source.nodeId}]
     // 恢复资产的身份只取该连线端口本次输出，不能借用其他预览窗口的同名特征。
     const output=object(source.previewOutput)
     if(output.format_id!=='amvision.features3d.v1'||!Array.isArray(output.items))return []
@@ -48,7 +50,7 @@ export function dimensionIssues(kind:string,value:unknown):string[]{
   const p=object(value),e=object(p.evaluation),q=object(p.quality_policy),issues:string[]=[]
   issues.push(...evaluationIssues(e,kind==='measure-extents'&&object(p.source).kind==='cloud'?[]:['feature']))
   const outputs=Array.isArray(p.outputs)?p.outputs.map(object):[]
-  const allowed=kind==='measure-extents'?(object(p.mode).kind==='axis-spans'?['u','v']:['length','width']):kind==='measure-edge-pair'?['distance']:dimensionComponents
+  const allowed=kind==='measure-extents'?(object(p.mode).kind==='minimum-area-rectangle'?['length','width']:['u','v']):kind==='measure-edge-pair'?['distance']:dimensionComponents
   if(!outputs.length||outputs.some(o=>!id(o.item_id)||!allowed.includes(String(o.component)))||new Set(outputs.map(o=>o.item_id)).size!==outputs.length||new Set(outputs.map(o=>o.component)).size!==outputs.length||kind!=='measure-hole'&&outputs.length!==allowed.length)issues.push('outputs')
   const rules=Array.isArray(q.rules)?q.rules.map(normalizeLimitRule):[],guard=rules.find(r=>r.item_id==='geometry_usable')
   if(!id(q.policy_id)||!Number.isSafeInteger(q.policy_version)||Number(q.policy_version)<1||rules.some(limitRuleError)||new Set(rules.map(r=>r.item_id)).size!==rules.length)issues.push('quality / policy')
@@ -62,7 +64,11 @@ export function dimensionIssues(kind:string,value:unknown):string[]{
     const s=object(p.source),selection=object(s.selection),m=object(p.mode)
     if(!['cloud','boundary'].includes(String(s.kind)))issues.push('source')
     if(s.kind==='boundary'&&(!id(selection.feature_id)||!Array.isArray(selection.segment_ids)||!selection.segment_ids.length||selection.segment_ids.some(v=>!id(v))||new Set(selection.segment_ids).size!==selection.segment_ids.length))issues.push('source / selection')
-    if(!['axis-spans','minimum-area-rectangle'].includes(String(m.kind)))issues.push('mode')
+    if(!['axis-spans','minimum-area-rectangle','robust-profile-spans'].includes(String(m.kind)))issues.push('mode')
+    if(m.kind==='robust-profile-spans'){
+      if(s.kind!=='boundary'||e.kind!=='feature'||!Array.isArray(selection.segment_ids)||selection.segment_ids.length!==4||profileSides.some(side=>!(selection.segment_ids as unknown[]).includes(side)))issues.push('profiles / selection / evaluation')
+      if(!finite(m.lower_quantile)||m.lower_quantile<0||m.lower_quantile>=.5||!finite(m.upper_quantile)||m.upper_quantile<=.5||m.upper_quantile>1||m.quantile_method!=='linear')issues.push('quantiles')
+    }
     if(m.kind==='minimum-area-rectangle'&&['area_abs_tolerance','area_rel_tolerance','dimension_abs_tolerance','dimension_rel_tolerance','orientation_tolerance_radians'].some(k=>!finite(m[k])||Number(m[k])<0||k==='orientation_tolerance_radians'&&Number(m[k])>=Math.PI/4))issues.push('rectangle / tolerances')
   }else if(kind==='measure-edge-pair'){
     if(!id(p.reference_feature_id)||!id(p.target_feature_id)||p.reference_feature_id===p.target_feature_id)issues.push('line IDs')

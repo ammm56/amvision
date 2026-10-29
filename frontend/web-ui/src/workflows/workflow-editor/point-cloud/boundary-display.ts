@@ -7,8 +7,9 @@ export interface CurveDisplay {
   points: number[][]; topology: { segments: Segment[]; point_count: number } | null
   intervals?: Record<string, unknown>[]; vertex_kind: 'source' | 'generated' | null
   failed_segment_id?: string | null; segments?: Record<string, unknown>[]
+  profile_kinds?: number[]
 }
-export interface Segment { segment_id: string; start: number; count: number; closed: boolean; role: string; orientation: string }
+export interface Segment { segment_id: string; start: number; count: number; closed: boolean; role: string; orientation: string; profile?: {side:string;breaks:number[]} }
 const invalid = () => new Error('cloud_preview_invalid')
 export function xyz(value: unknown): number[] {
   if (!Array.isArray(value) || value.length !== 3 || value.some(v => typeof v !== 'number' || !Number.isFinite(v))) throw invalid()
@@ -27,6 +28,7 @@ export function curveItems(payload: Record<string, unknown>): CurveDisplay[] {
     if (typeof f.feature_id !== 'string' || !f.feature_id || ids.has(f.feature_id) || !['boundary','line','circle'].includes(String(f.kind)) || typeof f.valid !== 'boolean') throw invalid()
     ids.add(f.feature_id)
     const method = object(f.method), evaluation = object(object(method.parameters).evaluation), spatial = object(payload.spatial)
+    const visible=f.kind==='boundary'&&object(object(method.parameters).method).kind==='visible-envelope'
     if (method.method_id !== ({ boundary: 'extract-boundary', line: 'fit-line', circle: 'fit-circle' }[String(f.kind)]) || method.method_version !== 1) throw invalid()
     if (evaluation.frame_id !== spatial.frame_id || evaluation.length_unit !== spatial.length_unit || object(object(f.quality).metrics).observation_id !== payload.observation_id) throw invalid()
     const resolved = f.kind==='boundary'?object(method.resolution).evaluation:method.evaluation
@@ -46,18 +48,26 @@ export function curveItems(payload: Record<string, unknown>): CurveDisplay[] {
       let cursor = 0; const seen = new Set<string>()
       for (const rawSegment of t.segments) {
         const s = object(rawSegment)
-        if (typeof s.segment_id !== 'string' || seen.has(s.segment_id) || s.start !== cursor || !Number.isSafeInteger(s.count) || typeof s.closed !== 'boolean' || Number(s.count) < (s.closed ? 3 : 2)) throw invalid()
+        const profile=s.profile?object(s.profile):null
+        if (typeof s.segment_id !== 'string' || seen.has(s.segment_id) || s.start !== cursor || !Number.isSafeInteger(s.count) || typeof s.closed !== 'boolean' || Number(s.count) < (s.closed ? 3 : profile?1:2)) throw invalid()
+        if(profile){
+          if(!visible||profile.side!==s.segment_id||!['u-min','u-max','v-min','v-max'].includes(String(profile.side))||s.closed||s.role!=='open'||s.orientation!=='open'||!Array.isArray(profile.breaks))throw invalid()
+          let previous=0
+          for(const index of profile.breaks){if(!Number.isSafeInteger(index)||index<=previous||index>=Number(s.count))throw invalid();previous=index}
+        }else if(visible)throw invalid()
         seen.add(s.segment_id); cursor += Number(s.count)
       }
       if (cursor !== points.length) throw invalid()
       const segments = t.segments
       if (f.kind !== 'boundary' && (!Array.isArray(f.intervals) || f.intervals.length !== segments.length || f.intervals.some((v,i)=>object(v).segment_id!==object(segments[i]).segment_id))) throw invalid()
     }
+    const profile=f.valid&&visible
+    if(profile?(!Array.isArray(f.profile_kinds)||f.profile_kinds.length!==points.length||f.profile_kinds.some(k=>!Number.isInteger(k)||Number(k)<0||Number(k)>3)):f.profile_kinds!==undefined)throw invalid()
     return { ...f, points } as unknown as CurveDisplay
   })
 }
 
-export interface CurveStroke { featureId: string; segmentId: string; fitted: boolean; points: number[][] }
+export interface CurveStroke { featureId: string; segmentId: string; fitted: boolean; points: number[][]; markers?:boolean; estimate?:'center'|'edge' }
 /** 实测边按实际连接绘制；模型只绘制支持区间，不跨段连接。 */
 export function curveStrokes(items: CurveDisplay[], policy: CloudRendererPolicy): CurveStroke[] {
   let count = 0; const result: CurveStroke[] = []
@@ -69,6 +79,23 @@ export function curveStrokes(items: CurveDisplay[], policy: CloudRendererPolicy)
   for (const f of items) {
     if (!f.valid || !f.topology) continue
     for (const s of f.topology.segments) {
+      if(s.profile){
+        const breaks=new Set(s.profile.breaks)
+        for(const kind of ['center','edge'] as const){
+          const markers:number[][]=[],edges:number[][]=[]
+          for(let i=0;i<s.count;i++){
+            const index=s.start+i,mode=f.profile_kinds?.[index]===0?'center':'edge'
+            if(mode===kind)markers.push(f.points[index]!)
+            if(i&& !breaks.has(i) && (f.profile_kinds?.[index]===0&&f.profile_kinds?.[index-1]===0?'center':'edge')===kind)edges.push(f.points[index-1]!,f.points[index]!)
+          }
+          for(const [points,isMarkers] of [[markers,true],[edges,false]] as const){
+            if(!points.length)continue
+            push(f,s.segment_id,points,false)
+            Object.assign(result.at(-1)!,{markers:isMarkers,estimate:kind})
+          }
+        }
+        continue
+      }
       if (count + (s.count - 1 + Number(s.closed)) * 2 > policy.max_points * 8) throw new Error('cloud_preview_capacity')
       const points: number[][] = []
       for (let i = 0; i < s.count - 1; i++) points.push(f.points[s.start + i]!, f.points[s.start + i + 1]!)

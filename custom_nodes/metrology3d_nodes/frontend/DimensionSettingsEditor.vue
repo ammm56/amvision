@@ -6,10 +6,10 @@
         <section class="dimension-config">
           <template v-if="extents">
             <fieldset class="modes"><legend>{{ label('测量定义','Measurement') }}</legend>
-              <label v-for="mode in ['axis-spans','minimum-area-rectangle']" :key="mode"><input type="radio" name="dimension-mode" :checked="object(draft.mode).kind===mode" @change="changeMode(mode)">{{ mode==='axis-spans'?label('轴向跨度 U/V','Axis spans U/V'):label('最小包络 L/W','Minimum rectangle L/W') }}</label>
+              <label v-for="mode in ['axis-spans','minimum-area-rectangle','robust-profile-spans']" :key="mode"><input type="radio" name="dimension-mode" :checked="object(draft.mode).kind===mode" @change="changeMode(mode)">{{ mode==='axis-spans'?label('轴向跨度 U/V','Axis spans U/V'):mode==='robust-profile-spans'?label('稳健剖面跨度 U/V','Robust profile spans U/V'):label('最小包络 L/W','Minimum rectangle L/W') }}</label>
             </fieldset>
             <fieldset class="modes"><legend>{{ label('输入来源','Input source') }}</legend>
-              <label><input type="radio" name="dimension-source" :checked="object(draft.source).kind==='cloud'" @change="changeSource('cloud')">{{ label('点云','Cloud') }}</label>
+              <label><input type="radio" name="dimension-source" :disabled="robust" :checked="object(draft.source).kind==='cloud'" @change="changeSource('cloud')">{{ label('点云','Cloud') }}</label>
               <label><input type="radio" name="dimension-source" :checked="object(draft.source).kind==='boundary'" @change="changeSource('boundary')">{{ label('边界','Boundary') }}</label>
             </fieldset>
           </template>
@@ -26,7 +26,7 @@
             <button v-if="edge" class="swap" :title="label('交换基准边和目标边','Swap reference and target')" @click="swap"><ArrowLeftRight :size="16" /></button>
           </template>
           <fieldset v-if="extents&&object(draft.source).kind==='boundary'" class="segments"><legend>{{ label('支持段','Support segments') }}</legend>
-            <label v-for="segment in segments" :key="segment"><input type="checkbox" :checked="selectedSegments.includes(segment)" @change="toggleSegment(segment,($event.target as HTMLInputElement).checked)">{{ segment }}</label>
+            <label v-for="segment in segments" :key="segment"><input type="checkbox" :disabled="robust" :checked="selectedSegments.includes(segment)" @change="toggleSegment(segment,($event.target as HTMLInputElement).checked)">{{ segment }}</label>
           </fieldset>
           <template v-if="edge"><label>{{ label('查询坐标','Query coordinates') }}<select :value="object(draft.query_position).kind==='plane-uv'?'plane-uv':'xyz'" @change="changeQuery(($event.target as HTMLSelectElement).value)"><option value="xyz">XYZ</option><option value="plane-uv">{{ label('评价面 U/V','Evaluation U/V') }}</option></select></label><GeometryFields v-model="draft" :fields="edgeFields" /><EvaluationDirectionEditor v-model="draft.direction" :label="label('测量方向','Measurement direction')" /></template>
           <label v-if="edge">{{ label('距离符号','Distance sign') }}<select v-model="draft.value_mode"><option value="signed">{{ label('有符号','Signed') }}</option><option value="absolute">{{ label('绝对值','Absolute') }}</option></select></label>
@@ -39,7 +39,9 @@
               <input :aria-label="`${componentLabel(component)} ID`" :value="outputs.find(o=>o.component===component)?.item_id??''" :disabled="!outputs.some(o=>o.component===component)" @input="setOutput(component,($event.target as HTMLInputElement).value)">
             </label>
           </fieldset>
-          <EvaluationEditor v-model="draft.evaluation" :allow-feature="!extents||object(draft.source).kind==='boundary'" />
+          <GeometryFields v-if="robust" v-model="draft" :fields="quantileFields" />
+          <EvaluationEditor v-if="!robust" v-model="draft.evaluation" :allow-feature="!extents||object(draft.source).kind==='boundary'" />
+          <span v-else>{{ label('评价面：继承边界','Evaluation: inherited from boundary') }}</span>
         </section>
         <section class="dimension-view">
           <label>{{ label('点云显示','Point cloud view') }}<select v-model="previewId"><option value="">{{ label('未选择','None') }}</option><option v-for="view in previews" :key="view.id" :value="view.id">{{ view.label }}</option></select></label>
@@ -71,6 +73,7 @@ import EvaluationDirectionEditor from './EvaluationDirectionEditor.vue'
 import {newEvaluation} from './evaluation-form'
 import {copy,get,object,put,vector,type Form,type Field} from './form'
 import {dimensionComponents,dimensionFeatureChoices,dimensionIssues,newDimension,newExtentMode} from './dimension-form'
+import {profileSides} from './envelope-form'
 
 defineOptions({inheritAttrs:false})
 const props=defineProps<{modelValue:unknown;nodeType:string;disabled?:boolean;inputSources?:ParameterEditorSources;draftIssues?:(value:unknown)=>string[]}>()
@@ -80,6 +83,7 @@ const {locale}=useI18n(),label=(cn:string,en:string)=>locale.value==='zh-CN'?cn:
 const kind=computed(()=>props.nodeType.split('.').at(-1)!),extents=computed(()=>kind.value==='measure-extents'),edge=computed(()=>kind.value==='measure-edge-pair'),hole=computed(()=>kind.value==='measure-hole')
 const title=computed(()=>extents.value?label('投影长宽','Projected extents'):edge.value?label('边间距','Edge distance'):label('孔径与圆心','Diameter and center'))
 const open=ref(false),draft=ref<Form>({}),previewId=ref(''),activeSlot=ref(''),candidate=ref<number[]|null>(null)
+const robust=computed(()=>extents.value&&object(draft.value.mode).kind==='robust-profile-spans')
 const resolve=inject(parameterCloudPreviewsKey,()=>[]),state=inject(parameterPreviewStateKey,()=>({runId:'',succeeded:false}))
 const previews=computed(()=>state().succeeded?resolve():[]),preview=computed(()=>previews.value.find(p=>p.id===previewId.value))
 const issues=computed(()=>dimensionIssues(kind.value,draft.value)),referenceIssues=computed(()=>open.value?props.draftIssues?.(draft.value)??[]:[])
@@ -89,7 +93,8 @@ const featureSlots=computed(()=>extents.value?[{path:'source.selection.feature_i
 const segments=computed(()=>choices.value.find(c=>c.id===get(draft.value,'source.selection.feature_id'))?.segments??[])
 const selectedSegments=computed(()=>(get(draft.value,'source.selection.segment_ids')??[]) as string[])
 const outputs=computed(()=>(Array.isArray(draft.value.outputs)?draft.value.outputs:[]).map(object))
-const outputComponents=computed(()=>hole.value?dimensionComponents:extents.value?(object(draft.value.mode).kind==='axis-spans'?['u','v']:['length','width']):['distance'])
+const outputComponents=computed(()=>hole.value?dimensionComponents:extents.value?(object(draft.value.mode).kind==='minimum-area-rectangle'?['length','width']:['u','v']):['distance'])
+const quantileFields=computed<Field[]>(()=>[{path:'mode.lower_quantile',label:label('低侧分位数','Lower quantile'),type:'number'},{path:'mode.upper_quantile',label:label('高侧分位数','Upper quantile'),type:'number'}])
 const pickPlane=computed(()=>{
   const e=object(draft.value.evaluation)
   if(e.kind!=='feature')return e
@@ -104,10 +109,10 @@ const conditionFields=computed<Field[]>(()=>[['max_plane_distance','最大共面
 const qualityFields=computed<Field[]>(()=>[{path:'quality_policy.policy_id',label:label('质量策略 ID','Quality policy ID')},{path:'quality_policy.policy_version',label:label('策略版本','Policy version'),type:'number'}])
 function show(){draft.value=Object.keys(object(props.modelValue)).length?copy(object(props.modelValue)):newDimension(kind.value);resetView();open.value=true}
 function resetView(){previewId.value='';activeSlot.value='';candidate.value=null}
-function changeMode(mode:string){draft.value={...draft.value,mode:newExtentMode(mode),outputs:(mode==='axis-spans'?['u','v']:['length','width']).map(component=>({component,item_id:''}))};candidate.value=null}
+function changeMode(mode:string){draft.value={...draft.value,mode:newExtentMode(mode),outputs:(mode==='minimum-area-rectangle'?['length','width']:['u','v']).map(component=>({component,item_id:''}))};if(mode==='robust-profile-spans'){draft.value={...draft.value,source:{kind:'boundary',selection:{feature_id:object(object(draft.value.source).selection).feature_id??'',segment_ids:[...profileSides]}},evaluation:newEvaluation('feature',draft.value.evaluation)}}candidate.value=null}
 function changeSource(kind:string){draft.value={...draft.value,source:kind==='cloud'?{kind}:{kind,selection:{feature_id:'',segment_ids:[]}},evaluation:kind==='cloud'&&object(draft.value.evaluation).kind==='feature'?newEvaluation('configured',draft.value.evaluation):draft.value.evaluation};activeSlot.value='';candidate.value=null}
 function changeQuery(kind:string){draft.value={...draft.value,query_position:kind==='plane-uv'?{kind,uv:[null,null]}:[null,null,null]};candidate.value=null}
-function selectFeature(path:string,id:string){draft.value=put(draft.value,path,id);if(extents.value)draft.value=put(draft.value,'source.selection.segment_ids',[]);candidate.value=null}
+function selectFeature(path:string,id:string){draft.value=put(draft.value,path,id);if(extents.value)draft.value=put(draft.value,'source.selection.segment_ids',robust.value?[...profileSides]:[]);candidate.value=null}
 function toggleSegment(id:string,on:boolean){draft.value=put(draft.value,'source.selection.segment_ids',on?[...selectedSegments.value,id]:selectedSegments.value.filter(s=>s!==id))}
 function toggleOutput(component:string,on:boolean){draft.value={...draft.value,outputs:on?[...outputs.value,{component,item_id:''}]:outputs.value.filter(o=>o.component!==component)}}
 function setOutput(component:string,item_id:string){draft.value={...draft.value,outputs:outputs.value.map(o=>o.component===component?{...o,item_id}:o)}}
@@ -124,7 +129,7 @@ function chooseFeature(value:{payload:Form;featureId:string;segmentId:string}){
   if(!open.value||props.disabled||!activeSlot.value||value.payload!==preview.value?.payload||choices.value.filter(c=>c.id===value.featureId).length!==1)return
   if(!curveItems(value.payload).some(f=>f.kind===wantedKind.value&&f.feature_id===value.featureId))return
   selectFeature(activeSlot.value,value.featureId)
-  if(extents.value&&value.segmentId&&segments.value.includes(value.segmentId))toggleSegment(value.segmentId,true)
+  if(extents.value&&!robust.value&&value.segmentId&&segments.value.includes(value.segmentId))toggleSegment(value.segmentId,true)
   activeSlot.value=''
 }
 function apply(){if(!issues.value.length&&!referenceIssues.value.length&&!props.disabled){emit('update:modelValue',copy(draft.value));open.value=false;resetView()}}

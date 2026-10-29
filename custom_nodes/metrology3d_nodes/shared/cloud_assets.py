@@ -38,7 +38,13 @@ from custom_nodes.metrology3d_nodes.shared.cloud_lineage_assets import (
     count_lineage_faces,
 )
 from backend.service.application.workflows.point_cloud.lineage import lineage_shapes
-from backend.contracts.workflows.point_cloud_assets import AssetGeneratedLineage
+from backend.contracts.workflows.point_cloud_assets import (
+    AssetGeneratedLineage,
+    AssetProfileLineage,
+)
+from backend.service.application.workflows.point_cloud.profile_lineage import (
+    profile_lineage_shapes,
+)
 
 
 class _Chunks:
@@ -295,14 +301,36 @@ def save_cloud(
                 else {"kind": "derived"}
             )
             if selected.vertex_kind == "generated":
-                lineage = AssetGeneratedLineage(
-                    source_point_count=source_count,
-                    face_count=count_lineage_faces(view, rows, cancel),
-                    source=source,
-                )
+                if selected.sample_origin == "estimated":
+                    profile_arrays = view.profile_lineage_snapshot()
+                    lineage = AssetProfileLineage(
+                        kind="grid-profile",
+                        source_point_count=source_count,
+                        cell_count=len(profile_arrays["cell_indices"]),
+                        source_count=len(profile_arrays["cell_sources"]),
+                        source=source,
+                    )
+                    rows = min(
+                        rows,
+                        runtime.policy.max_working_bytes // 2 // (row_size * 2 + 32),
+                    )
+                    if rows < 1:
+                        raise InvalidRequestError("剖面保存剩余工作预算不足")
 
-                def lineage_factory():
-                    return lineage_chunks(view, rows, cancel)
+                    def lineage_factory():
+                        for array in profile_arrays.values():
+                            for start in range(0, len(array), rows):
+                                cancel()
+                                yield array[start : start + rows].tobytes(order="C")
+                else:
+                    lineage = AssetGeneratedLineage(
+                        source_point_count=source_count,
+                        face_count=count_lineage_faces(view, rows, cancel),
+                        source=source,
+                    )
+
+                    def lineage_factory():
+                        return lineage_chunks(view, rows, cancel)
 
                 blobs.append(_blob("lineage", "lineage.bin", lineage_factory()))
                 streams["lineage.bin"] = _Chunks(lineage_factory())
@@ -479,9 +507,16 @@ def _read_blocks(runtime, document, service, policy, cancel):
                 dtype=np.dtype(cloud.indices.dtype).newbyteorder("<"),
             )
         if cloud.lineage:
-            for name, (shape, dtype) in lineage_shapes(
-                cloud.point_count, cloud.lineage.face_count
-            ).items():
+            shapes = (
+                profile_lineage_shapes(
+                    cloud.point_count,
+                    cloud.lineage.cell_count,
+                    cloud.lineage.source_count,
+                )
+                if isinstance(cloud.lineage, AssetProfileLineage)
+                else lineage_shapes(cloud.point_count, cloud.lineage.face_count)
+            )
+            for name, (shape, dtype) in shapes.items():
                 cancel()
                 lineage_arrays[name] = np.empty(shape, dtype=dtype)
         for blob in cloud.blobs:

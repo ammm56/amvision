@@ -4,6 +4,7 @@ from math import fsum, pi, sqrt
 from typing import Annotated, Literal, Self
 
 from pydantic import Field, StrictBool, model_validator
+from backend.contracts.workflows.envelope3d import ProfileQuantileContact
 
 from backend.contracts.workflows.boundary3d import BoundaryTopology
 from backend.contracts.workflows.boundary3d_observations import (
@@ -116,7 +117,9 @@ class DimensionSupport(Contract):
     point_count: JsonCount | None
     source_point_count: JsonCount | None
     vertex_kind: Literal["source", "generated"] | None
-    sample_origin: Literal["measured", "interpolated", "extrapolated", "mixed"] | None
+    sample_origin: (
+        Literal["measured", "interpolated", "extrapolated", "mixed", "estimated"] | None
+    )
     bounds: SupportBounds | None
     topology: BoundaryTopology | None
     feature: (
@@ -142,8 +145,11 @@ class DimensionSupport(Contract):
             raise ValueError("尺寸支持范围与点数不一致")
         if self.vertex_kind == "source" and self.point_count > self.source_point_count:
             raise ValueError("源点支持数量超出原始点数")
-        if self.vertex_kind == "generated" and self.sample_origin != "interpolated":
-            raise ValueError("生成支持必须保留插值来源")
+        if self.vertex_kind == "generated" and self.sample_origin not in (
+            "interpolated",
+            "estimated",
+        ):
+            raise ValueError("生成支持必须保留实际插值或估计来源")
         if self.topology and self.topology.point_count != self.point_count:
             raise ValueError("支持拓扑与点数不一致")
         if self.feature and self.feature.valid:
@@ -231,6 +237,14 @@ class ContactEvidence(Contract):
     tied_count: Annotated[JsonCount, Field(ge=1)]
 
 
+class StatisticalContactEvidence(Contract):
+    """分位数辅助点；不声明单一实测极值或原始源行号。"""
+
+    point: Point3
+    projected: Point3
+    statistic: ProfileQuantileContact
+
+
 class RectangleCandidates(Contract):
     """完整并列集合的有限摘要，不截断集合后作尺寸一致判断。"""
 
@@ -264,7 +278,10 @@ class ExtentsGeometry(Contract):
     axes: tuple[Point3, Point3]
     limits: tuple[Finite, Finite, Finite, Finite]
     corners: tuple[Point3, Point3, Point3, Point3]
-    contacts: tuple[ContactEvidence, ContactEvidence, ContactEvidence, ContactEvidence]
+    contacts: Annotated[
+        tuple[ContactEvidence | StatisticalContactEvidence, ...],
+        Field(min_length=4, max_length=4),
+    ]
     candidates: RectangleCandidates | None
 
     @model_validator(mode="after")
@@ -364,7 +381,9 @@ class DimensionEvidenceItem(Contract):
     quality: GeometryQuality
     support: Annotated[tuple[DimensionSupport, ...], Field(min_length=1, max_length=2)]
     diagnostic: DimensionDiagnostic | None
-    sample_origin: Literal["measured", "interpolated", "extrapolated", "mixed"]
+    sample_origin: Literal[
+        "measured", "interpolated", "extrapolated", "mixed", "estimated"
+    ]
 
     def check_common(self):
         """复核身份、方法摘要、质量与来源；不复制限值计算器。"""
@@ -503,6 +522,12 @@ class ExtentsEvidenceItem(DimensionEvidenceItem):
             raise ValueError("长宽来源与支持不一致")
         if self.valid:
             g = self.geometry
+            robust = p.mode.kind == "robust-profile-spans"
+            if robust and (
+                s.sample_origin != "estimated"
+                or s.feature.method.parameters.method.kind != "visible-envelope"
+            ):
+                raise ValueError("稳健剖面跨度缺少格剖面来源")
             rectangle = p.mode.kind == "minimum-area-rectangle"
             if (
                 rectangle != (g.candidates is not None)
@@ -574,7 +599,7 @@ class ExtentsEvidenceItem(DimensionEvidenceItem):
                 for k, value in zip(("span_u", "span_v"), sizes)
             ):
                 raise ValueError("包络跨度指标与几何不一致")
-            for contact in g.contacts:
+            for contact_number, contact in enumerate(g.contacts):
                 delta = tuple(x - o for x, o in zip(contact.point, p.evaluation.origin))
                 normal = tuple(row[2] for row in p.evaluation.rotation)
                 offset = dot(delta, normal)
@@ -583,6 +608,34 @@ class ExtentsEvidenceItem(DimensionEvidenceItem):
                     for x, y, n in zip(contact.point, contact.projected, normal)
                 ):
                     raise ValueError("接触投影与原坐标不一致")
+                if isinstance(contact, StatisticalContactEvidence):
+                    if not robust:
+                        raise ValueError("极值跨度不能使用分位端点")
+                    statistic = contact.statistic
+                    side = ("u-min", "v-min", "u-max", "v-max")[contact_number]
+                    segment = next(
+                        v for v in s.topology.segments if v.segment_id == side
+                    )
+                    q = (
+                        p.mode.lower_quantile
+                        if contact_number < 2
+                        else p.mode.upper_quantile
+                    )
+                    if (
+                        statistic.side != side
+                        or statistic.quantile != q
+                        or statistic.method != p.mode.quantile_method
+                        or statistic.sample_count != segment.count
+                        or segment.profile is None
+                        or any(
+                            not segment.start <= index < segment.start + segment.count
+                            for index in statistic.vertex_indices
+                        )
+                    ):
+                        raise ValueError("分位端点与实际剖面来源不一致")
+                    continue
+                if robust:
+                    raise ValueError("稳健剖面跨度不能伪造实测极值接触")
                 if (
                     contact.vertex_index >= s.point_count
                     or contact.tied_count > s.point_count

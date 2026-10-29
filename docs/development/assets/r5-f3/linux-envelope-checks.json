@@ -1,0 +1,139 @@
+[
+  {
+    "object": "A_top_L",
+    "valid": true,
+    "spans": [
+      6.876303210609635,
+      7.916129889831762
+    ],
+    "saved_restored": {
+      "values": [
+        6.876303210609631,
+        7.916129889831769
+      ],
+      "lineage_fields": [
+        "cell_indices",
+        "cell_offsets",
+        "cell_sources",
+        "cell_heights",
+        "profile_cells",
+        "profile_weights",
+        "profile_kinds",
+        "profile_stations",
+        "profile_sides"
+      ],
+      "released": true
+    }
+  },
+  {
+    "object": "A_top_R",
+    "valid": true,
+    "spans": [
+      6.937724614851209,
+      7.886121149944861
+    ],
+    "saved_restored": null
+  },
+  {
+    "object": "B_top_L",
+    "valid": true,
+    "spans": [
+      6.950888249476197,
+      7.947185083387641
+    ],
+    "saved_restored": null
+  },
+  {
+    "object": "B_top_R",
+    "valid": true,
+    "spans": [
+      7.020000000000001,
+      7.946732613561263
+    ],
+    "saved_restored": null
+  },
+  {
+    "object": "A_bottom_L",
+    "valid": true,
+    "spans": [
+      6.993259589335928,
+      8.121078769657892
+    ],
+    "saved_restored": null
+  },
+  {
+    "object": "A_bottom_R",
+    "valid": true,
+    "spans": [
+      7.02,
+      8.172617892311564
+    ],
+    "saved_restored": null
+  },
+  {
+    "object": "B_bottom_L",
+    "valid": true,
+    "spans": [
+      7.032695141987034,
+      8.230250107098598
+    ],
+    "saved_restored": null
+  },
+  {
+    "object": "B_bottom_R",
+    "valid": true,
+    "spans": [
+      7.0084070749273195,
+      8.245952948548506
+    ],
+    "saved_restored": null
+  },
+  {
+    "object": "C_top_L",
+    "valid": true,
+    "spans": [
+      7.020000000000003,
+      7.947345127470783
+    ],
+    "saved_restored": null
+  },
+  {
+    "object": "C_top_R",
+    "valid": true,
+    "spans": [
+      7.109999999999999,
+      7.920974584579753
+    ],
+    "saved_restored": null
+  },
+  {
+    "object": "C_bottom_L",
+    "valid": true,
+    "spans": [
+      7.097400000000004,
+      8.194675545088288
+    ],
+    "saved_restored": null
+  },
+  {
+    "object": "C_bottom_R",
+    "valid": true,
+    "spans": [
+      7.140000000000001,
+      8.040000000000006
+    ],
+    "saved_restored": null
+  },
+  {
+    "object": "S1",
+    "valid": true,
+    "spans": null,
+    "saved_restored": null
+  },
+  {
+    "object": "S2",
+    "valid": false,
+    "spans": null,
+    "saved_restored": null
+  }
+]

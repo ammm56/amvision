@@ -9,7 +9,7 @@
 - 测量：Height Query、Measure Step、Measure Extents、Measure Edge Pair、Measure Hole。
 - 显示：Cloud Preview。
 
-既有严格截线与轴向跨度已可使用；R5 F 的可见投影包络、片段集合及稳健角区拟圆尚未接通，不能将该工件的 23 个有效结果称为 50 项测量完成。无效量值保持 null，并保留具体原因。
+既有严格截线与轴向跨度保持原定义。Extract Boundary 新增显式 `visible-envelope` 栅格剖面，Measure Extents 新增 `robust-profile-spans`；前端、来源与保存读取同批接通。完整工件 24 项 L/W 有效，总计 47/50 主项有效；S2 多片段拟圆与两项 Z 应用范围仍待 F4。无效量值保持 null 并保留原因，几何有效不表示产品合格或精度认证。
 
 ## 依赖与启动
 
@@ -44,4 +44,4 @@ Windows/Ubuntu x64 为当前支持范围。Ubuntu Open3D 需要可加载的 `lib
 
 ## 验证入口
 
-实施记录见 [R5 F 实施与验收](../../docs/development/3d-metrology-r5-f-implementation.md)。正常发布测试直接读取本目录 manifest/Catalog，不生成临时替代节点包。业务数据、旧三维资产与原始样本不迁移、不删除。
+实施记录见 [R5 F 实施与验收](../../docs/development/3d-metrology-r5-f-implementation.md) 和 [F3 字段、来源与实测](../../docs/development/3d-metrology-r5-f3-implementation.md)。正常发布测试直接读取本目录 manifest/Catalog，不生成临时替代节点包。业务数据、旧三维资产与原始样本不迁移、不删除。

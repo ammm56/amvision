@@ -2,6 +2,8 @@
 
 日期：2026-10-27。核对基点：`d91632e2`。本文定义 R5 F 实施顺序；2026-10-28 已开始正式包启用、计时和 ROI/支持摘要优化，当前证据见 [实施与验收](3d-metrology-r5-f-implementation.md)。未完成项仍按本文推进。R5 E 的代码和历史结果保留，但 **23 项有效、27 项无效不是工件测量任务完成**，约 105 秒文件图也不是现场节拍验收通过。
 
+2026-10-29 已从提交 `8f817036` 完成 F3 功能及双平台实测，见 [F3 设计](3d-metrology-r5-f3-plan.md) 与 [F3 实施验收](3d-metrology-r5-f3-implementation.md)。24 项可见包络长宽有效，主项合计 47 有效、3 无效；下一批 F4 处理 S2 与两项 Z，最终节拍及精度适用性仍须验收。十八节点保持正式接入。
+
 ## 1. 本轮确认与完成标准
 
 本项目仍提供通用 3D Metrology 节点，具体工件只作为配方、示例和验收对象。通用能力必须能实际完成该工件任务，不能用异常传递正确代替测量能力交付。
@@ -36,7 +38,7 @@
 
 R5 E 保留了 Windows 文件图约 161.985 → 105.172 秒、Ubuntu 约 38.035 秒的总耗时。其逐节点完整时间没有保存在最终汇总中；文档记录的读取约 45 秒不能据此精确反推出所有计算阶段。真实发布报告也没有给出五次调用的算法阶段分布。因此当前没有“纯检测/测量已经达标”的证据。
 
-已由源码确认的重复工作：
+以下为 2026-10-27 核对基点的源码问题，不是当前未修清单。单遍 ROI 和支持包围盒摘要复用已于 F2 实现；保留此处作为优化前事实，其余进度以实施记录为准：
 
 1. [crop_roi.py](../../custom_nodes/metrology3d_nodes/shared/crop_roi.py) 每次先计数再收集索引，两次扫描；六个粗 ROI 仍各自遍历全云，台面和两个半圆还会分别访问全云。ROI 并集每块内部已复用成员掩码，不能重复实现这部分。
 2. [measurement_support.py](../../custom_nodes/metrology3d_nodes/shared/measurement_support.py) 为每次测量重新扫描同一支持的包围盒，再两遍扫描邻域；[measurement_reference.py](../../custom_nodes/metrology3d_nodes/shared/measurement_reference.py) 在延伸时另扫最近投影支持。十二次 Z 反复访问同一 1,822,289 点台面，H/Z 也重复访问同一顶面。
@@ -57,11 +59,11 @@ R5 E 保留了 Windows 文件图约 161.985 → 105.172 秒、Ubuntu 约 38.035 
 
 原 `cloudcompare_log.txt` 的 1.04 秒是 BIN 加载 0.13 秒和 PLY 另存 0.91 秒，不是 50 项测量。`measurements.json` 的 49.4206 秒包含读取、BIN 核对、基础分析与绘图，也不是相同计算边界。两者都证明原工具具有可参考路径，但不能直接作为相同工作量的速度基线。
 
-### 2.3 节点隐藏是交付接入未完成
+### 2.3 历史节点隐藏与当前启用边界
 
 - 核对基点的[加载器](../../backend/nodes/local_node_pack_loader.py) 跳过下划线目录；当时实现处于内部目录，没有正式 manifest。2026-10-28 已收敛到 `custom_nodes/metrology3d_nodes/`，按真实 manifest/Catalog 发现，未保留两套实现。
-- [配置](../../backend/service/settings.py) 的 `workflow_runtime.point_cloud` 默认为 None；节点因此拒绝执行。这是明确的启用配置，不是算法错误。
-- 本轮查询开发 amvision 环境的发行包元数据：NumPy 2.4.4、SciPy 1.18.0 已有；trimesh、pypcd4、Open3D、ContourPy 未安装。前序验收使用隔离环境，不能当作正常开发/发行环境已可用。
+- [配置](../../backend/service/settings.py) 的 `workflow_runtime.point_cloud` 默认为 None；未配置的环境拒绝执行。当前本机工程配置已明确并验收，不改变全局默认值。这是明确的启用配置，不是算法错误。
+- 2026-10-27 查询开发 amvision 环境的发行包元数据：NumPy 2.4.4、SciPy 1.18.0 已有；当时 trimesh、pypcd4、Open3D、ContourPy 未安装。2026-10-28 至 29 已将受控 trimesh/pypcd4 和 Open3D 接入主开发环境并验收；完整离线发行仍未组装。F3 四侧剖面优先复用现有 NumPy/SciPy，不要求新增 ContourPy。
 - 生产启用需要把依赖、节点包、运行配置、前端和发行接通，不能只将目录改名，也不能继续把全部功能隐藏作为最终交付。
 
 ## 3. 通用功能修正设计

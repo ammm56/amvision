@@ -3,6 +3,12 @@
     <table><thead><tr><th>{{ zh?'测量项':'Measurement' }}</th><th>{{ zh?'数值':'Value' }}</th><th>{{ zh?'状态 / 原因':'State / reason' }}</th><th>{{ zh?'支持点数':'Support points' }}</th></tr></thead>
       <tbody><tr v-for="item in items" :key="item.item_id" :class="{selected:item.item_id===selected}"><td><button :aria-pressed="item.item_id===selected" @click="$emit('select',item.item_id)">{{ item.item_id }}</button><div v-if="item.component">{{ componentLabel(item.component) }}</div></td><td>{{ item.valid?item.value:'-' }} {{ unit }}</td><td>{{ item.valid?(zh?'有效':'Valid'):item.reason }}<div v-if="ambiguous(item)">{{ zh?'尺寸一致，方向不唯一':'Consistent size, ambiguous orientation' }}</div></td><td>{{ item.support.map(s=>s.point_count??'-').join(' / ') }}</td></tr></tbody>
     </table>
+    <dl v-if="robust(current)" class="extension-evidence">
+      <dt>{{ zh?'测量方法':'Measurement method' }}</dt><dd>{{ zh?'可见包络 · 稳健剖面跨度':'Visible envelope · robust profile spans' }}</dd>
+      <dt>{{ zh?'低侧 / 高侧分位数':'Lower / upper quantiles' }}</dt><dd>{{ mode.lower_quantile }} / {{ mode.upper_quantile }} · linear</dd>
+      <dt>{{ zh?'支持类型':'Support type' }}</dt><dd>{{ zh?'格中心插值 / 格边估计':'Cell-center interpolation / cell-edge estimates' }}</dd>
+    </dl>
+    <details v-if="contacts.length"><summary>{{ zh?'统计端点来源':'Statistical contacts' }}</summary><table><thead><tr><th>{{ zh?'侧 / 分位数':'Side / quantile' }}</th><th>{{ zh?'样本数 / 排名':'Count / ranks' }}</th><th>{{ zh?'顶点 / 权重':'Vertices / weight' }}</th></tr></thead><tbody><tr v-for="contact in contacts" :key="String(contact.side)"><td>{{ contact.side }} / {{ contact.quantile }}</td><td>{{ contact.sample_count }} / {{ contact.ranks }}</td><td>{{ contact.vertex_indices }} / {{ contact.weight }}</td></tr></tbody></table></details>
     <dl v-if="current?.query" class="extension-evidence">
       <dt>{{ zh?'查询来源':'Query source' }}</dt><dd>{{ current.query.kind==='pose-uv'?(zh?'本次基准坐标':'Current datum'):(zh?'配置位置和方向':'Configured position and direction') }}</dd>
       <template v-if="current.query.kind==='pose-uv'"><dt>{{ zh?'位姿 / 坐标系':'Pose / frame' }}</dt><dd>{{ current.query.poseId }} / {{ current.query.frameId }}</dd><dt>U / V</dt><dd>{{ current.query.uv?.join(', ') }} {{ unit }}</dd></template>
@@ -27,6 +33,9 @@ defineEmits<{select:[id:string]}>()
 const {locale}=useI18n(),zh=computed(()=>locale.value==='zh-CN')
 const current=computed(()=>props.items.find(i=>i.item_id===props.selected)),metrics=computed(()=>{const raw=current.value?object(current.value.quality.metrics).items:[];return Array.isArray(raw)?raw.map(object):[]})
 const extension=computed(()=>current.value?referenceExtension(current.value.support):null)
+const mode=computed(()=>robust(current.value)?object(object(current.value!.method.parameters).mode):{})
+const contacts=computed(()=>{const rows=current.value?.geometry?.contacts;return robust(current.value)&&Array.isArray(rows)?rows.map(c=>object(object(c).statistic)):[]})
+function robust(item:MeasurementDisplay|undefined){return item?.kind==='measure-extents'&&object(object(item.method.parameters).mode).kind==='robust-profile-spans'}
 function extensionLabel(state:string){return (zh.value?{covered:'有实测支持，未延伸',used:'已使用基准延伸','limit-exceeded':'基准延伸超限',unavailable:'基准不可用'}:{covered:'Measured support; not extended',used:'Datum extension used','limit-exceeded':'Datum extension limit exceeded',unavailable:'Datum unavailable'})[state]??state}
 function componentLabel(key:string){return zh.value?({u:'U 投影跨度',v:'V 投影跨度',length:'包络长边',width:'包络短边',distance:'指定位置边间距',diameter:'拟合圆直径',center_x:'圆心 X',center_y:'圆心 Y',center_z:'圆心 Z'} as Record<string,string>)[key]??key:key}
 function ambiguous(item:MeasurementDisplay){return item.valid&&item.geometry?.kind==='projected-extents'&&item.geometry.candidates&&object(item.geometry.candidates).orientation_unique===false}
