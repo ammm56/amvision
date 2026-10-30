@@ -8,10 +8,11 @@ import {measurementItems,referenceExtension} from './measurement-display'
 import {curveItems,curveStrokes} from './boundary-display'
 import type {Raycaster} from 'three'
 import {roiDependencies,roiDependencyClosure,roiGraphIssues} from './roi-graph'
+import {arcWorld,arcUV,arcHandleUV,arcGesture,type ArcEdit,type ArcValues} from './arc-edit'
 
 export type RoiValue=Record<string,unknown>
-export type GeometryFocus='roi'|'measurement'|'feature'|'plane'
-export interface GeometryOverlayInput { payload:Record<string,unknown>; rois?:RoiValue[]; selectedId?:string; mode?:'translate'|'rotate'|'scale'; changed?:(roi:RoiValue)=>void;selectedMeasurement?:string;selectedPlane?:string;candidate?:number[];selectedCurve?:string;selectedSegment?:string;curveColorMode?:CurveColorMode;curveSelected?:(featureId:string,segmentId:string)=>void;measurementSelected?:(id:string)=>void }
+export type GeometryFocus='roi'|'measurement'|'feature'|'plane'|'arc'
+export interface GeometryOverlayInput { payload:Record<string,unknown>; rois?:RoiValue[]; selectedId?:string; mode?:'translate'|'rotate'|'scale'; changed?:(roi:RoiValue)=>void;selectedMeasurement?:string;selectedPlane?:string;candidate?:number[];selectedCurve?:string;selectedSegment?:string;curveColorMode?:CurveColorMode;curveSelected?:(featureId:string,segmentId:string)=>void;measurementSelected?:(id:string)=>void;arc?:ArcEdit;arcChanged?:(key:string,value:ArcValues)=>void }
 const vec=(v:unknown)=>{if(!Array.isArray(v)||v.length!==3||v.some(n=>typeof n!=='number'||!Number.isFinite(n)))throw new Error('cloud_preview_invalid');return new Vector3(v[0],v[1],v[2])}
 function matrix(v:unknown,size:number){if(!Array.isArray(v)||v.length!==size||v.some(r=>!Array.isArray(r)||r.length!==size||r.some(n=>typeof n!=='number'||!Number.isFinite(n))))throw new Error('cloud_preview_invalid');return v as number[][]}
 const positive=(n:unknown)=>{if(typeof n!=='number'||!Number.isFinite(n)||n<=0)throw new Error('cloud_preview_invalid');return n}
@@ -19,11 +20,11 @@ const orientation=(g:RoiValue,kind:unknown)=>kind==='box'?new Quaternion().setFr
 
 /** 只显示有限几何；所有坐标先减 render_origin，显示缓冲统一计费。 */
 export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLElement,origin:number[],policy:CloudRendererPolicy,schedule:()=>void,drag:(active:boolean)=>void,failed:(error:Error)=>void) {
-  let root=new Group(),gizmo:TransformControls|null=null, releases:(()=>void)[]=[],input:GeometryOverlayInput|undefined,closed=false
+  let root=new Group(),gizmo:TransformControls|null=null, releases:(()=>void)[]=[],input:GeometryOverlayInput|undefined,closed=false,arcRelease=()=>{},cancelArc:(()=>void)|undefined
   const physicalOrigin=new Vector3(...origin),targets=new Map<string,Object3D>(),updates=new Map<string,((roi:RoiValue)=>void)[]>()
   function resources(object:Object3D){const geometries=new Set<BufferGeometry>(),materials=new Set<Material>();object.traverse(o=>{const item=o as Mesh;if(item.geometry)geometries.add(item.geometry);if(item.material)for(const m of Array.isArray(item.material)?item.material:[item.material])materials.add(m)});return {geometries,materials}}
   function account(object:Object3D){const buffers=new Set<ArrayBufferLike>();for(const g of resources(object).geometries){for(const a of Object.values(g.attributes))buffers.add(a.array.buffer);if(g.index)buffers.add(g.index.array.buffer)}const bytes=[...buffers].reduce((s,b)=>s+b.byteLength,0);releases.push(reserveCpu(bytes,policy));releases.push(reserveGpu(bytes,policy))}
-  function clear(){drag(false);gizmo?.detach();gizmo?.dispose();gizmo=null;for(const g of resources(root).geometries)g.dispose();for(const m of resources(root).materials)m.dispose();root.removeFromParent();root.clear();targets.clear();updates.clear();for(const release of releases)release();releases=[];root=new Group()}
+  function clear(){cancelArc=undefined;arcRelease();arcRelease=()=>{};drag(false);gizmo?.detach();gizmo?.dispose();gizmo=null;for(const g of resources(root).geometries)g.dispose();for(const m of resources(root).materials)m.dispose();root.removeFromParent();root.clear();targets.clear();updates.clear();for(const release of releases)release();releases=[];root=new Group()}
   function pose(roi:RoiValue,target:Object3D){const g=object(roi.geometry);target.position.copy(vec(roi.kind==='section-band'?g.origin:g.center)).sub(physicalOrigin);target.quaternion.copy(orientation(g,roi.kind))}
   function finiteMesh(roi:RoiValue,color:number,clips:Plane[]=[]){
     const target=new Group();pose(roi,target);root.add(target)
@@ -142,9 +143,47 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
     }
     if(next.candidate){const p=vec(next.candidate),bounds=object(next.payload.bounds),size=vec(bounds.max).sub(vec(bounds.min)).length()*.01,points:Vector3[]=[];for(let i=0;i<3;i++){const delta=new Vector3().setComponent(i,size);points.push(p.clone().sub(delta),p.clone().add(delta))}lines(points,0xe1a100)}
   }
+  function buildArc(edit:ArcEdit){
+    const target=new Group(),arcRoot=new Group();root.add(arcRoot,target);arcRoot.userData.arc=true
+    target.quaternion.setFromRotationMatrix(new Matrix4().set(...edit.evaluation.rotation.flatMap(r=>[...r,0]).concat([0,0,0,1]) as Parameters<Matrix4['set']>))
+    let current=edit,gesture=arcGesture(edit),active=false
+    const draw=(value:ArcValues)=>{
+      arcRelease();arcRelease=()=>{}
+      for(const g of resources(arcRoot).geometries)g.dispose();for(const m of resources(arcRoot).materials)m.dispose();arcRoot.clear()
+      current={...edit,values:value,displayRadius:value.radius_range?.[1]??edit.displayRadius}
+      const radius=current.displayRadius,step=2*Math.acos(Math.max(-1,1-policy.max_position_error/(2*radius))),count=Math.max(1,Math.ceil(value.sweep/Math.min(Math.PI,step))),radii=value.radius_range??[radius]
+      if(!Number.isFinite(count)||(count*radii.length+2)*2>policy.max_points*8)throw new Error('cloud_preview_capacity')
+      const point=(r:number,a:number)=>vec(arcWorld(current,[value.center[0]!+r*Math.cos(a),value.center[1]!+r*Math.sin(a)]))
+      const points:Vector3[]=[]
+      for(const r of radii)for(let i=0;i<count;i++)points.push(point(r,value.start_angle+value.sweep*i/count),point(r,value.start_angle+value.sweep*(i+1)/count))
+      for(const a of [value.start_angle,value.start_angle+value.sweep])points.push(point(value.radius_range?.[0]??0,a),point(radius,a))
+      const geometry=pointGeometry(points),line=new LineSegments(geometry,new LineBasicMaterial({color:0xd18c00,depthTest:false}));arcRoot.add(line)
+      const bytes=geometry.getAttribute('position').array.byteLength,releaseCpu=reserveCpu(bytes,policy)
+      try{const releaseGpu=reserveGpu(bytes,policy);arcRelease=()=>{releaseGpu();releaseCpu()}}catch(error){releaseCpu();throw error}
+      target.position.copy(vec(arcWorld(current,arcHandleUV(current)))).sub(physicalOrigin)
+    }
+    draw(edit.values)
+    const control=new TransformControls(camera,canvas);gizmo=control;control.setMode('translate');control.setSpace('local');control.showZ=false;control.attach(target);root.add(control.getHelper());account(control.getHelper())
+    const live=()=>!closed&&gizmo===control&&input?.arc?.key===edit.key
+    const restore=()=>{if(!live()||!active)return;active=false;draw(edit.values);input?.arcChanged?.(edit.key,edit.values);control.dragging=false;schedule()}
+    cancelArc=restore
+    control.addEventListener('change',schedule)
+    control.addEventListener('mouseDown',()=>{if(live()){active=true;gesture=arcGesture(current)}})
+    control.addEventListener('dragging-changed',event=>{
+      if(!live())return
+      drag(event.value===true)
+      if(event.value===false){active=false;queueMicrotask(()=>{if(live()&&input)try{update(input)}catch(error){failed(error as Error)}})}
+    })
+    control.addEventListener('objectChange',()=>{
+      if(!live())return
+      try{const value=gesture(arcUV(edit,target.position.clone().add(physicalOrigin).toArray()));if(value){draw(value);input?.arcChanged?.(edit.key,value)}else target.position.copy(vec(arcWorld(current,arcHandleUV(current)))).sub(physicalOrigin);schedule()}catch(error){failed(error as Error)}
+    })
+  }
   function update(next:GeometryOverlayInput){
-    if(closed)return;input=next
-    if(gizmo?.dragging)return
+    if(closed)return
+    const same=input?.payload===next.payload&&input?.arc?.key===next.arc?.key&&input?.selectedId===next.selectedId&&input?.mode===next.mode
+    input=next
+    if(gizmo?.dragging&&same)return
     clear()
     try {
       scene.add(root);buildEvidence(next.payload);buildMeasurements(next);buildCurves(next)
@@ -154,7 +193,8 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
       buildRois(rois,next.selectedId)
       const target=targets.get(next.selectedId??'')
       const original=rois.find(r=>r.roi_id===next.selectedId)
-      if(target&&next.changed&&!(next.mode==='scale'&&original?.kind==='section-band')){gizmo=new TransformControls(camera,canvas);gizmo.setMode(next.mode??'translate');if(next.mode==='scale'){gizmo.setSpace('local');if(original?.kind==='cylinder')gizmo.showZ=false}gizmo.attach(target);const helper=gizmo.getHelper();root.add(helper);account(helper)
+      if(next.arc&&next.arcChanged)buildArc(next.arc)
+      else if(target&&next.changed&&!(next.mode==='scale'&&original?.kind==='section-band')){gizmo=new TransformControls(camera,canvas);gizmo.setMode(next.mode??'translate');if(next.mode==='scale'){gizmo.setSpace('local');if(original?.kind==='cylinder')gizmo.showZ=false}gizmo.attach(target);const helper=gizmo.getHelper();root.add(helper);account(helper)
         gizmo.addEventListener('change',schedule)
         gizmo.addEventListener('dragging-changed',e=>{
           drag(e.value===true)
@@ -179,11 +219,13 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
       schedule()
     }catch(error){clear();throw error}
   }
+  function keydown(event:KeyboardEvent){if(event.key==='Escape'&&gizmo?.dragging&&cancelArc){event.preventDefault();event.stopPropagation();cancelArc()}}
+  canvas.ownerDocument.addEventListener('keydown',keydown,true)
   return {update,focus(kind:GeometryFocus){
     if(closed||!input)return null
     const bounds=new Box3()
     if(kind==='roi'){for(const roi of roiDependencyClosure(input.rois??[],[input.selectedId??''])){const target=targets.get(String(roi.roi_id));if(target)bounds.expandByObject(target)}}
-    else root.traverse(o=>{const c=o.userData.curve;if(kind==='plane'&&!!input?.selectedPlane&&o.userData.plane===input.selectedPlane||kind==='measurement'&&!!input?.selectedMeasurement&&o.userData.measurement===input.selectedMeasurement||kind==='feature'&&!!input?.selectedCurve&&c?.featureId===input.selectedCurve&&(!input.selectedSegment||c.segmentId===input.selectedSegment||c.groupId===input.selectedSegment))bounds.expandByObject(o)})
+    else root.traverse(o=>{const c=o.userData.curve;if(kind==='arc'&&o.userData.arc||kind==='plane'&&!!input?.selectedPlane&&o.userData.plane===input.selectedPlane||kind==='measurement'&&!!input?.selectedMeasurement&&o.userData.measurement===input.selectedMeasurement||kind==='feature'&&!!input?.selectedCurve&&c?.featureId===input.selectedCurve&&(!input.selectedSegment||c.segmentId===input.selectedSegment||c.groupId===input.selectedSegment))bounds.expandByObject(o)})
     return bounds.isEmpty()?null:{center:bounds.getCenter(new Vector3()),radius:Math.max(bounds.getSize(new Vector3()).length()/2,1e-6)}
-  },pick(ray:Raycaster){if(closed||!input)return false;const hit=ray.intersectObject(root,true).find(h=>h.object.userData.curve&&input?.curveSelected||h.object.userData.measurement&&input?.measurementSelected);if(!hit)return false;const c=hit.object.userData.curve;if(c)input.curveSelected?.(c.featureId,c.segmentId);else input.measurementSelected?.(hit.object.userData.measurement);return true},camera(value:Camera){camera=value;if(gizmo)gizmo.camera=value},dragging:()=>!!gizmo?.dragging,dispose(){if(!closed){closed=true;clear()}}}
+  },pick(ray:Raycaster){if(closed||!input)return false;const hit=ray.intersectObject(root,true).find(h=>h.object.userData.curve&&input?.curveSelected||h.object.userData.measurement&&input?.measurementSelected);if(!hit)return false;const c=hit.object.userData.curve;if(c)input.curveSelected?.(c.featureId,c.segmentId);else input.measurementSelected?.(hit.object.userData.measurement);return true},camera(value:Camera){camera=value;if(gizmo)gizmo.camera=value},dragging:()=>!!gizmo?.dragging,dispose(){if(!closed){closed=true;canvas.ownerDocument.removeEventListener('keydown',keydown,true);clear()}}}
 }

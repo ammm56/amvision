@@ -17,6 +17,7 @@
             <label>{{ label('目标方式','Target mode') }}<select :value="'group_id' in target?'group':'single'" @change="changeTarget(($event.target as HTMLSelectElement).value)"><option value="single">{{ label('单连续段','Single continuous segment') }}</option><option value="group">{{ label('部分圆弧片段组','Partial circular arc group') }}</option></select></label>
             <GeometryFields :model-value="target" :fields="targetFields" @update:model-value="setTarget" />
             <label v-if="!('group_id' in target)"><input type="checkbox" :checked="target.closed===true" @change="setTarget({...target,closed:($event.target as HTMLInputElement).checked,role:'unknown'})">{{ label('要求完整闭环','Require complete closed loop') }}</label>
+            <ArcSettingsForm v-if="'group_id' in target" :model-value="target.arc" band :unit="String(object(draft.evaluation).length_unit??'')" v-model:handle="arcHandle" :available="!!arcEdit" @update:model-value="setTarget({...target,arc:$event})" />
             <details v-if="'group_id' in target"><summary>{{ label('每个片段的质量条件','Individual fragment quality') }}</summary><GeometryFields :model-value="object(target.fragment_quality_policy)" :fields="fragmentQualityFields" @update:model-value="setTarget({...target,fragment_quality_policy:$event})" /><WorkflowLimitRulesEditor :model-value="object(target.fragment_quality_policy).rules" quality @update:model-value="setTarget(put(target,'fragment_quality_policy.rules',$event))" /></details>
           </template>
         </template>
@@ -27,9 +28,10 @@
           <template v-if="kind==='fit-circle'"><label>{{ label('拟合方法','Fit method') }}<select :value="draft.robust?'angular-soft-l1':'linear'" @change="draft=changeCircleFit(draft,($event.target as HTMLSelectElement).value==='angular-soft-l1')"><option value="linear">{{ label('等权几何最小二乘','Equal-weight geometric least squares') }}</option><option value="angular-soft-l1">{{ label('角区均衡稳健拟合','Angular-balanced robust fit') }}</option></select></label><GeometryFields v-if="draft.robust" v-model="draft" :fields="robustFields" /></template>
           <EvaluationDirectionEditor v-if="kind==='fit-line'" v-model="draft.positive_direction" :label="label('直线正方向','Positive line direction')" />
         </template>
+        <ArcSettingsForm v-if="!extract&&kind==='fit-circle'&&draft.robust" :model-value="draft.robust" :band="false" :unit="String(object(draft.evaluation).length_unit??'')" v-model:handle="arcHandle" :available="!!arcEdit" @update:model-value="draft=put(draft,'robust',$event)" />
         <EvaluationEditor v-model="draft.evaluation" :allow-feature="!extract" :pose="poseContour" :suggestions="suggestions" />
       </section>
-      <section class="boundary-view"><CloudPreviewSelector v-model="previewId" :previews="previews" :changed="changed" /><CloudViewer v-if="preview" :key="preview.id" :payload="preview.payload" :project-id="preview.projectId" :edit-rois="matchingRois" :selected-roi-id="roiView.selectedId" @roi-change="roiForm?.setCurrent($event)" :allow-pick="canPickSeed" :candidate="candidate??undefined" @candidate="pickSeed" @feature-selection="chooseFeature" /><p v-if="candidate" role="status">{{ label('种子窗口候选中心','Candidate seed center') }}: {{ candidate.join(', ') }}</p></section>
+      <section class="boundary-view"><CloudPreviewSelector v-model="previewId" :previews="previews" :changed="changed" /><CloudViewer v-if="preview" :key="preview.id" :payload="preview.payload" :project-id="preview.projectId" :edit-rois="matchingRois" :selected-roi-id="arcEdit?undefined:roiView.selectedId" :edit-arc="arcEdit??undefined" @arc-change="changeArc" @roi-change="roiForm?.setCurrent($event)" :allow-pick="canPickSeed" :candidate="candidate??undefined" @candidate="pickSeed" @feature-selection="chooseFeature" /><p v-if="candidate" role="status">{{ label('种子窗口候选中心','Candidate seed center') }}: {{ candidate.join(', ') }}</p></section>
       <details class="boundary-advanced"><summary>{{ label('支持条件与几何质量','Support and geometry quality') }}</summary><GeometryFields v-if="extract&&!visibleEnvelope" v-model="draft" :fields="surfaceFields" /><GeometryFields v-if="kind==='fit-circle'" v-model="draft" :fields="solverFields" /><GeometryFields v-model="draft" :fields="qualityFields" /><WorkflowLimitRulesEditor :model-value="object(draft.quality_policy).rules" quality @update:model-value="draft=put(draft,'quality_policy.rules',$event)" /></details>
       <p v-if="issues.length" role="alert">{{ label('待完善','Incomplete') }}: {{ issues.join(' · ') }}</p><p v-if="referenceIssues.length" role="alert">{{ referenceIssues.join(' · ') }}</p>
     </div>
@@ -49,6 +51,9 @@ import EvaluationEditor from './EvaluationEditor.vue'
 import EvaluationDirectionEditor from './EvaluationDirectionEditor.vue'
 import EnvelopeSettingsEditor from './EnvelopeSettingsEditor.vue'
 import BoundarySelectionEditor from './BoundarySelectionEditor.vue'
+import ArcSettingsForm from './ArcSettingsForm.vue'
+import {boundaryArcEdit} from './arc-form'
+import type {ArcHandle,ArcValues} from '@/workflows/workflow-editor/point-cloud/arc-edit'
 import {newFragmentTarget,changeCircleFit} from './circle-form'
 import {dimensionFeatureChoices} from './dimension-form'
 import {normalizeLimitRule} from '@/workflows/workflow-editor/parameters/limit-rules'
@@ -80,6 +85,9 @@ const previewFrame=computed(()=>object(object(preview.value?.payload.geometry).f
 const seedSize=computed(()=>{const seed=object(object(object(draft.value.method).envelope).selection),lo=seed.seed_min,hi=seed.seed_max;if(!Array.isArray(lo)||!Array.isArray(hi)||lo.length!==2||hi.length!==2||![...lo,...hi].every(v=>typeof v==='number'&&Number.isFinite(v)))return null;const size=hi.map((v,i)=>v-lo[i]);return size.every(v=>v>0)?size:null})
 const canPickSeed=computed(()=>{const e=object(draft.value.evaluation),s=object(preview.value?.payload.spatial),f=previewFrame.value;return visibleEnvelope.value&&!!seedSize.value&&!!preview.value&&e.frame_id===s.frame_id&&e.length_unit===s.length_unit&&f.state==='found'&&f.pose_id===e.pose_id&&f.target_frame_id===e.target_frame_id})
 const targets=computed(()=>(Array.isArray(draft.value.targets)?draft.value.targets:[]).map(object)),target=computed(()=>targets.value[targetIndex.value])
+const arcHandle=ref<ArcHandle|'none'>('none')
+const arcEdit=computed(()=>!open.value||props.disabled||arcHandle.value==='none'?null:boundaryArcEdit(kind.value,draft.value,target.value,preview.value?.payload,props.inputSources??{},state().runId,arcHandle.value))
+function changeArc(event:{payload:Form;key:string;values:ArcValues}){if(!open.value||props.disabled||event.payload!==preview.value?.payload||event.key!==arcEdit.value?.key)return;if(extract.value&&target.value)setTarget({...target.value,arc:{...object(target.value.arc),...event.values}});else draft.value=put(draft.value,'robust',{...object(draft.value.robust),...event.values})}
 const issues=computed(()=>boundaryIssues(kind.value,draft.value)),referenceIssues=computed(()=>open.value?props.draftIssues?.(draft.value)??[]:[])
 const upstream=computed(()=>(props.inputSources?.features??[]).map(s=>({type:s.nodeTypeId,p:object(s.parameters.settings)})))
 const boundaryChoices=computed(()=>dimensionFeatureChoices(props.inputSources??{}).filter(c=>c.kind==='boundary'))
@@ -98,22 +106,18 @@ const methodFields=computed<Field[]>(()=>poseContour.value?[
   ]),{path:'method.numeric_tolerance',label:label('数值距离容差','Numeric distance tolerance'),type:'number'},
 ]:object(draft.value.method).kind==='section'?[{path:'method.origin',label:label('截面原点','Section origin'),type:'vector'},{path:'method.normal',label:label('截面单位法向','Section unit normal'),type:'vector'},{path:'method.numeric_tolerance',label:label('数值距离容差','Numeric distance tolerance'),type:'number'}]:object(draft.value.method).kind==='contour'?[{path:'method.reference_feature_id',label:label('基准平面','Datum plane')},{path:'method.positive_normal',label:label('正法向','Positive normal'),type:'vector'},{path:'method.min_orientation_cosine',label:label('最小方向余弦','Minimum orientation cosine'),type:'number'},{path:'method.height',label:label('有符号高度','Signed height'),type:'number'},{path:'method.numeric_tolerance',label:label('数值距离容差','Numeric distance tolerance'),type:'number'}]:[])
 const targetFields=computed<Field[]>(()=>target.value&&'group_id' in target.value?[
-  {path:'group_id',label:label('目标组 ID','Target group ID')},{path:'arc.center',label:label('环带中心 U/V','Band center U/V'),type:'pair'},
-  {path:'arc.radius_range',label:label('环带半径范围','Band radius range'),type:'pair'},
-  {path:'arc.start_angle',label:label('起始角 rad','Start angle rad'),type:'number'},{path:'arc.sweep',label:label('目标扫角 rad','Target sweep rad'),type:'number'},
-  {path:'arc.max_overlap_angle',label:label('片段最大角重叠 rad','Maximum fragment overlap rad'),type:'number'},
+  {path:'group_id',label:label('目标组 ID','Target group ID')},
 ]:[{path:'segment_id',label:label('目标段 ID','Target segment ID')},{path:'role',label:label('边界角色','Boundary role'),type:'select',options:target.value?.closed?['outer','inner','unknown']:['open','unknown']}])
 const fragmentQualityFields=computed<Field[]>(()=>[{path:'policy_id',label:label('片段质量 ID','Fragment quality ID')},{path:'policy_version',label:label('策略版本','Policy version'),type:'number'}])
 const robustFields=computed<Field[]>(()=>[
-  {path:'robust.center',label:label('分区参考中心 U/V','Sector reference center U/V'),type:'pair'},
-  ...[['start_angle','目标起始角 rad','Target start angle rad'],['sweep','目标扫角 rad','Target sweep rad'],['sector_count','角区数','Sector count'],['loss_scale','稳健残差尺度','Robust residual scale'],['inlier_residual','内点残差上限','Inlier residual limit']].map(([key,cn,en])=>({path:`robust.${key}`,label:label(cn!,en!),type:'number' as const})),
+  ...[['sector_count','角区数','Sector count'],['loss_scale','稳健残差尺度','Robust residual scale'],['inlier_residual','内点残差上限','Inlier residual limit']].map(([key,cn,en])=>({path:`robust.${key}`,label:label(cn!,en!),type:'number' as const})),
 ])
 const selectionFields=computed<Field[]>(()=>[{path:'selection.feature_id',label:label('边界特征','Boundary feature')}])
 const fitFields=computed<Field[]>(()=>kind.value==='fit-line'?[{path:'min_orientation_cosine',label:label('最小方向余弦','Minimum orientation cosine'),type:'number'}]:[{path:'radius_range',label:label('半径搜索范围','Radius search range'),type:'pair'},{path:'max_arc_step',label:label('相邻支持最大转角 rad','Maximum adjacent angle rad'),type:'number'}])
 const surfaceFields=computed<Field[]>(()=>[['alpha_radius','支持圆半径','Support circle radius'],['max_edge_length','最大连接边长','Maximum edge length'],['max_normal_step','最大法向高度跳变','Maximum normal step'],['min_projected_area','最小投影三角面积','Minimum projected triangle area']].map(([key,cn,en])=>({path:`surface.${key}`,label:label(cn!,en!),type:'number'})))
 const solverFields=computed<Field[]>(()=>['ftol','xtol','gtol','max_nfev'].map(key=>({path:`solver.${key}`,label:key,type:'number'} as Field)).concat([{path:'solver.x_scale',label:label('求解变量尺度','Solver variable scale'),type:'vector'}]))
 const qualityFields=computed<Field[]>(()=>[{path:'quality_policy.policy_id',label:label('质量策略 ID','Quality policy ID')},{path:'quality_policy.policy_version',label:label('策略版本','Policy version'),type:'number'}])
-function show(){draft.value=Object.keys(object(props.modelValue)).length?copy(object(props.modelValue)):newBoundarySettings(kind.value);targetIndex.value=0;previewId.value='';roiScope.value='surface';initial.value=JSON.stringify(draft.value);open.value=true}
+function show(){draft.value=Object.keys(object(props.modelValue)).length?copy(object(props.modelValue)):newBoundarySettings(kind.value);targetIndex.value=0;previewId.value='';arcHandle.value='none';roiScope.value='surface';initial.value=JSON.stringify(draft.value);open.value=true}
 function changeMethod(kind:string){
   const wasPose=poseContour.value,wasVisible=visibleEnvelope.value,visible=kind==='visible-envelope',q=object(draft.value.quality_policy)
   const extra=['profile_coverage','estimated_fraction','profile_max_gap','max_cell_span','missing_neighbor_fraction','added_cell_count','profile_max_jump']
@@ -132,6 +136,7 @@ function pickSeed(value:{payload:Form;xyz:number[]}){if(!open.value||props.disab
 function apply(){if(!issues.value.length&&!referenceIssues.value.length&&!props.disabled){emit('update:modelValue',copy(draft.value));open.value=false}}
 watch(()=>[props.modelValue,props.disabled,props.nodeType],()=>{open.value=false;previewId.value=''})
 watch(()=>[state().runId,state().succeeded],()=>{previewId.value=''})
+watch(()=>[targetIndex.value,previewId.value,open.value],()=>{arcHandle.value='none'})
 watch(()=>[open.value,previewId.value,JSON.stringify(draft.value.evaluation),object(draft.value.method).kind],()=>{candidate.value=null})
 watch(()=>object(draft.value.selection).feature_id,(next,previous)=>{if(open.value&&next!==previous){const s=object(draft.value.selection),key=Array.isArray(s.group_ids)&&s.group_ids.length?'group_ids':'segment_ids',allowed=key==='group_ids'?availableGroups.value:availableSegments.value,selected=Array.isArray(s[key])?s[key]:[],filtered=selected.filter((id:string)=>allowed.includes(id));if(allowed.length&&filtered.length!==selected.length)draft.value=put(draft.value,'selection',{...s,[key]:filtered})}})
 watch(()=>JSON.stringify(props.inputSources),()=>{open.value=false;previewId.value=''})

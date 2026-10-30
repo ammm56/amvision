@@ -53,16 +53,17 @@ import {measurementItems,type MeasurementDisplay} from './measurement-display'
 import {curveColorScale,type CurveColorMode} from './curve-colors'
 import {planeColorData,planeColorSummary} from './plane-colors'
 import type {RoiValue,GeometryFocus} from './geometry-overlay'
+import type {ArcEdit,ArcValues} from './arc-edit'
 
-const props = defineProps<{ payload: Record<string, unknown>; projectId: string; editRois?:RoiValue[]; selectedRoiId?:string; allowPick?:boolean; candidate?:number[] }>()
-const emit=defineEmits<{'roi-change':[value:RoiValue];candidate:[value:{payload:Record<string,unknown>;xyz:number[]}];'feature-selection':[value:{payload:Record<string,unknown>;featureId:string;segmentId:string}]}>()
+const props = defineProps<{ payload: Record<string, unknown>; projectId: string; editRois?:RoiValue[]; selectedRoiId?:string; allowPick?:boolean; candidate?:number[];editArc?:ArcEdit }>()
+const emit=defineEmits<{'roi-change':[value:RoiValue];candidate:[value:{payload:Record<string,unknown>;xyz:number[]}];'feature-selection':[value:{payload:Record<string,unknown>;featureId:string;segmentId:string}];'arc-change':[value:{payload:Record<string,unknown>;key:string;values:ArcValues}]}>()
 const { t,locale } = useI18n({ useScope: 'local', messages: {
   'zh-CN': { reset: '复位视角', pan: '平移', projection: '投影', perspective: '透视', orthographic: '正交', axis: '视图', size: '点大小', loading: '正在读取显示数据', retry: '重新打开', empty: '无有效显示点', unavailable: '显示不可用', unknown: '单位未确认', cloud_renderer_unconfigured: '三维显示预算尚未配置', cloud_preview_invalid: '显示数据格式无效', cloud_preview_capacity: '显示数据超过点数或字节限额', cloud_preview_checksum: '显示数据摘要不一致', cloud_cpu_capacity: '浏览器内存预算不足', cloud_gpu_capacity: '渲染缓冲预算不足', cloud_canvas_capacity: '视口超过像素预算', cloud_position_precision: '局部坐标显示误差超过配置限额', cloud_context_lost: 'WebGL 上下文已丢失' },
   'en-US': { reset: 'Reset view', pan: 'Pan', projection: 'Projection', perspective: 'Perspective', orthographic: 'Orthographic', axis: 'View', size: 'Point size', loading: 'Loading display data', retry: 'Reopen', empty: 'No valid display points', unavailable: 'Display unavailable', unknown: 'Unit unconfirmed', cloud_renderer_unconfigured: '3D display budget is not configured', cloud_preview_invalid: 'Invalid display data', cloud_preview_capacity: 'Display point or byte limit exceeded', cloud_preview_checksum: 'Display checksum mismatch', cloud_cpu_capacity: 'Browser memory budget exceeded', cloud_gpu_capacity: 'Rendering buffer budget exceeded', cloud_canvas_capacity: 'Viewport pixel budget exceeded', cloud_position_precision: 'Local coordinate display error exceeds the configured limit', cloud_context_lost: 'WebGL context lost' },
 } })
 const host = ref<HTMLElement>(), scene = shallowRef<ReturnType<typeof createCloudRenderer> | null>(null)
 const zh=computed(()=>locale.value==='zh-CN'),editMode=ref<'translate'|'rotate'|'scale'>('translate')
-function updateGeometry(){const token=generation,payload=props.payload;scene.value?.geometry({payload,rois:props.editRois,selectedId:props.selectedRoiId,mode:editMode.value,changed:props.editRois?roi=>{if(token===generation&&payload===props.payload)emit('roi-change',roi)}:undefined,selectedMeasurement: selectedMeasurement.value,selectedPlane:selectedPlane.value,candidate:props.candidate,selectedCurve:selectedCurve.value,selectedSegment:selectedSegment.value,curveColorMode:curveColorMode.value,curveSelected:picking.value?undefined:(id,segment)=>{if(token===generation&&payload===props.payload)selectCurve(id,segment)},measurementSelected:picking.value?undefined:id=>{if(token===generation&&payload===props.payload){selectMeasurement(id);showDetails.value=true;detailTab.value='measurements'}}})}
+function updateGeometry(){const token=generation,payload=props.payload;scene.value?.geometry({payload,rois:props.editRois,selectedId:props.selectedRoiId,mode:editMode.value,arc:props.editArc,arcChanged:(key,values)=>{if(token===generation&&payload===props.payload&&key===props.editArc?.key)emit('arc-change',{payload,key,values})},changed:props.editRois?roi=>{if(token===generation&&payload===props.payload)emit('roi-change',roi)}:undefined,selectedMeasurement: selectedMeasurement.value,selectedPlane:selectedPlane.value,candidate:props.candidate,selectedCurve:selectedCurve.value,selectedSegment:selectedSegment.value,curveColorMode:curveColorMode.value,curveSelected:picking.value?undefined:(id,segment)=>{if(token===generation&&payload===props.payload)selectCurve(id,segment)},measurementSelected:picking.value?undefined:id=>{if(token===generation&&payload===props.payload){selectMeasurement(id);showDetails.value=true;detailTab.value='measurements'}}})}
 function selectCurve(id:string,segment:string){selectedCurve.value=id;selectedSegment.value=segment;focusTarget.value='feature';showDetails.value=true;detailTab.value='features';emit('feature-selection',{payload:props.payload,featureId:id,segmentId:segment})}
 function selectMeasurement(id:string){selectedMeasurement.value=id;focusTarget.value='measurement'}
 function updateColors(){try{const samples=planeColorData(props.payload,selectedPlane.value);colorSummary.value=planeColorSummary(samples);scene.value?.colors(samples,colorMode.value)}catch(failure){release();error.value=failure instanceof Error?failure.message:'unavailable'}}
@@ -89,7 +90,7 @@ const curveColorMode=ref<CurveColorMode>('support')
 const activeCurve=computed(()=>curves.value.find(c=>c.feature_id===selectedCurve.value))
 const curveScale=computed(()=>activeCurve.value?curveColorScale(activeCurve.value,curveColorMode.value):null)
 const focusTarget=ref<GeometryFocus>('measurement')
-const focusOptions=computed<{id:GeometryFocus;label:string}[]>(()=>[...(props.selectedRoiId?[{id:'roi' as const,label:`ROI · ${props.selectedRoiId}`}]:[]),...(selectedMeasurement.value?[{id:'measurement' as const,label:selectedMeasurement.value}]:[]),...(selectedCurve.value?[{id:'feature' as const,label:`${selectedCurve.value} ${selectedSegment.value}`}]:[]),...(selectedPlane.value?[{id:'plane' as const,label:selectedPlane.value}]:[])])
+const focusOptions=computed<{id:GeometryFocus;label:string}[]>(()=>[...(props.editArc?[{id:'arc' as const,label:zh.value?'当前角域':'Current angular region'}]:[]),...(props.selectedRoiId?[{id:'roi' as const,label:`ROI · ${props.selectedRoiId}`}]:[]),...(selectedMeasurement.value?[{id:'measurement' as const,label:selectedMeasurement.value}]:[]),...(selectedCurve.value?[{id:'feature' as const,label:`${selectedCurve.value} ${selectedSegment.value}`}]:[]),...(selectedPlane.value?[{id:'plane' as const,label:selectedPlane.value}]:[])])
 const scalableRoi=computed(()=>props.editRois?.some(r=>r.roi_id===props.selectedRoiId&&['box','cylinder'].includes(String(r.kind))))
 watch(scalableRoi,canScale=>{if(!canScale&&editMode.value==='scale')editMode.value='translate'})
 watch(focusOptions,targets=>{if(!targets.some(t=>t.id===focusTarget.value))focusTarget.value=targets[0]?.id??'measurement'})
@@ -129,7 +130,7 @@ async function load() {
 }
 onMounted(load)
 watch(() => [props.payload, props.projectId], load)
-watch(()=>[props.editRois,props.selectedRoiId,editMode.value,selectedMeasurement.value,selectedPlane.value,props.candidate,selectedCurve.value,selectedSegment.value,curveColorMode.value,picking.value],updateGeometry,{deep:true})
+watch(()=>[props.editRois,props.selectedRoiId,props.editArc,editMode.value,selectedMeasurement.value,selectedPlane.value,props.candidate,selectedCurve.value,selectedSegment.value,curveColorMode.value,picking.value],updateGeometry,{deep:true})
 watch(()=>[selectedPlane.value,colorMode.value],updateColors)
 watch(()=>props.allowPick,()=>{picking.value=false})
 onBeforeUnmount(release)
