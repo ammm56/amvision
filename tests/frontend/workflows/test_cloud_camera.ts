@@ -41,6 +41,9 @@ it('uses Z-up, zooms, preserves view on resize and projection switch, then relea
     view.projection(false);expect(camera().position.distanceTo(position)).toBeLessThan(1e-10)
     for(const axis of ['x','-x','y','-y','z','-z'] as const){view.fit(axis);expect(camera().position.distanceTo(new Vector3())).toBeGreaterThan(0);expect(changed).toHaveBeenLastCalledWith(axis)}
     view.pan(true);view.pan(false);expect(failed).not.toHaveBeenCalled()
+    view.geometry({payload:{spatial:{frame_id:'fixture',length_unit:'mm'}},rois:[{roi_id:'r',frame_id:'fixture',length_unit:'mm',kind:'box',geometry:{center:[7,8,9],size:[1,2,3],rotation:[[1,0,0],[0,1,0],[0,0,1]]}}],selectedId:'r'})
+    view.focus('roi');camera();expect(captured.controls.at(-1)!.target.distanceTo(new Vector3(7,8,9))).toBeLessThan(1e-12)
+    view.fit();camera();expect(captured.controls.at(-1)!.target.toArray()).toEqual([0,0,0])
   }finally{view.dispose()}
   expect(host.children).toHaveLength(0)
 })

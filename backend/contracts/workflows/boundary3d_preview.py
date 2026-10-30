@@ -1,6 +1,8 @@
 """边界与拟合的有界显示证据，不携运行引用或释放权限。"""
 
 from typing import Annotated, Literal, Self
+from hashlib import sha256
+from struct import pack
 from pydantic import Field, StrictBool, model_validator
 
 from backend.contracts.workflows.boundary3d import BoundaryTopology
@@ -22,7 +24,8 @@ from backend.contracts.workflows.geometry3d_quality import (
     GeometryQuality,
     check_geometry_policy,
 )
-from backend.contracts.workflows.metrology import Contract, Identifier
+from backend.contracts.workflows.metrology import Contract, Identifier, Finite
+from backend.contracts.workflows.geometry3d import Positive
 from backend.contracts.workflows.point_cloud import JsonCount, Sha256
 
 
@@ -110,6 +113,15 @@ class CircleDisplay(CurveDisplayBase):
     inlier_flags: tuple[StrictBool, ...] | None = Field(
         default=None, exclude_if=lambda v: v is None
     )
+    radial_residuals: tuple[Finite, ...] | None = Field(
+        default=None, exclude_if=lambda v: v is None
+    )
+    angular_weights: tuple[Positive, ...] | None = Field(
+        default=None, exclude_if=lambda v: v is None
+    )
+    angular_sectors: tuple[JsonCount, ...] | None = Field(
+        default=None, exclude_if=lambda v: v is None
+    )
 
     @model_validator(mode="after")
     def check_solver(self) -> Self:
@@ -122,10 +134,47 @@ class CircleDisplay(CurveDisplayBase):
             quality=self.quality,
         )
         if self.valid and self.method.parameters.robust is not None:
-            if self.inlier_flags is None or len(self.inlier_flags) != len(self.points):
-                raise ValueError("稳健圆显示缺少完整内点标记")
-        elif self.inlier_flags is not None:
-            raise ValueError("非有效稳健圆不能携带内点标记")
+            arrays = (
+                self.inlier_flags,
+                self.radial_residuals,
+                self.angular_weights,
+                self.angular_sectors,
+            )
+            if any(
+                values is None or len(values) != len(self.points) for values in arrays
+            ):
+                raise ValueError("稳健圆显示缺少完整逐点证据")
+            counts = self.solver.weighting.sector_counts
+            if any(
+                sector >= len(counts) or counts[sector] == 0
+                for sector in self.angular_sectors
+            ):
+                raise ValueError("稳健圆显示角区不一致")
+            actual_counts = [0] * len(counts)
+            digest = sha256()
+            for weight, sector in zip(self.angular_weights, self.angular_sectors):
+                actual_counts[sector] += 1
+                digest.update(pack("<d", weight))
+            if (
+                tuple(actual_counts) != counts
+                or digest.hexdigest() != self.solver.weighting.weights_sha256
+            ):
+                raise ValueError("稳健圆显示权重与求解证据不一致")
+            if any(
+                flag != (abs(residual) <= self.method.parameters.robust.inlier_residual)
+                for flag, residual in zip(self.inlier_flags, self.radial_residuals)
+            ):
+                raise ValueError("稳健圆显示残差与内点不一致")
+        elif any(
+            values is not None
+            for values in (
+                self.inlier_flags,
+                self.radial_residuals,
+                self.angular_weights,
+                self.angular_sectors,
+            )
+        ):
+            raise ValueError("非有效稳健圆不能携带逐点证据")
         return self
 
 

@@ -16,6 +16,8 @@ def main():
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--port", type=int, required=True)
     parser.add_argument("--point-cloud-policy", type=Path)
+    parser.add_argument("--inspection", default="A_top_L")
+    parser.add_argument("--datum-preview", action="store_true")
     parser.add_argument(
         "--recipe",
         choices=(
@@ -63,10 +65,30 @@ def main():
                     workpiece_documents,
                 )
 
-                version = system.publish(
-                    point_limit=500000,
-                    documents=workpiece_documents(file=True, visible=True),
+                documents = workpiece_documents(
+                    file=True, visible=True, inspection=args.inspection
                 )
+                if args.datum_preview:
+                    from backend.contracts.workflows.workflow_graph import (
+                        WorkflowGraphTemplate,
+                    )
+
+                    graph = documents[0].model_dump(mode="json")
+                    for source, port in (("D", "features"), ("frame", "pose")):
+                        graph["edges"].append(
+                            dict(
+                                edge_id="ui-datum-" + source,
+                                source_node_id=source,
+                                source_port=port,
+                                target_node_id="preview",
+                                target_port=port,
+                            )
+                        )
+                    documents = (
+                        WorkflowGraphTemplate.model_validate(graph),
+                        documents[1],
+                    )
+                version = system.publish(point_limit=500000, documents=documents)
                 print(
                     f"Published {version}; provide the complete original sample through the UI",
                     flush=True,

@@ -12,7 +12,9 @@ from typing import Any
 
 from backend.contracts.errors import ErrorContract
 from backend.contracts.workflows.workflow_graph import NodeDefinition
-from backend.contracts.workflows.point_cloud_preview import CLOUD_PREVIEW_FAILURE_REASONS
+from backend.contracts.workflows.point_cloud_preview import (
+    CLOUD_PREVIEW_FAILURE_REASONS,
+)
 from backend.service.application.public_errors import build_error_contract
 
 PREVIEW_CAPTURE_KEY = "_runtime_preview_capture"
@@ -41,6 +43,61 @@ class RuntimePreviewCapacityError(ValueError):
 
 class _DisplayLimit(ValueError):
     """显示副本超过限制，不影响业务执行。"""
+
+
+def cloud_sample_values(value: object) -> int:
+    """已声明点云显示的平面数组单独计数，普通元数据仍受原结构上限保护。
+
+    只接纳与显示点数一一对应的有限标量，不把任意嵌套 JSON 当作点数据。
+    字节预算、会话内存预算和节点点云策略保持原值。
+    """
+    if not isinstance(value, dict) or value.get("type") != "point-cloud-preview":
+        return 0
+    if value.get("format_id") != "amvision.point-cloud-preview.v1":
+        raise _DisplayLimit("preview_not_json")
+    geometry = value.get("geometry")
+    if geometry is None:
+        return 0
+    if not isinstance(geometry, dict) or not isinstance(
+        geometry.get("planes"), (list, tuple)
+    ):
+        raise _DisplayLimit("preview_not_json")
+    count = value.get("display_point_count")
+    if type(count) is not int or count < 0:
+        raise _DisplayLimit("preview_not_json")
+    total = 0
+    for plane in geometry["planes"]:
+        if not isinstance(plane, dict):
+            raise _DisplayLimit("preview_not_json")
+        samples = plane.get("samples")
+        if samples is None:
+            continue
+        if not isinstance(samples, dict):
+            raise _DisplayLimit("preview_not_json")
+        classes, residuals = samples.get("classes"), samples.get("residuals")
+        if (
+            not isinstance(classes, (list, tuple))
+            or not isinstance(residuals, (list, tuple))
+            or len(classes) != count
+            or len(residuals) != count
+        ):
+            raise _DisplayLimit("preview_not_json")
+        total += 2 * count
+        if total * 32 > MAX_PREVIEW_BYTES:
+            raise _DisplayLimit("preview_size_limit")
+        for kind, residual in zip(classes, residuals):
+            if (
+                type(kind) is not int
+                or kind not in (0, 1, 2)
+                or residual is not None
+                and (
+                    type(residual) not in (int, float)
+                    or not math.isfinite(residual)
+                    or kind == 0
+                )
+            ):
+                raise _DisplayLimit("preview_not_json")
+    return total
 
 
 def _copy_json(value: object, budget: list[int], depth: int = 0) -> object:
@@ -108,9 +165,17 @@ class RuntimePreviewCapture:
                         or payload.get("type") not in PREVIEW_TYPES
                     ):
                         continue
-                    if payload.get("type") == "point-cloud-preview" and payload.get("reason") in CLOUD_PREVIEW_FAILURE_REASONS:
+                    if (
+                        payload.get("type") == "point-cloud-preview"
+                        and payload.get("reason") in CLOUD_PREVIEW_FAILURE_REASONS
+                    ):
                         raise _DisplayLimit(payload["reason"])
-                    copied = _copy_json(payload, self.budget)
+                    budget = [
+                        self.budget[0],
+                        self.budget[1] + cloud_sample_values(payload),
+                    ]
+                    copied = _copy_json(payload, budget)
+                    self.budget[:] = budget
                     # 图像交互编辑仅属于编辑画布；运行画布不能改参数。
                     copied.pop("interaction", None)
                     if copied.get("type") == "gallery-preview" and isinstance(

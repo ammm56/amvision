@@ -17,7 +17,7 @@ export const parameterEditorSourcesKey: InjectionKey<(nodeId: string) => Paramet
   Symbol('workflow-parameter-sources')
 
 /** 资源保存仅接受当前已成功完成的预览，上传/执行/失败状态均不能复用上次结果。 */
-export const parameterPreviewStateKey: InjectionKey<() => {runId:string; succeeded:boolean}> = Symbol('workflow-parameter-preview-state')
+export const parameterPreviewStateKey: InjectionKey<() => {runId:string; succeeded:boolean; phase?:'idle'|'running'|'failed'|'stale'|'ready'}> = Symbol('workflow-parameter-preview-state')
 
 /** 仅显式选择当前成功运行的有界显示，不读取完整点云或推断输入空间。 */
 export interface ParameterCloudPreview { id:string; label:string; projectId:string; payload:Record<string,unknown> }

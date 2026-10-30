@@ -212,7 +212,9 @@ class PreviewDisplayCapture(RuntimePreviewCapture):
                         from backend.service.application.workflows.preview.values import _page
                         field = "value" if value["type"] == "value-preview" else "data" if value["type"] == "point-cloud-preview" else "rows"
                         content = None if field == "data" else _page(value, [field], 0, 4)["value"]
-                        value = {**value, field: content, "paged": True, "value_descriptor": descriptor,
+                        # 三维几何附件和主点数据属于同一 Blob，不能再次进入小控制事件。
+                        summary = {key: value[key] for key in ("type", "format_id", "state", "reason") if key in value} if field == "data" else value
+                        value = {**summary, field: content, "paged": True, "value_descriptor": descriptor,
                                  "status_text": "preview_value_paged"}
                     elif descriptor["kind"] == "unavailable":
                         raise ValueError(descriptor["error"])

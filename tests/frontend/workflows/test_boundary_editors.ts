@@ -35,3 +35,8 @@ it('closes on task/source changes and clears previous-run preview before accepti
   }finally{w.unmount()}
   expect(document.querySelector('[role=dialog]')).toBeNull()
 })
+it('does not mark an unchanged fragment selection dirty just by opening the editor',async()=>{
+  const model={...newBoundarySettings('fit-circle'),selection:{group_ids:['g'],feature_id:'b'}}
+  const w=mount(BoundarySettingsEditor,{props:{modelValue:model,nodeType:'custom.metrology3d.fit-circle',inputSources:{features:[{nodeId:'b-node',nodeTypeId:'custom.metrology3d.extract-boundary',parameters:{settings:{feature_id:'b',targets:[{group_id:'g'}]}},outputPort:'features'}]}},attachTo:document.body,global:{plugins:[createI18n({legacy:false,locale:'en-US'})]}})
+  try{await w.get('button').trigger('click');await flushPromises();expect(document.body.textContent).not.toContain('Parameters changed');expect(w.emitted('update:modelValue')).toBeUndefined()}finally{w.unmount()}
+})

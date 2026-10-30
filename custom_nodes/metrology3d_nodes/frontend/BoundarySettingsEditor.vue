@@ -9,14 +9,14 @@
           <label v-if="poseContour">{{ label('等高值来源','Contour height source') }}<select :value="object(object(draft.method).height).kind" @change="draft=put(draft,'method.height',newContourHeight(($event.target as HTMLSelectElement).value))"><option value="fixed">{{ label('固定基准高度','Fixed datum height') }}</option><option value="measurement-ratio">{{ label('本次测量比例','Current measurement ratio') }}</option></select></label>
           <GeometryFields v-model="draft" :fields="methodFields" :suggestions="suggestions" />
           <label v-if="poseContour&&object(object(draft.method).height).kind==='measurement-ratio'">{{ label('沿基准正法向的顺序','Order along positive datum normal') }}<select v-model="object(object(draft.method).height).order"><option :value="null" disabled>{{ label('选择顺序','Select order') }}</option><option value="target-above">{{ label('目标高于基体','Target above reference') }}</option><option value="target-below">{{ label('目标低于基体','Target below reference') }}</option></select></label>
-          <label>{{ label('表面 ROI','Surface ROI') }}<RoiEditor :model-value="regionSource(draft.region)" :allow-input="false" @update:model-value="draft=put(draft,'region',regionValue($event))" /></label>
+          <label>{{ label('编辑 ROI','Edit ROI') }}<select v-model="roiScope"><option value="surface">{{ label('表面 ROI','Surface ROI') }}</option><option v-if="target" value="target">{{ label('实测支持 ROI','Measured support ROI') }}</option></select></label>
+          <details><summary>{{ roiScope==='target'?label('实测支持 ROI','Measured support ROI'):label('表面 ROI','Surface ROI') }}</summary><RoiForm ref="roiForm" :key="roiScope+':'+targetIndex" :model-value="roiSource" :allow-input="false" @update:model-value="setRegion" @view="roiView=$event" /></details>
           <EnvelopeSettingsEditor v-if="visibleEnvelope" :model-value="object(object(draft.method).envelope)" @update:model-value="draft=put(draft,'method.envelope',$event)" />
           <div v-else class="target-toolbar"><label>{{ label('目标边界','Target boundary') }}<select v-model="targetIndex"><option v-for="(target,i) in targets" :key="i" :value="i">{{ target.group_id||target.segment_id||`#${i+1}` }}</option></select></label><button :title="label('添加目标','Add target')" @click="addTarget"><Plus :size="16" /></button><button :title="label('删除目标','Remove target')" :disabled="!target" @click="removeTarget"><Trash2 :size="16" /></button></div>
           <template v-if="target">
             <label>{{ label('目标方式','Target mode') }}<select :value="'group_id' in target?'group':'single'" @change="changeTarget(($event.target as HTMLSelectElement).value)"><option value="single">{{ label('单连续段','Single continuous segment') }}</option><option value="group">{{ label('部分圆弧片段组','Partial circular arc group') }}</option></select></label>
             <GeometryFields :model-value="target" :fields="targetFields" @update:model-value="setTarget" />
             <label v-if="!('group_id' in target)"><input type="checkbox" :checked="target.closed===true" @change="setTarget({...target,closed:($event.target as HTMLInputElement).checked,role:'unknown'})">{{ label('要求完整闭环','Require complete closed loop') }}</label>
-            <label>{{ label('实测支持 ROI','Measured support ROI') }}<RoiEditor :model-value="regionSource(target.region)" :allow-input="false" @update:model-value="setTarget({...target,region:regionValue($event)})" /></label>
             <details v-if="'group_id' in target"><summary>{{ label('每个片段的质量条件','Individual fragment quality') }}</summary><GeometryFields :model-value="object(target.fragment_quality_policy)" :fields="fragmentQualityFields" @update:model-value="setTarget({...target,fragment_quality_policy:$event})" /><WorkflowLimitRulesEditor :model-value="object(target.fragment_quality_policy).rules" quality @update:model-value="setTarget(put(target,'fragment_quality_policy.rules',$event))" /></details>
           </template>
         </template>
@@ -29,7 +29,7 @@
         </template>
         <EvaluationEditor v-model="draft.evaluation" :allow-feature="!extract" :pose="poseContour" :suggestions="suggestions" />
       </section>
-      <section class="boundary-view"><label>{{ label('点云显示','Point cloud view') }}<select v-model="previewId"><option value="">{{ label('未选择','None') }}</option><option v-for="item in previews" :key="item.id" :value="item.id">{{ item.label }}</option></select></label><CloudViewer v-if="preview" :key="preview.id" :payload="preview.payload" :project-id="preview.projectId" :allow-pick="canPickSeed" :candidate="candidate??undefined" @candidate="pickSeed" @feature-selection="chooseFeature" /><p v-if="candidate" role="status">{{ label('种子窗口候选中心','Candidate seed center') }}: {{ candidate.join(', ') }}</p></section>
+      <section class="boundary-view"><CloudPreviewSelector v-model="previewId" :previews="previews" :changed="changed" /><CloudViewer v-if="preview" :key="preview.id" :payload="preview.payload" :project-id="preview.projectId" :edit-rois="matchingRois" :selected-roi-id="roiView.selectedId" @roi-change="roiForm?.setCurrent($event)" :allow-pick="canPickSeed" :candidate="candidate??undefined" @candidate="pickSeed" @feature-selection="chooseFeature" /><p v-if="candidate" role="status">{{ label('种子窗口候选中心','Candidate seed center') }}: {{ candidate.join(', ') }}</p></section>
       <details class="boundary-advanced"><summary>{{ label('支持条件与几何质量','Support and geometry quality') }}</summary><GeometryFields v-if="extract&&!visibleEnvelope" v-model="draft" :fields="surfaceFields" /><GeometryFields v-if="kind==='fit-circle'" v-model="draft" :fields="solverFields" /><GeometryFields v-model="draft" :fields="qualityFields" /><WorkflowLimitRulesEditor :model-value="object(draft.quality_policy).rules" quality @update:model-value="draft=put(draft,'quality_policy.rules',$event)" /></details>
       <p v-if="issues.length" role="alert">{{ label('待完善','Incomplete') }}: {{ issues.join(' · ') }}</p><p v-if="referenceIssues.length" role="alert">{{ referenceIssues.join(' · ') }}</p>
     </div>
@@ -38,6 +38,7 @@
 <script setup lang="ts">
 import {computed,defineAsyncComponent,inject,ref,watch} from 'vue'
 import {useI18n} from 'vue-i18n'
+import CloudPreviewSelector from './CloudPreviewSelector.vue'
 import {Plus,Trash2} from '@lucide/vue'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import WorkflowLimitRulesEditor from '@/workflows/workflow-editor/components/WorkflowLimitRulesEditor.vue'
@@ -53,7 +54,7 @@ import {dimensionFeatureChoices} from './dimension-form'
 import {normalizeLimitRule} from '@/workflows/workflow-editor/parameters/limit-rules'
 import {newEvaluation} from './evaluation-form'
 import {candidateUV} from './pose-pick'
-import RoiEditor from './RoiEditor.vue'
+import RoiForm from './RoiForm.vue'
 import {object,copy,put,type Form,type Field} from './form'
 import {newBoundarySettings,newBoundaryMethod,newContourHeight,newRegion,regionSource,regionValue,boundaryIssues} from './boundary-form'
 defineOptions({inheritAttrs:false})
@@ -67,6 +68,12 @@ const poseContour=computed(()=>extract.value&&['pose-contour','visible-envelope'
 const title=computed(()=>extract.value?label('提取边界','Extract boundary'):kind.value==='fit-line'?label('拟合直线','Fit line'):label('拟合圆','Fit circle'))
 const open=ref(false),draft=ref<Form>({}),previewId=ref(''),targetIndex=ref(0)
 const candidate=ref<number[]|null>(null)
+const roiScope=ref('surface'),roiForm=ref<InstanceType<typeof RoiForm>>(),roiView=ref<{rois:Form[];selectedId:string}>({rois:[],selectedId:''})
+const initial=ref(''),changed=computed(()=>JSON.stringify(draft.value)!==initial.value)
+const roiRegion=computed(()=>roiScope.value==='target'&&target.value?target.value.region:draft.value.region)
+const roiSource=computed(()=>regionSource(roiRegion.value))
+const matchingRois=computed(()=>{const s=object(preview.value?.payload.spatial);return extract.value&&roiView.value.rois.every(r=>r.frame_id===s.frame_id&&r.length_unit===s.length_unit)?roiView.value.rois:[]})
+function setRegion(value:Form){if(roiScope.value==='target'&&target.value)setTarget({...target.value,region:regionValue(value)});else draft.value=put(draft.value,'region',regionValue(value))}
 const resolve=inject(parameterCloudPreviewsKey,()=>[]),state=inject(parameterPreviewStateKey,()=>({runId:'',succeeded:false}))
 const previews=computed(()=>state().succeeded?resolve():[]),preview=computed(()=>previews.value.find(p=>p.id===previewId.value))
 const previewFrame=computed(()=>object(object(preview.value?.payload.geometry).frame))
@@ -106,7 +113,7 @@ const fitFields=computed<Field[]>(()=>kind.value==='fit-line'?[{path:'min_orient
 const surfaceFields=computed<Field[]>(()=>[['alpha_radius','支持圆半径','Support circle radius'],['max_edge_length','最大连接边长','Maximum edge length'],['max_normal_step','最大法向高度跳变','Maximum normal step'],['min_projected_area','最小投影三角面积','Minimum projected triangle area']].map(([key,cn,en])=>({path:`surface.${key}`,label:label(cn!,en!),type:'number'})))
 const solverFields=computed<Field[]>(()=>['ftol','xtol','gtol','max_nfev'].map(key=>({path:`solver.${key}`,label:key,type:'number'} as Field)).concat([{path:'solver.x_scale',label:label('求解变量尺度','Solver variable scale'),type:'vector'}]))
 const qualityFields=computed<Field[]>(()=>[{path:'quality_policy.policy_id',label:label('质量策略 ID','Quality policy ID')},{path:'quality_policy.policy_version',label:label('策略版本','Policy version'),type:'number'}])
-function show(){draft.value=Object.keys(object(props.modelValue)).length?copy(object(props.modelValue)):newBoundarySettings(kind.value);targetIndex.value=0;previewId.value='';open.value=true}
+function show(){draft.value=Object.keys(object(props.modelValue)).length?copy(object(props.modelValue)):newBoundarySettings(kind.value);targetIndex.value=0;previewId.value='';roiScope.value='surface';initial.value=JSON.stringify(draft.value);open.value=true}
 function changeMethod(kind:string){
   const wasPose=poseContour.value,wasVisible=visibleEnvelope.value,visible=kind==='visible-envelope',q=object(draft.value.quality_policy)
   const extra=['profile_coverage','estimated_fraction','profile_max_gap','max_cell_span','missing_neighbor_fraction','added_cell_count','profile_max_jump']
@@ -126,11 +133,11 @@ function apply(){if(!issues.value.length&&!referenceIssues.value.length&&!props.
 watch(()=>[props.modelValue,props.disabled,props.nodeType],()=>{open.value=false;previewId.value=''})
 watch(()=>[state().runId,state().succeeded],()=>{previewId.value=''})
 watch(()=>[open.value,previewId.value,JSON.stringify(draft.value.evaluation),object(draft.value.method).kind],()=>{candidate.value=null})
-watch(()=>object(draft.value.selection).feature_id,(next,previous)=>{if(open.value&&next!==previous){const s=object(draft.value.selection),key=Array.isArray(s.group_ids)&&s.group_ids.length?'group_ids':'segment_ids',allowed=key==='group_ids'?availableGroups.value:availableSegments.value;if(allowed.length)draft.value=put(draft.value,'selection',{feature_id:next,[key]:(Array.isArray(s[key])?s[key]:[]).filter((id:string)=>allowed.includes(id))})}})
+watch(()=>object(draft.value.selection).feature_id,(next,previous)=>{if(open.value&&next!==previous){const s=object(draft.value.selection),key=Array.isArray(s.group_ids)&&s.group_ids.length?'group_ids':'segment_ids',allowed=key==='group_ids'?availableGroups.value:availableSegments.value,selected=Array.isArray(s[key])?s[key]:[],filtered=selected.filter((id:string)=>allowed.includes(id));if(allowed.length&&filtered.length!==selected.length)draft.value=put(draft.value,'selection',{...s,[key]:filtered})}})
 watch(()=>JSON.stringify(props.inputSources),()=>{open.value=false;previewId.value=''})
 </script>
 <style src="./editor.css" scoped></style>
 <style scoped>
 .boundary-config fieldset label{display:flex;align-items:center;gap:6px}.boundary-config input[type=checkbox]{width:16px;height:16px;min-width:16px;flex:none}.segment-rows{display:grid;gap:6px}.segment-rows label{display:grid;grid-template-columns:minmax(0,1fr) 30px;gap:6px}.segment-rows label input{grid-column:1;min-width:0}.segment-rows button{width:30px;height:30px;display:grid;place-items:center}
-.boundary-dialog :deep(.confirm-dialog){width:min(1260px,calc(100vw - 36px))}.boundary-workspace{grid-template-columns:minmax(280px,370px) minmax(0,1fr);align-items:start}.boundary-config,.boundary-view{display:grid;gap:10px;min-width:0}.boundary-view :deep(.cloud-viewer){height:min(60dvh,660px)}.boundary-advanced,.boundary-workspace>p{grid-column:1/-1}.target-toolbar{display:flex;gap:8px;align-items:end;flex-wrap:wrap}.target-toolbar button{display:grid;place-items:center;width:30px;height:30px}fieldset{border:1px solid var(--am-border);display:flex;gap:10px;flex-wrap:wrap}details>summary{padding:8px 0;cursor:pointer;font-weight:600}@media(max-width:900px){.boundary-workspace{grid-template-columns:minmax(0,1fr)}}
+.boundary-dialog :deep(.confirm-dialog){width:min(1260px,calc(100vw - 36px))}.boundary-workspace{grid-template-columns:minmax(280px,370px) minmax(0,1fr);align-items:start}.boundary-config,.boundary-view{display:grid;gap:10px;min-width:0}.boundary-view{position:sticky;top:0}.boundary-view :deep(.cloud-viewer){height:min(60dvh,660px)}.boundary-advanced,.boundary-workspace>p{grid-column:1/-1}.target-toolbar{display:flex;gap:8px;align-items:end;flex-wrap:wrap}.target-toolbar button{display:grid;place-items:center;width:30px;height:30px}fieldset{border:1px solid var(--am-border);display:flex;gap:10px;flex-wrap:wrap}details>summary{padding:8px 0;cursor:pointer;font-weight:600}@media(max-width:900px){.boundary-workspace{grid-template-columns:minmax(0,1fr)}.boundary-view{position:static}}
 </style>

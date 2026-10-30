@@ -4,7 +4,7 @@
       <tbody><tr v-for="item in items" :key="item.feature_id" :class="{selected:item.feature_id===selected}">
         <td><button @click="emit('select',item.feature_id,'')">{{ item.feature_id }}</button></td>
         <td>{{ names[item.kind] }} · {{ item.vertex_kind==='generated'?(zh?'生成顶点':'Generated'):(zh?'源点':'Source points') }}</td>
-        <td>{{ item.valid?(zh?'几何可用':'Geometry usable'):item.reason }}<template v-if="item.failed_segment_id"> · {{ item.failed_segment_id }}</template></td>
+        <td>{{ item.valid?(zh?'几何有效':'Geometry valid'):(zh?'几何无效':'Geometry invalid') }}<template v-if="!item.valid"> · {{ item.reason }}</template><template v-if="item.failed_segment_id"> · {{ item.failed_segment_id }}</template></td>
         <td><button v-for="group in groupIds(item)" :key="group" :aria-pressed="item.feature_id===selected&&group===selectedSegment" @click="emit('select',item.feature_id,group)">{{ group }} · {{ zh?'片段组':'Fragment group' }} · {{ item.topology?.segments.filter(s=>s.group_id===group).length }}</button><details v-if="groupIds(item).length"><summary>{{ zh?'实际片段':'Actual fragments' }}</summary><button v-for="(segment,index) in item.topology?.segments??[]" :key="segment.segment_id" :title="segment.segment_id" @click="emit('select',item.feature_id,segment.segment_id)">{{ segment.group_id }} / {{ index+1 }} · {{ segment.count }}</button></details><template v-else><button v-for="segment in item.topology?.segments??[]" :key="segment.segment_id" :aria-pressed="item.feature_id===selected&&segment.segment_id===selectedSegment" @click="emit('select',item.feature_id,segment.segment_id)">{{ segment.segment_id }} · {{ segment.closed?(zh?'闭合':'Closed'):(zh?'开放':'Open') }} · {{ segment.role }} · {{ segment.count }}</button></template></td>
       </tr></tbody>
     </table>
@@ -25,6 +25,7 @@
       </dl>
     </details>
     <details v-if="current"><summary>{{ zh?'几何质量':'Geometry quality' }} · {{ current.feature_id }}</summary><table><thead><tr><th>{{ zh?'指标':'Metric' }}</th><th>{{ zh?'值':'Value' }}</th><th>{{ zh?'单位':'Unit' }}</th><th>{{ zh?'原因':'Reason' }}</th></tr></thead><tbody><tr v-for="metric in metrics" :key="String(metric.item_id)"><td>{{ metric.item_id }}</td><td>{{ metric.value??'-' }}</td><td>{{ metric.unit }}</td><td>{{ metric.reason??'-' }}</td></tr></tbody></table></details>
+    <CurveSamples v-if="current?.angular_weights" :curve="current" :segment="selectedSegment" :unit="String(evaluation.length_unit)" />
   </section>
 </template>
 <script setup lang="ts">
@@ -32,6 +33,7 @@ import {computed} from 'vue'
 import {useI18n} from 'vue-i18n'
 import type {CurveDisplay} from './boundary-display'
 import {object} from './preview-data'
+import CurveSamples from './CurveSamples.vue'
 const props=defineProps<{items:CurveDisplay[];selected:string;selectedSegment:string}>()
 const emit=defineEmits<{select:[featureId:string,segmentId:string]}>()
 const {locale}=useI18n(),zh=computed(()=>locale.value==='zh-CN')
@@ -48,6 +50,6 @@ function groupIds(item:CurveDisplay){return [...new Set(item.topology?.segments.
 const metrics=computed(()=>{const segment=current.value?.segments?.find(s=>s.segment_id===props.selectedSegment)??current.value?.groups?.find(s=>s.group_id===props.selectedSegment);const q=segment?object(segment.quality):current.value?.quality;const rows=q?object(q.metrics).items:[];return Array.isArray(rows)?rows.map(object):[]})
 </script>
 <style scoped>
-.boundary-summary{overflow:auto;max-height:210px;font-size:12px;min-width:0}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:6px;border-bottom:1px solid var(--am-border);overflow-wrap:anywhere}button{font:inherit;border:0;background:transparent;color:var(--am-text);padding:4px;cursor:pointer}button[aria-pressed=true],.selected>td{background:var(--am-success-surface)}summary{cursor:pointer;padding:6px;font-weight:600}.source-details{display:grid;grid-template-columns:minmax(80px,auto) minmax(0,1fr);gap:6px;margin:6px}.source-details dd{margin:0;overflow-wrap:anywhere}
+.boundary-summary{overflow:auto;max-height:210px;font-size:12px;min-width:0}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:6px;border-bottom:1px solid var(--am-border);overflow-wrap:anywhere}button{font:inherit;border:0;background:transparent;color:var(--am-text);padding:4px;cursor:pointer}button[aria-pressed=true]{box-shadow:inset 0 -2px var(--am-brand-primary)}.selected>td{background:var(--am-surface-soft)}summary{cursor:pointer;padding:6px;font-weight:600}.source-details{display:grid;grid-template-columns:minmax(80px,auto) minmax(0,1fr);gap:6px;margin:6px}.source-details dd{margin:0;overflow-wrap:anywhere}
 .profile-legend{display:flex;flex-wrap:wrap;gap:16px;padding:6px}.profile-legend span{border-bottom:2px solid #287bb8}.profile-legend .edge{border-bottom:2px dashed #c8558a}
 </style>

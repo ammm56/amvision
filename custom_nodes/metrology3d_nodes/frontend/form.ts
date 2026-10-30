@@ -2,7 +2,7 @@
 import { limitRuleError, normalizeLimitRule } from '@/workflows/workflow-editor/parameters/limit-rules'
 import {roiGraphIssues} from '@/workflows/workflow-editor/point-cloud/roi-graph'
 export type Form = Record<string, unknown>
-export interface Field { path: string; label: string; type?: 'number' | 'vector' | 'pair' | 'matrix' | 'select'; options?: string[] }
+export interface Field { path: string; label: string; type?: 'number' | 'vector' | 'pair' | 'matrix' | 'select'; options?: string[]; components?: string[]; unit?: string }
 export function object(value: unknown): Form { return value && typeof value === 'object' && !Array.isArray(value) ? value as Form : {} }
 export function copy<T>(value: T): T { return JSON.parse(JSON.stringify(value)) as T }
 export function get(value: unknown, path: string): unknown { return path.split('.').reduce<unknown>((v,k) => object(v)[k], value) }

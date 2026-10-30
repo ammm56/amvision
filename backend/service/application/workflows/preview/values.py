@@ -2,7 +2,7 @@
 
 import json
 
-from backend.service.application.workflows.runtime_preview import _copy_json
+from backend.service.application.workflows.runtime_preview import _copy_json, cloud_sample_values, MAX_PREVIEW_BYTES
 
 
 class PreviewValues:
@@ -18,9 +18,12 @@ class PreviewValues:
         key = f"json:{uuid4().hex}"
         try:
             # 先做不复制容器的结构检查；复制/序列化前预留空间。
-            amount = _measure(value, [100_000])
+            cloud = isinstance(value, dict) and value.get("type") == "point-cloud-preview"
+            extra = cloud_sample_values(value)
+            limit = MAX_PREVIEW_BYTES if cloud else 16 * 1024**2
+            amount = _measure(value, [100_000 + extra], max_bytes=limit)
             self.bridge.reserve(key, amount * 3)
-            copied = _copy_json(value, [16 * 1024**2, 100_000])
+            copied = _copy_json(value, [limit, 100_000 + extra])
             encoded = json.dumps(copied, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode()
             # ROI 等完整 JSON 可含 execution registry 的不透明图像 id；它不是 OS
             # SHM 名称，也不能用于浏览器取图。保留业务结构并显式标注引用作用域。
@@ -36,7 +39,7 @@ class PreviewValues:
             self.bridge.reserve(key, 0)
 
 
-def _measure(value, remaining, depth=0):
+def _measure(value, remaining, depth=0, *, max_bytes=16 * 1024**2):
     """限深、限元素和限字节，避免为检查超大输出先复制整个对象。"""
     import math
     remaining[0] -= 1
@@ -54,18 +57,18 @@ def _measure(value, remaining, depth=0):
             if not isinstance(key, str):
                 raise ValueError("preview_not_json")
             # SHM 名称、内部对象句柄不是可在浏览器使用的完整值。
-            size += _measure(key, remaining, depth + 1) + _measure(item, remaining, depth + 1)
-            if size > 16 * 1024**2:
+            size += _measure(key, remaining, depth + 1, max_bytes=max_bytes) + _measure(item, remaining, depth + 1, max_bytes=max_bytes)
+            if size > max_bytes:
                 raise ValueError("preview_value_capacity")
     elif isinstance(value, (list, tuple)):
         size = 64
         for item in value:
-            size += _measure(item, remaining, depth + 1)
-            if size > 16 * 1024**2:
+            size += _measure(item, remaining, depth + 1, max_bytes=max_bytes)
+            if size > max_bytes:
                 raise ValueError("preview_value_capacity")
     else:
         raise ValueError("preview_not_json")
-    if size > 16 * 1024**2:
+    if size > max_bytes:
         raise ValueError("preview_value_capacity")
     return size
 

@@ -3,7 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import type { CloudRendererPolicy } from '../services/measurement-resource.service'
 import { reserveCpu, reserveGpu, type CloudDisplayData } from './preview-data'
 import {fillPlaneColors,type PlaneColors} from './plane-colors'
-import {createGeometryOverlay,type GeometryOverlayInput} from './geometry-overlay'
+import {createGeometryOverlay,type GeometryOverlayInput,type GeometryFocus} from './geometry-overlay'
 export type CloudViewAxis = 'iso' | 'x' | '-x' | 'y' | '-y' | 'z' | '-z'
 export type CloudViewState = CloudViewAxis | 'free'
 
@@ -36,7 +36,7 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
   let axes: AxesHelper | null = null
   let camera: PerspectiveCamera | OrthographicCamera
   let reportedView: CloudViewState | undefined
-  let radius = 1
+  let radius = 1,viewRadius=1
   let pointDown: {x: number; y: number} | null = null
   function render() {
     if (!closed && renderer) renderer.render(scene, camera)
@@ -70,8 +70,8 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
   function pick(event: PointerEvent) {
     if (!renderer || overlay?.dragging() || !pointDown || Math.hypot(event.clientX - pointDown.x, event.clientY - pointDown.y) > 3) return
     const r = renderer.domElement.getBoundingClientRect(), ray = new Raycaster()
-    ray.params.Points!.threshold = radius * .015
-    ray.params.Line!.threshold = radius * .015
+    ray.params.Points!.threshold = viewRadius * .015
+    ray.params.Line!.threshold = viewRadius * .015
     ray.setFromCamera(new Vector2((event.clientX - r.left) / r.width * 2 - 1, -(event.clientY - r.top) / r.height * 2 + 1), camera)
     if(overlay?.pick(ray))return
     const hit = ray.intersectObject(points)[0]
@@ -87,6 +87,7 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
   }
   function fit(axis: CloudViewAxis = 'iso') {
     if (closed) return
+    viewRadius=radius
     const direction = directions[axis],top=axis==='z'||axis==='-z'
     camera.up.set(0, top ? 1 : 0, top ? 0 : 1)
     camera.position.set(...direction as [number, number, number]).normalize().multiplyScalar(radius * 3 / Math.min(1, width / height))
@@ -133,6 +134,19 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
     observer.observe(host)
     return {
       dispose, fit,
+      focus(kind:GeometryFocus){
+        if(closed)return
+        const bounds=overlay?.focus(kind)
+        if(!bounds)return
+        viewRadius=bounds.radius
+        const direction=camera.position.clone().sub(controls!.target).normalize()
+        const distance=viewRadius*3/Math.min(1,width/height)
+        camera.position.copy(bounds.center).addScaledVector(direction,distance)
+        camera.near=Math.min(radius,viewRadius)/1000;camera.far=Math.max(radius,viewRadius)*10000
+        camera.zoom=1
+        if(camera instanceof OrthographicCamera){const y=viewRadius*1.15/Math.min(1,width/height);camera.left=-y*width/height;camera.right=y*width/height;camera.top=y;camera.bottom=-y}
+        controls!.target.copy(bounds.center);camera.updateProjectionMatrix();controls!.update();schedule()
+      },
       colors(samples:PlaneColors|null,mode:'original'|'support'|'residual'){
         if(closed)return
         const attribute=geometry.getAttribute('color') as BufferAttribute

@@ -599,7 +599,9 @@ async function buildPreviewNodeDisplay(
   if (['table-preview', 'point-cloud-preview'].includes(String(displayOutput.payload.type)) && displayOutput.payload.paged && isPreviewJsonObject(descriptor)
     && descriptor.transport_kind === 'preview-memory' && typeof descriptor.blob_id === 'string' && previewRun.readMemoryBlob) {
     const blob = await previewRun.readMemoryBlob(descriptor.blob_id, 'application/json')
-    if (blob.size > 16 * 1024 * 1024) throw new Error('preview_table_capacity')
+    // 三维正文沿 Runtime 既有 64 MiB 传输上限；表格仍保持原 16 MiB 上限。
+    const cloud = displayOutput.payload.type === 'point-cloud-preview'
+    if (blob.size > (cloud ? 64 : 16) * 1024 * 1024) throw new Error(cloud ? 'cloud_preview_capacity' : 'preview_table_capacity')
     const complete: unknown = JSON.parse(await blob.text())
     if (!isPreviewJsonObject(complete) || complete.type !== displayOutput.payload.type
       || complete.type === 'table-preview' && !Array.isArray(complete.rows)) throw new Error('preview_display_invalid')

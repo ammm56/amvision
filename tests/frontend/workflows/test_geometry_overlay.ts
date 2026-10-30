@@ -2,9 +2,29 @@ import {expect,it,vi} from 'vitest'
 import {Scene,PerspectiveCamera,Mesh,Vector3,type Object3D} from 'three'
 import {createGeometryOverlay} from '@/workflows/workflow-editor/point-cloud/geometry-overlay'
 import {rendererUsage} from '@/workflows/workflow-editor/point-cloud/preview-data'
+import type {TransformControls} from 'three/addons/controls/TransformControls.js'
 const policy={max_points:1000,max_data_bytes:100000,max_cpu_bytes:10000000,max_gpu_bytes:10000000,max_canvas_pixels:1000000,max_position_error:.001}
 const payload={observation_id:'obs',spatial:{frame_id:'fixture',length_unit:'mm'},bounds:{min:[1000000,0,0],max:[1000004,4,4]}}
 const roi={roi_id:'r',frame_id:'fixture',length_unit:'mm',kind:'box',geometry:{center:[1000002,2,2],size:[2,2,2],rotation:[[1,0,0],[0,1,0],[0,0,1]]}}
+it('writes physical ROI dimensions without cumulative scale and focuses only selected geometry',()=>{
+  for(const kind of ['box','cylinder']){
+    const scene=new Scene(),changed=vi.fn(),overlay=createGeometryOverlay(scene,new PerspectiveCamera(),document.createElement('canvas'),[1000000,0,0],policy,()=>{},()=>{},e=>{throw e})
+    const value=kind==='box'?roi:{...roi,kind,geometry:{center:roi.geometry.center,axis:[0,0,1],radius:2,length:4}}
+    try{
+      overlay.update({payload,rois:[value],selectedId:'r',mode:'scale',changed})
+      let control:TransformControls|undefined
+      scene.traverse(o=>{if((o as Object3D&{controls?:TransformControls}).controls)control=(o as Object3D&{controls:TransformControls}).controls})
+      const c=control!;expect(c.space).toBe('local')
+      c.object!.scale.set(2,3,2);c.dispatchEvent({type:'objectChange'})
+      expect(changed.mock.lastCall![0].geometry).toMatchObject(kind==='box'?{size:[4,6,4]}:{radius:4,length:12})
+      c.object!.scale.set(3,4,3);c.dispatchEvent({type:'objectChange'})
+      expect(changed.mock.lastCall![0].geometry).toMatchObject(kind==='box'?{size:[6,8,6]}:{radius:6,length:16})
+      c.object!.scale.set(-1,1,1);c.dispatchEvent({type:'objectChange'});expect(changed).toHaveBeenCalledTimes(2)
+      expect(overlay.focus('roi')!.center.distanceTo(new Vector3(2,2,2))).toBeLessThan(1e-12);expect(overlay.focus('measurement')).toBeNull()
+    }finally{overlay.dispose()}
+    expect(rendererUsage()).toEqual({cpuBytes:0,gpuBytes:0})
+  }
+})
 it('uses physical local coordinates and releases geometry/control budgets on replacement and close',()=>{
   const scene=new Scene(),overlay=createGeometryOverlay(scene,new PerspectiveCamera(),document.createElement('canvas'),[1000000,0,0],policy,()=>{},()=>{},error=>{throw error})
   try{

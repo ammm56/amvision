@@ -107,6 +107,17 @@ it('resolves cloud display data using the existing Preview Blob channel',async()
   expect(view.previewNodeDisplays.value.cloud!.payload).toEqual(body)
   view.revokePreviewImageObjectUrls();expect(view.previewNodeDisplays.value).toEqual({})
 })
+it('keeps cloud bodies within the Runtime transport limit without relaxing the table limit',async()=>{
+  const view=useWorkflowPreviewDisplays(),body={type:'point-cloud-preview',state:'ready',data:{content:'AA=='}}
+  const readMemoryBlob=vi.fn().mockResolvedValue({size:20*1024*1024,text:async()=>JSON.stringify(body)})
+  const output={nodeId:'cloud',nodeTypeId:'custom.metrology3d.cloud-preview',outputName:'body',payload:{type:'point-cloud-preview',paged:true,value_descriptor:{transport_kind:'preview-memory',blob_id:'b'}}}
+  await view.refreshDisplayOutputs({project_id:'p',preview_run_id:'r',readMemoryBlob},[output]);expect(view.previewNodeDisplays.value.cloud?.payload).toEqual(body)
+  readMemoryBlob.mockResolvedValue({size:64*1024*1024+1,text:async()=>JSON.stringify(body)})
+  await expect(view.refreshDisplayOutputs({project_id:'p',readMemoryBlob},[output])).rejects.toThrow('cloud_preview_capacity')
+  readMemoryBlob.mockResolvedValue({size:20*1024*1024,text:async()=>JSON.stringify({type:'table-preview',rows:[]})})
+  await expect(view.refreshDisplayOutputs({project_id:'p',readMemoryBlob},[{...output,payload:{...output.payload,type:'table-preview'}}])).rejects.toThrow('preview_table_capacity')
+  view.revokePreviewImageObjectUrls()
+})
 
 it('does not submit same-host cloud input as browser JSON or generate a false HTTP example',async()=>{
   const binding: FlowApplicationBinding = {

@@ -1,0 +1,203 @@
+{
+  "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "points": 14745099,
+  "array_sha256": "956927f058ba4a0170b1c1b93b1411b613fbe21fcbfc278ad0a7fc3cf621a1c6",
+  "admission": "WorkflowRuntimeService",
+  "worker": "WorkflowRuntimeWorkerManager",
+  "calls": [
+    {
+      "run_id": "workflow-run-652daaedc4d14ec48976e91bd357ee04",
+      "version_id": "workflow-app-version-622359d4e931460f8a35b760c89d008b",
+      "worker_instance_id": "workflow-runtime-7396d18acc6a45f2820a795d415a332d-ad64f48e96fe4db59f36c9a6d3b475bb",
+      "configured_preview_points": 1000,
+      "response_body_bytes": 6787,
+      "client": "python-protocol"
+    },
+    {
+      "run_id": "workflow-run-9d09f48d35084907a51e90cfa6f47cbf",
+      "version_id": "workflow-app-version-1bc1bceed5dd4215b5a97f2f9d7a9e9c",
+      "worker_instance_id": "workflow-runtime-7396d18acc6a45f2820a795d415a332d-21840dd19fd04ff4bb5e5c3b9377fe89",
+      "configured_preview_points": 500,
+      "response_body_bytes": 6787,
+      "client": "python-protocol"
+    },
+    {
+      "run_id": "workflow-run-b2f064a2100d437081e2eca72c8d28c2",
+      "version_id": "workflow-app-version-1bc1bceed5dd4215b5a97f2f9d7a9e9c",
+      "worker_instance_id": "workflow-runtime-7396d18acc6a45f2820a795d415a332d-21840dd19fd04ff4bb5e5c3b9377fe89",
+      "configured_preview_points": 500,
+      "response_body_bytes": 6787,
+      "client": "python-protocol"
+    },
+    {
+      "run_id": "workflow-run-8552e1ce03cb4e71bbcf8effa630ccba",
+      "version_id": "workflow-app-version-1bc1bceed5dd4215b5a97f2f9d7a9e9c",
+      "worker_instance_id": "workflow-runtime-7396d18acc6a45f2820a795d415a332d-21840dd19fd04ff4bb5e5c3b9377fe89",
+      "configured_preview_points": 500,
+      "response_body_bytes": 6787,
+      "client": "python-protocol"
+    },
+    {
+      "run_id": "workflow-run-84dd65f88c0b4470866ad18e8ed1e3c7",
+      "version_id": "workflow-app-version-1bc1bceed5dd4215b5a97f2f9d7a9e9c",
+      "worker_instance_id": "workflow-runtime-7396d18acc6a45f2820a795d415a332d-845cbeeeb78c40a689e75be73f90a3a1",
+      "configured_preview_points": 500,
+      "response_body_bytes": 6787,
+      "client": "python-protocol"
+    }
+  ],
+  "writer_crash_reclaimed": true,
+  "executing_client_crash": {
+    "run_id": "workflow-run-ce44d26d3cea4b0c88be3acb6217b4b4",
+    "terminal_state": "succeeded",
+    "reclaimed": true
+  },
+  "stop_during_execution": {
+    "run_id": "workflow-run-7c08a78d382c4937b0bfc46478d2ccbf",
+    "process_exited": true
+  },
+  "running_switch_rejected": true,
+  "enabled_source_switch_rejected": true,
+  "stopped_admission_rejected": true,
+  "stale_route_rejected": true,
+  "stopped_switch_verified": true,
+  "resources": [
+    {
+      "running": true,
+      "pending_request_count": 0,
+      "active_task_count": 0,
+      "mailbox": {
+        "contract_id": "amvision.workflow-trigger-mailbox.v1",
+        "server_epoch": 3429752995995899667,
+        "file_size_bytes": 151060992,
+        "descriptor_state_counts": [
+          128,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "free_page_count": 512,
+        "used_page_count": 0,
+        "last_timeout_diagnostic": {
+          "requested_timeout_ms": 120000,
+          "accepted_timeout_ms": 120000,
+          "accepted_at_ns": 1090539469685796
+        }
+      },
+      "routes": {
+        "route_count": 1,
+        "active_source_permit_count": 0
+      },
+      "executor": {
+        "max_workers": 16,
+        "active_count": 0,
+        "available_count": 16,
+        "closed": false
+      },
+      "recent_poller_error": null,
+      "recent_request_error": {
+        "error_type": "InvalidRequestError",
+        "error_code": "invalid_request",
+        "published_error_code": "mailbox_error_1",
+        "occurred_at": "2026-10-30T03:59:59.980935+00:00"
+      },
+      "completed_request_count": 7,
+      "failed_request_count": 3,
+      "source_health_entry_count": 1,
+      "idle_poll_sleep_count": 230670,
+      "latest_timings": {
+        "prepare_decode_route_admission_ms": 0.399,
+        "broker_allocate_ms": 1.007,
+        "mailbox_publish_writing_ms": 0.21,
+        "mailbox_prepare_ms": 1.675,
+        "mailbox_request_detect_ms": 0.04,
+        "input_publish_wait_ms": 187.357,
+        "executor_reserve_ms": 0.021,
+        "executor_start_wait_ms": 0.121,
+        "request_decode_validate_ms": 0.051,
+        "input_binding_map_ms": 0.023,
+        "runtime_admission_ms": 4.408,
+        "broker_commit_owner_handoff_ms": 1.606,
+        "request_admission_submit_ms": 6.746,
+        "workflow_runtime_invoke_ms": 25136.676,
+        "trigger_result_build_ms": 0.259,
+        "response_serialize_ms": 0.047,
+        "mailbox_publish_response_ms": 0.504,
+        "lease_reclaim_ms": 0.017
+      }
+    },
+    {
+      "process_id": 475,
+      "state": "healthy",
+      "arena_id": "local-buffer-main",
+      "broker_epoch": "cdd130b739f541f3a38109b0628e81f2",
+      "lifecycle_state": "open",
+      "active_borrow_count": 0,
+      "close_blocked_count": 0,
+      "layout_version": 1,
+      "layout_fingerprint": "7bc9d52480ee80346619f65af0cf16e6de339b504fdbba0c29765f9359a4fd4d",
+      "arena_total_bytes": 536870912,
+      "general_total_bytes": 536870912,
+      "huge_reserved_total_bytes": 0,
+      "general": {
+        "reserved_writing": 0,
+        "active": 0,
+        "frame_reserved": 0,
+        "revoking": 0,
+        "quarantined": 0,
+        "free": 536870912
+      },
+      "huge_reserve": {
+        "reserved_writing": 0,
+        "active": 0,
+        "frame_reserved": 0,
+        "revoking": 0,
+        "quarantined": 0,
+        "free": 0
+      },
+      "free_capacity_bytes": 536870912,
+      "allocated_capacity_bytes": 0,
+      "published_content_bytes": 0,
+      "rounding_waste_bytes": 0,
+      "frame_reserved_capacity_bytes": 0,
+      "revoking_capacity_bytes": 0,
+      "quarantined_capacity_bytes": 0,
+      "largest_general_free_block_bytes": 268435456,
+      "general_external_fragmentation": 0.5,
+      "free_blocks_by_order": {
+        "20": 0,
+        "21": 0,
+        "22": 0,
+        "23": 0,
+        "24": 0,
+        "25": 0,
+        "26": 0,
+        "27": 0,
+        "28": 2
+      },
+      "allocation_failure_counts": {
+        "total_capacity": 0,
+        "contiguous_capacity": 0,
+        "maximum_allocation": 0,
+        "huge_reserve": 0,
+        "integrity": 0
+      },
+      "active_lease_count": 0,
+      "frame_channel_count": 0,
+      "stale_fence_count": 0,
+      "frame_channels": [],
+      "housekeeping": {
+        "owner": "broker",
+        "expire_enabled": true,
+        "last_success_at": "2026-10-30T04:03:29.567495+00:00",
+        "duration_ms": 0.0448108185082674,
+        "error": null,
+        "last_error": null
+      }
+    }
+  ]
+}
