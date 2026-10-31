@@ -5,7 +5,7 @@ export const robustMetrics=['inlier_fraction','sector_coverage','inlier_angular_
 const finite=(v:unknown):v is number=>typeof v==='number'&&Number.isFinite(v)
 const id=(v:unknown)=>typeof v==='string'&&/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/.test(v)
 /** 角域全部显式填写，缺省不产生可执行生产数值。 */
-export function newAngularFit():Form{return {kind:'angular-soft-l1',center:[null,null],start_angle:null,sweep:null,sector_count:null,loss_scale:null,inlier_residual:null}}
+export function newAngularFit(kind='angular-soft-l1'):Form{return {kind,center:[null,null],start_angle:null,sweep:null,sector_count:null,loss_scale:null,inlier_residual:null}}
 export function newFragmentTarget(previous:Form):Form{return {group_id:previous.group_id??previous.segment_id??'',region:previous.region,role:'open',arc:{center:[null,null],radius_range:[null,null],start_angle:null,sweep:null,max_overlap_angle:null},fragment_quality_policy:{policy_id:'',policy_version:null,rules:['support_count','length'].map(item_id=>normalizeLimitRule({item_id,unit:item_id==='support_count'?'1':''}))}}}
 export function angularIssues(value:unknown):string[]{const p=object(value);return !Array.isArray(p.center)||p.center.length!==2||!p.center.every(finite)||!finite(p.start_angle)||p.start_angle<0||p.start_angle>=2*Math.PI||!finite(p.sweep)||p.sweep<=0||p.sweep>2*Math.PI?['angular domain']:[]}
 export function fragmentIssues(value:unknown):string[]{
@@ -20,13 +20,15 @@ export function selectionIssues(value:unknown):string[]{const p=object(value),se
 export function robustIssues(value:unknown,quality:unknown):string[]{
   if(value===null||value===undefined)return []
   const p=object(value),q=object(quality),rules=Array.isArray(q.rules)?q.rules.map(normalizeLimitRule):[],byId=new Map(rules.filter(r=>r.enabled&&r.required).map(r=>[r.item_id,r])),issues=angularIssues(p)
-  if(p.kind!=='angular-soft-l1'||!Number.isSafeInteger(p.sector_count)||Number(p.sector_count)<1||Number(p.sector_count)>8192||!finite(p.loss_scale)||p.loss_scale<=0||!finite(p.inlier_residual)||p.inlier_residual<=0)issues.push('robust fit')
+  if(!['angular-soft-l1','arc-length-soft-l1'].includes(String(p.kind))||!Number.isSafeInteger(p.sector_count)||Number(p.sector_count)<1||Number(p.sector_count)>8192||!finite(p.loss_scale)||p.loss_scale<=0||!finite(p.inlier_residual)||p.inlier_residual<=0)issues.push('robust fit')
   for(const key of robustMetrics){const r=byId.get(key),upper=['target_max_gap','inlier_max_gap','weighted_rms'].includes(key);if(!r||(upper?r.upper===null||r.upper<0:r.lower===null||r.lower<=0||['inlier_fraction','sector_coverage','inlier_jacobian_ratio'].includes(key)&&r.lower>1))issues.push(`quality / ${key}`)}
   return issues
 }
-export function changeCircleFit(draft:Form,robust:boolean):Form{
+export function changeCircleFit(draft:Form,method:string):Form{
+  const robust=method!=='linear'
+  if(robust&&draft.robust)return {...draft,robust:{...object(draft.robust),kind:method}}
   const q=object(draft.quality_policy),unit=object(draft.evaluation).length_unit
   let rules=(Array.isArray(q.rules)?q.rules:[]).map(normalizeLimitRule).filter(r=>!robustMetrics.includes(r.item_id))
   if(robust)rules=rules.concat(robustMetrics.map(item_id=>normalizeLimitRule({item_id,unit:item_id==='weighted_rms'?String(unit??''):['inlier_fraction','sector_coverage','inlier_jacobian_ratio'].includes(item_id)?'1':'rad'})))
-  return {...draft,robust:robust?newAngularFit():null,quality_policy:{...q,rules}}
+  return {...draft,robust:robust?newAngularFit(method):null,quality_policy:{...q,rules}}
 }

@@ -42,7 +42,7 @@ it('keeps selection explicit across source/run changes and explains stale, faile
   wrapper.unmount()
 })
 it('colors only recorded evidence and handles equal weights and signed residuals',()=>{
-  const curve={angular_weights:[.5,1,1.5],radial_residuals:[-.02,.01,0]} as CurveDisplay
+  const curve={fit_weights:[.5,1,1.5],radial_residuals:[-.02,.01,0]} as CurveDisplay
   expect(curveColorScale(curve,'weight')).toEqual({min:.5,max:1.5})
   expect(curveColorScale(curve,'residual')).toEqual({min:-.02,max:.02})
   expect(curveColorScale(curve,'support')).toBeNull()

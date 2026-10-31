@@ -24,6 +24,40 @@ def angular_weights(uv, settings, anchor):
     return None, weights, bins, counts
 
 
+def circle_weights(uv, settings, anchor, topology, *, cancel):
+    """复用角域检查；连续方法只将已有边的面内弦长各半分配给两端。"""
+    cancel()
+    reason, weights, bins, counts = angular_weights(uv, settings, anchor)
+    if reason or settings.kind == "angular-soft-l1":
+        return reason, weights, bins, counts
+    if settings.kind != "arc-length-soft-l1":
+        raise ValueError("unknown_circle_weight_method")
+    weights = np.zeros(len(uv), dtype=np.float64)
+    for segment in topology.segments:
+        # 分块不连接片段间缺口；闭合边只在原拓扑明确闭合时贡献。
+        end = segment.start + segment.count
+        for start in range(segment.start, end - 1, 65536):
+            cancel()
+            stop = min(start + 65536, end - 1)
+            lengths = np.linalg.norm(uv[start + 1 : stop + 1] - uv[start:stop], axis=1)
+            if not np.isfinite(lengths).all() or np.any(lengths <= 0):
+                return "degenerate_arc_edge", None, None, None
+            weights[start:stop] += lengths / 2
+            weights[start + 1 : stop + 1] += lengths / 2
+        if segment.closed:
+            length = np.linalg.norm(uv[end - 1] - uv[segment.start])
+            if not np.isfinite(length) or length <= 0:
+                return "degenerate_arc_edge", None, None, None
+            weights[end - 1] += length / 2
+            weights[segment.start] += length / 2
+    cancel()
+    total = weights.sum()
+    if not np.isfinite(total) or total <= 0 or np.any(weights <= 0):
+        return "degenerate_arc_support", None, None, None
+    weights *= len(uv) / total
+    return None, weights, bins, counts
+
+
 def weighted_soft_l1(weights):
     """w*rho(r²/s²)，不是 rho(w*r²/s²)，保持各角区相同物理软阈值。"""
 

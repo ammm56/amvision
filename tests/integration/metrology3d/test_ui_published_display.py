@@ -100,7 +100,7 @@ def test_complete_cloud_published_measurements_and_datum_display(tmp_path, reque
             )
             assert (
                 circle["valid"]
-                and len(circle["angular_weights"]) == circle["support_point_count"]
+                and len(circle["fit_weights"]) == circle["support_point_count"]
             )
         system.assert_reclaimed()
         stopped = system.call("POST", f"/app-runtimes/{system.runtime_id}/stop")
@@ -113,7 +113,7 @@ def test_complete_cloud_published_measurements_and_datum_display(tmp_path, reque
             "run_id": reply["workflow_run_id"],
             "display_points": display["display_point_count"],
             "plane_samples": len(planes[0]["samples"]["classes"]),
-            "circle_samples": len(circle["angular_weights"]),
+            "circle_samples": len(circle["fit_weights"]),
             "measurements_match_f4": True,
             "stopped": True,
             "resources_reclaimed": True,

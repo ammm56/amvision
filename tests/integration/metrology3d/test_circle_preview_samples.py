@@ -18,7 +18,8 @@ from tests.test_metrology3d_preprocess import make_cloud
 from tests.test_metrology3d_preview import preview_policy
 
 
-def test_circle_display_weights_residuals_cancel_and_release():
+@pytest.mark.parametrize("method", ["angular-soft-l1", "arc-length-soft-l1"])
+def test_circle_display_weights_residuals_cancel_and_release(method):
     """半径4独立真值；预算、取消和错误摘要均不得返回伪证据。"""
     angles = np.linspace(0, 2 * np.pi, 64, endpoint=False)
     points = np.vstack(
@@ -50,8 +51,12 @@ def test_circle_display_weights_residuals_cancel_and_release():
             ),
             cancel=lambda: None,
         )
+        parameters = robust_parameters()
+        parameters = parameters.model_copy(
+            update={"robust": parameters.robust.model_copy(update={"kind": method})}
+        )
         feature = fit_boundary(
-            runtime, boundary, robust_parameters(), cancel=lambda: None
+            runtime, boundary, parameters, cancel=lambda: None
         ).items[0]
         assert feature.valid
         raw = curve_display(
@@ -59,20 +64,23 @@ def test_circle_display_weights_residuals_cancel_and_release():
         )
         display = CircleDisplay.model_validate(raw)
         np.testing.assert_allclose(display.radial_residuals, 0, atol=1e-10)
-        assert len(display.angular_weights) == 64 and sum(
-            display.angular_weights
+        assert len(display.fit_weights) == 64 and sum(
+            display.fit_weights
         ) == pytest.approx(64)
         counts = feature.solver.weighting.sector_counts
         occupied = sum(v > 0 for v in counts)
-        for weight, sector in zip(display.angular_weights, display.angular_sectors):
-            assert weight == 64 / (occupied * counts[sector])
-        for key in ("radial_residuals", "angular_weights", "angular_sectors"):
+        if method == "angular-soft-l1":
+            for weight, sector in zip(display.fit_weights, display.angular_sectors):
+                assert weight == 64 / (occupied * counts[sector])
+        else:
+            np.testing.assert_allclose(display.fit_weights, 1, atol=1e-12)
+        for key in ("radial_residuals", "fit_weights", "angular_sectors"):
             wrong = dict(raw)
             wrong[key] = wrong[key][:-1]
             with pytest.raises(ValidationError):
                 CircleDisplay.model_validate(wrong)
         for key, value in (
-            ("angular_weights", 2.0),
+            ("fit_weights", 2.0),
             ("angular_sectors", 15),
             ("radial_residuals", 1.0),
         ):

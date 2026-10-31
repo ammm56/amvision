@@ -30,8 +30,11 @@ from tests.test_metrology3d_preprocess import make_cloud
 from tests.test_point_cloud_assets import POLICY
 
 
-@pytest.mark.parametrize("kind", ["edge-pair", "hole"])
-def test_saved_boundary_restores_extents_and_fitted_dimensions(tmp_path, kind):
+@pytest.mark.parametrize(
+    "kind, method",
+    [("edge-pair", None), ("hole", None), ("hole", "arc-length-soft-l1")],
+)
+def test_saved_boundary_restores_extents_and_fitted_dimensions(tmp_path, kind, method):
     """生成边界保留插值来源；有序源边界保留原始行号。"""
     documents, _, points = dimension_documents(kind)
     parameters = {n.node_id: n.parameters.get("settings") for n in documents[0].nodes}
@@ -105,10 +108,26 @@ def test_saved_boundary_restores_extents_and_fitted_dimensions(tmp_path, kind):
             )
             expected = [4]
         else:
+            circle = FitCircleParameters.model_validate(parameters["circle"])
+            if method:
+                from tests.integration.metrology3d.test_circle_arc_weights import (
+                    arc_parameters,
+                )
+
+                raw = circle.model_dump(mode="json")
+                robust = arc_parameters().model_dump(mode="json")
+                raw["robust"] = robust["robust"]
+                required = {r["item_id"] for r in raw["quality_policy"]["rules"]}
+                raw["quality_policy"]["rules"].extend(
+                    r
+                    for r in robust["quality_policy"]["rules"]
+                    if r["item_id"] not in required
+                )
+                circle = FitCircleParameters.model_validate(raw)
             fitted = fit_boundary(
                 runtime,
                 restored,
-                FitCircleParameters.model_validate(parameters["circle"]),
+                circle,
                 cancel=lambda: None,
             )
             result = measure_hole(

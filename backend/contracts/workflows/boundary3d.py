@@ -26,7 +26,7 @@ from backend.contracts.workflows.metrology import (
 )
 from backend.contracts.workflows.point_cloud import JsonCount, PositiveCount
 from backend.contracts.workflows.boundary3d_selection import BoundaryFragmentTarget
-from backend.contracts.workflows.circle3d_fit import AngularCircleFit
+from backend.contracts.workflows.circle3d_fit import RobustCircleFit
 from backend.contracts.workflows.evaluation3d import (
     EvaluationPlane3d,
     FeatureEvaluation3d,
@@ -343,7 +343,7 @@ class FitCircleParameters(Contract):
     radius_range: tuple[Positive, Positive]
     max_arc_step: Annotated[Finite, Field(gt=0, lt=pi)]
     solver: CircleSolverSettings
-    robust: AngularCircleFit | None = None
+    robust: RobustCircleFit | None = None
     quality_policy: GeometryQualityPolicy
 
     @model_validator(mode="after")

@@ -9,7 +9,7 @@
       </tr></tbody>
     </table>
     <div v-if="current?.profile_kinds" class="profile-legend"><span class="center">{{ zh?'格中心阈值插值':'Cell-center threshold interpolation' }}</span><span class="edge">{{ zh?'格边估计':'Cell-edge estimate' }}</span></div>
-    <dl v-if="current?.kind==='circle'" class="source-details"><dt>{{ zh?'拟合方法':'Fit method' }}</dt><dd>{{ robust?(zh?'角区均衡稳健拟合；部分实测弧':'Angular-balanced robust fit; measured partial arcs'):(zh?'等权几何最小二乘':'Equal-weight geometric least squares') }}</dd><template v-if="robust"><dt>{{ zh?'目标角域 / 角区数':'Target angles / sector count' }}</dt><dd>{{ robust.start_angle }} + {{ robust.sweep }} rad / {{ robust.sector_count }}</dd><dt>{{ zh?'候选 / 残差内点':'Candidates / residual inliers' }}</dt><dd>{{ weighting.candidate_count??'-' }} / {{ weighting.inlier_count??'-' }}</dd><dt>{{ zh?'逐角区计数':'Sector counts' }}</dt><dd>{{ weighting.sector_counts??'-' }}</dd></template></dl>
+    <dl v-if="current?.kind==='circle'" class="source-details"><dt>{{ zh?'拟合方法':'Fit method' }}</dt><dd>{{ robust?(robust.kind==='arc-length-soft-l1'?(zh?'连续边长加权稳健拟合；实测边支持':'Continuous-edge-length robust fit; measured edges'):(zh?'角区均衡稳健拟合；部分实测弧':'Angular-balanced robust fit; measured partial arcs')):(zh?'等权几何最小二乘':'Equal-weight geometric least squares') }}</dd><template v-if="robust"><dt>{{ zh?'目标角域 / 角区数':'Target angles / sector count' }}</dt><dd>{{ robust.start_angle }} + {{ robust.sweep }} rad / {{ robust.sector_count }}</dd><dt>{{ zh?'候选 / 残差内点':'Candidates / residual inliers' }}</dt><dd>{{ weighting.candidate_count??'-' }} / {{ weighting.inlier_count??'-' }}</dd><dt>{{ zh?'逐角区计数':'Sector counts' }}</dt><dd>{{ weighting.sector_counts??'-' }}</dd></template></dl>
     <dl v-if="current?.profile_kinds" class="source-details"><dt>{{ zh?'栅格步长 / 原点':'Grid step / origin' }}</dt><dd>{{ object(envelope.grid).step }} / {{ object(envelope.grid).origin }} {{ evaluation.length_unit }}</dd><dt>{{ zh?'分区 / 剖面定义':'Selection / profiles' }}</dt><dd>{{ envelope.selection }} / {{ envelope.profiles }}</dd></dl>
     <details v-if="current"><summary>{{ zh?'评价面与等高来源':'Evaluation and contour source' }} · {{ current.feature_id }}</summary>
       <dl class="source-details">
@@ -25,7 +25,7 @@
       </dl>
     </details>
     <details v-if="current"><summary>{{ zh?'几何质量':'Geometry quality' }} · {{ current.feature_id }}</summary><table><thead><tr><th>{{ zh?'指标':'Metric' }}</th><th>{{ zh?'值':'Value' }}</th><th>{{ zh?'单位':'Unit' }}</th><th>{{ zh?'原因':'Reason' }}</th></tr></thead><tbody><tr v-for="metric in metrics" :key="String(metric.item_id)"><td>{{ metric.item_id }}</td><td>{{ metric.value??'-' }}</td><td>{{ metric.unit }}</td><td>{{ metric.reason??'-' }}</td></tr></tbody></table></details>
-    <CurveSamples v-if="current?.angular_weights" :curve="current" :segment="selectedSegment" :unit="String(evaluation.length_unit)" :selected-index="selectedIndex" @select-point="emit('select-point',$event)" />
+    <CurveSamples v-if="current?.fit_weights" :curve="current" :segment="selectedSegment" :unit="String(evaluation.length_unit)" :selected-index="selectedIndex" @select-point="emit('select-point',$event)" />
   </section>
 </template>
 <script setup lang="ts">

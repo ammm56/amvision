@@ -9,7 +9,7 @@ export interface CurveDisplay {
   failed_segment_id?: string | null; segments?: Record<string, unknown>[]; groups?: Record<string, unknown>[]
   profile_kinds?: number[]
   inlier_flags?:boolean[]; solver?:Record<string,unknown>
-  radial_residuals?:number[]; angular_weights?:number[]; angular_sectors?:number[]
+  radial_residuals?:number[]; fit_weights?:number[]; angular_sectors?:number[]
 }
 export interface Segment { segment_id: string; group_id?:string; start: number; count: number; closed: boolean; role: string; orientation: string; profile?: {side:string;breaks:number[]} }
 const invalid = () => new Error('cloud_preview_invalid')
@@ -68,11 +68,12 @@ export function curveItems(payload: Record<string, unknown>): CurveDisplay[] {
     const profile=f.valid&&visible
     if(profile?(!Array.isArray(f.profile_kinds)||f.profile_kinds.length!==points.length||f.profile_kinds.some(k=>!Number.isInteger(k)||Number(k)<0||Number(k)>3)):f.profile_kinds!==undefined)throw invalid()
     const robust=f.valid&&f.kind==='circle'&&!!object(method.parameters).robust
+    if(robust&&!['angular-soft-l1','arc-length-soft-l1'].includes(String(object(object(method.parameters).robust).kind)))throw invalid()
     if(robust?(!Array.isArray(f.inlier_flags)||f.inlier_flags.length!==points.length||f.inlier_flags.some(v=>typeof v!=='boolean')):f.inlier_flags!==undefined)throw invalid()
-    for(const key of ['radial_residuals','angular_weights','angular_sectors']){
+    for(const key of ['radial_residuals','fit_weights','angular_sectors']){
       const values=f[key]
       if(!robust){if(values!==undefined)throw invalid();continue}
-      if(!Array.isArray(values)||values.length!==points.length||values.some(v=>typeof v!=='number'||!Number.isFinite(v)||key==='angular_weights'&&v<=0||key==='angular_sectors'&&(!Number.isSafeInteger(v)||v<0||v>=Number(object(object(method.parameters).robust).sector_count))))throw invalid()
+      if(!Array.isArray(values)||values.length!==points.length||values.some(v=>typeof v!=='number'||!Number.isFinite(v)||key==='fit_weights'&&v<=0||key==='angular_sectors'&&(!Number.isSafeInteger(v)||v<0||v>=Number(object(object(method.parameters).robust).sector_count))))throw invalid()
     }
     return { ...f, points } as unknown as CurveDisplay
   })

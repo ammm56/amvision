@@ -11,7 +11,7 @@ import type {CurveDisplay} from '@/workflows/workflow-editor/point-cloud/boundar
 
 afterEach(()=>{document.body.innerHTML=''})
 it('pages complete recorded samples without creating a row for every support point',async()=>{
-  const curve={angular_weights:Array(41).fill(1),radial_residuals:Array(41).fill(.01),angular_sectors:Array(41).fill(0),inlier_flags:Array(41).fill(true),topology:{segments:[{segment_id:'a',group_id:'g',start:0,count:21},{segment_id:'b',group_id:'g',start:21,count:20}]}} as CurveDisplay
+  const curve={fit_weights:Array(41).fill(1),radial_residuals:Array(41).fill(.01),angular_sectors:Array(41).fill(0),inlier_flags:Array(41).fill(true),topology:{segments:[{segment_id:'a',group_id:'g',start:0,count:21},{segment_id:'b',group_id:'g',start:21,count:20}]}} as CurveDisplay
   const w=mount(CurveSamples,{props:{curve,segment:'g',unit:'mm'},global:{plugins:[createI18n({legacy:false,locale:'en-US'})]}})
   try{expect(w.findAll('tbody tr')).toHaveLength(20);await w.get('[aria-label="Next page"]').trigger('click');expect(w.findAll('tbody tr')).toHaveLength(20);expect(w.get('tbody tr').text()).toContain('20 / a');await w.get('[aria-label="Next page"]').trigger('click');expect(w.findAll('tbody tr')).toHaveLength(1);expect(w.get('tbody tr').text()).toContain('40 / b');await w.setProps({segment:'a'});expect(w.text()).toContain('1 / 2');expect(w.get('tbody tr').text()).toContain('0 / a')}finally{w.unmount()}
 })
@@ -31,9 +31,9 @@ it('uses stable groups without retaining stale segment IDs or inventing paramete
   expect(grouped.arc).toMatchObject({center:[null,null],radius_range:[null,null]})
   expect(fragmentIssues(grouped)).not.toEqual([])
   expect(grouped).not.toHaveProperty('closed')
-  const robust=changeCircleFit(newBoundarySettings('fit-circle'),true)
+  const robust=changeCircleFit(newBoundarySettings('fit-circle'),'angular-soft-l1')
   expect(robustIssues(robust.robust,robust.quality_policy)).not.toEqual([])
-  expect(changeCircleFit(robust,false).robust).toBeNull()
+  expect(changeCircleFit(robust,'linear').robust).toBeNull()
 })
 
 it('resolves current upstream group IDs without turning absent segment IDs into strings',()=>{
@@ -43,13 +43,13 @@ it('resolves current upstream group IDs without turning absent segment IDs into 
   expect(dimensionRecipeValidator({node_id:'d',node_type_id:'custom.metrology3d.measure-extents',enabled:true,ui_state:{},metadata:{},parameters:{settings:p}},sources,false)).toContain('Selected fragment group is not in current boundary')
 })
 
-it('draws piecewise arc evidence without connecting missing angles and rejects mixed representations',()=>{
+it.each(['angular-soft-l1','arc-length-soft-l1'])('draws %s evidence without connecting missing angles and rejects mixed representations',method=>{
   const curve={feature_id:'circle',kind:'circle',valid:true,reason:null,vertex_kind:'generated',support_point_count:4,
     points:[[1,0,0],[.98,.2,0],[-1,0,0],[-.98,-.2,0]],
     topology:{point_count:4,segments:[{segment_id:'a',group_id:'S2',start:0,count:4,closed:false,role:'open',orientation:'open'}]},
     geometry:{center:[0,0,0],normal:[0,0,1],radius:1},quality:{usable:true,metrics:{observation_id:'obs'}},
-    method:{method_id:'fit-circle',method_version:1,parameters:{evaluation:{frame_id:'fixture',length_unit:'mm'},robust:{kind:'angular-soft-l1',sector_count:16}},evaluation:{frame_id:'fixture',length_unit:'mm',origin:[0,0,0],rotation:[[1,0,0],[0,1,0],[0,0,1]]}},
-    radial_residuals:[0,0,0,0],angular_weights:[1,1,1,1],angular_sectors:[0,0,8,8],
+    method:{method_id:'fit-circle',method_version:1,parameters:{evaluation:{frame_id:'fixture',length_unit:'mm'},robust:{kind:method,sector_count:16}},evaluation:{frame_id:'fixture',length_unit:'mm',origin:[0,0,0],rotation:[[1,0,0],[0,1,0],[0,0,1]]}},
+    radial_residuals:[0,0,0,0],fit_weights:[1,1,1,1],angular_sectors:[0,0,8,8],
     inlier_flags:[true,true,true,true],intervals:[{segment_id:'a',start_angle:null,sweep:null,pieces:[{start_angle:0,sweep:.2},{start_angle:Math.PI,sweep:.2}]}]}
   const payload={observation_id:'obs',spatial:{frame_id:'fixture',length_unit:'mm'},geometry:{format_id:'amvision.geometry-preview.v1',curves:[curve]}}
   const policy={max_points:100,max_data_bytes:10000,max_cpu_bytes:100000,max_gpu_bytes:100000,max_canvas_pixels:100000,max_position_error:.001}
@@ -61,4 +61,10 @@ it('draws piecewise arc evidence without connecting missing angles and rejects m
   Object.assign(broken.geometry.curves[0]!.intervals[0]!,{start_angle:0,sweep:Math.PI+.2})
   expect(()=>curveItems(broken)).toThrow('cloud_preview_invalid')
   expect(()=>curveStrokes(curveItems(payload),{...policy,max_points:1})).toThrow('cloud_preview_capacity')
+  const missing=structuredClone(payload)
+  delete (missing.geometry.curves[0] as Partial<typeof curve>).fit_weights
+  expect(()=>curveItems(missing)).toThrow('cloud_preview_invalid')
+  const unknown=structuredClone(payload)
+  unknown.geometry.curves[0]!.method.parameters.robust.kind='unknown'
+  expect(()=>curveItems(unknown)).toThrow('cloud_preview_invalid')
 })

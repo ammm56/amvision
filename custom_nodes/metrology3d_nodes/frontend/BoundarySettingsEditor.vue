@@ -1,6 +1,6 @@
 <template>
   <button class="geometry-open" :disabled="disabled" @click="show">{{ title }} · {{ object(modelValue).feature_id||'-' }}</button>
-  <Teleport to="body"><ConfirmDialog v-if="open" class="boundary-dialog" :title="title" size="wide" scroll-body confirm-variant="primary" :confirm-label="label('应用','Apply')" :cancel-label="label('取消','Cancel')" :confirm-disabled="disabled||!!issues.length||!!referenceIssues.length" @confirm="apply" @cancel="open=false">
+  <Teleport to="body"><ConfirmDialog v-if="open" class="boundary-dialog" :title="title" size="wide" scroll-body confirm-variant="primary" :confirm-label="label('应用','Apply')" :cancel-label="label('取消','Cancel')" :confirm-disabled="disabled||!!issues.length" @confirm="apply" @cancel="open=false">
     <MetrologyWorkspace>
       <template #parameters>
       <section class="boundary-config">
@@ -26,7 +26,7 @@
           <GeometryFields v-model="draft" :fields="selectionFields" :suggestions="suggestions" />
           <BoundarySelectionEditor v-model="draft.selection" :segments="availableSegments" :groups="availableGroups" />
           <GeometryFields v-model="draft" :fields="fitFields" />
-          <template v-if="kind==='fit-circle'"><label>{{ label('拟合方法','Fit method') }}<select :value="draft.robust?'angular-soft-l1':'linear'" @change="draft=changeCircleFit(draft,($event.target as HTMLSelectElement).value==='angular-soft-l1')"><option value="linear">{{ label('等权几何最小二乘','Equal-weight geometric least squares') }}</option><option value="angular-soft-l1">{{ label('角区均衡稳健拟合','Angular-balanced robust fit') }}</option></select></label><GeometryFields v-if="draft.robust" v-model="draft" :fields="robustFields" /></template>
+          <template v-if="kind==='fit-circle'"><label>{{ label('拟合方法','Fit method') }}<select :value="object(draft.robust).kind??'linear'" @change="draft=changeCircleFit(draft,($event.target as HTMLSelectElement).value)"><option value="linear">{{ label('等权几何最小二乘','Equal-weight geometric least squares') }}</option><option value="angular-soft-l1">{{ label('角区均衡稳健拟合','Angular-balanced robust fit') }}</option><option value="arc-length-soft-l1">{{ label('连续边长加权稳健拟合','Continuous-edge-length robust fit') }}</option></select></label><GeometryFields v-if="draft.robust" v-model="draft" :fields="robustFields" /></template>
           <EvaluationDirectionEditor v-if="kind==='fit-line'" v-model="draft.positive_direction" :label="label('直线正方向','Positive line direction')" />
         </template>
         <ArcSettingsForm v-if="!extract&&kind==='fit-circle'&&draft.robust" :model-value="draft.robust" :band="false" :unit="String(object(draft.evaluation).length_unit??'')" v-model:handle="arcHandle" :available="!!arcEdit" @update:model-value="draft=put(draft,'robust',$event)" />
@@ -39,7 +39,7 @@
       <template #advanced>
       <details class="boundary-advanced"><summary>{{ label('支持条件与几何质量','Support and geometry quality') }}</summary><GeometryFields v-if="extract&&!visibleEnvelope" v-model="draft" :fields="surfaceFields" /><GeometryFields v-if="kind==='fit-circle'" v-model="draft" :fields="solverFields" /><GeometryFields v-model="draft" :fields="qualityFields" /><WorkflowLimitRulesEditor :model-value="object(draft.quality_policy).rules" quality @update:model-value="draft=put(draft,'quality_policy.rules',$event)" /></details>
       </template>
-      <template #issues><p v-if="issues.length" role="alert">{{ label('待完善','Incomplete') }}: {{ issues.join(' · ') }}</p><p v-if="referenceIssues.length" role="alert">{{ referenceIssues.join(' · ') }}</p></template>
+      <template #issues><p v-if="issues.length" role="alert">{{ label('待完善','Incomplete') }}: {{ issues.join(' · ') }}</p><p v-if="referenceIssues.length" role="status">{{ referenceIssues.join(' · ') }}</p></template>
     </MetrologyWorkspace>
   </ConfirmDialog></Teleport>
 </template>
@@ -143,7 +143,8 @@ function setTarget(value:Form){const next=[...targets.value];next[targetIndex.va
 function changeTarget(mode:string){if(!target.value)return;setTarget(mode==='group'?newFragmentTarget(target.value):{segment_id:target.value.group_id??target.value.segment_id??'',closed:false,role:'unknown',region:target.value.region})}
 function chooseFeature(value:{payload:Form;featureId:string;segmentId:string}){if(!open.value||props.disabled||extract.value||value.payload!==preview.value?.payload)return;const source=boundaryChoices.value.filter(c=>c.id===value.featureId),feature=curveItems(value.payload).find(f=>f.kind==='boundary'&&f.valid&&f.feature_id===value.featureId);if(source.length!==1||!feature)return;const group=feature.topology?.segments.find(s=>s.segment_id===value.segmentId||s.group_id===value.segmentId)?.group_id;draft.value=put(draft.value,'selection',{feature_id:value.featureId,...(group?{group_ids:[group]}:{segment_ids:value.segmentId?[value.segmentId]:[]})})}
 function pickSeed(value:{payload:Form;xyz:number[]}){if(!open.value||props.disabled||!canPickSeed.value||value.payload!==preview.value?.payload)return;const uv=candidateUV(previewFrame.value,value.xyz),size=seedSize.value;if(!uv||!size)return;const path='method.envelope.selection';draft.value=put(put(draft.value,path+'.seed_min',uv.map((v,i)=>v-size[i]!/2)),path+'.seed_max',uv.map((v,i)=>v+size[i]!/2));candidate.value=[...value.xyz]}
-function apply(){if(!issues.value.length&&!referenceIssues.value.length&&!props.disabled){emit('update:modelValue',copy(draft.value));open.value=false}}
+// 全图引用问题由保存/发布预检拦截，不能锁住逐节点修正合法草稿的操作。
+function apply(){if(!issues.value.length&&!props.disabled){emit('update:modelValue',copy(draft.value));open.value=false}}
 watch(()=>[props.modelValue,props.disabled,props.nodeType],()=>{open.value=false;previewId.value=''})
 watch(()=>[state().runId,state().succeeded],()=>{previewId.value=''})
 watch(()=>[targetIndex.value,previewId.value,open.value],()=>{arcHandle.value='none'})

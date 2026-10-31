@@ -3,7 +3,7 @@
 from hashlib import sha256
 
 import numpy as np
-from custom_nodes.metrology3d_nodes.shared.circle_weighting import angular_weights
+from custom_nodes.metrology3d_nodes.shared.circle_weighting import circle_weights
 from custom_nodes.metrology3d_nodes.shared.cloud_assets import freeze_cloud_parent
 from custom_nodes.metrology3d_nodes.shared.geometry_quality import (
     require_quality_result,
@@ -85,7 +85,7 @@ def curve_display(runtime, feature, *, policy, remaining_points, cancel):
         raw["profile_kinds"] = profile_kinds
     if inlier_flags:
         raw["inlier_flags"] = inlier_flags
-        # 用完整已选支持及原角区函数恢复实际均衡权重；摘要必须与求解记录一致。
+        # 用完整已选支持、原拓扑及显式方法恢复权重；摘要必须与求解记录一致。
         # 径向残差来自保存的拟合几何，不冒充优化器内部局部坐标的逐位摘要。
         cancel()
         evaluation = feature.method.evaluation
@@ -93,8 +93,12 @@ def curve_display(runtime, feature, *, policy, remaining_points, cancel):
             evaluation.rotation
         )
         anchor = local[0, :2].copy()
-        reason, weights, bins, counts = angular_weights(
-            local[:, :2] - anchor, feature.method.parameters.robust, anchor
+        reason, weights, bins, counts = circle_weights(
+            local[:, :2] - anchor,
+            feature.method.parameters.robust,
+            anchor,
+            cloud.topology,
+            cancel=cancel,
         )
         expected = feature.solver.weighting
         if (
@@ -106,7 +110,7 @@ def curve_display(runtime, feature, *, policy, remaining_points, cancel):
             raise ValueError("circle_display_weight_mismatch")
         raw.update(
             radial_residuals=radial_residuals,
-            angular_weights=weights.tolist(),
+            fit_weights=weights.tolist(),
             angular_sectors=bins.tolist(),
         )
         cancel()

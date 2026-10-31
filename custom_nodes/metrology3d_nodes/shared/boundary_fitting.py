@@ -15,7 +15,7 @@ from backend.contracts.workflows.boundary3d import (
 from backend.service.application.errors import InvalidRequestError
 from custom_nodes.metrology3d_nodes.shared.geometry_quality import geometry_quality
 from custom_nodes.metrology3d_nodes.shared.circle_weighting import (
-    angular_weights,
+    circle_weights,
     weighted_soft_l1,
     measured_arc_support,
     target_gap,
@@ -253,7 +253,9 @@ def fit_boundary_circle(positions, topology, parameters, *, max_working_bytes, c
     robust = parameters.robust
     weights = bins = counts = None
     if robust is not None:
-        reason, weights, bins, counts = angular_weights(uv, robust, anchor)
+        reason, weights, bins, counts = circle_weights(
+            uv, robust, anchor, topology, cancel=cancel
+        )
         if reason:
             return BoundaryFit(reason, None, metrics, ())
     with np.errstate(over="raise", invalid="raise", divide="raise"):

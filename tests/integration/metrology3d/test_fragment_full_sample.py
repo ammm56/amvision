@@ -163,6 +163,13 @@ def test_fragment_full_sample(tmp_path, request):
                 uv, values["robust"], fitted.geometry, fitted.method.evaluation
             )
             report["support_uv"] = uv.tolist()
+            from tests.integration.metrology3d.circle_method_audit import (
+                compare_methods,
+            )
+
+            report["method_comparison"] = compare_methods(
+                uv, fitted.support.topology, p
+            )
         assert item.valid, item.reason
     finally:
         errors = scope.close()
@@ -173,7 +180,7 @@ def test_fragment_full_sample(tmp_path, request):
         assert not errors and runtime.budget.used == 0
 
 
-def independent_circle_checks(uv, settings, geometry, evaluation):
+def independent_circle_checks(uv, settings, geometry, evaluation, point_weights=None):
     """标量目标函数独立实现；隔点及删去目标八分之一角域不复制生产求解器。"""
     from scipy.optimize import minimize
 
@@ -190,7 +197,11 @@ def independent_circle_checks(uv, settings, geometry, evaluation):
     def solve(mask):
         points, ids = uv[mask] - center, sectors[mask]
         counts = np.bincount(ids, minlength=settings["sector_count"])
-        weights = len(points) / (np.count_nonzero(counts) * counts[ids])
+        weights = (
+            len(points) / (np.count_nonzero(counts) * counts[ids])
+            if point_weights is None
+            else point_weights[mask]
+        )
 
         def objective(v):
             residual = (
@@ -225,6 +236,9 @@ def independent_circle_checks(uv, settings, geometry, evaluation):
     diameter_delta = max(abs(v[2] - reference[2]) * 2 for v in alternatives)
     center_delta = max(np.linalg.norm(v[:2] - reference[:2]) for v in alternatives)
     return dict(
+        resampling_weights="rebalanced-sectors"
+        if point_weights is None
+        else "retained-original-edge-contributions",
         center_uv=reference[:2].tolist(),
         diameter=float(2 * reference[2]),
         resamples=[v.tolist() for v in alternatives],

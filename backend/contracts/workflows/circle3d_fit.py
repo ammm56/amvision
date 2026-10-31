@@ -1,4 +1,4 @@
-"""显式角区稳健拟圆参数与有界求解证据，不生成替代观测点。"""
+"""显式稳健拟圆权重与有界求解证据，不生成替代观测点。"""
 
 from math import pi
 from typing import Annotated, Literal, Self
@@ -10,10 +10,10 @@ from backend.contracts.workflows.metrology import Contract, Finite
 from backend.contracts.workflows.point_cloud import JsonCount, Sha256
 
 
-class AngularCircleFit(Contract):
-    """角区均衡权重位于 soft_l1 损失外侧，物理残差尺度不随点密度改变。"""
+class RobustCircleFit(Contract):
+    """显式选择角区均衡或连续边长权重；角域始终用于完整支持质量检查。"""
 
-    kind: Literal["angular-soft-l1"]
+    kind: Literal["angular-soft-l1", "arc-length-soft-l1"]
     center: tuple[Finite, Finite]
     start_angle: Annotated[Finite, Field(ge=0, lt=2 * pi)]
     sweep: Annotated[Positive, Field(le=2 * pi)]

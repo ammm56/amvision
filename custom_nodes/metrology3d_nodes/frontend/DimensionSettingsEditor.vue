@@ -1,7 +1,7 @@
 <template>
   <button class="geometry-open" :disabled="disabled" @click="show">{{ title }}</button>
   <Teleport to="body">
-    <ConfirmDialog v-if="open" class="dimension-dialog" :title="title" size="wide" scroll-body confirm-variant="primary" :confirm-label="label('应用','Apply')" :cancel-label="label('取消','Cancel')" :confirm-disabled="disabled||!!issues.length||!!referenceIssues.length" @confirm="apply" @cancel="open=false">
+    <ConfirmDialog v-if="open" class="dimension-dialog" :title="title" size="wide" scroll-body confirm-variant="primary" :confirm-label="label('应用','Apply')" :cancel-label="label('取消','Cancel')" :confirm-disabled="disabled||!!issues.length" @confirm="apply" @cancel="open=false">
       <MetrologyWorkspace>
         <template #parameters>
         <section class="dimension-config">
@@ -60,7 +60,7 @@
         </template>
         <template #issues>
         <p v-if="issues.length" role="alert">{{ label('待完善','Incomplete') }}: {{ issues.join(' · ') }}</p>
-        <p v-if="referenceIssues.length" role="alert">{{ referenceIssues.join(' · ') }}</p>
+        <p v-if="referenceIssues.length" role="status">{{ referenceIssues.join(' · ') }}</p>
         </template>
       </MetrologyWorkspace>
     </ConfirmDialog>
@@ -143,7 +143,8 @@ function chooseFeature(value:{payload:Form;featureId:string;segmentId:string}){
   if(extents.value&&!robust.value&&value.segmentId){const group=feature.topology?.segments.find(s=>s.segment_id===value.segmentId||s.group_id===value.segmentId)?.group_id;if(group&&groups.value.includes(group))draft.value=put(draft.value,'source.selection',{feature_id:value.featureId,group_ids:[group]});else if(segments.value.includes(value.segmentId))draft.value=put(draft.value,'source.selection',{feature_id:value.featureId,segment_ids:[value.segmentId]})}
   activeSlot.value=''
 }
-function apply(){if(!issues.value.length&&!referenceIssues.value.length&&!props.disabled){emit('update:modelValue',copy(draft.value));open.value=false;resetView()}}
+// 应用只提交当前合法草稿；缺接线及其他节点错误仍由整图预检阻止执行。
+function apply(){if(!issues.value.length&&!props.disabled){emit('update:modelValue',copy(draft.value));open.value=false;resetView()}}
 watch(()=>[props.modelValue,props.nodeType,props.disabled,JSON.stringify(props.inputSources)],()=>{open.value=false;resetView()})
 watch(()=>[state().runId,state().succeeded],resetView)
 watch(()=>[previewId.value,JSON.stringify(draft.value.evaluation)],()=>{candidate.value=null;activeSlot.value=''})

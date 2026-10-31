@@ -1,0 +1,946 @@
+{
+  "angular-soft-l1": {
+    "reason": null,
+    "geometry": {
+      "center": [
+        32.11647254238836,
+        -88.51855912674279,
+        0.0
+      ],
+      "normal": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "radius": 10.092162082431132
+    },
+    "quality": {
+      "metrics": {
+        "observation_id": "method-audit",
+        "items": [
+          {
+            "item_id": "support_count",
+            "unit": "1",
+            "value": 733.0,
+            "valid": true,
+            "reason": null
+          },
+          {
+            "item_id": "plane_max_residual",
+            "unit": "mm",
+            "value": 0.0,
+            "valid": true,
+            "reason": null
+          },
+          {
+            "item_id": "rms",
+            "unit": "mm",
+            "value": 0.02063670427385762,
+            "valid": true,
+            "reason": null
+          },
+          {
+            "item_id": "max_residual",
+            "unit": "mm",
+            "value": 0.05823983019187473,
+            "valid": true,
+            "reason": null
+          },
+          {
+            "item_id": "jacobian_ratio",
+            "unit": "1",
+            "value": 0.1315065525098917,
+            "valid": true,
+            "reason": null
+          },
+          {
+            "item_id": "angular_coverage",
+            "unit": "rad",
+            "value": 1.0331345815517354,
+            "valid": true,
+            "reason": null
+          },
+          {
+            "item_id": "max_gap",
+            "unit": "rad",
+            "value": 3.4934921937881716,
+            "valid": true,
+            "reason": null
+          },
+          {
+            "item_id": "weighted_rms",
+            "unit": "mm",
+            "value": 0.02078097518823461,
+            "valid": true,
+            "reason": null
+          },
+          {
+            "item_id": "inlier_fraction",
+            "unit": "1",
+            "value": 1.0,
+            "valid": true,
+            "reason": null
+          },
+          {
+            "item_id": "occupied_sector_count",
+            "unit": "1",
+            "value": 17.0,
+            "valid": true,
+            "reason": null
+          },
+          {
+            "item_id": "sector_coverage",
+            "unit": "1",
+            "value": 0.53125,
+            "valid": true,
+            "reason": null
+          },
+          {
+            "item_id": "target_max_gap",
+            "unit": "rad",
+            "value": 1.2831879572421496,
+            "valid": true,
+            "reason": null
+          },
+          {
+            "item_id": "inlier_angular_coverage",
+            "unit": "rad",
+            "value": 1.0331345815517354,
+            "valid": true,
+            "reason": null
+          },
+          {
+            "item_id": "inlier_max_gap",
+            "unit": "rad",
+            "value": 1.2831879572421496,
+            "valid": true,
+            "reason": null
+          },
+          {
+            "item_id": "inlier_jacobian_ratio",
+            "unit": "1",
+            "value": 0.1315065525098917,
+            "valid": true,
+            "reason": null
+          }
+        ]
+      },
+      "checks": [
+        {
+          "item_id": "support_count",
+          "required": true,
+          "passed": true,
+          "valid": true,
+          "value": 733.0,
+          "unit": "1",
+          "lower": 100.0,
+          "upper": null,
+          "include_lower": true,
+          "include_upper": true,
+          "actual_unit": "1",
+          "reason": null
+        },
+        {
+          "item_id": "angular_coverage",
+          "required": true,
+          "passed": true,
+          "valid": true,
+          "value": 1.0331345815517354,
+          "unit": "rad",
+          "lower": 0.9,
+          "upper": null,
+          "include_lower": true,
+          "include_upper": true,
+          "actual_unit": "rad",
+          "reason": null
+        },
+        {
+          "item_id": "jacobian_ratio",
+          "required": true,
+          "passed": true,
+          "valid": true,
+          "value": 0.1315065525098917,
+          "unit": "1",
+          "lower": 0.1,
+          "upper": null,
+          "include_lower": true,
+          "include_upper": true,
+          "actual_unit": "1",
+          "reason": null
+        },
+        {
+          "item_id": "max_gap",
+          "required": true,
+          "passed": true,
+          "valid": true,
+          "value": 3.4934921937881716,
+          "unit": "rad",
+          "lower": null,
+          "upper": 3.8,
+          "include_lower": true,
+          "include_upper": true,
+          "actual_unit": "rad",
+          "reason": null
+        },
+        {
+          "item_id": "plane_max_residual",
+          "required": true,
+          "passed": true,
+          "valid": true,
+          "value": 0.0,
+          "unit": "mm",
+          "lower": null,
+          "upper": 1e-07,
+          "include_lower": true,
+          "include_upper": true,
+          "actual_unit": "mm",
+          "reason": null
+        },
+        {
+          "item_id": "rms",
+          "required": true,
+          "passed": true,
+          "valid": true,
+          "value": 0.02063670427385762,
+          "unit": "mm",
+          "lower": null,
+          "upper": 0.03,
+          "include_lower": true,
+          "include_upper": true,
+          "actual_unit": "mm",
+          "reason": null
+        },
+        {
+          "item_id": "max_residual",
+          "required": true,
+          "passed": true,
+          "valid": true,
+          "value": 0.05823983019187473,
+          "unit": "mm",
+          "lower": null,
+          "upper": 0.1,
+          "include_lower": true,
+          "include_upper": true,
+          "actual_unit": "mm",
+          "reason": null
+        },
+        {
+          "item_id": "inlier_fraction",
+          "required": true,
+          "passed": true,
+          "valid": true,
+          "value": 1.0,
+          "unit": "1",
+          "lower": 0.9,
+          "upper": null,
+          "include_lower": true,
+          "include_upper": true,
+          "actual_unit": "1",
+          "reason": null
+        },
+        {
+          "item_id": "sector_coverage",
+          "required": true,
+          "passed": true,
+          "valid": true,
+          "value": 0.53125,
+          "unit": "1",
+          "lower": 0.45,
+          "upper": null,
+          "include_lower": true,
+          "include_upper": true,
+          "actual_unit": "1",
+          "reason": null
+        },
+        {
+          "item_id": "inlier_angular_coverage",
+          "required": true,
+          "passed": true,
+          "valid": true,
+          "value": 1.0331345815517354,
+          "unit": "rad",
+          "lower": 0.9,
+          "upper": null,
+          "include_lower": true,
+          "include_upper": true,
+          "actual_unit": "rad",
+          "reason": null
+        },
+        {
+          "item_id": "inlier_jacobian_ratio",
+          "required": true,
+          "passed": true,
+          "valid": true,
+          "value": 0.1315065525098917,
+          "unit": "1",
+          "lower": 0.1,
+          "upper": null,
+          "include_lower": true,
+          "include_upper": true,
+          "actual_unit": "1",
+          "reason": null
+        },
+        {
+          "item_id": "target_max_gap",
+          "required": true,
+          "passed": true,
+          "valid": true,
+          "value": 1.2831879572421496,
+          "unit": "rad",
+          "lower": null,
+          "upper": 1.5707963267948966,
+          "include_lower": true,
+          "include_upper": true,
+          "actual_unit": "rad",
+          "reason": null
+        },
+        {
+          "item_id": "inlier_max_gap",
+          "required": true,
+          "passed": true,
+          "valid": true,
+          "value": 1.2831879572421496,
+          "unit": "rad",
+          "lower": null,
+          "upper": 1.5707963267948966,
+          "include_lower": true,
+          "include_upper": true,
+          "actual_unit": "rad",
+          "reason": null
+        },
+        {
+          "item_id": "weighted_rms",
+          "required": true,
+          "passed": true,
+          "valid": true,
+          "value": 0.02078097518823461,
+          "unit": "mm",
+          "lower": null,
+          "upper": 0.03,
+          "include_lower": true,
+          "include_upper": true,
+          "actual_unit": "mm",
+          "reason": null
+        }
+      ],
+      "usable": true
+    },
+    "solver": {
+      "status": 2,
+      "nfev": 5,
+      "cost": 0.11315893923277727,
+      "optimality": 1.0112972351900007e-09,
+      "radius_at_bound": false,
+      "weighting": {
+        "candidate_count": 733,
+        "inlier_count": 733,
+        "sector_counts": [
+          61,
+          56,
+          54,
+          55,
+          57,
+          51,
+          54,
+          41,
+          8,
+          0,
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          4,
+          9,
+          41,
+          33,
+          64,
+          72,
+          70
+        ],
+        "sector_inliers": [
+          61,
+          56,
+          54,
+          55,
+          57,
+          51,
+          54,
+          41,
+          8,
+          0,
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          4,
+          9,
+          41,
+          33,
+          64,
+          72,
+          70
+        ],
+        "residuals_sha256": "e147cb1201bc6afd8f0ac8d37fcec8882464356ae34495ae7df91c671c6b2f8e",
+        "weights_sha256": "cd59d43eb55b2597f9357209d22af48edc90ca5ef38ad9982b9e87f5116f6997"
+      }
+    },
+    "independent": {
+      "resampling_weights": "rebalanced-sectors",
+      "center_uv": [
+        32.11647254393843,
+        -88.51855913039905
+      ],
+      "diameter": 20.18432416743853,
+      "resamples": [
+        [
+          32.11543917303155,
+          -88.51601460851343,
+          10.090979920693675
+        ],
+        [
+          32.1174021401323,
+          -88.5202172089212,
+          10.092990247317823
+        ],
+        [
+          32.106418900087924,
+          -88.46582722077538,
+          10.059755346724742
+        ],
+        [
+          32.11568172217065,
+          -88.52195088521921,
+          10.093025928268641
+        ],
+        [
+          32.11723966747484,
+          -88.46928834253916,
+          10.071451434556781
+        ],
+        [
+          32.11647254393843,
+          -88.51855913039905,
+          10.092162083719264
+        ],
+        [
+          32.11647254393843,
+          -88.51855913039905,
+          10.092162083719264
+        ],
+        [
+          32.11647254393843,
+          -88.51855913039905,
+          10.092162083719264
+        ],
+        [
+          32.12716406966496,
+          -88.54362179050925,
+          10.096918191621088
+        ],
+        [
+          32.10242012225295,
+          -88.57035877864064,
+          10.131435965707691
+        ]
+      ],
+      "max_diameter_change": 0.0785477639768537,
+      "max_center_change": 0.053681747803439574,
+      "stability_limit_mm": 0.03,
+      "stability_passed": false
+    }
+  },
+  "arc-length-soft-l1": {
+    "reason": null,
+    "geometry": {
+      "center": [
+        32.123437394061035,
+        -88.50379798297318,
+        0.0
+      ],
+      "normal": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "radius": 10.081595742604705
+    },
+    "quality": {
+      "metrics": {
+        "observation_id": "method-audit",
+        "items": [
+          {
+            "item_id": "support_count",
+            "unit": "1",
+            "value": 733.0,
+            "valid": true,
+            "reason": null
+          },
+          {
+            "item_id": "plane_max_residual",
+            "unit": "mm",
+            "value": 0.0,
+            "valid": true,
+            "reason": null
+          },
+          {
+            "item_id": "rms",
+            "unit": "mm",
+            "value": 0.01915317407173036,
+            "valid": true,
+            "reason": null
+          },
+          {
+            "item_id": "max_residual",
+            "unit": "mm",
+            "value": 0.05924581983695454,
+            "valid": true,
+            "reason": null
+          },
+          {
+            "item_id": "jacobian_ratio",
+            "unit": "1",
+            "value": 0.13180743423377872,
+            "valid": true,
+            "reason": null
+          },
+          {
+            "item_id": "angular_coverage",
+            "unit": "rad",
+            "value": 1.033975190578062,
+            "valid": true,
+            "reason": null
+          },
+          {
+            "item_id": "max_gap",
+            "unit": "rad",
+            "value": 3.490607081019774,
+            "valid": true,
+            "reason": null
+          },
+          {
+            "item_id": "weighted_rms",
+            "unit": "mm",
+            "value": 0.01841637543277493,
+            "valid": true,
+            "reason": null
+          },
+          {
+            "item_id": "inlier_fraction",
+            "unit": "1",
+            "value": 1.0,
+            "valid": true,
+            "reason": null
+          },
+          {
+            "item_id": "occupied_sector_count",
+            "unit": "1",
+            "value": 17.0,
+            "valid": true,
+            "reason": null
+          },
+          {
+            "item_id": "sector_coverage",
+            "unit": "1",
+            "value": 0.53125,
+            "valid": true,
+            "reason": null
+          },
+          {
+            "item_id": "target_max_gap",
+            "unit": "rad",
+            "value": 1.2831879572421496,
+            "valid": true,
+            "reason": null
+          },
+          {
+            "item_id": "inlier_angular_coverage",
+            "unit": "rad",
+            "value": 1.033975190578062,
+            "valid": true,
+            "reason": null
+          },
+          {
+            "item_id": "inlier_max_gap",
+            "unit": "rad",
+            "value": 1.2831879572421496,
+            "valid": true,
+            "reason": null
+          },
+          {
+            "item_id": "inlier_jacobian_ratio",
+            "unit": "1",
+            "value": 0.13180743423377872,
+            "valid": true,
+            "reason": null
+          }
+        ]
+      },
+      "checks": [
+        {
+          "item_id": "support_count",
+          "required": true,
+          "passed": true,
+          "valid": true,
+          "value": 733.0,
+          "unit": "1",
+          "lower": 100.0,
+          "upper": null,
+          "include_lower": true,
+          "include_upper": true,
+          "actual_unit": "1",
+          "reason": null
+        },
+        {
+          "item_id": "angular_coverage",
+          "required": true,
+          "passed": true,
+          "valid": true,
+          "value": 1.033975190578062,
+          "unit": "rad",
+          "lower": 0.9,
+          "upper": null,
+          "include_lower": true,
+          "include_upper": true,
+          "actual_unit": "rad",
+          "reason": null
+        },
+        {
+          "item_id": "jacobian_ratio",
+          "required": true,
+          "passed": true,
+          "valid": true,
+          "value": 0.13180743423377872,
+          "unit": "1",
+          "lower": 0.1,
+          "upper": null,
+          "include_lower": true,
+          "include_upper": true,
+          "actual_unit": "1",
+          "reason": null
+        },
+        {
+          "item_id": "max_gap",
+          "required": true,
+          "passed": true,
+          "valid": true,
+          "value": 3.490607081019774,
+          "unit": "rad",
+          "lower": null,
+          "upper": 3.8,
+          "include_lower": true,
+          "include_upper": true,
+          "actual_unit": "rad",
+          "reason": null
+        },
+        {
+          "item_id": "plane_max_residual",
+          "required": true,
+          "passed": true,
+          "valid": true,
+          "value": 0.0,
+          "unit": "mm",
+          "lower": null,
+          "upper": 1e-07,
+          "include_lower": true,
+          "include_upper": true,
+          "actual_unit": "mm",
+          "reason": null
+        },
+        {
+          "item_id": "rms",
+          "required": true,
+          "passed": true,
+          "valid": true,
+          "value": 0.01915317407173036,
+          "unit": "mm",
+          "lower": null,
+          "upper": 0.03,
+          "include_lower": true,
+          "include_upper": true,
+          "actual_unit": "mm",
+          "reason": null
+        },
+        {
+          "item_id": "max_residual",
+          "required": true,
+          "passed": true,
+          "valid": true,
+          "value": 0.05924581983695454,
+          "unit": "mm",
+          "lower": null,
+          "upper": 0.1,
+          "include_lower": true,
+          "include_upper": true,
+          "actual_unit": "mm",
+          "reason": null
+        },
+        {
+          "item_id": "inlier_fraction",
+          "required": true,
+          "passed": true,
+          "valid": true,
+          "value": 1.0,
+          "unit": "1",
+          "lower": 0.9,
+          "upper": null,
+          "include_lower": true,
+          "include_upper": true,
+          "actual_unit": "1",
+          "reason": null
+        },
+        {
+          "item_id": "sector_coverage",
+          "required": true,
+          "passed": true,
+          "valid": true,
+          "value": 0.53125,
+          "unit": "1",
+          "lower": 0.45,
+          "upper": null,
+          "include_lower": true,
+          "include_upper": true,
+          "actual_unit": "1",
+          "reason": null
+        },
+        {
+          "item_id": "inlier_angular_coverage",
+          "required": true,
+          "passed": true,
+          "valid": true,
+          "value": 1.033975190578062,
+          "unit": "rad",
+          "lower": 0.9,
+          "upper": null,
+          "include_lower": true,
+          "include_upper": true,
+          "actual_unit": "rad",
+          "reason": null
+        },
+        {
+          "item_id": "inlier_jacobian_ratio",
+          "required": true,
+          "passed": true,
+          "valid": true,
+          "value": 0.13180743423377872,
+          "unit": "1",
+          "lower": 0.1,
+          "upper": null,
+          "include_lower": true,
+          "include_upper": true,
+          "actual_unit": "1",
+          "reason": null
+        },
+        {
+          "item_id": "target_max_gap",
+          "required": true,
+          "passed": true,
+          "valid": true,
+          "value": 1.2831879572421496,
+          "unit": "rad",
+          "lower": null,
+          "upper": 1.5707963267948966,
+          "include_lower": true,
+          "include_upper": true,
+          "actual_unit": "rad",
+          "reason": null
+        },
+        {
+          "item_id": "inlier_max_gap",
+          "required": true,
+          "passed": true,
+          "valid": true,
+          "value": 1.2831879572421496,
+          "unit": "rad",
+          "lower": null,
+          "upper": 1.5707963267948966,
+          "include_lower": true,
+          "include_upper": true,
+          "actual_unit": "rad",
+          "reason": null
+        },
+        {
+          "item_id": "weighted_rms",
+          "required": true,
+          "passed": true,
+          "valid": true,
+          "value": 0.01841637543277493,
+          "unit": "mm",
+          "lower": null,
+          "upper": 0.03,
+          "include_lower": true,
+          "include_upper": true,
+          "actual_unit": "mm",
+          "reason": null
+        }
+      ],
+      "usable": true
+    },
+    "solver": {
+      "status": 2,
+      "nfev": 4,
+      "cost": 0.09107327349010837,
+      "optimality": 1.718162039726634e-09,
+      "radius_at_bound": false,
+      "weighting": {
+        "candidate_count": 733,
+        "inlier_count": 733,
+        "sector_counts": [
+          61,
+          56,
+          54,
+          55,
+          57,
+          51,
+          54,
+          41,
+          8,
+          0,
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          4,
+          9,
+          41,
+          33,
+          64,
+          72,
+          70
+        ],
+        "sector_inliers": [
+          61,
+          56,
+          54,
+          55,
+          57,
+          51,
+          54,
+          41,
+          8,
+          0,
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          4,
+          9,
+          41,
+          33,
+          64,
+          72,
+          70
+        ],
+        "residuals_sha256": "08966d02c1ee73792e079738f72d654098086932182515e36e4025467727f97b",
+        "weights_sha256": "a98a89d7c8c4080ba9bfdfb5f3939c06e55570bacc7c201a1abd3e782cb6d00a"
+      }
+    },
+    "independent": {
+      "resampling_weights": "retained-original-edge-contributions",
+      "center_uv": [
+        32.12343739427819,
+        -88.50379797994631
+      ],
+      "diameter": 20.163191483781183,
+      "resamples": [
+        [
+          32.12213195727055,
+          -88.4994946584703,
+          10.079130874244033
+        ],
+        [
+          32.1246540633259,
+          -88.50764271186368,
+          10.08382930305046
+        ],
+        [
+          32.109135103504336,
+          -88.42754607554299,
+          10.041848585782246
+        ],
+        [
+          32.124821295649554,
+          -88.46827365886811,
+          10.070617180351526
+        ],
+        [
+          32.12326930608968,
+          -88.4992534961675,
+          10.079911293815323
+        ],
+        [
+          32.12343739427819,
+          -88.50379797994631,
+          10.081595741890592
+        ],
+        [
+          32.12343739427819,
+          -88.50379797994631,
+          10.081595741890592
+        ],
+        [
+          32.12343739427819,
+          -88.50379797994631,
+          10.081595741890592
+        ],
+        [
+          32.126831400250424,
+          -88.51620738582844,
+          10.084611145448605
+        ],
+        [
+          32.10866789296473,
+          -88.54083821897669,
+          10.11203713270254
+        ]
+      ],
+      "max_diameter_change": 0.07949431221669201,
+      "max_center_change": 0.07758162441269933,
+      "stability_limit_mm": 0.03,
+      "stability_passed": false
+    }
+  }
+}

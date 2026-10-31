@@ -116,7 +116,7 @@ class CircleDisplay(CurveDisplayBase):
     radial_residuals: tuple[Finite, ...] | None = Field(
         default=None, exclude_if=lambda v: v is None
     )
-    angular_weights: tuple[Positive, ...] | None = Field(
+    fit_weights: tuple[Positive, ...] | None = Field(
         default=None, exclude_if=lambda v: v is None
     )
     angular_sectors: tuple[JsonCount, ...] | None = Field(
@@ -137,7 +137,7 @@ class CircleDisplay(CurveDisplayBase):
             arrays = (
                 self.inlier_flags,
                 self.radial_residuals,
-                self.angular_weights,
+                self.fit_weights,
                 self.angular_sectors,
             )
             if any(
@@ -152,7 +152,7 @@ class CircleDisplay(CurveDisplayBase):
                 raise ValueError("稳健圆显示角区不一致")
             actual_counts = [0] * len(counts)
             digest = sha256()
-            for weight, sector in zip(self.angular_weights, self.angular_sectors):
+            for weight, sector in zip(self.fit_weights, self.angular_sectors):
                 actual_counts[sector] += 1
                 digest.update(pack("<d", weight))
             if (
@@ -170,7 +170,7 @@ class CircleDisplay(CurveDisplayBase):
             for values in (
                 self.inlier_flags,
                 self.radial_residuals,
-                self.angular_weights,
+                self.fit_weights,
                 self.angular_sectors,
             )
         ):

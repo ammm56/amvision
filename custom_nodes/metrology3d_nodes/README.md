@@ -9,7 +9,9 @@
 - 测量：Height Query、Measure Step、Measure Extents、Measure Edge Pair、Measure Hole。
 - 显示：Cloud Preview。
 
-既有严格截线与轴向跨度保持原定义。Extract Boundary 新增显式 `visible-envelope` 栅格剖面，Measure Extents 新增 `robust-profile-spans`；前端、来源与保存读取同批接通。完整工件 24 项 L/W 有效，总计 47/50 主项有效；S2 多片段拟圆与两项 Z 应用范围仍待 F4。无效量值保持 null 并保留原因，几何有效不表示产品合格或精度认证。
+既有严格截线与轴向跨度保持原定义。Extract Boundary 已接通显式 `visible-envelope` 栅格剖面，Measure Extents 已接通 `robust-profile-spans`；前端、来源与保存读取同步。F4 已接通多片段拟圆、实际距离分区及基准应用范围，当前工件 50 项均几何有效，但 S2 稳定性和最终计算节拍未通过验收。无效量值保持 null 并保留原因，几何有效不表示产品合格或精度认证。
+
+Fit Circle 明确区分等权、`angular-soft-l1` 角区均衡和 `arc-length-soft-l1` 连续实测边长权重。新方法不跨片段缺口，不删除候选，不自动替换原配方；显示使用统一的 `fit_weights`。S2 新方法的独立对照仍未通过 0.03 mm 诊断，原工件继续使用角区法。契约、局部参数编辑修复与验证见[连续边长拟圆](../../docs/development/3d-metrology-circle-support.md)。
 
 ## 依赖与启动
 
