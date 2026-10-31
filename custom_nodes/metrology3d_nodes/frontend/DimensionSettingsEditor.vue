@@ -2,7 +2,8 @@
   <button class="geometry-open" :disabled="disabled" @click="show">{{ title }}</button>
   <Teleport to="body">
     <ConfirmDialog v-if="open" class="dimension-dialog" :title="title" size="wide" scroll-body confirm-variant="primary" :confirm-label="label('应用','Apply')" :cancel-label="label('取消','Cancel')" :confirm-disabled="disabled||!!issues.length||!!referenceIssues.length" @confirm="apply" @cancel="open=false">
-      <div class="geometry-workspace dimension-workspace">
+      <MetrologyWorkspace>
+        <template #parameters>
         <section class="dimension-config">
           <template v-if="extents">
             <fieldset class="modes"><legend>{{ label('测量定义','Measurement') }}</legend>
@@ -42,19 +43,26 @@
           <EvaluationEditor v-if="!robust" v-model="draft.evaluation" :allow-feature="!extents||object(draft.source).kind==='boundary'" />
           <span v-else>{{ label('评价面：继承边界','Evaluation: inherited from boundary') }}</span>
         </section>
+        </template>
+        <template #view="{presentation}">
         <section class="dimension-view">
-          <label>{{ label('点云显示','Point cloud view') }}<select v-model="previewId"><option value="">{{ label('未选择','None') }}</option><option v-for="view in previews" :key="view.id" :value="view.id">{{ view.label }}</option></select></label>
-          <CloudViewer v-if="preview" :key="preview.id" :payload="preview.payload" :project-id="preview.projectId" :allow-pick="canPick" :candidate="candidate??undefined" @candidate="pick" @feature-selection="chooseFeature" />
+          <CloudPreviewSelector v-model="previewId" :previews="previews" :changed="changed" />
+          <CloudViewer v-if="preview" :key="preview.id" :presentation="presentation" :payload="preview.payload" :project-id="preview.projectId" :allow-pick="canPick" :candidate="candidate??undefined" @candidate="pick" @feature-selection="chooseFeature" />
         </section>
+        </template>
+        <template #advanced>
         <details class="dimension-advanced"><summary>{{ label('数值条件与几何质量','Numerical conditions and geometry quality') }}</summary>
           <GeometryFields v-if="extents&&object(draft.mode).kind==='minimum-area-rectangle'" v-model="draft" :fields="rectangleFields" />
           <GeometryFields v-if="edge" v-model="draft" :fields="conditionFields" />
           <GeometryFields v-model="draft" :fields="qualityFields" />
           <WorkflowLimitRulesEditor :model-value="object(draft.quality_policy).rules" quality @update:model-value="draft=put(draft,'quality_policy.rules',$event)" />
         </details>
+        </template>
+        <template #issues>
         <p v-if="issues.length" role="alert">{{ label('待完善','Incomplete') }}: {{ issues.join(' · ') }}</p>
         <p v-if="referenceIssues.length" role="alert">{{ referenceIssues.join(' · ') }}</p>
-      </div>
+        </template>
+      </MetrologyWorkspace>
     </ConfirmDialog>
   </Teleport>
 </template>
@@ -63,6 +71,8 @@ import {computed,defineAsyncComponent,inject,ref,watch} from 'vue'
 import {useI18n} from 'vue-i18n'
 import {ArrowLeftRight,MousePointer2} from '@lucide/vue'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
+import MetrologyWorkspace from './MetrologyWorkspace.vue'
+import CloudPreviewSelector from './CloudPreviewSelector.vue'
 import WorkflowLimitRulesEditor from '@/workflows/workflow-editor/components/WorkflowLimitRulesEditor.vue'
 import {parameterCloudPreviewsKey,parameterPreviewStateKey,type ParameterEditorSources} from '@/workflows/workflow-editor/parameters/editor-context'
 import {curveItems} from '@/workflows/workflow-editor/point-cloud/boundary-display'
@@ -83,6 +93,7 @@ const {locale}=useI18n(),label=(cn:string,en:string)=>locale.value==='zh-CN'?cn:
 const kind=computed(()=>props.nodeType.split('.').at(-1)!),extents=computed(()=>kind.value==='measure-extents'),edge=computed(()=>kind.value==='measure-edge-pair'),hole=computed(()=>kind.value==='measure-hole')
 const title=computed(()=>extents.value?label('投影长宽','Projected extents'):edge.value?label('边间距','Edge distance'):label('孔径与圆心','Diameter and center'))
 const open=ref(false),draft=ref<Form>({}),previewId=ref(''),activeSlot=ref(''),candidate=ref<number[]|null>(null)
+const initial=ref(''),changed=computed(()=>JSON.stringify(draft.value)!==initial.value)
 const robust=computed(()=>extents.value&&object(draft.value.mode).kind==='robust-profile-spans')
 const resolve=inject(parameterCloudPreviewsKey,()=>[]),state=inject(parameterPreviewStateKey,()=>({runId:'',succeeded:false}))
 const previews=computed(()=>state().succeeded?resolve():[]),preview=computed(()=>previews.value.find(p=>p.id===previewId.value))
@@ -107,7 +118,7 @@ const edgeFields=computed<Field[]>(()=>object(draft.value.query_position).kind==
 const rectangleFields=computed<Field[]>(()=>[['area_abs_tolerance','面积绝对容差（单位²）','Absolute area tolerance (unit squared)'],['area_rel_tolerance','面积相对容差','Relative area tolerance'],['dimension_abs_tolerance','尺寸绝对容差（长度单位）','Absolute dimension tolerance (length unit)'],['dimension_rel_tolerance','尺寸相对容差','Relative dimension tolerance'],['orientation_tolerance_radians','方向等价角 rad','Equivalent direction angle rad']].map(([key,cn,en])=>({path:`mode.${key}`,label:label(cn!,en!),type:'number'})))
 const conditionFields=computed<Field[]>(()=>[['max_plane_distance','最大共面距离','Maximum plane distance'],['max_plane_angle_radians','最大共面夹角 rad','Maximum plane angle rad'],['min_crossing_sine','最小求交正弦','Minimum crossing sine']].map(([path,cn,en])=>({path:path!,label:label(cn!,en!),type:'number'})))
 const qualityFields=computed<Field[]>(()=>[{path:'quality_policy.policy_id',label:label('质量策略 ID','Quality policy ID')},{path:'quality_policy.policy_version',label:label('策略版本','Policy version'),type:'number'}])
-function show(){draft.value=Object.keys(object(props.modelValue)).length?copy(object(props.modelValue)):newDimension(kind.value);resetView();open.value=true}
+function show(){draft.value=Object.keys(object(props.modelValue)).length?copy(object(props.modelValue)):newDimension(kind.value);initial.value=JSON.stringify(draft.value);resetView();open.value=true}
 function resetView(){previewId.value='';activeSlot.value='';candidate.value=null}
 function changeMode(mode:string){draft.value={...draft.value,mode:newExtentMode(mode),outputs:(mode==='minimum-area-rectangle'?['length','width']:['u','v']).map(component=>({component,item_id:''}))};if(mode==='robust-profile-spans'){draft.value={...draft.value,source:{kind:'boundary',selection:{feature_id:object(object(draft.value.source).selection).feature_id??'',segment_ids:[...profileSides]}},evaluation:newEvaluation('feature',draft.value.evaluation)}}candidate.value=null}
 function changeSource(kind:string){draft.value={...draft.value,source:kind==='cloud'?{kind}:{kind,selection:{feature_id:'',segment_ids:[]}},evaluation:kind==='cloud'&&object(draft.value.evaluation).kind==='feature'?newEvaluation('configured',draft.value.evaluation):draft.value.evaluation};activeSlot.value='';candidate.value=null}
@@ -140,11 +151,9 @@ watch(()=>[previewId.value,JSON.stringify(draft.value.evaluation)],()=>{candidat
 <style src="./editor.css" scoped></style>
 <style scoped>
 .dimension-dialog :deep(.confirm-dialog){width:min(1260px,calc(100vw - 36px))}
-.dimension-workspace{grid-template-columns:minmax(280px,370px) minmax(0,1fr);align-items:start}
-.dimension-config,.dimension-view{display:grid;gap:12px;min-width:0}.dimension-view :deep(.cloud-viewer){height:min(60dvh,640px)}
-.dimension-advanced,.dimension-workspace>p{grid-column:1/-1;min-width:0}details>summary{padding:8px 0;font-weight:600;cursor:pointer}
+.dimension-config,.dimension-view{display:grid;gap:12px;min-width:0}
+.dimension-advanced{min-width:0}details>summary{padding:8px 0;font-weight:600;cursor:pointer}
 fieldset{border:1px solid var(--am-border);padding:8px;min-width:0}.modes,.segments{display:flex;flex-wrap:wrap;gap:10px}.modes label,.segments label{display:flex;align-items:center;gap:6px}
 .dimension-config input[type=radio],.dimension-config input[type=checkbox]{width:16px;height:16px;min-width:16px;flex:none}.outputs label{display:flex;gap:8px;align-items:center}.outputs label>input:not([type=checkbox]){min-width:0;flex:1}.outputs label>span{min-width:64px}
 .feature-slot{display:grid;grid-template-columns:minmax(0,1fr) 32px;gap:8px;align-items:end}.feature-slot button,.swap{width:32px;height:32px;display:grid;place-items:center}.feature-slot button[aria-pressed=true]{background:var(--am-accent-soft)}
-@media(max-width:900px){.dimension-workspace{grid-template-columns:minmax(0,1fr)}}
 </style>

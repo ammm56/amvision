@@ -6,6 +6,20 @@ import type {TransformControls} from 'three/addons/controls/TransformControls.js
 const policy={max_points:1000,max_data_bytes:100000,max_cpu_bytes:10000000,max_gpu_bytes:10000000,max_canvas_pixels:1000000,max_position_error:.001}
 const payload={observation_id:'obs',spatial:{frame_id:'fixture',length_unit:'mm'},bounds:{min:[1000000,0,0],max:[1000004,4,4]}}
 const roi={roi_id:'r',frame_id:'fixture',length_unit:'mm',kind:'box',geometry:{center:[1000002,2,2],size:[2,2,2],rotation:[[1,0,0],[0,1,0],[0,0,1]]}}
+it('suspends an active ROI gesture without rebuilding evidence and blocks hidden callbacks',()=>{
+  const scene=new Scene(),changed=vi.fn(),overlay=createGeometryOverlay(scene,new PerspectiveCamera(),document.createElement('canvas'),[1000000,0,0],policy,()=>{},()=>{},e=>{throw e})
+  try{
+    overlay.update({payload,rois:[roi],selectedId:'r',changed})
+    let control:TransformControls|undefined
+    scene.traverse(o=>{const c=(o as Object3D&{controls?:TransformControls}).controls;if(c)control=c})
+    const c=control!,root=scene.children[0],usage=rendererUsage()
+    c.dragging=true;c.dispatchEvent({type:'mouseDown',mode:'translate'});c.object!.position.x=8;c.dispatchEvent({type:'objectChange'})
+    overlay.activity(false);expect(changed.mock.lastCall![0]).toEqual(roi);expect(c.dragging).toBe(false);expect(c.enabled).toBe(false)
+    const count=changed.mock.calls.length;c.dispatchEvent({type:'objectChange'});expect(changed).toHaveBeenCalledTimes(count)
+    overlay.activity(true);expect(c.enabled).toBe(true);expect(scene.children[0]).toBe(root);expect(rendererUsage()).toEqual(usage)
+  }finally{overlay.dispose()}
+  expect(rendererUsage()).toEqual({cpuBytes:0,gpuBytes:0})
+})
 it('writes physical ROI dimensions without cumulative scale and focuses only selected geometry',()=>{
   for(const kind of ['box','cylinder']){
     const scene=new Scene(),changed=vi.fn(),overlay=createGeometryOverlay(scene,new PerspectiveCamera(),document.createElement('canvas'),[1000000,0,0],policy,()=>{},()=>{},e=>{throw e})

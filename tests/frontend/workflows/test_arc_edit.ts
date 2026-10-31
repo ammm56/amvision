@@ -97,6 +97,25 @@ it('cancels a gesture and ignores stale controls after source replacement and di
     const last=control(scene);overlay.dispose();last.dispatchEvent({type:'objectChange'});await Promise.resolve();expect(changed).toHaveBeenCalledTimes(calls);expect(failed).not.toHaveBeenCalled()
   }finally{overlay.dispose()}
 })
+it('suspends an arc gesture and accepts its restored draft without rebuilding evidence',async()=>{
+  const scene=new Scene(),changed=vi.fn(),failed=vi.fn()
+  const overlay=createGeometryOverlay(scene,new PerspectiveCamera(),document.createElement('canvas'),[1000000,0,0],policy,()=>{},()=>{},failed)
+  const initial={...edit,handle:'center' as const}
+  try{
+    overlay.update({payload,arc:initial,arcChanged:changed})
+    const root=scene.children[0],usage=rendererUsage(),c=control(scene)
+    c.dispatchEvent({type:'mouseDown',mode:'translate'});c.dragging=true
+    c.object!.position.set(8,2,11);c.dispatchEvent({type:'objectChange'})
+    overlay.update({payload,arc:{...initial,values:changed.mock.lastCall![1]},arcChanged:changed})
+    overlay.activity(false)
+    expect(changed.mock.lastCall![1]).toEqual(arc);expect(c.dragging).toBe(false);expect(c.enabled).toBe(false)
+    overlay.update({payload,arc:structuredClone(initial),arcChanged:changed})
+    await Promise.resolve()
+    expect(scene.children[0]).toBe(root);expect(control(scene)).toBe(c)
+    const calls=changed.mock.calls.length;c.dispatchEvent({type:'objectChange'});expect(changed).toHaveBeenCalledTimes(calls)
+    overlay.activity(true);expect(c.enabled).toBe(true);expect(rendererUsage()).toEqual(usage);expect(failed).not.toHaveBeenCalled()
+  }finally{overlay.dispose()}
+})
 it('releases arc buffers on budget refusal and repeated gesture rendering',()=>{
   for(const max_gpu_bytes of [1,policy.max_gpu_bytes]){
     const scene=new Scene(),overlay=createGeometryOverlay(scene,new PerspectiveCamera(),document.createElement('canvas'),[1000000,0,0],{...policy,max_gpu_bytes},()=>{},()=>{},e=>{throw e})

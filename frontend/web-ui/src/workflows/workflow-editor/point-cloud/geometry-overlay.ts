@@ -31,6 +31,7 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
   const physicalOrigin=new Vector3(...origin),targets=new Map<string,Object3D>(),updates=new Map<string,((roi:RoiValue)=>void)[]>()
   let hidden:ReadonlySet<string>=new Set(),roiGraph:RoiValue[]=[],cancelRoi:(()=>void)|undefined,roiControl:{control:TransformControls;target:Object3D;id:string}|undefined
   let restoredInput:GeometryOverlayInput|undefined
+  let interactive=true
   const roiInstances:{id:string;target:Object3D;sections:RoiValue[]}[]=[]
   function resources(object:Object3D){const geometries=new Set<BufferGeometry>(),materials=new Set<Material>();object.traverse(o=>{const item=o as Mesh;if(item.geometry)geometries.add(item.geometry);if(item.material)for(const m of Array.isArray(item.material)?item.material:[item.material])materials.add(m)});return {geometries,materials}}
   function account(object:Object3D){const buffers=new Set<ArrayBufferLike>();for(const g of resources(object).geometries){for(const a of Object.values(g.attributes))buffers.add(a.array.buffer);if(g.index)buffers.add(g.index.array.buffer)}const bytes=[...buffers].reduce((s,b)=>s+b.byteLength,0);releases.push(reserveCpu(bytes,policy));releases.push(reserveGpu(bytes,policy))}
@@ -89,10 +90,18 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
     if(roiControl){
       const {control,target,id}=roiControl,visible=['visible','partial'].includes(roiVisibility(roiGraph,id,hidden))
       if(!visible){cancelRoi?.();control.detach();control.getHelper().visible=false}
-      else {control.attach(target);control.getHelper().visible=true}
+      else {control.attach(target);control.getHelper().visible=interactive}
     }
     for(const instance of roiInstances)instance.target.visible=!hidden.has(instance.id)
     schedule()
+  }
+  /** 暂停保留几何；只有当前未结束的手势回到起点。 */
+  function activity(value:boolean){
+    if(closed||interactive===value)return
+    if(!value){cancelArc?.();cancelRoi?.()}
+    interactive=value
+    if(gizmo){gizmo.enabled=value;gizmo.getHelper().visible=value&&(!roiControl||['visible','partial'].includes(roiVisibility(roiGraph,roiControl.id,hidden)))}
+    drag(false)
   }
   function buildEvidence(payload:Record<string,unknown>){
     if(!payload.geometry)return
@@ -172,7 +181,7 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
   function buildArc(edit:ArcEdit){
     const target=new Group(),arcRoot=new Group();root.add(arcRoot,target);arcRoot.userData.arc=true
     target.quaternion.setFromRotationMatrix(new Matrix4().set(...edit.evaluation.rotation.flatMap(r=>[...r,0]).concat([0,0,0,1]) as Parameters<Matrix4['set']>))
-    let current=edit,gesture=arcGesture(edit),active=false
+    let current=edit,gesture=arcGesture(edit),active=false,cancelling=false
     const draw=(value:ArcValues)=>{
       arcRelease();arcRelease=()=>{}
       for(const g of resources(arcRoot).geometries)g.dispose();for(const m of resources(arcRoot).materials)m.dispose();arcRoot.clear()
@@ -190,13 +199,18 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
     }
     draw(edit.values)
     const control=new TransformControls(camera,canvas);gizmo=control;control.setMode('translate');control.setSpace('local');control.showZ=false;control.attach(target);root.add(control.getHelper());account(control.getHelper())
-    const live=()=>!closed&&gizmo===control&&input?.arc?.key===edit.key
-    const restore=()=>{if(!live()||!active)return;active=false;draw(edit.values);input?.arcChanged?.(edit.key,edit.values);control.dragging=false;schedule()}
+    const live=()=>!closed&&interactive&&gizmo===control&&input?.arc?.key===edit.key
+    const restore=()=>{
+      if(!live()||!active)return
+      active=false;cancelling=true;draw(edit.values)
+      restoredInput={...input!,arc:{...input!.arc!,values:edit.values}}
+      input?.arcChanged?.(edit.key,edit.values);control.dragging=false;drag(false);cancelling=false;schedule()
+    }
     cancelArc=restore
     control.addEventListener('change',schedule)
     control.addEventListener('mouseDown',()=>{if(live()){active=true;gesture=arcGesture(current)}})
     control.addEventListener('dragging-changed',event=>{
-      if(!live())return
+      if(!live()||cancelling)return
       drag(event.value===true)
       if(event.value===false){active=false;queueMicrotask(()=>{if(live()&&input)try{update(input)}catch(error){failed(error as Error)}})}
     })
@@ -211,8 +225,8 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
     // 取消手势已经恢复对象；父表单回传同一恢复值时不重建其他证据。
     if(restoredInput&&same){
       const restored=restoredInput;restoredInput=undefined
-      const keys=['payload','selectedId','mode','roiScope','selectedMeasurement','selectedPlane','candidate','selectedCurve','selectedSegment','curveColorMode','selectedCurvePoint','arc','debug','debugLayers','debugSelection'] as const
-      if(keys.every(key=>restored[key]===next[key])&&JSON.stringify(restored.rois)===JSON.stringify(next.rois)){input=next;roiGraph=next.rois??[];visibility(next.hiddenRoiIds??hidden);return}
+      const keys=['payload','selectedId','mode','roiScope','selectedMeasurement','selectedPlane','candidate','selectedCurve','selectedSegment','curveColorMode','selectedCurvePoint','debug','debugLayers','debugSelection'] as const
+      if(keys.every(key=>restored[key]===next[key])&&JSON.stringify(restored.arc)===JSON.stringify(next.arc)&&JSON.stringify(restored.rois)===JSON.stringify(next.rois)){input=next;roiGraph=next.rois??[];visibility(next.hiddenRoiIds??hidden);return}
     }
     restoredInput=undefined
     input=next
@@ -235,7 +249,7 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
       else if(target&&next.changed&&!(next.mode==='scale'&&original?.kind==='section-band')){gizmo=new TransformControls(camera,canvas);gizmo.setMode(next.mode??'translate');if(next.mode==='scale'){gizmo.setSpace('local');if(original?.kind==='cylinder')gizmo.showZ=false}gizmo.attach(target);const helper=gizmo.getHelper();root.add(helper);account(helper)
         const control=gizmo,id=next.selectedId!,scope=next.roiScope,payload=next.payload
         let start:RoiValue|undefined,cancelling=false
-        const live=()=>!closed&&gizmo===control&&input?.payload===payload&&input?.roiScope===scope&&input?.selectedId===id
+        const live=()=>!closed&&interactive&&gizmo===control&&input?.payload===payload&&input?.roiScope===scope&&input?.selectedId===id
         roiControl={control,target,id}
         cancelRoi=()=>{
           if(!live()||!start)return
@@ -269,11 +283,12 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
         })
       }
       visibility(next.hiddenRoiIds??new Set())
+      if(gizmo){gizmo.enabled=interactive;if(!interactive)gizmo.getHelper().visible=false}
     }catch(error){clear();throw error}
   }
   function keydown(event:KeyboardEvent){if(event.key==='Escape'&&gizmo?.dragging&&(cancelArc||cancelRoi)){event.preventDefault();event.stopPropagation();(cancelArc??cancelRoi)?.()}}
   canvas.ownerDocument.addEventListener('keydown',keydown,true)
-  return {update,visibility,focus(kind:GeometryFocus){
+  return {update,visibility,activity,focus(kind:GeometryFocus){
     if(closed||!input)return null
     const bounds=new Box3()
     if(kind==='roi'){

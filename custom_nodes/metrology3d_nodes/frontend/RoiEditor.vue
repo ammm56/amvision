@@ -1,23 +1,30 @@
 <template>
   <button class="geometry-open" :disabled="disabled" @click="show">{{ zh?'三维 ROI':'3D ROI' }} · {{ object(modelValue).kind==='input'?(zh?'输入端口':'Input port'):String(object(object(modelValue).roi).roi_id||'-') }}</button>
   <Teleport to="body"><ConfirmDialog v-if="open" class="geometry-dialog" :title="zh?'裁剪 ROI':'Crop ROI'" size="wide" scroll-body confirm-variant="primary" :confirm-label="zh?'应用':'Apply'" :cancel-label="zh?'取消':'Cancel'" :confirm-disabled="!!issues.length||disabled" @confirm="apply" @cancel="open=false">
-    <div class="geometry-workspace roi-workspace">
+    <MetrologyWorkspace>
+      <template #parameters>
       <RoiForm ref="form" v-model="draft" :allow-input="allowInput" :can-view="!!preview&&matching" :visibility-scope="visibilityScope" @view="roiView=$event" @visibility="hiddenRois=$event" />
+      </template>
+      <template #view="{presentation}">
       <section class="roi-view"><CloudPreviewSelector v-model="previewId" :previews="previews" :changed="changed" />
 
         <p v-if="preview&&!matching" role="status">{{ zh?'显示空间与 ROI 不一致，仅查看背景':'Display space differs from ROI; background only' }}</p>
-        <CloudViewer v-if="preview" :key="visibilityScope" :payload="preview.payload" :project-id="preview.projectId" :edit-rois="matching?roiView.rois:[]" :selected-roi-id="roiView.selectedId" :hidden-roi-ids="hiddenRois" :roi-scope="visibilityScope" @roi-change="changeRoi" />
+        <CloudViewer v-if="preview" :key="visibilityScope" :presentation="presentation" :payload="preview.payload" :project-id="preview.projectId" :edit-rois="matching?roiView.rois:[]" :selected-roi-id="roiView.selectedId" :hidden-roi-ids="hiddenRois" :roi-scope="visibilityScope" @roi-change="changeRoi" />
 
       </section>
+      </template>
+      <template #issues>
       <p v-if="issues.length" role="alert">{{ zh?'待完善':'Incomplete' }}: {{ issues.join(' · ') }}</p>
       <p v-if="referenceIssues.length" role="status">{{ referenceIssues.join(' · ') }}</p>
-    </div>
+      </template>
+    </MetrologyWorkspace>
   </ConfirmDialog></Teleport>
 </template>
 <script setup lang="ts">
 import {computed,defineAsyncComponent,inject,ref,shallowRef,watch} from 'vue'
 import {useI18n} from 'vue-i18n'
 import CloudPreviewSelector from './CloudPreviewSelector.vue'
+import MetrologyWorkspace from './MetrologyWorkspace.vue'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import {parameterCloudPreviewsKey,parameterPreviewStateKey} from '@/workflows/workflow-editor/parameters/editor-context'
 import RoiForm from './RoiForm.vue'
@@ -43,6 +50,5 @@ watch(()=>[state().runId,state().succeeded],()=>{previewId.value=''})
 </script>
 <style src="./editor.css" scoped></style>
 <style scoped>
-.geometry-dialog :deep(.confirm-dialog){width:min(1240px,calc(100vw - 36px))}.roi-workspace{grid-template-columns:minmax(280px,380px) minmax(0,1fr);align-items:start}.roi-view{display:grid;gap:12px;min-width:0;position:sticky;top:0}.roi-view :deep(.cloud-viewer){height:min(60dvh,660px)}.roi-workspace>p{grid-column:1/-1}
-@media(max-width:900px){.roi-workspace{grid-template-columns:minmax(0,1fr)}.roi-view{position:static}}
+.geometry-dialog :deep(.confirm-dialog){width:min(1240px,calc(100vw - 36px))}.roi-view{display:grid;gap:12px;min-width:0}
 </style>

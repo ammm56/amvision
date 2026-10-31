@@ -2,17 +2,82 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
 import { nextTick } from 'vue'
+import {Scene,PerspectiveCamera} from 'three'
+import {createGeometryOverlay} from '@/workflows/workflow-editor/point-cloud/geometry-overlay'
 import CloudViewer from '@/workflows/workflow-editor/point-cloud/CloudViewer.vue'
 
 const mocks = vi.hoisted(() => ({ capabilities: vi.fn(), decode: vi.fn(), create: vi.fn(),debug:vi.fn() }))
-vi.mock('@/workflows/workflow-editor/point-cloud/boundary-debug',()=>({decodeBoundaryDebug:mocks.debug}))
-beforeEach(()=>mocks.debug.mockResolvedValue([]))
+const {readFileSync}=await vi.importActual<{readFileSync:(path:string,encoding:'utf8')=>string}>('node:fs')
+const {env}=await vi.importActual<{env:Record<string,string|undefined>}>('node:process')
+vi.mock('@/workflows/workflow-editor/point-cloud/boundary-debug',async importOriginal=>({...await importOriginal<object>(),decodeBoundaryDebug:mocks.debug}))
+beforeEach(()=>{mocks.debug.mockResolvedValue([])})
 vi.mock('@/workflows/workflow-editor/services/measurement-resource.service', () => ({readCloudCapabilities:mocks.capabilities}))
-vi.mock('@/workflows/workflow-editor/point-cloud/preview-data', () => ({decodeCloudPreview:mocks.decode,object:(v:unknown)=>v}))
+vi.mock('@/workflows/workflow-editor/point-cloud/preview-data',async importOriginal=>({...await importOriginal<object>(),decodeCloudPreview:mocks.decode}))
 vi.mock('@/workflows/workflow-editor/point-cloud/renderer', () => ({createCloudRenderer:mocks.create}))
 const payload = {state:'ready',spatial:{length_unit:null,frame_id:'camera'},color:{mode:'solid'},source_point_count:20,display_point_count:2}
 afterEach(() => vi.resetAllMocks())
 function viewer() { return mount(CloudViewer, {props:{payload,projectId:'p'},global:{plugins:[createI18n({legacy:false,locale:'en-US'})]}}) }
+it.skipIf(!env.AMVISION_I2_DISPLAY)('switches complete captured evidence through the viewer and the actual overlay',async()=>{
+  const {webcrypto}=await vi.importActual<{webcrypto:Crypto}>('node:crypto');vi.stubGlobal('crypto',webcrypto)
+  const decoder=await vi.importActual<typeof import('@/workflows/workflow-editor/point-cloud/boundary-debug')>('@/workflows/workflow-editor/point-cloud/boundary-debug')
+  const preview=await vi.importActual<typeof import('@/workflows/workflow-editor/point-cloud/preview-data')>('@/workflows/workflow-editor/point-cloud/preview-data')
+  const body=JSON.parse(readFileSync(env.AMVISION_I2_DISPLAY!,'utf8'))
+  const policy={max_points:1_000_000,max_data_bytes:32*1024**2,max_cpu_bytes:128*1024**2,max_gpu_bytes:64*1024**2,max_canvas_pixels:4_000_000,max_position_error:.001}
+  mocks.capabilities.mockResolvedValue({renderer:policy});mocks.debug.mockImplementation(decoder.decodeBoundaryDebug)
+  mocks.decode.mockImplementation(preview.decodeCloudPreview)
+  mocks.create.mockImplementation((host,data)=>{
+    const overlay=createGeometryOverlay(new Scene(),new PerspectiveCamera(),host,data.origin,policy,()=>{},()=>{},e=>{throw e})
+    return {dispose:overlay.dispose,geometry:overlay.update,activity:overlay.activity,roiVisibility:overlay.visibility}
+  })
+  const w=mount(CloudViewer,{props:{payload:body,projectId:'full-sample',presentation:'evidence'},global:{plugins:[createI18n({legacy:false,locale:'en-US'})]}})
+  try{
+    await vi.waitFor(()=>expect(mocks.create).toHaveBeenCalledOnce(),{timeout:30000})
+    await flushPromises()
+    await w.findAll('[role=tab]').find(t=>t.text()==='Extraction debug')!.trigger('click')
+    const select=w.get('.debug-summary select'),options=select.findAll('option')
+    for(const option of options){await select.setValue(option.attributes('value'));await flushPromises()}
+    await w.setProps({presentation:'hidden'});await w.setProps({presentation:'view'});await flushPromises()
+    expect(mocks.decode).toHaveBeenCalledOnce();expect(mocks.debug).toHaveBeenCalledOnce();expect(mocks.create).toHaveBeenCalledOnce()
+  }finally{w.unmount()}
+  expect(preview.rendererUsage()).toEqual({cpuBytes:0,gpuBytes:0})
+},60000)
+it('switches presentation on a single decoded scene and delays first hidden load',async()=>{
+  const scene={dispose:vi.fn(),geometry:vi.fn(),activity:vi.fn()},data={dispose:vi.fn()}
+  mocks.capabilities.mockResolvedValue({renderer:{}});mocks.decode.mockResolvedValue(data);mocks.create.mockReturnValue(scene)
+  const w=mount(CloudViewer,{props:{payload,projectId:'p',presentation:'hidden'},global:{plugins:[createI18n({legacy:false,locale:'en-US'})]}})
+  await flushPromises();expect(mocks.decode).not.toHaveBeenCalled()
+  await w.setProps({presentation:'view'});await flushPromises();expect(mocks.create).toHaveBeenCalledOnce()
+  const geometryCalls=scene.geometry.mock.calls.length
+  for(const presentation of ['hidden','evidence','view','full'] as const){await w.setProps({presentation});await flushPromises()}
+  expect(mocks.decode).toHaveBeenCalledOnce();expect(mocks.debug).toHaveBeenCalledOnce();expect(mocks.create).toHaveBeenCalledOnce()
+  expect(scene.geometry).toHaveBeenCalledTimes(geometryCalls);expect(scene.activity).toHaveBeenLastCalledWith(true)
+  await w.setProps({presentation:'hidden'});w.unmount();await flushPromises()
+  expect(data.dispose).toHaveBeenCalledOnce();expect(scene.dispose).toHaveBeenCalledOnce()
+})
+
+it('does not retry a context failure merely by switching tabs',async()=>{
+  const scene={dispose:vi.fn(),geometry:vi.fn(),activity:vi.fn()}
+  mocks.capabilities.mockResolvedValue({renderer:{}});mocks.decode.mockResolvedValue({dispose:vi.fn()});mocks.create.mockReturnValue(scene)
+  const w=viewer();await flushPromises();mocks.create.mock.calls[0]![4](new Error('cloud_context_lost'))
+  await w.setProps({presentation:'hidden'});await w.setProps({presentation:'evidence'});await flushPromises()
+  expect(mocks.create).toHaveBeenCalledOnce();expect(w.get('[role=alert]').text()).toContain('WebGL context lost');w.unmount()
+})
+it('selects another captured evidence through the rendered selector without decoding again',async()=>{
+  const scene={dispose:vi.fn(),geometry:vi.fn(),activity:vi.fn()},record=(id:string)=>({id,featureId:id,nodeId:id,state:'ready',complete:true,grid:null,arrays:{},targets:[],dispose:vi.fn()})
+  mocks.capabilities.mockResolvedValue({renderer:{}});mocks.decode.mockResolvedValue({dispose:vi.fn()});mocks.create.mockReturnValue(scene)
+  const records=[record('S2'),record('A_top_L')];mocks.debug.mockResolvedValue(records)
+  const w=mount(CloudViewer,{props:{payload,projectId:'evidence-test',presentation:'evidence'},global:{plugins:[createI18n({legacy:false,locale:'en-US'})]}})
+  try{
+    await flushPromises()
+    expect(mocks.capabilities.mock.calls.map(c=>c[0])).toEqual(['evidence-test'])
+    expect(mocks.debug).toHaveBeenCalledOnce();expect(mocks.create).toHaveBeenCalledOnce()
+    await w.get('.debug-summary select').setValue('A_top_L');await flushPromises()
+    expect(scene.geometry.mock.lastCall![0].debug).toBe(records[1])
+    await w.setProps({presentation:'view'});await w.setProps({presentation:'evidence'});await flushPromises()
+    expect((w.get('.debug-summary select').element as HTMLSelectElement).value).toBe('A_top_L')
+    expect(mocks.debug).toHaveBeenCalledOnce()
+  }finally{w.unmount()}
+})
 it('uses only the visibility channel and rejects ROI callbacks after scope switch or unmount',async()=>{
   mocks.capabilities.mockResolvedValue({renderer:{}});mocks.decode.mockResolvedValue({dispose:vi.fn()})
   const renderer={dispose:vi.fn(),geometry:vi.fn(),roiVisibility:vi.fn()};mocks.create.mockReturnValue(renderer)

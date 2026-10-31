@@ -350,7 +350,7 @@ it.skipIf(!env.AMVISION_I2_DISPLAY)(
           debugFailed: failed,
         })
         const root=scene.children[0],usage=rendererUsage()
-        for(let i=0;i<10;i++){overlay.visibility(new Set(['hidden-leaf']));overlay.visibility(new Set())}
+        for(let i=0;i<10;i++){overlay.activity(false);overlay.visibility(new Set(['hidden-leaf']));overlay.activity(true);overlay.visibility(new Set())}
         expect(scene.children[0]).toBe(root);expect(rendererUsage()).toEqual(usage)
       }
       expect(failed).not.toHaveBeenCalled()

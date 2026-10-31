@@ -1,11 +1,11 @@
 <template>
-  <section class="cloud-viewer" :class="{'show-details':showDetails}">
-    <div class="cloud-tools">
+  <section class="cloud-viewer" :class="{'show-details':detailsVisible,'evidence-only':presentation==='evidence'}">
+    <div v-show="viewportVisible" class="cloud-tools">
       <button :title="t('reset')" :aria-label="t('reset')" :disabled="!scene" @click="scene?.fit()"><RotateCcw :size="18" /></button>
       <button :title="zh?'放大':'Zoom in'" :aria-label="zh?'放大':'Zoom in'" :disabled="!scene" @click="scene?.zoom(true)"><ZoomIn :size="18" /></button>
       <button :title="zh?'缩小':'Zoom out'" :aria-label="zh?'缩小':'Zoom out'" :disabled="!scene" @click="scene?.zoom(false)"><ZoomOut :size="18" /></button>
       <label v-if="focusOptions.length">{{ zh?'定位对象':'Focus object' }}<select v-model="focusTarget"><option v-for="target in focusOptions" :key="target.id" :value="target.id">{{ target.label }}</option></select></label><button v-if="focusOptions.length" :title="zh?'聚焦所选对象':'Focus selected object'" :aria-label="zh?'聚焦所选对象':'Focus selected object'" :disabled="!scene" @click="scene?.focus(focusTarget)"><Focus :size="18" /></button>
-      <button v-if="body.geometry||curves.length||measurements.length||debugItems.length||debugError" :title="zh?'测量与质量详情':'Measurement and quality details'" :aria-label="zh?'测量与质量详情':'Measurement and quality details'" :aria-pressed="showDetails" @click="showDetails=!showDetails"><List :size="18" /></button>
+      <button v-if="presentation==='full'&&(body.geometry||curves.length||measurements.length||debugItems.length||debugError)" :title="zh?'测量与质量详情':'Measurement and quality details'" :aria-label="zh?'测量与质量详情':'Measurement and quality details'" :aria-pressed="showDetails" @click="showDetails=!showDetails"><List :size="18" /></button>
       <div class="cloud-modes" role="group" :aria-label="zh?'视角操作':'View navigation'"><button :title="zh?'旋转视角':'Rotate view'" :aria-label="zh?'旋转视角':'Rotate view'" :aria-pressed="!pan" :disabled="!scene" @click="pan=false; scene?.pan(false)"><Orbit :size="18" /></button><button :title="t('pan')" :aria-label="t('pan')" :aria-pressed="pan" :disabled="!scene" @click="pan=true; scene?.pan(true)"><Hand :size="18" /></button></div>
       <button v-if="allowPick" :title="zh?'拾取候选位置':'Pick candidate position'" :aria-label="zh?'拾取候选位置':'Pick candidate position'" :aria-pressed="picking" :disabled="!scene" @click="picking=!picking"><Crosshair :size="18" /></button>
       <label>{{ t('projection') }}<select v-model="orthographic" :disabled="!scene" @change="scene?.projection(orthographic)"><option :value="false">{{ t('perspective') }}</option><option :value="true">{{ t('orthographic') }}</option></select></label>
@@ -16,7 +16,7 @@
       <template v-if="editRois?.length"><button :title="zh?'移动 ROI':'Move ROI'" :aria-label="zh?'移动 ROI':'Move ROI'" :aria-pressed="editMode==='translate'" :disabled="!scene||!selectedRoiVisible" @click="editMode='translate'"><Move3D :size="18" /></button><button :title="zh?'旋转 ROI':'Rotate ROI'" :aria-label="zh?'旋转 ROI':'Rotate ROI'" :aria-pressed="editMode==='rotate'" :disabled="!scene||!selectedRoiVisible" @click="editMode='rotate'"><Rotate3D :size="18" /></button></template>
       <button v-if="scalableRoi" :title="zh?'调整 ROI 尺寸':'Resize ROI'" :aria-label="zh?'调整 ROI 尺寸':'Resize ROI'" :aria-pressed="editMode==='scale'" :disabled="!scene||!selectedRoiVisible" @click="editMode='scale'"><Scaling :size="18" /></button>
     </div>
-    <div class="cloud-stage">
+    <div v-show="viewportVisible" class="cloud-stage">
       <div ref="host" class="cloud-canvas" />
       <p v-if="loading" role="status" class="cloud-message">{{ t('loading') }}</p>
       <div v-else-if="error" role="alert" class="cloud-message"><p>{{ t(error) }}</p><button :title="t('retry')" @click="load"><RefreshCw :size="18" /></button></div>
@@ -30,8 +30,9 @@
       <span v-if="colorMode==='residual'&&colorSummary">{{ zh?'残差色标':'Residual scale' }} <template v-if="colorSummary.extent!==null"><i class="residual-scale" aria-hidden="true"/> {{ -colorSummary.extent }} .. {{ colorSummary.extent }} {{ unit }}</template><template v-else>{{ zh?'无显示支持点':'No displayed support points' }}</template></span>
       <span v-if="curveScale">{{ zh?'拟圆证据色标':'Circle evidence scale' }} <i class="residual-scale" aria-hidden="true" /> {{ curveScale.min }} .. {{ curveScale.max }} {{ curveColorMode==='residual'?unit:'1' }}</span>
     </div>
-    <div v-if="showDetails" class="evidence-tabs" role="tablist" :aria-label="zh?'三维证据':'3D evidence'"><button v-for="tab in evidenceTabs" :key="tab.id" role="tab" :aria-selected="detailTab===tab.id" @click="detailTab=tab.id">{{ tab.label }}</button></div>
-    <div v-if="showDetails" class="evidence-panel" role="tabpanel">
+    <div v-if="presentation==='evidence'&&(loading||error||!evidenceTabs.length)" class="evidence-message" :role="error?'alert':'status'"><p>{{ loading?t('loading'):error?t(error):zh?'本次显示没有测量证据':'No measurement evidence in this display' }}</p><button v-if="error" :title="t('retry')" :aria-label="t('retry')" @click="load"><RefreshCw :size="18" /></button></div>
+    <div v-if="detailsVisible&&evidenceTabs.length" class="evidence-tabs" role="tablist" :aria-label="zh?'三维证据':'3D evidence'"><button v-for="tab in evidenceTabs" :id="`${viewerId}-${tab.id}`" :key="tab.id" role="tab" :aria-selected="detailTab===tab.id" :tabindex="detailTab===tab.id?0:-1" :aria-controls="`${viewerId}-panel`" @click="detailTab=tab.id" @keydown="navigateTab($event,evidenceTabs.map(t=>t.id),detailTab,value=>detailTab=value)">{{ tab.label }}</button></div>
+    <div v-if="detailsVisible&&evidenceTabs.length" :id="`${viewerId}-panel`" class="evidence-panel" role="tabpanel" :aria-labelledby="`${viewerId}-${detailTab}`">
       <div v-if="detailTab==='rois'" class="roi-display-list"><div v-for="roi in displayRois" :key="String(roi.roi_id)"><span>{{ roi.roi_id }}</span><RoiVisibilityButton :roi-id="String(roi.roi_id)" :state="readOnlyVisibility.state(String(roi.roi_id))" :disabled="!scene" @toggle="readOnlyVisibility.toggle(String(roi.roi_id))" /></div></div>
       <GeometrySummary v-if="detailTab==='geometry'&&body.geometry" :geometry="displayObject(body.geometry)" :selected="selectedPlane" @select-plane="selectedPlane=$event" />
       <BoundarySummary v-if="detailTab==='features'&&curves.length" :items="curves" :selected="selectedCurve" :selected-segment="selectedSegment" :selected-index="selectedCurvePoint" @select="selectCurve" @select-point="selectedCurvePoint=$event" />
@@ -41,7 +42,7 @@
   </section>
 </template>
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, useId, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Hand, RefreshCw, RotateCcw, Move3D, Rotate3D, Crosshair, ZoomIn, ZoomOut, Orbit, List, Focus, Scaling } from '@lucide/vue'
 import { readCloudCapabilities } from '../services/measurement-resource.service'
@@ -60,8 +61,10 @@ import type {RoiValue,GeometryFocus} from './geometry-overlay'
 import type {ArcEdit,ArcValues} from './arc-edit'
 import {roiVisibility,useRoiVisibility} from './roi-visibility'
 import RoiVisibilityButton from './RoiVisibilityButton.vue'
+import {navigateTab} from './tab-navigation'
 
-const props = defineProps<{ payload: Record<string, unknown>; projectId: string; editRois?:RoiValue[]; selectedRoiId?:string; allowPick?:boolean; candidate?:number[];editArc?:ArcEdit;hiddenRoiIds?:ReadonlySet<string>;roiScope?:string }>()
+const props = withDefaults(defineProps<{ payload: Record<string, unknown>; projectId: string; editRois?:RoiValue[]; selectedRoiId?:string; allowPick?:boolean; candidate?:number[];editArc?:ArcEdit;hiddenRoiIds?:ReadonlySet<string>;roiScope?:string;presentation?:'full'|'view'|'evidence'|'hidden' }>(),{presentation:'full'})
+const viewerId=useId(),viewportVisible=computed(()=>props.presentation==='full'||props.presentation==='view')
 const emit=defineEmits<{'roi-change':[value:RoiValue];candidate:[value:{payload:Record<string,unknown>;xyz:number[]}];'feature-selection':[value:{payload:Record<string,unknown>;featureId:string;segmentId:string}];'arc-change':[value:{payload:Record<string,unknown>;key:string;values:ArcValues}]}>()
 const { t,locale } = useI18n({ useScope: 'local', messages: {
   'zh-CN': { reset: '复位视角', pan: '平移', projection: '投影', perspective: '透视', orthographic: '正交', axis: '视图', size: '点大小', loading: '正在读取显示数据', retry: '重新打开', empty: '无有效显示点', unavailable: '显示不可用', unknown: '单位未确认', cloud_renderer_unconfigured: '三维显示预算尚未配置', cloud_preview_invalid: '显示数据格式无效', cloud_preview_capacity: '显示数据超过点数或字节限额', cloud_preview_checksum: '显示数据摘要不一致', cloud_cpu_capacity: '浏览器内存预算不足', cloud_gpu_capacity: '渲染缓冲预算不足', cloud_canvas_capacity: '视口超过像素预算', cloud_position_precision: '局部坐标显示误差超过配置限额', cloud_context_lost: 'WebGL 上下文已丢失' },
@@ -107,6 +110,7 @@ function selectView(event: Event) {
   if (selected !== 'free') scene.value?.fit(selected)
 }
 const showDetails=ref(false)
+const detailsVisible=computed(()=>props.presentation==='evidence'||props.presentation==='full'&&showDetails.value)
 const detailTab=ref('measurements')
 const evidenceTabs=computed(()=>[...(!props.editRois&&displayRois.value.length?[{id:'rois',label:zh.value?'ROI 显示':'ROI visibility'}]:[]),...(measurements.value.length?[{id:'measurements',label:zh.value?'测量':'Measurements'}]:[]),...(curves.value.length?[{id:'features',label:zh.value?'边界 / 拟合':'Boundary / fit'}]:[]),...(planes.value.length||displayObject(body.value.geometry).frame?[{id:'geometry',label:zh.value?'基准 / 质量':'Datum / quality'}]:[]),...(debugItems.value.length||debugError.value?[{id:'debug',label:zh.value?'提取调试':'Extraction debug'}]:[])])
 const debugItems=shallowRef<DebugEvidence[]>([]),selectedDebug=ref(''),debugError=ref(''),debugSelection=ref<DebugSelection|null>(null)
@@ -136,6 +140,7 @@ async function load() {
   release(); const token = generation; controller = new AbortController(); const signal = controller.signal
   error.value = ''; loading.value = true; pan.value = false; orthographic.value = false; size.value = 2; axis.value = 'iso'
   try {
+    if(props.presentation==='hidden')return
     measurements.value=measurementItems(body.value)
     curves.value=curveItems(body.value)
     selectedMeasurement.value=measurements.value[0]?.item_id??''
@@ -162,7 +167,7 @@ async function load() {
     }, view => {
       if(token!==generation||signal.aborted||props.payload!==payload)return
       axis.value = view
-    })
+    },viewportVisible.value)
     scenePayload=payload
     updateGeometry()
   } catch (failure) {
@@ -175,16 +180,26 @@ watch(()=>[props.roiScope,props.editRois,props.selectedRoiId,props.editArc,editM
 watch(()=>[selectedPlane.value,colorMode.value],updateColors)
 watch(()=>props.allowPick,()=>{picking.value=false})
 watch(hiddenRois,hidden=>{if(scenePayload===props.payload)scene.value?.roiVisibility(hidden)})
+watch(viewportVisible,visible=>{if(!visible)scene.value?.activity(false)},{flush:'sync'})
+watch(()=>props.presentation,async()=>{
+  const token=generation
+  await nextTick()
+  if(token!==generation)return
+  if(scene.value)scene.value.activity(viewportVisible.value)
+  else if(!loading.value&&!error.value&&props.presentation!=='hidden')void load()
+})
 onBeforeUnmount(release)
 </script>
 <style scoped>
 .cloud-viewer { display: grid; grid-template-rows: auto minmax(180px, 1fr) auto; grid-auto-rows:auto; width: 100%; height: min(72dvh, 720px); min-width: 0; }
 .cloud-viewer.show-details { grid-template-rows:auto minmax(180px,1fr) auto auto minmax(100px,.65fr); }
-.evidence-tabs{display:flex;gap:4px;border-bottom:1px solid var(--am-border)}.evidence-tabs button{font:inherit;font-size:12px;padding:6px 10px;border:0;background:transparent;color:var(--am-text);cursor:pointer}.evidence-tabs button[aria-selected=true]{box-shadow:inset 0 -2px var(--am-brand-primary);font-weight:600}.evidence-panel{min-width:0;min-height:0;overflow:auto}.evidence-panel :deep(.measurement-summary),.evidence-panel :deep(.boundary-summary),.evidence-panel :deep(.geometry-summary){max-height:none;overflow:visible}
+.evidence-tabs{display:flex;flex-wrap:wrap;gap:4px;border-bottom:1px solid var(--am-border)}.evidence-tabs button{font:inherit;font-size:12px;padding:6px 10px;border:0;background:transparent;color:var(--am-text);cursor:pointer}.evidence-tabs button[aria-selected=true]{box-shadow:inset 0 -2px var(--am-brand-primary);font-weight:600}.evidence-tabs button:focus-visible{outline:2px solid var(--am-brand-primary);outline-offset:-2px}.evidence-panel{min-width:0;min-height:0;overflow:auto}.evidence-panel :deep(.measurement-summary),.evidence-panel :deep(.boundary-summary),.evidence-panel :deep(.geometry-summary){max-height:none;overflow:visible}
+.cloud-viewer.evidence-only{grid-template-rows:auto auto minmax(0,1fr)}
 .cloud-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 0; }
 .cloud-tools label { display: flex; align-items: center; gap: 6px; font-size: 12px; }
 .cloud-modes { display:flex;gap:2px; }
-.cloud-tools button, .cloud-message button { display: inline-grid; place-items: center; width: 32px; height: 32px; border: 1px solid var(--am-border); border-radius: 4px; color: var(--am-text); background: var(--am-surface); }
+.cloud-tools button, .cloud-message button, .evidence-message button { display: inline-grid; place-items: center; width: 32px; height: 32px; border: 1px solid var(--am-border); border-radius: 4px; color: var(--am-text); background: var(--am-surface); }
+.evidence-message{display:flex;align-items:center;gap:8px;overflow-wrap:anywhere;min-width:0}.evidence-message p{margin:0}
 .cloud-tools button[aria-pressed=true] { background: var(--am-surface-soft); outline: 2px solid var(--am-brand-primary); }
 .cloud-tools select {max-width:min(100%,240px);min-width:0}
 .cloud-tools label {min-width:0;max-width:100%}

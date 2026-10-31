@@ -1,7 +1,8 @@
 <template>
   <button class="geometry-open" :disabled="disabled" @click="show">{{ title }} · {{ object(modelValue).item_id || '-' }}</button>
   <Teleport to="body"><ConfirmDialog v-if="open" class="measurement-dialog" :title="title" size="wide" scroll-body confirm-variant="primary" :confirm-label="zh?'应用':'Apply'" :cancel-label="zh?'取消':'Cancel'" :confirm-disabled="!!issues.length||disabled" @confirm="apply" @cancel="open=false">
-    <div class="geometry-workspace measurement-workspace">
+    <MetrologyWorkspace>
+      <template #parameters>
       <section class="measurement-config">
         <label v-if="!height">{{ zh?'测量定义':'Measurement' }}<select :value="settings.kind" @change="changeMode(($event.target as HTMLSelectElement).value)"><option value="directional-planes">{{ zh?'两平面方向距离':'Directional plane distance' }}</option><option value="roi-statistic">{{ zh?'两区域统计差':'ROI statistic difference' }}</option></select></label>
         <GeometryFields v-model="draft" :fields="identityFields" />
@@ -16,24 +17,32 @@
         <GeometryFields v-if="statistic&&object(settings.statistic).kind==='quantile'" :model-value="settings" :fields="quantileFields" @update:model-value="setSettings" />
         <p v-if="candidate" role="status">{{ zh?'候选位置':'Candidate position' }}: {{ candidate.join(', ') }}</p>
       </section>
+      </template>
+      <template #view="{presentation}">
       <section class="measurement-view"><CloudPreviewSelector v-model="previewId" :previews="previews" :changed="changed" />
 
-        <CloudViewer v-if="preview" :key="preview.id" :payload="preview.payload" :project-id="preview.projectId" :allow-pick="canPick" :candidate="candidate??undefined" @candidate="pick" />
+        <CloudViewer v-if="preview" :key="preview.id" :presentation="presentation" :payload="preview.payload" :project-id="preview.projectId" :allow-pick="canPick" :candidate="candidate??undefined" @candidate="pick" />
 
       </section>
+      </template>
+      <template #advanced>
       <details class="measurement-quality"><summary>{{ zh?'测量质量':'Measurement quality' }}</summary>
         <GeometryFields :model-value="settings" :fields="qualityFields" @update:model-value="setSettings" />
         <WorkflowLimitRulesEditor :model-value="object(settings.quality_policy).rules" quality @update:model-value="setSettings(put(settings,'quality_policy.rules',$event))" />
       </details>
+      </template>
+      <template #issues>
       <p v-if="issues.length" role="alert">{{ zh?'待完善':'Incomplete' }}: {{ issues.join(' · ') }}</p>
       <p v-if="referenceIssues.length" role="status">{{ referenceIssues.join(' · ') }}</p>
-    </div>
+      </template>
+    </MetrologyWorkspace>
   </ConfirmDialog></Teleport>
 </template>
 <script setup lang="ts">
 import {computed,defineAsyncComponent,inject,ref,watch} from 'vue'
 import {useI18n} from 'vue-i18n'
 import CloudPreviewSelector from './CloudPreviewSelector.vue'
+import MetrologyWorkspace from './MetrologyWorkspace.vue'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import WorkflowLimitRulesEditor from '@/workflows/workflow-editor/components/WorkflowLimitRulesEditor.vue'
 import {parameterCloudPreviewsKey,parameterPreviewStateKey,type ParameterEditorSources} from '@/workflows/workflow-editor/parameters/editor-context'
@@ -95,11 +104,7 @@ watch(()=>[props.inputSources,query.value.kind,query.value.pose_id,query.value.t
 <style src="./editor.css" scoped></style>
 <style scoped>
 .measurement-dialog :deep(.confirm-dialog){width:min(1240px,calc(100vw - 36px))}
-.measurement-workspace{grid-template-columns:minmax(280px,360px) minmax(0,1fr);align-items:start}
 .measurement-config,.measurement-view{display:grid;gap:12px;min-width:0}
-.measurement-view{position:sticky;top:0}
-.measurement-quality,.measurement-workspace>p{grid-column:1/-1;min-width:0}
+.measurement-quality{min-width:0}
 .measurement-quality>summary{cursor:pointer;padding:8px 0;font-weight:600}
-.measurement-view :deep(.cloud-viewer){height:min(57dvh,580px)}
-@media(max-width:900px){.measurement-workspace{grid-template-columns:minmax(0,1fr)}.measurement-view{position:static}}
 </style>

@@ -1,7 +1,8 @@
 <template>
   <button class="geometry-open" :disabled="disabled" @click="show">{{ title }} · {{ object(modelValue).feature_id||'-' }}</button>
   <Teleport to="body"><ConfirmDialog v-if="open" class="boundary-dialog" :title="title" size="wide" scroll-body confirm-variant="primary" :confirm-label="label('应用','Apply')" :cancel-label="label('取消','Cancel')" :confirm-disabled="disabled||!!issues.length||!!referenceIssues.length" @confirm="apply" @cancel="open=false">
-    <div class="geometry-workspace boundary-workspace">
+    <MetrologyWorkspace>
+      <template #parameters>
       <section class="boundary-config">
         <GeometryFields v-model="draft" :fields="identityFields" />
         <template v-if="extract">
@@ -31,16 +32,22 @@
         <ArcSettingsForm v-if="!extract&&kind==='fit-circle'&&draft.robust" :model-value="draft.robust" :band="false" :unit="String(object(draft.evaluation).length_unit??'')" v-model:handle="arcHandle" :available="!!arcEdit" @update:model-value="draft=put(draft,'robust',$event)" />
         <EvaluationEditor v-model="draft.evaluation" :allow-feature="!extract" :pose="poseContour" :suggestions="suggestions" />
       </section>
-      <section class="boundary-view"><CloudPreviewSelector v-model="previewId" :previews="previews" :changed="changed" /><CloudViewer v-if="preview" :key="preview.id" :payload="preview.payload" :project-id="preview.projectId" :edit-rois="matchingRois" :hidden-roi-ids="hiddenRois" :roi-scope="visibilityScope" :selected-roi-id="arcEdit?undefined:roiView.selectedId" :edit-arc="arcEdit??undefined" @arc-change="changeArc" @roi-change="changeRoi" :allow-pick="canPickSeed" :candidate="candidate??undefined" @candidate="pickSeed" @feature-selection="chooseFeature" /><p v-if="candidate" role="status">{{ label('种子窗口候选中心','Candidate seed center') }}: {{ candidate.join(', ') }}</p></section>
+      </template>
+      <template #view="{presentation}">
+      <section class="boundary-view"><CloudPreviewSelector v-model="previewId" :previews="previews" :changed="changed" /><CloudViewer v-if="preview" :key="preview.id" :presentation="presentation" :payload="preview.payload" :project-id="preview.projectId" :edit-rois="matchingRois" :hidden-roi-ids="hiddenRois" :roi-scope="visibilityScope" :selected-roi-id="arcEdit?undefined:roiView.selectedId" :edit-arc="arcEdit??undefined" @arc-change="changeArc" @roi-change="changeRoi" :allow-pick="canPickSeed" :candidate="candidate??undefined" @candidate="pickSeed" @feature-selection="chooseFeature" /><p v-if="candidate" role="status">{{ label('种子窗口候选中心','Candidate seed center') }}: {{ candidate.join(', ') }}</p></section>
+      </template>
+      <template #advanced>
       <details class="boundary-advanced"><summary>{{ label('支持条件与几何质量','Support and geometry quality') }}</summary><GeometryFields v-if="extract&&!visibleEnvelope" v-model="draft" :fields="surfaceFields" /><GeometryFields v-if="kind==='fit-circle'" v-model="draft" :fields="solverFields" /><GeometryFields v-model="draft" :fields="qualityFields" /><WorkflowLimitRulesEditor :model-value="object(draft.quality_policy).rules" quality @update:model-value="draft=put(draft,'quality_policy.rules',$event)" /></details>
-      <p v-if="issues.length" role="alert">{{ label('待完善','Incomplete') }}: {{ issues.join(' · ') }}</p><p v-if="referenceIssues.length" role="alert">{{ referenceIssues.join(' · ') }}</p>
-    </div>
+      </template>
+      <template #issues><p v-if="issues.length" role="alert">{{ label('待完善','Incomplete') }}: {{ issues.join(' · ') }}</p><p v-if="referenceIssues.length" role="alert">{{ referenceIssues.join(' · ') }}</p></template>
+    </MetrologyWorkspace>
   </ConfirmDialog></Teleport>
 </template>
 <script setup lang="ts">
 import {computed,defineAsyncComponent,inject,ref,shallowRef,watch} from 'vue'
 import {useI18n} from 'vue-i18n'
 import CloudPreviewSelector from './CloudPreviewSelector.vue'
+import MetrologyWorkspace from './MetrologyWorkspace.vue'
 import {Plus,Trash2} from '@lucide/vue'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import WorkflowLimitRulesEditor from '@/workflows/workflow-editor/components/WorkflowLimitRulesEditor.vue'
@@ -147,5 +154,5 @@ watch(()=>JSON.stringify(props.inputSources),()=>{open.value=false;previewId.val
 <style src="./editor.css" scoped></style>
 <style scoped>
 .boundary-config fieldset label{display:flex;align-items:center;gap:6px}.boundary-config input[type=checkbox]{width:16px;height:16px;min-width:16px;flex:none}.segment-rows{display:grid;gap:6px}.segment-rows label{display:grid;grid-template-columns:minmax(0,1fr) 30px;gap:6px}.segment-rows label input{grid-column:1;min-width:0}.segment-rows button{width:30px;height:30px;display:grid;place-items:center}
-.boundary-dialog :deep(.confirm-dialog){width:min(1260px,calc(100vw - 36px))}.boundary-workspace{grid-template-columns:minmax(280px,370px) minmax(0,1fr);align-items:start}.boundary-config,.boundary-view{display:grid;gap:10px;min-width:0}.boundary-view{position:sticky;top:0}.boundary-view :deep(.cloud-viewer){height:min(60dvh,660px)}.boundary-advanced,.boundary-workspace>p{grid-column:1/-1}.target-toolbar{display:flex;gap:8px;align-items:end;flex-wrap:wrap}.target-toolbar button{display:grid;place-items:center;width:30px;height:30px}fieldset{border:1px solid var(--am-border);display:flex;gap:10px;flex-wrap:wrap}details>summary{padding:8px 0;cursor:pointer;font-weight:600}@media(max-width:900px){.boundary-workspace{grid-template-columns:minmax(0,1fr)}.boundary-view{position:static}}
+.boundary-dialog :deep(.confirm-dialog){width:min(1260px,calc(100vw - 36px))}.boundary-config,.boundary-view{display:grid;gap:10px;min-width:0}.target-toolbar{display:flex;gap:8px;align-items:end;flex-wrap:wrap}.target-toolbar button{display:grid;place-items:center;width:30px;height:30px}fieldset{border:1px solid var(--am-border);display:flex;gap:10px;flex-wrap:wrap}details>summary{padding:8px 0;cursor:pointer;font-weight:600}
 </style>

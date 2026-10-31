@@ -22,6 +22,27 @@ vi.mock('three',async importOriginal=>{
 vi.stubGlobal('ResizeObserver',class{constructor(callback:ResizeObserverCallback){captured.resize=callback}observe(){}disconnect(){}})
 const policy={max_points:10,max_data_bytes:1000,max_cpu_bytes:10000,max_gpu_bytes:10000000,max_canvas_pixels:1000000,max_position_error:.001}
 afterEach(()=>{vi.useRealTimers();captured.controls=[];expect(rendererUsage()).toEqual({cpuBytes:0,gpuBytes:0})})
+it('suspends a hidden or zero-size viewport without reallocating or losing camera state',()=>{
+  vi.useFakeTimers()
+  const host=document.createElement('div'),rect={width:600,height:400}
+  vi.spyOn(host,'getBoundingClientRect').mockImplementation(()=>rect as DOMRect)
+  const data={positions:new Float32Array([-1,-1,0,1,1,0]),colors:new Float32Array(6),origin:[0,0,0]} as CloudDisplayData
+  const failed=vi.fn(),view=createCloudRenderer(host,data,policy,()=>{},failed,()=>{})
+  try{
+    vi.advanceTimersByTime(20)
+    const camera=captured.camera as PerspectiveCamera,position=camera.position.clone(),rotation=camera.quaternion.clone(),usage=rendererUsage(),control=captured.controls.at(-1)!
+    for(let i=0;i<20;i++){
+      view.activity(false);expect(control.enabled).toBe(false);expect(vi.getTimerCount()).toBe(0)
+      captured.resize!([{contentRect:{width:0,height:0}}] as ResizeObserverEntry[],{} as ResizeObserver)
+      expect(rendererUsage()).toEqual(usage);expect(camera.aspect).toBe(1.5)
+      view.activity(true);vi.advanceTimersByTime(20);expect(control.enabled).toBe(true)
+    }
+    expect(captured.controls).toHaveLength(1);expect(host.children).toHaveLength(1)
+    expect(camera.position.equals(position)).toBe(true);expect(camera.quaternion.equals(rotation)).toBe(true)
+    rect.width=0;rect.height=0;view.activity(true);expect(control.enabled).toBe(false);expect(vi.getTimerCount()).toBe(0)
+    expect(failed).not.toHaveBeenCalled()
+  }finally{view.dispose()}
+})
 it('uses Z-up, zooms, preserves view on resize and projection switch, then releases',()=>{
   vi.useFakeTimers()
   const host=document.createElement('div')

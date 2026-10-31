@@ -16,7 +16,7 @@ const presetRotations = (Object.keys(directions) as CloudViewAxis[]).map(axis =>
 
 /** 一个激活的视口一个 renderer；没有常驻动画、后台重算或原始点云请求。 */
 export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, policy: CloudRendererPolicy,
-  picked: (index: number) => void, failed: (error: Error) => void, viewChanged: (view: CloudViewState) => void) {
+  picked: (index: number) => void, failed: (error: Error) => void, viewChanged: (view: CloudViewState) => void, initialActive = true) {
   const rect = host.getBoundingClientRect()
   function dimensions(width: number, height: number) {
     const w = Math.max(1, Math.floor(width)), h = Math.max(1, Math.floor(height))
@@ -31,6 +31,7 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
   let controls: OrbitControls | null = null
   let overlay: ReturnType<typeof createGeometryOverlay> | null = null
   let frame = 0, closed = false
+  let active = initialActive, measurable = rect.width > 0 && rect.height > 0
   let panEnabled = false
   const scene = new Scene(), geometry = new BufferGeometry(), material = new PointsMaterial({ size: 2, sizeAttenuation: false, vertexColors: true })
   let axes: AxesHelper | null = null
@@ -39,9 +40,9 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
   let radius = 1,viewRadius=1
   let pointDown: {x: number; y: number} | null = null
   function render() {
-    if (!closed && renderer) renderer.render(scene, camera)
+    if (!closed && active && measurable && renderer) renderer.render(scene, camera)
   }
-  function schedule() { if (!closed && !frame) frame = requestAnimationFrame(() => { frame = 0; render() }) }
+  function schedule() { if (!closed && active && measurable && !frame) frame = requestAnimationFrame(() => { frame = 0; render() }) }
   function publishView() {
     if (closed) return
     // 仅容纳 OrbitControls 在极轴处的浮点偏移，不是计量方向容差。
@@ -66,9 +67,9 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
     geometry.dispose(); material.dispose(); axes?.dispose(); scene.clear(); releaseGpu();releaseColor()
   }
   function lost(event: Event) { event.preventDefault(); dispose(); failed(new Error('cloud_context_lost')) }
-  function down(event: PointerEvent) { pointDown = {x: event.clientX, y: event.clientY} }
+  function down(event: PointerEvent) { if(active&&measurable)pointDown = {x: event.clientX, y: event.clientY} }
   function pick(event: PointerEvent) {
-    if (!renderer || overlay?.dragging() || !pointDown || Math.hypot(event.clientX - pointDown.x, event.clientY - pointDown.y) > 3) return
+    if (!active || !measurable || !renderer || overlay?.dragging() || !pointDown || Math.hypot(event.clientX - pointDown.x, event.clientY - pointDown.y) > 3) return
     const r = renderer.domElement.getBoundingClientRect(), ray = new Raycaster()
     ray.params.Points!.threshold = viewRadius * .015
     ray.params.Line!.threshold = viewRadius * .015
@@ -81,6 +82,7 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
     releaseControls()
     controls = new OrbitControls(camera, renderer!.domElement)
     controls.enableDamping = false
+    controls.enabled = active && measurable
     controls.zoomToCursor = true
     controls.mouseButtons.LEFT = panEnabled ? MOUSE.PAN : MOUSE.ROTATE
     controls.addEventListener('change', controlsChanged)
@@ -101,6 +103,24 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
     bindControls(); controls!.target.set(0, 0, 0); controls!.update(); publishView(); schedule()
   }
   const points = new Points(geometry, material)
+  function syncInteraction(){overlay?.activity(active&&measurable);if(controls)controls.enabled=active&&measurable&&!overlay?.dragging()}
+  function resize(wide:number,tall:number){
+    if(closed||!renderer)return
+    measurable=wide>0&&tall>0
+    syncInteraction()
+    if(!active||!measurable){cancelAnimationFrame(frame);frame=0;pointDown=null;return}
+    const [w,h]=dimensions(wide,tall)
+    if(w!==width||h!==height){
+      // 新画布沿原预算计量；失败时由调用方完整关闭。
+      releaseGpu();releaseGpu=()=>{}
+      releaseGpu=reserveGpu(data.positions.byteLength+data.colors.byteLength+w*h*8+144,policy)
+      width=w;height=h;renderer.setSize(w,h)
+      if(camera instanceof OrthographicCamera){const half=(camera.top-camera.bottom)/2;camera.left=-half*w/h;camera.right=half*w/h}
+      else camera.aspect=w/h
+      camera.updateProjectionMatrix()
+    }
+    schedule()
+  }
   try {
     releaseColor=reserveCpu(data.colors.byteLength,policy)
     geometry.setAttribute('position', new BufferAttribute(data.positions, 3)); geometry.setAttribute('color', new BufferAttribute(data.colors.slice(), 3))
@@ -115,25 +135,22 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
     axes = new AxesHelper(radius * .65); scene.add(points, axes)
     camera = new PerspectiveCamera(45, width / height)
     fit()
-    overlay = createGeometryOverlay(scene,camera,renderer.domElement,data.origin,policy,schedule,active=>{if(controls)controls.enabled=!active},error=>{dispose();failed(error)})
+    overlay = createGeometryOverlay(scene,camera,renderer.domElement,data.origin,policy,schedule,dragging=>{if(controls)controls.enabled=active&&measurable&&!dragging},error=>{dispose();failed(error)})
+    syncInteraction()
     observer = new ResizeObserver(entries => {
       try {
         const box = entries[0]?.contentRect
         if (!box || closed || !renderer) return
-        const [w, h] = dimensions(box.width, box.height)
-        if (w === width && h === height) return
-        // 先释放旧画布计量；新预算失败时整个 renderer 关闭，不能保持未计费画布。
-        releaseGpu(); releaseGpu = () => {}
-        releaseGpu = reserveGpu(data.positions.byteLength + data.colors.byteLength + w * h * 8 + 144, policy)
-        width = w; height = h; renderer.setSize(w, h)
-        if(camera instanceof OrthographicCamera){const half=(camera.top-camera.bottom)/2;camera.left=-half*w/h;camera.right=half*w/h}
-        else camera.aspect=w/h
-        camera.updateProjectionMatrix();schedule()
+        resize(box.width,box.height)
       } catch (error) { dispose(); failed(error as Error) }
     })
     observer.observe(host)
     return {
       dispose, fit,
+      activity(value:boolean){
+        if(closed)return
+        try{active=value;pointDown=null;const box=host.getBoundingClientRect();resize(box.width,box.height)}catch(error){dispose();failed(error as Error)}
+      },
       focus(kind:GeometryFocus){
         if(closed)return
         const bounds=overlay?.focus(kind)
