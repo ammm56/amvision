@@ -53,6 +53,27 @@ def _supported_faces(local, xy, triangles, limits, *, cancel):
     return np.asarray(triangles[keep], dtype=np.int64)
 
 
+def _boundary_edges(faces, *, cancel):
+    """按端点字典序分组，保留首条有向边；重复三面仍明确拒绝。"""
+    cancel()
+    edges = np.concatenate((faces[:, [0, 1]], faces[:, [1, 2]], faces[:, [2, 0]]))
+    keys = np.sort(edges, axis=1)
+    # lexsort 稳定排序两个整数列，避免 unique(axis=0) 的结构化记录比较。
+    order = np.lexsort((keys[:, 1], keys[:, 0]))
+    cancel()
+    sorted_keys = keys[order]
+    starts = (
+        np.flatnonzero(np.r_[True, np.any(sorted_keys[1:] != sorted_keys[:-1], axis=1)])
+        if len(edges)
+        else np.empty(0, dtype=np.int64)
+    )
+    counts = np.diff(np.r_[starts, len(edges)])
+    cancel()
+    if np.any(counts > 2):
+        return None
+    return edges[order[starts[counts == 1]]]
+
+
 def build_surface(
     positions,
     *,
@@ -136,11 +157,8 @@ def build_surface(
     del local, xy, triangles
     if not len(faces):
         return missing("no_supported_surface", candidate_count)
-    edges = np.concatenate((faces[:, [0, 1]], faces[:, [1, 2]], faces[:, [2, 0]]))
-    _, first, counts = np.unique(
-        np.sort(edges, axis=1), axis=0, return_index=True, return_counts=True
-    )
-    if np.any(counts > 2):
+    edges = _boundary_edges(faces, cancel=cancel)
+    if edges is None:
         return missing("nonmanifold_surface", candidate_count)
     cancel()
-    return SurfaceResult(None, faces, edges[first[counts == 1]], candidate_count)
+    return SurfaceResult(None, faces, edges, candidate_count)

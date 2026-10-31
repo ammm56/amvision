@@ -44,7 +44,7 @@ def test_numerical_graph_preserves_measurement_parameters():
 
 
 @pytest.mark.parametrize("visible", [False, True], ids=["strict", "visible"])
-def test_full_sample_compute_profile(tmp_path, request, visible):
+def test_full_sample_compute_profile(tmp_path, request, visible, monkeypatch):
     """完整读取一次后执行纯数值图，保留原结果矩阵作同算法优化基线。"""
     sample = request.config.getoption("--cloud-sample")
     if not sample:
@@ -63,6 +63,12 @@ def test_full_sample_compute_profile(tmp_path, request, visible):
     configured = representative_policy()
     scope = ResourceScope(kind="workflow")
     runtime = get_cloud_runtime(scope, run_id="r5-f-compute", policy=configured.io)
+    audit = request.config.getoption("--cloud-audit-resolution")
+    edge_audit = []
+    if audit:
+        from tests.integration.metrology3d.surface_edge_audit import capture_edge_audit
+
+        capture_edge_audit(monkeypatch, edge_audit)
     try:
         started = perf_counter()
         cloud = read_file_reference(
@@ -131,6 +137,28 @@ def test_full_sample_compute_profile(tmp_path, request, visible):
             if visible
             else "same-method-regression-not-new-envelope",
         )
+        if audit:
+            from custom_nodes.metrology3d_nodes.shared.crop_roi import crop_roi
+            from custom_nodes.metrology3d_nodes.shared.fit_plane import fit_plane
+            from custom_nodes.metrology3d_nodes.shared.build_frame import build_frame
+            from tests.integration.metrology3d import workpiece_recipe as recipe
+            from tests.integration.metrology3d import representative_recipe
+            from tests.integration.metrology3d.profile_stage_audit import (
+                audit_profile_sample,
+            )
+
+            selected, _ = crop_roi(
+                runtime, cloud, recipe.support_regions()["D"], cancel=lambda: None
+            )
+            datum = fit_plane(runtime, selected, recipe.plane("D"), cancel=lambda: None)
+            pose = build_frame(
+                runtime, [datum], representative_recipe.frame(), cancel=lambda: None
+            )
+            report["resolution_audit"] = audit_profile_sample(
+                runtime, cloud, datum, pose, current_only=True
+            )
+            report["surface_edge_audit"] = edge_audit
+            report["compute"]["instrumented"] = True
     finally:
         assert not scope.close()
         assert runtime.budget.used == 0

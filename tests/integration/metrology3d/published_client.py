@@ -55,6 +55,7 @@ def invoke_cloud(
     timeout_ms=120000,
     hold_writer=None,
     expect_error=False,
+    timings=None,
 ):
     """经 PREPARE、WRITING、REQUEST、RESPONSE 和 ACK 完成真实调用。"""
     with WorkflowTriggerMailboxClient(buffers_root=root) as client:
@@ -106,6 +107,7 @@ def invoke_cloud(
                             view[:] = content
                 finally:
                     access.close()
+                ready_at = monotonic()
                 client.publish_request(
                     identity=identity,
                     payload=WorkflowTriggerRequestV1(
@@ -118,6 +120,8 @@ def invoke_cloud(
                     lambda: client.read_response(identity=identity),
                     timeout=timeout_ms / 1000 + 5,
                 )
+                if timings is not None:
+                    timings["cloud_ready_to_response_seconds"] = monotonic() - ready_at
             try:
                 assert (response.error_code != 0) == expect_error, response
                 return json.loads(response.payload)

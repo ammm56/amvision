@@ -9,3 +9,4 @@ def pytest_addoption(parser):
     """完整样本显式选择，日常回归不自动读取现场大文件。"""
     parser.addoption("--cloud-sample", default=None)
     parser.addoption("--cloud-report-dir", default=None)
+    parser.addoption("--cloud-audit-resolution", action="store_true", default=False)
