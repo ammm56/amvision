@@ -115,7 +115,7 @@ def _edge_profiles(grid, settings, cancel):
 
 
 def extract_envelope_profiles(
-    positions, evaluation, settings, *, region, max_working_bytes, cancel
+    positions, evaluation, settings, *, region, max_working_bytes, cancel, capture=None
 ):
     """完整局部观测求四侧；输出只含生成坐标、格来源和有界质量摘要。"""
     grid = build_envelope_grid(
@@ -124,6 +124,7 @@ def extract_envelope_profiles(
         settings,
         max_working_bytes=max_working_bytes,
         cancel=cancel,
+        capture=capture,
     )
     metrics = dict(
         input_count=len(positions),
@@ -154,6 +155,12 @@ def extract_envelope_profiles(
     rotation, origin = np.asarray(evaluation.rotation), np.asarray(evaluation.origin)
     uv = np.asarray([r[0] for r in records])
     output = np.column_stack((uv, np.zeros(len(uv)))) @ rotation.T + origin
+    if capture is not None and capture.reason is None:
+        from custom_nodes.metrology3d_nodes.shared.boundary_debug import (
+            capture_profiles,
+        )
+
+        capture_profiles(capture, output, layouts, records, g.shape[1])
     # 检查实际三维 ROI 的裁切，而不只检查外层二维格阵边缘。
     outer = []
     for _, cell, _, _, _, _, side in records:

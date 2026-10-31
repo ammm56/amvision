@@ -80,7 +80,7 @@ def curve_display(runtime, feature, *, policy, remaining_points, cancel):
                             .reshape(-1)
                             .tolist()
                         )
-    raw = feature.model_dump(mode="json", exclude={"support"})
+    raw = feature.model_dump(mode="json", exclude={"support", "debug_capture"})
     if profile_kinds:
         raw["profile_kinds"] = profile_kinds
     if inlier_flags:

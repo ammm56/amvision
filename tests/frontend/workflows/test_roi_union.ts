@@ -3,6 +3,7 @@ import {flushPromises, mount} from '@vue/test-utils'
 import {createI18n} from 'vue-i18n'
 import {Mesh, PerspectiveCamera, Scene, Vector3} from 'three'
 import RoiEditor from '../../../custom_nodes/metrology3d_nodes/frontend/RoiEditor.vue'
+import RoiForm from '../../../custom_nodes/metrology3d_nodes/frontend/RoiForm.vue'
 import {roiIssues} from '../../../custom_nodes/metrology3d_nodes/frontend/form'
 import {createGeometryOverlay} from '@/workflows/workflow-editor/point-cloud/geometry-overlay'
 import {rendererUsage} from '@/workflows/workflow-editor/point-cloud/preview-data'
@@ -19,6 +20,32 @@ const button=(text:string)=>[...document.querySelectorAll('button')].find(b=>b.t
 async function change(element:HTMLInputElement|HTMLSelectElement,value:string,event='change'){
   element.value=value;element.dispatchEvent(new Event(event,{bubbles:true}));await flushPromises()
 }
+
+it('separates eye actions from union membership and carries visibility only through a valid rename',async()=>{
+  const value=source(),before=JSON.stringify(value)
+  const w=mount(RoiForm,{props:{modelValue:value,canView:true,visibilityScope:'one'},global:{plugins:[createI18n({legacy:false,locale:'en-US'})]}})
+  await w.get('[aria-label="Hide region · left"]').trigger('click')
+  expect(w.get('[aria-label="Partly visible; show all · all"]').attributes('aria-pressed')).toBe('mixed')
+  expect((w.get('input[value="left"]').element as HTMLInputElement).checked).toBe(true)
+  expect(w.emitted('update:modelValue')).toBeUndefined();expect(JSON.stringify(value)).toBe(before)
+  await w.get('select option[value="target"]').element.parentElement!.dispatchEvent(new Event('focus'))
+  const select=w.get('select option[value="target"]').element.parentElement as HTMLSelectElement
+  await change(select,'0')
+  await w.get('input[aria-label="ROI ID"]').setValue('renamed')
+  expect(w.find('[aria-label="Show region · renamed"]').exists()).toBe(true)
+  expect((w.emitted('update:modelValue')!.at(-1)![0] as ReturnType<typeof source>).roi.geometry.roi_ids).toEqual(['renamed','right'])
+  await w.setProps({visibilityScope:'two'});expect(w.find('[aria-label="Hide region · renamed"]').exists()).toBe(true)
+  await w.setProps({canView:false});expect(w.get('.roi-visibility').attributes('disabled')).toBeDefined()
+  w.unmount()
+})
+
+it('does not expose unchecked members via their eye controls',async()=>{
+  const value=source();value.roi.geometry.roi_ids=['right']
+  const w=mount(RoiForm,{props:{modelValue:value,canView:true},global:{plugins:[createI18n({legacy:false,locale:'en-US'})]}})
+  expect(w.get('[aria-label="Region display unavailable · left"]').attributes('disabled')).toBeDefined()
+  const view=w.emitted('view')!.at(-1)![0] as {rois:{roi_id:string}[]}
+  expect(view.rois.map(r=>r.roi_id)).toEqual(['all','right']);w.unmount()
+})
 
 it('edits union members atomically, blocks empty sets and preserves cancellation',async()=>{
   const w=mount(RoiEditor,{props:{modelValue:source()},attachTo:document.body,global:{plugins:[createI18n({legacy:false,locale:'en-US'})]}})

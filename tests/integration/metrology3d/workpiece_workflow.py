@@ -14,7 +14,7 @@ from tests.metrology3d_transport_support import cloud_documents
 from tests.point_cloud_support import options
 
 
-def workpiece_documents(*, file=False, inspection="A_top_L", visible=False):
+def workpiece_documents(*, file=False, inspection="A_top_L", visible=False, debug=()):
     """所有数值都计算；仅将指定对象的证据接到显示，未声称隐藏面板能减少捕获。"""
     if inspection not in {*recipe.STEEL, "S1", "S2"}:
         raise ValueError(inspection)
@@ -129,6 +129,15 @@ def workpiece_documents(*, file=False, inspection="A_top_L", visible=False):
                 link(source, "features", "preview", "features")
             link(name + ".diameter", "evidence", "preview", "evidence")
     connect_measurement_output(graph, outputs)
+    # 仅显式验收对象捕获，同一提取结果沿现有 features 端口交付。
+    for name in debug:
+        if name not in {*recipe.STEEL, "S1", "S2"}:
+            raise ValueError(name)
+        next(n for n in graph["nodes"] if n["node_id"] == name + ".boundary")[
+            "parameters"
+        ]["capture_debug"] = True
+        if name != inspection:
+            link(name + ".boundary", "features", "preview", "features")
     # 单个有界总览；平面逐点分类不复制到整个工件结果中。
     for index, definition in enumerate(graph["nodes"]):
         definition["ui_state"] = dict(x=(index % 8) * 400, y=(index // 8) * 450)
@@ -149,7 +158,12 @@ def check_workpiece_body(body, *, matrix=None):
     expected = json.loads((matrix or path).read_text("utf-8"))["items"]
     if matrix is None:
         # 严格截线仍保留旧 L/W 缺测真值；只更新已独立核验的两项基准范围和部分弧定义。
-        current = json.loads((Path(__file__).parents[3] / "docs/development/assets/r5-f4/workpiece-windows.json").read_text("utf-8"))["items"]
+        current = json.loads(
+            (
+                Path(__file__).parents[3]
+                / "docs/development/assets/r5-f4/workpiece-windows.json"
+            ).read_text("utf-8")
+        )["items"]
         for key in ("A_top_R.Z", "A_bottom_L.Z", "S2.D"):
             expected[key] = current[key]
     assert set(body) == {"code", "message", "data"}

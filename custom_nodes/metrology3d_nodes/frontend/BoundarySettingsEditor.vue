@@ -10,7 +10,7 @@
           <GeometryFields v-model="draft" :fields="methodFields" :suggestions="suggestions" />
           <label v-if="poseContour&&object(object(draft.method).height).kind==='measurement-ratio'">{{ label('沿基准正法向的顺序','Order along positive datum normal') }}<select v-model="object(object(draft.method).height).order"><option :value="null" disabled>{{ label('选择顺序','Select order') }}</option><option value="target-above">{{ label('目标高于基体','Target above reference') }}</option><option value="target-below">{{ label('目标低于基体','Target below reference') }}</option></select></label>
           <label>{{ label('编辑 ROI','Edit ROI') }}<select v-model="roiScope"><option value="surface">{{ label('表面 ROI','Surface ROI') }}</option><option v-if="target" value="target">{{ label('实测支持 ROI','Measured support ROI') }}</option></select></label>
-          <details><summary>{{ roiScope==='target'?label('实测支持 ROI','Measured support ROI'):label('表面 ROI','Surface ROI') }}</summary><RoiForm ref="roiForm" :key="roiScope+':'+targetIndex" :model-value="roiSource" :allow-input="false" @update:model-value="setRegion" @view="roiView=$event" /></details>
+          <details><summary>{{ roiScope==='target'?label('实测支持 ROI','Measured support ROI'):label('表面 ROI','Surface ROI') }}</summary><RoiForm ref="roiForm" :key="roiScope+':'+targetIndex" :model-value="roiSource" :allow-input="false" :can-view="!!preview&&!!matchingRois.length" :visibility-scope="visibilityScope" @update:model-value="setRegion" @view="roiView=$event" @visibility="hiddenRois=$event" /></details>
           <EnvelopeSettingsEditor v-if="visibleEnvelope" :model-value="object(object(draft.method).envelope)" @update:model-value="draft=put(draft,'method.envelope',$event)" />
           <div v-else class="target-toolbar"><label>{{ label('目标边界','Target boundary') }}<select v-model="targetIndex"><option v-for="(target,i) in targets" :key="i" :value="i">{{ target.group_id||target.segment_id||`#${i+1}` }}</option></select></label><button :title="label('添加目标','Add target')" @click="addTarget"><Plus :size="16" /></button><button :title="label('删除目标','Remove target')" :disabled="!target" @click="removeTarget"><Trash2 :size="16" /></button></div>
           <template v-if="target">
@@ -31,14 +31,14 @@
         <ArcSettingsForm v-if="!extract&&kind==='fit-circle'&&draft.robust" :model-value="draft.robust" :band="false" :unit="String(object(draft.evaluation).length_unit??'')" v-model:handle="arcHandle" :available="!!arcEdit" @update:model-value="draft=put(draft,'robust',$event)" />
         <EvaluationEditor v-model="draft.evaluation" :allow-feature="!extract" :pose="poseContour" :suggestions="suggestions" />
       </section>
-      <section class="boundary-view"><CloudPreviewSelector v-model="previewId" :previews="previews" :changed="changed" /><CloudViewer v-if="preview" :key="preview.id" :payload="preview.payload" :project-id="preview.projectId" :edit-rois="matchingRois" :selected-roi-id="arcEdit?undefined:roiView.selectedId" :edit-arc="arcEdit??undefined" @arc-change="changeArc" @roi-change="roiForm?.setCurrent($event)" :allow-pick="canPickSeed" :candidate="candidate??undefined" @candidate="pickSeed" @feature-selection="chooseFeature" /><p v-if="candidate" role="status">{{ label('种子窗口候选中心','Candidate seed center') }}: {{ candidate.join(', ') }}</p></section>
+      <section class="boundary-view"><CloudPreviewSelector v-model="previewId" :previews="previews" :changed="changed" /><CloudViewer v-if="preview" :key="preview.id" :payload="preview.payload" :project-id="preview.projectId" :edit-rois="matchingRois" :hidden-roi-ids="hiddenRois" :roi-scope="visibilityScope" :selected-roi-id="arcEdit?undefined:roiView.selectedId" :edit-arc="arcEdit??undefined" @arc-change="changeArc" @roi-change="changeRoi" :allow-pick="canPickSeed" :candidate="candidate??undefined" @candidate="pickSeed" @feature-selection="chooseFeature" /><p v-if="candidate" role="status">{{ label('种子窗口候选中心','Candidate seed center') }}: {{ candidate.join(', ') }}</p></section>
       <details class="boundary-advanced"><summary>{{ label('支持条件与几何质量','Support and geometry quality') }}</summary><GeometryFields v-if="extract&&!visibleEnvelope" v-model="draft" :fields="surfaceFields" /><GeometryFields v-if="kind==='fit-circle'" v-model="draft" :fields="solverFields" /><GeometryFields v-model="draft" :fields="qualityFields" /><WorkflowLimitRulesEditor :model-value="object(draft.quality_policy).rules" quality @update:model-value="draft=put(draft,'quality_policy.rules',$event)" /></details>
       <p v-if="issues.length" role="alert">{{ label('待完善','Incomplete') }}: {{ issues.join(' · ') }}</p><p v-if="referenceIssues.length" role="alert">{{ referenceIssues.join(' · ') }}</p>
     </div>
   </ConfirmDialog></Teleport>
 </template>
 <script setup lang="ts">
-import {computed,defineAsyncComponent,inject,ref,watch} from 'vue'
+import {computed,defineAsyncComponent,inject,ref,shallowRef,watch} from 'vue'
 import {useI18n} from 'vue-i18n'
 import CloudPreviewSelector from './CloudPreviewSelector.vue'
 import {Plus,Trash2} from '@lucide/vue'
@@ -74,6 +74,9 @@ const title=computed(()=>extract.value?label('提取边界','Extract boundary'):
 const open=ref(false),draft=ref<Form>({}),previewId=ref(''),targetIndex=ref(0)
 const candidate=ref<number[]|null>(null)
 const roiScope=ref('surface'),roiForm=ref<InstanceType<typeof RoiForm>>(),roiView=ref<{rois:Form[];selectedId:string}>({rois:[],selectedId:''})
+const hiddenRois=shallowRef<ReadonlySet<string>>(new Set())
+const visibilityScope=computed(()=>JSON.stringify([state().runId,previewId.value,preview.value?.payload.observation_id,preview.value?.payload.spatial,roiScope.value,targetIndex.value,object(draft.value.method).kind]))
+function changeRoi(value:Form){if(open.value&&!props.disabled&&preview.value&&matchingRois.value.length&&value.roi_id===roiView.value.selectedId)roiForm.value?.setCurrent(value)}
 const initial=ref(''),changed=computed(()=>JSON.stringify(draft.value)!==initial.value)
 const roiRegion=computed(()=>roiScope.value==='target'&&target.value?target.value.region:draft.value.region)
 const roiSource=computed(()=>regionSource(roiRegion.value))

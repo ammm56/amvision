@@ -125,3 +125,142 @@ def test_complete_cloud_published_measurements_and_datum_display(tmp_path, reque
             (
                 destination / ("ui-display-" + platform.system().lower() + ".json")
             ).write_text(json.dumps(report, indent=2), encoding="utf-8")
+
+
+def test_complete_cloud_published_debug_capture(tmp_path, request):
+    """三对象同次捕获，正式发布/Trigger/显示传输；数值对照冻结 F4，不改质量。"""
+    from backend.contracts.workflows.boundary3d_debug import BoundaryDebugDisplay
+    from tests.test_metrology3d_debug_capture import arrays
+
+    sample = request.config.getoption("--cloud-sample")
+    if not sample:
+        pytest.skip("通过 --cloud-sample 显式提供完整样本")
+    binary = tmp_path / "cloud.bin"
+    cloud = sample_array(Path(sample), binary).model_copy(update={"spatial": spatial()})
+    documents = workpiece_documents(
+        visible=True, inspection="S2", debug=("A_top_L", "S1", "S2")
+    )
+    with published_system(
+        tmp_path, point_cloud_policy=representative_policy()
+    ) as system:
+        version = system.publish(point_limit=500_000, documents=documents)
+        system.start(version)
+        generation = system.enable_source(create=True)
+        snapshot = system.call(
+            "GET", f"/app-runtimes/{system.runtime_id}/preview-snapshot"
+        )
+        query = urlencode(
+            {
+                key: snapshot[key]
+                for key in (
+                    "workflow_runtime_id",
+                    "workflow_runtime_revision_id",
+                    "runtime_generation",
+                    "worker_instance_id",
+                )
+            }
+        )
+        with system.client.websocket_connect(
+            "/ws/v1/workflows/app-runtimes/preview?" + query, headers=system.headers
+        ) as ws:
+            assert ws.receive_json()["state"] == "connected"
+            reply = invoke_cloud(system, generation, cloud, binary)
+            assert reply["state"] == "succeeded", reply
+            check_workpiece_body(
+                reply["response_payload"]["results"]["body"],
+                matrix=Path(__file__).parents[3]
+                / "docs/development/assets/r5-f4/workpiece-windows.json",
+            )
+            frame = ws.receive_json()
+            ws.send_text("ready")
+            assert frame["state"] == "succeeded" and not frame.get("error"), frame
+            assert frame["workflow_run_id"] == reply["workflow_run_id"]
+            display = next(
+                d["payload"]
+                for d in frame["displays"]
+                if d["payload"]["type"] == "point-cloud-preview"
+            )
+            assert (
+                display["state"] == "ready"
+                and display["display_point_count"] == 500_000
+            )
+            captures = [
+                BoundaryDebugDisplay.model_validate(raw)
+                for raw in display["boundary_debug"]
+            ]
+            (tmp_path / "capture-status.json").write_text(
+                json.dumps(
+                    [c.model_dump(mode="json", exclude={"data"}) for c in captures],
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+            assert {c.identity.node_id for c in captures} == {
+                "A_top_L.boundary",
+                "S1.boundary",
+                "S2.boundary",
+            }
+            summary = []
+            for capture in captures:
+                assert capture.state == "ready" and capture.selection_complete, (
+                    capture.identity.node_id,
+                    capture.state,
+                    capture.reason,
+                    capture.grid,
+                )
+                assert capture.identity.run_id == reply["workflow_run_id"]
+                fields = arrays(capture)
+                if capture.grid:
+                    assert (
+                        len(fields["counts"])
+                        == capture.grid.shape[0] * capture.grid.shape[1]
+                    )
+                    assert len(fields["bin_rows"]) == len(
+                        fields["input_source_indices"]
+                    )
+                    assert len(fields["profile_offsets"]) == 5
+                else:
+                    assert (
+                        len(fields["candidate_offsets"])
+                        == len(fields["candidate_closed"]) + 1
+                    )
+                summary.append(
+                    dict(
+                        node=capture.identity.node_id,
+                        bytes=capture.data.content_length,
+                        fields={
+                            key: list(value.shape) for key, value in fields.items()
+                        },
+                    )
+                )
+        system.assert_reclaimed()
+        assert (
+            system.call("POST", f"/app-runtimes/{system.runtime_id}/stop")[
+                "observed_state"
+            ]
+            == "stopped"
+        )
+        system.assert_reclaimed()
+        output = request.config.getoption("--cloud-report-dir")
+        if output:
+            destination = Path(output)
+            destination.mkdir(parents=True, exist_ok=True)
+            (destination / ("debug-" + platform.system().lower() + ".json")).write_text(
+                json.dumps(
+                    dict(
+                        platform=platform.platform(),
+                        version=version,
+                        run=reply["workflow_run_id"],
+                        points=cloud.point_count,
+                        captures=summary,
+                        measurements_match_f4=True,
+                        resources_reclaimed=True,
+                    ),
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+            # 验收中间正文仅写临时目录，前端解码和历史重开对照后清理。
+            (tmp_path / "captured-display.json").write_text(
+                json.dumps(display), encoding="utf-8"
+            )

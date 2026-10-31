@@ -110,7 +110,9 @@ def _dimension_support(runtime, cloud, role, *, feature, cancel):
             "line": LineSnapshot,
             "circle": CircleSnapshot,
         }[feature.kind]
-        snapshot = cls.model_validate(feature.model_dump(exclude={"support"}))
+        snapshot = cls.model_validate(
+            feature.model_dump(exclude={"support", "debug_capture"})
+        )
     return DimensionSupport(
         role=role,
         content_sha256=freeze_cloud_parent(runtime, cloud)["content_sha256"]

@@ -22,9 +22,8 @@ from custom_nodes.metrology3d_nodes.shared.fit_boundary import fit_boundary
 
 def extract(request):
     """只有等高方法接受基准平面端口；不猜第一个平面。"""
-    parameters = ExtractBoundaryNodeParameters.model_validate(
-        request.parameters
-    ).settings
+    node_parameters = ExtractBoundaryNodeParameters.model_validate(request.parameters)
+    parameters = node_parameters.settings
     env = require_node_runtime(request)
     values = request.input_values
     groups = [Features3d.model_validate(raw) for raw in values.get("features") or ()]
@@ -90,6 +89,20 @@ def extract(request):
             raise InvalidRequestError("固定等高不能连接测量证据")
     elif groups or pose is not None or evidence:
         raise InvalidRequestError("投影和截面不接受多余基准特征输入")
+    capture = None
+    if node_parameters.capture_debug:
+        from custom_nodes.metrology3d_nodes.shared.boundary_debug import BoundaryCapture
+
+        capture = BoundaryCapture(
+            env.runtime,
+            reference,
+            parameters,
+            policy=env.policy.preview,
+            directory=env.service.storage.root_dir,
+            node_id=request.node_id,
+            invocation_id=request.node_invocation_id,
+            cancel=env.cancel,
+        )
     result = extract_boundary(
         env.runtime,
         reference,
@@ -99,6 +112,7 @@ def extract(request):
         pose=pose,
         measurement=measurement,
         measurement_planes=measurement_planes,
+        capture=capture,
     )
     feature = result.items[0]
     cloud = feature.support

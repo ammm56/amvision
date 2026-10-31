@@ -37,7 +37,9 @@ def grid_working_bytes(point_count, settings):
     return point_count * 256 + cells * 256 + profiles * 2048 + (2 * radius + 1) ** 2 * 8
 
 
-def build_envelope_grid(positions, evaluation, settings, *, max_working_bytes, cancel):
+def build_envelope_grid(
+    positions, evaluation, settings, *, max_working_bytes, cancel, capture=None
+):
     """截面相对高度为零；所有格值由实际观测聚合，分区掩码单独计算。"""
     cancel()
     points = np.asarray(positions)
@@ -101,6 +103,7 @@ def build_envelope_grid(positions, evaluation, settings, *, max_working_bytes, c
             max_working_bytes=max_working_bytes
             - grid_working_bytes(len(points), settings),
             cancel=cancel,
+            capture=capture,
         )
         selected = np.zeros(g.shape, dtype=bool)
         if reason is None:
@@ -123,9 +126,26 @@ def build_envelope_grid(positions, evaluation, settings, *, max_working_bytes, c
                     or selected[:, -1].any()
                 ):
                     reason = "roi_clipped"
-        return EnvelopeGridResult(
+        result = EnvelopeGridResult(
             reason, median, counts, spread, selected, flat, component_count, 0
         )
+        if capture is not None:
+            from custom_nodes.metrology3d_nodes.shared.boundary_debug import (
+                capture_grid,
+            )
+
+            capture_grid(
+                capture,
+                result,
+                settings,
+                usable=usable,
+                foreground=foreground,
+                grouped=None,
+                labels=None,
+                selected_component=evidence[2] if evidence is not None else None,
+            )
+            capture.put("bin_rows", flat, dtype="int64")
+        return result
     grouped = foreground
     radius = selection.closing_radius_cells
     if radius:
@@ -164,9 +184,24 @@ def build_envelope_grid(positions, evaluation, settings, *, max_working_bytes, c
             or selected[:, -1].any()
         ):
             reason = "roi_clipped"
-    return EnvelopeGridResult(
+    result = EnvelopeGridResult(
         reason, median, counts, spread, selected, flat, int(component_count), added
     )
+    if capture is not None:
+        from custom_nodes.metrology3d_nodes.shared.boundary_debug import capture_grid
+
+        capture_grid(
+            capture,
+            result,
+            settings,
+            usable=usable,
+            foreground=foreground,
+            grouped=grouped,
+            labels=labels,
+            selected_component=int(ids[0]) if len(ids) == 1 else None,
+        )
+        capture.put("bin_rows", flat, dtype="int64")
+    return result
 
 
 def profile_min_cells(settings):

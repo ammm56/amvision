@@ -25,7 +25,7 @@
       </dl>
     </details>
     <details v-if="current"><summary>{{ zh?'几何质量':'Geometry quality' }} · {{ current.feature_id }}</summary><table><thead><tr><th>{{ zh?'指标':'Metric' }}</th><th>{{ zh?'值':'Value' }}</th><th>{{ zh?'单位':'Unit' }}</th><th>{{ zh?'原因':'Reason' }}</th></tr></thead><tbody><tr v-for="metric in metrics" :key="String(metric.item_id)"><td>{{ metric.item_id }}</td><td>{{ metric.value??'-' }}</td><td>{{ metric.unit }}</td><td>{{ metric.reason??'-' }}</td></tr></tbody></table></details>
-    <CurveSamples v-if="current?.angular_weights" :curve="current" :segment="selectedSegment" :unit="String(evaluation.length_unit)" />
+    <CurveSamples v-if="current?.angular_weights" :curve="current" :segment="selectedSegment" :unit="String(evaluation.length_unit)" :selected-index="selectedIndex" @select-point="emit('select-point',$event)" />
   </section>
 </template>
 <script setup lang="ts">
@@ -34,8 +34,8 @@ import {useI18n} from 'vue-i18n'
 import type {CurveDisplay} from './boundary-display'
 import {object} from './preview-data'
 import CurveSamples from './CurveSamples.vue'
-const props=defineProps<{items:CurveDisplay[];selected:string;selectedSegment:string}>()
-const emit=defineEmits<{select:[featureId:string,segmentId:string]}>()
+const props=defineProps<{items:CurveDisplay[];selected:string;selectedSegment:string;selectedIndex?:number|null}>()
+const emit=defineEmits<{select:[featureId:string,segmentId:string];'select-point':[index:number]}>()
 const {locale}=useI18n(),zh=computed(()=>locale.value==='zh-CN')
 const names=computed(()=>zh.value?{boundary:'边界',line:'直线',circle:'圆'}:{boundary:'Boundary',line:'Line',circle:'Circle'})
 const current=computed(()=>props.items.find(i=>i.feature_id===props.selected))

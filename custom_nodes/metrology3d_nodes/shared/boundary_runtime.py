@@ -194,6 +194,7 @@ def extract_boundary(
     pose=None,
     measurement=None,
     measurement_planes=(),
+    capture=None,
 ):
     """ROI 分块裁剪后运行真实内核，统一发布引用、质量和失败目标。"""
     require_space(runtime, reference, parameters.evaluation)
@@ -256,6 +257,25 @@ def extract_boundary(
                 with_sources=True,
                 cancel=cancel,
             )
+            if capture is not None:
+                capture.evaluation = kernel.evaluation
+                capture.working_limit = max(
+                    0,
+                    runtime.policy.max_working_bytes
+                    - positions.nbytes
+                    - sources.nbytes
+                    - (
+                        grid_working_bytes(
+                            support.point_count, parameters.method.envelope
+                        )
+                        if visible
+                        else support.point_count * 12288
+                    ),
+                )
+                if visible:
+                    capture.put("input_source_indices", sources, dtype="uint64")
+                else:
+                    capture.source_rows = sources
             if visible:
                 result = extract_envelope_profiles(
                     positions,
@@ -266,6 +286,7 @@ def extract_boundary(
                     - positions.nbytes
                     - sources.nbytes,
                     cancel=cancel,
+                    capture=capture,
                 )
                 reason, values = result.reason, result.metrics
                 topology = (
@@ -286,6 +307,7 @@ def extract_boundary(
                     contour_plane=contour_plane.geometry
                     if parameters.method.kind == "contour"
                     else None,
+                    capture=capture,
                 )
                 reason, values, failed = (
                     result.reason,
@@ -433,6 +455,7 @@ def extract_boundary(
             failed_segment_id=failed,
             geometry=topology if reason is None else None,
             support=support,
+            debug_capture=capture.finish(reason) if capture is not None else None,
             quality=quality,
             segments=segment_checks,
             groups=group_checks,
@@ -450,8 +473,13 @@ def extract_boundary(
             items=(feature,),
         )
     except BaseException as error:
+        if capture is not None:
+            capture.close()
         result = positions = sources = arrays = lineage_arrays = array = part = None
         release_exception_frames(error)
         for key in reversed(keys):
             runtime.storage_scope.close_resource(key)
         raise
+    finally:
+        if capture is not None:
+            capture.source_rows = None

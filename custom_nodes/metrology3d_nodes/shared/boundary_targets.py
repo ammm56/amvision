@@ -11,16 +11,20 @@ from custom_nodes.metrology3d_nodes.shared.boundary_topology import selected_run
 from custom_nodes.metrology3d_nodes.shared.roi_mask import roi_mask
 
 
-def select_targets(vertices, candidates, parameters, *, max_working_bytes, cancel):
+def select_targets(
+    vertices, candidates, parameters, *, max_working_bytes, cancel, capture=None
+):
     """返回原因、失败目标、逻辑行和拓扑；任一目标失败不交付部分结果。"""
     chosen, layouts, used, cursor = [], [], set(), 0
     evaluation = parameters.evaluation
     rotation = np.asarray(evaluation.rotation)
-    for target in parameters.targets:
+    if capture is not None:
+        capture.stage = "selection"
+    for target_index, target in enumerate(parameters.targets):
         cancel()
         grouped = isinstance(target, BoundaryFragmentTarget)
         matches = []
-        for candidate in candidates:
+        for candidate_index, candidate in enumerate(candidates):
             cancel()
             actual = vertices[candidate.indices]
             mask = roi_mask(
@@ -38,9 +42,17 @@ def select_targets(vertices, candidates, parameters, *, max_working_bytes, cance
                 ) % (2 * pi)
                 lo, hi = target.arc.radius_range
                 mask &= (radius >= lo) & (radius <= hi) & (angles <= target.arc.sweep)
-            for part in selected_runs(candidate, mask, cancel=cancel):
+            parts = selected_runs(candidate, mask, cancel=cancel)
+            matched_count = 0
+            accepted_before = len(matches)
+            for part in parts:
+                matched_count += len(part.indices)
                 if grouped:
                     if part.closed:
+                        if capture is not None:
+                            capture.event(
+                                target_index, candidate_index, 2, len(part.indices)
+                            )
                         return (
                             "fragment_group_closed_candidate",
                             target.target_id,
@@ -51,7 +63,18 @@ def select_targets(vertices, candidates, parameters, *, max_working_bytes, cance
                 elif part.closed == target.closed:
                     matches.append(part)
                     if len(matches) > 1:
+                        if capture is not None:
+                            capture.event(
+                                target_index, candidate_index, 1, matched_count
+                            )
                         return "target_ambiguous", target.target_id, None, None
+            if capture is not None:
+                capture.event(
+                    target_index,
+                    candidate_index,
+                    1 if len(matches) > accepted_before else 2 if matched_count else 0,
+                    matched_count,
+                )
         if not matches:
             return "target_not_found", target.target_id, None, None
         if grouped:
@@ -123,5 +146,7 @@ def select_targets(vertices, candidates, parameters, *, max_working_bytes, cance
             chosen.append(indices)
             cursor += len(actual)
     topology = BoundaryTopology(point_count=cursor, segments=layouts)
+    if capture is not None:
+        capture.selection_complete = True
     cancel()
     return None, None, np.concatenate(chosen), topology

@@ -29,6 +29,7 @@ from backend.contracts.workflows.point_cloud import Sha256
 from backend.contracts.workflows.point_cloud_runtime import CloudReference
 from backend.contracts.workflows.boundary3d_quality import check_boundary_metrics
 from backend.contracts.workflows.boundary3d_resolution import BoundaryResolution
+from backend.contracts.workflows.boundary3d_debug import BoundaryDebugReference
 from backend.contracts.workflows.evaluation3d import (
     EvaluationPlane3d,
     FeatureEvaluation3d,
@@ -212,6 +213,9 @@ class BoundaryFeature(BoundaryEvidence):
     """将边界证据绑定本次运行的实际支持点。"""
 
     support: CloudReference
+    debug_capture: BoundaryDebugReference | None = Field(
+        default=None, exclude_if=lambda v: v is None
+    )
 
     @model_validator(mode="after")
     def check_support(self) -> Self:
@@ -219,6 +223,20 @@ class BoundaryFeature(BoundaryEvidence):
         _check_common(self)
         if self.valid and self.geometry != self.support.topology:
             raise ValueError("边界支持拓扑不一致")
+        if self.debug_capture is not None:
+            ref = self.debug_capture
+            if (
+                ref.run_id,
+                ref.observation_id,
+                ref.feature_id,
+                ref.parameters_sha256,
+            ) != (
+                self.support.run_id,
+                self.support.observation_id,
+                self.feature_id,
+                self.method.parameters_sha256,
+            ):
+                raise ValueError("边界调试引用身份不一致")
         return self
 
 

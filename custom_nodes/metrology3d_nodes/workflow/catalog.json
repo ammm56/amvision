@@ -63364,6 +63364,72 @@
                       ],
                       "title": "CloudReference",
                       "type": "object"
+                    },
+                    "debug_capture": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": false,
+                          "description": "仅在当前 Scope 内可解析，节点调用身份与特征身份同时校验。",
+                          "properties": {
+                            "format_id": {
+                              "const": "amvision.boundary-debug-ref.v1",
+                              "default": "amvision.boundary-debug-ref.v1",
+                              "title": "Format Id",
+                              "type": "string"
+                            },
+                            "capture_id": {
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                              "title": "Capture Id",
+                              "type": "string"
+                            },
+                            "run_id": {
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                              "title": "Run Id",
+                              "type": "string"
+                            },
+                            "node_id": {
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                              "title": "Node Id",
+                              "type": "string"
+                            },
+                            "invocation_id": {
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                              "title": "Invocation Id",
+                              "type": "string"
+                            },
+                            "observation_id": {
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                              "title": "Observation Id",
+                              "type": "string"
+                            },
+                            "feature_id": {
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                              "title": "Feature Id",
+                              "type": "string"
+                            },
+                            "parameters_sha256": {
+                              "pattern": "^[0-9a-f]{64}$",
+                              "title": "Parameters Sha256",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "capture_id",
+                            "run_id",
+                            "node_id",
+                            "invocation_id",
+                            "observation_id",
+                            "feature_id",
+                            "parameters_sha256"
+                          ],
+                          "title": "BoundaryDebugReference",
+                          "type": "object"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null
                     }
                   },
                   "required": [
@@ -289014,7 +289080,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.15",
+      "node_pack_version": "0.1.17",
       "metadata": {}
     },
     {
@@ -289502,7 +289568,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.15",
+      "node_pack_version": "0.1.17",
       "metadata": {}
     },
     {
@@ -289911,7 +289977,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.15",
+      "node_pack_version": "0.1.17",
       "metadata": {}
     },
     {
@@ -289922,7 +289988,7 @@
       "description": "Extract Boundary",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.13",
+      "version": "0.1.14",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -292491,6 +292557,11 @@
             "title": "ExtractBoundaryParameters",
             "type": "object",
             "x-ui-widget": "boundary-settings"
+          },
+          "capture_debug": {
+            "default": false,
+            "title": "捕获边界调试证据",
+            "type": "boolean"
           }
         },
         "required": [
@@ -292505,7 +292576,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.15",
+      "node_pack_version": "0.1.17",
       "metadata": {}
     },
     {
@@ -292902,7 +292973,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.15",
+      "node_pack_version": "0.1.17",
       "metadata": {}
     },
     {
@@ -293399,7 +293470,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.15",
+      "node_pack_version": "0.1.17",
       "metadata": {}
     },
     {
@@ -294017,7 +294088,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.15",
+      "node_pack_version": "0.1.17",
       "metadata": {}
     },
     {
@@ -294676,7 +294747,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.15",
+      "node_pack_version": "0.1.17",
       "metadata": {}
     },
     {
@@ -296112,7 +296183,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.15",
+      "node_pack_version": "0.1.17",
       "metadata": {}
     },
     {
@@ -296373,7 +296444,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.15",
+      "node_pack_version": "0.1.17",
       "metadata": {}
     },
     {
@@ -296732,7 +296803,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.15",
+      "node_pack_version": "0.1.17",
       "metadata": {}
     },
     {
@@ -296789,7 +296860,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.15",
+      "node_pack_version": "0.1.17",
       "metadata": {}
     },
     {
@@ -297169,7 +297240,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.15",
+      "node_pack_version": "0.1.17",
       "metadata": {}
     },
     {
@@ -297241,7 +297312,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.15",
+      "node_pack_version": "0.1.17",
       "metadata": {}
     },
     {
@@ -297362,7 +297433,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.15",
+      "node_pack_version": "0.1.17",
       "metadata": {}
     },
     {
@@ -297373,7 +297444,7 @@
       "description": "Cloud Preview",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.13",
+      "version": "0.1.14",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -297582,7 +297653,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.15",
+      "node_pack_version": "0.1.17",
       "metadata": {}
     },
     {
@@ -297757,7 +297828,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.15",
+      "node_pack_version": "0.1.17",
       "metadata": {}
     },
     {
@@ -297956,7 +298027,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.15",
+      "node_pack_version": "0.1.17",
       "metadata": {}
     }
   ],

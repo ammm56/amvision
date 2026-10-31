@@ -36,7 +36,13 @@ class BoundaryExtraction:
 
 
 def extract_boundary_array(
-    positions, parameters, *, max_working_bytes, cancel, contour_plane=None
+    positions,
+    parameters,
+    *,
+    max_working_bytes,
+    cancel,
+    contour_plane=None,
+    capture=None,
 ):
     """完整明确 ROI 内求边界；参数不允许选择本次连通域序号。"""
     cancel()
@@ -142,12 +148,24 @@ def extract_boundary_array(
     if reason:
         return missing(reason)
     metrics["candidate_count"] = len(candidates)
+    if capture is not None:
+        from custom_nodes.metrology3d_nodes.shared.boundary_debug import (
+            capture_candidates,
+        )
+
+        try:
+            capture_candidates(
+                capture, vertices, selected, candidates, section, surface.faces
+            )
+        except MemoryError:
+            capture.unavailable("debug_allocation_failed")
     reason, failed, ordered, topology = select_targets(
         vertices,
         candidates,
         parameters,
         max_working_bytes=roi_working_bytes,
         cancel=cancel,
+        capture=capture,
     )
     if reason:
         return missing(reason, failed)

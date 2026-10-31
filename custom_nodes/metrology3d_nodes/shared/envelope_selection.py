@@ -8,7 +8,7 @@ from scipy.spatial import cKDTree
 from backend.service.application.errors import InvalidRequestError
 
 
-def metric_membership(uvh, settings, *, max_working_bytes, cancel):
+def metric_membership(uvh, settings, *, max_working_bytes, cancel, capture=None):
     """全量局部支持先分区；边数先计费后构图，密集点拒绝而非截断邻居。"""
     cancel()
     selected = np.zeros(len(uvh), dtype=bool)
@@ -45,6 +45,11 @@ def metric_membership(uvh, settings, *, max_working_bytes, cancel):
         axis=1,
     )
     targets = np.unique(labels[seed])
+    if capture is not None:
+        capture.put("metric_uv", points, dtype="float64")
+        capture.put("metric_rows", rows, dtype="uint64")
+        capture.put("metric_labels", labels, dtype="int64")
+        capture.put("metric_seed", seed, dtype="uint8")
     if len(targets) != 1:
         return (
             "target_not_found" if not len(targets) else "target_ambiguous",

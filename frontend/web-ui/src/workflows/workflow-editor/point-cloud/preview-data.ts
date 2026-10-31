@@ -69,6 +69,19 @@ export interface CloudDisplayData {
   dispose(): void
 }
 
+/** 点云与同次调试附件共用原二进制正文解码；分配预算由各自 owner 预留。 */
+export async function decodePreviewBytes(data: RecordValue, signal: AbortSignal): Promise<Uint8Array<ArrayBuffer>> {
+  const size=count(data.content_length),content=data.content
+  if(typeof content!=='string'||content.length!==4*Math.ceil(size/3)||data.encoding!=='base64'||data.checksum_algorithm!=='sha256'||!/^[A-Za-z0-9+/]*={0,2}$/.test(content))throw new Error('cloud_preview_invalid')
+  signal.throwIfAborted()
+  const raw=Uint8Array.from(atob(content),c=>c.charCodeAt(0))
+  if(raw.length!==size)throw new Error('cloud_preview_invalid')
+  const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',raw)),b=>b.toString(16).padStart(2,'0')).join('')
+  signal.throwIfAborted()
+  if(hash!==data.checksum)throw new Error('cloud_preview_checksum')
+  return raw
+}
+
 /** 仅解码有界显示副本；完整点云与算法输出不经过浏览器。 */
 export async function decodeCloudPreview(value: unknown, policy: CloudRendererPolicy, signal: AbortSignal): Promise<CloudDisplayData> {
   validatePolicy(policy)
@@ -87,13 +100,7 @@ export async function decodeCloudPreview(value: unknown, policy: CloudRendererPo
   const release = () => { if (!released) { released = true; cpuBytes -= cost } }
   try {
     signal.throwIfAborted()
-    // 不重复捕获四字符组，避免大显示载荷在正则引擎中耗尽调用栈。
-    if (!/^[A-Za-z0-9+/]*={0,2}$/.test(content)) throw new Error('cloud_preview_invalid')
-    const raw = Uint8Array.from(atob(content), c => c.charCodeAt(0))
-    if (raw.length !== size) throw new Error('cloud_preview_invalid')
-    const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', raw)), b => b.toString(16).padStart(2, '0')).join('')
-    signal.throwIfAborted()
-    if (hash !== data.checksum) throw new Error('cloud_preview_checksum')
+    const raw = await decodePreviewBytes(data, signal)
     const indexField = generated ? 'vertex_indices' : 'source_indices'
     const expected = color.mode === 'solid' ? ['positions', indexField] : color.mode === 'rgb' ? ['positions', indexField, 'colors'] : color.mode === 'scalar' ? ['positions', indexField, 'scalar'] : []
     if (!Array.isArray(data.fields) || !expected.length || data.fields.length !== expected.length) throw new Error('cloud_preview_invalid')

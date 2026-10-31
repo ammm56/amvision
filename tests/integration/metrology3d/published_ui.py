@@ -18,6 +18,7 @@ def main():
     parser.add_argument("--point-cloud-policy", type=Path)
     parser.add_argument("--inspection", default="A_top_L")
     parser.add_argument("--datum-preview", action="store_true")
+    parser.add_argument("--capture-debug", action="store_true")
     parser.add_argument(
         "--recipe",
         choices=(
@@ -66,7 +67,10 @@ def main():
                 )
 
                 documents = workpiece_documents(
-                    file=True, visible=True, inspection=args.inspection
+                    file=True,
+                    visible=True,
+                    inspection=args.inspection,
+                    debug=("A_top_L", "S1", "S2") if args.capture_debug else (),
                 )
                 if args.datum_preview:
                     from backend.contracts.workflows.workflow_graph import (

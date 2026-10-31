@@ -5,7 +5,7 @@
       <button :title="zh?'放大':'Zoom in'" :aria-label="zh?'放大':'Zoom in'" :disabled="!scene" @click="scene?.zoom(true)"><ZoomIn :size="18" /></button>
       <button :title="zh?'缩小':'Zoom out'" :aria-label="zh?'缩小':'Zoom out'" :disabled="!scene" @click="scene?.zoom(false)"><ZoomOut :size="18" /></button>
       <label v-if="focusOptions.length">{{ zh?'定位对象':'Focus object' }}<select v-model="focusTarget"><option v-for="target in focusOptions" :key="target.id" :value="target.id">{{ target.label }}</option></select></label><button v-if="focusOptions.length" :title="zh?'聚焦所选对象':'Focus selected object'" :aria-label="zh?'聚焦所选对象':'Focus selected object'" :disabled="!scene" @click="scene?.focus(focusTarget)"><Focus :size="18" /></button>
-      <button v-if="body.geometry||curves.length||measurements.length" :title="zh?'测量与质量详情':'Measurement and quality details'" :aria-label="zh?'测量与质量详情':'Measurement and quality details'" :aria-pressed="showDetails" @click="showDetails=!showDetails"><List :size="18" /></button>
+      <button v-if="body.geometry||curves.length||measurements.length||debugItems.length||debugError" :title="zh?'测量与质量详情':'Measurement and quality details'" :aria-label="zh?'测量与质量详情':'Measurement and quality details'" :aria-pressed="showDetails" @click="showDetails=!showDetails"><List :size="18" /></button>
       <div class="cloud-modes" role="group" :aria-label="zh?'视角操作':'View navigation'"><button :title="zh?'旋转视角':'Rotate view'" :aria-label="zh?'旋转视角':'Rotate view'" :aria-pressed="!pan" :disabled="!scene" @click="pan=false; scene?.pan(false)"><Orbit :size="18" /></button><button :title="t('pan')" :aria-label="t('pan')" :aria-pressed="pan" :disabled="!scene" @click="pan=true; scene?.pan(true)"><Hand :size="18" /></button></div>
       <button v-if="allowPick" :title="zh?'拾取候选位置':'Pick candidate position'" :aria-label="zh?'拾取候选位置':'Pick candidate position'" :aria-pressed="picking" :disabled="!scene" @click="picking=!picking"><Crosshair :size="18" /></button>
       <label>{{ t('projection') }}<select v-model="orthographic" :disabled="!scene" @change="scene?.projection(orthographic)"><option :value="false">{{ t('perspective') }}</option><option :value="true">{{ t('orthographic') }}</option></select></label>
@@ -13,8 +13,8 @@
       <label>{{ t('size') }}<input v-model.number="size" :disabled="!scene" type="range" min="1" max="8" step="1" @input="scene?.pointSize(size)"></label>
       <template v-if="planes.length"><label>{{ zh?'平面':'Plane' }}<select v-model="selectedPlane"><option value="">{{ zh?'未选择':'None' }}</option><option v-for="plane in planes" :key="String(plane.feature_id)" :value="String(plane.feature_id)">{{ plane.feature_id }}</option></select></label><label>{{ zh?'颜色':'Color' }}<select v-model="colorMode" :disabled="!selectedPlane||!scene"><option value="original">{{ zh?'原始':'Original' }}</option><option value="support">{{ zh?'支持 / 剔除':'Support / rejected' }}</option><option value="residual">{{ zh?'有符号残差':'Signed residual' }}</option></select></label></template>
       <label v-if="activeCurve?.angular_weights">{{ zh?'拟圆证据颜色':'Circle evidence colors' }}<select v-model="curveColorMode"><option value="support">{{ zh?'支持分类':'Support classes' }}</option><option value="weight">{{ zh?'均衡权重':'Balancing weights' }}</option><option value="residual">{{ zh?'径向残差':'Radial residuals' }}</option></select></label>
-      <template v-if="editRois?.length"><button :title="zh?'移动 ROI':'Move ROI'" :aria-label="zh?'移动 ROI':'Move ROI'" :aria-pressed="editMode==='translate'" :disabled="!scene" @click="editMode='translate'"><Move3D :size="18" /></button><button :title="zh?'旋转 ROI':'Rotate ROI'" :aria-label="zh?'旋转 ROI':'Rotate ROI'" :aria-pressed="editMode==='rotate'" :disabled="!scene" @click="editMode='rotate'"><Rotate3D :size="18" /></button></template>
-      <button v-if="scalableRoi" :title="zh?'调整 ROI 尺寸':'Resize ROI'" :aria-label="zh?'调整 ROI 尺寸':'Resize ROI'" :aria-pressed="editMode==='scale'" :disabled="!scene" @click="editMode='scale'"><Scaling :size="18" /></button>
+      <template v-if="editRois?.length"><button :title="zh?'移动 ROI':'Move ROI'" :aria-label="zh?'移动 ROI':'Move ROI'" :aria-pressed="editMode==='translate'" :disabled="!scene||!selectedRoiVisible" @click="editMode='translate'"><Move3D :size="18" /></button><button :title="zh?'旋转 ROI':'Rotate ROI'" :aria-label="zh?'旋转 ROI':'Rotate ROI'" :aria-pressed="editMode==='rotate'" :disabled="!scene||!selectedRoiVisible" @click="editMode='rotate'"><Rotate3D :size="18" /></button></template>
+      <button v-if="scalableRoi" :title="zh?'调整 ROI 尺寸':'Resize ROI'" :aria-label="zh?'调整 ROI 尺寸':'Resize ROI'" :aria-pressed="editMode==='scale'" :disabled="!scene||!selectedRoiVisible" @click="editMode='scale'"><Scaling :size="18" /></button>
     </div>
     <div class="cloud-stage">
       <div ref="host" class="cloud-canvas" />
@@ -32,9 +32,11 @@
     </div>
     <div v-if="showDetails" class="evidence-tabs" role="tablist" :aria-label="zh?'三维证据':'3D evidence'"><button v-for="tab in evidenceTabs" :key="tab.id" role="tab" :aria-selected="detailTab===tab.id" @click="detailTab=tab.id">{{ tab.label }}</button></div>
     <div v-if="showDetails" class="evidence-panel" role="tabpanel">
+      <div v-if="detailTab==='rois'" class="roi-display-list"><div v-for="roi in displayRois" :key="String(roi.roi_id)"><span>{{ roi.roi_id }}</span><RoiVisibilityButton :roi-id="String(roi.roi_id)" :state="readOnlyVisibility.state(String(roi.roi_id))" :disabled="!scene" @toggle="readOnlyVisibility.toggle(String(roi.roi_id))" /></div></div>
       <GeometrySummary v-if="detailTab==='geometry'&&body.geometry" :geometry="displayObject(body.geometry)" :selected="selectedPlane" @select-plane="selectedPlane=$event" />
-      <BoundarySummary v-if="detailTab==='features'&&curves.length" :items="curves" :selected="selectedCurve" :selected-segment="selectedSegment" @select="selectCurve" />
+      <BoundarySummary v-if="detailTab==='features'&&curves.length" :items="curves" :selected="selectedCurve" :selected-segment="selectedSegment" :selected-index="selectedCurvePoint" @select="selectCurve" @select-point="selectedCurvePoint=$event" />
       <MeasurementSummary v-if="detailTab==='measurements'&&measurements.length" :items="measurements" :unit="String(unit)" :selected="selectedMeasurement" @select="selectMeasurement" />
+      <BoundaryDebugSummary v-if="detailTab==='debug'" :items="debugItems" :selected-id="selectedDebug" :layers="debugLayers" :selection="debugSelection" :error="debugError" @select="selectDebug" @layers="debugLayers=$event" @pick="selectDebugPoint" />
     </div>
   </section>
 </template>
@@ -48,14 +50,18 @@ import { createCloudRenderer, type CloudViewState } from './renderer'
 import GeometrySummary from './GeometrySummary.vue'
 import MeasurementSummary from './MeasurementSummary.vue'
 import BoundarySummary from './BoundarySummary.vue'
+import BoundaryDebugSummary from './BoundaryDebugSummary.vue'
+import {decodeBoundaryDebug,type DebugEvidence,type DebugLayers,type DebugSelection} from './boundary-debug'
 import {curveItems,type CurveDisplay} from './boundary-display'
 import {measurementItems,type MeasurementDisplay} from './measurement-display'
 import {curveColorScale,type CurveColorMode} from './curve-colors'
 import {planeColorData,planeColorSummary} from './plane-colors'
 import type {RoiValue,GeometryFocus} from './geometry-overlay'
 import type {ArcEdit,ArcValues} from './arc-edit'
+import {roiVisibility,useRoiVisibility} from './roi-visibility'
+import RoiVisibilityButton from './RoiVisibilityButton.vue'
 
-const props = defineProps<{ payload: Record<string, unknown>; projectId: string; editRois?:RoiValue[]; selectedRoiId?:string; allowPick?:boolean; candidate?:number[];editArc?:ArcEdit }>()
+const props = defineProps<{ payload: Record<string, unknown>; projectId: string; editRois?:RoiValue[]; selectedRoiId?:string; allowPick?:boolean; candidate?:number[];editArc?:ArcEdit;hiddenRoiIds?:ReadonlySet<string>;roiScope?:string }>()
 const emit=defineEmits<{'roi-change':[value:RoiValue];candidate:[value:{payload:Record<string,unknown>;xyz:number[]}];'feature-selection':[value:{payload:Record<string,unknown>;featureId:string;segmentId:string}];'arc-change':[value:{payload:Record<string,unknown>;key:string;values:ArcValues}]}>()
 const { t,locale } = useI18n({ useScope: 'local', messages: {
   'zh-CN': { reset: '复位视角', pan: '平移', projection: '投影', perspective: '透视', orthographic: '正交', axis: '视图', size: '点大小', loading: '正在读取显示数据', retry: '重新打开', empty: '无有效显示点', unavailable: '显示不可用', unknown: '单位未确认', cloud_renderer_unconfigured: '三维显示预算尚未配置', cloud_preview_invalid: '显示数据格式无效', cloud_preview_capacity: '显示数据超过点数或字节限额', cloud_preview_checksum: '显示数据摘要不一致', cloud_cpu_capacity: '浏览器内存预算不足', cloud_gpu_capacity: '渲染缓冲预算不足', cloud_canvas_capacity: '视口超过像素预算', cloud_position_precision: '局部坐标显示误差超过配置限额', cloud_context_lost: 'WebGL 上下文已丢失' },
@@ -63,8 +69,31 @@ const { t,locale } = useI18n({ useScope: 'local', messages: {
 } })
 const host = ref<HTMLElement>(), scene = shallowRef<ReturnType<typeof createCloudRenderer> | null>(null)
 const zh=computed(()=>locale.value==='zh-CN'),editMode=ref<'translate'|'rotate'|'scale'>('translate')
-function updateGeometry(){const token=generation,payload=props.payload;scene.value?.geometry({payload,rois:props.editRois,selectedId:props.selectedRoiId,mode:editMode.value,arc:props.editArc,arcChanged:(key,values)=>{if(token===generation&&payload===props.payload&&key===props.editArc?.key)emit('arc-change',{payload,key,values})},changed:props.editRois?roi=>{if(token===generation&&payload===props.payload)emit('roi-change',roi)}:undefined,selectedMeasurement: selectedMeasurement.value,selectedPlane:selectedPlane.value,candidate:props.candidate,selectedCurve:selectedCurve.value,selectedSegment:selectedSegment.value,curveColorMode:curveColorMode.value,curveSelected:picking.value?undefined:(id,segment)=>{if(token===generation&&payload===props.payload)selectCurve(id,segment)},measurementSelected:picking.value?undefined:id=>{if(token===generation&&payload===props.payload){selectMeasurement(id);showDetails.value=true;detailTab.value='measurements'}}})}
-function selectCurve(id:string,segment:string){selectedCurve.value=id;selectedSegment.value=segment;focusTarget.value='feature';showDetails.value=true;detailTab.value='features';emit('feature-selection',{payload:props.payload,featureId:id,segmentId:segment})}
+const displayRois=computed(()=>{const raw=displayObject(props.payload.geometry).rois;return props.editRois??(Array.isArray(raw)?raw.map(displayObject):[])})
+const readOnlyVisibility=useRoiVisibility(displayRois,()=>[props.payload,props.projectId])
+const hiddenRois=computed(()=>props.hiddenRoiIds??readOnlyVisibility.hidden.value)
+const selectedRoiVisible=computed(()=>['visible','partial'].includes(roiVisibility(displayRois.value,props.selectedRoiId??'',hiddenRois.value)))
+let editGeneration=0
+watch(()=>[props.roiScope,props.selectedRoiId],()=>{editGeneration++},{flush:'sync'})
+function updateGeometry(){
+  const token=generation,editToken=editGeneration,payload=props.payload,live=()=>token===generation&&payload===props.payload
+  scene.value?.geometry({
+    payload,rois:props.editRois,selectedId:props.selectedRoiId,mode:editMode.value,arc:props.editArc,hiddenRoiIds:hiddenRois.value,roiScope:props.roiScope,
+    arcChanged:(key,values)=>{if(live()&&key===props.editArc?.key)emit('arc-change',{payload,key,values})},
+    changed:props.editRois?roi=>{if(live()&&editToken===editGeneration&&props.editRois?.some(r=>r.roi_id===roi.roi_id))emit('roi-change',roi)}:undefined,
+    selectedMeasurement:selectedMeasurement.value,selectedPlane:selectedPlane.value,candidate:props.candidate,
+    selectedCurve:selectedCurve.value,selectedSegment:selectedSegment.value,curveColorMode:curveColorMode.value,selectedCurvePoint:selectedCurvePoint.value,
+    curveSelected:picking.value?undefined:(id,segment)=>{if(live())selectCurve(id,segment)},
+    curvePointSelected:picking.value?undefined:(id,segment,index)=>{if(live()){selectCurve(id,segment);selectedCurvePoint.value=index}},
+    measurementSelected:picking.value?undefined:id=>{if(live()){selectMeasurement(id);showDetails.value=true;detailTab.value='measurements'}},
+    debug:activeDebug.value,debugLayers:debugLayers.value,debugSelection:debugSelection.value,
+    debugSelected:picking.value?undefined:selection=>{if(live())selectDebugPoint(selection)},
+    debugFailed:failure=>{if(live())debugError.value=failure.message},
+  })
+}
+function selectDebug(id:string){selectedDebug.value=id;debugSelection.value=null;debugError.value='';focusTarget.value='debug'}
+function selectDebugPoint(selection:DebugSelection){debugSelection.value=selection;showDetails.value=true;detailTab.value='debug';focusTarget.value='debug'}
+function selectCurve(id:string,segment:string){selectedCurvePoint.value=null;selectedCurve.value=id;selectedSegment.value=segment;focusTarget.value='feature';showDetails.value=true;detailTab.value='features';emit('feature-selection',{payload:props.payload,featureId:id,segmentId:segment})}
 function selectMeasurement(id:string){selectedMeasurement.value=id;focusTarget.value='measurement'}
 function updateColors(){try{const samples=planeColorData(props.payload,selectedPlane.value);colorSummary.value=planeColorSummary(samples);scene.value?.colors(samples,colorMode.value)}catch(failure){release();error.value=failure instanceof Error?failure.message:'unavailable'}}
 function displayObject(value: unknown): Record<string, unknown> { return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {} }
@@ -79,24 +108,30 @@ function selectView(event: Event) {
 }
 const showDetails=ref(false)
 const detailTab=ref('measurements')
-const evidenceTabs=computed(()=>[...(measurements.value.length?[{id:'measurements',label:zh.value?'测量':'Measurements'}]:[]),...(curves.value.length?[{id:'features',label:zh.value?'边界 / 拟合':'Boundary / fit'}]:[]),...(planes.value.length||displayObject(body.value.geometry).frame?[{id:'geometry',label:zh.value?'基准 / 质量':'Datum / quality'}]:[])])
+const evidenceTabs=computed(()=>[...(!props.editRois&&displayRois.value.length?[{id:'rois',label:zh.value?'ROI 显示':'ROI visibility'}]:[]),...(measurements.value.length?[{id:'measurements',label:zh.value?'测量':'Measurements'}]:[]),...(curves.value.length?[{id:'features',label:zh.value?'边界 / 拟合':'Boundary / fit'}]:[]),...(planes.value.length||displayObject(body.value.geometry).frame?[{id:'geometry',label:zh.value?'基准 / 质量':'Datum / quality'}]:[]),...(debugItems.value.length||debugError.value?[{id:'debug',label:zh.value?'提取调试':'Extraction debug'}]:[])])
+const debugItems=shallowRef<DebugEvidence[]>([]),selectedDebug=ref(''),debugError=ref(''),debugSelection=ref<DebugSelection|null>(null)
+const debugLayers=ref<DebugLayers>({grid:true,profiles:true,candidates:true,partition:false})
+const activeDebug=computed(()=>debugItems.value.find(d=>d.id===selectedDebug.value))
 const picked = ref<ReturnType<CloudDisplayData['point']> | null>(null)
 const picking=ref(false),measurements=ref<MeasurementDisplay[]>([]),selectedMeasurement=ref('')
 const selectedPlane=ref(''),colorMode=ref<'original'|'support'|'residual'>('original')
 const colorSummary=ref<ReturnType<typeof planeColorSummary>>(null)
 const planes=computed(()=>{const raw=displayObject(body.value.geometry).planes;return Array.isArray(raw)?raw.map(displayObject):[]})
 const curves=ref<CurveDisplay[]>([]),selectedCurve=ref(''),selectedSegment=ref('')
+const selectedCurvePoint=ref<number|null>(null)
+watch(()=>[selectedCurve.value,props.payload],()=>{selectedCurvePoint.value=null},{flush:'sync'})
 const curveColorMode=ref<CurveColorMode>('support')
 const activeCurve=computed(()=>curves.value.find(c=>c.feature_id===selectedCurve.value))
 const curveScale=computed(()=>activeCurve.value?curveColorScale(activeCurve.value,curveColorMode.value):null)
 const focusTarget=ref<GeometryFocus>('measurement')
-const focusOptions=computed<{id:GeometryFocus;label:string}[]>(()=>[...(props.editArc?[{id:'arc' as const,label:zh.value?'当前角域':'Current angular region'}]:[]),...(props.selectedRoiId?[{id:'roi' as const,label:`ROI · ${props.selectedRoiId}`}]:[]),...(selectedMeasurement.value?[{id:'measurement' as const,label:selectedMeasurement.value}]:[]),...(selectedCurve.value?[{id:'feature' as const,label:`${selectedCurve.value} ${selectedSegment.value}`}]:[]),...(selectedPlane.value?[{id:'plane' as const,label:selectedPlane.value}]:[])])
+const focusOptions=computed<{id:GeometryFocus;label:string}[]>(()=>[...(activeDebug.value?[{id:'debug' as const,label:zh.value?'提取调试':'Extraction debug'}]:[]),...(props.editArc?[{id:'arc' as const,label:zh.value?'当前角域':'Current angular region'}]:[]),...(props.selectedRoiId&&selectedRoiVisible.value?[{id:'roi' as const,label:`ROI · ${props.selectedRoiId}`}]:[]),...(selectedMeasurement.value?[{id:'measurement' as const,label:selectedMeasurement.value}]:[]),...(selectedCurve.value?[{id:'feature' as const,label:`${selectedCurve.value} ${selectedSegment.value}`}]:[]),...(selectedPlane.value?[{id:'plane' as const,label:selectedPlane.value}]:[])])
 const scalableRoi=computed(()=>props.editRois?.some(r=>r.roi_id===props.selectedRoiId&&['box','cylinder'].includes(String(r.kind))))
 watch(scalableRoi,canScale=>{if(!canScale&&editMode.value==='scale')editMode.value='translate'})
 watch(focusOptions,targets=>{if(!targets.some(t=>t.id===focusTarget.value))focusTarget.value=targets[0]?.id??'measurement'})
 watch(evidenceTabs,tabs=>{if(!tabs.some(tab=>tab.id===detailTab.value))detailTab.value=tabs[0]?.id??''})
-let generation = 0, controller: AbortController | null = null, data: CloudDisplayData | null = null
-function release() { generation++; controller?.abort(); controller = null; scene.value?.dispose(); scene.value = null; data?.dispose(); data = null; picked.value = null;picking.value=false;measurements.value=[];selectedMeasurement.value='';selectedPlane.value='';colorMode.value='original';colorSummary.value=null;curves.value=[];selectedCurve.value='';selectedSegment.value='';curveColorMode.value='support' }
+let generation = 0, controller: AbortController | null = null, data: CloudDisplayData | null = null, scenePayload:Record<string,unknown>|null=null
+function releaseDebug(){for(const record of debugItems.value)record.dispose();debugItems.value=[];selectedDebug.value='';debugSelection.value=null;debugError.value=''}
+function release() { generation++; controller?.abort(); controller = null; scene.value?.dispose(); scene.value = null; data?.dispose(); data = null;releaseDebug(); picked.value = null;picking.value=false;measurements.value=[];selectedMeasurement.value='';selectedPlane.value='';colorMode.value='original';colorSummary.value=null;curves.value=[];selectedCurve.value='';selectedSegment.value='';curveColorMode.value='support' }
 async function load() {
   release(); const token = generation; controller = new AbortController(); const signal = controller.signal
   error.value = ''; loading.value = true; pan.value = false; orthographic.value = false; size.value = 2; axis.value = 'iso'
@@ -111,6 +146,11 @@ async function load() {
     const decoded = await decodeCloudPreview(body.value, policy, signal)
     if (signal.aborted || token !== generation || !host.value) { decoded.dispose(); return }
     data = decoded
+    try{
+      const evidence=await decodeBoundaryDebug(body.value,policy,signal)
+      if(signal.aborted||token!==generation||!host.value){for(const record of evidence)record.dispose();return}
+      debugItems.value=evidence;selectedDebug.value=evidence[0]?.id??''
+    }catch(failure){if(signal.aborted||token!==generation)return;debugError.value=failure instanceof Error?failure.message:'cloud_debug_invalid'}
     const payload=props.payload
     scene.value = createCloudRenderer(host.value, data, policy, index => {
       if(token!==generation||signal.aborted||props.payload!==payload)return
@@ -123,16 +163,18 @@ async function load() {
       if(token!==generation||signal.aborted||props.payload!==payload)return
       axis.value = view
     })
+    scenePayload=payload
     updateGeometry()
   } catch (failure) {
-    if (token === generation && !signal.aborted) { scene.value?.dispose(); scene.value = null; data?.dispose(); data = null; error.value = failure instanceof Error ? failure.message : 'unavailable' }
+    if (token === generation && !signal.aborted) { scene.value?.dispose(); scene.value = null; data?.dispose(); data = null;releaseDebug(); error.value = failure instanceof Error ? failure.message : 'unavailable' }
   } finally { if (token === generation) loading.value = false }
 }
 onMounted(load)
 watch(() => [props.payload, props.projectId], load)
-watch(()=>[props.editRois,props.selectedRoiId,props.editArc,editMode.value,selectedMeasurement.value,selectedPlane.value,props.candidate,selectedCurve.value,selectedSegment.value,curveColorMode.value,picking.value],updateGeometry,{deep:true})
+watch(()=>[props.roiScope,props.editRois,props.selectedRoiId,props.editArc,editMode.value,selectedMeasurement.value,selectedPlane.value,props.candidate,selectedCurve.value,selectedSegment.value,curveColorMode.value,picking.value,selectedDebug.value,debugLayers.value,debugSelection.value,selectedCurvePoint.value],updateGeometry,{deep:true})
 watch(()=>[selectedPlane.value,colorMode.value],updateColors)
 watch(()=>props.allowPick,()=>{picking.value=false})
+watch(hiddenRois,hidden=>{if(scenePayload===props.payload)scene.value?.roiVisibility(hidden)})
 onBeforeUnmount(release)
 </script>
 <style scoped>
@@ -152,5 +194,6 @@ onBeforeUnmount(release)
 .cloud-message { position: absolute; inset: 0; margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px; text-align: center; overflow-wrap: anywhere; }
 .cloud-status { display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 8px 0; font-size: 12px; overflow-wrap: anywhere; }
 .residual-scale { display:inline-block; width:60px; height:8px; border:1px solid var(--am-border); background:linear-gradient(to right,blue,white,red); }
+.roi-display-list{display:grid;gap:4px;padding:8px 0}.roi-display-list>div{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0}.roi-display-list span{overflow-wrap:anywhere;min-width:0;font-size:12px}
 @media(max-width: 640px) { .cloud-viewer { height: 65dvh; } }
 </style>

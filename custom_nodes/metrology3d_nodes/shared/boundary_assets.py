@@ -22,7 +22,9 @@ def freeze_boundary(reference, features, mode):
         or item.support != reference
     ):
         raise InvalidRequestError("保存边界必须与当前点云完整支持一致")
-    return BoundaryEvidence.model_validate(item.model_dump(exclude={"support"}))
+    return BoundaryEvidence.model_validate(
+        item.model_dump(exclude={"support", "debug_capture"})
+    )
 
 
 def restore_boundary(reference, evidence):

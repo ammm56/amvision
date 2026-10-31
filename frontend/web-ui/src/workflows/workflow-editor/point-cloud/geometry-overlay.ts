@@ -7,12 +7,19 @@ import type {CloudRendererPolicy} from '../services/measurement-resource.service
 import {measurementItems,referenceExtension} from './measurement-display'
 import {curveItems,curveStrokes} from './boundary-display'
 import type {Raycaster} from 'three'
-import {roiDependencies,roiDependencyClosure,roiGraphIssues} from './roi-graph'
+import {roiDependencies,roiGraphIssues} from './roi-graph'
+import {roiLeaves,roiVisibility} from './roi-visibility'
+import {expandRoiDisplayBounds} from './roi-display-bounds'
 import {arcWorld,arcUV,arcHandleUV,arcGesture,type ArcEdit,type ArcValues} from './arc-edit'
+import {buildDebugOverlay} from './debug-overlay'
+import type {DebugEvidence,DebugLayers,DebugSelection} from './boundary-debug'
 
 export type RoiValue=Record<string,unknown>
-export type GeometryFocus='roi'|'measurement'|'feature'|'plane'|'arc'
+export type GeometryFocus='roi'|'measurement'|'feature'|'plane'|'arc'|'debug'
 export interface GeometryOverlayInput { payload:Record<string,unknown>; rois?:RoiValue[]; selectedId?:string; mode?:'translate'|'rotate'|'scale'; changed?:(roi:RoiValue)=>void;selectedMeasurement?:string;selectedPlane?:string;candidate?:number[];selectedCurve?:string;selectedSegment?:string;curveColorMode?:CurveColorMode;curveSelected?:(featureId:string,segmentId:string)=>void;measurementSelected?:(id:string)=>void;arc?:ArcEdit;arcChanged?:(key:string,value:ArcValues)=>void }
+export interface GeometryOverlayInput {debug?:DebugEvidence;debugLayers?:DebugLayers;debugSelection?:DebugSelection|null;debugSelected?:(selection:DebugSelection)=>void;debugFailed?:(error:Error)=>void}
+export interface GeometryOverlayInput {selectedCurvePoint?:number|null;curvePointSelected?:(featureId:string,segmentId:string,index:number)=>void}
+export interface GeometryOverlayInput {hiddenRoiIds?:ReadonlySet<string>;roiScope?:string}
 const vec=(v:unknown)=>{if(!Array.isArray(v)||v.length!==3||v.some(n=>typeof n!=='number'||!Number.isFinite(n)))throw new Error('cloud_preview_invalid');return new Vector3(v[0],v[1],v[2])}
 function matrix(v:unknown,size:number){if(!Array.isArray(v)||v.length!==size||v.some(r=>!Array.isArray(r)||r.length!==size||r.some(n=>typeof n!=='number'||!Number.isFinite(n))))throw new Error('cloud_preview_invalid');return v as number[][]}
 const positive=(n:unknown)=>{if(typeof n!=='number'||!Number.isFinite(n)||n<=0)throw new Error('cloud_preview_invalid');return n}
@@ -22,9 +29,12 @@ const orientation=(g:RoiValue,kind:unknown)=>kind==='box'?new Quaternion().setFr
 export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLElement,origin:number[],policy:CloudRendererPolicy,schedule:()=>void,drag:(active:boolean)=>void,failed:(error:Error)=>void) {
   let root=new Group(),gizmo:TransformControls|null=null, releases:(()=>void)[]=[],input:GeometryOverlayInput|undefined,closed=false,arcRelease=()=>{},cancelArc:(()=>void)|undefined
   const physicalOrigin=new Vector3(...origin),targets=new Map<string,Object3D>(),updates=new Map<string,((roi:RoiValue)=>void)[]>()
+  let hidden:ReadonlySet<string>=new Set(),roiGraph:RoiValue[]=[],cancelRoi:(()=>void)|undefined,roiControl:{control:TransformControls;target:Object3D;id:string}|undefined
+  let restoredInput:GeometryOverlayInput|undefined
+  const roiInstances:{id:string;target:Object3D;sections:RoiValue[]}[]=[]
   function resources(object:Object3D){const geometries=new Set<BufferGeometry>(),materials=new Set<Material>();object.traverse(o=>{const item=o as Mesh;if(item.geometry)geometries.add(item.geometry);if(item.material)for(const m of Array.isArray(item.material)?item.material:[item.material])materials.add(m)});return {geometries,materials}}
   function account(object:Object3D){const buffers=new Set<ArrayBufferLike>();for(const g of resources(object).geometries){for(const a of Object.values(g.attributes))buffers.add(a.array.buffer);if(g.index)buffers.add(g.index.array.buffer)}const bytes=[...buffers].reduce((s,b)=>s+b.byteLength,0);releases.push(reserveCpu(bytes,policy));releases.push(reserveGpu(bytes,policy))}
-  function clear(){cancelArc=undefined;arcRelease();arcRelease=()=>{};drag(false);gizmo?.detach();gizmo?.dispose();gizmo=null;for(const g of resources(root).geometries)g.dispose();for(const m of resources(root).materials)m.dispose();root.removeFromParent();root.clear();targets.clear();updates.clear();for(const release of releases)release();releases=[];root=new Group()}
+  function clear(){cancelArc=undefined;cancelRoi=undefined;roiControl=undefined;roiInstances.length=0;roiGraph=[];arcRelease();arcRelease=()=>{};drag(false);gizmo?.detach();gizmo?.dispose();gizmo=null;for(const g of resources(root).geometries)g.dispose();for(const m of resources(root).materials)m.dispose();root.removeFromParent();root.clear();targets.clear();updates.clear();for(const release of releases)release();releases=[];root=new Group()}
   function pose(roi:RoiValue,target:Object3D){const g=object(roi.geometry);target.position.copy(vec(roi.kind==='section-band'?g.origin:g.center)).sub(physicalOrigin);target.quaternion.copy(orientation(g,roi.kind))}
   function finiteMesh(roi:RoiValue,color:number,clips:Plane[]=[]){
     const target=new Group();pose(roi,target);root.add(target)
@@ -37,6 +47,7 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
   function sectionPlanes(roi:RoiValue){const g=object(roi.geometry),n=vec(g.normal),p=vec(g.origin).sub(physicalOrigin),half=positive(g.thickness)/2;return [new Plane(n,n.dot(p.clone().negate())+half),new Plane(n.clone().negate(),n.dot(p)+half)]}
   function buildRois(rois:RoiValue[],selectedId?:string){
     if(roiGraphIssues(rois).length)throw new Error('cloud_preview_invalid')
+    roiGraph=rois
     const byId=new Map(rois.map(r=>[String(r.roi_id),r])),referenced=new Set(rois.flatMap(roiDependencies)),seen=new Set<string>()
     const pending:{roi:RoiValue;sections:RoiValue[];release:()=>void}[]=[]
     function enqueue(roi:RoiValue,sections:RoiValue[]){
@@ -58,6 +69,7 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
             enqueue(byId.get(roiDependencies(roi)[0]!)!,[...sections,roi])
           }else{
             const shape=finiteMesh(roi,sections.length?0xc8558a:0xd18c00,sections.flatMap(sectionPlanes))
+            roiInstances.push({id,target:shape.target,sections});shape.target.userData.roiId=id
             if(!sections.length)targets.set(id,shape.target)
             for(const section of sections){
               const sectionId=String(section.roi_id),list=updates.get(sectionId)??[]
@@ -68,6 +80,19 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
         }finally{item.release()}
       }
     }finally{for(const item of pending)item.release()}
+  }
+  /** 独立显示通道：不清空 root，不触碰测量或调试几何。 */
+  function visibility(value:ReadonlySet<string>){
+    if(closed)return
+    hidden=new Set(value)
+    if(input)input.hiddenRoiIds=hidden
+    if(roiControl){
+      const {control,target,id}=roiControl,visible=['visible','partial'].includes(roiVisibility(roiGraph,id,hidden))
+      if(!visible){cancelRoi?.();control.detach();control.getHelper().visible=false}
+      else {control.attach(target);control.getHelper().visible=true}
+    }
+    for(const instance of roiInstances)instance.target.visible=!hidden.has(instance.id)
+    schedule()
   }
   function buildEvidence(payload:Record<string,unknown>){
     if(!payload.geometry)return
@@ -108,9 +133,10 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
         const points=selected.points.slice(segment.start,segment.start+segment.count),geometry=pointGeometry(points.map(vec)),colors=new Float32Array(points.length*3)
         const markers=new Points(geometry,new PointsMaterial({size:6,sizeAttenuation:false,vertexColors:true,depthTest:false}));root.add(markers)
         for(let i=0;i<points.length;i++)colors.set(curveColor(values[segment.start+i]!,scale.min,scale.max),i*3)
-        geometry.setAttribute('color',new BufferAttribute(colors,3));markers.userData.curve={featureId:selected.feature_id,segmentId:segment.segment_id,groupId:segment.group_id};account(markers)
+        geometry.setAttribute('color',new BufferAttribute(colors,3));markers.userData.curve={featureId:selected.feature_id,segmentId:segment.segment_id,groupId:segment.group_id,start:segment.start};account(markers)
       }
     }}
+    if(selected&&next.selectedCurvePoint!=null){const p=selected.points[next.selectedCurvePoint];if(p){const marker=new Points(pointGeometry([vec(p)]),new PointsMaterial({size:11,color:0xffb800,sizeAttenuation:false,depthTest:false}));root.add(marker);account(marker)}}
   }
   function buildMeasurements(next:GeometryOverlayInput){
     for(const item of measurementItems(next.payload)){
@@ -181,12 +207,24 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
   }
   function update(next:GeometryOverlayInput){
     if(closed)return
-    const same=input?.payload===next.payload&&input?.arc?.key===next.arc?.key&&input?.selectedId===next.selectedId&&input?.mode===next.mode
+    const same=input?.payload===next.payload&&input?.arc?.key===next.arc?.key&&input?.selectedId===next.selectedId&&input?.mode===next.mode&&input?.roiScope===next.roiScope
+    // 取消手势已经恢复对象；父表单回传同一恢复值时不重建其他证据。
+    if(restoredInput&&same){
+      const restored=restoredInput;restoredInput=undefined
+      const keys=['payload','selectedId','mode','roiScope','selectedMeasurement','selectedPlane','candidate','selectedCurve','selectedSegment','curveColorMode','selectedCurvePoint','arc','debug','debugLayers','debugSelection'] as const
+      if(keys.every(key=>restored[key]===next[key])&&JSON.stringify(restored.rois)===JSON.stringify(next.rois)){input=next;roiGraph=next.rois??[];visibility(next.hiddenRoiIds??hidden);return}
+    }
+    restoredInput=undefined
     input=next
     if(gizmo?.dragging&&same)return
     clear()
     try {
       scene.add(root);buildEvidence(next.payload);buildMeasurements(next);buildCurves(next)
+      if(next.debug&&next.debugLayers){
+        const layer=new Group(),owned:(()=>void)[]=[]
+        try{buildDebugOverlay(layer,next.debug,next.debugLayers,next.debugSelection??null,origin,policy,r=>owned.push(r));root.add(layer);releases.push(...owned)}
+        catch(error){for(const g of resources(layer).geometries)g.dispose();for(const m of resources(layer).materials)m.dispose();layer.clear();for(const release of owned)release();next.debugFailed?.(error as Error)}
+      }
       const spatial=object(next.payload.spatial),attached=next.payload.geometry?object(next.payload.geometry).rois:[],rois=next.rois??(Array.isArray(attached)?attached.map(object):[])
       if(rois.length>8192)throw new Error('cloud_preview_invalid')
       for(const roi of rois)if(roi.frame_id!==spatial.frame_id||roi.length_unit!==spatial.length_unit)throw new Error('cloud_geometry_space')
@@ -195,16 +233,30 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
       const original=rois.find(r=>r.roi_id===next.selectedId)
       if(next.arc&&next.arcChanged)buildArc(next.arc)
       else if(target&&next.changed&&!(next.mode==='scale'&&original?.kind==='section-band')){gizmo=new TransformControls(camera,canvas);gizmo.setMode(next.mode??'translate');if(next.mode==='scale'){gizmo.setSpace('local');if(original?.kind==='cylinder')gizmo.showZ=false}gizmo.attach(target);const helper=gizmo.getHelper();root.add(helper);account(helper)
-        gizmo.addEventListener('change',schedule)
-        gizmo.addEventListener('dragging-changed',e=>{
+        const control=gizmo,id=next.selectedId!,scope=next.roiScope,payload=next.payload
+        let start:RoiValue|undefined,cancelling=false
+        const live=()=>!closed&&gizmo===control&&input?.payload===payload&&input?.roiScope===scope&&input?.selectedId===id
+        roiControl={control,target,id}
+        cancelRoi=()=>{
+          if(!live()||!start)return
+          const restored=start;start=undefined;cancelling=true
+          pose(restored,target);target.scale.set(1,1,1)
+          for(const update of updates.get(id)??[])update(restored)
+          restoredInput={...input!,rois:input!.rois?.map(roi=>roi.roi_id===id?restored:roi)}
+          input?.changed?.(restored);control.dragging=false;drag(false);cancelling=false;schedule()
+        }
+        control.addEventListener('mouseDown',()=>{if(live()){const roi=input?.rois?.find(r=>r.roi_id===id);if(roi)start=JSON.parse(JSON.stringify(roi)) as RoiValue}})
+        control.addEventListener('change',()=>{if(live())schedule()})
+        control.addEventListener('dragging-changed',e=>{
+          if(!live()||cancelling)return
           drag(e.value===true)
           // 等本次控件事件完成，再用最新草稿重建依赖边界；卸载后不得重新分配。
-          if(e.value===false)queueMicrotask(()=>{
-            if(closed||!input)return
+          if(e.value===false){start=undefined;queueMicrotask(()=>{
+            if(!live()||!input)return
             try{update(input)}catch(error){failed(error as Error)}
-          })
+          })}
         })
-        gizmo.addEventListener('objectChange',()=>{const roi=input?.rois?.find(r=>r.roi_id===input?.selectedId);if(!roi)return;const g={...object(roi.geometry)},position=target.position.clone().add(physicalOrigin).toArray(),q=target.quaternion
+        control.addEventListener('objectChange',()=>{if(!live()||!control.object)return;const roi=input?.rois?.find(r=>r.roi_id===id);if(!roi)return;const g={...object(roi.geometry)},position=target.position.clone().add(physicalOrigin).toArray(),q=target.quaternion
           if(next.mode==='scale'&&original){
             const s=target.scale,base=object(original.geometry)
             if(![s.x,s.y,s.z].every(v=>Number.isFinite(v)&&v>0)){s.set(1,1,1);schedule();return}
@@ -216,16 +268,19 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
           const changed={...roi,geometry:g};for(const update of updates.get(String(roi.roi_id))??[])update(changed);input?.changed?.(changed);schedule()
         })
       }
-      schedule()
+      visibility(next.hiddenRoiIds??new Set())
     }catch(error){clear();throw error}
   }
-  function keydown(event:KeyboardEvent){if(event.key==='Escape'&&gizmo?.dragging&&cancelArc){event.preventDefault();event.stopPropagation();cancelArc()}}
+  function keydown(event:KeyboardEvent){if(event.key==='Escape'&&gizmo?.dragging&&(cancelArc||cancelRoi)){event.preventDefault();event.stopPropagation();(cancelArc??cancelRoi)?.()}}
   canvas.ownerDocument.addEventListener('keydown',keydown,true)
-  return {update,focus(kind:GeometryFocus){
+  return {update,visibility,focus(kind:GeometryFocus){
     if(closed||!input)return null
     const bounds=new Box3()
-    if(kind==='roi'){for(const roi of roiDependencyClosure(input.rois??[],[input.selectedId??''])){const target=targets.get(String(roi.roi_id));if(target)bounds.expandByObject(target)}}
-    else root.traverse(o=>{const c=o.userData.curve;if(kind==='arc'&&o.userData.arc||kind==='plane'&&!!input?.selectedPlane&&o.userData.plane===input.selectedPlane||kind==='measurement'&&!!input?.selectedMeasurement&&o.userData.measurement===input.selectedMeasurement||kind==='feature'&&!!input?.selectedCurve&&c?.featureId===input.selectedCurve&&(!input.selectedSegment||c.segmentId===input.selectedSegment||c.groupId===input.selectedSegment))bounds.expandByObject(o)})
+    if(kind==='roi'){
+      const id=input.selectedId??'',leaves=new Set(roiLeaves(roiGraph,id)),section=roiGraph.find(r=>r.roi_id===id)?.kind==='section-band'
+      for(const instance of roiInstances)if(leaves.has(instance.id)&&instance.target.visible&&(!section||instance.sections.some(s=>s.roi_id===id)))expandRoiDisplayBounds(bounds,instance.target)
+    }
+    else root.traverse(o=>{const c=o.userData.curve;if(kind==='debug'&&o.userData.debug?.id===input?.debug?.id||kind==='arc'&&o.userData.arc||kind==='plane'&&!!input?.selectedPlane&&o.userData.plane===input.selectedPlane||kind==='measurement'&&!!input?.selectedMeasurement&&o.userData.measurement===input.selectedMeasurement||kind==='feature'&&!!input?.selectedCurve&&c?.featureId===input.selectedCurve&&(!input.selectedSegment||c.segmentId===input.selectedSegment||c.groupId===input.selectedSegment))bounds.expandByObject(o)})
     return bounds.isEmpty()?null:{center:bounds.getCenter(new Vector3()),radius:Math.max(bounds.getSize(new Vector3()).length()/2,1e-6)}
-  },pick(ray:Raycaster){if(closed||!input)return false;const hit=ray.intersectObject(root,true).find(h=>h.object.userData.curve&&input?.curveSelected||h.object.userData.measurement&&input?.measurementSelected);if(!hit)return false;const c=hit.object.userData.curve;if(c)input.curveSelected?.(c.featureId,c.segmentId);else input.measurementSelected?.(hit.object.userData.measurement);return true},camera(value:Camera){camera=value;if(gizmo)gizmo.camera=value},dragging:()=>!!gizmo?.dragging,dispose(){if(!closed){closed=true;canvas.ownerDocument.removeEventListener('keydown',keydown,true);clear()}}}
+  },pick(ray:Raycaster){if(closed||!input)return false;const hit=ray.intersectObject(root,true).find(h=>h.object.userData.debug&&input?.debugSelected||h.object.userData.curve&&input?.curveSelected||h.object.userData.measurement&&input?.measurementSelected);if(!hit)return false;const d=hit.object.userData.debug,c=hit.object.userData.curve;if(d){const index=d.kind==='cell'?Math.floor((hit.faceIndex??-2)/2):d.index??hit.index;if(Number.isSafeInteger(index)&&index>=0)input.debugSelected?.({kind:d.kind,index})}else if(c){if(Number.isSafeInteger(c.start)&&hit.index!==undefined&&input.curvePointSelected)input.curvePointSelected(c.featureId,c.segmentId,c.start+hit.index);else input.curveSelected?.(c.featureId,c.segmentId)}else input.measurementSelected?.(hit.object.userData.measurement);return true},camera(value:Camera){camera=value;if(gizmo)gizmo.camera=value},dragging:()=>!!gizmo?.dragging,dispose(){if(!closed){closed=true;canvas.ownerDocument.removeEventListener('keydown',keydown,true);clear()}}}
 }

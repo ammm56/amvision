@@ -153,6 +153,7 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
         fillPlaneColors(attribute.array as Float32Array,data.colors,samples,mode);attribute.needsUpdate=true;schedule()
       },
       geometry(input:GeometryOverlayInput) { try { overlay?.update(input) } catch(error) { dispose(); failed(error as Error) } },
+      roiVisibility(hidden:ReadonlySet<string>) { try { overlay?.visibility(hidden) } catch(error) { dispose(); failed(error as Error) } },
       projection(orthographic: boolean) {
         if(closed||(camera instanceof OrthographicCamera)===orthographic)return
         const old=camera,target=controls!.target.clone(),distance=old.position.distanceTo(target)

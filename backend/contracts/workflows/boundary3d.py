@@ -438,6 +438,7 @@ class ExtractBoundaryNodeParameters(Contract):
     settings: ExtractBoundaryParameters = Field(
         json_schema_extra={"x-ui-widget": "boundary-settings"}
     )
+    capture_debug: StrictBool = Field(default=False, title="捕获边界调试证据")
 
 
 class FitLineNodeParameters(Contract):

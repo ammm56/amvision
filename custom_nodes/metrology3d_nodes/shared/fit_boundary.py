@@ -71,7 +71,7 @@ def fit_boundary(runtime, group, parameters, *, cancel):
         parameters_sha256=parameter_digest(parameters),
         evaluation=evaluation,
         boundary=BoundaryEvidence.model_validate(
-            boundary.model_dump(exclude={"support"})
+            boundary.model_dump(exclude={"support", "debug_capture"})
         ),
         boundary_content_sha256=freeze_cloud_parent(runtime, support)["content_sha256"]
         if support.state == "ready"

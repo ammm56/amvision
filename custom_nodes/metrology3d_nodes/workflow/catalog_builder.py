@@ -271,7 +271,9 @@ def build_custom_node_catalog_document():
         definitions.append(
             dict(
                 node_type_id="custom.metrology3d." + key,
-                version="0.1.13"
+                version="0.1.14"
+                if key in {"extract-boundary", "cloud-preview"}
+                else "0.1.13"
                 if key
                 in {
                     "extract-boundary",
