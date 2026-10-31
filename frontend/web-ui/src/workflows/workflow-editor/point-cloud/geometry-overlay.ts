@@ -32,10 +32,12 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
   let hidden:ReadonlySet<string>=new Set(),roiGraph:RoiValue[]=[],cancelRoi:(()=>void)|undefined,roiControl:{control:TransformControls;target:Object3D;id:string}|undefined
   let restoredInput:GeometryOverlayInput|undefined
   let interactive=true
+  let evidenceVisible=true,evidenceObjects:Object3D[]=[]
+  function evidenceVisibility(visible:boolean){if(closed)return;evidenceVisible=visible;for(const item of evidenceObjects)item.visible=visible;schedule()}
   const roiInstances:{id:string;target:Object3D;sections:RoiValue[]}[]=[]
   function resources(object:Object3D){const geometries=new Set<BufferGeometry>(),materials=new Set<Material>();object.traverse(o=>{const item=o as Mesh;if(item.geometry)geometries.add(item.geometry);if(item.material)for(const m of Array.isArray(item.material)?item.material:[item.material])materials.add(m)});return {geometries,materials}}
   function account(object:Object3D){const buffers=new Set<ArrayBufferLike>();for(const g of resources(object).geometries){for(const a of Object.values(g.attributes))buffers.add(a.array.buffer);if(g.index)buffers.add(g.index.array.buffer)}const bytes=[...buffers].reduce((s,b)=>s+b.byteLength,0);releases.push(reserveCpu(bytes,policy));releases.push(reserveGpu(bytes,policy))}
-  function clear(){cancelArc=undefined;cancelRoi=undefined;roiControl=undefined;roiInstances.length=0;roiGraph=[];arcRelease();arcRelease=()=>{};drag(false);gizmo?.detach();gizmo?.dispose();gizmo=null;for(const g of resources(root).geometries)g.dispose();for(const m of resources(root).materials)m.dispose();root.removeFromParent();root.clear();targets.clear();updates.clear();for(const release of releases)release();releases=[];root=new Group()}
+  function clear(){evidenceObjects=[];cancelArc=undefined;cancelRoi=undefined;roiControl=undefined;roiInstances.length=0;roiGraph=[];arcRelease();arcRelease=()=>{};drag(false);gizmo?.detach();gizmo?.dispose();gizmo=null;for(const g of resources(root).geometries)g.dispose();for(const m of resources(root).materials)m.dispose();root.removeFromParent();root.clear();targets.clear();updates.clear();for(const release of releases)release();releases=[];root=new Group()}
   function pose(roi:RoiValue,target:Object3D){const g=object(roi.geometry);target.position.copy(vec(roi.kind==='section-band'?g.origin:g.center)).sub(physicalOrigin);target.quaternion.copy(orientation(g,roi.kind))}
   function finiteMesh(roi:RoiValue,color:number,clips:Plane[]=[]){
     const target=new Group();pose(roi,target);root.add(target)
@@ -234,6 +236,7 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
     clear()
     try {
       scene.add(root);buildEvidence(next.payload);buildMeasurements(next);buildCurves(next)
+      evidenceObjects=[...root.children];evidenceVisibility(evidenceVisible)
       if(next.debug&&next.debugLayers){
         const layer=new Group(),owned:(()=>void)[]=[]
         try{buildDebugOverlay(layer,next.debug,next.debugLayers,next.debugSelection??null,origin,policy,r=>owned.push(r));root.add(layer);releases.push(...owned)}
@@ -288,7 +291,7 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
   }
   function keydown(event:KeyboardEvent){if(event.key==='Escape'&&gizmo?.dragging&&(cancelArc||cancelRoi)){event.preventDefault();event.stopPropagation();(cancelArc??cancelRoi)?.()}}
   canvas.ownerDocument.addEventListener('keydown',keydown,true)
-  return {update,visibility,activity,focus(kind:GeometryFocus){
+  return {update,visibility,activity,evidenceVisibility,focus(kind:GeometryFocus){
     if(closed||!input)return null
     const bounds=new Box3()
     if(kind==='roi'){
@@ -297,5 +300,5 @@ export function createGeometryOverlay(scene:Object3D,camera:Camera,canvas:HTMLEl
     }
     else root.traverse(o=>{const c=o.userData.curve;if(kind==='debug'&&o.userData.debug?.id===input?.debug?.id||kind==='arc'&&o.userData.arc||kind==='plane'&&!!input?.selectedPlane&&o.userData.plane===input.selectedPlane||kind==='measurement'&&!!input?.selectedMeasurement&&o.userData.measurement===input.selectedMeasurement||kind==='feature'&&!!input?.selectedCurve&&c?.featureId===input.selectedCurve&&(!input.selectedSegment||c.segmentId===input.selectedSegment||c.groupId===input.selectedSegment))bounds.expandByObject(o)})
     return bounds.isEmpty()?null:{center:bounds.getCenter(new Vector3()),radius:Math.max(bounds.getSize(new Vector3()).length()/2,1e-6)}
-  },pick(ray:Raycaster){if(closed||!input)return false;const hit=ray.intersectObject(root,true).find(h=>h.object.userData.debug&&input?.debugSelected||h.object.userData.curve&&input?.curveSelected||h.object.userData.measurement&&input?.measurementSelected);if(!hit)return false;const d=hit.object.userData.debug,c=hit.object.userData.curve;if(d){const index=d.kind==='cell'?Math.floor((hit.faceIndex??-2)/2):d.index??hit.index;if(Number.isSafeInteger(index)&&index>=0)input.debugSelected?.({kind:d.kind,index})}else if(c){if(Number.isSafeInteger(c.start)&&hit.index!==undefined&&input.curvePointSelected)input.curvePointSelected(c.featureId,c.segmentId,c.start+hit.index);else input.curveSelected?.(c.featureId,c.segmentId)}else input.measurementSelected?.(hit.object.userData.measurement);return true},camera(value:Camera){camera=value;if(gizmo)gizmo.camera=value},dragging:()=>!!gizmo?.dragging,dispose(){if(!closed){closed=true;canvas.ownerDocument.removeEventListener('keydown',keydown,true);clear()}}}
+  },pick(ray:Raycaster){if(closed||!input)return false;const hit=ray.intersectObject(root,true).find(h=>h.object.visible&&(h.object.userData.debug&&input?.debugSelected||h.object.userData.curve&&input?.curveSelected||h.object.userData.measurement&&input?.measurementSelected));if(!hit)return false;const d=hit.object.userData.debug,c=hit.object.userData.curve;if(d){const index=d.kind==='cell'?Math.floor((hit.faceIndex??-2)/2):d.index??hit.index;if(Number.isSafeInteger(index)&&index>=0)input.debugSelected?.({kind:d.kind,index})}else if(c){if(Number.isSafeInteger(c.start)&&hit.index!==undefined&&input.curvePointSelected)input.curvePointSelected(c.featureId,c.segmentId,c.start+hit.index);else input.curveSelected?.(c.featureId,c.segmentId)}else input.measurementSelected?.(hit.object.userData.measurement);return true},camera(value:Camera){camera=value;if(gizmo)gizmo.camera=value},dragging:()=>!!gizmo?.dragging,dispose(){if(!closed){closed=true;canvas.ownerDocument.removeEventListener('keydown',keydown,true);clear();evidenceObjects=[]}}}
 }

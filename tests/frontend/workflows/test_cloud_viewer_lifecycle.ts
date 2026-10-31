@@ -17,6 +17,24 @@ vi.mock('@/workflows/workflow-editor/point-cloud/renderer', () => ({createCloudR
 const payload = {state:'ready',spatial:{length_unit:null,frame_id:'camera'},color:{mode:'solid'},source_point_count:20,display_point_count:2}
 afterEach(() => vi.resetAllMocks())
 function viewer() { return mount(CloudViewer, {props:{payload,projectId:'p'},global:{plugins:[createI18n({legacy:false,locale:'en-US'})]}}) }
+it('applies Z display ranges without changing the payload, isolates visibility, and ignores late scale updates',async()=>{
+  const scene={dispose:vi.fn(),geometry:vi.fn(),colors:vi.fn(),evidenceVisibility:vi.fn(),axesVisible:vi.fn()}
+  mocks.capabilities.mockResolvedValue({renderer:{}});mocks.decode.mockResolvedValue({dispose:vi.fn()});mocks.create.mockReturnValue(scene)
+  const body={...payload,bounds:{min:[0,0,-3],max:[1,1,7]}},before=JSON.stringify(body)
+  const w=mount(CloudViewer,{props:{payload:body,projectId:'p'},global:{plugins:[createI18n({legacy:false,locale:'en-US'})]}})
+  try{
+    await flushPromises();const options=mocks.create.mock.calls[0]![7];expect(options.coordinateColor).toBe(true)
+    const bounds=w.findAll('input.color-bound'),geometryCalls=scene.geometry.mock.calls.length
+    await bounds[0]!.setValue(9);expect(bounds[0]!.attributes('aria-invalid')).toBe('true');expect(w.get('.cloud-color-scale').text()).toContain('-3')
+    await bounds[1]!.setValue(10);expect(scene.colors).toHaveBeenLastCalledWith(null,'coordinate-z',{min:9,max:10})
+    await w.get('[aria-label="Reset color range"]').trigger('click');expect(scene.colors).toHaveBeenLastCalledWith(null,'coordinate-z',{min:-3,max:7})
+    const overlay=w.findAll('label').find(l=>l.text()==='Measurement overlays')!.get('input')
+    await overlay.setValue(false);expect(scene.evidenceVisibility).toHaveBeenLastCalledWith(false);expect(scene.geometry).toHaveBeenCalledTimes(geometryCalls)
+    options.scaleChanged({value:10,pixels:100});await nextTick();expect(w.find('.cloud-scale-bar').exists()).toBe(true)
+    await w.setProps({payload:{...body,observation_id:'next'}});await flushPromises();options.scaleChanged({value:999,pixels:100});await nextTick();expect(w.find('.cloud-scale-bar').exists()).toBe(false)
+    expect(JSON.stringify(body)).toBe(before)
+  }finally{w.unmount()}
+})
 it.skipIf(!env.AMVISION_I2_DISPLAY)('switches complete captured evidence through the viewer and the actual overlay',async()=>{
   const {webcrypto}=await vi.importActual<{webcrypto:Crypto}>('node:crypto');vi.stubGlobal('crypto',webcrypto)
   const decoder=await vi.importActual<typeof import('@/workflows/workflow-editor/point-cloud/boundary-debug')>('@/workflows/workflow-editor/point-cloud/boundary-debug')

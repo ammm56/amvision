@@ -6,9 +6,11 @@
     <button type="button" :title="t('open')" @click.stop="open = true"><Box :size="16" />{{ t('open') }}</button>
   </div>
   <Teleport to="body">
+    <div class="cloud-preview-shell">
     <ConfirmDialog v-if="open" :title="t('title')" :cancel-label="t('close')" confirm-label="" :show-confirm="false" size="wide" @cancel="open = false">
       <CloudViewer :payload="payload" :project-id="projectId" />
     </ConfirmDialog>
+    </div>
   </Teleport>
 </template>
 <script setup lang="ts">
@@ -29,4 +31,7 @@ const { t } = useI18n({ useScope: 'local', messages: {
 <style scoped>
 .cloud-summary { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 8px; font-size: 12px; min-width: 0; overflow-wrap: anywhere; }
 .cloud-summary button { display: flex; align-items: center; gap: 6px; border: 1px solid var(--am-border); background: var(--am-surface); color: var(--am-text); padding: 6px 8px; border-radius: 4px; }
+.cloud-preview-shell :deep(.confirm-dialog--wide){width:min(1440px,calc(100vw - 24px));max-height:calc(100dvh - 24px)}
+.cloud-preview-shell :deep(.confirm-dialog__content){container-type:inline-size}
+.cloud-preview-shell :deep(.cloud-viewer){height:min(76dvh,900px)}
 </style>

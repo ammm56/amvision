@@ -6,6 +6,20 @@ import type {TransformControls} from 'three/addons/controls/TransformControls.js
 const policy={max_points:1000,max_data_bytes:100000,max_cpu_bytes:10000000,max_gpu_bytes:10000000,max_canvas_pixels:1000000,max_position_error:.001}
 const payload={observation_id:'obs',spatial:{frame_id:'fixture',length_unit:'mm'},bounds:{min:[1000000,0,0],max:[1000004,4,4]}}
 const roi={roi_id:'r',frame_id:'fixture',length_unit:'mm',kind:'box',geometry:{center:[1000002,2,2],size:[2,2,2],rotation:[[1,0,0],[0,1,0],[0,0,1]]}}
+it('hides measurement evidence independently of ROI without rebuilding or retaining old objects',()=>{
+  const scene=new Scene(),overlay=createGeometryOverlay(scene,new PerspectiveCamera(),document.createElement('canvas'),[1000000,0,0],policy,()=>{},()=>{},e=>{throw e})
+  const body={...payload,geometry:{format_id:'amvision.geometry-preview.v1',observation_id:'obs',frame_id:'fixture',length_unit:'mm',curves:[],planes:[{feature_id:'plane',valid:true,geometry:{normal:[0,0,1],offset:-2},support_bounds:payload.bounds}]}}
+  try{
+    overlay.update({payload:body,rois:[roi]})
+    const root=scene.children[0]!,plane=root.children.find(o=>o.userData.plane)!,region=root.children.find(o=>o.userData.roiId)!,usage=rendererUsage()
+    for(let i=0;i<20;i++){overlay.evidenceVisibility(false);expect(plane.visible).toBe(false);expect(region.visible).toBe(true);overlay.evidenceVisibility(true)}
+    expect(scene.children[0]).toBe(root);expect(rendererUsage()).toEqual(usage)
+    overlay.evidenceVisibility(false);overlay.update({payload:body,rois:[]})
+    expect(scene.children[0]!.children.find(o=>o.userData.plane)!.visible).toBe(false)
+    overlay.update({payload,rois:[]});overlay.evidenceVisibility(true);expect(rendererUsage()).toEqual({cpuBytes:0,gpuBytes:0})
+  }finally{overlay.dispose()}
+  overlay.evidenceVisibility(true);expect(scene.children).toHaveLength(0);expect(rendererUsage()).toEqual({cpuBytes:0,gpuBytes:0})
+})
 it('suspends an active ROI gesture without rebuilding evidence and blocks hidden callbacks',()=>{
   const scene=new Scene(),changed=vi.fn(),overlay=createGeometryOverlay(scene,new PerspectiveCamera(),document.createElement('canvas'),[1000000,0,0],policy,()=>{},()=>{},e=>{throw e})
   try{

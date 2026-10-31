@@ -11,13 +11,19 @@
       <label>{{ t('projection') }}<select v-model="orthographic" :disabled="!scene" @change="scene?.projection(orthographic)"><option :value="false">{{ t('perspective') }}</option><option :value="true">{{ t('orthographic') }}</option></select></label>
       <label>{{ t('axis') }}<select :value="axis" :disabled="!scene" @change="selectView"><option value="free" disabled>{{ zh?'自由视图':'Free view' }}</option><option value="iso">3D</option><option value="z">{{ zh?'顶视 +Z':'Top +Z' }}</option><option value="-z">{{ zh?'底视 -Z':'Bottom -Z' }}</option><option value="y">{{ zh?'前视 -Y':'Front -Y' }}</option><option value="-y">{{ zh?'后视 +Y':'Back +Y' }}</option><option value="x">{{ zh?'右视 +X':'Right +X' }}</option><option value="-x">{{ zh?'左视 -X':'Left -X' }}</option></select></label>
       <label>{{ t('size') }}<input v-model.number="size" :disabled="!scene" type="range" min="1" max="8" step="1" @input="scene?.pointSize(size)"></label>
-      <template v-if="planes.length"><label>{{ zh?'平面':'Plane' }}<select v-model="selectedPlane"><option value="">{{ zh?'未选择':'None' }}</option><option v-for="plane in planes" :key="String(plane.feature_id)" :value="String(plane.feature_id)">{{ plane.feature_id }}</option></select></label><label>{{ zh?'颜色':'Color' }}<select v-model="colorMode" :disabled="!selectedPlane||!scene"><option value="original">{{ zh?'原始':'Original' }}</option><option value="support">{{ zh?'支持 / 剔除':'Support / rejected' }}</option><option value="residual">{{ zh?'有符号残差':'Signed residual' }}</option></select></label></template>
+      <label>{{ zh?'着色':'Coloring' }}<select v-model="colorMode" :disabled="!scene"><option value="original">{{ zh?'原色':'Source colors' }}</option><option value="coordinate-z" :disabled="!sourceRange">{{ zh?'坐标 Z':'Coordinate Z' }}</option><option value="support" :disabled="!selectedPlane">{{ zh?'支持 / 剔除':'Support / rejected' }}</option><option value="residual" :disabled="!selectedPlane">{{ zh?'有符号残差':'Signed residual' }}</option></select></label>
+      <template v-if="colorMode==='coordinate-z'"><label>{{ zh?'色标下限':'Scale minimum' }}<input v-model.number="rangeMin" class="color-bound" type="number" step="any" :aria-invalid="!validRange" @change="applyRange"></label><label>{{ zh?'色标上限':'Scale maximum' }}<input v-model.number="rangeMax" class="color-bound" type="number" step="any" :aria-invalid="!validRange" @change="applyRange"></label><button :title="zh?'重置色标范围':'Reset color range'" :aria-label="zh?'重置色标范围':'Reset color range'" @click="resetRange"><RefreshCw :size="16" /></button><span v-if="!validRange" role="alert">{{ zh?'色标需为有限数值，下限不大于上限':'Use finite bounds, minimum no greater than maximum' }}</span></template>
+      <label v-if="planes.length">{{ zh?'平面':'Plane' }}<select v-model="selectedPlane"><option value="">{{ zh?'未选择':'None' }}</option><option v-for="plane in planes" :key="String(plane.feature_id)" :value="String(plane.feature_id)">{{ plane.feature_id }}</option></select></label>
+      <label><input v-model="showEvidence" type="checkbox" :disabled="!scene" @change="scene?.evidenceVisibility(showEvidence)">{{ zh?'测量叠加':'Measurement overlays' }}</label>
+      <label><input v-model="showAxes" type="checkbox" :disabled="!scene" @change="scene?.axesVisible(showAxes)">{{ zh?'坐标轴':'Axes' }}</label>
       <label v-if="activeCurve?.fit_weights">{{ zh?'拟圆证据颜色':'Circle evidence colors' }}<select v-model="curveColorMode"><option value="support">{{ zh?'支持分类':'Support classes' }}</option><option value="weight">{{ zh?'拟合权重':'Fit weights' }}</option><option value="residual">{{ zh?'径向残差':'Radial residuals' }}</option></select></label>
       <template v-if="editRois?.length"><button :title="zh?'移动 ROI':'Move ROI'" :aria-label="zh?'移动 ROI':'Move ROI'" :aria-pressed="editMode==='translate'" :disabled="!scene||!selectedRoiVisible" @click="editMode='translate'"><Move3D :size="18" /></button><button :title="zh?'旋转 ROI':'Rotate ROI'" :aria-label="zh?'旋转 ROI':'Rotate ROI'" :aria-pressed="editMode==='rotate'" :disabled="!scene||!selectedRoiVisible" @click="editMode='rotate'"><Rotate3D :size="18" /></button></template>
       <button v-if="scalableRoi" :title="zh?'调整 ROI 尺寸':'Resize ROI'" :aria-label="zh?'调整 ROI 尺寸':'Resize ROI'" :aria-pressed="editMode==='scale'" :disabled="!scene||!selectedRoiVisible" @click="editMode='scale'"><Scaling :size="18" /></button>
     </div>
     <div v-show="viewportVisible" class="cloud-stage">
       <div ref="host" class="cloud-canvas" />
+      <div v-if="scene&&colorMode==='coordinate-z'&&appliedRange" class="cloud-color-scale" :aria-label="zh?'坐标 Z 色标':'Coordinate Z scale'"><strong>{{ zh?'坐标 Z':'Coordinate Z' }} · {{ unit }}</strong><div><i aria-hidden="true"/><ol><li v-for="tick in colorTicks" :key="tick.index">{{ displayNumber(tick.value) }}</li></ol></div></div>
+      <div v-if="scene&&viewScale" class="cloud-scale-bar" :style="{width:`${viewScale.pixels}px`}" :aria-label="zh?'空间比例尺':'Spatial scale'"><span>{{ displayNumber(viewScale.value) }} {{ unit }}</span></div>
       <p v-if="loading" role="status" class="cloud-message">{{ t('loading') }}</p>
       <div v-else-if="error" role="alert" class="cloud-message"><p>{{ t(error) }}</p><button :title="t('retry')" @click="load"><RefreshCw :size="18" /></button></div>
       <p v-else-if="body.state !== 'ready'" class="cloud-message">{{ body.state === 'empty' ? t('empty') : String(body.reason || t('unavailable')) }}</p>
@@ -62,6 +68,7 @@ import type {ArcEdit,ArcValues} from './arc-edit'
 import {roiVisibility,useRoiVisibility} from './roi-visibility'
 import RoiVisibilityButton from './RoiVisibilityButton.vue'
 import {navigateTab} from './tab-navigation'
+import {coordinateRange,displayNumber,type CloudColorMode,type CoordinateRange, type scaleBar} from './view-presentation'
 
 const props = withDefaults(defineProps<{ payload: Record<string, unknown>; projectId: string; editRois?:RoiValue[]; selectedRoiId?:string; allowPick?:boolean; candidate?:number[];editArc?:ArcEdit;hiddenRoiIds?:ReadonlySet<string>;roiScope?:string;presentation?:'full'|'view'|'evidence'|'hidden' }>(),{presentation:'full'})
 const viewerId=useId(),viewportVisible=computed(()=>props.presentation==='full'||props.presentation==='view')
@@ -98,13 +105,19 @@ function selectDebug(id:string){selectedDebug.value=id;debugSelection.value=null
 function selectDebugPoint(selection:DebugSelection){debugSelection.value=selection;showDetails.value=true;detailTab.value='debug';focusTarget.value='debug'}
 function selectCurve(id:string,segment:string){selectedCurvePoint.value=null;selectedCurve.value=id;selectedSegment.value=segment;focusTarget.value='feature';showDetails.value=true;detailTab.value='features';emit('feature-selection',{payload:props.payload,featureId:id,segmentId:segment})}
 function selectMeasurement(id:string){selectedMeasurement.value=id;focusTarget.value='measurement'}
-function updateColors(){try{const samples=planeColorData(props.payload,selectedPlane.value);colorSummary.value=planeColorSummary(samples);scene.value?.colors(samples,colorMode.value)}catch(failure){release();error.value=failure instanceof Error?failure.message:'unavailable'}}
+function updateColors(){try{const samples=['support','residual'].includes(colorMode.value)?planeColorData(props.payload,selectedPlane.value):null;colorSummary.value=planeColorSummary(samples);scene.value?.colors(samples,colorMode.value,appliedRange.value)}catch(failure){release();error.value=failure instanceof Error?failure.message:'unavailable'}}
 function displayObject(value: unknown): Record<string, unknown> { return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {} }
 const body = computed(() => props.payload), color = computed(() => displayObject(body.value.color))
 const unit = computed(() => displayObject(body.value.spatial).length_unit || t('unknown'))
 const frame = computed(() => displayObject(body.value.spatial).frame_id)
-const loading = ref(false), error = ref(''), pan = ref(false), orthographic = ref(false), size = ref(2)
-const axis = ref<CloudViewState>('iso')
+const loading = ref(false), error = ref(''), pan = ref(false), orthographic = ref(true), size = ref(2)
+const axis = ref<CloudViewState>('z')
+const sourceRange=computed(()=>coordinateRange(body.value)),rangeMin=ref<number|string>(0),rangeMax=ref<number|string>(0),appliedRange=ref<CoordinateRange|null>(null)
+const validRange=computed(()=>typeof rangeMin.value==='number'&&typeof rangeMax.value==='number'&&Number.isFinite(rangeMin.value)&&Number.isFinite(rangeMax.value)&&rangeMin.value<=rangeMax.value)
+const colorTicks=computed(()=>appliedRange.value?Array.from({length:5},(_,index)=>({index,value:appliedRange.value!.max-(appliedRange.value!.max-appliedRange.value!.min)*index/4})):[])
+const viewScale=ref<ReturnType<typeof scaleBar>>(null),showEvidence=ref(true),showAxes=ref(false)
+function applyRange(){if(validRange.value){appliedRange.value={min:Number(rangeMin.value),max:Number(rangeMax.value)};updateColors()}}
+function resetRange(){const range=sourceRange.value;if(range){rangeMin.value=range.min;rangeMax.value=range.max;appliedRange.value={...range};updateColors()}}
 function selectView(event: Event) {
   const selected = (event.target as HTMLSelectElement).value as CloudViewState
   if (selected !== 'free') scene.value?.fit(selected)
@@ -118,7 +131,7 @@ const debugLayers=ref<DebugLayers>({grid:true,profiles:true,candidates:true,part
 const activeDebug=computed(()=>debugItems.value.find(d=>d.id===selectedDebug.value))
 const picked = ref<ReturnType<CloudDisplayData['point']> | null>(null)
 const picking=ref(false),measurements=ref<MeasurementDisplay[]>([]),selectedMeasurement=ref('')
-const selectedPlane=ref(''),colorMode=ref<'original'|'support'|'residual'>('original')
+const selectedPlane=ref(''),colorMode=ref<CloudColorMode>('original')
 const colorSummary=ref<ReturnType<typeof planeColorSummary>>(null)
 const planes=computed(()=>{const raw=displayObject(body.value.geometry).planes;return Array.isArray(raw)?raw.map(displayObject):[]})
 const curves=ref<CurveDisplay[]>([]),selectedCurve=ref(''),selectedSegment=ref('')
@@ -138,7 +151,9 @@ function releaseDebug(){for(const record of debugItems.value)record.dispose();de
 function release() { generation++; controller?.abort(); controller = null; scene.value?.dispose(); scene.value = null; data?.dispose(); data = null;releaseDebug(); picked.value = null;picking.value=false;measurements.value=[];selectedMeasurement.value='';selectedPlane.value='';colorMode.value='original';colorSummary.value=null;curves.value=[];selectedCurve.value='';selectedSegment.value='';curveColorMode.value='support' }
 async function load() {
   release(); const token = generation; controller = new AbortController(); const signal = controller.signal
-  error.value = ''; loading.value = true; pan.value = false; orthographic.value = false; size.value = 2; axis.value = 'iso'
+  error.value = ''; loading.value = true; pan.value = false; orthographic.value = true; size.value = 2; axis.value = 'z'; viewScale.value=null;showEvidence.value=true;showAxes.value=false
+  appliedRange.value=sourceRange.value?{...sourceRange.value}:null;rangeMin.value=sourceRange.value?.min??0;rangeMax.value=sourceRange.value?.max??0
+  colorMode.value=color.value.mode==='solid'&&sourceRange.value?'coordinate-z':'original'
   try {
     if(props.presentation==='hidden')return
     measurements.value=measurementItems(body.value)
@@ -167,7 +182,7 @@ async function load() {
     }, view => {
       if(token!==generation||signal.aborted||props.payload!==payload)return
       axis.value = view
-    },viewportVisible.value)
+    },viewportVisible.value,{range:appliedRange.value,coordinateColor:colorMode.value==='coordinate-z',scaleChanged:scale=>{if(token===generation&&!signal.aborted&&props.payload===payload)viewScale.value=scale}})
     scenePayload=payload
     updateGeometry()
   } catch (failure) {
@@ -201,14 +216,21 @@ onBeforeUnmount(release)
 .cloud-tools button, .cloud-message button, .evidence-message button { display: inline-grid; place-items: center; width: 32px; height: 32px; border: 1px solid var(--am-border); border-radius: 4px; color: var(--am-text); background: var(--am-surface); }
 .evidence-message{display:flex;align-items:center;gap:8px;overflow-wrap:anywhere;min-width:0}.evidence-message p{margin:0}
 .cloud-tools button[aria-pressed=true] { background: var(--am-surface-soft); outline: 2px solid var(--am-brand-primary); }
-.cloud-tools select {max-width:min(100%,240px);min-width:0}
+.cloud-tools select {max-width:min(100%,240px);min-width:0;min-height:28px;border:1px solid var(--am-border);border-radius:4px;padding:3px 6px;color:var(--am-text);background:var(--am-surface);font:inherit}
 .cloud-tools label {min-width:0;max-width:100%}
 .cloud-tools input { width: 80px; }
-.cloud-stage { position: relative; min-width: 0; min-height: 0; background: var(--am-surface-soft); }
+.cloud-tools input[type=checkbox]{appearance:auto;flex:0 0 16px;width:16px;height:16px;padding:0;margin:0;accent-color:var(--am-brand-primary)}
+.cloud-tools .color-bound{width:94px;min-height:28px;font:inherit;font-variant-numeric:tabular-nums;border:1px solid var(--am-border);border-radius:4px;padding:3px 6px;color:var(--am-text);background:var(--am-surface)}
+.cloud-tools input[aria-invalid=true]{outline:1px solid var(--am-danger,#d74444)}
+.cloud-stage { position: relative; min-width: 0; min-height: 0; background: #202326; }
+.cloud-color-scale{position:absolute;right:12px;top:16px;color:#fff;font-size:11px;pointer-events:none;font-variant-numeric:tabular-nums;text-shadow:0 1px 2px #000}
+.cloud-color-scale strong{display:block;font-size:11px;font-weight:500;margin-bottom:8px}.cloud-color-scale>div{display:flex;gap:6px;height:150px}.cloud-color-scale i{width:12px;border:1px solid #d8d8d8;background:linear-gradient(to top,#00f,#0ff,#0f0,#ff0,#f00)}.cloud-color-scale ol{display:flex;flex-direction:column;justify-content:space-between;list-style:none;padding:0;margin:0}
+.cloud-scale-bar{position:absolute;bottom:24px;left:18px;border:solid #fff;border-width:0 1px 1px;height:6px;pointer-events:none;color:#fff;text-shadow:0 1px 2px #000;text-align:center;font-size:11px;white-space:nowrap}.cloud-scale-bar span{position:absolute;top:8px;left:50%;transform:translateX(-50%)}
 .cloud-canvas { position: absolute; inset: 0; overflow: hidden; touch-action: none; }
 .cloud-message { position: absolute; inset: 0; margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px; text-align: center; overflow-wrap: anywhere; }
 .cloud-status { display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 8px 0; font-size: 12px; overflow-wrap: anywhere; }
 .residual-scale { display:inline-block; width:60px; height:8px; border:1px solid var(--am-border); background:linear-gradient(to right,blue,white,red); }
 .roi-display-list{display:grid;gap:4px;padding:8px 0}.roi-display-list>div{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0}.roi-display-list span{overflow-wrap:anywhere;min-width:0;font-size:12px}
 @media(max-width: 640px) { .cloud-viewer { height: 65dvh; } }
+@container(min-width:1200px){.cloud-viewer.show-details:not(.evidence-only){grid-template-columns:minmax(0,1fr) 480px;grid-template-rows:auto auto minmax(0,1fr) auto;column-gap:12px}.cloud-viewer.show-details:not(.evidence-only) .cloud-tools{grid-column:1/-1;grid-row:1}.cloud-viewer.show-details:not(.evidence-only) .cloud-stage{grid-column:1;grid-row:2/4}.cloud-viewer.show-details:not(.evidence-only) .cloud-status{grid-column:1/-1;grid-row:4}.cloud-viewer.show-details:not(.evidence-only) .evidence-tabs{grid-column:2;grid-row:2}.cloud-viewer.show-details:not(.evidence-only) .evidence-panel{grid-column:2;grid-row:3}}
 </style>

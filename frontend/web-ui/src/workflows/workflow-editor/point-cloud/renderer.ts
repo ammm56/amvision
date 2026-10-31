@@ -1,9 +1,10 @@
-import { AxesHelper, BufferAttribute, BufferGeometry, Matrix4, MOUSE, OrthographicCamera, PerspectiveCamera, Points, PointsMaterial, Quaternion, Raycaster, Scene, Vector2, Vector3, WebGLRenderer } from 'three'
+import { AxesHelper, BufferAttribute, BufferGeometry, Color, Matrix4, MOUSE, OrthographicCamera, PerspectiveCamera, Points, PointsMaterial, Quaternion, Raycaster, Scene, Vector2, Vector3, WebGLRenderer } from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import type { CloudRendererPolicy } from '../services/measurement-resource.service'
 import { reserveCpu, reserveGpu, type CloudDisplayData } from './preview-data'
 import {fillPlaneColors,type PlaneColors} from './plane-colors'
 import {createGeometryOverlay,type GeometryOverlayInput,type GeometryFocus} from './geometry-overlay'
+import {fillCoordinateColors,linearizeDisplayColors, type CloudColorMode, type CoordinateRange, scaleBar} from './view-presentation'
 export type CloudViewAxis = 'iso' | 'x' | '-x' | 'y' | '-y' | 'z' | '-z'
 export type CloudViewState = CloudViewAxis | 'free'
 
@@ -16,7 +17,8 @@ const presetRotations = (Object.keys(directions) as CloudViewAxis[]).map(axis =>
 
 /** 一个激活的视口一个 renderer；没有常驻动画、后台重算或原始点云请求。 */
 export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, policy: CloudRendererPolicy,
-  picked: (index: number) => void, failed: (error: Error) => void, viewChanged: (view: CloudViewState) => void, initialActive = true) {
+  picked: (index: number) => void, failed: (error: Error) => void, viewChanged: (view: CloudViewState) => void, initialActive = true,
+  presentation?: {range:CoordinateRange|null; coordinateColor:boolean; scaleChanged:(scale:ReturnType<typeof scaleBar>)=>void}) {
   const rect = host.getBoundingClientRect()
   function dimensions(width: number, height: number) {
     const w = Math.max(1, Math.floor(width)), h = Math.max(1, Math.floor(height))
@@ -40,7 +42,10 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
   let radius = 1,viewRadius=1
   let pointDown: {x: number; y: number} | null = null
   function render() {
-    if (!closed && active && measurable && renderer) renderer.render(scene, camera)
+    if (!closed && active && measurable && renderer) {
+      renderer.render(scene, camera)
+      presentation?.scaleChanged(camera instanceof OrthographicCamera ? scaleBar((camera.right-camera.left)/camera.zoom,width) : null)
+    }
   }
   function schedule() { if (!closed && active && measurable && !frame) frame = requestAnimationFrame(() => { frame = 0; render() }) }
   function publishView() {
@@ -87,7 +92,7 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
     controls.mouseButtons.LEFT = panEnabled ? MOUSE.PAN : MOUSE.ROTATE
     controls.addEventListener('change', controlsChanged)
   }
-  function fit(axis: CloudViewAxis = 'iso') {
+  function fit(axis: CloudViewAxis = 'z') {
     if (closed) return
     viewRadius=radius
     const direction = directions[axis],top=axis==='z'||axis==='-z'
@@ -124,16 +129,19 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
   try {
     releaseColor=reserveCpu(data.colors.byteLength,policy)
     geometry.setAttribute('position', new BufferAttribute(data.positions, 3)); geometry.setAttribute('color', new BufferAttribute(data.colors.slice(), 3))
+    if(presentation?.coordinateColor&&presentation.range)fillCoordinateColors(geometry.getAttribute('color').array as Float32Array,data.positions,data.origin[2]!,presentation.range)
+    linearizeDisplayColors(geometry.getAttribute('color').array as Float32Array)
     geometry.computeBoundingSphere(); radius = Math.max(geometry.boundingSphere?.radius ?? 0, 1e-6)
     renderer = new WebGLRenderer({ antialias: false, alpha: true, powerPreference: 'low-power' })
+    scene.background = new Color(0x202326)
     renderer.localClippingEnabled = true
     renderer.setPixelRatio(1); renderer.setSize(width, height)
     renderer.domElement.setAttribute('aria-label', '3D point cloud')
     renderer.domElement.addEventListener('webglcontextlost', lost)
     renderer.domElement.addEventListener('pointerdown', down); renderer.domElement.addEventListener('pointerup', pick)
     host.append(renderer.domElement)
-    axes = new AxesHelper(radius * .65); scene.add(points, axes)
-    camera = new PerspectiveCamera(45, width / height)
+    axes = new AxesHelper(radius * .12); axes.visible=false; scene.add(points, axes)
+    camera = new OrthographicCamera(-1,1,1,-1)
     fit()
     overlay = createGeometryOverlay(scene,camera,renderer.domElement,data.origin,policy,schedule,dragging=>{if(controls)controls.enabled=active&&measurable&&!dragging},error=>{dispose();failed(error)})
     syncInteraction()
@@ -164,11 +172,18 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
         if(camera instanceof OrthographicCamera){const y=viewRadius*1.15/Math.min(1,width/height);camera.left=-y*width/height;camera.right=y*width/height;camera.top=y;camera.bottom=-y}
         controls!.target.copy(bounds.center);camera.updateProjectionMatrix();controls!.update();schedule()
       },
-      colors(samples:PlaneColors|null,mode:'original'|'support'|'residual'){
+      colors(samples:PlaneColors|null,mode:CloudColorMode,range?:CoordinateRange|null){
         if(closed)return
         const attribute=geometry.getAttribute('color') as BufferAttribute
-        fillPlaneColors(attribute.array as Float32Array,data.colors,samples,mode);attribute.needsUpdate=true;schedule()
+        if(mode==='coordinate-z'){
+          if(!range)throw new Error('cloud_preview_invalid')
+          fillCoordinateColors(attribute.array as Float32Array,data.positions,data.origin[2]!,range)
+        }else fillPlaneColors(attribute.array as Float32Array,data.colors,samples,mode)
+        linearizeDisplayColors(attribute.array as Float32Array)
+        attribute.needsUpdate=true;schedule()
       },
+      evidenceVisibility(visible:boolean){overlay?.evidenceVisibility(visible)},
+      axesVisible(visible:boolean){if(axes){axes.visible=visible;schedule()}},
       geometry(input:GeometryOverlayInput) { try { overlay?.update(input) } catch(error) { dispose(); failed(error as Error) } },
       roiVisibility(hidden:ReadonlySet<string>) { try { overlay?.visibility(hidden) } catch(error) { dispose(); failed(error as Error) } },
       projection(orthographic: boolean) {

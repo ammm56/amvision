@@ -30,11 +30,11 @@ it('suspends a hidden or zero-size viewport without reallocating or losing camer
   const failed=vi.fn(),view=createCloudRenderer(host,data,policy,()=>{},failed,()=>{})
   try{
     vi.advanceTimersByTime(20)
-    const camera=captured.camera as PerspectiveCamera,position=camera.position.clone(),rotation=camera.quaternion.clone(),usage=rendererUsage(),control=captured.controls.at(-1)!
+    const camera=captured.camera as OrthographicCamera,position=camera.position.clone(),rotation=camera.quaternion.clone(),usage=rendererUsage(),control=captured.controls.at(-1)!
     for(let i=0;i<20;i++){
       view.activity(false);expect(control.enabled).toBe(false);expect(vi.getTimerCount()).toBe(0)
       captured.resize!([{contentRect:{width:0,height:0}}] as ResizeObserverEntry[],{} as ResizeObserver)
-      expect(rendererUsage()).toEqual(usage);expect(camera.aspect).toBe(1.5)
+      expect(rendererUsage()).toEqual(usage);expect((camera.right-camera.left)/(camera.top-camera.bottom)).toBeCloseTo(1.5,14)
       view.activity(true);vi.advanceTimersByTime(20);expect(control.enabled).toBe(true)
     }
     expect(captured.controls).toHaveLength(1);expect(host.children).toHaveLength(1)
@@ -43,7 +43,7 @@ it('suspends a hidden or zero-size viewport without reallocating or losing camer
     expect(failed).not.toHaveBeenCalled()
   }finally{view.dispose()}
 })
-it('uses Z-up, zooms, preserves view on resize and projection switch, then releases',()=>{
+it('starts in orthographic top view, zooms, preserves orientation on resize and projection switch, then releases',()=>{
   vi.useFakeTimers()
   const host=document.createElement('div')
   vi.spyOn(host,'getBoundingClientRect').mockReturnValue({width:600,height:400} as DOMRect)
@@ -51,15 +51,18 @@ it('uses Z-up, zooms, preserves view on resize and projection switch, then relea
   const failed=vi.fn(),changed=vi.fn(),view=createCloudRenderer(host,data,policy,()=>{},failed,changed)
   const camera=()=>{vi.advanceTimersByTime(20);return captured.camera as PerspectiveCamera|OrthographicCamera}
   try{
-    expect(camera().up.toArray()).toEqual([0,0,1])
-    expect(changed).toHaveBeenLastCalledWith('iso')
-    const start=camera().position.length();view.zoom(true);expect(camera().position.length()).toBeLessThan(start)
+    expect(camera()).toBeInstanceOf(OrthographicCamera)
+    expect(camera().up.toArray()).toEqual([0,1,0])
+    expect(changed).toHaveBeenLastCalledWith('z')
+    const start=camera().zoom;view.zoom(true);expect(camera().zoom).toBeGreaterThan(start)
     const position=camera().position.clone(),rotation=camera().quaternion.clone()
     captured.resize!([{contentRect:{width:500,height:400}}] as ResizeObserverEntry[],{} as ResizeObserver)
     expect(camera().position.equals(position)).toBe(true);expect(camera().quaternion.equals(rotation)).toBe(true)
+    view.projection(false);expect(camera()).toBeInstanceOf(PerspectiveCamera)
+    expect(camera().quaternion.equals(rotation)).toBe(true)
+    const perspectivePosition=camera().position.clone()
     view.projection(true);expect(camera()).toBeInstanceOf(OrthographicCamera)
-    expect(camera().position.distanceTo(position)).toBeLessThan(1e-10)
-    view.projection(false);expect(camera().position.distanceTo(position)).toBeLessThan(1e-10)
+    view.projection(false);expect(camera().position.distanceTo(perspectivePosition)).toBeLessThan(1e-10)
     for(const axis of ['x','-x','y','-y','z','-z'] as const){view.fit(axis);expect(camera().position.distanceTo(new Vector3())).toBeGreaterThan(0);expect(changed).toHaveBeenLastCalledWith(axis)}
     view.pan(true);view.pan(false);expect(failed).not.toHaveBeenCalled()
     view.geometry({payload:{spatial:{frame_id:'fixture',length_unit:'mm'}},rois:[{roi_id:'r',frame_id:'fixture',length_unit:'mm',kind:'box',geometry:{center:[7,8,9],size:[1,2,3],rotation:[[1,0,0],[0,1,0],[0,0,1]]}}],selectedId:'r'})
