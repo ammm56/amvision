@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
+from backend.contracts.workflows.inspection import InspectionRecord
 from backend.contracts.workflows.workflow_graph import (
     NodeDefinition,
     WorkflowPayloadContract,
@@ -957,24 +958,7 @@ def get_core_workflow_payload_contracts() -> tuple[WorkflowPayloadContract, ...]
             payload_type_id="result-record.v1",
             display_name="Inspection Result Record",
             transport_kind="inline-json",
-            json_schema={
-                "type": "object",
-                "properties": {
-                    "ok_ng": {
-                        "type": "string",
-                        "enum": ["OK", "NG"],
-                    },
-                    "ok": {"type": "boolean"},
-                    "reason": {"type": "string"},
-                    "metrics": {},
-                    "conditions": {},
-                    "alarm": {"type": "object"},
-                    "image": {"type": "object"},
-                    "video": {"type": "object"},
-                    "metadata": {"type": "object"},
-                },
-                "required": ["ok_ng", "ok"],
-            },
+            json_schema=InspectionRecord.model_json_schema(),
         ),
         WorkflowPayloadContract(
             payload_type_id="alarm-record.v1",

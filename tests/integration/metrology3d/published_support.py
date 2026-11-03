@@ -86,7 +86,7 @@ class PublishedCloudSystem:
             )["workflow_runtime_id"]
         return self.call("POST", f"/app-runtimes/{self.runtime_id}/start")
 
-    def enable_source(self, create=False):
+    def enable_source(self, create=False, *, diagnostics=False):
         """正式校验输入类型、输出计划和 generation，不直接登记路由。"""
         if create:
             self.call(
@@ -105,7 +105,10 @@ class PublishedCloudSystem:
                         "cloud": {"source": "payload.cloud", "required": True}
                     },
                     "result_mapping": {"result_bindings": ["body"]},
-                    "default_execution_metadata": {"workflow_run_record_mode": "full"},
+                    "default_execution_metadata": {
+                        "workflow_run_record_mode": "full",
+                        "return_node_timings_enabled": diagnostics,
+                    },
                 },
             )
         self.call("POST", f"/trigger-sources/{self.source_id}/enable")
@@ -163,7 +166,7 @@ class PublishedCloudSystem:
 
 
 @contextmanager
-def published_system(root, *, point_cloud_policy=None):
+def published_system(root, *, point_cloud_policy=None, broker_policy=None):
     """读取正式节点包；数据库、共享内存和结果全部位于隔离目录。"""
     packs = Path(__file__).resolve().parents[3] / "custom_nodes"
     sessions, storage, queue = create_test_runtime(root, database_name="published.db")
@@ -176,7 +179,7 @@ def published_system(root, *, point_cloud_policy=None):
         custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(packs)),
         local_memory=LocalMemorySettings(root_dir=str(root / "buffers")),
         inference_daemon=BackendServiceInferenceDaemonConfig(runtime_owner="embedded"),
-        local_buffer_broker=broker_settings(),
+        local_buffer_broker=broker_policy or broker_settings(),
         workflow_runtime=BackendServiceWorkflowRuntimeConfig(
             point_cloud=point_cloud_policy or full_policy(),
             local_shared_trigger_response_ack_timeout_seconds=2,

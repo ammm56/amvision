@@ -34,6 +34,44 @@ def _empty(reason):
     )
 
 
+def _endpoint_sources(local, faces, signs, dots, lines, tolerance):
+    """批量匹配原生端点与两条源边；调用方按 4096 面限制临时容量。"""
+    count = len(faces)
+    source = np.empty((count, 6, 2), dtype=np.int64)
+    source[:, :3, 0] = source[:, :3, 1] = faces
+    source[:, 3:] = np.sort(faces[:, [(0, 1), (1, 2), (2, 0)]], axis=2)
+    active = np.empty((count, 6), dtype=bool)
+    active[:, :3] = signs[faces] == 0
+    active[:, 3:] = signs[source[:, 3:, 0]] * signs[source[:, 3:, 1]] == -1
+    if np.any(active.sum(axis=1) != 2):
+        raise RuntimeError("原生截面与源三角面相交类型不一致")
+    source = source[active].reshape(count, 2, 2)
+    a, b = source[..., 0], source[..., 1]
+    crossing = a != b
+    weight = np.zeros((count, 2))
+    weight[crossing] = dots[a[crossing]] / (dots[a[crossing]] - dots[b[crossing]])
+    relation = np.stack((1 - weight, weight), axis=2)
+    positions = local[a].copy()
+    positions[crossing] = (
+        local[a[crossing]] * relation[..., 0][crossing, None]
+        + local[b[crossing]] * relation[..., 1][crossing, None]
+    )
+    delta = lines[:, :, None, :] - positions[:, None, :, :]
+    distances = np.linalg.norm(delta, axis=3)
+    # 临界距离复用原逐向量范数，避免批量求和舍入改变质量阈值的包含关系。
+    near = np.abs(distances - tolerance) <= np.spacing(tolerance) * 8
+    for i, endpoint, candidate in zip(*np.nonzero(near)):
+        distances[i, endpoint, candidate] = np.linalg.norm(
+            delta[i, endpoint, candidate]
+        )
+    matches = distances <= tolerance
+    if np.any(matches.sum(axis=2) != 1):
+        return None
+    selected = matches.argmax(axis=2)
+    rows = np.arange(count)[:, None]
+    return source[rows, selected], relation[rows, selected]
+
+
 def intersect_surface(
     vertices, faces, *, origin, normal, numeric_tolerance, max_working_bytes, cancel
 ):
@@ -85,73 +123,72 @@ def intersect_surface(
         if not np.isfinite(local).all() or not np.isfinite(scale) or scale <= 0:
             raise InvalidRequestError("截面数值尺度不可表示")
         dots = local @ normal
-        signs = np.where(dots > tol.merge, 1, np.where(dots < -tol.merge, -1, 0))
+        signs = np.zeros(len(dots), dtype=np.int8)
+        signs[dots > tol.merge] = 1
+        signs[dots < -tol.merge] = -1
         triangle = local[faces]
         ab, ac = triangle[:, 1] - triangle[:, 0], triangle[:, 2] - triangle[:, 0]
         cross = np.linalg.norm(np.cross(ab, ac), axis=1)
         side = np.maximum(np.linalg.norm(ab, axis=1), np.linalg.norm(ac, axis=1))
         if np.any(cross <= tol.merge * side):
             return _empty("degenerate_surface")
-        if np.any(np.all(signs[faces] == 0, axis=1)):
+        face_signs = signs[faces]
+        if np.any(np.all(face_signs == 0, axis=1)):
             return _empty("coplanar_region")
+        # 仅排除严格同侧的面；共面点/边保留，全表面退化检查仍在此前执行。
+        candidate_faces = np.flatnonzero(
+            (face_signs.min(axis=1) <= 0) & (face_signs.max(axis=1) >= 0)
+        )
+        del triangle, ab, ac, cross, side, face_signs
     cancel()
     mesh = trimesh.Trimesh(vertices=local, faces=faces, process=False, validate=False)
     points, sources, weights, edges, owners = [], [], [], [], []
     point_by_source, edge_by_source = {}, {}
-    for direction in (normal, -normal):
+    for direction, direction_dots in ((normal, dots), (-normal, -dots)):
         cancel()
-        lines, face_ids = mesh_plane(mesh, direction, np.zeros(3), return_faces=True)
+        lines, face_ids = mesh_plane(
+            mesh,
+            direction,
+            np.zeros(3),
+            return_faces=True,
+            local_faces=candidate_faces,
+            cached_dots=direction_dots,
+        )
         cancel()
-        for line, face_id in zip(lines, face_ids):
+        for start in range(0, len(lines), 4096):
             cancel()
-            face = faces[face_id]
-            candidates = []
-            for vertex in face:
-                if signs[vertex] == 0:
-                    candidates.append(
-                        ((int(vertex), int(vertex)), (1.0, 0.0), local[vertex])
-                    )
-            for a, b in ((face[0], face[1]), (face[1], face[2]), (face[2], face[0])):
-                if signs[a] * signs[b] == -1:
-                    a, b = sorted((int(a), int(b)))
-                    weight = float(dots[a] / (dots[a] - dots[b]))
-                    candidates.append(
-                        (
-                            (a, b),
-                            (1 - weight, weight),
-                            local[a] * (1 - weight) + local[b] * weight,
-                        )
-                    )
-            if len(candidates) != 2:
-                raise RuntimeError("原生截面与源三角面相交类型不一致")
-            mapped = []
-            for endpoint in line:
-                distances = np.array(
-                    [np.linalg.norm(endpoint - c[2]) for c in candidates]
-                )
-                matches = np.flatnonzero(distances <= tol.merge)
-                if len(matches) != 1:
-                    return _empty("unresolved_intersection")
-                key, relation, _ = candidates[int(matches[0])]
-                point_id = point_by_source.get(key)
-                if point_id is None:
-                    point_id = len(points)
-                    point_by_source[key] = point_id
-                    points.append(endpoint)
-                    sources.append(key)
-                    weights.append(relation)
-                elif np.linalg.norm(points[point_id] - endpoint) > tol.merge:
-                    raise RuntimeError("同源交点坐标不一致")
-                mapped.append(point_id)
-            key = tuple(sorted(mapped))
-            if key[0] == key[1]:
-                return _empty("degenerate_intersection")
-            # 去重只使用同源端点；相邻但不同源的线段不会被合并。
-            if key not in edge_by_source:
-                edge_by_source[key] = len(edges)
-                edges.append(key)
-                owners.append(set())
-            owners[edge_by_source[key]].add(int(face_id))
+            stop = start + 4096
+            part, ids = lines[start:stop], face_ids[start:stop]
+            mapped_sources = _endpoint_sources(
+                local, faces[ids], signs, dots, part, tol.merge
+            )
+            if mapped_sources is None:
+                return _empty("unresolved_intersection")
+            source_pairs, relations = mapped_sources
+            for line, face_id, pairs, values in zip(part, ids, source_pairs, relations):
+                cancel()
+                mapped = []
+                for endpoint, pair, relation in zip(line, pairs, values):
+                    key = (int(pair[0]), int(pair[1]))
+                    point_id = point_by_source.get(key)
+                    if point_id is None:
+                        point_id = len(points)
+                        point_by_source[key] = point_id
+                        points.append(endpoint)
+                        sources.append(key)
+                        weights.append(relation)
+                    elif np.linalg.norm(points[point_id] - endpoint) > tol.merge:
+                        raise RuntimeError("同源交点坐标不一致")
+                    mapped.append(point_id)
+                key = tuple(sorted(mapped))
+                if key[0] == key[1]:
+                    return _empty("degenerate_intersection")
+                # 去重只使用同源端点；相邻但不同源的线段不会被合并。
+                if key not in edge_by_source:
+                    edge_by_source[key] = len(edges)
+                    edges.append(key)
+                    owners.append(set())
+                owners[edge_by_source[key]].add(int(face_id))
     cancel()
     if not edges:
         return _empty("no_intersection")

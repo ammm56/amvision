@@ -33,6 +33,8 @@
     @paste-node="emit('pasteNode')"
     @export-document="emit('exportDocument')"
     @import-document="emit('importDocument')"
+    @export-package="emit('exportPackage')"
+    @import-package="emit('importPackage')"
     :add-node-label="t('workflowEditor.nodePicker.addNode')"
     :save-label="t('workflowEditor.actions.saveWorkflowApp')"
     :preview-label="t('workflowEditor.actions.previewRun')"
@@ -115,6 +117,8 @@ defineProps<{
 const emit = defineEmits<{
   exportDocument: []
   importDocument: []
+  exportPackage: []
+  importPackage: []
   startMinimapNavigation: [event: MouseEvent]
   toggleMinimap: []
   openNodePicker: []

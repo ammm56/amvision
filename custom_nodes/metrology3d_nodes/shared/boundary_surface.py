@@ -19,6 +19,32 @@ class SurfaceResult:
     candidate_face_count: int
 
 
+def _has_duplicate_projection(xy, *, cancel):
+    """有限二维坐标仅判精确重复；临时排序不改变剖分输入及原始行号。"""
+    cancel()
+    order = np.lexsort((xy[:, 1], xy[:, 0]))
+    cancel()
+    for start in range(1, len(order), 4096):
+        cancel()
+        stop = min(start + 4096, len(order))
+        if np.any(
+            np.all(xy[order[start:stop]] == xy[order[start - 1 : stop - 1]], axis=1)
+        ):
+            return True
+    return False
+
+
+def _covers_vertices(triangles, count, *, cancel):
+    """Qhull 合法面索引逐块标记覆盖，避免对重复顶点排序；不删除任何面。"""
+    cancel()
+    seen = np.zeros(count, dtype=bool)
+    for start in range(0, len(triangles), 4096):
+        cancel()
+        seen[triangles[start : start + 4096]] = True
+    cancel()
+    return bool(seen.all())
+
+
 def _supported_faces(local, xy, triangles, limits, *, cancel):
     """逐块计算原四项支持条件，保留全局剖分及面顺序，不重新剖分或抽样。"""
     alpha_radius, max_edge_length, max_normal_step, min_projected_area = limits
@@ -58,15 +84,26 @@ def _boundary_edges(faces, *, cancel):
     cancel()
     edges = np.concatenate((faces[:, [0, 1]], faces[:, [1, 2]], faces[:, [2, 0]]))
     keys = np.sort(edges, axis=1)
-    # lexsort 稳定排序两个整数列，避免 unique(axis=0) 的结构化记录比较。
-    order = np.lexsort((keys[:, 1], keys[:, 0]))
+    if not len(edges):
+        return edges
+    # 两个无符号 32 位局部索引可无损打包；较宽索引仍以完整整数排序。
+    if keys.min() >= 0 and keys.max() <= np.iinfo(np.uint32).max:
+        packed = keys[:, 0].astype(np.uint64)
+        packed <<= 32
+        packed |= keys[:, 1].astype(np.uint64)
+        del keys
+        order = np.argsort(packed, kind="stable")
+        cancel()
+        sorted_keys = packed[order]
+        starts = np.flatnonzero(np.r_[True, sorted_keys[1:] != sorted_keys[:-1]])
+    else:
+        order = np.lexsort((keys[:, 1], keys[:, 0]))
+        cancel()
+        sorted_keys = keys[order]
+        starts = np.flatnonzero(
+            np.r_[True, np.any(sorted_keys[1:] != sorted_keys[:-1], axis=1)]
+        )
     cancel()
-    sorted_keys = keys[order]
-    starts = (
-        np.flatnonzero(np.r_[True, np.any(sorted_keys[1:] != sorted_keys[:-1], axis=1)])
-        if len(edges)
-        else np.empty(0, dtype=np.int64)
-    )
     counts = np.diff(np.r_[starts, len(edges)])
     cancel()
     if np.any(counts > 2):
@@ -139,7 +176,7 @@ def build_surface(
     with np.errstate(over="raise", invalid="raise", divide="raise"):
         local = (points.astype(np.float64, copy=False) - origin) @ rotation
         xy = np.ascontiguousarray(local[:, :2])
-        if len(np.unique(xy, axis=0)) != len(xy):
+        if _has_duplicate_projection(xy, cancel=cancel):
             return missing("duplicate_projection")
         centered = xy - xy[0]
         if np.linalg.matrix_rank(centered) < 2:
@@ -148,7 +185,9 @@ def build_surface(
     cancel()
     mesh = Delaunay(xy)
     cancel()
-    if len(mesh.coplanar) or len(np.unique(mesh.simplices)) != len(xy):
+    if len(mesh.coplanar) or not _covers_vertices(
+        mesh.simplices, len(xy), cancel=cancel
+    ):
         return missing("omitted_vertices", len(mesh.simplices))
     triangles = mesh.simplices
     candidate_count = len(triangles)

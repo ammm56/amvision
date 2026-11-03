@@ -15,6 +15,7 @@ from backend.service.application.runtime.exception_cleanup import (
 )
 from backend.service.application.workflows.point_cloud.arrays import OwnedCloudArrays
 from custom_nodes.metrology3d_nodes.shared.roi_mask import RoiMaskPlan
+from custom_nodes.metrology3d_nodes.shared.roi_blocks import roi_blocks
 
 
 def crop_roi(runtime, reference, parameters, *, cancel):
@@ -47,6 +48,13 @@ def crop_roi(runtime, reference, parameters, *, cancel):
     )
     if rows < 1:
         raise InvalidRequestError("ROI 工作预算不能容纳一行")
+    # 摘要固定按已准入块数计费，不增加逐点空间索引或跨 Run 缓存。
+    bounds_bytes = ((reference.point_count + rows - 1) // rows) * 48
+    if (
+        bounds_bytes + plan.metadata_bytes + rows * (row_bytes * 2 + plan.row_bytes)
+        > runtime.policy.max_working_bytes
+    ):
+        raise InvalidRequestError("ROI 分块摘要和掩码超过工作预算")
     reservation = owner = block = positions = mask = indices = selected = None
     mask_reservation = keep_mask = None
     registered = False
@@ -56,58 +64,76 @@ def crop_roi(runtime, reference, parameters, *, cancel):
             mask_reservation = runtime.budget.reserve(reference.point_count)
             keep_mask = np.empty(reference.point_count, dtype=bool)
             kept = 0
-            for start in range(0, reference.point_count, rows):
+
+            def scan(bounds, *, collect):
+                """首次裁剪顺带生成摘要；复用时只读可能命中的块。"""
+                nonlocal kept, block, positions, mask
+                for index, start in enumerate(range(0, reference.point_count, rows)):
+                    cancel()
+                    stop = min(start + rows, reference.point_count)
+                    if not collect and not plan.may_intersect(
+                        *bounds[index], cancel=cancel
+                    ):
+                        keep_mask[start:stop] = False
+                        continue
+                    block = view.chunk(start, stop)
+                    positions = np.asarray(block["positions"], dtype=np.float64)
+                    if not np.isfinite(positions).all() or (
+                        "validity" in block and not block["validity"].all()
+                    ):
+                        raise InvalidRequestError(
+                            "ROI 输入包含无效位置，请先执行 Filter Valid"
+                        )
+                    if collect:
+                        # 三列分别归约，避免短内轴导致的逐行通用归约开销。
+                        for axis in range(3):
+                            bounds[index, 0, axis] = positions[:, axis].min()
+                            bounds[index, 1, axis] = positions[:, axis].max()
+                    mask = plan.mask(positions, cancel=cancel)
+                    keep_mask[start:stop] = mask
+                    kept += int(np.count_nonzero(mask))
+                block = positions = mask = None
+
+            with roi_blocks(runtime, reference, rows, scan, cancel=cancel):
+                dtype = np.dtype(
+                    "uint32" if reference.point_count <= 2**32 else "uint64"
+                )
+                reservation = runtime.budget.reserve(kept * dtype.itemsize)
+                indices = np.empty((kept, 1), dtype=dtype)
+                offset = 0
+                for start in range(0, reference.point_count, rows):
+                    cancel()
+                    selected = np.flatnonzero(keep_mask[start : start + rows])
+                    indices[offset : offset + len(selected), 0] = selected + start
+                    offset += len(selected)
+                block = positions = selected = None
+                if offset != kept:
+                    raise InvalidRequestError("只读点云在裁剪期间发生变化")
+                keep_mask = None
+                mask_reservation.close()
                 cancel()
-                stop = min(start + rows, reference.point_count)
-                block = view.chunk(start, stop)
-                positions = np.asarray(block["positions"], dtype=np.float64)
-                if not np.isfinite(positions).all() or (
-                    "validity" in block and not block["validity"].all()
-                ):
-                    raise InvalidRequestError(
-                        "ROI 输入包含无效位置，请先执行 Filter Valid"
-                    )
-                mask = plan.mask(positions, cancel=cancel)
-                keep_mask[start:stop] = mask
-                kept += int(np.count_nonzero(mask))
-            block = positions = mask = None
-            dtype = np.dtype("uint32" if reference.point_count <= 2**32 else "uint64")
-            reservation = runtime.budget.reserve(kept * dtype.itemsize)
-            indices = np.empty((kept, 1), dtype=dtype)
-            offset = 0
-            for start in range(0, reference.point_count, rows):
-                cancel()
-                selected = np.flatnonzero(keep_mask[start : start + rows])
-                indices[offset : offset + len(selected), 0] = selected + start
-                offset += len(selected)
-            block = positions = selected = None
-            if offset != kept:
-                raise InvalidRequestError("只读点云在裁剪期间发生变化")
-            keep_mask = None
-            mask_reservation.close()
-            cancel()
-            owner = OwnedCloudArrays({"indices": indices}, reservation)
-            indices = None
-            runtime.storage_scope.register(key, owner, lambda value: value.close())
-            registered = True
-            method = CropCloudMethod(
-                method_id="crop-roi",
-                method_version=1,
-                parameters=parameters,
-                parameters_sha256=sha256(
-                    canonical_cloud_json(parameters.model_dump(mode="json"))
-                ).hexdigest(),
-            )
-            result = runtime.register_subset(
-                parent=reference, method=method, indices=owner, cancel=cancel
-            )
-            return result, dict(
-                state="ready",
-                reason=None,
-                input_count=reference.point_count,
-                kept_count=kept,
-                removed_count=reference.point_count - kept,
-            )
+                owner = OwnedCloudArrays({"indices": indices}, reservation)
+                indices = None
+                runtime.storage_scope.register(key, owner, lambda value: value.close())
+                registered = True
+                method = CropCloudMethod(
+                    method_id="crop-roi",
+                    method_version=1,
+                    parameters=parameters,
+                    parameters_sha256=sha256(
+                        canonical_cloud_json(parameters.model_dump(mode="json"))
+                    ).hexdigest(),
+                )
+                result = runtime.register_subset(
+                    parent=reference, method=method, indices=owner, cancel=cancel
+                )
+                return result, dict(
+                    state="ready",
+                    reason=None,
+                    input_count=reference.point_count,
+                    kept_count=kept,
+                    removed_count=reference.point_count - kept,
+                )
         except BaseException as error:
             block = positions = mask = indices = selected = None
             release_exception_frames(error)

@@ -422,7 +422,7 @@ def test_write_result_signals_node_writes_result_alarm_and_request_override(
                     {
                         "signal_name": "ok",
                         "source_scope": "result",
-                        "source_path": "ok",
+                        "source_path": "passed",
                         "register_address": "00001",
                         "data_type": "bool",
                     },
@@ -443,7 +443,7 @@ def test_write_result_signals_node_writes_result_alarm_and_request_override(
                 ],
             },
             input_values={
-                "result": {"ok_ng": "OK", "ok": True, "reason": "pass"},
+                "result": {"format_id": "amvision.result-record.v1", "state": 'ok', "passed": True, "reason": "pass"},
                 "alarm": {
                     "active": True,
                     "level": "warning",
@@ -469,7 +469,7 @@ def test_write_result_signals_node_writes_result_alarm_and_request_override(
 def test_write_result_signals_node_skips_missing_and_continues_after_failure(
     monkeypatch,
 ) -> None:
-    """验证 write-result-signals 支持缺失跳过和 continue_on_error。"""
+    """缺失按配置跳过；continue_on_error 处理通信错误而非坏配置。"""
 
     captured_calls: list[dict[str, object]] = []
 
@@ -487,6 +487,9 @@ def test_write_result_signals_node_skips_missing_and_continues_after_failure(
 
         def close(self) -> None:
             return None
+
+        def write_single_register(self, address, value, *, device_id):
+            raise OSError("simulated device failure")
 
         def write_single_coil(
             self,
@@ -536,16 +539,16 @@ def test_write_result_signals_node_skips_missing_and_continues_after_failure(
                         "skip_when_missing": True,
                     },
                     {
-                        "signal_name": "bad_reason_uint16",
-                        "source_scope": "result",
-                        "source_path": "reason",
+                        "signal_name": "device_failure",
+                        "source_scope": "literal",
+                        "literal_value": 1,
                         "register_address": "400002",
                         "data_type": "uint16",
                     },
                     {
-                        "signal_name": "ng",
+                        "signal_name": "blocked",
                         "source_scope": "result",
-                        "source_path": "ok",
+                        "source_path": "passed",
                         "register_address": "00003",
                         "data_type": "bool",
                         "true_value": False,
@@ -554,7 +557,7 @@ def test_write_result_signals_node_skips_missing_and_continues_after_failure(
                 ],
             },
             input_values={
-                "result": {"ok_ng": "NG", "ok": False, "reason": "bad-part"},
+                "result": {"format_id": "amvision.result-record.v1", "state": 'ng', "passed": False, "reason": "bad-part"},
             },
         )
     )
@@ -568,9 +571,9 @@ def test_write_result_signals_node_skips_missing_and_continues_after_failure(
     assert output["result"]["value"]["skipped_items"][0]["signal_name"] == "part_id"
     assert (
         output["result"]["value"]["failed_items"][0]["signal_name"]
-        == "bad_reason_uint16"
+        == "device_failure"
     )
-    assert output["result"]["value"]["written_items"][0]["signal_name"] == "ng"
+    assert output["result"]["value"]["written_items"][0]["signal_name"] == "blocked"
 
 
 def test_wait_condition_node_requires_stable_match_count(monkeypatch) -> None:

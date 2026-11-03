@@ -289092,7 +289092,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.19",
+      "node_pack_version": "0.1.20",
       "metadata": {}
     },
     {
@@ -289580,7 +289580,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.19",
+      "node_pack_version": "0.1.20",
       "metadata": {}
     },
     {
@@ -289989,7 +289989,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.19",
+      "node_pack_version": "0.1.20",
       "metadata": {}
     },
     {
@@ -292588,7 +292588,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.19",
+      "node_pack_version": "0.1.20",
       "metadata": {}
     },
     {
@@ -292985,7 +292985,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.19",
+      "node_pack_version": "0.1.20",
       "metadata": {}
     },
     {
@@ -293485,7 +293485,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.19",
+      "node_pack_version": "0.1.20",
       "metadata": {}
     },
     {
@@ -294103,7 +294103,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.19",
+      "node_pack_version": "0.1.20",
       "metadata": {}
     },
     {
@@ -294762,7 +294762,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.19",
+      "node_pack_version": "0.1.20",
       "metadata": {}
     },
     {
@@ -296198,7 +296198,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.19",
+      "node_pack_version": "0.1.20",
       "metadata": {}
     },
     {
@@ -296459,7 +296459,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.19",
+      "node_pack_version": "0.1.20",
       "metadata": {}
     },
     {
@@ -296818,7 +296818,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.19",
+      "node_pack_version": "0.1.20",
       "metadata": {}
     },
     {
@@ -296875,7 +296875,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.19",
+      "node_pack_version": "0.1.20",
       "metadata": {}
     },
     {
@@ -297255,7 +297255,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.19",
+      "node_pack_version": "0.1.20",
       "metadata": {}
     },
     {
@@ -297327,7 +297327,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.19",
+      "node_pack_version": "0.1.20",
       "metadata": {}
     },
     {
@@ -297448,7 +297448,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.19",
+      "node_pack_version": "0.1.20",
       "metadata": {}
     },
     {
@@ -297519,6 +297519,11 @@
             "maximum": 9007199254740991,
             "title": "Point Limit",
             "type": "integer"
+          },
+          "prepare_details": {
+            "default": false,
+            "title": "Prepare Details",
+            "type": "boolean"
           },
           "color": {
             "discriminator": {
@@ -297668,7 +297673,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.19",
+      "node_pack_version": "0.1.20",
       "metadata": {}
     },
     {
@@ -297843,7 +297848,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.19",
+      "node_pack_version": "0.1.20",
       "metadata": {}
     },
     {
@@ -298042,7 +298047,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.19",
+      "node_pack_version": "0.1.20",
       "metadata": {}
     }
   ],

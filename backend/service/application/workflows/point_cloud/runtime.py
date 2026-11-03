@@ -110,7 +110,15 @@ class CloudView:
         selected = self._selectors[0][start:stop, 0]
         for selector in self._selectors[1:]:
             selected = selector[selected, 0]
-        values = {name: value[selected] for name, value in self._arrays.items()}
+        # 全保留过滤或连续子集不必 gather 复制；仍检查实际索引，不能假设有序视图连续。
+        if len(selected) and (
+            int(selected[-1]) - int(selected[0]) == len(selected) - 1
+            and np.all(selected[1:] == selected[:-1] + 1)
+        ):
+            first, last = int(selected[0]), int(selected[-1]) + 1
+            values = {name: value[first:last] for name, value in self._arrays.items()}
+        else:
+            values = {name: value[selected] for name, value in self._arrays.items()}
         for value in values.values():
             value.setflags(write=False)
         return MappingProxyType(values)
@@ -141,6 +149,28 @@ class CloudView:
             result = np.arange(start, stop, dtype=dtype)
         result.setflags(write=False)
         return result
+
+    def gather(self, logical: np.ndarray) -> tuple[Mapping[str, np.ndarray], np.ndarray]:
+        """有界随机读复用当前父链；返回属性与真实身份，不扩展借用生命周期。"""
+        if not self._active:
+            raise RuntimeError("点云借用已结束")
+        rows = np.asarray(logical)
+        row_bytes = sum(value.dtype.itemsize * value.shape[1] for value in self._arrays.values())
+        if (rows.ndim != 1 or rows.dtype.kind not in "iu" or len(rows) > self._policy.chunk_rows
+                or len(rows) * (row_bytes + 32) > self._policy.max_working_bytes
+                or np.any(rows < 0) or np.any(rows >= self.reference.point_count)):
+            raise InvalidRequestError("点云随机访问索引或预算无效")
+        selected = rows
+        for selector in self._selectors:
+            selected = selector[selected, 0]
+        values = {name: value[selected] for name, value in self._arrays.items()}
+        identity = rows.copy()
+        if self.reference.vertex_kind == "source":
+            for selector in self._origin_selectors:
+                identity = selector[identity, 0]
+        for value in (*values.values(), identity):
+            value.setflags(write=False)
+        return MappingProxyType(values), identity
 
     def lineage_chunk(self, start: int, stop: int) -> Mapping[str, np.ndarray]:
         """生成顶点仅暴露有界来源副本，不授予父资源访问或释放权限。"""

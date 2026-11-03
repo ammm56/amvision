@@ -7,8 +7,14 @@ from backend.service.application.errors import ServiceError
 from backend.service.application.workflows.graph_executor import (
     WorkflowNodeExecutionRequest,
 )
-from custom_nodes.plc_nodes.protocols.modbus_tcp.backend.runtime.client import _open_modbus_client
+from custom_nodes.plc_nodes.protocols.modbus_tcp.backend.runtime.client import (
+    _open_modbus_client,
+)
+from custom_nodes.plc_nodes.protocols.modbus_tcp.backend.runtime.codec import (
+    _encode_register_values,
+)
 from custom_nodes.plc_nodes.protocols.modbus_tcp.backend.runtime.parameters import (
+    _coerce_bool_value,
     _read_request_overrides,
 )
 from custom_nodes.plc_nodes.protocols.modbus_tcp.backend.runtime.read_write import (
@@ -24,7 +30,9 @@ from custom_nodes.plc_nodes.protocols.modbus_tcp.backend.runtime.result_signals.
 from custom_nodes.plc_nodes.protocols.modbus_tcp.backend.runtime.result_signals.sources import (
     resolve_signal_value,
 )
-from custom_nodes.plc_nodes.protocols.modbus_tcp.backend.runtime.types import ModbusWriteConfig
+from custom_nodes.plc_nodes.protocols.modbus_tcp.backend.runtime.types import (
+    ModbusWriteConfig,
+)
 
 
 def execute_write_result_signals_node(
@@ -54,17 +62,55 @@ def execute_write_result_signals_node(
     skipped_items: list[dict[str, object]] = []
     failed_items: list[dict[str, object]] = []
 
-    with _open_modbus_client(config.connection, node_name=node_name) as client:
-        for mapping in config.mappings:
-            resolved_value = resolve_signal_value(
-                mapping=mapping,
-                result_payload=result_payload,
-                alarm_payload=alarm_payload,
-                request_overrides=request_overrides,
-                request_signal_values=config.request_signal_values,
-                disabled_signals=config.disabled_signals,
+    # 来源配置错误在任何写入前拒绝；设备逐点写入失败仍沿原错误策略处理。
+    resolved_values = tuple(
+        resolve_signal_value(
+            mapping=mapping,
+            result_payload=result_payload,
+            alarm_payload=alarm_payload,
+            request_overrides=request_overrides,
+            request_signal_values=config.request_signal_values,
+            disabled_signals=config.disabled_signals,
+            node_name=node_name,
+        )
+        for mapping in config.mappings
+    )
+
+    write_configs = tuple(
+        ModbusWriteConfig(
+            connection=config.connection,
+            logical_address=mapping.logical_address,
+            data_type=mapping.data_type,
+            word_order=mapping.word_order,
+            byte_position=mapping.byte_position,
+            string_length=mapping.string_length,
+            string_encoding=mapping.string_encoding,
+            value=resolved.value,
+        )
+        for mapping, resolved in zip(config.mappings, resolved_values)
+    )
+    # null、范围、字符串编码和布尔值都在开连接前使用正式编码器校验。
+    # 这不是设备事务；实际通信失败仍可能发生在前面的写入已完成之后。
+    for mapping, resolved, write_config in zip(
+        config.mappings, resolved_values, write_configs
+    ):
+        if resolved.skip_reason is not None:
+            continue
+        if write_config.logical_address.family == "coil":
+            _coerce_bool_value(
+                raw_value=write_config.value,
                 node_name=node_name,
+                field_name=mapping.signal_name,
             )
+        else:
+            _encode_register_values(
+                config=write_config, node_name=f"{node_name}.{mapping.signal_name}"
+            )
+
+    with _open_modbus_client(config.connection, node_name=node_name) as client:
+        for mapping, resolved_value, write_config in zip(
+            config.mappings, resolved_values, write_configs
+        ):
             if resolved_value.skip_reason is not None:
                 skipped_items.append(
                     {
@@ -76,16 +122,6 @@ def execute_write_result_signals_node(
                 )
                 continue
 
-            write_config = ModbusWriteConfig(
-                connection=config.connection,
-                logical_address=mapping.logical_address,
-                data_type=mapping.data_type,
-                word_order=mapping.word_order,
-                byte_position=mapping.byte_position,
-                string_length=mapping.string_length,
-                string_encoding=mapping.string_encoding,
-                value=resolved_value.value,
-            )
             try:
                 write_result = _perform_write_operation(
                     client=client,

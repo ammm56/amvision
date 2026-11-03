@@ -1,10 +1,11 @@
 """通用数值表的限值校验与显示适配，不依赖行业节点或 OpenCV。"""
 
+from backend.contracts.workflows.inspection import LimitCheckSummary
 from backend.contracts.workflows.metrology import LimitRule, NumericTable, unique_ids
 
 
-def check_limits(table: NumericTable, rules: tuple[LimitRule, ...]) -> dict:
-    """按保存的必检集合检查数值，不从本次成功测量倒推必检项。"""
+def check_limit_items(table: NumericTable, rules: tuple[LimitRule, ...]) -> list[dict]:
+    """共享逐项数值比较，不在几何质量路径引入产品判定语义。"""
     unique_ids([rule.item_id for rule in rules], "rules")
     if len(rules) > 8192:
         raise ValueError("规则数量超过 8192")
@@ -22,15 +23,7 @@ def check_limits(table: NumericTable, rules: tuple[LimitRule, ...]) -> dict:
         elif item.unit != rule.unit:
             reason = "unit_mismatch"
         else:
-            value = item.value
-            if rule.lower is not None and (
-                value < rule.lower or (value == rule.lower and not rule.include_lower)
-            ):
-                reason = "below_lower_limit"
-            if rule.upper is not None and (
-                value > rule.upper or (value == rule.upper and not rule.include_upper)
-            ):
-                reason = "above_upper_limit"
+            reason = rule.violation_reason(item.value)
         results.append(
             {
                 "item_id": rule.item_id,
@@ -49,17 +42,58 @@ def check_limits(table: NumericTable, rules: tuple[LimitRule, ...]) -> dict:
                 "reason": reason,
             }
         )
-    required = [item for item in results if item["required"]]
-    passed = bool(required) and all(item["passed"] for item in required)
-    return {
-        "observation_id": table.observation_id,
-        "passed": passed,
-        "state": "ok" if passed else "ng",
-        "reason": None if required else "no_required_checks",
-        "items": results,
-        "required_count": len(required),
-        "passed_count": sum(item["passed"] for item in results),
+    return results
+
+
+def check_limits(table: NumericTable, rules: tuple[LimitRule, ...]) -> dict:
+    """按已配置必检集合汇总三态；INVALID 优先且保留已有 NG 项。"""
+    items = [
+        {
+            **item,
+            "state": "invalid"
+            if not item["valid"]
+            else "ok"
+            if item["passed"]
+            else "ng",
+        }
+        for item in check_limit_items(table, rules)
+    ]
+    required = [item for item in items if item["required"]]
+    counts = {
+        state: sum(item["state"] == state for item in required)
+        for state in ("ok", "ng", "invalid")
     }
+    reason = (
+        "no_required_checks"
+        if not required
+        else "required_invalid"
+        if counts["invalid"]
+        else "required_out_of_limits"
+        if counts["ng"]
+        else None
+    )
+    state = (
+        "invalid"
+        if not required or counts["invalid"]
+        else "ng"
+        if counts["ng"]
+        else "ok"
+    )
+    return LimitCheckSummary.model_validate(
+        {
+            "format_id": "amvision.limit-check.v1",
+            "observation_id": table.observation_id,
+            "passed": state == "ok",
+            "state": state,
+            "reason": reason,
+            "items": items,
+            "required_count": len(required),
+            "required_ok_count": counts["ok"],
+            "required_ng_count": counts["ng"],
+            "required_invalid_count": counts["invalid"],
+            "optional_count": len(items) - len(required),
+        }
+    ).model_dump(mode="json")
 
 
 def numeric_table_to_value(table: NumericTable) -> dict:

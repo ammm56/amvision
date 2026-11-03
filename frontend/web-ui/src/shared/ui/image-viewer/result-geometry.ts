@@ -13,7 +13,7 @@ export function readResultTable(value:unknown):ResultTable|null {
   if(![geometry.image.width,geometry.image.height].every(size=>typeof size==='number'&&Number.isInteger(size)&&size>0))return null
   if(rows.some(row=>!record(row)||typeof row.item_id!=='string'||!row.item_id)||new Set(rows.map(row=>row.item_id)).size!==rows.length)return null
   if(columns.some(column=>!record(column)||typeof column.key!=='string'||!column.key||typeof column.label!=='string'||!column.label)||new Set(columns.map(column=>column.key)).size!==columns.length)return null
-  if(columns.some(column=>column.format!==undefined&&!['value','unit','result','validity','reason'].includes(String(column.format))))return null
+  if(columns.some(column=>column.format!==undefined&&!['value','unit','result','decision-state','validity','reason'].includes(String(column.format))))return null
   if(geometry.items.some(shape=>!record(shape)||typeof shape.item_id!=='string'||!shape.item_id||!['line','point','expected-point'].includes(String(shape.kind))||!Array.isArray(shape.points)||shape.points.length!==(shape.kind==='line'?2:1)||shape.points.some(point=>!Array.isArray(point)||point.length!==2||point.some(coordinate=>typeof coordinate!=='number'||!Number.isFinite(coordinate))))||new Set(geometry.items.map(shape=>shape.item_id)).size!==geometry.items.length)return null
   return value as unknown as ResultTable
 }

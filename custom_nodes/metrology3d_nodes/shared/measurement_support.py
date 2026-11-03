@@ -1,5 +1,7 @@
 """测量复用运行只读视图；仅在有限邻域内建立三角支持。"""
 
+from dataclasses import dataclass
+
 import numpy as np
 from scipy.spatial import Delaunay
 
@@ -15,6 +17,24 @@ from custom_nodes.metrology3d_nodes.shared.geometry_quality import (
     require_quality_result,
 )
 from custom_nodes.metrology3d_nodes.shared.support_bounds import support_bounds
+
+
+@dataclass(frozen=True)
+class NearestSupport:
+    """完整有限支持的最近实测点；距离并列时使用最小原始行号。"""
+
+    distance: float
+    point: tuple[float, float, float]
+    source_index: int
+
+
+@dataclass(frozen=True)
+class PlaneCoverageScan:
+    """同次支持扫描结果，不持有源数组、不登记跨调用缓存。"""
+
+    support: MeasurementSupport
+    point: tuple[float, float, float] | None
+    nearest: NearestSupport | None = None
 
 
 def require_cloud(runtime, cloud, parameters, observation_id):
@@ -109,13 +129,13 @@ def _neighborhood(view, start, stop, point, basis, radius):
     return xyz, distances, distances <= radius
 
 
-def plane_coverage(runtime, feature, settings, role, *, cancel):
+def plane_coverage(runtime, feature, settings, role, *, cancel, capture_nearest=False):
     """交点在局部 Delaunay 域内且满足显式边长/残差质量时才可用。"""
     support = support_snapshot(
         runtime, feature.support, role, cancel=cancel, plane=feature
     )
     if not feature.valid:
-        return support, None
+        return PlaneCoverageScan(support, None)
     plane = feature.geometry
     normal, direction = np.asarray(plane.normal), np.asarray(settings.direction)
     cosine = float(normal @ direction)
@@ -138,26 +158,52 @@ def plane_coverage(runtime, feature, settings, role, *, cancel):
             triangle=None,
             source_indices=None,
         )
-        return support.model_copy(update={"coverage": coverage}), None
+        return PlaneCoverageScan(
+            support.model_copy(update={"coverage": coverage}), None
+        )
     query = np.asarray(settings.query_position)
     with np.errstate(over="raise", invalid="raise", divide="raise"):
         point = query - (float(query @ normal) + plane.offset) / cosine * direction
         basis = _tangent(normal)
         cloud = feature.support
-        rows = _rows(runtime, cloud)
+        # 每行保留一个布尔字节；后续仅收集命中块，不重复投影整份支持。
+        selection_bytes = cloud.point_count
+        rows = _rows(runtime, cloud, held_bytes=selection_bytes)
+        selected = np.empty(cloud.point_count, dtype=bool)
+        nearest_support = None
         count, nearest, residual = 0, np.inf, 0.0
         with runtime.borrow(cloud) as view:
             for start in range(0, cloud.point_count, rows):
                 cancel()
+                stop = min(start + rows, cloud.point_count)
                 xyz, distances, mask = _neighborhood(
                     view,
                     start,
-                    min(start + rows, cloud.point_count),
+                    stop,
                     point,
                     basis,
                     settings.support_radius,
                 )
+                selected[start:stop] = mask
                 count += int(mask.sum())
+                if capture_nearest and len(distances):
+                    local_min = float(distances.min())
+                    if nearest_support is None or local_min <= nearest_support.distance:
+                        candidates = np.flatnonzero(distances == local_min)
+                        original_rows = view.source_indices(start, stop).reshape(-1)
+                        chosen = int(candidates[np.argmin(original_rows[candidates])])
+                        source_index = int(original_rows[chosen])
+                        if (
+                            nearest_support is None
+                            or local_min < nearest_support.distance
+                            or source_index < nearest_support.source_index
+                        ):
+                            nearest_support = NearestSupport(
+                                local_min,
+                                tuple(float(x) for x in xyz[chosen]),
+                                source_index,
+                            )
+                        original_rows = candidates = None
                 if mask.any():
                     nearest = min(nearest, float(distances[mask].min()))
                     residual = max(
@@ -166,7 +212,7 @@ def plane_coverage(runtime, feature, settings, role, *, cancel):
             xyz = distances = mask = None
             # 计入二维 Qhull、唯一化、索引、原始支持坐标和工作副本。
             # 原生分配器/线程栈不是可由此公式保证的进程 RSS 硬上限。
-            held = count * 1024
+            held = count * 1024 + selection_bytes
             if held > runtime.policy.max_working_bytes:
                 raise InvalidRequestError(
                     "测量局部三角支持超过工作预算，请缩小支持半径"
@@ -177,10 +223,11 @@ def plane_coverage(runtime, feature, settings, role, *, cancel):
             for start in range(0, cloud.point_count, rows):
                 cancel()
                 stop = min(start + rows, cloud.point_count)
-                xyz, distances, mask = _neighborhood(
-                    view, start, stop, point, basis, settings.support_radius
-                )
+                mask = selected[start:stop]
                 size = int(mask.sum())
+                if not size:
+                    continue
+                xyz = _positions(view, start, stop)
                 positions[cursor : cursor + size] = xyz[mask]
                 indices[cursor : cursor + size] = view.source_indices(
                     start, stop
@@ -188,6 +235,8 @@ def plane_coverage(runtime, feature, settings, role, *, cancel):
                 cursor += size
             if cursor != count:
                 raise InvalidRequestError("只读支持在测量过程中改变")
+        selected = mask = None
+        held -= selection_bytes
         # RANSAC 不能只以选中一层的残差证明邻域只有一层。
         method = cloud.provenance.method
         raw = (
@@ -246,4 +295,8 @@ def plane_coverage(runtime, feature, settings, role, *, cancel):
             source_indices=source_indices,
         )
         cancel()
-        return support.model_copy(update={"coverage": coverage}), tuple(point)
+        return PlaneCoverageScan(
+            support.model_copy(update={"coverage": coverage}),
+            tuple(point),
+            nearest_support,
+        )

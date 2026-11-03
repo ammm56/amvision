@@ -65,6 +65,18 @@ def test_full_sample_compute_profile(tmp_path, request, visible, monkeypatch):
     runtime = get_cloud_runtime(scope, run_id="r5-f-compute", policy=configured.io)
     audit = request.config.getoption("--cloud-audit-resolution")
     edge_audit = []
+    surface_audit = []
+    if request.config.getoption("--cloud-audit-surface"):
+        from tests.integration.metrology3d.surface_compute_audit import (
+            capture_surface_compute,
+        )
+
+        capture_surface_compute(
+            monkeypatch,
+            surface_audit,
+            Path(request.config.getoption("--cloud-report-dir") or tmp_path)
+            / "local-surfaces",
+        )
     if audit:
         from tests.integration.metrology3d.surface_edge_audit import capture_edge_audit
 
@@ -158,6 +170,9 @@ def test_full_sample_compute_profile(tmp_path, request, visible, monkeypatch):
                 runtime, cloud, datum, pose, current_only=True
             )
             report["surface_edge_audit"] = edge_audit
+            report["compute"]["instrumented"] = True
+        if surface_audit:
+            report["surface_compute_audit"] = surface_audit
             report["compute"]["instrumented"] = True
     finally:
         assert not scope.close()

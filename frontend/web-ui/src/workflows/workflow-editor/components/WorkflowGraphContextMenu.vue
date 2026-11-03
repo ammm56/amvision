@@ -92,13 +92,15 @@
       <hr class="workflow-graph-context-menu__separator" />
       <button type="button" :disabled="documentDisabled" @click="emit('export-document')"><Download :size="15" />{{ t('workflowEditor.document.export') }}</button>
       <button type="button" :disabled="documentDisabled" @click="emit('import-document')"><Upload :size="15" />{{ t('workflowEditor.document.import') }}</button>
+      <button type="button" :disabled="documentDisabled" @click="emit('export-package')"><Package :size="15" />{{ t('workflowEditor.document.exportPackage') }}</button>
+      <button type="button" :disabled="documentDisabled" @click="emit('import-package')"><PackageOpen :size="15" />{{ t('workflowEditor.document.importPackage') }}</button>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { ChevronRight, ClipboardPaste, Copy, Download, Upload, LockKeyhole, Map as MapIcon, NotebookPen, PanelTopClose, Play, Plus, RefreshCw, Save, SquarePen, Trash2 } from '@lucide/vue'
+import { ChevronRight, ClipboardPaste, Copy, Download, Upload, Package, PackageOpen, LockKeyhole, Map as MapIcon, NotebookPen, PanelTopClose, Play, Plus, RefreshCw, Save, SquarePen, Trash2 } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 
 type AppBoundaryKind = 'entry' | 'result'
@@ -142,6 +144,8 @@ const emit = defineEmits<{
   'paste-node': []
   'export-document': []
   'import-document': []
+  'export-package': []
+  'import-package': []
   'open-node-picker': []
   'add-note': []
   'edit-note': []

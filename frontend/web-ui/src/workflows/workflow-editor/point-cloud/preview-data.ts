@@ -3,8 +3,8 @@ import type { CloudRendererPolicy } from '../services/measurement-resource.servi
 
 type RecordValue = Record<string, unknown>
 interface Field { name: string; dtype: string; components: number; count: number; offset: number; byte_length: number }
-const widths: Record<string, number> = { float32: 4, float64: 8, uint8: 1, int8: 1, uint16: 2, int16: 2, uint32: 4, int32: 4, uint64: 8, int64: 8 }
-const D = Decimal.clone({ precision: 160 })
+export const widths: Record<string, number> = { float32: 4, float64: 8, uint8: 1, int8: 1, uint16: 2, int16: 2, uint32: 4, int32: 4, uint64: 8, int64: 8 }
+export const D = Decimal.clone({ precision: 160 })
 let cpuBytes = 0
 let gpuBytes = 0
 
@@ -12,11 +12,11 @@ export function object(value: unknown): RecordValue {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('cloud_preview_invalid')
   return value as RecordValue
 }
-function count(value: unknown): number {
+export function count(value: unknown): number {
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) throw new Error('cloud_preview_invalid')
   return value
 }
-function vector(value: unknown): number[] {
+export function vector(value: unknown): number[] {
   if (!Array.isArray(value) || value.length !== 3 || value.some(v => typeof v !== 'number' || !Number.isFinite(v))) throw new Error('cloud_preview_invalid')
   return value as number[]
 }
@@ -40,7 +40,7 @@ export function reserveCpu(bytes: number, policy: CloudRendererPolicy): () => vo
   return () => { if (active) { active = false; cpuBytes -= bytes } }
 }
 export function rendererUsage() { return { cpuBytes, gpuBytes } }
-function scalar(view: DataView, field: Field, index: number): number | bigint {
+export function scalar(view: DataView, field: Pick<Field, 'offset' | 'dtype'>, index: number): number | bigint {
   const offset = field.offset + index * widths[field.dtype]!
   switch (field.dtype) {
     case 'float32': return view.getFloat32(offset, true)
@@ -56,7 +56,7 @@ function scalar(view: DataView, field: Field, index: number): number | bigint {
     default: throw new Error('cloud_preview_invalid')
   }
 }
-function decimal(value: unknown): Decimal {
+export function decimal(value: unknown): Decimal {
   if (typeof value !== 'string' || value.length > 128 || !/^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$/.test(value)) throw new Error('cloud_preview_invalid')
   const parsed = new D(value)
   if (!parsed.isFinite()) throw new Error('cloud_preview_invalid')

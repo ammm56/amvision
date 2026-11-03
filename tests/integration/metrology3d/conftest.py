@@ -10,3 +10,8 @@ def pytest_addoption(parser):
     parser.addoption("--cloud-sample", default=None)
     parser.addoption("--cloud-report-dir", default=None)
     parser.addoption("--cloud-audit-resolution", action="store_true", default=False)
+    parser.addoption("--cloud-audit-surface", action="store_true", default=False)
+    parser.addoption("--cloud-audit-worker", action="store_true", default=False)
+    parser.addoption("--cloud-audit-resources", action="store_true", default=False)
+    parser.addoption("--cloud-sample-resources", action="store_true", default=False)
+    parser.addoption("--cloud-capacity-bytes", type=int, default=1000000)

@@ -781,6 +781,7 @@ class WorkflowRuntimeService:
             application_id=target_version.application_id,
             workflow_app_version_id=target_version.workflow_app_version_id,
         )
+        version_service.require_version_execution(target_version)
 
         comparison: dict[str, object] | None = None
         active_revision: WorkflowRuntimeRevision | None = None

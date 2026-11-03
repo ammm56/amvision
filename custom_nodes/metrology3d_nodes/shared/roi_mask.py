@@ -89,6 +89,27 @@ class RoiMaskPlan:
                         del masks[child]
         return masks[self.target_id]
 
+    def may_intersect(self, low, high, *, cancel):
+        """仅轴对齐闭盒/并集可排除块；其余原语仍执行原逐点算法。"""
+        possible = {}
+        with np.errstate(over="raise", invalid="raise"):
+            for roi in self.order:
+                cancel()
+                g = roi.geometry
+                if isinstance(roi, BoxRoi) and np.array_equal(g.rotation, np.eye(3)):
+                    # 与 mask 保持同一减法顺序，不能预先移动盒端点改变舍入。
+                    possible[roi.roi_id] = bool(
+                        np.all(
+                            (high - g.center >= -np.asarray(g.size) / 2)
+                            & (low - g.center <= np.asarray(g.size) / 2)
+                        )
+                    )
+                elif roi.kind == "union":
+                    possible[roi.roi_id] = any(possible[k] for k in g.roi_ids)
+                else:
+                    possible[roi.roi_id] = True
+        return possible[self.target_id]
+
 
 def roi_mask(positions, parameters, *, max_working_bytes, cancel):
     """边界消费者复用同一算法，输出掩码和块内工作集一起准入。"""

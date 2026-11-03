@@ -1,0 +1,365 @@
+{
+  "date": "2026-10-31",
+  "base_commit": "485752884322afba8237b23472077ce903c748ba",
+  "files": [
+    {
+      "path": "backend/contracts/workflows/inspection.py",
+      "sha256": "ea3737f356ec7ee34aeef8c4691f4139c09da1c4df9787fb8cac940041e385f2"
+    },
+    {
+      "path": "backend/contracts/workflows/metrology.py",
+      "sha256": "88c14af754113e698743aad37761febe81b85a0d0e840ae493cb8a1f151fa694"
+    },
+    {
+      "path": "backend/nodes/core_catalog.py",
+      "sha256": "0c95167613d4148063fe28eb7663e72bdde3c8c3b3689060137b46521e4d1ff1"
+    },
+    {
+      "path": "backend/nodes/core_nodes/io/output/records/batch_record.py",
+      "sha256": "b9835c494dadab361eeff6352cfa063722ccb4d08b642e4267b60fdadf4344d0"
+    },
+    {
+      "path": "backend/nodes/core_nodes/io/output/records/batch_result_summary.py",
+      "sha256": "9a282e8b110ea7ae37ffc1cd31c5fa5f1291b05751acf5392ebdd32de34bdfe6"
+    },
+    {
+      "path": "backend/nodes/core_nodes/io/output/records/result_record.py",
+      "sha256": "3584002394946f9fb3221d9ce0c84b778ca8aee000ab4875192c4a5d097f5cbc"
+    },
+    {
+      "path": "backend/nodes/core_nodes/io/preview/value_preview.py",
+      "sha256": "860f8d8edd1793ed3b4a30ffda5c69a06d99ec8def2a63e30e5d4108fe8a6b10"
+    },
+    {
+      "path": "backend/nodes/core_nodes/logic/rules/check_limits.py",
+      "sha256": "56fc2a476d603941c17d6a9b4cdcf5987a5e71ef6f5aced3a15b9c7fa2af7a87"
+    },
+    {
+      "path": "backend/nodes/core_nodes/logic/rules/process_decision.py",
+      "sha256": "8854c3f29dfa479d225f940bc8d3924c77ff55d58bad33ddec16bb47f862d175"
+    },
+    {
+      "path": "backend/nodes/core_nodes/support/batch_result_summary.py",
+      "sha256": "6f0d5789e75ad72f571a1d0e8ff008c0dd4792efb7c18a694c354b1113729a6a"
+    },
+    {
+      "path": "backend/nodes/core_nodes/support/inspection_record.py",
+      "sha256": "561e9680c2c0792d7919c7154116e2f89b764df2db61c8c5c57b5984b844f4d9"
+    },
+    {
+      "path": "backend/nodes/core_nodes/support/measurement.py",
+      "sha256": "8f32af905b8caf2019090f761a5907efdee5fe00343191f0c8b370ac50d4719d"
+    },
+    {
+      "path": "backend/nodes/core_nodes/support/preview_results.py",
+      "sha256": "422068f5171658ebedc087215f89b2ac6f943fdf619a62f717fca538084056f6"
+    },
+    {
+      "path": "backend/service/application/workflows/app_version_service.py",
+      "sha256": "5cce48842b592ff1150c83c0d58ac3dfb072ca07d5c37c34a07d3506a5c153ef"
+    },
+    {
+      "path": "backend/service/application/workflows/point_cloud/runtime.py",
+      "sha256": "5548dc78d90c4bd07dd79489f4b21f1a96fc931df5eee09b1e5ea22643cfb479"
+    },
+    {
+      "path": "backend/service/application/workflows/process_threads.py",
+      "sha256": "f2d0a0680afb573c7af989afe490300f6f1bcfc85025f50ed53d7c56355b912b"
+    },
+    {
+      "path": "backend/service/application/workflows/runtime_service.py",
+      "sha256": "af359e6c675f470139c41f71c89480713600826df7d8f517f27ed7f1632ef6b7"
+    },
+    {
+      "path": "backend/service/application/workflows/runtime/lifecycle.py",
+      "sha256": "06330b62e72e317a8ad5ced89f0dc8a9625b4ab2c2fb841290b546a1aea13e15"
+    },
+    {
+      "path": "backend/service/application/workflows/worker/process.py",
+      "sha256": "de7d4ece1f4c5455381d3dd33ed8a360a86f6b17296904842311c98e1463be6e"
+    },
+    {
+      "path": "custom_nodes/metrology3d_nodes/__init__.py",
+      "sha256": "8d5e8e87be7671aafdc6ce33922a4e7df8d0156d85cfee2338cfe38a288c0926"
+    },
+    {
+      "path": "custom_nodes/metrology3d_nodes/manifest.json",
+      "sha256": "be432118e0fbca6327fc1c6e30d37bc695ef08cf23f808d391e578c0e920a49b"
+    },
+    {
+      "path": "custom_nodes/metrology3d_nodes/shared/boundary_section.py",
+      "sha256": "471580267690820ed6f7ab7727736081e107e7d0e7e2b2e9d24f2d5290fe24e8"
+    },
+    {
+      "path": "custom_nodes/metrology3d_nodes/shared/boundary_surface.py",
+      "sha256": "290949b31bc507c93a2d51b1942898014173ea3a3e7eb23c501b76c7dec214a2"
+    },
+    {
+      "path": "custom_nodes/metrology3d_nodes/shared/crop_roi.py",
+      "sha256": "abcfb2fae43537d8c5f5ec1893aa9078985a22fb678de4dbb0d6658ae944e1f1"
+    },
+    {
+      "path": "custom_nodes/metrology3d_nodes/shared/envelope_selection.py",
+      "sha256": "ccd0652b34781da9b5018684d5d5fdbbd42f6fdacb83bd0fb3af94eeb150b93f"
+    },
+    {
+      "path": "custom_nodes/metrology3d_nodes/shared/geometry_quality.py",
+      "sha256": "2ab2d5e96c61a41154fc48a22adf4e6779c6d6e7866c29abf37db6c8fb31a34b"
+    },
+    {
+      "path": "custom_nodes/metrology3d_nodes/shared/measurement_reference.py",
+      "sha256": "afa29e340c768ec936df762ae6fba551fd776b7cdd3c5ee8d82ea6296fe2ee78"
+    },
+    {
+      "path": "custom_nodes/metrology3d_nodes/shared/measurement_result.py",
+      "sha256": "e65deaaec30a0ca4b9d175b59413e6c741b8288cf86e5e1660e80c3c27916a77"
+    },
+    {
+      "path": "custom_nodes/metrology3d_nodes/shared/measurement_support.py",
+      "sha256": "e7470c6bd97ee2c69d31d84c89433f9a2c815d7317cc5e91c3c81b23413c7ff0"
+    },
+    {
+      "path": "custom_nodes/metrology3d_nodes/shared/roi_blocks.py",
+      "sha256": "54e49bf1c4604c42faab31948d78de5f6a71ca8dd63c3c97cd9803f320dd9f3b"
+    },
+    {
+      "path": "custom_nodes/metrology3d_nodes/shared/roi_mask.py",
+      "sha256": "fc51b04e169c653473c446c3177bd910ce7ccaf22d5019abe0ba7fe05a53c768"
+    },
+    {
+      "path": "custom_nodes/metrology3d_nodes/workflow/catalog.json",
+      "sha256": "03a7ea74776fa87a04394071cb54a642dffbf4b43626208e74c5326412475a44"
+    },
+    {
+      "path": "custom_nodes/plc_nodes/protocols/modbus_tcp/backend/runtime/result_signals/config.py",
+      "sha256": "968dff87ae211336e973adb0a4b1b183c14ef503d82080e7b4538a8f60095061"
+    },
+    {
+      "path": "custom_nodes/plc_nodes/protocols/modbus_tcp/backend/runtime/result_signals/execution.py",
+      "sha256": "402139c70b7a37bc945755c0d8bb2e3d7d8a8c64281e59da66ef3ed10e1484fd"
+    },
+    {
+      "path": "custom_nodes/plc_nodes/protocols/modbus_tcp/backend/runtime/result_signals/payloads.py",
+      "sha256": "4240e6b79b4d08a865f5e3c2dc3f143fed4093a432a55309cf0c0816e5b1cf6a"
+    },
+    {
+      "path": "custom_nodes/plc_nodes/protocols/modbus_tcp/backend/runtime/result_signals/sources.py",
+      "sha256": "53ec885a45c714caedba7eb055ab84fb1775e60755d16f1f402862c4f7a4a37a"
+    },
+    {
+      "path": "custom_nodes/plc_nodes/protocols/modbus_tcp/backend/runtime/types.py",
+      "sha256": "c88ec309d51ef05ff978160703402f245a516cfdfe70ccd1ea94f15848a4c9ef"
+    },
+    {
+      "path": "custom_nodes/plc_nodes/workflow/catalog.json",
+      "sha256": "25b947b8f5d61c50f2d2afed6bcdaed24637f92953cc2b2073e51d038ba760ef"
+    },
+    {
+      "path": "frontend/web-ui/src/shared/ui/image-viewer/result-format.ts",
+      "sha256": "a3e3c9becfb9927d1eaaea47ac23d7a512076879d3e51148bb811330cf768a51"
+    },
+    {
+      "path": "frontend/web-ui/src/shared/ui/image-viewer/result-geometry.ts",
+      "sha256": "b0f0885754c13695728832453671307b1fd8bd65a3a643cc0c3c05494c01bb33"
+    },
+    {
+      "path": "sdks/dotnet/tests/Amvar.Vision.ContractTests/Program.cs",
+      "sha256": "d4d7b0a36a484de3be438ab78d445829d21e4cbe43bda4a213d90e1bddf3ab9c"
+    },
+    {
+      "path": "tests/frontend/test_inspection_decisions.ts",
+      "sha256": "fae20c178b4016bef96c33fc5db9dfe14d4e2120a033cc8c3edc9b6d2c50c61d"
+    },
+    {
+      "path": "tests/integration/metrology3d/conftest.py",
+      "sha256": "bbd076c082f003a01c63d5f0e232b2c4b93f822c51bed07998443162411ab5cf"
+    },
+    {
+      "path": "tests/integration/metrology3d/metric_graph_compare.py",
+      "sha256": "898d7c8ce936ff69a2c4eb89a3784203ba918429ad96bcc52acd5dfed56ee131"
+    },
+    {
+      "path": "tests/integration/metrology3d/published_support.py",
+      "sha256": "a81a715a7cd75f9ff26ab7f633f91c996093c137036a2d7a9c70417f5d851d80"
+    },
+    {
+      "path": "tests/integration/metrology3d/serial_local_compare.py",
+      "sha256": "ee2dacf5cee5d962c856aa0a4ef06158cc16bea21c42f824baa78dec60d97857"
+    },
+    {
+      "path": "tests/integration/metrology3d/surface_compute_audit.py",
+      "sha256": "5e0d723b5443ae21ab1b55bd921914dea80b1c16db78783e86eff531a44c12fb"
+    },
+    {
+      "path": "tests/integration/metrology3d/surface_local_compare.py",
+      "sha256": "7f2a0d56882ea2d161f239fdc149aa0ef52e916073cbac6de56bf7aa383af585"
+    },
+    {
+      "path": "tests/integration/metrology3d/test_boundary_section.py",
+      "sha256": "09d064c12a4b38c2f877d60e9aece4f9dcd83c9cfff73c3f0d3eeae9e2ac894a"
+    },
+    {
+      "path": "tests/integration/metrology3d/test_compute_cycles.py",
+      "sha256": "3fb8cfe8686a8e9ee89f18f0a697d16f14a904aa62768b318ec107590a743216"
+    },
+    {
+      "path": "tests/integration/metrology3d/test_compute_profile.py",
+      "sha256": "1d2b0ddebb7d8a75952cefe8c9004c173b048e39b0f23e2c2a2d3ff2cbc8ecb7"
+    },
+    {
+      "path": "tests/integration/metrology3d/test_metric_envelope.py",
+      "sha256": "f1945baef71ca697e35c8be03136cf9a290b230d0e94652f084e2318bb54330f"
+    },
+    {
+      "path": "tests/integration/metrology3d/test_surface_checks.py",
+      "sha256": "9ee2c9502ba1b9a5d62a16c72f7bc973c834a67810f6dbc5de4464f8035d029c"
+    },
+    {
+      "path": "tests/test_core_payload_contracts.py",
+      "sha256": "252f2e6e22ee2d26f6cd18843f31bbace678b48b23e399826dd04ee357aa6991"
+    },
+    {
+      "path": "tests/test_http_nodes.py",
+      "sha256": "04af93089ee47e8d4f90fdf6b739f2a29fb9a60551cbfc6d1ed47bb8225652d8"
+    },
+    {
+      "path": "tests/test_industrial_io_output_nodes.py",
+      "sha256": "08b04a8466eaf21ac8c7bbc033ec0baf79d162794aa70bd5b4838cbc07e20697"
+    },
+    {
+      "path": "tests/test_industrial_rule_nodes.py",
+      "sha256": "1fc5ec8495cbde089ebf970b07eaf696588e4de01f74f587bbe72a43fa5a2b9a"
+    },
+    {
+      "path": "tests/test_inspection_decisions.py",
+      "sha256": "e9e3e7e9adf27e5f956d6309c43c49e5af2730a1f70d3e64465cf3a80b69b544"
+    },
+    {
+      "path": "tests/test_inspection_delivery.py",
+      "sha256": "e1940b1e8a4b0812de14548890f921a60d15f43aa5021b8d09374962f230d4d8"
+    },
+    {
+      "path": "tests/test_inspection_example_contracts.py",
+      "sha256": "720c521c62e8d3f6a72c620e1f3ef33a03b0d27af2333256bf574bbe238e12d2"
+    },
+    {
+      "path": "tests/test_inspection_execution_identity.py",
+      "sha256": "7314f743a34b66734263e5e20bf51c77bc13d2c51cba01ad3c1cdf02245ab5e2"
+    },
+    {
+      "path": "tests/test_inspection_modbus_states.py",
+      "sha256": "e496df2fb255841ae7be113547341259cab962d0476edecb5046f018d1fdf8d9"
+    },
+    {
+      "path": "tests/test_inspection_published_runtime.py",
+      "sha256": "f97d4d7fa897f7bf96d762b500829014eb550d21a2223e1a0de677b0adad88ee"
+    },
+    {
+      "path": "tests/test_metrology3d_crop.py",
+      "sha256": "7c55cc9bd5844c74b1a84f898185b77e9cf26f06cbb9d6419bff9363b24eb222"
+    },
+    {
+      "path": "tests/test_metrology3d_reference_extension.py",
+      "sha256": "4dff4ff347fadb34d05a29bc06f3d6b4741e9d68e21a06634e6aebdbaabad331"
+    },
+    {
+      "path": "tests/test_metrology3d_roi_blocks.py",
+      "sha256": "ce87a3c699aed8caa90e0b61126909cfe890dc0a53437b5e49cc54ac3eac6b48"
+    },
+    {
+      "path": "tests/test_modbus_tcp_nodes.py",
+      "sha256": "e7679e1cd6ac58a429e15480c98b1361fae36038d71eeb48d35a642aa8fe839a"
+    },
+    {
+      "path": "tests/test_point_cloud_contiguous_view.py",
+      "sha256": "6a0fe76bd4f8ade0dc40916d3160780b7194cde03099b6c4ecd4d2aae88ec10c"
+    },
+    {
+      "path": "tests/test_sql_nodes.py",
+      "sha256": "1fd316066b4750b1cb862c506b1db760c3ad95fdc7002a93c1e0d6eac8066a03"
+    },
+    {
+      "path": "tests/test_workflow_example_documents.py",
+      "sha256": "c74d6644d65142c742165ab66030c863aa4b96a13e2b1dd90abe23190d81ee32"
+    },
+    {
+      "path": "tests/test_workflow_formal_app_runtime_smoke.py",
+      "sha256": "af262bb02bb21420870f8144db42b9fd09c6bf727a15b8fa4baaa45544c42911"
+    },
+    {
+      "path": "tests/test_workflow_preview_worker.py",
+      "sha256": "ae0fc77916cc9f98f2c9ea4160646f5d694a66407ad0c45edd1e1a87d35dd285"
+    },
+    {
+      "path": "tests/test_workflow_process_threads.py",
+      "sha256": "513969ca4d7147abc603cf0c7e91c6f295fb78d5b1856502b8b136f6feb3e2ba"
+    }
+  ],
+  "scope": "A05/A06 software contracts, consumers and execution admission; includes prior serial worktree changes",
+  "committed": false,
+  "windows_final": {
+    "tests": 245,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "seconds": 156.884
+  },
+  "windows_initial": {
+    "tests": 243,
+    "passed": 242,
+    "failed": 1,
+    "failure": "TestClient disconnect followed immediately by cancel caused concurrent.futures.CancelledError"
+  },
+  "closure_correction": "Await server websocket.close and assert subscription/capture release before TestClient context exit; no production websocket change",
+  "ubuntu_consumers": {
+    "tests": 88,
+    "failures": 0,
+    "seconds": 106.77,
+    "runtime_filesystem": "native"
+  },
+  "ubuntu_final_published": {
+    "tests": 2,
+    "failures": 0,
+    "seconds": 136.84,
+    "runtime_filesystem": "native"
+  },
+  "frontend": {
+    "tests": 11,
+    "files": 3,
+    "passed": true,
+    "vue_typecheck": true
+  },
+  "dotnet": {
+    "target": "net472",
+    "rebuilt": true,
+    "contract_executable_passed": true,
+    "production_sdk_changed": false
+  },
+  "browser": {
+    "isolated_backend_port": 5620,
+    "isolated_frontend_port": 5621,
+    "states": [
+      "invalid",
+      "ng",
+      "ok"
+    ],
+    "source_value_precision_preserved": 1.000000001,
+    "console_errors": 0,
+    "console_warnings": 0,
+    "full_ui_matrix": false
+  },
+  "hardware": {
+    "http_transport": "test adapter",
+    "plc_transport": "test adapter",
+    "sqlite": "real local storage",
+    "external_customer_acceptance": false
+  },
+  "limits": {
+    "windows_compute_under_10_seconds": false,
+    "s2_stability_passed": false,
+    "physical_accuracy_verified": false,
+    "full_workpiece_decision_recipe_complete": false,
+    "all_remaining_features_complete": false,
+    "final_merged_performance_tested": false
+  }
+}

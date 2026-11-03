@@ -33,6 +33,11 @@ from backend.service.application.workflows.point_cloud.policy import PointCloudI
 from backend.service.application.workflows.point_cloud.runtime import CloudRuntime
 from custom_nodes.metrology3d_nodes.shared.io.formats import inspect_cloud_file
 from custom_nodes.metrology3d_nodes.shared.io.input_errors import parsing_input
+from custom_nodes.metrology3d_nodes.shared.io.normalization import (
+    can_view_field,
+    field_view,
+    readonly_records,
+)
 
 
 @dataclass(frozen=True)
@@ -184,9 +189,13 @@ def read_cloud_file(
         decoded_bytes = inspected.count * inspected.dtype.itemsize
         if decoded_bytes > policy.max_decoded_bytes:
             raise InvalidRequestError("点云解码数组超过显式预算")
-        normalized_bytes = inspected.count * sum(
-            np.dtype(field.dtype).itemsize * field.components for field in fields
+        views = tuple(can_view_field(inspected.dtype, m) for m in options.field_mapping)
+        copied_bytes = inspected.count * sum(
+            np.dtype(mapping.dtype).itemsize * mapping.components
+            for mapping, view in zip(options.field_mapping, views)
+            if not view
         )
+        retained_bytes = copied_bytes + (decoded_bytes if any(views) else 0)
         # 临时块允许缩小，不改变数据；工作预算至少容纳一行文本和转换数组。
         column_count = len(names)
         row_work_bytes = max(inspected.dtype.itemsize * 2, column_count * 8 * 2) + 4
@@ -204,8 +213,8 @@ def read_cloud_file(
                 inspected = inspect_cloud_file(
                     snapshot.stream, options, effective_policy, cancel
                 )
-        # 结构数组与规范属性在重排时同时存在，不能只给最终数组计费。
-        reservation = budget.reserve(decoded_bytes + normalized_bytes)
+        # 共享结构数组只计一次；必须重排的属性仍与源数组同时计费。
+        reservation = budget.reserve(decoded_bytes + copied_bytes)
         data = None
         value = None
         arrays: dict[str, np.ndarray] = {}
@@ -215,19 +224,25 @@ def read_cloud_file(
                 data = inspected.read()
             if data.shape != (inspected.count,) or data.dtype != inspected.dtype:
                 raise InvalidRequestError("解析结果不符合预检布局")
+            data = readonly_records(data)
             invalid = 0
-            for mapping in options.field_mapping:
+            for mapping, view in zip(options.field_mapping, views):
                 cancel()
-                value = np.empty(
-                    (inspected.count, mapping.components),
-                    dtype=np.dtype(mapping.dtype).newbyteorder("<"),
+                value = (
+                    field_view(data, mapping)
+                    if view
+                    else np.empty(
+                        (inspected.count, mapping.components),
+                        dtype=np.dtype(mapping.dtype).newbyteorder("<"),
+                    )
                 )
                 arrays[mapping.target_name] = value
                 for start in range(0, inspected.count, rows):
                     cancel()
                     stop = min(start + rows, inspected.count)
-                    for column, name in enumerate(mapping.source_names):
-                        value[start:stop, column] = data[name][start:stop]
+                    if not view:
+                        for column, name in enumerate(mapping.source_names):
+                            value[start:stop, column] = data[name][start:stop]
                     if mapping.target_name == "validity" and np.any(
                         value[start:stop] > 1
                     ):
@@ -240,7 +255,7 @@ def read_cloud_file(
                         )
             value = None
             data = None
-            reservation.shrink(normalized_bytes)
+            reservation.shrink(retained_bytes)
             cancel()
             owner = OwnedCloudArrays(arrays, reservation)
             arrays.clear()

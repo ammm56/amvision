@@ -2,18 +2,28 @@
 
 ## 1. 状态与阅读约定
 
-### 1.1 当前状态：2026-10-31
+### 1.1 当前状态：2026-11-02
 
-F4更新：片段组/角区稳健拟圆、实际距离分区和有限基准应用域已接通，双平台完整样本50项均可输出几何有效数值。S2缺弧重采样稳定性未通过，不能声称全工件精度与最终性能已经验收。最新代码和证据见 [F4 实施与限制](3d-metrology-r5-f4-implementation.md)，以下F3数值为本批之前的基线。
+最新交付：A10 已接通三维配方资源包、父依赖闭包、引用映射、失败/中断恢复和编辑器入口。双平台空环境完成完整 14,745,099 点包的导入、正式发布和独立运行，真实页面导入/发布/Preview 通过，见 [A10 实施记录](3d-metrology-cloud-package.md)及剩余清单第 16 节。A11 工具装配已完成；下一步 A12 离线发行，不让十秒和近 1 GB 显示索引阻塞其他交付。前序未提交修改仍保留，以下较早记录不能覆盖最新状态。
 
-当前界面核对基点为 `97aef19a`，I1–I4 核心实现及 I5 代表链路验收已提交，前序 F3 基点为 `b4cac612`。前序基线见 [F3 可见包络与稳健剖面测量](3d-metrology-r5-f3-implementation.md)，最新测量实现见上方 F4 记录。M1、M2、M3.1–M3.3 的十八节点已接入正式 `metrology3d.nodes`，本机工程容量已确认并启用；不是仍处于隐藏节点阶段。三维契约统一 v1，其他平台协议不随之改号。
+最新推进：A09 容量主链路之后，A08 已接通显式保存资产的空间叶块与视野原始点显示。完整 14,745,099 点在 Windows/WSL 逐行、逐字段一致，真实页面加载原始细节，定向后端各 43 项、前端 51 项通过。详见[资产细节显示](3d-metrology-details.md)及剩余清单第 14 节；最大容量显示与最终组合仍需补验，十秒和离线发行未标为完成。A09 的独立账本与验证见[容量实施与验证](3d-metrology-capacity.md)，不将 1 GB 输入成功等同于 1 GB 显示索引成功。
+
+**全部剩余范围统一见[完成范围与剩余清单](3d-metrology-remaining.md)。** A01–A13 区分当前工件的实现、验证与交付缺口，B01–B23 列出原规划尚未交付的通用能力；不是新增三十六个节点，也不要求先完成所有高级算法才能交付当前工件。后续按固定编号更新，不再把历史记录中的“未启用/未接通”反复当作当前任务。
+
+Git 基点仍为 `0db046fc`：点云显示优化已提交，前序计算/Preview、三态消费者及正式工件交付仍未提交。此前 A01 批次已将性能验收接入实际交付图，修正绝对误差检查并完成截面来源分块优化。Windows 组合 106 项、Ubuntu 73 项及完整数值图通过；Windows 正式交付图六次仍超十秒，非独占结果不冒称受控性能通过。该批范围与证据见剩余清单第 12 节；后续容量进展以第 13 节为准，全分辨率显示、携资源搬运及离线发行不随局部优化自动完成。以下分批日期与数值作为历史证据保留。
+
+最新主流程：用户已接受 S2 当前工程方法，原 0.03 mm 历史诊断不再阻塞、不重复试验。正式工件文档、50 项三态判定、结果保存、完整证据显示及同机调用已交付，Windows 147 项、Ubuntu 19 项及真实页面导入/保存/发布通过，见[主流程交付](3d-metrology-mainflow.md)。不将工程限值称为图纸公差或实体认证，不宣称本轮新通过十秒节拍。以下 F3/F4 与界面分批数值保留历史背景，不能覆盖此处最新状态。
+
+同日进度复核与查看器更新：A02/A05/A06/A07 已有实际实现，A03 按授权工程收口，A11 已有双平台运行时工具；具体剩余见清单第 1.1 节。现有点云查看器补齐正交顶视、可调坐标 Z 色标、比例尺、显示叠加开关和大视口；完整样本页面验证与显示边界见[显示记录](3d-metrology-mainflow.md#点云显示核对2026-10-31)。B01–B23 仍为原规划扩展，不因当前工件已经可测就称为全部完成。
+
+当前代码核对基点为 `48575288`，前一笔为 `b176bbff`；I1–I4 核心实现及 I5 代表链路验收已提交，前序 F3 基点为 `b4cac612`。前序基线见 [F3 可见包络与稳健剖面测量](3d-metrology-r5-f3-implementation.md)，最新计算与验证状态见本节后续记录。M1、M2、M3.1–M3.3 的十八节点已接入正式 `metrology3d.nodes`，本机工程容量已确认并启用；不是仍处于隐藏节点阶段。三维契约统一 v1，其他平台协议不随之改号。
 
 - F3 历史结果：十二钢片 24 项 L/W 已按确认的可见投影包络实现，当时 50 主项合计 **47 有效、3 无效**，两项 Z 为有限基准应用范围拒绝，S2.D 为多片段目标选择歧义。当前 F4 为 50 项几何有效，但 S2 稳定性未通过，不能沿用 F3 计数描述现状。
 - 文件/同机数组、来源与保存读取、前端三维显示和正式发布生命周期均已有实际验证；完整样本、Windows .NET、WSL Python 协议的范围分别记录，不混称所有客户端或发行包均已通过。
 - F3 单次纯计算为 Windows 12.758 秒、WSL 9.557 秒，仅作历史数据，不代表当前 F4/I3 的固定线程重复节拍。F4 已修正 A_top_L 的目标归属跳变；格距/相位对照仍存在约 0.044701 mm 范围差，需要结合实际精度要求验收，不能把几何有效等同于物理精度通过。
-- M3.4 全平台产品三态、全部现场操作、完整离线发行、容量边界及最终资源/节拍验收仍有缺口。M4/M5 高级几何、新输入与参考比较未完成。
+- M3.4 三态及受影响读取方已接通，本工件正式工程配方已交付；全部现场操作、完整离线发行、最大容量及最终节拍仍按独立范围记录。M4/M5 高级几何、新输入与参考比较未完成，不作为当前工件可用主流程的前置条件。
 
-候选与权重显示已在后续界面批次接通，不再沿用 F4 历史记录将其列为未实现。其余按 [F4 实施记录的剩余出口](3d-metrology-r5-f4-implementation.md#6-下一步出口) 推进 S2 稳定性、实际热点优化和冻结验收；完整步骤仍见 [F4 计划](3d-metrology-r5-f4-plan.md)。既有单遍 ROI、支持摘要复用、发布/资源/线程管理不重复实现。
+候选与权重显示已接通，不再沿用 F4 历史记录将其列为未实现。[F4 计划](3d-metrology-r5-f4-plan.md)保留当时设计，当前执行边界以剩余清单和最新主流程记录为准，不继续沿旧计划阻塞 S2。既有单遍 ROI、支持摘要复用、发布/资源/线程管理不重复实现。
 
 三维节点的参数与显示优化另见 [三维测量界面计划](3d-metrology-ui-plan.md)及[本批实施与验收](3d-metrology-ui-validation.md)。范围仅为现有三维节点与当前工件；I1 环带/扫角已接通。I2 已实现默认关闭的同次全格/候选捕获、Scope 所有权、原显示传输和前端证据联动。I3 已接通 ROI 显示开关、共享叶状态、拖动取消和生命周期保护，包版本 `0.1.17`；显示不改变裁剪成员、参数或测量结果。应用列表、节点分类或平台管理界面不在范围内。
 
@@ -26,6 +36,10 @@ I3 的源码核对、可见性/成员分离、共享叶和截面规则、活动�
 `97aef19a` 后的进度分类与执行次序见[界面计划第 12 节](3d-metrology-ui-plan.md#12-i4-提交后的进度与下一步2026-10-31)。该节保留规划时状态。后续实施见[连续边长拟圆与局部参数提交](3d-metrology-circle-support.md)：包 `0.1.19` 修复局部编辑被整图问题阻塞，并新增显式连续边长方法；S2 对照仍未通过 0.03 mm 稳定性诊断，正式配方不替换。长宽分辨率、计算节拍、产品三态和发行工作仍未完成，不扩大系统设置验收。
 
 后续 [长宽分辨率与计算热点核对](3d-metrology-resolution-compute.md) 已将 A_top_L 的约 0.044701 mm 宽度变化定位到四侧格中心/格边估计，真实目标 56,698 个原始行在三种格距/相位下相同；不是再次选错目标。边排序已完成等价优化，双平台完整点云 50 项结果保持原值。方法分辨率定位不等于实体精度验收，S2 稳定性和正式秒级门禁限制保留。
+
+最新目标已确认为完整点云就绪后的真实 Workflow Node App **每次调用小于 10 秒**，不含文件读取和输入传输。本批候选 `0.1.20` 已完成建面检查、同次支持扫描、Run 内 ROI 分块摘要、连续只读切片及已加载 BLAS 线程配置修复，详见[串行计算实施与验收](3d-metrology-resolution-compute.md#10-10-秒目标实施记录)。正式六次 Windows 为 10.203–16.188 秒，Ubuntu 为 9.649–15.009 秒，**两平台均未整体达到 10 秒门禁**。12 次调用全部 50 项保持原值，租约/许可归零并停止 worker；Windows 最终三维/点云单元 397 项通过。Ubuntu 的一次 Preview 组合时序失败虽单例已通过，仍保留组合稳定性复核项，不声称所有回归无波动。已确认暂不扩展 Parallel，继续串行优化；不改质量门禁、配方或输入排队边界。S2 稳定性、实体精度及正式发行限制不变。
+
+下一批详细步骤见[串行优化设计第 11 节](3d-metrology-resolution-compute.md#11-下一批串行优化设计)：一次收齐 S1/S2 和十二钢片的局部阶段证据，优先验证既有截面库的点积/面集复用及稀疏图存储转换，局部等价且有收益后才进入完整图。已无收益的邻域/CSR 候选不重复尝试，已完成的 ROI、扫描和边排序不重复实现。`0.1.20` 尚未提交，14 项候选文件摘要已核对一致；本次仅更新设计，没有新算法修改或重跑验收。
 
 ### 1.2 历史阶段记录
 
@@ -681,13 +695,13 @@ F1：read-cloud/同机入口 → normalize-units → filter-valid；F2：crop-ro
 | 没有启用的必检项 | 无可用总判定 | INVALID / no_required_checks | false |
 | 配置非法、资源损坏、依赖/执行失败 | 不生成正常判定 | 任务失败/取消，不包装为产品 INVALID 或 NG | 无成功输出 |
 
-新版 Check Limits 保留 `result:boolean.v1`，精确定义为“可放行”。`summary:value.v1` 内加入固定 `format_id=amvision.limit-check.v2`，逐项 `state`，总 `state` 为 ok/ng/invalid；直接把 summary 连接到 Result Record 的 decision 输入，不新增重复摘要端口，也不经过布尔往返。节点版本、schema 与发布依赖同步变化，不能把旧 summary 当同版兼容输入。
+新版 Check Limits 保留 `result:boolean.v1`，精确定义为“可放行”。按 2026-10-31 最新确认，未投产契约使用 `summary:value.v1` 内固定 `format_id=amvision.limit-check.v1`，逐项 `state`，总 `state` 为 ok/ng/invalid；直接把 summary 连接到 Result Record 的 decision 输入，不新增重复摘要端口，也不经过布尔往返。旧开发 summary 不作兼容输入；涉及摆盘机生产节点/协议时才明确升级 v2，保护范围见[剩余清单第 10 节](3d-metrology-remaining.md#101-开发契约与生产保护)。
 
 summary 字段：`format_id`、`observation_id`、`state`、`passed`、`reason`、`items`、`required_count`、`required_ok_count`、`required_ng_count`、`required_invalid_count`、`optional_count`。前三个 required 状态计数之和必须等于 required_count。去掉含混的 passed_count：当前实现计入所有启用项，不能拿它与 required_count 计算通过率。items 保存 item_id、required、state、passed、量值 valid/value/unit、actual_unit、上下限/开闭标志和 reason。总 reason 为 no_required_checks/required_invalid/required_out_of_limits 或 null，详细原因留在各项。
 
 首批 decision_policy 只支持明确的数值区间判断；不宣称已完成测量不确定度保护带算法。配置要求尚未支持的决策方法应在发布时拒绝；已实现方法执行后依据不足才是决策 INVALID，不能以普通区间判断悄悄代替。
 
-现有 `result-record.v1` 必须升级为显式 `result-record.v2`，不能只向 v1 enum 添加 INVALID。新版固定 `format_id=amvision.result-record.v2`，必需 `state:ok/ng/invalid`、`passed:boolean`（仅 ok 为 true），保留明确的可选 `reason/metrics/conditions/metadata/alarm/image/video`。不同时保留 ok_ng/ok 旧别名；alarm 是独立设备/流程信息，不等于测量 INVALID。三维证据作为受控结果附件引用，不能放进 image 字段。
+按 2026-10-31 最新确认，未投产的 `result-record.v1` 直接收敛为固定 `format_id=amvision.result-record.v1`，必需 `state:ok/ng/invalid`、`passed:boolean`（仅 ok 为 true），保留明确的可选 `reason/metrics/conditions/metadata/alarm/image/video`。不同时保留 ok_ng/ok 旧别名；alarm 是独立设备/流程信息，不等于测量 INVALID。三维证据作为受控结果附件引用，不能放进 image 字段。如果实际影响摆盘机生产中的契约，则按已确认生产例外显式升 v2，不用本段的开发规则覆盖已投产语义。
 
 Result Record 消费完整判定对象并验证 state/passed/逐项一致性；普通 Process Decision 的布尔业务可产生有效 ok/ng，但不能声称从 false 恢复 invalid。`core.rule.ok-ng-decision` 等纯布尔节点不承担三态聚合，三维链路禁止先丢弃原因再把其输出接回正式测量判定。原来使用字符串 decision 的受影响模板需显式改图并重发，不保留运行时双格式分支。
 
@@ -703,11 +717,11 @@ Result Record 消费完整判定对象并验证 state/passed/逐项一致性；�
 | --- | --- | --- |
 | 数值生产/合并 | `backend/contracts/workflows/metrology.py`、`core_nodes/logic/value/numeric_tables_merge.py`、numeric_table_to_value；connector_nodes 的 measure/pin_array_locate | NumericTable v1 不改义；同 observation、唯一 item_id；二维/三维缺测测试一起覆盖 |
 | Core 判断 | [measurement.py](../../backend/nodes/core_nodes/support/measurement.py)、[check_limits.py](../../backend/nodes/core_nodes/logic/rules/check_limits.py)、ok_ng_decision/process_decision | 真值表、可放行 bool、逐项状态/计数；不从 bool 反推三态 |
-| 结果契约与构造 | [core_catalog.py](../../backend/nodes/core_catalog.py)、[inspection_record.py](../../backend/nodes/core_nodes/support/inspection_record.py)、io/output/records/result_record.py、process_decision.py | v1 当前只认 OK/NG、ok；v2 源头/构造器/生产者同批改，拒绝不一致 state/passed |
+| 结果契约与构造 | [core_catalog.py](../../backend/nodes/core_catalog.py)、[inspection_record.py](../../backend/nodes/core_nodes/support/inspection_record.py)、io/output/records/result_record.py、process_decision.py | 已统一开发 v1 的 state/passed；Result Record 消费完整限值摘要，拒绝不一致状态；不保留 ok_ng/ok 记录别名 |
 | 批次/Workflow 输出 | support/batch_result_summary.py、io/output/records/batch_record.py、batch_result_summary.py、workflow_result.py；logic/collections/array_summary.py | 区分 invalid 与 unknown，冻结分母；通用数组路径配置必须迁移，不静默猜旧字段 |
 | 序列化与保存 | [payload_adapters.py](../../backend/nodes/payload_adapters.py)、logic/value/payload_to_value.py、io/output/storage/json_save_local.py、csv_append_local.py | 类型白名单、列名、空值、精度和新 format；不得把 invalid 转 NG/0 |
-| HTTP/数据库 | custom_nodes/http_nodes 的请求 payload 与 Catalog；database_nodes/providers/sql 的 sql_upsert schema/Catalog | 接受 v2；绑定路径和 SQL 字段映射审核；不自动修改外部数据库 schema |
-| PLC | [result_signals/payloads.py](../../custom_nodes/plc_nodes/protocols/modbus_tcp/backend/runtime/result_signals/payloads.py)、同目录 config/sources/execution 及 write_result_signals Catalog | 当前严格 OK/NG 与 ok 一致；新格式明确状态映射及写入失败策略。地址/编码由现场配置，不假设 NG 就是 not passed；不把顺序写多寄存器宣称为事务 |
+| HTTP/数据库 | custom_nodes/http_nodes 的请求 payload 与 Catalog；database_nodes/providers/sql 的 sql_upsert schema/Catalog | 读取当前 v1；示例绑定改为 state/passed，保留 null 和量值；不自动修改外部数据库 schema |
+| PLC | [result_signals/payloads.py](../../custom_nodes/plc_nodes/protocols/modbus_tcp/backend/runtime/result_signals/payloads.py)、同目录 config/sources/execution 及 write_result_signals Catalog | 已支持显式三态代码及连接前全字段编码校验；禁止覆盖状态映射。地址/代码由现场配置，不假设 NG 就是 not passed；顺序写多寄存器不具备事务原子性 |
 | 参数/静态校验 | frontend 的 WorkflowLimitRulesEditor、limit-rules、recipe-validation、static-numeric-items、trusted-recipe-providers | 已有空规则/缺必检检查保留；三维 provider 扩展现有注册；未知动态项不能伪报静态有效 |
 | 表格显示 | [result-format.ts](../../frontend/web-ui/src/shared/ui/image-viewer/result-format.ts)、result-geometry.ts、WorkflowResultTable.vue、WorkflowPreviewTable.vue、useWorkflowPreviewDisplays.ts | 原 result 格式把 false 显示 NG；新增明确 decision-state 格式显示三态，不修改所有普通 bool 的含义 |
 | 后端预览表 | core_nodes/support/preview_results.py、io/preview/value_preview.py | 与前端 format 白名单同步；二维几何不承载三维证据，保留现有行/列/字节限额 |
@@ -716,7 +730,7 @@ Result Record 消费完整判定对象并验证 state/passed/逐项一致性；�
 
 ### 8.6 发布执行身份与审核重发
 
-源码核对：app_version_service 会冻结节点版本/定义摘要和包 manifest 摘要；[worker/process.py](../../backend/service/application/workflows/worker/process.py) 校验冻结文件内容指纹，但执行仍使用当前 handler。runtime_service 的定义变化检查用于只读画布提示，不能等同执行时锁定旧代码。因此不能仅凭“文件指纹没变”宣称旧规则仍按旧算法运行。
+初始源码核对：app_version_service 已冻结节点版本/定义摘要和包 manifest 摘要；worker 校验冻结文件内容指纹，但执行仍使用当前 handler。2026-10-31 A05/A06 已增加受影响节点的统一执行身份准入：选版、启动及 [worker/process.py](../../backend/service/application/workflows/worker/process.py) READY 前比较冻结与当前身份，拒绝改义旧发布；历史只读访问不受阻。并非为所有节点锁定旧代码，也不将 UI 定义变化提示当作执行保护。
 
 现有 [Workflow App 版本管理](../architecture/workflows/app-versioning.md) 已完整定义草稿、不可变版本、依赖文件、Runtime 选版、generation、回滚和运行追溯。本节不是重做这些功能，也不能把当前节点实现身份字段从部分指纹材料中排除，单独当成“没有版本校验”的证据。需要核对的是实际加载代码与发布要求的一致性；检查在既有发布/启动边界完成，不每次调用扫描包目录。
 
@@ -724,7 +738,7 @@ Result Record 消费完整判定对象并验证 state/passed/逐项一致性；�
 
 影响范围必须由依赖和引用盘点得出：新增不被旧图引用的三维节点不要求旧 App 重发；共享 Check Limits/Result Record 改义时，只对使用被改变节点/结果契约的发布实施审核。资源格式版本也不等于数据库必须迁移：新点云资产可只使用新版本；确需改旧二维引用时，先列明原因、映射与恢复步骤。不得借本节点包实施全仓库旧数据清空或全部发布停用。
 
-实施时在现有发布/导入/启动与恢复准入中共享同一依赖执行校验：冻结依赖与当前节点版本、定义摘要及包实现身份不一致时拒绝执行，给出受影响节点/资源及审核重发要求。Preview 使用当前草稿，同样检查输入/资源/契约，不能靠 Preview 绕过旧发布拒绝。单靠 manifest hash 不能证明 Python 源码未变；受控发布必须绑定可核验实现版本/发行内容，相关身份生成复用既有发布机制，不另建版本管理器。
+当前在节点 requires_execution_review 或冻结身份 review_required 为 true 时比较完整依赖项，缺失/不一致返回 requires_republish；移除当前标记不能绕过已冻结标记。未改变的生产行为不因无关目录指纹变化被停用。Preview 使用当前草稿并检查输入/资源/契约，不执行旧发布；导入旧文档也不能绕过启动检查。单靠 manifest hash 不能证明所有 Python 源码未变，实现升级必须维护节点版本/定义；完整发行内容锁定属于发行验收，不声称本次已经实现。生产例外、节点清单与验证见[剩余清单第 10 节](3d-metrology-remaining.md#101-开发契约与生产保护)。
 
 迁移顺序：消费者清单与发布依赖盘点 → 统一契约/生产者/消费者修改及测试 → 冻结新实现 → 对受影响旧版标只读/阻止恢复 → 审核并创建新发布 → 在新发布验证 SDK/PLC/DB/文件输出。数据结构若需变化，单独提供正式迁移和回滚方案；M0 不执行数据操作。
 
@@ -1821,20 +1835,23 @@ M0 历史文档审计核对了本基线、ADR 与目录入口；当时 9 份相�
 
 ## 16. 当前待确认项与风险
 
+本节按 2026-10-31 实现校正；具体剩余实现和完成标准统一见[剩余清单](3d-metrology-remaining.md)，不再另立一套阶段。
+
 | 项目 | 当前事实与处理 |
 | --- | --- |
-| 图纸公差、节拍与准确度目标 | 当前未提供通用目标；按模板/场景分别约定，不写一个全行业默认门槛 |
+| 图纸公差、节拍与准确度目标 | 当前完整工件已明确输入就绪后每次调用小于 10 秒，尚未达标；图纸公差、实体参考和允许误差仍需证据，不写全行业默认门槛 |
 | 标准件与重复扫描 | 当前样本未标定，需补独立准确度与重复性证据 |
 | 相机实际采集接入 | 型号已知，但 SDK 版本、Linux 支持和部署授权未核实；不阻塞文件型测量 |
 | 深度/轮廓样本 | 需要带元数据的代表性输入，不能从 XYZ 文件猜其相机原始格式 |
 | CAD 输入范围 | 首先明确 STEP/BRep 与网格比较范围；不宣称支持所有 CAD 格式 |
-| 点云调用与规模 | 已确认逐次完整点云、文件与同机内存二进制数组；载荷最大 1 GB，不是运行内存上限；M1 已扩展同机 Trigger/.NET 点云链路并验证，不做连续流或跨机二进制传输；生产容量仍待批准 |
-| 保存策略 | 默认不自动保留完整点云；文件原样、内存/派生平台无损保存，另提供显式 PLY/PCD/XYZ 交换导出；资产包独立限额数值待定；不能承诺未保存源的原精度复算 |
-| 规则/资源升级 | M1 点云资源 v2、保存与固定发布引用已有实现；共享 limit-check.v2/Result Record 三态升级尚未实现，留 M3.4。同批验证执行身份及启动/切换/恢复准入；受影响旧发布只读、审核重发，不重建版本管理或本轮改数据 |
-| 多格式与算法依赖 | 受控 PLY/PCD、NumPy XYZ 及 Open3D 几何的开发态双平台验证见 M1/M2 记录，包含完整样本、字段与精度。不自建原生扩展；生产原生峰值、完整离线依赖及双平台 bundled 发行未验收 |
-| 三维测量交互 | M3.1 已补支持分类/残差、候选查询和测量结果联动；M3.2 已接边界/特征选择和有限拟合区间。精确量值须显式 Preview 重算，不新增常驻原云服务；未保存原云的历史结果不可重测 |
+| 点云调用与规模 | 逐次完整文件/同机数组载荷最大 1 GB；Trigger/Windows .NET 已验证。本机工程容量已批准并启用，尚未覆盖接近 1 GB 的全部入口/解码/保存容量；不做连续流或跨机共享内存 |
+| 保存策略 | 默认不自动保留完整原云，显式无损保存与 PLY/PCD/XYZ 导出已有；本机资产包上限 610,000,000 字节，全 1 GB 配置仍需验收；未保存源不可原精度复算 |
+| 规则/资源升级 | 三维契约统一 v1，资产、保存和固定发布引用已有；A05/A06 已接通 Check Limits/Result Record 三态及消费者。受影响执行身份在启动/选版/worker 准入校验，旧发布只读、审核重发；开发 v1，实际生产受影响节点才 v2，详见剩余清单 |
+| 多格式与算法依赖 | 受控 PLY/PCD、NumPy XYZ、Open3D 已有双平台开发验证；Windows 三维离线包未验收，Ubuntu profile 仍为 reserved，不能把源码测试视作 bundled 发行完成 |
+| 三维测量交互 | I1–I4 与 I5 代表页面发布已完成，剩余是已交付模式的明确操作/语言/主题矩阵；不重做 viewer。精确量值显式 Preview 重算，不新增常驻原云服务或系统缩放验收 |
 | 有序边界资源 | M3.2 已扩展原 CloudRuntime；有序源点保留最初行号，生成顶点单独记录源边/面及权重，同批更新保存/恢复与显示，不假造原始行号 |
-| 容量与时间验收 | 最低 RAM、期望并发和单次时限未确定；预算公式已给出，默认值、库峰值与真实性能未验证 |
+| 容量与时间验收 | 本机活跃数组 1 GiB、工作预算 4 GiB、显示百万点、节点 180/180 秒和停止宽限 2 秒已确认；不等于十秒达标或任意客户机配置。全容量最低 RAM、实际并发与最终资源验收仍待收口 |
+| 已知质量/回归限制 | S2 原 0.03 mm 稳定性诊断未通过；L/W 分辨率影响已定位但实体精度未验；Ubuntu Preview 组合失败未闭合，单例通过不能替代 |
 | 完整形状公差 | 标准适用条件、评价算法和收敛保证需要逐方法核定，不以名字代表合规 |
 | 数据与标注一致性 | 原结果已发生粗/细算法版本变化；正式实现必须绑定方法、参数、证据版本 |
 

@@ -55,7 +55,7 @@ def _process_decision_handler(request: WorkflowNodeExecutionRequest) -> dict[str
     if reason_value is None:
         reason_value = _read_default_reason(request.parameters.get("ok_reason" if passed else "ng_reason"))
     result_payload = build_result_record_payload(
-        ok_ng=ok_ng,
+        state="ok" if passed else "ng",
         metrics_value=metrics_value,
         conditions_value=condition_items,
         reason_value=reason_value,
@@ -130,6 +130,8 @@ def _read_default_reason(raw_value: object) -> str | None:
 CORE_NODE_SPEC = CoreNodeSpec(
     node_definition=NodeDefinition(
         node_type_id="core.rule.process-decision",
+        version="1.0.0",
+        metadata={"requires_execution_review": True},
         display_name="Process Decision",
         category="core.logic.rule",
         description="把多路布尔条件、指标和上下文直接组装成工艺判定结果对象，适合现场把多项规则一次收成 OK/NG。", 

@@ -59,3 +59,16 @@ it('does not invent a file capacity when the capability is unconfigured', async 
   await expect(connection.uploadFile(new File(['data'], 'cloud.ply'))).rejects.toThrow('preview_file_policy_unconfigured')
   expect(apiRequest).not.toHaveBeenCalled()
 })
+
+it('accepts the advertised exact boundary and rejects one byte more before HTTP', async () => {
+  await connect()
+  // 这里只验证页面准入；真实 1 GB 传输由 HTTP/worker 集成验收覆盖。
+  const file = new File(['boundary'], 'cloud.ply')
+  Object.defineProperty(file, 'size', { value: 1_000_000_000, configurable: true })
+  vi.mocked(apiRequest).mockResolvedValue({ input_id: 'complete' })
+  expect(await connection.uploadFile(file)).toBe('complete')
+  vi.mocked(apiRequest).mockClear()
+  Object.defineProperty(file, 'size', { value: 1_000_000_001 })
+  await expect(connection.uploadFile(file)).rejects.toThrow('preview_input_capacity')
+  expect(apiRequest).not.toHaveBeenCalled()
+})

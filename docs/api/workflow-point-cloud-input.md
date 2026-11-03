@@ -2,7 +2,9 @@
 
 M3.2 起运行引用为 `point-cloud-ref.v1`，资产内容和显示同步升级；同机 `point-cloud-buffer.v1` 与 Cloud PREPARE 二进制布局不变。旧三维配方需审核重发，旧资产保留历史并需重建，不自动迁移或回退执行。字段与保存/恢复规格见 [M3.2 实施记录](../development/3d-metrology-m3-boundary.md#5-运行引用与保存契约)。
 
-本接口扩展现有文件输入与 local-shared-memory Trigger，不新建 Workflow 或发布系统。每次提交完整输入，载荷不超过 1,000,000,000 字节。该上限不是运行内存上限，也不是已完成 1 GB 容量验收的声明。生产节点仍等待 timeout、运行和显示预算确认。
+本接口扩展现有文件输入与 local-shared-memory Trigger，不新建 Workflow 或发布系统。每次提交完整输入，载荷不超过 1,000,000,000 字节。该上限不是运行内存上限，也不是已完成 1 GB 容量验收的声明。十八个三维节点已按批准的本机工程配置启用，timeout、运行和显示预算见[节点包说明](../../custom_nodes/metrology3d_nodes/README.md)；示例中的文件、解码和资产上限不能覆盖任意接近 1 GB 的输入，完整容量及发行缺口见[剩余清单](../development/3d-metrology-remaining.md)。
+
+2026-11-02 新增可选 [1 GB 工程配置](../../custom_nodes/metrology3d_nodes/workstation-1gb.example.json)，Windows/WSL 的真实文件、Python 同机数组及 HTTP Preview 主链路已通过精确 1 GB 验证，详见[容量记录](../development/3d-metrology-capacity.md)。该配置不自动覆盖已有服务；原工作站配置仍为较小容量。压缩展开、索引和工作数组仍逐项准入，单次输入上限不等于任意 1 GB 文件都可执行任何算法。
 
 ## 文件入口
 
@@ -61,4 +63,21 @@ Windows .NET byte[] 与 writer 两种入口已通过完整 14,745,099 点样本�
 
 写入阶段超时会释放协议准入；仍持有 writer guard 的内存必须等 guard 释放或进程退出才可回收。执行中断连或正常停止不保证把已经完成的计算改写为失败。真实证据及测试配置见[发布运行验收](../development/3d-metrology-m1-published.md)，不等于生产容量或计量精度已验收。
 
-当前 .NET SDK 面向 Windows net472；Ubuntu 服务侧测试不能替代 Ubuntu .NET SDK 交付。Python 独立 SDK 尚未实现，backend 内部测试客户端不属于外部 SDK。实现记录和样本证据见 [M1 传输与界面](../development/3d-metrology-m1-transports.md)。
+当前 .NET SDK 面向 Windows net472；Ubuntu 服务侧测试不能替代 Ubuntu .NET SDK 交付。已有正式 [Python 同机调用工具](../../runtimes/clients/point_cloud/README.md)，不依赖 tests；本批 1 GB 同机验收使用该工具。工具和工件配方已接入 `assemble-release`，发行入口为 `launchers/client/invoke_point_cloud.py`，实现与搬移验证见[工具发行记录](../development/3d-metrology-tool-delivery.md)。完整离线运行依赖及 .NET 的 1 GB 边界仍需补验，不沿用内部协议测试充当客户端交付。早期实现记录和样本证据见 [M1 传输与界面](../development/3d-metrology-m1-transports.md)。
+
+## 已保存资产的原始点显示
+
+Cloud Preview 新增 `prepare_details: boolean = false`。仅对 Read Cloud 读取的完整资产显式准备，worker 生成可重建显示索引；不在 API handler 建树或扫描点云。默认结果仍只有有界证据，不自动保存输入或延长 LocalBuffer 生命周期。
+
+沿现有 `/api/v1/workflows` 路由提供两个只读接口：
+
+```text
+GET /projects/{project_id}/measurement-resources/{resource_id}/versions/{version}/details?sha256={source_digest}
+GET /projects/{project_id}/measurement-resources/{resource_id}/versions/{version}/details/{block_id}?sha256={source_digest}&generation={index_generation}
+```
+
+第一项返回 `amvision.point-cloud-detail.v1`；第二项返回 `application/octet-stream` 紧密行记录。两者均检查现有 Reader 权限、项目、源资产版本和摘要，响应禁止缓存。块含所有原始字段及逻辑行/来源身份，字段偏移、原 dtype、长度、块范围和 SHA256 均在索引中明确。最新索引代次与块请求不一致时返回错误，客户端必须重新读取，不拼接新旧数据。删除源资产后不可继续读缓存。
+
+显示正文的 `asset_details.source` 必须等于 `source_asset`，不携服务端路径。完整资产范围与概览抽样范围分别保留。前端在容量内按视野加载叶块；仅所有选中块校验成功后标记当前视野全分辨率，超限或失败保留明确状态。显示不参与量值计算。
+
+完整字段、预算、使用路径、双平台证据及最大容量限制见[资产细节显示](../development/3d-metrology-details.md)。1 GB 输入验收不代表 1 GB 显示索引构建已通过。

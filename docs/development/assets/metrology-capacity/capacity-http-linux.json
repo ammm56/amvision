@@ -1,0 +1,16 @@
+{
+  "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "input_bytes": 1000000000,
+  "rss_baseline_bytes": 388005888,
+  "rss_peak_bytes": 573435904,
+  "stages": {
+    "http_upload": 2.652424314059317,
+    "preview_worker": 26.689051647204906
+  },
+  "passed": true,
+  "point_count": 62499984,
+  "file_bytes_after_run": 0,
+  "pins_after_run": 0,
+  "seconds": 45.34966470510699,
+  "rss_final_bytes": 456310784
+}

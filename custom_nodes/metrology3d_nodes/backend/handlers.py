@@ -101,6 +101,20 @@ def preview(request):
     )
 
     cloud = cloud_input(request, env.runtime)
+    detail = None
+    if p.prepare_details:
+        from backend.service.application.workflows.point_cloud.detail_index import (
+            prepare_index,
+        )
+
+        detail = prepare_index(
+            env.runtime,
+            cloud,
+            service=env.service,
+            project_id=env.project_id,
+            policy=env.policy,
+            cancel=env.cancel,
+        )
     base_policy = preview_base_policy(
         env.runtime, request.input_values, env.policy.preview, cancel=env.cancel
     )
@@ -124,6 +138,8 @@ def preview(request):
         policy=base_policy,
         cancel=env.cancel,
     )
+    if detail is not None:
+        body["asset_details"] = {"source": detail.source.model_dump(mode="json")}
     return {
         "body": attach_debug(
             env.runtime,

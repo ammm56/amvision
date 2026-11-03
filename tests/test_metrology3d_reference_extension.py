@@ -240,7 +240,7 @@ def test_nearest_support_is_not_shifted_by_uneven_sampling_and_cancel_releases_b
     monkeypatch,
 ):
     """远处重复采样不能改变最近距离；取消不能遗留持有者。"""
-    from custom_nodes.metrology3d_nodes.shared import measurement_reference
+    from custom_nodes.metrology3d_nodes.shared import measurement_support
 
     scope, runtime, _, groups = offset_planes(nonuniform=True)
     p = step_parameters(support_radius=0.25, reference_policy=extension(2))
@@ -250,16 +250,16 @@ def test_nearest_support_is_not_shifted_by_uneven_sampling_and_cancel_releases_b
         assert result.items[0].support[0].extension.source_index == 7
         calls = 0
         scanning = False
-        original_coverage = measurement_reference.plane_coverage
+        original_neighborhood = measurement_support._neighborhood
 
-        def coverage(*args, **kwargs):
+        def neighborhood(*args, **kwargs):
             nonlocal scanning
-            result = original_coverage(*args, **kwargs)
+            result = original_neighborhood(*args, **kwargs)
             scanning = True
             return result
 
-        monkeypatch.setattr(measurement_reference, "plane_coverage", coverage)
-        monkeypatch.setattr(measurement_reference, "_rows", lambda *args: 2)
+        monkeypatch.setattr(measurement_support, "_neighborhood", neighborhood)
+        monkeypatch.setattr(measurement_support, "_rows", lambda *args, **kwargs: 2)
 
         def cancel():
             nonlocal calls
@@ -271,6 +271,41 @@ def test_nearest_support_is_not_shifted_by_uneven_sampling_and_cancel_releases_b
         with pytest.raises(InterruptedError):
             measure_step(runtime, p, groups=groups, cancel=cancel)
         assert calls == 2
+    finally:
+        assert not scope.close()
+        assert runtime.budget.used == 0
+
+
+@pytest.mark.parametrize("rows", [1, 2])
+@pytest.mark.parametrize("extended", [False, True])
+def test_coverage_projects_each_support_row_once(monkeypatch, rows, extended):
+    """同次邻域收集和有限延伸不重复投影；整数平面证据不随块大小改变。"""
+    from collections import Counter
+    from custom_nodes.metrology3d_nodes.shared import measurement_support
+
+    if extended:
+        scope, runtime, _, groups = offset_planes(nonuniform=True)
+        p = step_parameters(support_radius=0.25, reference_policy=extension(2))
+    else:
+        scope, runtime, _, _, _, groups = two_planes()
+        p = step_parameters()
+    try:
+        expected = measure_step(runtime, p, groups=groups, cancel=lambda: None)
+        visited = Counter()
+        original = measurement_support._neighborhood
+
+        def scan(view, start, stop, *args):
+            visited[view.reference.cloud_id] += stop - start
+            return original(view, start, stop, *args)
+
+        monkeypatch.setattr(measurement_support, "_rows", lambda *args, **kwargs: rows)
+        monkeypatch.setattr(measurement_support, "_neighborhood", scan)
+        actual = measure_step(runtime, p, groups=groups, cancel=lambda: None)
+        assert actual == expected
+        assert visited == {
+            group.items[0].support.cloud_id: group.items[0].support.point_count
+            for group in groups
+        }
     finally:
         assert not scope.close()
         assert runtime.budget.used == 0

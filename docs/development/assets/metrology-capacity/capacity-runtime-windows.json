@@ -1,0 +1,21 @@
+{
+  "platform": "Windows-11-10.0.26300-SP0",
+  "input_bytes": 1000000000,
+  "rss_baseline_bytes": 370356224,
+  "rss_peak_bytes": 1441222656,
+  "stages": {
+    "generate": 1.2987165998201817,
+    "publish_start": 4.790263599948958,
+    "trigger_and_result": 5.205426899949089,
+    "cancel_and_reclaim": 7.596484899986535,
+    "stop": 0.2535173997748643
+  },
+  "passed": true,
+  "point_count": 62500000,
+  "cancelled_during_node_and_reused": true,
+  "free_capacity_bytes": 2147483648,
+  "active_lease_count": 0,
+  "worker_stopped": true,
+  "seconds": 23.144294600002468,
+  "rss_final_bytes": 436887552
+}

@@ -1,0 +1,13 @@
+{
+  "platform": "Windows-11-10.0.26300-SP0",
+  "archive_bytes": 176945414,
+  "archive_sha256": "1da143eea38d6ba666a2e32435c1c8d520c4e44c0d5014de05e7a862e3c8af22",
+  "point_count": 14745099,
+  "preserved_content_sha256": "c9566ae231f30a4b55226673d8644346eb6a58d8bafb66130784596c2da345ed",
+  "empty_target": true,
+  "app_id": "app-a5e1645106dfb6c20162dd22ccf538b63757858a9d24057594b3034213fc4537",
+  "version": "workflow-app-version-431f3c4c0a5140cf9ab0dec6c9e35d54",
+  "runtime_id": "workflow-runtime-972a99be69f049f2bf734460553f89fe",
+  "run_state": "succeeded",
+  "source_required_after_import": false
+}

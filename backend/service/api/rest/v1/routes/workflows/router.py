@@ -22,6 +22,8 @@ from backend.service.api.rest.v1.routes.workflows.measurement_resources import (
 from backend.service.api.rest.v1.routes.workflows.cloud_resource_transfers import (
     cloud_resource_transfers_router,
 )
+from .cloud_resource_details import cloud_resource_details_router
+from .cloud_packages import cloud_packages_router
 
 
 workflows_router = APIRouter(prefix="/workflows", tags=["workflows"])
@@ -31,3 +33,5 @@ workflows_router.include_router(workflow_templates_router)
 workflows_router.include_router(workflow_applications_router)
 workflows_router.include_router(measurement_resources_router)
 workflows_router.include_router(cloud_resource_transfers_router)
+workflows_router.include_router(cloud_resource_details_router)
+workflows_router.include_router(cloud_packages_router)

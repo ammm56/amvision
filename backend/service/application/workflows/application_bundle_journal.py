@@ -45,6 +45,25 @@ class WorkflowApplicationBundleJournal:
     operation_id: str
     journal_root_key: str
     authoritative_object_keys: tuple[str, ...]
+    created_resource_keys: tuple[str, ...] = ()
+
+
+def bundle_resource_identity(operation_id: str, index: int) -> str:
+    """资源身份仅由服务端事务和包内序号决定，不接收任意删除路径。"""
+    return hashlib.sha256(f"workflow-cloud-package:{operation_id}:{index}".encode()).hexdigest()
+
+
+def bundle_resource_keys(project_id: str, operation_id: str, count: int) -> tuple[str, ...]:
+    """父依赖包含在最多 64 个版本内，沿用 Workflow 计量资源数量边界。"""
+    from backend.service.application.workflows.documents.measurement_resources import _path_identifier
+
+    project_id = _path_identifier(project_id, "project_id")
+    if type(count) is not int or not 0 <= count <= 64:
+        raise ValueError("资源包最多包含 64 个资源版本（含父依赖）")
+    return tuple(
+        f"workflows/projects/{project_id}/measurement-resources/measurement-cloud-{bundle_resource_identity(operation_id, index)}"
+        for index in range(count)
+    )
 
 
 @dataclass(frozen=True)
@@ -73,6 +92,7 @@ class WorkflowApplicationBundleJournalService:
         application_id: str,
         template_id: str,
         template_version: str,
+        created_resource_count: int = 0,
     ) -> WorkflowApplicationBundleJournal:
         """先完整落盘四个对象的原像和 manifest，再允许修改权威文件。"""
 
@@ -100,6 +120,11 @@ class WorkflowApplicationBundleJournalService:
             template_id=normalized_template_id,
             template_version=normalized_template_version,
         )
+        created_resource_keys = bundle_resource_keys(
+            normalized_project_id, normalized_operation_id, created_resource_count
+        )
+        if any(self.dataset_storage.resolve(key).exists() for key in created_resource_keys):
+            raise PersistenceOperationError("导入事务资源身份已存在，拒绝覆盖")
         entries: list[dict[str, object]] = []
         try:
             for index, object_key in enumerate(authoritative_object_keys):
@@ -140,6 +165,7 @@ class WorkflowApplicationBundleJournalService:
                     "template_id": normalized_template_id,
                     "template_version": normalized_template_version,
                     "entries": entries,
+                    "created_resource_count": created_resource_count,
                 },
             )
         except Exception:
@@ -150,6 +176,7 @@ class WorkflowApplicationBundleJournalService:
             operation_id=normalized_operation_id,
             journal_root_key=journal_root_key,
             authoritative_object_keys=authoritative_object_keys,
+            created_resource_keys=created_resource_keys,
         )
 
     def commit(self, journal: WorkflowApplicationBundleJournal) -> None:
@@ -157,6 +184,13 @@ class WorkflowApplicationBundleJournalService:
 
         for object_key in journal.authoritative_object_keys:
             self._sync_file(self.dataset_storage.resolve(object_key))
+        for key in journal.created_resource_keys:
+            root = self.dataset_storage.resolve(key)
+            if not (root / "versions/1/version.json").is_file():
+                raise PersistenceOperationError("导入资源未完整提交")
+            for path in root.rglob("*"):
+                if path.is_file():
+                    self._sync_file(path)
         self._write_durable_json(
             self._committed_object_key(journal.operation_id),
             {
@@ -171,6 +205,14 @@ class WorkflowApplicationBundleJournalService:
     def rollback(self, journal: WorkflowApplicationBundleJournal) -> None:
         """按持久化原像恢复四个权威对象；失败时保留 journal。"""
 
+        # 清理阶段的 BaseException 也可能回到调用方；已经提交的对象不可逆回滚。
+        if self.dataset_storage.resolve(self._committed_object_key(journal.operation_id)).is_file():
+            self._validate_committed_marker(journal.operation_id)
+            self._finalize_committed_journal(journal.operation_id)
+            return
+        if self.dataset_storage.resolve(self._completed_journal_root_key(journal.operation_id)).is_dir():
+            self._finalize_committed_journal(journal.operation_id)
+            return
         manifest = self._load_and_validate_manifest(
             journal.operation_id,
             expected_authoritative_object_keys=journal.authoritative_object_keys,
@@ -283,6 +325,7 @@ class WorkflowApplicationBundleJournalService:
             project_id = normalize_identifier(
                 str(payload.get("project_id") or ""), "project_id"
             )
+            bundle_resource_keys(project_id, operation_id, payload.get("created_resource_count", 0))
             application_id = normalize_application_identifier(
                 str(payload.get("application_id") or ""),
                 "application_id",
@@ -379,6 +422,18 @@ class WorkflowApplicationBundleJournalService:
                         raise OSError("恢复后对象仍然存在")
             except Exception as error:  # noqa: BLE001 - 必须继续恢复其余对象
                 errors.append(f"{object_key}: {error}")
+        # 先恢复模板/App，只有引用回滚成功后才删除本事务新建的资源。
+        if not errors:
+            for key in reversed(bundle_resource_keys(
+                str(manifest["project_id"]), operation_id,
+                manifest.get("created_resource_count", 0),
+            )):
+                try:
+                    self.dataset_storage.delete_tree(key)
+                    if self.dataset_storage.resolve(key).exists():
+                        raise OSError("导入资源回滚后仍存在")
+                except Exception as error:
+                    errors.append(f"{key}: {error}")
         if errors:
             raise WorkflowRecoveryRequiredError(
                 "Workflow App bundle 原像恢复失败",

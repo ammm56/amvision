@@ -1,7 +1,10 @@
 """真实 spawn Worker 的内存快照、实时节点事件与取消测试。"""
 
 from time import monotonic, sleep
+from threading import Event
 from uuid import uuid4
+import json
+import pytest
 
 from backend.contracts.workflows.workflow_graph import WorkflowGraphNode, WorkflowGraphEdge, WorkflowGraphInput, FlowApplicationBinding
 from backend.service.application.workflows.preview.pool import PreviewSessionPool
@@ -104,7 +107,8 @@ def test_forced_timeout_reclaims_unpublished_writer_after_process_exit(tmp_path,
         manager.close()
 
 
-def test_memory_worker_streams_before_long_node_finishes(tmp_path):
+@pytest.mark.parametrize("startup_delay", [0, 26], ids=["normal-start", "delayed-start"])
+def test_memory_worker_streams_before_long_node_finishes(tmp_path, monkeypatch, record_property, startup_delay):
     """只通过内存传递未保存图，前面的节点事件不能等长节点结束才到达。"""
     client, sessions, storage = _create_runtime_api_client(tmp_path, database_name="memory-preview.db", enable_local_buffer_broker=False)
     with client:
@@ -131,6 +135,23 @@ def test_memory_worker_streams_before_long_node_finishes(tmp_path):
         manager = PreviewSessionManager()
         pool = PreviewSessionPool(settings=client.app.state.backend_service_settings, manager=manager)
         manager.pool = pool
+        timeline = []
+        worker_ready = Event()
+        ready_at = []
+        observed_at = monotonic()
+        start_worker = pool._start
+
+        def observed_start(slot):
+            """区分进程启动和图执行，避免把测试等待窗口当作节点耗时。"""
+            timeline.append(("worker.start", monotonic() - observed_at))
+            if startup_delay and slot.process is None:
+                sleep(startup_delay)
+            start_worker(slot)
+            ready_at.append(monotonic())
+            timeline.append(("worker.ready", monotonic() - observed_at))
+            worker_ready.set()
+
+        monkeypatch.setattr(pool, "_start", observed_start)
         try:
             sid = manager.create(principal_id="test", project_id="project-1", application_id=application.application_id,
                                  editor_session_id="editor")["session_id"]
@@ -142,21 +163,31 @@ def test_memory_worker_streams_before_long_node_finishes(tmp_path):
             request = {"request_id": str(uuid4()), "document_revision": "draft", "application": application.model_dump(mode="json"),
                        "template": template.model_dump(mode="json"), "timeout_seconds": 60, "input_ids": {"image": blob}}
             reply = manager.submit(sid, "test", request, pool.submit)
+            # 启动使用已有启动上限；流式交付仍须在 ready 后 25 秒内到达，早于 30 秒长节点。
+            startup_deadline = monotonic() + pool.settings.workflow_runtime.model_startup_timeout_seconds
+            while not worker_ready.wait(.02) and monotonic() < startup_deadline:
+                run = manager.authorize(sid, "test").run
+                assert worker_ready.is_set() or run["state"] == "accepted", (run, timeline)
+            assert worker_ready.is_set(), timeline
             events = []
-            deadline = monotonic() + 25
+            deadline = ready_at[0] + 25
+            streamed = False
             while monotonic() < deadline:
                 event = manager.take(sub)
                 if event:
                     events.append(event)
+                    timeline.append((event["type"], monotonic() - observed_at, event["payload"].get("node_id")))
                     if any(e["type"] == "display.updated" and e["payload"]["node_id"] == "image" and
                            e["payload"]["payload"]["image"]["source_image"].get("blob_id") for e in events) and any(
-                               e["type"] == "display.updated" and e["payload"]["node_id"] == "display" for e in events):
+                               e["type"] == "display.updated" and e["payload"]["node_id"] == "display" for e in events) and any(
+                               e["type"] == "node.finished" and e["payload"]["node_id"] == "display" for e in events):
+                        streamed = True
                         break
                     if event["type"] == "run.finished":
                         raise AssertionError(event)
                 else:
                     sleep(.02)
-            assert any(e["type"] == "node.finished" and e["payload"]["node_id"] == "display" for e in events), events
+            assert streamed, timeline
             image_events = [e["payload"]["payload"]["image"] for e in events if e["type"] == "display.updated" and e["payload"]["node_id"] == "image"]
             display = image_events[-1]
             assert "blob_id" not in image_events[0]["source_image"]
@@ -167,10 +198,13 @@ def test_memory_worker_streams_before_long_node_finishes(tmp_path):
             assert display["source_image"]["media_type"] == "image/jpeg"
             assert next(e["payload"]["payload"]["value"] for e in events if e["type"] == "display.updated" and e["payload"]["node_id"] == "display") == "实时值"
             assert manager.authorize(sid, "test").run["state"] == "running"
+            timeline.append(("cancel.requested", monotonic() - observed_at))
             pool.cancel(reply["run_id"])
-            while monotonic() < deadline and manager.authorize(sid, "test").run["state"] == "running":
+            cancel_deadline = monotonic() + 10
+            while monotonic() < cancel_deadline and manager.authorize(sid, "test").run["state"] == "running":
                 sleep(.05)
             assert manager.authorize(sid, "test").run["state"] == "cancelled"
+            timeline.append(("run.cancelled", monotonic() - observed_at))
             idle_deadline = monotonic() + 5
             while pool._active and monotonic() < idle_deadline:
                 sleep(.02)
@@ -210,4 +244,7 @@ def test_memory_worker_streams_before_long_node_finishes(tmp_path):
             assert not list(storage.root_dir.rglob("preview-runs"))
         finally:
             manager.close()
+            timeline.append(("pool.closed", monotonic() - observed_at))
+            assert all(slot.process is None for slot in pool._slots), timeline
+            record_property("preview_timeline", json.dumps(timeline))
     sessions.engine.dispose()

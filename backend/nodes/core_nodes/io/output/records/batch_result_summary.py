@@ -15,6 +15,7 @@ from backend.nodes.core_nodes.support.batch_result_summary import (
     read_result_item_list_from_multi_payload,
     read_result_item_list_from_raw_value,
     read_result_item_list_from_value_payload,
+    require_batch_result_summary,
 )
 from backend.nodes.core_nodes.support.logic import (
     build_value_payload,
@@ -115,15 +116,17 @@ def _read_optional_precomputed_summary(
         raise InvalidRequestError(
             f"{NODE_NAME} 的 record.inspection_result_summary 必须是对象"
         )
-    return clone_inline_json_value(raw_value)
+    return require_batch_result_summary(raw_value)
 
 
 CORE_NODE_SPEC = CoreNodeSpec(
     node_definition=NodeDefinition(
         node_type_id="core.output.batch-result-summary",
+        version="1.0.0",
+        metadata={"requires_execution_review": True},
         display_name="Batch Result Summary",
         category="core.inspection.record",
-        description="把一批 result-record.v1 收成 ok/ng/alarm/pass-ratio 等批次摘要，适合目录批处理归档和结果回传。",
+        description="汇总 OK/NG/INVALID、未知结果和报警；总体通过率保留所有结果作为分母。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,
         runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
         input_ports=(

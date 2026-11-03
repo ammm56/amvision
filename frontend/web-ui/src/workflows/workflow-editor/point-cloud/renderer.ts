@@ -1,5 +1,7 @@
-import { AxesHelper, BufferAttribute, BufferGeometry, Color, Matrix4, MOUSE, OrthographicCamera, PerspectiveCamera, Points, PointsMaterial, Quaternion, Raycaster, Scene, Vector2, Vector3, WebGLRenderer } from 'three'
+import { AxesHelper, Box3, Frustum, BufferAttribute, BufferGeometry, Color, Matrix4, MOUSE, OrthographicCamera, PerspectiveCamera, Points, PointsMaterial, Quaternion, Raycaster, Scene, Vector2, Vector3, WebGLRenderer } from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
+import { createDetailLayer } from './detail-layer'
+import type { DetailBounds } from './asset-details'
 import type { CloudRendererPolicy } from '../services/measurement-resource.service'
 import { reserveCpu, reserveGpu, type CloudDisplayData } from './preview-data'
 import {fillPlaneColors,type PlaneColors} from './plane-colors'
@@ -15,7 +17,7 @@ const presetRotations = (Object.keys(directions) as CloudViewAxis[]).map(axis =>
   return {axis, rotation}
 })
 
-/** 一个激活的视口一个 renderer；没有常驻动画、后台重算或原始点云请求。 */
+/** 一个激活视口一个 renderer；无常驻动画，资产细节请求由外部控制器管理。 */
 export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, policy: CloudRendererPolicy,
   picked: (index: number) => void, failed: (error: Error) => void, viewChanged: (view: CloudViewState) => void, initialActive = true,
   presentation?: {range:CoordinateRange|null; coordinateColor:boolean; scaleChanged:(scale:ReturnType<typeof scaleBar>)=>void}) {
@@ -36,6 +38,9 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
   let active = initialActive, measurable = rect.width > 0 && rect.height > 0
   let panEnabled = false
   const scene = new Scene(), geometry = new BufferGeometry(), material = new PointsMaterial({ size: 2, sizeAttenuation: false, vertexColors: true })
+  const detailLayer = createDetailLayer(scene, material, policy)
+  let detailChanged: (() => void) | null = null
+  let detailPicked: ((point: ReturnType<CloudDisplayData['point']>) => void) | null = null
   let axes: AxesHelper | null = null
   let camera: PerspectiveCamera | OrthographicCamera
   let reportedView: CloudViewState | undefined
@@ -54,7 +59,7 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
     const view = presetRotations.find(preset => 1 - Math.abs(camera.quaternion.dot(preset.rotation)) <= 1e-12)?.axis ?? 'free'
     if (view !== reportedView) { reportedView = view; viewChanged(view) }
   }
-  function controlsChanged() { publishView(); schedule() }
+  function controlsChanged() { publishView(); detailChanged?.(); schedule() }
   function releaseControls() {
     controls?.removeEventListener('change', controlsChanged)
     controls?.dispose(); controls = null
@@ -69,7 +74,7 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
       renderer.domElement.removeEventListener('pointerup', pick)
       renderer.dispose(); renderer.forceContextLoss(); renderer.domElement.remove(); renderer = null
     }
-    geometry.dispose(); material.dispose(); axes?.dispose(); scene.clear(); releaseGpu();releaseColor()
+    detailLayer.clear(); geometry.dispose(); material.dispose(); axes?.dispose(); scene.clear(); releaseGpu();releaseColor()
   }
   function lost(event: Event) { event.preventDefault(); dispose(); failed(new Error('cloud_context_lost')) }
   function down(event: PointerEvent) { if(active&&measurable)pointDown = {x: event.clientX, y: event.clientY} }
@@ -80,6 +85,11 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
     ray.params.Line!.threshold = viewRadius * .015
     ray.setFromCamera(new Vector2((event.clientX - r.left) / r.width * 2 - 1, -(event.clientY - r.top) / r.height * 2 + 1), camera)
     if(overlay?.pick(ray))return
+    if (!points.visible) {
+      const hit = ray.intersectObjects(detailLayer.objects())[0]
+      if (hit?.index !== undefined) { const point = detailLayer.point(hit.object, hit.index); if (point) detailPicked?.(point) }
+      return
+    }
     const hit = ray.intersectObject(points)[0]
     if (hit?.index !== undefined) picked(hit.index)
   }
@@ -115,7 +125,8 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
     syncInteraction()
     if(!active||!measurable){cancelAnimationFrame(frame);frame=0;pointDown=null;return}
     const [w,h]=dimensions(wide,tall)
-    if(w!==width||h!==height){
+    const changed=w!==width||h!==height
+    if(changed){
       // 新画布沿原预算计量；失败时由调用方完整关闭。
       releaseGpu();releaseGpu=()=>{}
       releaseGpu=reserveGpu(data.positions.byteLength+data.colors.byteLength+w*h*8+144,policy)
@@ -124,12 +135,12 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
       else camera.aspect=w/h
       camera.updateProjectionMatrix()
     }
-    schedule()
+    if(changed)detailChanged?.(); schedule()
   }
   try {
     releaseColor=reserveCpu(data.colors.byteLength,policy)
     geometry.setAttribute('position', new BufferAttribute(data.positions, 3)); geometry.setAttribute('color', new BufferAttribute(data.colors.slice(), 3))
-    if(presentation?.coordinateColor&&presentation.range)fillCoordinateColors(geometry.getAttribute('color').array as Float32Array,data.positions,data.origin[2]!,presentation.range)
+    if(presentation?.coordinateColor&&presentation.range){fillCoordinateColors(geometry.getAttribute('color').array as Float32Array,data.positions,data.origin[2]!,presentation.range);detailLayer.colors(presentation.range)}
     linearizeDisplayColors(geometry.getAttribute('color').array as Float32Array)
     geometry.computeBoundingSphere(); radius = Math.max(geometry.boundingSphere?.radius ?? 0, 1e-6)
     renderer = new WebGLRenderer({ antialias: false, alpha: true, powerPreference: 'low-power' })
@@ -155,9 +166,22 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
     observer.observe(host)
     return {
       dispose, fit,
+      detailEvents(changed: (() => void) | null, picked: ((point: ReturnType<CloudDisplayData['point']>) => void) | null) { detailChanged = changed; detailPicked = picked },
+      detailVisible(bounds: DetailBounds) {
+        camera.updateMatrixWorld()
+        const frustum = new Frustum().setFromProjectionMatrix(new Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse))
+        const local = (value: number[]) => new Vector3(value[0]! - data.origin[0]!, value[1]! - data.origin[1]!, value[2]! - data.origin[2]!)
+        return frustum.intersectsBox(new Box3(local(bounds.min), local(bounds.max)))
+      },
+      detailAdd: detailLayer.add,
+      detailClear() { detailLayer.clear(); points.visible = true; schedule() },
+      detailComplete() { detailLayer.visible(true); points.visible = false; schedule() },
+      detailBounds(bounds: DetailBounds) {
+        radius = Math.max(...[bounds.min, bounds.max].map(v => Math.hypot(...v.map((x, i) => x - data.origin[i]!))), 1e-6)
+      },
       activity(value:boolean){
         if(closed)return
-        try{active=value;pointDown=null;const box=host.getBoundingClientRect();resize(box.width,box.height)}catch(error){dispose();failed(error as Error)}
+        try{active=value;pointDown=null;detailChanged?.();const box=host.getBoundingClientRect();resize(box.width,box.height)}catch(error){dispose();failed(error as Error)}
       },
       focus(kind:GeometryFocus){
         if(closed)return
@@ -180,6 +204,7 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
           fillCoordinateColors(attribute.array as Float32Array,data.positions,data.origin[2]!,range)
         }else fillPlaneColors(attribute.array as Float32Array,data.colors,samples,mode)
         linearizeDisplayColors(attribute.array as Float32Array)
+        detailLayer.colors(mode === 'coordinate-z' ? range ?? null : null)
         attribute.needsUpdate=true;schedule()
       },
       evidenceVisibility(visible:boolean){overlay?.evidenceVisibility(visible)},

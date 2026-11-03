@@ -1,0 +1,958 @@
+{
+  "platform": "Windows-11-10.0.26300-SP0",
+  "file_sha256": "ff2b9e0ef2d6c45af02c4bf8d474cd82f77f86ad92bd371a4c0f71b1b90d116b",
+  "source_points": 14745099,
+  "staging_seconds": 1.316095600137487,
+  "read_seconds": 20.337386300088838,
+  "compute": {
+    "boundary": "cloud-ready-to-numeric-response",
+    "elapsed_seconds": 9.195290199946612,
+    "node_seconds": 9.188516,
+    "seconds_by_node_type": {
+      "core.output.response-envelope": 7.000000000000001e-05,
+      "core.value.numeric-table-to-value": 0.000171,
+      "core.value.numeric-tables-merge": 0.000229,
+      "custom.metrology3d.build-frame": 0.0029300000000000003,
+      "custom.metrology3d.crop-roi": 0.640978,
+      "custom.metrology3d.extract-boundary": 6.355444,
+      "custom.metrology3d.filter-valid": 0.250245,
+      "custom.metrology3d.fit-circle": 0.025727,
+      "custom.metrology3d.fit-plane": 0.27734700000000007,
+      "custom.metrology3d.measure-extents": 0.453434,
+      "custom.metrology3d.measure-hole": 0.019291000000000003,
+      "custom.metrology3d.measure-step": 1.1626500000000002
+    },
+    "nodes": [
+      {
+        "node_id": "filter",
+        "node_type_id": "custom.metrology3d.filter-valid",
+        "seconds": 0.250245
+      },
+      {
+        "node_id": "A_top.context",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.22306499999999999
+      },
+      {
+        "node_id": "B_top.context",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.033070999999999996
+      },
+      {
+        "node_id": "A_bottom.context",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.023384000000000002
+      },
+      {
+        "node_id": "B_bottom.context",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.030999
+      },
+      {
+        "node_id": "C_top.context",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.032609
+      },
+      {
+        "node_id": "C_bottom.context",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.030927
+      },
+      {
+        "node_id": "D-crop",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.170333
+      },
+      {
+        "node_id": "A_top.B-crop",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.010204000000000001
+      },
+      {
+        "node_id": "A_top_L.T-crop",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.003219
+      },
+      {
+        "node_id": "A_top_R.T-crop",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.002699
+      },
+      {
+        "node_id": "B_top.B-crop",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.006941
+      },
+      {
+        "node_id": "B_top_L.T-crop",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.004860000000000001
+      },
+      {
+        "node_id": "B_top_R.T-crop",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.006787
+      },
+      {
+        "node_id": "A_bottom.B-crop",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.0069630000000000004
+      },
+      {
+        "node_id": "A_bottom_L.T-crop",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.004727
+      },
+      {
+        "node_id": "A_bottom_R.T-crop",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.0037170000000000003
+      },
+      {
+        "node_id": "B_bottom.B-crop",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.006795
+      },
+      {
+        "node_id": "B_bottom_L.T-crop",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.002326
+      },
+      {
+        "node_id": "B_bottom_R.T-crop",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.002818
+      },
+      {
+        "node_id": "C_top.B-crop",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.008919999999999999
+      },
+      {
+        "node_id": "C_top_L.T-crop",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.005697
+      },
+      {
+        "node_id": "C_top_R.T-crop",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.004749
+      },
+      {
+        "node_id": "C_bottom.B-crop",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.008015000000000001
+      },
+      {
+        "node_id": "C_bottom_L.T-crop",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.003743
+      },
+      {
+        "node_id": "C_bottom_R.T-crop",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.0034100000000000003
+      },
+      {
+        "node_id": "D",
+        "node_type_id": "custom.metrology3d.fit-plane",
+        "seconds": 0.232054
+      },
+      {
+        "node_id": "A_top.B",
+        "node_type_id": "custom.metrology3d.fit-plane",
+        "seconds": 0.002953
+      },
+      {
+        "node_id": "A_top_L.T",
+        "node_type_id": "custom.metrology3d.fit-plane",
+        "seconds": 0.0017749999999999999
+      },
+      {
+        "node_id": "A_top_R.T",
+        "node_type_id": "custom.metrology3d.fit-plane",
+        "seconds": 0.001454
+      },
+      {
+        "node_id": "B_top.B",
+        "node_type_id": "custom.metrology3d.fit-plane",
+        "seconds": 0.0034590000000000003
+      },
+      {
+        "node_id": "B_top_L.T",
+        "node_type_id": "custom.metrology3d.fit-plane",
+        "seconds": 0.001823
+      },
+      {
+        "node_id": "B_top_R.T",
+        "node_type_id": "custom.metrology3d.fit-plane",
+        "seconds": 0.001542
+      },
+      {
+        "node_id": "A_bottom.B",
+        "node_type_id": "custom.metrology3d.fit-plane",
+        "seconds": 0.0030960000000000002
+      },
+      {
+        "node_id": "A_bottom_L.T",
+        "node_type_id": "custom.metrology3d.fit-plane",
+        "seconds": 0.0014830000000000002
+      },
+      {
+        "node_id": "A_bottom_R.T",
+        "node_type_id": "custom.metrology3d.fit-plane",
+        "seconds": 0.00157
+      },
+      {
+        "node_id": "B_bottom.B",
+        "node_type_id": "custom.metrology3d.fit-plane",
+        "seconds": 0.002693
+      },
+      {
+        "node_id": "B_bottom_L.T",
+        "node_type_id": "custom.metrology3d.fit-plane",
+        "seconds": 0.002083
+      },
+      {
+        "node_id": "B_bottom_R.T",
+        "node_type_id": "custom.metrology3d.fit-plane",
+        "seconds": 0.00157
+      },
+      {
+        "node_id": "C_top.B",
+        "node_type_id": "custom.metrology3d.fit-plane",
+        "seconds": 0.004708
+      },
+      {
+        "node_id": "C_top_L.T",
+        "node_type_id": "custom.metrology3d.fit-plane",
+        "seconds": 0.00191
+      },
+      {
+        "node_id": "C_top_R.T",
+        "node_type_id": "custom.metrology3d.fit-plane",
+        "seconds": 0.001685
+      },
+      {
+        "node_id": "C_bottom.B",
+        "node_type_id": "custom.metrology3d.fit-plane",
+        "seconds": 0.007325
+      },
+      {
+        "node_id": "C_bottom_L.T",
+        "node_type_id": "custom.metrology3d.fit-plane",
+        "seconds": 0.002193
+      },
+      {
+        "node_id": "C_bottom_R.T",
+        "node_type_id": "custom.metrology3d.fit-plane",
+        "seconds": 0.001971
+      },
+      {
+        "node_id": "frame",
+        "node_type_id": "custom.metrology3d.build-frame",
+        "seconds": 0.0029300000000000003
+      },
+      {
+        "node_id": "A_top_L.H",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.014454
+      },
+      {
+        "node_id": "A_top_L.Z",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.156505
+      },
+      {
+        "node_id": "A_top_R.H",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.008006000000000001
+      },
+      {
+        "node_id": "A_top_R.Z",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.075757
+      },
+      {
+        "node_id": "B_top_L.H",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.013734
+      },
+      {
+        "node_id": "B_top_L.Z",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.07780200000000001
+      },
+      {
+        "node_id": "B_top_R.H",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.010396
+      },
+      {
+        "node_id": "B_top_R.Z",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.07518300000000001
+      },
+      {
+        "node_id": "A_bottom_L.H",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.009762999999999999
+      },
+      {
+        "node_id": "A_bottom_L.Z",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.07534300000000001
+      },
+      {
+        "node_id": "A_bottom_R.H",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.010924
+      },
+      {
+        "node_id": "A_bottom_R.Z",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.09194799999999999
+      },
+      {
+        "node_id": "B_bottom_L.H",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.013135999999999998
+      },
+      {
+        "node_id": "B_bottom_L.Z",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.083104
+      },
+      {
+        "node_id": "B_bottom_R.H",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.007554
+      },
+      {
+        "node_id": "B_bottom_R.Z",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.080586
+      },
+      {
+        "node_id": "C_top_L.H",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.009970000000000001
+      },
+      {
+        "node_id": "C_top_L.Z",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.077246
+      },
+      {
+        "node_id": "C_top_R.H",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.008603999999999999
+      },
+      {
+        "node_id": "C_top_R.Z",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.082292
+      },
+      {
+        "node_id": "C_bottom_L.H",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.010839
+      },
+      {
+        "node_id": "C_bottom_L.Z",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.07933
+      },
+      {
+        "node_id": "C_bottom_R.H",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.009534
+      },
+      {
+        "node_id": "C_bottom_R.Z",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.08064
+      },
+      {
+        "node_id": "S1.boundary",
+        "node_type_id": "custom.metrology3d.extract-boundary",
+        "seconds": 1.699116
+      },
+      {
+        "node_id": "S2.boundary",
+        "node_type_id": "custom.metrology3d.extract-boundary",
+        "seconds": 1.871877
+      },
+      {
+        "node_id": "A_top_L.boundary",
+        "node_type_id": "custom.metrology3d.extract-boundary",
+        "seconds": 0.21966
+      },
+      {
+        "node_id": "A_top_R.boundary",
+        "node_type_id": "custom.metrology3d.extract-boundary",
+        "seconds": 0.22532400000000002
+      },
+      {
+        "node_id": "B_top_L.boundary",
+        "node_type_id": "custom.metrology3d.extract-boundary",
+        "seconds": 0.224036
+      },
+      {
+        "node_id": "B_top_R.boundary",
+        "node_type_id": "custom.metrology3d.extract-boundary",
+        "seconds": 0.223161
+      },
+      {
+        "node_id": "A_bottom_L.boundary",
+        "node_type_id": "custom.metrology3d.extract-boundary",
+        "seconds": 0.237016
+      },
+      {
+        "node_id": "A_bottom_R.boundary",
+        "node_type_id": "custom.metrology3d.extract-boundary",
+        "seconds": 0.24012799999999998
+      },
+      {
+        "node_id": "B_bottom_L.boundary",
+        "node_type_id": "custom.metrology3d.extract-boundary",
+        "seconds": 0.24386600000000003
+      },
+      {
+        "node_id": "B_bottom_R.boundary",
+        "node_type_id": "custom.metrology3d.extract-boundary",
+        "seconds": 0.24219900000000003
+      },
+      {
+        "node_id": "C_top_L.boundary",
+        "node_type_id": "custom.metrology3d.extract-boundary",
+        "seconds": 0.215282
+      },
+      {
+        "node_id": "C_top_R.boundary",
+        "node_type_id": "custom.metrology3d.extract-boundary",
+        "seconds": 0.22834100000000002
+      },
+      {
+        "node_id": "C_bottom_L.boundary",
+        "node_type_id": "custom.metrology3d.extract-boundary",
+        "seconds": 0.240848
+      },
+      {
+        "node_id": "C_bottom_R.boundary",
+        "node_type_id": "custom.metrology3d.extract-boundary",
+        "seconds": 0.24459
+      },
+      {
+        "node_id": "S1.circle",
+        "node_type_id": "custom.metrology3d.fit-circle",
+        "seconds": 0.01014
+      },
+      {
+        "node_id": "S2.circle",
+        "node_type_id": "custom.metrology3d.fit-circle",
+        "seconds": 0.015587
+      },
+      {
+        "node_id": "A_top_L.extents",
+        "node_type_id": "custom.metrology3d.measure-extents",
+        "seconds": 0.238209
+      },
+      {
+        "node_id": "A_top_R.extents",
+        "node_type_id": "custom.metrology3d.measure-extents",
+        "seconds": 0.020259
+      },
+      {
+        "node_id": "B_top_L.extents",
+        "node_type_id": "custom.metrology3d.measure-extents",
+        "seconds": 0.020542
+      },
+      {
+        "node_id": "B_top_R.extents",
+        "node_type_id": "custom.metrology3d.measure-extents",
+        "seconds": 0.018925
+      },
+      {
+        "node_id": "A_bottom_L.extents",
+        "node_type_id": "custom.metrology3d.measure-extents",
+        "seconds": 0.017861000000000002
+      },
+      {
+        "node_id": "A_bottom_R.extents",
+        "node_type_id": "custom.metrology3d.measure-extents",
+        "seconds": 0.017304
+      },
+      {
+        "node_id": "B_bottom_L.extents",
+        "node_type_id": "custom.metrology3d.measure-extents",
+        "seconds": 0.024568000000000003
+      },
+      {
+        "node_id": "B_bottom_R.extents",
+        "node_type_id": "custom.metrology3d.measure-extents",
+        "seconds": 0.019007000000000003
+      },
+      {
+        "node_id": "C_top_L.extents",
+        "node_type_id": "custom.metrology3d.measure-extents",
+        "seconds": 0.01687
+      },
+      {
+        "node_id": "C_top_R.extents",
+        "node_type_id": "custom.metrology3d.measure-extents",
+        "seconds": 0.022157
+      },
+      {
+        "node_id": "C_bottom_L.extents",
+        "node_type_id": "custom.metrology3d.measure-extents",
+        "seconds": 0.017377
+      },
+      {
+        "node_id": "C_bottom_R.extents",
+        "node_type_id": "custom.metrology3d.measure-extents",
+        "seconds": 0.020355
+      },
+      {
+        "node_id": "S1.diameter",
+        "node_type_id": "custom.metrology3d.measure-hole",
+        "seconds": 0.008528
+      },
+      {
+        "node_id": "S2.diameter",
+        "node_type_id": "custom.metrology3d.measure-hole",
+        "seconds": 0.010763
+      },
+      {
+        "node_id": "results",
+        "node_type_id": "core.value.numeric-tables-merge",
+        "seconds": 0.000229
+      },
+      {
+        "node_id": "values",
+        "node_type_id": "core.value.numeric-table-to-value",
+        "seconds": 0.000171
+      },
+      {
+        "node_id": "response",
+        "node_type_id": "core.output.response-envelope",
+        "seconds": 7.000000000000001e-05
+      }
+    ]
+  },
+  "body": {
+    "code": 0,
+    "message": "measured",
+    "data": {
+      "observation_id": "b1ab0b1d9bc34da0b66c2ab426577ac0",
+      "values": {
+        "A_top_L.H": 1.128335845558628,
+        "A_top_L.Z": 1.5776995404900624,
+        "A_top_L.W": 6.996303210609643,
+        "A_top_L.L": 7.916129643470805,
+        "A_top_R.H": 1.1099406395424505,
+        "A_top_R.Z": 1.5092612658828926,
+        "A_top_R.W": 6.937724614851206,
+        "A_top_R.L": 7.886121149944863,
+        "B_top_L.H": 1.1899129135187125,
+        "B_top_L.Z": 1.6854893778099969,
+        "B_top_L.W": 6.950888249476198,
+        "B_top_L.L": 7.947185083387637,
+        "B_top_R.H": 1.1438670671732603,
+        "B_top_R.Z": 1.638711244988399,
+        "B_top_R.W": 7.020000000000003,
+        "B_top_R.L": 7.946732613561267,
+        "A_bottom_L.H": 1.1320054793918428,
+        "A_bottom_L.Z": 1.6911094765945252,
+        "A_bottom_L.W": 6.993259589335931,
+        "A_bottom_L.L": 8.121078769657878,
+        "A_bottom_R.H": 1.1407016996559234,
+        "A_bottom_R.Z": 1.6489103779231233,
+        "A_bottom_R.W": 7.02,
+        "A_bottom_R.L": 8.172617892311564,
+        "B_bottom_L.H": 1.1671758374196053,
+        "B_bottom_L.Z": 1.592476908287205,
+        "B_bottom_L.W": 7.032695141987034,
+        "B_bottom_L.L": 8.230250107098598,
+        "B_bottom_R.H": 1.13710316592099,
+        "B_bottom_R.Z": 1.5576947704781756,
+        "B_bottom_R.W": 7.008407074927321,
+        "B_bottom_R.L": 8.245952948548535,
+        "C_top_L.H": 1.1928102191193541,
+        "C_top_L.Z": 1.6765656687080739,
+        "C_top_L.W": 7.020000000000003,
+        "C_top_L.L": 7.947345127470783,
+        "C_top_R.H": 1.1549505082812643,
+        "C_top_R.Z": 1.726193842105968,
+        "C_top_R.W": 7.109999999999999,
+        "C_top_R.L": 7.920974584579739,
+        "C_bottom_L.H": 1.1839724550784911,
+        "C_bottom_L.Z": 1.6641321246523506,
+        "C_bottom_L.W": 7.0974,
+        "C_bottom_L.L": 8.194675545088288,
+        "C_bottom_R.H": 1.2431001559071555,
+        "C_bottom_R.Z": 1.8069235044968732,
+        "C_bottom_R.W": 7.140000000000008,
+        "C_bottom_R.L": 8.04000000000002,
+        "S1.D": 20.14782366565865,
+        "S2.D": 20.184324164862264
+      },
+      "items": [
+        {
+          "item_id": "A_top_L.H",
+          "unit": "mm",
+          "value": 1.128335845558628,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "A_top_L.Z",
+          "unit": "mm",
+          "value": 1.5776995404900624,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "A_top_L.W",
+          "unit": "mm",
+          "value": 6.996303210609643,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "A_top_L.L",
+          "unit": "mm",
+          "value": 7.916129643470805,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "A_top_R.H",
+          "unit": "mm",
+          "value": 1.1099406395424505,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "A_top_R.Z",
+          "unit": "mm",
+          "value": 1.5092612658828926,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "A_top_R.W",
+          "unit": "mm",
+          "value": 6.937724614851206,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "A_top_R.L",
+          "unit": "mm",
+          "value": 7.886121149944863,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "B_top_L.H",
+          "unit": "mm",
+          "value": 1.1899129135187125,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "B_top_L.Z",
+          "unit": "mm",
+          "value": 1.6854893778099969,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "B_top_L.W",
+          "unit": "mm",
+          "value": 6.950888249476198,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "B_top_L.L",
+          "unit": "mm",
+          "value": 7.947185083387637,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "B_top_R.H",
+          "unit": "mm",
+          "value": 1.1438670671732603,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "B_top_R.Z",
+          "unit": "mm",
+          "value": 1.638711244988399,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "B_top_R.W",
+          "unit": "mm",
+          "value": 7.020000000000003,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "B_top_R.L",
+          "unit": "mm",
+          "value": 7.946732613561267,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "A_bottom_L.H",
+          "unit": "mm",
+          "value": 1.1320054793918428,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "A_bottom_L.Z",
+          "unit": "mm",
+          "value": 1.6911094765945252,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "A_bottom_L.W",
+          "unit": "mm",
+          "value": 6.993259589335931,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "A_bottom_L.L",
+          "unit": "mm",
+          "value": 8.121078769657878,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "A_bottom_R.H",
+          "unit": "mm",
+          "value": 1.1407016996559234,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "A_bottom_R.Z",
+          "unit": "mm",
+          "value": 1.6489103779231233,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "A_bottom_R.W",
+          "unit": "mm",
+          "value": 7.02,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "A_bottom_R.L",
+          "unit": "mm",
+          "value": 8.172617892311564,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "B_bottom_L.H",
+          "unit": "mm",
+          "value": 1.1671758374196053,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "B_bottom_L.Z",
+          "unit": "mm",
+          "value": 1.592476908287205,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "B_bottom_L.W",
+          "unit": "mm",
+          "value": 7.032695141987034,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "B_bottom_L.L",
+          "unit": "mm",
+          "value": 8.230250107098598,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "B_bottom_R.H",
+          "unit": "mm",
+          "value": 1.13710316592099,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "B_bottom_R.Z",
+          "unit": "mm",
+          "value": 1.5576947704781756,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "B_bottom_R.W",
+          "unit": "mm",
+          "value": 7.008407074927321,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "B_bottom_R.L",
+          "unit": "mm",
+          "value": 8.245952948548535,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "C_top_L.H",
+          "unit": "mm",
+          "value": 1.1928102191193541,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "C_top_L.Z",
+          "unit": "mm",
+          "value": 1.6765656687080739,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "C_top_L.W",
+          "unit": "mm",
+          "value": 7.020000000000003,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "C_top_L.L",
+          "unit": "mm",
+          "value": 7.947345127470783,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "C_top_R.H",
+          "unit": "mm",
+          "value": 1.1549505082812643,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "C_top_R.Z",
+          "unit": "mm",
+          "value": 1.726193842105968,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "C_top_R.W",
+          "unit": "mm",
+          "value": 7.109999999999999,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "C_top_R.L",
+          "unit": "mm",
+          "value": 7.920974584579739,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "C_bottom_L.H",
+          "unit": "mm",
+          "value": 1.1839724550784911,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "C_bottom_L.Z",
+          "unit": "mm",
+          "value": 1.6641321246523506,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "C_bottom_L.W",
+          "unit": "mm",
+          "value": 7.0974,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "C_bottom_L.L",
+          "unit": "mm",
+          "value": 8.194675545088288,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "C_bottom_R.H",
+          "unit": "mm",
+          "value": 1.2431001559071555,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "C_bottom_R.Z",
+          "unit": "mm",
+          "value": 1.8069235044968732,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "C_bottom_R.W",
+          "unit": "mm",
+          "value": 7.140000000000008,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "C_bottom_R.L",
+          "unit": "mm",
+          "value": 8.04000000000002,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "S1.D",
+          "unit": "mm",
+          "value": 20.14782366565865,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "S2.D",
+          "unit": "mm",
+          "value": 20.184324164862264,
+          "valid": true,
+          "reason": null
+        }
+      ]
+    }
+  },
+  "live_array_bytes": 257689060,
+  "display_enabled": false,
+  "scope": "visible-envelope",
+  "resources_released": true
+}

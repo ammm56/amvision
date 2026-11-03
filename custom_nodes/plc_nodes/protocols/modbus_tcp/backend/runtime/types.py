@@ -109,6 +109,7 @@ class ModbusSignalMappingConfig:
     literal_value: object | None
     true_value: object | None
     false_value: object | None
+    state_values: dict[str, int] | None
     word_order: WordOrder
     byte_position: BytePosition
     string_length: int | None

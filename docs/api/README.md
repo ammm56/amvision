@@ -40,9 +40,11 @@
 | Template、Application、Node Catalog | [Workflow](workflows.md) |
 | 编辑态执行 | [Preview Run](workflow-preview-sessions.md) |
 | 不可变发布物 | [App Version](workflow-app-versions.md) |
+| 三维配方携资源搬运 | [配方资源包](workflow-cloud-packages.md) |
 | 稳定生产实例 | [App Runtime](workflow-app-runtimes.md) |
 | Runtime 只读画布显示 | [Runtime 预览监视](workflow-runtime-preview.md) |
 | 同步和异步执行 | [Workflow Run](workflow-runs.md) |
+| 量值与产品三态 | [判定结果契约](workflow-inspection-results.md) |
 | 执行默认值 | [Execution Policy](workflow-execution-policies.md) |
 | 外部触发 | [Trigger Source](workflow-trigger-sources.md) |
 | .NET 调用 | [Workflow SDK](workflow-sdks.md) |

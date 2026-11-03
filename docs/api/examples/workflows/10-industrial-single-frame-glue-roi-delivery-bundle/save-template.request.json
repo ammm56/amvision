@@ -135,14 +135,14 @@
             {
               "signal_name": "ok",
               "source_scope": "result",
-              "source_path": "ok",
+              "source_path": "passed",
               "register_address": "00031",
               "data_type": "bool"
             },
             {
-              "signal_name": "ng",
+              "signal_name": "blocked",
               "source_scope": "result",
-              "source_path": "ok",
+              "source_path": "passed",
               "register_address": "00032",
               "data_type": "bool",
               "true_value": false,
@@ -181,7 +181,7 @@
         "node_id": "append_result_csv",
         "node_type_id": "core.output.csv-append-local",
         "parameters": {
-          "local_path": "{workflow_app_result_dir}/glue-roi-delivery-bundle/history.csv"
+          "save_location": "{workflow_app_result_dir}/glue-roi-delivery-bundle/history.csv"
         }
       },
       {
@@ -281,7 +281,7 @@
             {
               "target_path": "payload.ok_ng",
               "source_kind": "result",
-              "source_path": "ok_ng"
+              "source_path": "state"
             },
             {
               "target_path": "payload.reason",
@@ -316,13 +316,13 @@
             {
               "target_path": "payload.json_result_path",
               "source_kind": "request",
-              "source_path": "json_summary.local_path",
+              "source_path": "json_summary.saved_output.object_key",
               "on_missing": "null"
             },
             {
               "target_path": "payload.csv_result_path",
               "source_kind": "request",
-              "source_path": "csv_summary.local_path",
+              "source_path": "csv_summary.saved_output.object_key",
               "on_missing": "null"
             }
           ]
@@ -370,12 +370,12 @@
             {
               "column_name": "ok_ng",
               "source_kind": "result",
-              "source_path": "ok_ng"
+              "source_path": "state"
             },
             {
               "column_name": "ok",
               "source_kind": "result",
-              "source_path": "ok"
+              "source_path": "passed"
             },
             {
               "column_name": "reason",
@@ -410,13 +410,13 @@
             {
               "column_name": "json_result_path",
               "source_kind": "request",
-              "source_path": "json_summary.local_path",
+              "source_path": "json_summary.saved_output.object_key",
               "on_missing": "null"
             },
             {
               "column_name": "csv_result_path",
               "source_kind": "request",
-              "source_path": "csv_summary.local_path",
+              "source_path": "csv_summary.saved_output.object_key",
               "on_missing": "null"
             }
           ],

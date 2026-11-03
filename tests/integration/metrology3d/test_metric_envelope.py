@@ -6,7 +6,10 @@ from pydantic import ValidationError
 
 from backend.contracts.workflows.envelope3d import VisibleEnvelopeSettings
 from backend.service.application.errors import InvalidRequestError
-from custom_nodes.metrology3d_nodes.shared.envelope_selection import metric_membership
+from custom_nodes.metrology3d_nodes.shared.envelope_selection import (
+    _graph_index_dtype,
+    metric_membership,
+)
 from tests.test_metrology3d_envelope import settings, points, extract
 
 
@@ -128,3 +131,30 @@ def test_explicit_method_rejects_inactive_parameters_and_bad_distance():
         changed = {**data, "selection": {**data["selection"], field: value}}
         with pytest.raises(ValidationError):
             VisibleEnvelopeSettings.model_validate(changed)
+
+
+@pytest.mark.parametrize(
+    "vertices,edges,expected",
+    [
+        (0, 0, np.int32),
+        (17, 31, np.int32),
+        (2**31 - 1, 0, np.int32),
+        (1, 2**31 - 1, np.int32),
+        (2**31, 1, np.int64),
+        (1, 2**31, np.int64),
+    ],
+)
+def test_graph_index_width_checks_vertices_and_csr_terminal(vertices, edges, expected):
+    """不分配超大数组即可验证节点、边数两种溢出边界。"""
+    assert _graph_index_dtype(vertices, edges) == expected
+
+
+@pytest.mark.parametrize("delta", [-1, 0, 1])
+def test_metric_radius_boundary_and_duplicates_match_scalar_truth(delta):
+    """半径等号及相邻浮点数、不连通孤立点和精确重复点保持原始行语义。"""
+    distance = 1.0 if delta == 0 else np.nextafter(1.0, 0 if delta < 0 else np.inf)
+    p = np.array([[0, 0, 1], [0, 0, 1], [distance, 0, 1], [8, 0, 1]], dtype=float)
+    config = metric_settings(1.0, selection=dict(seed_min=[0, 0], seed_max=[0.1, 0.1]))
+    result = membership(p, config)
+    assert result[0] is None
+    np.testing.assert_array_equal(result[1], independent_membership(p, config))

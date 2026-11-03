@@ -22,6 +22,22 @@ vi.mock('three',async importOriginal=>{
 vi.stubGlobal('ResizeObserver',class{constructor(callback:ResizeObserverCallback){captured.resize=callback}observe(){}disconnect(){}})
 const policy={max_points:10,max_data_bytes:1000,max_cpu_bytes:10000,max_gpu_bytes:10000000,max_canvas_pixels:1000000,max_position_error:.001}
 afterEach(()=>{vi.useRealTimers();captured.controls=[];expect(rendererUsage()).toEqual({cpuBytes:0,gpuBytes:0})})
+it('does not restart detail loading on unchanged ResizeObserver notifications',()=>{
+  vi.useFakeTimers()
+  const host=document.createElement('div')
+  vi.spyOn(host,'getBoundingClientRect').mockReturnValue({width:600,height:400} as DOMRect)
+  const data={positions:new Float32Array([-1,-1,0,1,1,0]),colors:new Float32Array(6),origin:[0,0,0]} as CloudDisplayData
+  const view=createCloudRenderer(host,data,policy,()=>{},()=>{},()=>{}),changed=vi.fn()
+  try{
+    view.detailEvents(changed,null)
+    for(let i=0;i<10;i++)captured.resize!([{contentRect:{width:600,height:400}}] as ResizeObserverEntry[],{} as ResizeObserver)
+    expect(changed).not.toHaveBeenCalled()
+    captured.resize!([{contentRect:{width:600,height:380}}] as ResizeObserverEntry[],{} as ResizeObserver)
+    expect(changed).toHaveBeenCalledOnce()
+    for(let i=0;i<10;i++)captured.resize!([{contentRect:{width:600,height:380}}] as ResizeObserverEntry[],{} as ResizeObserver)
+    expect(changed).toHaveBeenCalledOnce()
+  }finally{view.dispose()}
+})
 it('suspends a hidden or zero-size viewport without reallocating or losing camera state',()=>{
   vi.useFakeTimers()
   const host=document.createElement('div'),rect={width:600,height:400}

@@ -15,6 +15,7 @@ from typing import Callable
 
 from backend.version import BACKEND_VERSION
 from backend.maintenance.launcher_release import copy_launcher_package, validate_launcher_package
+from backend.maintenance.point_cloud_delivery import copy_point_cloud_delivery
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -953,6 +954,7 @@ def assemble_release(request: ReleaseAssemblyRequest) -> ReleaseAssemblyResult:
         else:
             _validate_cpu_requirements(requirements_path)
         _copy_launcher_tree(release_dir, target_os=target_os)
+        point_cloud_tools = copy_point_cloud_delivery(REPOSITORY_ROOT, release_dir)
         generated_root_launchers = _copy_full_root_launchers(
             release_dir,
             target_os=target_os,
@@ -1071,6 +1073,7 @@ def assemble_release(request: ReleaseAssemblyRequest) -> ReleaseAssemblyResult:
             },
             "artifacts": artifacts_section,
             "desktop_launcher": launcher_manifest,
+            "point_cloud_tools": point_cloud_tools,
             "layout": {
                 "app_dir": "app",
                 "config_dir": "config",

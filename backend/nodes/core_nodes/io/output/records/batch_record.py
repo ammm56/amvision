@@ -171,6 +171,8 @@ def _read_inspection_results(request: WorkflowNodeExecutionRequest) -> list[dict
 CORE_NODE_SPEC = CoreNodeSpec(
     node_definition=NodeDefinition(
         node_type_id="core.output.batch-record",
+        version="1.0.0",
+        metadata={"requires_execution_review": True},
         display_name="Batch Record",
         category="core.inspection.record",
         description="把目录扫描摘要、窗口摘要、batch cursor、batch files 和 inspection results 收成统一批次归档对象。",

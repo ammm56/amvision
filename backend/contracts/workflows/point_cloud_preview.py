@@ -70,4 +70,5 @@ class CloudPreviewOptions(Contract):
     """节点显示参数；容量由运行策略另行约束。"""
 
     point_limit: PositiveCount
+    prepare_details: bool = False
     color: Annotated[SolidColor | RgbColor | ScalarColor, Field(discriminator="mode")]

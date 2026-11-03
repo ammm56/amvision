@@ -193,6 +193,49 @@ def build_signal_mapping_config(
         field_prefix=field_prefix,
         node_name=node_name,
     )
+    state_values = raw_mapping.get("state_values")
+    if (
+        source_scope == "result"
+        and source_path == "state"
+        and ("true_value" in raw_mapping or "false_value" in raw_mapping)
+    ):
+        raise InvalidRequestError("产品三态不能转换成布尔两码")
+    if state_values is not None:
+        if (
+            not isinstance(state_values, dict)
+            or set(state_values) != {"ok", "ng", "invalid"}
+            or any(type(value) is not int for value in state_values.values())
+            or len(set(state_values.values())) != 3
+        ):
+            raise InvalidRequestError(
+                f"{field_prefix}.state_values 需要 ok/ng/invalid 三个不同整数码"
+            )
+        if source_scope != "result" or source_path != "state":
+            raise InvalidRequestError("state_values 仅用于 result.state")
+        if "true_value" in raw_mapping or "false_value" in raw_mapping:
+            raise InvalidRequestError("三态码不能与布尔转换同时配置")
+        if data_type not in {
+            "uint8",
+            "int8",
+            "uint16",
+            "int16",
+            "uint32",
+            "int32",
+            "uint64",
+            "int64",
+        }:
+            raise InvalidRequestError("三态码需要整数寄存器类型")
+        bits = int(data_type.lstrip("uint"))
+        signed = data_type.startswith("int")
+        lower = -(1 << (bits - 1)) if signed else 0
+        upper = (1 << (bits - (1 if signed else 0))) - 1
+        if any(not lower <= value <= upper for value in state_values.values()):
+            raise InvalidRequestError("三态码超过所选寄存器类型范围")
+        state_values = dict(state_values)
+    elif source_scope == "result" and source_path == "state" and data_type != "string":
+        raise InvalidRequestError(
+            "result.state 写入整数寄存器必须显式配置 state_values"
+        )
     word_order = _read_named_word_order(
         raw_value=raw_mapping.get("word_order"),
         node_name=node_name,
@@ -234,6 +277,7 @@ def build_signal_mapping_config(
         literal_value=literal_value,
         true_value=true_value,
         false_value=false_value,
+        state_values=state_values,
         word_order=word_order,
         byte_position=byte_position,
         string_length=string_length,

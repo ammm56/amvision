@@ -1,0 +1,50 @@
+{
+  "date": "2026-11-02",
+  "base_commit": "0db046fc47328e661abd968e70a483d543fc7917",
+  "scope": "delivery-test-and-section-matching",
+  "final_release_acceptance": false,
+  "windows_ten_seconds_passed": false,
+  "cpu_environment": "non-exclusive; WSL environment preparation overlapped Windows cycles",
+  "hashes": [
+    {
+      "path": "custom_nodes/metrology3d_nodes/shared/boundary_section.py",
+      "sha256": "1fa78d90f803c446cddf1c522f7370421c8de2e4bac720f8cd0005d1235ec573"
+    },
+    {
+      "path": "scripts/metrology_workpiece.py",
+      "sha256": "93b3ba8ea5e71b8d0220f33b33f3a60a9e309c9466090b8bd4412d2ac0390ccf"
+    },
+    {
+      "path": "docs/examples/workflows/lithium_workpiece.template.json",
+      "sha256": "de3cdf1b639cc21d18282d675a2a7e2ef579c3357fbf59fea6cc91dccc55595e"
+    },
+    {
+      "path": "docs/examples/workflows/lithium_workpiece.application.json",
+      "sha256": "dcb565a1bdd1c4b1cdb5c9171053a7d57c284014ce16dfed573c27064fbc60df"
+    },
+    {
+      "path": "tests/integration/metrology3d/test_compute_cycles.py",
+      "sha256": "f464a7cd2f6a9cae5b5074e390d7cfa43bbfbfefda36de994c18b62bd6a7d511"
+    },
+    {
+      "path": "tests/integration/metrology3d/workpiece_workflow.py",
+      "sha256": "3844ea6c33d1f51683c744c524a869d04fe8dcfdd685f900304fea6ba4daa84a"
+    },
+    {
+      "path": "tests/integration/metrology3d/test_workpiece_delivery.py",
+      "sha256": "5e27e19995687aaa4a3ac9f8cc7386abac97478d22cbccd2d4c06a73a9526b2f"
+    },
+    {
+      "path": "tests/integration/metrology3d/section_local_compare.py",
+      "sha256": "87898814a7743870c74e3de0da169855d15a558c1b4e15d0ef8d663ec7201e3e"
+    },
+    {
+      "path": "tests/integration/metrology3d/test_section_sources.py",
+      "sha256": "6eeb3a9bca4c9c5900693467de6c1e2770e3df7f4a98f67446b29a7fb2bcb121"
+    },
+    {
+      "path": "tests/test_metrology_workpiece_delivery.py",
+      "sha256": "ab882316a1837f92d3c65a95dbc574b5c3cecb573b00295eb8b00b175a0056bb"
+    }
+  ]
+}

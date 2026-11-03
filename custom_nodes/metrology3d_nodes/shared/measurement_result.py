@@ -159,11 +159,12 @@ def directional_measurement(runtime, planes, parameters, query_resolution, *, ca
     supports, endpoints = [], []
     reason = None
     for role, plane in zip(("reference", "target"), planes):
-        side, point = (
+        scan = (
             reference_coverage(runtime, plane, settings, cancel=cancel)
             if role == "reference"
             else plane_coverage(runtime, plane, settings, role, cancel=cancel)
         )
+        side, point = scan.support, scan.point
         supports.append(side)
         endpoints.append(point)
         if not plane.valid and reason is None:

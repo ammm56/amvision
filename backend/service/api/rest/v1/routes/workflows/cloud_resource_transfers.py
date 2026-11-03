@@ -87,7 +87,7 @@ async def run_cloud_transfer(request, operation):
 class CloudArchiveResponse(StreamingResponse):
     """持有临时归档直至传输完成或断连；两条路径均关闭文件。"""
 
-    def __init__(self, stream, *, length, chunk_bytes):
+    def __init__(self, stream, *, length, chunk_bytes, filename="point-cloud-resource.zip"):
         self.archive = stream
 
         def chunks():
@@ -99,7 +99,7 @@ class CloudArchiveResponse(StreamingResponse):
             media_type="application/zip",
             headers={
                 "Content-Length": str(length),
-                "Content-Disposition": 'attachment; filename="point-cloud-resource.zip"',
+                "Content-Disposition": f'attachment; filename="{filename}"',
             },
         )
 
@@ -159,6 +159,33 @@ async def import_cloud_resource(
     policy = require_cloud_policy(request)
     if not name.strip():
         raise InvalidRequestError("计量资源名称不能为空")
+    identity = sha256(
+        json.dumps(
+            ["cloud-import", project_id, principal.principal_id, idempotency_key],
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    with TemporaryFile(mode="w+b", dir=storage.root_dir) as stream:
+        await receive_cloud_archive(request, stream, policy)
+
+        def commit(cancel):
+            with _mutation(request, project_id, "cloud-import"):
+                stream.seek(0)
+                return MeasurementResourceService(storage).import_cloud_archive(
+                    stream=stream,
+                    project_id=project_id,
+                    name=name,
+                    write_identity=identity,
+                    policy=policy,
+                    cancel=cancel,
+                    actor_id=principal.principal_id,
+                )
+
+        return await run_cloud_transfer(request, commit)
+
+
+async def receive_cloud_archive(request, stream, policy):
+    """单资源和配方包共用的有界上传，拒绝超限、空包和长度不符。"""
     if (
         request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
         != "application/zip"
@@ -178,36 +205,12 @@ async def import_cloud_resource(
         declared_length = int(normalized)
         if declared_length > policy.max_archive_bytes:
             raise InvalidRequestError("点云资产包 Content-Length 超过显式限额")
-    identity = sha256(
-        json.dumps(
-            ["cloud-import", project_id, principal.principal_id, idempotency_key],
-            separators=(",", ":"),
-        ).encode("utf-8")
-    ).hexdigest()
-    with TemporaryFile(mode="w+b", dir=storage.root_dir) as stream:
-        received = 0
-        async for chunk in request.stream():
-            received += len(chunk)
-            if received > policy.max_archive_bytes:
-                raise InvalidRequestError("点云资产包超过显式限额")
-            if chunk and await run_in_threadpool(stream.write, chunk) != len(chunk):
-                raise OSError("点云资产包暂存短写")
-        if received == 0 or (
-            declared_length is not None and received != declared_length
-        ):
-            raise InvalidRequestError("点云资产包为空或实际长度与声明不符")
-
-        def commit(cancel):
-            with _mutation(request, project_id, "cloud-import"):
-                stream.seek(0)
-                return MeasurementResourceService(storage).import_cloud_archive(
-                    stream=stream,
-                    project_id=project_id,
-                    name=name,
-                    write_identity=identity,
-                    policy=policy,
-                    cancel=cancel,
-                    actor_id=principal.principal_id,
-                )
-
-        return await run_cloud_transfer(request, commit)
+    received = 0
+    async for chunk in request.stream():
+        received += len(chunk)
+        if received > policy.max_archive_bytes:
+            raise InvalidRequestError("点云资产包超过显式限额")
+        if chunk and await run_in_threadpool(stream.write, chunk) != len(chunk):
+            raise OSError("点云资产包暂存短写")
+    if received == 0 or (declared_length is not None and received != declared_length):
+        raise InvalidRequestError("点云资产包为空或实际长度与声明不符")

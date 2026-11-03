@@ -1,4 +1,4 @@
-import { nextTick, type ComputedRef, type Ref, type ShallowRef } from 'vue'
+import { nextTick, onScopeDispose, watch, type ComputedRef, type Ref, type ShallowRef } from 'vue'
 
 import { cloneWorkflowJson } from './workflow-app-document'
 import { createWorkflowLiteGraphAdapter, type WorkflowLiteGraphAdapter } from '../canvas/graph-engine/litegraph-adapter'
@@ -52,6 +52,10 @@ export interface WorkflowDocumentLoaderOptions {
 }
 
 export function useWorkflowDocumentLoader(options: WorkflowDocumentLoaderOptions) {
+  let generation = 0
+  let disposed = false
+  watch([options.selectedProjectId, options.routeApplicationId, options.isNewApp], () => { generation++ }, { flush: 'sync' })
+  onScopeDispose(() => { disposed = true; generation++ })
   function initializeWorkflowAppDrafts(appDocument: WorkflowAppDocument, draftOptions: { preservePreviewInputs?: boolean } = {}): void {
     options.templateInputs.value = cloneWorkflowJson(appDocument.graphDocument.template.template_inputs)
     options.templateOutputs.value = cloneWorkflowJson(appDocument.graphDocument.template.template_outputs)
@@ -83,39 +87,47 @@ export function useWorkflowDocumentLoader(options: WorkflowDocumentLoaderOptions
   }
 
   async function refreshSavedWorkflowApp(applicationId: string): Promise<void> {
+    const request = generation
     const refreshedApp = await getWorkflowApp(options.selectedProjectId.value, applicationId)
-    replaceWorkflowEditorDocument(refreshedApp, true)
+    if (!disposed && request === generation) replaceWorkflowEditorDocument(refreshedApp, true)
   }
 
   async function loadPage(): Promise<void> {
+    if (disposed) return
+    const request = ++generation
+    const project = options.selectedProjectId.value
+    const application = options.routeApplicationId.value
+    const isNew = options.isNewApp.value
+    const current = () => !disposed && request === generation
     options.loading.value = true
+    options.workflowApp.value = null
     options.clearActionMessages()
     options.resetPreviewRun()
     options.clearComplexParameterDrafts()
     options.revokePreviewImageObjectUrls()
     try {
-      options.nodeCatalog.value = await getWorkflowNodeCatalog()
+      const catalog = await getWorkflowNodeCatalog()
+      if (!current()) return
+      options.nodeCatalog.value = catalog
       options.liteGraphAdapter.value = createWorkflowLiteGraphAdapter({ nodeDefinitions: options.nodeCatalog.value.node_definitions })
-      if (!options.isNewApp.value && options.routeApplicationId.value) {
-        await loadSavedWorkflowApp()
+      if (!isNew && application) {
+        const loadedApp = await getWorkflowApp(project, application)
+        if (!current()) return
+        replaceWorkflowEditorDocument(loadedApp)
       } else {
         loadNewWorkflowAppDraft()
       }
       await nextTick()
+      if (!current()) return
       options.updateStageSize()
       if (options.graphNodes.value.length > 0) {
         options.fitView()
       }
     } catch (error) {
-      options.setErrorMessage(error instanceof Error ? error.message : options.readLoadFailedMessage())
+      if (current()) options.setErrorMessage(error instanceof Error ? error.message : options.readLoadFailedMessage())
     } finally {
-      options.loading.value = false
+      if (current()) options.loading.value = false
     }
-  }
-
-  async function loadSavedWorkflowApp(): Promise<void> {
-    const loadedApp = await getWorkflowApp(options.selectedProjectId.value, options.routeApplicationId.value)
-    replaceWorkflowEditorDocument(loadedApp)
   }
 
   function loadNewWorkflowAppDraft(): void {

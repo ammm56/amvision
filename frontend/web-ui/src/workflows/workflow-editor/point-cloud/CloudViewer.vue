@@ -16,6 +16,8 @@
       <label v-if="planes.length">{{ zh?'平面':'Plane' }}<select v-model="selectedPlane"><option value="">{{ zh?'未选择':'None' }}</option><option v-for="plane in planes" :key="String(plane.feature_id)" :value="String(plane.feature_id)">{{ plane.feature_id }}</option></select></label>
       <label><input v-model="showEvidence" type="checkbox" :disabled="!scene" @change="scene?.evidenceVisibility(showEvidence)">{{ zh?'测量叠加':'Measurement overlays' }}</label>
       <label><input v-model="showAxes" type="checkbox" :disabled="!scene" @change="scene?.axesVisible(showAxes)">{{ zh?'坐标轴':'Axes' }}</label>
+      <label v-if="body.asset_details"><input v-model="showAssetDetails" type="checkbox" :disabled="!scene||!detailController||!['original','coordinate-z'].includes(colorMode)">{{ zh?'原始点细节':'Original point details' }}</label>
+      <button v-if="body.asset_details&&detailError" :title="zh?'重新加载资产细节':'Reload asset details'" :aria-label="zh?'重新加载资产细节':'Reload asset details'" @click="load"><RefreshCw :size="18" /></button>
       <label v-if="activeCurve?.fit_weights">{{ zh?'拟圆证据颜色':'Circle evidence colors' }}<select v-model="curveColorMode"><option value="support">{{ zh?'支持分类':'Support classes' }}</option><option value="weight">{{ zh?'拟合权重':'Fit weights' }}</option><option value="residual">{{ zh?'径向残差':'Radial residuals' }}</option></select></label>
       <template v-if="editRois?.length"><button :title="zh?'移动 ROI':'Move ROI'" :aria-label="zh?'移动 ROI':'Move ROI'" :aria-pressed="editMode==='translate'" :disabled="!scene||!selectedRoiVisible" @click="editMode='translate'"><Move3D :size="18" /></button><button :title="zh?'旋转 ROI':'Rotate ROI'" :aria-label="zh?'旋转 ROI':'Rotate ROI'" :aria-pressed="editMode==='rotate'" :disabled="!scene||!selectedRoiVisible" @click="editMode='rotate'"><Rotate3D :size="18" /></button></template>
       <button v-if="scalableRoi" :title="zh?'调整 ROI 尺寸':'Resize ROI'" :aria-label="zh?'调整 ROI 尺寸':'Resize ROI'" :aria-pressed="editMode==='scale'" :disabled="!scene||!selectedRoiVisible" @click="editMode='scale'"><Scaling :size="18" /></button>
@@ -29,7 +31,8 @@
       <p v-else-if="body.state !== 'ready'" class="cloud-message">{{ body.state === 'empty' ? t('empty') : String(body.reason || t('unavailable')) }}</p>
     </div>
     <div class="cloud-status">
-      <span>{{ unit }} · {{ frame }} · {{ zh?'显示':'Displayed' }} {{ body.display_point_count ?? '-' }} / {{ zh?'输入':'Input' }} {{ body.point_count ?? '-' }}<template v-if="body.source_point_count!==body.point_count"> · {{ zh?'原始':'Source' }} {{ body.source_point_count ?? '-' }}</template></span>
+      <span v-if="body.asset_details" class="cloud-detail-status" role="status" :title="detailError?`${detailLabel} · ${t(detailError)}`:detailLabel">{{ detailLabel }}<template v-if="detailCount"> · {{ detailCount }}</template><template v-if="detailError"> · {{ t(detailError) }}</template></span>
+      <span>{{ unit }} · {{ frame }} · {{ zh?'显示':'Displayed' }} {{ detailStatus==='ready'?detailCount:body.display_point_count ?? '-' }} / {{ zh?'输入':'Input' }} {{ body.point_count ?? '-' }}<template v-if="body.source_point_count!==body.point_count"> · {{ zh?'原始':'Source' }} {{ body.source_point_count ?? '-' }}</template></span>
       <span v-if="color.mode === 'scalar'">{{ color.field }}: {{ color.min ?? '-' }} .. {{ color.max ?? '-' }}</span>
       <span v-if="picked">{{ picked.sourceIndex === null ? (zh ? '生成顶点' : 'Generated vertex') : (zh ? '原始行' : 'Source row') }} #{{ picked.sourceIndex ?? picked.vertexIndex }} · XYZ {{ picked.xyz.join(', ') }}<template v-if="picked.scalar !== null"> · {{ picked.scalar }}</template></span>
       <span v-if="colorMode==='support'&&colorSummary">{{ zh?'显示点':'Display points' }} · {{ zh?'支持':'Support' }} {{ colorSummary.support }} · {{ zh?'剔除':'Rejected' }} {{ colorSummary.rejected }} · {{ zh?'无关':'Unrelated' }} {{ colorSummary.unrelated }}</span>
@@ -52,6 +55,9 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, useId,
 import { useI18n } from 'vue-i18n'
 import { Hand, RefreshCw, RotateCcw, Move3D, Rotate3D, Crosshair, ZoomIn, ZoomOut, Orbit, List, Focus, Scaling } from '@lucide/vue'
 import { readCloudCapabilities } from '../services/measurement-resource.service'
+import type { MeasurementResourceReference } from '../services/measurement-resource.service'
+import { readDetailIndex, loadDetailBlock } from './asset-details'
+import { createDetailController, type DetailStatus } from './detail-controller'
 import { decodeCloudPreview, type CloudDisplayData } from './preview-data'
 import { createCloudRenderer, type CloudViewState } from './renderer'
 import GeometrySummary from './GeometrySummary.vue'
@@ -147,8 +153,12 @@ watch(scalableRoi,canScale=>{if(!canScale&&editMode.value==='scale')editMode.val
 watch(focusOptions,targets=>{if(!targets.some(t=>t.id===focusTarget.value))focusTarget.value=targets[0]?.id??'measurement'})
 watch(evidenceTabs,tabs=>{if(!tabs.some(tab=>tab.id===detailTab.value))detailTab.value=tabs[0]?.id??''})
 let generation = 0, controller: AbortController | null = null, data: CloudDisplayData | null = null, scenePayload:Record<string,unknown>|null=null
+const showAssetDetails=ref(false),detailStatus=ref<DetailStatus>('overview'),detailCount=ref(0),detailError=ref('')
+const detailController=shallowRef<ReturnType<typeof createDetailController>|null>(null)
+const detailLabel=computed(()=>({overview:zh.value?'概览':'Overview',loading:zh.value?'加载原始点':'Loading original points',ready:zh.value?'当前视野全分辨率':'Full resolution in current view',limited:zh.value?'概览 · 视野超出容量或无点':'Overview: view exceeds capacity or is empty',error:zh.value?'细节加载失败':'Detail loading failed'})[detailStatus.value])
+function syncDetails(){detailController.value?.enable(showAssetDetails.value&&viewportVisible.value&&['original','coordinate-z'].includes(colorMode.value))}
 function releaseDebug(){for(const record of debugItems.value)record.dispose();debugItems.value=[];selectedDebug.value='';debugSelection.value=null;debugError.value=''}
-function release() { generation++; controller?.abort(); controller = null; scene.value?.dispose(); scene.value = null; data?.dispose(); data = null;releaseDebug(); picked.value = null;picking.value=false;measurements.value=[];selectedMeasurement.value='';selectedPlane.value='';colorMode.value='original';colorSummary.value=null;curves.value=[];selectedCurve.value='';selectedSegment.value='';curveColorMode.value='support' }
+function release() { generation++; controller?.abort(); controller = null; detailController.value?.dispose();detailController.value=null;showAssetDetails.value=false;detailStatus.value='overview';detailCount.value=0;detailError.value='';scene.value?.dispose(); scene.value = null; data?.dispose(); data = null;releaseDebug(); picked.value = null;picking.value=false;measurements.value=[];selectedMeasurement.value='';selectedPlane.value='';colorMode.value='original';colorSummary.value=null;curves.value=[];selectedCurve.value='';selectedSegment.value='';curveColorMode.value='support' }
 async function load() {
   release(); const token = generation; controller = new AbortController(); const signal = controller.signal
   error.value = ''; loading.value = true; pan.value = false; orthographic.value = true; size.value = 2; axis.value = 'z'; viewScale.value=null;showEvidence.value=true;showAxes.value=false
@@ -185,6 +195,27 @@ async function load() {
     },viewportVisible.value,{range:appliedRange.value,coordinateColor:colorMode.value==='coordinate-z',scaleChanged:scale=>{if(token===generation&&!signal.aborted&&props.payload===payload)viewScale.value=scale}})
     scenePayload=payload
     updateGeometry()
+    if(body.value.asset_details){
+      try{
+        const pointer=displayObject(body.value.asset_details),source=displayObject(pointer.source) as unknown as MeasurementResourceReference
+        const asset=displayObject(body.value.source_asset)
+        if(source.project_id!==props.projectId||['project_id','resource_id','version','sha256','kind'].some(k=>asset[k]!==displayObject(pointer.source)[k]))throw new Error('cloud_preview_invalid')
+        const index=await readDetailIndex(source,signal)
+        if(signal.aborted||token!==generation||props.payload!==payload||!scene.value)return
+        const renderer=scene.value
+        renderer.detailBounds(index.bounds)
+        const details=createDetailController(index,policy,decoded.count,
+          (block,abort)=>loadDetailBlock(index,block,decoded.origin,displayObject(body.value.color),policy,abort),
+          {clear:renderer.detailClear,add:renderer.detailAdd,complete:renderer.detailComplete,visible:block=>renderer.detailVisible(block.bounds)},
+          (state,count,message)=>{if(token===generation&&!signal.aborted){detailStatus.value=state;detailCount.value=count;detailError.value=message??''}})
+        detailController.value=details
+        renderer.detailEvents(()=>{if(token===generation&&!signal.aborted&&props.payload===payload)details.changed()},point=>{
+          if(token!==generation||signal.aborted||props.payload!==payload)return
+          picked.value=point
+          if(props.allowPick&&picking.value)emit('candidate',{payload,xyz:[...point.xyz]})
+        })
+      }catch(failure){if(token===generation&&!signal.aborted){detailStatus.value='error';detailError.value=failure instanceof Error?failure.message:'cloud_preview_invalid'}}
+    }
   } catch (failure) {
     if (token === generation && !signal.aborted) { scene.value?.dispose(); scene.value = null; data?.dispose(); data = null;releaseDebug(); error.value = failure instanceof Error ? failure.message : 'unavailable' }
   } finally { if (token === generation) loading.value = false }
@@ -193,6 +224,7 @@ onMounted(load)
 watch(() => [props.payload, props.projectId], load)
 watch(()=>[props.roiScope,props.editRois,props.selectedRoiId,props.editArc,editMode.value,selectedMeasurement.value,selectedPlane.value,props.candidate,selectedCurve.value,selectedSegment.value,curveColorMode.value,picking.value,selectedDebug.value,debugLayers.value,debugSelection.value,selectedCurvePoint.value],updateGeometry,{deep:true})
 watch(()=>[selectedPlane.value,colorMode.value],updateColors)
+watch(()=>[showAssetDetails.value,viewportVisible.value,colorMode.value],syncDetails,{flush:'sync'})
 watch(()=>props.allowPick,()=>{picking.value=false})
 watch(hiddenRois,hidden=>{if(scenePayload===props.payload)scene.value?.roiVisibility(hidden)})
 watch(viewportVisible,visible=>{if(!visible)scene.value?.activity(false)},{flush:'sync'})
@@ -229,6 +261,7 @@ onBeforeUnmount(release)
 .cloud-canvas { position: absolute; inset: 0; overflow: hidden; touch-action: none; }
 .cloud-message { position: absolute; inset: 0; margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px; text-align: center; overflow-wrap: anywhere; }
 .cloud-status { display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 8px 0; font-size: 12px; overflow-wrap: anywhere; }
+.cloud-detail-status { flex:0 0 100%; min-width:0; max-width:100%; height:18px; line-height:18px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .residual-scale { display:inline-block; width:60px; height:8px; border:1px solid var(--am-border); background:linear-gradient(to right,blue,white,red); }
 .roi-display-list{display:grid;gap:4px;padding:8px 0}.roi-display-list>div{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0}.roi-display-list span{overflow-wrap:anywhere;min-width:0;font-size:12px}
 @media(max-width: 640px) { .cloud-viewer { height: 65dvh; } }

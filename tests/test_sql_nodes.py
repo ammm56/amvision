@@ -41,7 +41,7 @@ def test_sql_upsert_inserts_and_updates_sqlite_row(tmp_path: Path) -> None:
                     {
                         "column_name": "ok_ng",
                         "source_kind": "result",
-                        "source_path": "ok_ng",
+                        "source_path": "state",
                     },
                     {
                         "column_name": "coverage_ratio",
@@ -56,9 +56,9 @@ def test_sql_upsert_inserts_and_updates_sqlite_row(tmp_path: Path) -> None:
                 ],
             },
             input_values={
-                "result": {
-                    "ok_ng": "NG",
-                    "ok": False,
+                "result": {"format_id": "amvision.result-record.v1",
+                    "state": 'ng',
+                    "passed": False,
                     "metrics": {"coverage_ratio": 0.42},
                 },
                 "request": {"value": {"record_id": "record-001"}},
@@ -86,7 +86,7 @@ def test_sql_upsert_inserts_and_updates_sqlite_row(tmp_path: Path) -> None:
                     {
                         "column_name": "ok_ng",
                         "source_kind": "result",
-                        "source_path": "ok_ng",
+                        "source_path": "state",
                     },
                     {
                         "column_name": "coverage_ratio",
@@ -96,9 +96,9 @@ def test_sql_upsert_inserts_and_updates_sqlite_row(tmp_path: Path) -> None:
                 ],
             },
             input_values={
-                "result": {
-                    "ok_ng": "OK",
-                    "ok": True,
+                "result": {"format_id": "amvision.result-record.v1",
+                    "state": 'ok',
+                    "passed": True,
                     "metrics": {"coverage_ratio": 0.91},
                 },
                 "request": {"value": {"record_id": "record-001"}},
@@ -113,12 +113,12 @@ def test_sql_upsert_inserts_and_updates_sqlite_row(tmp_path: Path) -> None:
             ("record-001",),
         ).fetchone()
 
-    assert row == ("record-001", "OK", 0.91, "station-b", "evt-001")
+    assert row == ("record-001", "ok", 0.91, "station-b", "evt-001")
     assert first_output["result"]["value"]["database_kind"] == "sqlite"
     assert first_output["prepared_row"]["value"]["record_id"] == "record-001"
     assert first_output["prepared_row"]["value"]["station_id"] == "station-a"
     assert second_output["result"]["value"]["skipped"] is False
-    assert second_output["result"]["value"]["written_row"]["ok_ng"] == "OK"
+    assert second_output["result"]["value"]["written_row"]["ok_ng"] == "ok"
     assert second_output["result"]["value"]["update_columns"] == [
         "ok_ng",
         "coverage_ratio",
@@ -151,7 +151,7 @@ def test_sql_upsert_rejects_multiple_primary_inputs(tmp_path: Path) -> None:
                     ],
                 },
                 input_values={
-                    "result": {"ok_ng": "OK", "ok": True},
+                    "result": {"format_id": "amvision.result-record.v1", "state": 'ok', "passed": True},
                     "workflow_result": {
                         "status": "succeeded",
                         "code": 0,

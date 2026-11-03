@@ -246,9 +246,9 @@ def test_single_source_pass_and_transient_mask_accounting(monkeypatch):
             cancel=lambda: None,
         )
         assert reads == [(0, 4), (4, 8), (8, 12), (12, 16), (16, 17)]
-        assert charges == [17] * 5
+        assert charges == [17 + 5 * 48] * 5
         expected = np.flatnonzero((np.abs(points - 15) <= 10).all(axis=1))
-        assert runtime.budget.used - before == len(expected) * 4
+        assert runtime.budget.used - before == len(expected) * 4 + 5 * 48
         with runtime.borrow(cropped) as view:
             actual = np.concatenate(
                 [

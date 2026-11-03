@@ -8,6 +8,15 @@ from scipy.spatial import cKDTree
 from backend.service.application.errors import InvalidRequestError
 
 
+def _graph_index_dtype(vertex_count, edge_count):
+    """临时稀疏图须同时容纳顶点和 CSR 末端指针；公开原始行号仍为 uint64。"""
+    return (
+        np.int32
+        if max(vertex_count, edge_count) <= np.iinfo(np.int32).max
+        else np.int64
+    )
+
+
 def metric_membership(uvh, settings, *, max_working_bytes, cancel, capture=None):
     """全量局部支持先分区；边数先计费后构图，密集点拒绝而非截断邻居。"""
     cancel()
@@ -33,10 +42,12 @@ def metric_membership(uvh, settings, *, max_working_bytes, cancel, capture=None)
     if len(pairs) != pairs_count:
         raise RuntimeError("空间索引邻域计数与完整边集不一致")
     cancel()
+    indices = pairs.astype(_graph_index_dtype(count, pairs_count), copy=False)
     graph = coo_array(
-        (np.ones(len(pairs), dtype=np.uint8), (pairs[:, 0], pairs[:, 1])),
+        (np.ones(len(pairs), dtype=np.uint8), (indices[:, 0], indices[:, 1])),
         shape=(count, count),
     ).tocsr()
+    del indices, pairs
     component_count, labels = connected_components(graph, directed=False)
     cancel()
     seed = np.all(

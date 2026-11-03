@@ -1,4 +1,4 @@
-"""Preview 的有界 OS shared memory；不创建文件支持的 mmap 或临时文件。"""
+"""Preview 图片使用有界 shared memory；三维文件使用独立计量的临时输入。"""
 
 from __future__ import annotations
 
@@ -192,7 +192,7 @@ class PreviewBuffers:
                     self._destroy(block_id, block)
 
     def pin_descriptor(self, owner: str, block_id: str) -> dict:
-        """仅向受管 Worker 返回 SHM 描述；调用方必须在 Worker 退出/归还后 unpin。"""
+        """向受管 Worker 返回 SHM/文件描述；Worker 退出或归还后必须 unpin。"""
         with self._lock:
             block = self._get(owner, block_id)
             if not block.ready:

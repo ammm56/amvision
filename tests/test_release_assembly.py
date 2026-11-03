@@ -218,6 +218,10 @@ def test_assemble_release_materializes_windows_x64_nvidia_layout(
     }
     assert release_manifest["accelerator"] == {"kind": "nvidia"}
     assert release_manifest["requirements_file"] == "app/requirements.txt"
+    from backend.maintenance.point_cloud_delivery import validate_point_cloud_delivery
+    assert validate_point_cloud_delivery(
+        release_dir, release_manifest["point_cloud_tools"]
+    ) == []
     assert release_manifest["bundled_python"] == {
         "python_dir": "python",
         "mode": "placeholder-empty",

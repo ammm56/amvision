@@ -179,10 +179,42 @@ def check_workpiece_body(body, *, matrix=None):
         assert item["reason"] == reference["reason"]
         assert item["unit"] == "mm"
         if reference["valid"]:
-            assert item["value"] == pytest.approx(reference["value"], abs=1e-7)
+            assert item["value"] == pytest.approx(reference["value"], abs=1e-7, rel=0)
         else:
             assert item["value"] is None
     assert data["values"] == {key: item["value"] for key, item in actual.items()}
+
+
+def check_record(body, system):
+    """核对全部量值、判定与落盘内容，不以整体成功代替逐项检查。"""
+    import pytest
+
+    assert body["code"] == 0
+    record = body["data"]
+    assert record["format_id"] == "amvision.result-record.v1"
+    assert record["state"] == "ok" and record["passed"] is True
+    assert len(record["conditions"]["items"]) == 50
+    baseline = json.loads(
+        (
+            Path(__file__).parents[3]
+            / "docs/development/assets/r5-f4/workpiece-windows.json"
+        ).read_text("utf-8")
+    )
+    actual = {item["item_id"]: item for item in record["metrics"]["items"]}
+    assert len(actual) == len(record["metrics"]["items"]) == 50
+    assert actual.keys() == baseline["items"].keys()
+    for key, expected in baseline["items"].items():
+        assert actual[key]["valid"] == expected["valid"], key
+        assert actual[key]["reason"] == expected["reason"], key
+        assert actual[key]["unit"] == "mm", key
+        assert actual[key]["value"] == pytest.approx(
+            expected["value"], abs=1e-7, rel=0
+        ), key
+    saved = body["meta"]["saved_output"]
+    assert saved["kind"] == "object-store"
+    path = Path(system.settings.dataset_storage.root_dir) / saved["object_key"]
+    assert json.loads(path.read_text("utf-8")) == record
+    return record
 
 
 def main():

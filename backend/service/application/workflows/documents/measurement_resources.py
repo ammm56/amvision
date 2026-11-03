@@ -501,6 +501,9 @@ class MeasurementResourceService:
                 self.storage.delete_tree(
                     self.version_key(reference).rsplit("/", 1)[0] + "/immutable"
                 )
+                self.storage.delete_tree(
+                    self.version_key(reference).rsplit("/", 1)[0] + "/display-index"
+                )
                 return
             document = self.read(reference, project_id=project_id)
             from backend.contracts.workflows.cloud_resource_errors import (
@@ -555,6 +558,10 @@ class MeasurementResourceService:
                         details={"template_id": template.template_id},
                     )
             version_path.replace(tombstone)
+            if document.reference.kind == "point-cloud":
+                self.storage.delete_tree(
+                    self.version_key(reference).rsplit("/", 1)[0] + "/display-index"
+                )
             if (
                 document.image_object_key is not None
                 or document.reference.kind == "point-cloud"

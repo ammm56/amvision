@@ -49,7 +49,11 @@
         @save="saveCurrentWorkflowApp"
       />
 
-      <div v-if="errorMessage || previewQueryError || previewDisplayError" class="workflow-graph-error">
+      <div v-if="cloudPackage.busy.value" class="workflow-graph-error" role="status">
+        <span>{{ t('workflowEditor.document.transferringPackage') }}</span>
+        <Button size="sm" @click="cloudPackage.cancel">{{ t('common.cancel') }}</Button>
+      </div>
+      <div v-else-if="errorMessage || previewQueryError || previewDisplayError" class="workflow-graph-error">
         <InlineError :message="errorMessage || previewQueryError || previewDisplayError || ''" />
         <Button v-if="previewQueryError || previewDisplayError" size="sm" :loading="previewDisplayState === 'loading'" @click="retryPreviewResult">
           {{ t('workflowEditor.feedback.previewDisplayRetry') }}
@@ -249,6 +253,8 @@
         @paste-node="pasteContextNode"
         @export-document="exportDocumentFromContextMenu"
         @import-document="openDocumentFilePicker"
+        @export-package="exportCurrentCloudPackage"
+        @import-package="openCloudPackagePicker"
         :minimap-visible="minimapVisible"
         :viewport-scale-percent="viewportScalePercent"
         :minimap-nodes="minimapNodes"
@@ -291,6 +297,10 @@
       />
     </div>
     <WorkflowDocumentFileInput ref="documentFileInput" :disabled="documentBusy" @import="importWorkflowDocument" />
+    <WorkflowDocumentFileInput ref="packageFileInput" accept=".zip,application/zip" :label="t('workflowEditor.document.importPackage')" :disabled="documentBusy" @import="importCurrentCloudPackage" />
+    <ConfirmDialog v-if="importedPackageId" :title="t('workflowEditor.document.openPackage')" :confirm-label="t('workflowEditor.document.openPackage')" :cancel-label="t('common.cancel')" confirm-variant="primary" @cancel="importedPackageId = null" @confirm="openImportedPackage">
+      <p>{{ t('workflowEditor.document.packageUnsaved') }}</p>
+    </ConfirmDialog>
     <WorkflowPreviewViewers
       :image="activeImageViewer"
       :table="activePreviewTable"
@@ -348,6 +358,8 @@ import { parameterEditorSourcesKey, parameterPreviewStateKey, parameterCloudPrev
 import { trustedNumericItemProviders, trustedRecipeValidators } from '../parameters/trusted-recipe-providers'
 import { recipeIssues } from '../parameters/recipe-validation'
 import { useRoute, useRouter } from 'vue-router'
+import { useWorkflowCloudPackage, downloadCloudPackage } from '../documents/useWorkflowCloudPackage'
+import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import { useI18n } from 'vue-i18n'
 
 import { usePreferencesStore } from '@/app/stores/preferences.store'
@@ -1841,7 +1853,55 @@ const documentState = computed(() => {
 let editorDisposed = false
 onBeforeUnmount(() => { editorDisposed = true; resetPreviewRun() })
 const documentReading = ref(false)
-const documentBusy = computed(() => loading.value || saving.value || saveInProgress.value || publishingVersion.value || editorTitleSaving.value || documentReading.value || imageInteractionApplying.value || history.loading.value)
+const packageFileInput = ref<InstanceType<typeof WorkflowDocumentFileInput> | null>(null)
+const packageContext = () => JSON.stringify([selectedProjectId.value, route.fullPath])
+let packagePickerContext = ''
+const importedPackageId = ref<string | null>(null)
+watch(packageContext, () => { importedPackageId.value = null })
+async function openImportedPackage(): Promise<void> {
+  const id = importedPackageId.value
+  const project = selectedProjectId.value
+  importedPackageId.value = null
+  if (!id) return
+  documentReading.value = true
+  try {
+    await router.push(`/workflows/graph/apps/${encodeURIComponent(id)}`)
+    if (!editorDisposed && project === selectedProjectId.value && routeApplicationId.value === id) await loadPage()
+  } finally { if (!editorDisposed) documentReading.value = false }
+}
+const cloudPackage = useWorkflowCloudPackage({
+  context: packageContext,
+  project: () => selectedProjectId.value,
+  onImported: result => {
+    importedPackageId.value = result.application_id
+    setActionStatus(t('workflowEditor.document.packageImported', { count: result.resource_mapping.length }))
+    if (documentState.value !== t('workflowEditor.document.unsaved')) openImportedPackage()
+  },
+  onExported: blob => { downloadCloudPackage(blob); setActionStatus(t('workflowEditor.document.exported')) },
+  onError: error => setActionError(`${t('workflowEditor.document.packageFailed')}: ${readWorkflowDocumentError(error)}`),
+  capacityError: () => t('workflowEditor.document.packageCapacity'),
+})
+const documentBusy = computed(() => loading.value || saving.value || saveInProgress.value || publishingVersion.value || editorTitleSaving.value || documentReading.value || imageInteractionApplying.value || history.loading.value || cloudPackage.busy.value)
+
+function openCloudPackagePicker(): void {
+  if (documentBusy.value) return
+  packagePickerContext = packageContext()
+  packageFileInput.value?.open()
+  clearContextMenu()
+}
+function importCurrentCloudPackage(file: File): void {
+  if (documentBusy.value || packagePickerContext !== packageContext()) return
+  void cloudPackage.importPackage(file)
+}
+function exportCurrentCloudPackage(): void {
+  clearContextMenu()
+  if (documentBusy.value || !commitPendingNodeParameterDrafts(graphNodes.value)) return
+  try {
+    const template = buildCurrentTemplate()
+    const application = template && buildCurrentApplication(template)
+    if (template && application) void cloudPackage.exportPackage(createWorkflowAppDocument(application, template))
+  } catch (error) { setActionError(readWorkflowDocumentError(error)) }
+}
 
 const clipboardPointer = ref<{ x: number; y: number } | null>(null)
 const nodeClipboard = useWorkflowNodeClipboard({

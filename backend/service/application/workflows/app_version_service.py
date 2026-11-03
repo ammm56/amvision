@@ -131,6 +131,17 @@ class WorkflowAppVersionService:
             dataset_storage=dataset_storage,
         )
 
+    def require_version_execution(self, version: WorkflowAppVersion) -> None:
+        """在启动/选版边界复核需审核节点；不影响版本历史的只读访问。"""
+        template = WorkflowGraphTemplate.model_validate(
+            self.dataset_storage.read_json(version.template_snapshot_object_key)
+        )
+        require_current_execution_identity(
+            template=template,
+            dependencies=self.dataset_storage.read_json(version.dependency_manifest_object_key),
+            node_catalog_registry=self.node_catalog_registry,
+        )
+
     def get_draft_snapshot(
         self, *, project_id: str, application_id: str
     ) -> WorkflowAppDraftSnapshot:
@@ -1696,6 +1707,8 @@ def _node_dependency_payload(
             "node_pack_version": definition.node_pack_version,
             "manifest_sha256": node_pack_manifest_sha256,
         }
+    if definition.metadata.get("requires_execution_review") is True:
+        implementation_identity["review_required"] = True
     return {
         "node_type_id": definition.node_type_id,
         "version": definition.version,
@@ -1706,6 +1719,55 @@ def _node_dependency_payload(
         "definition_sha256": build_node_definition_sha256(definition),
         "implementation_identity": implementation_identity,
     }
+
+
+def require_current_execution_identity(
+    *,
+    template: WorkflowGraphTemplate,
+    dependencies: object,
+    node_catalog_registry: NodeCatalogRegistry,
+) -> None:
+    """复用冻结依赖拒绝已改义的旧执行，不为无关图增加全目录升版限制。"""
+    if not isinstance(dependencies, dict) or not isinstance(dependencies.get("nodes"), list):
+        raise InvalidRequestError("Workflow App 冻结依赖不完整")
+    frozen = {}
+    for item in dependencies["nodes"]:
+        if not isinstance(item, dict) or not isinstance(item.get("node_type_id"), str):
+            raise InvalidRequestError("Workflow App 冻结节点依赖无效")
+        if item["node_type_id"] in frozen:
+            raise InvalidRequestError("Workflow App 冻结节点依赖重复")
+        frozen[item["node_type_id"]] = item
+    definitions = {item.node_type_id: item for item in node_catalog_registry.get_workflow_node_definitions()}
+    packs = {item.node_pack_id: item for item in node_catalog_registry.get_node_pack_manifests()}
+    changed = []
+    for node_type_id in sorted({node.node_type_id for node in template.nodes}):
+        current = definitions.get(node_type_id)
+        previous = frozen.get(node_type_id, {})
+        previous_identity = previous.get("implementation_identity", {})
+        if not isinstance(previous_identity, dict):
+            raise InvalidRequestError("Workflow App 节点执行身份无效")
+        if not (
+            (current is not None and current.metadata.get("requires_execution_review") is True)
+            or previous_identity.get("review_required") is True
+        ):
+            continue
+        manifest = packs.get(current.node_pack_id) if current is not None else None
+        if current is None or (current.node_pack_id is not None and manifest is None):
+            changed.append(node_type_id)
+            continue
+        current_identity = _node_dependency_payload(
+            current,
+            node_pack_manifest_sha256=hashlib.sha256(
+                _canonical_json_bytes(manifest.model_dump(mode="json", by_alias=True))
+            ).hexdigest() if manifest is not None else None,
+        )
+        if previous != current_identity:
+            changed.append(node_type_id)
+    if changed:
+        raise ResourceConflictError(
+            "Workflow App 引用的节点实现已改变，请审核草稿并重新发布；旧发布仅供历史查看",
+            details={"node_type_ids": changed, "requires_republish": True},
+        )
 
 
 def build_node_definition_sha256(definition: NodeDefinition) -> str:

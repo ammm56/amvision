@@ -31,6 +31,7 @@ def main():
             "datum-extension",
             "roi-union",
             "visible-envelope",
+            "workpiece-delivery",
         ),
         default="boundary-circle",
     )
@@ -48,7 +49,7 @@ def main():
         policy = PointCloudExecutionPolicy.model_validate_json(
             args.point_cloud_policy.read_text("utf-8")
         )
-    elif args.recipe == "visible-envelope":
+    elif args.recipe in {"visible-envelope", "workpiece-delivery"}:
         from tests.integration.metrology3d.representative_workflow import (
             representative_policy,
         )
@@ -61,6 +62,16 @@ def main():
             else (args.recipe,)
         )
         for kind in () if args.recipe == "empty" else kinds:
+            if kind == "workpiece-delivery":
+                from scripts.metrology_workpiece import build_documents
+
+                version = system.publish(
+                    point_limit=500_000, documents=build_documents()
+                )
+                print(
+                    f"Published {version}; complete public workpiece recipe", flush=True
+                )
+                continue
             if kind == "visible-envelope":
                 from tests.integration.metrology3d.workpiece_workflow import (
                     workpiece_documents,

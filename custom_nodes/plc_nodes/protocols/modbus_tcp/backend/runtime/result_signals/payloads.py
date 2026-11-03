@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from backend.nodes.core_nodes.support.inspection_record import (
     require_alarm_record_payload,
-    require_ok_ng_value,
+    require_result_record_payload as validate_result_record,
 )
 from backend.service.application.errors import InvalidRequestError
 
@@ -21,27 +21,7 @@ def require_result_record_payload(
         raise InvalidRequestError(
             f"{node_name} 的 {field_name} 输入必须是 result-record 对象"
         )
-    ok_ng = require_ok_ng_value(
-        raw_payload.get("ok_ng"), field_name=f"{field_name}.ok_ng"
-    )
-    ok_value = raw_payload.get("ok")
-    if not isinstance(ok_value, bool):
-        raise InvalidRequestError(f"{node_name} 的 {field_name}.ok 必须是布尔值")
-    if ok_value != (ok_ng == "OK"):
-        raise InvalidRequestError(
-            f"{node_name} 的 {field_name}.ok 与 {field_name}.ok_ng 不一致"
-        )
-
-    normalized_payload = dict(raw_payload)
-    normalized_payload["ok_ng"] = ok_ng
-    normalized_payload["ok"] = ok_value
-    alarm_value = raw_payload.get("alarm")
-    if alarm_value is not None:
-        normalized_payload["alarm"] = require_alarm_record_payload(
-            alarm_value,
-            field_name=f"{field_name}.alarm",
-        )
-    return normalized_payload
+    return validate_result_record(raw_payload, field_name=f"{node_name}.{field_name}")
 
 
 def read_effective_alarm_payload(

@@ -6,7 +6,7 @@ import {Scene,PerspectiveCamera} from 'three'
 import {createGeometryOverlay} from '@/workflows/workflow-editor/point-cloud/geometry-overlay'
 import CloudViewer from '@/workflows/workflow-editor/point-cloud/CloudViewer.vue'
 
-const mocks = vi.hoisted(() => ({ capabilities: vi.fn(), decode: vi.fn(), create: vi.fn(),debug:vi.fn() }))
+const mocks = vi.hoisted(() => ({ capabilities: vi.fn(), decode: vi.fn(), create: vi.fn(),debug:vi.fn(),details:vi.fn(),detailBlock:vi.fn() }))
 const {readFileSync}=await vi.importActual<{readFileSync:(path:string,encoding:'utf8')=>string}>('node:fs')
 const {env}=await vi.importActual<{env:Record<string,string|undefined>}>('node:process')
 vi.mock('@/workflows/workflow-editor/point-cloud/boundary-debug',async importOriginal=>({...await importOriginal<object>(),decodeBoundaryDebug:mocks.debug}))
@@ -14,9 +14,36 @@ beforeEach(()=>{mocks.debug.mockResolvedValue([])})
 vi.mock('@/workflows/workflow-editor/services/measurement-resource.service', () => ({readCloudCapabilities:mocks.capabilities}))
 vi.mock('@/workflows/workflow-editor/point-cloud/preview-data',async importOriginal=>({...await importOriginal<object>(),decodeCloudPreview:mocks.decode}))
 vi.mock('@/workflows/workflow-editor/point-cloud/renderer', () => ({createCloudRenderer:mocks.create}))
+vi.mock('@/workflows/workflow-editor/point-cloud/asset-details', () => ({readDetailIndex:mocks.details,loadDetailBlock:mocks.detailBlock}))
 const payload = {state:'ready',spatial:{length_unit:null,frame_id:'camera'},color:{mode:'solid'},source_point_count:20,display_point_count:2}
 afterEach(() => vi.resetAllMocks())
 function viewer() { return mount(CloudViewer, {props:{payload,projectId:'p'},global:{plugins:[createI18n({legacy:false,locale:'en-US'})]}}) }
+it('ignores old asset manifests and camera callbacks after payload switch and unmount',async()=>{
+  mocks.capabilities.mockResolvedValue({renderer:{}})
+  mocks.decode.mockImplementation(async()=>({dispose:vi.fn(),count:2,origin:[0,0,0]}))
+  const scenes:any[]=[],pending:((value:unknown)=>void)[]=[]
+  mocks.create.mockImplementation(()=>{
+    const scene={dispose:vi.fn(),geometry:vi.fn(),detailBounds:vi.fn(),detailEvents:vi.fn(),detailClear:vi.fn(),detailAdd:vi.fn(),detailComplete:vi.fn(),detailVisible:()=>true}
+    scenes.push(scene);return scene
+  })
+  mocks.details.mockImplementation(()=>new Promise(resolve=>pending.push(resolve)))
+  const source={project_id:'p',resource_id:'r',version:1,kind:'point-cloud',sha256:'a'.repeat(64)}
+  const body={...payload,source_asset:source,asset_details:{source}},index={bounds:{min:[0,0,0],max:[1,1,1]},blocks:[]}
+  const w=mount(CloudViewer,{props:{payload:body,projectId:'p'},global:{plugins:[createI18n({legacy:false,locale:'en-US'})]}})
+  try{
+    await flushPromises();await w.setProps({payload:{...body,observation_id:'two'}});await flushPromises()
+    pending[0]!(index);await flushPromises();expect(scenes[0].detailEvents).not.toHaveBeenCalled()
+    pending[1]!(index);await flushPromises();const oldChanged=scenes[1].detailEvents.mock.calls[0][0]
+    await w.setProps({payload:{...body,observation_id:'three'}});await flushPromises()
+    pending[2]!(index);await flushPromises();const calls=scenes[2].detailClear.mock.calls.length
+    oldChanged();expect(scenes[2].detailClear).toHaveBeenCalledTimes(calls)
+    const latest=scenes[2].detailEvents.mock.calls[0][0]
+    w.unmount();const closed=scenes[2].detailClear.mock.calls.length
+    latest();expect(scenes[2].detailClear).toHaveBeenCalledTimes(closed)
+    expect(mocks.details.mock.calls.every(call=>call[1].aborted)).toBe(true)
+    expect(mocks.detailBlock).not.toHaveBeenCalled()
+  }finally{if(w.exists())w.unmount()}
+})
 it('applies Z display ranges without changing the payload, isolates visibility, and ignores late scale updates',async()=>{
   const scene={dispose:vi.fn(),geometry:vi.fn(),colors:vi.fn(),evidenceVisibility:vi.fn(),axesVisible:vi.fn()}
   mocks.capabilities.mockResolvedValue({renderer:{}});mocks.decode.mockResolvedValue({dispose:vi.fn()});mocks.create.mockReturnValue(scene)

@@ -254,21 +254,31 @@ def test_xyz_multiblock_whitespace_and_float64(context):
         )
 
 
-def test_budget_admission_counts_source_and_destination(context):
+@pytest.mark.parametrize("shared", [True, False])
+def test_budget_admission_counts_actual_source_and_destination(context, shared):
     storage, _limits, _budget, scope = context
     limits = policy(max_decoded_bytes=32, max_live_array_bytes=32)
     budget = CloudArrayBudget(32)
-    with pytest.raises(InvalidRequestError, match="预算"):
-        read_cloud_file(
+    def read():
+        return read_cloud_file(
             object_store=storage,
             project_id="test",
-            file=publish(storage, ply()),
-            options=options(),
+            file=publish(storage, ply() if shared else ply(
+                struct.pack(">6f", 0, 0, 3, 4, 5, 6), encoding="binary_big_endian"
+            )),
+            options=options() if shared else options("ply-binary-be"),
             policy=limits,
             budget=budget,
             scope=scope,
             cancel=lambda: None,
         )
+    if shared:
+        result = read()
+        assert budget.used == 24
+        result.arrays.close()
+    else:
+        with pytest.raises(InvalidRequestError, match="预算"):
+            read()
     assert budget.used == 0
 
 
@@ -450,5 +460,7 @@ def test_array_allocation_failure_returns_reservation(context, monkeypatch, fail
 
     monkeypatch.setattr(np, "empty", failing_allocate)
     with pytest.raises(MemoryError, match="allocation fixture"):
-        run(context, ply())
+        run(context, ply(
+            struct.pack(">6f", 0, 0, 3, 4, 5, 6), encoding="binary_big_endian"
+        ), options("ply-binary-be"))
     assert context[2].used == 0 and context[3].resource_count == 0

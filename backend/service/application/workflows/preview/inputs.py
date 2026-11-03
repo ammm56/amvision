@@ -1,4 +1,4 @@
-"""Preview 文件输入的只读内存 ObjectStore，不把上传物化为临时文件。"""
+"""Preview 只读 ObjectStore，统一内存图片和已封存三维临时文件的引用。"""
 
 from contextlib import contextmanager
 from hashlib import sha256

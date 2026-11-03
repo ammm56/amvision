@@ -37,14 +37,15 @@ describe('workflow document controls', () => {
     await buttons[3]!.trigger('click')
     expect(wrapper.emitted('paste-node')).toHaveLength(1)
     expect(wrapper.text()).not.toContain('隐藏小地图')
-    expect(buttons.slice(-2).map(button => button.text())).toEqual(['导出工作流', '导入工作流'])
-    await buttons.at(-2)!.trigger('click')
-    await buttons.at(-1)!.trigger('click')
+    expect(buttons.slice(-4).map(button => button.text())).toEqual([
+      '导出工作流', '导入工作流', '导出三维配方资源包', '从三维资源包新建配方',
+    ])
+    await buttons.at(-4)!.trigger('click')
+    await buttons.at(-3)!.trigger('click')
     expect(wrapper.emitted('export-document')).toHaveLength(1)
     expect(wrapper.emitted('import-document')).toHaveLength(1)
     await wrapper.setProps({ documentDisabled: true })
-    expect(buttons.at(-2)!.attributes('disabled')).toBeDefined()
-    expect(buttons.at(-1)!.attributes('disabled')).toBeDefined()
+    for (const button of buttons.slice(-4)) expect(button.attributes('disabled')).toBeDefined()
     wrapper.unmount()
   })
   it.each([{ nodeId: 'node' }, { edgeId: 'edge' }, { noteId: 'note' }, { boundaryKind: 'entry' }, { bindingId: 'binding' }, { port: { nodeId: 'node', portName: 'value', direction: 'input' } }])('does not offer document replacement for an object context %j', extra => {

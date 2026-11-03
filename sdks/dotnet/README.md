@@ -192,6 +192,8 @@ public static async Task Main()
 `net472` SDK，并验证 Runtime 创建来源互斥、停机选择版本请求、版本 archive/restore
 状态 CAS、Runtime/revision/run 版本溯源字段以及 HTTP 409 冲突详情：
 
+同一门禁也覆盖 `amvision.result-record.v1` 的 ok/ng/invalid 解析和 JSON 往返，保留 null 与完整量值精度。SDK 的执行 `State` 不等于产品状态，产品状态从 Outputs 的记录字段读取；只有记录 `state=ok` 时 `passed=true`。不从 false 推导 NG，不将未知状态放行。协议字段和示例见[判定结果契约](../../docs/api/workflow-inspection-results.md)。该测试真实编译并运行 net472，不是新增三态 SDK 协议或新的目标框架。
+
 ```powershell
 dotnet msbuild tests/Amvar.Vision.ContractTests/Amvar.Vision.ContractTests.vs2019.net472.csproj /t:Rebuild /p:Configuration=Release
 tests/Amvar.Vision.ContractTests/bin/Release/net472/Amvar.Vision.ContractTests.exe
