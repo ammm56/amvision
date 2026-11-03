@@ -1,0 +1,42 @@
+{
+  "date": "2026-11-02",
+  "url": "http://127.0.0.1:5601/settings?category=services",
+  "viewport": {
+    "width": 1133,
+    "height": 1142,
+    "devicePixelRatio": 1.5
+  },
+  "browser_zoom": "未更改，未独立读取百分比",
+  "sidebar_width": 64,
+  "settings_sidebar_width": 220,
+  "table_columns": [
+    116.78,
+    99.77,
+    290.93,
+    50.48,
+    53.08,
+    54.3,
+    47.32
+  ],
+  "theme_restored": "亮色",
+  "route_restored": true,
+  "notes": [
+    "真实截图与生成设计分开存放",
+    "心跳值是采集时快照，不表示持续监控",
+    "本轮未修改运行代码",
+    "新增八页均实际切换亮暗采集，未修改视口；16张新增参考与运行状态恢复截图已归档。",
+    "用户管理截图仅包含Token名称/状态，不包含真实Token正文或密码。"
+  ],
+  "pages": [
+    "偏好",
+    "启动页面",
+    "运行状态",
+    "关于",
+    "系统信息",
+    "Python运行时",
+    "设备信息",
+    "会话与权限",
+    "用户管理"
+  ],
+  "reference_count": 20
+}

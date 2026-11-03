@@ -6,6 +6,8 @@
 
 ## 使用顺序
 
+设置分类（2026-11-02）：28组56张，56份中文主题规格与9份基础规格。全部现有页面重新输出，统一品牌绿与白色选择标记、表单层级、运行明细和纯色亮暗主题。见[细节优化](../settings-detail-refinement.md)、[QA](../prototypes/settings/design-qa.md)、[中文规格](设置.md)、[总览](../generated/设置/设计总览.html)。
+
 推理最新要求：使用[中文提示词](推理.md)、[页面规划](../inference-pages-design.md)、[任务详情](../inference-result-details-design.md)和[逐图复核](../inference-design-review.md#18-任务详情与折叠导航复核)。累计67组134张及134份中文规格，见[总览](../generated/推理/设计总览.html)。新增六类详情，修正短屏Logo、实例页签和关键点状态；目录只保留同名最终稿。
 
 部署最新要求：使用[部署提示词](部署.md)、[完整页面规划](../deployment-pages-design.md)、[异常恢复与后端参数](../deployment-closure-states-design.md)、[交互收尾](../deployment-interaction-completion-design.md)和[逐图复核](../deployment-design-review.md)。累计74组亮暗配对、148张静态图与148份中文规格，第四批已补11组22张交互收尾图。保留完整布局和操作，仅压缩冗余说明。见[设计总览](../generated/部署/设计总览.html)。先写规格再生成，逐张修订并合并到最终规格。

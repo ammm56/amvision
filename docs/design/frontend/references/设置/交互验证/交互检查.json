@@ -1,0 +1,78 @@
+[
+  {
+    "check": "空表单禁止创建",
+    "pass": true
+  },
+  {
+    "check": "短密码显示错误并禁止创建",
+    "pass": true
+  },
+  {
+    "check": "全部操作禁用单项",
+    "pass": true
+  },
+  {
+    "check": "修正密码后清除错误",
+    "pass": true
+  },
+  {
+    "check": "Tab从末项回到弹窗首项",
+    "pass": true
+  },
+  {
+    "check": "Shift+Tab从首项回到末项",
+    "pass": true
+  },
+  {
+    "check": "本地演示创建完成",
+    "pass": true
+  },
+  {
+    "check": "Escape关闭并恢复触发按钮焦点",
+    "pass": true
+  },
+  {
+    "check": "未保存修改拦截导航",
+    "pass": true
+  },
+  {
+    "check": "继续编辑保留修改",
+    "pass": true
+  },
+  {
+    "check": "已停止但存在的实例仍可设为启动页面",
+    "pass": true
+  },
+  {
+    "check": "保存完成禁用重复提交",
+    "pass": true
+  },
+  {
+    "check": "项目没有实例时禁止保存",
+    "pass": true
+  },
+  {
+    "check": "恢复默认隐藏实例配置",
+    "pass": true
+  },
+  {
+    "check": "刷新后只读权限保持",
+    "pass": true
+  },
+  {
+    "check": "Token有效期拒绝非正整数",
+    "pass": true
+  },
+  {
+    "check": "新Token与原Token同时保留",
+    "pass": true
+  },
+  {
+    "check": "撤销仅影响选定Token并隐藏一次性明文",
+    "pass": true
+  },
+  {
+    "check": "Logo切换导航且没有独立展开按钮",
+    "pass": true
+  }
+]

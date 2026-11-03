@@ -12,6 +12,10 @@
 
 ## 文档
 
+**设置分类（2026-11-02）：** 当前28组56张，整个现有设计集已按细节优化重新输出。保留合理导航与页面分工，优化表单、权限选择、表格和运行明细；品牌绿配白色选择标记，28组亮暗几何与10项本轮交互检查通过。见[优化说明](settings-detail-refinement.md)、[QA](prototypes/settings/design-qa.md)、[中文提示词](prompts/设置.md)、[设计总览](generated/设置/设计总览.html)。
+
+设置[完整性复核](settings-completeness-audit.md)已更新整改结果；整个分类剩余分支和未来扩展在[状态范围](settings-state-coverage.md)标注，设计样稿不等于产品实现或生产验收。
+
 **当前推理设计：** 2026-10-27，累计67组134张亮暗图及134份中文规格。本轮补六类任务结果详情12张，修订四张短屏导航、两张实例分割长JSON页签及两张关键点主图。见[页面规划](inference-pages-design.md)、[任务详情定义](inference-result-details-design.md)、[中文提示词](prompts/推理.md)、[设计总览](generated/推理/设计总览.html)和[本轮复核](inference-design-review.md#18-任务详情与折叠导航复核)。当前清单中的独立布局已有对应图，同构状态有复用规则；真实交互、响应式和服务契约仍须实现验证。
 
 **当前部署设计：** 2026-10-26，累计74组亮暗配对、148张静态图与148份中文规格，第四批已补11组22张交互收尾图。保留完整布局和操作，仅压缩冗余说明。待用户审阅。见[页面规划](deployment-pages-design.md)、[异常恢复与后端参数](deployment-closure-states-design.md)、[交互收尾](deployment-interaction-completion-design.md)、[中文提示词](prompts/部署.md)、[设计总览](generated/部署/设计总览.html)和[逐图复核](deployment-design-review.md)。指定的主要流程和恢复分支已补齐；真实交互及功能实现另行验证。

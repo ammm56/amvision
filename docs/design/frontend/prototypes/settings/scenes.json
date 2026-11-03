@@ -1,0 +1,226 @@
+[
+  {
+    "id": "preferences",
+    "name": "设置-偏好",
+    "page": "preferences",
+    "state": "normal",
+    "width": 1133,
+    "height": 1142
+  },
+  {
+    "id": "startup",
+    "name": "设置-启动页面",
+    "page": "startup",
+    "state": "normal",
+    "width": 1133,
+    "height": 1142
+  },
+  {
+    "id": "services",
+    "name": "设置-运行状态",
+    "page": "services",
+    "state": "normal",
+    "width": 1133,
+    "height": 1142
+  },
+  {
+    "id": "about",
+    "name": "设置-关于",
+    "page": "about",
+    "state": "normal",
+    "width": 1133,
+    "height": 1142
+  },
+  {
+    "id": "host",
+    "name": "设置-系统信息",
+    "page": "host",
+    "state": "normal",
+    "width": 1133,
+    "height": 1142
+  },
+  {
+    "id": "python",
+    "name": "设置-Python运行时",
+    "page": "python",
+    "state": "normal",
+    "width": 1133,
+    "height": 1142
+  },
+  {
+    "id": "devices",
+    "name": "设置-设备信息",
+    "page": "devices",
+    "state": "normal",
+    "width": 1133,
+    "height": 1142
+  },
+  {
+    "id": "session",
+    "name": "设置-会话与权限",
+    "page": "session",
+    "state": "normal",
+    "width": 1133,
+    "height": 1142
+  },
+  {
+    "id": "accounts",
+    "name": "设置-用户管理",
+    "page": "accounts",
+    "state": "normal",
+    "width": 1133,
+    "height": 1142
+  },
+  {
+    "id": "create",
+    "name": "创建用户",
+    "page": "accounts",
+    "state": "create",
+    "width": 1133,
+    "height": 1142
+  },
+  {
+    "id": "access",
+    "name": "编辑权限",
+    "page": "accounts",
+    "state": "access",
+    "width": 1133,
+    "height": 1142
+  },
+  {
+    "id": "token-form",
+    "name": "创建Token",
+    "page": "accounts",
+    "state": "token-form",
+    "width": 1133,
+    "height": 1142
+  },
+  {
+    "id": "token-result",
+    "name": "Token创建结果",
+    "page": "accounts",
+    "state": "token-result",
+    "width": 1133,
+    "height": 1142
+  },
+  {
+    "id": "password",
+    "name": "重置用户密码",
+    "page": "accounts",
+    "state": "password",
+    "width": 1133,
+    "height": 1142
+  },
+  {
+    "id": "delete",
+    "name": "删除用户确认",
+    "page": "accounts",
+    "state": "delete",
+    "width": 1133,
+    "height": 1142
+  },
+  {
+    "id": "revoke",
+    "name": "撤销Token确认",
+    "page": "accounts",
+    "state": "revoke",
+    "width": 1133,
+    "height": 1142
+  },
+  {
+    "id": "readonly",
+    "name": "用户管理-只读",
+    "page": "accounts",
+    "state": "readonly",
+    "width": 1133,
+    "height": 1142
+  },
+  {
+    "id": "startup-projects",
+    "name": "启动页面-项目页面",
+    "page": "startup",
+    "state": "projects",
+    "width": 1133,
+    "height": 1142
+  },
+  {
+    "id": "startup-invalid",
+    "name": "启动页面-目标失效",
+    "page": "startup",
+    "state": "invalid",
+    "width": 1133,
+    "height": 1142
+  },
+  {
+    "id": "leave-confirm",
+    "name": "启动页面-离开确认",
+    "page": "startup",
+    "state": "leave-confirm",
+    "width": 1133,
+    "height": 1142
+  },
+  {
+    "id": "services-loading",
+    "name": "运行状态-首次加载",
+    "page": "services",
+    "state": "loading",
+    "width": 1133,
+    "height": 1142
+  },
+  {
+    "id": "services-partial",
+    "name": "运行状态-部分异常",
+    "page": "services",
+    "state": "partial",
+    "width": 1133,
+    "height": 1142
+  },
+  {
+    "id": "services-stale",
+    "name": "运行状态-断线待确认",
+    "page": "services",
+    "state": "stale",
+    "width": 1133,
+    "height": 1142
+  },
+  {
+    "id": "python-error",
+    "name": "Python运行时-依赖异常",
+    "page": "python",
+    "state": "error",
+    "width": 1133,
+    "height": 1142
+  },
+  {
+    "id": "devices-cpu",
+    "name": "设备信息-CPU模式",
+    "page": "devices",
+    "state": "cpu",
+    "width": 1133,
+    "height": 1142
+  },
+  {
+    "id": "services-details",
+    "name": "运行状态-技术与消费者明细",
+    "page": "services",
+    "state": "details",
+    "width": 1133,
+    "height": 1400
+  },
+  {
+    "id": "services-short",
+    "name": "运行状态-短屏",
+    "page": "services",
+    "state": "normal",
+    "width": 1366,
+    "height": 768
+  },
+  {
+    "id": "create-short",
+    "name": "创建用户-短屏",
+    "page": "accounts",
+    "state": "create",
+    "width": 1366,
+    "height": 768
+  }
+]
