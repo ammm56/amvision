@@ -1,10 +1,10 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.mapped-roi-crop",
-  "version": "0.1.8",
+  "version": "0.1.10",
   "display_name": "Mapped ROI Crop",
   "category": "opencv.image.transform",
-  "description": "按参考变换裁剪校正矩形图；roi 或 roi_items 二选一。可连接父裁图局部窗口，直接采样窗口而不生成完整父裁图。坐标倍率显式配置，越界拒绝。",
+  "description": "按参考变换裁剪校正矩形图；roi、rois 或 roi_items 仅连接一个。可连接父裁图局部窗口，直接采样窗口而不生成完整父裁图。坐标倍率显式配置，越界拒绝。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",
   "concurrency_policy": "thread-safe",
@@ -37,6 +37,12 @@
       "name": "window_roi",
       "display_name": "Local Window ROI",
       "payload_type_id": "roi.v1",
+      "required": false
+    },
+    {
+      "name": "rois",
+      "display_name": "ROIs",
+      "payload_type_id": "roi-list.v1",
       "required": false
     },
     {
@@ -106,5 +112,5 @@
     ]
   },
   "node_pack_id": "opencv.nodes",
-  "node_pack_version": "0.1.8"
+  "node_pack_version": "0.1.10"
 }

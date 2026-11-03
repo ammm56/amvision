@@ -1,7 +1,7 @@
 {
   "format_id": "amvision.node-pack-manifest.v1",
   "id": "opencv.nodes",
-  "version": "0.1.8",
+  "version": "0.1.10",
   "displayName": "OpenCV Nodes",
   "description": "提供通用 OpenCV 图像、圆心定位、几何阵列、ROI 取参、前景与边界比较、局部映射裁剪和可视化节点。",
   "category": "vision",

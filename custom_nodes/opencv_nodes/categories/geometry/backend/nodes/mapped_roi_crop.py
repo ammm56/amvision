@@ -92,9 +92,12 @@ def handle_node(request):
     try:
         settings = Settings.model_validate(request.parameters)
         raw_roi = request.input_values.get("roi")
+        raw_rois = request.input_values.get("rois")
         raw_items = request.input_values.get("roi_items")
-        if (raw_roi is None) == (raw_items is None):
-            raise ValueError("roi 与 roi_items 必须连接且仅连接一个")
+        if sum(v is not None for v in (raw_roi, raw_rois, raw_items)) != 1:
+            raise ValueError("roi、rois 与 roi_items 必须连接且仅连接一个")
+        if raw_rois is not None:
+            raw_roi = raw_rois
         if raw_roi is not None:
             raw = [
                 {"roi_id": item["roi_id"], "bbox_xyxy": item["bbox_xyxy"]}

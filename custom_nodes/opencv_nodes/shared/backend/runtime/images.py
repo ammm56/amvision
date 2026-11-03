@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from backend.nodes.save_locations import (
@@ -17,6 +18,8 @@ from backend.nodes.runtime_support import (
     register_image_matrix,
     register_image_bytes,
     register_typed_image_matrix,
+    resolve_image_reference,
+    require_dataset_storage,
 )
 from backend.service.application.errors import (
     InvalidRequestError,
@@ -25,6 +28,20 @@ from backend.service.application.errors import (
 from custom_nodes.opencv_nodes.shared.backend.runtime.imports import (
     require_opencv_imports,
 )
+
+
+def resolve_image_file_path(request: object) -> tuple[dict[str, object], Path]:
+    """按标准 image-ref 解析本地/ObjectStore 文件，不将内存输入隐式落盘。"""
+    resolved = resolve_image_reference(request)
+    if resolved.transport_kind == "local-path":
+        path = Path(resolved.local_path)
+    elif resolved.transport_kind == "storage":
+        path = require_dataset_storage(request).resolve(resolved.object_key)
+    else:
+        raise InvalidRequestError("文件解码方式仅支持 local-path 或 storage 图片引用")
+    if not path.is_file():
+        raise InvalidRequestError("图片节点引用的文件不存在")
+    return dict(resolved.payload), path
 
 
 class EncodedImageBytes:

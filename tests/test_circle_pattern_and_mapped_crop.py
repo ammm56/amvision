@@ -242,6 +242,33 @@ def test_mapped_crop_pixels_identity_budget_and_scale(tmp_path, dtype):
         )
         with pytest.raises(InvalidRequestError):
             handle_node(replace(roi_req, input_values=values | {"roi": roi}))
+        # 标准 ROI 列表一次裁剪，与逐个调用的像素、ID、坐标逐项完全一致。
+        regions = [roi, roi | {"roi_id": "part-c", "bbox_xyxy": [15, 10, 35, 30]}]
+        list_req = replace(
+            roi_req, input_values=roi_req.input_values | {"roi": None, "rois": regions}
+        )
+        batch = handle_node(list_req)["crops"]["items"]
+        for region, actual in zip(regions, batch, strict=True):
+            single = handle_node(
+                replace(roi_req, input_values=roi_req.input_values | {"roi": region})
+            )["crops"]["items"][0]
+            np.testing.assert_array_equal(
+                registry.read_matrix(actual["image_handle"]),
+                registry.read_matrix(single["image_handle"]),
+            )
+            assert actual["roi_id"] == single["roi_id"]
+            assert actual["mapped_source"] == single["mapped_source"]
+        empty = handle_node(
+            replace(
+                list_req,
+                input_values=list_req.input_values | {"selected_ids": {"value": []}},
+            )
+        )
+        assert empty["crops"]["count"] == 0
+        with pytest.raises(InvalidRequestError):
+            handle_node(
+                replace(list_req, input_values=list_req.input_values | {"roi": roi})
+            )
         # 工件图二次选择任意尺寸搜索框，原图变换应与两次裁剪逐像素一致。
         from custom_nodes.opencv_nodes.categories.basic.backend.nodes.crop_export import (
             handle_node as crop_export,

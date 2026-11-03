@@ -5235,7 +5235,7 @@
       "description": "显式解码图片为当前执行内共享的原始矩阵，保留像素类型和通道；执行结束释放。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.8",
+      "version": "0.1.10",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -5261,7 +5261,19 @@
       ],
       "parameter_schema": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "decode_method": {
+            "type": "string",
+            "enum": [
+              "opencv",
+              "bmp-bgr24"
+            ],
+            "default": "opencv",
+            "title": "Decode Method",
+            "description": "opencv 支持普通图片输入；bmp-bgr24 解码未压缩 24 位 BMP，本地/ObjectStore 文件通过短期映射读取，上传或协议输入从编码缓冲区读取；保留全部像素，格式不匹配时明确报错。"
+          }
+        },
+        "additionalProperties": false
       },
       "parameter_ui_schema": null,
       "capability_tags": [
@@ -5275,7 +5287,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.8",
+      "node_pack_version": "0.1.10",
       "metadata": {}
     },
     {
