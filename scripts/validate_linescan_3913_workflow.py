@@ -115,9 +115,9 @@ async def validate(args):
                 "parameters"
             ]["bbox_xyxy"] = args.barcode_bbox
         if getattr(args, "deployment_id", None):
-            next(n for n in template["nodes"] if n["node_id"] == "detect_code")[
-                "parameters"
-            ]["deployment_instance_id"] = args.deployment_id
+            for node in template["nodes"]:
+                if node["node_type_id"] in {"core.model.detection", "core.model.detection-batch"}:
+                    node["parameters"]["deployment_instance_id"] = args.deployment_id
         session = await call(
             "POST",
             "/api/v1/workflows/preview-sessions",
@@ -202,9 +202,9 @@ async def validate(args):
                             "type": "input.begin",
                             "transfer_id": str(transfer),
                             "byte_length": len(content),
-                            "media_type": "image/png"
-                            if Path(args.image).suffix.lower() == ".png"
-                            else "image/jpeg",
+                            "media_type": {".bmp": "image/bmp", ".png": "image/png"}.get(
+                                Path(args.image).suffix.lower(), "image/jpeg"
+                            ),
                             "sha256": hashlib.sha256(content).hexdigest(),
                             "file_name": Path(args.image).name,
                         }

@@ -4,6 +4,7 @@ import argparse
 import copy
 from datetime import datetime
 import json
+from itertools import count
 from pathlib import Path
 from time import perf_counter, sleep
 
@@ -21,10 +22,22 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--deployment-id", required=True)
     parser.add_argument("--runs", type=int, default=1)
+    parser.add_argument(
+        "--duration-seconds",
+        type=int,
+        default=0,
+        help="连续串行调用至指定时长；仅用于验收，不改变 Runtime 调度",
+    )
+    parser.add_argument("--bundle", type=Path, help="可选固定工作流快照，用于交替对照")
+    parser.add_argument("--decode-method", choices=["opencv", "bmp-bgr24"])
     parser.add_argument("--report", default="runtime-openvino")
     parser.add_argument("--diagnostics", action="store_true")
-    parser.add_argument("--timings", action="store_true", help="返回已有节点计时，不新增诊断节点")
-    parser.add_argument("--baseline-report", help="逐槽比较已有 Runtime 报告中的检测数值")
+    parser.add_argument(
+        "--timings", action="store_true", help="返回已有节点计时，不新增诊断节点"
+    )
+    parser.add_argument(
+        "--baseline-report", help="逐槽比较已有 Runtime 报告中的检测数值"
+    )
     parser.add_argument("--batch", action="store_true")
     parser.add_argument("--image", default="3913正面大图.bmp")
     parser.add_argument("--barcode-bbox", type=int, nargs=4)
@@ -34,7 +47,9 @@ def main():
     if args.baseline_report:
         baseline = json.loads(Path(args.baseline_report).read_text("utf-8"))
         previous = baseline["runs"][0]["response"]
-        previous = (previous.get("outputs") or previous.get("results"))["report"]["value"]
+        previous = (previous.get("outputs") or previous.get("results"))["report"][
+            "value"
+        ]
         baseline_checks = checks_by_id(previous)
     root = (DATA / "validation/front-performance").resolve()
     out = (root / args.report).resolve()
@@ -50,7 +65,14 @@ def main():
     image_path = (DATA / args.image).resolve()
     if not image_path.is_relative_to(DATA.resolve()) or not image_path.is_file():
         raise ValueError("验证图片必须是当前线扫数据目录中的已有文件")
-    result = {"application_id": aid, "runs": [], "cleanup": {}, "options": vars(args)}
+    result = {
+        "application_id": aid,
+        "runs": [],
+        "cleanup": {},
+        "options": {
+            k: str(v) if isinstance(v, Path) else v for k, v in vars(args).items()
+        },
+    }
     with httpx.Client(
         base_url="http://127.0.0.1:5600",
         timeout=240,
@@ -107,6 +129,9 @@ def main():
                 prefix
                 + f"/projects/project-1/templates/{ref['template_id']}/versions/{ref['template_version']}",
             )["template"]
+            if args.bundle:
+                bundle = json.loads(args.bundle.read_text("utf-8"))
+                app, template = bundle["application"], bundle["template"]
             app.update(
                 application_id=aid, display_name="3913 CPU 性能临时验证 " + stamp
             )
@@ -136,7 +161,13 @@ def main():
                     node["parameters"]["deployment_instance_id"] = args.deployment_id
                 if node["node_id"] == "barcode_roi" and args.barcode_bbox:
                     node["parameters"]["bbox_xyxy"] = args.barcode_bbox
-                if node["node_id"] == "compare_foreground" and args.reject_all and node["node_type_id"] == "custom.opencv.roi-foreground-compare":
+                if node["node_id"] == "decoded_source" and args.decode_method:
+                    node["parameters"]["decode_method"] = args.decode_method
+                if (
+                    node["node_id"] == "compare_foreground"
+                    and args.reject_all
+                    and node["node_type_id"] == "custom.opencv.roi-foreground-compare"
+                ):
                     node["parameters"]["max_centroid_shift_pixels"] = 0
                 if node["node_id"] == "check_reference_area" and args.reject_all:
                     node["parameters"]["minimum"] = 1_000_000_000
@@ -181,6 +212,24 @@ def main():
                             "target_port": target_port,
                         }
                     )
+            if any(node["node_id"] == "final_report" for node in template["nodes"]):
+                # 验证副本额外公开已有诊断，核对新 JSON 汇总没有改变原检测数值。
+                diagnostic = copy.deepcopy(
+                    next(b for b in app["bindings"] if b["binding_id"] == "report")
+                )
+                diagnostic.update(
+                    binding_id="audit_report", template_port_id="audit_report"
+                )
+                app["bindings"].append(diagnostic)
+                template["template_outputs"].append(
+                    {
+                        "output_id": "audit_report",
+                        "display_name": "审计原始检测",
+                        "payload_type_id": "value.v1",
+                        "source_node_id": "report",
+                        "source_port": "value",
+                    }
+                )
             (out / "workflow-bundle.json").write_text(
                 json.dumps(
                     {"application": app, "template": template},
@@ -220,13 +269,23 @@ def main():
             result["memory_before"] = memory()
             result["environment_before"] = environment()
             save()
-            for index in range(args.runs):
+            repeated_start = perf_counter()
+            for index in count():
+                if (
+                    index >= args.runs
+                    and perf_counter() - repeated_start >= args.duration_seconds
+                ):
+                    break
                 start = perf_counter()
                 response = call(
                     "POST",
                     runtime_url
                     + "/invoke"
-                    + ("?response_mode=debug" if args.diagnostics or args.timings else ""),
+                    + (
+                        "?response_mode=debug"
+                        if args.diagnostics or args.timings
+                        else ""
+                    ),
                     json={
                         "input_bindings": {
                             "request_image_ref": {
@@ -240,9 +299,12 @@ def main():
                         "timeout_seconds": 120,
                         "execution_metadata": {
                             "workflow_run_record_mode": "none",
-                            "retain_node_records_enabled": args.diagnostics or args.timings,
-                            "return_timing_metadata_enabled": args.diagnostics or args.timings,
-                            "return_node_timings_enabled": args.diagnostics or args.timings,
+                            "retain_node_records_enabled": args.diagnostics
+                            or args.timings,
+                            "return_timing_metadata_enabled": args.diagnostics
+                            or args.timings,
+                            "return_node_timings_enabled": args.diagnostics
+                            or args.timings,
                         },
                     },
                 )
@@ -256,6 +318,7 @@ def main():
                         "environment": environment(),
                     }
                 )
+                result["repeated_elapsed_seconds"] = perf_counter() - repeated_start
                 save()
                 print(
                     "run", index + 1, round(elapsed, 2), str(response)[:160], flush=True
@@ -270,9 +333,8 @@ def main():
                 _, reference = result_value(
                     DATA / "validation/front-array/stage2-original"
                 )
-                value = (response.get("outputs") or response.get("results"))["report"][
-                    "value"
-                ]
+                outputs = response.get("outputs") or response.get("results")
+                value = outputs.get("audit_report", outputs["report"])["value"]
                 expected = code_texts(reference)
                 # ROI Grid 已显式统一 ID 命名，按键转换旧基准，不按位置关联。
                 expected = {
@@ -301,8 +363,13 @@ def main():
                     "codes_equal_by_id": True,
                     "decoded_slot_count": len(expected),
                 }
+                if "audit_report" in outputs:
+                    validate_final_result(outputs["report"]["value"], value, expected)
+                    result["runs"][-1]["correctness"]["final_result_matches"] = True
                 if baseline_checks is not None:
-                    assert checks_by_id(value) == baseline_checks, "检测逐项数值或判定与基准不一致"
+                    assert checks_by_id(value) == baseline_checks, (
+                        "检测逐项数值或判定与基准不一致"
+                    )
                     result["runs"][-1]["correctness"]["measurements_equal_by_id"] = True
                 save()
                 sleep(1)
@@ -332,6 +399,31 @@ def checks_by_id(summary):
     result = {item["item_id"]: item["result"] for item in items}
     assert len(result) == len(items), "检测结果中存在重复槽位 ID"
     return result
+
+
+def validate_final_result(result, diagnostics, expected):
+    """按 ID 对照原始检测和码值，验证统一坐标及完整 NG 记录。"""
+    assert result["image_size"] == [2500, 2048]
+    assert result["coordinate_space"] == "resized-source-image-pixels"
+    assert result["count"] == result["expected_count"] == 18
+    by_id = {item["item_id"]: item for item in result["items"]}
+    assert len(by_id) == 18
+    for original in diagnostics["placement_2d"]["items"]:
+        item = by_id[original["item_id"]]
+        assert item["placement"]["result"] == (
+            "OK" if original["result"]["passed"] else "NG"
+        )
+        assert item["barcode"]["values"] == expected.get(original["item_id"], [])
+        assert item["placement"]["roi"]["polygon_xy"]
+        for geometry in [item["placement"]["roi"], *item["barcode"]["detections"]]:
+            x1, y1, x2, y2 = geometry["bbox_xyxy"]
+            assert 0 <= x1 < x2 <= 2500 and 0 <= y1 < y2 <= 2048
+        assert (item["result"] == "OK") == (
+            item["placement"]["result"] == "OK" and item["barcode"]["result"] == "OK"
+        )
+    assert (result["result"] == "OK") == all(
+        item["result"] == "OK" for item in result["items"]
+    )
 
 
 if __name__ == "__main__":

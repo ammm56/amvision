@@ -4,6 +4,8 @@
 
 ## 入口
 
+- [3913 正面大图读取与编排优化验证（2026-10-30）](linescan-front-optimization-20261030.md)
+- [3913 正面逐工件结果与坐标验证（2026-10-29）](linescan-front-result-20261029.md)
 - [完整发行栈排障](release-full-troubleshooting.md)
 - [代码、模型链路与架构核对（2026-10-13）](code-audit-20261013.md)
 - [0.1.8 开发环境链路验证（2026-10-05）](development-acceptance-20261005.md)
