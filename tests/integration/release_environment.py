@@ -8,9 +8,11 @@ def build_release_test_environment(release_root: Path) -> dict[str, str]:
     """保留系统环境和显式 CUDA Toolkit，清除开发 Python、Node 和 AMVISION 覆盖。"""
     environment = {key: value for key, value in os.environ.items()
                    if not key.upper().startswith(("CONDA", "PYTHON", "AMVISION_"))
-                   and key.upper() != "PATH"}
+                   and key.upper() not in {"PATH", "LD_LIBRARY_PATH", "LD_PRELOAD"}}
     system_root = Path(environment.get("SystemRoot", environment.get("SYSTEMROOT", r"C:\Windows")))
     paths = [release_root / "python", system_root / "System32", system_root]
+    if os.name != "nt":
+        paths = [release_root / "python/bin", Path("/usr/bin"), Path("/bin")]
     cuda_root = environment.get("CUDA_PATH")
     if cuda_root:
         paths.append(Path(cuda_root) / "bin")

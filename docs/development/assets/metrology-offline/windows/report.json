@@ -1,0 +1,44 @@
+{
+  "platform": "nt",
+  "release": "W:\\Workspace\\codex\\python\\amvision\\.tmp\\a12-release\\full-windows-x64-cpu",
+  "cycles": [
+    {
+      "cycle": 0,
+      "state": "succeeded",
+      "item_count": 50,
+      "elapsed_seconds": 28.20299999997951,
+      "static_assets": 6
+    },
+    {
+      "cycle": 1,
+      "state": "succeeded",
+      "item_count": 50,
+      "elapsed_seconds": 22.030999999959022,
+      "static_assets": 6
+    }
+  ],
+  "validate_layout": true,
+  "package_sha256": "cd42ca53137013ec343dd32bd4c700fbfe6430a6edd13c5b242d64789a8927cd",
+  "application_id": "app-fe419264d9cb7c57e65a3d1c1323dab7fb5451c2d9f05869e4fa9e925d179f4a",
+  "version": "workflow-app-version-52fb717cba53425d80ee8b8551b1488a",
+  "runtime_id": "workflow-runtime-a39556d1f3f04e1aab21d3667000aee9",
+  "resource_mapping": [
+    {
+      "source": {
+        "project_id": "project-1",
+        "resource_id": "measurement-cloud-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "version": 1,
+        "sha256": "c9566ae231f30a4b55226673d8644346eb6a58d8bafb66130784596c2da345ed",
+        "kind": "point-cloud"
+      },
+      "target": {
+        "project_id": "project-1",
+        "resource_id": "measurement-cloud-902f34fc96ae5f26251dbb6e41ea14e8d8d1bf05ede51668b06903e998fc99bd",
+        "version": 1,
+        "sha256": "c9566ae231f30a4b55226673d8644346eb6a58d8bafb66130784596c2da345ed",
+        "kind": "point-cloud"
+      }
+    }
+  ],
+  "whole_group_stopped": true
+}

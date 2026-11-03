@@ -553,6 +553,11 @@ def build_python_module_environment(
 
     runtime_env = os.environ.copy()
     code_root = resolve_code_root(app_root)
+    if (app_root / "manifests/release-profiles").is_dir():
+        # 发行只允许包内模块；不继承开发机路径或用户 site-packages。
+        for name in ("PYTHONPATH", "PYTHONHOME", "PYTHONUSERBASE"):
+            runtime_env.pop(name, None)
+        runtime_env["PYTHONNOUSERSITE"] = "1"
     _prepare_local_runtime_paths(app_root, runtime_env)
     existing_python_path = runtime_env.get("PYTHONPATH")
     runtime_env["PYTHONPATH"] = (
@@ -567,6 +572,10 @@ def build_python_module_environment(
 
 def _prepare_local_runtime_paths(app_root: Path, runtime_env: dict[str, str]) -> None:
     """把发布目录或开发目录中的本地运行时加入子进程环境。"""
+
+    native_lib_dir = app_root / "tools/native/lib"
+    if sys.platform == "linux" and native_lib_dir.is_dir():
+        _prepend_env_path(runtime_env, "LD_LIBRARY_PATH", str(native_lib_dir.resolve()))
 
     cudnn_bin_dir = _resolve_cudnn_bin_dir(app_root)
     if cudnn_bin_dir is not None:

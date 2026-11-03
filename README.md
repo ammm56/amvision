@@ -12,7 +12,7 @@ AMVision 是本地优先的工业视觉服务平台，覆盖数据集导入导�
 - [模型与数据格式参考](docs/reference/README.md)
 - [运维与排障](docs/operations/README.md)
 
-源码开发和生产发行使用不同入口。开发态完整链路依次启动 inference daemon、backend-service、`python -m backend.workers.supervisor` 和 Vite；生产态进入组装后的发行目录运行 `start-amvision-full.bat`。两种环境都不能直接运行低层 Worker launcher。
+源码开发和生产发行使用不同入口。开发态完整链路依次启动 inference daemon、backend-service、`python -m backend.workers.supervisor` 和 Vite；生产态进入组装后的发行目录，Windows 运行 `start-amvision-full.bat`，Ubuntu CPU 运行 `./start-amvision-full.sh`，两者使用同目录 Python。两种环境都不能直接运行低层 Worker launcher。CPU 构建与系统依赖见 [离线发行](docs/deployment/cpu-offline-release.md)。
 
 ## License
 

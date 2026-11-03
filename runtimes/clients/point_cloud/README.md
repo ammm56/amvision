@@ -51,7 +51,7 @@ Windows 在发行根目录运行，使用发行包自己的解释器：
 
 同机工具从目标发行根的 `config/backend-service.json` / `backend-service.local.json` 及现有 `AMVISION_` 覆盖加载配置，与服务保持一致。不得混用另一安装目录的共享内存根或开发环境覆盖。发行缺少自己的 Python 时明确失败，不回退系统 Python。源码开发仍使用 `conda activate amvision` 后的当前解释器。
 
-同一入口代码支持 Ubuntu，解释器路径为 `python/bin/python3`；Ubuntu 完整离线包及其原生依赖仍单独验收，不能以入口测试通过替代离线发行通过。工具没有添加平台专用进程控制，沿用已有统一启动、整组停止和退出回收。
+同一入口代码支持 Ubuntu，解释器路径为 `python/bin/python3`。Windows/WSL Ubuntu CPU 完整离线包的实际验证见 [A12 记录](../../../docs/development/3d-metrology-offline-release.md)，不能外推其他目标。工具没有添加平台专用进程控制，沿用已有统一启动、整组停止和退出回收。
 
 ## 生命周期
 

@@ -3,6 +3,11 @@
 import os
 import sys
 
+# Linux UAPI asm-generic/fcntl.h；CPython 是否导出这些常量取决于构建机头文件。
+# 命令与 OFD 语义固定，不回退到 F_SETLK/lockf。
+LINUX_F_OFD_GETLK = 36
+LINUX_F_OFD_SETLK = 37
+
 if os.name == "nt":
     import ctypes
     from ctypes import wintypes
@@ -86,4 +91,4 @@ def change_posix_lock(file_object, *, offset: int, unlock: bool = False) -> None
         length=1,
         pid=0,
     )
-    fcntl.fcntl(file_object.fileno(), fcntl.F_OFD_SETLK, bytes(operation))
+    fcntl.fcntl(file_object.fileno(), LINUX_F_OFD_SETLK, bytes(operation))

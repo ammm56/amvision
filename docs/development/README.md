@@ -5,7 +5,8 @@
 ## 验收与基准
 
 - [三维配方携资源搬运](3d-metrology-cloud-package.md)：A10 依赖闭包、父来源映射、持久恢复及编辑器入口；双平台空环境、完整样本、发布运行与页面证据。
-- [点云调用工具发行](3d-metrology-tool-delivery.md)：已有客户端、配方生成器和正式示例的装配清单、统一入口、搬移调用及失败校验；A12 离线原生运行仍独立推进。
+- [点云调用工具发行](3d-metrology-tool-delivery.md)：已有客户端、配方生成器和正式示例的装配清单、统一入口、搬移调用及失败校验。
+- [CPU 离线发行验收](3d-metrology-offline-release.md)：A12 Windows/WSL Ubuntu 自带 Python、三维原生依赖、空环境资源包导入、完整工件两轮发布运行与停止恢复；复用 A10/A11，不改变性能或计量门禁。
 - [点云资产原始细节显示](3d-metrology-details.md)：复用资产与 Cloud Preview 的空间叶块、精度/原始行号、按视野加载和释放；双平台完整样本、真实页面与剩余容量边界。
 - [三维 1 GB 容量实施与验证](3d-metrology-capacity.md)：只读字段共享、显式容量账本、双平台实写 1 GB 文件/数组与 HTTP Preview、派生保存恢复；十秒、最大容量显示及离线发行仍独立验收。
 

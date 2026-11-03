@@ -289,6 +289,7 @@ def test_assemble_release_rejects_reserved_ubuntu_target(
         json.dumps(
             {
                 "profile_id": "full-ubuntu-x64-cpu",
+                "implementation_status": "reserved",
                 "target": {
                     "os": "ubuntu",
                     "arch": "x64",
@@ -1141,6 +1142,8 @@ def test_release_full_start_cleans_backend_and_daemon_when_daemon_readiness_fail
                 str(result.release_dir),
                 "--logs-subdir",
                 "startup-failure",
+                "--python-executable",
+                str(bundled_python),
             ]
         )
 
@@ -1185,7 +1188,7 @@ def test_release_full_database_migration_failure_prevents_component_start(
     )
 
     with pytest.raises(RuntimeError, match="migration failed"):
-        start_module.main(["--app-root", str(result.release_dir)])
+        start_module.main(["--app-root", str(result.release_dir), "--python-executable", str(result.release_dir / "python/python.exe")])
 
 
 def _patch_release_runtime_asset_sources(

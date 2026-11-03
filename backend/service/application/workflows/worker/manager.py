@@ -2409,7 +2409,10 @@ class WorkflowRuntimeWorkerManager:
         try:
             if self._stopping.is_set():
                 return
-            with self._resolve_runtime_lifecycle_lock(runtime_id):
+            with self.runtime_lifecycle_guard(runtime_id, acquisition_mode="reject"):
+                # 调度后可能已有显式 start 完成；后台恢复不能排在控制操作后再次夺取准入。
+                if self._stopping.is_set() or self.is_runtime_available(runtime_id):
+                    return
                 recovery_target = self._get_recoverable_runtime_target(runtime_id)
                 if recovery_target is None:
                     return
@@ -2450,6 +2453,9 @@ class WorkflowRuntimeWorkerManager:
             with self._lock:
                 self._recovery_failures.pop(runtime_id, None)
                 self._recovery_next_attempt_at.pop(runtime_id, None)
+        except WorkflowRuntimeBusyError:
+            # 由既有下一次缺失 worker 扫描复核，不把正常启停记为恢复故障。
+            return
         except Exception as error:  # noqa: BLE001 - 单个 runtime 失败不能终止恢复线程
             if recovery_worker_instance_id is not None:
                 try:

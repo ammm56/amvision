@@ -1,0 +1,211 @@
+{
+  "command": "validate-layout",
+  "valid": true,
+  "app_root": "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu",
+  "layout_kind": "release",
+  "target": {
+    "os": "ubuntu",
+    "arch": "x64",
+    "platform_tag": "ubuntu-x64"
+  },
+  "accelerator": {
+    "kind": "cpu"
+  },
+  "workspace_dir": "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/data/maintenance",
+  "paths": {
+    "config": {
+      "path": "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/config",
+      "exists": true,
+      "candidates": [
+        "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/config"
+      ]
+    },
+    "data": {
+      "path": "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/data",
+      "exists": true,
+      "candidates": [
+        "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/data"
+      ]
+    },
+    "launchers": {
+      "path": "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/launchers",
+      "exists": true,
+      "candidates": [
+        "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/launchers",
+        "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/runtimes/launchers"
+      ]
+    },
+    "release_profiles": {
+      "path": "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/manifests/release-profiles",
+      "exists": true,
+      "candidates": [
+        "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/manifests/release-profiles",
+        "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/runtimes/manifests/release-profiles"
+      ]
+    },
+    "worker_profiles": {
+      "path": "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/manifests/worker-profiles",
+      "exists": true,
+      "candidates": [
+        "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/manifests/worker-profiles",
+        "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/runtimes/manifests/worker-profiles"
+      ]
+    },
+    "root_readme": {
+      "path": "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/README.md",
+      "exists": true,
+      "candidates": [
+        "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/README.md"
+      ]
+    },
+    "root_license": {
+      "path": "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/LICENSE",
+      "exists": true,
+      "candidates": [
+        "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/LICENSE"
+      ]
+    },
+    "root_license_zh_cn": {
+      "path": "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/LICENSE.zh-CN",
+      "exists": true,
+      "candidates": [
+        "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/LICENSE.zh-CN"
+      ]
+    },
+    "root_commercial_license_notice": {
+      "path": "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/COMMERCIAL_LICENSE_REQUIRED.md",
+      "exists": true,
+      "candidates": [
+        "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/COMMERCIAL_LICENSE_REQUIRED.md"
+      ]
+    },
+    "app_backend": {
+      "path": "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/app/backend",
+      "exists": true,
+      "candidates": [
+        "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/app/backend"
+      ]
+    },
+    "app_requirements": {
+      "path": "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/app/requirements.txt",
+      "exists": true,
+      "candidates": [
+        "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/app/requirements.txt"
+      ]
+    },
+    "custom_nodes": {
+      "path": "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/custom_nodes",
+      "exists": true,
+      "candidates": [
+        "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/custom_nodes"
+      ]
+    },
+    "ffmpeg_tools": {
+      "path": "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/tools/ffmpeg/linux-x64",
+      "exists": true,
+      "candidates": [
+        "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/tools/ffmpeg/linux-x64"
+      ]
+    },
+    "frontend_index": {
+      "path": "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/frontend/index.html",
+      "exists": true,
+      "candidates": [
+        "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/frontend/index.html"
+      ]
+    },
+    "frontend_runtime_config": {
+      "path": "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/frontend/runtime-config.template.json",
+      "exists": true,
+      "candidates": [
+        "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/frontend/runtime-config.json",
+        "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/frontend/runtime-config.template.json"
+      ]
+    },
+    "python_executable": {
+      "path": "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/python/bin/python3",
+      "exists": true,
+      "candidates": [
+        "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/python/bin/python3"
+      ]
+    },
+    "start_launcher": {
+      "path": "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/start-amvision-full.sh",
+      "exists": true,
+      "candidates": [
+        "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/start-amvision-full.sh"
+      ]
+    },
+    "stop_launcher": {
+      "path": "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/stop-amvision-full.sh",
+      "exists": true,
+      "candidates": [
+        "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/stop-amvision-full.sh"
+      ]
+    }
+  },
+  "forbidden_paths": {
+    "windows_python": {
+      "path": "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/python/python.exe",
+      "exists": false,
+      "valid": true
+    },
+    "windows_start_launcher": {
+      "path": "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/start-amvision-full.bat",
+      "exists": false,
+      "valid": true
+    },
+    "windows_stop_launcher": {
+      "path": "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/stop-amvision-full.bat",
+      "exists": false,
+      "valid": true
+    },
+    "windows_ffmpeg": {
+      "path": "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/tools/ffmpeg/windows-x64",
+      "exists": false,
+      "valid": true
+    },
+    "cpu_tensorrt_tools": {
+      "path": "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/tools/tensorrt",
+      "exists": false,
+      "valid": true
+    },
+    "cpu_cudnn_tools": {
+      "path": "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/tools/cudnn",
+      "exists": false,
+      "valid": true
+    }
+  },
+  "runtime": {
+    "valid": true,
+    "python_executable": "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu/python/bin/python3.12",
+    "python_version": "3.12.16",
+    "pointer_bits": 64,
+    "machine": "x86_64",
+    "requirements_valid": true,
+    "accelerator": {
+      "kind": "cpu",
+      "torch_version": "2.12.1+cpu",
+      "torch_cuda_version": null,
+      "cuda_available": false,
+      "cudnn_version": null
+    },
+    "metrology": {
+      "valid": true,
+      "versions": {
+        "numpy": "2.4.4",
+        "scipy": "1.18.0",
+        "open3d": "0.20.0",
+        "trimesh": "5.1.1+amvision.2",
+        "pypcd4": "1.5.1+amvision.2",
+        "python-neo-lzf": "0.3.5"
+      },
+      "issues": []
+    },
+    "ipc": {
+      "valid": true,
+      "issues": []
+    },
+    "issues": []
+  }
+}

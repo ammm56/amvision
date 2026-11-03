@@ -49,8 +49,9 @@ pyproject-hooks 1.3.3 构建；当前身份由 `wheels.lock.json` 固定。
 
 集成套件显式检查安装版本和模块内容；缺依赖/装原版直接失败，不 skip。
 它位于 `tests/integration/`，不使尚未启用三维依赖的常规后端测试无法收集。
-同目录 Python 发行态也必须安装同一固定 wheel；本轮尚未启用 release profile，
-不修改现有 `requirements.txt`/`requirements_cpu.txt` 或生产 Python 环境。
+同目录 Python 发行态也必须安装同一固定 wheel；A12 已在 Windows/Ubuntu CPU 包中
+复用节点 manifest 生成三维依赖锁，携带 wheel、构建记录并核验摘要及原生加载。
+详见 [CPU 离线发行](../../docs/deployment/cpu-offline-release.md)，不修改已有生产 Python 环境。
 
 ## 严格接口
 

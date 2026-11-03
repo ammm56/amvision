@@ -1,11 +1,12 @@
-# Windows 发行与生产启动
+# Windows / Ubuntu 发行与生产启动
 
 当前可交付 profile：
 
 - `full-windows-x64-cpu`
 - `full-windows-x64-nvidia`
+- `full-ubuntu-x64-cpu`
 
-Ubuntu profile 仅保留命名，不可组装或交付。
+Ubuntu CPU 已接入同一装配器与 full Supervisor；原生库、同目录 Python 和操作步骤见 [CPU 离线发行](cpu-offline-release.md)。Ubuntu NVIDIA 仍为预留。以下桌面 EXE 与 PowerShell 示例仅适用 Windows。
 
 Windows 文件存储当前验证为支持 FileRenameInfoEx / POSIX 替换语义的本地 NTFS；网络共享、其他文件系统或旧系统需单独验证。Bundled Python 通过标准库 ctypes 调用 kernel32，无新增 DLL 或 pip 依赖。文件并发与故障处理见[文件替换验证](../operations/windows-file-replace-audit-20260918.md)。
 

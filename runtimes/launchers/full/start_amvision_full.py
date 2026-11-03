@@ -459,8 +459,9 @@ def _validate_required_files(
         app_root / "app" / "backend" / "alembic.ini",
         app_root / "app" / "backend" / "alembic" / "env.py",
         app_root / "launchers" / "maintenance" / "invoke_backend_maintenance.py",
-        app_root / "launchers" / "enable_windows_long_paths.py",
     ]
+    if release_manifest.get("target", {}).get("os") == "windows":
+        required_paths.append(app_root / "launchers" / "enable_windows_long_paths.py")
     daemon_entry = release_manifest.get("inference_daemon")
     if not isinstance(daemon_entry, dict):
         raise ValueError("release manifest 必须包含 inference_daemon")

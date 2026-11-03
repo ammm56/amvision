@@ -1,14 +1,21 @@
 {
   "profile_id": "full-ubuntu-x64-cpu",
-  "display_name": "amvision full Ubuntu x64 CPU（预留）",
-  "description": "为未来 Ubuntu x64 CPU 发布固定的 profile id；当前阶段未实现，assemble-release 会拒绝组装。",
-  "implementation_status": "reserved",
+  "display_name": "amvision full Ubuntu x64 CPU",
+  "description": "Ubuntu x64 CPU 本地发行，包含统一启动器、静态前端、三维节点和六类 worker；运行数据使用原生文件系统。",
   "target": {
     "os": "ubuntu",
     "arch": "x64",
     "platform_tag": "ubuntu-x64"
   },
-  "accelerator": {
-    "kind": "cpu"
+  "accelerator": {"kind": "cpu"},
+  "worker": {"worker_profile_ids": ["dataset-import", "dataset-export", "training", "conversion", "evaluation", "inference"]},
+  "maintenance": {"default_command": "validate-layout"},
+  "artifacts": {
+    "include_frontend": true,
+    "include_tensorrt_runtime": false,
+    "include_cudnn_runtime": false,
+    "ffmpeg_platform": "linux-x64",
+    "requirements_file": "requirements_cpu.txt",
+    "requirements_exclude_packages": []
   }
 }

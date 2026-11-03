@@ -55,14 +55,14 @@
 
 当前 `assemble-release` 的 bundled Python 处理规则如下：
 
-- 不维护 `runtime-cache/`，也不自动准备大体量 Python 环境；Windows x64 CPU 和 NVIDIA 环境由发布人员手工复制到各自发布目录的 `python/`。
-- 首次组装只创建空 `python/`，复制完成后应至少存在 `python/python.exe`。
+- 不维护 `runtime-cache/`，也不自动准备大体量 Python 环境；Windows x64 CPU/NVIDIA 和 Ubuntu x64 CPU 环境由构建人员准备到各自发布目录的 `python/`。必须包含标准库与全部依赖，不接受依赖系统 Python 的 venv。
+- 首次组装只创建空 `python/`，复制完成后 Windows 应存在 `python/python.exe`，Ubuntu 应存在 `python/bin/python3`。目标平台步骤见 [CPU 离线发行](cpu-offline-release.md)。
 - 如果覆盖已有发布目录，组装阶段会先把旧的 `python/` 目录临时移动到旁路目录，完成发布目录重建后再移动回来。
 - 如果 release 组装失败，暂存的 `python/` 目录会恢复回发布目录，避免失败时丢失原有运行时。
 - `assemble-release` 不接受 Python 来源目录，也不会复制或重建 Python 环境。
 - 如需更换 bundled Python，应先停止发布目录中的全部进程，再由发布人员在同一磁盘上直接重命名/移动已经准备好的环境目录；必须跨磁盘时才手工复制。
 - 如果当前发布目录原本没有可执行的 Python，组装阶段会在 release manifest 中把 bundled Python 状态标记为 `placeholder-empty`；只有检测到 Windows `python/python.exe` 或 Linux `python/bin/python[3]` 才会标记为已包含。
-- full 启动器强制要求 `python/python.exe`；缺失时直接失败，不回退到系统 Python 或当前 conda 环境。
+- full 启动器强制要求目标平台的随包 Python；缺失时直接失败，不回退到系统 Python 或当前 conda 环境。发行子进程清除外部 `PYTHONHOME`、`PYTHONUSERBASE` 和 `PYTHONPATH`，仅加入本包代码目录。
 - full Supervisor 启动常驻子进程前会删除父终端继承的 `CONDA_*`、`_CE_CONDA` 和 `_CE_M` 标记，避免同目录 Python 在诊断或子进程中被误认为外部 conda 环境；不会删除正常的 PATH、GPU 或本地运行时配置。
 
 ### 4. 启动 backend-service

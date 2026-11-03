@@ -16,6 +16,7 @@ from typing import Callable
 from backend.version import BACKEND_VERSION
 from backend.maintenance.launcher_release import copy_launcher_package, validate_launcher_package
 from backend.maintenance.point_cloud_delivery import copy_point_cloud_delivery
+from backend.maintenance.metrology_release import copy_metrology_dependencies, copy_native_libraries
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -55,6 +56,7 @@ _SUPPORTED_REQUIREMENTS_FILES = {
 _SUPPORTED_RELEASE_TARGETS = {
     ("windows", "x64", "nvidia"),
     ("windows", "x64", "cpu"),
+    ("ubuntu", "x64", "cpu"),
 }
 
 
@@ -136,6 +138,9 @@ def _copy_file(source_path: Path, target_path: Path) -> None:
 
     target_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source_path, target_path)
+    if target_path.suffix == ".sh":
+        target_path.write_bytes(target_path.read_bytes().replace(b"\r\n", b"\n"))
+        target_path.chmod(target_path.stat().st_mode | 0o111)
 
 
 def _copy_directory_tree(
@@ -179,8 +184,18 @@ def _ignore_python_cache_copy(directory: str, names: list[str]) -> set[str]:
 def _copy_launcher_tree(release_dir: Path, *, target_os: str) -> None:
     """按目标操作系统复制通用 launcher 脚本到发行目录。"""
 
-    if target_os != "windows":
+    if target_os not in {"windows", "ubuntu"}:
         raise ValueError(f"当前 release 组装尚未实现目标操作系统: {target_os}")
+
+    if target_os == "ubuntu":
+        for name in (
+            "common.py", "http_stack_recovery.py", "http_service_monitor.py", "inspect_process.py",
+            "service/start_backend_service.py", "service/start-backend-service.sh",
+            "worker/start_backend_worker.py", "maintenance/invoke_backend_maintenance.py",
+            "maintenance/invoke-backend-maintenance.sh", "inference/start_inference_daemon.py",
+        ):
+            _copy_file(SOURCE_LAUNCHERS_DIR / name, release_dir / "launchers" / name)
+        return
 
     _copy_file(
         SOURCE_LAUNCHERS_DIR / "common.py", release_dir / "launchers" / "common.py"
@@ -241,8 +256,17 @@ def _copy_full_root_launchers(release_dir: Path, *, target_os: str) -> tuple[Pat
     - tuple[Path, ...]：已复制到发行目录根目录的脚本列表。
     """
 
-    if target_os != "windows":
+    if target_os not in {"windows", "ubuntu"}:
         raise ValueError(f"当前 release 组装尚未实现目标操作系统: {target_os}")
+
+    if target_os == "ubuntu":
+        paths = tuple(release_dir / name for name in (
+            "start_amvision_full.py", "start-amvision-full.sh",
+            "stop_amvision_full.py", "stop-amvision-full.sh",
+        ))
+        for path in paths:
+            _copy_file(SOURCE_FULL_LAUNCHERS_DIR / path.name, path)
+        return paths
 
     root_launcher_paths = (
         release_dir / "start_amvision_full.py",
@@ -398,7 +422,8 @@ def _copy_application_sources(
         dirs_exist_ok=True,
         ignore=_ignore_python_cache_copy,
     )
-    shutil.copytree(SOURCE_CONFIG_DIR, release_dir / "config", dirs_exist_ok=True)
+    shutil.copytree(SOURCE_CONFIG_DIR, release_dir / "config", dirs_exist_ok=True,
+                    ignore=shutil.ignore_patterns("*.local.json", "__pycache__", "*.pyc"))
     requirements_source_file = _resolve_requirements_source_file(artifacts_section)
     _copy_requirements_file(
         release_dir / "app" / "requirements.txt",
@@ -432,7 +457,8 @@ def _copy_runtime_assets(
     ffmpeg_platform = str(
         artifacts_section.get("ffmpeg_platform") or platform_tag
     ).strip()
-    if ffmpeg_platform != platform_tag:
+    expected_ffmpeg = "linux-x64" if platform_tag == "ubuntu-x64" else platform_tag
+    if ffmpeg_platform != expected_ffmpeg:
         raise ValueError(
             "artifacts.ffmpeg_platform 必须与 target.platform_tag 一致: "
             f"ffmpeg_platform={ffmpeg_platform}, platform_tag={platform_tag}"
@@ -447,6 +473,12 @@ def _copy_runtime_assets(
         release_dir / "tools" / "ffmpeg" / ffmpeg_platform,
         ignore=_ignore_python_cache_copy,
     )
+    if platform_tag == "ubuntu-x64":
+        for name in ("ffmpeg", "ffprobe"):
+            executable = release_dir / "tools" / "ffmpeg" / ffmpeg_platform / name
+            if not executable.is_file():
+                raise FileNotFoundError(f"缺少 FFmpeg 工具: {executable}")
+            executable.chmod(executable.stat().st_mode | 0o111)
     if bool(artifacts_section.get("include_tensorrt_runtime", False)):
         _copy_tensorrt_runtime_assets(release_dir)
     if bool(artifacts_section.get("include_cudnn_runtime", False)):
@@ -887,7 +919,7 @@ def _resolve_release_target(
             f"platform_tag={platform_tag}, expected={expected_platform_tag}"
         )
     target_key = (target_os, target_arch, accelerator_kind)
-    if target_key not in _SUPPORTED_RELEASE_TARGETS:
+    if target_key not in _SUPPORTED_RELEASE_TARGETS or source_release_profile.get("implementation_status") == "reserved":
         raise ValueError(
             "当前阶段尚未实现 release target: "
             f"os={target_os}, arch={target_arch}, accelerator={accelerator_kind}"
@@ -908,6 +940,8 @@ def assemble_release(request: ReleaseAssemblyRequest) -> ReleaseAssemblyResult:
         validate_launcher_package(request.launcher_publish_dir)
         if request.launcher_publish_dir is not None else None
     )
+    if target_os != "windows" and launcher_manifest is not None:
+        raise ValueError("Windows 桌面启动器不能装配到 Ubuntu profile")
     artifacts_section = source_release_profile["artifacts"]
     assert isinstance(artifacts_section, dict)
     release_dir = request.resolve_release_dir()
@@ -955,6 +989,8 @@ def assemble_release(request: ReleaseAssemblyRequest) -> ReleaseAssemblyResult:
             _validate_cpu_requirements(requirements_path)
         _copy_launcher_tree(release_dir, target_os=target_os)
         point_cloud_tools = copy_point_cloud_delivery(REPOSITORY_ROOT, release_dir)
+        metrology_dependencies = copy_metrology_dependencies(REPOSITORY_ROOT, release_dir)
+        native_libraries = copy_native_libraries(REPOSITORY_ROOT, release_dir, platform_tag)
         generated_root_launchers = _copy_full_root_launchers(
             release_dir,
             target_os=target_os,
@@ -1074,6 +1110,8 @@ def assemble_release(request: ReleaseAssemblyRequest) -> ReleaseAssemblyResult:
             "artifacts": artifacts_section,
             "desktop_launcher": launcher_manifest,
             "point_cloud_tools": point_cloud_tools,
+            "metrology_dependencies": metrology_dependencies,
+            "native_libraries": native_libraries,
             "layout": {
                 "app_dir": "app",
                 "config_dir": "config",
@@ -1083,6 +1121,13 @@ def assemble_release(request: ReleaseAssemblyRequest) -> ReleaseAssemblyResult:
                 "python_dir": "python",
             },
         }
+        if target_os == "ubuntu":
+            for section in ("service", "inference_daemon", "maintenance", "stack"):
+                release_manifest[section].pop("windows_launcher", None)
+            release_manifest["stack"].pop("stop_windows_launcher", None)
+            release_manifest["stack"].update(posix_launcher="start-amvision-full.sh", stop_posix_launcher="stop-amvision-full.sh")
+            release_manifest["service"]["posix_launcher"] = "launchers/service/start-backend-service.sh"
+            release_manifest["maintenance"]["posix_launcher"] = "launchers/maintenance/invoke-backend-maintenance.sh"
         release_manifest_path = (
             release_dir
             / "manifests"
