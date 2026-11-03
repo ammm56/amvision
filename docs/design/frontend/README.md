@@ -12,11 +12,19 @@
 
 ## 文档
 
+**节点分类（2026-10-31）：** 累计49组98张亮暗图与98份中文规格。本轮同名修订变更处理中、复杂参数2组，新增技术信息展开1组，三项复核问题已闭合。见[最终修订](node-final-refinements-design.md)、[页面规划](node-pages-design.md)、[完整性核对](node-completeness-audit.md)、[中文提示词](prompts/节点.md)、[核对记录](node-design-review.md)和[总览](generated/节点/设计总览.html)。当前静态范围可进入设置分类设计；真实交互与功能另行验证。
+
 **设置分类（2026-11-02）：** 当前28组56张，整个现有设计集已按细节优化重新输出。保留合理导航与页面分工，优化表单、权限选择、表格和运行明细；品牌绿配白色选择标记，28组亮暗几何与10项本轮交互检查通过。见[优化说明](settings-detail-refinement.md)、[QA](prototypes/settings/design-qa.md)、[中文提示词](prompts/设置.md)、[设计总览](generated/设置/设计总览.html)。
 
 设置[完整性复核](settings-completeness-audit.md)已更新整改结果；整个分类剩余分支和未来扩展在[状态范围](settings-state-coverage.md)标注，设计样稿不等于产品实现或生产验收。
 
-**当前推理设计：** 2026-10-27，累计67组134张亮暗图及134份中文规格。本轮补六类任务结果详情12张，修订四张短屏导航、两张实例分割长JSON页签及两张关键点主图。见[页面规划](inference-pages-design.md)、[任务详情定义](inference-result-details-design.md)、[中文提示词](prompts/推理.md)、[设计总览](generated/推理/设计总览.html)和[本轮复核](inference-design-review.md#18-任务详情与折叠导航复核)。当前清单中的独立布局已有对应图，同构状态有复用规则；真实交互、响应式和服务契约仍须实现验证。
+**集成分类（2026-10-30）：** 累计46组92张亮暗图及92份中文规格。新增扫描进度恢复、技术信息展开2组，同名修订ZeroMQ/共享内存接入、待确认状态及抽屉背景等7组，本轮18张已逐张核对。见[完整规划](integration-pages-design.md)、[收尾规格](integration-final-refinements-design.md)、[中文提示词](prompts/集成.md)、[核对记录](integration-design-review.md)和[总览](generated/集成/设计总览.html)。[完整性复核](integration-completeness-audit.md)中的静态设计问题已关闭，可以进入节点分类设计；真实交互及未来能力实现另行验证。
+
+**应用分类（2026-10-30）：** 累计65组130张亮暗图、130份中文完整规格。已补齐[完整性复核](application-completeness-audit.md)发现的4项缺口：编辑现有实例配置、实例诊断、执行失败记录详情、准备新调用确认。见[收尾规格](application-final-states-design.md)、[完整规划](application-pages-design.md)、[中文提示词](prompts/应用.md)、[逐图复核](application-design-review.md)和[总览](generated/应用/设计总览.html)。本轮静态范围已完成，真实交互及共享专题另计，下一步进入集成分类。
+
+**当前图编辑设计：** 2026-10-29，累计3组6张亮暗图、6份中文规格：节点库局部、应用模式配置、双图结果内容区。已逐张静态核对，尚未经过用户确认或Vue交互验证。导航、图编辑顶部和节点布局沿用[当前实现基准](graph-editor-current-baseline.md)，没有新的工作台外壳。新增[应用模式使用设计](graph-editor-app-mode-design.md)与[中文提示词](prompts/应用模式.md)；完整状态见[局部规划](graph-editor-local-design-plan.md)、[页面状态](graph-editor-pages-design.md)，有效文件见[总览](generated/图编辑/设计总览.html)及[复核](graph-editor-design-review.md)。
+
+**当前推理设计：** 2026-10-29，仍为67组134张亮暗图及134份中文规格。本轮同名修订短屏对象详情亮暗2图，纠正覆盖面板挤压底图的问题；其余132张沿用此前记录。同步保存回看路径、部分只读字段和开关外观仍待修订。见[页面规划](inference-pages-design.md)、[任务详情定义](inference-result-details-design.md)、[中文提示词](prompts/推理.md)、[总览](generated/推理/设计总览.html)和[共享面板复核](inference-design-review.md#21-共享覆盖面板修订)。图编辑首批已开始，不等于推理交互或完整设计已验收。
 
 **当前部署设计：** 2026-10-26，累计74组亮暗配对、148张静态图与148份中文规格，第四批已补11组22张交互收尾图。保留完整布局和操作，仅压缩冗余说明。待用户审阅。见[页面规划](deployment-pages-design.md)、[异常恢复与后端参数](deployment-closure-states-design.md)、[交互收尾](deployment-interaction-completion-design.md)、[中文提示词](prompts/部署.md)、[设计总览](generated/部署/设计总览.html)和[逐图复核](deployment-design-review.md)。指定的主要流程和恢复分支已补齐；真实交互及功能实现另行验证。
 
