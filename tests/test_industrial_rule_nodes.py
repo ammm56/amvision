@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.contracts.workflows.metrology import LimitRule, NumericItem, NumericTable
+from backend.nodes.core_nodes.support.measurement import check_limits
 from backend.nodes.core_catalog import get_core_workflow_payload_contracts
 from backend.nodes.core_nodes.io.output.records.alarm_record import _alarm_record_handler
 from backend.nodes.core_nodes.io.output.records.result_record import _result_record_handler
@@ -111,9 +113,12 @@ def test_result_record_handler_builds_result_payload() -> None:
             node_definition=object(),
             parameters={},
             input_values={
-                "decision": {"value": "OK"},
+                "decision": {"value": check_limits(
+                    NumericTable(observation_id="coverage", items=(
+                        NumericItem(item_id="coverage", value=0.18, valid=True, reason=None, unit="1"),
+                    )), (LimitRule(item_id="coverage", unit="1", upper=0.2),),
+                )},
                 "metrics": {"value": {"area_ratio": 0.18}},
-                "conditions": {"value": [{"name": "coverage", "passed": True}]},
                 "reason": {"value": "coverage pass"},
                 "metadata": {"value": {"station_id": "line-a-01"}},
                 "alarm": {
@@ -134,8 +139,8 @@ def test_result_record_handler_builds_result_payload() -> None:
     )
 
     result_payload = output["result"]
-    assert result_payload["ok_ng"] == "OK"
-    assert result_payload["ok"] is True
+    assert result_payload["state"] == "ok"
+    assert result_payload["passed"] is True
     assert result_payload["metrics"]["area_ratio"] == 0.18
     assert result_payload["metadata"]["station_id"] == "line-a-01"
     assert result_payload["alarm"]["active"] is False
@@ -243,7 +248,7 @@ def test_process_decision_handler_builds_result_record_from_conditions() -> None
     result_payload = output["result"]
     assert output["decision"]["value"] == "NG"
     assert output["ok"]["value"] is False
-    assert result_payload["ok_ng"] == "NG"
+    assert result_payload["state"] == "ng"
     assert result_payload["reason"] == "continuity failed"
     assert result_payload["conditions"][0]["name"] == "coverage"
     assert result_payload["conditions"][1]["passed"] is False

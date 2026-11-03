@@ -8,6 +8,7 @@ elif [ -x "$SCRIPT_DIR/python/bin/python3" ]; then
 elif [ -x "$SCRIPT_DIR/python/bin/python" ]; then
   PYTHON_EXE="$SCRIPT_DIR/python/bin/python"
 else
-  PYTHON_EXE=python3
+  echo "[ERROR] bundled Python not found: $SCRIPT_DIR/python/bin/python3" >&2
+  exit 2
 fi
 exec "$PYTHON_EXE" "$SCRIPT_DIR/start_amvision_full.py" "$@"

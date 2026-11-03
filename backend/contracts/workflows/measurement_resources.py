@@ -11,6 +11,8 @@ from backend.contracts.workflows.metrology import (
     Point,
     ResourceReference,
 )
+from backend.contracts.workflows.point_cloud import Sha256
+from backend.contracts.workflows.point_cloud_assets import PointCloudAsset
 
 
 class LocalizationTemplate(Contract):
@@ -46,18 +48,27 @@ class MeasurementResourceContent(Contract):
     format_id: Literal["amvision.measurement-resource.v1"] = (
         "amvision.measurement-resource.v1"
     )
-    kind: Literal["planar-calibration", "localization-template"]
+    kind: Literal["planar-calibration", "localization-template", "point-cloud"]
     calibration: PlanarCalibration | None = None
     template: LocalizationTemplate | None = None
+    point_cloud: PointCloudAsset | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
     @model_validator(mode="after")
     def check_kind(self) -> Self:
-        """每个版本只承载一种内容，不能忽略与类型无关的字段。"""
-        if (self.kind == "planar-calibration") != (self.calibration is not None) or (
-            self.kind == "localization-template"
-        ) != (self.template is not None):
-            raise ValueError("计量资源类型与内容不一致")
+        """每种资源恰好一个非空分支，不静默忽略其他内容。"""
+        for kind, value in (
+            ("planar-calibration", self.calibration),
+            ("localization-template", self.template),
+            ("point-cloud", self.point_cloud),
+        ):
+            if (self.kind == kind) != (value is not None):
+                raise ValueError("计量资源类型与内容不一致")
         return self
+
+
+ResourceContent = MeasurementResourceContent
 
 
 class MeasurementResourceDocument(Contract):
@@ -65,7 +76,19 @@ class MeasurementResourceDocument(Contract):
 
     reference: ResourceReference
     name: Annotated[str, Field(min_length=1, max_length=128)]
-    content: MeasurementResourceContent
+    content: ResourceContent
     image_object_key: str | None = None
     created_at: str
     created_by: str | None = None
+    write_identity: Sha256 | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+
+    @model_validator(mode="after")
+    def check_identity(self) -> Self:
+        """提交身份只属于点云写入，不改变既有二维版本记录。"""
+        if self.reference.kind != self.content.kind:
+            raise ValueError("资源引用与内容类型不一致")
+        if self.write_identity is not None and self.content.kind != "point-cloud":
+            raise ValueError("提交身份只允许用于点云资源")
+        return self

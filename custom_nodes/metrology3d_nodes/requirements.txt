@@ -1,0 +1,6 @@
+# 使用本仓库锁定的本地 wheel，不接受上游同名原版替换。
+# 在仓库根目录执行 pip install --find-links runtimes/third_party/python-io
+# --find-links runtimes/third_party/python-geometry -r custom_nodes/metrology3d_nodes/requirements.txt
+-r ../../runtimes/python_patches/requirements-io.txt
+scipy==1.18.0
+open3d==0.20.0

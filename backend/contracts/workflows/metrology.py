@@ -68,7 +68,7 @@ class ResourceReference(Contract):
     resource_id: Identifier
     version: Annotated[int, Field(strict=True, ge=1, le=2147483647)]
     sha256: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
-    kind: Literal["planar-calibration", "localization-template"]
+    kind: Literal["planar-calibration", "localization-template", "point-cloud"]
 
 
 class PoseObservation(Contract):
@@ -203,6 +203,18 @@ class LimitRule(Contract):
     upper: Finite | None = None
     include_lower: StrictBool = True
     include_upper: StrictBool = True
+
+    def violation_reason(self, value: float) -> str | None:
+        """对已验证的有限值检查同一套开闭区间，生产者和校验方复用。"""
+        if self.lower is not None and (
+            value < self.lower or (value == self.lower and not self.include_lower)
+        ):
+            return "below_lower_limit"
+        if self.upper is not None and (
+            value > self.upper or (value == self.upper and not self.include_upper)
+        ):
+            return "above_upper_limit"
+        return None
 
     @model_validator(mode="after")
     def check_limits(self) -> Self:

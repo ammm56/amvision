@@ -1,6 +1,7 @@
 """计量资源的版本隔离、项目归属、损坏和引用保护测试。"""
 
 import hashlib
+import json
 from io import BytesIO
 from zipfile import ZipFile
 
@@ -50,6 +51,31 @@ def calibration():
             validation_max_error=0.01,
         ),
     )
+
+
+def test_three_dimensional_contract_update_preserves_planar_bytes_and_digest(service):
+    """三维内容扩展不得改变二维旧文档的字节语义或发布引用摘要。"""
+    content = calibration()
+    original = {
+        "format_id": "amvision.measurement-resource.v1",
+        "kind": "planar-calibration",
+        "calibration": content.calibration.model_dump(mode="json"),
+        "template": None,
+    }
+    assert content.model_dump(mode="json") == original
+    digest = hashlib.sha256(
+        json.dumps(
+            original,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    saved = service.save(project_id="test", name="Plane", content=content)
+    assert saved.reference.sha256 == digest
+    assert "write_identity" not in saved.model_dump(mode="json")
+    assert service.read(saved.reference, project_id="test").content == content
 
 
 def test_version_content_isolation_archive_and_tombstone(service):

@@ -1,0 +1,37 @@
+{
+  "format_id": "amvision.metrology3d-page-runtime-audit.v1",
+  "source_format_id": "amvision.workflow-runtime-preview.v1",
+  "workflow_runtime_id": "workflow-runtime-0e3965cc532e42e4b1cb5b245da37086",
+  "workflow_runtime_revision_id": "workflow-runtime-revision-0652c23d3c144d5a9ad718326f94f81c",
+  "workflow_app_version_id": "workflow-app-version-e21ec586772b4cccb5382ad9b502ebf0",
+  "runtime_generation": 2,
+  "worker_instance_id": "workflow-runtime-0e3965cc532e42e4b1cb5b245da37086-2719ce25d96f4bdb9777114cf1cb2824",
+  "snapshot_fingerprint": "sha256:178e3e108511e5a20faa3d8dbf2c633c19f0d0a554d76dd630fafc0c81819056",
+  "project_id": "project-1",
+  "application_id": "workflow-app-20261026151434",
+  "workflow_run_id": "workflow-run-ee9b556b80b8473a8419db189d0d1994",
+  "sequence": 1,
+  "state": "succeeded",
+  "error": null,
+  "finished_at": "2026-10-26T15:43:32.753400Z",
+  "display_error": null,
+  "displays": [
+    {
+      "node_id": "plane-preview",
+      "points": 1000,
+      "json_values": 6887,
+      "estimated_copy_bytes": 235412
+    },
+    {
+      "node_id": "preview",
+      "points": 500000,
+      "json_values": 40477,
+      "estimated_copy_bytes": 14190328
+    }
+  ],
+  "frame_bytes": 13852166,
+  "remaining_budget": [
+    52666740,
+    52636
+  ]
+}

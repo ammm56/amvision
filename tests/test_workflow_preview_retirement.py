@@ -46,6 +46,7 @@ def test_failed_memory_channel_retires_worker_and_accepts_next_run(monkeypatch):
             assert manager.buffers.stats() == {
                 "blocks": 0,
                 "bytes": 0,
+                "file_bytes": 0,
                 "pins": 0,
                 "reserved_bytes": 0,
             }

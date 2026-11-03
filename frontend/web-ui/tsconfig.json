@@ -19,6 +19,9 @@
       "vitest/globals"
     ],
     "paths": {
+      "three": ["./node_modules/@types/three"],
+      "three/addons/*": ["./node_modules/@types/three/examples/jsm/*"],
+      "@lucide/vue": ["./node_modules/@lucide/vue"],
       "@litegraph/*": [
         "./src/lib/litegraph/src/*"
       ],

@@ -1,0 +1,26 @@
+{
+  "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "input_bytes": 1000000000,
+  "rss_baseline_bytes": 144232448,
+  "rss_peak_bytes": 3197878272,
+  "stages": {
+    "generate": 0.6494212970137596,
+    "upload": 0.910043119918555,
+    "decode": 2.6943094569724053,
+    "check_all_fields": 1.212033614050597,
+    "save": 2.429173306794837,
+    "archive_export_import": 2.9028753738384694,
+    "restore": 2.06063513411209,
+    "exchange_export_read": 2.3328990121372044,
+    "crop_save_restore": 4.008304323069751
+  },
+  "passed": true,
+  "point_count": 62499984,
+  "archive_bytes": 1000001463,
+  "exchange_bytes": 999999887,
+  "derived_point_count": 31250064,
+  "live_array_bytes_after_close": 0,
+  "temporary_inputs_after_close": 0,
+  "seconds": 19.225453216815367,
+  "rss_final_bytes": 199069696
+}

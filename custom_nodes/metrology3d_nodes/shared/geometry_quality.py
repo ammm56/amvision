@@ -1,0 +1,38 @@
+"""几何质量仅组合既有数值和限值结果，不新增比较算法。"""
+
+from backend.contracts.workflows.geometry3d_quality import GeometryQuality
+from backend.contracts.workflows.metrology import NumericItem, NumericTable
+from backend.nodes.core_nodes.support.measurement import check_limit_items
+from backend.service.application.errors import InvalidRequestError
+
+
+def require_quality_result(quality, policy) -> None:
+    """消费者复核真实比较结果，不能仅信任外部提供的 passed 布尔值。"""
+    expected = check_limit_items(quality.metrics, policy.rules)
+    if expected != [item.model_dump(mode="json") for item in quality.checks]:
+        raise InvalidRequestError("几何质量证据与实际限值计算不一致")
+
+
+def geometry_quality(observation_id, values, policy, *, reason):
+    """values 为稳定指标 ID 到 (值, 单位) 的映射，未知量保留 null。"""
+    table = NumericTable(
+        observation_id=observation_id,
+        items=tuple(
+            NumericItem(
+                item_id=name,
+                value=value,
+                unit=unit,
+                valid=value is not None,
+                reason=None if value is not None else reason,
+            )
+            for name, (value, unit) in values.items()
+        ),
+    )
+    checked = check_limit_items(table, policy.rules)
+    required = [item for item in checked if item["required"]]
+    return GeometryQuality(
+        metrics=table,
+        checks=checked,
+        usable=bool(required)
+        and all(item["valid"] and item["passed"] for item in required),
+    )

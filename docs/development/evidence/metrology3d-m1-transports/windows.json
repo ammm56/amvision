@@ -1,0 +1,14 @@
+{
+  "platform": "Windows-11-10.0.26300-SP0",
+  "file_sha256": "ff2b9e0ef2d6c45af02c4bf8d474cd82f77f86ad92bd371a4c0f71b1b90d116b",
+  "array_sha256": "956927f058ba4a0170b1c1b93b1411b613fbe21fcbfc278ad0a7fc3cf621a1c6",
+  "points": 14745099,
+  "bytes": 479677235,
+  "preview_sha256": "a49008f49e95a770005b57650f6c32cf64b0a3bd6d6a5f7efc1844f38d136005",
+  "file_bytes_after": 0,
+  "pins_after": 0,
+  "leases_after": 0,
+  "trigger_admission": "fixture",
+  "trigger_execution": "spawn SnapshotExecutionService",
+  "preview_execution": "real HTTP + Preview worker"
+}

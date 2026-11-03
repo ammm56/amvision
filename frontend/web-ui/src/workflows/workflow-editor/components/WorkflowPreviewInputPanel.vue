@@ -20,7 +20,8 @@
           </StatusBadge>
         </div>
       </div>
-      <template v-if="states[binding.binding_id] && (usesJsonPreviewEditor(binding) || usesStructuredJsonPreviewEditor(getPayloadTypeId(binding)))">
+      <CloudInputNotice v-if="getPayloadTypeId(binding) === 'point-cloud-ref.v1'" />
+      <template v-else-if="states[binding.binding_id] && (usesJsonPreviewEditor(binding) || usesStructuredJsonPreviewEditor(getPayloadTypeId(binding)))">
         <label class="workflow-graph-preview-field">
           <textarea
             v-model="states[binding.binding_id].jsonValue"
@@ -139,6 +140,7 @@
 <script setup lang="ts">
 import { Plus, Trash2 } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
+import CloudInputNotice from '../point-cloud/CloudInputNotice.vue'
 
 import Button from '@/shared/ui/components/Button.vue'
 import FilePicker from '@/shared/ui/components/FilePicker.vue'

@@ -19,6 +19,7 @@
 | --- | --- | --- | --- | --- |
 | `full-windows-x64-nvidia` | 已实现，推荐 | Windows x64 NVIDIA | Windows FFmpeg、TensorRT、cuDNN | 全部六类 worker |
 | `full-windows-x64-cpu` | 已实现，推荐 | Windows x64 CPU | Windows FFmpeg，不含 NVIDIA 资产 | 全部六类 worker |
+| `full-ubuntu-x64-cpu` | 已实现 | Ubuntu 24.04 x86_64 / WSL 原生文件系统 | Linux FFmpeg、三维原生库，不含 NVIDIA 资产 | 全部六类 worker |
 
 发布只接受表中状态为“已实现”的完整 profile id，不提供缩写、别名或未验收 profile。其他值会明确失败，不生成看似可用的发行包。
 
@@ -52,6 +53,7 @@ python -m backend.maintenance.main assemble-release --profile-id full-windows-x6
 - `runtimes/launchers/` 和 `runtimes/manifests/` 是仓库内模板来源；`assemble-release` 会复制到发行目录。
 - 发布根目录会复制仓库根 `README.md` 和授权文件，便于发布包独立交付和核对。
 - 当前 Windows 包只生成 `.bat` wrapper，不复制 Linux `.sh` launcher 或 Linux FFmpeg。
+- Ubuntu CPU 包使用同一个 Python full Supervisor 和 `.sh` wrapper，不带 Windows 长路径工具或桌面 EXE；准备与启动见 [CPU 离线发行](cpu-offline-release.md)。
 - `python/` 默认只创建空目录，完整 bundled Python 由发布人员手工复制；`--force` 覆盖同一 profile 时会保留已有 `python/`。
 - CLI 组装会先执行正式前端构建，禁止静默复用未知新旧状态的 `dist/`；前端构建失败时发行目录不进入本轮覆盖步骤。
 - 发布目录保留 maintenance launcher，用于版本输出、配置查看、布局校验和 release 组装。

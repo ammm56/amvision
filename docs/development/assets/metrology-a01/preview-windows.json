@@ -1,0 +1,22 @@
+[
+  {
+    "name": "test_memory_worker_streams_before_long_node_finishes[normal-start]",
+    "seconds": "6.476",
+    "properties": [
+      {
+        "name": "preview_timeline",
+        "value": "[[\"worker.start\", 0.0], [\"worker.ready\", 3.672000000020489], [\"run.accepted\", 3.672000000020489, null], [\"run.started\", 4.0310000001918525, null], [\"node.started\", 4.063000000081956, \"text\"], [\"value.updated\", 4.063000000081956, \"text\"], [\"node.finished\", 4.063000000081956, \"text\"], [\"node.started\", 4.063000000081956, \"image\"], [\"node.finished\", 4.063000000081956, \"image\"], [\"node.started\", 4.063000000081956, \"display\"], [\"value.updated\", 4.063000000081956, \"display\"], [\"node.finished\", 4.063000000081956, \"display\"], [\"node.started\", 4.063000000081956, \"delay\"], [\"display.updated\", 4.077999999979511, \"image\"], [\"display.updated\", 4.077999999979511, \"image\"], [\"display.updated\", 4.077999999979511, \"display\"], [\"cancel.requested\", 4.077999999979511], [\"run.cancelled\", 4.141000000061467], [\"worker.start\", 4.141000000061467], [\"worker.ready\", 4.141000000061467], [\"worker.start\", 4.625], [\"worker.ready\", 4.625], [\"pool.closed\", 5.359000000171363]]"
+      }
+    ]
+  },
+  {
+    "name": "test_memory_worker_streams_before_long_node_finishes[delayed-start]",
+    "seconds": "33.172",
+    "properties": [
+      {
+        "name": "preview_timeline",
+        "value": "[[\"worker.start\", 0.0], [\"worker.ready\", 29.905999999959022], [\"run.accepted\", 29.905999999959022, null], [\"run.started\", 30.280999999959022, null], [\"node.started\", 30.296000000089407, \"text\"], [\"value.updated\", 30.296000000089407, \"text\"], [\"node.finished\", 30.296000000089407, \"text\"], [\"node.started\", 30.296000000089407, \"image\"], [\"node.finished\", 30.296000000089407, \"image\"], [\"node.started\", 30.296000000089407, \"display\"], [\"value.updated\", 30.296000000089407, \"display\"], [\"node.finished\", 30.296000000089407, \"display\"], [\"node.started\", 30.296000000089407, \"delay\"], [\"display.updated\", 30.32799999997951, \"image\"], [\"display.updated\", 30.32799999997951, \"image\"], [\"display.updated\", 30.32799999997951, \"display\"], [\"cancel.requested\", 30.32799999997951], [\"run.cancelled\", 30.375], [\"worker.start\", 30.375], [\"worker.ready\", 30.375], [\"worker.start\", 30.889999999897555], [\"worker.ready\", 30.889999999897555], [\"pool.closed\", 31.70299999997951]]"
+      }
+    ]
+  }
+]

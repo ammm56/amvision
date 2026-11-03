@@ -1,0 +1,12 @@
+{
+  "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "points": 14745099,
+  "version_id": "workflow-app-version-08fad103ee184032ab0fd14aed77a12b",
+  "run_id": "workflow-run-b6e8f11d95464fae978fab79a6e8bd5e",
+  "display_points": 500000,
+  "plane_samples": 500000,
+  "circle_samples": 733,
+  "measurements_match_f4": true,
+  "stopped": true,
+  "resources_reclaimed": true
+}

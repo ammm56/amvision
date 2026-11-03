@@ -49,11 +49,12 @@ describe('workflow Preview runtime service', () => {
     expect((form.get('request_image_ref') as File).name).toBe('tray.png')
   })
 
-  it('creates new runtimes from an explicit immutable app version', async () => {
+  it.each([null, 120])('creates an immutable-version runtime with explicit or service-default timeout: %s', async (timeout) => {
     await createWorkflowAppRuntime({
       projectId: 'project-1',
       workflowAppVersionId: 'workflow-app-version-v2',
       displayName: 'Stable runtime',
+      requestTimeoutSeconds: timeout,
     })
 
     const [path, options] = vi.mocked(apiRequest).mock.calls[0]
@@ -63,6 +64,7 @@ describe('workflow Preview runtime service', () => {
       application_id: null,
       workflow_app_version_id: 'workflow-app-version-v2',
       display_name: 'Stable runtime',
+      request_timeout_seconds: timeout,
     })
   })
 

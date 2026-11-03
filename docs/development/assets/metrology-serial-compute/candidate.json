@@ -1,0 +1,65 @@
+{
+  "base_commit": "485752884322afba8237b23472077ce903c748ba",
+  "pack_version": "0.1.20",
+  "boundary": "cloud-ready-to-numeric-response",
+  "latency_limit_seconds": 10.0,
+  "execution_mode": "serial",
+  "hashes": [
+    {
+      "path": "backend/service/application/workflows/point_cloud/runtime.py",
+      "sha256": "5548dc78d90c4bd07dd79489f4b21f1a96fc931df5eee09b1e5ea22643cfb479"
+    },
+    {
+      "path": "backend/service/application/workflows/process_threads.py",
+      "sha256": "f2d0a0680afb573c7af989afe490300f6f1bcfc85025f50ed53d7c56355b912b"
+    },
+    {
+      "path": "custom_nodes/metrology3d_nodes/__init__.py",
+      "sha256": "8d5e8e87be7671aafdc6ce33922a4e7df8d0156d85cfee2338cfe38a288c0926"
+    },
+    {
+      "path": "custom_nodes/metrology3d_nodes/manifest.json",
+      "sha256": "be432118e0fbca6327fc1c6e30d37bc695ef08cf23f808d391e578c0e920a49b"
+    },
+    {
+      "path": "custom_nodes/metrology3d_nodes/shared/boundary_surface.py",
+      "sha256": "819e2d0a61235e5e16ad08e6fefebfe7733b1aa8d5b6c31c9233b2c023dd6ecb"
+    },
+    {
+      "path": "custom_nodes/metrology3d_nodes/shared/crop_roi.py",
+      "sha256": "abcfb2fae43537d8c5f5ec1893aa9078985a22fb678de4dbb0d6658ae944e1f1"
+    },
+    {
+      "path": "custom_nodes/metrology3d_nodes/shared/measurement_reference.py",
+      "sha256": "afa29e340c768ec936df762ae6fba551fd776b7cdd3c5ee8d82ea6296fe2ee78"
+    },
+    {
+      "path": "custom_nodes/metrology3d_nodes/shared/measurement_result.py",
+      "sha256": "e65deaaec30a0ca4b9d175b59413e6c741b8288cf86e5e1660e80c3c27916a77"
+    },
+    {
+      "path": "custom_nodes/metrology3d_nodes/shared/measurement_support.py",
+      "sha256": "e7470c6bd97ee2c69d31d84c89433f9a2c815d7317cc5e91c3c81b23413c7ff0"
+    },
+    {
+      "path": "custom_nodes/metrology3d_nodes/shared/roi_mask.py",
+      "sha256": "fc51b04e169c653473c446c3177bd910ce7ccaf22d5019abe0ba7fe05a53c768"
+    },
+    {
+      "path": "custom_nodes/metrology3d_nodes/workflow/catalog.json",
+      "sha256": "03a7ea74776fa87a04394071cb54a642dffbf4b43626208e74c5326412475a44"
+    },
+    {
+      "path": "requirements.txt",
+      "sha256": "63427791afd90cee303203e2b024ff6bdcb012ed69f1002854dfe1bf914c7f5d"
+    },
+    {
+      "path": "requirements_cpu.txt",
+      "sha256": "debce18bb7ffeb0923d7bc2aa4a9d9ce07de7e25f15ed44e4e5b98322c8ba5d4"
+    },
+    {
+      "path": "custom_nodes/metrology3d_nodes/shared/roi_blocks.py",
+      "sha256": "54e49bf1c4604c42faab31948d78de5f6a71ca8dd63c3c97cd9803f320dd9f3b"
+    }
+  ]
+}

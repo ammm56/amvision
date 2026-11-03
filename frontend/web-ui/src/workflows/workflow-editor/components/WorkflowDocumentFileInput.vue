@@ -1,11 +1,11 @@
 <template>
-  <input ref="input" type="file" accept=".json,application/json" hidden :disabled="disabled" :aria-label="t('workflowEditor.document.import')" @change="selectFile" />
+  <input ref="input" type="file" :accept="accept" hidden :disabled="disabled" :aria-label="label ?? t('workflowEditor.document.import')" @change="selectFile" />
 </template>
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-const props = defineProps<{ disabled?: boolean }>()
+const props = withDefaults(defineProps<{ disabled?: boolean; accept?: string; label?: string }>(), { accept: '.json,application/json' })
 const emit = defineEmits<{ import: [file: File] }>()
 const { t } = useI18n()
 const input = ref<HTMLInputElement | null>(null)

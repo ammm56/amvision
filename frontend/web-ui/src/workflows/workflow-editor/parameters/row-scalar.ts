@@ -1,11 +1,19 @@
 import type { WorkflowJsonObject } from '../types'
 
-/** Resolve the current JSON Schema nullable scalar representation without coercing values. */
+/** 只展开唯一非空分支；复合联合类型不能任取首分支作为标量。 */
 export function rowScalar(schema: WorkflowJsonObject): WorkflowJsonObject & { nullable: boolean } {
-  const choices = Array.isArray(schema.anyOf) ? schema.anyOf as WorkflowJsonObject[] : [schema]
-  const source = choices.find(choice => choice.type !== 'null') ?? schema
-  const value = Array.isArray(source.type) ? {...source,type:source.type.find(type=>type!=='null')} : source
-  return { ...schema, ...value, nullable: choices.some(choice => choice.type === 'null') || (Array.isArray(schema.type) && schema.type.includes('null')) }
+  const union = schema.anyOf ?? schema.oneOf
+  if (Array.isArray(union)) {
+    const choices = union.filter((value): value is WorkflowJsonObject => value !== null && typeof value === 'object' && !Array.isArray(value))
+    const nonNull = choices.filter(choice => choice.type !== 'null')
+    const nullable = choices.some(choice => choice.type === 'null')
+    if (choices.length !== union.length || nonNull.length !== 1) return { ...schema, type: undefined, nullable }
+    const resolved = rowScalar(nonNull[0]!)
+    return { ...schema, ...resolved, nullable: nullable || resolved.nullable }
+  }
+  const types = Array.isArray(schema.type) ? schema.type : [schema.type]
+  const nonNull = types.filter(type => type !== 'null')
+  return { ...schema, type: nonNull.length === 1 ? nonNull[0] : undefined, nullable: types.includes('null') }
 }
 
 export function validRowScalar(value: unknown, schema: WorkflowJsonObject): boolean {

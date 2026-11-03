@@ -1,0 +1,113 @@
+{
+  "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "points": 14745099,
+  "calls": [
+    {
+      "index": 0,
+      "phase": "first",
+      "sampling_enabled": false,
+      "run_id": "workflow-run-7d70bc2c1d944a82a2e7a38807d8b891",
+      "worker_instance_id": "workflow-runtime-982168cd59114e44a2a411a3d37baf9d-407589071e524e0c904765cbdc9e4668",
+      "cloud_ready_to_response_seconds": 7.881352822063491,
+      "rss_bytes": 555896832,
+      "threads": 6,
+      "measurements_match_f4": true,
+      "active_leases": 0,
+      "allocated_bytes": 0,
+      "active_permits": 0,
+      "node_timings": []
+    },
+    {
+      "index": 1,
+      "phase": "steady",
+      "sampling_enabled": false,
+      "run_id": "workflow-run-28baafa812c344f39b5724a8c5f0f71b",
+      "worker_instance_id": "workflow-runtime-982168cd59114e44a2a411a3d37baf9d-407589071e524e0c904765cbdc9e4668",
+      "cloud_ready_to_response_seconds": 7.710739020025358,
+      "rss_bytes": 581308416,
+      "threads": 6,
+      "measurements_match_f4": true,
+      "active_leases": 0,
+      "allocated_bytes": 0,
+      "active_permits": 0,
+      "node_timings": []
+    },
+    {
+      "index": 2,
+      "phase": "steady",
+      "sampling_enabled": false,
+      "run_id": "workflow-run-b463fe07f9d24db78dece4417dbfa6d1",
+      "worker_instance_id": "workflow-runtime-982168cd59114e44a2a411a3d37baf9d-407589071e524e0c904765cbdc9e4668",
+      "cloud_ready_to_response_seconds": 7.8412746279500425,
+      "rss_bytes": 546390016,
+      "threads": 6,
+      "measurements_match_f4": true,
+      "active_leases": 0,
+      "allocated_bytes": 0,
+      "active_permits": 0,
+      "node_timings": []
+    },
+    {
+      "index": 3,
+      "phase": "steady",
+      "sampling_enabled": false,
+      "run_id": "workflow-run-39d276b17e8a4889a12a1ba32d502e17",
+      "worker_instance_id": "workflow-runtime-982168cd59114e44a2a411a3d37baf9d-407589071e524e0c904765cbdc9e4668",
+      "cloud_ready_to_response_seconds": 8.109908131882548,
+      "rss_bytes": 564314112,
+      "threads": 6,
+      "measurements_match_f4": true,
+      "active_leases": 0,
+      "allocated_bytes": 0,
+      "active_permits": 0,
+      "node_timings": []
+    },
+    {
+      "index": 4,
+      "phase": "steady",
+      "sampling_enabled": false,
+      "run_id": "workflow-run-2c84d951cc514fba97be2f4dd28b9871",
+      "worker_instance_id": "workflow-runtime-982168cd59114e44a2a411a3d37baf9d-407589071e524e0c904765cbdc9e4668",
+      "cloud_ready_to_response_seconds": 7.904259159928188,
+      "rss_bytes": 500625408,
+      "threads": 6,
+      "measurements_match_f4": true,
+      "active_leases": 0,
+      "allocated_bytes": 0,
+      "active_permits": 0,
+      "node_timings": []
+    },
+    {
+      "index": 5,
+      "phase": "steady",
+      "sampling_enabled": false,
+      "run_id": "workflow-run-fe8e88501981429b9067145bc8dd5833",
+      "worker_instance_id": "workflow-runtime-982168cd59114e44a2a411a3d37baf9d-407589071e524e0c904765cbdc9e4668",
+      "cloud_ready_to_response_seconds": 7.934077641926706,
+      "rss_bytes": 581328896,
+      "threads": 6,
+      "measurements_match_f4": true,
+      "active_leases": 0,
+      "allocated_bytes": 0,
+      "active_permits": 0,
+      "node_timings": []
+    }
+  ],
+  "boundary": "cloud-ready-to-numeric-response",
+  "display_enabled": false,
+  "debug_capture_enabled": false,
+  "diagnostics_enabled": false,
+  "resource_sampling_comparison": false,
+  "thread_environment": {
+    "OMP_NUM_THREADS": null,
+    "OPENBLAS_NUM_THREADS": null,
+    "MKL_NUM_THREADS": null
+  },
+  "latency_limit_seconds": 10.0,
+  "resource_sample_interval_seconds": null,
+  "initial_resources": {
+    "rss_bytes": 253337600,
+    "threads": 5
+  },
+  "stopped_and_reclaimed": true
+}

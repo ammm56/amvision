@@ -1,0 +1,5302 @@
+{
+  "scope": "candidate-only-not-approved-recipe",
+  "environment": {
+    "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "python": "3.12.3",
+    "packages": {
+      "numpy": "2.4.4",
+      "scipy": "1.18.0",
+      "trimesh": "5.1.1+amvision.2",
+      "pypcd4": "1.5.1+amvision.2",
+      "pydantic": "2.13.4",
+      "pytest": "8.4.2"
+    }
+  },
+  "file_sha256": "ff2b9e0ef2d6c45af02c4bf8d474cd82f77f86ad92bd371a4c0f71b1b90d116b",
+  "limits": {
+    "max_header_bytes": 65536,
+    "max_decoded_bytes": 400000000,
+    "max_working_bytes": 536870912,
+    "chunk_rows": 65536,
+    "chunk_bytes": 4194304,
+    "max_live_array_bytes": 800000000
+  },
+  "candidates": [
+    {
+      "name": "D.union",
+      "xy_windows": [
+        [
+          -45,
+          -37,
+          -145,
+          -125
+        ],
+        [
+          -12,
+          20,
+          -145,
+          -132
+        ],
+        [
+          22,
+          44,
+          -30,
+          -4
+        ],
+        [
+          -12,
+          24,
+          -25,
+          -4
+        ],
+        [
+          -44,
+          -37,
+          -12,
+          -3
+        ]
+      ],
+      "point_count": 2088269,
+      "source_indices_sha256": "38e59de3a38adf1a0570c243748a9c25363a1affc399dbace19a797567c78323",
+      "source_point_count": 14745099,
+      "crop_parameters": {
+        "roi_id": "candidate",
+        "rois": [
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "candidate",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "union",
+            "geometry": {
+              "roi_ids": [
+                "window-0",
+                "window-1",
+                "window-2",
+                "window-3",
+                "window-4"
+              ]
+            }
+          },
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "window-0",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "box",
+            "geometry": {
+              "center": [
+                -41.0,
+                -135.0,
+                -17.6200008392334
+              ],
+              "rotation": [
+                [
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "size": [
+                8.0,
+                20.0,
+                11.368000030517578
+              ]
+            }
+          },
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "window-1",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "box",
+            "geometry": {
+              "center": [
+                4.0,
+                -138.5,
+                -17.6200008392334
+              ],
+              "rotation": [
+                [
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "size": [
+                32.0,
+                13.0,
+                11.368000030517578
+              ]
+            }
+          },
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "window-2",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "box",
+            "geometry": {
+              "center": [
+                33.0,
+                -17.0,
+                -17.6200008392334
+              ],
+              "rotation": [
+                [
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "size": [
+                22.0,
+                26.0,
+                11.368000030517578
+              ]
+            }
+          },
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "window-3",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "box",
+            "geometry": {
+              "center": [
+                6.0,
+                -14.5,
+                -17.6200008392334
+              ],
+              "rotation": [
+                [
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "size": [
+                36.0,
+                21.0,
+                11.368000030517578
+              ]
+            }
+          },
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "window-4",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "box",
+            "geometry": {
+              "center": [
+                -40.5,
+                -7.5,
+                -17.6200008392334
+              ],
+              "rotation": [
+                [
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "size": [
+                7.0,
+                9.0,
+                11.368000030517578
+              ]
+            }
+          }
+        ]
+      },
+      "selected_bounds": [
+        [
+          -44.98800277709961,
+          -144.99000549316406,
+          -20.264001846313477
+        ],
+        [
+          43.992000579833984,
+          -3.0,
+          -14.86400032043457
+        ]
+      ],
+      "source_z_quantiles": [
+        -20.264001846313477,
+        -16.496000289916992,
+        -15.568000793457031,
+        -14.930000305175781,
+        -14.86400032043457
+      ],
+      "svd_center": [
+        7.1573998964320396,
+        -52.74989010987605,
+        -15.591306175971386
+      ],
+      "svd_normal": [
+        -0.017213772471202177,
+        -0.00037555162435812944,
+        0.9998517615118189
+      ],
+      "rms_mm": 0.05005608222150302,
+      "max_residual_mm": 5.150175602522303,
+      "max_residual_point": [
+        34.272003173828125,
+        -22.32000160217285,
+        -20.264001846313477
+      ],
+      "absolute_residual_quantiles": [
+        0.012088327877256392,
+        0.03081168218272667,
+        0.05942920517555172,
+        5.150175602522301
+      ],
+      "fit_reason": "geometry_quality_failed",
+      "quality_policy": {
+        "metrics": {
+          "observation_id": "ae40e7597653401fa71f7e98724e055e",
+          "items": [
+            {
+              "item_id": "input_count",
+              "unit": "1",
+              "value": 2088269.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "inlier_count",
+              "unit": "1",
+              "value": 2088269.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "inlier_ratio",
+              "unit": "1",
+              "value": 1.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "tangent_ratio",
+              "unit": "1",
+              "value": 0.3570028724570858,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "normal_gap",
+              "unit": "1",
+              "value": 0.3561358286630328,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "rms",
+              "unit": "mm",
+              "value": 0.05005608222150302,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "max_residual",
+              "unit": "mm",
+              "value": 5.150175602522303,
+              "valid": true,
+              "reason": null
+            }
+          ]
+        },
+        "checks": [
+          {
+            "item_id": "inlier_count",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 2088269.0,
+            "unit": "1",
+            "lower": 3.0,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "tangent_ratio",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 0.3570028724570858,
+            "unit": "1",
+            "lower": 0.01,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "normal_gap",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 0.3561358286630328,
+            "unit": "1",
+            "lower": 0.01,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "rms",
+            "required": true,
+            "passed": false,
+            "valid": true,
+            "value": 0.05005608222150302,
+            "unit": "mm",
+            "lower": null,
+            "upper": 0.001,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "mm",
+            "reason": "above_upper_limit"
+          },
+          {
+            "item_id": "max_residual",
+            "required": true,
+            "passed": false,
+            "valid": true,
+            "value": 5.150175602522303,
+            "unit": "mm",
+            "lower": null,
+            "upper": 0.005,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "mm",
+            "reason": "above_upper_limit"
+          }
+        ],
+        "usable": false
+      },
+      "boundary_working_bytes": 26195246336,
+      "boundary_capacity_points": 42799,
+      "display_file": "candidate-D.union.json",
+      "boundary_capacity": "rejected-before-allocation"
+    },
+    {
+      "name": "B.A_top",
+      "xy_windows": [
+        [
+          -34,
+          -24,
+          -28,
+          -25
+        ]
+      ],
+      "point_count": 33300,
+      "source_indices_sha256": "715a5681e114d562f96f7fd5e449a87a25b87376e1d02be8ec4cb8d04711fabe",
+      "source_point_count": 14745099,
+      "crop_parameters": {
+        "roi_id": "candidate",
+        "rois": [
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "candidate",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "union",
+            "geometry": {
+              "roi_ids": [
+                "window-0"
+              ]
+            }
+          },
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "window-0",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "box",
+            "geometry": {
+              "center": [
+                -29.0,
+                -26.5,
+                -17.6200008392334
+              ],
+              "rotation": [
+                [
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "size": [
+                10.0,
+                3.0,
+                11.368000030517578
+              ]
+            }
+          }
+        ]
+      },
+      "selected_bounds": [
+        [
+          -33.97800064086914,
+          -27.990001678466797,
+          -16.23000144958496
+        ],
+        [
+          -24.018001556396484,
+          -25.020000457763672,
+          -15.66200065612793
+        ]
+      ],
+      "source_z_quantiles": [
+        -16.23000144958496,
+        -16.05000114440918,
+        -15.754000663757324,
+        -15.676000595092773,
+        -15.66200065612793
+      ],
+      "svd_center": [
+        -28.998001367838175,
+        -26.505001258850097,
+        -15.756433581217632
+      ],
+      "svd_normal": [
+        0.01282565261062271,
+        -0.012789801654919608,
+        -0.9998359483478974
+      ],
+      "rms_mm": 0.044530420632182086,
+      "max_residual_mm": 0.45218761958830506,
+      "max_residual_point": [
+        -29.2080020904541,
+        -25.05000114440918,
+        -16.23000144958496
+      ],
+      "absolute_residual_quantiles": [
+        0.008826184300192599,
+        0.02296399482548044,
+        0.2755228796861415,
+        0.45218761958830467
+      ],
+      "fit_reason": "geometry_quality_failed",
+      "quality_policy": {
+        "metrics": {
+          "observation_id": "ae40e7597653401fa71f7e98724e055e",
+          "items": [
+            {
+              "item_id": "input_count",
+              "unit": "1",
+              "value": 33300.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "inlier_count",
+              "unit": "1",
+              "value": 33300.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "inlier_ratio",
+              "unit": "1",
+              "value": 1.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "tangent_ratio",
+              "unit": "1",
+              "value": 0.3002864407400099,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "normal_gap",
+              "unit": "1",
+              "value": 0.28484641036958774,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "rms",
+              "unit": "mm",
+              "value": 0.044530420632182086,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "max_residual",
+              "unit": "mm",
+              "value": 0.45218761958830506,
+              "valid": true,
+              "reason": null
+            }
+          ]
+        },
+        "checks": [
+          {
+            "item_id": "inlier_count",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 33300.0,
+            "unit": "1",
+            "lower": 3.0,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "tangent_ratio",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 0.3002864407400099,
+            "unit": "1",
+            "lower": 0.01,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "normal_gap",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 0.28484641036958774,
+            "unit": "1",
+            "lower": 0.01,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "rms",
+            "required": true,
+            "passed": false,
+            "valid": true,
+            "value": 0.044530420632182086,
+            "unit": "mm",
+            "lower": null,
+            "upper": 0.001,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "mm",
+            "reason": "above_upper_limit"
+          },
+          {
+            "item_id": "max_residual",
+            "required": true,
+            "passed": false,
+            "valid": true,
+            "value": 0.45218761958830506,
+            "unit": "mm",
+            "lower": null,
+            "upper": 0.005,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "mm",
+            "reason": "above_upper_limit"
+          }
+        ],
+        "usable": false
+      },
+      "boundary_working_bytes": 417715200,
+      "boundary_capacity_points": 42799,
+      "display_file": "candidate-B.A_top.json",
+      "boundary_capacity": "fits-preflight-only-not-geometric-acceptance"
+    },
+    {
+      "name": "B.B_top",
+      "xy_windows": [
+        [
+          -4,
+          7,
+          -45,
+          -42
+        ]
+      ],
+      "point_count": 36600,
+      "source_indices_sha256": "59233b65121ea74f97f334121d2ff209e7fd77094175a745a066e2163a44a156",
+      "source_point_count": 14745099,
+      "crop_parameters": {
+        "roi_id": "candidate",
+        "rois": [
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "candidate",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "union",
+            "geometry": {
+              "roi_ids": [
+                "window-0"
+              ]
+            }
+          },
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "window-0",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "box",
+            "geometry": {
+              "center": [
+                1.5,
+                -43.5,
+                -17.6200008392334
+              ],
+              "rotation": [
+                [
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "size": [
+                11.0,
+                3.0,
+                11.368000030517578
+              ]
+            }
+          }
+        ]
+      },
+      "selected_bounds": [
+        [
+          -3.9779999256134033,
+          -44.970001220703125,
+          -15.706000328063965
+        ],
+        [
+          6.9720001220703125,
+          -42.000003814697266,
+          -15.096000671386719
+        ]
+      ],
+      "source_z_quantiles": [
+        -15.706000328063965,
+        -15.670001029968262,
+        -15.22300100326538,
+        -15.11600112915039,
+        -15.096000671386719
+      ],
+      "svd_center": [
+        1.4970000090912148,
+        -43.48500205993653,
+        -15.225048475786636
+      ],
+      "svd_normal": [
+        0.017161035947964684,
+        -0.013679469060941196,
+        -0.9997591564829017
+      ],
+      "rms_mm": 0.06499813451019497,
+      "max_residual_mm": 0.46045867256219797,
+      "max_residual_point": [
+        1.3020000457763672,
+        -42.2400016784668,
+        -15.706000328063965
+      ],
+      "absolute_residual_quantiles": [
+        0.01280885026769246,
+        0.035484107772559316,
+        0.4285365044776417,
+        0.4604586725621987
+      ],
+      "fit_reason": "geometry_quality_failed",
+      "quality_policy": {
+        "metrics": {
+          "observation_id": "ae40e7597653401fa71f7e98724e055e",
+          "items": [
+            {
+              "item_id": "input_count",
+              "unit": "1",
+              "value": 36600.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "inlier_count",
+              "unit": "1",
+              "value": 36600.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "inlier_ratio",
+              "unit": "1",
+              "value": 1.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "tangent_ratio",
+              "unit": "1",
+              "value": 0.273196613880826,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "normal_gap",
+              "unit": "1",
+              "value": 0.2526931683627694,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "rms",
+              "unit": "mm",
+              "value": 0.06499813451019497,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "max_residual",
+              "unit": "mm",
+              "value": 0.46045867256219797,
+              "valid": true,
+              "reason": null
+            }
+          ]
+        },
+        "checks": [
+          {
+            "item_id": "inlier_count",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 36600.0,
+            "unit": "1",
+            "lower": 3.0,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "tangent_ratio",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 0.273196613880826,
+            "unit": "1",
+            "lower": 0.01,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "normal_gap",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 0.2526931683627694,
+            "unit": "1",
+            "lower": 0.01,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "rms",
+            "required": true,
+            "passed": false,
+            "valid": true,
+            "value": 0.06499813451019497,
+            "unit": "mm",
+            "lower": null,
+            "upper": 0.001,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "mm",
+            "reason": "above_upper_limit"
+          },
+          {
+            "item_id": "max_residual",
+            "required": true,
+            "passed": false,
+            "valid": true,
+            "value": 0.46045867256219797,
+            "unit": "mm",
+            "lower": null,
+            "upper": 0.005,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "mm",
+            "reason": "above_upper_limit"
+          }
+        ],
+        "usable": false
+      },
+      "boundary_working_bytes": 459110400,
+      "boundary_capacity_points": 42799,
+      "boundary_capacity": "fits-preflight-only-not-geometric-acceptance"
+    },
+    {
+      "name": "B.A_bottom",
+      "xy_windows": [
+        [
+          -34,
+          -24,
+          -48,
+          -45
+        ]
+      ],
+      "point_count": 33215,
+      "source_indices_sha256": "f05b2a1ff41929eed4fe95534ecf2db233448e3babde9f3985ec9fc5c8e8cd43",
+      "source_point_count": 14745099,
+      "crop_parameters": {
+        "roi_id": "candidate",
+        "rois": [
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "candidate",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "union",
+            "geometry": {
+              "roi_ids": [
+                "window-0"
+              ]
+            }
+          },
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "window-0",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "box",
+            "geometry": {
+              "center": [
+                -29.0,
+                -46.5,
+                -17.6200008392334
+              ],
+              "rotation": [
+                [
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "size": [
+                10.0,
+                3.0,
+                11.368000030517578
+              ]
+            }
+          }
+        ]
+      },
+      "selected_bounds": [
+        [
+          -33.97800064086914,
+          -47.970001220703125,
+          -16.23200035095215
+        ],
+        [
+          -24.018001556396484,
+          -45.000003814697266,
+          -15.610000610351562
+        ]
+      ],
+      "source_z_quantiles": [
+        -16.23200035095215,
+        -16.18600082397461,
+        -15.708001136779785,
+        -15.624000549316406,
+        -15.610000610351562
+      ],
+      "svd_center": [
+        -28.998829608040367,
+        -46.48426564802485,
+        -15.71772623698108
+      ],
+      "svd_normal": [
+        -0.012214993722223393,
+        -0.022945594851659368,
+        0.999662089710953
+      ],
+      "rms_mm": 0.08906128978671146,
+      "max_residual_mm": 0.49062223274847155,
+      "max_residual_point": [
+        -29.088001251220703,
+        -47.46000289916992,
+        -16.23200035095215
+      ],
+      "absolute_residual_quantiles": [
+        0.020095625828225046,
+        0.05753368635237938,
+        0.44767817998113235,
+        0.4906222327484715
+      ],
+      "fit_reason": "geometry_quality_failed",
+      "quality_policy": {
+        "metrics": {
+          "observation_id": "ae40e7597653401fa71f7e98724e055e",
+          "items": [
+            {
+              "item_id": "input_count",
+              "unit": "1",
+              "value": 33215.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "inlier_count",
+              "unit": "1",
+              "value": 33215.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "inlier_ratio",
+              "unit": "1",
+              "value": 1.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "tangent_ratio",
+              "unit": "1",
+              "value": 0.3003037281127024,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "normal_gap",
+              "unit": "1",
+              "value": 0.2694620503653863,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "rms",
+              "unit": "mm",
+              "value": 0.08906128978671146,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "max_residual",
+              "unit": "mm",
+              "value": 0.49062223274847155,
+              "valid": true,
+              "reason": null
+            }
+          ]
+        },
+        "checks": [
+          {
+            "item_id": "inlier_count",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 33215.0,
+            "unit": "1",
+            "lower": 3.0,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "tangent_ratio",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 0.3003037281127024,
+            "unit": "1",
+            "lower": 0.01,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "normal_gap",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 0.2694620503653863,
+            "unit": "1",
+            "lower": 0.01,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "rms",
+            "required": true,
+            "passed": false,
+            "valid": true,
+            "value": 0.08906128978671146,
+            "unit": "mm",
+            "lower": null,
+            "upper": 0.001,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "mm",
+            "reason": "above_upper_limit"
+          },
+          {
+            "item_id": "max_residual",
+            "required": true,
+            "passed": false,
+            "valid": true,
+            "value": 0.49062223274847155,
+            "unit": "mm",
+            "lower": null,
+            "upper": 0.005,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "mm",
+            "reason": "above_upper_limit"
+          }
+        ],
+        "usable": false
+      },
+      "boundary_working_bytes": 416648960,
+      "boundary_capacity_points": 42799,
+      "boundary_capacity": "fits-preflight-only-not-geometric-acceptance"
+    },
+    {
+      "name": "B.B_bottom",
+      "xy_windows": [
+        [
+          -4,
+          7,
+          -63,
+          -61
+        ]
+      ],
+      "point_count": 24156,
+      "source_indices_sha256": "78ad4b91d67e8c5c4a714f5347e80f7f0439c4f9c021b2441df7b57a48d986ca",
+      "source_point_count": 14745099,
+      "crop_parameters": {
+        "roi_id": "candidate",
+        "rois": [
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "candidate",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "union",
+            "geometry": {
+              "roi_ids": [
+                "window-0"
+              ]
+            }
+          },
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "window-0",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "box",
+            "geometry": {
+              "center": [
+                1.5,
+                -62.0,
+                -17.6200008392334
+              ],
+              "rotation": [
+                [
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "size": [
+                11.0,
+                2.0,
+                11.368000030517578
+              ]
+            }
+          }
+        ]
+      },
+      "selected_bounds": [
+        [
+          -3.9779999256134033,
+          -62.970001220703125,
+          -15.362000465393066
+        ],
+        [
+          6.9720001220703125,
+          -61.02000427246094,
+          -15.140000343322754
+        ]
+      ],
+      "source_z_quantiles": [
+        -15.362000465393066,
+        -15.342000961303711,
+        -15.25200080871582,
+        -15.154000282287598,
+        -15.140000343322754
+      ],
+      "svd_center": [
+        1.4970000090912148,
+        -61.995002977775805,
+        -15.251298952189517
+      ],
+      "svd_normal": [
+        0.016834940951368775,
+        0.0025087167473543115,
+        -0.9998551350587971
+      ],
+      "rms_mm": 0.00641622411465474,
+      "max_residual_mm": 0.027732172379638653,
+      "max_residual_point": [
+        6.2220001220703125,
+        -62.79000473022461,
+        -15.146000862121582
+      ],
+      "absolute_residual_quantiles": [
+        0.004330897852446714,
+        0.010485686546574863,
+        0.016905738669023312,
+        0.027732172379638487
+      ],
+      "fit_reason": "geometry_quality_failed",
+      "quality_policy": {
+        "metrics": {
+          "observation_id": "ae40e7597653401fa71f7e98724e055e",
+          "items": [
+            {
+              "item_id": "input_count",
+              "unit": "1",
+              "value": 24156.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "inlier_count",
+              "unit": "1",
+              "value": 24156.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "inlier_ratio",
+              "unit": "1",
+              "value": 1.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "tangent_ratio",
+              "unit": "1",
+              "value": 0.18028285749322287,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "normal_gap",
+              "unit": "1",
+              "value": 0.1782588697634534,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "rms",
+              "unit": "mm",
+              "value": 0.00641622411465474,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "max_residual",
+              "unit": "mm",
+              "value": 0.027732172379638653,
+              "valid": true,
+              "reason": null
+            }
+          ]
+        },
+        "checks": [
+          {
+            "item_id": "inlier_count",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 24156.0,
+            "unit": "1",
+            "lower": 3.0,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "tangent_ratio",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 0.18028285749322287,
+            "unit": "1",
+            "lower": 0.01,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "normal_gap",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 0.1782588697634534,
+            "unit": "1",
+            "lower": 0.01,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "rms",
+            "required": true,
+            "passed": false,
+            "valid": true,
+            "value": 0.00641622411465474,
+            "unit": "mm",
+            "lower": null,
+            "upper": 0.001,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "mm",
+            "reason": "above_upper_limit"
+          },
+          {
+            "item_id": "max_residual",
+            "required": true,
+            "passed": false,
+            "valid": true,
+            "value": 0.027732172379638653,
+            "unit": "mm",
+            "lower": null,
+            "upper": 0.005,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "mm",
+            "reason": "above_upper_limit"
+          }
+        ],
+        "usable": false
+      },
+      "boundary_working_bytes": 303012864,
+      "boundary_capacity_points": 42799,
+      "boundary_capacity": "fits-preflight-only-not-geometric-acceptance"
+    },
+    {
+      "name": "B.C_top",
+      "xy_windows": [
+        [
+          28,
+          38,
+          -100,
+          -97
+        ]
+      ],
+      "point_count": 33400,
+      "source_indices_sha256": "c8f3443bffc91d2e09bf6bf48bab1b72b17edfb1534ec8d36ebeab9ed8a12d56",
+      "source_point_count": 14745099,
+      "crop_parameters": {
+        "roi_id": "candidate",
+        "rois": [
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "candidate",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "union",
+            "geometry": {
+              "roi_ids": [
+                "window-0"
+              ]
+            }
+          },
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "window-0",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "box",
+            "geometry": {
+              "center": [
+                33.0,
+                -98.5,
+                -17.6200008392334
+              ],
+              "rotation": [
+                [
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "size": [
+                10.0,
+                3.0,
+                11.368000030517578
+              ]
+            }
+          }
+        ]
+      },
+      "selected_bounds": [
+        [
+          28.00200080871582,
+          -99.99000549316406,
+          -14.75200080871582
+        ],
+        [
+          37.992000579833984,
+          -97.02000427246094,
+          -14.479999542236328
+        ]
+      ],
+      "source_z_quantiles": [
+        -14.75200080871582,
+        -14.74000072479248,
+        -14.624000549316406,
+        -14.496000289916992,
+        -14.479999542236328
+      ],
+      "svd_center": [
+        32.99700155657922,
+        -98.50500457763673,
+        -14.620401350295472
+      ],
+      "svd_normal": [
+        0.02479562188745234,
+        -0.0007191781739417369,
+        -0.9996922826139896
+      ],
+      "rms_mm": 0.007156663081124703,
+      "max_residual_mm": 0.03532784466956608,
+      "max_residual_point": [
+        29.202001571655273,
+        -97.3800048828125,
+        -14.680000305175781
+      ],
+      "absolute_residual_quantiles": [
+        0.0048501733338452415,
+        0.011579033922359209,
+        0.018868342126344643,
+        0.03532784466956563
+      ],
+      "fit_reason": "geometry_quality_failed",
+      "quality_policy": {
+        "metrics": {
+          "observation_id": "ae40e7597653401fa71f7e98724e055e",
+          "items": [
+            {
+              "item_id": "input_count",
+              "unit": "1",
+              "value": 33400.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "inlier_count",
+              "unit": "1",
+              "value": 33400.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "inlier_ratio",
+              "unit": "1",
+              "value": 1.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "tangent_ratio",
+              "unit": "1",
+              "value": 0.2992956023690353,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "normal_gap",
+              "unit": "1",
+              "value": 0.29682215967355213,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "rms",
+              "unit": "mm",
+              "value": 0.007156663081124703,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "max_residual",
+              "unit": "mm",
+              "value": 0.03532784466956608,
+              "valid": true,
+              "reason": null
+            }
+          ]
+        },
+        "checks": [
+          {
+            "item_id": "inlier_count",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 33400.0,
+            "unit": "1",
+            "lower": 3.0,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "tangent_ratio",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 0.2992956023690353,
+            "unit": "1",
+            "lower": 0.01,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "normal_gap",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 0.29682215967355213,
+            "unit": "1",
+            "lower": 0.01,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "rms",
+            "required": true,
+            "passed": false,
+            "valid": true,
+            "value": 0.007156663081124703,
+            "unit": "mm",
+            "lower": null,
+            "upper": 0.001,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "mm",
+            "reason": "above_upper_limit"
+          },
+          {
+            "item_id": "max_residual",
+            "required": true,
+            "passed": false,
+            "valid": true,
+            "value": 0.03532784466956608,
+            "unit": "mm",
+            "lower": null,
+            "upper": 0.005,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "mm",
+            "reason": "above_upper_limit"
+          }
+        ],
+        "usable": false
+      },
+      "boundary_working_bytes": 418969600,
+      "boundary_capacity_points": 42799,
+      "boundary_capacity": "fits-preflight-only-not-geometric-acceptance"
+    },
+    {
+      "name": "B.C_bottom",
+      "xy_windows": [
+        [
+          28,
+          38,
+          -116,
+          -112
+        ]
+      ],
+      "point_count": 44422,
+      "source_indices_sha256": "009b3f7a0b7806bfcd9d22a235b4d049e036a5d4ea6453ebe6d73dc49ea9a43d",
+      "source_point_count": 14745099,
+      "crop_parameters": {
+        "roi_id": "candidate",
+        "rois": [
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "candidate",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "union",
+            "geometry": {
+              "roi_ids": [
+                "window-0"
+              ]
+            }
+          },
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "window-0",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "box",
+            "geometry": {
+              "center": [
+                33.0,
+                -114.0,
+                -17.6200008392334
+              ],
+              "rotation": [
+                [
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "size": [
+                10.0,
+                4.0,
+                11.368000030517578
+              ]
+            }
+          }
+        ]
+      },
+      "selected_bounds": [
+        [
+          28.00200080871582,
+          -115.9800033569336,
+          -14.76400089263916
+        ],
+        [
+          37.992000579833984,
+          -112.02000427246094,
+          -14.49000072479248
+        ]
+      ],
+      "source_z_quantiles": [
+        -14.76400089263916,
+        -14.748001098632812,
+        -14.632000923156738,
+        -14.506001472473145,
+        -14.49000072479248
+      ],
+      "svd_center": [
+        32.99700155657922,
+        -114.00000544956752,
+        -14.628131662976505
+      ],
+      "svd_normal": [
+        0.0245604883326301,
+        0.0023094697891505866,
+        -0.9996956780751609
+      ],
+      "rms_mm": 0.007386090830989003,
+      "max_residual_mm": 0.02983950607567727,
+      "max_residual_point": [
+        34.152000427246094,
+        -112.44000244140625,
+        -14.62600040435791
+      ],
+      "absolute_residual_quantiles": [
+        0.005006088867573407,
+        0.012104309773121354,
+        0.018948757649122294,
+        0.029839506075674888
+      ],
+      "fit_reason": "geometry_quality_failed",
+      "quality_policy": {
+        "metrics": {
+          "observation_id": "ae40e7597653401fa71f7e98724e055e",
+          "items": [
+            {
+              "item_id": "input_count",
+              "unit": "1",
+              "value": 44422.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "inlier_count",
+              "unit": "1",
+              "value": 44422.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "inlier_ratio",
+              "unit": "1",
+              "value": 1.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "tangent_ratio",
+              "unit": "1",
+              "value": 0.3980750602121562,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "normal_gap",
+              "unit": "1",
+              "value": 0.39552230926516757,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "rms",
+              "unit": "mm",
+              "value": 0.007386090830989003,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "max_residual",
+              "unit": "mm",
+              "value": 0.02983950607567727,
+              "valid": true,
+              "reason": null
+            }
+          ]
+        },
+        "checks": [
+          {
+            "item_id": "inlier_count",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 44422.0,
+            "unit": "1",
+            "lower": 3.0,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "tangent_ratio",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 0.3980750602121562,
+            "unit": "1",
+            "lower": 0.01,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "normal_gap",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 0.39552230926516757,
+            "unit": "1",
+            "lower": 0.01,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "rms",
+            "required": true,
+            "passed": false,
+            "valid": true,
+            "value": 0.007386090830989003,
+            "unit": "mm",
+            "lower": null,
+            "upper": 0.001,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "mm",
+            "reason": "above_upper_limit"
+          },
+          {
+            "item_id": "max_residual",
+            "required": true,
+            "passed": false,
+            "valid": true,
+            "value": 0.02983950607567727,
+            "unit": "mm",
+            "lower": null,
+            "upper": 0.005,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "mm",
+            "reason": "above_upper_limit"
+          }
+        ],
+        "usable": false
+      },
+      "boundary_working_bytes": 557229568,
+      "boundary_capacity_points": 42799,
+      "boundary_capacity": "rejected-before-allocation"
+    },
+    {
+      "name": "T.A_top_L",
+      "xy_windows": [
+        [
+          -36.70499999999998,
+          -29.719175221099093,
+          -22.364999999999977,
+          -14.448676980326052
+        ]
+      ],
+      "point_count": 59290,
+      "source_indices_sha256": "5ecbf398b1af1bee73c04a465253ba3908e214936d2bf7f6dfa90da0719f6dcc",
+      "source_point_count": 14745099,
+      "crop_parameters": {
+        "roi_id": "candidate",
+        "rois": [
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "candidate",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "union",
+            "geometry": {
+              "roi_ids": [
+                "window-0"
+              ]
+            }
+          },
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "window-0",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "box",
+            "geometry": {
+              "center": [
+                -33.21208761054953,
+                -18.406838490163015,
+                -17.6200008392334
+              ],
+              "rotation": [
+                [
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "size": [
+                6.985824778900884,
+                7.916323019673925,
+                11.368000030517578
+              ]
+            }
+          }
+        ]
+      },
+      "selected_bounds": [
+        [
+          -36.678001403808594,
+          -22.350000381469727,
+          -16.408000946044922
+        ],
+        [
+          -29.748001098632812,
+          -14.460000991821289,
+          -14.28600025177002
+        ]
+      ],
+      "source_z_quantiles": [
+        -16.408000946044922,
+        -16.332220821380616,
+        -14.7160005569458,
+        -14.338000297546387,
+        -14.28600025177002
+      ],
+      "svd_center": [
+        -33.15560790654036,
+        -18.398628964088765,
+        -14.77883665908708
+      ],
+      "svd_normal": [
+        -0.05884917251117109,
+        0.04710074409101728,
+        0.9971551006743248
+      ],
+      "rms_mm": 0.30338099106017585,
+      "max_residual_mm": 1.8306101288123218,
+      "max_residual_point": [
+        -29.86800193786621,
+        -22.350000381469727,
+        -16.23400115966797
+      ],
+      "absolute_residual_quantiles": [
+        0.12162397258152098,
+        0.2717175686658636,
+        1.2517812512799598,
+        1.8306101288123224
+      ],
+      "fit_reason": "geometry_quality_failed",
+      "quality_policy": {
+        "metrics": {
+          "observation_id": "ae40e7597653401fa71f7e98724e055e",
+          "items": [
+            {
+              "item_id": "input_count",
+              "unit": "1",
+              "value": 59290.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "inlier_count",
+              "unit": "1",
+              "value": 59290.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "inlier_ratio",
+              "unit": "1",
+              "value": 1.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "tangent_ratio",
+              "unit": "1",
+              "value": 0.8718646943104832,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "normal_gap",
+              "unit": "1",
+              "value": 0.7387656293827758,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "rms",
+              "unit": "mm",
+              "value": 0.30338099106017585,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "max_residual",
+              "unit": "mm",
+              "value": 1.8306101288123218,
+              "valid": true,
+              "reason": null
+            }
+          ]
+        },
+        "checks": [
+          {
+            "item_id": "inlier_count",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 59290.0,
+            "unit": "1",
+            "lower": 3.0,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "tangent_ratio",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 0.8718646943104832,
+            "unit": "1",
+            "lower": 0.01,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "normal_gap",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 0.7387656293827758,
+            "unit": "1",
+            "lower": 0.01,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "rms",
+            "required": true,
+            "passed": false,
+            "valid": true,
+            "value": 0.30338099106017585,
+            "unit": "mm",
+            "lower": null,
+            "upper": 0.001,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "mm",
+            "reason": "above_upper_limit"
+          },
+          {
+            "item_id": "max_residual",
+            "required": true,
+            "passed": false,
+            "valid": true,
+            "value": 1.8306101288123218,
+            "unit": "mm",
+            "lower": null,
+            "upper": 0.005,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "mm",
+            "reason": "above_upper_limit"
+          }
+        ],
+        "usable": false
+      },
+      "boundary_working_bytes": 743733760,
+      "boundary_capacity_points": 42799,
+      "display_file": "candidate-T.A_top_L.json",
+      "boundary_capacity": "rejected-before-allocation"
+    },
+    {
+      "name": "T.A_top_R",
+      "xy_windows": [
+        [
+          -28.634999999999977,
+          -21.708747359870266,
+          -22.304999999999975,
+          -14.418950609165256
+        ]
+      ],
+      "point_count": 59817,
+      "source_indices_sha256": "b4d5134001b942333d498e32eced04b1517e0b2ee60e7c29046d1ff547774397",
+      "source_point_count": 14745099,
+      "crop_parameters": {
+        "roi_id": "candidate",
+        "rois": [
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "candidate",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "union",
+            "geometry": {
+              "roi_ids": [
+                "window-0"
+              ]
+            }
+          },
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "window-0",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "box",
+            "geometry": {
+              "center": [
+                -25.17187367993512,
+                -18.361975304582614,
+                -17.6200008392334
+              ],
+              "rotation": [
+                [
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "size": [
+                6.926252640129711,
+                7.886049390834719,
+                11.368000030517578
+              ]
+            }
+          }
+        ]
+      },
+      "selected_bounds": [
+        [
+          -28.608001708984375,
+          -22.290000915527344,
+          -16.272001266479492
+        ],
+        [
+          -21.738000869750977,
+          -14.430000305175781,
+          -14.25200080871582
+        ]
+      ],
+      "source_z_quantiles": [
+        -16.272001266479492,
+        -16.108001708984375,
+        -14.630001068115234,
+        -14.306000709533691,
+        -14.25200080871582
+      ],
+      "svd_center": [
+        -25.151789751395157,
+        -18.34828362323887,
+        -14.698755868816434
+      ],
+      "svd_normal": [
+        0.03293189989370302,
+        0.05195250438055421,
+        0.9981064208079115
+      ],
+      "rms_mm": 0.2946353694531234,
+      "max_residual_mm": 1.4862557231824496,
+      "max_residual_point": [
+        -21.79800033569336,
+        -22.200000762939453,
+        -16.09800148010254
+      ],
+      "absolute_residual_quantiles": [
+        0.12270598051915177,
+        0.26853373488372695,
+        1.1712610358694064,
+        1.4862557231824498
+      ],
+      "fit_reason": "geometry_quality_failed",
+      "quality_policy": {
+        "metrics": {
+          "observation_id": "ae40e7597653401fa71f7e98724e055e",
+          "items": [
+            {
+              "item_id": "input_count",
+              "unit": "1",
+              "value": 59817.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "inlier_count",
+              "unit": "1",
+              "value": 59817.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "inlier_ratio",
+              "unit": "1",
+              "value": 1.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "tangent_ratio",
+              "unit": "1",
+              "value": 0.8737295156907219,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "normal_gap",
+              "unit": "1",
+              "value": 0.7440830774506161,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "rms",
+              "unit": "mm",
+              "value": 0.2946353694531234,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "max_residual",
+              "unit": "mm",
+              "value": 1.4862557231824496,
+              "valid": true,
+              "reason": null
+            }
+          ]
+        },
+        "checks": [
+          {
+            "item_id": "inlier_count",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 59817.0,
+            "unit": "1",
+            "lower": 3.0,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "tangent_ratio",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 0.8737295156907219,
+            "unit": "1",
+            "lower": 0.01,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "normal_gap",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 0.7440830774506161,
+            "unit": "1",
+            "lower": 0.01,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "rms",
+            "required": true,
+            "passed": false,
+            "valid": true,
+            "value": 0.2946353694531234,
+            "unit": "mm",
+            "lower": null,
+            "upper": 0.001,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "mm",
+            "reason": "above_upper_limit"
+          },
+          {
+            "item_id": "max_residual",
+            "required": true,
+            "passed": false,
+            "valid": true,
+            "value": 1.4862557231824496,
+            "unit": "mm",
+            "lower": null,
+            "upper": 0.005,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "mm",
+            "reason": "above_upper_limit"
+          }
+        ],
+        "usable": false
+      },
+      "boundary_working_bytes": 750344448,
+      "boundary_capacity_points": 42799,
+      "boundary_capacity": "rejected-before-allocation"
+    },
+    {
+      "name": "T.B_top_L",
+      "xy_windows": [
+        [
+          -6.100132184714427,
+          0.867398620282917,
+          -39.76499999999998,
+          -31.81778880449371
+        ]
+      ],
+      "point_count": 61185,
+      "source_indices_sha256": "b70e1a5460a0ec69e4e057c275d17f26441ee9e897e3ad27e5b741e9ff6bb757",
+      "source_point_count": 14745099,
+      "crop_parameters": {
+        "roi_id": "candidate",
+        "rois": [
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "candidate",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "union",
+            "geometry": {
+              "roi_ids": [
+                "window-0"
+              ]
+            }
+          },
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "window-0",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "box",
+            "geometry": {
+              "center": [
+                -2.616366782215755,
+                -35.791394402246844,
+                -17.6200008392334
+              ],
+              "rotation": [
+                [
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "size": [
+                6.967530804997344,
+                7.94721119550627,
+                11.368000030517578
+              ]
+            }
+          }
+        ]
+      },
+      "selected_bounds": [
+        [
+          -6.078000068664551,
+          -39.75,
+          -15.880001068115234
+        ],
+        [
+          0.8519999980926514,
+          -31.830001831054688,
+          -13.65000057220459
+        ]
+      ],
+      "source_z_quantiles": [
+        -15.880001068115234,
+        -15.812000274658203,
+        -14.068000793457031,
+        -13.706000328063965,
+        -13.65000057220459
+      ],
+      "svd_center": [
+        -2.613024271587229,
+        -35.77099604555582,
+        -14.15823203784593
+      ],
+      "svd_normal": [
+        -0.06807194543679844,
+        0.03751585645446898,
+        0.9969748094906599
+      ],
+      "rms_mm": 0.3637950116091853,
+      "max_residual_mm": 1.9242450702873068,
+      "max_residual_point": [
+        0.8519999980926514,
+        -39.75,
+        -15.702000617980957
+      ],
+      "absolute_residual_quantiles": [
+        0.15470521439934423,
+        0.3357319796819931,
+        1.3822429443329096,
+        1.924245070287305
+      ],
+      "fit_reason": "geometry_quality_failed",
+      "quality_policy": {
+        "metrics": {
+          "observation_id": "ae40e7597653401fa71f7e98724e055e",
+          "items": [
+            {
+              "item_id": "input_count",
+              "unit": "1",
+              "value": 61185.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "inlier_count",
+              "unit": "1",
+              "value": 61185.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "inlier_ratio",
+              "unit": "1",
+              "value": 1.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "tangent_ratio",
+              "unit": "1",
+              "value": 0.8800938111132859,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "normal_gap",
+              "unit": "1",
+              "value": 0.720929290932551,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "rms",
+              "unit": "mm",
+              "value": 0.3637950116091853,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "max_residual",
+              "unit": "mm",
+              "value": 1.9242450702873068,
+              "valid": true,
+              "reason": null
+            }
+          ]
+        },
+        "checks": [
+          {
+            "item_id": "inlier_count",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 61185.0,
+            "unit": "1",
+            "lower": 3.0,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "tangent_ratio",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 0.8800938111132859,
+            "unit": "1",
+            "lower": 0.01,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "normal_gap",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 0.720929290932551,
+            "unit": "1",
+            "lower": 0.01,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "rms",
+            "required": true,
+            "passed": false,
+            "valid": true,
+            "value": 0.3637950116091853,
+            "unit": "mm",
+            "lower": null,
+            "upper": 0.001,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "mm",
+            "reason": "above_upper_limit"
+          },
+          {
+            "item_id": "max_residual",
+            "required": true,
+            "passed": false,
+            "valid": true,
+            "value": 1.9242450702873068,
+            "unit": "mm",
+            "lower": null,
+            "upper": 0.005,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "mm",
+            "reason": "above_upper_limit"
+          }
+        ],
+        "usable": false
+      },
+      "boundary_working_bytes": 767504640,
+      "boundary_capacity_points": 42799,
+      "boundary_capacity": "rejected-before-allocation"
+    },
+    {
+      "name": "T.B_top_R",
+      "xy_windows": [
+        [
+          1.8835677457249798,
+          8.895000000000007,
+          -39.73499999999998,
+          -31.78822589029624
+        ]
+      ],
+      "point_count": 61651,
+      "source_indices_sha256": "39cf93c6e92fdc545801f8f6f56c6f7ed0a568ff2b12c4f94ae441ac5c39eaf7",
+      "source_point_count": 14745099,
+      "crop_parameters": {
+        "roi_id": "candidate",
+        "rois": [
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "candidate",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "union",
+            "geometry": {
+              "roi_ids": [
+                "window-0"
+              ]
+            }
+          },
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "window-0",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "box",
+            "geometry": {
+              "center": [
+                5.389283872862493,
+                -35.76161294514811,
+                -17.6200008392334
+              ],
+              "rotation": [
+                [
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "size": [
+                7.011432254275027,
+                7.946774109703739,
+                11.368000030517578
+              ]
+            }
+          }
+        ]
+      },
+      "selected_bounds": [
+        [
+          1.9019999504089355,
+          -39.720001220703125,
+          -15.724000930786133
+        ],
+        [
+          8.892000198364258,
+          -31.80000114440918,
+          -13.610000610351562
+        ]
+      ],
+      "source_z_quantiles": [
+        -15.724000930786133,
+        -15.598000526428223,
+        -13.97800064086914,
+        -13.666000366210938,
+        -13.610000610351562
+      ],
+      "svd_center": [
+        5.388666659197675,
+        -35.741888594019066,
+        -14.07293022762329
+      ],
+      "svd_normal": [
+        0.030764835201543436,
+        0.04228949479890465,
+        0.9986316255480175
+      ],
+      "rms_mm": 0.3566942885117468,
+      "max_residual_mm": 1.9057519596335544,
+      "max_residual_point": [
+        1.9919999837875366,
+        -39.630001068115234,
+        -15.712000846862793
+      ],
+      "absolute_residual_quantiles": [
+        0.14472765871567658,
+        0.3126979507451661,
+        1.3219784302429707,
+        1.905751959633554
+      ],
+      "fit_reason": "geometry_quality_failed",
+      "quality_policy": {
+        "metrics": {
+          "observation_id": "ae40e7597653401fa71f7e98724e055e",
+          "items": [
+            {
+              "item_id": "input_count",
+              "unit": "1",
+              "value": 61651.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "inlier_count",
+              "unit": "1",
+              "value": 61651.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "inlier_ratio",
+              "unit": "1",
+              "value": 1.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "tangent_ratio",
+              "unit": "1",
+              "value": 0.885439529218109,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "normal_gap",
+              "unit": "1",
+              "value": 0.7294286023385614,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "rms",
+              "unit": "mm",
+              "value": 0.3566942885117468,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "max_residual",
+              "unit": "mm",
+              "value": 1.9057519596335544,
+              "valid": true,
+              "reason": null
+            }
+          ]
+        },
+        "checks": [
+          {
+            "item_id": "inlier_count",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 61651.0,
+            "unit": "1",
+            "lower": 3.0,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "tangent_ratio",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 0.885439529218109,
+            "unit": "1",
+            "lower": 0.01,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "normal_gap",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 0.7294286023385614,
+            "unit": "1",
+            "lower": 0.01,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "rms",
+            "required": true,
+            "passed": false,
+            "valid": true,
+            "value": 0.3566942885117468,
+            "unit": "mm",
+            "lower": null,
+            "upper": 0.001,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "mm",
+            "reason": "above_upper_limit"
+          },
+          {
+            "item_id": "max_residual",
+            "required": true,
+            "passed": false,
+            "valid": true,
+            "value": 1.9057519596335544,
+            "unit": "mm",
+            "lower": null,
+            "upper": 0.005,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "mm",
+            "reason": "above_upper_limit"
+          }
+        ],
+        "usable": false
+      },
+      "boundary_working_bytes": 773350144,
+      "boundary_capacity_points": 42799,
+      "boundary_capacity": "rejected-before-allocation"
+    },
+    {
+      "name": "T.A_bottom_L",
+      "xy_windows": [
+        [
+          -36.28499999999997,
+          -29.2707427104311,
+          -57.64499999999997,
+          -49.51737126509541
+        ]
+      ],
+      "point_count": 59479,
+      "source_indices_sha256": "d2c03fec98a82a374f2a08d48dfd97e4b4337279d79e9c3977aa753cf90f8aba",
+      "source_point_count": 14745099,
+      "crop_parameters": {
+        "roi_id": "candidate",
+        "rois": [
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "candidate",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "union",
+            "geometry": {
+              "roi_ids": [
+                "window-0"
+              ]
+            }
+          },
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "window-0",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "box",
+            "geometry": {
+              "center": [
+                -32.77787135521554,
+                -53.58118563254769,
+                -17.6200008392334
+              ],
+              "rotation": [
+                [
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "size": [
+                7.014257289568867,
+                8.127628734904555,
+                11.368000030517578
+              ]
+            }
+          }
+        ]
+      },
+      "selected_bounds": [
+        [
+          -36.25800323486328,
+          -57.630001068115234,
+          -16.36400032043457
+        ],
+        [
+          -29.298002243041992,
+          -49.53000259399414,
+          -14.160000801086426
+        ]
+      ],
+      "source_z_quantiles": [
+        -16.36400032043457,
+        -16.296001434326172,
+        -14.60400104522705,
+        -14.234000205993652,
+        -14.160000801086426
+      ],
+      "svd_center": [
+        -32.676208639884855,
+        -53.50583904497693,
+        -14.6310173993906
+      ],
+      "svd_normal": [
+        -0.034199493391203414,
+        -0.013103747552826062,
+        0.9993291181847231
+      ],
+      "rms_mm": 0.23097376088482097,
+      "max_residual_mm": 1.82118181262775,
+      "max_residual_point": [
+        -29.298002243041992,
+        -51.69000244140625,
+        -16.314001083374023
+      ],
+      "absolute_residual_quantiles": [
+        0.05843988786754441,
+        0.13513651900998291,
+        1.5127509088161728,
+        1.8211818126277513
+      ],
+      "fit_reason": "geometry_quality_failed",
+      "quality_policy": {
+        "metrics": {
+          "observation_id": "ae40e7597653401fa71f7e98724e055e",
+          "items": [
+            {
+              "item_id": "input_count",
+              "unit": "1",
+              "value": 59479.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "inlier_count",
+              "unit": "1",
+              "value": 59479.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "inlier_ratio",
+              "unit": "1",
+              "value": 1.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "tangent_ratio",
+              "unit": "1",
+              "value": 0.8648048575830187,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "normal_gap",
+              "unit": "1",
+              "value": 0.7637639093514501,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "rms",
+              "unit": "mm",
+              "value": 0.23097376088482097,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "max_residual",
+              "unit": "mm",
+              "value": 1.82118181262775,
+              "valid": true,
+              "reason": null
+            }
+          ]
+        },
+        "checks": [
+          {
+            "item_id": "inlier_count",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 59479.0,
+            "unit": "1",
+            "lower": 3.0,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "tangent_ratio",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 0.8648048575830187,
+            "unit": "1",
+            "lower": 0.01,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "normal_gap",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 0.7637639093514501,
+            "unit": "1",
+            "lower": 0.01,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "rms",
+            "required": true,
+            "passed": false,
+            "valid": true,
+            "value": 0.23097376088482097,
+            "unit": "mm",
+            "lower": null,
+            "upper": 0.001,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "mm",
+            "reason": "above_upper_limit"
+          },
+          {
+            "item_id": "max_residual",
+            "required": true,
+            "passed": false,
+            "valid": true,
+            "value": 1.82118181262775,
+            "unit": "mm",
+            "lower": null,
+            "upper": 0.005,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "mm",
+            "reason": "above_upper_limit"
+          }
+        ],
+        "usable": false
+      },
+      "boundary_working_bytes": 746104576,
+      "boundary_capacity_points": 42799,
+      "boundary_capacity": "rejected-before-allocation"
+    },
+    {
+      "name": "T.A_bottom_R",
+      "xy_windows": [
+        [
+          -28.274999999999974,
+          -21.254999999999708,
+          -57.61499999999997,
+          -49.44728244886075
+        ]
+      ],
+      "point_count": 60864,
+      "source_indices_sha256": "a90629d4652d91d7800bfd9f4472db7527f8c79ce581d75727b4434b8cbcb899",
+      "source_point_count": 14745099,
+      "crop_parameters": {
+        "roi_id": "candidate",
+        "rois": [
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "candidate",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "union",
+            "geometry": {
+              "roi_ids": [
+                "window-0"
+              ]
+            }
+          },
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "window-0",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "box",
+            "geometry": {
+              "center": [
+                -24.76499999999984,
+                -53.53114122443036,
+                -17.6200008392334
+              ],
+              "rotation": [
+                [
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "size": [
+                7.020000000000266,
+                8.16771755113922,
+                11.368000030517578
+              ]
+            }
+          }
+        ]
+      },
+      "selected_bounds": [
+        [
+          -28.248001098632812,
+          -57.60000228881836,
+          -16.14000129699707
+        ],
+        [
+          -21.25800132751465,
+          -49.470001220703125,
+          -14.108000755310059
+        ]
+      ],
+      "source_z_quantiles": [
+        -16.14000129699707,
+        -16.076000213623047,
+        -14.47800064086914,
+        -14.156001091003418,
+        -14.108000755310059
+      ],
+      "svd_center": [
+        -24.732727121855557,
+        -53.52044269752803,
+        -14.54215095951354
+      ],
+      "svd_normal": [
+        0.03396850059478613,
+        -0.019780175127156907,
+        0.9992271441665709
+      ],
+      "rms_mm": 0.28858551164344476,
+      "max_residual_mm": 1.5573479842806237,
+      "max_residual_point": [
+        -21.288000106811523,
+        -49.590003967285156,
+        -16.14000129699707
+      ],
+      "absolute_residual_quantiles": [
+        0.10737688936054127,
+        0.22885385945452646,
+        1.3678355262848427,
+        1.5573479842806253
+      ],
+      "fit_reason": "geometry_quality_failed",
+      "quality_policy": {
+        "metrics": {
+          "observation_id": "ae40e7597653401fa71f7e98724e055e",
+          "items": [
+            {
+              "item_id": "input_count",
+              "unit": "1",
+              "value": 60864.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "inlier_count",
+              "unit": "1",
+              "value": 60864.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "inlier_ratio",
+              "unit": "1",
+              "value": 1.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "tangent_ratio",
+              "unit": "1",
+              "value": 0.8711288184984827,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "normal_gap",
+              "unit": "1",
+              "value": 0.7456760462449833,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "rms",
+              "unit": "mm",
+              "value": 0.28858551164344476,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "max_residual",
+              "unit": "mm",
+              "value": 1.5573479842806237,
+              "valid": true,
+              "reason": null
+            }
+          ]
+        },
+        "checks": [
+          {
+            "item_id": "inlier_count",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 60864.0,
+            "unit": "1",
+            "lower": 3.0,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "tangent_ratio",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 0.8711288184984827,
+            "unit": "1",
+            "lower": 0.01,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "normal_gap",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 0.7456760462449833,
+            "unit": "1",
+            "lower": 0.01,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "rms",
+            "required": true,
+            "passed": false,
+            "valid": true,
+            "value": 0.28858551164344476,
+            "unit": "mm",
+            "lower": null,
+            "upper": 0.001,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "mm",
+            "reason": "above_upper_limit"
+          },
+          {
+            "item_id": "max_residual",
+            "required": true,
+            "passed": false,
+            "valid": true,
+            "value": 1.5573479842806237,
+            "unit": "mm",
+            "lower": null,
+            "upper": 0.005,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "mm",
+            "reason": "above_upper_limit"
+          }
+        ],
+        "usable": false
+      },
+      "boundary_working_bytes": 763478016,
+      "boundary_capacity_points": 42799,
+      "boundary_capacity": "rejected-before-allocation"
+    },
+    {
+      "name": "T.B_bottom_L",
+      "xy_windows": [
+        [
+          -5.74027722680026,
+          1.2905158555586989,
+          -75.04499999999997,
+          -66.8133420000766
+        ]
+      ],
+      "point_count": 62330,
+      "source_indices_sha256": "8ade93ce2363aa2a0c9d5e33dd3897eb3e211c522fe282af2dd6810d659d8815",
+      "source_point_count": 14745099,
+      "crop_parameters": {
+        "roi_id": "candidate",
+        "rois": [
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "candidate",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "union",
+            "geometry": {
+              "roi_ids": [
+                "window-0"
+              ]
+            }
+          },
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "window-0",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "box",
+            "geometry": {
+              "center": [
+                -2.224880685620781,
+                -70.92917100003828,
+                -17.6200008392334
+              ],
+              "rotation": [
+                [
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "size": [
+                7.030793082358959,
+                8.231657999923371,
+                11.368000030517578
+              ]
+            }
+          }
+        ]
+      },
+      "selected_bounds": [
+        [
+          -5.7179999351501465,
+          -75.0300064086914,
+          -17.016000747680664
+        ],
+        [
+          1.2719999551773071,
+          -66.84000396728516,
+          -13.750000953674316
+        ]
+      ],
+      "source_z_quantiles": [
+        -17.016000747680664,
+        -15.806000709533691,
+        -14.182001113891602,
+        -13.806000709533691,
+        -13.750000953674316
+      ],
+      "svd_center": [
+        -2.1778209511048408,
+        -70.85474507065469,
+        -14.229772657026894
+      ],
+      "svd_normal": [
+        -0.05123720619493397,
+        -0.011573190166702108,
+        0.9986194520290013
+      ],
+      "rms_mm": 0.2717232748863821,
+      "max_residual_mm": 2.721733188427193,
+      "max_residual_point": [
+        -4.248000144958496,
+        -66.93000030517578,
+        -17.016000747680664
+      ],
+      "absolute_residual_quantiles": [
+        0.08614635285852937,
+        0.21821828548332575,
+        1.3737771298170056,
+        2.7217331884271925
+      ],
+      "fit_reason": "geometry_quality_failed",
+      "quality_policy": {
+        "metrics": {
+          "observation_id": "ae40e7597653401fa71f7e98724e055e",
+          "items": [
+            {
+              "item_id": "input_count",
+              "unit": "1",
+              "value": 62330.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "inlier_count",
+              "unit": "1",
+              "value": 62330.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "inlier_ratio",
+              "unit": "1",
+              "value": 1.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "tangent_ratio",
+              "unit": "1",
+              "value": 0.8594973147681474,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "normal_gap",
+              "unit": "1",
+              "value": 0.7431415823207045,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "rms",
+              "unit": "mm",
+              "value": 0.2717232748863821,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "max_residual",
+              "unit": "mm",
+              "value": 2.721733188427193,
+              "valid": true,
+              "reason": null
+            }
+          ]
+        },
+        "checks": [
+          {
+            "item_id": "inlier_count",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 62330.0,
+            "unit": "1",
+            "lower": 3.0,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "tangent_ratio",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 0.8594973147681474,
+            "unit": "1",
+            "lower": 0.01,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "normal_gap",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 0.7431415823207045,
+            "unit": "1",
+            "lower": 0.01,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "rms",
+            "required": true,
+            "passed": false,
+            "valid": true,
+            "value": 0.2717232748863821,
+            "unit": "mm",
+            "lower": null,
+            "upper": 0.001,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "mm",
+            "reason": "above_upper_limit"
+          },
+          {
+            "item_id": "max_residual",
+            "required": true,
+            "passed": false,
+            "valid": true,
+            "value": 2.721733188427193,
+            "unit": "mm",
+            "lower": null,
+            "upper": 0.005,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "mm",
+            "reason": "above_upper_limit"
+          }
+        ],
+        "usable": false
+      },
+      "boundary_working_bytes": 781867520,
+      "boundary_capacity_points": 42799,
+      "boundary_capacity": "rejected-before-allocation"
+    },
+    {
+      "name": "T.B_bottom_R",
+      "xy_windows": [
+        [
+          2.257111524644849,
+          9.29140290371011,
+          -75.04499999999997,
+          -66.79380271003417
+        ]
+      ],
+      "point_count": 62656,
+      "source_indices_sha256": "f7307c40ff9c13573c9194d0e5859abb0dac5cdfd33b16c3811e6b9b1ad13c52",
+      "source_point_count": 14745099,
+      "crop_parameters": {
+        "roi_id": "candidate",
+        "rois": [
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "candidate",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "union",
+            "geometry": {
+              "roi_ids": [
+                "window-0"
+              ]
+            }
+          },
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "window-0",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "box",
+            "geometry": {
+              "center": [
+                5.774257214177479,
+                -70.91940135501707,
+                -17.6200008392334
+              ],
+              "rotation": [
+                [
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "size": [
+                7.034291379065261,
+                8.251197289965802,
+                11.368000030517578
+              ]
+            }
+          }
+        ]
+      },
+      "selected_bounds": [
+        [
+          2.26200008392334,
+          -75.0300064086914,
+          -15.724000930786133
+        ],
+        [
+          9.282000541687012,
+          -66.81000518798828,
+          -13.706000328063965
+        ]
+      ],
+      "source_z_quantiles": [
+        -15.724000930786133,
+        -15.570000648498535,
+        -14.078001022338867,
+        -13.762001037597656,
+        -13.706000328063965
+      ],
+      "svd_center": [
+        5.7180641882304215,
+        -70.8306751402211,
+        -14.13711183493057
+      ],
+      "svd_normal": [
+        0.0032809119990083097,
+        -0.02073504150078717,
+        0.9997796225520978
+      ],
+      "rms_mm": 0.27146537173306157,
+      "max_residual_mm": 1.6646288878499216,
+      "max_residual_point": [
+        2.26200008392334,
+        -66.84000396728516,
+        -15.708001136779785
+      ],
+      "absolute_residual_quantiles": [
+        0.0825506573755615,
+        0.23259372890186542,
+        1.3484625233710044,
+        1.6646288878499216
+      ],
+      "fit_reason": "geometry_quality_failed",
+      "quality_policy": {
+        "metrics": {
+          "observation_id": "ae40e7597653401fa71f7e98724e055e",
+          "items": [
+            {
+              "item_id": "input_count",
+              "unit": "1",
+              "value": 62656.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "inlier_count",
+              "unit": "1",
+              "value": 62656.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "inlier_ratio",
+              "unit": "1",
+              "value": 1.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "tangent_ratio",
+              "unit": "1",
+              "value": 0.8574945793998876,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "normal_gap",
+              "unit": "1",
+              "value": 0.7416763445706519,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "rms",
+              "unit": "mm",
+              "value": 0.27146537173306157,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "max_residual",
+              "unit": "mm",
+              "value": 1.6646288878499216,
+              "valid": true,
+              "reason": null
+            }
+          ]
+        },
+        "checks": [
+          {
+            "item_id": "inlier_count",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 62656.0,
+            "unit": "1",
+            "lower": 3.0,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "tangent_ratio",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 0.8574945793998876,
+            "unit": "1",
+            "lower": 0.01,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "normal_gap",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 0.7416763445706519,
+            "unit": "1",
+            "lower": 0.01,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "rms",
+            "required": true,
+            "passed": false,
+            "valid": true,
+            "value": 0.27146537173306157,
+            "unit": "mm",
+            "lower": null,
+            "upper": 0.001,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "mm",
+            "reason": "above_upper_limit"
+          },
+          {
+            "item_id": "max_residual",
+            "required": true,
+            "passed": false,
+            "valid": true,
+            "value": 1.6646288878499216,
+            "unit": "mm",
+            "lower": null,
+            "upper": 0.005,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "mm",
+            "reason": "above_upper_limit"
+          }
+        ],
+        "usable": false
+      },
+      "boundary_working_bytes": 785956864,
+      "boundary_capacity_points": 42799,
+      "boundary_capacity": "rejected-before-allocation"
+    },
+    {
+      "name": "T.C_top_L",
+      "xy_windows": [
+        [
+          24.859733091926554,
+          31.875000000000288,
+          -92.11499999999997,
+          -84.16791334545218
+        ]
+      ],
+      "point_count": 60658,
+      "source_indices_sha256": "ff3d201f5868b0c8abd0b1b73e90d16f210a93bd7ed8808a81d46ca5661c376c",
+      "source_point_count": 14745099,
+      "crop_parameters": {
+        "roi_id": "candidate",
+        "rois": [
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "candidate",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "union",
+            "geometry": {
+              "roi_ids": [
+                "window-0"
+              ]
+            }
+          },
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "window-0",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "box",
+            "geometry": {
+              "center": [
+                28.36736654596342,
+                -88.14145667272606,
+                -17.6200008392334
+              ],
+              "rotation": [
+                [
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "size": [
+                7.015266908073734,
+                7.947086654547789,
+                11.368000030517578
+              ]
+            }
+          }
+        ]
+      },
+      "selected_bounds": [
+        [
+          24.882001876831055,
+          -92.10000610351562,
+          -15.382000923156738
+        ],
+        [
+          31.87200164794922,
+          -84.18000030517578,
+          -13.110000610351562
+        ]
+      ],
+      "source_z_quantiles": [
+        -15.382000923156738,
+        -15.294000625610352,
+        -13.542000770568848,
+        -13.166000366210938,
+        -13.110000610351562
+      ],
+      "svd_center": [
+        28.32375527569651,
+        -88.12969521414323,
+        -13.628548202224103
+      ],
+      "svd_normal": [
+        -0.08415217879809034,
+        0.027609015373461943,
+        0.9960703554838092
+      ],
+      "rms_mm": 0.3570584299517754,
+      "max_residual_mm": 1.7773461094367715,
+      "max_residual_point": [
+        31.84200096130371,
+        -84.51000213623047,
+        -15.2160005569458
+      ],
+      "absolute_residual_quantiles": [
+        0.1515463886914063,
+        0.3206823534213886,
+        1.3791760400872222,
+        1.7773461094367735
+      ],
+      "fit_reason": "geometry_quality_failed",
+      "quality_policy": {
+        "metrics": {
+          "observation_id": "ae40e7597653401fa71f7e98724e055e",
+          "items": [
+            {
+              "item_id": "input_count",
+              "unit": "1",
+              "value": 60658.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "inlier_count",
+              "unit": "1",
+              "value": 60658.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "inlier_ratio",
+              "unit": "1",
+              "value": 1.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "tangent_ratio",
+              "unit": "1",
+              "value": 0.8801507441430056,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "normal_gap",
+              "unit": "1",
+              "value": 0.7240540917370204,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "rms",
+              "unit": "mm",
+              "value": 0.3570584299517754,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "max_residual",
+              "unit": "mm",
+              "value": 1.7773461094367715,
+              "valid": true,
+              "reason": null
+            }
+          ]
+        },
+        "checks": [
+          {
+            "item_id": "inlier_count",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 60658.0,
+            "unit": "1",
+            "lower": 3.0,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "tangent_ratio",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 0.8801507441430056,
+            "unit": "1",
+            "lower": 0.01,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "normal_gap",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 0.7240540917370204,
+            "unit": "1",
+            "lower": 0.01,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "rms",
+            "required": true,
+            "passed": false,
+            "valid": true,
+            "value": 0.3570584299517754,
+            "unit": "mm",
+            "lower": null,
+            "upper": 0.001,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "mm",
+            "reason": "above_upper_limit"
+          },
+          {
+            "item_id": "max_residual",
+            "required": true,
+            "passed": false,
+            "valid": true,
+            "value": 1.7773461094367715,
+            "unit": "mm",
+            "lower": null,
+            "upper": 0.005,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "mm",
+            "reason": "above_upper_limit"
+          }
+        ],
+        "usable": false
+      },
+      "boundary_working_bytes": 760893952,
+      "boundary_capacity_points": 42799,
+      "boundary_capacity": "rejected-before-allocation"
+    },
+    {
+      "name": "T.C_top_R",
+      "xy_windows": [
+        [
+          32.745000000000026,
+          39.855000000000295,
+          -92.08499999999998,
+          -84.1622503402724
+        ]
+      ],
+      "point_count": 60138,
+      "source_indices_sha256": "28ef4efa562d2b0b9f2c1fe2add1b2b5d3234c003fcedf16dc57d2eeafb64359",
+      "source_point_count": 14745099,
+      "crop_parameters": {
+        "roi_id": "candidate",
+        "rois": [
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "candidate",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "union",
+            "geometry": {
+              "roi_ids": [
+                "window-0"
+              ]
+            }
+          },
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "window-0",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "box",
+            "geometry": {
+              "center": [
+                36.30000000000016,
+                -88.1236251701362,
+                -17.6200008392334
+              ],
+              "rotation": [
+                [
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "size": [
+                7.110000000000269,
+                7.922749659727586,
+                11.368000030517578
+              ]
+            }
+          }
+        ]
+      },
+      "selected_bounds": [
+        [
+          32.772003173828125,
+          -92.07000732421875,
+          -16.018001556396484
+        ],
+        [
+          39.85200119018555,
+          -84.18000030517578,
+          -13.020000457763672
+        ]
+      ],
+      "source_z_quantiles": [
+        -16.018001556396484,
+        -15.072001457214355,
+        -13.368000984191895,
+        -13.070000648498535,
+        -13.020000457763672
+      ],
+      "svd_center": [
+        36.27916823391618,
+        -88.10696016875116,
+        -13.448243527889902
+      ],
+      "svd_normal": [
+        0.013718089721909752,
+        0.029819335314643758,
+        0.9994611654565546
+      ],
+      "rms_mm": 0.34255394748270424,
+      "max_residual_mm": 2.6220148317511964,
+      "max_residual_point": [
+        32.832000732421875,
+        -88.32000732421875,
+        -16.018001556396484
+      ],
+      "absolute_residual_quantiles": [
+        0.11979450643820283,
+        0.25156559406116685,
+        1.4883825268735933,
+        2.6220148317511964
+      ],
+      "fit_reason": "geometry_quality_failed",
+      "quality_policy": {
+        "metrics": {
+          "observation_id": "ae40e7597653401fa71f7e98724e055e",
+          "items": [
+            {
+              "item_id": "input_count",
+              "unit": "1",
+              "value": 60138.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "inlier_count",
+              "unit": "1",
+              "value": 60138.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "inlier_ratio",
+              "unit": "1",
+              "value": 1.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "tangent_ratio",
+              "unit": "1",
+              "value": 0.8948021526693786,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "normal_gap",
+              "unit": "1",
+              "value": 0.7433025924530591,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "rms",
+              "unit": "mm",
+              "value": 0.34255394748270424,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "max_residual",
+              "unit": "mm",
+              "value": 2.6220148317511964,
+              "valid": true,
+              "reason": null
+            }
+          ]
+        },
+        "checks": [
+          {
+            "item_id": "inlier_count",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 60138.0,
+            "unit": "1",
+            "lower": 3.0,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "tangent_ratio",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 0.8948021526693786,
+            "unit": "1",
+            "lower": 0.01,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "normal_gap",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 0.7433025924530591,
+            "unit": "1",
+            "lower": 0.01,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "rms",
+            "required": true,
+            "passed": false,
+            "valid": true,
+            "value": 0.34255394748270424,
+            "unit": "mm",
+            "lower": null,
+            "upper": 0.001,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "mm",
+            "reason": "above_upper_limit"
+          },
+          {
+            "item_id": "max_residual",
+            "required": true,
+            "passed": false,
+            "valid": true,
+            "value": 2.6220148317511964,
+            "unit": "mm",
+            "lower": null,
+            "upper": 0.005,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "mm",
+            "reason": "above_upper_limit"
+          }
+        ],
+        "usable": false
+      },
+      "boundary_working_bytes": 754371072,
+      "boundary_capacity_points": 42799,
+      "boundary_capacity": "rejected-before-allocation"
+    },
+    {
+      "name": "T.C_bottom_L",
+      "xy_windows": [
+        [
+          25.173402543939847,
+          32.265000000000285,
+          -127.42499999999995,
+          -119.23499999999964
+        ]
+      ],
+      "point_count": 62172,
+      "source_indices_sha256": "3114f3df1fac78bd2b068ff7b666d1a5e064963c4fbf8d9d3d14742b9796327b",
+      "source_point_count": 14745099,
+      "crop_parameters": {
+        "roi_id": "candidate",
+        "rois": [
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "candidate",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "union",
+            "geometry": {
+              "roi_ids": [
+                "window-0"
+              ]
+            }
+          },
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "window-0",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "box",
+            "geometry": {
+              "center": [
+                28.719201271970064,
+                -123.3299999999998,
+                -17.6200008392334
+              ],
+              "rotation": [
+                [
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "size": [
+                7.091597456060438,
+                8.19000000000031,
+                11.368000030517578
+              ]
+            }
+          }
+        ]
+      },
+      "selected_bounds": [
+        [
+          25.1820011138916,
+          -127.41000366210938,
+          -15.342000961303711
+        ],
+        [
+          32.262001037597656,
+          -119.25000762939453,
+          -13.132000923156738
+        ]
+      ],
+      "source_z_quantiles": [
+        -15.342000961303711,
+        -15.306000709533691,
+        -13.584000587463379,
+        -13.196001052856445,
+        -13.132000923156738
+      ],
+      "svd_center": [
+        28.689348888943297,
+        -123.3047004432926,
+        -13.666169695494327
+      ],
+      "svd_normal": [
+        -0.0898055764604514,
+        -0.021915588578883316,
+        0.9957181656542413
+      ],
+      "rms_mm": 0.33257351478565667,
+      "max_residual_mm": 1.4279965308581852,
+      "max_residual_point": [
+        25.1820011138916,
+        -119.55000305175781,
+        -15.334000587463379
+      ],
+      "absolute_residual_quantiles": [
+        0.14260104518627803,
+        0.30637636826706965,
+        1.3121214264690686,
+        1.4279965308582208
+      ],
+      "fit_reason": "geometry_quality_failed",
+      "quality_policy": {
+        "metrics": {
+          "observation_id": "ae40e7597653401fa71f7e98724e055e",
+          "items": [
+            {
+              "item_id": "input_count",
+              "unit": "1",
+              "value": 62172.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "inlier_count",
+              "unit": "1",
+              "value": 62172.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "inlier_ratio",
+              "unit": "1",
+              "value": 1.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "tangent_ratio",
+              "unit": "1",
+              "value": 0.8804925444704889,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "normal_gap",
+              "unit": "1",
+              "value": 0.7366631722807175,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "rms",
+              "unit": "mm",
+              "value": 0.33257351478565667,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "max_residual",
+              "unit": "mm",
+              "value": 1.4279965308581852,
+              "valid": true,
+              "reason": null
+            }
+          ]
+        },
+        "checks": [
+          {
+            "item_id": "inlier_count",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 62172.0,
+            "unit": "1",
+            "lower": 3.0,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "tangent_ratio",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 0.8804925444704889,
+            "unit": "1",
+            "lower": 0.01,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "normal_gap",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 0.7366631722807175,
+            "unit": "1",
+            "lower": 0.01,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "rms",
+            "required": true,
+            "passed": false,
+            "valid": true,
+            "value": 0.33257351478565667,
+            "unit": "mm",
+            "lower": null,
+            "upper": 0.001,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "mm",
+            "reason": "above_upper_limit"
+          },
+          {
+            "item_id": "max_residual",
+            "required": true,
+            "passed": false,
+            "valid": true,
+            "value": 1.4279965308581852,
+            "unit": "mm",
+            "lower": null,
+            "upper": 0.005,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "mm",
+            "reason": "above_upper_limit"
+          }
+        ],
+        "usable": false
+      },
+      "boundary_working_bytes": 779885568,
+      "boundary_capacity_points": 42799,
+      "boundary_capacity": "rejected-before-allocation"
+    },
+    {
+      "name": "T.C_bottom_R",
+      "xy_windows": [
+        [
+          33.135000000000026,
+          40.2750000000003,
+          -127.36499999999995,
+          -119.32499999999965
+        ]
+      ],
+      "point_count": 59630,
+      "source_indices_sha256": "84f46c9607c3bb2ed0736697cf3e044e88da349389c962ec7fbc3975bf0e92d0",
+      "source_point_count": 14745099,
+      "crop_parameters": {
+        "roi_id": "candidate",
+        "rois": [
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "candidate",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "union",
+            "geometry": {
+              "roi_ids": [
+                "window-0"
+              ]
+            }
+          },
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "window-0",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "box",
+            "geometry": {
+              "center": [
+                36.70500000000016,
+                -123.3449999999998,
+                -17.6200008392334
+              ],
+              "rotation": [
+                [
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "size": [
+                7.140000000000271,
+                8.040000000000305,
+                11.368000030517578
+              ]
+            }
+          }
+        ]
+      },
+      "selected_bounds": [
+        [
+          33.16200256347656,
+          -127.35000610351562,
+          -20.296001434326172
+        ],
+        [
+          40.272003173828125,
+          -119.34000396728516,
+          -12.93600082397461
+        ]
+      ],
+      "source_z_quantiles": [
+        -20.296001434326172,
+        -15.022000312805176,
+        -13.300000190734863,
+        -12.998000144958496,
+        -12.93600082397461
+      ],
+      "svd_center": [
+        36.607465264222654,
+        -123.22764868204493,
+        -13.341572494465254
+      ],
+      "svd_normal": [
+        -0.011931068477382232,
+        0.01650493601587133,
+        0.9997925968380142
+      ],
+      "rms_mm": 0.24120973057206047,
+      "max_residual_mm": 6.992803293654641,
+      "max_residual_point": [
+        34.242000579833984,
+        -127.35000610351562,
+        -20.296001434326172
+      ],
+      "absolute_residual_quantiles": [
+        0.04559018635123112,
+        0.1128538743521885,
+        1.7746482164144968,
+        6.992803293654641
+      ],
+      "fit_reason": "geometry_quality_failed",
+      "quality_policy": {
+        "metrics": {
+          "observation_id": "ae40e7597653401fa71f7e98724e055e",
+          "items": [
+            {
+              "item_id": "input_count",
+              "unit": "1",
+              "value": 59630.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "inlier_count",
+              "unit": "1",
+              "value": 59630.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "inlier_ratio",
+              "unit": "1",
+              "value": 1.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "tangent_ratio",
+              "unit": "1",
+              "value": 0.8753458537201629,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "normal_gap",
+              "unit": "1",
+              "value": 0.768672236688242,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "rms",
+              "unit": "mm",
+              "value": 0.24120973057206047,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "max_residual",
+              "unit": "mm",
+              "value": 6.992803293654641,
+              "valid": true,
+              "reason": null
+            }
+          ]
+        },
+        "checks": [
+          {
+            "item_id": "inlier_count",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 59630.0,
+            "unit": "1",
+            "lower": 3.0,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "tangent_ratio",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 0.8753458537201629,
+            "unit": "1",
+            "lower": 0.01,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "normal_gap",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 0.768672236688242,
+            "unit": "1",
+            "lower": 0.01,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "rms",
+            "required": true,
+            "passed": false,
+            "valid": true,
+            "value": 0.24120973057206047,
+            "unit": "mm",
+            "lower": null,
+            "upper": 0.001,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "mm",
+            "reason": "above_upper_limit"
+          },
+          {
+            "item_id": "max_residual",
+            "required": true,
+            "passed": false,
+            "valid": true,
+            "value": 6.992803293654641,
+            "unit": "mm",
+            "lower": null,
+            "upper": 0.005,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "mm",
+            "reason": "above_upper_limit"
+          }
+        ],
+        "usable": false
+      },
+      "boundary_working_bytes": 747998720,
+      "boundary_capacity_points": 42799,
+      "boundary_capacity": "rejected-before-allocation"
+    },
+    {
+      "name": "S1.search",
+      "xy_windows": [
+        [
+          -13,
+          17,
+          -85,
+          -61
+        ]
+      ],
+      "point_count": 789414,
+      "source_indices_sha256": "d401587364d160bec6fcec0fe12f63295d4eb0d6d1bf3e701fd9eb8b6cf54705",
+      "source_point_count": 14745099,
+      "crop_parameters": {
+        "roi_id": "candidate",
+        "rois": [
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "candidate",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "union",
+            "geometry": {
+              "roi_ids": [
+                "window-0"
+              ]
+            }
+          },
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "window-0",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "box",
+            "geometry": {
+              "center": [
+                2.0,
+                -73.0,
+                -17.6200008392334
+              ],
+              "rotation": [
+                [
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "size": [
+                30.0,
+                24.0,
+                11.368000030517578
+              ]
+            }
+          }
+        ]
+      },
+      "selected_bounds": [
+        [
+          -12.97800064086914,
+          -84.99000549316406,
+          -17.016000747680664
+        ],
+        [
+          16.992000579833984,
+          -61.02000427246094,
+          -13.706000328063965
+        ]
+      ],
+      "source_z_quantiles": [
+        -17.016000747680664,
+        -15.926000595092773,
+        -15.274001121520996,
+        -14.018000602722168,
+        -13.706000328063965
+      ],
+      "svd_center": [
+        2.0169673205671934,
+        -72.97896997087199,
+        -15.181054153506942
+      ],
+      "svd_normal": [
+        -0.020020104277895887,
+        -0.014367744810677374,
+        0.999696335560833
+      ],
+      "rms_mm": 0.4769000525450259,
+      "max_residual_mm": 1.7958741367121025,
+      "max_residual_point": [
+        -4.248000144958496,
+        -66.93000030517578,
+        -17.016000747680664
+      ],
+      "absolute_residual_quantiles": [
+        0.2036733702461419,
+        1.0010056453138172,
+        1.104724308083708,
+        1.7958741367121032
+      ],
+      "fit_reason": "geometry_quality_failed",
+      "quality_policy": {
+        "metrics": {
+          "observation_id": "ae40e7597653401fa71f7e98724e055e",
+          "items": [
+            {
+              "item_id": "input_count",
+              "unit": "1",
+              "value": 789414.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "inlier_count",
+              "unit": "1",
+              "value": 789414.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "inlier_ratio",
+              "unit": "1",
+              "value": 1.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "tangent_ratio",
+              "unit": "1",
+              "value": 0.8001483129184583,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "normal_gap",
+              "unit": "1",
+              "value": 0.7453340379453948,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "rms",
+              "unit": "mm",
+              "value": 0.4769000525450259,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "max_residual",
+              "unit": "mm",
+              "value": 1.7958741367121025,
+              "valid": true,
+              "reason": null
+            }
+          ]
+        },
+        "checks": [
+          {
+            "item_id": "inlier_count",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 789414.0,
+            "unit": "1",
+            "lower": 3.0,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "tangent_ratio",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 0.8001483129184583,
+            "unit": "1",
+            "lower": 0.01,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "normal_gap",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 0.7453340379453948,
+            "unit": "1",
+            "lower": 0.01,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "rms",
+            "required": true,
+            "passed": false,
+            "valid": true,
+            "value": 0.4769000525450259,
+            "unit": "mm",
+            "lower": null,
+            "upper": 0.001,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "mm",
+            "reason": "above_upper_limit"
+          },
+          {
+            "item_id": "max_residual",
+            "required": true,
+            "passed": false,
+            "valid": true,
+            "value": 1.7958741367121025,
+            "unit": "mm",
+            "lower": null,
+            "upper": 0.005,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "mm",
+            "reason": "above_upper_limit"
+          }
+        ],
+        "usable": false
+      },
+      "boundary_working_bytes": 9902409216,
+      "boundary_capacity_points": 42799,
+      "display_file": "candidate-S1.search.json",
+      "boundary_capacity": "rejected-before-allocation"
+    },
+    {
+      "name": "S2.search",
+      "xy_windows": [
+        [
+          19,
+          46,
+          -98,
+          -73
+        ]
+      ],
+      "point_count": 712736,
+      "source_indices_sha256": "f5a3065325824901e5f303927ee6a002c711aec5b7cbe0ff7bd1f83f274c1452",
+      "source_point_count": 14745099,
+      "crop_parameters": {
+        "roi_id": "candidate",
+        "rois": [
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "candidate",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "union",
+            "geometry": {
+              "roi_ids": [
+                "window-0"
+              ]
+            }
+          },
+          {
+            "format_id": "amvision.roi3d.v1",
+            "roi_id": "window-0",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "kind": "box",
+            "geometry": {
+              "center": [
+                32.5,
+                -85.5,
+                -17.6200008392334
+              ],
+              "rotation": [
+                [
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "size": [
+                27.0,
+                25.0,
+                11.368000030517578
+              ]
+            }
+          }
+        ]
+      },
+      "selected_bounds": [
+        [
+          19.00200080871582,
+          -97.9800033569336,
+          -20.29800033569336
+        ],
+        [
+          45.97200393676758,
+          -73.02000427246094,
+          -13.020000457763672
+        ]
+      ],
+      "source_z_quantiles": [
+        -20.29800033569336,
+        -15.316000938415527,
+        -14.734001159667969,
+        -13.3100004196167,
+        -13.020000457763672
+      ],
+      "svd_center": [
+        32.443618185753635,
+        -85.42870498573818,
+        -14.563423309956713
+      ],
+      "svd_normal": [
+        -0.01624516965442178,
+        0.01793752089642886,
+        0.9997071270162021
+      ],
+      "rms_mm": 0.5254519040158844,
+      "max_residual_mm": 5.711497915050471,
+      "max_residual_point": [
+        34.0620002746582,
+        -82.77000427246094,
+        -20.29800033569336
+      ],
+      "absolute_residual_quantiles": [
+        0.2788671510992779,
+        1.034545217187687,
+        1.1679524527365417,
+        5.711497915050471
+      ],
+      "fit_reason": "geometry_quality_failed",
+      "quality_policy": {
+        "metrics": {
+          "observation_id": "ae40e7597653401fa71f7e98724e055e",
+          "items": [
+            {
+              "item_id": "input_count",
+              "unit": "1",
+              "value": 712736.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "inlier_count",
+              "unit": "1",
+              "value": 712736.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "inlier_ratio",
+              "unit": "1",
+              "value": 1.0,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "tangent_ratio",
+              "unit": "1",
+              "value": 0.9184988196432495,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "normal_gap",
+              "unit": "1",
+              "value": 0.8523664952088619,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "rms",
+              "unit": "mm",
+              "value": 0.5254519040158844,
+              "valid": true,
+              "reason": null
+            },
+            {
+              "item_id": "max_residual",
+              "unit": "mm",
+              "value": 5.711497915050471,
+              "valid": true,
+              "reason": null
+            }
+          ]
+        },
+        "checks": [
+          {
+            "item_id": "inlier_count",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 712736.0,
+            "unit": "1",
+            "lower": 3.0,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "tangent_ratio",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 0.9184988196432495,
+            "unit": "1",
+            "lower": 0.01,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "normal_gap",
+            "required": true,
+            "passed": true,
+            "valid": true,
+            "value": 0.8523664952088619,
+            "unit": "1",
+            "lower": 0.01,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "1",
+            "reason": null
+          },
+          {
+            "item_id": "rms",
+            "required": true,
+            "passed": false,
+            "valid": true,
+            "value": 0.5254519040158844,
+            "unit": "mm",
+            "lower": null,
+            "upper": 0.001,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "mm",
+            "reason": "above_upper_limit"
+          },
+          {
+            "item_id": "max_residual",
+            "required": true,
+            "passed": false,
+            "valid": true,
+            "value": 5.711497915050471,
+            "unit": "mm",
+            "lower": null,
+            "upper": 0.005,
+            "include_lower": true,
+            "include_upper": true,
+            "actual_unit": "mm",
+            "reason": "above_upper_limit"
+          }
+        ],
+        "usable": false
+      },
+      "boundary_working_bytes": 8940560384,
+      "boundary_capacity_points": 42799,
+      "boundary_capacity": "rejected-before-allocation"
+    }
+  ],
+  "point_count": 14745099,
+  "xyz_sha256": "956927f058ba4a0170b1c1b93b1411b613fbe21fcbfc278ad0a7fc3cf621a1c6",
+  "bounds": [
+    [
+      -48.49800109863281,
+      -148.47000122070312,
+      -22.304000854492188
+    ],
+    [
+      48.522003173828125,
+      0.0,
+      -12.93600082397461
+    ]
+  ],
+  "cleanup": {
+    "errors": [],
+    "live_array_bytes": 0
+  }
+}

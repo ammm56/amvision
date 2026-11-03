@@ -1,0 +1,113 @@
+{
+  "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "points": 14745099,
+  "calls": [
+    {
+      "index": 0,
+      "phase": "first",
+      "sampling_enabled": false,
+      "run_id": "workflow-run-5eb7ca4f427f41f19c79c9c69204895d",
+      "worker_instance_id": "workflow-runtime-5c37cd23bf5a41598e20eaf83b8357d3-eac20d3622aa4ad19a72697004bec427",
+      "cloud_ready_to_response_seconds": 14.881020470056683,
+      "rss_bytes": 565751808,
+      "threads": 6,
+      "measurements_match_f4": true,
+      "active_leases": 0,
+      "allocated_bytes": 0,
+      "active_permits": 0,
+      "node_timings": []
+    },
+    {
+      "index": 1,
+      "phase": "steady",
+      "sampling_enabled": false,
+      "run_id": "workflow-run-8cdb969eab3b4bdab431a1698a4c567e",
+      "worker_instance_id": "workflow-runtime-5c37cd23bf5a41598e20eaf83b8357d3-eac20d3622aa4ad19a72697004bec427",
+      "cloud_ready_to_response_seconds": 15.009169042808935,
+      "rss_bytes": 653262848,
+      "threads": 6,
+      "measurements_match_f4": true,
+      "active_leases": 0,
+      "allocated_bytes": 0,
+      "active_permits": 0,
+      "node_timings": []
+    },
+    {
+      "index": 2,
+      "phase": "steady",
+      "sampling_enabled": false,
+      "run_id": "workflow-run-f04fa3671af54c1da67dae3fa42f5ea8",
+      "worker_instance_id": "workflow-runtime-5c37cd23bf5a41598e20eaf83b8357d3-eac20d3622aa4ad19a72697004bec427",
+      "cloud_ready_to_response_seconds": 10.884655731031671,
+      "rss_bytes": 622886912,
+      "threads": 6,
+      "measurements_match_f4": true,
+      "active_leases": 0,
+      "allocated_bytes": 0,
+      "active_permits": 0,
+      "node_timings": []
+    },
+    {
+      "index": 3,
+      "phase": "steady",
+      "sampling_enabled": false,
+      "run_id": "workflow-run-18f7bc9fcc024a8197adc7724f69da10",
+      "worker_instance_id": "workflow-runtime-5c37cd23bf5a41598e20eaf83b8357d3-eac20d3622aa4ad19a72697004bec427",
+      "cloud_ready_to_response_seconds": 10.625224489020184,
+      "rss_bytes": 559357952,
+      "threads": 6,
+      "measurements_match_f4": true,
+      "active_leases": 0,
+      "allocated_bytes": 0,
+      "active_permits": 0,
+      "node_timings": []
+    },
+    {
+      "index": 4,
+      "phase": "steady",
+      "sampling_enabled": false,
+      "run_id": "workflow-run-37512c773a4c4d9482045e0e5cb10dbd",
+      "worker_instance_id": "workflow-runtime-5c37cd23bf5a41598e20eaf83b8357d3-eac20d3622aa4ad19a72697004bec427",
+      "cloud_ready_to_response_seconds": 13.22062238282524,
+      "rss_bytes": 559357952,
+      "threads": 6,
+      "measurements_match_f4": true,
+      "active_leases": 0,
+      "allocated_bytes": 0,
+      "active_permits": 0,
+      "node_timings": []
+    },
+    {
+      "index": 5,
+      "phase": "steady",
+      "sampling_enabled": false,
+      "run_id": "workflow-run-2371b70a6198412695b6f616445fd8fe",
+      "worker_instance_id": "workflow-runtime-5c37cd23bf5a41598e20eaf83b8357d3-eac20d3622aa4ad19a72697004bec427",
+      "cloud_ready_to_response_seconds": 9.64940814790316,
+      "rss_bytes": 559357952,
+      "threads": 6,
+      "measurements_match_f4": true,
+      "active_leases": 0,
+      "allocated_bytes": 0,
+      "active_permits": 0,
+      "node_timings": []
+    }
+  ],
+  "boundary": "cloud-ready-to-numeric-response",
+  "display_enabled": false,
+  "debug_capture_enabled": false,
+  "diagnostics_enabled": false,
+  "resource_sampling_comparison": false,
+  "thread_environment": {
+    "OMP_NUM_THREADS": null,
+    "OPENBLAS_NUM_THREADS": null,
+    "MKL_NUM_THREADS": null
+  },
+  "latency_limit_seconds": 10.0,
+  "resource_sample_interval_seconds": null,
+  "initial_resources": {
+    "rss_bytes": 253104128,
+    "threads": 5
+  },
+  "stopped_and_reclaimed": true
+}

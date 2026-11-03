@@ -50,7 +50,7 @@ def test_upload_is_not_visible_until_complete_and_owner_is_checked(buffers):
         assert buffers.stats()["bytes"] == 4
         with pytest.raises(PreviewMemoryError):
             buffers.pin_descriptor("a", identity)
-    assert buffers.stats() == {"blocks": 0, "bytes": 0, "pins": 0, "reserved_bytes": 0}
+    assert buffers.stats() == {"blocks": 0, "bytes": 0, "file_bytes": 0, "pins": 0, "reserved_bytes": 0}
 
 
 def test_budget_and_expired_upload_are_bounded(buffers):

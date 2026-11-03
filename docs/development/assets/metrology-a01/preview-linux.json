@@ -1,0 +1,22 @@
+[
+  {
+    "name": "test_memory_worker_streams_before_long_node_finishes[normal-start]",
+    "seconds": "35.536",
+    "properties": [
+      {
+        "name": "preview_timeline",
+        "value": "[[\"worker.start\", 0.0008802600204944611], [\"worker.ready\", 17.03620090498589], [\"run.accepted\", 17.036354487994686, null], [\"run.started\", 20.14866343094036, null], [\"node.started\", 20.168750297976658, \"text\"], [\"value.updated\", 20.168758349958807, \"text\"], [\"node.finished\", 20.16876167897135, \"text\"], [\"node.started\", 20.16876483382657, \"image\"], [\"node.finished\", 20.188842658884823, \"image\"], [\"node.started\", 20.188849954865873, \"display\"], [\"value.updated\", 20.188853128813207, \"display\"], [\"node.finished\", 20.18885588995181, \"display\"], [\"node.started\", 20.188858677865937, \"delay\"], [\"display.updated\", 20.188861964037642, \"image\"], [\"display.updated\", 20.188865892821923, \"image\"], [\"display.updated\", 20.188871976919472, \"display\"], [\"cancel.requested\", 20.19425586797297], [\"run.cancelled\", 20.244408760918304], [\"worker.start\", 20.245311544043943], [\"worker.ready\", 20.24533307692036], [\"worker.start\", 23.37819008086808], [\"worker.ready\", 23.378202504944056], [\"pool.closed\", 26.76447807904333]]"
+      }
+    ]
+  },
+  {
+    "name": "test_memory_worker_streams_before_long_node_finishes[delayed-start]",
+    "seconds": "62.258",
+    "properties": [
+      {
+        "name": "preview_timeline",
+        "value": "[[\"worker.start\", 0.0005411000456660986], [\"worker.ready\", 42.79327669390477], [\"run.accepted\", 42.79344732896425, null], [\"run.started\", 45.925508534070104, null], [\"node.started\", 45.945565348956734, \"text\"], [\"value.updated\", 45.94557174690999, \"text\"], [\"node.finished\", 45.94557449105196, \"text\"], [\"node.started\", 45.94557684706524, \"image\"], [\"node.finished\", 45.94557913788594, \"image\"], [\"node.started\", 45.94558144896291, \"display\"], [\"value.updated\", 45.945583536988124, \"display\"], [\"node.finished\", 45.94558560103178, \"display\"], [\"node.started\", 45.94558834191412, \"delay\"], [\"display.updated\", 45.965652097947896, \"image\"], [\"display.updated\", 45.96566096995957, \"image\"], [\"display.updated\", 45.96566695696674, \"display\"], [\"cancel.requested\", 45.97152454499155], [\"run.cancelled\", 46.0216983279679], [\"worker.start\", 46.02255664090626], [\"worker.ready\", 46.02256688894704], [\"worker.start\", 49.117903599049896], [\"worker.ready\", 49.11791600799188], [\"pool.closed\", 52.52830492402427]]"
+      }
+    ]
+  }
+]

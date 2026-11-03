@@ -40,12 +40,14 @@ def _build_workflow_json_service(
     *,
     dataset_storage: LocalDatasetStorage,
     node_catalog_registry: NodeCatalogRegistry,
+    point_cloud_policy=None,
 ) -> LocalWorkflowJsonService:
     """构建带 NodeCatalogRegistry 的 workflow 文件服务。"""
 
     return LocalWorkflowJsonService(
         dataset_storage=dataset_storage,
         node_catalog_registry=node_catalog_registry,
+        point_cloud_policy=point_cloud_policy,
     )
 
 

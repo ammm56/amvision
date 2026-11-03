@@ -53,7 +53,7 @@ def require_result_table(body: object) -> dict:
         raise InvalidRequestError("Results 列格式无效")
     if len({column["key"] for column in columns}) != len(columns):
         raise InvalidRequestError("Results 列不能重复")
-    if any(column.get("format", "value") not in ("value", "unit", "result", "validity", "reason") for column in columns):
+    if any(column.get("format", "value") not in ("value", "unit", "result", "decision-state", "validity", "reason") for column in columns):
         raise InvalidRequestError("Results 列显示格式无效")
     return body
 

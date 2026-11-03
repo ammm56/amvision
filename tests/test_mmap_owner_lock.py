@@ -12,6 +12,30 @@ import pytest
 from backend.service.infrastructure.ipc import mmap_primitives
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux OFD 原生 ABI")
+def test_ofd_locks_without_cpython_header_constants(tmp_path, monkeypatch):
+    """可移植 Python 未导出常量时仍执行同一 OFD 内核锁，不降级。"""
+    import fcntl
+    from backend.service.infrastructure.filesystem.native_locks import change_posix_lock
+
+    monkeypatch.delattr(fcntl, "F_OFD_GETLK", raising=False)
+    monkeypatch.delattr(fcntl, "F_OFD_SETLK", raising=False)
+    path = tmp_path / "native.lock"
+    path.write_bytes(b"x")
+    with path.open("r+b") as first, path.open("r+b") as second:
+        change_posix_lock(first, offset=0)
+        assert mmap_primitives.is_mmap_owner_lock_held(path)
+        with pytest.raises(BlockingIOError):
+            mmap_primitives.try_lock_byte_range_file(second)
+        with path.open("rb"):
+            pass
+        assert mmap_primitives.is_mmap_owner_lock_held(path)
+        change_posix_lock(first, offset=0, unlock=True)
+        mmap_primitives.try_lock_byte_range_file(second)
+        mmap_primitives.unlock_byte_range_file(second)
+    assert not mmap_primitives.is_mmap_owner_lock_held(path)
+
+
 def _paused_process_probe(path, entered, resume, results):
     """子进程在打开只读句柄后等待，按受控顺序进行真实内核查询。"""
     original = mmap_primitives._owner_lock_held_on_handle

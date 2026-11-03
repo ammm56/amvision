@@ -10,6 +10,7 @@ export interface PreviewSessionIdentity {
   epoch: string
   format_id: string
   memory_limit_bytes: number
+  file_upload_limit_bytes?: number | null
 }
 
 export interface PreviewValuePage {
@@ -75,6 +76,7 @@ export class PreviewSessionConnection {
   private reconnect: ReturnType<typeof setTimeout> | null = null
   private attempts = 0
   private connected = false
+  private fileUploads = new Set<AbortController>()
 
   constructor(readonly identity: PreviewSessionIdentity, private options: {
     getAccessToken: () => string | null
@@ -347,8 +349,31 @@ export class PreviewSessionConnection {
     pending.reject(error)
   }
   private failPending(error: Error): void {
+    for (const upload of this.fileUploads) upload.abort()
     for (const key of this.pending.keys()) this.reject(key, error)
     this.downloads.clear()
+  }
+
+  async uploadFile(file: File, onTimings?: (timings: Record<string, number>) => void): Promise<string> {
+    if (!this.connected || this.stopped) throw new Error('preview_connection_lost')
+    const limit = this.identity.file_upload_limit_bytes
+    if (!limit) throw new Error('preview_file_policy_unconfigured')
+    if (!file.size || file.size > limit) throw new Error('preview_input_capacity')
+    const controller = new AbortController()
+    this.fileUploads.add(controller)
+    const started = performance.now()
+    try {
+      const result = await apiRequest<{ input_id: string }>(`/workflows/preview-sessions/${this.identity.session_id}/inputs/file`, {
+        method: 'POST', body: file, query: { byte_length: file.size, file_name: file.name },
+        headers: { 'Content-Type': file.type || 'application/octet-stream' }, signal: controller.signal,
+        retryOnUnauthorized: false,
+      })
+      if (this.stopped || !this.connected || controller.signal.aborted) throw new Error('preview_connection_lost')
+      onTimings?.({ client_file_transfer_ms: performance.now() - started })
+      return result.input_id
+    } finally {
+      this.fileUploads.delete(controller)
+    }
   }
 
   async upload(file: File, onTimings?: (timings: Record<string, number>) => void): Promise<string> {

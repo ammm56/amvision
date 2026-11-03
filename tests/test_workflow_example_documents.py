@@ -755,7 +755,6 @@ def test_plc_modbus_wait_ready_ack_callback_example_documents_are_valid() -> Non
         "write_ack_signal",
         "extract_wait_matched",
         "compare_wait_matched",
-        "decide_result",
         "build_result_metrics",
         "build_result_metadata",
         "inspection_result",
@@ -769,7 +768,7 @@ def test_plc_modbus_wait_ready_ack_callback_example_documents_are_valid() -> Non
     assert template.nodes[4].parameters["value"] is True
     assert template.nodes[6].parameters["right_value"] is True
     assert (
-        template.nodes[11].parameters["url"]
+        next(node for node in template.nodes if node.node_id == "callback_result").parameters["url"]
         == "http://127.0.0.1:18080/plc/modbus/handshake-result"
     )
     assert template.metadata["example_kind"] == "plc-modbus-wait-ready-ack-callback"
@@ -838,7 +837,6 @@ def test_plc_register_modbus_tcp_async_result_record_example_documents_are_valid
         "extract_observed_value",
         "extract_previous_observed_value",
         "extract_sequence_id",
-        "decide_result",
         "build_result_metrics",
         "build_result_metadata",
         "inspection_alarm",
@@ -848,9 +846,9 @@ def test_plc_register_modbus_tcp_async_result_record_example_documents_are_valid
     assert template.nodes[0].node_type_id == "core.logic.payload-to-value"
     assert template.nodes[1].node_type_id == "core.logic.payload-to-value"
     assert template.nodes[3].parameters["right_value"] is True
-    assert template.nodes[10].parameters["alarm_code"] == "PLC-REGISTER-NG"
+    assert next(node for node in template.nodes if node.node_id == "inspection_alarm").parameters["alarm_code"] == "PLC-REGISTER-NG"
     assert (
-        template.nodes[12].parameters["url"]
+        next(node for node in template.nodes if node.node_id == "callback_result").parameters["url"]
         == "http://127.0.0.1:18080/plc/register/result"
     )
     assert (

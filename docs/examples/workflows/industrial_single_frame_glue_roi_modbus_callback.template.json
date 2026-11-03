@@ -127,14 +127,14 @@
           {
             "signal_name": "ok",
             "source_scope": "result",
-            "source_path": "ok",
+            "source_path": "passed",
             "register_address": "00031",
             "data_type": "bool"
           },
           {
-            "signal_name": "ng",
+            "signal_name": "blocked",
             "source_scope": "result",
-            "source_path": "ok",
+            "source_path": "passed",
             "register_address": "00032",
             "data_type": "bool",
             "true_value": false,

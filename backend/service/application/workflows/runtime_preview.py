@@ -12,6 +12,9 @@ from typing import Any
 
 from backend.contracts.errors import ErrorContract
 from backend.contracts.workflows.workflow_graph import NodeDefinition
+from backend.contracts.workflows.point_cloud_preview import (
+    CLOUD_PREVIEW_FAILURE_REASONS,
+)
 from backend.service.application.public_errors import build_error_contract
 
 PREVIEW_CAPTURE_KEY = "_runtime_preview_capture"
@@ -25,6 +28,7 @@ PREVIEW_TYPES = frozenset(
         "table-preview",
         "gallery-preview",
         "value-display",
+        "point-cloud-preview",
     }
 )
 
@@ -40,12 +44,143 @@ class RuntimePreviewCapacityError(ValueError):
 class _DisplayLimit(ValueError):
     """显示副本超过限制，不影响业务执行。"""
 
+    def __init__(self, code: str, **details: int) -> None:
+        """只保留容量诊断，不记录点云或业务内容。"""
+        super().__init__(code)
+        self.details = details
+
+
+def cloud_sample_values(value: object) -> int:
+    """已声明点云显示的采样数组单独计数，普通元数据仍受原结构上限保护。
+
+    只接纳与显示点数一一对应的有限标量，不把任意嵌套 JSON 当作点数据。
+    字节预算、会话内存预算和节点点云策略保持原值。
+    """
+    if not isinstance(value, dict) or value.get("type") != "point-cloud-preview":
+        return 0
+    if value.get("format_id") != "amvision.point-cloud-preview.v1":
+        raise _DisplayLimit("preview_not_json")
+    geometry = value.get("geometry")
+    if geometry is None:
+        return 0
+    if not isinstance(geometry, dict) or not isinstance(
+        geometry.get("planes"), (list, tuple)
+    ):
+        raise _DisplayLimit("preview_not_json")
+    count = value.get("display_point_count")
+    if type(count) is not int or count < 0:
+        raise _DisplayLimit("preview_not_json")
+    total = 0
+    for plane in geometry["planes"]:
+        if not isinstance(plane, dict):
+            raise _DisplayLimit("preview_not_json")
+        samples = plane.get("samples")
+        if samples is None:
+            continue
+        if not isinstance(samples, dict):
+            raise _DisplayLimit("preview_not_json")
+        classes, residuals = samples.get("classes"), samples.get("residuals")
+        if (
+            not isinstance(classes, (list, tuple))
+            or not isinstance(residuals, (list, tuple))
+            or len(classes) != count
+            or len(residuals) != count
+        ):
+            raise _DisplayLimit("preview_not_json")
+        total += 2 * count
+        if total * 32 > MAX_PREVIEW_BYTES:
+            raise _DisplayLimit("preview_size_limit")
+        for kind, residual in zip(classes, residuals):
+            if (
+                type(kind) is not int
+                or kind not in (0, 1, 2)
+                or residual is not None
+                and (
+                    type(residual) not in (int, float)
+                    or not math.isfinite(residual)
+                    or kind == 0
+                )
+            ):
+                raise _DisplayLimit("preview_not_json")
+    return total + _curve_sample_values(
+        geometry, available=MAX_PREVIEW_BYTES - total * 32
+    )
+
+
+def _curve_sample_values(geometry: dict, *, available: int) -> int:
+    """完整曲线及逐点拟合证据沿用字节预算，不豁免任意嵌套元数据。"""
+    curves = geometry.get("curves", ())
+    if not isinstance(curves, (list, tuple)):
+        raise _DisplayLimit("preview_not_json")
+    total = 0
+    for curve in curves:
+        if not isinstance(curve, dict) or curve.get("kind") not in {
+            "boundary",
+            "line",
+            "circle",
+        }:
+            raise _DisplayLimit("preview_not_json")
+        points = curve.get("points")
+        count = curve.get("support_point_count")
+        if not isinstance(points, (list, tuple)) or (
+            points and (type(count) is not int or len(points) != count)
+        ):
+            raise _DisplayLimit("preview_not_json")
+        # 每点包含一个坐标容器和三个有限标量，与 _copy_json 的计数对应。
+        total += 4 * len(points)
+        if total * 32 > available:
+            raise _DisplayLimit("preview_size_limit")
+        for point in points:
+            if (
+                not isinstance(point, (list, tuple))
+                or len(point) != 3
+                or any(
+                    type(v) not in (int, float) or not math.isfinite(v) for v in point
+                )
+            ):
+                raise _DisplayLimit("preview_not_json")
+        for key in (
+            "profile_kinds",
+            "inlier_flags",
+            "radial_residuals",
+            "fit_weights",
+            "angular_sectors",
+        ):
+            values = curve.get(key)
+            if values is None:
+                continue
+            if not isinstance(values, (list, tuple)) or len(values) != len(points):
+                raise _DisplayLimit("preview_not_json")
+            total += len(values)
+            if total * 32 > available:
+                raise _DisplayLimit("preview_size_limit")
+            for value in values:
+                if key == "inlier_flags":
+                    valid = type(value) is bool
+                elif key in {"profile_kinds", "angular_sectors"}:
+                    valid = (
+                        type(value) is int
+                        and value >= 0
+                        and (key != "profile_kinds" or value <= 3)
+                    )
+                else:
+                    valid = (
+                        type(value) in (int, float)
+                        and math.isfinite(value)
+                        and (key != "fit_weights" or value > 0)
+                    )
+                if not valid:
+                    raise _DisplayLimit("preview_not_json")
+    return total
+
 
 def _copy_json(value: object, budget: list[int], depth: int = 0) -> object:
     """有界复制 JSON 容器，复用不可变字符串；拒绝矩阵、lease 等运行时对象。"""
     budget[1] -= 1
     if depth > 32 or budget[1] < 0:
-        raise _DisplayLimit("preview_structure_limit")
+        raise _DisplayLimit(
+            "preview_structure_limit", depth=depth, remaining_values=budget[1]
+        )
     if isinstance(value, str):
         size = len(value) if value.isascii() else len(value.encode("utf-8"))
         budget[0] -= size + 8
@@ -71,6 +206,38 @@ def _copy_json(value: object, budget: list[int], depth: int = 0) -> object:
     if budget[0] < 0:
         raise _DisplayLimit("preview_size_limit")
     return result
+
+
+def _copy_preview(payload: dict, budget: list[int]) -> dict:
+    """三维证据按已声明的逐项契约计数，总字节和单项深度限制不变。"""
+    if payload.get("type") != "point-cloud-preview" or "measurements" not in payload:
+        return _copy_json(payload, budget)
+    from backend.contracts.workflows.measurement3d_evidence import MeasurementEvidence3d
+
+    evidence = payload["measurements"]
+    if (
+        not isinstance(evidence, dict)
+        or not isinstance(evidence.get("items"), (list, tuple))
+        or len(evidence["items"]) > 8192
+    ):
+        raise _DisplayLimit("preview_not_json")
+    copied = _copy_json(
+        {k: v for k, v in payload.items() if k != "measurements"}, budget
+    )
+    header = _copy_json({k: v for k, v in evidence.items() if k != "items"}, budget, 1)
+    items = []
+    for item in evidence["items"]:
+        item_budget = [budget[0], MAX_PREVIEW_VALUES]
+        items.append(_copy_json(item, item_budget, 3))
+        budget[0] = item_budget[0]
+    header["items"] = items
+    # 只接受现有强类型测量，不借此扩大普通 metadata 或其他显示的结构限额。
+    try:
+        MeasurementEvidence3d.model_validate(header)
+    except ValueError as exc:
+        raise _DisplayLimit("preview_not_json") from exc
+    copied["measurements"] = header
+    return copied
 
 
 class RuntimePreviewCapture:
@@ -106,7 +273,17 @@ class RuntimePreviewCapture:
                         or payload.get("type") not in PREVIEW_TYPES
                     ):
                         continue
-                    copied = _copy_json(payload, self.budget)
+                    if (
+                        payload.get("type") == "point-cloud-preview"
+                        and payload.get("reason") in CLOUD_PREVIEW_FAILURE_REASONS
+                    ):
+                        raise _DisplayLimit(payload["reason"])
+                    budget = [
+                        self.budget[0],
+                        self.budget[1] + cloud_sample_values(payload),
+                    ]
+                    copied = _copy_preview(payload, budget)
+                    self.budget[:] = budget
                     # 图像交互编辑仅属于编辑画布；运行画布不能改参数。
                     copied.pop("interaction", None)
                     if copied.get("type") == "gallery-preview" and isinstance(
@@ -130,7 +307,10 @@ class RuntimePreviewCapture:
                     if isinstance(exc, _DisplayLimit)
                     else "preview_copy_failed"
                 )
-                self.error = _build_display_error(code)
+                self.error = _build_display_error(
+                    code,
+                    details=exc.details if isinstance(exc, _DisplayLimit) else None,
+                )
 
 
 class RuntimePreviewSender:
@@ -386,7 +566,7 @@ class RuntimePreviewChannel:
             self.thread.join(timeout=3.0)
 
 
-def _build_display_error(code: str) -> ErrorContract:
+def _build_display_error(code: str, *, details: dict | None = None) -> ErrorContract:
     """按稳定错误码构造显示通道错误。"""
 
     messages = {
@@ -398,4 +578,5 @@ def _build_display_error(code: str) -> ErrorContract:
     return build_error_contract(
         code=code if code in messages else "preview_copy_failed",
         message=messages.get(code, messages["preview_copy_failed"]),
+        details=details or {},
     )

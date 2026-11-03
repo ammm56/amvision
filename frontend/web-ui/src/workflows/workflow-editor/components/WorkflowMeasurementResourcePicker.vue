@@ -61,7 +61,7 @@ import SelectField from '@/shared/ui/components/Select.vue'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import ImageViewer from '@/shared/ui/components/ImageViewer.vue'
 import { apiRequest } from '@/shared/api/http-client'
-import { importMeasurementResource, listMeasurementResources, readMeasurementResource, readMeasurementResourceImage, resourceVersionPath, saveMeasurementResource, type MeasurementResourceDocument, type MeasurementResourceReference } from '../services/measurement-resource.service'
+import { importMeasurementResource, listMeasurementResources, readMeasurementResource, readMeasurementResourceImage, resourceVersionPath, saveMeasurementResource, isCurrentMeasurementResource, type MeasurementResourceDocument, type MeasurementResourceReference } from '../services/measurement-resource.service'
 import { calibrationSummary, calibrationSummaryMessages } from '../parameters/measurement-resource-summary'
 
 const props = defineProps<{ modelValue: unknown; schema: Record<string, unknown>; disabled?: boolean }>()
@@ -130,7 +130,7 @@ async function show() {
   close(); open.value = true; error.value = ''; name.value = ''; calibrationJson.value = ''; addVersion.value = false; mode.value='select'; referenceId.value=`reference-${crypto.randomUUID().slice(0,8)}`
   documents.value=[];clearRequested.value=false;selected.value = current.value ? key(current.value) : ''; controller = new AbortController()
   const token = generation
-  await perform(async () => { const result = await listMeasurementResources(project.selectedProjectId, controller?.signal); if (token === generation) documents.value = result })
+  await perform(async () => { const result = await listMeasurementResources(project.selectedProjectId, controller?.signal); if (token === generation) documents.value = result.filter(isCurrentMeasurementResource) })
 }
 async function perform(work: () => Promise<void>) {
   const token = generation; busy.value = true; error.value = ''

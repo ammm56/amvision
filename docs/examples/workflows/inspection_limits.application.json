@@ -1,0 +1,20 @@
+{
+  "format_id": "amvision.flow-application.v1",
+  "application_id": "inspection-limits-app",
+  "display_name": "Measurement Decision",
+  "description": "Explicit three-state measurement decision example; demonstration limits only.",
+  "template_ref": {"template_id": "inspection-limits-template", "template_version": "1.0.0", "source_kind": "json-file", "source_uri": "docs/examples/workflows/inspection_limits.template.json"},
+  "runtime_mode": "python-json-workflow",
+  "bindings": [
+    {"binding_id": "measurements", "direction": "input", "template_port_id": "measurements", "binding_kind": "workflow-execute-input", "config": {"payload_type_id": "numeric-table.v1"}, "metadata": {"payload_type_id": "numeric-table.v1"}},
+    {"binding_id": "inspection", "direction": "output", "template_port_id": "inspection", "binding_kind": "workflow-execute-output", "config": {"payload_type_id": "result-record.v1"}, "metadata": {}},
+    {"binding_id": "display", "direction": "output", "template_port_id": "display", "binding_kind": "workflow-execute-output", "config": {"payload_type_id": "response-body.v1"}, "metadata": {}}
+  ],
+  "metadata": {
+    "app_mode": {
+      "format_id": "amvision.workflow-app-mode.v1",
+      "title": "Measurement Decision",
+      "displays": [{"node_id": "display", "output_port": "body", "title": "Measurements", "size": "large"}]
+    }
+  }
+}

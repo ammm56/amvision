@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from backend.service.application.workflows.cloud_package import CloudPackageImport
 
 from backend.contracts.workflows.workflow_graph import (
     FlowApplication,
@@ -54,6 +58,7 @@ class LocalWorkflowJsonService:
         node_catalog_registry: NodeCatalogRegistry | None = None,
         payload_contracts: tuple[WorkflowPayloadContract, ...] | None = None,
         node_definitions: tuple[NodeDefinition, ...] | None = None,
+        point_cloud_policy=None,
     ) -> None:
         """初始化 workflow 文件服务。"""
 
@@ -72,6 +77,7 @@ class LocalWorkflowJsonService:
         self.template_documents = WorkflowTemplateDocumentStore(
             dataset_storage=self.dataset_storage,
             node_definitions=self.node_definitions,
+            point_cloud_policy=point_cloud_policy,
         )
         self.application_documents = WorkflowApplicationDocumentStore(
             dataset_storage=self.dataset_storage,
@@ -256,6 +262,33 @@ class LocalWorkflowJsonService:
         )
 
     def save_application_bundle(
+        self, *, project_id: str, application: FlowApplication,
+        template: WorkflowGraphTemplate, operation_id: str, actor_id: str | None = None,
+        resource_import: CloudPackageImport | None = None,
+    ) -> WorkflowApplicationBundleDocument:
+        """普通保存沿原事务；携资源导入复用事务并持有同一项目资源锁。"""
+        if resource_import is None:
+            return self._save_application_bundle(
+                project_id=project_id, application=application, template=template,
+                operation_id=operation_id, actor_id=actor_id,
+            )
+        from backend.service.application.errors import ResourceConflictError
+        from backend.service.application.workflows.documents.measurement_resources import MeasurementResourceService
+
+        resources = MeasurementResourceService(self.dataset_storage, cloud_policy=resource_import.policy)
+        with resources.mutation(project_id):
+            keys = self.application_bundle_journals._build_authoritative_object_keys(
+                project_id=project_id, application_id=application.application_id,
+                template_id=template.template_id, template_version=template.template_version,
+            )
+            if any(self.dataset_storage.resolve(key).exists() for key in keys):
+                raise ResourceConflictError("配方导入目标已存在，拒绝覆盖；可打开已有导入结果", details={"application_id": application.application_id})
+            return self._save_application_bundle(
+                project_id=project_id, application=application, template=template,
+                operation_id=operation_id, actor_id=actor_id, resource_import=resource_import,
+            )
+
+    def _save_application_bundle(
         self,
         *,
         project_id: str,
@@ -263,6 +296,7 @@ class LocalWorkflowJsonService:
         template: WorkflowGraphTemplate,
         operation_id: str,
         actor_id: str | None = None,
+        resource_import: CloudPackageImport | None = None,
     ) -> WorkflowApplicationBundleDocument:
         """交叉校验并用可跨进程恢复的 journal 保存 Application 与 Template。"""
 
@@ -297,13 +331,27 @@ class LocalWorkflowJsonService:
             application_id=application.application_id,
             template_id=template.template_id,
             template_version=template.template_version,
+            created_resource_count=resource_import.count if resource_import is not None else 0,
         )
         try:
-            template_document = self.template_documents.save_template(
-                project_id=normalized_project_id,
-                template=template,
-                actor_id=actor_id,
-            )
+            if resource_import is not None:
+                from backend.service.application.workflows.documents.measurement_resources import MeasurementResourceService
+
+                template = resource_import.stage(
+                    journal, self.dataset_storage, project_id=normalized_project_id,
+                    template=template, actor_id=actor_id,
+                )
+                resource_import.install(journal, self.dataset_storage)
+                resources = MeasurementResourceService(self.dataset_storage, cloud_policy=resource_import.policy)
+                resources.validate_template(template, project_id=normalized_project_id)
+                # 项目资源锁已由外层持有，不重复获取同一跨进程锁。
+                template_document = self.template_documents._save_template_document(
+                    project_id=normalized_project_id, template=template, actor_id=actor_id,
+                )
+            else:
+                template_document = self.template_documents.save_template(
+                    project_id=normalized_project_id, template=template, actor_id=actor_id,
+                )
             application_document = self.application_documents.save_application(
                 project_id=normalized_project_id,
                 application=application,
@@ -311,8 +359,10 @@ class LocalWorkflowJsonService:
                 # 非权威 Prompt Mask 清理推迟到两份权威 JSON 都提交后。
                 prune_unreferenced_prompt_masks=False,
             )
+            if resource_import is not None:
+                resource_import.cancel()
             self.application_bundle_journals.commit(journal)
-        except Exception:
+        except BaseException:
             # rollback 失败会抛出 WorkflowRecoveryRequiredError 并保留 journal；
             # lifecycle context 会保留 Application/Template claim 供启动恢复。
             self.application_bundle_journals.rollback(journal)

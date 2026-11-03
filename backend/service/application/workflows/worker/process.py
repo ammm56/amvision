@@ -20,6 +20,7 @@ from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.nodes.runtime_support import ExecutionImageRegistry
 from backend.runtime.processes import configure_managed_child_signals
 from backend.service.application.errors import InvalidRequestError, ServiceError
+from backend.service.application.workflows.resource_finalization import WorkflowResourceCleanupError
 from backend.service.application.public_errors import (
     build_error_contract,
     build_service_error_contract,
@@ -31,6 +32,7 @@ from backend.service.application.local_buffers import (
 from backend.service.application.workflows.app_version_service import (
     compute_workflow_app_content_fingerprint,
     compute_workflow_app_content_fingerprint_from_artifacts,
+    require_current_execution_identity,
 )
 from backend.service.application.workflows.model_sessions import (
     WORKFLOW_MODEL_SESSION_SCOPE_ID_METADATA_KEY,
@@ -283,22 +285,26 @@ def run_workflow_runtime_worker_process(
             published_inference_gateway=published_inference_gateway,
             workflow_model_session_manager=model_session_manager,
             workflow_storage_image_cache=storage_image_cache,
+            point_cloud_policy=settings.workflow_runtime.point_cloud,
         )
         if (
             contract_snapshot_object_key is not None
             and dependency_manifest_object_key is not None
         ):
-            # 已发布 Runtime 必须按版本内冻结的四份文件验签。Node Catalog
-            # 后续升级不能改变旧版本的内容指纹或让旧 Runtime 无法重启。
+            # 冻结文件指纹不随 Catalog 改写；已改义节点另验当前执行身份。
+            frozen_dependencies = dataset_storage.read_json(dependency_manifest_object_key)
             snapshot_fingerprint = (
                 compute_workflow_app_content_fingerprint_from_artifacts(
                     application=snapshot_application_payload,
                     template=snapshot_template_payload,
                     contract=dataset_storage.read_json(contract_snapshot_object_key),
-                    dependencies=dataset_storage.read_json(
-                        dependency_manifest_object_key
-                    ),
+                    dependencies=frozen_dependencies,
                 )
+            )
+            require_current_execution_identity(
+                template=snapshot_template,
+                dependencies=frozen_dependencies,
+                node_catalog_registry=node_catalog_registry,
             )
         else:
             # 仅兼容没有 WorkflowAppVersion 身份的早期 Runtime；当前发布路径
@@ -633,6 +639,24 @@ def run_workflow_runtime_worker_process(
                         }
                     )
                 )
+            except WorkflowResourceCleanupError as exc:
+                with state_lock:
+                    current_observed_state = "failed"
+                    current_last_error = exc.message
+                    current_run_id = None
+                preview_error = build_service_error_contract(exc).model_dump(mode="json")
+                response_queue.put(attach_worker_identity({
+                    **build_worker_error_message(
+                        workflow_runtime_id=workflow_runtime_id, workflow_run_id=workflow_run_id,
+                        request_id=message_id, error_message=exc.message,
+                        error_details={"error_code": exc.code, **dict(exc.details)}, state="failed",
+                        instance_id=runtime_instance_id, current_run_id=None, started_at=worker_started_at,
+                        loaded_snapshot_fingerprint=snapshot_fingerprint, observed_state="failed",
+                        worker_last_error=exc.message, health_summary=build_current_health_summary(),
+                    ),
+                    "worker_reusable": False,
+                }))
+                return
             except InvalidRequestError as exc:
                 if preview_capture is not None:
                     preview_error = build_service_error_contract(exc).model_dump(

@@ -117,6 +117,7 @@ class WorkflowRuntimeLifecycle:
                 workflow_app_version_id=desired_version.workflow_app_version_id,
             )
             self.require_contract(desired_detail.contract)
+            version_service.require_version_execution(desired_version)
             runtime_state = self.worker_manager.start_runtime(
                 starting_runtime,
                 workflow_runtime_revision_id=(

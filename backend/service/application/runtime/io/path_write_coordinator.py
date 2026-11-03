@@ -306,15 +306,9 @@ def _try_lock_file(file_object: object, *, offset: int) -> None:
 
         change_windows_lock(file_object, offset=offset)
         return
-    import fcntl
+    from backend.service.infrastructure.filesystem.native_locks import change_posix_lock
 
-    fcntl.lockf(
-        file_object.fileno(),
-        fcntl.LOCK_EX | fcntl.LOCK_NB,
-        1,
-        offset,
-        os.SEEK_SET,
-    )
+    change_posix_lock(file_object, offset=offset)
 
 
 def _is_lock_contention(error: OSError) -> bool:
@@ -335,15 +329,9 @@ def _unlock_file(file_object: object, *, offset: int) -> None:
 
         change_windows_lock(file_object, offset=offset, unlock=True)
         return
-    import fcntl
+    from backend.service.infrastructure.filesystem.native_locks import change_posix_lock
 
-    fcntl.lockf(
-        file_object.fileno(),
-        fcntl.LOCK_UN,
-        1,
-        offset,
-        os.SEEK_SET,
-    )
+    change_posix_lock(file_object, offset=offset, unlock=True)
 
 
 __all__ = [

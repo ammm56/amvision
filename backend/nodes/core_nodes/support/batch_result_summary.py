@@ -7,7 +7,7 @@ from collections.abc import Sequence
 
 from backend.nodes.core_nodes.support.inspection_record import (
     require_alarm_record_payload,
-    require_ok_ng_value,
+    require_result_record_payload,
 )
 from backend.nodes.core_nodes.support.logic import require_value_payload
 from backend.service.application.errors import InvalidRequestError
@@ -91,22 +91,24 @@ def build_batch_result_summary(
     result_count = len(inspection_results)
     ok_count = 0
     ng_count = 0
+    invalid_count = 0
     unknown_count = 0
     alarm_count = 0
     reason_counts: dict[str, int] = {}
     for result_index, result_item in enumerate(inspection_results, start=1):
-        ok_ng_value = result_item.get("ok_ng")
-        if ok_ng_value is None:
+        try:
+            validated = require_result_record_payload(
+                result_item, field_name=f"inspection_results[{result_index}]"
+            )
+        except InvalidRequestError:
             unknown_count += 1
         else:
-            normalized_ok_ng = require_ok_ng_value(
-                ok_ng_value,
-                field_name=f"inspection_results[{result_index}].ok_ng",
-            )
-            if normalized_ok_ng == "OK":
+            if validated["state"] == "ok":
                 ok_count += 1
-            else:
+            elif validated["state"] == "ng":
                 ng_count += 1
+            else:
+                invalid_count += 1
         alarm_value = result_item.get("alarm")
         if (
             isinstance(alarm_value, dict)
@@ -125,13 +127,16 @@ def build_batch_result_summary(
             ) + 1
 
     summary: dict[str, object] = {
+        "format_id": "amvision.inspection-batch-summary.v1",
         "count": result_count,
         "ok_count": ok_count,
         "ng_count": ng_count,
+        "invalid_count": invalid_count,
         "unknown_count": unknown_count,
         "alarm_count": alarm_count,
         "empty": result_count == 0,
         "has_ng": ng_count > 0,
+        "has_invalid": invalid_count > 0,
         "has_alarm": alarm_count > 0,
         "has_unknown": unknown_count > 0,
         "all_ok": result_count > 0 and ok_count == result_count,
@@ -150,10 +155,35 @@ def build_batch_result_summary(
     return summary
 
 
+def require_batch_result_summary(raw_value: object) -> dict[str, object]:
+    """重读预计算摘要时检查三态分母，不将缺少 INVALID 的旧摘要静默补零。"""
+    if not isinstance(raw_value, dict) or raw_value.get("format_id") != "amvision.inspection-batch-summary.v1":
+        raise InvalidRequestError("批次摘要格式无效，需要重新生成")
+    keys = ("count", "ok_count", "ng_count", "invalid_count", "unknown_count", "alarm_count")
+    if any(type(raw_value.get(key)) is not int or raw_value[key] < 0 for key in keys):
+        raise InvalidRequestError("批次摘要计数不完整或无效")
+    count, ok, ng, invalid, unknown, alarm = (raw_value[key] for key in keys)
+    if ok + ng + invalid + unknown != count or alarm > count:
+        raise InvalidRequestError("批次摘要计数不一致")
+    flags = dict(empty=count == 0, has_ng=ng > 0, has_invalid=invalid > 0,
+                 has_unknown=unknown > 0, has_alarm=alarm > 0,
+                 all_ok=count > 0 and ok == count)
+    if any(raw_value.get(key) is not value for key, value in flags.items()):
+        raise InvalidRequestError("批次摘要状态与计数不一致")
+    if count:
+        ratio = raw_value.get("pass_ratio")
+        if type(ratio) not in (int, float) or ratio != ok / count:
+            raise InvalidRequestError("批次通过率分母必须包含全部结果")
+    elif "pass_ratio" in raw_value:
+        raise InvalidRequestError("空批次没有通过率")
+    return clone_inline_json_value(raw_value)
+
+
 __all__ = [
     "build_batch_result_summary",
     "clone_inline_json_value",
     "read_result_item_list_from_multi_payload",
     "read_result_item_list_from_raw_value",
     "read_result_item_list_from_value_payload",
+    "require_batch_result_summary",
 ]

@@ -222,7 +222,11 @@ export function useWorkflowPreviewSession() {
     for (const upload of input.fileUploads ?? []) {
       if (!isCurrent(token)) return null
       inputIds[upload.bindingId] ??= []
-      inputIds[upload.bindingId]!.push(await connection.upload(upload.file, timings => {
+      const binding = input.application.bindings.find(item => item.binding_id === upload.bindingId && item.direction === 'input')
+      const payloadType = input.template.template_inputs.find(item => item.input_id === binding?.template_port_id)?.payload_type_id
+      const uploadInput = connection.identity.file_upload_limit_bytes != null && (payloadType === 'file-ref.v1' || payloadType === 'file-refs.v1')
+        ? connection.uploadFile.bind(connection) : connection.upload.bind(connection)
+      inputIds[upload.bindingId]!.push(await uploadInput(upload.file, timings => {
         if (isCurrent(token)) for (const [key, value] of Object.entries(timings)) clientTimings[key] = (clientTimings[key] ?? 0) + value
       }))
     }

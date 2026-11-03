@@ -184,9 +184,9 @@ def test_json_save_local_handler_writes_result_record(tmp_path: Path) -> None:
                 "indent": 2,
             },
             input_values={
-                "result": {
-                    "ok_ng": "NG",
-                    "ok": False,
+                "result": {"format_id": "amvision.result-record.v1",
+                    "state": 'ng',
+                    "passed": False,
                     "reason": "coverage too low",
                     "metrics": {"coverage_ratio": 0.12},
                 }
@@ -196,7 +196,7 @@ def test_json_save_local_handler_writes_result_record(tmp_path: Path) -> None:
     )
 
     assert output_path.is_file()
-    assert '"ok_ng": "NG"' in output_path.read_text(encoding="utf-8")
+    assert '"state": "ng"' in output_path.read_text(encoding="utf-8")
     assert output["summary"]["value"]["record_kind"] == "result-record"
 
 
@@ -635,10 +635,10 @@ def test_batch_record_handler_builds_batch_archive_object() -> None:
                 },
                 "inspection_results": {
                     "value": [
-                        {"ok_ng": "OK", "ok": True, "reason": "ok"},
-                        {
-                            "ok_ng": "NG",
-                            "ok": False,
+                        {"format_id": "amvision.result-record.v1", "state": 'ok', "passed": True, "reason": "ok"},
+                        {"format_id": "amvision.result-record.v1",
+                            "state": 'ng',
+                            "passed": False,
                             "reason": "coverage low",
                             "alarm": {
                                 "active": True,
@@ -746,7 +746,7 @@ def test_workflow_result_handler_builds_workflow_result_from_execution_metadata(
             node_definition=object(),
             parameters={"status": "accepted", "code": 202},
             input_values={
-                "result": {"ok_ng": "OK", "ok": True, "reason": "ok"},
+                "result": {"format_id": "amvision.result-record.v1", "state": 'ok', "passed": True, "reason": "ok"},
                 "metrics": {"value": {"elapsed_ms": 18.5}},
                 "files": {"value": [{"path": "W:/archive/result.json"}]},
             },
@@ -763,7 +763,7 @@ def test_workflow_result_handler_builds_workflow_result_from_execution_metadata(
     assert workflow_result["message"] == "accepted"
     assert workflow_result["trace_id"] == "trace-001"
     assert workflow_result["event_id"] == "event-001"
-    assert workflow_result["data"]["ok_ng"] == "OK"
+    assert workflow_result["data"]["state"] == "ok"
     assert output["summary"]["value"]["data_source"] == "input.result"
 
 
@@ -779,15 +779,15 @@ def test_batch_result_summary_handler_aggregates_record_and_direct_results() -> 
                 "record": {
                     "value": {
                         "inspection_results": [
-                            {"ok_ng": "OK", "ok": True, "reason": "ok"},
-                            {"ok_ng": "NG", "ok": False, "reason": "coverage low"},
+                            {"format_id": "amvision.result-record.v1", "state": 'ok', "passed": True, "reason": "ok"},
+                            {"format_id": "amvision.result-record.v1", "state": 'ng', "passed": False, "reason": "coverage low"},
                         ]
                     }
                 },
                 "inspection_result": (
-                    {
-                        "ok_ng": "NG",
-                        "ok": False,
+                    {"format_id": "amvision.result-record.v1",
+                        "state": 'ng',
+                        "passed": False,
                         "reason": "coverage low",
                         "alarm": {
                             "active": True,
@@ -827,10 +827,19 @@ def test_batch_result_summary_handler_uses_precomputed_summary_when_record_has_n
                 "record": {
                     "value": {
                         "inspection_result_summary": {
+                            "format_id": "amvision.inspection-batch-summary.v1",
                             "count": 4,
                             "ok_count": 3,
                             "ng_count": 1,
+                            "invalid_count": 0,
+                            "unknown_count": 0,
                             "alarm_count": 1,
+                            "empty": False,
+                            "has_ng": True,
+                            "has_invalid": False,
+                            "has_unknown": False,
+                            "has_alarm": True,
+                            "all_ok": False,
                             "pass_ratio": 0.75,
                         }
                     }

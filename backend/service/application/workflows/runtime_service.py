@@ -781,6 +781,7 @@ class WorkflowRuntimeService:
             application_id=target_version.application_id,
             workflow_app_version_id=target_version.workflow_app_version_id,
         )
+        version_service.require_version_execution(target_version)
 
         comparison: dict[str, object] | None = None
         active_revision: WorkflowRuntimeRevision | None = None
@@ -2472,6 +2473,7 @@ class WorkflowRuntimeService:
         return LocalWorkflowJsonService(
             dataset_storage=self.dataset_storage,
             node_catalog_registry=self.node_catalog_registry,
+            point_cloud_policy=self.settings.workflow_runtime.point_cloud,
         )
 
     @contextmanager
@@ -2527,6 +2529,7 @@ class WorkflowRuntimeService:
             session_factory=self.session_factory,
             dataset_storage=self.dataset_storage,
             node_catalog_registry=self.node_catalog_registry,
+            point_cloud_policy=self.settings.workflow_runtime.point_cloud,
         )
 
     def _require_active_runtime_revision(

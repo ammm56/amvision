@@ -1,0 +1,13 @@
+{
+  "platform": "ubuntu-x64",
+  "minimum_os": "Ubuntu 24.04 x86_64",
+  "system_dependencies": ["glibc >= 2.38", "libudev.so.1", "libcap.so.2"],
+  "source": "http://archive.ubuntu.com/ubuntu/pool/main/libu/libusb-1.0/libusb-1.0-0_1.0.27-1_amd64.deb",
+  "source_sha256": "d59e679a82ee2b724c556397e831e879936adbe8a007705872b65a5e1ec887b5",
+  "package": "libusb-1.0-0 2:1.0.27-1 amd64",
+  "files": {
+    "libusb-1.0.so.0": "751349e3def1808981dc26bbeb746e2d6ff4ca97fc2c8bc8faaa8f46c879057f",
+    "libusb-copyright": "22184ce520ea729f24fb9ec9ee0849c9c7c6828cb796fe2cd174a480ce806420",
+    "LGPL-2.1": "dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551"
+  }
+}

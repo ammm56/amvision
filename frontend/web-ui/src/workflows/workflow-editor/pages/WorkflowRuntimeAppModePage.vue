@@ -64,7 +64,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ApiError } from '@/shared/api/error'
 import { useSessionStore } from '@/app/stores/session.store'
 import { canAccessPage, canInvokeWorkflow } from '@/platform/auth/page-access'
@@ -119,13 +119,35 @@ const inputForm = useWorkflowAppModeInputs()
 const inputStates = inputForm.states
 const invoking = ref(false)
 const invokeError = ref('')
+let invocationGeneration = 0
+let inputIdentity = ''
+let disposed = false
 
-watch(runtimeId, (id) => load(id), { immediate: true })
+function invalidateInvocation(): void {
+  invocationGeneration += 1
+  invoking.value = false
+  invokeError.value = ''
+}
+
+watch(runtimeId, (id) => {
+  invalidateInvocation()
+  inputIdentity = ''
+  inputForm.initialize([])
+  void load(id)
+}, { immediate: true, flush: 'sync' })
 watch(
-  () => snapshot.value?.workflow_app_version_id,
-  () => inputForm.initialize(inputs.value),
-  { immediate: true },
+  snapshot,
+  (value) => {
+    if (!value || value.workflow_runtime_id !== runtimeId.value) return
+    const identity = JSON.stringify([value.workflow_runtime_id, value.workflow_runtime_revision_id, value.workflow_app_version_id])
+    if (identity === inputIdentity) return
+    inputIdentity = identity
+    invalidateInvocation()
+    inputForm.initialize(inputs.value)
+  },
+  { immediate: true, flush: 'sync' },
 )
+onBeforeUnmount(() => { disposed = true; invocationGeneration += 1 })
 
 function resolveInputLabel(bindingId: string, templatePortId: string): string {
   const templateInput = snapshot.value?.template.template_inputs.find((input) => input.input_id === templatePortId)
@@ -155,20 +177,30 @@ function humanizeIdentifier(value: string): string {
 }
 
 async function invoke(): Promise<void> {
-  if (!canInvoke.value || !snapshot.value || !appMode.value || invoking.value || snapshot.value.observed_state !== 'running' || !snapshot.value.active) return
+  const target = snapshot.value
+  if (disposed || !canInvoke.value || !target || target.workflow_runtime_id !== runtimeId.value || !appMode.value || invoking.value || target.observed_state !== 'running' || !target.active) return
+  const generation = ++invocationGeneration
+  const isCurrent = () => !disposed && invocationGeneration === generation && runtimeId.value === target.workflow_runtime_id
   invoking.value = true
   invokeError.value = ''
   try {
     const payload = await inputForm.build(inputs.value)
-    await invokeWorkflowAppRuntime(runtimeId.value, {
+    if (!isCurrent() || !canInvoke.value || !snapshot.value?.active || snapshot.value.observed_state !== 'running'
+      || snapshot.value.runtime_generation !== target.runtime_generation || snapshot.value.worker_instance_id !== target.worker_instance_id) return
+    const run = await invokeWorkflowAppRuntime(target.workflow_runtime_id, {
       ...payload,
       executionMetadata: { workflow_run_record_mode: 'none' },
     })
+    // 调用回执独立于有界预览，进程恢复或显示失败不能吞掉执行错误。
+    if (isCurrent() && ['failed', 'timed_out', 'cancelled'].includes(run.state)) {
+      invokeError.value = run.error?.message || t(`tasks.status.${run.state}`)
+    }
   } catch (cause) {
+    if (!isCurrent()) return
     invokeError.value = cause instanceof Error ? cause.message : String(cause)
     if (cause instanceof ApiError && cause.status === 403) await sessionStore.refreshPermissions()
   } finally {
-    invoking.value = false
+    if (isCurrent()) invoking.value = false
   }
 }
 </script>

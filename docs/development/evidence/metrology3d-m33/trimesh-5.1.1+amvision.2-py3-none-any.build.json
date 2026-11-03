@@ -1,0 +1,13 @@
+{
+  "package": "trimesh",
+  "version": "5.1.1+amvision.2",
+  "source_sha256": "56070be44cd97ac87544c9bd3da4b7a298c6f728e83183aeb1f3524d673d5fac",
+  "patched_files": {
+    "trimesh/bounds.py": "b92d33a345e2d73dddc34502f5050c156f55398d00340329c8d3e1570b133457",
+    "trimesh/exchange/ply.py": "a6bd5bde6402669ed5b80d436cc49282b1eb1de76699233e60de987d0631fda3",
+    "pyproject.toml": "7e2fe6cfe08761620ffe014d44f8334ed923c165421e399abcd1a7f70f0132ee",
+    "trimesh/exchange/_strict_records.py": "b95bf771f6bd6bf1e1629731fe9f07a8003cf5f524cc6eba510cbd4f38f719c1"
+  },
+  "wheel_sha256": "1f71a37601d7a38139a5fba1336618a0ffcdbb785f32d550e64362ee0c18c6c1",
+  "python": "3.12.13 | packaged by Anaconda, Inc. | (main, Mar 19 2026, 20:16:45) [MSC v.1942 64 bit (AMD64)]"
+}

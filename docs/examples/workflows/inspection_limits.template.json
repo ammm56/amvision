@@ -1,0 +1,27 @@
+{
+  "format_id": "amvision.workflow-graph-template.v1",
+  "template_id": "inspection-limits-template",
+  "template_version": "1.0.0",
+  "display_name": "Measurement Decision",
+  "description": "Numeric table to OK/NG/INVALID, record and display. The 0.95-1.05 mm interval is demonstration data, not a workpiece tolerance.",
+  "nodes": [
+    {"node_id": "limits", "node_type_id": "core.rule.check-limits", "parameters": {"rules": [{"item_id": "d", "unit": "mm", "lower": 0.95, "upper": 1.05, "required": true}]}},
+    {"node_id": "record", "node_type_id": "core.output.result-record", "parameters": {}},
+    {"node_id": "display", "node_type_id": "core.io.value-preview", "parameters": {"display_mode": "table", "path": "items", "columns": [
+      {"key": "item_id", "label": "Item"},
+      {"key": "state", "label": "Decision", "format": "decision-state"},
+      {"key": "value", "label": "Value"},
+      {"key": "unit", "label": "Unit", "format": "unit"},
+      {"key": "reason", "label": "Reason", "format": "reason"}
+    ]}}
+  ],
+  "edges": [
+    {"edge_id": "limits-record", "source_node_id": "limits", "source_port": "summary", "target_node_id": "record", "target_port": "decision"},
+    {"edge_id": "limits-display", "source_node_id": "limits", "source_port": "summary", "target_node_id": "display", "target_port": "value"}
+  ],
+  "template_inputs": [{"input_id": "measurements", "display_name": "Measurements", "payload_type_id": "numeric-table.v1", "target_node_id": "limits", "target_port": "table"}],
+  "template_outputs": [
+    {"output_id": "inspection", "display_name": "Inspection", "payload_type_id": "result-record.v1", "source_node_id": "record", "source_port": "result"},
+    {"output_id": "display", "display_name": "Display", "payload_type_id": "response-body.v1", "source_node_id": "display", "source_port": "body"}
+  ]
+}

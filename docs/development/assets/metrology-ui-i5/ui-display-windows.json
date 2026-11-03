@@ -1,0 +1,12 @@
+{
+  "platform": "Windows-11-10.0.26300-SP0",
+  "points": 14745099,
+  "version_id": "workflow-app-version-8f84507af33f42ecab19f45930e53cfb",
+  "run_id": "workflow-run-d3877d71ff4d408288acc9aa7fe06870",
+  "display_points": 500000,
+  "plane_samples": 500000,
+  "circle_samples": 733,
+  "measurements_match_f4": true,
+  "stopped": true,
+  "resources_reclaimed": true
+}

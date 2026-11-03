@@ -83,6 +83,51 @@ namespace Amvar.Vision.SharedMemory
                 timings: timings);
         }
 
+        /// <summary>
+        /// 提交完整同机点云 SoA 字节；descriptor 使用 amvision.point-cloud-buffer.v1。
+        /// 必须明确 InputBinding，服务端在分配前校验全部字段、布局和发布契约。
+        /// </summary>
+        public SharedMemoryTriggerResult InvokePointCloud(
+            JObject descriptor, byte[] content, SharedMemoryTriggerRequest request)
+        {
+            if (content == null) throw new ArgumentNullException(nameof(content));
+            var frozen = ValidateCloudDescriptor(descriptor, request);
+            if (content.LongLength != frozen.Value<long>("content_length"))
+                throw new ArgumentException("Point cloud content length does not match descriptor.", nameof(content));
+            return Invoke(content.LongLength, "application/vnd.amvision.point-cloud-buffer",
+                request, null, null, null, null, writer => writer.Write(content), CreateTimings(request), frozen);
+        }
+
+        /// <summary>
+        /// 在既有 writer guard 内直接填充完整点云，回调返回后 Span 失效。
+        /// 对齐填充必须为零；回调异常沿同一取消协议释放，不发布 REQUEST。
+        /// </summary>
+        public SharedMemoryTriggerResult InvokePointCloud(
+            JObject descriptor, SharedMemoryTriggerBufferWriter fill, SharedMemoryTriggerRequest request)
+        {
+            if (fill == null) throw new ArgumentNullException(nameof(fill));
+            var frozen = ValidateCloudDescriptor(descriptor, request);
+            return Invoke(frozen.Value<long>("content_length"), "application/vnd.amvision.point-cloud-buffer",
+                request, null, null, null, null, writer => writer.Write(fill), CreateTimings(request), frozen);
+        }
+
+        private static JObject ValidateCloudDescriptor(JObject descriptor, SharedMemoryTriggerRequest request)
+        {
+            if (descriptor == null) throw new ArgumentNullException(nameof(descriptor));
+            if (request == null || string.IsNullOrWhiteSpace(request.InputBinding))
+                throw new ArgumentException("Point cloud requires an explicit InputBinding.", nameof(request));
+            var frozen = (JObject)descriptor.DeepClone();
+            if (frozen.Value<string>("format_id") != "amvision.point-cloud-buffer.v1"
+                || frozen["content_length"]?.Type != JTokenType.Integer)
+                throw new ArgumentException("Point cloud descriptor format or length is invalid.", nameof(descriptor));
+            var size = frozen.Value<long>("content_length");
+            if (size <= 0 || size > 1000000000L)
+                throw new ArgumentOutOfRangeException(nameof(descriptor), "Point cloud payload must be between 1 and 1000000000 bytes.");
+            if (request.Payload.ContainsKey(request.InputBinding!))
+                throw new ArgumentException("Payload cannot override the prepared cloud binding.", nameof(request));
+            return frozen;
+        }
+
         /// <summary>直接写入连续 HWC BGR24；不执行图片编码或解码。</summary>
         public SharedMemoryTriggerResult InvokeBgr24(
             byte[] bgr24Bytes,
@@ -382,7 +427,8 @@ namespace Amvar.Vision.SharedMemory
             string? layout,
             string? pixelFormat,
             Action<ExternalLocalBufferWriter> write,
-            SharedMemoryTriggerTimings? timings)
+            SharedMemoryTriggerTimings? timings,
+            JObject? cloudDescriptor = null)
         {
             BeginInvocation();
             try
@@ -396,7 +442,8 @@ namespace Amvar.Vision.SharedMemory
                     layout,
                     pixelFormat,
                     write,
-                    timings);
+                    timings,
+                    cloudDescriptor);
             }
             finally
             {
@@ -413,7 +460,8 @@ namespace Amvar.Vision.SharedMemory
             string? layout,
             string? pixelFormat,
             Action<ExternalLocalBufferWriter> write,
-            SharedMemoryTriggerTimings? timings)
+            SharedMemoryTriggerTimings? timings,
+            JObject? cloudDescriptor)
         {
             if (contentLength <= 0)
             {
@@ -426,7 +474,16 @@ namespace Amvar.Vision.SharedMemory
             var inputBinding = NormalizeOptional(call.InputBinding) ?? options.DefaultInputBinding;
             var localDeadline = WorkflowTriggerMailboxClient.LocalDeadline(options.Timeout);
             var mailboxClaimStartedAt = StartTiming(timings);
-            var preparePayload = WorkflowJsonDefaults.SerializeToUtf8Bytes(new WorkflowTriggerPrepare
+            var preparePayload = cloudDescriptor != null
+                ? WorkflowJsonDefaults.SerializeToUtf8Bytes(new JObject
+                {
+                    ["format_id"] = "amvision.workflow-trigger-cloud-prepare.v1",
+                    ["trigger_source_id"] = options.TriggerSourceId,
+                    ["event_id"] = eventId,
+                    ["event_payload_key"] = inputBinding,
+                    ["cloud"] = cloudDescriptor
+                })
+                : WorkflowJsonDefaults.SerializeToUtf8Bytes(new WorkflowTriggerPrepare
             {
                 TriggerSourceId = options.TriggerSourceId,
                 EventId = eventId,
@@ -441,7 +498,9 @@ namespace Amvar.Vision.SharedMemory
                     PixelFormat = NormalizeOptional(pixelFormat)
                 }
             });
-            var claimed = mailbox.Claim(
+            var claimed = cloudDescriptor != null ? mailbox.ClaimCloud(
+                checked((uint)Math.Ceiling(options.Timeout.TotalMilliseconds)),
+                checked((ulong)options.RouteGeneration), preparePayload, Guid.NewGuid()) : mailbox.Claim(
                 checked((uint)Math.Ceiling(options.Timeout.TotalMilliseconds)),
                 checked((ulong)options.RouteGeneration),
                 preparePayload,

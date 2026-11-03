@@ -46,6 +46,8 @@ def resolve_signal_value(
             skip_reason="disabled_by_request",
         )
     if mapping.signal_name in request_signal_values:
+        if mapping.source_scope == "result" and mapping.source_path == "state":
+            raise InvalidRequestError("请求不能覆盖已按产品状态配置的三态码")
         return ResolvedSignalValue(
             signal_name=mapping.signal_name,
             source_scope="request",
@@ -105,7 +107,14 @@ def resolve_signal_value(
         )
 
     effective_value = source_value
-    if mapping.true_value is not None or mapping.false_value is not None:
+    if mapping.state_values is not None:
+        if (
+            not isinstance(source_value, str)
+            or source_value not in mapping.state_values
+        ):
+            raise InvalidRequestError("三态码来源不是合法产品状态")
+        effective_value = mapping.state_values[source_value]
+    elif mapping.true_value is not None or mapping.false_value is not None:
         truth_value = _coerce_condition_like_value(
             raw_value=source_value,
             node_name=node_name,

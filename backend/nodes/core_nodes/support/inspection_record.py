@@ -2,21 +2,29 @@
 
 from __future__ import annotations
 
+from pydantic import ValidationError
+
+from backend.contracts.workflows.inspection import InspectionRecord
 from backend.nodes.core_nodes.support.logic import require_value_payload
 from backend.nodes.runtime_support import require_image_payload
 from backend.nodes.video_runtime_support import require_video_payload
 from backend.service.application.errors import InvalidRequestError
 
 
-def require_ok_ng_value(raw_value: object, *, field_name: str = "decision") -> str:
-    """校验 OK / NG 决策值。"""
-
-    if not isinstance(raw_value, str):
-        raise InvalidRequestError(f"{field_name} 必须是字符串")
-    normalized_value = raw_value.strip().upper()
-    if normalized_value not in {"OK", "NG"}:
-        raise InvalidRequestError(f"{field_name} 仅支持 OK 或 NG")
-    return normalized_value
+def require_result_record_payload(raw_value: object, *, field_name: str = "result") -> dict[str, object]:
+    """各输出端统一验证记录，不接受旧 ok_ng/ok 或未知状态。"""
+    try:
+        record = InspectionRecord.model_validate(raw_value)
+    except ValidationError as exc:
+        raise InvalidRequestError(f"{field_name} 不是合法的三态结果记录: {exc}") from exc
+    result = record.model_dump(mode="json", exclude_none=True)
+    if record.alarm is not None:
+        result["alarm"] = require_alarm_record_payload(record.alarm)
+    if record.image is not None:
+        result["image"] = require_image_payload(record.image)
+    if record.video is not None:
+        result["video"] = require_video_payload(record.video)
+    return result
 
 
 def read_optional_value_input(raw_payload: object, *, field_name: str) -> object | None:
@@ -80,7 +88,7 @@ def require_alarm_record_payload(payload: object, *, field_name: str = "alarm") 
 
 def build_result_record_payload(
     *,
-    ok_ng: str,
+    state: str,
     metrics_value: object | None = None,
     conditions_value: object | None = None,
     reason_value: str | None = None,
@@ -91,10 +99,10 @@ def build_result_record_payload(
 ) -> dict[str, object]:
     """组装统一的 result-record.v1 payload。"""
 
-    normalized_ok_ng = require_ok_ng_value(ok_ng, field_name="ok_ng")
     result_payload: dict[str, object] = {
-        "ok_ng": normalized_ok_ng,
-        "ok": normalized_ok_ng == "OK",
+        "format_id": "amvision.result-record.v1",
+        "state": state,
+        "passed": state == "ok",
     }
     if reason_value is not None:
         result_payload["reason"] = reason_value
@@ -110,7 +118,7 @@ def build_result_record_payload(
         result_payload["image"] = require_image_payload(image_payload)
     if video_payload is not None:
         result_payload["video"] = require_video_payload(video_payload)
-    return result_payload
+    return require_result_record_payload(result_payload)
 
 
 __all__ = [
@@ -118,5 +126,5 @@ __all__ = [
     "read_optional_reason_input",
     "read_optional_value_input",
     "require_alarm_record_payload",
-    "require_ok_ng_value",
+    "require_result_record_payload",
 ]

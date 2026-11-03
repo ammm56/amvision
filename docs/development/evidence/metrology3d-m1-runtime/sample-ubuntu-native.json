@@ -1,0 +1,40 @@
+{
+  "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "python": "3.12.3",
+  "policy": {
+    "max_header_bytes": 65536,
+    "max_decoded_bytes": 400000000,
+    "max_working_bytes": 134217728,
+    "chunk_rows": 65536,
+    "chunk_bytes": 4194304,
+    "max_live_array_bytes": 800000000
+  },
+  "source_bytes": 479677235,
+  "source_sha256": "ff2b9e0ef2d6c45af02c4bf8d474cd82f77f86ad92bd371a4c0f71b1b90d116b",
+  "point_count": 14745099,
+  "dtype": "<f4",
+  "array_bytes": 176941188,
+  "array_sha256": "956927f058ba4a0170b1c1b93b1411b613fbe21fcbfc278ad0a7fc3cf621a1c6",
+  "non_finite_positions": 0,
+  "filter_summary": {
+    "state": "ready",
+    "reason": null,
+    "input_count": 14745099,
+    "kept_count": 14745099,
+    "removed_count": 0,
+    "invalid_counts": {
+      "mask": 0,
+      "non_finite": 0,
+      "sentinel": 0
+    }
+  },
+  "local_array_sha256": "956927f058ba4a0170b1c1b93b1411b613fbe21fcbfc278ad0a7fc3cf621a1c6",
+  "descriptor_sha256": "0b362b57f6c8fb0c0692b7024ec8e91757619ee1ea0656c3280d7251478053bd",
+  "arena_capacity_bytes": 268435456,
+  "reader_reclaim_after_close": "released",
+  "spatial_unit": null,
+  "read_verify_seconds": 11.457138357043732,
+  "recorded_array_bytes": 471843168,
+  "budget_after_close": 0,
+  "scope_closed": true
+}

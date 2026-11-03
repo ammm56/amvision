@@ -10,9 +10,12 @@ import re
 import struct
 import subprocess
 import sys
+from tempfile import TemporaryDirectory
 
 from packaging.requirements import InvalidRequirement, Requirement
 from backend.maintenance.launcher_release import validate_launcher_package
+from backend.maintenance.point_cloud_delivery import validate_point_cloud_delivery
+from backend.maintenance.metrology_release import validate_metrology_runtime
 
 
 def validate_release_runtime(
@@ -23,16 +26,22 @@ def validate_release_runtime(
     """校验当前发行目录正在使用的 Python、依赖和 accelerator。"""
 
     issues: list[str] = []
+    issues.extend(
+        validate_point_cloud_delivery(app_root, release_manifest.get("point_cloud_tools"))
+    )
     if release_manifest.get("desktop_launcher") is not None:
         try:
             validate_launcher_package(app_root)
         except (OSError, ValueError, KeyError, TypeError) as error:
             issues.append(f"桌面启动器发行文件校验失败: {error}")
-    expected_python = (app_root / "python" / "python.exe").resolve()
+    target = release_manifest.get("target", {})
+    target_os = target.get("os")
+    python_relative = "python/python.exe" if target_os == "windows" else "python/bin/python3"
+    expected_python = (app_root / python_relative).resolve()
     actual_python = Path(sys.executable).resolve()
     if os.path.normcase(str(actual_python)) != os.path.normcase(str(expected_python)):
         issues.append(
-            "validate-layout 必须由当前发行目录的 python/python.exe 执行: "
+            f"validate-layout 必须由当前发行目录的 {python_relative} 执行: "
             f"actual={actual_python}"
         )
     if sys.version_info[:2] != (3, 12):
@@ -46,13 +55,17 @@ def validate_release_runtime(
     machine = platform.machine().strip().lower()
     if machine not in {"amd64", "x86_64"}:
         issues.append(f"bundled Python 架构必须为 x64: actual={machine or 'unknown'}")
-    if os.name != "nt":
-        issues.append(f"当前发行 profile 只支持 Windows: actual={os.name}")
+    expected_os = {"windows": "nt", "ubuntu": "posix"}.get(target_os)
+    if expected_os is None or os.name != expected_os or (target_os == "ubuntu" and platform.system() != "Linux"):
+        issues.append(f"发行目标系统不匹配: target={target_os}, actual={platform.system()}")
+    python_root = (app_root / "python").resolve()
+    if not all(Path(path).resolve().is_relative_to(python_root) for path in (sys.executable, sys.prefix, sys.base_prefix)):
+        issues.append("解释器或标准库根目录指向发行包之外，不能使用外部 venv 或系统 Python")
 
     # HTTP accept 使用隔离的 CPython IOCP 接口；发行不接受未经回归的 Uvicorn 组合。
     try:
         uvicorn_version = metadata.version("uvicorn")
-        if uvicorn_version != "0.48.0":
+        if target_os == "windows" and uvicorn_version != "0.48.0":
             issues.append(f"Windows HTTP loop factory 尚未验证 Uvicorn {uvicorn_version}，要求 0.48.0")
     except metadata.PackageNotFoundError:
         issues.append("缺少 HTTP 服务依赖 uvicorn")
@@ -71,6 +84,10 @@ def validate_release_runtime(
         accelerator_kind=accelerator_kind,
     )
     issues.extend(str(item) for item in accelerator_result.pop("issues"))
+    metrology = validate_metrology_runtime(app_root, release_manifest)
+    issues.extend(metrology["issues"])
+    ipc = _validate_ipc_locks(app_root)
+    issues.extend(ipc["issues"])
     return {
         "valid": not issues,
         "python_executable": str(actual_python),
@@ -79,8 +96,44 @@ def validate_release_runtime(
         "machine": machine,
         "requirements_valid": not requirement_issues,
         "accelerator": accelerator_result,
+        "metrology": metrology,
+        "ipc": ipc,
         "issues": issues,
     }
+
+
+def _validate_ipc_locks(app_root: Path) -> dict:
+    """在发行数据盘实际探测唯一 owner 和非侵入查询，不仅检查 Python 常量。"""
+    from backend.service.infrastructure.ipc.mmap_primitives import (
+        acquire_mmap_owner_lock,
+        is_mmap_owner_lock_held,
+        MmapOwnerLockBusyError,
+    )
+
+    issues = []
+    try:
+        directory = app_root / "data"
+        directory.mkdir(parents=True, exist_ok=True)
+        with TemporaryDirectory(prefix="release-ipc-probe-", dir=directory) as name:
+            path = Path(name) / "owner.lock"
+            owner = acquire_mmap_owner_lock(path)
+            try:
+                if not is_mmap_owner_lock_held(path):
+                    raise RuntimeError("已持有 owner 未被原生探测识别")
+                try:
+                    duplicate = acquire_mmap_owner_lock(path)
+                except MmapOwnerLockBusyError:
+                    pass
+                else:
+                    duplicate.release()
+                    raise RuntimeError("同一 owner 锁被重复取得")
+            finally:
+                owner.release()
+            if is_mmap_owner_lock_held(path):
+                raise RuntimeError("owner 释放后仍被原生探测为活动")
+    except Exception as error:
+        issues.append(f"IPC 句柄锁原生校验失败: {error}")
+    return dict(valid=not issues, issues=issues)
 
 
 def _validate_installed_requirements(requirements_path: Path) -> list[str]:

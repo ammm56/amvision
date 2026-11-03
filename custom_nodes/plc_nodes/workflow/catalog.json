@@ -330,10 +330,10 @@
       "node_type_id": "custom.plc.modbus.write-result-signals",
       "display_name": "Write Modbus Result Signals",
       "category": "plc.modbus_tcp.write",
-      "description": "把 result-record/alarm-record 中的 OK/NG、报警位和结果码映射到 Modbus TCP coils 或 holding registers，适合现场结果回写。",
+      "description": "将三态判定的显式状态码、放行位与报警映射到 Modbus 点位；无法判定不等于 NG。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.8",
+      "version": "1.0.0",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -501,6 +501,17 @@
                 "false_value": {
                   "title": "False Value"
                 },
+                "state_values": {
+                  "type": "object",
+                  "title": "Decision State Codes",
+                  "properties": {
+                    "ok": {"type": "integer", "title": "OK Code"},
+                    "ng": {"type": "integer", "title": "NG Code"},
+                    "invalid": {"type": "integer", "title": "INVALID Code"}
+                  },
+                  "required": ["ok", "ng", "invalid"],
+                  "additionalProperties": false
+                },
                 "word_order": {
                   "type": "string",
                   "title": "Word Order",
@@ -557,7 +568,7 @@
       },
       "node_pack_id": "plc.nodes",
       "node_pack_version": "0.1.8",
-      "metadata": {}
+      "metadata": {"requires_execution_review": true}
     },
     {
       "format_id": "amvision.node-definition.v1",

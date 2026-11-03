@@ -1,0 +1,16 @@
+{
+  "platform": "Windows-11-10.0.26300-SP0",
+  "input_bytes": 1000000000,
+  "rss_baseline_bytes": 375816192,
+  "rss_peak_bytes": 454459392,
+  "stages": {
+    "http_upload": 5.944231800036505,
+    "preview_worker": 10.547249000053853
+  },
+  "passed": true,
+  "point_count": 62499984,
+  "file_bytes_after_run": 0,
+  "pins_after_run": 0,
+  "seconds": 21.748365700012073,
+  "rss_final_bytes": 450912256
+}

@@ -292,6 +292,8 @@ def run_command(
             platform_tag = str(
                 release_target.get("platform_tag") or "windows-x64"
             ).strip()
+            is_ubuntu = release_target.get("os") == "ubuntu"
+            ffmpeg_platform = str(release_artifacts.get("ffmpeg_platform") or platform_tag)
             expected_paths.update(
                 {
                     "root_readme": (app_root / "README.md",),
@@ -303,15 +305,15 @@ def run_command(
                     "app_backend": (app_root / "app" / "backend",),
                     "app_requirements": (app_root / "app" / "requirements.txt",),
                     "custom_nodes": (app_root / "custom_nodes",),
-                    "ffmpeg_tools": (app_root / "tools" / "ffmpeg" / platform_tag,),
+                    "ffmpeg_tools": (app_root / "tools" / "ffmpeg" / ffmpeg_platform,),
                     "frontend_index": (app_root / "frontend" / "index.html",),
                     "frontend_runtime_config": (
                         app_root / "frontend" / "runtime-config.json",
                         app_root / "frontend" / "runtime-config.template.json",
                     ),
-                    "python_executable": (app_root / "python" / "python.exe",),
-                    "start_launcher": (app_root / "start-amvision-full.bat",),
-                    "stop_launcher": (app_root / "stop-amvision-full.bat",),
+                    "python_executable": (app_root / ("python/bin/python3" if is_ubuntu else "python/python.exe"),),
+                    "start_launcher": (app_root / ("start-amvision-full.sh" if is_ubuntu else "start-amvision-full.bat"),),
+                    "stop_launcher": (app_root / ("stop-amvision-full.sh" if is_ubuntu else "stop-amvision-full.bat"),),
                 }
             )
             if accelerator == "nvidia" or bool(
@@ -342,6 +344,13 @@ def run_command(
                     ),
                 }
             )
+            if is_ubuntu:
+                forbidden_paths = {
+                    "windows_python": app_root / "python/python.exe",
+                    "windows_start_launcher": app_root / "start-amvision-full.bat",
+                    "windows_stop_launcher": app_root / "stop-amvision-full.bat",
+                    "windows_ffmpeg": app_root / "tools/ffmpeg/windows-x64",
+                }
             if accelerator == "cpu":
                 forbidden_paths.update(
                     {

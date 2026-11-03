@@ -11,6 +11,17 @@
     >
       <header>
         <strong>{{ title(slot) }}</strong>
+        <Button
+          v-if="display(slot)"
+          size="sm"
+          variant="secondary"
+          type="button"
+          :title="t('workflowEditor.appMode.openDisplay', { title: title(slot) })"
+          :aria-label="t('workflowEditor.appMode.openDisplay', { title: title(slot) })"
+          @click="open(slot)"
+        >
+          <Maximize2 :size="16" />
+        </Button>
       </header>
       <WorkflowNodePreviewDisplay
         v-if="display(slot)"
@@ -28,8 +39,10 @@
 </template>
 
 <script setup lang="ts">
+import { Maximize2 } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 
+import Button from '@/shared/ui/components/Button.vue'
 import type { WorkflowAppModeConfig, WorkflowAppModeDisplay } from '../app-mode/workflow-app-mode'
 import type { PreviewNodeDisplay, PreviewViewerImage } from '../preview/useWorkflowPreviewDisplays'
 import WorkflowNodePreviewDisplay from './WorkflowNodePreviewDisplay.vue'
@@ -57,6 +70,11 @@ function display(slot: WorkflowAppModeDisplay): PreviewNodeDisplay | null {
 function title(slot: WorkflowAppModeDisplay): string {
   return slot.title || props.nodeTitles[slot.node_id] || display(slot)?.title || slot.output_port
 }
+
+function open(slot: WorkflowAppModeDisplay): void {
+  const current = display(slot)
+  if (current) emit('openDisplay', current)
+}
 </script>
 
 <style scoped>
@@ -64,7 +82,9 @@ function title(slot: WorkflowAppModeDisplay): string {
 .app-mode-displays__slot { grid-column: span 6; display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; min-height: 0; overflow: hidden; border: 1px solid var(--am-border); border-radius: var(--am-radius-md); background: var(--am-surface); color: var(--am-text); }
 .app-mode-displays__slot--small { grid-column: span 4; }
 .app-mode-displays__slot--large { grid-column: 1 / -1; }
-.app-mode-displays__slot > header { display: flex; align-items: center; min-height: 44px; padding: var(--am-space-md) var(--am-space-lg); border-bottom: 1px solid var(--am-border); color: var(--am-text-strong); }
+.app-mode-displays__slot > header { display: flex; align-items: center; justify-content: space-between; gap: var(--am-space-md); min-height: 44px; padding: var(--am-space-md) var(--am-space-lg); border-bottom: 1px solid var(--am-border); color: var(--am-text-strong); }
+.app-mode-displays__slot > header strong { min-width: 0; overflow-wrap: anywhere; }
+.app-mode-displays__slot > header button { flex: 0 0 32px; width: 32px; height: 32px; padding: 0; }
 .app-mode-displays__empty { display: grid; place-items: center; min-height: 0; padding: var(--am-space-lg); overflow: hidden; color: var(--am-text-muted); background: var(--am-surface-soft); text-align: center; }
 .app-mode-displays :deep(.workflow-graph-node-preview) { height: 100%; min-height: 0; margin: 0; overflow: hidden; border: 0; border-radius: 0; }
 .app-mode-displays :deep(.workflow-graph-node-preview__empty) { border-color: var(--am-border); }

@@ -13,6 +13,7 @@ PyYAML>=6.0.3,<7
 packaging>=24,<26
 chardet>=5.2,<6
 numpy>=2.2,<3
+threadpoolctl==3.6.0
 opencv-python>=4.11,<5
 Pillow>=12.2.0,<13
 regex>=2026.5.0,<2027

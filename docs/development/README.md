@@ -4,6 +4,40 @@
 
 ## 验收与基准
 
+- [三维配方携资源搬运](3d-metrology-cloud-package.md)：A10 依赖闭包、父来源映射、持久恢复及编辑器入口；双平台空环境、完整样本、发布运行与页面证据。
+- [点云调用工具发行](3d-metrology-tool-delivery.md)：已有客户端、配方生成器和正式示例的装配清单、统一入口、搬移调用及失败校验。
+- [CPU 离线发行验收](3d-metrology-offline-release.md)：A12 Windows/WSL Ubuntu 自带 Python、三维原生依赖、空环境资源包导入、完整工件两轮发布运行与停止恢复；复用 A10/A11，不改变性能或计量门禁。
+- [点云资产原始细节显示](3d-metrology-details.md)：复用资产与 Cloud Preview 的空间叶块、精度/原始行号、按视野加载和释放；双平台完整样本、真实页面与剩余容量边界。
+- [三维 1 GB 容量实施与验证](3d-metrology-capacity.md)：只读字段共享、显式容量账本、双平台实写 1 GB 文件/数组与 HTTP Preview、派生保存恢复；十秒、最大容量显示及离线发行仍独立验收。
+
+- [三维工件主流程交付](3d-metrology-mainflow.md)：可直接导入的完整工件配方、50 项工程判定和保存、完整显示修复、同机 Python 调用工具；Windows/Ubuntu 完整样本和实际页面验证，S2 历史诊断不再阻塞。
+- [点云显示优化与进度核对](3d-metrology-display-review.md)：正交顶视、Z 色标、比例尺、叠加显隐及完整工件页面验证；区分本轮显示提交与前序未提交进度，保留十秒、1 GB、离线发行及全分辨率显示限制。
+- [3D Metrology 完成范围与剩余清单](3d-metrology-remaining.md)：第 16 节记录 A10 携资源搬运，第 15 节记录工具装配，第 14 节记录资产原始点显示，第 13 节记录 1 GB 输入主链路，第 12 节记录正式配方性能；十秒仍未通过，按授权先推进独立交付。A01–A13 与 B01–B23 范围不扩张，下列分批记录保留对应日期事实。
+- [三态判定与交付验收](3d-metrology-decisions.md)：A05/A06 开发 v1、生产节点例外、全部受影响读取方及发布恢复准入；双平台、SDK、真实页面与未完成范围。
+
+- [3D Metrology 界面实施与验收](3d-metrology-ui-validation.md)：真实点云页面基线、结果语义、同屏编辑、权重/残差及大规模证据传输；双平台发布验证和明确未完成项。
+
+- [3D Metrology R5 F4 实施与限制](3d-metrology-r5-f4-implementation.md)：实际距离分区、部分弧稳健拟圆、有限基准域与双平台完整样本；保留当时 S2 诊断和节拍记录，S2 最新工程收口以主流程交付为准。
+
+- [3D Metrology R5 F3 实施与验收](3d-metrology-r5-f3-implementation.md)：24 项 L/W 有效，47/50 主项有效；独立真值、完整样本、Windows/Ubuntu 发布生命周期、页面及剩余精度/节拍边界。
+- [3D Metrology R5 F 实施与验收](3d-metrology-r5-f-implementation.md)：十八节点正式入口、本机容量、单遍 ROI、支持摘要复用和发布端口校验；可见包络后续结果见 F3 实施记录。
+- [3D Metrology R5 E 全工件配方与结果验收](3d-metrology-r5-e-results.md)：历史批次的独立数值输出、空白页面建图、50 项结果矩阵、ROI 复用和双平台发布生命周期；23 有效、27 明确无效，当时尚未正式启用。
+- [3D Metrology R5 D0 与 D1 候选审核](3d-metrology-r5-d0-d1.md)：历史候选阶段，视角/旧回调修复、双平台 21 区完整点云复验和参数候选；最新工程配方与未通过项以 F4 实施记录为准。
+
+- [3D Metrology 参数与有限边段修复](3d-metrology-repair-20261024.md)：公共参数分发、输入错误分类、连续实测段选择，双平台与空白页面至发布运行验收；基准延伸显式距离上限设计，尚未修改高度算法。
+- [3D Metrology 真实工件审计与修正计划](3d-metrology-audit-20261024.md)：2026-10-24 完整点云、实际十二钢片/两半圆、页面与发布 Runtime 的新验证；联合参数编辑错误、测量定义与边段选择缺口、修正顺序及验收限制。
+- [3D Metrology M3.3 实施与验收](3d-metrology-m33-acceptance.md)：十八内部节点、测量证据 v2、前端与历史双平台定向回归；不是所有现场尺寸已通过。
+- [3D Metrology M1 I/O 实施与验证](3d-metrology-m1-io.md)：受控 trimesh/pypcd4 构建、坏文件与精度回归、完整 ASCII PLY 样本及 Windows/WSL 资源观测；节点与完整发行尚未启用。
+- [3D Metrology M1 输入适配](3d-metrology-m1-input.md)：严格文件/数组契约、ObjectStore 和 LocalBuffer 内部读取、资源回归、Ubuntu 原生运行数据目录及剩余接入项；生产节点尚未启用。
+- [3D Metrology M1 运行引用与资源生命周期](3d-metrology-m1-runtime.md)：运行身份、分支借用、派生索引、关闭失败隔离、单位归一/有效点过滤和完整样本 mmap 验证；六节点、Trigger/SDK、资产及页面仍待接入。
+- [3D Metrology M1 资产与保存导出](3d-metrology-m1-assets.md)：资源 v2、幂等原子提交、原件/派生恢复、资产包及交换文件内部实现；双平台完整样本、强杀回归和剩余六节点/SDK/界面接入范围。
+- [3D Metrology M1 节点与资源 API](3d-metrology-m1-nodes.md)：六节点内部执行、原始行号、独立显示正文、资源管理与现有发布链路的历史批次。
+- [3D Metrology M1 传输与界面](3d-metrology-m1-transports.md)：同机 Trigger/.NET SDK、Preview 大文件上传、资源选择管理和三维组件的历史批次。
+- [3D Metrology M1 真实发布运行验收](3d-metrology-m1-published.md)：M1 历史进度；真实发布准入、Windows .NET 完整样本、Ubuntu 服务侧生命周期、WRITING 超时清理修复及生产启用剩余条件。
+- [3D Metrology M2 几何节点实施记录](3d-metrology-m2.md)：四节点、公开契约、原生 RANSAC 和 Vue 三维交互已内部接通，双平台真值/完整样本及真实 Runtime 通过；支持分类/残差已随 M3.1 补齐，完整页面及生产发行仍待验收。
+- [3D Metrology M3.1 高度与高差](3d-metrology-m3-height.md)：两节点、严格证据、支持域检查、精确统计、候选拾取和结果显示；双平台真值/完整样本及剩余生产边界。
+- [3D Metrology M3.2 边界与拟合](3d-metrology-m3-boundary.md)：有序/生成来源、三维格式 v2、边界证据保存恢复、三节点和前端接线；双平台真值/完整样本与剩余真实发布验收，生产不启用。
+
 - [IPC 与运行时修复验收结果](runtime-repair-results-20261015.md)：owner 探测、准入、monitor 和停止确认修复，Windows/WSL 回归、一小时资源验收及仍失败的模型/小图 P99。
 - [工业场景可靠性实施记录](industrial-reliability-implementation.md)：隔离矩阵、失败资产、数值诊断、持续负载与发行验收。
 - [二维连接器检查与测量实施基线](connector-inspection-2d.md)：工程闭环和首轮配方改进已实现；第 11 节为当前状态，第 13 节规定第二轮易用性、配置防错与交付门禁步骤。
@@ -23,6 +57,14 @@
 
 ## 待实施设计
 
+- [3D 测量节点操作与结果显示计划](3d-metrology-ui-plan.md)：仅针对三维节点与当前工件；保留 I1–I5 分批计划，核心交互和代表发布已完成，当前具体覆盖缺口见剩余清单 A08，不改平台管理界面。
+- [3D Metrology R5 F4 剩余尺寸与优化计划](3d-metrology-r5-f4-plan.md)：片段组/稳健拟圆与 S2、两项 Z、长宽敏感性、实际计算热点；逐步验证后完成现场页面、冻结验收及三态/发行缺口。
+- [3D Metrology R5 F3 设计](3d-metrology-r5-f3-plan.md)：已实施设计依据；现有边界/长宽节点的栅格剖面、稳健跨度、来源保存和前端，验收见上节。
+- [3D Metrology R5 F 工件测量、速度与启用](3d-metrology-r5-f-plan.md)：已确认可见投影包络和纯计算秒级目标；核对读取与重复扫描、片段集合及正常节点启用，按实际工件尺寸交付，不以无效传递代替完成。
+
+- [3D Metrology 设计与实施基线](3d-metrology.md)：按具体节点推进，复用 Workflow/App 发布；十八节点与本机工程配置已启用，当前结果和剩余范围见 1.1，历史设计不等于当前未完成功能。
+- [3D Metrology M3 尺寸测量节点设计](3d-metrology-m3.md)：M3.1/M3.2 已内部接通；保留总体阶段、三态及正式配方计划，第 10 节为 M3.2 历史安排与当前实施状态。
+- [3D Metrology M3.3 长宽、边间距与孔径设计](3d-metrology-m3-dimensions.md)：保留阶段设计；三节点与前端已接通，孔径直接消费 CircleFeature；当前三维契约统一 v1，真实配方与启用状态以 F3/F4 为准。
 - [模型转换与 Pose 评估修复方案](model-matrix-repair-plan.md)：已知模型问题的修复实现、回归证据与待验收范围；工程测试与真实业务验收分别记录。
 - [用户页面与操作权限](user-access.md)：管理员逐项配置页面、操作和项目范围，复用现有启动页与应用模式。
 - [用户权限详细实施步骤](user-access-implementation.md)：通用契约、七个实施阶段和全链路、性能、真实发行验收；待实施。

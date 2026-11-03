@@ -1,0 +1,13 @@
+{
+  "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "archive_bytes": 176945414,
+  "archive_sha256": "1da143eea38d6ba666a2e32435c1c8d520c4e44c0d5014de05e7a862e3c8af22",
+  "point_count": 14745099,
+  "preserved_content_sha256": "c9566ae231f30a4b55226673d8644346eb6a58d8bafb66130784596c2da345ed",
+  "empty_target": true,
+  "app_id": "app-2731d31b3999bbd74bf23610f35d864535c76ef6c530101c4917c08ff73c1e8f",
+  "version": "workflow-app-version-a1ce194d57544ff6b6887df028dbb70d",
+  "runtime_id": "workflow-runtime-f4cdf905e9b744eaa577f024f37f3fdb",
+  "run_state": "succeeded",
+  "source_required_after_import": false
+}

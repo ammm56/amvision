@@ -1,0 +1,99 @@
+{
+  "format_id": "amvision.flow-application.v1",
+  "application_id": "lithium-workpiece-file",
+  "display_name": "锂电工件测量 · 文件",
+  "template_ref": {
+    "template_id": "lithium-workpiece",
+    "template_version": "1.0.0",
+    "source_uri": "lithium_workpiece.template.json"
+  },
+  "runtime_mode": "python-json-workflow",
+  "description": "完整 PLY 输入；固定装夹；工程限值，不代表图纸公差。",
+  "bindings": [
+    {
+      "binding_id": "cloud",
+      "direction": "input",
+      "template_port_id": "input",
+      "binding_kind": "api-request",
+      "required": true,
+      "config": {
+        "allowed_media_types": [
+          "application/octet-stream"
+        ],
+        "max_file_bytes": 1000000000,
+        "payload_type_id": "file-ref.v1"
+      },
+      "metadata": {
+        "payload_type_id": "file-ref.v1",
+        "display_name": "完整点云文件"
+      }
+    },
+    {
+      "binding_id": "body",
+      "direction": "output",
+      "template_port_id": "body",
+      "binding_kind": "http-response",
+      "required": true,
+      "config": {
+        "payload_type_id": "response-body.v1"
+      },
+      "metadata": {
+        "payload_type_id": "response-body.v1",
+        "display_name": "Measurements"
+      }
+    }
+  ],
+  "metadata": {
+    "engineering_specification": {
+      "recipe_id": "lithium-workpiece",
+      "recipe_version": "1.0.0",
+      "criteria_source": "authorized-engineering-specification",
+      "nominal_source": "rounded-manual-report-workpiece-family",
+      "length_unit": "mm",
+      "mounting": "fixed",
+      "s2_method": "explicit-partial-arc-estimation",
+      "s2_diagnostic_disposition": "accepted-engineering-use-nonblocking",
+      "physical_calibration_claimed": false,
+      "dimension_bands": {
+        "H": [
+          1.2,
+          0.15
+        ],
+        "Z": [
+          1.65,
+          0.25
+        ],
+        "L": [
+          8,
+          0.3
+        ],
+        "W": [
+          7,
+          0.2
+        ],
+        "D": [
+          20,
+          0.3
+        ]
+      }
+    },
+    "app_mode": {
+      "format_id": "amvision.workflow-app-mode.v1",
+      "title": "锂电工件三维测量",
+      "displays": [
+        {
+          "node_id": "preview",
+          "output_port": "body",
+          "title": "工件与测量证据",
+          "size": "large"
+        },
+        {
+          "node_id": "decision-table",
+          "output_port": "body",
+          "title": "50 项尺寸",
+          "size": "large"
+        }
+      ]
+    }
+  }
+}

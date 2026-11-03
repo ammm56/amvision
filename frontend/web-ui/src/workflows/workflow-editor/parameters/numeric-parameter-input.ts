@@ -1,5 +1,6 @@
 import { buildNumericInputAttributes } from '@/shared/ui/numeric-input-step'
 import type { NodeParameterUiField } from '../types'
+import { rowScalar } from './row-scalar'
 
 export interface WorkflowNumericParameterInputAttributes {
   min?: number
@@ -13,11 +14,12 @@ export function readWorkflowNumericDisplayDivisor(field: NodeParameterUiField): 
 }
 
 /** 显示单位转换回原单位；整数参数按最小存储单位取整。 */
-export function parseWorkflowNumericDisplayValue(field: NodeParameterUiField, value: string): number | undefined {
-  if (!value.trim()) return undefined
+export function parseWorkflowNumericDisplayValue(field: NodeParameterUiField, value: string): number | null | undefined {
+  const schema = rowScalar(field.json_schema)
+  if (!value.trim()) return schema.nullable ? null : undefined
   const divisor = readWorkflowNumericDisplayDivisor(field)
   const stored = Number(value) * divisor
-  return divisor !== 1 && field.json_schema.type === 'integer' ? Math.round(stored) : stored
+  return divisor !== 1 && schema.type === 'integer' ? Math.round(stored) : stored
 }
 
 /**
@@ -29,7 +31,7 @@ export function parseWorkflowNumericDisplayValue(field: NodeParameterUiField, va
 export function readWorkflowNumericParameterInputAttributes(
   field: NodeParameterUiField,
 ): WorkflowNumericParameterInputAttributes {
-  const schema = field.json_schema
+  const schema = rowScalar(field.json_schema)
   const schemaType = schema.type
   const explicitStep = readPositiveFiniteNumber(schema.multipleOf)
   const inclusiveMinimum = readFiniteNumber(schema.minimum)

@@ -1,0 +1,212 @@
+{
+  "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "version": "workflow-app-version-8c93dbc3875d40ab875f21df1ef535e7",
+  "run": "workflow-run-bc14f6f16a5f437cbecb59d9ad7a7e9a",
+  "points": 14745099,
+  "captures": [
+    {
+      "node": "S2.boundary",
+      "bytes": 208536,
+      "fields": {
+        "candidate_positions": [
+          1452,
+          3
+        ],
+        "source_edges": [
+          1452,
+          2
+        ],
+        "source_weights": [
+          1452,
+          2
+        ],
+        "surface_face_ids": [
+          1407,
+          1
+        ],
+        "surface_faces": [
+          1407,
+          3
+        ],
+        "section_edges": [
+          1407,
+          2
+        ],
+        "section_face_offsets": [
+          1408,
+          1
+        ],
+        "section_faces": [
+          1407,
+          1
+        ],
+        "input_source_indices": [
+          1481,
+          1
+        ],
+        "local_source_rows": [
+          1481,
+          1
+        ],
+        "candidate_indices": [
+          1452,
+          1
+        ],
+        "candidate_offsets": [
+          46,
+          1
+        ],
+        "candidate_closed": [
+          45,
+          1
+        ],
+        "selection_events": [
+          45,
+          4
+        ]
+      }
+    },
+    {
+      "node": "A_top_L.boundary",
+      "bytes": 6692432,
+      "fields": {
+        "input_source_indices": [
+          78745,
+          1
+        ],
+        "metric_uv": [
+          56698,
+          2
+        ],
+        "metric_rows": [
+          56698,
+          1
+        ],
+        "metric_labels": [
+          56698,
+          1
+        ],
+        "metric_seed": [
+          56698,
+          1
+        ],
+        "counts": [
+          129778,
+          1
+        ],
+        "heights": [
+          129778,
+          1
+        ],
+        "spread": [
+          129778,
+          1
+        ],
+        "usable": [
+          129778,
+          1
+        ],
+        "foreground": [
+          129778,
+          1
+        ],
+        "selected": [
+          129778,
+          1
+        ],
+        "bin_rows": [
+          78745,
+          1
+        ],
+        "profile_positions": [
+          990,
+          3
+        ],
+        "profile_offsets": [
+          5,
+          1
+        ],
+        "profile_breaks": [
+          990,
+          1
+        ],
+        "profile_kinds": [
+          990,
+          1
+        ],
+        "profile_cells": [
+          990,
+          2
+        ],
+        "profile_weights": [
+          990,
+          2
+        ]
+      }
+    },
+    {
+      "node": "S1.boundary",
+      "bytes": 345144,
+      "fields": {
+        "candidate_positions": [
+          2398,
+          3
+        ],
+        "source_edges": [
+          2398,
+          2
+        ],
+        "source_weights": [
+          2398,
+          2
+        ],
+        "surface_face_ids": [
+          2376,
+          1
+        ],
+        "surface_faces": [
+          2376,
+          3
+        ],
+        "section_edges": [
+          2376,
+          2
+        ],
+        "section_face_offsets": [
+          2377,
+          1
+        ],
+        "section_faces": [
+          2376,
+          1
+        ],
+        "input_source_indices": [
+          2418,
+          1
+        ],
+        "local_source_rows": [
+          2418,
+          1
+        ],
+        "candidate_indices": [
+          2398,
+          1
+        ],
+        "candidate_offsets": [
+          23,
+          1
+        ],
+        "candidate_closed": [
+          22,
+          1
+        ],
+        "selection_events": [
+          22,
+          4
+        ]
+      }
+    }
+  ],
+  "measurements_match_f4": true,
+  "resources_reclaimed": true
+}

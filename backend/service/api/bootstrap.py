@@ -423,6 +423,7 @@ class RecoverIncompleteWorkflowAppVersionsStep:
             session_factory=runtime.session_factory,
             dataset_storage=runtime.dataset_storage,
             node_catalog_registry=runtime.node_catalog_registry,
+            point_cloud_policy=runtime.settings.workflow_runtime.point_cloud,
         ).recover_incomplete_versions()
         # 所有文件型恢复完成后，最后释放普通 reserved/Application claim。
         WorkflowApplicationLifecycleService(
@@ -771,6 +772,7 @@ class BackendServiceBootstrap(
             published_inference_gateway=published_inference_gateway,
             workflow_model_session_manager=workflow_model_session_manager,
             workflow_storage_image_cache=workflow_storage_image_cache,
+            point_cloud_policy=settings.workflow_runtime.point_cloud,
         )
         workflow_runtime_worker_manager = WorkflowRuntimeWorkerManager(
             settings=settings,
@@ -779,7 +781,13 @@ class BackendServiceBootstrap(
             local_buffer_broker_event_channel_provider=local_buffer_broker_supervisor.get_event_channel,
             published_inference_gateway=published_inference_gateway,
         )
-        workflow_preview_sessions = PreviewSessionManager()
+        from backend.service.application.workflows.preview.buffers import PreviewBuffers
+
+        cloud_policy = settings.workflow_runtime.point_cloud
+        workflow_preview_sessions = PreviewSessionManager(buffers=PreviewBuffers(
+            file_policy=cloud_policy.preview_files if cloud_policy else None,
+            file_root=dataset_storage.root_dir / "preview-inputs",
+        ))
         workflow_preview_sessions.pool = PreviewSessionPool(
             settings=settings, manager=workflow_preview_sessions,
             published_inference_gateway=published_inference_gateway,

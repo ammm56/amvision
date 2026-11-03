@@ -149,9 +149,12 @@ def save_workflow_template(
         template_id=template_id,
         template_version=template_version,
     )
+    from backend.service.api.deps.auth import _require_backend_service_settings
+
     service = _build_workflow_json_service(
         dataset_storage=dataset_storage,
         node_catalog_registry=node_catalog_registry,
+        point_cloud_policy=_require_backend_service_settings(request.app).workflow_runtime.point_cloud,
     )
     with _template_lifecycle_operations(
         request,
@@ -315,10 +318,13 @@ def copy_workflow_template_version(
 ) -> WorkflowTemplateDocumentResponse:
     """复制一份已保存的 workflow 图模板版本。"""
 
+    from backend.service.api.deps.auth import _require_backend_service_settings
+
     _ensure_project_visible(principal=principal, project_id=project_id)
     service = _build_workflow_json_service(
         dataset_storage=dataset_storage,
         node_catalog_registry=node_catalog_registry,
+        point_cloud_policy=_require_backend_service_settings(request.app).workflow_runtime.point_cloud,
     )
     with _template_lifecycle_operations(
         request,

@@ -1,0 +1,697 @@
+{
+  "platform": "Windows-11-10.0.26300-SP0",
+  "points": 14745099,
+  "calls": [
+    {
+      "index": 0,
+      "phase": "first",
+      "sampling_enabled": false,
+      "run_id": "workflow-run-da5de613abbe4d5192651c764d561d0e",
+      "worker_instance_id": "workflow-runtime-7bb93ca5071c4996afebfd847b94753f-de80d968365e4502a0e31b2b00a57b75",
+      "cloud_ready_to_response_seconds": 14.077999999979511,
+      "rss_bytes": 457109504,
+      "threads": 12,
+      "measurements_match_f4": true,
+      "decision_state": "ok",
+      "saved_matches_reply": true,
+      "active_leases": 0,
+      "allocated_bytes": 0,
+      "active_permits": 0,
+      "node_timings": [
+        {
+          "node_id": "filter",
+          "node_type_id": "custom.metrology3d.filter-valid",
+          "runtime_kind": "python-callable",
+          "duration_ms": 267.095
+        },
+        {
+          "node_id": "specification",
+          "node_type_id": "core.logic.object-build",
+          "runtime_kind": "python-callable",
+          "duration_ms": 0.057
+        },
+        {
+          "node_id": "A_top.context",
+          "node_type_id": "custom.metrology3d.crop-roi",
+          "runtime_kind": "python-callable",
+          "duration_ms": 248.99
+        },
+        {
+          "node_id": "B_top.context",
+          "node_type_id": "custom.metrology3d.crop-roi",
+          "runtime_kind": "python-callable",
+          "duration_ms": 29.482
+        },
+        {
+          "node_id": "A_bottom.context",
+          "node_type_id": "custom.metrology3d.crop-roi",
+          "runtime_kind": "python-callable",
+          "duration_ms": 36.133
+        },
+        {
+          "node_id": "B_bottom.context",
+          "node_type_id": "custom.metrology3d.crop-roi",
+          "runtime_kind": "python-callable",
+          "duration_ms": 30.19
+        },
+        {
+          "node_id": "C_top.context",
+          "node_type_id": "custom.metrology3d.crop-roi",
+          "runtime_kind": "python-callable",
+          "duration_ms": 34.415
+        },
+        {
+          "node_id": "C_bottom.context",
+          "node_type_id": "custom.metrology3d.crop-roi",
+          "runtime_kind": "python-callable",
+          "duration_ms": 31.956
+        },
+        {
+          "node_id": "D-crop",
+          "node_type_id": "custom.metrology3d.crop-roi",
+          "runtime_kind": "python-callable",
+          "duration_ms": 170.241
+        },
+        {
+          "node_id": "A_top.B-crop",
+          "node_type_id": "custom.metrology3d.crop-roi",
+          "runtime_kind": "python-callable",
+          "duration_ms": 10.491
+        },
+        {
+          "node_id": "A_top_L.T-crop",
+          "node_type_id": "custom.metrology3d.crop-roi",
+          "runtime_kind": "python-callable",
+          "duration_ms": 3.489
+        },
+        {
+          "node_id": "A_top_R.T-crop",
+          "node_type_id": "custom.metrology3d.crop-roi",
+          "runtime_kind": "python-callable",
+          "duration_ms": 3.656
+        },
+        {
+          "node_id": "B_top.B-crop",
+          "node_type_id": "custom.metrology3d.crop-roi",
+          "runtime_kind": "python-callable",
+          "duration_ms": 10.455
+        },
+        {
+          "node_id": "B_top_L.T-crop",
+          "node_type_id": "custom.metrology3d.crop-roi",
+          "runtime_kind": "python-callable",
+          "duration_ms": 5.888
+        },
+        {
+          "node_id": "B_top_R.T-crop",
+          "node_type_id": "custom.metrology3d.crop-roi",
+          "runtime_kind": "python-callable",
+          "duration_ms": 5.047
+        },
+        {
+          "node_id": "A_bottom.B-crop",
+          "node_type_id": "custom.metrology3d.crop-roi",
+          "runtime_kind": "python-callable",
+          "duration_ms": 7.386
+        },
+        {
+          "node_id": "A_bottom_L.T-crop",
+          "node_type_id": "custom.metrology3d.crop-roi",
+          "runtime_kind": "python-callable",
+          "duration_ms": 5.296
+        },
+        {
+          "node_id": "A_bottom_R.T-crop",
+          "node_type_id": "custom.metrology3d.crop-roi",
+          "runtime_kind": "python-callable",
+          "duration_ms": 5.635
+        },
+        {
+          "node_id": "B_bottom.B-crop",
+          "node_type_id": "custom.metrology3d.crop-roi",
+          "runtime_kind": "python-callable",
+          "duration_ms": 7.507
+        },
+        {
+          "node_id": "B_bottom_L.T-crop",
+          "node_type_id": "custom.metrology3d.crop-roi",
+          "runtime_kind": "python-callable",
+          "duration_ms": 2.67
+        },
+        {
+          "node_id": "B_bottom_R.T-crop",
+          "node_type_id": "custom.metrology3d.crop-roi",
+          "runtime_kind": "python-callable",
+          "duration_ms": 2.667
+        },
+        {
+          "node_id": "C_top.B-crop",
+          "node_type_id": "custom.metrology3d.crop-roi",
+          "runtime_kind": "python-callable",
+          "duration_ms": 7.0
+        },
+        {
+          "node_id": "C_top_L.T-crop",
+          "node_type_id": "custom.metrology3d.crop-roi",
+          "runtime_kind": "python-callable",
+          "duration_ms": 3.533
+        },
+        {
+          "node_id": "C_top_R.T-crop",
+          "node_type_id": "custom.metrology3d.crop-roi",
+          "runtime_kind": "python-callable",
+          "duration_ms": 4.385
+        },
+        {
+          "node_id": "C_bottom.B-crop",
+          "node_type_id": "custom.metrology3d.crop-roi",
+          "runtime_kind": "python-callable",
+          "duration_ms": 11.185
+        },
+        {
+          "node_id": "C_bottom_L.T-crop",
+          "node_type_id": "custom.metrology3d.crop-roi",
+          "runtime_kind": "python-callable",
+          "duration_ms": 5.908
+        },
+        {
+          "node_id": "C_bottom_R.T-crop",
+          "node_type_id": "custom.metrology3d.crop-roi",
+          "runtime_kind": "python-callable",
+          "duration_ms": 4.248
+        },
+        {
+          "node_id": "D",
+          "node_type_id": "custom.metrology3d.fit-plane",
+          "runtime_kind": "python-callable",
+          "duration_ms": 233.744
+        },
+        {
+          "node_id": "A_top.B",
+          "node_type_id": "custom.metrology3d.fit-plane",
+          "runtime_kind": "python-callable",
+          "duration_ms": 3.267
+        },
+        {
+          "node_id": "A_top_L.T",
+          "node_type_id": "custom.metrology3d.fit-plane",
+          "runtime_kind": "python-callable",
+          "duration_ms": 1.918
+        },
+        {
+          "node_id": "A_top_R.T",
+          "node_type_id": "custom.metrology3d.fit-plane",
+          "runtime_kind": "python-callable",
+          "duration_ms": 2.174
+        },
+        {
+          "node_id": "B_top.B",
+          "node_type_id": "custom.metrology3d.fit-plane",
+          "runtime_kind": "python-callable",
+          "duration_ms": 3.639
+        },
+        {
+          "node_id": "B_top_L.T",
+          "node_type_id": "custom.metrology3d.fit-plane",
+          "runtime_kind": "python-callable",
+          "duration_ms": 2.067
+        },
+        {
+          "node_id": "B_top_R.T",
+          "node_type_id": "custom.metrology3d.fit-plane",
+          "runtime_kind": "python-callable",
+          "duration_ms": 2.18
+        },
+        {
+          "node_id": "A_bottom.B",
+          "node_type_id": "custom.metrology3d.fit-plane",
+          "runtime_kind": "python-callable",
+          "duration_ms": 3.568
+        },
+        {
+          "node_id": "A_bottom_L.T",
+          "node_type_id": "custom.metrology3d.fit-plane",
+          "runtime_kind": "python-callable",
+          "duration_ms": 1.7
+        },
+        {
+          "node_id": "A_bottom_R.T",
+          "node_type_id": "custom.metrology3d.fit-plane",
+          "runtime_kind": "python-callable",
+          "duration_ms": 2.491
+        },
+        {
+          "node_id": "B_bottom.B",
+          "node_type_id": "custom.metrology3d.fit-plane",
+          "runtime_kind": "python-callable",
+          "duration_ms": 3.926
+        },
+        {
+          "node_id": "B_bottom_L.T",
+          "node_type_id": "custom.metrology3d.fit-plane",
+          "runtime_kind": "python-callable",
+          "duration_ms": 2.447
+        },
+        {
+          "node_id": "B_bottom_R.T",
+          "node_type_id": "custom.metrology3d.fit-plane",
+          "runtime_kind": "python-callable",
+          "duration_ms": 2.07
+        },
+        {
+          "node_id": "C_top.B",
+          "node_type_id": "custom.metrology3d.fit-plane",
+          "runtime_kind": "python-callable",
+          "duration_ms": 4.553
+        },
+        {
+          "node_id": "C_top_L.T",
+          "node_type_id": "custom.metrology3d.fit-plane",
+          "runtime_kind": "python-callable",
+          "duration_ms": 2.175
+        },
+        {
+          "node_id": "C_top_R.T",
+          "node_type_id": "custom.metrology3d.fit-plane",
+          "runtime_kind": "python-callable",
+          "duration_ms": 1.75
+        },
+        {
+          "node_id": "C_bottom.B",
+          "node_type_id": "custom.metrology3d.fit-plane",
+          "runtime_kind": "python-callable",
+          "duration_ms": 6.779
+        },
+        {
+          "node_id": "C_bottom_L.T",
+          "node_type_id": "custom.metrology3d.fit-plane",
+          "runtime_kind": "python-callable",
+          "duration_ms": 1.823
+        },
+        {
+          "node_id": "C_bottom_R.T",
+          "node_type_id": "custom.metrology3d.fit-plane",
+          "runtime_kind": "python-callable",
+          "duration_ms": 1.527
+        },
+        {
+          "node_id": "frame",
+          "node_type_id": "custom.metrology3d.build-frame",
+          "runtime_kind": "python-callable",
+          "duration_ms": 3.603
+        },
+        {
+          "node_id": "A_top_L.H",
+          "node_type_id": "custom.metrology3d.measure-step",
+          "runtime_kind": "python-callable",
+          "duration_ms": 16.788
+        },
+        {
+          "node_id": "A_top_L.Z",
+          "node_type_id": "custom.metrology3d.measure-step",
+          "runtime_kind": "python-callable",
+          "duration_ms": 152.664
+        },
+        {
+          "node_id": "A_top_R.H",
+          "node_type_id": "custom.metrology3d.measure-step",
+          "runtime_kind": "python-callable",
+          "duration_ms": 8.911
+        },
+        {
+          "node_id": "A_top_R.Z",
+          "node_type_id": "custom.metrology3d.measure-step",
+          "runtime_kind": "python-callable",
+          "duration_ms": 79.787
+        },
+        {
+          "node_id": "B_top_L.H",
+          "node_type_id": "custom.metrology3d.measure-step",
+          "runtime_kind": "python-callable",
+          "duration_ms": 9.119
+        },
+        {
+          "node_id": "B_top_L.Z",
+          "node_type_id": "custom.metrology3d.measure-step",
+          "runtime_kind": "python-callable",
+          "duration_ms": 79.641
+        },
+        {
+          "node_id": "B_top_R.H",
+          "node_type_id": "custom.metrology3d.measure-step",
+          "runtime_kind": "python-callable",
+          "duration_ms": 10.72
+        },
+        {
+          "node_id": "B_top_R.Z",
+          "node_type_id": "custom.metrology3d.measure-step",
+          "runtime_kind": "python-callable",
+          "duration_ms": 79.608
+        },
+        {
+          "node_id": "A_bottom_L.H",
+          "node_type_id": "custom.metrology3d.measure-step",
+          "runtime_kind": "python-callable",
+          "duration_ms": 11.59
+        },
+        {
+          "node_id": "A_bottom_L.Z",
+          "node_type_id": "custom.metrology3d.measure-step",
+          "runtime_kind": "python-callable",
+          "duration_ms": 77.738
+        },
+        {
+          "node_id": "A_bottom_R.H",
+          "node_type_id": "custom.metrology3d.measure-step",
+          "runtime_kind": "python-callable",
+          "duration_ms": 9.649
+        },
+        {
+          "node_id": "A_bottom_R.Z",
+          "node_type_id": "custom.metrology3d.measure-step",
+          "runtime_kind": "python-callable",
+          "duration_ms": 83.218
+        },
+        {
+          "node_id": "B_bottom_L.H",
+          "node_type_id": "custom.metrology3d.measure-step",
+          "runtime_kind": "python-callable",
+          "duration_ms": 11.783
+        },
+        {
+          "node_id": "B_bottom_L.Z",
+          "node_type_id": "custom.metrology3d.measure-step",
+          "runtime_kind": "python-callable",
+          "duration_ms": 82.589
+        },
+        {
+          "node_id": "B_bottom_R.H",
+          "node_type_id": "custom.metrology3d.measure-step",
+          "runtime_kind": "python-callable",
+          "duration_ms": 11.805
+        },
+        {
+          "node_id": "B_bottom_R.Z",
+          "node_type_id": "custom.metrology3d.measure-step",
+          "runtime_kind": "python-callable",
+          "duration_ms": 79.905
+        },
+        {
+          "node_id": "C_top_L.H",
+          "node_type_id": "custom.metrology3d.measure-step",
+          "runtime_kind": "python-callable",
+          "duration_ms": 11.16
+        },
+        {
+          "node_id": "C_top_L.Z",
+          "node_type_id": "custom.metrology3d.measure-step",
+          "runtime_kind": "python-callable",
+          "duration_ms": 78.12
+        },
+        {
+          "node_id": "C_top_R.H",
+          "node_type_id": "custom.metrology3d.measure-step",
+          "runtime_kind": "python-callable",
+          "duration_ms": 9.326
+        },
+        {
+          "node_id": "C_top_R.Z",
+          "node_type_id": "custom.metrology3d.measure-step",
+          "runtime_kind": "python-callable",
+          "duration_ms": 80.846
+        },
+        {
+          "node_id": "C_bottom_L.H",
+          "node_type_id": "custom.metrology3d.measure-step",
+          "runtime_kind": "python-callable",
+          "duration_ms": 14.558
+        },
+        {
+          "node_id": "C_bottom_L.Z",
+          "node_type_id": "custom.metrology3d.measure-step",
+          "runtime_kind": "python-callable",
+          "duration_ms": 83.464
+        },
+        {
+          "node_id": "C_bottom_R.H",
+          "node_type_id": "custom.metrology3d.measure-step",
+          "runtime_kind": "python-callable",
+          "duration_ms": 11.695
+        },
+        {
+          "node_id": "C_bottom_R.Z",
+          "node_type_id": "custom.metrology3d.measure-step",
+          "runtime_kind": "python-callable",
+          "duration_ms": 81.3
+        },
+        {
+          "node_id": "S1.boundary",
+          "node_type_id": "custom.metrology3d.extract-boundary",
+          "runtime_kind": "python-callable",
+          "duration_ms": 2491.481
+        },
+        {
+          "node_id": "S2.boundary",
+          "node_type_id": "custom.metrology3d.extract-boundary",
+          "runtime_kind": "python-callable",
+          "duration_ms": 3412.341
+        },
+        {
+          "node_id": "A_top_L.boundary",
+          "node_type_id": "custom.metrology3d.extract-boundary",
+          "runtime_kind": "python-callable",
+          "duration_ms": 353.349
+        },
+        {
+          "node_id": "A_top_R.boundary",
+          "node_type_id": "custom.metrology3d.extract-boundary",
+          "runtime_kind": "python-callable",
+          "duration_ms": 323.066
+        },
+        {
+          "node_id": "B_top_L.boundary",
+          "node_type_id": "custom.metrology3d.extract-boundary",
+          "runtime_kind": "python-callable",
+          "duration_ms": 381.08
+        },
+        {
+          "node_id": "B_top_R.boundary",
+          "node_type_id": "custom.metrology3d.extract-boundary",
+          "runtime_kind": "python-callable",
+          "duration_ms": 346.724
+        },
+        {
+          "node_id": "A_bottom_L.boundary",
+          "node_type_id": "custom.metrology3d.extract-boundary",
+          "runtime_kind": "python-callable",
+          "duration_ms": 361.28
+        },
+        {
+          "node_id": "A_bottom_R.boundary",
+          "node_type_id": "custom.metrology3d.extract-boundary",
+          "runtime_kind": "python-callable",
+          "duration_ms": 375.5
+        },
+        {
+          "node_id": "B_bottom_L.boundary",
+          "node_type_id": "custom.metrology3d.extract-boundary",
+          "runtime_kind": "python-callable",
+          "duration_ms": 387.347
+        },
+        {
+          "node_id": "B_bottom_R.boundary",
+          "node_type_id": "custom.metrology3d.extract-boundary",
+          "runtime_kind": "python-callable",
+          "duration_ms": 396.67
+        },
+        {
+          "node_id": "C_top_L.boundary",
+          "node_type_id": "custom.metrology3d.extract-boundary",
+          "runtime_kind": "python-callable",
+          "duration_ms": 365.794
+        },
+        {
+          "node_id": "C_top_R.boundary",
+          "node_type_id": "custom.metrology3d.extract-boundary",
+          "runtime_kind": "python-callable",
+          "duration_ms": 362.999
+        },
+        {
+          "node_id": "C_bottom_L.boundary",
+          "node_type_id": "custom.metrology3d.extract-boundary",
+          "runtime_kind": "python-callable",
+          "duration_ms": 379.092
+        },
+        {
+          "node_id": "C_bottom_R.boundary",
+          "node_type_id": "custom.metrology3d.extract-boundary",
+          "runtime_kind": "python-callable",
+          "duration_ms": 389.472
+        },
+        {
+          "node_id": "S1.circle",
+          "node_type_id": "custom.metrology3d.fit-circle",
+          "runtime_kind": "python-callable",
+          "duration_ms": 27.818
+        },
+        {
+          "node_id": "S2.circle",
+          "node_type_id": "custom.metrology3d.fit-circle",
+          "runtime_kind": "python-callable",
+          "duration_ms": 35.187
+        },
+        {
+          "node_id": "A_top_L.extents",
+          "node_type_id": "custom.metrology3d.measure-extents",
+          "runtime_kind": "python-callable",
+          "duration_ms": 38.816
+        },
+        {
+          "node_id": "A_top_R.extents",
+          "node_type_id": "custom.metrology3d.measure-extents",
+          "runtime_kind": "python-callable",
+          "duration_ms": 41.627
+        },
+        {
+          "node_id": "B_top_L.extents",
+          "node_type_id": "custom.metrology3d.measure-extents",
+          "runtime_kind": "python-callable",
+          "duration_ms": 39.949
+        },
+        {
+          "node_id": "B_top_R.extents",
+          "node_type_id": "custom.metrology3d.measure-extents",
+          "runtime_kind": "python-callable",
+          "duration_ms": 239.867
+        },
+        {
+          "node_id": "A_bottom_L.extents",
+          "node_type_id": "custom.metrology3d.measure-extents",
+          "runtime_kind": "python-callable",
+          "duration_ms": 38.781
+        },
+        {
+          "node_id": "A_bottom_R.extents",
+          "node_type_id": "custom.metrology3d.measure-extents",
+          "runtime_kind": "python-callable",
+          "duration_ms": 52.882
+        },
+        {
+          "node_id": "B_bottom_L.extents",
+          "node_type_id": "custom.metrology3d.measure-extents",
+          "runtime_kind": "python-callable",
+          "duration_ms": 37.887
+        },
+        {
+          "node_id": "B_bottom_R.extents",
+          "node_type_id": "custom.metrology3d.measure-extents",
+          "runtime_kind": "python-callable",
+          "duration_ms": 41.793
+        },
+        {
+          "node_id": "C_top_L.extents",
+          "node_type_id": "custom.metrology3d.measure-extents",
+          "runtime_kind": "python-callable",
+          "duration_ms": 47.228
+        },
+        {
+          "node_id": "C_top_R.extents",
+          "node_type_id": "custom.metrology3d.measure-extents",
+          "runtime_kind": "python-callable",
+          "duration_ms": 42.569
+        },
+        {
+          "node_id": "C_bottom_L.extents",
+          "node_type_id": "custom.metrology3d.measure-extents",
+          "runtime_kind": "python-callable",
+          "duration_ms": 38.837
+        },
+        {
+          "node_id": "C_bottom_R.extents",
+          "node_type_id": "custom.metrology3d.measure-extents",
+          "runtime_kind": "python-callable",
+          "duration_ms": 35.058
+        },
+        {
+          "node_id": "S1.diameter",
+          "node_type_id": "custom.metrology3d.measure-hole",
+          "runtime_kind": "python-callable",
+          "duration_ms": 19.964
+        },
+        {
+          "node_id": "S2.diameter",
+          "node_type_id": "custom.metrology3d.measure-hole",
+          "runtime_kind": "python-callable",
+          "duration_ms": 22.928
+        },
+        {
+          "node_id": "results",
+          "node_type_id": "core.value.numeric-tables-merge",
+          "runtime_kind": "python-callable",
+          "duration_ms": 0.345
+        },
+        {
+          "node_id": "values",
+          "node_type_id": "core.value.numeric-table-to-value",
+          "runtime_kind": "python-callable",
+          "duration_ms": 0.377
+        },
+        {
+          "node_id": "limits",
+          "node_type_id": "core.rule.check-limits",
+          "runtime_kind": "python-callable",
+          "duration_ms": 2.361
+        },
+        {
+          "node_id": "inspection",
+          "node_type_id": "core.output.result-record",
+          "runtime_kind": "python-callable",
+          "duration_ms": 3.347
+        },
+        {
+          "node_id": "decision-table",
+          "node_type_id": "core.io.value-preview",
+          "runtime_kind": "python-callable",
+          "duration_ms": 0.392
+        },
+        {
+          "node_id": "inspection-value",
+          "node_type_id": "core.logic.payload-to-value",
+          "runtime_kind": "python-callable",
+          "duration_ms": 0.219
+        },
+        {
+          "node_id": "save-result",
+          "node_type_id": "core.output.json-save-local",
+          "runtime_kind": "python-callable",
+          "duration_ms": 16.956
+        },
+        {
+          "node_id": "response",
+          "node_type_id": "core.output.response-envelope",
+          "runtime_kind": "python-callable",
+          "duration_ms": 0.454
+        }
+      ]
+    }
+  ],
+  "boundary": "cloud-ready-to-numeric-response",
+  "display_enabled": false,
+  "debug_capture_enabled": false,
+  "diagnostics_enabled": true,
+  "recipe": "lithium-workpiece-array-numeric",
+  "decision_and_save_enabled": true,
+  "resource_sampling_comparison": false,
+  "thread_environment": {
+    "OMP_NUM_THREADS": null,
+    "OPENBLAS_NUM_THREADS": null,
+    "MKL_NUM_THREADS": null
+  },
+  "latency_limit_seconds": 10.0,
+  "resource_sample_interval_seconds": null,
+  "initial_resources": {
+    "rss_bytes": 253386752,
+    "threads": 11
+  },
+  "stopped_and_reclaimed": true
+}

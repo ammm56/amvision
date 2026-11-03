@@ -79,7 +79,7 @@ Append JSONL 不识别或自动补齐这些业务字段，保留上游提交的�
 
 File Summary 只认识配置的字段路径、输出别名及归约操作，不自动生成生产总数/良品率或推断 OK/NG。Value Display 只认识选择的路径、标签、格式及样式映射，不根据字段名猜测工业含义。
 
-现有 Result Record 的实际输入是 value.v1 的 decision 字符串，输出 result-record.v1 使用 ok_ng（OK/NG）和 ok（布尔值），并不是直接写任意 state 字段。布尔比较结果可交给已有 Process Decision 得到标准结果；需要自定义 state、Alarm 或任意对象时使用通用对象/条件节点组装。采用通用文件/显示节点不意味着改掉已有 result-record.v1 契约，也不强制所有日志都经过 Result Record。
+2026-10-31 开发契约更新：Result Record 的 decision 输入为完整 `amvision.limit-check.v1`，输出 `amvision.result-record.v1` 的 `state=ok/ng/invalid`、`passed` 及完整条件，不再接受旧字符串或输出 ok_ng/ok 别名。布尔比较仍交给 Process Decision，纯布尔规则不自动增加无法判定含义。详见[判定结果契约](../../api/workflow-inspection-results.md)。本文件的摆盘机通用对象/JSONL/分类计数不是该标准记录的别名，不随之改义；已投产的 Value Preview 增加新格式支持时实现版本明确为 2.0.0，原布尔显示不变。通用文件节点仍不要求所有日志经过 Result Record。
 
 参考讨论中的 abnormal_count > 0 只是判定示例，不能替代当前工作流完整规则。空盘目标下还需保留非空槽、未知结果、数量不匹配等条件；直接复用现有 summary.passed 可以避免弱化判定。
 

@@ -134,7 +134,9 @@ class PreviewSessionManager:
             self._sessions[session.session_id] = session
             self.buffers.register_owner(session.session_id)
             return {"format_id": PREVIEW_SESSION_FORMAT, "session_id": session.session_id,
-                    "epoch": self.epoch, "memory_limit_bytes": self.buffers.session_limit}
+                    "epoch": self.epoch, "memory_limit_bytes": self.buffers.session_limit,
+                    "file_upload_limit_bytes": min(1_000_000_000, self.buffers.file_policy.session_bytes)
+                    if self.buffers.file_policy is not None else None}
 
     def _get(self, session_id: str, principal_id: str | None = None) -> PreviewSession:
         """不存在、已释放或其他 owner 一律不可见。"""

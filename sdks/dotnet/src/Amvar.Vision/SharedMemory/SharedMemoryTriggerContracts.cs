@@ -7,7 +7,7 @@ using Newtonsoft.Json.Linq;
 namespace Amvar.Vision.SharedMemory
 {
     /// <summary>
-    /// 在单次 External LocalBuffer Writer Lease 范围内同步填充图片字节。
+    /// 在单次 External LocalBuffer Writer Lease 范围内同步填充图片或点云字节。
     /// 回调返回后 destination 立即失效，调用方不得保存其引用。
     /// </summary>
     public delegate void SharedMemoryTriggerBufferWriter(Span<byte> destination);
@@ -75,7 +75,7 @@ namespace Amvar.Vision.SharedMemory
     }
 
     /// <summary>
-    /// 单次共享内存图片调用的业务参数和追踪字段。
+    /// 单次共享内存图片或点云调用的业务参数和追踪字段。
     /// </summary>
     public sealed class SharedMemoryTriggerRequest
     {
@@ -88,10 +88,10 @@ namespace Amvar.Vision.SharedMemory
         /// <summary>可选幂等键。</summary>
         public string? IdempotencyKey { get; set; }
 
-        /// <summary>图片写入的 Workflow input binding。</summary>
+        /// <summary>写入目标的 Trigger payload 映射键；点云调用必须显式指定。</summary>
         public string? InputBinding { get; set; }
 
-        /// <summary>业务 payload；图片引用由服务端按 mapping 注入。</summary>
+        /// <summary>业务 payload；图片或点云引用由服务端按 mapping 注入。</summary>
         public IDictionary<string, object?> Payload { get; } = new Dictionary<string, object?>();
 
         /// <summary>请求元数据。</summary>

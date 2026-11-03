@@ -90,3 +90,22 @@ def test_explicit_column_formats_preserve_values_and_reject_unknown_formats():
     assert body["columns"] == columns and body["rows"] == value["value"]
     with pytest.raises(InvalidRequestError, match="Format"):
         PREVIEW.handler(request(registry, {"display_mode": "table", "columns": [{**columns[0], "format": "custom-script"}]}, {"value": value}))
+
+
+def test_limit_check_table_combines_field_projection_and_three_state_display():
+    """嵌套字段投影与三态结果共存，不能丢失业务 ID 或把无效测量显示为 NG。"""
+    registry = ExecutionImageRegistry()
+    row = {"item_id": "width", "state": "invalid", "passed": False, "measurement": {"value": None}}
+    value = {"value": {"format_id": "amvision.limit-check.v1", "items": [row]}}
+    result = PREVIEW.handler(request(
+        registry,
+        {"display_mode": "table", "path": "items", "columns": [
+            {"key": "measured", "label": "实测值", "path": "measurement.value"},
+            {"key": "state", "label": "判定", "format": "decision-state"},
+            {"key": "passed", "label": "放行", "format": "result"},
+        ]},
+        {"value": value},
+    ))["body"]
+    assert result["rows"] == [{**row, "measured": None}]
+    assert "measured" not in row
+    assert [column.get("format") for column in result["columns"]] == [None, "decision-state", "value"]

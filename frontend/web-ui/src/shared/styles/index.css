@@ -2868,7 +2868,8 @@ textarea:focus-visible {
 .workflow-graph-stage {
   position: relative;
   min-height: 0;
-  overflow: hidden;
+  /* 画布由 transform 平移；焦点定位不能额外滚动舞台及固定工具栏。 */
+  overflow: clip;
   background-color: var(--graph-bg);
   background-image:
     linear-gradient(rgb(255 255 255 / 0.035) 1px, transparent 1px),

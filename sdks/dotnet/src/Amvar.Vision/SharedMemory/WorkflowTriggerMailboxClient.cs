@@ -169,6 +169,14 @@ namespace Amvar.Vision.SharedMemory
                 "event-only REQUEST");
         }
 
+        internal WorkflowTriggerDescriptorIdentity ClaimCloud(
+            uint timeoutMs, ulong routeGeneration, byte[] preparePayload, Guid requestId)
+        {
+            return ClaimCore(timeoutMs, routeGeneration, preparePayload, requestId,
+                "amvision.workflow-trigger.cloud-prepare.v1",
+                WorkflowTriggerMailboxV1.PhasePrepare, "Cloud PREPARE");
+        }
+
         private WorkflowTriggerDescriptorIdentity ClaimCore(
             uint timeoutMs,
             ulong routeGeneration,

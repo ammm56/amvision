@@ -1,0 +1,56 @@
+{
+  "platform": "Windows-11-10.0.26300-SP0",
+  "python": "3.12.13",
+  "versions": {
+    "numpy": "2.4.4",
+    "trimesh": "5.1.1+amvision.1",
+    "pypcd4": "1.5.1+amvision.1",
+    "pydantic": "2.13.4",
+    "python-neo-lzf": "0.3.5"
+  },
+  "sample_sha256": "ff2b9e0ef2d6c45af02c4bf8d474cd82f77f86ad92bd371a4c0f71b1b90d116b",
+  "sample_bytes": 479677235,
+  "points": 14745099,
+  "records": [
+    {
+      "operation": "read-original-ascii",
+      "seconds": 41.15407479996793,
+      "array_sha256": "956927f058ba4a0170b1c1b93b1411b613fbe21fcbfc278ad0a7fc3cf621a1c6"
+    },
+    {
+      "operation": "PLY ascii write-read-compare",
+      "seconds": 107.08208189997822,
+      "bytes": 516718661
+    },
+    {
+      "operation": "PLY binary_little_endian write-read-compare",
+      "seconds": 0.5522938999929465,
+      "bytes": 176941310
+    },
+    {
+      "operation": "PLY binary_big_endian write-read-compare",
+      "seconds": 0.771420200006105,
+      "bytes": 176941307
+    },
+    {
+      "operation": "PCD ascii write-read-compare",
+      "seconds": 108.90804619999835,
+      "bytes": 516718702
+    },
+    {
+      "operation": "PCD binary write-read-compare",
+      "seconds": 0.3854975000140257,
+      "bytes": 176941337
+    },
+    {
+      "operation": "PCD binary_compressed write-read-compare",
+      "seconds": 1.1287031000247225,
+      "bytes": 88024757
+    }
+  ],
+  "rss_before_bytes": 106213376,
+  "rss_sampled_peak_bytes": 730095616,
+  "rss_after_release_bytes": 112160768,
+  "threads_after_monitor_join": 45,
+  "result": "passed"
+}

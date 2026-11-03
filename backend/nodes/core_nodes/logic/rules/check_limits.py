@@ -20,7 +20,7 @@ from backend.service.application.workflows.graph_executor import (
 
 
 def handle_node(request: WorkflowNodeExecutionRequest) -> dict:
-    """严格校验值表/规则；执行异常与正常超限的 NG 保持区分。"""
+    """严格校验规则，区分执行错误、无法判定和可靠超差。"""
     try:
         table = NumericTable.model_validate(request.input_values.get("table"))
         rules = TypeAdapter(tuple[LimitRule, ...]).validate_python(
@@ -43,9 +43,11 @@ _rules_schema["items"] = _rules_schema.pop("$defs")["LimitRule"]
 CORE_NODE_SPEC = CoreNodeSpec(
     node_definition=NodeDefinition(
         node_type_id="core.rule.check-limits",
+        version="1.0.0",
+        metadata={"requires_execution_review": True},
         display_name="Check Limits",
         category="core.logic.rule",
-        description="按检查项 ID 校验数值、单位、有效性与上下限；缺少必检项或空必检集合不通过。",
+        description="按检查项 ID 输出 OK/NG/INVALID 完整摘要；Result 仅表示可放行，Summary 保留原因与逐项证据。",
         implementation_kind="core-node",
         runtime_kind="python-callable",
         input_ports=(

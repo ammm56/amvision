@@ -18,6 +18,7 @@ ADR 记录已经接受的关键取舍及未采用方案。ADR 可以处于待实
 - [ADR-0012：资源删除与存储清理](ADR-0012-resource-deletion.md)：统一删除、依赖阻塞、事务恢复与存储清理边界。
 
 - [ADR-0013：Workflow 多节点选择与复制](ADR-0013-workflow-multi-node-copy.md)：已实现，验证范围见关联验收文档。
+- [ADR-0015：3D Metrology 节点包与三维测量边界](ADR-0015-3d-metrology.md)：M0 已收口，M1 受控 I/O 已验证、六节点尚未接入；通用三维计量、测量证据与既有 Workflow 的边界。
 
 ## 设计提案
 

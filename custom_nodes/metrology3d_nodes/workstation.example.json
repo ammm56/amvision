@@ -1,0 +1,32 @@
+{
+  "workflow_runtime": {
+    "point_cloud": {
+      "io": {
+        "max_header_bytes": 65536,
+        "max_decoded_bytes": 400000000,
+        "max_working_bytes": 4294967296,
+        "chunk_rows": 65536,
+        "chunk_bytes": 4194304,
+        "max_live_array_bytes": 1073741824
+      },
+      "preview": {
+        "max_points": 1000000,
+        "max_data_bytes": 33554432,
+        "max_body_bytes": 67108864,
+        "max_working_bytes": 134217728
+      },
+      "max_asset_bytes": 600000000,
+      "max_archive_bytes": 610000000,
+      "max_export_bytes": 600000000,
+      "preview_files": {"session_bytes": 500000000, "total_bytes": 1000000000},
+      "renderer": {
+        "max_points": 1000000,
+        "max_data_bytes": 33554432,
+        "max_cpu_bytes": 134217728,
+        "max_gpu_bytes": 67108864,
+        "max_canvas_pixels": 2000000,
+        "max_position_error": 0.0001
+      }
+    }
+  }
+}

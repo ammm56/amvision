@@ -977,7 +977,7 @@ def _assert_task_native_direct_model_smoke_outputs(
     inspection_result = outputs["inspection_result"]
     decision_summary = outputs["decision_summary"]["value"]
 
-    assert inspection_result["ok_ng"] == "OK"
+    assert inspection_result["state"] == "ok"
     assert decision_summary["ok_ng"] == "OK"
     assert decision_summary["passed_count"] == 2
     assert decision_summary["failed_count"] == 0

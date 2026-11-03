@@ -22,6 +22,8 @@
 | 工业二维视觉工具 | `industrial_vision_*` | 灰度/特征/形状定位、亚像素量测、双目标定诊断、胶路和轮廓偏差的可组合基础示例 |
 | 二维连接器 | [连接器工程示例](connector-inspection.md) | 单/双排 PIN、不可变模板/标定、尺寸、公差及图片结果显示；由准备资源生成 |
 | 单帧工业规则 | `industrial_single_frame_*` | ROI、测量、匹配、缺陷、连续性和质量门禁 |
+| 数值三态 | `inspection_limits` | Check Limits → Result Record / Value Preview；同步/异步、App Mode 及无法判定传播 |
+| 三维锂电工件 | [完整工件配方](lithium-workpiece.md) | 文件/同机数组、十二钢片与两半圆、50 项工程判定、完整证据显示及 JSON 保存 |
 | 本地目录 | `industrial_local_directory_*` | batch、poll、watch、cursor 和位置判定 |
 | PLC / Modbus | `plc_*` | 等待、状态字、TriggerSource 和结果回传 |
 | USB / UVC | `camera_usb_uvc_*`、`industrial_single_frame_usb_uvc_*` | 枚举、session、流预览和单帧处理 |
@@ -60,3 +62,9 @@ python -m pytest tests/test_workflow_api_document_examples.py
 ```
 
 运行环境还需要按场景准备 Node Pack、模型、Deployment、设备或本地目录。示例文件通过静态测试不等同于现场依赖已经就绪。
+
+## 数值三态示例
+
+[inspection_limits.template.json](inspection_limits.template.json) 与 [application](inspection_limits.application.json) 使用一个 d/mm 必检项，演示限值为闭区间 0.95–1.05。它不是锂电工件的图纸公差或产品验收标准。完整输入、状态和升级规则见[判定结果契约](../../api/workflow-inspection-results.md)。正式发布后，在 App Mode 提交 measurements；示例不引用本机文件、部署或开发数据库 id。
+
+已有 PLC/HTTP/SQL 示例的来源字段已改为 state/passed。外部目标列名或字段名仍可由配方映射为 ok_ng/ok，但接收端应按显式映射理解小写三态及放行布尔，不能继续将 not passed 当作 NG。

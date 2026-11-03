@@ -17,6 +17,7 @@ from time import monotonic_ns, sleep
 from typing import BinaryIO, TypeVar
 
 from backend.service.infrastructure.filesystem.windows_paths import to_filesystem_path
+from backend.service.infrastructure.filesystem.native_locks import LINUX_F_OFD_GETLK, LINUX_F_OFD_SETLK
 
 
 _UINT32 = struct.Struct("<I")
@@ -224,7 +225,7 @@ def _set_linux_handle_lock(guard_file: BinaryIO, *, offset: int, length: int, un
     # 仅支持该明确 ABI；不回退到有线程竞争漏洞的进程级 lockf。
     payload = struct.pack("@hhqqi4x", fcntl.F_UNLCK if unlock else fcntl.F_WRLCK,
                           os.SEEK_SET, offset, length, 0)
-    fcntl.fcntl(guard_file.fileno(), fcntl.F_OFD_SETLK, payload)
+    fcntl.fcntl(guard_file.fileno(), LINUX_F_OFD_SETLK, payload)
 
 
 def open_mmap_guard_identity(
@@ -453,7 +454,7 @@ def _owner_lock_held_on_handle(handle: BinaryIO) -> bool:
     import fcntl
 
     request = struct.pack("@hhqqi4x", fcntl.F_WRLCK, os.SEEK_SET, 0, 1, 0)
-    response = fcntl.fcntl(handle.fileno(), fcntl.F_OFD_GETLK, request)
+    response = fcntl.fcntl(handle.fileno(), LINUX_F_OFD_GETLK, request)
     lock_type = struct.unpack("@hhqqi4x", response)[0]
     if lock_type not in {fcntl.F_UNLCK, fcntl.F_WRLCK, fcntl.F_RDLCK}:
         raise MmapGuardFileError("owner lock 查询返回未知锁类型")

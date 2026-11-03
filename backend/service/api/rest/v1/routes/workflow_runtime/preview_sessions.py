@@ -1,8 +1,9 @@
-"""编辑器 Preview v1 会话控制，只受理内存任务，不等待图执行。"""
+"""编辑器 Preview v1 会话控制，受理内存输入及有界临时文件，不等待图执行。"""
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from starlette.concurrency import run_in_threadpool
 
 from backend.contracts.workflows.preview_session import PreviewSessionCreate, PreviewSessionRunCreate
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
@@ -64,3 +65,41 @@ def release_session(session_id: str, request: Request, principal: Writer):
     """幂等撤销访问；活跃 Worker 持有的借用由监督器在退出后归还。"""
     _manager(request).release(session_id, principal.principal_id)
     return Response(status_code=204)
+
+
+@preview_sessions_router.post("/{session_id}/inputs/file", status_code=201)
+async def upload_file(
+    session_id: str, request: Request, principal: Writer,
+    byte_length: Annotated[int, Query(gt=0, le=1_000_000_000)],
+    file_name: Annotated[str, Query(min_length=1, max_length=255)],
+):
+    """流式文件输入，先准入磁盘配额；正文不经过 multipart 或整块 bytes。"""
+    from backend.contracts.workflows.preview_session import PREVIEW_CHUNK_SIZE
+    from backend.service.application.workflows.preview.buffers import PreviewMemoryError
+    from backend.service.application.errors import ServiceError
+
+    _session(request, session_id, principal)
+    buffers = _manager(request).buffers
+    media_type = request.headers.get("content-type", "application/octet-stream")
+    if len(media_type) > 128:
+        raise ServiceError("文件媒体类型声明过长", code="preview_input_media_type_invalid", status_code=400)
+    blob = None
+    committed = False
+    try:
+        blob = await run_in_threadpool(buffers.allocate_file, session_id, byte_length,
+                                      media_type=media_type, file_name=file_name)
+        index = 0
+        async for chunk in request.stream():
+            for start in range(0, len(chunk), PREVIEW_CHUNK_SIZE):
+                with memoryview(chunk)[start:start + PREVIEW_CHUNK_SIZE] as block:
+                    await run_in_threadpool(buffers.write_chunk, session_id, blob, index, block)
+                index += 1
+        result = await run_in_threadpool(buffers.commit, session_id, blob)
+        committed = True
+        return {"input_id": result["blob_id"], **result}
+    except PreviewMemoryError as error:
+        status = 503 if str(error) == "preview_file_policy_unconfigured" else 413
+        raise ServiceError(str(error), code=str(error), status_code=status) from error
+    finally:
+        if blob is not None and not committed:
+            buffers.release(session_id, blob)

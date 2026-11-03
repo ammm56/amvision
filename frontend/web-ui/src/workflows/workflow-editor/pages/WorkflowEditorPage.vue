@@ -49,7 +49,11 @@
         @save="saveCurrentWorkflowApp"
       />
 
-      <div v-if="errorMessage || previewQueryError || previewDisplayError" class="workflow-graph-error">
+      <div v-if="cloudPackage.busy.value" class="workflow-graph-error" role="status">
+        <span>{{ t('workflowEditor.document.transferringPackage') }}</span>
+        <Button size="sm" @click="cloudPackage.cancel">{{ t('common.cancel') }}</Button>
+      </div>
+      <div v-else-if="errorMessage || previewQueryError || previewDisplayError" class="workflow-graph-error">
         <InlineError :message="errorMessage || previewQueryError || previewDisplayError || ''" />
         <Button v-if="previewQueryError || previewDisplayError" size="sm" :loading="previewDisplayState === 'loading'" @click="retryPreviewResult">
           {{ t('workflowEditor.feedback.previewDisplayRetry') }}
@@ -249,6 +253,8 @@
         @paste-node="pasteContextNode"
         @export-document="exportDocumentFromContextMenu"
         @import-document="openDocumentFilePicker"
+        @export-package="exportCurrentCloudPackage"
+        @import-package="openCloudPackagePicker"
         :minimap-visible="minimapVisible"
         :viewport-scale-percent="viewportScalePercent"
         :minimap-nodes="minimapNodes"
@@ -291,6 +297,10 @@
       />
     </div>
     <WorkflowDocumentFileInput ref="documentFileInput" :disabled="documentBusy" @import="importWorkflowDocument" />
+    <WorkflowDocumentFileInput ref="packageFileInput" accept=".zip,application/zip" :label="t('workflowEditor.document.importPackage')" :disabled="documentBusy" @import="importCurrentCloudPackage" />
+    <ConfirmDialog v-if="importedPackageId" :title="t('workflowEditor.document.openPackage')" :confirm-label="t('workflowEditor.document.openPackage')" :cancel-label="t('common.cancel')" confirm-variant="primary" @cancel="importedPackageId = null" @confirm="openImportedPackage">
+      <p>{{ t('workflowEditor.document.packageUnsaved') }}</p>
+    </ConfirmDialog>
     <WorkflowPreviewViewers
       :image="activeImageViewer"
       :table="activePreviewTable"
@@ -345,10 +355,12 @@
 import { arrayStepUpdates } from '@/shared/ui/image-viewer/arrayInteraction'
 import { useWorkflowBoxSelection } from '../canvas/useWorkflowBoxSelection'
 import { computed, onBeforeUnmount, provide, ref, shallowRef, watch } from 'vue'
-import { parameterEditorSourcesKey, parameterPreviewStateKey, parameterNumericItemsKey, parameterDraftIssuesKey, type ParameterEditorSources } from '../parameters/editor-context'
+import { parameterEditorSourcesKey, parameterPreviewStateKey, parameterCloudPreviewsKey, parameterNumericItemsKey, parameterDraftIssuesKey, type ParameterEditorSources } from '../parameters/editor-context'
 import { trustedNumericItemProviders, trustedRecipeValidators } from '../parameters/trusted-recipe-providers'
 import { recipeIssues } from '../parameters/recipe-validation'
 import { useRoute, useRouter } from 'vue-router'
+import { useWorkflowCloudPackage, downloadCloudPackage } from '../documents/useWorkflowCloudPackage'
+import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import { useI18n } from 'vue-i18n'
 
 import { usePreferencesStore } from '@/app/stores/preferences.store'
@@ -445,6 +457,7 @@ import { useWorkflowSaveRunOrchestration } from '../actions/useWorkflowSaveRunOr
 import { useWorkflowSelectionState } from '../selection/useWorkflowSelectionState'
 import type { WorkflowAppDocument } from '../services/workflow-app.service'
 import { publishWorkflowAppVersion, updateWorkflowApplicationMetadata } from '../services/workflow-application.service'
+import { validateRequiredInputConnections } from '../validation/required-inputs'
 import { uploadWorkflowPromptMask } from '../services/workflow-runtime.service'
 import {
   buildAppliedMaskBinding,
@@ -512,18 +525,23 @@ provide(parameterDraftIssuesKey,(nodeId,parameter,value)=>{
   const nodes=graphNodes.value.map(({node})=>node.node_id===nodeId?{...node,parameters:{...node.parameters,[parameter]:value}}:node)
   return recipeIssues(nodes,graphEdges.value,trustedNumericItemProviders,trustedRecipeValidators,locale.value==='zh-CN').map(issue=>`${issue.nodeId} / ${issue.message}`)
 })
-provide(parameterPreviewStateKey, () => ({runId:lastPreviewRun.value?.preview_run_id ?? '', succeeded:!previewing.value && lastPreviewRun.value?.state === 'succeeded'}))
+provide(parameterPreviewStateKey, () => ({runId:lastPreviewRun.value?.preview_run_id ?? '', succeeded:!previewing.value && lastPreviewRun.value?.state === 'succeeded',phase:previewing.value?'running':!lastPreviewRun.value?'idle':previewResultsExpired.value?'stale':lastPreviewRun.value.state==='succeeded'?'ready':'failed'}))
 provide(parameterEditorSourcesKey, (nodeId) => {
   const sources: ParameterEditorSources = {}
   for (const edge of graphEdges.value) {
     if (edge.target_node_id !== nodeId) continue
     const source = graphNodes.value.find((item) => item.node.node_id === edge.source_node_id)?.node
     if (source) {
+      const outputs = !previewing.value && !previewResultsExpired.value && lastPreviewRun.value?.state === 'succeeded'
+        ? lastPreviewRun.value.node_records.find(record => record.node_id === source.node_id)?.outputs
+        : undefined;
       (sources[edge.target_port] ??= []).push({
         nodeId: source.node_id,
         nodeTypeId: source.node_type_id,
         parameters: source.parameters,
         outputPort: edge.source_port,
+        previewOutput: outputs && typeof outputs === 'object' && !Array.isArray(outputs)
+          ? (outputs as Record<string, unknown>)[edge.source_port] : undefined,
       })
     }
   }
@@ -717,6 +735,15 @@ const {
   closePreviewTableViewer,
   closePreviewJsonViewer,
 } = useWorkflowPreviewDisplays()
+provide(parameterCloudPreviewsKey, () => {
+  if (previewing.value || lastPreviewRun.value?.state !== 'succeeded') return []
+  return graphNodes.value.flatMap(({node}) => {
+    const display = getPreviewNodeDisplay(node.node_id)
+    return (display?.variants ?? (display ? [display] : [])).filter(d =>
+      !d.stale && d.previewRunId === lastPreviewRun.value?.preview_run_id && d.cloudProjectId && d.payload.type === 'point-cloud-preview' && d.payload.state === 'ready',
+    ).map(d => ({id:`${d.nodeId}:${d.outputName}`,label:d.title,projectId:d.cloudProjectId!,payload:d.payload}))
+  })
+})
 const {
   previewInputState,
   hasPreviewBindingValue,
@@ -1747,6 +1774,14 @@ async function publishCurrentWorkflowApp(releaseNotes: string): Promise<void> {
       publishDialogError.value = `${t('workflowEditor.history.saveFailed')}: ${errorMessage.value || t('workflowEditor.feedback.publishFailed')}`
       return
     }
+    const template = buildCurrentTemplate()
+    if (!template) return
+    const connectionIssue = validateRequiredInputConnections(template, nodeDefinitionsById.value)
+    if (connectionIssue) {
+      applyWorkflowValidationIssue(connectionIssue)
+      publishDialogError.value = connectionIssue.message
+      return
+    }
     const version = await publishWorkflowAppVersion(
       selectedProjectId.value,
       app.applicationDocument.application_id,
@@ -1819,7 +1854,55 @@ const documentState = computed(() => {
 let editorDisposed = false
 onBeforeUnmount(() => { editorDisposed = true; resetPreviewRun() })
 const documentReading = ref(false)
-const documentBusy = computed(() => loading.value || saving.value || saveInProgress.value || publishingVersion.value || editorTitleSaving.value || documentReading.value || imageInteractionApplying.value || history.loading.value)
+const packageFileInput = ref<InstanceType<typeof WorkflowDocumentFileInput> | null>(null)
+const packageContext = () => JSON.stringify([selectedProjectId.value, route.fullPath])
+let packagePickerContext = ''
+const importedPackageId = ref<string | null>(null)
+watch(packageContext, () => { importedPackageId.value = null })
+async function openImportedPackage(): Promise<void> {
+  const id = importedPackageId.value
+  const project = selectedProjectId.value
+  importedPackageId.value = null
+  if (!id) return
+  documentReading.value = true
+  try {
+    await router.push(`/workflows/graph/apps/${encodeURIComponent(id)}`)
+    if (!editorDisposed && project === selectedProjectId.value && routeApplicationId.value === id) await loadPage()
+  } finally { if (!editorDisposed) documentReading.value = false }
+}
+const cloudPackage = useWorkflowCloudPackage({
+  context: packageContext,
+  project: () => selectedProjectId.value,
+  onImported: result => {
+    importedPackageId.value = result.application_id
+    setActionStatus(t('workflowEditor.document.packageImported', { count: result.resource_mapping.length }))
+    if (documentState.value !== t('workflowEditor.document.unsaved')) openImportedPackage()
+  },
+  onExported: blob => { downloadCloudPackage(blob); setActionStatus(t('workflowEditor.document.exported')) },
+  onError: error => setActionError(`${t('workflowEditor.document.packageFailed')}: ${readWorkflowDocumentError(error)}`),
+  capacityError: () => t('workflowEditor.document.packageCapacity'),
+})
+const documentBusy = computed(() => loading.value || saving.value || saveInProgress.value || publishingVersion.value || editorTitleSaving.value || documentReading.value || imageInteractionApplying.value || history.loading.value || cloudPackage.busy.value)
+
+function openCloudPackagePicker(): void {
+  if (documentBusy.value) return
+  packagePickerContext = packageContext()
+  packageFileInput.value?.open()
+  clearContextMenu()
+}
+function importCurrentCloudPackage(file: File): void {
+  if (documentBusy.value || packagePickerContext !== packageContext()) return
+  void cloudPackage.importPackage(file)
+}
+function exportCurrentCloudPackage(): void {
+  clearContextMenu()
+  if (documentBusy.value || !commitPendingNodeParameterDrafts(graphNodes.value)) return
+  try {
+    const template = buildCurrentTemplate()
+    const application = template && buildCurrentApplication(template)
+    if (template && application) void cloudPackage.exportPackage(createWorkflowAppDocument(application, template))
+  } catch (error) { setActionError(readWorkflowDocumentError(error)) }
+}
 
 const clipboardPointer = ref<{ x: number; y: number } | null>(null)
 const nodeClipboard = useWorkflowNodeClipboard({

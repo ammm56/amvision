@@ -1,0 +1,44 @@
+{
+  "platform": "posix",
+  "release": "/home/am/.cache/amvision-a12-20261102/full-ubuntu-x64-cpu",
+  "cycles": [
+    {
+      "cycle": 0,
+      "state": "succeeded",
+      "item_count": 50,
+      "elapsed_seconds": 10.288483998039737,
+      "static_assets": 6
+    },
+    {
+      "cycle": 1,
+      "state": "succeeded",
+      "item_count": 50,
+      "elapsed_seconds": 22.496233188081533,
+      "static_assets": 6
+    }
+  ],
+  "validate_layout": true,
+  "package_sha256": "cd42ca53137013ec343dd32bd4c700fbfe6430a6edd13c5b242d64789a8927cd",
+  "application_id": "app-3e2dabc850e2c0bd843a044118ef556262e3759c1440f79f517b472077319403",
+  "version": "workflow-app-version-c0a6b233d9314dedb17b33be1c385e2d",
+  "runtime_id": "workflow-runtime-219c4c31ba4e44929760cc8789071cc7",
+  "resource_mapping": [
+    {
+      "source": {
+        "project_id": "project-1",
+        "resource_id": "measurement-cloud-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "version": 1,
+        "sha256": "c9566ae231f30a4b55226673d8644346eb6a58d8bafb66130784596c2da345ed",
+        "kind": "point-cloud"
+      },
+      "target": {
+        "project_id": "project-1",
+        "resource_id": "measurement-cloud-fcafac2c85e6cc407e47fbefad96cf88fe552e07f9c7fd9f4ef44df0bf76699e",
+        "version": 1,
+        "sha256": "c9566ae231f30a4b55226673d8644346eb6a58d8bafb66130784596c2da345ed",
+        "kind": "point-cloud"
+      }
+    }
+  ],
+  "whole_group_stopped": true
+}

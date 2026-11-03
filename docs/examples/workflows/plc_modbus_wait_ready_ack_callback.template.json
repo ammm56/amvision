@@ -70,13 +70,6 @@
       }
     },
     {
-      "node_id": "decide_result",
-      "node_type_id": "core.rule.ok-ng-decision",
-      "parameters": {
-        "mode": "all"
-      }
-    },
-    {
       "node_id": "build_result_metrics",
       "node_type_id": "core.logic.object-create",
       "parameters": {
@@ -108,8 +101,8 @@
     },
     {
       "node_id": "inspection_result",
-      "node_type_id": "core.output.result-record",
-      "parameters": {}
+      "node_type_id": "core.rule.process-decision",
+      "parameters": {"mode": "all"}
     },
     {
       "node_id": "callback_result",
@@ -172,7 +165,7 @@
       "edge_id": "edge-compare-matched-decide-result",
       "source_node_id": "compare_wait_matched",
       "source_port": "result",
-      "target_node_id": "decide_result",
+      "target_node_id": "inspection_result",
       "target_port": "conditions"
     },
     {
@@ -202,20 +195,6 @@
       "source_port": "value",
       "target_node_id": "build_result_metadata",
       "target_port": "values"
-    },
-    {
-      "edge_id": "edge-decide-result-inspection-decision",
-      "source_node_id": "decide_result",
-      "source_port": "decision",
-      "target_node_id": "inspection_result",
-      "target_port": "decision"
-    },
-    {
-      "edge_id": "edge-decide-summary-inspection-conditions",
-      "source_node_id": "decide_result",
-      "source_port": "summary",
-      "target_node_id": "inspection_result",
-      "target_port": "conditions"
     },
     {
       "edge_id": "edge-build-metrics-inspection-metrics",
@@ -281,7 +260,7 @@
       "output_id": "decision_summary",
       "display_name": "Decision Summary",
       "payload_type_id": "value.v1",
-      "source_node_id": "decide_result",
+      "source_node_id": "inspection_result",
       "source_port": "summary"
     },
     {
@@ -314,7 +293,6 @@
       "result": [
         "extract_wait_matched",
         "compare_wait_matched",
-        "decide_result",
         "build_result_metrics",
         "build_result_metadata",
         "inspection_result"

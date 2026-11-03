@@ -60,7 +60,7 @@ def test_http_request_builds_request_from_result_and_request_context(
                     {
                         "target_path": "payload.ok_ng",
                         "source_kind": "result",
-                        "source_path": "ok_ng",
+                        "source_path": "state",
                     },
                     {
                         "target_path": "payload.coverage_ratio",
@@ -80,9 +80,9 @@ def test_http_request_builds_request_from_result_and_request_context(
                 ],
             },
             input_values={
-                "result": {
-                    "ok_ng": "NG",
-                    "ok": False,
+                "result": {"format_id": "amvision.result-record.v1",
+                    "state": 'ng',
+                    "passed": False,
                     "metrics": {"coverage_ratio": 0.73},
                     "metadata": {"part_id": "part-001"},
                 },
@@ -103,7 +103,7 @@ def test_http_request_builds_request_from_result_and_request_context(
         "site": "station-a",
         "payload": {
             "schema": "v1",
-            "ok_ng": "NG",
+            "ok_ng": "ng",
             "coverage_ratio": 0.73,
             "work_order_id": "WO-1001",
             "result_code": 2001,
@@ -133,7 +133,7 @@ def test_http_request_rejects_multiple_primary_inputs() -> None:
                 ),
                 parameters={"url": "https://mes.example.test/api/inspection-result"},
                 input_values={
-                    "result": {"ok_ng": "OK", "ok": True},
+                    "result": {"format_id": "amvision.result-record.v1", "state": 'ok', "passed": True},
                     "workflow_result": {
                         "status": "succeeded",
                         "code": 0,

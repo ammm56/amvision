@@ -65,6 +65,30 @@ def build_edge_bindings(
     return bindings
 
 
+def validate_required_input_connections(
+    *, template: WorkflowGraphTemplate, node_definitions: tuple[NodeDefinition, ...]
+) -> None:
+    """发布前检查必填端口存在来源；草稿可保存，不能发布确定无法执行的接线。"""
+    definitions = {item.node_type_id: item for item in node_definitions}
+    inputs = build_template_input_bindings(template=template)
+    edges = build_edge_bindings(template=template)
+    missing = [
+        {"node_id": node.node_id, "port_name": port.name}
+        for node in template.nodes
+        if node.enabled is not False
+        for port in definitions[node.node_type_id].input_ports
+        if port.required
+        and (node.node_id, port.name) not in inputs
+        and (node.node_id, port.name) not in edges
+    ]
+    if missing:
+        ports = ", ".join(f"{item['node_id']}.{item['port_name']}" for item in missing)
+        raise InvalidRequestError(
+            f"发布失败，必填输入端口缺少有效来源：{ports}",
+            details={"missing_required_inputs": missing},
+        )
+
+
 def resolve_node_inputs(
     *,
     node_id: str,

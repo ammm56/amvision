@@ -67,4 +67,4 @@ LocalBuffer 回收先发布 REVOKING，持续取得全部 writer/reader guards �
 - `backend/contracts/ipc/` 与 `sdks/`：Python/跨语言 schema、生成物和 SDK。
 - `tests/test_workflow_trigger_mailbox.py`、`tests/test_workflow_trigger_mailbox_supervisor.py`、`tests/test_local_buffer_external_leases.py`：协议、准入、故障和图片生命周期。
 
-详细图片规则见 [LocalBufferBroker](../platform/local-buffer-broker.md)，公开调用见 [TriggerSource API](../../api/workflow-trigger-sources.md) 和 [Workflow SDK](../../api/workflow-sdks.md)。Windows x64 是当前 byte-range lock、强杀恢复与 Python/.NET 互操作认证基线；其他系统不能仅凭相同二进制布局宣称同等认证。
+详细图片规则见 [LocalBufferBroker](../platform/local-buffer-broker.md)，公开调用见 [TriggerSource API](../../api/workflow-trigger-sources.md) 和 [Workflow SDK](../../api/workflow-sdks.md)。底层已有 Windows byte-range lock 和 Linux 64-bit OFD lock；Windows/WSL Ubuntu 既有进程与 IPC 验证范围见 [运行时修复结果](../../development/runtime-repair-results-20261015.md)。Windows Python/.NET 互操作不代表 Ubuntu .NET SDK 已验收，未实现的数据类型也不能仅凭复用二进制布局宣称支持。

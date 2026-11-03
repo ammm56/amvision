@@ -1,0 +1,37 @@
+[
+  {
+    "method": "pairs",
+    "points": 56698,
+    "pairs": 2049159,
+    "components": 1,
+    "seconds": 0.21285209991037846
+  },
+  {
+    "method": "csr",
+    "points": 56698,
+    "pairs": 2049159,
+    "components": 1,
+    "seconds": 0.2701293998397887
+  },
+  {
+    "method": "csr-leaf8",
+    "points": 56698,
+    "pairs": 2049159,
+    "components": 1,
+    "seconds": 0.2663839999586344
+  },
+  {
+    "method": "csr-leaf32",
+    "points": 56698,
+    "pairs": 2049159,
+    "components": 1,
+    "seconds": 0.28511680010706186
+  },
+  {
+    "method": "csr-leaf64",
+    "points": 56698,
+    "pairs": 2049159,
+    "components": 1,
+    "seconds": 0.26838430017232895
+  }
+]

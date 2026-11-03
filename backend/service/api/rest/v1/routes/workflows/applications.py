@@ -78,10 +78,13 @@ def _build_app_version_service(request: Request) -> WorkflowAppVersionService:
         require_session_factory,
     )
 
+    from backend.service.api.deps.auth import _require_backend_service_settings
+
     return WorkflowAppVersionService(
         session_factory=require_session_factory(request),
         dataset_storage=require_dataset_storage(request),
         node_catalog_registry=require_node_catalog_registry(request),
+        point_cloud_policy=_require_backend_service_settings(request.app).workflow_runtime.point_cloud,
     )
 
 
@@ -194,9 +197,12 @@ def save_flow_application(
                 "template_version": body.template.template_version,
             },
         )
+    from backend.service.api.deps.auth import _require_backend_service_settings
+
     service = _build_workflow_json_service(
         dataset_storage=dataset_storage,
         node_catalog_registry=node_catalog_registry,
+        point_cloud_policy=_require_backend_service_settings(request.app).workflow_runtime.point_cloud,
     )
     lifecycle_service = _build_application_lifecycle_service(request)
     with lifecycle_service.operation(
@@ -268,11 +274,14 @@ def update_flow_application_metadata(
 ) -> WorkflowApplicationDocumentResponse:
     """更新流程应用名称、说明等基础信息。"""
 
+    from backend.service.api.deps.auth import _require_backend_service_settings
+
     _ensure_project_visible(principal=principal, project_id=project_id)
     application_id = normalize_application_identifier(application_id, "application_id")
     service = _build_workflow_json_service(
         dataset_storage=dataset_storage,
         node_catalog_registry=node_catalog_registry,
+        point_cloud_policy=_require_backend_service_settings(request.app).workflow_runtime.point_cloud,
     )
     lifecycle_service = _build_application_lifecycle_service(request)
     with lifecycle_service.operation(
@@ -399,9 +408,12 @@ def copy_flow_application(
         body.target_application_id,
         "target_application_id",
     )
+    from backend.service.api.deps.auth import _require_backend_service_settings
+
     service = _build_workflow_json_service(
         dataset_storage=dataset_storage,
         node_catalog_registry=node_catalog_registry,
+        point_cloud_policy=_require_backend_service_settings(request.app).workflow_runtime.point_cloud,
     )
     lifecycle_service = _build_application_lifecycle_service(request)
     with ExitStack() as stack:

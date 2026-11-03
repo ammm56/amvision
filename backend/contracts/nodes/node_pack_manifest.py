@@ -4,18 +4,25 @@ from __future__ import annotations
 
 import platform
 import sys
+from importlib.metadata import PackageNotFoundError, version as distribution_version
 from typing import Literal
 
+from packaging.requirements import InvalidRequirement, Requirement
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
+from packaging.utils import canonicalize_name
 from packaging.version import InvalidVersion, Version
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from backend.contracts.workflows.workflow_graph import NodeDefinition, WorkflowPayloadContract
+from backend.contracts.workflows.workflow_graph import (
+    NodeDefinition,
+    WorkflowPayloadContract,
+)
 from backend.version import BACKEND_VERSION
 
 
 NODE_PACK_MANIFEST_FORMAT = "amvision.node-pack-manifest.v1"
 CUSTOM_NODE_CATALOG_FORMAT = "amvision.custom-node-catalog.v1"
+
 
 def _require_stripped_text(value: str, field_name: str) -> str:
     """校验字符串字段非空且去除两端空白后仍然有效。
@@ -45,7 +52,11 @@ def _normalize_version_range(value: str) -> str:
     """
 
     normalized_value = _require_stripped_text(value, "version_range")
-    return ",".join(segment.strip() for segment in normalized_value.replace(",", " ").split() if segment.strip())
+    return ",".join(
+        segment.strip()
+        for segment in normalized_value.replace(",", " ").split()
+        if segment.strip()
+    )
 
 
 class NodePackDependency(BaseModel):
@@ -89,7 +100,9 @@ class NodePackDependency(BaseModel):
             return False
         if self.version_range is None:
             return True
-        return resolved_version in SpecifierSet(_normalize_version_range(self.version_range))
+        return resolved_version in SpecifierSet(
+            _normalize_version_range(self.version_range)
+        )
 
 
 class NodePackCompatibility(BaseModel):
@@ -104,6 +117,9 @@ class NodePackCompatibility(BaseModel):
         alias="operatingSystems",
     )
     architectures: tuple[str, ...] = ()
+    python_distributions: tuple[str, ...] = Field(
+        default=(), alias="pythonDistributions"
+    )
 
     @model_validator(mode="after")
     def validate_compatibility(self) -> NodePackCompatibility:
@@ -113,14 +129,38 @@ class NodePackCompatibility(BaseModel):
             try:
                 SpecifierSet(_normalize_version_range(value))
             except InvalidSpecifier as exc:
-                raise ValueError(f"compatibility.{field_name} 不是有效的版本范围") from exc
+                raise ValueError(
+                    f"compatibility.{field_name} 不是有效的版本范围"
+                ) from exc
         if len(set(self.operating_systems)) != len(self.operating_systems):
             raise ValueError("compatibility.operatingSystems 不能包含重复值")
-        normalized_architectures = tuple(item.strip().lower() for item in self.architectures)
+        normalized_architectures = tuple(
+            item.strip().lower() for item in self.architectures
+        )
         if any(not item for item in normalized_architectures):
             raise ValueError("compatibility.architectures 不能包含空值")
         if len(set(normalized_architectures)) != len(normalized_architectures):
             raise ValueError("compatibility.architectures 不能包含重复值")
+        names = set()
+        for value in self.python_distributions:
+            try:
+                requirement = Requirement(value)
+            except InvalidRequirement as error:
+                raise ValueError(
+                    "compatibility.pythonDistributions 格式无效"
+                ) from error
+            name = canonicalize_name(requirement.name)
+            if (
+                not requirement.specifier
+                or requirement.url
+                or requirement.extras
+                or requirement.marker
+                or name in names
+            ):
+                raise ValueError(
+                    "pythonDistributions 必须为唯一包名与明确版本范围，不含 URL、extras 或条件"
+                )
+            names.add(name)
         return self
 
     def current_incompatibilities(self) -> tuple[dict[str, object], ...]:
@@ -156,8 +196,13 @@ class NodePackCompatibility(BaseModel):
                 }
             )
         current_architecture = platform.machine().strip().lower()
-        normalized_architectures = tuple(item.strip().lower() for item in self.architectures)
-        if normalized_architectures and current_architecture not in normalized_architectures:
+        normalized_architectures = tuple(
+            item.strip().lower() for item in self.architectures
+        )
+        if (
+            normalized_architectures
+            and current_architecture not in normalized_architectures
+        ):
             issues.append(
                 {
                     "field": "architectures",
@@ -165,6 +210,27 @@ class NodePackCompatibility(BaseModel):
                     "actual": current_architecture,
                 }
             )
+        for value in self.python_distributions:
+            requirement = Requirement(value)
+            try:
+                actual = distribution_version(requirement.name)
+            except PackageNotFoundError:
+                actual = None
+            try:
+                satisfied = (
+                    actual is not None and Version(actual) in requirement.specifier
+                )
+            except InvalidVersion:
+                satisfied = False
+            if not satisfied:
+                issues.append(
+                    {
+                        "field": "pythonDistributions",
+                        "distribution": requirement.name,
+                        "required": str(requirement.specifier),
+                        "actual": actual,
+                    }
+                )
         return tuple(issues)
 
 
@@ -230,7 +296,9 @@ class NodePackManifest(BaseModel):
     compatibility: NodePackCompatibility
     timeout: NodePackTimeoutPolicy
     enabled_by_default: bool = Field(default=False, alias="enabledByDefault")
-    custom_node_catalog_path: str | None = Field(default=None, alias="customNodeCatalogPath")
+    custom_node_catalog_path: str | None = Field(
+        default=None, alias="customNodeCatalogPath"
+    )
     metadata: dict[str, object] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -255,7 +323,9 @@ class NodePackManifest(BaseModel):
         if len(set(normalized_capabilities)) != len(normalized_capabilities):
             raise ValueError("capabilities 不能包含重复值")
         if self.custom_node_catalog_path is not None:
-            _require_stripped_text(self.custom_node_catalog_path, "custom_node_catalog_path")
+            _require_stripped_text(
+                self.custom_node_catalog_path, "custom_node_catalog_path"
+            )
         duplicated_dependency_ids: set[str] = set()
         seen_dependency_ids: set[str] = set()
         for dependency in self.dependencies:

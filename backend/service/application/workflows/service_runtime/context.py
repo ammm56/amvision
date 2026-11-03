@@ -22,6 +22,7 @@ from backend.service.domain.models.platform_model_support import (
 )
 
 if TYPE_CHECKING:
+    from backend.service.application.workflows.point_cloud.execution_policy import PointCloudExecutionPolicy
     from backend.nodes import ExecutionImageRegistry
     from backend.service.application.deployments import PublishedInferenceGateway
     from backend.service.application.local_buffers import LocalBufferReader
@@ -81,6 +82,7 @@ class WorkflowServiceNodeRuntimeContext:
     published_inference_gateway: PublishedInferenceGateway | None = None
     workflow_model_session_manager: WorkflowModelSessionManager | None = None
     workflow_storage_image_cache: ExecutionImageRegistry | None = None
+    point_cloud_policy: PointCloudExecutionPolicy | None = None
     process_resource_scope: ResourceScope = field(
         default_factory=create_process_resource_scope,
         compare=False,

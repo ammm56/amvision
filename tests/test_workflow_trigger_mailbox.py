@@ -223,6 +223,7 @@ def test_server_authoritative_deadline_returns_readable_terminal(
             assert prepare.identity.deadline_ns > 0
             result = server.sweep(now_ns=prepare.identity.deadline_ns + 1)
             assert result["deadline_exceeded_identities"] == (prepare.identity,)
+            assert result["released_identities"] == ()
             response = client.read_response(identity=claimed)
             assert response is not None
             assert response.error_code == contract.ERROR_CODE_DEADLINE_EXCEEDED
@@ -287,8 +288,27 @@ def test_writing_cancel_reclaims_without_runtime_request(tmp_path: Path) -> None
             client.cancel(identity=allocation.identity)
             sweep = server.sweep()
             assert sweep["cancelled_identities"] == (prepare.identity,)
+            assert sweep["released_identities"] == (prepare.identity,)
             assert server.poll_request() is None
             assert server.build_status()["descriptor_state_counts"][0] == 128
+
+
+def test_writing_deadline_releases_context_without_ack(tmp_path: Path) -> None:
+    """写入超时直接释放槽位，同时通知业务清理；不得等待不存在的响应 ACK。"""
+    with WorkflowTriggerMailboxServer(buffers_root=tmp_path) as server:
+        with WorkflowTriggerMailboxClient(buffers_root=tmp_path) as client:
+            claimed = client.claim(timeout_ms=5_000, route_generation=1)
+            prepare = server.poll_prepare()
+            assert prepare is not None
+            server.publish_writing(identity=prepare.identity,
+                                   allocation_payload=b'{"input_attachment":null}')
+            assert client.read_writing_allocation(identity=claimed) is not None
+            result = server.sweep(now_ns=prepare.identity.deadline_ns + 1)
+            assert result["deadline_exceeded_identities"] == (prepare.identity,)
+            assert result["released_identities"] == (prepare.identity,)
+            assert not server._identities and not server._contexts and not server._extensions
+            assert server.build_status()["descriptor_state_counts"][0] == 128
+            assert server.sweep()["released_identities"] == ()
 
 
 def test_response_ack_timeout_is_distinct_and_reclaims_pages(tmp_path: Path) -> None:

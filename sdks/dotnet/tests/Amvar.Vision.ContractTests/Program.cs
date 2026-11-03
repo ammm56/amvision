@@ -9,7 +9,9 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Amvar.Vision;
+using Amvar.Vision.Configuration;
 using Amvar.Vision.SharedMemory;
+using Amvar.Vision.TriggerSource.SharedMemory;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -92,6 +94,7 @@ namespace Amvar.Vision.ContractTests
             WorkflowTriggerMailboxV1Fixture.Verify();
             LocalMessageChannelV1Fixture.Verify();
             VerifyZeroMqTriggerResultFrames();
+            VerifyInspectionDecisionStates();
             VerifySharedMemoryTriggerResultMaterialization();
             VerifySharedMemoryPreAcknowledgedTimings();
             VerifyPublicResultJsonFieldCasing();
@@ -102,6 +105,7 @@ namespace Amvar.Vision.ContractTests
             VerifyWorkflowAppContractV1();
             VerifyWorkflowHttpSixInputBuilder();
             VerifyWorkflowTriggerInputsBuilder();
+            VerifyPointCloudRequiresExplicitBinding();
             await VerifyWorkflowRequestBuilderStreamingAsync().ConfigureAwait(false);
             await VerifyCreateSelectorAsync().ConfigureAwait(false);
             await VerifySelectVersionRequestAsync().ConfigureAwait(false);
@@ -110,6 +114,27 @@ namespace Amvar.Vision.ContractTests
             await VerifyRuntimeAndRevisionResponsesAsync().ConfigureAwait(false);
             await VerifyRunResponseAsync().ConfigureAwait(false);
             await VerifyConflictDetailsAsync().ConfigureAwait(false);
+        }
+
+        private static void VerifyPointCloudRequiresExplicitBinding()
+        {
+            var runtime = new ConfiguredRuntime(new BackendConfig(),
+                new WorkflowRuntimeConfig { WorkflowRuntimeId = "cloud-runtime" }, new InvokeConfig(), "fixture");
+            var catalog = new WorkflowConfigurationCatalog(
+                new Dictionary<string, ConfiguredRuntime> { ["cloud"] = runtime },
+                new Dictionary<string, ConfiguredTriggerSource>(),
+                new Dictionary<string, ConfiguredModelDeployment>());
+            using var operations = new LocalSharedMemoryTriggerOperations(catalog);
+            foreach (var binding in new string?[] { null, "", " " })
+            {
+                var request = new SharedMemoryTriggerRequest { InputBinding = binding };
+                // 必须在读取配置或建立 client 之前失败，不能使用图片默认 binding。
+                AssertThrows<ArgumentException>(() => operations.InvokePointCloud(
+                    "cloud", new JObject(), new byte[0], request));
+                AssertThrows<ArgumentException>(() => operations.InvokePointCloud(
+                    "cloud", new JObject(), destination => { }, request));
+                Assert(request.InputBinding == binding, "invalid cloud binding must not be replaced");
+            }
         }
 
         private static void VerifyPollWaiterLifetime()
@@ -1001,6 +1026,39 @@ namespace Amvar.Vision.ContractTests
             });
             AssertEqual("failed", failed.State, "unified failed result state");
             AssertEqual("invalid_request", failed.Error?.Code, "unified failed result code");
+        }
+
+        private static void VerifyInspectionDecisionStates()
+        {
+            foreach (var state in new[] { "ok", "ng", "invalid" })
+            {
+                var record = new JObject {
+                    ["format_id"] = "amvision.result-record.v1",
+                    ["state"] = state,
+                    ["passed"] = state == "ok",
+                    ["reason"] = state == "invalid" ? new JValue("missing_surface") : JValue.CreateNull(),
+                    ["metrics"] = new JObject {
+                        ["value"] = state == "invalid" ? JValue.CreateNull() : new JValue(1.000000001),
+                        ["unit"] = "millimeter"
+                    }
+                };
+                var envelope = new JObject {
+                    ["format_id"] = "amvision.workflow-trigger-result.v1",
+                    ["trigger_source_id"] = "inspection-test",
+                    ["event_id"] = state,
+                    ["state"] = "succeeded",
+                    ["response_payload"] = new JObject { ["results"] = record }
+                };
+                var result = AMVisionTriggerClient.ParseReply(new[] {
+                    Encoding.UTF8.GetBytes(envelope.ToString(Formatting.None))
+                });
+                AssertEqual("succeeded", result.State, "measurement validity is not execution failure");
+                var actual = result.ResponsePayload["results"];
+                Assert(JToken.DeepEquals(record, actual), "inspection payload changed: expected=" + record.ToString(Formatting.None) + "; actual=" + actual.ToString(Formatting.None));
+                AssertEqual(state == "ok", actual.Value<bool>("passed"), "only OK may release");
+                var roundtrip = JsonConvert.DeserializeObject<TriggerResult>(JsonConvert.SerializeObject(result));
+                Assert(JToken.DeepEquals(actual, roundtrip!.ResponsePayload["results"]), "inspection roundtrip changed");
+            }
         }
 
         private static void VerifyLocalBufferMappingCache()

@@ -18,7 +18,7 @@
         ref="inputElement"
         class="file-picker__native-input"
         type="file"
-        :accept="accept"
+        :accept="nativeAccept"
         :multiple="multiple"
         :disabled="disabled"
         tabindex="-1"
@@ -99,6 +99,9 @@ const inputElement = ref<HTMLInputElement | null>(null)
 const dragging = ref(false)
 
 const inputId = computed(() => props.id || generatedInputId)
+const acceptRules = computed(() => props.accept.split(',').map(item => item.trim().toLowerCase()).filter(Boolean))
+// 浏览器无法按通用二进制 MIME 枚举 PLY/PCD 等扩展名；选择后仍严格检查声明类型。
+const nativeAccept = computed(() => acceptRules.value.includes('application/octet-stream') ? '' : props.accept)
 const selectedFiles = computed(() => {
   if (Array.isArray(props.modelValue)) return props.modelValue
   return props.modelValue ? [props.modelValue] : []
@@ -149,11 +152,10 @@ function deactivateDrag(): void {
 }
 
 function matchesAccept(file: File): boolean {
-  const acceptRules = props.accept.split(',').map((item) => item.trim().toLowerCase()).filter(Boolean)
-  if (acceptRules.length === 0) return true
+  if (acceptRules.value.length === 0) return true
   const fileName = file.name.toLowerCase()
-  const fileType = file.type.toLowerCase()
-  return acceptRules.some((rule) => {
+  const fileType = (file.type || 'application/octet-stream').toLowerCase()
+  return acceptRules.value.some((rule) => {
     if (rule.startsWith('.')) return fileName.endsWith(rule)
     if (rule.endsWith('/*')) return fileType.startsWith(rule.slice(0, -1))
     return fileType === rule

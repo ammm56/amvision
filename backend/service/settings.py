@@ -29,6 +29,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 from backend.service.infrastructure.queue.local_file import LocalFileQueueSettings
 from backend.version import BACKEND_VERSION
 from backend.contracts.deployments.model_package import TransferLimits
+from backend.service.application.workflows.point_cloud.execution_policy import PointCloudExecutionPolicy
 
 CONFIG_DIR = Path("config")
 BACKEND_SERVICE_CONFIG_FILE = CONFIG_DIR / "backend-service.json"
@@ -336,6 +337,9 @@ class BackendServiceWorkflowRuntimeConfig(BaseModel):
     - local_shared_trigger_cancellation_grace_seconds：取消后等待当前 Runtime 协作停止的上限。
     """
 
+    point_cloud: PointCloudExecutionPolicy | None = Field(
+        default=None, description="3D Metrology 显式运行与显示预算；未配置时不启用",
+    )
     operator_thread_count: int = Field(
         default=1,
         gt=0,

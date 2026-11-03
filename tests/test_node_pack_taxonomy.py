@@ -27,6 +27,7 @@ def test_common_node_packs_use_one_manifest_per_technical_domain() -> None:
         "database.nodes",
         "hello.world-nodes",
         "http.nodes",
+        "metrology3d.nodes",
         "opencv.nodes",
         "plc.nodes",
         "sam3.segment-nodes",
@@ -59,6 +60,7 @@ def test_unified_node_pack_categories_stay_below_manifest_category_root() -> Non
             "database.nodes",
             "http.nodes",
             "plc.nodes",
+            "metrology3d.nodes",
         }:
             continue
         category_root = manifest_index[definition.node_pack_id].category_root

@@ -120,6 +120,8 @@ class MailboxTerminalEvent:
     identity: MailboxTransportIdentity
     request_id: UUID
     reason: MailboxTerminalReason
+    # WRITING 超时直接释放；PROCESSING 超时仍保留错误响应等待 ACK。
+    descriptor_released: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -438,6 +440,7 @@ class MmapMailboxServer:
                                     if observed_now_ns >= deadline_ns
                                     else MailboxTerminalReason.CANCELLED
                                 ),
+                                descriptor_released=True,
                             )
                         )
                     elif state in {MAILBOX_STATE_REQUEST, MAILBOX_STATE_PROCESSING} and (
@@ -459,6 +462,7 @@ class MmapMailboxServer:
                                     if code == MAILBOX_ERROR_DEADLINE_EXCEEDED
                                     else MailboxTerminalReason.CANCELLED
                                 ),
+                                descriptor_released=False,
                             )
                         )
                     elif state == MAILBOX_STATE_RESPONSE and (
@@ -479,6 +483,7 @@ class MmapMailboxServer:
                                 identity=identity,
                                 request_id=request_id,
                                 reason=reason,
+                                descriptor_released=True,
                             )
                         )
             except MmapGuardBusyError:

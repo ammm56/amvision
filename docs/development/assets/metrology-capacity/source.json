@@ -1,0 +1,17 @@
+{
+  "scope": "A09 capacity batch; not final release acceptance",
+  "git_head": "0db046fc47328e661abd968e70a483d543fc7917",
+  "files": {
+    "custom_nodes/metrology3d_nodes/shared/io/read_file.py": "e416e164c93628a7307e5b470b342eaa559582fa6ba08d21366845d441a753ee",
+    "custom_nodes/metrology3d_nodes/shared/io/normalization.py": "ae2433fb5eaa343e32f2279455faded23d4f741b788ed981afaf16f85350a9c4",
+    "custom_nodes/metrology3d_nodes/workstation-1gb.example.json": "d08b4556767ad8ce4ea447cade63067753ede39d522e4ddc69432e92f599d506",
+    "tests/integration/metrology3d/test_file_read.py": "2bd0305d007ea92aafa7ab1b312d1598895b1f34d45fff915901c88319271341",
+    "tests/integration/metrology3d/test_normalization.py": "b0e1617cdd812cf6312521c4fdf4987145c96a68fc17d0405ad6cd910865f589",
+    "tests/integration/metrology3d/capacity_support.py": "320b18846d9138b5fa14edc759b0b10e52b257dbe632960c77e2d20dde96179b",
+    "tests/integration/metrology3d/test_capacity_file.py": "28e108a067d6cac8ca5efa19c0ff6f782a157ee8a9ceb1427b7294a73f26fd09",
+    "tests/integration/metrology3d/test_capacity_runtime.py": "cfe6e2c9615a0f79053f56969b20324762fd3590997b4ccb1fa3bcdf3a846e93",
+    "tests/integration/metrology3d/test_capacity_http.py": "141b48565cc980b32ef4f7d13f84c239c8cf9d2537dba9aa0ac65eeac6afda59",
+    "tests/integration/metrology3d/published_support.py": "bd36840d73581f1a7d11880a50827da3ad5caffd6fc399e21807ca58390f6e92",
+    "tests/frontend/workflows/test_preview_file_upload.ts": "1bac55730da9ccd96ce6e8d2265ca1adf802c7f046101f7f40607ebc7de06876"
+  }
+}

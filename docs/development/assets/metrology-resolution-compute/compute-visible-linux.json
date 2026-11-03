@@ -1,0 +1,2579 @@
+{
+  "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "file_sha256": "ff2b9e0ef2d6c45af02c4bf8d474cd82f77f86ad92bd371a4c0f71b1b90d116b",
+  "source_points": 14745099,
+  "staging_seconds": 2.3368555621709675,
+  "read_seconds": 11.730532775167376,
+  "compute": {
+    "boundary": "cloud-ready-to-numeric-response",
+    "elapsed_seconds": 16.414438701001927,
+    "node_seconds": 16.407999000000004,
+    "seconds_by_node_type": {
+      "core.output.response-envelope": 4.7e-05,
+      "core.value.numeric-table-to-value": 0.000116,
+      "core.value.numeric-tables-merge": 0.000182,
+      "custom.metrology3d.build-frame": 0.004798,
+      "custom.metrology3d.crop-roi": 1.5483230000000003,
+      "custom.metrology3d.extract-boundary": 11.912737000000002,
+      "custom.metrology3d.filter-valid": 0.348574,
+      "custom.metrology3d.fit-circle": 0.023732000000000003,
+      "custom.metrology3d.fit-plane": 0.36268700000000004,
+      "custom.metrology3d.measure-extents": 0.377382,
+      "custom.metrology3d.measure-hole": 0.019229000000000003,
+      "custom.metrology3d.measure-step": 1.810192
+    },
+    "nodes": [
+      {
+        "node_id": "filter",
+        "node_type_id": "custom.metrology3d.filter-valid",
+        "seconds": 0.348574
+      },
+      {
+        "node_id": "A_top.context",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.187976
+      },
+      {
+        "node_id": "B_top.context",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.188595
+      },
+      {
+        "node_id": "A_bottom.context",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.171844
+      },
+      {
+        "node_id": "B_bottom.context",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.184828
+      },
+      {
+        "node_id": "C_top.context",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.185035
+      },
+      {
+        "node_id": "C_bottom.context",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.163021
+      },
+      {
+        "node_id": "D-crop",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.375417
+      },
+      {
+        "node_id": "A_top.B-crop",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.0046689999999999995
+      },
+      {
+        "node_id": "A_top_L.T-crop",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.004782
+      },
+      {
+        "node_id": "A_top_R.T-crop",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.004745
+      },
+      {
+        "node_id": "B_top.B-crop",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.005854
+      },
+      {
+        "node_id": "B_top_L.T-crop",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.005763
+      },
+      {
+        "node_id": "B_top_R.T-crop",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.005295
+      },
+      {
+        "node_id": "A_bottom.B-crop",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.004685
+      },
+      {
+        "node_id": "A_bottom_L.T-crop",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.00365
+      },
+      {
+        "node_id": "A_bottom_R.T-crop",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.0036309999999999997
+      },
+      {
+        "node_id": "B_bottom.B-crop",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.004914
+      },
+      {
+        "node_id": "B_bottom_L.T-crop",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.005538
+      },
+      {
+        "node_id": "B_bottom_R.T-crop",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.005933
+      },
+      {
+        "node_id": "C_top.B-crop",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.0054009999999999996
+      },
+      {
+        "node_id": "C_top_L.T-crop",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.004489
+      },
+      {
+        "node_id": "C_top_R.T-crop",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.004562
+      },
+      {
+        "node_id": "C_bottom.B-crop",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.00445
+      },
+      {
+        "node_id": "C_bottom_L.T-crop",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.0065309999999999995
+      },
+      {
+        "node_id": "C_bottom_R.T-crop",
+        "node_type_id": "custom.metrology3d.crop-roi",
+        "seconds": 0.006715
+      },
+      {
+        "node_id": "D",
+        "node_type_id": "custom.metrology3d.fit-plane",
+        "seconds": 0.274237
+      },
+      {
+        "node_id": "A_top.B",
+        "node_type_id": "custom.metrology3d.fit-plane",
+        "seconds": 0.011058
+      },
+      {
+        "node_id": "A_top_L.T",
+        "node_type_id": "custom.metrology3d.fit-plane",
+        "seconds": 0.002468
+      },
+      {
+        "node_id": "A_top_R.T",
+        "node_type_id": "custom.metrology3d.fit-plane",
+        "seconds": 0.002427
+      },
+      {
+        "node_id": "B_top.B",
+        "node_type_id": "custom.metrology3d.fit-plane",
+        "seconds": 0.006974
+      },
+      {
+        "node_id": "B_top_L.T",
+        "node_type_id": "custom.metrology3d.fit-plane",
+        "seconds": 0.002359
+      },
+      {
+        "node_id": "B_top_R.T",
+        "node_type_id": "custom.metrology3d.fit-plane",
+        "seconds": 0.0020459999999999996
+      },
+      {
+        "node_id": "A_bottom.B",
+        "node_type_id": "custom.metrology3d.fit-plane",
+        "seconds": 0.00916
+      },
+      {
+        "node_id": "A_bottom_L.T",
+        "node_type_id": "custom.metrology3d.fit-plane",
+        "seconds": 0.0032240000000000003
+      },
+      {
+        "node_id": "A_bottom_R.T",
+        "node_type_id": "custom.metrology3d.fit-plane",
+        "seconds": 0.001867
+      },
+      {
+        "node_id": "B_bottom.B",
+        "node_type_id": "custom.metrology3d.fit-plane",
+        "seconds": 0.005169
+      },
+      {
+        "node_id": "B_bottom_L.T",
+        "node_type_id": "custom.metrology3d.fit-plane",
+        "seconds": 0.002334
+      },
+      {
+        "node_id": "B_bottom_R.T",
+        "node_type_id": "custom.metrology3d.fit-plane",
+        "seconds": 0.002016
+      },
+      {
+        "node_id": "C_top.B",
+        "node_type_id": "custom.metrology3d.fit-plane",
+        "seconds": 0.007847
+      },
+      {
+        "node_id": "C_top_L.T",
+        "node_type_id": "custom.metrology3d.fit-plane",
+        "seconds": 0.00561
+      },
+      {
+        "node_id": "C_top_R.T",
+        "node_type_id": "custom.metrology3d.fit-plane",
+        "seconds": 0.002397
+      },
+      {
+        "node_id": "C_bottom.B",
+        "node_type_id": "custom.metrology3d.fit-plane",
+        "seconds": 0.015973
+      },
+      {
+        "node_id": "C_bottom_L.T",
+        "node_type_id": "custom.metrology3d.fit-plane",
+        "seconds": 0.0026019999999999997
+      },
+      {
+        "node_id": "C_bottom_R.T",
+        "node_type_id": "custom.metrology3d.fit-plane",
+        "seconds": 0.002919
+      },
+      {
+        "node_id": "frame",
+        "node_type_id": "custom.metrology3d.build-frame",
+        "seconds": 0.004798
+      },
+      {
+        "node_id": "A_top_L.H",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.022210999999999998
+      },
+      {
+        "node_id": "A_top_L.Z",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.21184899999999998
+      },
+      {
+        "node_id": "A_top_R.H",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.008752000000000001
+      },
+      {
+        "node_id": "A_top_R.Z",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.13200499999999998
+      },
+      {
+        "node_id": "B_top_L.H",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.012029
+      },
+      {
+        "node_id": "B_top_L.Z",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.138763
+      },
+      {
+        "node_id": "B_top_R.H",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.007992
+      },
+      {
+        "node_id": "B_top_R.Z",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.126008
+      },
+      {
+        "node_id": "A_bottom_L.H",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.015016999999999999
+      },
+      {
+        "node_id": "A_bottom_L.Z",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.124244
+      },
+      {
+        "node_id": "A_bottom_R.H",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.007842
+      },
+      {
+        "node_id": "A_bottom_R.Z",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.13859800000000003
+      },
+      {
+        "node_id": "B_bottom_L.H",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.010989
+      },
+      {
+        "node_id": "B_bottom_L.Z",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.126863
+      },
+      {
+        "node_id": "B_bottom_R.H",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.009196999999999999
+      },
+      {
+        "node_id": "B_bottom_R.Z",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.141995
+      },
+      {
+        "node_id": "C_top_L.H",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.014316
+      },
+      {
+        "node_id": "C_top_L.Z",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.138577
+      },
+      {
+        "node_id": "C_top_R.H",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.01073
+      },
+      {
+        "node_id": "C_top_R.Z",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.122602
+      },
+      {
+        "node_id": "C_bottom_L.H",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.012706
+      },
+      {
+        "node_id": "C_bottom_L.Z",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.13080799999999998
+      },
+      {
+        "node_id": "C_bottom_R.H",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.010103
+      },
+      {
+        "node_id": "C_bottom_R.Z",
+        "node_type_id": "custom.metrology3d.measure-step",
+        "seconds": 0.135996
+      },
+      {
+        "node_id": "S1.boundary",
+        "node_type_id": "custom.metrology3d.extract-boundary",
+        "seconds": 4.250158000000001
+      },
+      {
+        "node_id": "S2.boundary",
+        "node_type_id": "custom.metrology3d.extract-boundary",
+        "seconds": 4.700157
+      },
+      {
+        "node_id": "A_top_L.boundary",
+        "node_type_id": "custom.metrology3d.extract-boundary",
+        "seconds": 0.23111500000000001
+      },
+      {
+        "node_id": "A_top_R.boundary",
+        "node_type_id": "custom.metrology3d.extract-boundary",
+        "seconds": 0.242577
+      },
+      {
+        "node_id": "B_top_L.boundary",
+        "node_type_id": "custom.metrology3d.extract-boundary",
+        "seconds": 0.261861
+      },
+      {
+        "node_id": "B_top_R.boundary",
+        "node_type_id": "custom.metrology3d.extract-boundary",
+        "seconds": 0.253515
+      },
+      {
+        "node_id": "A_bottom_L.boundary",
+        "node_type_id": "custom.metrology3d.extract-boundary",
+        "seconds": 0.289403
+      },
+      {
+        "node_id": "A_bottom_R.boundary",
+        "node_type_id": "custom.metrology3d.extract-boundary",
+        "seconds": 0.274416
+      },
+      {
+        "node_id": "B_bottom_L.boundary",
+        "node_type_id": "custom.metrology3d.extract-boundary",
+        "seconds": 0.246712
+      },
+      {
+        "node_id": "B_bottom_R.boundary",
+        "node_type_id": "custom.metrology3d.extract-boundary",
+        "seconds": 0.257523
+      },
+      {
+        "node_id": "C_top_L.boundary",
+        "node_type_id": "custom.metrology3d.extract-boundary",
+        "seconds": 0.224981
+      },
+      {
+        "node_id": "C_top_R.boundary",
+        "node_type_id": "custom.metrology3d.extract-boundary",
+        "seconds": 0.21017
+      },
+      {
+        "node_id": "C_bottom_L.boundary",
+        "node_type_id": "custom.metrology3d.extract-boundary",
+        "seconds": 0.240915
+      },
+      {
+        "node_id": "C_bottom_R.boundary",
+        "node_type_id": "custom.metrology3d.extract-boundary",
+        "seconds": 0.22923400000000002
+      },
+      {
+        "node_id": "S1.circle",
+        "node_type_id": "custom.metrology3d.fit-circle",
+        "seconds": 0.007818
+      },
+      {
+        "node_id": "S2.circle",
+        "node_type_id": "custom.metrology3d.fit-circle",
+        "seconds": 0.015914
+      },
+      {
+        "node_id": "A_top_L.extents",
+        "node_type_id": "custom.metrology3d.measure-extents",
+        "seconds": 0.016971
+      },
+      {
+        "node_id": "A_top_R.extents",
+        "node_type_id": "custom.metrology3d.measure-extents",
+        "seconds": 0.014814
+      },
+      {
+        "node_id": "B_top_L.extents",
+        "node_type_id": "custom.metrology3d.measure-extents",
+        "seconds": 0.017551999999999998
+      },
+      {
+        "node_id": "B_top_R.extents",
+        "node_type_id": "custom.metrology3d.measure-extents",
+        "seconds": 0.01671
+      },
+      {
+        "node_id": "A_bottom_L.extents",
+        "node_type_id": "custom.metrology3d.measure-extents",
+        "seconds": 0.017755
+      },
+      {
+        "node_id": "A_bottom_R.extents",
+        "node_type_id": "custom.metrology3d.measure-extents",
+        "seconds": 0.013733
+      },
+      {
+        "node_id": "B_bottom_L.extents",
+        "node_type_id": "custom.metrology3d.measure-extents",
+        "seconds": 0.015134
+      },
+      {
+        "node_id": "B_bottom_R.extents",
+        "node_type_id": "custom.metrology3d.measure-extents",
+        "seconds": 0.198991
+      },
+      {
+        "node_id": "C_top_L.extents",
+        "node_type_id": "custom.metrology3d.measure-extents",
+        "seconds": 0.017818
+      },
+      {
+        "node_id": "C_top_R.extents",
+        "node_type_id": "custom.metrology3d.measure-extents",
+        "seconds": 0.014843
+      },
+      {
+        "node_id": "C_bottom_L.extents",
+        "node_type_id": "custom.metrology3d.measure-extents",
+        "seconds": 0.013522000000000001
+      },
+      {
+        "node_id": "C_bottom_R.extents",
+        "node_type_id": "custom.metrology3d.measure-extents",
+        "seconds": 0.019539
+      },
+      {
+        "node_id": "S1.diameter",
+        "node_type_id": "custom.metrology3d.measure-hole",
+        "seconds": 0.008832000000000001
+      },
+      {
+        "node_id": "S2.diameter",
+        "node_type_id": "custom.metrology3d.measure-hole",
+        "seconds": 0.010397
+      },
+      {
+        "node_id": "results",
+        "node_type_id": "core.value.numeric-tables-merge",
+        "seconds": 0.000182
+      },
+      {
+        "node_id": "values",
+        "node_type_id": "core.value.numeric-table-to-value",
+        "seconds": 0.000116
+      },
+      {
+        "node_id": "response",
+        "node_type_id": "core.output.response-envelope",
+        "seconds": 4.7e-05
+      }
+    ],
+    "instrumented": true
+  },
+  "body": {
+    "code": 0,
+    "message": "measured",
+    "data": {
+      "observation_id": "8da8a62a3e32421f83a0ae8d33fce976",
+      "values": {
+        "A_top_L.H": 1.1283358455586283,
+        "A_top_L.Z": 1.5776995404900627,
+        "A_top_L.W": 6.996303210609643,
+        "A_top_L.L": 7.916129643470809,
+        "A_top_R.H": 1.1099406395424452,
+        "A_top_R.Z": 1.5092612658828943,
+        "A_top_R.W": 6.937724614851206,
+        "A_top_R.L": 7.8861211499448665,
+        "B_top_L.H": 1.1899129135187145,
+        "B_top_L.Z": 1.6854893778099989,
+        "B_top_L.W": 6.950888249476198,
+        "B_top_L.L": 7.9471850833876445,
+        "B_top_R.H": 1.1438670671732603,
+        "B_top_R.Z": 1.6387112449883974,
+        "B_top_R.W": 7.020000000000003,
+        "B_top_R.L": 7.946732613561267,
+        "A_bottom_L.H": 1.1320054793918448,
+        "A_bottom_L.Z": 1.691109476594529,
+        "A_bottom_L.W": 6.993259589335931,
+        "A_bottom_L.L": 8.121078769657885,
+        "A_bottom_R.H": 1.1407016996559254,
+        "A_bottom_R.Z": 1.6489103779231251,
+        "A_bottom_R.W": 7.02,
+        "A_bottom_R.L": 8.172617892311571,
+        "B_bottom_L.H": 1.1671758374196073,
+        "B_bottom_L.Z": 1.592476908287207,
+        "B_bottom_L.W": 7.032695141987035,
+        "B_bottom_L.L": 8.230250107098598,
+        "B_bottom_R.H": 1.137103165920992,
+        "B_bottom_R.Z": 1.5576947704781758,
+        "B_bottom_R.W": 7.008407074927321,
+        "B_bottom_R.L": 8.245952948548506,
+        "C_top_L.H": 1.1928102191193544,
+        "C_top_L.Z": 1.6765656687080706,
+        "C_top_L.W": 7.020000000000003,
+        "C_top_L.L": 7.947345127470783,
+        "C_top_R.H": 1.154950508281266,
+        "C_top_R.Z": 1.7261938421059664,
+        "C_top_R.W": 7.109999999999999,
+        "C_top_R.L": 7.920974584579753,
+        "C_bottom_L.H": 1.183972455078486,
+        "C_bottom_L.Z": 1.6641321246523435,
+        "C_bottom_L.W": 7.0974,
+        "C_bottom_L.L": 8.194675545088288,
+        "C_bottom_R.H": 1.243100155907154,
+        "C_bottom_R.Z": 1.8069235044968663,
+        "C_bottom_R.W": 7.140000000000001,
+        "C_bottom_R.L": 8.04000000000002,
+        "S1.D": 20.147823666089767,
+        "S2.D": 20.18432416486226
+      },
+      "items": [
+        {
+          "item_id": "A_top_L.H",
+          "unit": "mm",
+          "value": 1.1283358455586283,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "A_top_L.Z",
+          "unit": "mm",
+          "value": 1.5776995404900627,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "A_top_L.W",
+          "unit": "mm",
+          "value": 6.996303210609643,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "A_top_L.L",
+          "unit": "mm",
+          "value": 7.916129643470809,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "A_top_R.H",
+          "unit": "mm",
+          "value": 1.1099406395424452,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "A_top_R.Z",
+          "unit": "mm",
+          "value": 1.5092612658828943,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "A_top_R.W",
+          "unit": "mm",
+          "value": 6.937724614851206,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "A_top_R.L",
+          "unit": "mm",
+          "value": 7.8861211499448665,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "B_top_L.H",
+          "unit": "mm",
+          "value": 1.1899129135187145,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "B_top_L.Z",
+          "unit": "mm",
+          "value": 1.6854893778099989,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "B_top_L.W",
+          "unit": "mm",
+          "value": 6.950888249476198,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "B_top_L.L",
+          "unit": "mm",
+          "value": 7.9471850833876445,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "B_top_R.H",
+          "unit": "mm",
+          "value": 1.1438670671732603,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "B_top_R.Z",
+          "unit": "mm",
+          "value": 1.6387112449883974,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "B_top_R.W",
+          "unit": "mm",
+          "value": 7.020000000000003,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "B_top_R.L",
+          "unit": "mm",
+          "value": 7.946732613561267,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "A_bottom_L.H",
+          "unit": "mm",
+          "value": 1.1320054793918448,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "A_bottom_L.Z",
+          "unit": "mm",
+          "value": 1.691109476594529,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "A_bottom_L.W",
+          "unit": "mm",
+          "value": 6.993259589335931,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "A_bottom_L.L",
+          "unit": "mm",
+          "value": 8.121078769657885,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "A_bottom_R.H",
+          "unit": "mm",
+          "value": 1.1407016996559254,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "A_bottom_R.Z",
+          "unit": "mm",
+          "value": 1.6489103779231251,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "A_bottom_R.W",
+          "unit": "mm",
+          "value": 7.02,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "A_bottom_R.L",
+          "unit": "mm",
+          "value": 8.172617892311571,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "B_bottom_L.H",
+          "unit": "mm",
+          "value": 1.1671758374196073,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "B_bottom_L.Z",
+          "unit": "mm",
+          "value": 1.592476908287207,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "B_bottom_L.W",
+          "unit": "mm",
+          "value": 7.032695141987035,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "B_bottom_L.L",
+          "unit": "mm",
+          "value": 8.230250107098598,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "B_bottom_R.H",
+          "unit": "mm",
+          "value": 1.137103165920992,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "B_bottom_R.Z",
+          "unit": "mm",
+          "value": 1.5576947704781758,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "B_bottom_R.W",
+          "unit": "mm",
+          "value": 7.008407074927321,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "B_bottom_R.L",
+          "unit": "mm",
+          "value": 8.245952948548506,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "C_top_L.H",
+          "unit": "mm",
+          "value": 1.1928102191193544,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "C_top_L.Z",
+          "unit": "mm",
+          "value": 1.6765656687080706,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "C_top_L.W",
+          "unit": "mm",
+          "value": 7.020000000000003,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "C_top_L.L",
+          "unit": "mm",
+          "value": 7.947345127470783,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "C_top_R.H",
+          "unit": "mm",
+          "value": 1.154950508281266,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "C_top_R.Z",
+          "unit": "mm",
+          "value": 1.7261938421059664,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "C_top_R.W",
+          "unit": "mm",
+          "value": 7.109999999999999,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "C_top_R.L",
+          "unit": "mm",
+          "value": 7.920974584579753,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "C_bottom_L.H",
+          "unit": "mm",
+          "value": 1.183972455078486,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "C_bottom_L.Z",
+          "unit": "mm",
+          "value": 1.6641321246523435,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "C_bottom_L.W",
+          "unit": "mm",
+          "value": 7.0974,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "C_bottom_L.L",
+          "unit": "mm",
+          "value": 8.194675545088288,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "C_bottom_R.H",
+          "unit": "mm",
+          "value": 1.243100155907154,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "C_bottom_R.Z",
+          "unit": "mm",
+          "value": 1.8069235044968663,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "C_bottom_R.W",
+          "unit": "mm",
+          "value": 7.140000000000001,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "C_bottom_R.L",
+          "unit": "mm",
+          "value": 8.04000000000002,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "S1.D",
+          "unit": "mm",
+          "value": 20.147823666089767,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "S2.D",
+          "unit": "mm",
+          "value": 20.18432416486226,
+          "valid": true,
+          "reason": null
+        }
+      ]
+    }
+  },
+  "live_array_bytes": 257677012,
+  "display_enabled": false,
+  "scope": "visible-envelope",
+  "resolution_audit": [
+    {
+      "name": "nominal",
+      "step": 0.03,
+      "phase": 0,
+      "selected_cells": 56425,
+      "added_cells": 0,
+      "selected_cell_points": 56433,
+      "cell_membership_added": 0,
+      "cell_membership_removed": 0,
+      "target_source_count": 56698,
+      "target_source_sha256": "482b23437cdb3de05719f7ded1b8a2808430c945128b5e04b6502218c548e6b4",
+      "actual": {
+        "sides": [
+          {
+            "side": "u-min",
+            "station_count": 263,
+            "limit": -36.96,
+            "method_counts": {
+              "0": 4,
+              "1": 0,
+              "2": 259,
+              "3": 0
+            },
+            "endpoints": [
+              {
+                "uv": [
+                  -36.96,
+                  -21.495
+                ],
+                "cell": [
+                  48,
+                  83
+                ],
+                "source_second_cell": [
+                  48,
+                  83
+                ],
+                "adjacent_cell": [
+                  47,
+                  83
+                ],
+                "alpha": 0.0,
+                "kind": 2,
+                "station": 83,
+                "foreground_height": 0.18117115521325725,
+                "neighbor_height": null,
+                "foreground_count": 1,
+                "neighbor_count": 0
+              },
+              {
+                "uv": [
+                  -36.96,
+                  -21.465
+                ],
+                "cell": [
+                  48,
+                  84
+                ],
+                "source_second_cell": [
+                  48,
+                  84
+                ],
+                "adjacent_cell": [
+                  47,
+                  84
+                ],
+                "alpha": 0.0,
+                "kind": 2,
+                "station": 84,
+                "foreground_height": 0.1911575178198326,
+                "neighbor_height": null,
+                "foreground_count": 1,
+                "neighbor_count": 0
+              }
+            ]
+          },
+          {
+            "side": "u-max",
+            "station_count": 263,
+            "limit": -29.96369678939036,
+            "method_counts": {
+              "0": 263,
+              "1": 0,
+              "2": 0,
+              "3": 0
+            },
+            "endpoints": [
+              {
+                "uv": [
+                  -29.963780616518164,
+                  -17.895
+                ],
+                "cell": [
+                  280,
+                  203
+                ],
+                "source_second_cell": [
+                  281,
+                  203
+                ],
+                "adjacent_cell": [
+                  281,
+                  203
+                ],
+                "alpha": 0.7073127827277628,
+                "kind": 0,
+                "station": 203,
+                "foreground_height": 0.5401484845651326,
+                "neighbor_height": -0.2235143499761033,
+                "foreground_count": 1,
+                "neighbor_count": 2
+              },
+              {
+                "uv": [
+                  -29.963670317665795,
+                  -20.715
+                ],
+                "cell": [
+                  280,
+                  109
+                ],
+                "source_second_cell": [
+                  281,
+                  109
+                ],
+                "adjacent_cell": [
+                  281,
+                  109
+                ],
+                "alpha": 0.7109894111401285,
+                "kind": 0,
+                "station": 109,
+                "foreground_height": 0.5472218588666423,
+                "neighbor_height": -0.22244060064752713,
+                "foreground_count": 1,
+                "neighbor_count": 2
+              }
+            ]
+          },
+          {
+            "side": "v-min",
+            "station_count": 232,
+            "limit": -22.38,
+            "method_counts": {
+              "0": 6,
+              "1": 0,
+              "2": 226,
+              "3": 0
+            },
+            "endpoints": [
+              {
+                "uv": [
+                  -33.945,
+                  -22.38
+                ],
+                "cell": [
+                  148,
+                  54
+                ],
+                "source_second_cell": [
+                  148,
+                  54
+                ],
+                "adjacent_cell": [
+                  148,
+                  53
+                ],
+                "alpha": 0.0,
+                "kind": 2,
+                "station": 148,
+                "foreground_height": 0.2797134747614847,
+                "neighbor_height": null,
+                "foreground_count": 1,
+                "neighbor_count": 0
+              },
+              {
+                "uv": [
+                  -33.915,
+                  -22.38
+                ],
+                "cell": [
+                  149,
+                  54
+                ],
+                "source_second_cell": [
+                  149,
+                  54
+                ],
+                "adjacent_cell": [
+                  149,
+                  53
+                ],
+                "alpha": 0.0,
+                "kind": 2,
+                "station": 149,
+                "foreground_height": 0.28119539079167055,
+                "neighbor_height": null,
+                "foreground_count": 1,
+                "neighbor_count": 0
+              }
+            ]
+          },
+          {
+            "side": "v-max",
+            "station_count": 232,
+            "limit": -14.463870356529196,
+            "method_counts": {
+              "0": 132,
+              "1": 0,
+              "2": 100,
+              "3": 0
+            },
+            "endpoints": [
+              {
+                "uv": [
+                  -31.035,
+                  -14.463871916815274
+                ],
+                "cell": [
+                  245,
+                  317
+                ],
+                "source_second_cell": [
+                  245,
+                  318
+                ],
+                "adjacent_cell": [
+                  245,
+                  318
+                ],
+                "alpha": 0.3709361061575844,
+                "kind": 0,
+                "station": 245,
+                "foreground_height": 0.6069572166263798,
+                "neighbor_height": -1.0293278646876693,
+                "foreground_count": 1,
+                "neighbor_count": 1
+              },
+              {
+                "uv": [
+                  -31.005,
+                  -14.46386781079928
+                ],
+                "cell": [
+                  246,
+                  317
+                ],
+                "source_second_cell": [
+                  246,
+                  318
+                ],
+                "adjacent_cell": [
+                  246,
+                  318
+                ],
+                "alpha": 0.37107297335732925,
+                "kind": 0,
+                "station": 246,
+                "foreground_height": 0.6064395425975991,
+                "neighbor_height": -1.0278469351018176,
+                "foreground_count": 1,
+                "neighbor_count": 1
+              }
+            ]
+          }
+        ],
+        "width": 6.996303210609639,
+        "length": 7.9161296434708035
+      },
+      "fixed_cell_support": {
+        "sides": [
+          {
+            "side": "u-min",
+            "station_count": 263,
+            "limit": -36.96,
+            "method_counts": {
+              "0": 4,
+              "1": 0,
+              "2": 259,
+              "3": 0
+            },
+            "endpoints": [
+              {
+                "uv": [
+                  -36.96,
+                  -21.495
+                ],
+                "cell": [
+                  48,
+                  83
+                ],
+                "source_second_cell": [
+                  48,
+                  83
+                ],
+                "adjacent_cell": [
+                  47,
+                  83
+                ],
+                "alpha": 0.0,
+                "kind": 2,
+                "station": 83,
+                "foreground_height": 0.18117115521325725,
+                "neighbor_height": null,
+                "foreground_count": 1,
+                "neighbor_count": 0
+              },
+              {
+                "uv": [
+                  -36.96,
+                  -21.465
+                ],
+                "cell": [
+                  48,
+                  84
+                ],
+                "source_second_cell": [
+                  48,
+                  84
+                ],
+                "adjacent_cell": [
+                  47,
+                  84
+                ],
+                "alpha": 0.0,
+                "kind": 2,
+                "station": 84,
+                "foreground_height": 0.1911575178198326,
+                "neighbor_height": null,
+                "foreground_count": 1,
+                "neighbor_count": 0
+              }
+            ]
+          },
+          {
+            "side": "u-max",
+            "station_count": 263,
+            "limit": -29.96369678939036,
+            "method_counts": {
+              "0": 263,
+              "1": 0,
+              "2": 0,
+              "3": 0
+            },
+            "endpoints": [
+              {
+                "uv": [
+                  -29.963780616518164,
+                  -17.895
+                ],
+                "cell": [
+                  280,
+                  203
+                ],
+                "source_second_cell": [
+                  281,
+                  203
+                ],
+                "adjacent_cell": [
+                  281,
+                  203
+                ],
+                "alpha": 0.7073127827277628,
+                "kind": 0,
+                "station": 203,
+                "foreground_height": 0.5401484845651326,
+                "neighbor_height": -0.2235143499761033,
+                "foreground_count": 1,
+                "neighbor_count": 2
+              },
+              {
+                "uv": [
+                  -29.963670317665795,
+                  -20.715
+                ],
+                "cell": [
+                  280,
+                  109
+                ],
+                "source_second_cell": [
+                  281,
+                  109
+                ],
+                "adjacent_cell": [
+                  281,
+                  109
+                ],
+                "alpha": 0.7109894111401285,
+                "kind": 0,
+                "station": 109,
+                "foreground_height": 0.5472218588666423,
+                "neighbor_height": -0.22244060064752713,
+                "foreground_count": 1,
+                "neighbor_count": 2
+              }
+            ]
+          },
+          {
+            "side": "v-min",
+            "station_count": 232,
+            "limit": -22.38,
+            "method_counts": {
+              "0": 6,
+              "1": 0,
+              "2": 226,
+              "3": 0
+            },
+            "endpoints": [
+              {
+                "uv": [
+                  -33.945,
+                  -22.38
+                ],
+                "cell": [
+                  148,
+                  54
+                ],
+                "source_second_cell": [
+                  148,
+                  54
+                ],
+                "adjacent_cell": [
+                  148,
+                  53
+                ],
+                "alpha": 0.0,
+                "kind": 2,
+                "station": 148,
+                "foreground_height": 0.2797134747614847,
+                "neighbor_height": null,
+                "foreground_count": 1,
+                "neighbor_count": 0
+              },
+              {
+                "uv": [
+                  -33.915,
+                  -22.38
+                ],
+                "cell": [
+                  149,
+                  54
+                ],
+                "source_second_cell": [
+                  149,
+                  54
+                ],
+                "adjacent_cell": [
+                  149,
+                  53
+                ],
+                "alpha": 0.0,
+                "kind": 2,
+                "station": 149,
+                "foreground_height": 0.28119539079167055,
+                "neighbor_height": null,
+                "foreground_count": 1,
+                "neighbor_count": 0
+              }
+            ]
+          },
+          {
+            "side": "v-max",
+            "station_count": 232,
+            "limit": -14.463870356529196,
+            "method_counts": {
+              "0": 132,
+              "1": 0,
+              "2": 100,
+              "3": 0
+            },
+            "endpoints": [
+              {
+                "uv": [
+                  -31.035,
+                  -14.463871916815274
+                ],
+                "cell": [
+                  245,
+                  317
+                ],
+                "source_second_cell": [
+                  245,
+                  318
+                ],
+                "adjacent_cell": [
+                  245,
+                  318
+                ],
+                "alpha": 0.3709361061575844,
+                "kind": 0,
+                "station": 245,
+                "foreground_height": 0.6069572166263798,
+                "neighbor_height": -1.0293278646876693,
+                "foreground_count": 1,
+                "neighbor_count": 1
+              },
+              {
+                "uv": [
+                  -31.005,
+                  -14.46386781079928
+                ],
+                "cell": [
+                  246,
+                  317
+                ],
+                "source_second_cell": [
+                  246,
+                  318
+                ],
+                "adjacent_cell": [
+                  246,
+                  318
+                ],
+                "alpha": 0.37107297335732925,
+                "kind": 0,
+                "station": 246,
+                "foreground_height": 0.6064395425975991,
+                "neighbor_height": -1.0278469351018176,
+                "foreground_count": 1,
+                "neighbor_count": 1
+              }
+            ]
+          }
+        ],
+        "width": 6.996303210609639,
+        "length": 7.9161296434708035
+      }
+    },
+    {
+      "name": "half-phase",
+      "step": 0.03,
+      "phase": 0.5,
+      "selected_cells": 56426,
+      "added_cells": 0,
+      "selected_cell_points": 56426,
+      "cell_membership_added": 0,
+      "cell_membership_removed": 7,
+      "target_source_count": 56698,
+      "target_source_sha256": "482b23437cdb3de05719f7ded1b8a2808430c945128b5e04b6502218c548e6b4",
+      "actual": {
+        "sides": [
+          {
+            "side": "u-min",
+            "station_count": 262,
+            "limit": -36.945,
+            "method_counts": {
+              "0": 3,
+              "1": 0,
+              "2": 259,
+              "3": 0
+            },
+            "endpoints": [
+              {
+                "uv": [
+                  -36.945,
+                  -21.48
+                ],
+                "cell": [
+                  48,
+                  83
+                ],
+                "source_second_cell": [
+                  48,
+                  83
+                ],
+                "adjacent_cell": [
+                  47,
+                  83
+                ],
+                "alpha": 0.0,
+                "kind": 2,
+                "station": 83,
+                "foreground_height": 0.18117115521325725,
+                "neighbor_height": null,
+                "foreground_count": 1,
+                "neighbor_count": 0
+              },
+              {
+                "uv": [
+                  -36.945,
+                  -21.45
+                ],
+                "cell": [
+                  48,
+                  84
+                ],
+                "source_second_cell": [
+                  48,
+                  84
+                ],
+                "adjacent_cell": [
+                  47,
+                  84
+                ],
+                "alpha": 0.0,
+                "kind": 2,
+                "station": 84,
+                "foreground_height": 0.1911575178198326,
+                "neighbor_height": null,
+                "foreground_count": 1,
+                "neighbor_count": 0
+              }
+            ]
+          },
+          {
+            "side": "u-max",
+            "station_count": 262,
+            "limit": -29.978694583413315,
+            "method_counts": {
+              "0": 262,
+              "1": 0,
+              "2": 0,
+              "3": 0
+            },
+            "endpoints": [
+              {
+                "uv": [
+                  -29.978780616518165,
+                  -17.88
+                ],
+                "cell": [
+                  279,
+                  203
+                ],
+                "source_second_cell": [
+                  280,
+                  203
+                ],
+                "adjacent_cell": [
+                  280,
+                  203
+                ],
+                "alpha": 0.7073127827277628,
+                "kind": 0,
+                "station": 203,
+                "foreground_height": 0.5401484845651326,
+                "neighbor_height": -0.2235143499761033,
+                "foreground_count": 1,
+                "neighbor_count": 2
+              },
+              {
+                "uv": [
+                  -29.978670317665795,
+                  -20.7
+                ],
+                "cell": [
+                  279,
+                  109
+                ],
+                "source_second_cell": [
+                  280,
+                  109
+                ],
+                "adjacent_cell": [
+                  280,
+                  109
+                ],
+                "alpha": 0.7109894111401285,
+                "kind": 0,
+                "station": 109,
+                "foreground_height": 0.5472218588666423,
+                "neighbor_height": -0.22244060064752713,
+                "foreground_count": 1,
+                "neighbor_count": 2
+              }
+            ]
+          },
+          {
+            "side": "v-min",
+            "station_count": 231,
+            "limit": -22.365,
+            "method_counts": {
+              "0": 6,
+              "1": 0,
+              "2": 225,
+              "3": 0
+            },
+            "endpoints": [
+              {
+                "uv": [
+                  -33.93,
+                  -22.365
+                ],
+                "cell": [
+                  148,
+                  54
+                ],
+                "source_second_cell": [
+                  148,
+                  54
+                ],
+                "adjacent_cell": [
+                  148,
+                  53
+                ],
+                "alpha": 0.0,
+                "kind": 2,
+                "station": 148,
+                "foreground_height": 0.2797134747614847,
+                "neighbor_height": null,
+                "foreground_count": 1,
+                "neighbor_count": 0
+              },
+              {
+                "uv": [
+                  -33.9,
+                  -22.365
+                ],
+                "cell": [
+                  149,
+                  54
+                ],
+                "source_second_cell": [
+                  149,
+                  54
+                ],
+                "adjacent_cell": [
+                  149,
+                  53
+                ],
+                "alpha": 0.0,
+                "kind": 2,
+                "station": 149,
+                "foreground_height": 0.28119539079167055,
+                "neighbor_height": null,
+                "foreground_count": 1,
+                "neighbor_count": 0
+              }
+            ]
+          },
+          {
+            "side": "v-max",
+            "station_count": 231,
+            "limit": -14.448870274408876,
+            "method_counts": {
+              "0": 126,
+              "1": 0,
+              "2": 105,
+              "3": 0
+            },
+            "endpoints": [
+              {
+                "uv": [
+                  -31.049999999999997,
+                  -14.448871916815273
+                ],
+                "cell": [
+                  244,
+                  317
+                ],
+                "source_second_cell": [
+                  244,
+                  318
+                ],
+                "adjacent_cell": [
+                  244,
+                  318
+                ],
+                "alpha": 0.3709361061575844,
+                "kind": 0,
+                "station": 244,
+                "foreground_height": 0.6069572166263798,
+                "neighbor_height": -1.0293278646876693,
+                "foreground_count": 1,
+                "neighbor_count": 1
+              },
+              {
+                "uv": [
+                  -31.02,
+                  -14.44886781079928
+                ],
+                "cell": [
+                  245,
+                  317
+                ],
+                "source_second_cell": [
+                  245,
+                  318
+                ],
+                "adjacent_cell": [
+                  245,
+                  318
+                ],
+                "alpha": 0.37107297335732925,
+                "kind": 0,
+                "station": 245,
+                "foreground_height": 0.6064395425975991,
+                "neighbor_height": -1.0278469351018176,
+                "foreground_count": 1,
+                "neighbor_count": 1
+              }
+            ]
+          }
+        ],
+        "width": 6.966305416586685,
+        "length": 7.916129725591123
+      },
+      "fixed_cell_support": {
+        "sides": [
+          {
+            "side": "u-min",
+            "station_count": 263,
+            "limit": -36.945,
+            "method_counts": {
+              "0": 3,
+              "1": 0,
+              "2": 260,
+              "3": 0
+            },
+            "endpoints": [
+              {
+                "uv": [
+                  -36.945,
+                  -21.48
+                ],
+                "cell": [
+                  48,
+                  83
+                ],
+                "source_second_cell": [
+                  48,
+                  83
+                ],
+                "adjacent_cell": [
+                  47,
+                  83
+                ],
+                "alpha": 0.0,
+                "kind": 2,
+                "station": 83,
+                "foreground_height": 0.18117115521325725,
+                "neighbor_height": null,
+                "foreground_count": 1,
+                "neighbor_count": 0
+              },
+              {
+                "uv": [
+                  -36.945,
+                  -21.45
+                ],
+                "cell": [
+                  48,
+                  84
+                ],
+                "source_second_cell": [
+                  48,
+                  84
+                ],
+                "adjacent_cell": [
+                  47,
+                  84
+                ],
+                "alpha": 0.0,
+                "kind": 2,
+                "station": 84,
+                "foreground_height": 0.1911575178198326,
+                "neighbor_height": null,
+                "foreground_count": 1,
+                "neighbor_count": 0
+              }
+            ]
+          },
+          {
+            "side": "u-max",
+            "station_count": 263,
+            "limit": -29.978696789390362,
+            "method_counts": {
+              "0": 263,
+              "1": 0,
+              "2": 0,
+              "3": 0
+            },
+            "endpoints": [
+              {
+                "uv": [
+                  -29.978780616518165,
+                  -17.88
+                ],
+                "cell": [
+                  279,
+                  203
+                ],
+                "source_second_cell": [
+                  280,
+                  203
+                ],
+                "adjacent_cell": [
+                  280,
+                  203
+                ],
+                "alpha": 0.7073127827277628,
+                "kind": 0,
+                "station": 203,
+                "foreground_height": 0.5401484845651326,
+                "neighbor_height": -0.2235143499761033,
+                "foreground_count": 1,
+                "neighbor_count": 2
+              },
+              {
+                "uv": [
+                  -29.978670317665795,
+                  -20.7
+                ],
+                "cell": [
+                  279,
+                  109
+                ],
+                "source_second_cell": [
+                  280,
+                  109
+                ],
+                "adjacent_cell": [
+                  280,
+                  109
+                ],
+                "alpha": 0.7109894111401285,
+                "kind": 0,
+                "station": 109,
+                "foreground_height": 0.5472218588666423,
+                "neighbor_height": -0.22244060064752713,
+                "foreground_count": 1,
+                "neighbor_count": 2
+              }
+            ]
+          },
+          {
+            "side": "v-min",
+            "station_count": 231,
+            "limit": -22.365,
+            "method_counts": {
+              "0": 6,
+              "1": 0,
+              "2": 225,
+              "3": 0
+            },
+            "endpoints": [
+              {
+                "uv": [
+                  -33.93,
+                  -22.365
+                ],
+                "cell": [
+                  148,
+                  54
+                ],
+                "source_second_cell": [
+                  148,
+                  54
+                ],
+                "adjacent_cell": [
+                  148,
+                  53
+                ],
+                "alpha": 0.0,
+                "kind": 2,
+                "station": 148,
+                "foreground_height": 0.2797134747614847,
+                "neighbor_height": null,
+                "foreground_count": 1,
+                "neighbor_count": 0
+              },
+              {
+                "uv": [
+                  -33.9,
+                  -22.365
+                ],
+                "cell": [
+                  149,
+                  54
+                ],
+                "source_second_cell": [
+                  149,
+                  54
+                ],
+                "adjacent_cell": [
+                  149,
+                  53
+                ],
+                "alpha": 0.0,
+                "kind": 2,
+                "station": 149,
+                "foreground_height": 0.28119539079167055,
+                "neighbor_height": null,
+                "foreground_count": 1,
+                "neighbor_count": 0
+              }
+            ]
+          },
+          {
+            "side": "v-max",
+            "station_count": 231,
+            "limit": -14.448870274408876,
+            "method_counts": {
+              "0": 126,
+              "1": 0,
+              "2": 105,
+              "3": 0
+            },
+            "endpoints": [
+              {
+                "uv": [
+                  -31.049999999999997,
+                  -14.448871916815273
+                ],
+                "cell": [
+                  244,
+                  317
+                ],
+                "source_second_cell": [
+                  244,
+                  318
+                ],
+                "adjacent_cell": [
+                  244,
+                  318
+                ],
+                "alpha": 0.3709361061575844,
+                "kind": 0,
+                "station": 244,
+                "foreground_height": 0.6069572166263798,
+                "neighbor_height": -1.0293278646876693,
+                "foreground_count": 1,
+                "neighbor_count": 1
+              },
+              {
+                "uv": [
+                  -31.02,
+                  -14.44886781079928
+                ],
+                "cell": [
+                  245,
+                  317
+                ],
+                "source_second_cell": [
+                  245,
+                  318
+                ],
+                "adjacent_cell": [
+                  245,
+                  318
+                ],
+                "alpha": 0.37107297335732925,
+                "kind": 0,
+                "station": 245,
+                "foreground_height": 0.6064395425975991,
+                "neighbor_height": -1.0278469351018176,
+                "foreground_count": 1,
+                "neighbor_count": 1
+              }
+            ]
+          }
+        ],
+        "width": 6.966303210609638,
+        "length": 7.916129725591123
+      }
+    },
+    {
+      "name": "coarse",
+      "step": 0.06,
+      "phase": 0,
+      "selected_cells": 14327,
+      "added_cells": 0,
+      "selected_cell_points": 56769,
+      "cell_membership_added": 373,
+      "cell_membership_removed": 37,
+      "target_source_count": 56698,
+      "target_source_sha256": "482b23437cdb3de05719f7ded1b8a2808430c945128b5e04b6502218c548e6b4",
+      "actual": {
+        "sides": [
+          {
+            "side": "u-min",
+            "station_count": 132,
+            "limit": -36.96,
+            "method_counts": {
+              "0": 14,
+              "1": 0,
+              "2": 118,
+              "3": 0
+            },
+            "endpoints": [
+              {
+                "uv": [
+                  -36.96,
+                  -21.51
+                ],
+                "cell": [
+                  24,
+                  41
+                ],
+                "source_second_cell": [
+                  24,
+                  41
+                ],
+                "adjacent_cell": [
+                  23,
+                  41
+                ],
+                "alpha": 0.0,
+                "kind": 2,
+                "station": 41,
+                "foreground_height": 0.17717727535416283,
+                "neighbor_height": null,
+                "foreground_count": 2,
+                "neighbor_count": 0
+              },
+              {
+                "uv": [
+                  -36.96,
+                  -21.45
+                ],
+                "cell": [
+                  24,
+                  42
+                ],
+                "source_second_cell": [
+                  24,
+                  42
+                ],
+                "adjacent_cell": [
+                  23,
+                  42
+                ],
+                "alpha": 0.0,
+                "kind": 2,
+                "station": 42,
+                "foreground_height": 0.19615117588924966,
+                "neighbor_height": null,
+                "foreground_count": 2,
+                "neighbor_count": 0
+              }
+            ]
+          },
+          {
+            "side": "u-max",
+            "station_count": 132,
+            "limit": -29.948993380117376,
+            "method_counts": {
+              "0": 132,
+              "1": 0,
+              "2": 0,
+              "3": 0
+            },
+            "endpoints": [
+              {
+                "uv": [
+                  -29.949019025711486,
+                  -21.33
+                ],
+                "cell": [
+                  140,
+                  44
+                ],
+                "source_second_cell": [
+                  141,
+                  44
+                ],
+                "adjacent_cell": [
+                  141,
+                  44
+                ],
+                "alpha": 0.34968290480853664,
+                "kind": 0,
+                "station": 44,
+                "foreground_height": 0.5329405332273032,
+                "neighbor_height": -0.9911274892546833,
+                "foreground_count": 6,
+                "neighbor_count": 4
+              },
+              {
+                "uv": [
+                  -29.94895153730593,
+                  -19.95
+                ],
+                "cell": [
+                  140,
+                  67
+                ],
+                "source_second_cell": [
+                  141,
+                  67
+                ],
+                "adjacent_cell": [
+                  141,
+                  67
+                ],
+                "alpha": 0.350807711567757,
+                "kind": 0,
+                "station": 67,
+                "foreground_height": 0.5266799881140117,
+                "neighbor_height": -0.9746552754703687,
+                "foreground_count": 6,
+                "neighbor_count": 4
+              }
+            ]
+          },
+          {
+            "side": "v-min",
+            "station_count": 117,
+            "limit": -22.380000000000003,
+            "method_counts": {
+              "0": 4,
+              "1": 0,
+              "2": 113,
+              "3": 0
+            },
+            "endpoints": [
+              {
+                "uv": [
+                  -36.51,
+                  -22.380000000000003
+                ],
+                "cell": [
+                  31,
+                  27
+                ],
+                "source_second_cell": [
+                  31,
+                  27
+                ],
+                "adjacent_cell": [
+                  31,
+                  26
+                ],
+                "alpha": 0.0,
+                "kind": 2,
+                "station": 31,
+                "foreground_height": 0.3299608494429838,
+                "neighbor_height": null,
+                "foreground_count": 2,
+                "neighbor_count": 0
+              },
+              {
+                "uv": [
+                  -36.449999999999996,
+                  -22.380000000000003
+                ],
+                "cell": [
+                  32,
+                  27
+                ],
+                "source_second_cell": [
+                  32,
+                  27
+                ],
+                "adjacent_cell": [
+                  32,
+                  26
+                ],
+                "alpha": 0.0,
+                "kind": 2,
+                "station": 32,
+                "foreground_height": 0.3289255342974975,
+                "neighbor_height": null,
+                "foreground_count": 2,
+                "neighbor_count": 0
+              }
+            ]
+          },
+          {
+            "side": "v-max",
+            "station_count": 117,
+            "limit": -14.468192762795029,
+            "method_counts": {
+              "0": 84,
+              "1": 0,
+              "2": 33,
+              "3": 0
+            },
+            "endpoints": [
+              {
+                "uv": [
+                  -30.75,
+                  -14.468326080915373
+                ],
+                "cell": [
+                  127,
+                  158
+                ],
+                "source_second_cell": [
+                  127,
+                  159
+                ],
+                "adjacent_cell": [
+                  127,
+                  159
+                ],
+                "alpha": 0.3612319847438068,
+                "kind": 0,
+                "station": 127,
+                "foreground_height": 0.5797949621592325,
+                "neighbor_height": -1.0252538337563206,
+                "foreground_count": 3,
+                "neighbor_count": 4
+              },
+              {
+                "uv": [
+                  -31.049999999999997,
+                  -14.468130024856043
+                ],
+                "cell": [
+                  122,
+                  158
+                ],
+                "source_second_cell": [
+                  122,
+                  159
+                ],
+                "adjacent_cell": [
+                  122,
+                  159
+                ],
+                "alpha": 0.3644995857326309,
+                "kind": 0,
+                "station": 122,
+                "foreground_height": 0.5862249682263627,
+                "neighbor_height": -1.0220758122754088,
+                "foreground_count": 4,
+                "neighbor_count": 4
+              }
+            ]
+          }
+        ],
+        "width": 7.011006619882625,
+        "length": 7.9118072372049735
+      },
+      "fixed_cell_support": {
+        "sides": [
+          {
+            "side": "u-min",
+            "station_count": 132,
+            "limit": -36.96,
+            "method_counts": {
+              "0": 14,
+              "1": 0,
+              "2": 118,
+              "3": 0
+            },
+            "endpoints": [
+              {
+                "uv": [
+                  -36.96,
+                  -21.51
+                ],
+                "cell": [
+                  24,
+                  41
+                ],
+                "source_second_cell": [
+                  24,
+                  41
+                ],
+                "adjacent_cell": [
+                  23,
+                  41
+                ],
+                "alpha": 0.0,
+                "kind": 2,
+                "station": 41,
+                "foreground_height": 0.17717727535416283,
+                "neighbor_height": null,
+                "foreground_count": 2,
+                "neighbor_count": 0
+              },
+              {
+                "uv": [
+                  -36.96,
+                  -21.45
+                ],
+                "cell": [
+                  24,
+                  42
+                ],
+                "source_second_cell": [
+                  24,
+                  42
+                ],
+                "adjacent_cell": [
+                  23,
+                  42
+                ],
+                "alpha": 0.0,
+                "kind": 2,
+                "station": 42,
+                "foreground_height": 0.19615117588924966,
+                "neighbor_height": null,
+                "foreground_count": 2,
+                "neighbor_count": 0
+              }
+            ]
+          },
+          {
+            "side": "u-max",
+            "station_count": 132,
+            "limit": -29.948993380117376,
+            "method_counts": {
+              "0": 132,
+              "1": 0,
+              "2": 0,
+              "3": 0
+            },
+            "endpoints": [
+              {
+                "uv": [
+                  -29.949019025711486,
+                  -21.33
+                ],
+                "cell": [
+                  140,
+                  44
+                ],
+                "source_second_cell": [
+                  141,
+                  44
+                ],
+                "adjacent_cell": [
+                  141,
+                  44
+                ],
+                "alpha": 0.34968290480853664,
+                "kind": 0,
+                "station": 44,
+                "foreground_height": 0.5329405332273032,
+                "neighbor_height": -0.9911274892546833,
+                "foreground_count": 6,
+                "neighbor_count": 4
+              },
+              {
+                "uv": [
+                  -29.94895153730593,
+                  -19.95
+                ],
+                "cell": [
+                  140,
+                  67
+                ],
+                "source_second_cell": [
+                  141,
+                  67
+                ],
+                "adjacent_cell": [
+                  141,
+                  67
+                ],
+                "alpha": 0.350807711567757,
+                "kind": 0,
+                "station": 67,
+                "foreground_height": 0.5266799881140117,
+                "neighbor_height": -0.9746552754703687,
+                "foreground_count": 6,
+                "neighbor_count": 4
+              }
+            ]
+          },
+          {
+            "side": "v-min",
+            "station_count": 117,
+            "limit": -22.380000000000003,
+            "method_counts": {
+              "0": 4,
+              "1": 0,
+              "2": 113,
+              "3": 0
+            },
+            "endpoints": [
+              {
+                "uv": [
+                  -36.51,
+                  -22.380000000000003
+                ],
+                "cell": [
+                  31,
+                  27
+                ],
+                "source_second_cell": [
+                  31,
+                  27
+                ],
+                "adjacent_cell": [
+                  31,
+                  26
+                ],
+                "alpha": 0.0,
+                "kind": 2,
+                "station": 31,
+                "foreground_height": 0.3299608494429838,
+                "neighbor_height": null,
+                "foreground_count": 2,
+                "neighbor_count": 0
+              },
+              {
+                "uv": [
+                  -36.449999999999996,
+                  -22.380000000000003
+                ],
+                "cell": [
+                  32,
+                  27
+                ],
+                "source_second_cell": [
+                  32,
+                  27
+                ],
+                "adjacent_cell": [
+                  32,
+                  26
+                ],
+                "alpha": 0.0,
+                "kind": 2,
+                "station": 32,
+                "foreground_height": 0.3289255342974975,
+                "neighbor_height": null,
+                "foreground_count": 2,
+                "neighbor_count": 0
+              }
+            ]
+          },
+          {
+            "side": "v-max",
+            "station_count": 117,
+            "limit": -14.468070919773629,
+            "method_counts": {
+              "0": 84,
+              "1": 0,
+              "2": 33,
+              "3": 0
+            },
+            "endpoints": [
+              {
+                "uv": [
+                  -31.049999999999997,
+                  -14.468130024856043
+                ],
+                "cell": [
+                  122,
+                  158
+                ],
+                "source_second_cell": [
+                  122,
+                  159
+                ],
+                "adjacent_cell": [
+                  122,
+                  159
+                ],
+                "alpha": 0.3644995857326309,
+                "kind": 0,
+                "station": 122,
+                "foreground_height": 0.5862249682263627,
+                "neighbor_height": -1.0220758122754088,
+                "foreground_count": 4,
+                "neighbor_count": 4
+              },
+              {
+                "uv": [
+                  -30.99,
+                  -14.468043105617198
+                ],
+                "cell": [
+                  123,
+                  158
+                ],
+                "source_second_cell": [
+                  123,
+                  159
+                ],
+                "adjacent_cell": [
+                  123,
+                  159
+                ],
+                "alpha": 0.36594823971335094,
+                "kind": 0,
+                "station": 123,
+                "foreground_height": 0.5881889723451762,
+                "neighbor_height": -1.0191120295831497,
+                "foreground_count": 4,
+                "neighbor_count": 4
+              }
+            ]
+          }
+        ],
+        "width": 7.011006619882625,
+        "length": 7.911929080226374
+      }
+    }
+  ],
+  "surface_edge_audit": [
+    {
+      "face_count": 457040,
+      "timings": {
+        "previous": [
+          0.6217693879734725,
+          0.5979730419348925,
+          0.6297873589210212
+        ],
+        "current": [
+          0.13031709915958345,
+          0.14447994902729988,
+          0.14255220908671618
+        ]
+      },
+      "exact_edges": true
+    },
+    {
+      "face_count": 494592,
+      "timings": {
+        "previous": [
+          0.6792409350164235,
+          0.6512242250610143,
+          0.67058858089149
+        ],
+        "current": [
+          0.18193769780918956,
+          0.14256034814752638,
+          0.1836540368385613
+        ]
+      },
+      "exact_edges": true
+    }
+  ],
+  "resources_released": true
+}
