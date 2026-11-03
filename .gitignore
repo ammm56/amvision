@@ -36,6 +36,7 @@ MANIFEST
 *.lscache
 custom_nodes/.amvision-node-packs/
 sdks/dotnet/src/Amvar.Vision/Config/
+frontend/web-ui/.roi-grid-check/
 
 # PyInstaller
 #   Usually these files are written by a python script from a template
