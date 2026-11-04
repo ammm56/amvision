@@ -36,4 +36,11 @@ describe('通用页面与操作权限', () => {
     expect(canAccessPath(graphReader, '/workflows/graph/new')).toBe(false)
     expect(firstAccessiblePath(graphReader)).toBe('/forbidden')
   })
+  it('项目页面按任一资源权限校验，表单与入口规则一致', () => {
+    const draft = { ...emptyUserAccess(), allProjects: true, pages: ['projects'] }
+    expect(userAccessIssue(draft)).toBe('pageNeedsRead')
+    expect(userAccessIssue({ ...draft, scopes: ['datasets:read'] })).toBe(null)
+    expect(userAccessIssue({ ...draft, scopes: ['workflows:write'] })).toBe(null)
+    expect(userAccessIssue({ ...draft, scopes: ['auth:read'] })).toBe('pageNeedsRead')
+  })
 })

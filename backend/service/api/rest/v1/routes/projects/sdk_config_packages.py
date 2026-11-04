@@ -4,9 +4,21 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Header, Request
+from fastapi import (
+    APIRouter,
+    Depends,
+    Header,
+    Request,
+    Query,
+    Response as FastAPIResponse,
+)
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
+from backend.service.application.errors import (
+    ResourceConflictError,
+    PermissionDeniedError,
+)
+from .access import project_resource_access
 
 from backend.service.api.deps.auth import (
     AuthenticatedPrincipal,
@@ -31,7 +43,9 @@ sdk_config_packages_router = APIRouter()
 class SdkConfigPackageGenerateRequest(BaseModel):
     """描述 SDK 配置包 preview / download 请求体。"""
 
-    include_access_token: bool = Field(default=True, description="是否把当前 Bearer token 写入配置包")
+    include_access_token: bool = Field(
+        default=True, description="是否把当前 Bearer token 写入配置包"
+    )
     model_runtime_modes: list[Literal["sync", "async"]] = Field(
         default_factory=lambda: ["sync"],
         description="模型 deployment 需要生成的 runtime_mode key",
@@ -40,6 +54,10 @@ class SdkConfigPackageGenerateRequest(BaseModel):
         default=True,
         description="是否导出已创建但未启用的 TriggerSource",
     )
+    runtime_ids: list[str] | None = Field(default=None, max_length=10000)
+    trigger_source_ids: list[str] | None = Field(default=None, max_length=10000)
+    deployment_ids: list[str] | None = Field(default=None, max_length=10000)
+    expected_revision: str | None = Field(default=None, min_length=64, max_length=64)
 
 
 class SdkConfigPackageFilePreviewResponse(BaseModel):
@@ -49,7 +67,9 @@ class SdkConfigPackageFilePreviewResponse(BaseModel):
     kind: str = Field(description="文件类型")
     count: int = Field(description="当前文件包含的主要配置数量")
     runtime_key: str | None = Field(default=None, description="workflow runtime key")
-    trigger_source_count: int = Field(default=0, description="当前 workflow 配置中的 TriggerSource 数量")
+    trigger_source_count: int = Field(
+        default=0, description="当前 workflow 配置中的 TriggerSource 数量"
+    )
 
 
 class SdkConfigPackagePreviewResponse(BaseModel):
@@ -64,7 +84,9 @@ class SdkConfigPackagePreviewResponse(BaseModel):
     workflow_runtime_count: int = Field(description="导出的 WorkflowAppRuntime 数量")
     trigger_source_count: int = Field(description="导出的 TriggerSource 数量")
     model_deployment_count: int = Field(description="导出的模型 deployment key 数量")
-    files: list[SdkConfigPackageFilePreviewResponse] = Field(description="zip 内文件清单")
+    files: list[SdkConfigPackageFilePreviewResponse] = Field(
+        description="zip 内文件清单"
+    )
     warnings: list[str] = Field(default_factory=list, description="需要关注的配置问题")
     notes: list[str] = Field(default_factory=list, description="正常省略等普通说明")
 
@@ -84,6 +106,9 @@ def preview_sdk_config_package(
 ) -> SdkConfigPackagePreviewResponse:
     """预览当前 Project 可导出的 SDK 配置包。"""
 
+    access = project_resource_access(principal)
+    if not access["runtimes"] or not access["deployments"]:
+        raise PermissionDeniedError("没有读取 SDK 配置资源的权限")
     ensure_project_known_and_visible(
         request=request,
         principal=principal,
@@ -109,6 +134,9 @@ def download_sdk_config_package(
 ) -> Response:
     """下载当前 Project 的 SDK 配置包 zip。"""
 
+    access = project_resource_access(principal)
+    if not access["runtimes"] or not access["deployments"]:
+        raise PermissionDeniedError("没有读取 SDK 配置资源的权限")
     ensure_project_known_and_visible(
         request=request,
         principal=principal,
@@ -118,6 +146,11 @@ def download_sdk_config_package(
     plan = service.build_plan(
         _build_service_request(project_id=project_id, body=body, request=request)
     )
+    if (
+        body.expected_revision is not None
+        and body.expected_revision != plan.configuration_revision
+    ):
+        raise ResourceConflictError("资源配置已变化，请重新预览后下载")
     zip_bytes = service.build_zip_bytes(plan)
     return Response(
         content=zip_bytes,
@@ -126,6 +159,41 @@ def download_sdk_config_package(
             "Content-Disposition": f'attachment; filename="{plan.package_name}"',
         },
     )
+
+
+@sdk_config_packages_router.get("/{project_id}/sdk-config-packages/resources")
+def list_sdk_resources(
+    project_id: str,
+    request: Request,
+    response: FastAPIResponse,
+    principal: Annotated[
+        AuthenticatedPrincipal, Depends(require_scopes("workflows:read", "models:read"))
+    ],
+    offset: int = Query(0, ge=0),
+    limit: int = Query(200, ge=1, le=200),
+) -> list[dict[str, object]]:
+    """列出配置包支持的资源，不返回 secret。"""
+
+    access = project_resource_access(principal)
+    if not access["runtimes"] or not access["deployments"]:
+        raise PermissionDeniedError("没有读取 SDK 配置资源的权限")
+    ensure_project_known_and_visible(
+        request=request, principal=principal, project_id=project_id
+    )
+    rows, total = _build_sdk_config_package_service(request).list_resources(
+        project_id, offset=offset, limit=limit
+    )
+    response.headers.update(
+        {
+            "x-offset": str(offset),
+            "x-limit": str(limit),
+            "x-total-count": str(total),
+            "x-has-more": str(offset + len(rows) < total).lower(),
+        }
+    )
+    if offset + len(rows) < total:
+        response.headers["x-next-offset"] = str(offset + len(rows))
+    return rows
 
 
 @sdk_config_packages_router.get("/{project_id}/sdk-config-packages/current")
@@ -140,6 +208,9 @@ def get_current_sdk_config_package(
 ) -> Response:
     """返回 SDK 自动同步使用的完整配置快照，支持 ETag 条件请求。"""
 
+    access = project_resource_access(principal)
+    if not access["runtimes"] or not access["deployments"]:
+        raise PermissionDeniedError("没有读取 SDK 配置资源的权限")
     ensure_project_known_and_visible(
         request=request,
         principal=principal,
@@ -177,6 +248,8 @@ def get_current_sdk_config_package(
             "Cache-Control": "no-cache",
         },
     )
+
+
 def _build_sdk_config_package_plan(
     *,
     project_id: str,
@@ -212,13 +285,24 @@ def _build_service_request(
         project_id=project_id,
         base_api_url=_resolve_base_api_url(request),
         include_access_token=body.include_access_token,
-        access_token=get_request_bearer_token(request) if body.include_access_token else None,
+        access_token=get_request_bearer_token(request)
+        if body.include_access_token
+        else None,
         model_runtime_modes=tuple(body.model_runtime_modes),
         include_disabled_trigger_sources=body.include_disabled_trigger_sources,
+        runtime_ids=tuple(body.runtime_ids) if body.runtime_ids is not None else None,
+        trigger_source_ids=tuple(body.trigger_source_ids)
+        if body.trigger_source_ids is not None
+        else None,
+        deployment_ids=tuple(body.deployment_ids)
+        if body.deployment_ids is not None
+        else None,
     )
 
 
-def _build_preview_response(plan: SdkConfigPackagePlan) -> SdkConfigPackagePreviewResponse:
+def _build_preview_response(
+    plan: SdkConfigPackagePlan,
+) -> SdkConfigPackagePreviewResponse:
     """把配置包计划转换为 REST preview 响应。"""
 
     return SdkConfigPackagePreviewResponse(

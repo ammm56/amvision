@@ -1,6 +1,6 @@
 <template>
   <Transition name="confirm-dialog" appear>
-    <div class="confirm-dialog-backdrop" @click="cancelDialog">
+    <div class="confirm-dialog-backdrop" :style="{ zIndex: order, background: covered ? 'transparent' : undefined }" @click="cancelDialog">
       <section
         ref="dialogRef"
         class="confirm-dialog"
@@ -12,8 +12,8 @@
         :aria-busy="busy"
         tabindex="-1"
         @click.stop
-        @keydown.esc.prevent="cancelDialog"
-        @keydown.tab="trapFocus"
+        @keydown.esc.stop.prevent="cancelDialog"
+        @keydown.tab.stop="trapFocus"
       >
         <header class="confirm-dialog__header">
           <div>
@@ -42,9 +42,10 @@
 
 <script setup lang="ts">
 import { X } from '@lucide/vue'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId } from 'vue'
+import { computed, onMounted, ref, useId, watch } from 'vue'
 
 import Button from './Button.vue'
+import { useModalLayer } from './modal-layer'
 
 const props = withDefaults(
   defineProps<{
@@ -88,56 +89,24 @@ const describedBy = computed(() => {
   return ids.join(' ') || undefined
 })
 const dialogRef = ref<HTMLElement | null>(null)
-let previouslyFocusedElement: HTMLElement | null = null
-let previousBodyOverflow = ''
+const { activate, trapFocus, isTop, order, covered } = useModalLayer(dialogRef)
 
-function readFocusableElements(): HTMLElement[] {
-  if (!dialogRef.value) return []
-  return [...dialogRef.value.querySelectorAll<HTMLElement>(
-    ':is(button, [href], input, select, textarea, [tabindex]):not(:disabled):not([tabindex="-1"])',
-  )]
-}
-
-function trapFocus(event: KeyboardEvent): void {
-  const focusableElements = readFocusableElements()
-  if (focusableElements.length === 0) {
-    event.preventDefault()
-    dialogRef.value?.focus()
-    return
-  }
-  const firstElement = focusableElements[0]
-  const lastElement = focusableElements[focusableElements.length - 1]
-  if (event.shiftKey && document.activeElement === firstElement) {
-    event.preventDefault()
-    lastElement?.focus()
-  } else if (!event.shiftKey && document.activeElement === lastElement) {
-    event.preventDefault()
-    firstElement?.focus()
-  }
-}
+// 禁用提交按钮可能让浏览器把焦点移到 body；保持 Esc/Tab 属于当前对话框。
+watch(() => props.busy, () => {
+  if (isTop() && dialogRef.value && !dialogRef.value.contains(document.activeElement)) dialogRef.value.focus({ preventScroll: true })
+}, { flush: 'post' })
 
 function cancelDialog(): void {
-  if (!props.busy) emit('cancel')
+  if (!props.busy && isTop()) emit('cancel')
 }
 
-onMounted(() => {
-  previouslyFocusedElement = document.activeElement instanceof HTMLElement ? document.activeElement : null
-  previousBodyOverflow = document.body.style.overflow
-  document.body.style.overflow = 'hidden'
-  void nextTick(() => {
-    const cancelButton = dialogRef.value?.querySelector<HTMLElement>('[data-confirm-cancel]')
-    const firstField = dialogRef.value?.querySelector<HTMLElement>(
-      '[data-dialog-initial-focus], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [aria-haspopup="listbox"]:not(:disabled)',
-    )
-    const initialElement = props.initialFocus === 'first-field' ? firstField : cancelButton
-    ;(initialElement ?? cancelButton ?? dialogRef.value)?.focus({ preventScroll: true })
-  })
-})
-
-onBeforeUnmount(() => {
-  document.body.style.overflow = previousBodyOverflow
-  previouslyFocusedElement?.focus({ preventScroll: true })
-})
+onMounted(() => void activate(() => {
+  const cancelButton = dialogRef.value?.querySelector<HTMLElement>('[data-confirm-cancel]')
+  const firstField = dialogRef.value?.querySelector<HTMLElement>(
+    '[data-dialog-initial-focus], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [aria-haspopup="listbox"]:not(:disabled)',
+  )
+  return (props.initialFocus === 'first-field' ? firstField : cancelButton) ?? cancelButton
+}))
 </script>
 
 <style scoped>
@@ -223,7 +192,8 @@ onBeforeUnmount(() => {
 }
 
 .confirm-dialog__close:hover {
-  border-color: var(--am-action-primary);
+  background: var(--am-hover-surface);
+  border-color: var(--am-border-strong);
 }
 
 .confirm-dialog__close:disabled {

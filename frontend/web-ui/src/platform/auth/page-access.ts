@@ -3,7 +3,7 @@ import { hasScopes, hasScope } from './permissions'
 
 // 页面 ID 和业务读取能力独立于导航文案；所有入口使用同一策略。
 export const pageDefinitions = [
-  { id: 'projects', label: '项目', scopes: ['workflows:read', 'models:read'], path: '/projects' },
+  { id: 'projects', label: '项目', scopes: [], path: '/projects' },
   { id: 'tasks', label: '任务', scopes: ['tasks:read'], path: '/tasks' },
   { id: 'datasets', label: '数据集', scopes: ['datasets:read'], path: '/datasets' },
   { id: 'models', label: '模型', scopes: ['models:read'], path: '/models' },
@@ -25,6 +25,7 @@ export const pageDefinitions = [
 export type PageId = typeof pageDefinitions[number]['id']
 export function canAccessPage(user: CurrentUser | null, id: string): boolean {
   const page = pageDefinitions.find((item) => item.id === id)
+  if (id === 'projects' && !['datasets:read', 'models:read', 'workflows:read', 'tasks:read', 'datasets:write', 'workflows:write'].some(scope => hasScope(user, scope))) return false
   return Boolean(user && page && (user.allowed_pages == null || user.allowed_pages.includes(id)) && hasScopes(user, [...page.scopes]))
 }
 export function canInvokeWorkflow(user: CurrentUser | null): boolean {

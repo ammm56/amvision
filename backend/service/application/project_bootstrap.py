@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from hashlib import sha256
+import json
 from datetime import datetime, timezone
 
 from backend.service.application.errors import (
@@ -216,6 +218,48 @@ class LocalProjectBootstrapService:
             )
         return _build_project_manifest_from_payload(normalized_project_id, payload)
 
+    def update_metadata(
+        self,
+        project_id: str,
+        *,
+        display_name: str,
+        description: str | None,
+        expected_revision: str,
+    ) -> ProjectManifest:
+        """在项目 mutation claim 中条件更新名称和说明，不改变身份或资产。"""
+
+        project_id = _normalize_identifier(project_id, field_name="project_id")
+        resource_key = build_workflow_lifecycle_resource_key(
+            "project-bootstrap", project_id
+        )
+        with self.application_lifecycle.operation(
+            project_id=project_id,
+            application_id=resource_key,
+            operation="saving",
+            allow_deleted=True,
+            deleted_on_success=None,
+        ):
+            current = self.get_project_manifest(project_id)
+            if current is None:
+                raise ResourceNotFoundError("Project 元数据不存在")
+            if project_manifest_revision(current) != expected_revision:
+                raise ResourceConflictError("项目已被修改，请读取最新内容后再保存")
+            updated = replace(
+                current,
+                display_name=_normalize_optional_non_empty_text(
+                    display_name, field_name="display_name"
+                ),
+                description=description.strip() or None
+                if description is not None
+                else None,
+                updated_at=_now_isoformat(),
+            )
+            self.dataset_storage.write_json(
+                build_project_manifest_object_key(project_id),
+                _serialize_project_manifest(updated),
+            )
+            return updated
+
     def _ensure_project_workspace(self, project_id: str) -> None:
         """确保 Project 根目录和最小工作区目录存在。"""
 
@@ -233,6 +277,15 @@ def build_project_root_object_key(project_id: str) -> str:
 
     normalized_project_id = _normalize_identifier(project_id, field_name="project_id")
     return f"projects/{normalized_project_id}"
+
+
+def project_manifest_revision(manifest: ProjectManifest) -> str:
+    """使用完整元数据摘要作为条件更新依据，兼容已有 manifest。"""
+
+    content = json.dumps(
+        _serialize_project_manifest(manifest), sort_keys=True, ensure_ascii=False
+    )
+    return sha256(content.encode("utf-8")).hexdigest()
 
 
 def build_project_manifest_object_key(project_id: str) -> str:

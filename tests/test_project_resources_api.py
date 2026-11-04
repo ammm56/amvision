@@ -219,6 +219,12 @@ def test_workflow_prompt_mask_upload_persists_binary_project_asset(
                 },
                 files={"mask": ("mask.png", buffer.tobytes(), "image/png")},
             )
+            repeated_response = client.post(
+                "/api/v1/projects/project-1/workflow-prompt-masks",
+                headers=build_test_headers(scopes="workflows:write"),
+                params={"application_id": "workflow-app-1", "node_id": "mask-editor-1"},
+                files={"mask": ("mask.png", buffer.tobytes(), "image/png")},
+            )
     finally:
         session_factory.engine.dispose()
 
@@ -235,20 +241,6 @@ def test_workflow_prompt_mask_upload_persists_binary_project_asset(
     )
     assert stored_mask is not None
     assert set(np.unique(stored_mask).tolist()) == {0, 255}
-
-    try:
-        with client:
-            repeated_response = client.post(
-                "/api/v1/projects/project-1/workflow-prompt-masks",
-                headers=build_test_headers(scopes="workflows:write"),
-                params={
-                    "application_id": "workflow-app-1",
-                    "node_id": "mask-editor-1",
-                },
-                files={"mask": ("mask.png", buffer.tobytes(), "image/png")},
-            )
-    finally:
-        session_factory.engine.dispose()
 
     assert repeated_response.status_code == 201
     assert repeated_response.json()["object_key"] == payload["object_key"]
@@ -780,6 +772,7 @@ def test_project_deletion_is_blocked_by_active_task(tmp_path: Path) -> None:
         {
             "resource_kind": "task",
             "resource_id": "task-project-delete-active",
+            "display_name": "active training",
             "state": "running",
         }
     ]
@@ -1123,6 +1116,7 @@ def test_project_deletion_is_blocked_by_active_queue_message(tmp_path: Path) -> 
         {
             "resource_kind": "queue_message",
             "resource_id": queued.task_id,
+            "display_name": queued.task_id,
             "state": "queued",
         }
     ]

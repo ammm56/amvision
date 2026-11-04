@@ -35,6 +35,7 @@ from backend.service.api.rest.v1.pagination import (
 from backend.service.application.errors import (
     InvalidRequestError,
     PermissionDeniedError,
+    ResourceConflictError,
 )
 from backend.service.application.project_bootstrap import ProjectBootstrapRequest
 from backend.service.api.rest.v1.routes.projects.files import (
@@ -49,6 +50,8 @@ from backend.service.api.rest.v1.routes.projects.responses import (
 )
 from backend.service.api.rest.v1.routes.projects.schemas import (
     ProjectBootstrapRequestBody,
+    ProjectCreateRequestBody,
+    ProjectUpdateRequestBody,
     ProjectCatalogItemResponse,
     ProjectObjectMetadataResponse,
     ProjectSummaryResponse,
@@ -70,6 +73,11 @@ from backend.service.api.rest.v1.routes.projects.services import (
     require_dataset_storage,
 )
 
+
+from backend.service.api.rest.v1.routes.projects.access import (
+    require_project_reader,
+    project_resource_access,
+)
 
 projects_router = APIRouter(prefix="/projects", tags=["projects"])
 projects_router.include_router(sdk_config_packages_router)
@@ -127,10 +135,10 @@ async def upload_workflow_prompt_mask(
         ("application_id", application_id),
         ("node_id", node_id),
     ):
-        if (
-            field_value in {".", ".."}
-            or not _WORKFLOW_STORAGE_SEGMENT_PATTERN.fullmatch(field_value)
-        ):
+        if field_value in {
+            ".",
+            "..",
+        } or not _WORKFLOW_STORAGE_SEGMENT_PATTERN.fullmatch(field_value):
             raise InvalidRequestError(
                 f"{field_name} 只能包含字母、数字、点、下划线和连字符"
             )
@@ -171,7 +179,7 @@ def list_projects(
     response: Response,
     principal: Annotated[
         AuthenticatedPrincipal,
-        Depends(require_scopes("workflows:read", "models:read")),
+        Depends(require_project_reader),
     ],
     include_summary: Annotated[
         bool,
@@ -182,6 +190,7 @@ def list_projects(
         int,
         Query(ge=1, le=MAX_LIST_LIMIT, description="最大返回数量"),
     ] = DEFAULT_LIST_LIMIT,
+    q: Annotated[str, Query(max_length=200)] = "",
 ) -> list[ProjectCatalogItemResponse]:
     """列出当前主体可见的 Project 目录项。"""
 
@@ -190,11 +199,143 @@ def list_projects(
         project_items.append(
             build_project_catalog_item_response(
                 request=request,
+                principal=principal,
                 project_id=project_id,
-                include_summary=include_summary,
+                include_summary=False,
             )
         )
-    return paginate_sequence(project_items, response=response, offset=offset, limit=limit)
+    search = q.strip().casefold()
+    project_items = [
+        item
+        for item in project_items
+        if not search
+        or search
+        in f"{item.display_name} {item.project_id} {item.description or ''}".casefold()
+    ]
+    project_items.sort(
+        key=lambda item: (item.updated_at or "", item.project_id), reverse=True
+    )
+    page = paginate_sequence(
+        project_items, response=response, offset=offset, limit=limit
+    )
+    return (
+        [
+            build_project_catalog_item_response(
+                request=request,
+                principal=principal,
+                project_id=item.project_id,
+                include_summary=True,
+            )
+            for item in page
+        ]
+        if include_summary
+        else page
+    )
+
+
+@projects_router.post("", response_model=ProjectCatalogItemResponse, status_code=201)
+def create_project(
+    body: ProjectCreateRequestBody,
+    request: Request,
+    principal: Annotated[
+        AuthenticatedPrincipal, Depends(require_project_bootstrap_principal)
+    ],
+) -> ProjectCatalogItemResponse:
+    """生成稳定项目身份；网络结果未知时同一请求可查询或明确重试。"""
+
+    project_id = f"project-{body.request_id.hex}"
+    ensure_project_visible(principal=principal, project_id=project_id)
+    service = build_project_bootstrap_service(request)
+    existing = service.get_project_manifest(project_id)
+    name = body.display_name.strip()
+    if not name:
+        raise InvalidRequestError("项目名称不能为空")
+    description = (body.description or "").strip() or None
+    if existing is not None:
+        if (
+            existing.initialized_by != principal.principal_id
+            or existing.display_name != name
+            or existing.description != description
+        ):
+            raise ResourceConflictError("创建请求已用于另一个项目内容")
+    else:
+        service.bootstrap_project(
+            ProjectBootstrapRequest(
+                project_id=project_id, display_name=name, description=description
+            ),
+            initialized_by=principal.principal_id,
+        )
+    return build_project_catalog_item_response(
+        request=request,
+        principal=principal,
+        project_id=project_id,
+        include_summary=True,
+    )
+
+
+@projects_router.patch("/{project_id}", response_model=ProjectCatalogItemResponse)
+def update_project(
+    project_id: str,
+    body: ProjectUpdateRequestBody,
+    request: Request,
+    principal: Annotated[
+        AuthenticatedPrincipal, Depends(require_project_bootstrap_principal)
+    ],
+) -> ProjectCatalogItemResponse:
+    """仅更新本地项目名称和说明，拒绝覆盖其他会话的修改。"""
+
+    ensure_project_known_and_visible(
+        request=request, principal=principal, project_id=project_id
+    )
+    current = build_project_catalog_item_response(
+        request=request,
+        principal=principal,
+        project_id=project_id,
+        include_summary=False,
+    )
+    if current.project_source == "configured":
+        raise ResourceConflictError("配置文件中的项目为只读，请修改服务配置")
+    if not body.display_name.strip():
+        raise InvalidRequestError("项目名称不能为空")
+    build_project_bootstrap_service(request).update_metadata(
+        project_id,
+        display_name=body.display_name.strip(),
+        description=body.description,
+        expected_revision=body.expected_revision,
+    )
+    return build_project_catalog_item_response(
+        request=request,
+        principal=principal,
+        project_id=project_id,
+        include_summary=True,
+    )
+
+
+@projects_router.get("/{project_id}/overview")
+def get_project_overview(
+    project_id: str,
+    request: Request,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_project_reader)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 6,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    q: Annotated[str, Query(max_length=200)] = "",
+    kind: Annotated[
+        str, Query(pattern="^(|datasets|models|apps|runtimes|deployments|tasks)$")
+    ] = "",
+) -> dict[str, object]:
+    """返回真实的最近活动与当前任务、服务摘要。"""
+
+    ensure_project_known_and_visible(
+        request=request, principal=principal, project_id=project_id
+    )
+    return build_project_summary_service(request).get_overview(
+        project_id,
+        limit=limit,
+        offset=offset,
+        q=q.strip(),
+        kind=kind,
+        access=project_resource_access(principal),
+    )
 
 
 @projects_router.post(
@@ -227,6 +368,7 @@ def bootstrap_project(
     )
     return build_project_catalog_item_response(
         request=request,
+        principal=principal,
         project_id=body.project_id,
         include_summary=True,
     )
@@ -250,7 +392,10 @@ def preview_project_deletion(
         request=request, principal=principal, project_id=project_id
     )
     catalog_item = build_project_catalog_item_response(
-        request=request, project_id=project_id, include_summary=False
+        request=request,
+        principal=principal,
+        project_id=project_id,
+        include_summary=False,
     )
     preview = build_project_deletion_service(request).preview(
         project_id=project_id,
@@ -287,7 +432,10 @@ def delete_project(
         request=request, principal=principal, project_id=project_id
     )
     catalog_item = build_project_catalog_item_response(
-        request=request, project_id=project_id, include_summary=False
+        request=request,
+        principal=principal,
+        project_id=project_id,
+        include_summary=False,
     )
     service = build_project_deletion_service(request)
     with request.app.state.workflow_preview_sessions.deleting_document(project_id):
@@ -295,6 +443,7 @@ def delete_project(
             project_id=project_id,
             project_source=catalog_item.project_source,
             confirmation=body.confirmation,
+            requested_by=principal.principal_id,
         )
     if result.cleanup_object_key:
         background_tasks.add_task(
@@ -311,8 +460,25 @@ def delete_project(
     )
 
 
+@projects_router.get("/{project_id}/deletion-operations/{operation_id}")
+def get_project_deletion_operation(
+    project_id: str,
+    operation_id: str,
+    request: Request,
+    principal: Annotated[
+        AuthenticatedPrincipal, Depends(require_scopes("projects:delete"))
+    ],
+) -> dict[str, object]:
+    """项目已移除后仍允许有项目删除权限的主体核对回执。"""
 
-
+    result = build_project_deletion_service(request).get_deletion_result(
+        project_id, operation_id
+    )
+    # 删除会移除项目授权关系；原操作者仍可核对自己已受理的操作。
+    if result.get("requested_by") != principal.principal_id:
+        ensure_project_visible(principal=principal, project_id=project_id)
+    result.pop("requested_by", None)
+    return result
 
 
 @projects_router.get("/{project_id}", response_model=ProjectCatalogItemResponse)
@@ -321,7 +487,7 @@ def get_project_detail(
     request: Request,
     principal: Annotated[
         AuthenticatedPrincipal,
-        Depends(require_scopes("workflows:read", "models:read")),
+        Depends(require_project_reader),
     ],
 ) -> ProjectCatalogItemResponse:
     """读取一个 Project 的目录信息和当前 summary。"""
@@ -333,6 +499,7 @@ def get_project_detail(
     )
     return build_project_catalog_item_response(
         request=request,
+        principal=principal,
         project_id=project_id,
         include_summary=True,
     )
@@ -347,12 +514,16 @@ def get_project_summary(
     request: Request,
     principal: Annotated[
         AuthenticatedPrincipal,
-        Depends(require_scopes("workflows:read", "models:read")),
+        Depends(require_project_reader),
     ],
 ) -> ProjectSummaryResponse:
     """读取一个 Project 当前工作台可用的聚合摘要。"""
 
     ensure_project_visible(principal=principal, project_id=project_id)
+    if not all(project_resource_access(principal).values()):
+        raise PermissionDeniedError(
+            "完整项目摘要需要全部资源读取权限；可使用项目详情中的授权资源计数"
+        )
     summary = build_project_summary_service(request).get_project_summary(project_id)
     return build_project_summary_response(summary)
 

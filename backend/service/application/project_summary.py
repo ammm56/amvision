@@ -3,16 +3,21 @@
 from __future__ import annotations
 
 from collections import Counter
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.events import InMemoryServiceEventBus, ServiceEvent
-from backend.service.application.workflows.workflow_service import LocalWorkflowJsonService
+from backend.service.application.workflows.workflow_service import (
+    LocalWorkflowJsonService,
+)
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 
 PROJECT_SUMMARY_EVENT_TYPE = "projects.summary.updated"
@@ -146,16 +151,36 @@ class ProjectSummarySnapshot:
 
     project_id: str
     generated_at: str
-    datasets: ProjectDatasetInventorySnapshot = field(default_factory=ProjectDatasetInventorySnapshot)
-    imports: ProjectStatusSummarySnapshot = field(default_factory=ProjectStatusSummarySnapshot)
-    exports: ProjectStatusSummarySnapshot = field(default_factory=ProjectStatusSummarySnapshot)
-    training: ProjectStatusSummarySnapshot = field(default_factory=ProjectStatusSummarySnapshot)
-    validation: ProjectStatusSummarySnapshot = field(default_factory=ProjectStatusSummarySnapshot)
-    evaluation: ProjectStatusSummarySnapshot = field(default_factory=ProjectStatusSummarySnapshot)
-    conversion: ProjectStatusSummarySnapshot = field(default_factory=ProjectStatusSummarySnapshot)
-    inference: ProjectStatusSummarySnapshot = field(default_factory=ProjectStatusSummarySnapshot)
-    workflows: ProjectWorkflowSummarySnapshot = field(default_factory=ProjectWorkflowSummarySnapshot)
-    deployments: ProjectDeploymentSummarySnapshot = field(default_factory=ProjectDeploymentSummarySnapshot)
+    datasets: ProjectDatasetInventorySnapshot = field(
+        default_factory=ProjectDatasetInventorySnapshot
+    )
+    imports: ProjectStatusSummarySnapshot = field(
+        default_factory=ProjectStatusSummarySnapshot
+    )
+    exports: ProjectStatusSummarySnapshot = field(
+        default_factory=ProjectStatusSummarySnapshot
+    )
+    training: ProjectStatusSummarySnapshot = field(
+        default_factory=ProjectStatusSummarySnapshot
+    )
+    validation: ProjectStatusSummarySnapshot = field(
+        default_factory=ProjectStatusSummarySnapshot
+    )
+    evaluation: ProjectStatusSummarySnapshot = field(
+        default_factory=ProjectStatusSummarySnapshot
+    )
+    conversion: ProjectStatusSummarySnapshot = field(
+        default_factory=ProjectStatusSummarySnapshot
+    )
+    inference: ProjectStatusSummarySnapshot = field(
+        default_factory=ProjectStatusSummarySnapshot
+    )
+    workflows: ProjectWorkflowSummarySnapshot = field(
+        default_factory=ProjectWorkflowSummarySnapshot
+    )
+    deployments: ProjectDeploymentSummarySnapshot = field(
+        default_factory=ProjectDeploymentSummarySnapshot
+    )
 
 
 class ProjectSummaryService:
@@ -180,6 +205,140 @@ class ProjectSummaryService:
         self.dataset_storage = dataset_storage
         self.node_catalog_registry = node_catalog_registry
 
+    def get_model_total(self, project_id: str) -> int:
+        """读取项目模型聚合根数量，不使用训练任务数替代。"""
+        unit_of_work = SqlAlchemyUnitOfWork(self.session_factory.create_session())
+        try:
+            return unit_of_work.project_summaries.get_model_total(project_id)
+        finally:
+            unit_of_work.close()
+
+    def get_resource_counts(
+        self, project_id: str, access: dict[str, bool]
+    ) -> tuple[dict[str, int | None], list[str]]:
+        """独立读取有权类别；单项损坏保留身份和其他计数，不假报为零。"""
+        counts, errors = {}, []
+        for kind in ("datasets", "models", "apps", "deployments"):
+            if not access.get(kind):
+                continue
+            try:
+                if kind == "datasets":
+                    counts[kind] = len(
+                        _list_project_dataset_ids(
+                            dataset_storage=self.dataset_storage, project_id=project_id
+                        )
+                    )
+                elif kind == "apps":
+                    service = LocalWorkflowJsonService(
+                        dataset_storage=self.dataset_storage,
+                        node_catalog_registry=self.node_catalog_registry,
+                    )
+                    counts[kind] = len(service.list_applications(project_id=project_id))
+                else:
+                    unit = SqlAlchemyUnitOfWork(self.session_factory.create_session())
+                    try:
+                        counts[kind] = (
+                            unit.project_summaries.get_model_total(project_id)
+                            if kind == "models"
+                            else unit.project_summaries.get_deployment_total(project_id)
+                        )
+                    finally:
+                        unit.close()
+            except Exception:
+                logging.getLogger(__name__).exception(
+                    "项目资源摘要读取失败 project=%s kind=%s", project_id, kind
+                )
+                counts[kind] = None
+                errors.append(kind)
+        return counts, errors
+
+    def get_overview(
+        self,
+        project_id: str,
+        *,
+        limit: int = 6,
+        offset: int = 0,
+        q: str = "",
+        kind: str = "",
+        access: dict[str, bool] | None = None,
+    ) -> dict[str, object]:
+        """合并应用元数据与数据库窄字段；分页内存不随 offset 增长。"""
+        from backend.service.infrastructure.persistence.project_activity_repository import (
+            ProjectActivityRepository,
+        )
+
+        access = (
+            access
+            if access is not None
+            else dict.fromkeys(
+                ("datasets", "models", "apps", "runtimes", "deployments", "tasks"), True
+            )
+        )
+        applications = []
+        if access.get("apps"):
+            service = LocalWorkflowJsonService(
+                dataset_storage=self.dataset_storage,
+                node_catalog_registry=self.node_catalog_registry,
+            )
+            applications = list(service.list_applications(project_id=project_id))
+        names = {item.application_id: item.display_name for item in applications}
+        local = [
+            {
+                "resource_id": item.application_id,
+                "target_id": item.application_id,
+                "name": item.display_name,
+                "kind": "application",
+                "state": "saved",
+                "occurred_at": item.updated_at,
+            }
+            for item in applications
+            if (not kind or kind == "apps")
+            and (
+                not q
+                or q.casefold()
+                in (item.display_name + " " + item.application_id).casefold()
+            )
+        ]
+        # 先回退最多应用条数，再合并一个有限窗口，避免取出数据库全部历史。
+        database_offset = max(0, offset - len(local))
+        with self.session_factory.create_session() as session:
+            repository = ProjectActivityRepository(session)
+            recent, total = repository.recent(
+                project_id,
+                access=access,
+                offset=database_offset,
+                limit=limit + len(local),
+                q=q,
+                kind=kind,
+                matching_applications=tuple(
+                    key
+                    for key, value in names.items()
+                    if q and q.casefold() in value.casefold()
+                ),
+            )
+            active = repository.active(project_id, access)
+        for item in recent:
+            if item["kind"] == "app-version":
+                item["name"] = (
+                    names.get(item["target_id"], str(item["target_id"]))
+                    + " · "
+                    + str(item["name"])
+                )
+        merged = sorted(
+            [*recent, *local], key=lambda item: (item["kind"], item["resource_id"])
+        )
+        merged.sort(key=lambda item: item["occurred_at"] or "", reverse=True)
+        start = offset - database_offset
+        return {
+            "recent": merged[start : start + limit],
+            "active": active,
+            "total": total + len(local),
+            "offset": offset,
+            "limit": limit,
+            "checked_at": _now_isoformat(),
+            "access": access,
+        }
+
     def get_project_summary(self, project_id: str) -> ProjectSummarySnapshot:
         """读取一个 Project 的当前聚合摘要。
 
@@ -199,7 +358,9 @@ class ProjectSummaryService:
             node_catalog_registry=self.node_catalog_registry,
         )
         templates = workflow_service.list_templates(project_id=normalized_project_id)
-        applications = workflow_service.list_applications(project_id=normalized_project_id)
+        applications = workflow_service.list_applications(
+            project_id=normalized_project_id
+        )
 
         unit_of_work = SqlAlchemyUnitOfWork(self.session_factory.create_session())
         try:
@@ -292,8 +453,6 @@ def normalize_project_summary_topic(raw_topic: str | None) -> str | None:
     return topic
 
 
-
-
 def should_publish_project_summary_for_workflow_run_event(event_type: str) -> bool:
     """判断 WorkflowRun 事件是否需要触发项目级聚合更新。"""
 
@@ -353,13 +512,19 @@ def serialize_project_summary(snapshot: ProjectSummarySnapshot) -> dict[str, obj
             "template_total": snapshot.workflows.template_total,
             "application_total": snapshot.workflows.application_total,
             "workflow_run_total": snapshot.workflows.workflow_run_total,
-            "workflow_run_state_counts": dict(snapshot.workflows.workflow_run_state_counts),
+            "workflow_run_state_counts": dict(
+                snapshot.workflows.workflow_run_state_counts
+            ),
             "app_runtime_total": snapshot.workflows.app_runtime_total,
-            "app_runtime_observed_state_counts": dict(snapshot.workflows.app_runtime_observed_state_counts),
+            "app_runtime_observed_state_counts": dict(
+                snapshot.workflows.app_runtime_observed_state_counts
+            ),
         },
         "deployments": {
             "deployment_instance_total": snapshot.deployments.deployment_instance_total,
-            "deployment_status_counts": dict(snapshot.deployments.deployment_status_counts),
+            "deployment_status_counts": dict(
+                snapshot.deployments.deployment_status_counts
+            ),
         },
     }
 
@@ -430,9 +595,7 @@ def _build_counter(values: object) -> dict[str, int]:
     """把状态值序列规范化为按 key 排序的计数字典。"""
 
     counter = Counter(
-        item.strip()
-        for item in values
-        if isinstance(item, str) and item.strip()
+        item.strip() for item in values if isinstance(item, str) and item.strip()
     )
     return {key: counter[key] for key in sorted(counter)}
 
@@ -446,7 +609,11 @@ def _build_task_status_summary(
     normalized_task_kinds = (
         (task_kinds,)
         if isinstance(task_kinds, str)
-        else tuple(task_kind for task_kind in task_kinds if isinstance(task_kind, str) and task_kind.strip())
+        else tuple(
+            task_kind
+            for task_kind in task_kinds
+            if isinstance(task_kind, str) and task_kind.strip()
+        )
     )
 
     status_counts: Counter[str] = Counter()
@@ -471,11 +638,7 @@ def _list_project_dataset_ids(
     datasets_root = dataset_storage.resolve(f"projects/{project_id}/datasets")
     if not datasets_root.is_dir():
         return ()
-    dataset_ids = sorted(
-        path.name
-        for path in datasets_root.iterdir()
-        if path.is_dir()
-    )
+    dataset_ids = sorted(path.name for path in datasets_root.iterdir() if path.is_dir())
     return tuple(dataset_ids)
 
 
@@ -493,7 +656,9 @@ def _list_validation_session_statuses(
     statuses: list[str] = []
     for session_path in sorted(sessions_root.glob("*/session.json")):
         try:
-            payload = dataset_storage.read_json(session_path.relative_to(dataset_storage.root_dir).as_posix())
+            payload = dataset_storage.read_json(
+                session_path.relative_to(dataset_storage.root_dir).as_posix()
+            )
         except OSError:
             continue
         if not isinstance(payload, dict):
@@ -512,4 +677,3 @@ def _now_isoformat() -> str:
     """返回当前 UTC 时间的 ISO8601 字符串。"""
 
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-

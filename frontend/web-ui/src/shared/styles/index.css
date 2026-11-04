@@ -925,15 +925,15 @@ textarea:focus-visible {
 }
 
 .ui-button--danger {
-  border-color: var(--am-danger-border);
-  background: var(--am-danger-surface);
-  color: var(--am-danger-text);
+  border-color: #dc2626;
+  background: #dc2626;
+  color: #fff;
 }
 
 .ui-button--danger:hover:not(:disabled) {
-  border-color: var(--am-danger-icon);
-  background: var(--am-danger-surface);
-  color: var(--am-danger-icon);
+  border-color: #b91c1c;
+  background: #b91c1c;
+  color: #fff;
 }
 
 .ui-button--icon-only {

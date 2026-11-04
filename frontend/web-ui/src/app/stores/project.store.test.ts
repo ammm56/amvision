@@ -3,15 +3,26 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useSessionStore } from './session.store'
 import { useProjectStore } from './project.store'
-import { getProjectSummary, listProjects } from '@/modules/projects/services/project.service'
+import { getProject, getProjectSummary, listProjects } from '@/modules/projects/services/project.service'
 
 vi.mock('@/modules/projects/services/project.service', () => ({
   bootstrapProject: vi.fn(),
   getProjectSummary: vi.fn(),
+  getProject: vi.fn(),
   listProjects: vi.fn(),
 }))
 
 describe('project store', () => {
+  it('分页目录外的当前项目不回退到其他项目', async () => {
+    setActivePinia(createPinia())
+    useSessionStore().currentUser = { principal_id: 'admin', scopes: ['*'], project_ids: [] } as never
+    vi.mocked(listProjects).mockResolvedValue({ items: [{ project_id: 'first' }], pagination: { offset: 0, limit: 100, totalCount: 101, hasMore: true, nextOffset: 100 } })
+    vi.mocked(getProject).mockResolvedValue({ project_id: 'last' })
+    const store = useProjectStore(); store.selectedProjectId = 'last'
+    await store.loadProjects()
+    expect(store.selectedProjectId).toBe('last')
+    expect(store.selectedProject?.project_id).toBe('last')
+  })
   beforeEach(() => {
     setActivePinia(createPinia())
     useSessionStore().currentUser = { principal_id: 'admin', scopes: ['*'], project_ids: [] } as never

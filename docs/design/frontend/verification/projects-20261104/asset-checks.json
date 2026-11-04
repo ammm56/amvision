@@ -1,0 +1,378 @@
+{
+  "sdk_package": {
+    "files": 20,
+    "json_files_parsed": 19,
+    "stable_model_filename": true,
+    "zip_integrity": true
+  },
+  "assets": [
+    {
+      "path": "docs/design/frontend/generated/项目/SDK资源范围-亮色.png",
+      "pixels": [
+        1672,
+        941
+      ],
+      "sha256": "e65b256c13c49b3fe0674916f28f999e76e8e4adc1422faf7b75965067956cef"
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/SDK资源范围-暗色.png",
+      "pixels": [
+        1672,
+        941
+      ],
+      "sha256": "9e4fd444a05df8977e14574246ff80860ad901ae91b722475afd0259d2e497c6"
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/SDK资源范围-长列表-亮色.png",
+      "pixels": [
+        1672,
+        941
+      ],
+      "sha256": "df02d1b8278851e0ffcfe3fdcb7a6863d1b40164d3fb011e089a7a4fb9442aa1"
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/SDK资源范围-长列表-暗色.png",
+      "pixels": [
+        1672,
+        941
+      ],
+      "sha256": "be9267ef6a668fd0850d111e60d8da7950333a87afccce38df00829d55c10869"
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/SDK配置包-亮色.png",
+      "pixels": [
+        1672,
+        941
+      ],
+      "sha256": "b91b82dbcb1850cb5fb72d6405e7394cfbdc396b2335d6b973b034544e4a00a3"
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/SDK配置包-暗色.png",
+      "pixels": [
+        1672,
+        941
+      ],
+      "sha256": "33fa26c1c5798f5204008caa470430778f66ac18c7465e923837b4d239e00732"
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/SDK配置包-短屏-亮色.png",
+      "pixels": [
+        1672,
+        941
+      ],
+      "sha256": "a4d4e8919e1da03003b5fc1a0d95eee9c432cd8e3a13d59339e07e4c2223bdcf"
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/SDK配置包-短屏-暗色.png",
+      "pixels": [
+        1672,
+        941
+      ],
+      "sha256": "b506d31a054375277fc97e0042f727b87682882dc15564c9c38a0e15315febb0"
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/删除项目-依赖阻止-亮色.png",
+      "pixels": [
+        1672,
+        941
+      ],
+      "sha256": "6b2ca34a81c8c9eff11ef50ed2bb0ece20147da9298b3ffdefafea1d4ad2f192"
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/删除项目-依赖阻止-暗色.png",
+      "pixels": [
+        1672,
+        941
+      ],
+      "sha256": "4b15cb5aaa35b2e327f5b1aad15d7edae0e8cd5e8df6cead186fbb860d068037"
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/删除项目-清理待完成-亮色.png",
+      "pixels": [
+        1672,
+        941
+      ],
+      "sha256": "405677ef980563a24be00cd15d4788a7fc8d0f0618f738bc8e67e47484abc351"
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/删除项目-清理待完成-暗色.png",
+      "pixels": [
+        1672,
+        941
+      ],
+      "sha256": "0c19d8b923176ad664c34409f7f10b90c93530a5ff46b33c48f01c9143be795a"
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/删除项目-确认-亮色.png",
+      "pixels": [
+        1672,
+        941
+      ],
+      "sha256": "36a2cd852c107e38226fed7cb7a9587a99cd22279c3107b4897d11e3a7d323ba"
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/删除项目-确认-暗色.png",
+      "pixels": [
+        1672,
+        941
+      ],
+      "sha256": "2d8177c21744d189e0553ac0ac864394269189645d1f60464590eaa09e9f5670"
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/删除项目-非空影响-亮色.png",
+      "pixels": [
+        1672,
+        941
+      ],
+      "sha256": "5d68a42fe46d0be58f858c97c5121b612930d577b31f9a35cc23f09a2f83550c"
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/删除项目-非空影响-暗色.png",
+      "pixels": [
+        1672,
+        941
+      ],
+      "sha256": "04823859cb5471fc95fbafa270bb80b44d583befc34162bf223d94e748c461ba"
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/新建项目-亮色.png",
+      "pixels": [
+        1672,
+        941
+      ],
+      "sha256": "b0c018290c5c3b7e007f05a6ff5712ae9ee0eefd56c4670bf3287f363df3426f"
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/新建项目-暗色.png",
+      "pixels": [
+        1672,
+        941
+      ],
+      "sha256": "77932e4338704a5dda0f6739412814c6e89050fc5248204a28d8ac6146d07ada"
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/空项目概览-亮色.png",
+      "pixels": [
+        1672,
+        941
+      ],
+      "sha256": "bff561671ade8c4e81b6abc11656ec2597ef9f7058b70f91eabb833ec2ab742b"
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/空项目概览-暗色.png",
+      "pixels": [
+        1671,
+        941
+      ],
+      "sha256": "b9d010de3d58e9dc384889f68a21148fd16fabd71998a59085fc31b6b1b89438"
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/编辑项目-亮色.png",
+      "pixels": [
+        1672,
+        941
+      ],
+      "sha256": "35163a5a12be6a172105566a4dd4e7be27fe444f8866562d16198372fa388ff5"
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/编辑项目-保存失败-亮色.png",
+      "pixels": [
+        1672,
+        941
+      ],
+      "sha256": "417b2603d8c93e3224fb95bdc3383a565318f55f35ad33e46b95952f0108fc8c"
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/编辑项目-保存失败-暗色.png",
+      "pixels": [
+        1672,
+        941
+      ],
+      "sha256": "62e75a3fc37705429d256e55f84d631c75ed6585bba0e39bc0dc5a6c66c793b0"
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/编辑项目-暗色.png",
+      "pixels": [
+        1672,
+        941
+      ],
+      "sha256": "b16053ae0576e8fdacc30fe291d2888e0b7937520953bcfe8f85d42ab4fbc855"
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/项目信息-亮色.png",
+      "pixels": [
+        1672,
+        941
+      ],
+      "sha256": "f339ba36c6f97308e92955bb088b9dc18e45e7e7752e0c0afb0552ab9b79e921"
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/项目信息-暗色.png",
+      "pixels": [
+        1672,
+        941
+      ],
+      "sha256": "3f5b9ec9d3a29856ca4c97984c335ec2bf6a1fac5aad42b8ced4354dadd0f04b"
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/项目列表-亮色.png",
+      "pixels": [
+        1672,
+        941
+      ],
+      "sha256": "6ccbc429c0c66a29b20aad194bb2aa8bb1cc0e3115db46cd0edc8eb8b80df5b7"
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/项目列表-暗色.png",
+      "pixels": [
+        1672,
+        941
+      ],
+      "sha256": "df2e7939be0dd243b6f115969ab84e825f67e4300b1ced8f2020b172353ac2b5"
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/项目概览-亮色.png",
+      "pixels": [
+        1672,
+        941
+      ],
+      "sha256": "6fd9b672ca5ee458f632da02a45fb8c7265f599a4694083e681c19003ec5e525"
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/项目概览-暗色.png",
+      "pixels": [
+        1672,
+        941
+      ],
+      "sha256": "0ae71d3b51a71145773290998996bed7a52ba9e5bf50f0530b16b2ebde16129c"
+    },
+    {
+      "path": "docs/design/frontend/verification/projects-20261104/delete-receipt-light.jpg",
+      "pixels": [
+        1920,
+        1080
+      ],
+      "sha256": "4756d7ce051f882ef6fcac9a128f473dc09fe9c0ea4fa5bb2f0a475bd340dce0"
+    },
+    {
+      "path": "docs/design/frontend/verification/projects-20261104/information-dark.jpg",
+      "pixels": [
+        1920,
+        1080
+      ],
+      "sha256": "aa3ebd6a9b8b66faba97aa0ea6b816b3ee8687ef83b724f883efd361f34d82f2"
+    },
+    {
+      "path": "docs/design/frontend/verification/projects-20261104/information-light.jpg",
+      "pixels": [
+        1920,
+        1080
+      ],
+      "sha256": "0691b5241351ae4999aedb87057a8d87c31bd6f6d1af8b723c91cc3735e4c83d"
+    },
+    {
+      "path": "docs/design/frontend/verification/projects-20261104/list-dark.jpg",
+      "pixels": [
+        1920,
+        1080
+      ],
+      "sha256": "a0cddb04abccfb8f5eb083b5a4cbe822316d059da449e0ea337d92bd03931a7c"
+    },
+    {
+      "path": "docs/design/frontend/verification/projects-20261104/list-light.jpg",
+      "pixels": [
+        1920,
+        1080
+      ],
+      "sha256": "5908bf27501610e8862eaa3cab06cea22965233827281c04a5dc1cfe2002fc7c"
+    },
+    {
+      "path": "docs/design/frontend/verification/projects-20261104/overview-dark.jpg",
+      "pixels": [
+        1920,
+        1080
+      ],
+      "sha256": "77eee8c1d057d2ff0644dbe9f45c9276096359362d28d0ae5900f7f3a5544bd9"
+    },
+    {
+      "path": "docs/design/frontend/verification/projects-20261104/overview-light.jpg",
+      "pixels": [
+        1920,
+        1080
+      ],
+      "sha256": "69dfe7a2ae3e318c11b6dbd399acfb54b9da8593b08c22f28a4f538828803aa7"
+    },
+    {
+      "path": "docs/design/frontend/verification/projects-20261104/overview-reference-light.jpg",
+      "pixels": [
+        1672,
+        941
+      ],
+      "sha256": "85677593ebc4f7cfafa832db0c303a951f24581fd24268176cf375c4130ea408"
+    },
+    {
+      "path": "docs/design/frontend/verification/projects-20261104/sdk-125-light.jpg",
+      "pixels": [
+        1093,
+        614
+      ],
+      "sha256": "3f046c0049cc67d3966c2bfb7d93dfac010dfaddd04ce63261c2e3101044aaeb"
+    },
+    {
+      "path": "docs/design/frontend/verification/projects-20261104/sdk-150-dark.jpg",
+      "pixels": [
+        911,
+        512
+      ],
+      "sha256": "751f7a938b3385ee19c09514c9937865e141d5e19e1cbb051d290d3ae49f072b"
+    },
+    {
+      "path": "docs/design/frontend/verification/projects-20261104/sdk-150-light.jpg",
+      "pixels": [
+        911,
+        512
+      ],
+      "sha256": "c2da9c53b027fd2d822c76973164a5b1fe1fcc5942636c6ec9f2263fd95285a7"
+    },
+    {
+      "path": "docs/design/frontend/verification/projects-20261104/sdk-light.jpg",
+      "pixels": [
+        1920,
+        1080
+      ],
+      "sha256": "9e3bcbc8a341b52debd6bbf5847d39b559d68ddfe13b1391d1749bd1c4b8811d"
+    },
+    {
+      "path": "docs/design/frontend/verification/projects-20261104/sdk-resources-dark.jpg",
+      "pixels": [
+        1920,
+        1080
+      ],
+      "sha256": "137cb5d33b68ec13ea591996811b577b3e95b28ca0e83978bd06ce025a3b9d4a"
+    },
+    {
+      "path": "docs/design/frontend/verification/projects-20261104/sdk-resources-light.jpg",
+      "pixels": [
+        1920,
+        1080
+      ],
+      "sha256": "ea2e15fc76966134f27e5ed48b2c7d40ea34c6508d422f248bd1bbacaf4af00a"
+    },
+    {
+      "path": "docs/design/frontend/verification/projects-20261104/sdk-short-dark.jpg",
+      "pixels": [
+        1366,
+        768
+      ],
+      "sha256": "a565e80ca675230c67c640fede253d7af9606b6b6276a31defe4bcb66e0451fd"
+    },
+    {
+      "path": "docs/design/frontend/verification/projects-20261104/sdk-short-light.jpg",
+      "pixels": [
+        1366,
+        768
+      ],
+      "sha256": "be8042f6a3145ab29ebe344aaf0e58135e39871b00d4ef01e2c8ef96e7b0c890"
+    }
+  ]
+}

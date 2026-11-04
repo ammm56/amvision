@@ -6,9 +6,9 @@
   --am-surface-soft: #ffffff;
   --am-surface-muted: #eceff2;
   --am-surface-raised: #ffffff;
-  --am-text: #344054;
-  --am-text-strong: #171a1f;
-  --am-text-muted: #667085;
+  --am-text: #3d3d3d;
+  --am-text-strong: #202020;
+  --am-text-muted: #707070;
   --am-text-disabled: #98a2b3;
   --am-border: #e4e7ec;
   --am-border-strong: #d0d5dd;
@@ -21,9 +21,9 @@
   --am-row-hover: var(--am-hover-surface);
   --am-row-selected: var(--am-action-soft);
   --am-row-selected-hover: var(--am-selected-hover-surface);
-  --am-overlay: rgb(17 24 39 / 0.44);
+  --am-overlay: rgb(0 0 0 / 0.28);
   --am-code-surface: #f2f4f7;
-  --am-code-text: #344054;
+  --am-code-text: #3d3d3d;
   --am-action-primary: var(--am-brand-primary);
   --am-action-primary-hover: var(--am-brand-primary-soft);
   --am-action-primary-active: var(--am-brand-primary-deep);
@@ -32,7 +32,7 @@
   --am-on-action: var(--am-brand-on-primary);
   --am-focus-ring: var(--am-action-primary-strong);
   --am-input-focus-ring: #98a2b3;
-  --am-sidebar-link: #475467;
+  --am-sidebar-link: #626262;
   --am-progress-fill: var(--am-brand-primary);
   --am-progress-text: var(--am-brand-primary);
   --am-progress-track: #e7eeeb;

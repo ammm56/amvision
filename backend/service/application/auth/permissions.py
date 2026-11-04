@@ -7,7 +7,7 @@ from backend.service.application.errors import InvalidRequestError
 
 # 页面最低读取能力；新建/修改等操作在对应请求入口另行校验。
 PAGE_SCOPES: dict[str, tuple[str, ...]] = {
-    "projects": ("workflows:read", "models:read"),
+    "projects": (),
     "tasks": ("tasks:read",),
     "datasets": ("datasets:read",),
     "models": ("models:read",),
@@ -51,6 +51,8 @@ def validate_page_access(pages: Sequence[str] | None, scopes: Sequence[str]) -> 
     """拒绝显式页面与最低读取能力矛盾的组合。"""
     if pages is not None:
         for page in pages:
+            if page == "projects" and not any(scope_granted(scopes, scope) for scope in ("datasets:read", "models:read", "workflows:read", "tasks:read", "datasets:write", "workflows:write")):
+                raise InvalidRequestError("项目页面至少需要一种资源读取或项目创建权限")
             if not all(scope_granted(scopes, scope) for scope in PAGE_SCOPES[page]):
                 raise InvalidRequestError(
                     "页面缺少必要查看权限",

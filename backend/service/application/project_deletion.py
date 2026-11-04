@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import PurePosixPath
+import re
+from hashlib import sha256
 
 from backend.contracts.workflows import (
     build_workflow_app_runtime_storage_dir,
@@ -55,6 +57,7 @@ class ProjectDeletionBlocker:
     resource_kind: str
     resource_id: str
     state: str
+    display_name: str = ""
 
 
 @dataclass(frozen=True)
@@ -143,6 +146,24 @@ class ProjectDeletionService:
             or project_source != "local_disk"
         )
         blockers = self._build_blockers(inventory, queue_messages=queue_messages)
+        if blockers:
+            from backend.service.infrastructure.persistence.project_activity_repository import (
+                ProjectActivityRepository,
+            )
+
+            with self.session_factory.create_session() as session:
+                names = ProjectActivityRepository(session).resource_names(
+                    normalized_project_id, blockers
+                )
+            blockers = tuple(
+                replace(
+                    item,
+                    display_name=names.get(
+                        (item.resource_kind, item.resource_id), item.resource_id
+                    ),
+                )
+                for item in blockers
+            )
         counts = self._build_resource_counts(
             project_id=normalized_project_id,
             inventory=inventory,
@@ -163,11 +184,12 @@ class ProjectDeletionService:
         project_id: str,
         project_source: str,
         confirmation: str,
+        requested_by: str | None = None,
     ) -> ProjectDeletionResult:
         """占用持久 Project sentinel 后删除数据库和本地存储。"""
 
         normalized_project_id = self._require_project(project_id)
-        if confirmation.strip() != normalized_project_id:
+        if confirmation != normalized_project_id:
             raise InvalidRequestError(
                 "删除确认必须与 Project id 完全一致",
                 details={"project_id": normalized_project_id},
@@ -205,9 +227,16 @@ class ProjectDeletionService:
             # 短只读 UOW，必须在任何 manifest/move 文件 I/O 前关闭。
             inventory_unit_of_work = self._open_unit_of_work()
             try:
-                pending_deletions = [op.plan.operation_id for op in inventory_unit_of_work.resource_deletions.list_pending() if op.plan.project_id == normalized_project_id]
+                pending_deletions = [
+                    op.plan.operation_id
+                    for op in inventory_unit_of_work.resource_deletions.list_pending()
+                    if op.plan.project_id == normalized_project_id
+                ]
                 if pending_deletions:
-                    raise ResourceInUseError("Project 仍有待完成的资源清理", details={"operation_ids": pending_deletions})
+                    raise ResourceInUseError(
+                        "Project 仍有待完成的资源清理",
+                        details={"operation_ids": pending_deletions},
+                    )
                 inventory = inventory_unit_of_work.project_deletions.inspect(
                     normalized_project_id,
                     project_sentinel_resource_key=sentinel_resource_key,
@@ -249,6 +278,21 @@ class ProjectDeletionService:
                 for index, source_path in enumerate(storage_paths)
             )
             task_ids = tuple(task_id for task_id, _state in inventory.tasks)
+            # 回执独立于待删除项目，刷新页面后仍能核对真实清理结果。
+            self.dataset_storage.write_json(
+                f"runtime/project-deletion-results/{operation_id}.json",
+                {
+                    "project_id": normalized_project_id,
+                    "operation_id": operation_id,
+                    "requested_by": requested_by,
+                    "created_at": _now_isoformat(),
+                    "resource_counts": resource_counts,
+                },
+            )
+            self.dataset_storage.write_json(
+                self._project_receipt_key(normalized_project_id),
+                {"operation_id": operation_id},
+            )
             self._write_deletion_manifest(
                 staging_root=staging_root,
                 project_id=normalized_project_id,
@@ -368,16 +412,77 @@ class ProjectDeletionService:
     ) -> None:
         """删除已提交项目的隔离存储数据。"""
 
-        self.queue_backend.delete_tasks_by_references(
-            references=self._build_queue_references(
-                project_id=project_id,
-                task_ids=task_ids,
+        try:
+            self.queue_backend.delete_tasks_by_references(
+                references=self._build_queue_references(
+                    project_id=project_id,
+                    task_ids=task_ids,
+                ),
+                statuses=("completed", "failed"),
+            )
+            # 队列失败时保留 manifest，启动恢复才有完整的重试依据。
+            if cleanup_object_key:
+                self.dataset_storage.delete_tree(cleanup_object_key)
+        except Exception as error:
+            # 回执在隔离目录之外，清理失败仍可查询；不吞掉原始异常。
+            if cleanup_object_key:
+                operation_id = PurePosixPath(cleanup_object_key).name
+                key = f"runtime/project-deletion-results/{operation_id}.json"
+                try:
+                    if self.dataset_storage.resolve(key).is_file():
+                        receipt = self.dataset_storage.read_json(key)
+                        receipt["cleanup_error"] = str(error)
+                        self.dataset_storage.write_json(key, receipt)
+                except Exception:  # noqa: BLE001 - 回执读写错误不能覆盖最初的清理错误。
+                    pass
+            raise
+
+    def get_deletion_result(
+        self, project_id: str, operation_id: str
+    ) -> dict[str, object]:
+        """依据持久 tombstone 和 staging 核对结果，不把已移除误报为清理完成。"""
+
+        if operation_id == "latest":
+            pointer = self._project_receipt_key(project_id)
+            if not self.dataset_storage.resolve(pointer).is_file():
+                raise ResourceNotFoundError("尚未受理项目删除")
+            operation_id = str(
+                self.dataset_storage.read_json(pointer).get("operation_id", "")
+            )
+        if not re.fullmatch(r"project-deletion-[0-9a-f]{32}", operation_id):
+            raise InvalidRequestError("删除操作 ID 无效")
+        key = f"runtime/project-deletion-results/{operation_id}.json"
+        if not self.dataset_storage.resolve(key).is_file():
+            raise ResourceNotFoundError("删除操作不存在")
+        receipt = self.dataset_storage.read_json(key)
+        if not isinstance(receipt, dict) or receipt.get("project_id") != project_id:
+            raise ResourceNotFoundError("删除操作不存在")
+        sentinel = self.application_lifecycle.get(
+            project_id=project_id,
+            application_id=build_workflow_project_lifecycle_resource_key(
+                project_id=project_id
             ),
-            statuses=("completed", "failed"),
         )
-        # 队列失败时保留 manifest，启动恢复才有完整的重试依据。
-        if cleanup_object_key:
-            self.dataset_storage.delete_tree(cleanup_object_key)
+        if sentinel.deleted:
+            if self.dataset_storage.resolve(
+                self._build_staging_root(operation_id)
+            ).exists():
+                state = (
+                    "cleanup_failed"
+                    if receipt.get("cleanup_error")
+                    else "cleanup_pending"
+                )
+            else:
+                state = "deleted"
+                receipt.pop("cleanup_error", None)
+        else:
+            state = "deleting" if sentinel.state == "deleting" else "failed"
+        return {**receipt, "state": state}
+
+    @staticmethod
+    def _project_receipt_key(project_id: str) -> str:
+        """固定长度索引支持删除响应丢失后的核对，不扫描历史回执。"""
+        return f"runtime/project-deletion-results/by-project/{sha256(project_id.encode()).hexdigest()}.json"
 
     def recover_interrupted_deletions(self) -> ProjectDeletionRecoveryResult:
         """在 API 接收请求前回滚中断删除并补做已提交清理。"""

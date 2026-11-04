@@ -1,0 +1,394 @@
+{
+  "date": "2026-11-04",
+  "scope": "项目分类本轮完整性复核收尾",
+  "checks": {
+    "frontend_tests": 56,
+    "frontend_files": 15,
+    "frontend_exit": 0,
+    "typecheck_exit": 0,
+    "build_exit": 0,
+    "backend_distinct_cases": 35,
+    "backend_run_note": "首轮33通过，2项预期更新后复测通过；不是35项最终单次重跑",
+    "dotnet_existing_contract_executable_exit": 0,
+    "local_doc_links_checked": 10,
+    "missing_local_links": 0,
+    "owned_services_stopped": true,
+    "temporary_cleanup": {
+      "state": "partial",
+      "reason": "Windows ACL 拒绝当前用户读取、删除及 takeown，需系统管理员处理",
+      "remaining_directories": [
+        ".tmp/project-blocker-final",
+        ".tmp/project-final-regression",
+        ".tmp/projects-completion-api",
+        ".tmp/projects-completion-tests",
+        ".tmp/projects-final-api",
+        ".tmp/pytest"
+      ]
+    }
+  },
+  "evidence": [
+    {
+      "path": "docs/design/frontend/verification/projects-completion-20261104/dataset-version-light.jpg",
+      "sha256": "53102899f28e6280de9ec0e7f27614dfd56710458d1c503658d3f66704ee44f9",
+      "bytes": 53307,
+      "size": [
+        1672,
+        941
+      ]
+    },
+    {
+      "path": "docs/design/frontend/verification/projects-completion-20261104/draft-protection-light.jpg",
+      "sha256": "d9a5390c31c7a3247e0af83c9fe959510ea600f7090561c1b3424c482414d2e9",
+      "bytes": 68255,
+      "size": [
+        1672,
+        941
+      ]
+    },
+    {
+      "path": "docs/design/frontend/verification/projects-completion-20261104/information-light.jpg",
+      "sha256": "cdedc7159e3f274ff39b47d8ed3c4bc90312c125d88f28a390094c1248f7e14f",
+      "bytes": 74056,
+      "size": [
+        1671,
+        941
+      ]
+    },
+    {
+      "path": "docs/design/frontend/verification/projects-completion-20261104/live-api.json",
+      "sha256": "21269e2f0cfac69a77f8b1a0bf8c4b238258e3d43eae24238d92ec581e63ca30",
+      "bytes": 1041
+    },
+    {
+      "path": "docs/design/frontend/verification/projects-completion-20261104/live-project-lifecycle.json",
+      "sha256": "9c400d4a34c970d394e6c43289051c3f1d9d5d68c2ec2af9495c4cb71fb06fe9",
+      "bytes": 2486
+    },
+    {
+      "path": "docs/design/frontend/verification/projects-completion-20261104/overview-dark.jpg",
+      "sha256": "ae6b9295cd6a2680423f58be1e7f2a258750f8173a4fae47263672bd3c93c637",
+      "bytes": 94921,
+      "size": [
+        1672,
+        941
+      ]
+    },
+    {
+      "path": "docs/design/frontend/verification/projects-completion-20261104/overview-light.jpg",
+      "sha256": "be9e1f62e7bbf405fc2ef73ae6fb825f69bfffcfd04320d009095d4939300419",
+      "bytes": 88885,
+      "size": [
+        1671,
+        941
+      ]
+    },
+    {
+      "path": "docs/design/frontend/verification/projects-completion-20261104/sdk-compact-dark.jpg",
+      "sha256": "f546f6b0b9dfdae610c249615a239ce9d9a8f6fe6bd8df8c23400036d95df619",
+      "bytes": 30961,
+      "size": [
+        911,
+        512
+      ]
+    },
+    {
+      "path": "docs/design/frontend/verification/projects-completion-20261104/sdk-range-short-dark.jpg",
+      "sha256": "1a0102162145903cd085b65ec240072424d07f8735d765bea467344ce24d1c8b",
+      "bytes": 71365,
+      "size": [
+        1366,
+        768
+      ]
+    },
+    {
+      "path": "docs/design/frontend/verification/projects-completion-20261104/sdk-short-dark.jpg",
+      "sha256": "7799f68c44ba2320acc89ce8e5bda94d70510d3ec5b9b3ce890a9f88dc0f3b33",
+      "bytes": 56024,
+      "size": [
+        1366,
+        768
+      ]
+    },
+    {
+      "path": "docs/design/frontend/verification/projects-completion-20261104/shared-dataset-dialog.jpg",
+      "sha256": "8f1ce5fc83c679491c1e26372f1dc4d4ee1c928509e71006765529f6662e2974",
+      "bytes": 65738,
+      "size": [
+        1366,
+        768
+      ]
+    }
+  ],
+  "design_references": [
+    {
+      "path": "docs/design/frontend/generated/项目/SDK资源范围-亮色.png",
+      "sha256": "e65b256c13c49b3fe0674916f28f999e76e8e4adc1422faf7b75965067956cef",
+      "bytes": 1411932,
+      "size": [
+        1672,
+        941
+      ]
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/SDK资源范围-暗色.png",
+      "sha256": "9e4fd444a05df8977e14574246ff80860ad901ae91b722475afd0259d2e497c6",
+      "bytes": 1381258,
+      "size": [
+        1672,
+        941
+      ]
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/SDK资源范围-长列表-亮色.png",
+      "sha256": "df02d1b8278851e0ffcfe3fdcb7a6863d1b40164d3fb011e089a7a4fb9442aa1",
+      "bytes": 1556013,
+      "size": [
+        1672,
+        941
+      ]
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/SDK资源范围-长列表-暗色.png",
+      "sha256": "be9267ef6a668fd0850d111e60d8da7950333a87afccce38df00829d55c10869",
+      "bytes": 1450056,
+      "size": [
+        1672,
+        941
+      ]
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/SDK配置包-亮色.png",
+      "sha256": "b91b82dbcb1850cb5fb72d6405e7394cfbdc396b2335d6b973b034544e4a00a3",
+      "bytes": 1495051,
+      "size": [
+        1672,
+        941
+      ]
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/SDK配置包-暗色.png",
+      "sha256": "33fa26c1c5798f5204008caa470430778f66ac18c7465e923837b4d239e00732",
+      "bytes": 1413107,
+      "size": [
+        1672,
+        941
+      ]
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/SDK配置包-短屏-亮色.png",
+      "sha256": "a4d4e8919e1da03003b5fc1a0d95eee9c432cd8e3a13d59339e07e4c2223bdcf",
+      "bytes": 1536998,
+      "size": [
+        1672,
+        941
+      ]
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/SDK配置包-短屏-暗色.png",
+      "sha256": "b506d31a054375277fc97e0042f727b87682882dc15564c9c38a0e15315febb0",
+      "bytes": 1454379,
+      "size": [
+        1672,
+        941
+      ]
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/删除项目-依赖阻止-亮色.png",
+      "sha256": "6b2ca34a81c8c9eff11ef50ed2bb0ece20147da9298b3ffdefafea1d4ad2f192",
+      "bytes": 1504315,
+      "size": [
+        1672,
+        941
+      ]
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/删除项目-依赖阻止-暗色.png",
+      "sha256": "4b15cb5aaa35b2e327f5b1aad15d7edae0e8cd5e8df6cead186fbb860d068037",
+      "bytes": 1433940,
+      "size": [
+        1672,
+        941
+      ]
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/删除项目-清理待完成-亮色.png",
+      "sha256": "405677ef980563a24be00cd15d4788a7fc8d0f0618f738bc8e67e47484abc351",
+      "bytes": 1431575,
+      "size": [
+        1672,
+        941
+      ]
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/删除项目-清理待完成-暗色.png",
+      "sha256": "0c19d8b923176ad664c34409f7f10b90c93530a5ff46b33c48f01c9143be795a",
+      "bytes": 1270856,
+      "size": [
+        1672,
+        941
+      ]
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/删除项目-确认-亮色.png",
+      "sha256": "36a2cd852c107e38226fed7cb7a9587a99cd22279c3107b4897d11e3a7d323ba",
+      "bytes": 1456004,
+      "size": [
+        1672,
+        941
+      ]
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/删除项目-确认-暗色.png",
+      "sha256": "2d8177c21744d189e0553ac0ac864394269189645d1f60464590eaa09e9f5670",
+      "bytes": 1318141,
+      "size": [
+        1672,
+        941
+      ]
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/删除项目-非空影响-亮色.png",
+      "sha256": "5d68a42fe46d0be58f858c97c5121b612930d577b31f9a35cc23f09a2f83550c",
+      "bytes": 1333481,
+      "size": [
+        1672,
+        941
+      ]
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/删除项目-非空影响-暗色.png",
+      "sha256": "04823859cb5471fc95fbafa270bb80b44d583befc34162bf223d94e748c461ba",
+      "bytes": 1307658,
+      "size": [
+        1672,
+        941
+      ]
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/新建项目-亮色.png",
+      "sha256": "b0c018290c5c3b7e007f05a6ff5712ae9ee0eefd56c4670bf3287f363df3426f",
+      "bytes": 1278033,
+      "size": [
+        1672,
+        941
+      ]
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/新建项目-暗色.png",
+      "sha256": "77932e4338704a5dda0f6739412814c6e89050fc5248204a28d8ac6146d07ada",
+      "bytes": 1278490,
+      "size": [
+        1672,
+        941
+      ]
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/空项目概览-亮色.png",
+      "sha256": "bff561671ade8c4e81b6abc11656ec2597ef9f7058b70f91eabb833ec2ab742b",
+      "bytes": 1160266,
+      "size": [
+        1672,
+        941
+      ]
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/空项目概览-暗色.png",
+      "sha256": "b9d010de3d58e9dc384889f68a21148fd16fabd71998a59085fc31b6b1b89438",
+      "bytes": 1332073,
+      "size": [
+        1671,
+        941
+      ]
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/编辑项目-亮色.png",
+      "sha256": "35163a5a12be6a172105566a4dd4e7be27fe444f8866562d16198372fa388ff5",
+      "bytes": 1560287,
+      "size": [
+        1672,
+        941
+      ]
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/编辑项目-保存失败-亮色.png",
+      "sha256": "417b2603d8c93e3224fb95bdc3383a565318f55f35ad33e46b95952f0108fc8c",
+      "bytes": 1621083,
+      "size": [
+        1672,
+        941
+      ]
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/编辑项目-保存失败-暗色.png",
+      "sha256": "62e75a3fc37705429d256e55f84d631c75ed6585bba0e39bc0dc5a6c66c793b0",
+      "bytes": 1403855,
+      "size": [
+        1672,
+        941
+      ]
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/编辑项目-暗色.png",
+      "sha256": "b16053ae0576e8fdacc30fe291d2888e0b7937520953bcfe8f85d42ab4fbc855",
+      "bytes": 1457374,
+      "size": [
+        1672,
+        941
+      ]
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/项目信息-亮色.png",
+      "sha256": "f339ba36c6f97308e92955bb088b9dc18e45e7e7752e0c0afb0552ab9b79e921",
+      "bytes": 1410872,
+      "size": [
+        1672,
+        941
+      ]
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/项目信息-暗色.png",
+      "sha256": "3f5b9ec9d3a29856ca4c97984c335ec2bf6a1fac5aad42b8ced4354dadd0f04b",
+      "bytes": 1392156,
+      "size": [
+        1672,
+        941
+      ]
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/项目列表-亮色.png",
+      "sha256": "6ccbc429c0c66a29b20aad194bb2aa8bb1cc0e3115db46cd0edc8eb8b80df5b7",
+      "bytes": 1497353,
+      "size": [
+        1672,
+        941
+      ]
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/项目列表-暗色.png",
+      "sha256": "df2e7939be0dd243b6f115969ab84e825f67e4300b1ced8f2020b172353ac2b5",
+      "bytes": 1351368,
+      "size": [
+        1672,
+        941
+      ]
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/项目概览-亮色.png",
+      "sha256": "6fd9b672ca5ee458f632da02a45fb8c7265f599a4694083e681c19003ec5e525",
+      "bytes": 1593699,
+      "size": [
+        1672,
+        941
+      ]
+    },
+    {
+      "path": "docs/design/frontend/generated/项目/项目概览-暗色.png",
+      "sha256": "0ae71d3b51a71145773290998996bed7a52ba9e5bf50f0530b16b2ebde16129c",
+      "bytes": 1430701,
+      "size": [
+        1672,
+        941
+      ]
+    }
+  ]
+}
