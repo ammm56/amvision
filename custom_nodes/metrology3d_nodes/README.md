@@ -4,7 +4,7 @@
 
 ## 节点
 
-- 数据：Read Cloud、Normalize Units、Filter Valid、Denoise Cloud、Crop ROI、Transform Cloud、Save Cloud、Export Cloud。
+- 数据：Read Cloud、Normalize Units、Filter Valid、Denoise Cloud、Resample Cloud、Crop ROI、Transform Cloud、Save Cloud、Export Cloud。
 - 定位与特征：Fit Plane、Build Frame、Extract Boundary、Fit Line、Fit Circle。
 - 测量：Height Query、Measure Step、Measure Extents、Measure Edge Pair、Measure Hole。
 - 显示：Cloud Preview。
@@ -15,7 +15,9 @@ Fit Circle 明确区分等权、`angular-soft-l1` 角区均衡和 `arc-length-so
 
 ## 依赖与启动
 
-`0.1.21` 新增 Denoise Cloud：显式统计邻域/半径邻域，输出保留和剔除的互补源点子集以及摘要；所有属性和原始行号沿原资源系统保存。统计使用其他 K 点的平均距离及总体标准差，半径包含边界且排除自身。参数不设生产默认，当前工件配方不自动去噪。完整云及双平台验证、实际成本见[本批记录](../../docs/development/3d-metrology-method-resources.md)。体素/规则重采样及法向估计尚未交付。
+`0.1.22` 共二十节点，新增 Resample Cloud。行间隔和体素原点代表只选择已有点，全部字段和原始来源保留；体素质心只生成坐标，保留原聚合格、完整成员行号及均值定义，不自动平均颜色、标签或法向。格距/格原点/单位、质心回写误差均为显式配方参数，质心是 estimated 而非实测支持。子集/变换/保存重读不能丢失原聚合格定义；交换格式不保留平台体素 CSR。接线为 Read/Filter Valid → Resample Cloud → Cloud Preview 或 Save Cloud，现有测量配方不自动改线。完整样本与发布验证、页面范围见[重采样记录](../../docs/development/3d-metrology-resample.md)。B03 尚未公开注册，内部法向内核不等于完成交付。
+
+`0.1.21` 新增 Denoise Cloud：显式统计邻域/半径邻域，输出保留和剔除的互补源点子集以及摘要；所有属性和原始行号沿原资源系统保存。统计使用其他 K 点的平均距离及总体标准差，半径包含边界且排除自身。参数不设生产默认，当前工件配方不自动去噪。完整云及双平台验证、实际成本见[本批记录](../../docs/development/3d-metrology-method-resources.md)。
 
 去噪接线为 Read Cloud → Normalize Units（单位需转换时）→ Filter Valid → Denoise Cloud；`cloud` 接后续计算或 Cloud Preview，`removed` 可单独接另一 Cloud Preview/Save Cloud 查看剔除点，`summary` 提供点数和实际统计阈值。统计法 K 必须小于输入点数；半径法使用输入云已确认的物理单位。该操作会改变支持点，不能无审核地插入已有测量配方；对真实细线/孤立结构是否保留须由方法与配方决定。去噪输出清除父云边界连接，不把删点后的旧线段当新边界。
 

@@ -10,10 +10,12 @@ import MeasurementSettingsEditor from '../../../../../../custom_nodes/metrology3
 import BoundarySettingsEditor from '../../../../../../custom_nodes/metrology3d_nodes/frontend/BoundarySettingsEditor.vue'
 import DimensionSettingsEditor from '../../../../../../custom_nodes/metrology3d_nodes/frontend/DimensionSettingsEditor.vue'
 import DenoiseSettingsEditor from '../../../../../../custom_nodes/metrology3d_nodes/frontend/DenoiseSettingsEditor.vue'
+import ResampleSettingsEditor from '../../../../../../custom_nodes/metrology3d_nodes/frontend/ResampleSettingsEditor.vue'
 
 const editors: Record<string, Component> = { 'core.rule.check-limits:rules':WorkflowLimitRulesEditor, 'custom.connector.pin-array-locate:layout': PinLayoutEditor, 'custom.connector.measure:items': MeasurementEditor,
   'custom.opencv.planar-calibrate:control_points':WorkflowCalibrationPointsEditor, 'custom.opencv.planar-calibrate:validation_points':WorkflowCalibrationPointsEditor }
 export function trustedParameterEditor(nodeType: string, parameter: string): Component | undefined {
+  if(nodeType==='custom.metrology3d.resample-cloud'&&parameter==='settings')return ResampleSettingsEditor
   if(nodeType==='custom.metrology3d.denoise-cloud'&&parameter==='settings')return DenoiseSettingsEditor
   if(['custom.metrology3d.measure-extents','custom.metrology3d.measure-edge-pair','custom.metrology3d.measure-hole'].includes(nodeType)&&parameter==='settings')return DimensionSettingsEditor
   if(['custom.metrology3d.extract-boundary','custom.metrology3d.fit-line','custom.metrology3d.fit-circle'].includes(nodeType)&&parameter==='settings')return BoundarySettingsEditor

@@ -116,7 +116,7 @@ def _measure_extents(runtime, parameters, *, cloud=None, groups=(), cancel):
         if cloud is None or groups:
             raise InvalidRequestError("点云长宽必须且仅连接 cloud")
         require_cloud(runtime, cloud, parameters, cloud.observation_id)
-        if cloud.sample_origin == "estimated":
+        if cloud.lineage_kind == "grid-profile":
             raise InvalidRequestError("格剖面必须连接完整边界特征并使用稳健剖面跨度")
     else:
         if cloud is not None:
@@ -253,7 +253,7 @@ def _profile_result(
     """与原极值内核分开计算，复用同一尺寸结果、质量和持久证据出口。"""
     geometry, values, result = None, {}, None
     if reason is None:
-        if cloud.sample_origin != "estimated" or any(
+        if cloud.lineage_kind != "grid-profile" or any(
             s.profile is None for s in cloud.topology.segments
         ):
             raise InvalidRequestError("稳健跨度输入缺少格剖面来源")

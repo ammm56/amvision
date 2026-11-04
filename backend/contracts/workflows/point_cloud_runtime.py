@@ -35,7 +35,10 @@ from backend.contracts.workflows.boundary3d import (
     BoundarySelection,
 )
 from backend.contracts.workflows.boundary3d_resolution import BoundaryResolution
-from backend.contracts.workflows.cloud_preprocess import DenoiseCloudParameters
+from backend.contracts.workflows.cloud_preprocess import (
+    DenoiseCloudParameters,
+    ResampleCloudParameters,
+)
 
 
 class NormalizeCloudUnits(Contract):
@@ -169,6 +172,27 @@ class CropCloudMethod(Contract):
     parameters_sha256: Sha256
 
 
+class ResampleCloudMethod(Contract):
+    """固定采样参数，原点选择与生成质心不混用来源。"""
+
+    method_id: Literal["resample-cloud"]
+    method_version: Annotated[int, Field(strict=True, ge=1, le=1)]
+    parameters: ResampleCloudParameters
+    parameters_sha256: Sha256
+
+    @model_validator(mode="after")
+    def check_digest(self) -> Self:
+        """独立保存原聚合方法时也须校验正文，不能只靠当前派生方法。"""
+        if (
+            sha256(
+                canonical_cloud_json(self.parameters.model_dump(mode="json"))
+            ).hexdigest()
+            != self.parameters_sha256
+        ):
+            raise ValueError("重采样方法参数摘要不一致")
+        return self
+
+
 class PlaneSupportMethod(Contract):
     """稳健支持视图；indices_sha256 覆盖递增父逻辑行号的 LE 字节。"""
 
@@ -220,6 +244,7 @@ CloudMethod = Annotated[
     NormalizeCloudMethod
     | FilterCloudMethod
     | DenoiseCloudMethod
+    | ResampleCloudMethod
     | CropCloudMethod
     | PlaneSupportMethod
     | TransformCloudMethod
@@ -329,6 +354,8 @@ class CloudReference(Contract):
     )
     vertex_kind: Literal["source", "generated"] | None
     topology: BoundaryTopology | None
+    lineage_kind: Literal["surface", "grid-profile", "voxel-aggregate"] | None = None
+    voxel_aggregation: ResampleCloudMethod | None = None
 
     def unavailable(self, reason: str, *, spatial=None) -> Self:
         """保留输入追溯但清除资源身份，不伪造未执行算法的支持点。"""
@@ -343,6 +370,8 @@ class CloudReference(Contract):
             "sample_origin",
             "vertex_kind",
             "topology",
+            "lineage_kind",
+            "voxel_aggregation",
         ):
             raw[name] = None
         return type(self).model_validate(raw)
@@ -361,7 +390,13 @@ class CloudReference(Contract):
         if self.state == "unavailable":
             if self.reason is None or any(
                 value is not None
-                for value in (*identity, self.source_metadata, self.topology)
+                for value in (
+                    *identity,
+                    self.source_metadata,
+                    self.topology,
+                    self.lineage_kind,
+                    self.voxel_aggregation,
+                )
             ):
                 raise ValueError("unavailable 不能携带点云资源")
         else:
@@ -378,6 +413,21 @@ class CloudReference(Contract):
                 or self.sample_origin not in ("interpolated", "estimated")
             ):
                 raise ValueError("生成顶点只保存坐标，不自动插值原始属性")
+            if (self.vertex_kind == "generated") != (self.lineage_kind is not None):
+                raise ValueError("生成顶点必须声明明确的来源种类")
+            if (self.lineage_kind == "voxel-aggregate") != (
+                self.voxel_aggregation is not None
+            ):
+                raise ValueError("体素来源必须保留原聚合方法与格坐标")
+            if (
+                self.voxel_aggregation is not None
+                and self.voxel_aggregation.parameters.settings.kind != "voxel-centroid"
+            ):
+                raise ValueError("体素来源方法必须是质心聚合")
+            if self.lineage_kind is not None and self.sample_origin != (
+                "interpolated" if self.lineage_kind == "surface" else "estimated"
+            ):
+                raise ValueError("生成顶点来源种类与采样性质不一致")
             if (
                 self.topology is not None
                 and self.topology.point_count != self.point_count

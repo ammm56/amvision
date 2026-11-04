@@ -41,6 +41,22 @@ def denoise(request):
     }
 
 
+def resample(request):
+    """显式重采样沿现有运行输入、错误分类及结果封装执行。"""
+    from backend.contracts.workflows.cloud_preprocess import ResampleCloudParameters
+    from custom_nodes.metrology3d_nodes.shared.resample import resample_cloud
+
+    p = ResampleCloudParameters.model_validate(request.parameters)
+    env = require_node_runtime(request)
+    cloud, summary = resample_cloud(
+        env.runtime, cloud_input(request, env.runtime), p, cancel=env.cancel
+    )
+    return {
+        "cloud": cloud.model_dump(mode="json"),
+        "summary": build_value_payload(summary),
+    }
+
+
 def read(request):
     """文件与资产使用相同运行引用，禁止两种来源同时输入。"""
     p = ReadCloudParameters.model_validate(request.parameters)

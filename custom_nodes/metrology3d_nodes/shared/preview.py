@@ -63,10 +63,14 @@ def _build_cloud_preview(runtime, reference, options, *, policy, cancel):
     ):
         raise InvalidRequestError("显示标量字段或分量无效")
     row_bytes = sum(FIELD_WIDTHS[f.dtype] * f.components for f in fields.values())
+    access_bytes = row_bytes + (
+        128 if reference.lineage_kind == "voxel-aggregate" else 64
+    )
     rows = min(
+        max(1, reference.point_count),
         runtime.policy.chunk_rows,
-        runtime.policy.max_working_bytes // (row_bytes + 64),
-        policy.max_working_bytes // (row_bytes + 64),
+        runtime.policy.max_working_bytes // access_bytes,
+        policy.max_working_bytes // access_bytes,
     )
     if rows < 1:
         return unavailable_body(reference, "preview_size_limit")
@@ -93,6 +97,8 @@ def _build_cloud_preview(runtime, reference, options, *, policy, cancel):
             layout.append(("colors", "uint8", 3))
         elif color.mode == "scalar":
             layout.append(("scalar", fields[color.field].dtype, 1))
+        if reference.lineage_kind == "voxel-aggregate":
+            layout.extend([("voxel_keys", "int64", 3), ("member_counts", "uint64", 1)])
         descriptors, length = [], 0
         for name, dtype, components in layout:
             width = FIELD_WIDTHS[dtype]
@@ -110,13 +116,16 @@ def _build_cloud_preview(runtime, reference, options, *, policy, cancel):
             )
             length += size
         # bytearray、base64 bytes/str、精确采样序号和当前块都必须有预算。
-        work = (
-            length
-            + 4 * (4 * ((length + 2) // 3))
-            + shown * 24
-            + rows * (row_bytes + 64)
+        output_work = length + 4 * (4 * ((length + 2) // 3)) + shown * 24
+        rows = min(
+            rows,
+            (
+                min(policy.max_working_bytes, runtime.policy.max_working_bytes)
+                - output_work
+            )
+            // access_bytes,
         )
-        if length > policy.max_data_bytes or work > policy.max_working_bytes:
+        if length > policy.max_data_bytes or rows < 1:
             return unavailable_body(reference, "preview_size_limit")
         body = dict(
             type="point-cloud-preview",
@@ -130,6 +139,10 @@ def _build_cloud_preview(runtime, reference, options, *, policy, cancel):
             source_point_count=runtime.source_point_count(reference),
             point_count=reference.point_count,
             vertex_kind=reference.vertex_kind,
+            lineage_kind=reference.lineage_kind,
+            voxel_aggregation=reference.voxel_aggregation.model_dump(mode="json")
+            if reference.voxel_aggregation
+            else None,
             display_point_count=shown,
             excluded_non_finite_count=excluded,
             sampling=dict(
@@ -191,6 +204,10 @@ def _build_cloud_preview(runtime, reference, options, *, policy, cancel):
                     )[selected]
                 else:
                     arrays["vertex_indices"][written:end, 0] = start + selected
+                if reference.lineage_kind == "voxel-aggregate":
+                    voxel_keys, member_counts = view.voxel_metadata(start, stop)
+                    arrays["voxel_keys"][written:end] = voxel_keys[selected]
+                    arrays["member_counts"][written:end, 0] = member_counts[selected]
                 if color.mode == "rgb":
                     arrays["colors"][written:end] = block["colors"][selected]
                 elif color.mode == "scalar":

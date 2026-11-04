@@ -65,7 +65,7 @@ export function decimal(value: unknown): Decimal {
 
 export interface CloudDisplayData {
   positions: Float32Array; colors: Float32Array; count: number; origin: number[]
-  point(index: number): { sourceIndex: string | null; vertexIndex?: string; xyz: number[]; scalar: string | null }
+  point(index: number): { sourceIndex: string | null; vertexIndex?: string; voxelKey?: string[]; memberCount?: string; voxelFrame?: string; voxelUnit?: string; xyz: number[]; scalar: string | null }
   dispose(): void
 }
 
@@ -90,6 +90,14 @@ export async function decodeCloudPreview(value: unknown, policy: CloudRendererPo
   const n = count(body.display_point_count), originalCount = count(body.source_point_count), pointCount = count(body.point_count), size = count(data.content_length)
   if (!['source', 'generated'].includes(String(body.vertex_kind))) throw new Error('cloud_preview_invalid')
   const generated = body.vertex_kind === 'generated'
+  const voxel = body.lineage_kind === 'voxel-aggregate'
+  if(voxel&&!generated)throw new Error('cloud_preview_invalid')
+  const aggregation=voxel?object(body.voxel_aggregation):null
+  const grid=aggregation?object(object(aggregation.parameters).settings):null
+  if(grid){
+    vector(grid.grid_origin)
+    if(aggregation!.method_id!=='resample-cloud'||aggregation!.method_version!==1||grid.kind!=='voxel-centroid'||typeof grid.frame_id!=='string'||!grid.frame_id||!['m','mm','um'].includes(String(grid.length_unit))||typeof grid.voxel_size!=='number'||!Number.isFinite(grid.voxel_size)||grid.voxel_size<=0)throw new Error('cloud_preview_invalid')
+  }
   if (!n || n > pointCount || n > policy.max_points || size > policy.max_data_bytes) throw new Error('cloud_preview_capacity')
   const content = data.content
   if (typeof content !== 'string' || content.length !== 4 * Math.ceil(size / 3) || data.encoding !== 'base64' || data.checksum_algorithm !== 'sha256') throw new Error('cloud_preview_invalid')
@@ -103,15 +111,17 @@ export async function decodeCloudPreview(value: unknown, policy: CloudRendererPo
     const raw = await decodePreviewBytes(data, signal)
     const indexField = generated ? 'vertex_indices' : 'source_indices'
     const expected = color.mode === 'solid' ? ['positions', indexField] : color.mode === 'rgb' ? ['positions', indexField, 'colors'] : color.mode === 'scalar' ? ['positions', indexField, 'scalar'] : []
+    if(voxel&&expected.length)expected.push('voxel_keys','member_counts')
     if (!Array.isArray(data.fields) || !expected.length || data.fields.length !== expected.length) throw new Error('cloud_preview_invalid')
     let end = 0
     const fields = data.fields.map((item, index): Field => {
       const f = object(item)
       const width = widths[String(f.dtype)]
-      const components = index === 0 || f.name === 'colors' ? 3 : 1
+      const components = index === 0 || f.name === 'colors' || f.name === 'voxel_keys' ? 3 : 1
       const offset = width ? Math.ceil(end / width) * width : -1
       if (!width || f.name !== expected[index] || f.count !== n || f.components !== components || f.offset !== offset || f.byte_length !== n * components * width) throw new Error('cloud_preview_invalid')
       if (index === 0 && !['float32', 'float64'].includes(String(f.dtype)) || index === 1 && f.dtype !== 'uint64' || f.name === 'colors' && f.dtype !== 'uint8') throw new Error('cloud_preview_invalid')
+      if(f.name==='voxel_keys'&&f.dtype!=='int64'||f.name==='member_counts'&&f.dtype!=='uint64')throw new Error('cloud_preview_invalid')
       for (let i = end; i < offset; i++) if (raw[i] !== 0) throw new Error('cloud_preview_invalid')
       end = offset + n * components * width
       if (end > size) throw new Error('cloud_preview_invalid')
@@ -130,6 +140,7 @@ export async function decodeCloudPreview(value: unknown, policy: CloudRendererPo
       const sourceIndex = scalar(view, fields[1]!, i) as bigint
       if (sourceIndex >= BigInt(generated ? pointCount : originalCount) || generated && sourceIndex <= previous) throw new Error('cloud_preview_invalid')
       previous = sourceIndex
+      if(voxel){const members=scalar(view,fields.at(-1)!,i) as bigint;if(members<1n||members>BigInt(originalCount))throw new Error('cloud_preview_invalid')}
       for (let c = 0; c < 3; c++) {
         const position = scalar(view, fields[0]!, i * 3 + c) as number
         const local = position - origin[c]!
@@ -150,7 +161,9 @@ export async function decodeCloudPreview(value: unknown, policy: CloudRendererPo
     return { positions, colors, count: n, origin, point(index) {
       if (released || !Number.isInteger(index) || index < 0 || index >= n) throw new Error('cloud_point_unavailable')
       const identity = scalar(view, fields[1]!, index).toString()
-      return { sourceIndex: generated ? null : identity, ...(generated ? { vertexIndex: identity } : {}), xyz: [0, 1, 2].map(c => scalar(view, fields[0]!, index * 3 + c) as number), scalar: color.mode === 'scalar' ? scalar(view, fields[2]!, index).toString() : null }
+      return { sourceIndex: generated ? null : identity, ...(generated ? { vertexIndex: identity } : {}),
+        ...(voxel?{voxelKey:[0,1,2].map(c=>scalar(view,fields.at(-2)!,index*3+c).toString()),memberCount:scalar(view,fields.at(-1)!,index).toString(),voxelFrame:String(grid!.frame_id),voxelUnit:String(grid!.length_unit)}:{}),
+        xyz: [0, 1, 2].map(c => scalar(view, fields[0]!, index * 3 + c) as number), scalar: color.mode === 'scalar' ? scalar(view, fields[2]!, index).toString() : null }
     }, dispose: release }
   } catch (error) { release(); throw error }
 }

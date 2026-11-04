@@ -70,3 +70,21 @@ it.each(['source','generated'])('decodes ordered %s identities without conflatin
   const data=await decodeCloudPreview(input,policy,new AbortController().signal)
   try{if(kind==='source'){expect(data.point(0).sourceIndex).toBe('99');expect(data.point(1).sourceIndex).toBe('0')}else{expect(data.point(1).sourceIndex).toBeNull();expect(data.point(1).vertexIndex).toBe('1')}}finally{data.dispose()}
 })
+
+it('keeps voxel keys and complete member counts separate from original row identity',async()=>{
+  const input=await body(),raw=new Uint8Array(104),view=new DataView(raw.buffer)
+  raw.set(Uint8Array.from(atob(input.data.content),c=>c.charCodeAt(0)))
+  input.vertex_kind='generated';input.point_count=2;input.data.fields[1]!.name='vertex_indices'
+  view.setBigUint64(32,1n,true)
+  ;[-2n,0n,1n,4n,5n,6n].forEach((v,i)=>view.setBigInt64(40+i*8,v,true))
+  view.setBigUint64(88,10n,true);view.setBigUint64(96,20n,true)
+  input.data.fields.push({name:'voxel_keys',dtype:'int64',components:3,count:2,offset:40,byte_length:48},
+    {name:'member_counts',dtype:'uint64',components:1,count:2,offset:88,byte_length:16})
+  input.data.content_length=104;input.data.content=btoa(String.fromCharCode(...raw))
+  input.data.checksum=[...new Uint8Array(await crypto.subtle.digest('SHA-256',raw))].map(b=>b.toString(16).padStart(2,'0')).join('')
+  const voxel_aggregation={method_id:'resample-cloud',method_version:1,parameters:{settings:{kind:'voxel-centroid',grid_origin:[0,0,0],voxel_size:1,frame_id:'original',length_unit:'mm'}}}
+  const data=await decodeCloudPreview({...input,lineage_kind:'voxel-aggregate',voxel_aggregation},policy,new AbortController().signal)
+  try{expect(data.point(0)).toMatchObject({sourceIndex:null,vertexIndex:'0',voxelKey:['-2','0','1'],memberCount:'10',voxelFrame:'original',voxelUnit:'mm'})}finally{data.dispose()}
+  await expect(decodeCloudPreview({...input,lineage_kind:'voxel-aggregate'},policy,new AbortController().signal)).rejects.toThrow()
+  await expect(decodeCloudPreview({...input,lineage_kind:'voxel-aggregate',vertex_kind:'source'},policy,new AbortController().signal)).rejects.toThrow()
+})

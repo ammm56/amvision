@@ -641,6 +641,7 @@
                         "filter-valid": "#/$defs/FilterCloudMethod",
                         "fit-plane-support": "#/$defs/PlaneSupportMethod",
                         "normalize-units": "#/$defs/NormalizeCloudMethod",
+                        "resample-cloud": "#/$defs/ResampleCloudMethod",
                         "select-boundary": "#/$defs/BoundarySelectionMethod",
                         "transform-cloud": "#/$defs/TransformCloudMethod"
                       },
@@ -925,6 +926,214 @@
                           "selection"
                         ],
                         "title": "DenoiseCloudMethod",
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "description": "固定采样参数，原点选择与生成质心不混用来源。",
+                        "properties": {
+                          "method_id": {
+                            "const": "resample-cloud",
+                            "title": "Method Id",
+                            "type": "string"
+                          },
+                          "method_version": {
+                            "maximum": 1,
+                            "minimum": 1,
+                            "title": "Method Version",
+                            "type": "integer"
+                          },
+                          "parameters": {
+                            "additionalProperties": false,
+                            "description": "三种明确重采样方法，不包含自动回退或隐式去噪。",
+                            "properties": {
+                              "settings": {
+                                "discriminator": {
+                                  "mapping": {
+                                    "stride": "#/$defs/StrideResample",
+                                    "voxel-centroid": "#/$defs/VoxelCentroid",
+                                    "voxel-representative": "#/$defs/VoxelRepresentative"
+                                  },
+                                  "propertyName": "kind"
+                                },
+                                "oneOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "description": "按当前逻辑行抽取；offset 不是原始文件行号。",
+                                    "properties": {
+                                      "kind": {
+                                        "const": "stride",
+                                        "title": "Kind",
+                                        "type": "string"
+                                      },
+                                      "every_k_points": {
+                                        "maximum": 9007199254740991,
+                                        "minimum": 1,
+                                        "title": "Every K Points",
+                                        "type": "integer"
+                                      },
+                                      "offset": {
+                                        "maximum": 9007199254740991,
+                                        "minimum": 0,
+                                        "title": "Offset",
+                                        "type": "integer"
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "every_k_points",
+                                      "offset"
+                                    ],
+                                    "title": "StrideResample",
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "description": "每格选距质心最近的原点，所有属性逐位保留。",
+                                    "properties": {
+                                      "voxel_size": {
+                                        "exclusiveMinimum": 0,
+                                        "title": "Voxel Size",
+                                        "type": "number"
+                                      },
+                                      "grid_origin": {
+                                        "maxItems": 3,
+                                        "minItems": 3,
+                                        "prefixItems": [
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "number"
+                                          }
+                                        ],
+                                        "title": "Grid Origin",
+                                        "type": "array"
+                                      },
+                                      "frame_id": {
+                                        "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                        "title": "Frame Id",
+                                        "type": "string"
+                                      },
+                                      "length_unit": {
+                                        "enum": [
+                                          "m",
+                                          "mm",
+                                          "um"
+                                        ],
+                                        "title": "Length Unit",
+                                        "type": "string"
+                                      },
+                                      "kind": {
+                                        "const": "voxel-representative",
+                                        "title": "Kind",
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "voxel_size",
+                                      "grid_origin",
+                                      "frame_id",
+                                      "length_unit",
+                                      "kind"
+                                    ],
+                                    "title": "VoxelRepresentative",
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "description": "等权质心仅生成坐标，误差上限采用输入物理单位。",
+                                    "properties": {
+                                      "voxel_size": {
+                                        "exclusiveMinimum": 0,
+                                        "title": "Voxel Size",
+                                        "type": "number"
+                                      },
+                                      "grid_origin": {
+                                        "maxItems": 3,
+                                        "minItems": 3,
+                                        "prefixItems": [
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "number"
+                                          }
+                                        ],
+                                        "title": "Grid Origin",
+                                        "type": "array"
+                                      },
+                                      "frame_id": {
+                                        "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                        "title": "Frame Id",
+                                        "type": "string"
+                                      },
+                                      "length_unit": {
+                                        "enum": [
+                                          "m",
+                                          "mm",
+                                          "um"
+                                        ],
+                                        "title": "Length Unit",
+                                        "type": "string"
+                                      },
+                                      "kind": {
+                                        "const": "voxel-centroid",
+                                        "title": "Kind",
+                                        "type": "string"
+                                      },
+                                      "max_position_error": {
+                                        "exclusiveMinimum": 0,
+                                        "title": "Max Position Error",
+                                        "type": "number"
+                                      },
+                                      "attributes": {
+                                        "const": "positions-only",
+                                        "title": "Attributes",
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "voxel_size",
+                                      "grid_origin",
+                                      "frame_id",
+                                      "length_unit",
+                                      "kind",
+                                      "max_position_error",
+                                      "attributes"
+                                    ],
+                                    "title": "VoxelCentroid",
+                                    "type": "object"
+                                  }
+                                ],
+                                "title": "Settings"
+                              }
+                            },
+                            "required": [
+                              "settings"
+                            ],
+                            "title": "ResampleCloudParameters",
+                            "type": "object"
+                          },
+                          "parameters_sha256": {
+                            "pattern": "^[0-9a-f]{64}$",
+                            "title": "Parameters Sha256",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "method_id",
+                          "method_version",
+                          "parameters",
+                          "parameters_sha256"
+                        ],
+                        "title": "ResampleCloudMethod",
                         "type": "object"
                       },
                       {
@@ -16223,6 +16432,239 @@
                 "type": "null"
               }
             ]
+          },
+          "lineage_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "surface",
+                  "grid-profile",
+                  "voxel-aggregate"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Lineage Kind"
+          },
+          "voxel_aggregation": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "description": "固定采样参数，原点选择与生成质心不混用来源。",
+                "properties": {
+                  "method_id": {
+                    "const": "resample-cloud",
+                    "title": "Method Id",
+                    "type": "string"
+                  },
+                  "method_version": {
+                    "maximum": 1,
+                    "minimum": 1,
+                    "title": "Method Version",
+                    "type": "integer"
+                  },
+                  "parameters": {
+                    "additionalProperties": false,
+                    "description": "三种明确重采样方法，不包含自动回退或隐式去噪。",
+                    "properties": {
+                      "settings": {
+                        "discriminator": {
+                          "mapping": {
+                            "stride": "#/$defs/StrideResample",
+                            "voxel-centroid": "#/$defs/VoxelCentroid",
+                            "voxel-representative": "#/$defs/VoxelRepresentative"
+                          },
+                          "propertyName": "kind"
+                        },
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "description": "按当前逻辑行抽取；offset 不是原始文件行号。",
+                            "properties": {
+                              "kind": {
+                                "const": "stride",
+                                "title": "Kind",
+                                "type": "string"
+                              },
+                              "every_k_points": {
+                                "maximum": 9007199254740991,
+                                "minimum": 1,
+                                "title": "Every K Points",
+                                "type": "integer"
+                              },
+                              "offset": {
+                                "maximum": 9007199254740991,
+                                "minimum": 0,
+                                "title": "Offset",
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "every_k_points",
+                              "offset"
+                            ],
+                            "title": "StrideResample",
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "description": "每格选距质心最近的原点，所有属性逐位保留。",
+                            "properties": {
+                              "voxel_size": {
+                                "exclusiveMinimum": 0,
+                                "title": "Voxel Size",
+                                "type": "number"
+                              },
+                              "grid_origin": {
+                                "maxItems": 3,
+                                "minItems": 3,
+                                "prefixItems": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  }
+                                ],
+                                "title": "Grid Origin",
+                                "type": "array"
+                              },
+                              "frame_id": {
+                                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                "title": "Frame Id",
+                                "type": "string"
+                              },
+                              "length_unit": {
+                                "enum": [
+                                  "m",
+                                  "mm",
+                                  "um"
+                                ],
+                                "title": "Length Unit",
+                                "type": "string"
+                              },
+                              "kind": {
+                                "const": "voxel-representative",
+                                "title": "Kind",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "voxel_size",
+                              "grid_origin",
+                              "frame_id",
+                              "length_unit",
+                              "kind"
+                            ],
+                            "title": "VoxelRepresentative",
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "description": "等权质心仅生成坐标，误差上限采用输入物理单位。",
+                            "properties": {
+                              "voxel_size": {
+                                "exclusiveMinimum": 0,
+                                "title": "Voxel Size",
+                                "type": "number"
+                              },
+                              "grid_origin": {
+                                "maxItems": 3,
+                                "minItems": 3,
+                                "prefixItems": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  }
+                                ],
+                                "title": "Grid Origin",
+                                "type": "array"
+                              },
+                              "frame_id": {
+                                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                "title": "Frame Id",
+                                "type": "string"
+                              },
+                              "length_unit": {
+                                "enum": [
+                                  "m",
+                                  "mm",
+                                  "um"
+                                ],
+                                "title": "Length Unit",
+                                "type": "string"
+                              },
+                              "kind": {
+                                "const": "voxel-centroid",
+                                "title": "Kind",
+                                "type": "string"
+                              },
+                              "max_position_error": {
+                                "exclusiveMinimum": 0,
+                                "title": "Max Position Error",
+                                "type": "number"
+                              },
+                              "attributes": {
+                                "const": "positions-only",
+                                "title": "Attributes",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "voxel_size",
+                              "grid_origin",
+                              "frame_id",
+                              "length_unit",
+                              "kind",
+                              "max_position_error",
+                              "attributes"
+                            ],
+                            "title": "VoxelCentroid",
+                            "type": "object"
+                          }
+                        ],
+                        "title": "Settings"
+                      }
+                    },
+                    "required": [
+                      "settings"
+                    ],
+                    "title": "ResampleCloudParameters",
+                    "type": "object"
+                  },
+                  "parameters_sha256": {
+                    "pattern": "^[0-9a-f]{64}$",
+                    "title": "Parameters Sha256",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "method_id",
+                  "method_version",
+                  "parameters",
+                  "parameters_sha256"
+                ],
+                "title": "ResampleCloudMethod",
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
@@ -17505,6 +17947,7 @@
                                       "filter-valid": "#/$defs/FilterCloudMethod",
                                       "fit-plane-support": "#/$defs/PlaneSupportMethod",
                                       "normalize-units": "#/$defs/NormalizeCloudMethod",
+                                      "resample-cloud": "#/$defs/ResampleCloudMethod",
                                       "select-boundary": "#/$defs/BoundarySelectionMethod",
                                       "transform-cloud": "#/$defs/TransformCloudMethod"
                                     },
@@ -17789,6 +18232,214 @@
                                         "selection"
                                       ],
                                       "title": "DenoiseCloudMethod",
+                                      "type": "object"
+                                    },
+                                    {
+                                      "additionalProperties": false,
+                                      "description": "固定采样参数，原点选择与生成质心不混用来源。",
+                                      "properties": {
+                                        "method_id": {
+                                          "const": "resample-cloud",
+                                          "title": "Method Id",
+                                          "type": "string"
+                                        },
+                                        "method_version": {
+                                          "maximum": 1,
+                                          "minimum": 1,
+                                          "title": "Method Version",
+                                          "type": "integer"
+                                        },
+                                        "parameters": {
+                                          "additionalProperties": false,
+                                          "description": "三种明确重采样方法，不包含自动回退或隐式去噪。",
+                                          "properties": {
+                                            "settings": {
+                                              "discriminator": {
+                                                "mapping": {
+                                                  "stride": "#/$defs/StrideResample",
+                                                  "voxel-centroid": "#/$defs/VoxelCentroid",
+                                                  "voxel-representative": "#/$defs/VoxelRepresentative"
+                                                },
+                                                "propertyName": "kind"
+                                              },
+                                              "oneOf": [
+                                                {
+                                                  "additionalProperties": false,
+                                                  "description": "按当前逻辑行抽取；offset 不是原始文件行号。",
+                                                  "properties": {
+                                                    "kind": {
+                                                      "const": "stride",
+                                                      "title": "Kind",
+                                                      "type": "string"
+                                                    },
+                                                    "every_k_points": {
+                                                      "maximum": 9007199254740991,
+                                                      "minimum": 1,
+                                                      "title": "Every K Points",
+                                                      "type": "integer"
+                                                    },
+                                                    "offset": {
+                                                      "maximum": 9007199254740991,
+                                                      "minimum": 0,
+                                                      "title": "Offset",
+                                                      "type": "integer"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "kind",
+                                                    "every_k_points",
+                                                    "offset"
+                                                  ],
+                                                  "title": "StrideResample",
+                                                  "type": "object"
+                                                },
+                                                {
+                                                  "additionalProperties": false,
+                                                  "description": "每格选距质心最近的原点，所有属性逐位保留。",
+                                                  "properties": {
+                                                    "voxel_size": {
+                                                      "exclusiveMinimum": 0,
+                                                      "title": "Voxel Size",
+                                                      "type": "number"
+                                                    },
+                                                    "grid_origin": {
+                                                      "maxItems": 3,
+                                                      "minItems": 3,
+                                                      "prefixItems": [
+                                                        {
+                                                          "type": "number"
+                                                        },
+                                                        {
+                                                          "type": "number"
+                                                        },
+                                                        {
+                                                          "type": "number"
+                                                        }
+                                                      ],
+                                                      "title": "Grid Origin",
+                                                      "type": "array"
+                                                    },
+                                                    "frame_id": {
+                                                      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                                      "title": "Frame Id",
+                                                      "type": "string"
+                                                    },
+                                                    "length_unit": {
+                                                      "enum": [
+                                                        "m",
+                                                        "mm",
+                                                        "um"
+                                                      ],
+                                                      "title": "Length Unit",
+                                                      "type": "string"
+                                                    },
+                                                    "kind": {
+                                                      "const": "voxel-representative",
+                                                      "title": "Kind",
+                                                      "type": "string"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "voxel_size",
+                                                    "grid_origin",
+                                                    "frame_id",
+                                                    "length_unit",
+                                                    "kind"
+                                                  ],
+                                                  "title": "VoxelRepresentative",
+                                                  "type": "object"
+                                                },
+                                                {
+                                                  "additionalProperties": false,
+                                                  "description": "等权质心仅生成坐标，误差上限采用输入物理单位。",
+                                                  "properties": {
+                                                    "voxel_size": {
+                                                      "exclusiveMinimum": 0,
+                                                      "title": "Voxel Size",
+                                                      "type": "number"
+                                                    },
+                                                    "grid_origin": {
+                                                      "maxItems": 3,
+                                                      "minItems": 3,
+                                                      "prefixItems": [
+                                                        {
+                                                          "type": "number"
+                                                        },
+                                                        {
+                                                          "type": "number"
+                                                        },
+                                                        {
+                                                          "type": "number"
+                                                        }
+                                                      ],
+                                                      "title": "Grid Origin",
+                                                      "type": "array"
+                                                    },
+                                                    "frame_id": {
+                                                      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                                      "title": "Frame Id",
+                                                      "type": "string"
+                                                    },
+                                                    "length_unit": {
+                                                      "enum": [
+                                                        "m",
+                                                        "mm",
+                                                        "um"
+                                                      ],
+                                                      "title": "Length Unit",
+                                                      "type": "string"
+                                                    },
+                                                    "kind": {
+                                                      "const": "voxel-centroid",
+                                                      "title": "Kind",
+                                                      "type": "string"
+                                                    },
+                                                    "max_position_error": {
+                                                      "exclusiveMinimum": 0,
+                                                      "title": "Max Position Error",
+                                                      "type": "number"
+                                                    },
+                                                    "attributes": {
+                                                      "const": "positions-only",
+                                                      "title": "Attributes",
+                                                      "type": "string"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "voxel_size",
+                                                    "grid_origin",
+                                                    "frame_id",
+                                                    "length_unit",
+                                                    "kind",
+                                                    "max_position_error",
+                                                    "attributes"
+                                                  ],
+                                                  "title": "VoxelCentroid",
+                                                  "type": "object"
+                                                }
+                                              ],
+                                              "title": "Settings"
+                                            }
+                                          },
+                                          "required": [
+                                            "settings"
+                                          ],
+                                          "title": "ResampleCloudParameters",
+                                          "type": "object"
+                                        },
+                                        "parameters_sha256": {
+                                          "pattern": "^[0-9a-f]{64}$",
+                                          "title": "Parameters Sha256",
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "method_id",
+                                        "method_version",
+                                        "parameters",
+                                        "parameters_sha256"
+                                      ],
+                                      "title": "ResampleCloudMethod",
                                       "type": "object"
                                     },
                                     {
@@ -33087,6 +33738,239 @@
                               "type": "null"
                             }
                           ]
+                        },
+                        "lineage_kind": {
+                          "anyOf": [
+                            {
+                              "enum": [
+                                "surface",
+                                "grid-profile",
+                                "voxel-aggregate"
+                              ],
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "default": null,
+                          "title": "Lineage Kind"
+                        },
+                        "voxel_aggregation": {
+                          "anyOf": [
+                            {
+                              "additionalProperties": false,
+                              "description": "固定采样参数，原点选择与生成质心不混用来源。",
+                              "properties": {
+                                "method_id": {
+                                  "const": "resample-cloud",
+                                  "title": "Method Id",
+                                  "type": "string"
+                                },
+                                "method_version": {
+                                  "maximum": 1,
+                                  "minimum": 1,
+                                  "title": "Method Version",
+                                  "type": "integer"
+                                },
+                                "parameters": {
+                                  "additionalProperties": false,
+                                  "description": "三种明确重采样方法，不包含自动回退或隐式去噪。",
+                                  "properties": {
+                                    "settings": {
+                                      "discriminator": {
+                                        "mapping": {
+                                          "stride": "#/$defs/StrideResample",
+                                          "voxel-centroid": "#/$defs/VoxelCentroid",
+                                          "voxel-representative": "#/$defs/VoxelRepresentative"
+                                        },
+                                        "propertyName": "kind"
+                                      },
+                                      "oneOf": [
+                                        {
+                                          "additionalProperties": false,
+                                          "description": "按当前逻辑行抽取；offset 不是原始文件行号。",
+                                          "properties": {
+                                            "kind": {
+                                              "const": "stride",
+                                              "title": "Kind",
+                                              "type": "string"
+                                            },
+                                            "every_k_points": {
+                                              "maximum": 9007199254740991,
+                                              "minimum": 1,
+                                              "title": "Every K Points",
+                                              "type": "integer"
+                                            },
+                                            "offset": {
+                                              "maximum": 9007199254740991,
+                                              "minimum": 0,
+                                              "title": "Offset",
+                                              "type": "integer"
+                                            }
+                                          },
+                                          "required": [
+                                            "kind",
+                                            "every_k_points",
+                                            "offset"
+                                          ],
+                                          "title": "StrideResample",
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "description": "每格选距质心最近的原点，所有属性逐位保留。",
+                                          "properties": {
+                                            "voxel_size": {
+                                              "exclusiveMinimum": 0,
+                                              "title": "Voxel Size",
+                                              "type": "number"
+                                            },
+                                            "grid_origin": {
+                                              "maxItems": 3,
+                                              "minItems": 3,
+                                              "prefixItems": [
+                                                {
+                                                  "type": "number"
+                                                },
+                                                {
+                                                  "type": "number"
+                                                },
+                                                {
+                                                  "type": "number"
+                                                }
+                                              ],
+                                              "title": "Grid Origin",
+                                              "type": "array"
+                                            },
+                                            "frame_id": {
+                                              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                              "title": "Frame Id",
+                                              "type": "string"
+                                            },
+                                            "length_unit": {
+                                              "enum": [
+                                                "m",
+                                                "mm",
+                                                "um"
+                                              ],
+                                              "title": "Length Unit",
+                                              "type": "string"
+                                            },
+                                            "kind": {
+                                              "const": "voxel-representative",
+                                              "title": "Kind",
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "voxel_size",
+                                            "grid_origin",
+                                            "frame_id",
+                                            "length_unit",
+                                            "kind"
+                                          ],
+                                          "title": "VoxelRepresentative",
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "description": "等权质心仅生成坐标，误差上限采用输入物理单位。",
+                                          "properties": {
+                                            "voxel_size": {
+                                              "exclusiveMinimum": 0,
+                                              "title": "Voxel Size",
+                                              "type": "number"
+                                            },
+                                            "grid_origin": {
+                                              "maxItems": 3,
+                                              "minItems": 3,
+                                              "prefixItems": [
+                                                {
+                                                  "type": "number"
+                                                },
+                                                {
+                                                  "type": "number"
+                                                },
+                                                {
+                                                  "type": "number"
+                                                }
+                                              ],
+                                              "title": "Grid Origin",
+                                              "type": "array"
+                                            },
+                                            "frame_id": {
+                                              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                              "title": "Frame Id",
+                                              "type": "string"
+                                            },
+                                            "length_unit": {
+                                              "enum": [
+                                                "m",
+                                                "mm",
+                                                "um"
+                                              ],
+                                              "title": "Length Unit",
+                                              "type": "string"
+                                            },
+                                            "kind": {
+                                              "const": "voxel-centroid",
+                                              "title": "Kind",
+                                              "type": "string"
+                                            },
+                                            "max_position_error": {
+                                              "exclusiveMinimum": 0,
+                                              "title": "Max Position Error",
+                                              "type": "number"
+                                            },
+                                            "attributes": {
+                                              "const": "positions-only",
+                                              "title": "Attributes",
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "voxel_size",
+                                            "grid_origin",
+                                            "frame_id",
+                                            "length_unit",
+                                            "kind",
+                                            "max_position_error",
+                                            "attributes"
+                                          ],
+                                          "title": "VoxelCentroid",
+                                          "type": "object"
+                                        }
+                                      ],
+                                      "title": "Settings"
+                                    }
+                                  },
+                                  "required": [
+                                    "settings"
+                                  ],
+                                  "title": "ResampleCloudParameters",
+                                  "type": "object"
+                                },
+                                "parameters_sha256": {
+                                  "pattern": "^[0-9a-f]{64}$",
+                                  "title": "Parameters Sha256",
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "method_id",
+                                "method_version",
+                                "parameters",
+                                "parameters_sha256"
+                              ],
+                              "title": "ResampleCloudMethod",
+                              "type": "object"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "default": null
                         }
                       },
                       "required": [
@@ -48117,6 +49001,7 @@
                                       "filter-valid": "#/$defs/FilterCloudMethod",
                                       "fit-plane-support": "#/$defs/PlaneSupportMethod",
                                       "normalize-units": "#/$defs/NormalizeCloudMethod",
+                                      "resample-cloud": "#/$defs/ResampleCloudMethod",
                                       "select-boundary": "#/$defs/BoundarySelectionMethod",
                                       "transform-cloud": "#/$defs/TransformCloudMethod"
                                     },
@@ -48401,6 +49286,214 @@
                                         "selection"
                                       ],
                                       "title": "DenoiseCloudMethod",
+                                      "type": "object"
+                                    },
+                                    {
+                                      "additionalProperties": false,
+                                      "description": "固定采样参数，原点选择与生成质心不混用来源。",
+                                      "properties": {
+                                        "method_id": {
+                                          "const": "resample-cloud",
+                                          "title": "Method Id",
+                                          "type": "string"
+                                        },
+                                        "method_version": {
+                                          "maximum": 1,
+                                          "minimum": 1,
+                                          "title": "Method Version",
+                                          "type": "integer"
+                                        },
+                                        "parameters": {
+                                          "additionalProperties": false,
+                                          "description": "三种明确重采样方法，不包含自动回退或隐式去噪。",
+                                          "properties": {
+                                            "settings": {
+                                              "discriminator": {
+                                                "mapping": {
+                                                  "stride": "#/$defs/StrideResample",
+                                                  "voxel-centroid": "#/$defs/VoxelCentroid",
+                                                  "voxel-representative": "#/$defs/VoxelRepresentative"
+                                                },
+                                                "propertyName": "kind"
+                                              },
+                                              "oneOf": [
+                                                {
+                                                  "additionalProperties": false,
+                                                  "description": "按当前逻辑行抽取；offset 不是原始文件行号。",
+                                                  "properties": {
+                                                    "kind": {
+                                                      "const": "stride",
+                                                      "title": "Kind",
+                                                      "type": "string"
+                                                    },
+                                                    "every_k_points": {
+                                                      "maximum": 9007199254740991,
+                                                      "minimum": 1,
+                                                      "title": "Every K Points",
+                                                      "type": "integer"
+                                                    },
+                                                    "offset": {
+                                                      "maximum": 9007199254740991,
+                                                      "minimum": 0,
+                                                      "title": "Offset",
+                                                      "type": "integer"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "kind",
+                                                    "every_k_points",
+                                                    "offset"
+                                                  ],
+                                                  "title": "StrideResample",
+                                                  "type": "object"
+                                                },
+                                                {
+                                                  "additionalProperties": false,
+                                                  "description": "每格选距质心最近的原点，所有属性逐位保留。",
+                                                  "properties": {
+                                                    "voxel_size": {
+                                                      "exclusiveMinimum": 0,
+                                                      "title": "Voxel Size",
+                                                      "type": "number"
+                                                    },
+                                                    "grid_origin": {
+                                                      "maxItems": 3,
+                                                      "minItems": 3,
+                                                      "prefixItems": [
+                                                        {
+                                                          "type": "number"
+                                                        },
+                                                        {
+                                                          "type": "number"
+                                                        },
+                                                        {
+                                                          "type": "number"
+                                                        }
+                                                      ],
+                                                      "title": "Grid Origin",
+                                                      "type": "array"
+                                                    },
+                                                    "frame_id": {
+                                                      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                                      "title": "Frame Id",
+                                                      "type": "string"
+                                                    },
+                                                    "length_unit": {
+                                                      "enum": [
+                                                        "m",
+                                                        "mm",
+                                                        "um"
+                                                      ],
+                                                      "title": "Length Unit",
+                                                      "type": "string"
+                                                    },
+                                                    "kind": {
+                                                      "const": "voxel-representative",
+                                                      "title": "Kind",
+                                                      "type": "string"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "voxel_size",
+                                                    "grid_origin",
+                                                    "frame_id",
+                                                    "length_unit",
+                                                    "kind"
+                                                  ],
+                                                  "title": "VoxelRepresentative",
+                                                  "type": "object"
+                                                },
+                                                {
+                                                  "additionalProperties": false,
+                                                  "description": "等权质心仅生成坐标，误差上限采用输入物理单位。",
+                                                  "properties": {
+                                                    "voxel_size": {
+                                                      "exclusiveMinimum": 0,
+                                                      "title": "Voxel Size",
+                                                      "type": "number"
+                                                    },
+                                                    "grid_origin": {
+                                                      "maxItems": 3,
+                                                      "minItems": 3,
+                                                      "prefixItems": [
+                                                        {
+                                                          "type": "number"
+                                                        },
+                                                        {
+                                                          "type": "number"
+                                                        },
+                                                        {
+                                                          "type": "number"
+                                                        }
+                                                      ],
+                                                      "title": "Grid Origin",
+                                                      "type": "array"
+                                                    },
+                                                    "frame_id": {
+                                                      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                                      "title": "Frame Id",
+                                                      "type": "string"
+                                                    },
+                                                    "length_unit": {
+                                                      "enum": [
+                                                        "m",
+                                                        "mm",
+                                                        "um"
+                                                      ],
+                                                      "title": "Length Unit",
+                                                      "type": "string"
+                                                    },
+                                                    "kind": {
+                                                      "const": "voxel-centroid",
+                                                      "title": "Kind",
+                                                      "type": "string"
+                                                    },
+                                                    "max_position_error": {
+                                                      "exclusiveMinimum": 0,
+                                                      "title": "Max Position Error",
+                                                      "type": "number"
+                                                    },
+                                                    "attributes": {
+                                                      "const": "positions-only",
+                                                      "title": "Attributes",
+                                                      "type": "string"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "voxel_size",
+                                                    "grid_origin",
+                                                    "frame_id",
+                                                    "length_unit",
+                                                    "kind",
+                                                    "max_position_error",
+                                                    "attributes"
+                                                  ],
+                                                  "title": "VoxelCentroid",
+                                                  "type": "object"
+                                                }
+                                              ],
+                                              "title": "Settings"
+                                            }
+                                          },
+                                          "required": [
+                                            "settings"
+                                          ],
+                                          "title": "ResampleCloudParameters",
+                                          "type": "object"
+                                        },
+                                        "parameters_sha256": {
+                                          "pattern": "^[0-9a-f]{64}$",
+                                          "title": "Parameters Sha256",
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "method_id",
+                                        "method_version",
+                                        "parameters",
+                                        "parameters_sha256"
+                                      ],
+                                      "title": "ResampleCloudMethod",
                                       "type": "object"
                                     },
                                     {
@@ -63699,6 +64792,239 @@
                               "type": "null"
                             }
                           ]
+                        },
+                        "lineage_kind": {
+                          "anyOf": [
+                            {
+                              "enum": [
+                                "surface",
+                                "grid-profile",
+                                "voxel-aggregate"
+                              ],
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "default": null,
+                          "title": "Lineage Kind"
+                        },
+                        "voxel_aggregation": {
+                          "anyOf": [
+                            {
+                              "additionalProperties": false,
+                              "description": "固定采样参数，原点选择与生成质心不混用来源。",
+                              "properties": {
+                                "method_id": {
+                                  "const": "resample-cloud",
+                                  "title": "Method Id",
+                                  "type": "string"
+                                },
+                                "method_version": {
+                                  "maximum": 1,
+                                  "minimum": 1,
+                                  "title": "Method Version",
+                                  "type": "integer"
+                                },
+                                "parameters": {
+                                  "additionalProperties": false,
+                                  "description": "三种明确重采样方法，不包含自动回退或隐式去噪。",
+                                  "properties": {
+                                    "settings": {
+                                      "discriminator": {
+                                        "mapping": {
+                                          "stride": "#/$defs/StrideResample",
+                                          "voxel-centroid": "#/$defs/VoxelCentroid",
+                                          "voxel-representative": "#/$defs/VoxelRepresentative"
+                                        },
+                                        "propertyName": "kind"
+                                      },
+                                      "oneOf": [
+                                        {
+                                          "additionalProperties": false,
+                                          "description": "按当前逻辑行抽取；offset 不是原始文件行号。",
+                                          "properties": {
+                                            "kind": {
+                                              "const": "stride",
+                                              "title": "Kind",
+                                              "type": "string"
+                                            },
+                                            "every_k_points": {
+                                              "maximum": 9007199254740991,
+                                              "minimum": 1,
+                                              "title": "Every K Points",
+                                              "type": "integer"
+                                            },
+                                            "offset": {
+                                              "maximum": 9007199254740991,
+                                              "minimum": 0,
+                                              "title": "Offset",
+                                              "type": "integer"
+                                            }
+                                          },
+                                          "required": [
+                                            "kind",
+                                            "every_k_points",
+                                            "offset"
+                                          ],
+                                          "title": "StrideResample",
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "description": "每格选距质心最近的原点，所有属性逐位保留。",
+                                          "properties": {
+                                            "voxel_size": {
+                                              "exclusiveMinimum": 0,
+                                              "title": "Voxel Size",
+                                              "type": "number"
+                                            },
+                                            "grid_origin": {
+                                              "maxItems": 3,
+                                              "minItems": 3,
+                                              "prefixItems": [
+                                                {
+                                                  "type": "number"
+                                                },
+                                                {
+                                                  "type": "number"
+                                                },
+                                                {
+                                                  "type": "number"
+                                                }
+                                              ],
+                                              "title": "Grid Origin",
+                                              "type": "array"
+                                            },
+                                            "frame_id": {
+                                              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                              "title": "Frame Id",
+                                              "type": "string"
+                                            },
+                                            "length_unit": {
+                                              "enum": [
+                                                "m",
+                                                "mm",
+                                                "um"
+                                              ],
+                                              "title": "Length Unit",
+                                              "type": "string"
+                                            },
+                                            "kind": {
+                                              "const": "voxel-representative",
+                                              "title": "Kind",
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "voxel_size",
+                                            "grid_origin",
+                                            "frame_id",
+                                            "length_unit",
+                                            "kind"
+                                          ],
+                                          "title": "VoxelRepresentative",
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "description": "等权质心仅生成坐标，误差上限采用输入物理单位。",
+                                          "properties": {
+                                            "voxel_size": {
+                                              "exclusiveMinimum": 0,
+                                              "title": "Voxel Size",
+                                              "type": "number"
+                                            },
+                                            "grid_origin": {
+                                              "maxItems": 3,
+                                              "minItems": 3,
+                                              "prefixItems": [
+                                                {
+                                                  "type": "number"
+                                                },
+                                                {
+                                                  "type": "number"
+                                                },
+                                                {
+                                                  "type": "number"
+                                                }
+                                              ],
+                                              "title": "Grid Origin",
+                                              "type": "array"
+                                            },
+                                            "frame_id": {
+                                              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                              "title": "Frame Id",
+                                              "type": "string"
+                                            },
+                                            "length_unit": {
+                                              "enum": [
+                                                "m",
+                                                "mm",
+                                                "um"
+                                              ],
+                                              "title": "Length Unit",
+                                              "type": "string"
+                                            },
+                                            "kind": {
+                                              "const": "voxel-centroid",
+                                              "title": "Kind",
+                                              "type": "string"
+                                            },
+                                            "max_position_error": {
+                                              "exclusiveMinimum": 0,
+                                              "title": "Max Position Error",
+                                              "type": "number"
+                                            },
+                                            "attributes": {
+                                              "const": "positions-only",
+                                              "title": "Attributes",
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "voxel_size",
+                                            "grid_origin",
+                                            "frame_id",
+                                            "length_unit",
+                                            "kind",
+                                            "max_position_error",
+                                            "attributes"
+                                          ],
+                                          "title": "VoxelCentroid",
+                                          "type": "object"
+                                        }
+                                      ],
+                                      "title": "Settings"
+                                    }
+                                  },
+                                  "required": [
+                                    "settings"
+                                  ],
+                                  "title": "ResampleCloudParameters",
+                                  "type": "object"
+                                },
+                                "parameters_sha256": {
+                                  "pattern": "^[0-9a-f]{64}$",
+                                  "title": "Parameters Sha256",
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "method_id",
+                                "method_version",
+                                "parameters",
+                                "parameters_sha256"
+                              ],
+                              "title": "ResampleCloudMethod",
+                              "type": "object"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "default": null
                         }
                       },
                       "required": [
@@ -64522,6 +65848,7 @@
                                       "filter-valid": "#/$defs/FilterCloudMethod",
                                       "fit-plane-support": "#/$defs/PlaneSupportMethod",
                                       "normalize-units": "#/$defs/NormalizeCloudMethod",
+                                      "resample-cloud": "#/$defs/ResampleCloudMethod",
                                       "select-boundary": "#/$defs/BoundarySelectionMethod",
                                       "transform-cloud": "#/$defs/TransformCloudMethod"
                                     },
@@ -64806,6 +66133,214 @@
                                         "selection"
                                       ],
                                       "title": "DenoiseCloudMethod",
+                                      "type": "object"
+                                    },
+                                    {
+                                      "additionalProperties": false,
+                                      "description": "固定采样参数，原点选择与生成质心不混用来源。",
+                                      "properties": {
+                                        "method_id": {
+                                          "const": "resample-cloud",
+                                          "title": "Method Id",
+                                          "type": "string"
+                                        },
+                                        "method_version": {
+                                          "maximum": 1,
+                                          "minimum": 1,
+                                          "title": "Method Version",
+                                          "type": "integer"
+                                        },
+                                        "parameters": {
+                                          "additionalProperties": false,
+                                          "description": "三种明确重采样方法，不包含自动回退或隐式去噪。",
+                                          "properties": {
+                                            "settings": {
+                                              "discriminator": {
+                                                "mapping": {
+                                                  "stride": "#/$defs/StrideResample",
+                                                  "voxel-centroid": "#/$defs/VoxelCentroid",
+                                                  "voxel-representative": "#/$defs/VoxelRepresentative"
+                                                },
+                                                "propertyName": "kind"
+                                              },
+                                              "oneOf": [
+                                                {
+                                                  "additionalProperties": false,
+                                                  "description": "按当前逻辑行抽取；offset 不是原始文件行号。",
+                                                  "properties": {
+                                                    "kind": {
+                                                      "const": "stride",
+                                                      "title": "Kind",
+                                                      "type": "string"
+                                                    },
+                                                    "every_k_points": {
+                                                      "maximum": 9007199254740991,
+                                                      "minimum": 1,
+                                                      "title": "Every K Points",
+                                                      "type": "integer"
+                                                    },
+                                                    "offset": {
+                                                      "maximum": 9007199254740991,
+                                                      "minimum": 0,
+                                                      "title": "Offset",
+                                                      "type": "integer"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "kind",
+                                                    "every_k_points",
+                                                    "offset"
+                                                  ],
+                                                  "title": "StrideResample",
+                                                  "type": "object"
+                                                },
+                                                {
+                                                  "additionalProperties": false,
+                                                  "description": "每格选距质心最近的原点，所有属性逐位保留。",
+                                                  "properties": {
+                                                    "voxel_size": {
+                                                      "exclusiveMinimum": 0,
+                                                      "title": "Voxel Size",
+                                                      "type": "number"
+                                                    },
+                                                    "grid_origin": {
+                                                      "maxItems": 3,
+                                                      "minItems": 3,
+                                                      "prefixItems": [
+                                                        {
+                                                          "type": "number"
+                                                        },
+                                                        {
+                                                          "type": "number"
+                                                        },
+                                                        {
+                                                          "type": "number"
+                                                        }
+                                                      ],
+                                                      "title": "Grid Origin",
+                                                      "type": "array"
+                                                    },
+                                                    "frame_id": {
+                                                      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                                      "title": "Frame Id",
+                                                      "type": "string"
+                                                    },
+                                                    "length_unit": {
+                                                      "enum": [
+                                                        "m",
+                                                        "mm",
+                                                        "um"
+                                                      ],
+                                                      "title": "Length Unit",
+                                                      "type": "string"
+                                                    },
+                                                    "kind": {
+                                                      "const": "voxel-representative",
+                                                      "title": "Kind",
+                                                      "type": "string"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "voxel_size",
+                                                    "grid_origin",
+                                                    "frame_id",
+                                                    "length_unit",
+                                                    "kind"
+                                                  ],
+                                                  "title": "VoxelRepresentative",
+                                                  "type": "object"
+                                                },
+                                                {
+                                                  "additionalProperties": false,
+                                                  "description": "等权质心仅生成坐标，误差上限采用输入物理单位。",
+                                                  "properties": {
+                                                    "voxel_size": {
+                                                      "exclusiveMinimum": 0,
+                                                      "title": "Voxel Size",
+                                                      "type": "number"
+                                                    },
+                                                    "grid_origin": {
+                                                      "maxItems": 3,
+                                                      "minItems": 3,
+                                                      "prefixItems": [
+                                                        {
+                                                          "type": "number"
+                                                        },
+                                                        {
+                                                          "type": "number"
+                                                        },
+                                                        {
+                                                          "type": "number"
+                                                        }
+                                                      ],
+                                                      "title": "Grid Origin",
+                                                      "type": "array"
+                                                    },
+                                                    "frame_id": {
+                                                      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                                      "title": "Frame Id",
+                                                      "type": "string"
+                                                    },
+                                                    "length_unit": {
+                                                      "enum": [
+                                                        "m",
+                                                        "mm",
+                                                        "um"
+                                                      ],
+                                                      "title": "Length Unit",
+                                                      "type": "string"
+                                                    },
+                                                    "kind": {
+                                                      "const": "voxel-centroid",
+                                                      "title": "Kind",
+                                                      "type": "string"
+                                                    },
+                                                    "max_position_error": {
+                                                      "exclusiveMinimum": 0,
+                                                      "title": "Max Position Error",
+                                                      "type": "number"
+                                                    },
+                                                    "attributes": {
+                                                      "const": "positions-only",
+                                                      "title": "Attributes",
+                                                      "type": "string"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "voxel_size",
+                                                    "grid_origin",
+                                                    "frame_id",
+                                                    "length_unit",
+                                                    "kind",
+                                                    "max_position_error",
+                                                    "attributes"
+                                                  ],
+                                                  "title": "VoxelCentroid",
+                                                  "type": "object"
+                                                }
+                                              ],
+                                              "title": "Settings"
+                                            }
+                                          },
+                                          "required": [
+                                            "settings"
+                                          ],
+                                          "title": "ResampleCloudParameters",
+                                          "type": "object"
+                                        },
+                                        "parameters_sha256": {
+                                          "pattern": "^[0-9a-f]{64}$",
+                                          "title": "Parameters Sha256",
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "method_id",
+                                        "method_version",
+                                        "parameters",
+                                        "parameters_sha256"
+                                      ],
+                                      "title": "ResampleCloudMethod",
                                       "type": "object"
                                     },
                                     {
@@ -80104,6 +81639,239 @@
                               "type": "null"
                             }
                           ]
+                        },
+                        "lineage_kind": {
+                          "anyOf": [
+                            {
+                              "enum": [
+                                "surface",
+                                "grid-profile",
+                                "voxel-aggregate"
+                              ],
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "default": null,
+                          "title": "Lineage Kind"
+                        },
+                        "voxel_aggregation": {
+                          "anyOf": [
+                            {
+                              "additionalProperties": false,
+                              "description": "固定采样参数，原点选择与生成质心不混用来源。",
+                              "properties": {
+                                "method_id": {
+                                  "const": "resample-cloud",
+                                  "title": "Method Id",
+                                  "type": "string"
+                                },
+                                "method_version": {
+                                  "maximum": 1,
+                                  "minimum": 1,
+                                  "title": "Method Version",
+                                  "type": "integer"
+                                },
+                                "parameters": {
+                                  "additionalProperties": false,
+                                  "description": "三种明确重采样方法，不包含自动回退或隐式去噪。",
+                                  "properties": {
+                                    "settings": {
+                                      "discriminator": {
+                                        "mapping": {
+                                          "stride": "#/$defs/StrideResample",
+                                          "voxel-centroid": "#/$defs/VoxelCentroid",
+                                          "voxel-representative": "#/$defs/VoxelRepresentative"
+                                        },
+                                        "propertyName": "kind"
+                                      },
+                                      "oneOf": [
+                                        {
+                                          "additionalProperties": false,
+                                          "description": "按当前逻辑行抽取；offset 不是原始文件行号。",
+                                          "properties": {
+                                            "kind": {
+                                              "const": "stride",
+                                              "title": "Kind",
+                                              "type": "string"
+                                            },
+                                            "every_k_points": {
+                                              "maximum": 9007199254740991,
+                                              "minimum": 1,
+                                              "title": "Every K Points",
+                                              "type": "integer"
+                                            },
+                                            "offset": {
+                                              "maximum": 9007199254740991,
+                                              "minimum": 0,
+                                              "title": "Offset",
+                                              "type": "integer"
+                                            }
+                                          },
+                                          "required": [
+                                            "kind",
+                                            "every_k_points",
+                                            "offset"
+                                          ],
+                                          "title": "StrideResample",
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "description": "每格选距质心最近的原点，所有属性逐位保留。",
+                                          "properties": {
+                                            "voxel_size": {
+                                              "exclusiveMinimum": 0,
+                                              "title": "Voxel Size",
+                                              "type": "number"
+                                            },
+                                            "grid_origin": {
+                                              "maxItems": 3,
+                                              "minItems": 3,
+                                              "prefixItems": [
+                                                {
+                                                  "type": "number"
+                                                },
+                                                {
+                                                  "type": "number"
+                                                },
+                                                {
+                                                  "type": "number"
+                                                }
+                                              ],
+                                              "title": "Grid Origin",
+                                              "type": "array"
+                                            },
+                                            "frame_id": {
+                                              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                              "title": "Frame Id",
+                                              "type": "string"
+                                            },
+                                            "length_unit": {
+                                              "enum": [
+                                                "m",
+                                                "mm",
+                                                "um"
+                                              ],
+                                              "title": "Length Unit",
+                                              "type": "string"
+                                            },
+                                            "kind": {
+                                              "const": "voxel-representative",
+                                              "title": "Kind",
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "voxel_size",
+                                            "grid_origin",
+                                            "frame_id",
+                                            "length_unit",
+                                            "kind"
+                                          ],
+                                          "title": "VoxelRepresentative",
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "description": "等权质心仅生成坐标，误差上限采用输入物理单位。",
+                                          "properties": {
+                                            "voxel_size": {
+                                              "exclusiveMinimum": 0,
+                                              "title": "Voxel Size",
+                                              "type": "number"
+                                            },
+                                            "grid_origin": {
+                                              "maxItems": 3,
+                                              "minItems": 3,
+                                              "prefixItems": [
+                                                {
+                                                  "type": "number"
+                                                },
+                                                {
+                                                  "type": "number"
+                                                },
+                                                {
+                                                  "type": "number"
+                                                }
+                                              ],
+                                              "title": "Grid Origin",
+                                              "type": "array"
+                                            },
+                                            "frame_id": {
+                                              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                              "title": "Frame Id",
+                                              "type": "string"
+                                            },
+                                            "length_unit": {
+                                              "enum": [
+                                                "m",
+                                                "mm",
+                                                "um"
+                                              ],
+                                              "title": "Length Unit",
+                                              "type": "string"
+                                            },
+                                            "kind": {
+                                              "const": "voxel-centroid",
+                                              "title": "Kind",
+                                              "type": "string"
+                                            },
+                                            "max_position_error": {
+                                              "exclusiveMinimum": 0,
+                                              "title": "Max Position Error",
+                                              "type": "number"
+                                            },
+                                            "attributes": {
+                                              "const": "positions-only",
+                                              "title": "Attributes",
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "voxel_size",
+                                            "grid_origin",
+                                            "frame_id",
+                                            "length_unit",
+                                            "kind",
+                                            "max_position_error",
+                                            "attributes"
+                                          ],
+                                          "title": "VoxelCentroid",
+                                          "type": "object"
+                                        }
+                                      ],
+                                      "title": "Settings"
+                                    }
+                                  },
+                                  "required": [
+                                    "settings"
+                                  ],
+                                  "title": "ResampleCloudParameters",
+                                  "type": "object"
+                                },
+                                "parameters_sha256": {
+                                  "pattern": "^[0-9a-f]{64}$",
+                                  "title": "Parameters Sha256",
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "method_id",
+                                "method_version",
+                                "parameters",
+                                "parameters_sha256"
+                              ],
+                              "title": "ResampleCloudMethod",
+                              "type": "object"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "default": null
                         }
                       },
                       "required": [
@@ -95526,6 +97294,7 @@
                                       "filter-valid": "#/$defs/FilterCloudMethod",
                                       "fit-plane-support": "#/$defs/PlaneSupportMethod",
                                       "normalize-units": "#/$defs/NormalizeCloudMethod",
+                                      "resample-cloud": "#/$defs/ResampleCloudMethod",
                                       "select-boundary": "#/$defs/BoundarySelectionMethod",
                                       "transform-cloud": "#/$defs/TransformCloudMethod"
                                     },
@@ -95810,6 +97579,214 @@
                                         "selection"
                                       ],
                                       "title": "DenoiseCloudMethod",
+                                      "type": "object"
+                                    },
+                                    {
+                                      "additionalProperties": false,
+                                      "description": "固定采样参数，原点选择与生成质心不混用来源。",
+                                      "properties": {
+                                        "method_id": {
+                                          "const": "resample-cloud",
+                                          "title": "Method Id",
+                                          "type": "string"
+                                        },
+                                        "method_version": {
+                                          "maximum": 1,
+                                          "minimum": 1,
+                                          "title": "Method Version",
+                                          "type": "integer"
+                                        },
+                                        "parameters": {
+                                          "additionalProperties": false,
+                                          "description": "三种明确重采样方法，不包含自动回退或隐式去噪。",
+                                          "properties": {
+                                            "settings": {
+                                              "discriminator": {
+                                                "mapping": {
+                                                  "stride": "#/$defs/StrideResample",
+                                                  "voxel-centroid": "#/$defs/VoxelCentroid",
+                                                  "voxel-representative": "#/$defs/VoxelRepresentative"
+                                                },
+                                                "propertyName": "kind"
+                                              },
+                                              "oneOf": [
+                                                {
+                                                  "additionalProperties": false,
+                                                  "description": "按当前逻辑行抽取；offset 不是原始文件行号。",
+                                                  "properties": {
+                                                    "kind": {
+                                                      "const": "stride",
+                                                      "title": "Kind",
+                                                      "type": "string"
+                                                    },
+                                                    "every_k_points": {
+                                                      "maximum": 9007199254740991,
+                                                      "minimum": 1,
+                                                      "title": "Every K Points",
+                                                      "type": "integer"
+                                                    },
+                                                    "offset": {
+                                                      "maximum": 9007199254740991,
+                                                      "minimum": 0,
+                                                      "title": "Offset",
+                                                      "type": "integer"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "kind",
+                                                    "every_k_points",
+                                                    "offset"
+                                                  ],
+                                                  "title": "StrideResample",
+                                                  "type": "object"
+                                                },
+                                                {
+                                                  "additionalProperties": false,
+                                                  "description": "每格选距质心最近的原点，所有属性逐位保留。",
+                                                  "properties": {
+                                                    "voxel_size": {
+                                                      "exclusiveMinimum": 0,
+                                                      "title": "Voxel Size",
+                                                      "type": "number"
+                                                    },
+                                                    "grid_origin": {
+                                                      "maxItems": 3,
+                                                      "minItems": 3,
+                                                      "prefixItems": [
+                                                        {
+                                                          "type": "number"
+                                                        },
+                                                        {
+                                                          "type": "number"
+                                                        },
+                                                        {
+                                                          "type": "number"
+                                                        }
+                                                      ],
+                                                      "title": "Grid Origin",
+                                                      "type": "array"
+                                                    },
+                                                    "frame_id": {
+                                                      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                                      "title": "Frame Id",
+                                                      "type": "string"
+                                                    },
+                                                    "length_unit": {
+                                                      "enum": [
+                                                        "m",
+                                                        "mm",
+                                                        "um"
+                                                      ],
+                                                      "title": "Length Unit",
+                                                      "type": "string"
+                                                    },
+                                                    "kind": {
+                                                      "const": "voxel-representative",
+                                                      "title": "Kind",
+                                                      "type": "string"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "voxel_size",
+                                                    "grid_origin",
+                                                    "frame_id",
+                                                    "length_unit",
+                                                    "kind"
+                                                  ],
+                                                  "title": "VoxelRepresentative",
+                                                  "type": "object"
+                                                },
+                                                {
+                                                  "additionalProperties": false,
+                                                  "description": "等权质心仅生成坐标，误差上限采用输入物理单位。",
+                                                  "properties": {
+                                                    "voxel_size": {
+                                                      "exclusiveMinimum": 0,
+                                                      "title": "Voxel Size",
+                                                      "type": "number"
+                                                    },
+                                                    "grid_origin": {
+                                                      "maxItems": 3,
+                                                      "minItems": 3,
+                                                      "prefixItems": [
+                                                        {
+                                                          "type": "number"
+                                                        },
+                                                        {
+                                                          "type": "number"
+                                                        },
+                                                        {
+                                                          "type": "number"
+                                                        }
+                                                      ],
+                                                      "title": "Grid Origin",
+                                                      "type": "array"
+                                                    },
+                                                    "frame_id": {
+                                                      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                                      "title": "Frame Id",
+                                                      "type": "string"
+                                                    },
+                                                    "length_unit": {
+                                                      "enum": [
+                                                        "m",
+                                                        "mm",
+                                                        "um"
+                                                      ],
+                                                      "title": "Length Unit",
+                                                      "type": "string"
+                                                    },
+                                                    "kind": {
+                                                      "const": "voxel-centroid",
+                                                      "title": "Kind",
+                                                      "type": "string"
+                                                    },
+                                                    "max_position_error": {
+                                                      "exclusiveMinimum": 0,
+                                                      "title": "Max Position Error",
+                                                      "type": "number"
+                                                    },
+                                                    "attributes": {
+                                                      "const": "positions-only",
+                                                      "title": "Attributes",
+                                                      "type": "string"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "voxel_size",
+                                                    "grid_origin",
+                                                    "frame_id",
+                                                    "length_unit",
+                                                    "kind",
+                                                    "max_position_error",
+                                                    "attributes"
+                                                  ],
+                                                  "title": "VoxelCentroid",
+                                                  "type": "object"
+                                                }
+                                              ],
+                                              "title": "Settings"
+                                            }
+                                          },
+                                          "required": [
+                                            "settings"
+                                          ],
+                                          "title": "ResampleCloudParameters",
+                                          "type": "object"
+                                        },
+                                        "parameters_sha256": {
+                                          "pattern": "^[0-9a-f]{64}$",
+                                          "title": "Parameters Sha256",
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "method_id",
+                                        "method_version",
+                                        "parameters",
+                                        "parameters_sha256"
+                                      ],
+                                      "title": "ResampleCloudMethod",
                                       "type": "object"
                                     },
                                     {
@@ -111108,6 +113085,239 @@
                               "type": "null"
                             }
                           ]
+                        },
+                        "lineage_kind": {
+                          "anyOf": [
+                            {
+                              "enum": [
+                                "surface",
+                                "grid-profile",
+                                "voxel-aggregate"
+                              ],
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "default": null,
+                          "title": "Lineage Kind"
+                        },
+                        "voxel_aggregation": {
+                          "anyOf": [
+                            {
+                              "additionalProperties": false,
+                              "description": "固定采样参数，原点选择与生成质心不混用来源。",
+                              "properties": {
+                                "method_id": {
+                                  "const": "resample-cloud",
+                                  "title": "Method Id",
+                                  "type": "string"
+                                },
+                                "method_version": {
+                                  "maximum": 1,
+                                  "minimum": 1,
+                                  "title": "Method Version",
+                                  "type": "integer"
+                                },
+                                "parameters": {
+                                  "additionalProperties": false,
+                                  "description": "三种明确重采样方法，不包含自动回退或隐式去噪。",
+                                  "properties": {
+                                    "settings": {
+                                      "discriminator": {
+                                        "mapping": {
+                                          "stride": "#/$defs/StrideResample",
+                                          "voxel-centroid": "#/$defs/VoxelCentroid",
+                                          "voxel-representative": "#/$defs/VoxelRepresentative"
+                                        },
+                                        "propertyName": "kind"
+                                      },
+                                      "oneOf": [
+                                        {
+                                          "additionalProperties": false,
+                                          "description": "按当前逻辑行抽取；offset 不是原始文件行号。",
+                                          "properties": {
+                                            "kind": {
+                                              "const": "stride",
+                                              "title": "Kind",
+                                              "type": "string"
+                                            },
+                                            "every_k_points": {
+                                              "maximum": 9007199254740991,
+                                              "minimum": 1,
+                                              "title": "Every K Points",
+                                              "type": "integer"
+                                            },
+                                            "offset": {
+                                              "maximum": 9007199254740991,
+                                              "minimum": 0,
+                                              "title": "Offset",
+                                              "type": "integer"
+                                            }
+                                          },
+                                          "required": [
+                                            "kind",
+                                            "every_k_points",
+                                            "offset"
+                                          ],
+                                          "title": "StrideResample",
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "description": "每格选距质心最近的原点，所有属性逐位保留。",
+                                          "properties": {
+                                            "voxel_size": {
+                                              "exclusiveMinimum": 0,
+                                              "title": "Voxel Size",
+                                              "type": "number"
+                                            },
+                                            "grid_origin": {
+                                              "maxItems": 3,
+                                              "minItems": 3,
+                                              "prefixItems": [
+                                                {
+                                                  "type": "number"
+                                                },
+                                                {
+                                                  "type": "number"
+                                                },
+                                                {
+                                                  "type": "number"
+                                                }
+                                              ],
+                                              "title": "Grid Origin",
+                                              "type": "array"
+                                            },
+                                            "frame_id": {
+                                              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                              "title": "Frame Id",
+                                              "type": "string"
+                                            },
+                                            "length_unit": {
+                                              "enum": [
+                                                "m",
+                                                "mm",
+                                                "um"
+                                              ],
+                                              "title": "Length Unit",
+                                              "type": "string"
+                                            },
+                                            "kind": {
+                                              "const": "voxel-representative",
+                                              "title": "Kind",
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "voxel_size",
+                                            "grid_origin",
+                                            "frame_id",
+                                            "length_unit",
+                                            "kind"
+                                          ],
+                                          "title": "VoxelRepresentative",
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "description": "等权质心仅生成坐标，误差上限采用输入物理单位。",
+                                          "properties": {
+                                            "voxel_size": {
+                                              "exclusiveMinimum": 0,
+                                              "title": "Voxel Size",
+                                              "type": "number"
+                                            },
+                                            "grid_origin": {
+                                              "maxItems": 3,
+                                              "minItems": 3,
+                                              "prefixItems": [
+                                                {
+                                                  "type": "number"
+                                                },
+                                                {
+                                                  "type": "number"
+                                                },
+                                                {
+                                                  "type": "number"
+                                                }
+                                              ],
+                                              "title": "Grid Origin",
+                                              "type": "array"
+                                            },
+                                            "frame_id": {
+                                              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                              "title": "Frame Id",
+                                              "type": "string"
+                                            },
+                                            "length_unit": {
+                                              "enum": [
+                                                "m",
+                                                "mm",
+                                                "um"
+                                              ],
+                                              "title": "Length Unit",
+                                              "type": "string"
+                                            },
+                                            "kind": {
+                                              "const": "voxel-centroid",
+                                              "title": "Kind",
+                                              "type": "string"
+                                            },
+                                            "max_position_error": {
+                                              "exclusiveMinimum": 0,
+                                              "title": "Max Position Error",
+                                              "type": "number"
+                                            },
+                                            "attributes": {
+                                              "const": "positions-only",
+                                              "title": "Attributes",
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "voxel_size",
+                                            "grid_origin",
+                                            "frame_id",
+                                            "length_unit",
+                                            "kind",
+                                            "max_position_error",
+                                            "attributes"
+                                          ],
+                                          "title": "VoxelCentroid",
+                                          "type": "object"
+                                        }
+                                      ],
+                                      "title": "Settings"
+                                    }
+                                  },
+                                  "required": [
+                                    "settings"
+                                  ],
+                                  "title": "ResampleCloudParameters",
+                                  "type": "object"
+                                },
+                                "parameters_sha256": {
+                                  "pattern": "^[0-9a-f]{64}$",
+                                  "title": "Parameters Sha256",
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "method_id",
+                                "method_version",
+                                "parameters",
+                                "parameters_sha256"
+                              ],
+                              "title": "ResampleCloudMethod",
+                              "type": "object"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "default": null
                         }
                       },
                       "required": [
@@ -128082,6 +130292,7 @@
                               "filter-valid": "#/$defs/FilterCloudMethod",
                               "fit-plane-support": "#/$defs/PlaneSupportMethod",
                               "normalize-units": "#/$defs/NormalizeCloudMethod",
+                              "resample-cloud": "#/$defs/ResampleCloudMethod",
                               "select-boundary": "#/$defs/BoundarySelectionMethod",
                               "transform-cloud": "#/$defs/TransformCloudMethod"
                             },
@@ -128366,6 +130577,214 @@
                                 "selection"
                               ],
                               "title": "DenoiseCloudMethod",
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "description": "固定采样参数，原点选择与生成质心不混用来源。",
+                              "properties": {
+                                "method_id": {
+                                  "const": "resample-cloud",
+                                  "title": "Method Id",
+                                  "type": "string"
+                                },
+                                "method_version": {
+                                  "maximum": 1,
+                                  "minimum": 1,
+                                  "title": "Method Version",
+                                  "type": "integer"
+                                },
+                                "parameters": {
+                                  "additionalProperties": false,
+                                  "description": "三种明确重采样方法，不包含自动回退或隐式去噪。",
+                                  "properties": {
+                                    "settings": {
+                                      "discriminator": {
+                                        "mapping": {
+                                          "stride": "#/$defs/StrideResample",
+                                          "voxel-centroid": "#/$defs/VoxelCentroid",
+                                          "voxel-representative": "#/$defs/VoxelRepresentative"
+                                        },
+                                        "propertyName": "kind"
+                                      },
+                                      "oneOf": [
+                                        {
+                                          "additionalProperties": false,
+                                          "description": "按当前逻辑行抽取；offset 不是原始文件行号。",
+                                          "properties": {
+                                            "kind": {
+                                              "const": "stride",
+                                              "title": "Kind",
+                                              "type": "string"
+                                            },
+                                            "every_k_points": {
+                                              "maximum": 9007199254740991,
+                                              "minimum": 1,
+                                              "title": "Every K Points",
+                                              "type": "integer"
+                                            },
+                                            "offset": {
+                                              "maximum": 9007199254740991,
+                                              "minimum": 0,
+                                              "title": "Offset",
+                                              "type": "integer"
+                                            }
+                                          },
+                                          "required": [
+                                            "kind",
+                                            "every_k_points",
+                                            "offset"
+                                          ],
+                                          "title": "StrideResample",
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "description": "每格选距质心最近的原点，所有属性逐位保留。",
+                                          "properties": {
+                                            "voxel_size": {
+                                              "exclusiveMinimum": 0,
+                                              "title": "Voxel Size",
+                                              "type": "number"
+                                            },
+                                            "grid_origin": {
+                                              "maxItems": 3,
+                                              "minItems": 3,
+                                              "prefixItems": [
+                                                {
+                                                  "type": "number"
+                                                },
+                                                {
+                                                  "type": "number"
+                                                },
+                                                {
+                                                  "type": "number"
+                                                }
+                                              ],
+                                              "title": "Grid Origin",
+                                              "type": "array"
+                                            },
+                                            "frame_id": {
+                                              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                              "title": "Frame Id",
+                                              "type": "string"
+                                            },
+                                            "length_unit": {
+                                              "enum": [
+                                                "m",
+                                                "mm",
+                                                "um"
+                                              ],
+                                              "title": "Length Unit",
+                                              "type": "string"
+                                            },
+                                            "kind": {
+                                              "const": "voxel-representative",
+                                              "title": "Kind",
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "voxel_size",
+                                            "grid_origin",
+                                            "frame_id",
+                                            "length_unit",
+                                            "kind"
+                                          ],
+                                          "title": "VoxelRepresentative",
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "description": "等权质心仅生成坐标，误差上限采用输入物理单位。",
+                                          "properties": {
+                                            "voxel_size": {
+                                              "exclusiveMinimum": 0,
+                                              "title": "Voxel Size",
+                                              "type": "number"
+                                            },
+                                            "grid_origin": {
+                                              "maxItems": 3,
+                                              "minItems": 3,
+                                              "prefixItems": [
+                                                {
+                                                  "type": "number"
+                                                },
+                                                {
+                                                  "type": "number"
+                                                },
+                                                {
+                                                  "type": "number"
+                                                }
+                                              ],
+                                              "title": "Grid Origin",
+                                              "type": "array"
+                                            },
+                                            "frame_id": {
+                                              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                              "title": "Frame Id",
+                                              "type": "string"
+                                            },
+                                            "length_unit": {
+                                              "enum": [
+                                                "m",
+                                                "mm",
+                                                "um"
+                                              ],
+                                              "title": "Length Unit",
+                                              "type": "string"
+                                            },
+                                            "kind": {
+                                              "const": "voxel-centroid",
+                                              "title": "Kind",
+                                              "type": "string"
+                                            },
+                                            "max_position_error": {
+                                              "exclusiveMinimum": 0,
+                                              "title": "Max Position Error",
+                                              "type": "number"
+                                            },
+                                            "attributes": {
+                                              "const": "positions-only",
+                                              "title": "Attributes",
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "voxel_size",
+                                            "grid_origin",
+                                            "frame_id",
+                                            "length_unit",
+                                            "kind",
+                                            "max_position_error",
+                                            "attributes"
+                                          ],
+                                          "title": "VoxelCentroid",
+                                          "type": "object"
+                                        }
+                                      ],
+                                      "title": "Settings"
+                                    }
+                                  },
+                                  "required": [
+                                    "settings"
+                                  ],
+                                  "title": "ResampleCloudParameters",
+                                  "type": "object"
+                                },
+                                "parameters_sha256": {
+                                  "pattern": "^[0-9a-f]{64}$",
+                                  "title": "Parameters Sha256",
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "method_id",
+                                "method_version",
+                                "parameters",
+                                "parameters_sha256"
+                              ],
+                              "title": "ResampleCloudMethod",
                               "type": "object"
                             },
                             {
@@ -143664,6 +146083,239 @@
                       "type": "null"
                     }
                   ]
+                },
+                "lineage_kind": {
+                  "anyOf": [
+                    {
+                      "enum": [
+                        "surface",
+                        "grid-profile",
+                        "voxel-aggregate"
+                      ],
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Lineage Kind"
+                },
+                "voxel_aggregation": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "description": "固定采样参数，原点选择与生成质心不混用来源。",
+                      "properties": {
+                        "method_id": {
+                          "const": "resample-cloud",
+                          "title": "Method Id",
+                          "type": "string"
+                        },
+                        "method_version": {
+                          "maximum": 1,
+                          "minimum": 1,
+                          "title": "Method Version",
+                          "type": "integer"
+                        },
+                        "parameters": {
+                          "additionalProperties": false,
+                          "description": "三种明确重采样方法，不包含自动回退或隐式去噪。",
+                          "properties": {
+                            "settings": {
+                              "discriminator": {
+                                "mapping": {
+                                  "stride": "#/$defs/StrideResample",
+                                  "voxel-centroid": "#/$defs/VoxelCentroid",
+                                  "voxel-representative": "#/$defs/VoxelRepresentative"
+                                },
+                                "propertyName": "kind"
+                              },
+                              "oneOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "description": "按当前逻辑行抽取；offset 不是原始文件行号。",
+                                  "properties": {
+                                    "kind": {
+                                      "const": "stride",
+                                      "title": "Kind",
+                                      "type": "string"
+                                    },
+                                    "every_k_points": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": 1,
+                                      "title": "Every K Points",
+                                      "type": "integer"
+                                    },
+                                    "offset": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": 0,
+                                      "title": "Offset",
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "every_k_points",
+                                    "offset"
+                                  ],
+                                  "title": "StrideResample",
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "description": "每格选距质心最近的原点，所有属性逐位保留。",
+                                  "properties": {
+                                    "voxel_size": {
+                                      "exclusiveMinimum": 0,
+                                      "title": "Voxel Size",
+                                      "type": "number"
+                                    },
+                                    "grid_origin": {
+                                      "maxItems": 3,
+                                      "minItems": 3,
+                                      "prefixItems": [
+                                        {
+                                          "type": "number"
+                                        },
+                                        {
+                                          "type": "number"
+                                        },
+                                        {
+                                          "type": "number"
+                                        }
+                                      ],
+                                      "title": "Grid Origin",
+                                      "type": "array"
+                                    },
+                                    "frame_id": {
+                                      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                      "title": "Frame Id",
+                                      "type": "string"
+                                    },
+                                    "length_unit": {
+                                      "enum": [
+                                        "m",
+                                        "mm",
+                                        "um"
+                                      ],
+                                      "title": "Length Unit",
+                                      "type": "string"
+                                    },
+                                    "kind": {
+                                      "const": "voxel-representative",
+                                      "title": "Kind",
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "voxel_size",
+                                    "grid_origin",
+                                    "frame_id",
+                                    "length_unit",
+                                    "kind"
+                                  ],
+                                  "title": "VoxelRepresentative",
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "description": "等权质心仅生成坐标，误差上限采用输入物理单位。",
+                                  "properties": {
+                                    "voxel_size": {
+                                      "exclusiveMinimum": 0,
+                                      "title": "Voxel Size",
+                                      "type": "number"
+                                    },
+                                    "grid_origin": {
+                                      "maxItems": 3,
+                                      "minItems": 3,
+                                      "prefixItems": [
+                                        {
+                                          "type": "number"
+                                        },
+                                        {
+                                          "type": "number"
+                                        },
+                                        {
+                                          "type": "number"
+                                        }
+                                      ],
+                                      "title": "Grid Origin",
+                                      "type": "array"
+                                    },
+                                    "frame_id": {
+                                      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                                      "title": "Frame Id",
+                                      "type": "string"
+                                    },
+                                    "length_unit": {
+                                      "enum": [
+                                        "m",
+                                        "mm",
+                                        "um"
+                                      ],
+                                      "title": "Length Unit",
+                                      "type": "string"
+                                    },
+                                    "kind": {
+                                      "const": "voxel-centroid",
+                                      "title": "Kind",
+                                      "type": "string"
+                                    },
+                                    "max_position_error": {
+                                      "exclusiveMinimum": 0,
+                                      "title": "Max Position Error",
+                                      "type": "number"
+                                    },
+                                    "attributes": {
+                                      "const": "positions-only",
+                                      "title": "Attributes",
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "voxel_size",
+                                    "grid_origin",
+                                    "frame_id",
+                                    "length_unit",
+                                    "kind",
+                                    "max_position_error",
+                                    "attributes"
+                                  ],
+                                  "title": "VoxelCentroid",
+                                  "type": "object"
+                                }
+                              ],
+                              "title": "Settings"
+                            }
+                          },
+                          "required": [
+                            "settings"
+                          ],
+                          "title": "ResampleCloudParameters",
+                          "type": "object"
+                        },
+                        "parameters_sha256": {
+                          "pattern": "^[0-9a-f]{64}$",
+                          "title": "Parameters Sha256",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "method_id",
+                        "method_version",
+                        "parameters",
+                        "parameters_sha256"
+                      ],
+                      "title": "ResampleCloudMethod",
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null
                 }
               },
               "required": [
@@ -289806,7 +292458,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.21",
+      "node_pack_version": "0.1.22",
       "metadata": {}
     },
     {
@@ -290294,7 +292946,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.21",
+      "node_pack_version": "0.1.22",
       "metadata": {}
     },
     {
@@ -290703,7 +293355,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.21",
+      "node_pack_version": "0.1.22",
       "metadata": {}
     },
     {
@@ -293302,7 +295954,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.21",
+      "node_pack_version": "0.1.22",
       "metadata": {}
     },
     {
@@ -293699,7 +296351,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.21",
+      "node_pack_version": "0.1.22",
       "metadata": {}
     },
     {
@@ -294199,7 +296851,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.21",
+      "node_pack_version": "0.1.22",
       "metadata": {}
     },
     {
@@ -294817,7 +297469,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.21",
+      "node_pack_version": "0.1.22",
       "metadata": {}
     },
     {
@@ -295476,7 +298128,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.21",
+      "node_pack_version": "0.1.22",
       "metadata": {}
     },
     {
@@ -296912,7 +299564,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.21",
+      "node_pack_version": "0.1.22",
       "metadata": {}
     },
     {
@@ -297173,7 +299825,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.21",
+      "node_pack_version": "0.1.22",
       "metadata": {}
     },
     {
@@ -297532,7 +300184,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.21",
+      "node_pack_version": "0.1.22",
       "metadata": {}
     },
     {
@@ -297589,7 +300241,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.21",
+      "node_pack_version": "0.1.22",
       "metadata": {}
     },
     {
@@ -297600,7 +300252,7 @@
       "description": "Read Cloud",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.13",
+      "version": "0.1.22",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -297969,7 +300621,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.21",
+      "node_pack_version": "0.1.22",
       "metadata": {}
     },
     {
@@ -298041,7 +300693,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.21",
+      "node_pack_version": "0.1.22",
       "metadata": {}
     },
     {
@@ -298179,7 +300831,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.21",
+      "node_pack_version": "0.1.22",
       "metadata": {}
     },
     {
@@ -298300,7 +300952,235 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.21",
+      "node_pack_version": "0.1.22",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.metrology3d.resample-cloud",
+      "display_name": "Resample Cloud",
+      "category": "metrology3d.data.preprocess",
+      "description": "Resample Cloud",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.22",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "cloud",
+          "display_name": "Cloud",
+          "payload_type_id": "point-cloud-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "cloud",
+          "display_name": "Cloud",
+          "payload_type_id": "point-cloud-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "additionalProperties": false,
+        "description": "三种明确重采样方法，不包含自动回退或隐式去噪。",
+        "properties": {
+          "settings": {
+            "discriminator": {
+              "mapping": {
+                "stride": "#/$defs/StrideResample",
+                "voxel-centroid": "#/$defs/VoxelCentroid",
+                "voxel-representative": "#/$defs/VoxelRepresentative"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "description": "按当前逻辑行抽取；offset 不是原始文件行号。",
+                "properties": {
+                  "kind": {
+                    "const": "stride",
+                    "title": "Kind",
+                    "type": "string"
+                  },
+                  "every_k_points": {
+                    "maximum": 9007199254740991,
+                    "minimum": 1,
+                    "title": "Every K Points",
+                    "type": "integer"
+                  },
+                  "offset": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "title": "Offset",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "every_k_points",
+                  "offset"
+                ],
+                "title": "StrideResample",
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "每格选距质心最近的原点，所有属性逐位保留。",
+                "properties": {
+                  "voxel_size": {
+                    "exclusiveMinimum": 0,
+                    "title": "Voxel Size",
+                    "type": "number"
+                  },
+                  "grid_origin": {
+                    "maxItems": 3,
+                    "minItems": 3,
+                    "prefixItems": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ],
+                    "title": "Grid Origin",
+                    "type": "array"
+                  },
+                  "frame_id": {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                    "title": "Frame Id",
+                    "type": "string"
+                  },
+                  "length_unit": {
+                    "enum": [
+                      "m",
+                      "mm",
+                      "um"
+                    ],
+                    "title": "Length Unit",
+                    "type": "string"
+                  },
+                  "kind": {
+                    "const": "voxel-representative",
+                    "title": "Kind",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "voxel_size",
+                  "grid_origin",
+                  "frame_id",
+                  "length_unit",
+                  "kind"
+                ],
+                "title": "VoxelRepresentative",
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "等权质心仅生成坐标，误差上限采用输入物理单位。",
+                "properties": {
+                  "voxel_size": {
+                    "exclusiveMinimum": 0,
+                    "title": "Voxel Size",
+                    "type": "number"
+                  },
+                  "grid_origin": {
+                    "maxItems": 3,
+                    "minItems": 3,
+                    "prefixItems": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ],
+                    "title": "Grid Origin",
+                    "type": "array"
+                  },
+                  "frame_id": {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                    "title": "Frame Id",
+                    "type": "string"
+                  },
+                  "length_unit": {
+                    "enum": [
+                      "m",
+                      "mm",
+                      "um"
+                    ],
+                    "title": "Length Unit",
+                    "type": "string"
+                  },
+                  "kind": {
+                    "const": "voxel-centroid",
+                    "title": "Kind",
+                    "type": "string"
+                  },
+                  "max_position_error": {
+                    "exclusiveMinimum": 0,
+                    "title": "Max Position Error",
+                    "type": "number"
+                  },
+                  "attributes": {
+                    "const": "positions-only",
+                    "title": "Attributes",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "voxel_size",
+                  "grid_origin",
+                  "frame_id",
+                  "length_unit",
+                  "kind",
+                  "max_position_error",
+                  "attributes"
+                ],
+                "title": "VoxelCentroid",
+                "type": "object"
+              }
+            ],
+            "title": "Settings"
+          }
+        },
+        "required": [
+          "settings"
+        ],
+        "title": "ResampleCloudParameters",
+        "type": "object"
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "vision.metrology3d"
+      ],
+      "runtime_requirements": {},
+      "node_pack_id": "metrology3d.nodes",
+      "node_pack_version": "0.1.22",
       "metadata": {}
     },
     {
@@ -298311,7 +301191,7 @@
       "description": "Cloud Preview",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.14",
+      "version": "0.1.22",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -298525,7 +301405,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.21",
+      "node_pack_version": "0.1.22",
       "metadata": {}
     },
     {
@@ -298536,7 +301416,7 @@
       "description": "Save Cloud",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.13",
+      "version": "0.1.22",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -298700,7 +301580,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.21",
+      "node_pack_version": "0.1.22",
       "metadata": {}
     },
     {
@@ -298899,7 +301779,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.21",
+      "node_pack_version": "0.1.22",
       "metadata": {}
     }
   ],

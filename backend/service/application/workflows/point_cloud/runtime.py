@@ -28,6 +28,7 @@ from backend.contracts.workflows.point_cloud_runtime import (
     CloudAssetSource,
     BoundaryCloudMethod,
     BoundarySelectionMethod,
+    ResampleCloudMethod,
 )
 from backend.contracts.workflows.boundary3d import BoundaryTopology
 from backend.service.application.workflows.point_cloud.lineage import (
@@ -150,15 +151,24 @@ class CloudView:
         result.setflags(write=False)
         return result
 
-    def gather(self, logical: np.ndarray) -> tuple[Mapping[str, np.ndarray], np.ndarray]:
+    def gather(
+        self, logical: np.ndarray
+    ) -> tuple[Mapping[str, np.ndarray], np.ndarray]:
         """有界随机读复用当前父链；返回属性与真实身份，不扩展借用生命周期。"""
         if not self._active:
             raise RuntimeError("点云借用已结束")
         rows = np.asarray(logical)
-        row_bytes = sum(value.dtype.itemsize * value.shape[1] for value in self._arrays.values())
-        if (rows.ndim != 1 or rows.dtype.kind not in "iu" or len(rows) > self._policy.chunk_rows
-                or len(rows) * (row_bytes + 32) > self._policy.max_working_bytes
-                or np.any(rows < 0) or np.any(rows >= self.reference.point_count)):
+        row_bytes = sum(
+            value.dtype.itemsize * value.shape[1] for value in self._arrays.values()
+        )
+        if (
+            rows.ndim != 1
+            or rows.dtype.kind not in "iu"
+            or len(rows) > self._policy.chunk_rows
+            or len(rows) * (row_bytes + 32) > self._policy.max_working_bytes
+            or np.any(rows < 0)
+            or np.any(rows >= self.reference.point_count)
+        ):
             raise InvalidRequestError("点云随机访问索引或预算无效")
         selected = rows
         for selector in self._selectors:
@@ -199,16 +209,14 @@ class CloudView:
             self._lineage,
             selected,
             max_working_bytes=self._policy.max_working_bytes,
-            kind="grid-profile"
-            if self.reference.sample_origin == "estimated"
-            else "surface",
+            kind=self.reference.lineage_kind,
         )
 
     def profile_lineage_snapshot(self):
         """资产保存需要去重格表；完整快照限于半个工作预算，不绕过 Scope 借用。"""
         if not self._active or self._lineage is None:
             raise RuntimeError("点云借用已结束或缺少生成来源")
-        if self.reference.sample_origin != "estimated":
+        if self.reference.lineage_kind != "grid-profile":
             raise InvalidRequestError("当前点云不是格剖面来源")
         n = self.reference.point_count
         if n * 256 > self._policy.max_working_bytes // 2:
@@ -222,6 +230,28 @@ class CloudView:
             max_working_bytes=self._policy.max_working_bytes // 2,
             kind="grid-profile",
         )
+
+    def voxel_metadata(self, start: int, stop: int):
+        """显示只读取有界格键和成员数，不为拾取复制完整成员列表。"""
+        if not self._active or self._lineage is None:
+            raise RuntimeError("点云借用已结束或缺少来源")
+        if self.reference.lineage_kind != "voxel-aggregate" or not (
+            type(start) is int
+            and type(stop) is int
+            and 0 <= start <= stop <= self.reference.point_count
+            and stop - start <= self._policy.chunk_rows
+            and (stop - start) * 64 <= self._policy.max_working_bytes
+        ):
+            raise InvalidRequestError("体素显示区间或来源无效")
+        selected = np.arange(start, stop, dtype=np.uint64)
+        for selector in self._origin_selectors:
+            selected = selector[selected, 0]
+        offsets = self._lineage["member_offsets"][:, 0]
+        keys = self._lineage["voxel_keys"][selected]
+        counts = offsets[selected + 1] - offsets[selected]
+        keys.setflags(write=False)
+        counts.setflags(write=False)
+        return keys, counts
 
 
 class CloudRuntime:
@@ -345,7 +375,6 @@ class CloudRuntime:
         """已验证资产恢复新的运行身份，历史行号与数组所有权仍归当前 Scope。"""
         from backend.contracts.workflows.point_cloud_assets import (
             ArrayCloudAsset,
-            AssetProfileLineage,
         )
 
         with self._lock:
@@ -367,7 +396,8 @@ class CloudRuntime:
             origin = (
                 "estimated"
                 if isinstance(cloud, ArrayCloudAsset)
-                and isinstance(cloud.lineage, AssetProfileLineage)
+                and cloud.lineage is not None
+                and cloud.lineage.kind != "surface"
                 else "interpolated"
                 if cloud.vertex_kind == "generated"
                 else "mixed"
@@ -388,7 +418,7 @@ class CloudRuntime:
                         source_point_count=cloud.lineage.source_point_count,
                         policy=self.policy,
                         cancel=cancel,
-                        kind="grid-profile" if origin == "estimated" else "surface",
+                        kind=cloud.lineage.kind,
                     )
             reference = CloudReference(
                 format_id="amvision.point-cloud-ref.v1",
@@ -409,6 +439,14 @@ class CloudRuntime:
                 sample_origin=origin,
                 vertex_kind=cloud.vertex_kind,
                 topology=cloud.topology,
+                lineage_kind=cloud.lineage.kind
+                if isinstance(cloud, ArrayCloudAsset) and cloud.lineage
+                else None,
+                voxel_aggregation=cloud.lineage.aggregation
+                if isinstance(cloud, ArrayCloudAsset)
+                and cloud.lineage is not None
+                and cloud.lineage.kind == "voxel-aggregate"
+                else None,
             )
             if (indices is not None) != (
                 isinstance(cloud, ArrayCloudAsset) and cloud.indices is not None
@@ -630,21 +668,32 @@ class CloudRuntime:
         self,
         *,
         parent: CloudReference,
-        method: BoundaryCloudMethod,
+        method: BoundaryCloudMethod | ResampleCloudMethod,
         owner: OwnedCloudArrays,
         lineage: OwnedCloudArrays,
         point_count: int,
         fields: tuple[CloudField, ...],
-        topology: BoundaryTopology,
+        topology: BoundaryTopology | None,
         cancel: Callable[[], None],
     ) -> CloudReference:
         """生成位置及原始行号来源共用 Scope，不把生成序号伪装成源行号。"""
         with self._lock:
             parent_record = self._resolve(parent)
-            if parent.vertex_kind != "source" or not isinstance(
-                method, BoundaryCloudMethod
+            if parent.vertex_kind != "source" or not (
+                isinstance(method, BoundaryCloudMethod)
+                or isinstance(method, ResampleCloudMethod)
+                and method.parameters.settings.kind == "voxel-centroid"
             ):
                 raise InvalidRequestError("边界生成只能使用有原始行号的支持点")
+            kind = (
+                "voxel-aggregate"
+                if isinstance(method, ResampleCloudMethod)
+                else "grid-profile"
+                if method.parameters.method.kind == "visible-envelope"
+                else "surface"
+            )
+            if kind == "voxel-aggregate" and topology is not None:
+                raise InvalidRequestError("体素质心不能伪造边界拓扑")
             if not self.storage_scope.owns(lineage) or lineage is owner:
                 raise InvalidRequestError("生成来源必须独立归属当前运行")
             self._validate_arrays(owner, point_count, fields, cancel)
@@ -655,9 +704,7 @@ class CloudRuntime:
                     source_point_count=self.source_point_count(parent),
                     policy=self.policy,
                     cancel=cancel,
-                    kind="grid-profile"
-                    if method.parameters.method.kind == "visible-envelope"
-                    else "surface",
+                    kind=kind,
                 )
             self._validate_generated_positions(owner, cancel)
             reference = self._derived_reference(
@@ -667,10 +714,10 @@ class CloudRuntime:
                 fields=fields,
                 source_metadata=None,
                 vertex_kind="generated",
-                sample_origin="estimated"
-                if method.parameters.method.kind == "visible-envelope"
-                else "interpolated",
+                sample_origin="estimated" if kind != "surface" else "interpolated",
                 topology=topology,
+                lineage_kind=kind,
+                voxel_aggregation=method if kind == "voxel-aggregate" else None,
             )
             self._publish(
                 reference,

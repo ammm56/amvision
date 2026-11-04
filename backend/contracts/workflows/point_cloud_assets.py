@@ -23,6 +23,7 @@ from backend.contracts.workflows.point_cloud import (
 )
 from backend.contracts.workflows.point_cloud_runtime import (
     CloudMethod,
+    ResampleCloudMethod,
 )
 from backend.contracts.workflows.boundary3d import BoundaryTopology
 from backend.contracts.workflows.point_cloud import canonical_cloud_json
@@ -154,6 +155,7 @@ class AssetIndices(Contract):
 class AssetGeneratedLineage(Contract):
     """固定布局：u64 源边、f64 权重、u64 CSR 偏移及 u64 源面。"""
 
+    kind: Literal["surface"] = "surface"
     source_point_count: JsonCount
     face_count: JsonCount
     source: AssetSource
@@ -175,6 +177,38 @@ class AssetProfileLineage(Contract):
     def byte_length(self, point_count: int) -> int:
         """LE 格索引/偏移/高度与顶点格对/权重/种类/站位/侧序的总长度。"""
         return self.cell_count * 32 + 8 + self.source_count * 8 + point_count * 42
+
+
+class AssetVoxelLineage(Contract):
+    """体素键、成员 CSR 与最初源行号，不把质心伪装成原点。"""
+
+    kind: Literal["voxel-aggregate"]
+    source_point_count: JsonCount
+    member_count: JsonCount
+    source_dtype: Literal["uint32", "uint64"]
+    source: AssetSource
+    aggregation: ResampleCloudMethod
+
+    @model_validator(mode="after")
+    def check_dtype(self) -> Self:
+        """源行宽度与最初总点数一致，成员不得多于最初记录数。"""
+        if self.source_dtype != (
+            "uint32" if self.source_point_count <= 2**32 else "uint64"
+        ):
+            raise ValueError("体素源行号宽度与原始点数不一致")
+        if self.member_count > self.source_point_count:
+            raise ValueError("体素成员不能重复计权")
+        if self.aggregation.parameters.settings.kind != "voxel-centroid":
+            raise ValueError("体素来源必须保存原质心聚合方法")
+        return self
+
+    def byte_length(self, point_count: int) -> int:
+        """LE 坐标格键与 CSR 的精确长度。"""
+        return (
+            point_count * 24
+            + (point_count + 1) * 8
+            + self.member_count * FIELD_WIDTHS[self.source_dtype]
+        )
 
 
 class CloudAssetBase(Contract):
@@ -332,7 +366,7 @@ class ArrayCloudAsset(CloudAssetBase):
     fields: Annotated[tuple[CloudAssetField, ...], Field(min_length=1)]
     content_length: JsonCount
     indices: AssetIndices | None
-    lineage: AssetGeneratedLineage | AssetProfileLineage | None
+    lineage: AssetGeneratedLineage | AssetProfileLineage | AssetVoxelLineage | None
 
     @model_validator(mode="after")
     def check_layout(self) -> Self:
@@ -378,6 +412,11 @@ class ArrayCloudAsset(CloudAssetBase):
             "lineage"
         ].content_length != self.lineage.byte_length(self.point_count):
             raise ValueError("生成来源数据长度不一致")
+        if isinstance(self.lineage, AssetVoxelLineage) and (
+            self.lineage.member_count < self.point_count
+            or (self.point_count == 0) != (self.lineage.member_count == 0)
+        ):
+            raise ValueError("体素成员数必须覆盖每个非空体素")
         return self
 
 

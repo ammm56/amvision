@@ -72,7 +72,7 @@ def curve_display(runtime, feature, *, policy, remaining_points, cancel):
                                 <= feature.method.parameters.robust.inlier_residual
                             ).tolist()
                         )
-                    if cloud.sample_origin == "estimated":
+                    if cloud.lineage_kind == "grid-profile":
                         profile_kinds.extend(
                             view.lineage_chunk(
                                 start, min(start + rows, cloud.point_count)

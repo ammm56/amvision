@@ -137,6 +137,9 @@ def export_cloud_file(runtime, reference, options, *, stream, max_output_bytes, 
                 "point_count": reference.point_count,
                 "fields_written": list(options.fields),
                 "fields_omitted": [f for f in fields if f not in options.fields],
+                "vertex_kind": reference.vertex_kind,
+                "sample_origin": reference.sample_origin,
+                "lineage_preserved": False,
                 "spatial": reference.spatial.model_dump(mode="json"),
                 "source_reference": reference.source.reference.model_dump(mode="json")
                 if reference.source.kind == "asset"

@@ -21,6 +21,18 @@ def validate_lineage(
     arrays, *, point_count, source_point_count, policy, cancel, kind="surface"
 ):
     """验证原始行号、插值和 CSR；不把邻面多次出现误判为重复数据。"""
+    if kind == "voxel-aggregate":
+        from backend.service.application.workflows.point_cloud.voxel_lineage import (
+            validate_voxel_lineage,
+        )
+
+        return validate_voxel_lineage(
+            arrays,
+            point_count=point_count,
+            source_point_count=source_point_count,
+            policy=policy,
+            cancel=cancel,
+        )
     if kind == "grid-profile":
         from backend.service.application.workflows.point_cloud.profile_lineage import (
             validate_profile_lineage,
@@ -95,6 +107,14 @@ def validate_lineage(
 
 def lineage_chunk(arrays, selected, *, max_working_bytes, kind="surface"):
     """按当前逻辑行重建有界 CSR，裁剪和变换不改变最初来源行号。"""
+    if kind == "voxel-aggregate":
+        from backend.service.application.workflows.point_cloud.voxel_lineage import (
+            voxel_lineage_chunk,
+        )
+
+        return voxel_lineage_chunk(
+            arrays, selected, max_working_bytes=max_working_bytes
+        )
     if kind == "grid-profile":
         from backend.service.application.workflows.point_cloud.profile_lineage import (
             profile_lineage_chunk,

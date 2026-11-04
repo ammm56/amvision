@@ -35,12 +35,16 @@ from backend.service.application.workflows.point_cloud.arrays import OwnedCloudA
 from custom_nodes.metrology3d_nodes.shared.io.read_file import read_cloud_file
 from custom_nodes.metrology3d_nodes.shared.cloud_lineage_assets import (
     lineage_chunks,
-    count_lineage_faces,
+    count_lineage_members,
 )
 from backend.service.application.workflows.point_cloud.lineage import lineage_shapes
 from backend.contracts.workflows.point_cloud_assets import (
     AssetGeneratedLineage,
     AssetProfileLineage,
+    AssetVoxelLineage,
+)
+from backend.service.application.workflows.point_cloud.voxel_lineage import (
+    voxel_lineage_shapes,
 )
 from backend.service.application.workflows.point_cloud.profile_lineage import (
     profile_lineage_shapes,
@@ -301,7 +305,7 @@ def save_cloud(
                 else {"kind": "derived"}
             )
             if selected.vertex_kind == "generated":
-                if selected.sample_origin == "estimated":
+                if selected.lineage_kind == "grid-profile":
                     profile_arrays = view.profile_lineage_snapshot()
                     lineage = AssetProfileLineage(
                         kind="grid-profile",
@@ -323,10 +327,22 @@ def save_cloud(
                                 cancel()
                                 yield array[start : start + rows].tobytes(order="C")
                 else:
-                    lineage = AssetGeneratedLineage(
-                        source_point_count=source_count,
-                        face_count=count_lineage_faces(view, rows, cancel),
-                        source=source,
+                    count = count_lineage_members(view, rows, cancel)
+                    lineage = (
+                        AssetVoxelLineage(
+                            kind="voxel-aggregate",
+                            source_point_count=source_count,
+                            member_count=count,
+                            source_dtype=index_dtype,
+                            source=source,
+                            aggregation=selected.voxel_aggregation,
+                        )
+                        if selected.lineage_kind == "voxel-aggregate"
+                        else AssetGeneratedLineage(
+                            source_point_count=source_count,
+                            face_count=count,
+                            source=source,
+                        )
                     )
 
                     def lineage_factory():
@@ -508,7 +524,13 @@ def _read_blocks(runtime, document, service, policy, cancel):
             )
         if cloud.lineage:
             shapes = (
-                profile_lineage_shapes(
+                voxel_lineage_shapes(
+                    cloud.point_count,
+                    cloud.lineage.member_count,
+                    cloud.lineage.source_dtype,
+                )
+                if isinstance(cloud.lineage, AssetVoxelLineage)
+                else profile_lineage_shapes(
                     cloud.point_count,
                     cloud.lineage.cell_count,
                     cloud.lineage.source_count,

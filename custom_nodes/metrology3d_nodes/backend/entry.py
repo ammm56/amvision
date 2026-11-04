@@ -11,6 +11,7 @@ HANDLERS = {
     "normalize-units": handlers.normalize,
     "filter-valid": handlers.filter_points,
     "denoise-cloud": handlers.denoise,
+    "resample-cloud": handlers.resample,
     "cloud-preview": handlers.preview,
     "save-cloud": handlers.save,
     "export-cloud": handlers.export,

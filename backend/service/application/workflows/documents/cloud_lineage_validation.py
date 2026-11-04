@@ -7,7 +7,13 @@ from backend.service.application.workflows.point_cloud.lineage import lineage_sh
 from backend.service.application.workflows.point_cloud.profile_lineage import (
     profile_lineage_shapes,
 )
-from backend.contracts.workflows.point_cloud_assets import AssetProfileLineage
+from backend.contracts.workflows.point_cloud_assets import (
+    AssetProfileLineage,
+    AssetVoxelLineage,
+)
+from backend.service.application.workflows.point_cloud.voxel_lineage import (
+    voxel_lineage_shapes,
+)
 
 
 class LineageBytesValidator:
@@ -19,8 +25,15 @@ class LineageBytesValidator:
         self.fields = []
         offset = 0
         self.profile = isinstance(asset.lineage, AssetProfileLineage)
+        self.voxel = isinstance(asset.lineage, AssetVoxelLineage)
         shapes = (
-            profile_lineage_shapes(
+            voxel_lineage_shapes(
+                asset.point_count,
+                asset.lineage.member_count,
+                asset.lineage.source_dtype,
+            )
+            if self.voxel
+            else profile_lineage_shapes(
                 asset.point_count, asset.lineage.cell_count, asset.lineage.source_count
             )
             if self.profile
@@ -45,9 +58,12 @@ class LineageBytesValidator:
             end = len(joined) // row_bytes * row_bytes
             values = np.frombuffer(joined[:end], dtype=dtype).reshape(-1, width)
             self.tail = joined[end:]
-            if name in ("source_edges", "source_faces", "cell_sources") and np.any(
-                values >= self.asset.lineage.source_point_count
-            ):
+            if name in (
+                "source_edges",
+                "source_faces",
+                "cell_sources",
+                "source_rows",
+            ) and np.any(values >= self.asset.lineage.source_point_count):
                 raise InvalidRequestError("生成来源行号越界")
             if name == "source_faces" and (
                 np.any(values[:, 0] == values[:, 1])
@@ -64,9 +80,13 @@ class LineageBytesValidator:
                 )
             ):
                 raise InvalidRequestError("生成来源权重无效")
-            if name in ("face_offsets", "cell_offsets") and len(values):
+            if name in ("face_offsets", "cell_offsets", "member_offsets") and len(
+                values
+            ):
                 total = (
-                    self.asset.lineage.source_count
+                    self.asset.lineage.member_count
+                    if self.voxel
+                    else self.asset.lineage.source_count
                     if self.profile
                     else self.asset.lineage.face_count
                 )
@@ -81,7 +101,7 @@ class LineageBytesValidator:
                 self.previous = int(flat[-1])
                 if high == stop and self.previous != total:
                     raise InvalidRequestError("生成来源邻面尾部无效")
-            if name == "cell_indices" and len(values):
+            if name in ("cell_indices", "voxel_keys") and len(values):
                 pairs = [tuple(map(int, row)) for row in values]
                 if (
                     self.previous_cell is not None and pairs[0] <= self.previous_cell
