@@ -4,6 +4,7 @@
 
 ## 入口
 
+- [main 合并后的开发环境验证（2026-11-04）](main-merge-live-validation-20261104.md)
 - [3913 正面大图读取与编排优化验证（2026-10-30）](linescan-front-optimization-20261030.md)
 - [3913 正面逐工件结果与坐标验证（2026-10-29）](linescan-front-result-20261029.md)
 - [完整发行栈排障](release-full-troubleshooting.md)
