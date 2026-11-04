@@ -18,6 +18,48 @@ vi.mock('@/workflows/workflow-editor/point-cloud/asset-details', () => ({readDet
 const payload = {state:'ready',spatial:{length_unit:null,frame_id:'camera'},color:{mode:'solid'},source_point_count:20,display_point_count:2}
 afterEach(() => vi.resetAllMocks())
 function viewer() { return mount(CloudViewer, {props:{payload,projectId:'p'},global:{plugins:[createI18n({legacy:false,locale:'en-US'})]}}) }
+it.each(['full','evidence'] as const)('renders API failure text without translation warnings or HTML in %s',async presentation=>{
+  const message='Missing index <img src=x onerror=alert(1)> {source}'
+  const warn=vi.spyOn(console,'warn').mockImplementation(()=>{})
+  mocks.capabilities.mockRejectedValue(new Error(message))
+  const w=mount(CloudViewer,{props:{payload,projectId:'p',presentation},global:{plugins:[createI18n({legacy:false,locale:'en-US'})]}})
+  try{
+    await flushPromises()
+    expect(w.text()).toContain(message);expect(w.find('img').exists()).toBe(false)
+    expect(warn).not.toHaveBeenCalled()
+  }finally{w.unmount();warn.mockRestore()}
+})
+it('keeps the detail retry control mounted and only reloads failed metadata on explicit action',async()=>{
+  mocks.capabilities.mockResolvedValue({renderer:{}})
+  const data={dispose:vi.fn(),count:2,origin:[0,0,0]}
+  mocks.decode.mockResolvedValue(data)
+  const scenes:any[]=[]
+  mocks.create.mockImplementation(()=>{
+    const scene={dispose:vi.fn(),geometry:vi.fn(),activity:vi.fn(),detailBounds:vi.fn(),detailEvents:vi.fn(),detailClear:vi.fn(),detailAdd:vi.fn(),detailComplete:vi.fn(),detailVisible:()=>true}
+    scenes.push(scene);return scene
+  })
+  let reject!:(error:Error)=>void
+  mocks.details.mockImplementationOnce(()=>new Promise((_resolve,rejected)=>{reject=rejected}))
+  const source={project_id:'p',resource_id:'r',version:1,kind:'point-cloud',sha256:'a'.repeat(64)}
+  const w=mount(CloudViewer,{props:{payload:{...payload,source_asset:source,asset_details:{source}},projectId:'p'},global:{plugins:[createI18n({legacy:false,locale:'en-US'})]}})
+  try{
+    await flushPromises()
+    const button=w.get('[aria-label="Reload asset details"]'),element=button.element
+    expect(button.attributes('disabled')).toBeDefined()
+    reject(new Error('cloud_preview_invalid'));await flushPromises()
+    expect(w.get('[aria-label="Reload asset details"]').element).toBe(element)
+    expect(button.attributes('disabled')).toBeUndefined()
+    expect(w.get('.cloud-detail-status').text()).toContain('Invalid display data')
+    await w.setProps({presentation:'hidden'});await w.setProps({presentation:'view'});await flushPromises()
+    expect(mocks.details).toHaveBeenCalledOnce()
+    mocks.details.mockResolvedValueOnce({bounds:{min:[0,0,0],max:[1,1,1]},blocks:[]})
+    await button.trigger('click');await flushPromises()
+    expect(scenes[0].dispose).toHaveBeenCalledOnce();expect(data.dispose).toHaveBeenCalledOnce()
+    expect(mocks.details).toHaveBeenCalledTimes(2)
+    expect(button.element).toBe(element);expect(button.attributes('disabled')).toBeDefined()
+    expect(w.get('.cloud-detail-status').text()).toBe('Overview')
+  }finally{w.unmount()}
+})
 it('ignores old asset manifests and camera callbacks after payload switch and unmount',async()=>{
   mocks.capabilities.mockResolvedValue({renderer:{}})
   mocks.decode.mockImplementation(async()=>({dispose:vi.fn(),count:2,origin:[0,0,0]}))
@@ -197,6 +239,25 @@ it('reports context loss, releases CPU/GPU owners and requires explicit reopen',
   expect(wrapper.get('[role=alert]').text()).toContain('WebGL context lost')
   expect(data.dispose).toHaveBeenCalledOnce();expect(renderer.dispose).toHaveBeenCalledOnce()
   expect(mocks.create).toHaveBeenCalledOnce();wrapper.unmount()
+})
+
+it('discards an index that arrives after context loss and reopens with a new owner',async()=>{
+  mocks.capabilities.mockResolvedValue({renderer:{}})
+  const owners:any[]=[],scenes:any[]=[],pending:((v:unknown)=>void)[]=[]
+  mocks.decode.mockImplementation(async()=>{const data={dispose:vi.fn(),count:2,origin:[0,0,0]};owners.push(data);return data})
+  mocks.create.mockImplementation(()=>{const scene={dispose:vi.fn(),geometry:vi.fn(),roiVisibility:vi.fn(),detailBounds:vi.fn(),detailEvents:vi.fn(),detailClear:vi.fn()};scenes.push(scene);return scene})
+  mocks.details.mockImplementation(()=>new Promise(resolve=>pending.push(resolve)))
+  const source={project_id:'p',resource_id:'r',version:1,kind:'point-cloud',sha256:'a'.repeat(64)}
+  const w=mount(CloudViewer,{props:{payload:{...payload,source_asset:source,asset_details:{source}},projectId:'p'},global:{plugins:[createI18n({legacy:false,locale:'en-US'})]}})
+  try{
+    await flushPromises();mocks.create.mock.calls[0]![4](new Error('cloud_context_lost'));await nextTick()
+    pending[0]!({bounds:{min:[0,0,0],max:[1,1,1]},blocks:[]});await flushPromises()
+    expect(scenes[0].detailEvents).not.toHaveBeenCalled();expect(scenes[0].dispose).toHaveBeenCalledOnce();expect(owners[0].dispose).toHaveBeenCalledOnce()
+    await w.get('[title="Reopen"]').trigger('click');await flushPromises()
+    pending[1]!({bounds:{min:[0,0,0],max:[1,1,1]},blocks:[]});await flushPromises()
+    expect(scenes[1].detailEvents).toHaveBeenCalledOnce();expect(w.find('[role=alert]').exists()).toBe(false)
+  }finally{w.unmount()}
+  expect(owners[1].dispose).toHaveBeenCalledOnce();expect(scenes[1].dispose).toHaveBeenCalledOnce()
 })
 
 it('picks only explicitly and ignores callbacks from a replaced or disposed scene',async()=>{

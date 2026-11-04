@@ -16,6 +16,11 @@ from backend.contracts.workflows.point_cloud import (
 )
 
 
+def detail_index_dtype(count: int) -> Literal["uint32", "uint64"]:
+    """按最大合法行号选择无损整数宽度，不由坐标精度推断。"""
+    return "uint32" if count <= 2**32 else "uint64"
+
+
 class DetailField(CloudField):
     """原始字段在紧密行记录中的偏移，数据精度不变。"""
 
@@ -49,6 +54,8 @@ class CloudDetailIndex(Contract):
     bounds: SupportBounds
     fields: tuple[DetailField, ...]
     row_bytes: PositiveCount
+    logical_dtype: Literal["uint32", "uint64"]
+    identity_dtype: Literal["uint32", "uint64"]
     logical_offset: JsonCount
     identity_offset: JsonCount
     leaf_limit: PositiveCount
@@ -69,11 +76,22 @@ class CloudDetailIndex(Contract):
                 raise ValueError("点云细节字段布局无效")
             names.add(field.name)
             offset += FIELD_WIDTHS[field.dtype] * field.components
+        identity_count = (
+            self.source_point_count
+            if self.vertex_kind == "source"
+            else self.point_count
+        )
+        if self.logical_dtype != detail_index_dtype(
+            self.point_count
+        ) or self.identity_dtype != detail_index_dtype(identity_count):
+            raise ValueError("点云细节行号宽度与来源计数不一致")
+        logical_width = FIELD_WIDTHS[self.logical_dtype]
+        identity_width = FIELD_WIDTHS[self.identity_dtype]
         if "positions" not in names or (
             self.logical_offset,
             self.identity_offset,
             self.row_bytes,
-        ) != (offset, offset + 8, offset + 16):
+        ) != (offset, offset + logical_width, offset + logical_width + identity_width):
             raise ValueError("点云细节行布局无效")
         if (
             not self.blocks

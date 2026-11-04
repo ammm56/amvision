@@ -4,9 +4,10 @@ from concurrent.futures import CancelledError
 
 import numpy as np
 import pytest
+import psutil
 
 from backend.contracts.workflows.point_cloud import CloudBufferDescriptor
-from runtimes.clients.point_cloud import PointCloudClient
+from runtimes.clients.point_cloud import PointCloudClient, PointCloudCallError
 from tests.point_cloud_support import spatial
 from tests.integration.metrology3d.capacity_support import (
     ROWS,
@@ -15,7 +16,7 @@ from tests.integration.metrology3d.capacity_support import (
     settings,
     stage,
 )
-from tests.integration.metrology3d.published_support import published_system
+from tests.integration.metrology3d.published_support import published_system, wait_for
 
 
 def array_file(path, size):
@@ -134,3 +135,101 @@ def test_capacity_published_trigger(tmp_path, request):
                 evidence["free_capacity_bytes"] = broker["free_capacity_bytes"]
                 evidence["active_lease_count"] = broker["active_lease_count"]
         evidence["worker_stopped"] = True
+
+
+def test_capacity_worker_crash_and_version_switch(tmp_path, request):
+    """强杀实际执行 worker，回收后切版；旧 generation 不得借入新版本资源。"""
+    configuration = settings()
+    size = request.config.getoption("--cloud-capacity-bytes")
+    if size < 16000000:
+        pytest.skip("执行中强杀需要显式至少 16 MB 载荷，避免节点完成后才注入故障")
+    data = tmp_path / "cloud.bin"
+    with report(request, "worker-fault", process_tree=True) as evidence:
+        descriptor = array_file(data, size)
+        with published_system(
+            tmp_path / "system",
+            point_cloud_policy=configuration.workflow_runtime.point_cloud,
+            broker_policy=configuration.local_buffer_broker,
+        ) as system:
+            version1 = system.publish()
+            started = system.start(version1)
+            generation1 = system.enable_source(create=True)
+            client = PointCloudClient(
+                buffers_root=system.settings.local_memory.root_dir,
+                broker_settings=system.settings.local_buffer_broker,
+            )
+            arguments = dict(
+                source_id=system.source_id,
+                cloud=descriptor,
+                content=data,
+                timeout_ms=120000,
+            )
+            killed = []
+
+            def crash_executing_worker():
+                """只杀本测试已确认 node-started 的 worker；不替换执行或准入。"""
+                if not killed and (active := system.executing()):
+                    assert active["worker_instance_id"] == started["worker_instance_id"]
+                    assert active["process_id"] == started["worker_process_id"]
+                    psutil.Process(active["process_id"]).kill()
+                    killed.append(active)
+                return False
+
+            with stage(evidence, "worker_crash"):
+                with pytest.raises(PointCloudCallError) as error:
+                    client.invoke(
+                        **arguments,
+                        generation=generation1,
+                        cancelled=crash_executing_worker,
+                    )
+                assert len(killed) == 1
+                assert error.value.response["state"] == "failed"
+                wait_for(
+                    lambda: not psutil.pid_exists(killed[0]["process_id"]), timeout=15
+                )
+                system.assert_reclaimed()
+                run = system.call(
+                    "GET", f"/runs/{killed[0]['current_run_id']}?response_mode=run"
+                )
+                assert run["state"] == "failed", run
+                evidence["crashed_run"] = {
+                    "state": run["state"],
+                    "version_id": run["workflow_app_version_id"],
+                    "node_id": killed[0]["node_id"],
+                    "reclaimed": True,
+                }
+            with stage(evidence, "switch_and_reject_stale"):
+                system.call("POST", f"/app-runtimes/{system.runtime_id}/stop")
+                system.call("POST", f"/trigger-sources/{system.source_id}/disable")
+                version2 = system.publish(point_limit=500)
+                selected = system.call(
+                    "POST",
+                    f"/app-runtimes/{system.runtime_id}/select-version",
+                    json={
+                        "workflow_app_version_id": version2,
+                        "expected_generation": 1,
+                    },
+                )
+                assert selected["revision_generation"] == 2
+                restarted = system.start()
+                assert restarted["worker_instance_id"] != started["worker_instance_id"]
+                generation2 = system.enable_source()
+                assert generation2 != generation1
+                with pytest.raises(PointCloudCallError):
+                    client.invoke(**arguments, generation=generation1)
+                system.assert_reclaimed()
+            with stage(evidence, "new_version_reuse"):
+                reply = client.invoke(**arguments, generation=generation2)
+                assert reply["state"] == "succeeded", reply
+                body = reply["response_payload"]["results"]["body"]
+                assert body["source_point_count"] == descriptor.point_count
+                assert body["display_point_count"] == 500
+                run = system.call(
+                    "GET", f"/runs/{reply['workflow_run_id']}?response_mode=run"
+                )
+                assert run["workflow_app_version_id"] == version2
+                assert run["worker_instance_id"] == restarted["worker_instance_id"]
+                _, broker = system.assert_reclaimed()
+                evidence["new_version_succeeded"] = True
+                evidence["free_capacity_bytes"] = broker["free_capacity_bytes"]
+                evidence["active_lease_count"] = broker["active_lease_count"]

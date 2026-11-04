@@ -145,7 +145,7 @@ function chooseFeature(value:{payload:Form;featureId:string;segmentId:string}){
 }
 // 应用只提交当前合法草稿；缺接线及其他节点错误仍由整图预检阻止执行。
 function apply(){if(!issues.value.length&&!props.disabled){emit('update:modelValue',copy(draft.value));open.value=false;resetView()}}
-watch(()=>[props.modelValue,props.nodeType,props.disabled,JSON.stringify(props.inputSources)],()=>{open.value=false;resetView()})
+watch([()=>props.modelValue,()=>props.nodeType,()=>props.disabled,()=>JSON.stringify(props.inputSources)],()=>{open.value=false;resetView()})
 watch(()=>[state().runId,state().succeeded],resetView)
 watch(()=>[previewId.value,JSON.stringify(draft.value.evaluation)],()=>{candidate.value=null;activeSlot.value=''})
 </script>

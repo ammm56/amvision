@@ -1,0 +1,70 @@
+INFO:     Started server process [44276]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:5630 (Press CTRL+C to quit)
+INFO:     127.0.0.1:50424 - "GET /api/v1/system/liveness HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50425 - "GET /api/v1/system/liveness HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57084 - "GET /api/v1/system/liveness HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57085 - "POST /api/v1/auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57085 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57085 - "GET /assets/index-BokiFjZg.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57085 - "GET /assets/rolldown-runtime-DK3Fl9T5.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57085 - "GET /assets/vendor-vue-DuxOEToy.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57085 - "GET /assets/vendor-ui-qHpl1fO8.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57085 - "GET /assets/http-client-CgL50Z_H.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57085 - "GET /assets/index-CduQ4SMB.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57085 - "POST /api/v1/projects/bootstrap HTTP/1.1" 201 Created
+INFO:     127.0.0.1:57085 - "GET /api/v1/workflows/projects/project-1/measurement-resources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57086 - "GET /api/v1/system/liveness HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57085 - "POST /api/v1/workflows/projects/project-1/application-packages/import HTTP/1.1" 201 Created
+INFO:     127.0.0.1:57085 - "GET /api/v1/workflows/projects/project-1/applications/app-2735f10e4f008f193b6030cade805d1110c15b87af4548c6b61699a8af1df445 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57087 - "GET /api/v1/system/liveness HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57085 - "POST /api/v1/workflows/projects/project-1/applications/app-2735f10e4f008f193b6030cade805d1110c15b87af4548c6b61699a8af1df445/versions HTTP/1.1" 201 Created
+INFO:     127.0.0.1:57085 - "POST /api/v1/workflows/app-runtimes HTTP/1.1" 201 Created
+INFO:     127.0.0.1:57090 - "GET /api/v1/system/liveness HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57091 - "GET /api/v1/system/liveness HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57085 - "POST /api/v1/workflows/app-runtimes/workflow-runtime-39e9eb9dd06f4531a5140666cd5ca65d/start HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57093 - "GET /api/v1/system/liveness HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57094 - "GET /api/v1/system/liveness HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57095 - "GET /api/v1/system/liveness HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57096 - "GET /api/v1/system/liveness HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57097 - "GET /api/v1/system/liveness HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57098 - "GET /api/v1/system/liveness HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57085 - "POST /api/v1/workflows/app-runtimes/workflow-runtime-39e9eb9dd06f4531a5140666cd5ca65d/invoke HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57085 - "POST /api/v1/workflows/app-runtimes/workflow-runtime-39e9eb9dd06f4531a5140666cd5ca65d/stop HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56023 - "GET /api/v1/system/liveness HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [44276]
+INFO:     Started server process [45956]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:5630 (Press CTRL+C to quit)
+INFO:     127.0.0.1:56027 - "GET /api/v1/system/liveness HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56028 - "GET /api/v1/system/liveness HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64595 - "GET /api/v1/system/liveness HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64596 - "POST /api/v1/auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64596 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64596 - "GET /assets/index-BokiFjZg.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64596 - "GET /assets/rolldown-runtime-DK3Fl9T5.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64596 - "GET /assets/vendor-vue-DuxOEToy.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64596 - "GET /assets/vendor-ui-qHpl1fO8.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64596 - "GET /assets/http-client-CgL50Z_H.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64596 - "GET /assets/index-CduQ4SMB.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64599 - "GET /api/v1/system/liveness HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64600 - "GET /api/v1/system/liveness HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64596 - "POST /api/v1/workflows/app-runtimes/workflow-runtime-39e9eb9dd06f4531a5140666cd5ca65d/start HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64601 - "GET /api/v1/system/liveness HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64602 - "GET /api/v1/system/liveness HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64604 - "GET /api/v1/system/liveness HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64605 - "GET /api/v1/system/liveness HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64606 - "GET /api/v1/system/liveness HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64607 - "GET /api/v1/system/liveness HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64608 - "GET /api/v1/system/liveness HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64596 - "POST /api/v1/workflows/app-runtimes/workflow-runtime-39e9eb9dd06f4531a5140666cd5ca65d/invoke HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64596 - "POST /api/v1/workflows/app-runtimes/workflow-runtime-39e9eb9dd06f4531a5140666cd5ca65d/stop HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [45956]

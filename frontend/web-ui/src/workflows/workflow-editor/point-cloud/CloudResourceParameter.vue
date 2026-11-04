@@ -1,5 +1,5 @@
 <template>
-  <div class="cloud-parameter">
+  <div class="cloud-parameter" :style="{ height: `${cloudResourceFieldHeight(schema)}px` }">
     <label>{{ t('source') }}<select :value="kind" :disabled="disabled" @change="changeMode(($event.target as HTMLSelectElement).value)">
       <option value="" disabled>{{ t('selectSource') }}</option>
       <option :value="liveKind">{{ t(liveKind) }}</option><option :value="assetKind">{{ t(assetKind) }}</option>
@@ -12,6 +12,7 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import CloudResourcePicker from './CloudResourcePicker.vue'
+import { cloudResourceFieldHeight } from '../parameters/cloud-resource-fields'
 import type { MeasurementResourceReference } from '../services/measurement-resource.service'
 const props = defineProps<{ modelValue: unknown; schema: Record<string, unknown>; disabled?: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [value: unknown] }>()
@@ -44,7 +45,7 @@ const {t} = useI18n({useScope:'local',messages:{
 }})
 </script>
 <style scoped>
-.cloud-parameter {display:grid;gap:8px;min-width:0;}
+.cloud-parameter {display:grid;align-content:start;gap:8px;min-width:0;box-sizing:border-box;}
 .cloud-parameter label {display:grid;gap:4px;min-width:0;font-size:12px;}
-.cloud-parameter input,.cloud-parameter select {width:100%;min-width:0;}
+.cloud-parameter input,.cloud-parameter select {width:100%;min-width:0;height:28px;box-sizing:border-box;}
 </style>

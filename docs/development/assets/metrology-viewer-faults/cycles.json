@@ -1,0 +1,107 @@
+[
+  {
+    "cycle": 1,
+    "active": {
+      "cpuBytes": 14933336,
+      "gpuBytes": 6144144,
+      "canvases": 1,
+      "jsHeapBytes": 62357535,
+      "gpuMemoryBytes": null,
+      "detailRequestsRetained": 28,
+      "lastDetailRequestStartMs": 206452
+    },
+    "closed": {
+      "cpuBytes": 0,
+      "gpuBytes": 0,
+      "canvases": 0,
+      "jsHeapBytes": 73932520,
+      "gpuMemoryBytes": null,
+      "detailRequestsRetained": 28,
+      "lastDetailRequestStartMs": 206452
+    }
+  },
+  {
+    "cycle": 2,
+    "active": {
+      "cpuBytes": 14933336,
+      "gpuBytes": 6144144,
+      "canvases": 1,
+      "jsHeapBytes": 66002992,
+      "gpuMemoryBytes": null,
+      "detailRequestsRetained": 28,
+      "lastDetailRequestStartMs": 206452
+    },
+    "closed": {
+      "cpuBytes": 0,
+      "gpuBytes": 0,
+      "canvases": 0,
+      "jsHeapBytes": 66611484,
+      "gpuMemoryBytes": null,
+      "detailRequestsRetained": 28,
+      "lastDetailRequestStartMs": 206452
+    }
+  },
+  {
+    "cycle": 3,
+    "active": {
+      "cpuBytes": 14933336,
+      "gpuBytes": 6144144,
+      "canvases": 1,
+      "jsHeapBytes": 67279731,
+      "gpuMemoryBytes": null,
+      "detailRequestsRetained": 28,
+      "lastDetailRequestStartMs": 206452
+    },
+    "closed": {
+      "cpuBytes": 0,
+      "gpuBytes": 0,
+      "canvases": 0,
+      "jsHeapBytes": 66604988,
+      "gpuMemoryBytes": null,
+      "detailRequestsRetained": 28,
+      "lastDetailRequestStartMs": 206452
+    }
+  },
+  {
+    "cycle": 4,
+    "active": {
+      "cpuBytes": 14933336,
+      "gpuBytes": 6144144,
+      "canvases": 1,
+      "jsHeapBytes": 79830106,
+      "gpuMemoryBytes": null,
+      "detailRequestsRetained": 28,
+      "lastDetailRequestStartMs": 206452
+    },
+    "closed": {
+      "cpuBytes": 0,
+      "gpuBytes": 0,
+      "canvases": 0,
+      "jsHeapBytes": 76833110,
+      "gpuMemoryBytes": null,
+      "detailRequestsRetained": 28,
+      "lastDetailRequestStartMs": 206452
+    }
+  },
+  {
+    "cycle": 5,
+    "active": {
+      "cpuBytes": 14933336,
+      "gpuBytes": 6144144,
+      "canvases": 1,
+      "jsHeapBytes": 66667976,
+      "gpuMemoryBytes": null,
+      "detailRequestsRetained": 28,
+      "lastDetailRequestStartMs": 206452
+    },
+    "closed": {
+      "cpuBytes": 0,
+      "gpuBytes": 0,
+      "canvases": 0,
+      "jsHeapBytes": 67045114,
+      "gpuMemoryBytes": null,
+      "detailRequestsRetained": 28,
+      "lastDetailRequestStartMs": 206452
+    }
+  }
+]

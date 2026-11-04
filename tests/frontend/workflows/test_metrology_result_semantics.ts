@@ -14,6 +14,10 @@ it('labels partial-arc estimates without claiming accuracy or product pass; form
   const input=structuredClone(item),before=JSON.stringify(input)
   const wrapper=mount(MeasurementSummary,{props:{items:[input],unit:'mm',selected:input.item_id},global:{plugins:[createI18n({legacy:false,locale:'zh-CN'})]}})
   expect(wrapper.text()).toContain('几何有效');expect(wrapper.text()).toContain('未作产品公差判定');expect(wrapper.text()).toContain('部分实测圆弧估计')
+  expect(wrapper.get('select').element.value).toBe('4')
+  expect(wrapper.text()).toContain('20.1843')
+  expect(wrapper.text()).not.toContain('20.184324165')
+  await wrapper.find('select').setValue('raw')
   expect(wrapper.text()).toContain('20.184324165')
   await wrapper.find('select').setValue('3')
   expect(wrapper.text()).toContain('20.184');expect(wrapper.find('[title="20.184324165"]').exists()).toBe(true)
@@ -21,6 +25,24 @@ it('labels partial-arc estimates without claiming accuracy or product pass; form
   await wrapper.setProps({items:[{...input,valid:false,value:null,reason:'outside_support'}]})
   expect(wrapper.text()).toContain('几何无效');expect(wrapper.text()).toContain('outside_support');expect(wrapper.text()).not.toContain('20.184')
   wrapper.unmount()
+})
+it.each([
+  [0,'0.0000'],[-12.345678,'-12.3457'],[0.000001,'0.000001'],[-0.000001,'-0.000001'],[1e25,'1e+25'],
+])('formats %s without turning a nonzero result into zero or modifying the source',async(value,expected)=>{
+  const input={...structuredClone(item),value},before=JSON.stringify(input)
+  const wrapper=mount(MeasurementSummary,{props:{items:[input],unit:'mm',selected:input.item_id},global:{plugins:[createI18n({legacy:false,locale:'en-US'})]}})
+  try{
+    expect(wrapper.get('.measurement-value').text()).toBe(expected)
+    expect(wrapper.get('.measurement-unit').text()).toBe('mm')
+    expect(wrapper.get('.measurement-value').attributes('title')).toBe(String(value))
+    expect(wrapper.text()).toContain('Geometry valid')
+    await wrapper.get('select').setValue('raw')
+    expect(wrapper.get('.measurement-value').text()).toBe(String(value))
+    expect(JSON.stringify(input)).toBe(before)
+    await wrapper.setProps({items:[{...input,valid:false,value:null,reason:'outside_support'}]})
+    expect(wrapper.get('.measurement-value').text()).toBe('-')
+    expect(wrapper.text()).toContain('Geometry invalid')
+  }finally{wrapper.unmount()}
 })
 it('preserves explicit closed-hole and envelope method distinctions in both languages',()=>{
   expect(measurementMethod(item,false)).toContain('partial-arc')

@@ -1,8 +1,11 @@
 """完整容量文件经过真实 Preview 暂存、解码、资产往返和交换导出。"""
 
+import errno
+
 import numpy as np
 import pytest
 
+from backend.service.application.errors import PersistenceOperationError
 from backend.contracts.workflows.preview_session import PREVIEW_CHUNK_SIZE
 from backend.service.application.runtime.resource_scope import ResourceScope
 from backend.service.application.workflows.point_cloud.runtime import get_cloud_runtime
@@ -33,7 +36,7 @@ from tests.integration.metrology3d.capacity_support import (
 )
 
 
-def test_file_capacity_roundtrip(tmp_path, request):
+def test_file_capacity_roundtrip(tmp_path, request, monkeypatch):
     """默认小样本；显式 --cloud-capacity-bytes=1000000000 执行 1 GB 验收。"""
     size = request.config.getoption("--cloud-capacity-bytes")
     policy = settings().workflow_runtime.point_cloud
@@ -86,6 +89,35 @@ def test_file_capacity_roundtrip(tmp_path, request):
                 assert runtime.budget.used == count * 16
             with stage(evidence, "check_all_fields"):
                 assert_cloud(runtime, cloud, count)
+            with stage(evidence, "storage_failure_rollback"):
+                original = service.storage.write_immutable_stream
+
+                def disk_full(**kwargs):
+                    """完整大数据已写入后注入 ENOSPC，不填满本机真实磁盘。"""
+                    original(**kwargs)
+                    raise OSError(errno.ENOSPC, "capacity acceptance disk full")
+
+                with monkeypatch.context() as patch:
+                    patch.setattr(service.storage, "write_immutable_stream", disk_full)
+                    with pytest.raises(PersistenceOperationError) as error:
+                        save_cloud(
+                            runtime,
+                            cloud,
+                            service=service,
+                            project_id="test",
+                            name="Uncommitted",
+                            mode="derived",
+                            write_identity="f" * 64,
+                            policy=policy.assets(),
+                            cancel=lambda: None,
+                        )
+                    assert error.value.details["errno"] == errno.ENOSPC
+                assert service.list_versions(project_id="test") == []
+                assert not list(
+                    service.storage.resolve(service.root("test")).rglob("content.bin")
+                )
+                assert runtime.budget.used == count * 16
+                evidence["storage_failure_rolled_back"] = True
             with stage(evidence, "save"):
                 saved = save_cloud(
                     runtime,

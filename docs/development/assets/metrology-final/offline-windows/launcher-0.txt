@@ -1,0 +1,22 @@
+数据库 schema 已升级到当前版本。
+已启动 backend-service，pid=44276，日志=logs\full-stack\backend-service-20261103.log
+backend-service 主 LocalBuffer 已就绪。
+已启动 inference-daemon，pid=9200，日志=logs\full-stack\inference-daemon-20261103.log
+inference-daemon mmap 热路径探测成功。
+backend-service liveness 已就绪，开始启动 worker。
+已启动 backend-worker:dataset-import，pid=49584，日志=logs\full-stack\backend-worker-dataset-import-20261103.log
+backend-worker:dataset-import 已就绪，worker_instance_id=worker-dataset-import-0121a722ea784cf197e575e52fd21d66。
+已启动 backend-worker:dataset-export，pid=30128，日志=logs\full-stack\backend-worker-dataset-export-20261103.log
+backend-worker:dataset-export 已就绪，worker_instance_id=worker-dataset-export-68216f15136f40f192d535de55565c80。
+已启动 backend-worker:training，pid=47420，日志=logs\full-stack\backend-worker-training-20261103.log
+backend-worker:training 已就绪，worker_instance_id=worker-training-ce4e76371d5641cb80b7ceef5eed5f9c。
+已启动 backend-worker:conversion，pid=3856，日志=logs\full-stack\backend-worker-conversion-20261103.log
+backend-worker:conversion 已就绪，worker_instance_id=worker-conversion-757bc85517c6482cbc7b8678593e70cc。
+已启动 backend-worker:evaluation，pid=10340，日志=logs\full-stack\backend-worker-evaluation-20261103.log
+backend-worker:evaluation 已就绪，worker_instance_id=worker-evaluation-ba4d99198afb4ed0b2905c547f23464e。
+已启动 backend-worker:inference，pid=35508，日志=logs\full-stack\backend-worker-inference-20261103.log
+backend-worker:inference 已就绪，worker_instance_id=worker-inference-987c50faddd1484db9ea5f6e4f74fb3b。
+运行状态文件已写入 logs\full-stack\runtime-state.json。
+full 发布目录全部组件已启动。按 Ctrl+C 停止全部子进程。
+收到 stop-amvision-full 优雅停止请求。
+收到终止信号，正在停止全部子进程。

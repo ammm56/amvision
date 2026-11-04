@@ -1,0 +1,28 @@
+{
+  "platform": "Windows-11-10.0.26300-SP0",
+  "input_bytes": 1000000000,
+  "rss_baseline_bytes": 450854912,
+  "rss_peak_bytes": 3453939712,
+  "stages": {
+    "generate": 1.4468994000926614,
+    "upload": 3.313752799993381,
+    "decode": 5.280153200030327,
+    "check_all_fields": 2.8909514998085797,
+    "storage_failure_rollback": 9.152343600057065,
+    "save": 9.22178060002625,
+    "archive_export_import": 10.132837699959055,
+    "restore": 6.070301000028849,
+    "exchange_export_read": 5.729786199983209,
+    "crop_save_restore": 13.295574499992654
+  },
+  "passed": true,
+  "point_count": 62499984,
+  "storage_failure_rolled_back": true,
+  "archive_bytes": 1000001463,
+  "exchange_bytes": 999999887,
+  "derived_point_count": 31250064,
+  "live_array_bytes_after_close": 0,
+  "temporary_inputs_after_close": 0,
+  "seconds": 66.77428969996981,
+  "rss_final_bytes": 454025216
+}

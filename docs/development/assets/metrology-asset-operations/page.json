@@ -1,0 +1,19 @@
+{
+  "run_state": "succeeded",
+  "zip_bytes": 176942710,
+  "console_errors_and_warnings": [],
+  "runtime_id": "workflow-runtime-64e18c70c31c4edc83913fbd4415ed0c",
+  "zip_sha256": "ee8a2b1a967bc5b8eb9297067ed837d1a0c08586bb7d4640376352f84c9579d8",
+  "asset_reference": {
+    "project_id": "project-1",
+    "resource_id": "measurement-cloud-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "version": 5,
+    "sha256": "c9566ae231f30a4b55226673d8644346eb6a58d8bafb66130784596c2da345ed",
+    "kind": "point-cloud"
+  },
+  "workflow_run_id": "workflow-run-d3b112f788d349f6b23470004d0af5c8",
+  "final_runtime_state": "stopped",
+  "data_sha256": "956927f058ba4a0170b1c1b93b1411b613fbe21fcbfc278ad0a7fc3cf621a1c6",
+  "application_version": 5,
+  "point_count": 14745099
+}

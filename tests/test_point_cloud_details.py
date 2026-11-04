@@ -25,7 +25,7 @@ from tests.test_metrology3d_preprocess import make_cloud
 def detail_policy():
     """小块强制多叶；不是生产默认值。"""
     return PointCloudExecutionPolicy(
-        io=policy(),
+        io=policy(max_working_bytes=262144, max_live_array_bytes=1048576),
         preview=dict(
             max_points=2,
             max_data_bytes=512,
@@ -46,10 +46,10 @@ def saved(tmp_path):
         dtype="f8",
     )
     serial = np.arange(6, dtype="u8") + np.uint64(2**63)
-    scope, runtime, source = make_cloud(
-        coordinates=points, attributes=[("serial", serial, None)]
-    )
     service, p = create_resource_service(tmp_path), detail_policy()
+    scope, runtime, source = make_cloud(
+        coordinates=points, attributes=[("serial", serial, None)], runtime_policy=p.io
+    )
     reference = save_cloud(
         runtime,
         source,
@@ -101,7 +101,7 @@ def test_complete_exact_fields_and_delete(saved):
         )
         rows = np.ndarray(
             (block.count,),
-            dtype="<u8",
+            dtype=np.dtype(index.logical_dtype).newbyteorder("<"),
             buffer=raw,
             offset=index.logical_offset,
             strides=(index.row_bytes,),
@@ -304,14 +304,14 @@ def test_generated_vertices_do_not_gain_fake_source_rows(tmp_path):
         )
         logical = np.ndarray(
             (block.count,),
-            dtype="<u8",
+            dtype=np.dtype(index.logical_dtype).newbyteorder("<"),
             buffer=raw,
             offset=index.logical_offset,
             strides=(index.row_bytes,),
         )
         identity = np.ndarray(
             (block.count,),
-            dtype="<u8",
+            dtype=np.dtype(index.identity_dtype).newbyteorder("<"),
             buffer=raw,
             offset=index.identity_offset,
             strides=(index.row_bytes,),

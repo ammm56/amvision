@@ -4,6 +4,7 @@ import type { SupportedLocale } from '@/platform/i18n'
 
 import { resolveNodeDefinitionDisplayName, resolveNodeParameterDisplayName, resolveNodePortDisplayName } from '../node-definition-localization'
 import { findNodeParameterInputBinding, readRegularNodeInputPorts } from '../parameters/parameter-input-bindings'
+import { visibleCloudParameterFields } from '../parameters/cloud-resource-fields'
 import type { NodeDefinition, NodeParameterUiField, NodePortDefinition, WorkflowGraphEdge, WorkflowGraphNode } from '../types'
 
 export interface WorkflowNodeDisplayView {
@@ -55,7 +56,7 @@ export function useWorkflowNodeDisplayHelpers(options: WorkflowNodeDisplayHelper
   }
 
   function nodePortRows(node: WorkflowNodeDisplayView): WorkflowNodePortRowView[] {
-    const fields = node.definition?.parameter_ui_schema?.fields.filter((field) => !field.hidden) ?? []
+    const fields = visibleCloudParameterFields(node.definition?.parameter_ui_schema?.fields ?? [], node.node.parameters)
     const regularInputs = readRegularNodeInputPorts(node.definition, node.inputs, fields)
     const rowCount = Math.max(regularInputs.length, node.outputs.length)
     return Array.from({ length: rowCount }, (_, index) => ({

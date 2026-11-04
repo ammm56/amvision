@@ -1,0 +1,171 @@
+API 未处理异常类型: TimeoutError
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/mnt/w/Workspace/codex/python/amvision/tests/integration/metrology3d/asset_operations.py", line 279, in <module>
+    main()
+  File "/mnt/w/Workspace/codex/python/amvision/tests/integration/metrology3d/asset_operations.py", line 267, in main
+    report = exercise(system, service, reference, policy)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/w/Workspace/codex/python/amvision/tests/integration/metrology3d/asset_operations.py", line 192, in exercise
+    select(system, third, "export")
+  File "/mnt/w/Workspace/codex/python/amvision/tests/integration/metrology3d/asset_operations.py", line 95, in select
+    started = system.start(version)
+              ^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/w/Workspace/codex/python/amvision/tests/integration/metrology3d/published_support.py", line 87, in start
+    return self.call("POST", f"/app-runtimes/{self.runtime_id}/start")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/w/Workspace/codex/python/amvision/tests/integration/metrology3d/published_support.py", line 36, in call
+    response = self.client.request(
+               ^^^^^^^^^^^^^^^^^^^^
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/starlette/testclient.py", line 518, in request
+    return super().request(
+           ^^^^^^^^^^^^^^^^
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/httpx2/_client.py", line 796, in request
+    return self.send(request, auth=auth, follow_redirects=follow_redirects)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/httpx2/_client.py", line 993, in send
+    raise exc
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/httpx2/_client.py", line 987, in send
+    response.read()
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/httpx2/_models.py", line 877, in read
+    self._content = b"".join(self.iter_bytes())
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/httpx2/_models.py", line 893, in iter_bytes
+    for raw_bytes in self.iter_raw():
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/httpx2/_models.py", line 948, in iter_raw
+    for raw_stream_bytes in self.stream:
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/httpx2/_client.py", line 143, in __iter__
+    yield from self._stream
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/starlette/testclient.py", line 384, in iter_body
+    exit_stack.close()
+  File "/usr/lib/python3.12/contextlib.py", line 618, in close
+    self.__exit__(None, None, None)
+  File "/usr/lib/python3.12/contextlib.py", line 610, in __exit__
+    raise exc_details[1]
+  File "/usr/lib/python3.12/contextlib.py", line 595, in __exit__
+    if cb(*exc_details):
+       ^^^^^^^^^^^^^^^^
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/starlette/testclient.py", line 399, in close_app
+    raise exception
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/anyio/from_thread.py", line 272, in _call_func
+    retval = await retval_or_awaitable
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/starlette/testclient.py", line 366, in run_app
+    await self.app(scope, receive, send)
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/fastapi/applications.py", line 1194, in __call__
+    await super().__call__(scope, receive, send)
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/starlette/applications.py", line 96, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/fastapi/telemetry/_asgi.py", line 151, in __call__
+    await self.app(scope, receive, send)
+  File "/mnt/w/Workspace/codex/python/amvision/backend/service/infrastructure/http/drain_middleware.py", line 26, in __call__
+    await self.app(scope, receive, send)
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/starlette/middleware/base.py", line 203, in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/w/Workspace/codex/python/amvision/backend/service/api/middleware/request_context.py", line 34, in dispatch
+    response = await call_next(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/starlette/middleware/base.py", line 179, in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/starlette/middleware/base.py", line 149, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/starlette/middleware/cors.py", line 91, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/starlette/middleware/cors.py", line 149, in simple_response
+    await self.app(scope, receive, send)
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/starlette/routing.py", line 683, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/fastapi/routing.py", line 2811, in app
+    await route.handle(scope, receive, send)
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/fastapi/routing.py", line 1839, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/fastapi/routing.py", line 2894, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/fastapi/routing.py", line 1850, in _handle_selected
+    await route.handle(scope, receive, send)
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/fastapi/routing.py", line 1839, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/fastapi/routing.py", line 2894, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/fastapi/routing.py", line 1850, in _handle_selected
+    await route.handle(scope, receive, send)
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/fastapi/routing.py", line 1839, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/fastapi/routing.py", line 2894, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/fastapi/routing.py", line 1850, in _handle_selected
+    await route.handle(scope, receive, send)
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/fastapi/routing.py", line 1839, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/fastapi/routing.py", line 2894, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/fastapi/routing.py", line 1865, in _handle_selected
+    await original_route.handle(scope, receive, send)
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/fastapi/routing.py", line 1328, in handle
+    await effective_context.app(scope, receive, send)
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/fastapi/routing.py", line 166, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/fastapi/routing.py", line 152, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/fastapi/routing.py", line 745, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/fastapi/routing.py", line 374, in run_endpoint_function
+    return await run_in_threadpool(
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/starlette/concurrency.py", line 34, in run_in_threadpool
+    return await anyio.to_thread.run_sync(func)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/anyio/to_thread.py", line 65, in run_sync
+    return await get_async_backend().run_sync_in_worker_thread(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 2779, in run_sync_in_worker_thread
+    return await future
+           ^^^^^^^^^^^^
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 1124, in run
+    result = context.run(func, *args)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/am/temp/amvision-asset-operations-env/lib/python3.12/site-packages/fastapi/telemetry/_api.py", line 244, in _run_sync_endpoint
+    return function(**arguments)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/w/Workspace/codex/python/amvision/backend/service/api/rest/v1/routes/workflow_runtime/app_runtimes.py", line 302, in start_workflow_app_runtime
+    ).start_workflow_app_runtime(
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/w/Workspace/codex/python/amvision/backend/service/application/workflows/runtime_service.py", line 946, in start_workflow_app_runtime
+    return self._start_workflow_app_runtime(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/w/Workspace/codex/python/amvision/backend/service/application/workflows/runtime_service.py", line 970, in _start_workflow_app_runtime
+    return self._runtime_lifecycle().start(workflow_runtime_id, updated_by=updated_by)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/w/Workspace/codex/python/amvision/backend/service/application/workflows/runtime/lifecycle.py", line 121, in start
+    runtime_state = self.worker_manager.start_runtime(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/w/Workspace/codex/python/amvision/backend/service/application/workflows/worker/manager.py", line 434, in start_runtime
+    return self._start_runtime(
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/w/Workspace/codex/python/amvision/backend/service/application/workflows/worker/manager.py", line 566, in _start_runtime
+    process.start()
+  File "/mnt/w/Workspace/codex/python/amvision/backend/runtime/processes/managed_spawn.py", line 49, in start
+    raise TimeoutError("spawn 进程未建立启动门")
+TimeoutError: spawn 进程未建立启动门
+/usr/lib/python3.12/multiprocessing/resource_tracker.py:254: UserWarning: resource_tracker: There appear to be 20 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '

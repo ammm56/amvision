@@ -8,6 +8,7 @@ from statistics import median
 from typing import Any
 
 import psutil
+from backend.runtime.processes.birth_identity import read_process_birth_identity
 from tests.integration.acceptance_contract import positive_seconds, read_measurement
 
 
@@ -29,9 +30,11 @@ class ResourceGate:
     """固定根进程身份，观测其进程树的内存、句柄和线程增长。"""
 
     def __init__(self, *, root_pids: tuple[int, ...], warmup_seconds: float,
-                 limits: dict[str, float], sample_interval_seconds: float | None = None) -> None:
+                 limits: dict[str, float], sample_interval_seconds: float | None = None,
+                 include_processes: bool = False) -> None:
         """root_pids 只用于采样；warmup_seconds 后才形成基线；limits 是允许增长上限。"""
         self.roots = [psutil.Process(pid) for pid in set(root_pids)]
+        self.include_processes = include_processes
         self.identities = {process.pid: process.create_time() for process in self.roots}
         self.warmup_seconds = positive_seconds(warmup_seconds, "warmup_seconds", allow_zero=True)
         if set(limits) - {"rss_bytes", "private_bytes", "handles", "threads"}:
@@ -43,8 +46,10 @@ class ResourceGate:
         self.maximum_window_growth: dict[str, float] = {}
         self.sample_count = 0
         self.errors: list[str] = []
+        self.error_details: list[dict[str, Any]] = []
         self.error_count = 0
         self.discarded_count = 0
+        self.discarded_details: deque[dict[str, Any]] = deque(maxlen=20)
         self.sample_interval_seconds = (positive_seconds(sample_interval_seconds, "sample_interval_seconds")
                                         if sample_interval_seconds is not None else None)
         self.first_sample_seconds: float | None = None
@@ -52,7 +57,7 @@ class ResourceGate:
         self.maximum_gap_seconds = 0.0
         self.measurement_duration: float | None = None
         self.minimum_measure_seconds: float | None = None
-        self.previous_cpu: dict[tuple[int, float], float] = {}
+        self.previous_cpu: dict[tuple[int, float | str], float] = {}
         self.previous_cpu_elapsed: float | None = None
         self.sampled_cpu_seconds = 0.0
         self.cpu_observation_seconds = 0.0
@@ -72,45 +77,105 @@ class ResourceGate:
 
     def sample(self, elapsed_seconds: float) -> dict[str, Any]:
         """读取一次资源总量，根 PID 被回收或替换时明确失败。"""
+        phase, root_pid, target_pid = "root-identity", None, None
+        resource_field = None
         try:
             processes: dict[int, Any] = {}
+            owners: dict[int, int] = {}
             for root in self.roots:
+                phase, root_pid, target_pid = "root-identity", root.pid, root.pid
                 if not root.is_running() or root.create_time() != self.identities[root.pid]:
                     raise RuntimeError(f"采样根进程已退出或 PID 被复用：{root.pid}")
                 processes[root.pid] = root
-                processes.update({child.pid: child for child in root.children(recursive=True)})
+                owners[root.pid] = root.pid
+                phase = "enumerate-children"
+                for child in root.children(recursive=True):
+                    processes[child.pid] = child
+                    owners.setdefault(child.pid, root.pid)
             totals: dict[str, float] = {"rss_bytes": 0, "private_bytes": 0, "handles": 0, "threads": 0}
-            cpu_totals: dict[tuple[int, float], float] = {}
+            cpu_totals: dict[tuple[int, float | str], float] = {}
+            records = []
             for process in processes.values():
+                phase, root_pid, target_pid = "read-process", owners[process.pid], process.pid
                 try:
                     with process.oneshot():
+                        resource_field = "memory_info"
                         memory = process.memory_info()
-                        totals["rss_bytes"] += memory.rss
-                        totals["private_bytes"] += getattr(memory, "private", memory.rss)
-                        totals["threads"] += process.num_threads()
-                        totals["handles"] += process.num_handles() if hasattr(process, "num_handles") else process.num_fds()
+                        values = {"rss_bytes": memory.rss,
+                                  "private_bytes": getattr(memory, "private", memory.rss)}
+                        resource_field = "num_threads"
+                        values["threads"] = process.num_threads()
+                        resource_field = "num_handles" if hasattr(process, "num_handles") else "num_fds"
+                        values["handles"] = process.num_handles() if hasattr(process, "num_handles") else process.num_fds()
                         if hasattr(process, "cpu_times"):
+                            resource_field = "cpu_times"
                             cpu = process.cpu_times()
-                            cpu_totals[(process.pid, process.create_time())] = cpu.user + cpu.system
+                            resource_field = "create_time"
+                            cpu_totals[(process.pid, read_process_birth_identity(process.pid)
+                                        if self.include_processes else process.create_time())] = cpu.user + cpu.system
+                        if self.include_processes:
+                            resource_field = "process_identity"
+                            records.append({"pid": process.pid, "create_time": process.create_time(),
+                                            "birth_identity": read_process_birth_identity(process.pid),
+                                            "parent_pid": process.ppid(), **values})
+                        for key, value in values.items():
+                            totals[key] += value
                 except psutil.NoSuchProcess:
                     if process.pid in self.identities:
                         raise
                     # 正常短任务与受控故障都可能让子进程在枚举后退出。
                     # 丢弃整次不完整样本，不能把缺失进程计为零后加入趋势。
-                    self.discarded_count += 1
-                    return {"elapsed_seconds": elapsed_seconds,
-                            "discarded": "child-exited-during-sampling", "pid": process.pid}
+                    return self._discard_child(elapsed_seconds, process.pid, resource_field)
+                except psutil.AccessDenied:
+                    # Linux 退出到 wait/reap 之间，/proc/<pid>/fd 可能先变为不可读。
+                    # 仅确认同一身份已为 zombie 时按退出处理；活进程拒绝访问仍失败。
+                    if resource_field == "num_fds" and process.pid not in self.identities:
+                        try:
+                            current = psutil.Process(process.pid)
+                            if (current.create_time() == process.create_time()
+                                    and current.status() == psutil.STATUS_ZOMBIE):
+                                return self._discard_child(elapsed_seconds, process.pid, resource_field,
+                                                           status=psutil.STATUS_ZOMBIE)
+                        except psutil.NoSuchProcess:
+                            return self._discard_child(elapsed_seconds, process.pid, resource_field)
+                        except psutil.AccessDenied:
+                            pass
+                    raise
             self.observe(elapsed_seconds, totals)
             cpu_percent = self._observe_cpu(elapsed_seconds, cpu_totals)
             return {"elapsed_seconds": elapsed_seconds, "process_count": len(processes),
-                    "cpu_percent_one_core": cpu_percent, **totals}
+                    "cpu_percent_one_core": cpu_percent, **totals,
+                    **({"processes": records} if self.include_processes else {})}
         except (psutil.Error, RuntimeError) as error:
             self.error_count += 1
+            detail = {"elapsed_seconds": elapsed_seconds, "phase": phase,
+                      "exception_type": type(error).__name__, "message": str(error),
+                      "root_pid": root_pid, "target_pid": target_pid,
+                      "exception_pid": getattr(error, "pid", None),
+                      "resource_field": resource_field,
+                      "root_identities": dict(self.identities)}
+            if isinstance(error, psutil.AccessDenied) and target_pid is not None:
+                try:
+                    target = psutil.Process(target_pid)
+                    detail["failure_identity"] = {"create_time": target.create_time(),
+                                                  "status": target.status()}
+                except psutil.Error as identity_error:
+                    detail["failure_identity_error"] = type(identity_error).__name__
             if len(self.errors) < 20:
                 self.errors.append(str(error))
-            return {"elapsed_seconds": elapsed_seconds, "error": str(error)}
+                self.error_details.append(detail)
+            return {"elapsed_seconds": elapsed_seconds, "error": str(error), "error_detail": detail}
 
-    def _observe_cpu(self, elapsed: float, values: dict[tuple[int, float], float]) -> float | None:
+    def _discard_child(self, elapsed_seconds, pid, resource_field, *, status=None):
+        """只丢弃不完整采样并保留有界证据，不把部分总量计入趋势。"""
+        self.discarded_count += 1
+        detail = {"elapsed_seconds": elapsed_seconds,
+                  "discarded": "child-exited-during-sampling", "pid": pid,
+                  "resource_field": resource_field, "status": status}
+        self.discarded_details.append(detail)
+        return detail
+
+    def _observe_cpu(self, elapsed: float, values: dict[tuple[int, float | str], float]) -> float | None:
         """采样间隔内的 CPU 时间，100% 表示占满一个逻辑核；PID 复用不能产生负差值。"""
         if elapsed < self.warmup_seconds or not values:
             return None
@@ -188,6 +253,7 @@ class ResourceGate:
                 "growth": growth, "maximum_window_growth": self.maximum_window_growth,
                 "peak": self.peak, "limits": self.limits,
                 "discarded_count": self.discarded_count,
+                "discarded_details": list(self.discarded_details),
                 "measurement_duration": self.measurement_duration, "minimum_measure_seconds": self.minimum_measure_seconds,
                 "coverage": coverage, "maximum_gap_seconds": maximum_gap,
                 "cpu": {"scope": "sampled-owned-processes; 100% = one logical core",
@@ -195,5 +261,6 @@ class ResourceGate:
                         "sampled_cpu_seconds": self.sampled_cpu_seconds,
                         "mean_percent_one_core": self.sampled_cpu_seconds / self.cpu_observation_seconds * 100 if self.cpu_observation_seconds else None,
                         "peak_percent_one_core": self.peak_cpu_percent_one_core if self.cpu_observation_seconds else None},
-                "errors": self.errors, "error_count": self.error_count, "failures": failures,
+                "errors": self.errors, "error_details": self.error_details,
+                "error_count": self.error_count, "failures": failures,
                 "status": "failed" if failures else "passed" if self.limits else "observed"}

@@ -1,0 +1,85 @@
+{
+  "date": "2026-11-03",
+  "base_commit": "015877656cd407473724058951ce430519fa0288",
+  "source_file_count": 3909,
+  "source_manifest_sha256": "a03e8e634235e03e562bc84ef05fc9b88c126d7d56bae1814e8d9534ef920f32",
+  "manifest_order": "PowerShell Sort-Object, zh-CN culture; path + space + lowercase SHA256; LF between rows, no trailing LF",
+  "source_manifest_ordinal_sha256": "dfe80e3e504255f089bbbcde63a3540a34ee0fd7312c2376d3618eaed38b4cd9",
+  "ordinal_manifest_order": "Python sorted Unicode path order; same row encoding and LF rule",
+  "manifest_scope": {
+    "selection": "git ls-files; hash current file bytes",
+    "paths": [
+      "backend",
+      "custom_nodes",
+      "runtimes/launchers",
+      "runtimes/clients",
+      "runtimes/manifests",
+      "frontend/web-ui/src",
+      "scripts/metrology_workpiece.py",
+      "docs/examples/workflows/lithium_workpiece.template.json"
+    ]
+  },
+  "changed_this_batch": [
+    {
+      "sha256": "7df2ea263ce3cda55ad05577240bf95dab91a6ce9f552d62b7ae287942cd6ab5",
+      "path": "frontend/web-ui/src/workflows/workflow-editor/point-cloud/MeasurementSummary.vue"
+    },
+    {
+      "sha256": "03af48e826c1fae54f4cc5026b6ede68fb0a599afd2438907cae8f67fda4f8e1",
+      "path": "tests/frontend/workflows/test_metrology_result_semantics.ts"
+    },
+    {
+      "sha256": "b6a42c0328e3079465c36f6e3b6c9a04befc60a1926c1e955438d7ddc53b5d8d",
+      "path": "tests/integration/metrology3d/test_capacity_file.py"
+    },
+    {
+      "sha256": "26ca46a4b890f51b713faf8b243fedaf6d49139faadab71e4bad9115eccd4fff",
+      "path": "tests/integration/metrology3d/test_capacity_http.py"
+    },
+    {
+      "sha256": "6e4abef2085541f65fa4971b41749b30b242a9ef751173a2c919d029dc7dad0e",
+      "path": "tests/integration/metrology3d/test_capacity_runtime.py"
+    }
+  ],
+  "verification": {
+    "release_reassembled": true,
+    "windows_fault_precheck": {
+      "input_bytes": 16000000,
+      "passed": 4
+    },
+    "frontend": {
+      "skipped": 2,
+      "typecheck": true,
+      "files": 43,
+      "passed": 287,
+      "build": true
+    },
+    "sample_points": 14745099,
+    "sample_sha256": "ff2b9e0ef2d6c45af02c4bf8d474cd82f77f86ad92bd371a4c0f71b1b90d116b",
+    "windows_full_faults": {
+      "strengthened_http_passed": 1,
+      "passed": 3,
+      "input_bytes": 1000000000
+    },
+    "new_ubuntu_fault_verification": true,
+    "ubuntu_full_faults": {
+      "passed": 3,
+      "input_bytes": 1000000000,
+      "seconds": 163.07,
+      "process_tree_sampling_errors": 2
+    },
+    "offline_release": {
+      "windows_cycles": 2,
+      "ubuntu_cycles": 2,
+      "items_each_cycle": 50,
+      "whole_group_stopped": true,
+      "source_and_static_assets_match": true,
+      "bundled_client_and_recipe": true,
+      "package_sha256": "1d70898f9ddeb4d743719e196cb6cd88a2f02a29af17ec52b3345ec479ae2fb5",
+      "ubuntu_shutdown_semaphore_warning_each_cycle": 10,
+      "browser_matrix_completed": false,
+      "resource_matrix_completed": false
+    }
+  },
+  "final_release_acceptance": false
+}

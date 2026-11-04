@@ -1,0 +1,80 @@
+{
+  "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "input_bytes": 16000000,
+  "rss_baseline_bytes": 374521856,
+  "rss_peak_bytes": 581914624,
+  "stages": {
+    "worker_crash": 4.051350443856791,
+    "switch_and_reject_stale": 26.771926274057478,
+    "new_version_reuse": 0.19457445899024606
+  },
+  "passed": true,
+  "process_tree_baseline": {
+    "elapsed_seconds": 0,
+    "process_count": 2,
+    "cpu_percent_one_core": null,
+    "rss_bytes": 388845568,
+    "private_bytes": 388845568,
+    "handles": 18,
+    "threads": 59
+  },
+  "crashed_run": {
+    "state": "failed",
+    "version_id": "workflow-app-version-7015185533de4b8da19f0bb168bdf88d",
+    "node_id": "filter",
+    "reclaimed": true
+  },
+  "new_version_succeeded": true,
+  "free_capacity_bytes": 2147483648,
+  "active_lease_count": 0,
+  "seconds": 62.968126635067165,
+  "rss_final_bytes": 464625664,
+  "process_tree_final": {
+    "elapsed_seconds": 62.96834470098838,
+    "process_count": 2,
+    "cpu_percent_one_core": 72.72575471240947,
+    "rss_bytes": 478949376,
+    "private_bytes": 478949376,
+    "handles": 18,
+    "threads": 59
+  },
+  "process_tree_peak": {
+    "rss_bytes": 967688192,
+    "private_bytes": 967688192,
+    "handles": 121,
+    "threads": 97
+  },
+  "process_tree_sample_count": 1208,
+  "process_tree_errors": [
+    "(pid=467)",
+    "(pid=512)"
+  ],
+  "process_tree_error_count": 2,
+  "process_tree_error_details": [
+    {
+      "elapsed_seconds": 31.54783880803734,
+      "phase": "read-process",
+      "exception_type": "AccessDenied",
+      "message": "(pid=467)",
+      "root_pid": 292,
+      "target_pid": 467,
+      "exception_pid": 467,
+      "root_identities": {
+        "292": 1793693575.65
+      }
+    },
+    {
+      "elapsed_seconds": 62.4677018749062,
+      "phase": "read-process",
+      "exception_type": "AccessDenied",
+      "message": "(pid=512)",
+      "root_pid": 292,
+      "target_pid": 512,
+      "exception_pid": 512,
+      "root_identities": {
+        "292": 1793693575.65
+      }
+    }
+  ],
+  "process_tree_discarded_count": 0
+}

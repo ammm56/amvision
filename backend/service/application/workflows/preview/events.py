@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from threading import RLock, get_ident
 from uuid import uuid4
+import json
 import math
 from datetime import datetime, timezone
+
+from backend.service.application.workflows.preview.values import _measure
 
 
 class PreviewNodeEvents:
@@ -43,6 +46,30 @@ class PreviewNodeEvents:
         if kind not in {"node.started", "node.completed", "node.failed", "node.skipped"}:
             return
         payload = dict(event.get("payload") or {})
+        error_code = (payload.get("error_details") or {}).get("code")
+        # 生命周期控制消息只携带有界摘要；完整端口值已有 value.updated/Blob 通道。
+        available = 4 * 1024**2 - 4096
+        remaining = [100_000]
+        for field in ("inputs", "outputs", "error_details"):
+            if field not in payload:
+                continue
+            value = payload[field]
+            try:
+                _measure(value, remaining, max_bytes=available)
+                # 结构预检后流式核对真实 JSON 字节；不拼接大串，不漏算转义放大。
+                size = 0
+                for chunk in json.JSONEncoder(ensure_ascii=False, allow_nan=False,
+                                              separators=(",", ":")).iterencode(value):
+                    size += len(chunk.encode())
+                    if size > available:
+                        raise ValueError("preview_value_capacity")
+                available -= size
+            except (ValueError, TypeError, OverflowError) as error:
+                payload[field] = {"summary": True, "value_type": type(value).__name__,
+                                  "total": len(value) if isinstance(value, (dict, list)) else None,
+                                  "reason": str(error)[:256]}
+                if field == "error_details" and error_code in {"operation_timeout", "operation_cancelled"}:
+                    payload[field]["code"] = error_code
         event_node_id = str(payload.get("node_id", ""))
         node_id = event_node_id
         if node_id not in self.node_ids and payload.get("for_each_node_id"):
@@ -70,7 +97,7 @@ class PreviewNodeEvents:
                                    "node.failed": "failed", "node.skipped": "skipped"}[kind])
             if kind == "node.failed":
                 payload["status"] = {"operation_timeout": "timed_out", "operation_cancelled": "cancelled"}.get(
-                    (payload.get("error_details") or {}).get("code"), "failed")
+                    error_code, "failed")
             self.emit("node.started" if kind == "node.started" else "node.finished", payload)
             if kind != "node.started" and identity in stack:
                 stack.remove(identity)

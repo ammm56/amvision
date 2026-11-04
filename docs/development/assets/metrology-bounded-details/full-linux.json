@@ -1,0 +1,27 @@
+{
+  "point_count": 14745099,
+  "valid_count": 14745099,
+  "excluded_count": 0,
+  "block_count": 256,
+  "data_bytes": 294901980,
+  "bounds": {
+    "min": [
+      -48.49800109863281,
+      -148.47000122070312,
+      -22.304000854492188
+    ],
+    "max": [
+      48.522003173828125,
+      0.0,
+      -12.93600082397461
+    ]
+  },
+  "all_rows_fields_exact": true,
+  "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "published_version": "workflow-app-version-9eb309bdb3b54c5898af188b8fdd7575",
+  "runtime_id": "workflow-runtime-e18cf404e0564ad99ccb9bf9a92cc78a",
+  "prepare_seconds": 13.750014328863472,
+  "api_exact": true,
+  "stale_generation_rejected": true,
+  "uncached_responses": true
+}

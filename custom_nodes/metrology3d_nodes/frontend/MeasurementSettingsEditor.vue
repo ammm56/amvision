@@ -96,7 +96,7 @@ function pick(value:{payload:Record<string,unknown>;xyz:number[]}){
   candidate.value=[...value.xyz]
 }
 function apply(){if(!issues.value.length&&!props.disabled){emit('update:modelValue',copy(draft.value));open.value=false}}
-watch(()=>[props.modelValue,props.disabled,props.nodeType],()=>{open.value=false;candidate.value=null})
+watch([()=>props.modelValue,()=>props.disabled,()=>props.nodeType,()=>JSON.stringify(props.inputSources)],()=>{open.value=false;previewId.value='';candidate.value=null})
 watch(()=>[state().runId,state().succeeded],()=>{previewId.value='';candidate.value=null})
 watch(()=>[previewId.value,draft.value.frame_id,draft.value.length_unit],()=>{candidate.value=null})
 watch(()=>[props.inputSources,query.value.kind,query.value.pose_id,query.value.target_frame_id],()=>{candidate.value=null},{deep:true})

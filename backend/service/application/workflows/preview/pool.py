@@ -363,3 +363,6 @@ class PreviewSessionPool:
         self._executor.shutdown(wait=True)
         for slot in self._slots:
             self._close_slot(slot)
+        # 服务仍持有 pool 时也释放 Event/Queue；停止失败则保留槽位供重试。
+        with self._lock:
+            self._slots.clear()

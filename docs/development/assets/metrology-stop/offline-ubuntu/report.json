@@ -1,0 +1,131 @@
+{
+  "platform": "posix",
+  "release": "/home/am/.cache/amvision-stop-audit/releases/full-ubuntu-x64-cpu",
+  "cycles": [
+    {
+      "cycle": 0,
+      "state": "succeeded",
+      "item_count": 50,
+      "elapsed_seconds": 9.044039415894076,
+      "static_assets": 6,
+      "resources": {
+        "sample_count": 91,
+        "warmup_seconds": 0.0,
+        "growth": {
+          "rss_bytes": 235933696,
+          "private_bytes": 235933696,
+          "handles": 0,
+          "threads": 0
+        },
+        "maximum_window_growth": {
+          "rss_bytes": 304336896,
+          "private_bytes": 304336896,
+          "handles": 0,
+          "threads": 0
+        },
+        "peak": {
+          "rss_bytes": 3711737856,
+          "private_bytes": 3711737856,
+          "handles": 239,
+          "threads": 385
+        },
+        "limits": {},
+        "discarded_count": 0,
+        "discarded_details": [],
+        "measurement_duration": null,
+        "minimum_measure_seconds": null,
+        "coverage": null,
+        "maximum_gap_seconds": 0.10404796293005347,
+        "cpu": {
+          "scope": "sampled-owned-processes; 100% = one logical core",
+          "observed_seconds": 9.208713992964476,
+          "sampled_cpu_seconds": 11.459999999999997,
+          "mean_percent_one_core": 124.44734420849122,
+          "peak_percent_one_core": 156.65458168581532
+        },
+        "errors": [],
+        "error_details": [],
+        "error_count": 0,
+        "failures": [],
+        "status": "observed"
+      },
+      "native_semaphore_delta": 0,
+      "same_os_boot": true
+    },
+    {
+      "cycle": 1,
+      "state": "succeeded",
+      "item_count": 50,
+      "elapsed_seconds": 9.475601733895019,
+      "static_assets": 6,
+      "resources": {
+        "sample_count": 95,
+        "warmup_seconds": 0.0,
+        "growth": {
+          "rss_bytes": 229359616,
+          "private_bytes": 229359616,
+          "handles": 0,
+          "threads": 0
+        },
+        "maximum_window_growth": {
+          "rss_bytes": 297238528,
+          "private_bytes": 297238528,
+          "handles": 0,
+          "threads": 0
+        },
+        "peak": {
+          "rss_bytes": 3693654016,
+          "private_bytes": 3693654016,
+          "handles": 239,
+          "threads": 385
+        },
+        "limits": {},
+        "discarded_count": 0,
+        "discarded_details": [],
+        "measurement_duration": null,
+        "minimum_measure_seconds": null,
+        "coverage": null,
+        "maximum_gap_seconds": 0.10411939513869584,
+        "cpu": {
+          "scope": "sampled-owned-processes; 100% = one logical core",
+          "observed_seconds": 9.62838681298308,
+          "sampled_cpu_seconds": 11.849999999999998,
+          "mean_percent_one_core": 123.07357639621681,
+          "peak_percent_one_core": 145.41967718351106
+        },
+        "errors": [],
+        "error_details": [],
+        "error_count": 0,
+        "failures": [],
+        "status": "observed"
+      },
+      "native_semaphore_delta": 0,
+      "same_os_boot": true
+    }
+  ],
+  "validate_layout": true,
+  "package_sha256": "829f34d750801feb602e2d69c75f0d7e94b9790f5843251fbb8588abc181571d",
+  "application_id": "app-61d9714a653b33a65b3812418044fb645fc6ec9cfea2060905075119ddd7b1f1",
+  "version": "workflow-app-version-9e1ca550bedb4d27b194bbe6f9799679",
+  "runtime_id": "workflow-runtime-5476769400604754b4e5d4da6c703e4b",
+  "resource_mapping": [
+    {
+      "source": {
+        "project_id": "project-1",
+        "resource_id": "measurement-cloud-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "version": 1,
+        "sha256": "c9566ae231f30a4b55226673d8644346eb6a58d8bafb66130784596c2da345ed",
+        "kind": "point-cloud"
+      },
+      "target": {
+        "project_id": "project-1",
+        "resource_id": "measurement-cloud-d1830f185eb098d68c51a9531e1bb1879efe1d9729aba910b579ffd908cc4ff2",
+        "version": 1,
+        "sha256": "c9566ae231f30a4b55226673d8644346eb6a58d8bafb66130784596c2da345ed",
+        "kind": "point-cloud"
+      }
+    }
+  ],
+  "whole_group_stopped": true,
+  "semaphore_warnings": 0
+}

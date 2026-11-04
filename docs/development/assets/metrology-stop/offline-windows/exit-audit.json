@@ -1,0 +1,11 @@
+[
+  {
+    "path": "full-stack/backend-service-20261103.log",
+    "lines": [
+      "INFO:     Application shutdown complete.",
+      "INFO:     Finished server process [23932]",
+      "INFO:     Application shutdown complete.",
+      "INFO:     Finished server process [40884]"
+    ]
+  }
+]

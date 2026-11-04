@@ -1,0 +1,68 @@
+{
+  "platform": "Windows-11-10.0.26300-SP0",
+  "input_bytes": 1000000000,
+  "rss_baseline_bytes": 369491968,
+  "rss_peak_bytes": 2519937024,
+  "stages": {
+    "generate": 0.8769512001890689,
+    "save_asset": 12.960521700093523,
+    "build_index": 97.28797929990105,
+    "verify_every_field": 50.13668080000207,
+    "cancel_after_leaf": 10.46977850003168,
+    "disk_full_after_leaf": 10.494071899913251,
+    "rebuild_after_failures": 97.40999880013987,
+    "verify_recovered_index": 48.912528599845245
+  },
+  "passed": true,
+  "point_count": 62499984,
+  "data_bytes": 1499999616,
+  "block_count": 1024,
+  "logical_dtype": "uint32",
+  "identity_dtype": "uint32",
+  "previous_reserve_bytes": 11999996928,
+  "complete": {
+    "point_count": 62499984,
+    "valid_count": 62499984,
+    "excluded_count": 0,
+    "block_count": 1024,
+    "data_bytes": 1499999616,
+    "bounds": {
+      "min": [
+        0.0,
+        0.0,
+        0.25
+      ],
+      "max": [
+        1023.0,
+        4095.0,
+        0.25
+      ]
+    },
+    "all_rows_fields_exact": true
+  },
+  "recovered": {
+    "point_count": 62499984,
+    "valid_count": 62499984,
+    "excluded_count": 0,
+    "block_count": 1024,
+    "data_bytes": 1499999616,
+    "bounds": {
+      "min": [
+        0.0,
+        0.0,
+        0.25
+      ],
+      "max": [
+        1023.0,
+        4095.0,
+        0.25
+      ]
+    },
+    "all_rows_fields_exact": true
+  },
+  "cancelled_generation_removed": true,
+  "disk_failure_rolled_back": true,
+  "released_budget_bytes": 0,
+  "seconds": 331.09263089997694,
+  "rss_final_bytes": 389591040
+}

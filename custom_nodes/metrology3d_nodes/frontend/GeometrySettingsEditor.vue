@@ -42,7 +42,7 @@ const issues=computed(()=>geometryIssues(plane.value?'fit-plane':'build-frame',d
 const referenceIssues=computed(()=>open.value?props.draftIssues?.(draft.value)??[]:[])
 function show(){draft.value=Object.keys(object(props.modelValue)).length?copy(object(props.modelValue)):newSettings(plane.value);initial.value=JSON.stringify(draft.value);previewId.value='';open.value=true}
 function apply(){if(!issues.value.length&&!props.disabled){emit('update:modelValue',copy(draft.value));open.value=false}}
-watch(()=>[props.modelValue,props.disabled,props.nodeType],()=>{open.value=false})
+watch([()=>props.modelValue,()=>props.disabled,()=>props.nodeType,()=>JSON.stringify(props.inputSources)],()=>{open.value=false;previewId.value=''})
 watch(()=>[state().runId,state().succeeded],()=>{previewId.value=''})
 </script>
 <style src="./editor.css" scoped></style>

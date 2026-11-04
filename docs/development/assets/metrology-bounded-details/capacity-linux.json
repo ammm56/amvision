@@ -1,0 +1,68 @@
+{
+  "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "input_bytes": 1000000000,
+  "rss_baseline_bytes": 200220672,
+  "rss_peak_bytes": 2281197568,
+  "stages": {
+    "generate": 0.6455384891014546,
+    "save_asset": 5.5285293171182275,
+    "build_index": 65.29092039610259,
+    "verify_every_field": 20.05878980900161,
+    "cancel_after_leaf": 10.268204736988991,
+    "disk_full_after_leaf": 10.129287338117138,
+    "rebuild_after_failures": 64.72878799401224,
+    "verify_recovered_index": 21.897696136962622
+  },
+  "passed": true,
+  "point_count": 62499984,
+  "data_bytes": 1499999616,
+  "block_count": 1024,
+  "logical_dtype": "uint32",
+  "identity_dtype": "uint32",
+  "previous_reserve_bytes": 11999996928,
+  "complete": {
+    "point_count": 62499984,
+    "valid_count": 62499984,
+    "excluded_count": 0,
+    "block_count": 1024,
+    "data_bytes": 1499999616,
+    "bounds": {
+      "min": [
+        0.0,
+        0.0,
+        0.25
+      ],
+      "max": [
+        1023.0,
+        4095.0,
+        0.25
+      ]
+    },
+    "all_rows_fields_exact": true
+  },
+  "recovered": {
+    "point_count": 62499984,
+    "valid_count": 62499984,
+    "excluded_count": 0,
+    "block_count": 1024,
+    "data_bytes": 1499999616,
+    "bounds": {
+      "min": [
+        0.0,
+        0.0,
+        0.25
+      ],
+      "max": [
+        1023.0,
+        4095.0,
+        0.25
+      ]
+    },
+    "all_rows_fields_exact": true
+  },
+  "cancelled_generation_removed": true,
+  "disk_failure_rolled_back": true,
+  "released_budget_bytes": 0,
+  "seconds": 199.4040472181514,
+  "rss_final_bytes": 218812416
+}

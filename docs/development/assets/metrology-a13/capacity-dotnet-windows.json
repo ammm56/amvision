@@ -1,0 +1,64 @@
+{
+  "platform": "Windows-11-10.0.26300-SP0",
+  "input_bytes": 1000000000,
+  "rss_baseline_bytes": 368517120,
+  "rss_peak_bytes": 1694072832,
+  "stages": {
+    "generate": 2.615734999999404,
+    "publish_start": 8.564581600017846,
+    "bytes": 24.919269799953327,
+    "bytes_all_fields": 21.3321824001614,
+    "writer_exit": 5.646254200022668,
+    "fill": 20.393401500070468,
+    "fill_all_fields": 19.1558762001805,
+    "stop": 0.750905399909243
+  },
+  "passed": true,
+  "process_tree_baseline": {
+    "elapsed_seconds": 0,
+    "process_count": 1,
+    "cpu_percent_one_core": null,
+    "rss_bytes": 368619520,
+    "private_bytes": 1653669888,
+    "handles": 582,
+    "threads": 45
+  },
+  "point_count": 62500000,
+  "calls": [
+    {
+      "mode": "bytes",
+      "run_id": "workflow-run-eddc7507954b4b84a233968162d3efc3",
+      "resource_id": "measurement-cloud-e8b5cb67f55ae691fe5d3392a3129537a0469d40d21a3cfb6e249c9d12dc2af7",
+      "all_fields_equal": true
+    },
+    {
+      "mode": "fill",
+      "run_id": "workflow-run-65b05c4e67764f429a48d7c3fd340262",
+      "resource_id": "measurement-cloud-23712ba8ed6f227e51b671334209f7fd8bc1d0ae955eabfecec9d82623eefd30",
+      "all_fields_equal": true
+    }
+  ],
+  "active_lease_count": 0,
+  "free_capacity_bytes": 2147483648,
+  "worker_stopped": true,
+  "seconds": 112.34061130019836,
+  "rss_final_bytes": 439472128,
+  "process_tree_final": {
+    "elapsed_seconds": 112.3406844001729,
+    "process_count": 1,
+    "cpu_percent_one_core": 95.4655151673221,
+    "rss_bytes": 439455744,
+    "private_bytes": 1722630144,
+    "handles": 741,
+    "threads": 44
+  },
+  "process_tree_peak": {
+    "rss_bytes": 4013268992,
+    "private_bytes": 3308658688,
+    "handles": 1936,
+    "threads": 104
+  },
+  "process_tree_sample_count": 711,
+  "process_tree_errors": [],
+  "process_tree_discarded_count": 1
+}

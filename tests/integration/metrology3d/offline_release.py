@@ -8,12 +8,14 @@ from pathlib import Path
 import re
 import subprocess
 from time import monotonic, sleep
+from threading import Event, Thread
 from types import SimpleNamespace
 
 import httpx
 import psutil
 
 from tests.integration.release_environment import build_release_test_environment
+from tests.integration.runtime_resource_gate import ResourceGate
 
 
 REPOSITORY = Path(__file__).resolve().parents[3]
@@ -160,6 +162,11 @@ def exercise(root: Path, package: Path, report_dir: Path, port: int) -> None:
         return response.json() if response.content else None
 
     for cycle in range(2):
+        native_ipc = Path("/dev/shm")
+        ipc_before = set(native_ipc.glob("sem.mp-*")) if os.name != "nt" else set()
+        boot_file = Path("/proc/sys/kernel/random/boot_id")
+        boot_before = boot_file.read_text().strip() if boot_file.exists() else None
+        sampling_stop, sampling_thread = Event(), None
         with (report_dir / f"launcher-{cycle}.log").open("wb") as log:
             process = subprocess.Popen(
                 [
@@ -264,6 +271,17 @@ def exercise(root: Path, package: Path, report_dir: Path, port: int) -> None:
                         resource_mapping=imported["resource_mapping"],
                     )
                 call("POST", f"/workflows/app-runtimes/{runtime_id}/start")
+                gate = ResourceGate(root_pids=(process.pid,), warmup_seconds=0, limits={})
+                sampling_started = monotonic()
+
+                def sample_resources():
+                    """只观测正式组进程，不新设资源门禁或延长运行负载。"""
+                    while not sampling_stop.is_set():
+                        gate.sample(monotonic() - sampling_started)
+                        sampling_stop.wait(0.1)
+
+                sampling_thread = Thread(target=sample_resources, name="offline-resource-audit")
+                sampling_thread.start()
                 started = monotonic()
                 run = call(
                     "POST",
@@ -290,11 +308,20 @@ def exercise(root: Path, package: Path, report_dir: Path, port: int) -> None:
                     )
                 )
                 call("POST", f"/workflows/app-runtimes/{runtime_id}/stop")
+                sampling_stop.set()
+                sampling_thread.join()
+                sampled = gate.summary()
+                assert not sampled["errors"], sampled
+                assert sampled["sample_count"], sampled
+                report["cycles"][-1]["resources"] = sampled
                 identities = [
                     (p.pid, p.create_time())
                     for p in psutil.Process(process.pid).children(recursive=True)
                 ]
             finally:
+                sampling_stop.set()
+                if sampling_thread is not None:
+                    sampling_thread.join()
                 stopped = subprocess.run(
                     [
                         str(python),
@@ -330,8 +357,19 @@ def exercise(root: Path, package: Path, report_dir: Path, port: int) -> None:
                     return True
 
                 wait_until(all_exited, timeout=30)
+                ipc_after = set(native_ipc.glob("sem.mp-*")) if os.name != "nt" else set()
+                assert not ipc_after - ipc_before, sorted(ipc_after - ipc_before)
+                assert boot_before == (boot_file.read_text().strip() if boot_file.exists() else None)
+                if len(report["cycles"]) > cycle:
+                    report["cycles"][cycle].update(native_semaphore_delta=0, same_os_boot=True)
     client.close()
     report["whole_group_stopped"] = True
+    warnings = []
+    for path in (root / "logs").rglob("*.log"):
+        warnings.extend(line for line in path.read_text("utf-8", errors="replace").splitlines()
+                        if "resource_tracker" in line or "leaked semaphore" in line)
+    assert not warnings, warnings
+    report["semaphore_warnings"] = 0
     (report_dir / "report.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
     )

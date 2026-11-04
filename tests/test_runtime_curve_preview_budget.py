@@ -107,9 +107,52 @@ def test_measurement_items_have_individual_structure_budget():
         with pytest.raises(_DisplayLimit, match="preview_structure_limit"):
             _copy_json(value, budget())
         assert _copy_preview(value, budget()) == value
+        from contextlib import closing
+        import json
+        from backend.service.application.workflows.preview.buffers import PreviewBuffers
+        from backend.service.application.workflows.preview.values import PreviewValues
+        from tests.test_workflow_preview_values import Bridge
+
+        with closing(PreviewBuffers()) as buffers:
+            descriptor = PreviewValues(Bridge(buffers)).describe(value)
+            assert descriptor["kind"] == "json", descriptor
+            with buffers.borrow("session", descriptor["blob_id"]) as content:
+                assert json.loads(bytes(content)) == value
+            assert buffers.stats()["reserved_bytes"] == 0
         evidence["items"][0]["extra"] = "not allowed"
         with pytest.raises(_DisplayLimit, match="preview_not_json"):
             _copy_preview(value, budget())
+        with closing(PreviewBuffers()) as buffers:
+            descriptor = PreviewValues(Bridge(buffers)).describe(value)
+            assert descriptor == {"kind": "unavailable", "error": "preview_not_json"}
+            assert buffers.stats()["reserved_bytes"] == 0
+            assert buffers.stats()["blocks"] == 0
     finally:
         assert not scope.close()
         assert runtime.budget.used == 0
+
+
+@pytest.mark.parametrize("kind", ["metadata", "item", "bytes", "count"])
+def test_preview_measurement_group_cannot_bypass_limits(kind):
+    """逐项计数不放开普通元数据、单项结构、总字节或条目数。"""
+    from contextlib import closing
+    from backend.service.application.workflows.preview.buffers import PreviewBuffers
+    from backend.service.application.workflows.preview.values import PreviewValues
+    from tests.test_workflow_preview_values import Bridge
+
+    value = payload(1)
+    value["measurements"] = {"items": []}
+    if kind == "metadata":
+        value["metadata"] = list(range(MAX_PREVIEW_VALUES + 1))
+    elif kind == "item":
+        value["measurements"]["items"] = [{"data": list(range(MAX_PREVIEW_VALUES + 1))}]
+    elif kind == "bytes":
+        # 同一字符串重复引用，检查发生在大副本与序列化之前。
+        value["measurements"]["items"] = [{"data": "x" * 1024**2}] * 65
+    else:
+        value["measurements"]["items"] = [{}] * 8193
+    with closing(PreviewBuffers()) as buffers:
+        descriptor = PreviewValues(Bridge(buffers)).describe(value)
+        assert descriptor["kind"] == "unavailable"
+        assert buffers.stats()["reserved_bytes"] == 0
+        assert buffers.stats()["blocks"] == 0

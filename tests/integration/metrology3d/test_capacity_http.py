@@ -84,6 +84,60 @@ def test_capacity_http_preview(tmp_path, request):
                     f"/ws/v1/workflows/preview-sessions/{sid}", headers=system.headers
                 ) as ws:
                     ws.receive_json()
+                    with (
+                        stage(evidence, "incomplete_upload"),
+                        path.open("rb") as stream,
+                    ):
+
+                        def truncated_body():
+                            """实际发送接近上限的正文，只缺最后一字节。"""
+                            remaining = size - 1
+                            while remaining:
+                                block = stream.read(min(262144, remaining))
+                                assert block
+                                remaining -= len(block)
+                                yield block
+
+                        incomplete = http.post(
+                            url,
+                            params=dict(byte_length=size, file_name="incomplete.ply"),
+                            content=truncated_body(),
+                        )
+                        assert incomplete.status_code == 413, incomplete.text
+                        assert manager.buffers.stats()["file_bytes"] == 0
+                    with stage(evidence, "disconnected_upload"):
+                        # 真正关闭仍有正文未发送的 TCP 连接，不用异常替换路由。
+                        with socket.create_connection(("127.0.0.1", port), 10) as peer:
+                            headers = {
+                                **system.headers,
+                                "Host": f"127.0.0.1:{port}",
+                                "Content-Type": "application/octet-stream",
+                                "Content-Length": str(size),
+                                "Connection": "close",
+                            }
+                            head = (
+                                f"POST {url}?byte_length={size}&file_name=aborted.ply HTTP/1.1\r\n"
+                                + "".join(
+                                    f"{key}: {value}\r\n"
+                                    for key, value in headers.items()
+                                )
+                                + "\r\n"
+                            )
+                            peer.sendall(head.encode("ascii"))
+                            with path.open("rb") as stream:
+                                peer.sendall(stream.read(min(size // 2, 16777216)))
+                            wait_for(
+                                lambda: manager.buffers.stats()["file_bytes"] > 0,
+                                timeout=10,
+                            )
+                        wait_for(
+                            lambda: manager.buffers.stats()["file_bytes"] == 0,
+                            timeout=10,
+                        )
+                        assert manager.buffers.stats()["pins"] == 0
+                    evidence["incomplete_and_disconnected_reclaimed"] = True
+                    evidence["truncated_body_bytes"] = size - 1
+                    evidence["disconnected_body_bytes"] = min(size // 2, 16777216)
                     with stage(evidence, "http_upload"), path.open("rb") as stream:
                         uploaded = http.post(
                             url,

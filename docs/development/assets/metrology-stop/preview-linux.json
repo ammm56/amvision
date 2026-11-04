@@ -1,0 +1,9 @@
+{
+  "run_id": "abb844c4bc9042eda3c20cb436e927bc",
+  "nodes": 111,
+  "state": "succeeded",
+  "measurements": 50,
+  "display_points": 500000,
+  "circles": 2,
+  "full_evidence": true
+}

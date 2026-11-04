@@ -2,9 +2,11 @@
 
 ## 范围与状态
 
-2026-11-02，基于当前工作区，尚未提交。范围仅为 Windows x64 / WSL Ubuntu 24.04 CPU 离线发行，复用现有 assemble-release、full Supervisor、A10 搬运和 A11 工具，不改算法、质量条件、十秒门禁或显示索引容量。完整步骤见 [CPU 离线发行](../deployment/cpu-offline-release.md)。
+2026-11-03 最新续验已在源目录修复 Preview Pool 的 Event 引用残留及完整 Preview 传输边界，再重装配隔离 Windows/Ubuntu CPU 包：自带 Python、真实原生预检、空环境携资源导入、完整 111 节点/50 项工件，两平台各两轮运行和整组停止重启均通过。最新报告及源码摘要见[停止与完整 Preview 验证](3d-metrology-stop-preview.md)，不替换下文旧候选记录。Ubuntu 同次 boot 内 semaphore 增量零且无 tracker 警告；树采样为短时观测，不是全部资源门禁或长期稳定性结论。十秒与最大显示索引仍独立保留。
 
-既定 A12 CPU 发行范围已实现并完成双平台真实组合验收；不代表 A13 最终整个平台候选验收或现场计量认证。前序未提交修改仍保留，本轮结果基于工作区完整代码，不能用仅检出当前 HEAD 复现。
+验收日期为 2026-11-02。2026-11-03 提交核对：前序依赖已提交为 `25098c1c`，A12 独立提交为 `01587765`；不再存在本批所需的未提交代码。范围仅为 Windows x64 / WSL Ubuntu 24.04 CPU 离线发行，复用现有 assemble-release、full Supervisor、A10 搬运和 A11 工具，不改算法、质量条件、十秒门禁或显示索引容量。完整步骤见 [CPU 离线发行](../deployment/cpu-offline-release.md)。
+
+既定 A12 CPU 发行范围已实现并完成双平台真实组合验收；不代表 A13 最终候选验收或现场计量认证。下面是当时完整工作区的验收证据，现已纳入上述两笔提交；本次提交状态核对没有重新测试，也不改写旧报告的时间或摘要。构建仍需准备文档列明的本地运行资产，不能把 Git 源码等同已装配发行包。
 
 ## 实际修复
 
@@ -64,4 +66,4 @@ python -m tests.integration.metrology3d.offline_release --root <隔离发行根>
 
 Ruff 与 `git diff --check` 通过。本轮 Windows/Ubuntu full 服务、worker、Broker、daemon、Workflow 子进程均退出，5630/5632 无测试监听。临时发行 Python、测试数据库、资源包/原云副本、缓存和 WSL 隔离 venv 已清理，仓库 `.tmp/` 已空；原始工件、业务 5600/5601、已有 `release/` 和生产配置未修改。Ubuntu 已恢复任务前的停止状态，其他 WSL 发行版未停止。正式运行资产 libusb 与许可保留在既定本地 runtime 资产目录，不属于测试缓存。
 
-本轮没有自动 Git 提交，也没有把隔离验证包覆盖到已有生产发行。发布人员按源目录重新装配；后续 A13 再固定全部前序修改的提交身份和组合范围。
+验收结束时没有自动 Git 提交，也没有把隔离验证包覆盖到已有生产发行；后续提交身份已在本页开头更新。发布人员按源目录重新装配；A13 仍需固定源码、依赖、配方、配置及发行物的同一候选组合范围。

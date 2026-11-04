@@ -3,6 +3,7 @@ import { computed, type ComputedRef, type Ref } from 'vue'
 import type { WorkflowBoundaryNodeView } from '../bindings/useWorkflowBoundaryNodes'
 import type { WorkflowConnectionDraftState, WorkflowPortDirection } from '../canvas/useWorkflowPortConnections'
 import { findNodeParameterInputBindingByPort, readRegularNodeInputPorts } from '../parameters/parameter-input-bindings'
+import { cloudResourceFieldHeight } from '../parameters/cloud-resource-fields'
 import type { FlowApplicationBinding, NodeDefinition, NodeParameterUiField, NodePortDefinition, WorkflowGraphEdge, WorkflowGraphInput, WorkflowGraphNode, WorkflowGraphOutput } from '../types'
 
 export interface WorkflowGraphGeometryNodeView {
@@ -175,6 +176,8 @@ export function useWorkflowGraphGeometry<NodeView extends WorkflowGraphGeometryN
   }
 
   function readParameterFieldHeight(field: NodeParameterUiField): number {
+    const cloudHeight = cloudResourceFieldHeight(field.json_schema)
+    if (cloudHeight !== null) return cloudHeight
     return options.isJsonParameter(field)
       ? options.layout.nodeJsonWidgetRowHeight
       : options.layout.nodeWidgetRowHeight

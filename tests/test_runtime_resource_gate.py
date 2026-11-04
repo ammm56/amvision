@@ -134,6 +134,29 @@ def test_child_exit_discards_sample_but_root_exit_fails(monkeypatch) -> None:
     assert gate.error_count == 1 and gate.summary()["status"] == "failed"
 
 
+def test_optional_process_records_match_deduplicated_totals(monkeypatch):
+    """角色观测直接复用同次采样，不重复累计嵌套根或改变门禁。"""
+    monkeypatch.setattr("tests.integration.runtime_resource_gate.read_process_birth_identity",
+                        lambda pid: f"test:{pid}")
+    def process(pid):
+        return SimpleNamespace(pid=pid, create_time=lambda: float(pid), is_running=lambda: True,
+            ppid=lambda: pid - 1, children=lambda **_: [], oneshot=nullcontext,
+            memory_info=lambda: SimpleNamespace(rss=pid * 100, private=pid * 50),
+            num_threads=lambda: pid, num_handles=lambda: pid * 2)
+    root, child = process(1), process(2)
+    root.children = lambda **_: [child]
+    monkeypatch.setattr(psutil, "Process", lambda pid: {1: root, 2: child}[pid])
+    gate = ResourceGate(root_pids=(1, 2), warmup_seconds=0, limits={}, include_processes=True)
+    sample = gate.sample(0)
+    assert sample["process_count"] == 2
+    for key in ("rss_bytes", "private_bytes", "threads", "handles"):
+        assert sample[key] == sum(item[key] for item in sample["processes"])
+    assert {(p["pid"], p["create_time"]) for p in sample["processes"]} == {(1, 1.), (2, 2.)}
+    assert {p["birth_identity"] for p in sample["processes"]} == {"test:1", "test:2"}
+    assert gate.summary()["status"] == "observed"
+    assert "processes" not in ResourceGate(root_pids=(1,), warmup_seconds=0, limits={}).sample(0)
+
+
 def test_stopping_executor_signals_before_join() -> None:
     """主线程失败后，等待 stop 的子线程必须先被唤醒再 join。"""
     stop = Event()
@@ -142,6 +165,37 @@ def test_stopping_executor_signals_before_join() -> None:
             finished = executor.submit(stop.wait, 2)
             raise RuntimeError("cancelled")
     assert finished.result() is True
+
+
+@pytest.mark.parametrize("phase", ["root-identity", "enumerate-children", "read-process"])
+@pytest.mark.parametrize("exception", [psutil.NoSuchProcess, psutil.AccessDenied])
+def test_sampler_retains_failure_phase_and_identity(monkeypatch, phase, exception):
+    """同一个 PID 字符串必须能区分异常类别和采样阶段，不能吞掉失败。"""
+    def fail():
+        raise exception(17)
+
+    root = SimpleNamespace(pid=1, create_time=lambda: 10, is_running=lambda: True,
+                           children=lambda **_: [], oneshot=nullcontext,
+                           status=lambda: psutil.STATUS_RUNNING,
+                           memory_info=lambda: SimpleNamespace(rss=100, private=100),
+                           num_threads=lambda: 1, num_handles=lambda: 1)
+    monkeypatch.setattr(psutil, "Process", lambda _: root)
+    gate = ResourceGate(root_pids=(1,), warmup_seconds=0, limits={"rss_bytes": 10})
+    if phase == "root-identity":
+        root.is_running = fail
+    elif phase == "enumerate-children":
+        root.children = lambda **_: fail()
+    else:
+        root.memory_info = fail
+    for index in range(25):
+        sample = gate.sample(index)
+    detail = sample["error_detail"]
+    assert detail["phase"] == phase
+    assert detail["exception_type"] == exception.__name__
+    assert detail["exception_pid"] == 17 and detail["root_identities"] == {1: 10}
+    assert detail["root_pid"] == detail["target_pid"] == 1
+    assert len(gate.error_details) == 20 and gate.error_count == 25
+    assert gate.sample_count == 0 and gate.summary()["status"] == "failed"
 
 
 def test_latency_gate_remembers_errors_outside_recent_window() -> None:
@@ -154,3 +208,37 @@ def test_latency_gate_remembers_errors_outside_recent_window() -> None:
     snapshot = lane.snapshot()
     assert snapshot["latency_ms"]["p99"] == 1
     assert snapshot["over_latency_limit_count"] == 1
+
+
+@pytest.mark.parametrize("status,reused,root_denied,field,discard", [
+    (psutil.STATUS_ZOMBIE, False, False, "num_fds", True),
+    (psutil.STATUS_RUNNING, False, False, "num_fds", False),
+    (psutil.STATUS_ZOMBIE, True, False, "num_fds", False),
+    (psutil.STATUS_ZOMBIE, False, True, "num_fds", False),
+    (psutil.STATUS_ZOMBIE, False, False, "memory_info", False),
+])
+def test_fd_access_denied_requires_confirmed_exited_child(monkeypatch, status, reused, root_denied, field, discard):
+    """真实退出 fd 竞态可丢样；活进程权限、根退出、PID 复用不降级通过。"""
+    def denied():
+        raise psutil.AccessDenied(1 if root_denied else 2)
+
+    def process(pid, created):
+        return SimpleNamespace(pid=pid, create_time=lambda: created, is_running=lambda: True,
+                               status=lambda: status, children=lambda **_: [], oneshot=nullcontext,
+                               memory_info=lambda: SimpleNamespace(rss=100, private=100),
+                               num_threads=lambda: 1, num_fds=lambda: 1)
+
+    root, child = process(1, 10), process(2, 20)
+    current = process(2, 21 if reused else 20)
+    root.children = lambda **_: [child]
+    setattr(root if root_denied else child, field, denied)
+    monkeypatch.setattr(psutil, "Process", lambda pid: root if pid == 1 else current)
+    gate = ResourceGate(root_pids=(1,), warmup_seconds=0, limits={"rss_bytes": 10})
+    sample = gate.sample(0)
+    assert ("discarded" in sample) is discard
+    assert gate.sample_count == 0
+    assert gate.discarded_count == int(discard)
+    assert gate.error_count == int(not discard)
+    assert gate.summary()["status"] == "failed"  # 没有完整样本，不能冒充通过。
+    if discard:
+        assert gate.discarded_details[-1]["status"] == psutil.STATUS_ZOMBIE

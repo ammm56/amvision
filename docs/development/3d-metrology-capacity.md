@@ -2,6 +2,10 @@
 
 ## 范围与状态
 
+2026-11-03 有界显示索引续验：已完成全云 KDTree 替换、行号紧凑布局及全部读取方。Windows/WSL 原生文件系统的精确 1 GB 输入均为 62,499,984 点，生成 1,024 块、1,499,999,616 B 叶数据；全字段/原始行号、取消、写入 ENOSPC 注入和再次重建通过，Scope 预算归零。测试主进程峰值 RSS 分别为 2,519,937,024 / 2,281,197,568 B，不是全进程树最低 RAM 或长期资源结论。详见[实施与证据](3d-metrology-bounded-details.md)。剩余是分角色及浏览器资源矩阵，不再把近 1 GB 索引列为待实现。
+
+2026-11-03 更新：Windows .NET byte[]/writer **精确 1 GB 已补验通过**，逐行保存恢复及写入者退出、再次调用、停止回收均通过；进程树可选采样复用 ResourceGate。Ubuntu 原生目录再次通过完整工件两入口与 1 GB 同机取消组合。见[候选组合记录](3d-metrology-candidate-validation.md)。下文保留 2026-11-02 当批证据与当时的剩余范围；最大显示索引、完整故障/资源矩阵仍未全部完成。
+
 2026-11-02，用户确认先推进独立容量、显示和发行交付，十秒仍保留为最终候选的未通过门禁。本批对应 A09，不重跑 A01、模型 P99、长稳或 S2 历史诊断。
 
 **已实现并验证：显式容量配置、解码共享只读字段、1 GB 文件与同机数组的主链路、ROI 派生保存恢复、HTTP Preview。** 沿现有 CloudRuntime、Scope、ObjectStore、资产、Preview、Trigger 和独立 worker，不新增资源系统或队列。前序未提交实现保留；本批没有自动 Git 提交，也没有修改当前业务服务的本地配置。
@@ -65,6 +69,8 @@
 证据：[Windows 文件](assets/metrology-capacity/capacity-file-windows.json)、[Ubuntu 文件](assets/metrology-capacity/capacity-file-linux.json)、[Windows 同机](assets/metrology-capacity/capacity-runtime-windows.json)、[Ubuntu 同机](assets/metrology-capacity/capacity-runtime-linux.json)、[Windows HTTP](assets/metrology-capacity/capacity-http-windows.json)、[Ubuntu HTTP](assets/metrology-capacity/capacity-http-linux.json)、[Windows 工件](assets/metrology-capacity/compute-visible-windows.json)、[Ubuntu 工件](assets/metrology-capacity/compute-visible-linux.json)。[源文件摘要](assets/metrology-capacity/source.json)仅标识本批，不是整个平台最终冻结验收。
 
 ## 剩余交付
+
+2026-11-03 续验：精确 1 GB 的近完整短传、真实断连、存储写失败回滚、执行 worker 强杀、切版后旧请求拒绝与新请求复用，原组合已在 Windows 和 Ubuntu 原生目录分别通过，见[续验记录](3d-metrology-candidate-validation.md#双平台隔离发行续验)。Ubuntu 文件逐行/字段/来源一致、活跃数组归零；worker 恢复后租约归零。其树采样错误随后用小载荷定位为子进程 zombie FD 探测竞态，已按身份核验修复并双平台验证，见[根因记录](3d-metrology-stop-preview.md)。这不改变原报告，也不将短时观测宣称完整资源门禁。下列条目保留最初验收时的历史状态，当前总表以剩余清单第 1.1、7.5 节为准。
 
 1. A09 主链路已验证；接近上限的 .NET writer/byte[]、完整大载荷故障矩阵及进程树资源峰值仍需在 A13 最终候选补验。原完整工件 .NET/异常退出证据仍有效，但不冒称此次重跑了 1 GB .NET。输入读取支持所有已声明格式，本批精确 1 GB 使用 binary PLY/SoA，其他编码用受控格式回归和完整 ASCII 工件覆盖，不冒称每种编码均实测 1 GB。
 2. 接下来进入 A08 全分辨率显示：只对显式保存的资产按既有资源身份建立可重建分块索引，叶块保留原点/字段/来源；复用资源鉴权和有界传输，再接查看器 LOD、generation 和缓存释放。历史未保存原云不自动补存或延长 Run 引用。

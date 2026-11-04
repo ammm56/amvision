@@ -6,6 +6,7 @@
         {{ statusLabel }}
       </StatusBadge>
     </div>
+    <InlineMessage v-if="previewRun.error" tone="danger" :title="errorTitle" :message="previewRun.error.message" />
     <section class="workflow-graph-preview-binding">
       <div class="workflow-graph-preview-binding__header">
         <span class="workflow-graph-preview-binding__summary">
@@ -31,6 +32,7 @@ import { computed } from 'vue'
 import { useTranslation } from '@/platform/i18n'
 
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
+import InlineMessage from '@/shared/ui/feedback/InlineMessage.vue'
 import type { WorkflowPreviewRun } from '../types'
 
 const { t } = useTranslation()
@@ -41,6 +43,14 @@ const props = defineProps<{
   statusLabel: string
   createdAtText: string
 }>()
+const errorTitle = computed(() => {
+  const error = props.previewRun.error
+  if (!error) return ''
+  const nodeId = error.details?.node_id
+  const record = props.previewRun.node_records.find(item => item.node_id === nodeId)
+  const label = typeof record?.node_display_name === 'string' ? record.node_display_name : nodeId
+  return typeof label === 'string' ? `${label} · ${error.code}` : error.code
+})
 const rawJsonText = computed(() => {
   const text = JSON.stringify(props.previewRun, null, 2)
   // 属性面板只显示有界摘录，避免长节点记录产生巨量文本布局；双击仍传递完整对象。

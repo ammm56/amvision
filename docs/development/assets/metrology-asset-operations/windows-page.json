@@ -1,0 +1,220 @@
+{
+  "execution": {
+    "platform": "Windows-11-10.0.26300-SP0",
+    "point_count": 14745099,
+    "saved_versions": [
+      1,
+      2,
+      3
+    ],
+    "conflict_preserves_files": true,
+    "exact_export_roundtrip": true,
+    "resource_budget_released": true,
+    "reference": {
+      "project_id": "project-1",
+      "resource_id": "measurement-cloud-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "version": 3,
+      "sha256": "c9566ae231f30a4b55226673d8644346eb6a58d8bafb66130784596c2da345ed",
+      "kind": "point-cloud"
+    },
+    "runtime_id": "workflow-runtime-64e18c70c31c4edc83913fbd4415ed0c",
+    "worker_pids": [
+      49896,
+      53960,
+      53820,
+      29720
+    ],
+    "runs": [
+      {
+        "workflow_run_id": "workflow-run-f78f75398b454716a43c7d2f2726250b",
+        "state": "succeeded",
+        "error": null
+      },
+      {
+        "workflow_run_id": "workflow-run-acbe0cf88db0457da51170195522c3a2",
+        "state": "failed",
+        "error": {
+          "code": "resource_conflict",
+          "message": "点云保存身份冲突或基版本已更新",
+          "details": {
+            "node_id": "save",
+            "node_type_id": "custom.metrology3d.save-cloud",
+            "node_display_name": "Save Cloud",
+            "runtime_kind": "python-callable",
+            "execution_index": 3
+          }
+        }
+      },
+      {
+        "workflow_run_id": "workflow-run-da9f98bee9184cf9b60b9b9e3d4676aa",
+        "state": "succeeded",
+        "error": null
+      },
+      {
+        "workflow_run_id": "workflow-run-d6066254169a4bbd8045e4405703e7d1",
+        "state": "succeeded",
+        "error": null
+      }
+    ],
+    "api_and_caller_pid": 23636,
+    "broker_pid": 45572
+  },
+  "scope": "complete sample asset operations; observation only, no timing or growth gate; Windows also includes page previews and initial detail index",
+  "resources": {
+    "sample_count": 5479,
+    "warmup_seconds": 0.0,
+    "growth": {
+      "rss_bytes": 974708736,
+      "private_bytes": 2522181632,
+      "handles": 748,
+      "threads": 41
+    },
+    "maximum_window_growth": {
+      "rss_bytes": 1992089600,
+      "private_bytes": 6111449088,
+      "handles": 2254,
+      "threads": 168
+    },
+    "peak": {
+      "rss_bytes": 2384949248,
+      "private_bytes": 7783649280,
+      "handles": 2974,
+      "threads": 216
+    },
+    "limits": {},
+    "discarded_count": 1,
+    "discarded_details": [
+      {
+        "elapsed_seconds": 120.45095780002885,
+        "discarded": "child-exited-during-sampling",
+        "pid": 55268,
+        "resource_field": "memory_info",
+        "status": null
+      }
+    ],
+    "measurement_duration": null,
+    "minimum_measure_seconds": null,
+    "coverage": null,
+    "maximum_gap_seconds": 1.1518966001458466,
+    "cpu": {
+      "scope": "sampled-owned-processes; 100% = one logical core",
+      "observed_seconds": 1976.9808611001354,
+      "sampled_cpu_seconds": 898.390625,
+      "mean_percent_one_core": 45.4425554984923,
+      "peak_percent_one_core": 205.94679147338283
+    },
+    "errors": [],
+    "error_details": [],
+    "error_count": 0,
+    "failures": [],
+    "status": "observed"
+  },
+  "dirty_worktree": true,
+  "source_head": "015877656cd407473724058951ce430519fa0288",
+  "process_peaks": [
+    {
+      "pid": 868,
+      "create_time": 1793753478.3833416,
+      "parent_pid": 23636,
+      "rss_bytes": 624365568,
+      "private_bytes": 1908957184,
+      "threads": 48,
+      "handles": 618,
+      "sample_count": 3315,
+      "first_seconds": 703.2758257000241,
+      "last_seconds": 1975.5956391999498,
+      "role": "owned-child-not-attributed"
+    },
+    {
+      "pid": 8532,
+      "create_time": 1793754430.4533284,
+      "parent_pid": 23636,
+      "rss_bytes": 576184320,
+      "private_bytes": 1860751360,
+      "threads": 49,
+      "handles": 621,
+      "sample_count": 670,
+      "first_seconds": 1655.4764735999051,
+      "last_seconds": 1913.496763400035,
+      "role": "owned-child-not-attributed"
+    },
+    {
+      "pid": 23636,
+      "create_time": 1793752768.5962696,
+      "parent_pid": 4092,
+      "rss_bytes": 1026461696,
+      "private_bytes": 2570678272,
+      "threads": 86,
+      "handles": 1248,
+      "sample_count": 5479,
+      "first_seconds": 0.0005300999619066715,
+      "last_seconds": 1976.9813912000973,
+      "role": "api-and-test-caller"
+    },
+    {
+      "pid": 29720,
+      "create_time": 1793752846.8954043,
+      "parent_pid": 23636,
+      "rss_bytes": 578461696,
+      "private_bytes": 1862680576,
+      "threads": 49,
+      "handles": 627,
+      "sample_count": 4270,
+      "first_seconds": 71.93543439987116,
+      "last_seconds": 1606.2175485999323,
+      "role": "published-worker"
+    },
+    {
+      "pid": 45572,
+      "create_time": 1793752776.9804456,
+      "parent_pid": 23636,
+      "rss_bytes": 344719360,
+      "private_bytes": 1630167040,
+      "threads": 45,
+      "handles": 545,
+      "sample_count": 5472,
+      "first_seconds": 1.8706773000303656,
+      "last_seconds": 1976.6520213000476,
+      "role": "broker"
+    },
+    {
+      "pid": 49896,
+      "create_time": 1793752811.9129908,
+      "parent_pid": 23636,
+      "rss_bytes": 576905216,
+      "private_bytes": 1865904128,
+      "threads": 49,
+      "handles": 622,
+      "sample_count": 36,
+      "first_seconds": 36.80792699987069,
+      "last_seconds": 48.00991529994644,
+      "role": "published-worker"
+    },
+    {
+      "pid": 53820,
+      "create_time": 1793752834.49939,
+      "parent_pid": 23636,
+      "rss_bytes": 748867584,
+      "private_bytes": 2033717248,
+      "threads": 49,
+      "handles": 618,
+      "sample_count": 37,
+      "first_seconds": 59.57498999987729,
+      "last_seconds": 71.3244731000159,
+      "role": "published-worker"
+    },
+    {
+      "pid": 53960,
+      "create_time": 1793752823.600207,
+      "parent_pid": 23636,
+      "rss_bytes": 582344704,
+      "private_bytes": 1866592256,
+      "threads": 49,
+      "handles": 622,
+      "sample_count": 33,
+      "first_seconds": 48.62065909989178,
+      "last_seconds": 58.9656960000284,
+      "role": "published-worker"
+    }
+  ]
+}

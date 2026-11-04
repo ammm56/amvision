@@ -1,0 +1,1 @@
+{"python": "3.12.3 (main, Aug 31 2026, 10:18:26) [GCC 13.3.0]", "packages": {"numpy": "2.4.4", "scipy": "1.18.0", "open3d": "0.20.0", "trimesh": "5.1.1+amvision.2", "pypcd4": "1.5.1+amvision.2", "pydantic": "2.13.4", "fastapi": "0.162.0", "psutil": "7.2.2", "pytest": "8.4.2"}}

@@ -1,0 +1,58 @@
+{
+  "head": "015877656cd407473724058951ce430519fa0288",
+  "scope": "bounded display index; not a rebuilt offline release",
+  "files": [
+    {
+      "path": "backend/contracts/workflows/point_cloud_detail.py",
+      "sha256": "fd7f3efe2627bb4010af83a62b1f974fd0e071464aa97984d7a8e5e0f3cd0d9a"
+    },
+    {
+      "path": "backend/service/application/workflows/point_cloud/detail_index.py",
+      "sha256": "d868758847b7434322986fd891697c103249acd34a0e1494f6229d1cdce66708"
+    },
+    {
+      "path": "backend/service/application/workflows/point_cloud/detail_builder.py",
+      "sha256": "860335ba6b7983719138d83e605f4aeba90aaee2bd1a7ccfee200d25d8411e74"
+    },
+    {
+      "path": "backend/service/application/workflows/point_cloud/detail_partition.py",
+      "sha256": "325e6d79760b68997442bc1885ad9c0691db1d3c9fb46efc8d9ade8f316616e1"
+    },
+    {
+      "path": "frontend/web-ui/src/workflows/workflow-editor/point-cloud/asset-details.ts",
+      "sha256": "e42c4d1ae14e0075f143fd3a2237b429281f5218097ac7be82e6217af9af112e"
+    },
+    {
+      "path": "tests/test_point_cloud_details.py",
+      "sha256": "7e1988ee893dd0069f6659b98e418017c73a1b6abb49bc1b04c777f4528a3dd1"
+    },
+    {
+      "path": "tests/test_point_cloud_detail_partition.py",
+      "sha256": "d7f346f5f4d7dd779f994a34bf4d196006eda9ad63af3c9d1792785b4e25a01a"
+    },
+    {
+      "path": "tests/frontend/workflows/test_cloud_details.ts",
+      "sha256": "444fcfc4a0a3cec1b25612d576779873e4642116ab64ea535fe78157caedae0f"
+    },
+    {
+      "path": "tests/integration/metrology3d/detail_acceptance.py",
+      "sha256": "71332393ed2418c4de9721e4d2736cadeff9fa946e4700f78f492baf1d729a6e"
+    },
+    {
+      "path": "tests/integration/metrology3d/test_capacity_details.py",
+      "sha256": "56e7d6c97b8afbf75da587a2f3dd3f1f42fd96c714575e4b1af8d80f4f24aa43"
+    },
+    {
+      "path": "custom_nodes/metrology3d_nodes/workstation-1gb.example.json",
+      "sha256": "d08b4556767ad8ce4ea447cade63067753ede39d522e4ddc69432e92f599d506"
+    },
+    {
+      "path": "custom_nodes/metrology3d_nodes/manifest.json",
+      "sha256": "be432118e0fbca6327fc1c6e30d37bc695ef08cf23f808d391e578c0e920a49b"
+    }
+  ],
+  "backend_windows_passed": 81,
+  "backend_ubuntu_passed": 81,
+  "frontend_passed": 30,
+  "capacity_note": "Measured before conservative tree-wrapper reservation adjustment; chunk size and data layout unchanged."
+}

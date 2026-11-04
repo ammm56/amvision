@@ -2,7 +2,7 @@
   <div class="measurement-summary">
     <div class="summary-tools"><span>{{ zh?'几何结果 · 未作产品公差判定':'Geometry results · no product tolerance decision' }}</span><label>{{ zh?'显示小数':'Display decimals' }}<select v-model="precision"><option value="raw">{{ zh?'原值':'Original' }}</option><option v-for="n in [2,3,4,6]" :key="n" :value="n">{{ n }}</option></select></label></div>
     <table><thead><tr><th>{{ zh?'测量项':'Measurement' }}</th><th>{{ zh?'数值':'Value' }}</th><th>{{ zh?'状态 / 原因':'State / reason' }}</th><th>{{ zh?'支持点数':'Support points' }}</th></tr></thead>
-      <tbody><tr v-for="item in items" :key="item.item_id" :class="{selected:item.item_id===selected}"><td><button :aria-pressed="item.item_id===selected" @click="$emit('select',item.item_id)">{{ item.item_id }}</button><div v-if="item.component">{{ componentLabel(item.component) }}</div></td><td :title="item.valid?String(item.value):undefined">{{ displayValue(item) }} {{ unit }}</td><td>{{ item.valid?(zh?'几何有效':'Geometry valid'):(zh?'几何无效':'Geometry invalid') }}<div v-if="!item.valid">{{ measurementReason(item.reason,zh) }}</div><div v-if="ambiguous(item)">{{ zh?'尺寸一致，方向不唯一':'Consistent size, ambiguous orientation' }}</div></td><td>{{ item.support.map(s=>s.point_count??'-').join(' / ') }}</td></tr></tbody>
+      <tbody><tr v-for="item in items" :key="item.item_id" :class="{selected:item.item_id===selected}"><td><button :aria-pressed="item.item_id===selected" @click="$emit('select',item.item_id)">{{ item.item_id }}</button><div v-if="item.component">{{ componentLabel(item.component) }}</div></td><td class="measurement-number"><span class="measurement-value" :title="item.valid?String(item.value):undefined">{{ displayValue(item) }}</span> <span class="measurement-unit">{{ unit }}</span></td><td>{{ item.valid?(zh?'几何有效':'Geometry valid'):(zh?'几何无效':'Geometry invalid') }}<div v-if="!item.valid">{{ measurementReason(item.reason,zh) }}</div><div v-if="ambiguous(item)">{{ zh?'尺寸一致，方向不唯一':'Consistent size, ambiguous orientation' }}</div></td><td>{{ item.support.map(s=>s.point_count??'-').join(' / ') }}</td></tr></tbody>
     </table>
     <dl v-if="current" class="extension-evidence"><dt>{{ zh?'测量方法':'Measurement method' }}</dt><dd>{{ measurementMethod(current,zh) }}</dd></dl>
     <dl v-if="robust(current)" class="extension-evidence">
@@ -35,8 +35,14 @@ import {formatDisplayField} from '../preview/value-display'
 const props=defineProps<{items:MeasurementDisplay[];unit:string;selected:string}>()
 defineEmits<{select:[id:string]}>()
 const {locale}=useI18n(),zh=computed(()=>locale.value==='zh-CN')
-const precision=ref<number|'raw'>('raw')
-function displayValue(item:MeasurementDisplay){return !item.valid?'-':precision.value==='raw'?String(item.value):formatDisplayField({label:'',value:item.value,format:'number',precision:precision.value,states:{}})}
+const precision=ref<number|'raw'>(4)
+function displayValue(item:MeasurementDisplay){
+  if(!item.valid)return '-'
+  if(precision.value==='raw')return String(item.value)
+  const formatted=formatDisplayField({label:'',value:item.value,format:'number',precision:precision.value,states:{}})
+  // 非零量值不能因显示小数位被伪装为零，计算及证据始终保留原值。
+  return item.value!==0&&Number(formatted)===0?String(item.value):formatted
+}
 const current=computed(()=>props.items.find(i=>i.item_id===props.selected)),metrics=computed(()=>{const raw=current.value?object(current.value.quality.metrics).items:[];return Array.isArray(raw)?raw.map(object):[]})
 const extension=computed(()=>current.value?referenceExtension(current.value.support):null)
 const mode=computed(()=>robust(current.value)?object(object(current.value!.method.parameters).mode):{})
@@ -48,9 +54,10 @@ function ambiguous(item:MeasurementDisplay){return item.valid&&item.geometry?.ki
 </script>
 <style scoped>
 .measurement-summary{overflow:auto;max-height:200px;font-size:12px;min-width:0;overflow-wrap:anywhere}
-table{border-collapse:collapse;width:100%;min-width:460px;table-layout:fixed}th,td{text-align:left;border-bottom:1px solid var(--am-border);padding:6px}
+table{border-collapse:collapse;width:100%;min-width:460px}th,td{text-align:left;border-bottom:1px solid var(--am-border);padding:6px;vertical-align:top}
+.measurement-number{white-space:nowrap;font-variant-numeric:tabular-nums}.measurement-unit{color:var(--am-text-muted)}
 button{border:0;background:transparent;color:var(--am-brand-primary);padding:0;cursor:pointer;font:inherit;text-align:left;overflow-wrap:anywhere}
 .selected{background:var(--am-surface-soft);box-shadow:inset 3px 0 var(--am-brand-primary)}summary{cursor:pointer;padding:6px 0}
-.summary-tools{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:6px}.summary-tools label{display:flex;gap:6px;align-items:center}
+.summary-tools{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:6px;position:sticky;top:0;z-index:1;background:var(--am-surface)}.summary-tools label{display:flex;gap:6px;align-items:center}
 .extension-evidence{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px;margin:8px 0}.extension-evidence dd{margin:0}
 </style>

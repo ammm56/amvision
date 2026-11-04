@@ -1,5 +1,5 @@
 <template>
-  <button class="cloud-resource-open" type="button" :disabled="disabled || !project.selectedProjectId" @click="show"><FolderOpen :size="16" />{{ currentLabel }}</button>
+  <button class="cloud-resource-open" type="button" :title="currentLabel" :aria-label="currentLabel" :disabled="disabled || !project.selectedProjectId" @click="show"><FolderOpen :size="16" /><span>{{ props.modelValue ? `v${props.modelValue.version} · ${props.modelValue.resource_id}` : t('select') }}</span></button>
   <Teleport to="body">
     <ConfirmDialog v-if="open" :title="t('resources')" :cancel-label="t('cancel')" :confirm-label="t('apply')" confirm-variant="primary" size="wide"
       :confirm-disabled="busy || disabled || !selectedDocument" @cancel="cancelSelection" @confirm="apply">
@@ -107,7 +107,9 @@ onBeforeUnmount(close)
 defineExpose({ show })
 </script>
 <style scoped>
-.cloud-resource-open { display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; overflow-wrap: anywhere; }
+.cloud-resource-open { display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; height: 32px; box-sizing: border-box; }
+.cloud-resource-open svg { flex: none; }
+.cloud-resource-open span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .cloud-resources { display: grid; gap: 12px; min-width: 0; font-size: 13px; }
 .cloud-resource-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .cloud-resource-actions button, .cloud-resource-open { border: 1px solid var(--am-border); border-radius: 4px; padding: 7px; background: var(--am-surface); color: var(--am-text); }

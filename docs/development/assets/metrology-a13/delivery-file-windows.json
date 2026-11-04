@@ -1,0 +1,13 @@
+{
+  "platform": "Windows-11-10.0.26300-SP0",
+  "input": "file",
+  "view": "numeric",
+  "version": "workflow-app-version-d878587269ce4acc8723a71f87aa6911",
+  "item_count": 50,
+  "state": "ok",
+  "saved_matches_reply": true,
+  "measurements_match_f4": true,
+  "resources_reclaimed": true,
+  "stopped": true,
+  "elapsed_with_transfer_and_display_seconds": 46.093000000109896
+}

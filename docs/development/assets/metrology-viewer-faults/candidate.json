@@ -1,0 +1,21 @@
+{
+  "date": "2026-11-04",
+  "base_commit": "01587765",
+  "scope": "A08/A09 viewer failure and ownership; preceding dirty changes preserved",
+  "production_algorithm_changed": false,
+  "protocol_changed": false,
+  "frontend_tests": {"files": 21, "passed": 155, "conditional_skipped": 2},
+  "typecheck": {"application": "passed", "test_probe": "passed"},
+  "browser_platform": "Windows Chromium",
+  "wsl_rerun": false,
+  "driver_gpu_bytes": null,
+  "files": [
+    {"path": "frontend/web-ui/src/workflows/workflow-editor/point-cloud/CloudViewer.vue", "sha256": "c9c6c7c3ee920eaa69b84f82f9f704d189c44b3c9990e1d5e840fcc52d25e160"},
+    {"path": "frontend/web-ui/src/workflows/workflow-editor/point-cloud/detail-controller.ts", "sha256": "888f3a93672b594e5e248af620664a75697b6f78cb00c5049a56f377635ffd50"},
+    {"path": "tests/frontend/workflows/test_cloud_details.ts", "sha256": "c1e14356c1d755ba31ee4d3d9ab1110568803741d0652b726da89196f440c253"},
+    {"path": "tests/frontend/workflows/test_cloud_viewer_lifecycle.ts", "sha256": "e1e85a53b29bc5b104d06b5f2ae764746c5dfa87fe6c9068552ba15b54d47e04"},
+    {"path": "tests/integration/metrology3d/published_ui.mjs", "sha256": "62732433bd00ca929349d71380dc922be08da0cb12108d3624384a0bd5638201"},
+    {"path": "tests/integration/metrology3d/viewer_fault_probe.ts", "sha256": "0f042ff0f57fe48cbc29f938c7a882b1ab5677e186c05caa9ae4ea8cb5de6488"}
+  ],
+  "browser_evidence_boundary": "Real API/context/ownership screenshots precede final literal-error i18n guard; final guard covered by component regression and typecheck."
+}

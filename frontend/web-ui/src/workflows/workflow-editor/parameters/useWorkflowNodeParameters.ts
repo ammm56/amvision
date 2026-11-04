@@ -3,6 +3,7 @@ import type { Ref } from 'vue'
 import { translate } from '@/platform/i18n'
 import { parseWorkflowNumericDisplayValue, readWorkflowNumericDisplayDivisor } from './numeric-parameter-input'
 import { rowScalar } from './row-scalar'
+import { visibleCloudParameterFields } from './cloud-resource-fields'
 import type { NodeDefinition, NodeParameterUiField, WorkflowGraphNode, WorkflowJsonObject } from '../types'
 
 export type WorkflowNodeParameterSelectValue = string | number | boolean | null
@@ -29,7 +30,7 @@ export interface WorkflowNodeParameterOptions<NodeView extends WorkflowNodeParam
 export function useWorkflowNodeParameters<NodeView extends WorkflowNodeParameterView>(options: WorkflowNodeParameterOptions<NodeView>) {
   function nodeParameterFieldsForNode(node: NodeView | null): NodeParameterUiField[] {
     if (!node?.definition?.parameter_ui_schema) return []
-    return node.definition.parameter_ui_schema.fields.filter((field) => !field.hidden)
+    return visibleCloudParameterFields(node.definition.parameter_ui_schema.fields, node.node.parameters)
   }
 
   function isJsonParameter(field: NodeParameterUiField): boolean {

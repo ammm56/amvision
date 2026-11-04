@@ -11,6 +11,7 @@ import numpy as np
 import psutil
 
 from backend.service.settings import BackendServiceSettings
+from tests.integration.runtime_resource_gate import ResourceGate
 from tests.point_cloud_support import options
 
 
@@ -103,8 +104,8 @@ def assert_cloud(runtime, cloud, count):
 
 
 @contextmanager
-def report(request, name):
-    """记录当前验收进程的 RSS；不冒称包含独立 worker 的内存。"""
+def report(request, name, *, process_tree=False):
+    """记录验收 RSS；可复用既有采样器观测本测试进程树，不设新的门禁。"""
     process = psutil.Process()
     baseline = process.memory_info().rss
     result = {
@@ -116,16 +117,25 @@ def report(request, name):
         "passed": False,
     }
     stop = Event()
+    tree = (
+        ResourceGate(root_pids=(process.pid,), warmup_seconds=0, limits={})
+        if process_tree
+        else None
+    )
+    started = perf_counter()
+    if tree is not None:
+        result["process_tree_baseline"] = tree.sample(0)
 
     def sample():
         while not stop.wait(0.05):
             result["rss_peak_bytes"] = max(
                 result["rss_peak_bytes"], process.memory_info().rss
             )
+            if tree is not None:
+                tree.sample(perf_counter() - started)
 
     thread = Thread(target=sample, name="capacity-rss", daemon=False)
     thread.start()
-    started = perf_counter()
     try:
         yield result
         result["passed"] = True
@@ -134,6 +144,15 @@ def report(request, name):
         thread.join()
         result["seconds"] = perf_counter() - started
         result["rss_final_bytes"] = process.memory_info().rss
+        if tree is not None:
+            result["process_tree_final"] = tree.sample(perf_counter() - started)
+            result["process_tree_peak"] = tree.peak
+            result["process_tree_sample_count"] = tree.sample_count
+            result["process_tree_errors"] = tree.errors
+            result["process_tree_error_count"] = tree.error_count
+            result["process_tree_error_details"] = tree.error_details
+            result["process_tree_discarded_count"] = tree.discarded_count
+            result["process_tree_discarded_details"] = list(tree.discarded_details)
         destination = request.config.getoption("--cloud-report-dir")
         if destination:
             path = Path(destination)

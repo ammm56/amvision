@@ -31,7 +31,6 @@ from custom_nodes.metrology3d_nodes.shared.cloud_assets import save_cloud, read_
 from tests.point_cloud_support import options
 from tests.metrology3d_transport_support import cloud_documents
 from tests.integration.metrology3d.capacity_support import settings
-from tests.integration.metrology3d.published_support import published_system
 
 
 def documents(reference):
@@ -103,7 +102,7 @@ def documents(reference):
     )
 
 
-def save_sample(service, path, policy):
+def save_sample(service, path, policy, *, file_options=None):
     """显式保存真实原云；解析后的数组仍按原精度逐行保存。"""
     with path.open("rb") as stream:
         metadata = service.storage.write_immutable_stream(
@@ -131,7 +130,7 @@ def save_sample(service, path, policy):
             object_store=service.storage,
             project_id="project-1",
             file=file,
-            options=options(),
+            options=options() if file_options is None else file_options,
             cancel=lambda: None,
         )
         return save_cloud(
@@ -178,14 +177,14 @@ def verify(service, reference, policy):
                 )
                 rows = np.ndarray(
                     (block.count,),
-                    dtype="<u8",
+                    dtype=np.dtype(index.logical_dtype).newbyteorder("<"),
                     buffer=raw,
                     offset=index.logical_offset,
                     strides=(index.row_bytes,),
                 )
                 identity = np.ndarray(
                     (block.count,),
-                    dtype="<u8",
+                    dtype=np.dtype(index.identity_dtype).newbyteorder("<"),
                     buffer=raw,
                     offset=index.identity_offset,
                     strides=(index.row_bytes,),
@@ -219,6 +218,8 @@ def verify(service, reference, policy):
 
 def main():
     """可选启动同一验收 API，结束后停止所有本轮进程。"""
+    from tests.integration.metrology3d.published_support import published_system
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--sample", type=Path, required=True)
@@ -292,11 +293,9 @@ def main():
         )
         print(json.dumps(summary), flush=True)
         if args.serve:
-            import uvicorn
+            from tests.integration.metrology3d.package_acceptance import serve
 
-            uvicorn.run(
-                system.client.app, host="127.0.0.1", port=args.serve, lifespan="off"
-            )
+            serve(system, args.root, args.serve)
 
 
 if __name__ == "__main__":

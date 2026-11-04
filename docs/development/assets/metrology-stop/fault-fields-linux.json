@@ -1,0 +1,144 @@
+{
+  "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "input_bytes": 16000000,
+  "rss_baseline_bytes": 374063104,
+  "rss_peak_bytes": 567332864,
+  "stages": {
+    "worker_crash": 3.9426417860668153,
+    "switch_and_reject_stale": 47.92302533914335,
+    "new_version_reuse": 0.34587697708047926
+  },
+  "passed": true,
+  "process_tree_baseline": {
+    "elapsed_seconds": 0,
+    "process_count": 2,
+    "cpu_percent_one_core": null,
+    "rss_bytes": 388411392,
+    "private_bytes": 388411392,
+    "handles": 19,
+    "threads": 59
+  },
+  "crashed_run": {
+    "state": "failed",
+    "version_id": "workflow-app-version-6349e125eb01480e9c4754c9e40aaaa2",
+    "node_id": "filter",
+    "reclaimed": true
+  },
+  "new_version_succeeded": true,
+  "free_capacity_bytes": 2147483648,
+  "active_lease_count": 0,
+  "seconds": 95.23359551699832,
+  "rss_final_bytes": 450002944,
+  "process_tree_final": {
+    "elapsed_seconds": 95.23391046118923,
+    "process_count": 2,
+    "cpu_percent_one_core": 35.11133727143957,
+    "rss_bytes": 464355328,
+    "private_bytes": 464355328,
+    "handles": 19,
+    "threads": 59
+  },
+  "process_tree_peak": {
+    "rss_bytes": 954937344,
+    "private_bytes": 954937344,
+    "handles": 124,
+    "threads": 99
+  },
+  "process_tree_sample_count": 1779,
+  "process_tree_errors": [
+    "(pid=745)",
+    "(pid=745)",
+    "(pid=745)",
+    "(pid=768)",
+    "(pid=787)"
+  ],
+  "process_tree_error_count": 5,
+  "process_tree_error_details": [
+    {
+      "elapsed_seconds": 42.696615459164605,
+      "phase": "read-process",
+      "exception_type": "AccessDenied",
+      "message": "(pid=745)",
+      "root_pid": 642,
+      "target_pid": 745,
+      "exception_pid": 745,
+      "resource_field": "num_fds",
+      "root_identities": {
+        "642": 1793693758.97
+      },
+      "failure_identity": {
+        "create_time": 1793693822.85,
+        "status": "zombie"
+      }
+    },
+    {
+      "elapsed_seconds": 42.747858703136444,
+      "phase": "read-process",
+      "exception_type": "AccessDenied",
+      "message": "(pid=745)",
+      "root_pid": 642,
+      "target_pid": 745,
+      "exception_pid": 745,
+      "resource_field": "num_fds",
+      "root_identities": {
+        "642": 1793693758.97
+      },
+      "failure_identity": {
+        "create_time": 1793693822.85,
+        "status": "zombie"
+      }
+    },
+    {
+      "elapsed_seconds": 42.79921621712856,
+      "phase": "read-process",
+      "exception_type": "AccessDenied",
+      "message": "(pid=745)",
+      "root_pid": 642,
+      "target_pid": 745,
+      "exception_pid": 745,
+      "resource_field": "num_fds",
+      "root_identities": {
+        "642": 1793693758.97
+      },
+      "failure_identity": {
+        "create_time": 1793693822.85,
+        "status": "zombie"
+      }
+    },
+    {
+      "elapsed_seconds": 64.93727875011973,
+      "phase": "read-process",
+      "exception_type": "AccessDenied",
+      "message": "(pid=768)",
+      "root_pid": 642,
+      "target_pid": 768,
+      "exception_pid": 768,
+      "resource_field": "num_fds",
+      "root_identities": {
+        "642": 1793693758.97
+      },
+      "failure_identity": {
+        "create_time": 1793693845.54,
+        "status": "zombie"
+      }
+    },
+    {
+      "elapsed_seconds": 94.84413432213478,
+      "phase": "read-process",
+      "exception_type": "AccessDenied",
+      "message": "(pid=787)",
+      "root_pid": 642,
+      "target_pid": 787,
+      "exception_pid": 787,
+      "resource_field": "num_fds",
+      "root_identities": {
+        "642": 1793693758.97
+      },
+      "failure_identity": {
+        "create_time": 1793693870.22,
+        "status": "zombie"
+      }
+    }
+  ],
+  "process_tree_discarded_count": 0
+}

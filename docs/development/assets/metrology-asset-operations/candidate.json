@@ -1,0 +1,202 @@
+{
+  "validation": {
+    "windows_backend_distinct": 65,
+    "capacity_gate_run": false,
+    "frontend_files": 8,
+    "offline_release_reassembled": false,
+    "timing_gate_run": false,
+    "ubuntu_backend_distinct": 65,
+    "complete_cloud_points": 14745099,
+    "frontend_tests": 35
+  },
+  "head": "015877656cd407473724058951ce430519fa0288",
+  "scope": "includes preserved prior dirty source plus current asset UI/observation changes; not a release manifest",
+  "source_files": [
+    {
+      "sha256": "fd7f3efe2627bb4010af83a62b1f974fd0e071464aa97984d7a8e5e0f3cd0d9a",
+      "path": "backend/contracts/workflows/point_cloud_detail.py"
+    },
+    {
+      "sha256": "860335ba6b7983719138d83e605f4aeba90aaee2bd1a7ccfee200d25d8411e74",
+      "path": "backend/service/application/workflows/point_cloud/detail_builder.py"
+    },
+    {
+      "sha256": "d868758847b7434322986fd891697c103249acd34a0e1494f6229d1cdce66708",
+      "path": "backend/service/application/workflows/point_cloud/detail_index.py"
+    },
+    {
+      "sha256": "325e6d79760b68997442bc1885ad9c0691db1d3c9fb46efc8d9ade8f316616e1",
+      "path": "backend/service/application/workflows/point_cloud/detail_partition.py"
+    },
+    {
+      "sha256": "15533a4673554f0f4b452ef72bc6496dd2d16cc7da8172e570e6c232ebab6751",
+      "path": "backend/service/application/workflows/preview/events.py"
+    },
+    {
+      "sha256": "e4375f900c4ee8dbecc598b745198b8ebe369b571950c7911e626f1aa3404bf9",
+      "path": "backend/service/application/workflows/preview/pool.py"
+    },
+    {
+      "sha256": "a9186391f2605ac15ae9d2c275690798121ebc955278520623b05ab7c36e7c4c",
+      "path": "backend/service/application/workflows/preview/values.py"
+    },
+    {
+      "sha256": "e034a43139682875c25bd19d79873e034ba829a6ba6658847755fbb337de6976",
+      "path": "backend/service/application/workflows/runtime_preview.py"
+    },
+    {
+      "sha256": "81d6ceb3f1bcb27174a36c7dab877561641552fc200b951249e0d331c2b064f0",
+      "path": "custom_nodes/metrology3d_nodes/frontend/DimensionSettingsEditor.vue"
+    },
+    {
+      "sha256": "14685adba85156af3e8de43d09aa9e539f19bf7ba323713eab7db1a8961c121c",
+      "path": "custom_nodes/metrology3d_nodes/frontend/GeometrySettingsEditor.vue"
+    },
+    {
+      "sha256": "4d8926bb5b8207bb6c9404dd705d4ba57a99732eb8e25dafd9a0c1a69c13c179",
+      "path": "custom_nodes/metrology3d_nodes/frontend/MeasurementSettingsEditor.vue"
+    },
+    {
+      "sha256": "625b4531450cfda4334ff72f70773ab424432ea997ca7ac0706306af6ad163e2",
+      "path": "frontend/web-ui/src/workflows/workflow-editor/components/WorkflowPreviewRunResultPanel.vue"
+    },
+    {
+      "sha256": "dbcbdf752c8a5d3922adc2d088322cebab7cfa8d2baac9b0fdc4b735c9bdbdb1",
+      "path": "frontend/web-ui/src/workflows/workflow-editor/geometry/useWorkflowGraphGeometry.ts"
+    },
+    {
+      "sha256": "1790067f7719df7b33a4018ecbd344cb07586b399d760b5eb5133410bb59a132",
+      "path": "frontend/web-ui/src/workflows/workflow-editor/nodes/useWorkflowNodeDisplayHelpers.ts"
+    },
+    {
+      "sha256": "0437cacaf7dfc3aa8da67905953ce982ff5096f47da9f5fafa1539c926cc977d",
+      "path": "frontend/web-ui/src/workflows/workflow-editor/parameters/cloud-resource-fields.ts"
+    },
+    {
+      "sha256": "8a341cae9030b112cbfd03a4466196eb18ca221ddd13cc432749680a7c3a8f2d",
+      "path": "frontend/web-ui/src/workflows/workflow-editor/parameters/useWorkflowNodeParameters.ts"
+    },
+    {
+      "sha256": "e42c4d1ae14e0075f143fd3a2237b429281f5218097ac7be82e6217af9af112e",
+      "path": "frontend/web-ui/src/workflows/workflow-editor/point-cloud/asset-details.ts"
+    },
+    {
+      "sha256": "b87c06e09c4e8ca89ae189e1bfdb08832c257a2e857e823cd07e5eacbe437a76",
+      "path": "frontend/web-ui/src/workflows/workflow-editor/point-cloud/CloudResourceParameter.vue"
+    },
+    {
+      "sha256": "00dfe7aaa94466093d926464dd69fbb25ac3b91fd7f1d4136d863d398bfdbaf3",
+      "path": "frontend/web-ui/src/workflows/workflow-editor/point-cloud/CloudResourcePicker.vue"
+    },
+    {
+      "sha256": "7df2ea263ce3cda55ad05577240bf95dab91a6ce9f552d62b7ae287942cd6ab5",
+      "path": "frontend/web-ui/src/workflows/workflow-editor/point-cloud/MeasurementSummary.vue"
+    },
+    {
+      "sha256": "444fcfc4a0a3cec1b25612d576779873e4642116ab64ea535fe78157caedae0f",
+      "path": "tests/frontend/workflows/test_cloud_details.ts"
+    },
+    {
+      "sha256": "d1027b7ed88c3c7b36570eef173913907c340ea5a2f2c2bfa37076ac2b5c9066",
+      "path": "tests/frontend/workflows/test_cloud_preview_error.ts"
+    },
+    {
+      "sha256": "ea730c22da8477b5edb054e7b41f5d812197607bdbbee51c3bdead64328a6b7e",
+      "path": "tests/frontend/workflows/test_cloud_resource_download.ts"
+    },
+    {
+      "sha256": "9a615345fb9c2eda48d495371370410a8228b3664c5faa7c2b4d02b0af5c6459",
+      "path": "tests/frontend/workflows/test_cloud_resource_layout.ts"
+    },
+    {
+      "sha256": "03af48e826c1fae54f4cc5026b6ede68fb0a599afd2438907cae8f67fda4f8e1",
+      "path": "tests/frontend/workflows/test_metrology_result_semantics.ts"
+    },
+    {
+      "sha256": "72f1884833ab6292771b812c310a33fd82e68f517e25663e2d9675afaa491476",
+      "path": "tests/frontend/workflows/test_metrology_source_lifecycle.ts"
+    },
+    {
+      "sha256": "ca2a213aabcf44b93d667bf277e5e47eaeb29d3d04050b1f173b155c09e3f52f",
+      "path": "tests/integration/metrology3d/asset_operations.py"
+    },
+    {
+      "sha256": "23381dfa77dca1f047b4e7e8745971a7d806af68021d6f06b52c159a416c0e08",
+      "path": "tests/integration/metrology3d/capacity_support.py"
+    },
+    {
+      "sha256": "71332393ed2418c4de9721e4d2736cadeff9fa946e4700f78f492baf1d729a6e",
+      "path": "tests/integration/metrology3d/detail_acceptance.py"
+    },
+    {
+      "sha256": "1f6ac84b5779653689fe3f8fafb98b05294a2f5c3eaf5918142e8eb56577b4f6",
+      "path": "tests/integration/metrology3d/offline_release.py"
+    },
+    {
+      "sha256": "85cb35fbc7e867b3a315b39a1dfb33e78c34324b4ad4b8822cd312fc501ce9ee",
+      "path": "tests/integration/metrology3d/test_asset_operations.py"
+    },
+    {
+      "sha256": "56e7d6c97b8afbf75da587a2f3dd3f1f42fd96c714575e4b1af8d80f4f24aa43",
+      "path": "tests/integration/metrology3d/test_capacity_details.py"
+    },
+    {
+      "sha256": "e20fb0f407b89095eae4e6bdec5dfa093fb134f3ea2f33a8d742f28943767289",
+      "path": "tests/integration/metrology3d/test_capacity_dotnet.py"
+    },
+    {
+      "sha256": "b6a42c0328e3079465c36f6e3b6c9a04befc60a1926c1e955438d7ddc53b5d8d",
+      "path": "tests/integration/metrology3d/test_capacity_file.py"
+    },
+    {
+      "sha256": "26ca46a4b890f51b713faf8b243fedaf6d49139faadab71e4bad9115eccd4fff",
+      "path": "tests/integration/metrology3d/test_capacity_http.py"
+    },
+    {
+      "sha256": "6e4abef2085541f65fa4971b41749b30b242a9ef751173a2c919d029dc7dad0e",
+      "path": "tests/integration/metrology3d/test_capacity_runtime.py"
+    },
+    {
+      "sha256": "5ca0053bf2f4be2a717f7300f20179e82da4d02602efcbac06ca2d34e02a914f",
+      "path": "tests/integration/metrology3d/test_workpiece_preview.py"
+    },
+    {
+      "sha256": "16247bbe2f0199c081ae847e01ab77175aedce430e3ebb4047c94363aa9ecc11",
+      "path": "tests/integration/preview_pool_shutdown.py"
+    },
+    {
+      "sha256": "2a1360ad18fc3d57a429a4adb6fcc18531651bdf3ab833db14a994e2c33f58ff",
+      "path": "tests/integration/runtime_resource_gate.py"
+    },
+    {
+      "sha256": "d7f346f5f4d7dd779f994a34bf4d196006eda9ad63af3c9d1792785b4e25a01a",
+      "path": "tests/test_point_cloud_detail_partition.py"
+    },
+    {
+      "sha256": "7e1988ee893dd0069f6659b98e418017c73a1b6abb49bc1b04c777f4528a3dd1",
+      "path": "tests/test_point_cloud_details.py"
+    },
+    {
+      "sha256": "5f098a470467119153aa294259db64af0f6bf29cad89b4abafd20496ff88d74a",
+      "path": "tests/test_preview_node_event_capacity.py"
+    },
+    {
+      "sha256": "d3f1a519d99511908eb9c0487c47cbf357bf8fdb072bf2f38aed4efbeb379495",
+      "path": "tests/test_runtime_curve_preview_budget.py"
+    },
+    {
+      "sha256": "649add08621655ccd01b0f7d20a833cbe775fe306036e3457770d6a7c3e7aadf",
+      "path": "tests/test_runtime_resource_gate.py"
+    },
+    {
+      "sha256": "420da7f15e4663e68df3e4c430041935074f52bdbae50fb9bb2f7e0969807393",
+      "path": "tests/test_workflow_preview_pool_cleanup.py"
+    },
+    {
+      "sha256": "deecf8bacf054c392a1fe8950a1bac6cbf4b1ee67d233892dfed78093cc83743",
+      "path": "tests/test_workflow_preview_worker.py"
+    }
+  ],
+  "date": "2026-11-04",
+  "dirty_worktree": true
+}

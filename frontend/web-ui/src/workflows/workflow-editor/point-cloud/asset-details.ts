@@ -9,6 +9,7 @@ export interface DetailIndex {
   format_id: string; source: MeasurementResourceReference; generation: string
   point_count: number; source_point_count: number; valid_count: number; excluded_count: number
   vertex_kind: 'source' | 'generated'; bounds: DetailBounds; fields: DetailField[]
+  logical_dtype: 'uint32' | 'uint64'; identity_dtype: 'uint32' | 'uint64'
   row_bytes: number; logical_offset: number; identity_offset: number; leaf_limit: number; blocks: DetailBlock[]
 }
 
@@ -35,10 +36,16 @@ export function validateDetailIndex(value: unknown, source: MeasurementResourceR
     if (f.name === 'positions' && (components !== 3 || !['float32', 'float64'].includes(String(f.dtype)))) throw new Error('cloud_preview_invalid')
     names.add(f.name); offset += width * components
   }
-  if (!names.has('positions') || r.logical_offset !== offset || r.identity_offset !== offset + 8 || r.row_bytes !== offset + 16) throw new Error('cloud_preview_invalid')
+  const logicalType = n <= 2 ** 32 ? 'uint32' : 'uint64'
+  const identityCount = r.vertex_kind === 'source' ? count(r.source_point_count) : n
+  const identityType = identityCount <= 2 ** 32 ? 'uint32' : 'uint64'
+  const logicalWidth = widths[logicalType]!, identityWidth = widths[identityType]!
+  const rowBytes = offset + logicalWidth + identityWidth
+  if (r.logical_dtype !== logicalType || r.identity_dtype !== identityType || !names.has('positions')
+    || r.logical_offset !== offset || r.identity_offset !== offset + logicalWidth || r.row_bytes !== rowBytes) throw new Error('cloud_preview_invalid')
   for (const [id, block] of r.blocks.entries()) {
     const b = object(block), box = bounds(b.bounds), size = count(b.count)
-    if (b.block_id !== id || !size || size > count(r.leaf_limit) || b.byte_length !== size * (offset + 16) || !/^[0-9a-f]{64}$/.test(String(b.sha256))
+    if (b.block_id !== id || !size || size > count(r.leaf_limit) || b.byte_length !== size * rowBytes || !/^[0-9a-f]{64}$/.test(String(b.sha256))
       || box.min.some((v, i) => v < full.min[i]! || box.max[i]! > full.max[i]!)) throw new Error('cloud_preview_invalid')
     total += size
   }
@@ -63,6 +70,9 @@ export async function decodeDetailBlock(raw: ArrayBuffer, index: DetailIndex, bl
     signal.throwIfAborted()
     if (digest !== block.sha256) throw new Error('cloud_preview_checksum')
     const view = new DataView(raw), position = index.fields.find(f => f.name === 'positions')!
+    const rowId = (row: number, offset: number, dtype: 'uint32' | 'uint64') => dtype === 'uint32'
+      ? BigInt(view.getUint32(row * index.row_bytes + offset, true))
+      : view.getBigUint64(row * index.row_bytes + offset, true)
     const colorField = index.fields.find(f => f.name === (color.mode === 'rgb' ? 'colors' : color.field))
     const component = color.mode === 'scalar' ? count(color.component ?? 0) : 0
     if (!['solid', 'rgb', 'scalar'].includes(String(color.mode)) || color.mode !== 'solid' && (!colorField || component >= colorField.components)
@@ -74,8 +84,8 @@ export async function decodeDetailBlock(raw: ArrayBuffer, index: DetailIndex, bl
     const low = [Infinity, Infinity, Infinity], high = [-Infinity, -Infinity, -Infinity]
     for (let i = 0; i < block.count; i++) {
       if (i % 4096 === 0) { await new Promise(resolve => setTimeout(resolve, 0)); signal.throwIfAborted() }
-      const identity = view.getBigUint64(i * index.row_bytes + index.identity_offset, true)
-      const logical = view.getBigUint64(i * index.row_bytes + index.logical_offset, true)
+      const identity = rowId(i, index.identity_offset, index.identity_dtype)
+      const logical = rowId(i, index.logical_offset, index.logical_dtype)
       if (logical >= BigInt(index.point_count) || identity >= BigInt(index.vertex_kind === 'source' ? index.source_point_count : index.point_count)
         || index.vertex_kind === 'generated' && identity !== logical) throw new Error('cloud_preview_invalid')
       for (let c = 0; c < 3; c++) {
@@ -94,7 +104,7 @@ export async function decodeDetailBlock(raw: ArrayBuffer, index: DetailIndex, bl
     if (low.some((v, i) => v !== block.bounds.min[i] || high[i] !== block.bounds.max[i])) throw new Error('cloud_preview_invalid')
     return { positions, colors, count: block.count, origin, point(i) {
       if (disposed || !Number.isInteger(i) || i < 0 || i >= block.count) throw new Error('cloud_point_unavailable')
-      const identity = view.getBigUint64(i * index.row_bytes + index.identity_offset, true).toString()
+      const identity = rowId(i, index.identity_offset, index.identity_dtype).toString()
       return { sourceIndex: index.vertex_kind === 'source' ? identity : null, ...(index.vertex_kind === 'generated' ? { vertexIndex: identity } : {}),
         xyz: [0, 1, 2].map(c => Number(read(position, i, c))), scalar: color.mode === 'scalar' ? read(colorField!, i, component).toString() : null }
     }, dispose() { if (!disposed) { disposed = true; release() } } }

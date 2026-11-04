@@ -2,7 +2,10 @@
 
 import json
 
-from backend.service.application.workflows.runtime_preview import _copy_json, cloud_sample_values, MAX_PREVIEW_BYTES
+from backend.service.application.workflows.runtime_preview import (
+    _copy_json, _copy_preview, cloud_sample_values, preview_measurements,
+    MAX_PREVIEW_BYTES, MAX_PREVIEW_VALUES,
+)
 
 
 class PreviewValues:
@@ -21,9 +24,9 @@ class PreviewValues:
             cloud = isinstance(value, dict) and value.get("type") == "point-cloud-preview"
             extra = cloud_sample_values(value)
             limit = MAX_PREVIEW_BYTES if cloud else 16 * 1024**2
-            amount = _measure(value, [100_000 + extra], max_bytes=limit)
+            amount = _measure_preview(value, [MAX_PREVIEW_VALUES + extra], max_bytes=limit)
             self.bridge.reserve(key, amount * 3)
-            copied = _copy_json(value, [limit, 100_000 + extra])
+            copied = (_copy_preview if cloud else _copy_json)(value, [limit, MAX_PREVIEW_VALUES + extra])
             encoded = json.dumps(copied, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode()
             # ROI 等完整 JSON 可含 execution registry 的不透明图像 id；它不是 OS
             # SHM 名称，也不能用于浏览器取图。保留业务结构并显式标注引用作用域。
@@ -37,6 +40,23 @@ class PreviewValues:
             return {"kind": "unavailable", "error": str(error)[:256]}
         finally:
             self.bridge.reserve(key, 0)
+
+
+def _measure_preview(value, remaining, *, max_bytes):
+    """复制前按同一证据分组预留；总字节、普通结构和逐项深度均有界。"""
+    evidence = preview_measurements(value)
+    if evidence is None:
+        return _measure(value, remaining, max_bytes=max_bytes)
+    size = _measure({key: item for key, item in value.items() if key != "measurements"},
+                    remaining, max_bytes=max_bytes)
+    size += _measure({key: item for key, item in evidence.items() if key != "items"},
+                     remaining, 1, max_bytes=max_bytes - size)
+    size += 128  # measurements/items 的字段与容器开销。
+    for item in evidence["items"]:
+        size += _measure(item, [MAX_PREVIEW_VALUES], 3, max_bytes=max_bytes - size)
+    if size > max_bytes:
+        raise ValueError("preview_value_capacity")
+    return size
 
 
 def _measure(value, remaining, depth=0, *, max_bytes=16 * 1024**2):

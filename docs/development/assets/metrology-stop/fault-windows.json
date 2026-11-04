@@ -1,0 +1,52 @@
+{
+  "platform": "Windows-11-10.0.26300-SP0",
+  "input_bytes": 16000000,
+  "rss_baseline_bytes": 369156096,
+  "rss_peak_bytes": 452464640,
+  "stages": {
+    "worker_crash": 1.9141634998377413,
+    "switch_and_reject_stale": 8.67990450002253,
+    "new_version_reuse": 0.2007438000291586
+  },
+  "passed": true,
+  "process_tree_baseline": {
+    "elapsed_seconds": 0,
+    "process_count": 1,
+    "cpu_percent_one_core": null,
+    "rss_bytes": 369238016,
+    "private_bytes": 1654697984,
+    "handles": 573,
+    "threads": 45
+  },
+  "crashed_run": {
+    "state": "failed",
+    "version_id": "workflow-app-version-e6dc929ec4b44b55bfd895f3e681fd5a",
+    "node_id": "filter",
+    "reclaimed": true
+  },
+  "new_version_succeeded": true,
+  "free_capacity_bytes": 2147483648,
+  "active_lease_count": 0,
+  "seconds": 23.868099300190806,
+  "rss_final_bytes": 441589760,
+  "process_tree_final": {
+    "elapsed_seconds": 23.86813610000536,
+    "process_count": 1,
+    "cpu_percent_one_core": 68.98134962922899,
+    "rss_bytes": 441573376,
+    "private_bytes": 1725763584,
+    "handles": 726,
+    "threads": 47
+  },
+  "process_tree_peak": {
+    "rss_bytes": 757903360,
+    "private_bytes": 2023886848,
+    "handles": 1705,
+    "threads": 94
+  },
+  "process_tree_sample_count": 199,
+  "process_tree_errors": [],
+  "process_tree_error_count": 0,
+  "process_tree_error_details": [],
+  "process_tree_discarded_count": 0
+}

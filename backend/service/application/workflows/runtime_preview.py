@@ -210,17 +210,11 @@ def _copy_json(value: object, budget: list[int], depth: int = 0) -> object:
 
 def _copy_preview(payload: dict, budget: list[int]) -> dict:
     """三维证据按已声明的逐项契约计数，总字节和单项深度限制不变。"""
-    if payload.get("type") != "point-cloud-preview" or "measurements" not in payload:
+    evidence = preview_measurements(payload)
+    if evidence is None:
         return _copy_json(payload, budget)
     from backend.contracts.workflows.measurement3d_evidence import MeasurementEvidence3d
 
-    evidence = payload["measurements"]
-    if (
-        not isinstance(evidence, dict)
-        or not isinstance(evidence.get("items"), (list, tuple))
-        or len(evidence["items"]) > 8192
-    ):
-        raise _DisplayLimit("preview_not_json")
     copied = _copy_json(
         {k: v for k, v in payload.items() if k != "measurements"}, budget
     )
@@ -238,6 +232,17 @@ def _copy_preview(payload: dict, budget: list[int]) -> dict:
         raise _DisplayLimit("preview_not_json") from exc
     copied["measurements"] = header
     return copied
+
+
+def preview_measurements(payload: object) -> dict | None:
+    """编辑器预检与 Runtime 复制共用证据分组边界，不豁免普通 JSON。"""
+    if not isinstance(payload, dict) or payload.get("type") != "point-cloud-preview" or "measurements" not in payload:
+        return None
+    evidence = payload["measurements"]
+    if (not isinstance(evidence, dict) or not isinstance(evidence.get("items"), (list, tuple))
+            or len(evidence["items"]) > 8192):
+        raise _DisplayLimit("preview_not_json")
+    return evidence
 
 
 class RuntimePreviewCapture:

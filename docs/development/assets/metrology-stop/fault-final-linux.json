@@ -1,0 +1,82 @@
+{
+  "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "input_bytes": 16000000,
+  "rss_baseline_bytes": 481198080,
+  "rss_peak_bytes": 627179520,
+  "stages": {
+    "worker_crash": 3.9665112481452525,
+    "switch_and_reject_stale": 28.607618088135496,
+    "new_version_reuse": 0.24504189006984234
+  },
+  "passed": true,
+  "process_tree_baseline": {
+    "elapsed_seconds": 0,
+    "process_count": 2,
+    "cpu_percent_one_core": null,
+    "rss_bytes": 495517696,
+    "private_bytes": 495517696,
+    "handles": 18,
+    "threads": 59
+  },
+  "crashed_run": {
+    "state": "failed",
+    "version_id": "workflow-app-version-d1b7a72a15c04d6393ed4a1b7373d465",
+    "node_id": "filter",
+    "reclaimed": true
+  },
+  "new_version_succeeded": true,
+  "free_capacity_bytes": 2147483648,
+  "active_lease_count": 0,
+  "seconds": 59.02892273105681,
+  "rss_final_bytes": 501243904,
+  "process_tree_final": {
+    "elapsed_seconds": 59.029088736046106,
+    "process_count": 2,
+    "cpu_percent_one_core": 33.083544859723084,
+    "rss_bytes": 515567616,
+    "private_bytes": 515567616,
+    "handles": 18,
+    "threads": 59
+  },
+  "process_tree_peak": {
+    "rss_bytes": 1005105152,
+    "private_bytes": 1005105152,
+    "handles": 116,
+    "threads": 97
+  },
+  "process_tree_sample_count": 1130,
+  "process_tree_errors": [],
+  "process_tree_error_count": 0,
+  "process_tree_error_details": [],
+  "process_tree_discarded_count": 4,
+  "process_tree_discarded_details": [
+    {
+      "elapsed_seconds": 26.031009721104056,
+      "discarded": "child-exited-during-sampling",
+      "pid": 569,
+      "resource_field": "num_fds",
+      "status": "zombie"
+    },
+    {
+      "elapsed_seconds": 26.08210284006782,
+      "discarded": "child-exited-during-sampling",
+      "pid": 569,
+      "resource_field": "num_fds",
+      "status": "zombie"
+    },
+    {
+      "elapsed_seconds": 26.133167008170858,
+      "discarded": "child-exited-during-sampling",
+      "pid": 569,
+      "resource_field": "num_fds",
+      "status": "zombie"
+    },
+    {
+      "elapsed_seconds": 58.75431393319741,
+      "discarded": "child-exited-during-sampling",
+      "pid": 606,
+      "resource_field": "num_fds",
+      "status": "zombie"
+    }
+  ]
+}

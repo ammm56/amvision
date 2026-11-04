@@ -1,0 +1,53 @@
+{
+  "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "input_bytes": 1000000000,
+  "rss_baseline_bytes": 469475328,
+  "rss_peak_bytes": 1610989568,
+  "stages": {
+    "worker_crash": 5.757487518945709,
+    "switch_and_reject_stale": 27.491599204018712,
+    "new_version_reuse": 4.284618099918589
+  },
+  "passed": true,
+  "process_tree_baseline": {
+    "elapsed_seconds": 0,
+    "process_count": 2,
+    "cpu_percent_one_core": null,
+    "rss_bytes": 483794944,
+    "private_bytes": 483794944,
+    "handles": 21,
+    "threads": 59
+  },
+  "crashed_run": {
+    "state": "failed",
+    "version_id": "workflow-app-version-0cf6c179c90d4fd7a6943e810e23f2c6",
+    "node_id": "filter",
+    "reclaimed": true
+  },
+  "new_version_succeeded": true,
+  "free_capacity_bytes": 2147483648,
+  "active_lease_count": 0,
+  "seconds": 65.31288966885768,
+  "rss_final_bytes": 496066560,
+  "process_tree_final": {
+    "elapsed_seconds": 65.31304370495491,
+    "process_count": 2,
+    "cpu_percent_one_core": 44.94572614166044,
+    "rss_bytes": 510390272,
+    "private_bytes": 510390272,
+    "handles": 19,
+    "threads": 59
+  },
+  "process_tree_peak": {
+    "rss_bytes": 2231021568,
+    "private_bytes": 2231021568,
+    "handles": 122,
+    "threads": 97
+  },
+  "process_tree_sample_count": 1252,
+  "process_tree_errors": [
+    "(pid=544)",
+    "(pid=544)"
+  ],
+  "process_tree_discarded_count": 0
+}

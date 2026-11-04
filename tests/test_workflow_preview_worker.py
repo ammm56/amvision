@@ -28,6 +28,15 @@ def test_resource_close_failure_retires_real_preview_worker(tmp_path, monkeypatc
             manager = PreviewSessionManager()
             pool = PreviewSessionPool(settings=client.app.state.backend_service_settings, manager=manager)
             manager.pool = pool
+            worker_ready = Event()
+            start_worker = pool._start
+
+            def observed_start(slot):
+                """资源关闭断言从实际 ready 开始，启动使用独立的既有期限。"""
+                start_worker(slot)
+                worker_ready.set()
+
+            monkeypatch.setattr(pool, "_start", observed_start)
             try:
                 template, application = _build_file_metadata_application(multiple=False)
                 sid = manager.create(principal_id="test", project_id="project-1",
@@ -41,6 +50,10 @@ def test_resource_close_failure_retires_real_preview_worker(tmp_path, monkeypatc
                 manager.submit(sid, "test", {"request_id": str(uuid4()), "document_revision": "r",
                     "application": application.model_dump(mode="json"), "template": template.model_dump(mode="json"),
                     "timeout_seconds": 30, "input_ids": {"request_file": [blob]}}, pool.submit)
+                startup_deadline = monotonic() + pool.settings.workflow_runtime.model_startup_timeout_seconds
+                while not worker_ready.wait(.02) and monotonic() < startup_deadline:
+                    assert pool._active, manager.authorize(sid, "test").run
+                assert worker_ready.is_set(), manager.authorize(sid, "test").run
                 deadline = monotonic() + 30
                 while monotonic() < deadline and (pool._active or manager.authorize(sid, "test").run["state"] == "accepted"):
                     sleep(.02)

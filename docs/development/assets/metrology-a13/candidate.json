@@ -1,0 +1,71 @@
+{
+  "date": "2026-11-03",
+  "base_commit": "015877656cd407473724058951ce430519fa0288",
+  "source_file_count": 3909,
+  "source_manifest_sha256": "f46f6b5bc0a198a657cf1042969d667b1ebb11abe596689795965ab95a2f56ce",
+  "manifest_order": "path ascending; path + space + lowercase SHA256; LF between rows, no trailing LF",
+  "manifest_scope": {
+    "selection": "git ls-files in the following paths; hash current file bytes",
+    "paths": [
+      "backend",
+      "custom_nodes",
+      "runtimes/launchers",
+      "runtimes/clients",
+      "runtimes/manifests",
+      "frontend/web-ui/src",
+      "scripts/metrology_workpiece.py",
+      "docs/examples/workflows/lithium_workpiece.template.json"
+    ]
+  },
+  "environments": {
+    "windows": {
+      "python": "3.12.13",
+      "numpy": "2.4.4",
+      "scipy": "1.18.0",
+      "open3d": "0.20.0",
+      "trimesh": "5.1.1+amvision.2",
+      "pypcd4": "1.5.1+amvision.2",
+      "pydantic": "2.13.4",
+      "pytest": "8.4.2",
+      "pyzmq": "27.1.0"
+    },
+    "wsl_ubuntu": {
+      "python": "3.12.3",
+      "numpy": "2.4.4",
+      "scipy": "1.18.0",
+      "open3d": "0.20.0",
+      "trimesh": "5.1.1+amvision.2",
+      "pypcd4": "1.5.1+amvision.2",
+      "pydantic": "2.13.4",
+      "pytest": "8.4.2",
+      "pyzmq": "27.2.0"
+    }
+  },
+  "changed_source_files": [
+    {
+      "path": "custom_nodes/metrology3d_nodes/frontend/GeometrySettingsEditor.vue",
+      "sha256": "14685adba85156af3e8de43d09aa9e539f19bf7ba323713eab7db1a8961c121c"
+    },
+    {
+      "path": "custom_nodes/metrology3d_nodes/frontend/MeasurementSettingsEditor.vue",
+      "sha256": "4d8926bb5b8207bb6c9404dd705d4ba57a99732eb8e25dafd9a0c1a69c13c179"
+    },
+    {
+      "path": "custom_nodes/metrology3d_nodes/frontend/DimensionSettingsEditor.vue",
+      "sha256": "81d6ceb3f1bcb27174a36c7dab877561641552fc200b951249e0d331c2b064f0"
+    },
+    {
+      "path": "tests/frontend/workflows/test_metrology_source_lifecycle.ts",
+      "sha256": "72f1884833ab6292771b812c310a33fd82e68f517e25663e2d9675afaa491476"
+    },
+    {
+      "path": "tests/integration/metrology3d/capacity_support.py",
+      "sha256": "cd649aa4e7ef0fd6ed69b4f7a9f1fd16a2aa218436e71fc11e2a9fd710961964"
+    },
+    {
+      "path": "tests/integration/metrology3d/test_capacity_dotnet.py",
+      "sha256": "e20fb0f407b89095eae4e6bdec5dfa093fb134f3ea2f33a8d742f28943767289"
+    }
+  ],
+  "final_release_acceptance": false
+}

@@ -1,0 +1,139 @@
+{
+  "platform": "nt",
+  "release": "W:\\Workspace\\codex\\python\\amvision\\.tmp\\stop-audit\\releases\\full-windows-x64-cpu",
+  "cycles": [
+    {
+      "cycle": 0,
+      "state": "succeeded",
+      "item_count": 50,
+      "elapsed_seconds": 14.827999999979511,
+      "static_assets": 6,
+      "resources": {
+        "sample_count": 54,
+        "warmup_seconds": 0.0,
+        "growth": {
+          "rss_bytes": 161906688,
+          "private_bytes": 133545984,
+          "handles": 70,
+          "threads": -9
+        },
+        "maximum_window_growth": {
+          "rss_bytes": 272699392,
+          "private_bytes": 246734848,
+          "handles": 73,
+          "threads": 0
+        },
+        "peak": {
+          "rss_bytes": 3054977024,
+          "private_bytes": 10770894848,
+          "handles": 5277,
+          "threads": 358
+        },
+        "limits": {},
+        "discarded_count": 1,
+        "discarded_details": [
+          {
+            "elapsed_seconds": 14.860000000102445,
+            "discarded": "child-exited-during-sampling",
+            "pid": 21020,
+            "resource_field": "memory_info",
+            "status": null
+          }
+        ],
+        "measurement_duration": null,
+        "minimum_measure_seconds": null,
+        "coverage": null,
+        "maximum_gap_seconds": 0.4380000000819564,
+        "cpu": {
+          "scope": "sampled-owned-processes; 100% = one logical core",
+          "observed_seconds": 14.625,
+          "sampled_cpu_seconds": 18.96875,
+          "mean_percent_one_core": 129.7008547008547,
+          "peak_percent_one_core": 216.8594306366068
+        },
+        "errors": [],
+        "error_details": [],
+        "error_count": 0,
+        "failures": [],
+        "status": "observed"
+      },
+      "native_semaphore_delta": 0,
+      "same_os_boot": true
+    },
+    {
+      "cycle": 1,
+      "state": "succeeded",
+      "item_count": 50,
+      "elapsed_seconds": 15.172000000020489,
+      "static_assets": 6,
+      "resources": {
+        "sample_count": 54,
+        "warmup_seconds": 0.0,
+        "growth": {
+          "rss_bytes": 149860352,
+          "private_bytes": 172810240,
+          "handles": 69,
+          "threads": -6
+        },
+        "maximum_window_growth": {
+          "rss_bytes": 274567168,
+          "private_bytes": 299454464,
+          "handles": 69,
+          "threads": 0
+        },
+        "peak": {
+          "rss_bytes": 3068801024,
+          "private_bytes": 10761056256,
+          "handles": 5274,
+          "threads": 364
+        },
+        "limits": {},
+        "discarded_count": 0,
+        "discarded_details": [],
+        "measurement_duration": null,
+        "minimum_measure_seconds": null,
+        "coverage": null,
+        "maximum_gap_seconds": 0.4850000001024455,
+        "cpu": {
+          "scope": "sampled-owned-processes; 100% = one logical core",
+          "observed_seconds": 15.25,
+          "sampled_cpu_seconds": 19.875,
+          "mean_percent_one_core": 130.327868852459,
+          "peak_percent_one_core": 241.74528289992452
+        },
+        "errors": [],
+        "error_details": [],
+        "error_count": 0,
+        "failures": [],
+        "status": "observed"
+      },
+      "native_semaphore_delta": 0,
+      "same_os_boot": true
+    }
+  ],
+  "validate_layout": true,
+  "package_sha256": "829f34d750801feb602e2d69c75f0d7e94b9790f5843251fbb8588abc181571d",
+  "application_id": "app-e6bac167a32cdaa8dfaf655d2fc46b5884d59c5116848d25c3738a74a24e0ad0",
+  "version": "workflow-app-version-4ddfae8c4bcb4d83b29ff340586dc378",
+  "runtime_id": "workflow-runtime-23dc4ad87f80494f8e73ab52ccafec4e",
+  "resource_mapping": [
+    {
+      "source": {
+        "project_id": "project-1",
+        "resource_id": "measurement-cloud-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "version": 1,
+        "sha256": "c9566ae231f30a4b55226673d8644346eb6a58d8bafb66130784596c2da345ed",
+        "kind": "point-cloud"
+      },
+      "target": {
+        "project_id": "project-1",
+        "resource_id": "measurement-cloud-36c708137c1c68980fe0e9d5dd47f2efc9054dd9adc62674ba3614ce9a32c0de",
+        "version": 1,
+        "sha256": "c9566ae231f30a4b55226673d8644346eb6a58d8bafb66130784596c2da345ed",
+        "kind": "point-cloud"
+      }
+    }
+  ],
+  "whole_group_stopped": true,
+  "semaphore_warnings": 0
+}
