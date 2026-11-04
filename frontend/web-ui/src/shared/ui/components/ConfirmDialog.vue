@@ -19,7 +19,7 @@
           <div>
             <h2 :id="titleId">{{ title }}</h2>
           </div>
-          <button type="button" class="confirm-dialog__close" :aria-label="cancelLabel" :disabled="busy" @click="cancelDialog">
+          <button type="button" class="confirm-dialog__close" :aria-label="cancelLabel" :disabled="busy && !allowCloseWhileBusy" @click="cancelDialog">
             <X :size="16" />
           </button>
         </header>
@@ -32,7 +32,7 @@
 
         <footer class="confirm-dialog__actions">
           <div v-if="$slots['leading-actions']" class="confirm-dialog__leading-actions"><slot name="leading-actions" /></div>
-          <Button data-confirm-cancel variant="secondary" :disabled="busy" @click="cancelDialog">{{ cancelLabel }}</Button>
+          <Button data-confirm-cancel variant="secondary" :disabled="busy && !allowCloseWhileBusy" @click="cancelDialog">{{ cancelLabel }}</Button>
           <Button v-if="showConfirm" :variant="confirmVariant" :disabled="busy || confirmDisabled" :loading="busy" @click="emit('confirm')">{{ confirmLabel }}</Button>
         </footer>
       </section>
@@ -55,6 +55,7 @@ const props = withDefaults(
     cancelLabel: string
     details?: string
     busy?: boolean
+    allowCloseWhileBusy?: boolean
     confirmDisabled?: boolean
     confirmVariant?: 'primary' | 'danger'
     initialFocus?: 'cancel' | 'first-field'
@@ -66,6 +67,7 @@ const props = withDefaults(
     message: '',
     details: '',
     busy: false,
+    allowCloseWhileBusy: false,
     showConfirm: true,
     confirmDisabled: false,
     confirmVariant: 'danger',
@@ -97,7 +99,7 @@ watch(() => props.busy, () => {
 }, { flush: 'post' })
 
 function cancelDialog(): void {
-  if (!props.busy && isTop()) emit('cancel')
+  if ((!props.busy || props.allowCloseWhileBusy) && isTop()) emit('cancel')
 }
 
 onMounted(() => void activate(() => {

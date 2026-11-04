@@ -55,6 +55,19 @@ function closeDrawer(): void {
   if (!props.busy && isTop()) emit('close')
 }
 
+// 保存或切换状态会移除当前按钮；仅最上层抽屉接回焦点，不抢内层确认框焦点。
+watch(drawerRef, (drawer, _, onCleanup) => {
+  if (!drawer) return
+  const observer = new MutationObserver(() => {
+    const focused = document.activeElement
+    if (props.open && isTop() && (focused === document.body || !focused?.isConnected || (drawer.contains(focused) && focused.matches(':disabled')))) {
+      drawer.focus({ preventScroll: true })
+    }
+  })
+  observer.observe(drawer, { childList: true, subtree: true, attributes: true, attributeFilter: ['disabled'] })
+  onCleanup(() => observer.disconnect())
+}, { flush: 'post' })
+
 watch(() => props.open, (open) => {
   if (open) void activate()
   else deactivate()

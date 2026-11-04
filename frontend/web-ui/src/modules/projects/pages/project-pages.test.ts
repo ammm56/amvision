@@ -3,10 +3,12 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { createRouter, createMemoryHistory, RouterView } from 'vue-router'
 import { useSessionStore } from '@/app/stores/session.store'
+import { useProjectStore } from '@/app/stores/project.store'
 import { i18n } from '@/platform/i18n'
 import { ApiError } from '@/shared/api/error'
 import ProjectListPage from './ProjectListPage.vue'
 import ProjectOverviewPage from './ProjectOverviewPage.vue'
+import ProjectDialogs from '../components/ProjectDialogs.vue'
 import { listProjects, getProject, getProjectOverview } from '../services/project.service'
 
 vi.mock('../services/project.service', () => ({ listProjects: vi.fn(), getProject: vi.fn(), getProjectOverview: vi.fn(), getProjectSummary: vi.fn() }))
@@ -66,4 +68,40 @@ it('受限账号保留项目与数据集入口，隐藏 SDK 和无权动作', as
   await open('/projects/project-1')
   expect(wrapper!.text()).toContain('真实项目'); expect(wrapper!.text()).toContain('数据集')
   expect(wrapper!.text()).not.toContain('SDK'); expect(wrapper!.text()).not.toContain('创建部署'); expect(wrapper!.text()).not.toContain('编辑项目')
+})
+
+it.each([403, 404])('概览 %s 隐藏旧信息并能返回列表', async status => {
+  vi.mocked(getProject).mockRejectedValue(new ApiError(status, { message: '不应回显的内部详情' }))
+  const router = await open('/projects/project-1')
+  expect(wrapper!.text()).toContain('无法打开此项目')
+  expect(wrapper!.text()).not.toContain('内部详情')
+  await wrapper!.findAll('button').find(item => item.text() === '返回项目列表')!.trigger('click'); await flushPromises()
+  expect(router.currentRoute.value.path).toBe('/projects')
+})
+
+it('名称按钮仅选择，查看独立导航；隐藏的当前项目可定位', async () => {
+  const store = useProjectStore()
+  const hidden = { project_id: 'project-hidden', display_name: '范围外项目' }
+  store.projects = [hidden]; store.selectedProjectId = hidden.project_id
+  const router = await open('/projects?q=真实')
+  expect(wrapper!.text()).toContain('范围外项目')
+  await wrapper!.findAll('button').find(item => item.text() === '定位')!.trigger('click'); await flushPromises()
+  expect(router.currentRoute.value.query.q).toBe(hidden.project_id)
+  await wrapper!.get('.project-name-button').trigger('click'); await flushPromises()
+  expect(router.currentRoute.value.path).toBe('/projects')
+  expect(store.selectedProjectId).toBe(project.project_id)
+  expect(wrapper!.get('.project-name-button').attributes('aria-pressed')).toBe('true')
+  await wrapper!.get('.project-link').trigger('click'); await flushPromises()
+  expect(router.currentRoute.value.path).toBe('/projects/project-1')
+})
+
+it('创建成功留在列表并定位、提供查看；同名行显示可区分的 ID', async () => {
+  vi.mocked(listProjects).mockResolvedValue({ ...page, items: [project, { ...project, project_id: 'project-2' }] })
+  const router = await open('/projects')
+  expect(wrapper!.findAll('.project-disambiguation').map(item => item.text())).toEqual(['project-1', 'project-2'])
+  await wrapper!.findAll('button').find(item => item.text() === '新建项目')!.trigger('click'); await flushPromises()
+  wrapper!.findComponent(ProjectDialogs).vm.$emit('created', project); await flushPromises()
+  expect(router.currentRoute.value.path).toBe('/projects')
+  expect(router.currentRoute.value.query.q).toBe(project.project_id)
+  expect(wrapper!.find('.project-notice').text()).toContain('项目已创建')
 })

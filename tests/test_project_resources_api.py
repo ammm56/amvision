@@ -146,6 +146,31 @@ def test_project_list_supports_offset_limit_and_pagination_headers(
     assert [item["project_id"] for item in list_response.json()] == ["project-2"]
 
 
+def test_project_exact_id_search_precedes_prefix_matches(tmp_path: Path) -> None:
+    """完整 ID 定位优先显示目标，仍保留其余模糊匹配与权限过滤。"""
+    client, session_factory = _create_project_resources_test_client(
+        tmp_path,
+        database_name="project-exact-search.db",
+        project_items=[
+            BackendServiceProjectCatalogItemConfig(project_id=value, display_name=value)
+            for value in ("project-1", "project-10", "project-11")
+        ],
+    )
+    try:
+        token = issue_test_user_token(
+            session_factory, username="exact-search", scopes=("workflows:read",),
+            project_ids=("project-1", "project-10"),
+        )
+        with client:
+            result = client.get("/api/v1/projects", headers=build_bearer_headers(token),
+                                params={"q": "PROJECT-1", "limit": 1})
+        assert result.status_code == 200
+        assert result.headers["x-total-count"] == "2"
+        assert result.json()[0]["project_id"] == "project-1"
+    finally:
+        session_factory.engine.dispose()
+
+
 def test_project_object_metadata_and_content_support_image_preview(
     tmp_path: Path,
 ) -> None:

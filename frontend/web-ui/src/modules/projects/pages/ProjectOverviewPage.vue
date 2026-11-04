@@ -42,7 +42,7 @@
       <ProjectResourceDrawer v-if="resourceItem" :key="resourceItem.resource_id" :project-id="project.project_id" :item="resourceItem" @close="resourceItem = null" />
       <ProjectDialogs v-if="dialog" :action="dialog" :project="project" @close="dialog = null" @changed="load" />
     </template>
-    <Button v-else-if="error" @click="load">{{ text('refresh') }}</Button>
+    <div v-else-if="error" class="project-actions"><Button @click="backToList"><ChevronLeft :size="18" />{{ text('back') }}</Button><Button @click="load">{{ text('refresh') }}</Button></div>
   </section>
 </template>
 <script setup lang="ts">
@@ -108,7 +108,7 @@ async function load() {
     store.selectedSummary = metadata.value.summary ?? null
   } else {
     error.value = projectError(metadata.reason)
-    if (metadata.reason instanceof ApiError && [401, 403, 404].includes(metadata.reason.status)) { project.value = null; overview.value = null; loading.value = false; return }
+    if (metadata.reason instanceof ApiError && [401, 403, 404].includes(metadata.reason.status)) { error.value = text('cannotOpen'); project.value = null; overview.value = null; loading.value = false; return }
   }
   if (activity.status === 'fulfilled') {
     if (expanded.value && activityOffset.value > 0 && activityOffset.value >= activity.value.total) {

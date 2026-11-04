@@ -2,8 +2,29 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { describe, it, expect } from 'vitest'
 import SideDrawer from './SideDrawer.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
+import { defineComponent, ref } from 'vue'
 
 describe('模态层级', () => {
+  it('抽屉内聚焦按钮移除后仍可 Esc 退出，内层确认出现后不抢焦点', async () => {
+    const show = ref(true)
+    const host = mount(defineComponent({
+      components: { SideDrawer }, setup: () => ({ show }),
+      template: '<SideDrawer open title="编辑" close-label="关闭"><button v-if="show" class="choice" @click="show = false">保留修改</button></SideDrawer>',
+    }), { attachTo: document.body })
+    await flushPromises()
+    const choice = document.querySelector<HTMLButtonElement>('.choice')!
+    choice.focus(); choice.click(); await flushPromises()
+    expect(document.activeElement).toBe(document.querySelector('.side-drawer'))
+    const dialog = mount(ConfirmDialog, { attachTo: document.body, props: { title: '确认', confirmLabel: '确认', cancelLabel: '取消' } })
+    await flushPromises()
+    const innerFocus = document.activeElement
+    show.value = true; await flushPromises()
+    expect(document.activeElement).toBe(innerFocus)
+    dialog.unmount()
+    document.querySelector('.side-drawer')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    expect(host.findComponent(SideDrawer).emitted('close')).toHaveLength(1)
+    host.unmount()
+  })
   it('提交期间按钮失焦后仍将焦点保留在对话框，完成后 Esc 可关闭', async () => {
     const dialog = mount(ConfirmDialog, { attachTo: document.body, props: { title: '生成配置包', confirmLabel: '下载', cancelLabel: '关闭' } })
     await flushPromises()

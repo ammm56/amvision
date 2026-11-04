@@ -1,0 +1,70 @@
+{
+  "conflict_setup": {
+    "project_id": "project-1e1e993de6654358bc4ac57101611d64",
+    "status": 200,
+    "revision_changed": true
+  },
+  "conflict_resolved": {
+    "project_id": "project-1e1e993de6654358bc4ac57101611d64",
+    "description": "本地草稿：等待冲突核对后保存。"
+  },
+  "liveness": {
+    "format_id": "amvision.service-liveness.v1",
+    "instance_id": "233b5541d49c4e5e9ff68a0346bf86a3",
+    "pid": 43356,
+    "phase": "ready"
+  },
+  "status": {
+    "ready": true,
+    "state": "ready",
+    "summary": {
+      "deployments": {
+        "expected": 6,
+        "ready": 6
+      },
+      "runtimes": {
+        "expected": 10,
+        "ready": 10
+      },
+      "triggers": {
+        "expected": 8,
+        "ready": 8
+      }
+    },
+    "blockers": []
+  },
+  "real_project_counts": {
+    "datasets": 5,
+    "models": 20,
+    "apps": 17,
+    "deployments": 6
+  },
+  "real_overview": {
+    "total": 137,
+    "page_size": 20
+  },
+  "sdk": {
+    "workflow_runtime_count": 16,
+    "trigger_source_count": 15,
+    "model_deployment_count": 6,
+    "contains_access_token": false,
+    "warnings": [],
+    "file_count": 20,
+    "stale_revision_status": 409
+  },
+  "cleanup": {
+    "project_id": "project-1e1e993de6654358bc4ac57101611d64",
+    "state": "deleted"
+  },
+  "latest_http_search": {
+    "status": 200,
+    "project_id": "project-1",
+    "total": "1",
+    "resource_counts": {
+      "datasets": 5,
+      "models": 20,
+      "apps": 17,
+      "deployments": 6
+    }
+  }
+}

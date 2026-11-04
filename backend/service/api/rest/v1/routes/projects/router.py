@@ -213,7 +213,13 @@ def list_projects(
         in f"{item.display_name} {item.project_id} {item.description or ''}".casefold()
     ]
     project_items.sort(
-        key=lambda item: (item.updated_at or "", item.project_id), reverse=True
+        # 完整 ID 查询用于“定位当前项目”；相同前缀不能把目标挤到下一页。
+        key=lambda item: (
+            bool(search) and item.project_id.casefold() == search,
+            item.updated_at or "",
+            item.project_id,
+        ),
+        reverse=True,
     )
     page = paginate_sequence(
         project_items, response=response, offset=offset, limit=limit

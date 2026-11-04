@@ -32,15 +32,38 @@ function writePending(principal: string, entries: PendingDeletion[]) {
 
 export interface PendingCreation { request_id: string; display_name: string; description: string | null }
 const creationKey = (principal: string) => `amvision.project-creation.${principal}`
-export function readPendingCreation(principal: string): PendingCreation | null {
+export function readPendingCreations(principal: string): PendingCreation[] {
   try {
     const value = JSON.parse(sessionStorage.getItem(creationKey(principal)) || 'null')
-    return typeof value?.display_name === 'string' && /^[0-9a-f-]{36}$/i.test(value?.request_id || '') ? value : null
-  } catch { return null }
+    // 已保存的单个待确认请求也必须保留，升级不能丢失核对身份。
+    return (Array.isArray(value) ? value : [value]).filter(item => typeof item?.display_name === 'string' && /^[0-9a-f-]{36}$/i.test(item?.request_id || ''))
+  } catch { return [] }
 }
-export function savePendingCreation(principal: string, value: PendingCreation | null) {
+export function savePendingCreation(principal: string, value: PendingCreation) {
+  writeCreations(principal, [...readPendingCreations(principal).filter(item => item.request_id !== value.request_id), value])
+}
+export function clearPendingCreation(principal: string, requestId: string) {
+  writeCreations(principal, readPendingCreations(principal).filter(item => item.request_id !== requestId))
+}
+function writeCreations(principal: string, entries: PendingCreation[]) {
   try {
-    if (value) sessionStorage.setItem(creationKey(principal), JSON.stringify(value))
+    if (entries.length) sessionStorage.setItem(creationKey(principal), JSON.stringify(entries))
     else sessionStorage.removeItem(creationKey(principal))
   } catch { /* 浏览器禁用存储时仍保留当前组件内请求身份。 */ }
+  window.dispatchEvent(new Event(projectRecoveryEvent))
+}
+
+export interface PendingEdit { display_name: string; description: string | null; expected_revision: string }
+const editKey = (principal: string, projectId: string) => `amvision.project-edit.${principal}.${projectId}`
+export function readPendingEdit(principal: string, projectId: string): PendingEdit | null {
+  try {
+    const value = JSON.parse(sessionStorage.getItem(editKey(principal, projectId)) || 'null')
+    return typeof value?.display_name === 'string' && typeof value?.expected_revision === 'string' && (value.description === null || typeof value.description === 'string') ? value : null
+  } catch { return null }
+}
+export function savePendingEdit(principal: string, projectId: string, value: PendingEdit | null) {
+  try {
+    if (value) sessionStorage.setItem(editKey(principal, projectId), JSON.stringify(value))
+    else sessionStorage.removeItem(editKey(principal, projectId))
+  } catch { /* 浏览器禁用存储时仍可在当前抽屉核对。 */ }
 }

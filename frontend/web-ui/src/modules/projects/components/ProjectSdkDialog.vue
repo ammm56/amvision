@@ -1,7 +1,8 @@
 <template>
-  <ConfirmDialog :title="text(selecting ? 'selectRange' : 'sdk')" size="wide" scroll-body :confirm-label="text(selecting ? 'applySelection' : 'download')" :cancel-label="text('close')" confirm-variant="primary" :busy="busy" :confirm-disabled="!resourcesReady || (!selecting && (!preview?.files.length || !previewIsCurrent))" @cancel="emit('close')" @confirm="selecting ? refreshPreview() : download()">
+  <ConfirmDialog :title="text(selecting ? 'selectRange' : 'sdk')" size="wide" scroll-body allow-close-while-busy :confirm-label="text(selecting ? 'applySelection' : 'download')" :cancel-label="text('close')" confirm-variant="primary" :busy="busy" :confirm-disabled="!resourcesReady || (!selecting && (!preview?.files.length || !previewIsCurrent))" @cancel="close" @confirm="selecting ? refreshPreview() : download()">
     <template v-if="selecting" #leading-actions><Button :disabled="busy || !preview" @click="returnPreview">{{ text('returnPreview') }}</Button></template>
     <InlineError v-if="error" :message="error" />
+    <p v-if="busy" role="status" class="sdk-note">{{ text(generating ? 'sdkGenerating' : 'sdkReading') }}<span v-if="generating"> {{ text('sdkClosedNote') }}</span></p>
     <Button v-if="error" :disabled="busy" @click="initialize">{{ text('refresh') }}</Button>
     <div v-if="!selecting" class="sdk-heading"><div><small>{{ text('name') }}</small><strong>{{ projectName(project) }}</strong></div><div><small>{{ text('server') }}</small><span>{{ preview?.base_api_url || '—' }}</span></div></div>
     <div v-if="preview && !selecting" class="sdk-counts"><span>Workflow Runtime <strong>{{ preview.workflow_runtime_count }}</strong></span><span>Trigger <strong>{{ preview.trigger_source_count }}</strong></span><span>{{ text('models') }} <strong>{{ preview.model_deployment_count }}</strong></span></div>
@@ -13,7 +14,8 @@
       <p v-if="!visibleResources.length" class="sdk-note">{{ text(query ? 'noMatchesResources' : 'noResources') }} <Button v-if="query" size="sm" @click="query = ''">{{ text('clear') }}</Button></p></div>
       <PaginationControls v-if="visibleResources.length > 50" :offset="resourceOffset" :limit="50" :item-count="pageResources.length" :total-count="visibleResources.length" :has-more="resourceOffset + 50 < visibleResources.length" @previous="resourceOffset -= 50" @next="resourceOffset += 50" />
     </template>
-    <template v-else><p class="sdk-note">{{ !selectedCount ? text('noResources') : selectedCount === resources.length ? text('allResources') : `${text('selected')} ${selectedCount}` }}</p>
+    <template v-else><p v-if="resourcesReady" class="sdk-note">{{ !selectedCount ? text('noResources') : selectedCount === resources.length ? text('allResources') : `${text('selected')} ${selectedCount}` }}</p>
+      <div v-if="resourcesReady && !resources.length" class="project-actions"><Button v-if="canOpenApps" @click="openResource('/workflows/apps')">{{ text('openApps') }}</Button><Button v-if="canOpenDeployments" @click="openResource('/deployments')">{{ text('openDeployments') }}</Button></div>
       <div class="sdk-options"><label><input v-model="includeDisabled" :disabled="busy" type="checkbox" @change="refreshPreview" />{{ text('disabledTriggers') }}</label><label><input v-model="includeToken" :disabled="busy" type="checkbox" @change="refreshPreview" />{{ text('token') }}</label><label>{{ text('modelMode') }}<SelectField v-model="modelMode" :disabled="busy" :options="modeOptions" @update:model-value="refreshPreview" /></label></div>
       <h3>{{ text('files') }}</h3><div v-for="file in preview?.files.slice(fileOffset, fileOffset + 50)" :key="file.path" class="sdk-file"><FileText :size="18" /><span>{{ file.path }}</span><small>{{ file.count }}</small></div>
       <PaginationControls v-if="(preview?.files.length || 0) > 50" :offset="fileOffset" :limit="50" :item-count="preview!.files.slice(fileOffset, fileOffset + 50).length" :total-count="preview!.files.length" :has-more="fileOffset + 50 < preview!.files.length" @previous="fileOffset -= 50" @next="fileOffset += 50" />
@@ -23,6 +25,11 @@
 </template>
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
+import { useProjectStore } from '@/app/stores/project.store'
+import { useSessionStore } from '@/app/stores/session.store'
+import { useFeedbackStore } from '@/app/stores/feedback.store'
+import { canAccessPath } from '@/platform/auth/page-access'
 import { FileText } from '@lucide/vue'
 import type { ProjectCatalogItem } from '@/shared/contracts'
 import { downloadSdkConfigPackage, listSdkResources, previewSdkConfigPackage, type SdkResource, type SdkConfigPackagePreview } from '../services/project.service'
@@ -35,12 +42,19 @@ import SelectField from '@/shared/ui/components/Select.vue'
 const props = defineProps<{ project: ProjectCatalogItem }>()
 const emit = defineEmits<{ close: [] }>()
 const text = useProjectText()
+const feedback = useFeedbackStore()
+const router = useRouter(), store = useProjectStore(), session = useSessionStore()
+const canOpenApps = computed(() => canAccessPath(session.currentUser, '/workflows/apps') && session.hasScopes(['workflows:read']))
+const canOpenDeployments = computed(() => canAccessPath(session.currentUser, '/deployments') && session.hasScopes(['models:read']))
+function openResource(path: string) { if (!canAccessPath(session.currentUser, path)) return; store.selectedProjectId = props.project.project_id; store.selectedSummary = null; close(); void router.push(path) }
 const resources = ref<SdkResource[]>([]), selected = ref(new Set<string>()), query = ref(''), selecting = ref(false)
 const busy = ref(false), error = ref(''), preview = ref<SdkConfigPackagePreview | null>(null), includeToken = ref(true), includeDisabled = ref(true)
+const generating = ref(false)
 const resourcesReady = ref(false), resourceOffset = ref(0), fileOffset = ref(0)
 const controller = new AbortController()
 watch(query, () => { resourceOffset.value = 0 })
 let appliedSelection = new Set<string>(), active = true
+function close() { active = false; controller.abort(); emit('close') }
 // 子视图替换会移除触发按钮，显式把键盘焦点交给新视图。
 watch(selecting, value => {
   document.querySelector<HTMLElement>(value ? '.sdk-search' : '.confirm-dialog [data-confirm-cancel]')?.focus()
@@ -67,18 +81,23 @@ async function refreshPreview() {
   busy.value = true; error.value = ''
   const request = input()
   previewInput.value = ''
-  try { const next = await previewSdkConfigPackage(props.project.project_id, request); if (!active) return; preview.value = next; fileOffset.value = 0; previewInput.value = JSON.stringify(request); appliedSelection = new Set(selected.value); selecting.value = false }
+  try { const next = await previewSdkConfigPackage(props.project.project_id, request, controller.signal); if (!active) return; preview.value = next; fileOffset.value = 0; previewInput.value = JSON.stringify(request); appliedSelection = new Set(selected.value); selecting.value = false }
   catch (e) { error.value = projectError(e) } finally { busy.value = false }
 }
 async function download() {
   if (busy.value || !preview.value || !previewIsCurrent.value) return
-  busy.value = true; error.value = ''
+  busy.value = true; generating.value = true; error.value = ''
   try {
-    const result = await downloadSdkConfigPackage(props.project.project_id, { ...input(), expected_revision: preview.value.configuration_revision })
+    const result = await downloadSdkConfigPackage(props.project.project_id, { ...input(), expected_revision: preview.value.configuration_revision }, controller.signal)
     if (!active) return
     const url = URL.createObjectURL(result.blob), link = document.createElement('a')
-    link.href = url; link.download = result.fileName || preview.value.package_name; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000)
-  } catch (e) { error.value = projectError(e); selecting.value = true } finally { busy.value = false }
+    link.href = url; link.download = result.fileName || preview.value.package_name
+    try {
+      link.click()
+      // 只能确认已交给浏览器下载，不能确认文件已保存到用户磁盘。
+      feedback.success(text('downloadStarted'))
+    } finally { setTimeout(() => URL.revokeObjectURL(url), 1000) }
+  } catch (e) { if (active) { error.value = projectError(e); selecting.value = true } } finally { busy.value = false; generating.value = false }
 }
 async function initialize() {
   busy.value = true; error.value = ''; resourcesReady.value = false

@@ -132,16 +132,18 @@ export async function deleteProject(
 export async function previewSdkConfigPackage(
   projectId: string,
   input: SdkConfigPackageGenerateInput,
+  signal?: AbortSignal,
 ): Promise<SdkConfigPackagePreview> {
   return apiRequest<SdkConfigPackagePreview>(
     `/projects/${encodeURIComponent(projectId)}/sdk-config-packages/preview`,
-    { method: 'POST', body: input },
+    { method: 'POST', body: input, signal },
   )
 }
 
 export async function downloadSdkConfigPackage(
   projectId: string,
   input: SdkConfigPackageGenerateInput,
+  signal?: AbortSignal,
 ): Promise<SdkConfigPackageDownload> {
   const { payload, headers } = await apiRequestWithHeaders<Blob>(
     `/projects/${encodeURIComponent(projectId)}/sdk-config-packages/download`,
@@ -149,6 +151,7 @@ export async function downloadSdkConfigPackage(
       method: 'POST',
       body: input,
       responseType: 'blob',
+      signal,
     },
   )
   return {
