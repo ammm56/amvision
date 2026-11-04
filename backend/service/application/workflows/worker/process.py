@@ -78,6 +78,7 @@ from backend.service.application.workflows.worker.messages import (
     read_timeout_seconds,
     serialize_node_records,
 )
+from backend.service.application.workflows.worker.startup import build_startup_failure
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from backend.service.infrastructure.object_store.local_dataset_storage import (
@@ -124,6 +125,7 @@ def run_workflow_runtime_worker_process(
         else None
     )
     preview_sequence = 0
+    startup_completed = False
     try:
         supervisor_process = multiprocessing.parent_process()
         settings = BackendServiceSettings.model_validate(settings_payload)
@@ -471,6 +473,7 @@ def run_workflow_runtime_worker_process(
         )
         heartbeat_thread.start()
         response_queue.put(build_state_message(message_type="runtime-state"))
+        startup_completed = True
         while not supervisor_lost_event.is_set():
             try:
                 command = request_queue.get(timeout=_SUPERVISOR_POLL_SECONDS)
@@ -769,6 +772,10 @@ def run_workflow_runtime_worker_process(
                     preview_capture.records.clear()
                 execution_metadata.pop(PREVIEW_CAPTURE_KEY, None)
                 preview_capture = None
+    except Exception as error:
+        if not startup_completed:
+            response_queue.put(build_startup_failure(error, runtime_payload))
+        raise
     finally:
         if preview_sender is not None:
             preview_sender.close()
