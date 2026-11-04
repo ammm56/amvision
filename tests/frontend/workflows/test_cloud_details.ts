@@ -11,6 +11,18 @@ const policy={max_points:10,max_data_bytes:4096,max_cpu_bytes:65536,max_gpu_byte
 vi.stubGlobal('crypto',webcrypto)
 afterEach(()=>{vi.useRealTimers();expect(rendererUsage()).toEqual({cpuBytes:0,gpuBytes:0})})
 
+it('restores normal status from asset leaf records and rejects missing state',async()=>{
+  const {index}=await sample(),raw=new ArrayBuffer(67),view=new DataView(raw)
+  index.bounds.min.forEach((v,i)=>view.setFloat64(i*8,v,true));view.setBigUint64(24,2n**63n+1n,true)
+  view.setFloat64(48,1,true);view.setUint8(56,1);view.setUint8(57,0);view.setUint8(58,0);view.setUint32(59,0,true);view.setUint32(63,7,true)
+  const spatial={frame_id:'sensor',length_unit:'mm'}
+  const full:DetailIndex={...index,spatial,normal_info:{...spatial,method:{method_id:'estimate-normals',method_version:1},orientation:{kind:'unoriented'}},fields:[...index.fields,{name:'normals',dtype:'float64',components:3,offset:32},...['normal_valid','normal_oriented','normal_reason'].map((name,i)=>({name,dtype:'uint8',components:1,offset:56+i}))],row_bytes:67,logical_offset:59,identity_offset:63,blocks:[{...index.blocks[0]!,byte_length:67,sha256:[...new Uint8Array(await crypto.subtle.digest('SHA-256',raw))].map(b=>b.toString(16).padStart(2,'0')).join('')}]}
+  validateDetailIndex(full,full.source,full.generation)
+  const data=await decodeDetailBlock(raw,full,full.blocks[0]!,full.bounds.min,{mode:'solid'},policy,new AbortController().signal)
+  try{expect(data.point(0).normal).toEqual({vector:[0,0,1],valid:true,oriented:false,reason:0})}finally{data.dispose()}
+  expect(()=>validateDetailIndex({...full,fields:full.fields.filter(f=>f.name!=='normal_reason')},full.source,full.generation)).toThrow()
+})
+
 async function sample(){
   const raw=new ArrayBuffer(40),view=new DataView(raw)
   for(let c=0;c<3;c++)view.setFloat64(c*8,1000000+c+.125,true)
@@ -71,7 +83,7 @@ it('disposes late responses after view changes and unmount without installing ol
   const {index}=await sample();vi.useFakeTimers()
   let complete!:(value:any)=>void
   const data={dispose:vi.fn()},load=vi.fn((_block:DetailBlock,_signal:AbortSignal)=>new Promise<any>(resolve=>{complete=resolve})),target={clear:vi.fn(),add:vi.fn(),complete:vi.fn(),visible:()=>true},report=vi.fn()
-  const controller=createDetailController(index,policy,1,load,target,report)
+  const controller=createDetailController(index,policy,()=>1,load,target,report)
   controller.enable(true);await vi.advanceTimersByTimeAsync(150)
   controller.changed();complete(data);await vi.advanceTimersByTimeAsync(0)
   expect(data.dispose).toHaveBeenCalledOnce();expect(target.add).not.toHaveBeenCalled()
@@ -79,12 +91,37 @@ it('disposes late responses after view changes and unmount without installing ol
   expect(data.dispose).toHaveBeenCalledTimes(2);expect(target.complete).not.toHaveBeenCalled()
   expect(load.mock.calls[0]![1].aborted).toBe(true)
 })
+it('re-evaluates the shared point budget after comparison selection',async()=>{
+  const {index}=await sample();vi.useFakeTimers();let base=10
+  const target={clear:vi.fn(),add:vi.fn(),complete:vi.fn(),visible:()=>true},report=vi.fn(),load=vi.fn(async()=>({dispose:vi.fn()}) as any)
+  const controller=createDetailController(index,policy,()=>base,load,target,report)
+  controller.enable(true);await vi.advanceTimersByTimeAsync(150)
+  expect(load).not.toHaveBeenCalled();expect(report).toHaveBeenLastCalledWith('limited',0)
+  base=1;controller.changed();await vi.advanceTimersByTimeAsync(150)
+  expect(load).toHaveBeenCalledOnce();expect(report).toHaveBeenLastCalledWith('ready',1)
+  controller.dispose()
+})
+it('decodes saved centroid cells with current mapping and exact original member counts',async()=>{
+  const {index}=await sample(),raw=new ArrayBuffer(64),view=new DataView(raw)
+  index.bounds={min:[12,22,30],max:[12,22,30]}
+  for(let c=0;c<3;c++)view.setFloat64(c*8,index.bounds.min[c]!,true)
+  view.setBigInt64(24,1n,true);view.setBigInt64(32,-1n,true);view.setBigUint64(48,3n,true)
+  const hash=()=>crypto.subtle.digest('SHA-256',raw).then(b=>Array.from(new Uint8Array(b),n=>n.toString(16).padStart(2,'0')).join(''))
+  const saved:DetailIndex={...index,vertex_kind:'generated',fields:[index.fields[0]!],logical_offset:56,identity_offset:60,row_bytes:64,
+    voxel:{keys_offset:24,members_offset:48,aggregation:{method_id:'resample-cloud',method_version:1,parameters:{settings:{kind:'voxel-centroid',frame_id:'original',length_unit:'m'}}},grid:{origin:[10,20,30],axes:[[0,2,0],[-2,0,0],[0,0,2]]}},
+    blocks:[{...index.blocks[0]!,bounds:index.bounds,byte_length:64,sha256:await hash()}]}
+  validateDetailIndex(saved,saved.source,saved.generation)
+  const data=await decodeDetailBlock(raw,saved,saved.blocks[0]!,saved.bounds.min,{mode:'solid'},policy,new AbortController().signal)
+  try{expect(data.point(0)).toMatchObject({sourceIndex:null,vertexIndex:'0',voxelKey:['1','-1','0'],memberCount:'3',voxelFrame:'original',voxelUnit:'m'});expect(data.point(0).voxelCorners![7]).toEqual([10,24,32])}finally{data.dispose()}
+  view.setBigUint64(48,0n,true)
+  await expect(decodeDetailBlock(raw,saved,{...saved.blocks[0]!,sha256:await hash()},saved.bounds.min,{mode:'solid'},policy,new AbortController().signal)).rejects.toThrow('cloud_preview_invalid')
+})
 it('refuses over-budget views before any fetch; commits only complete visible sets',async()=>{
   const {index}=await sample();vi.useFakeTimers()
   const data={dispose:vi.fn()},load=vi.fn(async()=>data as any),target={clear:vi.fn(),add:vi.fn(),complete:vi.fn(),visible:()=>true},report=vi.fn()
-  const limited=createDetailController(index,{...policy,max_points:1},1,load,target,report)
+  const limited=createDetailController(index,{...policy,max_points:1},()=>1,load,target,report)
   limited.enable(true);await vi.advanceTimersByTimeAsync(150);expect(load).not.toHaveBeenCalled();expect(report).toHaveBeenLastCalledWith('limited',0);limited.dispose()
-  const controller=createDetailController(index,policy,1,load,target,report)
+  const controller=createDetailController(index,policy,()=>1,load,target,report)
   controller.enable(true);await vi.advanceTimersByTimeAsync(150);expect(target.add).toHaveBeenCalledWith(data);expect(target.complete).toHaveBeenCalledOnce();expect(report).toHaveBeenLastCalledWith('ready',1);controller.dispose()
 })
 
@@ -112,7 +149,7 @@ it.each(['checksum', 'missing', 'gpu-budget'])('releases a partially loaded view
     return decodeDetailBlock(raw,index,failing&&block.block_id===1&&reason==='checksum'?{...block,sha256:'0'.repeat(64)}:block,
       index.bounds.min,{mode:'solid'},policy,new AbortController().signal)
   })
-  const create=()=>createDetailController(two,policy,1,load,{visible:()=>true,
+  const create=()=>createDetailController(two,policy,()=>1,load,{visible:()=>true,
     clear(){completed=false;layer.clear()},add:layer.add,
     complete(){completed=true;layer.visible(true)}},report)
   let controller=create()

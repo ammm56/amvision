@@ -25,6 +25,8 @@ from backend.contracts.workflows.point_cloud_runtime import (
     CloudMethod,
     ResampleCloudMethod,
 )
+from backend.contracts.workflows.cloud_voxel import CloudVoxelGrid
+from backend.contracts.workflows.cloud_normal_info import CloudNormalInfo
 from backend.contracts.workflows.boundary3d import BoundaryTopology
 from backend.contracts.workflows.point_cloud import canonical_cloud_json
 from hashlib import sha256
@@ -188,6 +190,7 @@ class AssetVoxelLineage(Contract):
     source_dtype: Literal["uint32", "uint64"]
     source: AssetSource
     aggregation: ResampleCloudMethod
+    grid: CloudVoxelGrid
 
     @model_validator(mode="after")
     def check_dtype(self) -> Self:
@@ -227,6 +230,7 @@ class CloudAssetBase(Contract):
     vertex_kind: Literal["source", "generated"]
     topology: BoundaryTopology | None
     boundary: BoundaryEvidence | None = None
+    normal_info: CloudNormalInfo | None = None
 
     @model_validator(mode="after")
     def check_common(self) -> Self:
@@ -243,9 +247,15 @@ class CloudAssetBase(Contract):
                 != (self.spatial.frame_id, self.spatial.length_unit)
             ):
                 raise ValueError("资产边界证据与保存点云不一致")
-        if self.vertex_kind == "generated" and [f.name for f in self.fields] != [
-            "positions"
-        ]:
+        if self.normal_info is not None:
+            self.normal_info.check_fields(
+                self.fields, self.spatial, generated=self.vertex_kind == "generated"
+            )
+        if (
+            self.normal_info is None
+            and self.vertex_kind == "generated"
+            and [f.name for f in self.fields] != ["positions"]
+        ):
             raise ValueError("生成顶点不得伪造原始属性")
         unique_ids([m.name for m in self.source_field_names], "source_field_names")
         unique_ids(
@@ -303,6 +313,7 @@ class OriginalCloudAsset(CloudAssetBase):
             or not isinstance(self.source, AssetFileSource)
             or self.vertex_kind != "source"
             or self.topology is not None
+            or self.normal_info is not None
         ):
             raise ValueError("原文件资产需要唯一 original 数据块及文件来源")
         blob = self.blobs[0]

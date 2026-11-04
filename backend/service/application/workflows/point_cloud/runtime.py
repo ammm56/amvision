@@ -243,7 +243,23 @@ class CloudView:
             and (stop - start) * 64 <= self._policy.max_working_bytes
         ):
             raise InvalidRequestError("体素显示区间或来源无效")
-        selected = np.arange(start, stop, dtype=np.uint64)
+        return self.voxel_metadata_rows(np.arange(start, stop, dtype=np.uint64))
+
+    def voxel_metadata_rows(self, rows):
+        """细节叶块随机访问复用同一来源映射，不复制完整成员 CSR。"""
+        if not self._active or self._lineage is None:
+            raise RuntimeError("点云借用已结束或缺少来源")
+        selected = np.asarray(rows)
+        if (
+            self.reference.lineage_kind != "voxel-aggregate"
+            or selected.ndim != 1
+            or selected.dtype.kind not in "iu"
+            or len(selected) > self._policy.chunk_rows
+            or len(selected) * 64 > self._policy.max_working_bytes
+            or np.any(selected < 0)
+            or np.any(selected >= self.reference.point_count)
+        ):
+            raise InvalidRequestError("体素显示行号或预算无效")
         for selector in self._origin_selectors:
             selected = selector[selected, 0]
         offsets = self._lineage["member_offsets"][:, 0]
@@ -447,7 +463,14 @@ class CloudRuntime:
                 and cloud.lineage is not None
                 and cloud.lineage.kind == "voxel-aggregate"
                 else None,
+                normal_info=cloud.normal_info,
+                voxel_grid=cloud.lineage.grid
+                if isinstance(cloud, ArrayCloudAsset)
+                and cloud.lineage is not None
+                and cloud.lineage.kind == "voxel-aggregate"
+                else None,
             )
+            self._validate_normals(owner, reference, cancel)
             if (indices is not None) != (
                 isinstance(cloud, ArrayCloudAsset) and cloud.indices is not None
             ):
@@ -551,6 +574,7 @@ class CloudRuntime:
                 spatial=spatial,
                 source_metadata=parent.source_metadata,
             )
+            self._validate_normals(owner, reference, cancel)
             self._publish(
                 reference,
                 _CloudRecord(
@@ -718,6 +742,13 @@ class CloudRuntime:
                 topology=topology,
                 lineage_kind=kind,
                 voxel_aggregation=method if kind == "voxel-aggregate" else None,
+                normal_info=None,
+                voxel_grid=dict(
+                    origin=method.parameters.settings.grid_origin,
+                    axes=(np.eye(3) * method.parameters.settings.voxel_size).tolist(),
+                )
+                if kind == "voxel-aggregate"
+                else None,
             )
             self._publish(
                 reference,
@@ -861,8 +892,50 @@ class CloudRuntime:
                 if not np.isfinite(values[start : start + rows]).all():
                     raise InvalidRequestError("生成顶点坐标必须有限")
 
+    def _validate_normals(self, owner, reference, cancel):
+        """新计算和资产重读共用同一逐点状态校验；普通外部法向不伪造质量。"""
+        from backend.service.application.workflows.point_cloud.normal_fields import (
+            validate_normal_arrays,
+        )
+
+        if reference.normal_info is not None:
+            width = sum(
+                np.dtype(f.dtype).itemsize * f.components for f in reference.fields
+            )
+            rows = min(
+                self.policy.chunk_rows,
+                self.policy.max_working_bytes // (width * 2 + 128),
+            )
+            if rows < 1:
+                raise InvalidRequestError("法向状态校验预算不足一行")
+            with owner.borrow() as arrays:
+                validate_normal_arrays(
+                    arrays, reference.normal_info, chunk_rows=rows, cancel=cancel
+                )
+
     def _derived_reference(self, parent, method, **changes):
         """父身份固定且不形成环，内容变化使用新的 cloud_id。"""
+        from backend.service.application.workflows.point_cloud.normal_fields import (
+            derived_normal_info,
+        )
+
+        if "normal_info" not in changes:
+            changes["normal_info"] = derived_normal_info(parent, method)
+        if parent.voxel_grid is not None and "voxel_grid" not in changes:
+            origin = np.asarray(parent.voxel_grid.origin, dtype=np.float64)
+            axes = np.asarray(parent.voxel_grid.axes, dtype=np.float64)
+            if method.method_id == "transform-cloud":
+                matrix = np.asarray(
+                    method.parameters.transform.matrix, dtype=np.float64
+                )
+                origin = matrix[:3, :3] @ origin + matrix[:3, 3]
+                axes = axes @ matrix[:3, :3].T
+            elif method.method_id == "normalize-units":
+                scale = {"m": 1000.0, "mm": 1.0, "um": 0.001}[
+                    parent.spatial.length_unit
+                ]
+                origin, axes = origin * scale, axes * scale
+            changes["voxel_grid"] = dict(origin=origin.tolist(), axes=axes.tolist())
         parents = (CloudParent(cloud_id=parent.cloud_id, revision=parent.revision),)
         return CloudReference.model_validate(
             {

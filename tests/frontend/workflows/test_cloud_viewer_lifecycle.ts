@@ -13,7 +13,7 @@ vi.mock('@/workflows/workflow-editor/point-cloud/boundary-debug',async importOri
 beforeEach(()=>{mocks.debug.mockResolvedValue([])})
 vi.mock('@/workflows/workflow-editor/services/measurement-resource.service', () => ({readCloudCapabilities:mocks.capabilities}))
 vi.mock('@/workflows/workflow-editor/point-cloud/preview-data',async importOriginal=>({...await importOriginal<object>(),decodeCloudPreview:mocks.decode}))
-vi.mock('@/workflows/workflow-editor/point-cloud/renderer', () => ({createCloudRenderer:mocks.create}))
+vi.mock('@/workflows/workflow-editor/point-cloud/renderer', () => ({createCloudRenderer:(...args:unknown[])=>Object.assign({comparison:vi.fn(),voxelCell:vi.fn()},mocks.create(...args))}))
 vi.mock('@/workflows/workflow-editor/point-cloud/asset-details', () => ({readDetailIndex:mocks.details,loadDetailBlock:mocks.detailBlock}))
 const payload = {state:'ready',spatial:{length_unit:null,frame_id:'camera'},color:{mode:'solid'},source_point_count:20,display_point_count:2}
 afterEach(() => vi.resetAllMocks())

@@ -166,6 +166,40 @@ def test_resample_complete_cloud(tmp_path, request):
                     restored.point_count == out.point_count
                     and runtime.source_point_count(restored) == len(points)
                 )
+                # B03 内部运行链路使用同一完整云生成的所有质心，不改原测量图。
+                from custom_nodes.metrology3d_nodes.shared.estimate_normals import (
+                    estimate_normals,
+                )
+                from tests.test_metrology3d_normal_estimation import (
+                    parameters as normal_parameters,
+                )
+
+                normals, normal_summary = estimate_normals(
+                    runtime,
+                    restored,
+                    normal_parameters(
+                        frame_id=restored.spatial.frame_id,
+                        orientation=dict(kind="unoriented"),
+                    ),
+                    cancel=lambda: None,
+                )
+                assert normals.point_count == restored.point_count
+                assert normals.voxel_aggregation == restored.voxel_aggregation
+                with (
+                    runtime.borrow(restored) as original,
+                    runtime.borrow(normals) as calculated,
+                ):
+                    for start in range(0, normals.point_count, 65536):
+                        stop = min(start + 65536, normals.point_count)
+                        np.testing.assert_array_equal(
+                            original.chunk(start, stop)["positions"],
+                            calculated.chunk(start, stop)["positions"],
+                        )
+                        for name, values in original.lineage_chunk(start, stop).items():
+                            np.testing.assert_array_equal(
+                                values, calculated.lineage_chunk(start, stop)[name]
+                            )
+                report["normal_runtime"] = normal_summary
             report["methods"].append(
                 dict(
                     summary=summary,

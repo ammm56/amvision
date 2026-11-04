@@ -51,6 +51,9 @@ def _layout(cloud, source_count):
     identity = detail_index_dtype(
         source_count if cloud.vertex_kind == "source" else cloud.point_count
     )
+    if cloud.lineage_kind == "voxel-aggregate":
+        dtype += [("voxel_keys", "<i8", (3,)), ("member_counts", "<u8")]
+        offset += 32
     dtype += [
         ("logical", np.dtype(logical).newbyteorder("<")),
         ("identity", np.dtype(identity).newbyteorder("<")),
@@ -128,6 +131,7 @@ def build_index(runtime, cloud, service, root, generation, policy, cancel, owner
                 excluded_count=cloud.point_count - seed.count,
                 bounds=dict(min=seed.low.tolist(), max=seed.high.tolist()),
                 fields=fields,
+                normal_info=cloud.normal_info,
                 row_bytes=dtype.itemsize,
                 logical_dtype=logical,
                 identity_dtype=identity,
@@ -135,6 +139,14 @@ def build_index(runtime, cloud, service, root, generation, policy, cancel, owner
                 identity_offset=offset + row_dtype.itemsize,
                 leaf_limit=leaf_limit,
                 blocks=blocks,
+                voxel=dict(
+                    keys_offset=offset - 32,
+                    members_offset=offset - 8,
+                    aggregation=cloud.voxel_aggregation,
+                    grid=cloud.voxel_grid,
+                )
+                if cloud.lineage_kind == "voxel-aggregate"
+                else None,
             )
         )
 
@@ -182,6 +194,9 @@ def _write_partition(
             for number, field in enumerate(fields):
                 records[f"f{number}"] = values[field["name"]]
             records["logical"], records["identity"] = chosen, identity
+            if view.reference.lineage_kind == "voxel-aggregate":
+                keys, counts = view.voxel_metadata_rows(chosen)
+                records["voxel_keys"], records["member_counts"] = keys, counts
             points = coordinates[indices]
             content = records.tobytes()
             receipt = service.storage.write_immutable_stream(

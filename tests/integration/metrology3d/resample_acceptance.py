@@ -80,6 +80,49 @@ def main():
                     target_port="cloud",
                 )
             )
+            graph["nodes"].append(
+                dict(
+                    node_id="input-preview",
+                    node_type_id="custom.metrology3d.cloud-preview",
+                    parameters=dict(
+                        point_limit=100000,
+                        color=dict(mode="solid"),
+                        prepare_details=False,
+                    ),
+                )
+            )
+            graph["edges"].append(
+                dict(
+                    edge_id="input-display",
+                    source_node_id="read",
+                    source_port="cloud",
+                    target_node_id="input-preview",
+                    target_port="cloud",
+                )
+            )
+            graph["template_outputs"].append(
+                dict(
+                    output_id="input_view",
+                    display_name="Original cloud",
+                    payload_type_id="response-body.v1",
+                    source_node_id="input-preview",
+                    source_port="body",
+                )
+            )
+            app = FlowApplication.model_validate(
+                {
+                    **app.model_dump(mode="json"),
+                    "bindings": [
+                        *(b.model_dump(mode="json") for b in app.bindings),
+                        dict(
+                            binding_id="input_view",
+                            direction="output",
+                            template_port_id="input_view",
+                            binding_kind="http-response",
+                        ),
+                    ],
+                }
+            )
             next(n for n in graph["nodes"] if n["node_id"] == "preview")["parameters"][
                 "prepare_details"
             ] = False

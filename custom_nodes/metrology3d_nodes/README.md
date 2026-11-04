@@ -15,6 +15,8 @@ Fit Circle 明确区分等权、`angular-soft-l1` 角区均衡和 `arc-length-so
 
 ## 依赖与启动
 
+当前 `0.1.23` 仍为二十节点：Resample Cloud 新增同次输入/输出对照、选中体素格框和聚焦；原始格键/成员数沿保存资产细节读取，当前格框同步单位和刚体变换。B03 已接通内部运行字段、存读和状态读取，但还没有公开 Estimate Normals 节点、参数编辑器或法向线段层。旧体素开发资产缺少当前格映射时拒绝读取，原文件保留并需重新生成；不加旧格式降级分支。验证范围与下一步见[本批记录](../../docs/development/3d-metrology-resample-display.md)。
+
 `0.1.22` 共二十节点，新增 Resample Cloud。行间隔和体素原点代表只选择已有点，全部字段和原始来源保留；体素质心只生成坐标，保留原聚合格、完整成员行号及均值定义，不自动平均颜色、标签或法向。格距/格原点/单位、质心回写误差均为显式配方参数，质心是 estimated 而非实测支持。子集/变换/保存重读不能丢失原聚合格定义；交换格式不保留平台体素 CSR。接线为 Read/Filter Valid → Resample Cloud → Cloud Preview 或 Save Cloud，现有测量配方不自动改线。完整样本与发布验证、页面范围见[重采样记录](../../docs/development/3d-metrology-resample.md)。B03 尚未公开注册，内部法向内核不等于完成交付。
 
 `0.1.21` 新增 Denoise Cloud：显式统计邻域/半径邻域，输出保留和剔除的互补源点子集以及摘要；所有属性和原始行号沿原资源系统保存。统计使用其他 K 点的平均距离及总体标准差，半径包含边界且排除自身。参数不设生产默认，当前工件配方不自动去噪。完整云及双平台验证、实际成本见[本批记录](../../docs/development/3d-metrology-method-resources.md)。

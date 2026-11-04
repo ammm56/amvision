@@ -14,6 +14,18 @@ from backend.contracts.workflows.point_cloud import (
     Sha256,
     FIELD_WIDTHS,
 )
+from backend.contracts.workflows.cloud_voxel import CloudVoxelGrid
+from backend.contracts.workflows.cloud_normal_info import CloudNormalInfo
+from backend.contracts.workflows.point_cloud_runtime import ResampleCloudMethod
+
+
+class DetailVoxel(Contract):
+    """每行仅附体素键和成员数，完整 CSR 仍由原资产持有。"""
+
+    keys_offset: JsonCount
+    members_offset: JsonCount
+    aggregation: ResampleCloudMethod
+    grid: CloudVoxelGrid
 
 
 def detail_index_dtype(count: int) -> Literal["uint32", "uint64"]:
@@ -60,6 +72,8 @@ class CloudDetailIndex(Contract):
     identity_offset: JsonCount
     leaf_limit: PositiveCount
     blocks: tuple[DetailBlock, ...]
+    voxel: DetailVoxel | None = None
+    normal_info: CloudNormalInfo | None = None
 
     @model_validator(mode="after")
     def validate_layout(self):
@@ -87,6 +101,19 @@ class CloudDetailIndex(Contract):
             raise ValueError("点云细节行号宽度与来源计数不一致")
         logical_width = FIELD_WIDTHS[self.logical_dtype]
         identity_width = FIELD_WIDTHS[self.identity_dtype]
+        if self.normal_info is not None:
+            self.normal_info.check_fields(
+                self.fields, self.spatial, generated=self.vertex_kind == "generated"
+            )
+        if self.voxel is not None:
+            if (
+                self.vertex_kind != "generated"
+                or self.voxel.keys_offset != offset
+                or self.voxel.members_offset != offset + 24
+                or self.voxel.aggregation.parameters.settings.kind != "voxel-centroid"
+            ):
+                raise ValueError("体素细节来源或布局无效")
+            offset += 32
         if "positions" not in names or (
             self.logical_offset,
             self.identity_offset,

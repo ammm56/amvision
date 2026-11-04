@@ -1,6 +1,7 @@
 import { AxesHelper, Box3, Frustum, BufferAttribute, BufferGeometry, Color, Matrix4, MOUSE, OrthographicCamera, PerspectiveCamera, Points, PointsMaterial, Quaternion, Raycaster, Scene, Vector2, Vector3, WebGLRenderer } from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { createDetailLayer } from './detail-layer'
+import {createResampleLayer} from './resample-layer'
 import type { DetailBounds } from './asset-details'
 import type { CloudRendererPolicy } from '../services/measurement-resource.service'
 import { reserveCpu, reserveGpu, type CloudDisplayData } from './preview-data'
@@ -39,12 +40,13 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
   let panEnabled = false
   const scene = new Scene(), geometry = new BufferGeometry(), material = new PointsMaterial({ size: 2, sizeAttenuation: false, vertexColors: true })
   const detailLayer = createDetailLayer(scene, material, policy)
+  const resampleLayer = createResampleLayer(scene,data.origin,policy,schedule)
   let detailChanged: (() => void) | null = null
   let detailPicked: ((point: ReturnType<CloudDisplayData['point']>) => void) | null = null
   let axes: AxesHelper | null = null
   let camera: PerspectiveCamera | OrthographicCamera
   let reportedView: CloudViewState | undefined
-  let radius = 1,viewRadius=1
+  let radius = 1,viewRadius=1,baseRadius=1,comparisonRadius=0,comparisonCount=0,detailCount=0
   let pointDown: {x: number; y: number} | null = null
   function render() {
     if (!closed && active && measurable && renderer) {
@@ -74,7 +76,7 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
       renderer.domElement.removeEventListener('pointerup', pick)
       renderer.dispose(); renderer.forceContextLoss(); renderer.domElement.remove(); renderer = null
     }
-    detailLayer.clear(); geometry.dispose(); material.dispose(); axes?.dispose(); scene.clear(); releaseGpu();releaseColor()
+    detailLayer.clear();resampleLayer.dispose(); geometry.dispose(); material.dispose(); axes?.dispose(); scene.clear(); releaseGpu();releaseColor()
   }
   function lost(event: Event) { event.preventDefault(); dispose(); failed(new Error('cloud_context_lost')) }
   function down(event: PointerEvent) { if(active&&measurable)pointDown = {x: event.clientX, y: event.clientY} }
@@ -117,6 +119,17 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
     // OrbitControls 在构造时冻结 up 的变换，换轴必须同步重建控制器。
     bindControls(); controls!.target.set(0, 0, 0); controls!.update(); publishView(); schedule()
   }
+  function focusBounds(bounds:{center:Vector3;radius:number}|null|undefined){
+    if(closed||!bounds)return
+    viewRadius=bounds.radius
+    const direction=camera.position.clone().sub(controls!.target).normalize()
+    const distance=viewRadius*3/Math.min(1,width/height)
+    camera.position.copy(bounds.center).addScaledVector(direction,distance)
+    camera.near=Math.min(radius,viewRadius)/1000;camera.far=Math.max(radius,viewRadius)*10000
+    camera.zoom=1
+    if(camera instanceof OrthographicCamera){const y=viewRadius*1.15/Math.min(1,width/height);camera.left=-y*width/height;camera.right=y*width/height;camera.top=y;camera.bottom=-y}
+    controls!.target.copy(bounds.center);camera.updateProjectionMatrix();controls!.update();schedule()
+  }
   const points = new Points(geometry, material)
   function syncInteraction(){overlay?.activity(active&&measurable);if(controls)controls.enabled=active&&measurable&&!overlay?.dragging()}
   function resize(wide:number,tall:number){
@@ -142,7 +155,7 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
     geometry.setAttribute('position', new BufferAttribute(data.positions, 3)); geometry.setAttribute('color', new BufferAttribute(data.colors.slice(), 3))
     if(presentation?.coordinateColor&&presentation.range){fillCoordinateColors(geometry.getAttribute('color').array as Float32Array,data.positions,data.origin[2]!,presentation.range);detailLayer.colors(presentation.range)}
     linearizeDisplayColors(geometry.getAttribute('color').array as Float32Array)
-    geometry.computeBoundingSphere(); radius = Math.max(geometry.boundingSphere?.radius ?? 0, 1e-6)
+    geometry.computeBoundingSphere(); radius = Math.max(geometry.boundingSphere?.radius ?? 0, 1e-6);baseRadius=radius
     renderer = new WebGLRenderer({ antialias: false, alpha: true, powerPreference: 'low-power' })
     scene.background = new Color(0x202326)
     renderer.localClippingEnabled = true
@@ -166,6 +179,14 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
     observer.observe(host)
     return {
       dispose, fit,
+      comparison(value:CloudDisplayData|null){
+        if(closed)return
+        if(value&&value.count+data.count+detailCount>policy.max_points)throw new Error('cloud_preview_capacity')
+        resampleLayer.comparison(value);comparisonCount=value?.count??0;comparisonRadius=0
+        if(value)for(let i=0;i<value.count;i++)comparisonRadius=Math.max(comparisonRadius,Math.hypot(...[0,1,2].map(c=>value.positions[i*3+c]!+value.origin[c]!-data.origin[c]!)))
+        radius=Math.max(baseRadius,comparisonRadius)
+      },
+      voxelCell:resampleLayer.cell,
       detailEvents(changed: (() => void) | null, picked: ((point: ReturnType<CloudDisplayData['point']>) => void) | null) { detailChanged = changed; detailPicked = picked },
       detailVisible(bounds: DetailBounds) {
         camera.updateMatrixWorld()
@@ -173,28 +194,21 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
         const local = (value: number[]) => new Vector3(value[0]! - data.origin[0]!, value[1]! - data.origin[1]!, value[2]! - data.origin[2]!)
         return frustum.intersectsBox(new Box3(local(bounds.min), local(bounds.max)))
       },
-      detailAdd: detailLayer.add,
-      detailClear() { detailLayer.clear(); points.visible = true; schedule() },
+      detailAdd(value:CloudDisplayData){if(value.count+detailCount+data.count+comparisonCount>policy.max_points)throw new Error('cloud_preview_capacity');detailLayer.add(value);detailCount+=value.count},
+      detailClear() { detailLayer.clear();detailCount=0; points.visible = true; schedule() },
       detailComplete() { detailLayer.visible(true); points.visible = false; schedule() },
       detailBounds(bounds: DetailBounds) {
-        radius = Math.max(...[bounds.min, bounds.max].map(v => Math.hypot(...v.map((x, i) => x - data.origin[i]!))), 1e-6)
+        baseRadius = Math.max(...[bounds.min, bounds.max].map(v => Math.hypot(...v.map((x, i) => x - data.origin[i]!))), 1e-6);radius=Math.max(baseRadius,comparisonRadius)
       },
       activity(value:boolean){
         if(closed)return
         try{active=value;pointDown=null;detailChanged?.();const box=host.getBoundingClientRect();resize(box.width,box.height)}catch(error){dispose();failed(error as Error)}
       },
-      focus(kind:GeometryFocus){
-        if(closed)return
-        const bounds=overlay?.focus(kind)
-        if(!bounds)return
-        viewRadius=bounds.radius
-        const direction=camera.position.clone().sub(controls!.target).normalize()
-        const distance=viewRadius*3/Math.min(1,width/height)
-        camera.position.copy(bounds.center).addScaledVector(direction,distance)
-        camera.near=Math.min(radius,viewRadius)/1000;camera.far=Math.max(radius,viewRadius)*10000
-        camera.zoom=1
-        if(camera instanceof OrthographicCamera){const y=viewRadius*1.15/Math.min(1,width/height);camera.left=-y*width/height;camera.right=y*width/height;camera.top=y;camera.bottom=-y}
-        controls!.target.copy(bounds.center);camera.updateProjectionMatrix();controls!.update();schedule()
+      focus(kind:GeometryFocus){focusBounds(overlay?.focus(kind))},
+      focusVoxel(corners:number[][]){
+        if(corners.length!==8||corners.some(v=>v.length!==3||v.some(n=>!Number.isFinite(n))))throw new Error('cloud_preview_invalid')
+        const box=new Box3().setFromPoints(corners.map(v=>new Vector3(...v as [number,number,number]).sub(new Vector3(...data.origin as [number,number,number]))))
+        focusBounds({center:box.getCenter(new Vector3()),radius:Math.max(box.getSize(new Vector3()).length()/2,1e-6)})
       },
       colors(samples:PlaneColors|null,mode:CloudColorMode,range?:CoordinateRange|null){
         if(closed)return

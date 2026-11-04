@@ -5,7 +5,7 @@ import type { DetailIndex, DetailBlock } from './asset-details'
 export type DetailStatus = 'overview' | 'loading' | 'ready' | 'limited' | 'error'
 
 /** 相机停止后只加载当前视野；切换时撤销旧请求，未完成集合不冒充完整视野。 */
-export function createDetailController(index: DetailIndex, policy: CloudRendererPolicy, baseCount: number,
+export function createDetailController(index: DetailIndex, policy: CloudRendererPolicy, baseCount: () => number,
   load: (block: DetailBlock, signal: AbortSignal) => Promise<CloudDisplayData>,
   target: { clear(): void; add(data: CloudDisplayData): void; complete(): void; visible(block: DetailBlock): boolean },
   report: (status: DetailStatus, count: number, error?: string) => void) {
@@ -16,7 +16,7 @@ export function createDetailController(index: DetailIndex, policy: CloudRenderer
     if (closed || !enabled || token !== serial) return
     const selected = index.blocks.filter(target.visible), count = selected.reduce((n, b) => n + b.count, 0)
     const bytes = selected.reduce((n, b) => n + b.byte_length, 0)
-    if (!count || count + baseCount > policy.max_points || bytes > policy.max_data_bytes) { report('limited', 0); return }
+    if (!count || count + baseCount() > policy.max_points || bytes > policy.max_data_bytes) { report('limited', 0); return }
     controller = new AbortController()
     const signal = controller.signal
     report('loading', 0)

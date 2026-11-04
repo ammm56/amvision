@@ -5,6 +5,23 @@ const policy = { max_points: 100, max_data_bytes: 8192, max_cpu_bytes: 65536, ma
 beforeEach(async () => { const {webcrypto} = await vi.importActual<{webcrypto: Crypto}>('node:crypto'); vi.stubGlobal('crypto', webcrypto) })
 afterEach(() => { expect(rendererUsage()).toEqual({cpuBytes: 0, gpuBytes: 0}); vi.unstubAllGlobals() })
 
+it.each([false,true])('keeps normal state separate from position validity, corrupt=%s',async corrupt=>{
+  const input=await body(),raw=new Uint8Array(70),view=new DataView(raw.buffer)
+  raw.set(Uint8Array.from(atob(input.data.content),c=>c.charCodeAt(0)))
+  view.setFloat32(48,1,true)
+  raw.set([1,0,1,0,0,2],64)
+  if(corrupt)view.setFloat32(48,0,true)
+  input.data.fields.push(...[
+    {name:'normals',dtype:'float32',components:3,count:2,offset:40,byte_length:24},
+    ...['normal_valid','normal_oriented','normal_reason'].map((name,i)=>({name,dtype:'uint8',components:1,count:2,offset:64+i*2,byte_length:2})),
+  ])
+  input.data.content_length=70;input.data.content=btoa(String.fromCharCode(...raw));input.data.checksum=[...new Uint8Array(await crypto.subtle.digest('SHA-256',raw))].map(b=>b.toString(16).padStart(2,'0')).join('')
+  const spatial={frame_id:'sensor',length_unit:'mm'},payload={...input,spatial,normal_info:{...spatial,method:{method_id:'estimate-normals',method_version:1},orientation:{kind:'direction'}}}
+  if(corrupt){await expect(decodeCloudPreview(payload,policy,new AbortController().signal)).rejects.toThrow();return}
+  const display=await decodeCloudPreview(payload,policy,new AbortController().signal)
+  try{expect(display.point(0).normal).toEqual({vector:[0,0,1],valid:true,oriented:true,reason:0});expect(display.point(1).normal).toEqual({vector:[0,0,0],valid:false,oriented:false,reason:2});expect(display.count).toBe(2)}finally{display.dispose()}
+})
+
 export async function body(scalar = false) {
   const raw = new Uint8Array(scalar ? 56 : 40), view = new DataView(raw.buffer)
   ;[0, 1, 2, 3, 4, 5].forEach((v, i) => view.setFloat32(i * 4, v, true))
@@ -83,7 +100,7 @@ it('keeps voxel keys and complete member counts separate from original row ident
   input.data.content_length=104;input.data.content=btoa(String.fromCharCode(...raw))
   input.data.checksum=[...new Uint8Array(await crypto.subtle.digest('SHA-256',raw))].map(b=>b.toString(16).padStart(2,'0')).join('')
   const voxel_aggregation={method_id:'resample-cloud',method_version:1,parameters:{settings:{kind:'voxel-centroid',grid_origin:[0,0,0],voxel_size:1,frame_id:'original',length_unit:'mm'}}}
-  const data=await decodeCloudPreview({...input,lineage_kind:'voxel-aggregate',voxel_aggregation},policy,new AbortController().signal)
+  const data=await decodeCloudPreview({...input,lineage_kind:'voxel-aggregate',voxel_aggregation,voxel_grid:{origin:[0,0,0],axes:[[1,0,0],[0,1,0],[0,0,1]]}},policy,new AbortController().signal)
   try{expect(data.point(0)).toMatchObject({sourceIndex:null,vertexIndex:'0',voxelKey:['-2','0','1'],memberCount:'10',voxelFrame:'original',voxelUnit:'mm'})}finally{data.dispose()}
   await expect(decodeCloudPreview({...input,lineage_kind:'voxel-aggregate'},policy,new AbortController().signal)).rejects.toThrow()
   await expect(decodeCloudPreview({...input,lineage_kind:'voxel-aggregate',vertex_kind:'source'},policy,new AbortController().signal)).rejects.toThrow()

@@ -12,6 +12,7 @@ from backend.contracts.workflows.point_cloud import (
     ShortText,
 )
 from backend.service.application.errors import InvalidRequestError
+from backend.contracts.workflows.cloud_normal_info import NORMAL_STATES
 from backend.service.application.runtime.exception_cleanup import (
     release_exception_frames,
 )
@@ -67,6 +68,15 @@ def export_cloud_file(runtime, reference, options, *, stream, max_output_bytes, 
     fields = {f.name: f for f in reference.fields or ()}
     if not set(options.fields) <= set(fields):
         raise InvalidRequestError("导出包含不存在的点云字段")
+    computed_normals = reference.normal_info is not None and "normals" in options.fields
+    if (
+        computed_normals
+        and not options.profile_id.startswith("xyzn-")
+        and not set(NORMAL_STATES) <= set(options.fields)
+    ):
+        raise InvalidRequestError(
+            "计算法向的 PLY/PCD 导出必须同时包含有效、定向和原因字段"
+        )
     canonical = {
         "positions": ("x", "y", "z"),
         "normals": ("nx", "ny", "nz"),
@@ -118,6 +128,17 @@ def export_cloud_file(runtime, reference, options, *, stream, max_output_bytes, 
                 cancel()
                 stop = min(start + rows, reference.point_count)
                 block = view.chunk(start, stop)
+                if (
+                    computed_normals
+                    and options.profile_id.startswith("xyzn-")
+                    and (
+                        not block["normal_valid"].all()
+                        or not block["normal_oriented"].all()
+                    )
+                ):
+                    raise InvalidRequestError(
+                        "XYZN 不能表达无效或未定向法向，请选择携带状态的 PLY/PCD"
+                    )
                 for m in mapping:
                     for index, column in enumerate(m.source_names):
                         data[column][start:stop] = block[m.target_name][:, index]
@@ -140,6 +161,7 @@ def export_cloud_file(runtime, reference, options, *, stream, max_output_bytes, 
                 "vertex_kind": reference.vertex_kind,
                 "sample_origin": reference.sample_origin,
                 "lineage_preserved": False,
+                "normal_info_preserved": False,
                 "spatial": reference.spatial.model_dump(mode="json"),
                 "source_reference": reference.source.reference.model_dump(mode="json")
                 if reference.source.kind == "asset"

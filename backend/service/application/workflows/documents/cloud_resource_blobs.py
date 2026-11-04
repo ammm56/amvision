@@ -101,12 +101,15 @@ class _ArrayBytes:
                 if field.offset_bytes > cursor:
                     self.ranges.append((cursor, field.offset_bytes, 0))
                 cursor = field.offset_bytes + field.byte_length
-                if field.name in ("validity", "sample_origin"):
+                limits = {"validity": 1, "sample_origin": 2}
+                if asset.normal_info is not None:
+                    limits.update(normal_valid=1, normal_oriented=1, normal_reason=5)
+                if field.name in limits:
                     self.ranges.append(
                         (
                             field.offset_bytes,
                             cursor,
-                            1 if field.name == "validity" else 2,
+                            limits[field.name],
                         )
                     )
 

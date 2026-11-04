@@ -97,6 +97,16 @@ def _build_cloud_preview(runtime, reference, options, *, policy, cancel):
             layout.append(("colors", "uint8", 3))
         elif color.mode == "scalar":
             layout.append(("scalar", fields[color.field].dtype, 1))
+        if reference.normal_info is not None:
+            layout.extend(
+                (name, fields[name].dtype, fields[name].components)
+                for name in (
+                    "normals",
+                    "normal_valid",
+                    "normal_oriented",
+                    "normal_reason",
+                )
+            )
         if reference.lineage_kind == "voxel-aggregate":
             layout.extend([("voxel_keys", "int64", 3), ("member_counts", "uint64", 1)])
         descriptors, length = [], 0
@@ -142,6 +152,12 @@ def _build_cloud_preview(runtime, reference, options, *, policy, cancel):
             lineage_kind=reference.lineage_kind,
             voxel_aggregation=reference.voxel_aggregation.model_dump(mode="json")
             if reference.voxel_aggregation
+            else None,
+            voxel_grid=reference.voxel_grid.model_dump(mode="json")
+            if reference.voxel_grid
+            else None,
+            normal_info=reference.normal_info.model_dump(mode="json")
+            if reference.normal_info
             else None,
             display_point_count=shown,
             excluded_non_finite_count=excluded,
@@ -198,6 +214,14 @@ def _build_cloud_preview(runtime, reference, options, *, policy, cancel):
             selected = candidates[(targets[written:end] - seen).astype(np.intp)]
             if len(selected):
                 arrays["positions"][written:end] = block["positions"][selected]
+                if reference.normal_info is not None:
+                    for name in (
+                        "normals",
+                        "normal_valid",
+                        "normal_oriented",
+                        "normal_reason",
+                    ):
+                        arrays[name][written:end] = block[name][selected]
                 if reference.vertex_kind == "source":
                     arrays["source_indices"][written:end, 0] = view.source_indices(
                         start, stop

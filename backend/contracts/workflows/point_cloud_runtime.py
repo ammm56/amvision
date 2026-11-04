@@ -39,6 +39,11 @@ from backend.contracts.workflows.cloud_preprocess import (
     DenoiseCloudParameters,
     ResampleCloudParameters,
 )
+from backend.contracts.workflows.cloud_voxel import CloudVoxelGrid
+from backend.contracts.workflows.cloud_normal_info import (
+    CloudNormalInfo,
+    EstimateNormalsMethod,
+)
 
 
 class NormalizeCloudUnits(Contract):
@@ -245,6 +250,7 @@ CloudMethod = Annotated[
     | FilterCloudMethod
     | DenoiseCloudMethod
     | ResampleCloudMethod
+    | EstimateNormalsMethod
     | CropCloudMethod
     | PlaneSupportMethod
     | TransformCloudMethod
@@ -356,6 +362,8 @@ class CloudReference(Contract):
     topology: BoundaryTopology | None
     lineage_kind: Literal["surface", "grid-profile", "voxel-aggregate"] | None = None
     voxel_aggregation: ResampleCloudMethod | None = None
+    voxel_grid: CloudVoxelGrid | None = None
+    normal_info: CloudNormalInfo | None = None
 
     def unavailable(self, reason: str, *, spatial=None) -> Self:
         """保留输入追溯但清除资源身份，不伪造未执行算法的支持点。"""
@@ -372,6 +380,8 @@ class CloudReference(Contract):
             "topology",
             "lineage_kind",
             "voxel_aggregation",
+            "voxel_grid",
+            "normal_info",
         ):
             raw[name] = None
         return type(self).model_validate(raw)
@@ -396,6 +406,8 @@ class CloudReference(Contract):
                     self.topology,
                     self.lineage_kind,
                     self.voxel_aggregation,
+                    self.voxel_grid,
+                    self.normal_info,
                 )
             ):
                 raise ValueError("unavailable 不能携带点云资源")
@@ -408,8 +420,12 @@ class CloudReference(Contract):
                 raise ValueError("点云必须包含 positions")
             if self.sample_origin == "mixed" and "sample_origin" not in names:
                 raise ValueError("mixed 必须有逐点来源")
+            if self.normal_info is not None:
+                self.normal_info.check_fields(
+                    self.fields, self.spatial, generated=self.vertex_kind == "generated"
+                )
             if self.vertex_kind == "generated" and (
-                names != ["positions"]
+                (self.normal_info is None and names != ["positions"])
                 or self.sample_origin not in ("interpolated", "estimated")
             ):
                 raise ValueError("生成顶点只保存坐标，不自动插值原始属性")
@@ -419,6 +435,10 @@ class CloudReference(Contract):
                 self.voxel_aggregation is not None
             ):
                 raise ValueError("体素来源必须保留原聚合方法与格坐标")
+            if (self.lineage_kind == "voxel-aggregate") != (
+                self.voxel_grid is not None
+            ):
+                raise ValueError("体素来源必须携带当前坐标中的格映射")
             if (
                 self.voxel_aggregation is not None
                 and self.voxel_aggregation.parameters.settings.kind != "voxel-centroid"

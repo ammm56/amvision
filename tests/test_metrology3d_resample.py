@@ -449,6 +449,13 @@ def test_voxel_grid_survives_transform_subset_and_asset(tmp_path):
         )
         assert subset.spatial.frame_id == "part"
         assert subset.voxel_aggregation == centroid.voxel_aggregation
+        matrix = np.asarray(pose.transform.matrix)
+        np.testing.assert_allclose(
+            subset.voxel_grid.origin, matrix[:3, 3], rtol=0, atol=1e-14
+        )
+        np.testing.assert_allclose(
+            subset.voxel_grid.axes, 0.75 * matrix[:3, :3].T, rtol=0, atol=1e-14
+        )
         assert (
             subset.voxel_aggregation.parameters.settings.frame_id
             == source.spatial.frame_id
@@ -474,6 +481,7 @@ def test_voxel_grid_survives_transform_subset_and_asset(tmp_path):
             cancel=lambda: None,
         )
         assert restored.voxel_aggregation == centroid.voxel_aggregation
+        assert restored.voxel_grid == subset.voxel_grid
         assert runtime.source_point_count(restored) == 4
         with runtime.borrow(subset) as a, runtime.borrow(restored) as b:
             np.testing.assert_array_equal(

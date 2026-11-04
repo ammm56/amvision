@@ -19,7 +19,8 @@
         <template #view="{presentation}">
           <section class="resample-view">
             <CloudPreviewSelector v-model="previewId" :previews="previews" :changed="changed" />
-            <CloudViewer v-if="preview" :key="preview.id" :presentation="presentation" :payload="preview.payload" :project-id="preview.projectId" allow-pick />
+            <label v-if="preview">{{ zh?'叠加对照':'Overlay comparison' }}<select v-model="comparisonId"><option value="">{{ zh?'关闭':'Off' }}</option><option v-for="item in comparisons" :key="item.id" :value="item.id">{{ item.label }}</option></select></label>
+            <CloudViewer v-if="preview" :key="preview.id" :presentation="presentation" :payload="preview.payload" :compare-payload="comparison?.payload" :project-id="preview.projectId" allow-pick />
           </section>
         </template>
       </MetrologyWorkspace>
@@ -36,6 +37,7 @@ import MetrologyWorkspace from './MetrologyWorkspace.vue'
 import GeometryFields from './GeometryFields.vue'
 import {newResample, resampleValid} from './resample-form'
 import {copy, type Field, type Form} from './form'
+import {comparableClouds} from '@/workflows/workflow-editor/point-cloud/voxel-display'
 defineOptions({inheritAttrs:false})
 const props=defineProps<{modelValue:unknown;nodeType:string;disabled?:boolean;inputSources?:ParameterEditorSources}>()
 const emit=defineEmits<{'update:modelValue':[value:Form]}>()
@@ -45,6 +47,10 @@ const open=ref(false), draft=ref<Form>(newResample('stride')), initial=ref(''), 
 const resolve=inject(parameterCloudPreviewsKey,()=>[]), state=inject(parameterPreviewStateKey,()=>({runId:'',succeeded:false}))
 const previews=computed(()=>state().succeeded?resolve():[]),preview=computed(()=>previews.value.find(p=>p.id===previewId.value))
 const changed=computed(()=>JSON.stringify(draft.value)!==initial.value)
+const comparisonId=ref('')
+const comparisons=computed(()=>preview.value?previews.value.filter(p=>p.id!==preview.value!.id&&p.projectId===preview.value!.projectId&&comparableClouds(preview.value!.payload,p.payload)):[])
+const comparison=computed(()=>comparisons.value.find(p=>p.id===comparisonId.value))
+watch([previewId,()=>state().runId,open],()=>{comparisonId.value=''})
 const fields=computed<Field[]>(()=>draft.value.kind==='stride' ? [
   {path:'every_k_points',type:'number',label:zh.value?'行间隔':'Row interval'},
   {path:'offset',type:'number',label:zh.value?'起始偏移':'Start offset'},

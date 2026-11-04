@@ -16,6 +16,8 @@
       <label v-if="planes.length">{{ zh?'平面':'Plane' }}<select v-model="selectedPlane"><option value="">{{ zh?'未选择':'None' }}</option><option v-for="plane in planes" :key="String(plane.feature_id)" :value="String(plane.feature_id)">{{ plane.feature_id }}</option></select></label>
       <label><input v-model="showEvidence" type="checkbox" :disabled="!scene" @change="scene?.evidenceVisibility(showEvidence)">{{ zh?'测量叠加':'Measurement overlays' }}</label>
       <label><input v-model="showAxes" type="checkbox" :disabled="!scene" @change="scene?.axesVisible(showAxes)">{{ zh?'坐标轴':'Axes' }}</label>
+      <label v-if="body.lineage_kind==='voxel-aggregate'"><input v-model="showVoxel" type="checkbox" :disabled="!scene">{{ zh?'选中体素':'Selected voxel' }}</label>
+      <button v-if="picked?.voxelCorners" :title="zh?'聚焦选中体素':'Focus selected voxel'" :aria-label="zh?'聚焦选中体素':'Focus selected voxel'" :disabled="!scene||!showVoxel" @click="scene?.focusVoxel(picked.voxelCorners)"><Focus :size="18" /></button>
       <label v-if="body.asset_details"><input v-model="showAssetDetails" type="checkbox" :disabled="!scene||!detailController||!['original','coordinate-z'].includes(colorMode)">{{ zh?'原始点细节':'Original point details' }}</label>
       <button v-if="body.asset_details" :title="zh?'重新加载资产细节':'Reload asset details'" :aria-label="zh?'重新加载资产细节':'Reload asset details'" :disabled="!detailError||loading" @click="load"><RefreshCw :size="18" /></button>
       <label v-if="activeCurve?.fit_weights">{{ zh?'拟圆证据颜色':'Circle evidence colors' }}<select v-model="curveColorMode"><option value="support">{{ zh?'支持分类':'Support classes' }}</option><option value="weight">{{ zh?'拟合权重':'Fit weights' }}</option><option value="residual">{{ zh?'径向残差':'Radial residuals' }}</option></select></label>
@@ -31,11 +33,14 @@
       <p v-else-if="body.state !== 'ready'" class="cloud-message">{{ body.state === 'empty' ? t('empty') : String(body.reason || t('unavailable')) }}</p>
     </div>
     <div class="cloud-status">
+      <span v-if="comparePayload">{{ zh?'对照点云 · 灰色':'Comparison cloud · gray' }}</span>
+      <span v-if="comparisonError" role="alert">{{ errorMessage(comparisonError) }}</span>
       <span v-if="body.asset_details" class="cloud-detail-status" role="status" :title="detailError?`${detailLabel} · ${errorMessage(detailError)}`:detailLabel">{{ detailLabel }}<template v-if="detailCount"> · {{ detailCount }}</template><template v-if="detailError"> · {{ errorMessage(detailError) }}</template></span>
       <span>{{ unit }} · {{ frame }} · {{ zh?'显示':'Displayed' }} {{ detailStatus==='ready'?detailCount:body.display_point_count ?? '-' }} / {{ zh?'输入':'Input' }} {{ body.point_count ?? '-' }}<template v-if="body.source_point_count!==body.point_count"> · {{ zh?'原始':'Source' }} {{ body.source_point_count ?? '-' }}</template></span>
       <span v-if="color.mode === 'scalar'">{{ color.field }}: {{ color.min ?? '-' }} .. {{ color.max ?? '-' }}</span>
       <span v-if="picked">{{ picked.sourceIndex === null ? (zh ? '生成顶点' : 'Generated vertex') : (zh ? '原始行' : 'Source row') }} #{{ picked.sourceIndex ?? picked.vertexIndex }} · XYZ {{ picked.xyz.join(', ') }}<template v-if="picked.scalar !== null"> · {{ picked.scalar }}</template><template v-if="picked.voxelKey"> · {{ zh ? '原聚合格' : 'Aggregation cell' }} {{ picked.voxelKey.join(', ') }} ({{ picked.voxelFrame }}, {{ picked.voxelUnit }}) · {{ zh ? '实测成员' : 'Measured members' }} {{ picked.memberCount }}</template></span>
       <span v-if="colorMode==='support'&&colorSummary">{{ zh?'显示点':'Display points' }} · {{ zh?'支持':'Support' }} {{ colorSummary.support }} · {{ zh?'剔除':'Rejected' }} {{ colorSummary.rejected }} · {{ zh?'无关':'Unrelated' }} {{ colorSummary.unrelated }}</span>
+      <span v-if="picked?.normal">{{ normalLabel(picked.normal,zh) }}<template v-if="picked.normal.valid"> · {{ picked.normal.vector.join(', ') }}</template><template v-if="picked.normal.reason===5"> · {{ zh?'定向歧义':'Ambiguous orientation' }}</template></span>
       <span v-if="colorMode==='residual'&&colorSummary">{{ zh?'残差色标':'Residual scale' }} <template v-if="colorSummary.extent!==null"><i class="residual-scale" aria-hidden="true"/> {{ -colorSummary.extent }} .. {{ colorSummary.extent }} {{ unit }}</template><template v-else>{{ zh?'无显示支持点':'No displayed support points' }}</template></span>
       <span v-if="curveScale">{{ zh?'拟圆证据色标':'Circle evidence scale' }} <i class="residual-scale" aria-hidden="true" /> {{ curveScale.min }} .. {{ curveScale.max }} {{ curveColorMode==='residual'?unit:'1' }}</span>
     </div>
@@ -60,6 +65,9 @@ import { readDetailIndex, loadDetailBlock } from './asset-details'
 import { createDetailController, type DetailStatus } from './detail-controller'
 import { decodeCloudPreview, type CloudDisplayData } from './preview-data'
 import { createCloudRenderer, type CloudViewState } from './renderer'
+import {createComparisonController} from './comparison-controller'
+import {comparableClouds} from './voxel-display'
+import {normalLabel} from './normal-display'
 import GeometrySummary from './GeometrySummary.vue'
 import MeasurementSummary from './MeasurementSummary.vue'
 import BoundarySummary from './BoundarySummary.vue'
@@ -76,7 +84,7 @@ import RoiVisibilityButton from './RoiVisibilityButton.vue'
 import {navigateTab} from './tab-navigation'
 import {coordinateRange,displayNumber,type CloudColorMode,type CoordinateRange, type scaleBar} from './view-presentation'
 
-const props = withDefaults(defineProps<{ payload: Record<string, unknown>; projectId: string; editRois?:RoiValue[]; selectedRoiId?:string; allowPick?:boolean; candidate?:number[];editArc?:ArcEdit;hiddenRoiIds?:ReadonlySet<string>;roiScope?:string;presentation?:'full'|'view'|'evidence'|'hidden' }>(),{presentation:'full'})
+const props = withDefaults(defineProps<{ payload: Record<string, unknown>; comparePayload?:Record<string,unknown>; projectId: string; editRois?:RoiValue[]; selectedRoiId?:string; allowPick?:boolean; candidate?:number[];editArc?:ArcEdit;hiddenRoiIds?:ReadonlySet<string>;roiScope?:string;presentation?:'full'|'view'|'evidence'|'hidden' }>(),{presentation:'full'})
 const viewerId=useId(),viewportVisible=computed(()=>props.presentation==='full'||props.presentation==='view')
 const emit=defineEmits<{'roi-change':[value:RoiValue];candidate:[value:{payload:Record<string,unknown>;xyz:number[]}];'feature-selection':[value:{payload:Record<string,unknown>;featureId:string;segmentId:string}];'arc-change':[value:{payload:Record<string,unknown>;key:string;values:ArcValues}]}>()
 const { t,te,locale } = useI18n({ useScope: 'local', messages: {
@@ -137,6 +145,18 @@ const debugItems=shallowRef<DebugEvidence[]>([]),selectedDebug=ref(''),debugErro
 const debugLayers=ref<DebugLayers>({grid:true,profiles:true,candidates:true,partition:false})
 const activeDebug=computed(()=>debugItems.value.find(d=>d.id===selectedDebug.value))
 const picked = ref<ReturnType<CloudDisplayData['point']> | null>(null)
+const showVoxel=ref(true),comparisonError=ref('')
+let comparisonController:ReturnType<typeof createComparisonController>|null=null
+let comparisonPolicy:Awaited<ReturnType<typeof readCloudCapabilities>>['renderer']=null
+let comparisonCount=0
+function syncComparison(){
+  const payload=props.comparePayload,policy=comparisonPolicy,main=props.payload
+  void comparisonController?.load(payload&&policy?async signal=>{
+    if(!comparableClouds(main,payload))throw new Error('cloud_preview_invalid')
+    return decodeCloudPreview(payload,policy,signal)
+  }:null)
+}
+function syncVoxel(){try{scene.value?.voxelCell(showVoxel.value?picked.value?.voxelCorners??null:null)}catch(e){comparisonError.value=e instanceof Error?e.message:'cloud_preview_invalid'}}
 const picking=ref(false),measurements=ref<MeasurementDisplay[]>([]),selectedMeasurement=ref('')
 const selectedPlane=ref(''),colorMode=ref<CloudColorMode>('original')
 const colorSummary=ref<ReturnType<typeof planeColorSummary>>(null)
@@ -159,7 +179,7 @@ const detailController=shallowRef<ReturnType<typeof createDetailController>|null
 const detailLabel=computed(()=>({overview:zh.value?'概览':'Overview',loading:zh.value?'加载原始点':'Loading original points',ready:zh.value?'当前视野全分辨率':'Full resolution in current view',limited:zh.value?'概览 · 视野超出容量或无点':'Overview: view exceeds capacity or is empty',error:zh.value?'细节加载失败':'Detail loading failed'})[detailStatus.value])
 function syncDetails(){detailController.value?.enable(showAssetDetails.value&&viewportVisible.value&&['original','coordinate-z'].includes(colorMode.value))}
 function releaseDebug(){for(const record of debugItems.value)record.dispose();debugItems.value=[];selectedDebug.value='';debugSelection.value=null;debugError.value=''}
-function release() { generation++; controller?.abort(); controller = null; detailController.value?.dispose();detailController.value=null;showAssetDetails.value=false;detailStatus.value='overview';detailCount.value=0;detailError.value='';scene.value?.dispose(); scene.value = null; data?.dispose(); data = null;releaseDebug(); picked.value = null;picking.value=false;measurements.value=[];selectedMeasurement.value='';selectedPlane.value='';colorMode.value='original';colorSummary.value=null;curves.value=[];selectedCurve.value='';selectedSegment.value='';curveColorMode.value='support' }
+function release() { generation++; comparisonController?.dispose();comparisonController=null;comparisonPolicy=null;comparisonError.value='';showVoxel.value=true;controller?.abort(); controller = null; detailController.value?.dispose();detailController.value=null;showAssetDetails.value=false;detailStatus.value='overview';detailCount.value=0;detailError.value='';scene.value?.dispose(); scene.value = null; data?.dispose(); data = null;releaseDebug(); picked.value = null;picking.value=false;measurements.value=[];selectedMeasurement.value='';selectedPlane.value='';colorMode.value='original';colorSummary.value=null;curves.value=[];selectedCurve.value='';selectedSegment.value='';curveColorMode.value='support' }
 async function load() {
   release(); const token = generation; controller = new AbortController(); const signal = controller.signal
   error.value = ''; loading.value = true; pan.value = false; orthographic.value = true; size.value = 2; axis.value = 'z'; viewScale.value=null;showEvidence.value=true;showAxes.value=false
@@ -195,6 +215,14 @@ async function load() {
       axis.value = view
     },viewportVisible.value,{range:appliedRange.value,coordinateColor:colorMode.value==='coordinate-z',scaleChanged:scale=>{if(token===generation&&!signal.aborted&&props.payload===payload)viewScale.value=scale}})
     scenePayload=payload
+    comparisonPolicy=policy
+    const rendererForComparison=scene.value
+    comparisonController=createComparisonController(value=>{
+      comparisonCount=value?.count??0
+      detailController.value?.changed()
+      rendererForComparison.comparison(value)
+    },message=>{if(token===generation&&!signal.aborted)comparisonError.value=message})
+    syncComparison()
     updateGeometry()
     if(body.value.asset_details){
       try{
@@ -205,7 +233,7 @@ async function load() {
         if(signal.aborted||token!==generation||props.payload!==payload||!scene.value)return
         const renderer=scene.value
         renderer.detailBounds(index.bounds)
-        const details=createDetailController(index,policy,decoded.count,
+        const details=createDetailController(index,policy,()=>decoded.count+comparisonCount,
           (block,abort)=>loadDetailBlock(index,block,decoded.origin,displayObject(body.value.color),policy,abort),
           {clear:renderer.detailClear,add:renderer.detailAdd,complete:renderer.detailComplete,visible:block=>renderer.detailVisible(block.bounds)},
           (state,count,message)=>{if(token===generation&&!signal.aborted){detailStatus.value=state;detailCount.value=count;detailError.value=message??''}})
@@ -218,11 +246,13 @@ async function load() {
       }catch(failure){if(token===generation&&!signal.aborted){detailStatus.value='error';detailError.value=failure instanceof Error?failure.message:'cloud_preview_invalid'}}
     }
   } catch (failure) {
-    if (token === generation && !signal.aborted) { scene.value?.dispose(); scene.value = null; data?.dispose(); data = null;releaseDebug(); error.value = failure instanceof Error ? failure.message : 'unavailable' }
+    if (token === generation && !signal.aborted) { release(); loading.value=false; error.value = failure instanceof Error ? failure.message : 'unavailable' }
   } finally { if (token === generation) loading.value = false }
 }
 onMounted(load)
 watch(() => [props.payload, props.projectId], load)
+watch(()=>props.comparePayload,syncComparison)
+watch([picked,showVoxel],syncVoxel)
 watch(()=>[props.roiScope,props.editRois,props.selectedRoiId,props.editArc,editMode.value,selectedMeasurement.value,selectedPlane.value,props.candidate,selectedCurve.value,selectedSegment.value,curveColorMode.value,picking.value,selectedDebug.value,debugLayers.value,debugSelection.value,selectedCurvePoint.value],updateGeometry,{deep:true})
 watch(()=>[selectedPlane.value,colorMode.value],updateColors)
 watch(()=>[showAssetDetails.value,viewportVisible.value,colorMode.value],syncDetails,{flush:'sync'})

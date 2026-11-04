@@ -291,9 +291,17 @@ def build_custom_node_catalog_document():
         definitions.append(
             dict(
                 node_type_id="custom.metrology3d." + key,
-                version="0.1.22"
+                version="0.1.23"
                 if key
-                in {"resample-cloud", "read-cloud", "save-cloud", "cloud-preview"}
+                in {
+                    "resample-cloud",
+                    "read-cloud",
+                    "save-cloud",
+                    "cloud-preview",
+                    "normalize-units",
+                    "transform-cloud",
+                    "export-cloud",
+                }
                 else "0.1.21"
                 if key == "denoise-cloud"
                 else "0.1.14"

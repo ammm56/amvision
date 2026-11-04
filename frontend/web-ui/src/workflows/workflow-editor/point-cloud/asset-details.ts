@@ -1,6 +1,8 @@
 import { apiRequest } from '@/shared/api/http-client'
 import { resourceVersionPath, type MeasurementResourceReference, type CloudRendererPolicy } from '../services/measurement-resource.service'
 import { object, count, vector, widths, scalar, decimal, D, reserveCpu, validatePolicy, type CloudDisplayData } from './preview-data'
+import {voxelGrid,voxelCorners,type VoxelGrid} from './voxel-display'
+import {normalNames,normalOrientation,normalPoint} from './normal-display'
 
 export interface DetailBounds { min: number[]; max: number[] }
 interface DetailField { name: string; dtype: string; components: number; offset: number }
@@ -11,6 +13,8 @@ export interface DetailIndex {
   vertex_kind: 'source' | 'generated'; bounds: DetailBounds; fields: DetailField[]
   logical_dtype: 'uint32' | 'uint64'; identity_dtype: 'uint32' | 'uint64'
   row_bytes: number; logical_offset: number; identity_offset: number; leaf_limit: number; blocks: DetailBlock[]
+  voxel?:{keys_offset:number;members_offset:number;aggregation:Record<string,unknown>;grid:VoxelGrid}|null
+  normal_info?:Record<string,unknown>|null;spatial?:unknown
 }
 
 function bounds(value: unknown): DetailBounds {
@@ -37,9 +41,20 @@ export function validateDetailIndex(value: unknown, source: MeasurementResourceR
     names.add(f.name); offset += width * components
   }
   const logicalType = n <= 2 ** 32 ? 'uint32' : 'uint64'
+  if(r.normal_info){
+    normalOrientation(r.normal_info,r.spatial)
+    const fields=r.fields.map(object),position=fields.find(f=>f.name==='positions')
+    for(const name of normalNames){const field=fields.find(f=>f.name===name);if(!field||field.dtype!==(name==='normals'?position?.dtype:'uint8')||field.components!==(name==='normals'?3:1))throw new Error('cloud_preview_invalid')}
+  }
   const identityCount = r.vertex_kind === 'source' ? count(r.source_point_count) : n
   const identityType = identityCount <= 2 ** 32 ? 'uint32' : 'uint64'
   const logicalWidth = widths[logicalType]!, identityWidth = widths[identityType]!
+  if(r.voxel!=null){
+    const v=object(r.voxel),method=object(v.aggregation),p=object(object(method.parameters).settings)
+    voxelGrid(v.grid)
+    if(r.vertex_kind!=='generated'||v.keys_offset!==offset||v.members_offset!==offset+24||method.method_id!=='resample-cloud'||method.method_version!==1||p.kind!=='voxel-centroid'||typeof p.frame_id!=='string'||!p.frame_id||!['m','mm','um'].includes(String(p.length_unit)))throw new Error('cloud_preview_invalid')
+    offset+=32
+  }
   const rowBytes = offset + logicalWidth + identityWidth
   if (r.logical_dtype !== logicalType || r.identity_dtype !== identityType || !names.has('positions')
     || r.logical_offset !== offset || r.identity_offset !== offset + logicalWidth || r.row_bytes !== rowBytes) throw new Error('cloud_preview_invalid')
@@ -81,6 +96,8 @@ export async function decodeDetailBlock(raw: ArrayBuffer, index: DetailIndex, bl
     if (range && range[0]!.gt(range[1]!)) throw new Error('cloud_preview_invalid')
     const positions = new Float32Array(block.count * 3), colors = new Float32Array(block.count * 3)
     const read = (f: DetailField, row: number, c = 0) => scalar(view, { dtype: f.dtype, offset: row * index.row_bytes + f.offset }, c)
+    const orientation=index.normal_info?normalOrientation(index.normal_info,index.spatial):null
+    const normalFields=new Map(index.fields.filter(f=>normalNames.includes(f.name as typeof normalNames[number])).map(f=>[f.name,f]))
     const low = [Infinity, Infinity, Infinity], high = [-Infinity, -Infinity, -Infinity]
     for (let i = 0; i < block.count; i++) {
       if (i % 4096 === 0) { await new Promise(resolve => setTimeout(resolve, 0)); signal.throwIfAborted() }
@@ -88,6 +105,8 @@ export async function decodeDetailBlock(raw: ArrayBuffer, index: DetailIndex, bl
       const logical = rowId(i, index.logical_offset, index.logical_dtype)
       if (logical >= BigInt(index.point_count) || identity >= BigInt(index.vertex_kind === 'source' ? index.source_point_count : index.point_count)
         || index.vertex_kind === 'generated' && identity !== logical) throw new Error('cloud_preview_invalid')
+      if(index.voxel){const members=view.getBigUint64(i*index.row_bytes+index.voxel.members_offset,true);if(members<1n||members>BigInt(index.source_point_count))throw new Error('cloud_preview_invalid')}
+      if(orientation)normalPoint((name,c=0)=>Number(read(normalFields.get(name)!,i,c)),position.dtype,orientation)
       for (let c = 0; c < 3; c++) {
         const value = Number(read(position, i, c)), relative = value - origin[c]!
         positions[i * 3 + c] = relative
@@ -105,7 +124,11 @@ export async function decodeDetailBlock(raw: ArrayBuffer, index: DetailIndex, bl
     return { positions, colors, count: block.count, origin, point(i) {
       if (disposed || !Number.isInteger(i) || i < 0 || i >= block.count) throw new Error('cloud_point_unavailable')
       const identity = rowId(i, index.identity_offset, index.identity_dtype).toString()
+      const v=index.voxel,key=v?[0,1,2].map(c=>view.getBigInt64(i*index.row_bytes+v.keys_offset+c*8,true).toString()):null
+      const grid=v?object(object(v.aggregation.parameters).settings):null
       return { sourceIndex: index.vertex_kind === 'source' ? identity : null, ...(index.vertex_kind === 'generated' ? { vertexIndex: identity } : {}),
+        ...(orientation?{normal:normalPoint((name,c=0)=>Number(read(normalFields.get(name)!,i,c)),position.dtype,orientation)}:{}),
+        ...(v?{voxelKey:key!,memberCount:view.getBigUint64(i*index.row_bytes+v.members_offset,true).toString(),voxelFrame:String(grid!.frame_id),voxelUnit:String(grid!.length_unit),voxelCorners:voxelCorners(v.grid,key!)}:{}),
         xyz: [0, 1, 2].map(c => Number(read(position, i, c))), scalar: color.mode === 'scalar' ? read(colorField!, i, component).toString() : null }
     }, dispose() { if (!disposed) { disposed = true; release() } } }
   } catch (error) { release(); throw error }

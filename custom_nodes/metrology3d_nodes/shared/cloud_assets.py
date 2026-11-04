@@ -98,6 +98,9 @@ def freeze_cloud_parent(runtime, reference):
         if reference.topology
         else None,
         "fields": [f.model_dump(mode="json") for f in reference.fields],
+        "normal_info": reference.normal_info.model_dump(mode="json")
+        if reference.normal_info
+        else None,
         "spatial": reference.spatial.model_dump(mode="json"),
         "source_metadata": reference.source_metadata.model_dump(mode="json")
         if reference.source_metadata
@@ -114,6 +117,21 @@ def freeze_cloud_parent(runtime, reference):
         "content_sha256": sha256(canonical_cloud_json(descriptor)).hexdigest(),
         "reference": None,
     }
+
+
+def _stored_field_names(reference, options):
+    """保留原字段别名，计算字段用明确规范名称，不伪造原始文件列。"""
+    if not options or reference.vertex_kind != "source":
+        return ()
+    existing = {m.target_name: m.source_names for m in options.field_mapping}
+    canonical = {"normals": ("nx", "ny", "nz")}
+    return tuple(
+        CloudSourceNames(
+            name=f.name,
+            source_names=existing.get(f.name, canonical.get(f.name, (f.name,))),
+        )
+        for f in reference.fields
+    )
 
 
 def _layout(reference):
@@ -336,6 +354,7 @@ def save_cloud(
                             source_dtype=index_dtype,
                             source=source,
                             aggregation=selected.voxel_aggregation,
+                            grid=selected.voxel_grid,
                         )
                         if selected.lineage_kind == "voxel-aggregate"
                         else AssetGeneratedLineage(
@@ -382,12 +401,7 @@ def save_cloud(
                     else True,
                 ),
                 blobs=tuple(blobs),
-                source_field_names=tuple(
-                    CloudSourceNames(name=m.target_name, source_names=m.source_names)
-                    for m in options.field_mapping
-                )
-                if options and selected.vertex_kind == "source"
-                else (),
+                source_field_names=_stored_field_names(selected, options),
                 parent_assets=retained,
                 point_count=selected.point_count,
                 source_metadata=selected.source_metadata,
@@ -397,6 +411,7 @@ def save_cloud(
                 lineage=lineage,
                 vertex_kind=selected.vertex_kind,
                 topology=selected.topology,
+                normal_info=selected.normal_info,
             )
             content = MeasurementResourceContent(kind="point-cloud", point_cloud=cloud)
         # 资产原样复制保留已存证据；新增证据必须先通过完整支持身份校验。

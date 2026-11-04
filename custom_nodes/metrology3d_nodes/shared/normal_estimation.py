@@ -1,22 +1,10 @@
 """SciPy 精确邻域与 NumPy PCA 法向内核；不注册未完成的公开节点。"""
 
-from enum import IntEnum
-
 import numpy as np
 from scipy.spatial import cKDTree
 
 from backend.service.application.errors import InvalidRequestError
-
-
-class NormalReason(IntEnum):
-    """固定逐点原因；有效轴和有符号方向分别声明。"""
-
-    VALID = 0
-    INSUFFICIENT_SUPPORT = 1
-    DEGENERATE_SUPPORT = 2
-    NUMERIC_FAILURE = 3
-    QUALITY_FAILED = 4
-    ORIENTATION_AMBIGUOUS = 5
+from backend.contracts.workflows.cloud_normal_info import NormalReason
 
 
 def _unit_vectors(values):
