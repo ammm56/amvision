@@ -121,13 +121,21 @@ class _FakeProcess:
         self.kill_called = True
 
 
+@pytest.mark.parametrize("module", ["uvicorn", "backend.service.infrastructure.http.reload_server"])
 def test_takeover_terminates_only_verified_older_backend_process_tree(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    module: str,
 ) -> None:
     """验证较新的标准 backend-service 能接管完整旧进程树。"""
 
     processes, owner_metadata = _build_process_tree(root_dir=tmp_path)
+    for process_id in (100, 200):
+        processes[process_id]._command_line = [
+            "D:/python/python.exe", "backend/runtime/processes/bootstrap.py",
+            "--python", "-m", module, "backend.service.api.app:app", "--reload",
+        ]
+    owner_metadata["service_root_process_command_line"] = processes[100].cmdline()
     _install_fake_processes(monkeypatch, processes=processes, current_process_id=201)
 
     result = takeover_module.take_over_backend_service_owner(
@@ -141,6 +149,16 @@ def test_takeover_terminates_only_verified_older_backend_process_tree(
     assert all(processes[process_id].kill_called for process_id in (100, 101, 102))
     assert not processes[200].terminate_called
     assert not processes[201].terminate_called
+
+
+@pytest.mark.parametrize("command", [
+    ["python", "-m", "backend.service.infrastructure.http.reload_server", "other.app:app"],
+    ["python", "-m", "other.reload_server", "backend.service.api.app:app"],
+    ["python", "-m", "backend.service.infrastructure.http.reload_server.fake", "backend.service.api.app:app"],
+])
+def test_backend_entry_rejects_unrelated_reload_commands(command: list[str]) -> None:
+    """支持开发热重载不能放宽为任意模块或其他项目的 ASGI 服务。"""
+    assert not takeover_module._is_backend_service_command_line(command)
 
 
 @pytest.mark.parametrize(

@@ -122,6 +122,8 @@ python -m backend.workers.supervisor
 
 同一项目目录中再次执行 backend、daemon 或 Worker Supervisor 的标准启动命令时，新进程接替经身份校验的旧同类服务。daemon 与 Worker Supervisor 先请求旧进程正常退出；不能响应的旧版本会在核对实际锁句柄、PID/创建时间、模块入口、工作目录及解释器后结束。旧进程和子进程全部退出后才启动新一代，不删除锁文件绕过唯一性。Worker 应整体重新执行 Supervisor 命令，单个 Profile 不能独立抢占；正式发行则重新执行 full 启动脚本接替整套服务。发行目录需重新 assemble 后使用更新后的启动逻辑。
 
+backend 占用者识别同时支持 `uvicorn` 和 Windows 开发热重载入口 `backend.service.infrastructure.http.reload_server`，且都必须指向 `backend.service.api.app:app`。升级前已运行的进程若缺少可验证的归属记录，应先完整停止原启动命令再启动；不能删除 Broker 锁或修改其身份字段绕过检查。
+
 不要直接执行 `python -m backend.workers.main`。该模块是单个 Profile 的内部入口，必须由 Supervisor 注入 topology id、generation、epoch、worker instance 和 profile manifest。
 
 ### 6. 启动 Vue 前端

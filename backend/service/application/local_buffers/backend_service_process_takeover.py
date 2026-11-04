@@ -18,6 +18,7 @@ from backend.service.application.errors import ServiceConfigurationError
 
 
 _BACKEND_APP_TARGET = "backend.service.api.app:app"
+_BACKEND_MODULES = frozenset({"uvicorn", "backend.service.infrastructure.http.reload_server"})
 _BACKEND_OWNER_KIND = "amvision-backend-service"
 _BROKER_LOCK_FILE_NAME = ".local-buffer-broker.lock"
 _OWNER_SCHEMA_VERSION = 3
@@ -77,7 +78,7 @@ def take_over_backend_service_owner(
     """校验并结束持有 broker 根目录的旧 backend-service 进程树。
 
     只有占用者与接管者都属于同一工作目录、同一 Python 解释器并使用项目标准
-    uvicorn app target 启动时才允许接管。锁文件中的 PID、内核出生标识、父子关系或
+    HTTP 入口和 app target 启动时才允许接管。锁文件中的 PID、内核出生标识、父子关系或
     命令任一不一致都会拒绝结束进程。
 
     参数：
@@ -307,7 +308,7 @@ def _try_load_verified_process(
 
 
 def _find_backend_service_root(process: psutil.Process) -> psutil.Process | None:
-    """从当前进程向上查找项目标准 uvicorn 根进程。"""
+    """从当前进程向上查找标准 HTTP 服务或开发热重载根进程。"""
 
     candidates = [process]
     try:
@@ -324,13 +325,13 @@ def _find_backend_service_root(process: psutil.Process) -> psutil.Process | None
 
 
 def _is_backend_service_command_line(command_line: Sequence[str]) -> bool:
-    """判断命令是否为项目支持的 python -m uvicorn backend-service 入口。"""
+    """识别正式服务和开发热重载入口，二者都必须使用项目 app target。"""
 
     normalized = [str(item).strip() for item in command_line]
     if _BACKEND_APP_TARGET not in normalized:
         return False
     for index, item in enumerate(normalized[:-1]):
-        if item == "-m" and normalized[index + 1].lower() == "uvicorn":
+        if item == "-m" and normalized[index + 1] in _BACKEND_MODULES:
             return True
     return False
 
