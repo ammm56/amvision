@@ -3,8 +3,6 @@
 import argparse
 from pathlib import Path
 
-import uvicorn
-
 from tests.integration.metrology3d.published_support import published_system
 from tests.integration.metrology3d.test_boundary_published import boundary_documents
 from tests.integration.metrology3d.test_file_read import ply
@@ -28,6 +26,7 @@ def main():
             "edge-pair",
             "hole",
             "dimensions",
+            "methods",
             "datum-extension",
             "roi-union",
             "visible-envelope",
@@ -57,11 +56,35 @@ def main():
         policy = representative_policy()
     with published_system(root, point_cloud_policy=policy) as system:
         kinds = (
-            ("extents", "edge-pair", "hole")
+            (
+                "three-planes",
+                "statistic-mean",
+                "statistic-median",
+                "statistic-quantile",
+                "denoise-statistical",
+                "denoise-radius",
+            )
+            if args.recipe == "methods"
+            else ("extents", "edge-pair", "hole")
             if args.recipe == "dimensions"
             else (args.recipe,)
         )
         for kind in () if args.recipe == "empty" else kinds:
+            if args.recipe == "methods":
+                from tests.integration.metrology3d.method_documents import (
+                    method_documents,
+                )
+
+                documents, points = method_documents(kind)
+                body = "".join(
+                    " ".join(format(float(v), ".9g") for v in row) + "\n"
+                    for row in points
+                ).encode()
+                path = root / f"{kind}.ply"
+                path.write_bytes(ply(body, count=len(points)))
+                version = system.publish(documents=documents)
+                print(f"Published {version}; input={path}", flush=True)
+                continue
             if kind == "workpiece-delivery":
                 from scripts.metrology_workpiece import build_documents
 
@@ -159,7 +182,9 @@ def main():
             version = system.publish(documents=documents)
             print(f"Published {version}; input={path}", flush=True)
         # 正式 lifespan 已由 published_system 进入一次，HTTP 服务器共享同一实例。
-        uvicorn.run(system.client.app, host="127.0.0.1", port=args.port, lifespan="off")
+        from tests.integration.metrology3d.package_acceptance import serve
+
+        serve(system, root, args.port)
 
 
 if __name__ == "__main__":

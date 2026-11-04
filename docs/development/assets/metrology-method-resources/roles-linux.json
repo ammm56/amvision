@@ -1,0 +1,235 @@
+{
+  "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "point_count": 14745099,
+  "input_bytes": 176941188,
+  "calls": [
+    {
+      "run_id": "workflow-run-169d4dc0c39f46b085092e2782592862",
+      "state": "ok",
+      "measurements": 50,
+      "matches_reference": true,
+      "saved_matches_reply": true,
+      "active_leases": 0,
+      "active_permits": 0,
+      "client_exited": true
+    },
+    {
+      "run_id": "workflow-run-41a5371681ae4751a6047a77a67d48d1",
+      "state": "ok",
+      "measurements": 50,
+      "matches_reference": true,
+      "saved_matches_reply": true,
+      "active_leases": 0,
+      "active_permits": 0,
+      "client_exited": true
+    }
+  ],
+  "sampler_seconds": 0.25,
+  "numerical_gate": "absolute 1e-7 mm",
+  "timing_acceptance": false,
+  "roles": {
+    "backend-and-orchestrator": {
+      "identity": {
+        "pid": 387,
+        "create_time": 1793761582.03,
+        "birth_identity": "linux:1f0d1da3-5963-476e-90cf-1ce025fe2fc1:149454103"
+      },
+      "samples": 208,
+      "peak": {
+        "rss_bytes": 524591104,
+        "private_bytes": 524591104,
+        "threads": 89,
+        "handles": 48
+      },
+      "last": {
+        "rss_bytes": 407547904,
+        "private_bytes": 407547904,
+        "threads": 61,
+        "handles": 21
+      }
+    },
+    "workflow-worker": {
+      "identity": {
+        "pid": 479,
+        "create_time": 1793761640.64,
+        "birth_identity": "linux:1f0d1da3-5963-476e-90cf-1ce025fe2fc1:149459964"
+      },
+      "samples": 145,
+      "peak": {
+        "rss_bytes": 769130496,
+        "private_bytes": 769130496,
+        "threads": 6,
+        "handles": 29
+      },
+      "last": {
+        "rss_bytes": 655347712,
+        "private_bytes": 655347712,
+        "threads": 6,
+        "handles": 29
+      }
+    },
+    "broker": {
+      "identity": {
+        "pid": 455,
+        "create_time": 1793761639.33,
+        "birth_identity": "linux:1f0d1da3-5963-476e-90cf-1ce025fe2fc1:149459833"
+      },
+      "samples": 152,
+      "peak": {
+        "rss_bytes": 36306944,
+        "private_bytes": 36306944,
+        "threads": 1,
+        "handles": 16
+      },
+      "last": {
+        "rss_bytes": 36171776,
+        "private_bytes": 36171776,
+        "threads": 1,
+        "handles": 7
+      }
+    },
+    "external-client-0": {
+      "identity": {
+        "pid": 488,
+        "create_time": 1793761654.7,
+        "birth_identity": "linux:1f0d1da3-5963-476e-90cf-1ce025fe2fc1:149461370"
+      },
+      "samples": 45,
+      "peak": {
+        "rss_bytes": 101326848,
+        "private_bytes": 101326848,
+        "threads": 1,
+        "handles": 14
+      },
+      "last": {
+        "rss_bytes": 97071104,
+        "private_bytes": 97071104,
+        "threads": 1,
+        "handles": 8
+      }
+    },
+    "external-client-1": {
+      "identity": {
+        "pid": 496,
+        "create_time": 1793761667.21,
+        "birth_identity": "linux:1f0d1da3-5963-476e-90cf-1ce025fe2fc1:149462521"
+      },
+      "samples": 43,
+      "peak": {
+        "rss_bytes": 97107968,
+        "private_bytes": 97107968,
+        "threads": 1,
+        "handles": 8
+      },
+      "last": {
+        "rss_bytes": 97107968,
+        "private_bytes": 97107968,
+        "threads": 1,
+        "handles": 8
+      }
+    }
+  },
+  "service_support": {
+    "service-support-448-linux:1f0d1da3-5963-476e-90cf-1ce025fe2fc1:149455487": {
+      "identity": {
+        "pid": 448,
+        "birth_identity": "linux:1f0d1da3-5963-476e-90cf-1ce025fe2fc1:149455487"
+      },
+      "samples": 208,
+      "peak": {
+        "rss_bytes": 12914688,
+        "private_bytes": 12914688,
+        "threads": 1,
+        "handles": 4
+      },
+      "last": {
+        "rss_bytes": 12914688,
+        "private_bytes": 12914688,
+        "threads": 1,
+        "handles": 4
+      }
+    },
+    "service-support-456-linux:1f0d1da3-5963-476e-90cf-1ce025fe2fc1:149459885": {
+      "identity": {
+        "pid": 456,
+        "birth_identity": "linux:1f0d1da3-5963-476e-90cf-1ce025fe2fc1:149459885"
+      },
+      "samples": 150,
+      "peak": {
+        "rss_bytes": 17846272,
+        "private_bytes": 17846272,
+        "threads": 1,
+        "handles": 3
+      },
+      "last": {
+        "rss_bytes": 17846272,
+        "private_bytes": 17846272,
+        "threads": 1,
+        "handles": 3
+      }
+    },
+    "service-support-480-linux:1f0d1da3-5963-476e-90cf-1ce025fe2fc1:149460286": {
+      "identity": {
+        "pid": 480,
+        "birth_identity": "linux:1f0d1da3-5963-476e-90cf-1ce025fe2fc1:149460286"
+      },
+      "samples": 132,
+      "peak": {
+        "rss_bytes": 17838080,
+        "private_bytes": 17838080,
+        "threads": 1,
+        "handles": 3
+      },
+      "last": {
+        "rss_bytes": 17838080,
+        "private_bytes": 17838080,
+        "threads": 1,
+        "handles": 3
+      }
+    }
+  },
+  "resource_summary": {
+    "sample_count": 208,
+    "warmup_seconds": 0.0,
+    "growth": {
+      "rss_bytes": 1011560448,
+      "private_bytes": 1011560448,
+      "handles": 98,
+      "threads": 40
+    },
+    "maximum_window_growth": {
+      "rss_bytes": 1092046848,
+      "private_bytes": 1092046848,
+      "handles": 98,
+      "threads": 40
+    },
+    "peak": {
+      "rss_bytes": 1474707456,
+      "private_bytes": 1474707456,
+      "handles": 111,
+      "threads": 100
+    },
+    "limits": {},
+    "discarded_count": 0,
+    "discarded_details": [],
+    "measurement_duration": null,
+    "minimum_measure_seconds": null,
+    "coverage": null,
+    "maximum_gap_seconds": 0.3413898728322238,
+    "cpu": {
+      "scope": "sampled-owned-processes; 100% = one logical core",
+      "observed_seconds": 52.26153077185154,
+      "sampled_cpu_seconds": 27.870000000000008,
+      "mean_percent_one_core": 53.32794426107971,
+      "peak_percent_one_core": 123.06485289009737
+    },
+    "errors": [],
+    "error_details": [],
+    "error_count": 0,
+    "failures": [],
+    "status": "observed"
+  },
+  "stopped_and_reclaimed": true,
+  "browser": "separate A08 viewer ledger; not part of this process tree",
+  "private_memory_semantics": "Windows private commit; Linux RSS fallback, not USS"
+}

@@ -1,0 +1,177 @@
+{
+  "platform": "Windows-11-10.0.26300-SP0",
+  "point_count": 14745099,
+  "input_bytes": 176941188,
+  "calls": [
+    {
+      "run_id": "workflow-run-8eb4495c584c480880bd315833507e38",
+      "state": "ok",
+      "measurements": 50,
+      "matches_reference": true,
+      "saved_matches_reply": true,
+      "active_leases": 0,
+      "active_permits": 0,
+      "client_exited": true
+    },
+    {
+      "run_id": "workflow-run-cf1e9e8dc78e4837ab367b7d4d9ec9bd",
+      "state": "ok",
+      "measurements": 50,
+      "matches_reference": true,
+      "saved_matches_reply": true,
+      "active_leases": 0,
+      "active_permits": 0,
+      "client_exited": true
+    }
+  ],
+  "sampler_seconds": 0.25,
+  "numerical_gate": "absolute 1e-7 mm",
+  "timing_acceptance": false,
+  "roles": {
+    "backend-and-orchestrator": {
+      "identity": {
+        "pid": 18468,
+        "create_time": 1793761463.6547945,
+        "birth_identity": "win32:0x1.abaa82de9e827p+30"
+      },
+      "samples": 91,
+      "peak": {
+        "rss_bytes": 420581376,
+        "private_bytes": 1702469632,
+        "threads": 78,
+        "handles": 932
+      },
+      "last": {
+        "rss_bytes": 420524032,
+        "private_bytes": 1702330368,
+        "threads": 75,
+        "handles": 913
+      }
+    },
+    "workflow-worker": {
+      "identity": {
+        "pid": 39776,
+        "create_time": 1793761493.381825,
+        "birth_identity": "win32:0x1.abaa835586fd2p+30"
+      },
+      "samples": 79,
+      "peak": {
+        "rss_bytes": 746639360,
+        "private_bytes": 607916032,
+        "threads": 12,
+        "handles": 575
+      },
+      "last": {
+        "rss_bytes": 550432768,
+        "private_bytes": 411037696,
+        "threads": 12,
+        "handles": 575
+      }
+    },
+    "broker": {
+      "identity": {
+        "pid": 52268,
+        "create_time": 1793761491.7562728,
+        "birth_identity": "win32:0x1.abaa834f066c6p+30"
+      },
+      "samples": 85,
+      "peak": {
+        "rss_bytes": 40960000,
+        "private_bytes": 28327936,
+        "threads": 4,
+        "handles": 210
+      },
+      "last": {
+        "rss_bytes": 40960000,
+        "private_bytes": 28327936,
+        "threads": 4,
+        "handles": 210
+      }
+    },
+    "external-client-0": {
+      "identity": {
+        "pid": 19588,
+        "create_time": 1793761497.1822863,
+        "birth_identity": "win32:0x1.abaa8364baa94p+30"
+      },
+      "samples": 34,
+      "peak": {
+        "rss_bytes": 247472128,
+        "private_bytes": 84971520,
+        "threads": 7,
+        "handles": 247
+      },
+      "last": {
+        "rss_bytes": 97259520,
+        "private_bytes": 80498688,
+        "threads": 7,
+        "handles": 231
+      }
+    },
+    "external-client-1": {
+      "identity": {
+        "pid": 23068,
+        "create_time": 1793761509.1882632,
+        "birth_identity": "win32:0x1.abaa8394c0c81p+30"
+      },
+      "samples": 33,
+      "peak": {
+        "rss_bytes": 96768000,
+        "private_bytes": 79978496,
+        "threads": 7,
+        "handles": 239
+      },
+      "last": {
+        "rss_bytes": 96768000,
+        "private_bytes": 79978496,
+        "threads": 7,
+        "handles": 231
+      }
+    }
+  },
+  "service_support": {},
+  "resource_summary": {
+    "sample_count": 91,
+    "warmup_seconds": 0.0,
+    "growth": {
+      "rss_bytes": 746635264,
+      "private_bytes": 576991232,
+      "handles": 1244,
+      "threads": 53
+    },
+    "maximum_window_growth": {
+      "rss_bytes": 882622464,
+      "private_bytes": 712536064,
+      "handles": 1244,
+      "threads": 53
+    },
+    "peak": {
+      "rss_bytes": 1304944640,
+      "private_bytes": 2418692096,
+      "handles": 1948,
+      "threads": 101
+    },
+    "limits": {},
+    "discarded_count": 0,
+    "discarded_details": [],
+    "measurement_duration": null,
+    "minimum_measure_seconds": null,
+    "coverage": null,
+    "maximum_gap_seconds": 0.4073942999821156,
+    "cpu": {
+      "scope": "sampled-owned-processes; 100% = one logical core",
+      "observed_seconds": 30.512748799985275,
+      "sampled_cpu_seconds": 38.09375,
+      "mean_percent_one_core": 124.8453564433316,
+      "peak_percent_one_core": 167.38687021731633
+    },
+    "errors": [],
+    "error_details": [],
+    "error_count": 0,
+    "failures": [],
+    "status": "observed"
+  },
+  "stopped_and_reclaimed": true,
+  "browser": "separate A08 viewer ledger; not part of this process tree",
+  "private_memory_semantics": "Windows private commit; Linux RSS fallback, not USS"
+}

@@ -24,6 +24,23 @@ from custom_nodes.metrology3d_nodes.shared.filter_valid import filter_valid
 from custom_nodes.metrology3d_nodes.shared.preview import build_cloud_preview
 
 
+def denoise(request):
+    """显式去噪输出互补子集，不在读取或测量节点中偷偷改变输入。"""
+    from backend.contracts.workflows.cloud_preprocess import DenoiseCloudParameters
+    from custom_nodes.metrology3d_nodes.shared.denoise import denoise_cloud
+
+    p = DenoiseCloudParameters.model_validate(request.parameters)
+    env = require_node_runtime(request)
+    kept, removed, summary = denoise_cloud(
+        env.runtime, cloud_input(request, env.runtime), p, cancel=env.cancel
+    )
+    return {
+        "cloud": kept.model_dump(mode="json"),
+        "removed": removed.model_dump(mode="json"),
+        "summary": build_value_payload(summary),
+    }
+
+
 def read(request):
     """文件与资产使用相同运行引用，禁止两种来源同时输入。"""
     p = ReadCloudParameters.model_validate(request.parameters)

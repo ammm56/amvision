@@ -11,6 +11,7 @@ from backend.contracts.workflows.point_cloud_runtime import (
     FilterCloudValid,
 )
 from backend.contracts.workflows.point_cloud_preview import CloudPreviewOptions
+from backend.contracts.workflows.cloud_preprocess import DenoiseCloudParameters
 from backend.contracts.workflows.metrology import ResourceReference
 from backend.contracts.workflows.workflow_graph import (
     WorkflowPayloadContract,
@@ -231,6 +232,14 @@ def build_custom_node_catalog_document():
             [cloud],
         ),
         (
+            "denoise-cloud",
+            "Denoise Cloud",
+            "metrology3d.data.preprocess",
+            DenoiseCloudParameters,
+            [cloud],
+            [cloud, port("removed", "point-cloud-ref.v1"), port("summary", "value.v1")],
+        ),
+        (
             "filter-valid",
             "Filter Valid",
             "metrology3d.data.preprocess",
@@ -271,7 +280,9 @@ def build_custom_node_catalog_document():
         definitions.append(
             dict(
                 node_type_id="custom.metrology3d." + key,
-                version="0.1.14"
+                version="0.1.21"
+                if key == "denoise-cloud"
+                else "0.1.14"
                 if key in {"extract-boundary", "cloud-preview"}
                 else "0.1.13"
                 if key

@@ -269,17 +269,8 @@ def test_roi_conflicting_missing_and_invalid_dependencies(tmp_path):
         assert not get_or_create_workflow_resource_scope(metadata).close()
 
 
-def test_three_datum_ports_preserve_identity_and_analytic_origin(tmp_path):
-    """三条真实特征边进入 multiple 端口，原点真值为 (1,2,3)。"""
-    service = create_resource_service(tmp_path)
-    configured = execution_policy()
-    metadata = dict(project_id="test", workflow_run_id="three-datums")
-    scope = get_or_create_workflow_resource_scope(metadata)
-    context = WorkflowServiceNodeRuntimeContext(
-        session_factory=None,
-        dataset_storage=service.storage,
-        point_cloud_policy=configured,
-    )
+def three_datum_graph(*, preview=False):
+    """页面和解析真值共用三平面接线，不替换正式节点处理器。"""
     primary = box()
     primary["geometry"].update(center=[5.5, 5.5, 3], size=[1, 1, 1])
     settings = frame_parameters().model_dump(mode="json")
@@ -292,7 +283,9 @@ def test_three_datum_ports_preserve_identity_and_analytic_origin(tmp_path):
     settings["quality_policy"]["rules"].append(
         dict(item_id="origin_condition", unit="1", upper=2)
     )
-    document = geometry_graph(primary, frame=settings).model_dump(mode="json")
+    document = geometry_graph(primary, frame=settings, preview=preview).model_dump(
+        mode="json"
+    )
     for name, center, normal in (
         ("secondary", [5.5, 2, 5.5], [0, 1, 0]),
         ("tertiary", [1, 5.5, 5.5], [1, 0, 0]),
@@ -337,6 +330,22 @@ def test_three_datum_ports_preserve_identity_and_analytic_origin(tmp_path):
         + [(x, 2, z) for x in (5, 6) for z in (5, 6)]
         + [(1, y, z) for y in (5, 6) for z in (5, 6)]
     )
+    return WorkflowGraphTemplate.model_validate(document), points
+
+
+def test_three_datum_ports_preserve_identity_and_analytic_origin(tmp_path):
+    """三条真实特征边进入 multiple 端口，原点真值为 (1,2,3)。"""
+    service = create_resource_service(tmp_path)
+    configured = execution_policy()
+    metadata = dict(project_id="test", workflow_run_id="three-datums")
+    scope = get_or_create_workflow_resource_scope(metadata)
+    context = WorkflowServiceNodeRuntimeContext(
+        session_factory=None,
+        dataset_storage=service.storage,
+        point_cloud_policy=configured,
+    )
+    graph, points = three_datum_graph()
+    document = graph.model_dump(mode="json")
     file = publish(
         service.storage,
         ply(("".join(f"{x} {y} {z}\n" for x, y, z in points)).encode(), count=12),

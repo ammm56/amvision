@@ -35,6 +35,7 @@ from backend.contracts.workflows.boundary3d import (
     BoundarySelection,
 )
 from backend.contracts.workflows.boundary3d_resolution import BoundaryResolution
+from backend.contracts.workflows.cloud_preprocess import DenoiseCloudParameters
 
 
 class NormalizeCloudUnits(Contract):
@@ -149,6 +150,16 @@ class FilterCloudMethod(Contract):
     parameters_sha256: Sha256
 
 
+class DenoiseCloudMethod(Contract):
+    """实际去噪方法及保留/剔除分支，不将剔除云误认为去噪结果。"""
+
+    method_id: Literal["denoise-cloud"]
+    method_version: Annotated[int, Field(strict=True, ge=1, le=1)]
+    parameters: DenoiseCloudParameters
+    parameters_sha256: Sha256
+    selection: Literal["kept", "removed"]
+
+
 class CropCloudMethod(Contract):
     """闭边界裁剪及全部 ROI 参数的不可变方法身份。"""
 
@@ -208,6 +219,7 @@ class BoundarySelectionMethod(Contract):
 CloudMethod = Annotated[
     NormalizeCloudMethod
     | FilterCloudMethod
+    | DenoiseCloudMethod
     | CropCloudMethod
     | PlaneSupportMethod
     | TransformCloudMethod

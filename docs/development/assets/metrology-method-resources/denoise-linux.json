@@ -1,0 +1,37 @@
+{
+  "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "points": 14745099,
+  "methods": [
+    {
+      "settings": {
+        "kind": "radius",
+        "radius": 0.1,
+        "min_neighbors": 3
+      },
+      "kept": 14740747,
+      "removed": 4352,
+      "seconds": 37.31867614109069,
+      "independent_queries": 6,
+      "summary": {
+        "min_neighbors": 3,
+        "radius": 0.1
+      }
+    },
+    {
+      "settings": {
+        "kind": "statistical",
+        "neighbors": 8,
+        "std_ratio": 2
+      },
+      "kept": 14627589,
+      "removed": 117510,
+      "seconds": 18.284774352097884,
+      "independent_queries": 6,
+      "summary": {
+        "mean_distance": 0.03806400080198057,
+        "population_std": 0.006902447369154613,
+        "distance_threshold": 0.0518688955402898
+      }
+    }
+  ]
+}

@@ -3,11 +3,12 @@ import {object} from './preview-data'
 export interface QueryDisplay {kind:'configured'|'pose-uv';poseId:string|null;frameId:string|null;uv:number[]|null;position:number[]|null;direction:number[]|null;reason:string|null}
 const vector=(v:unknown,n=3):v is number[]=>Array.isArray(v)&&v.length===n&&v.every(x=>typeof x==='number'&&Number.isFinite(x))
 export function queryDisplay(item:Record<string,unknown>,payload:Record<string,unknown>):QueryDisplay|null{
-  const method=object(item.method),p=object(method.parameters),s=item.kind==='height-query'?p:object(p.mode),q=object(s.query)
+  const method=object(item.method),p=object(method.parameters),s=item.kind==='height-query'?p:object(p.mode)
   if(s.kind==='roi-statistic'){
     if(method.query_resolution!==null)throw new Error('cloud_preview_invalid')
     return null
   }
+  const q=object(s.query)
   const r=object(method.query_resolution),line=r.line===null?null:object(r.line)
   if(line&&(!vector(line.query_position)||!vector(line.direction)||Math.abs(line.direction.reduce((sum,x)=>sum+x*x,0)-1)>1e-8))throw new Error('cloud_preview_invalid')
   if(q.kind==='configured'){

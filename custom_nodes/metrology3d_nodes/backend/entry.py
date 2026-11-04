@@ -10,6 +10,7 @@ HANDLERS = {
     "read-cloud": handlers.read,
     "normalize-units": handlers.normalize,
     "filter-valid": handlers.filter_points,
+    "denoise-cloud": handlers.denoise,
     "cloud-preview": handlers.preview,
     "save-cloud": handlers.save,
     "export-cloud": handlers.export,

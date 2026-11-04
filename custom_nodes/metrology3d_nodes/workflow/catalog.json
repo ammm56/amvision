@@ -636,6 +636,7 @@
                     "discriminator": {
                       "mapping": {
                         "crop-roi": "#/$defs/CropCloudMethod",
+                        "denoise-cloud": "#/$defs/DenoiseCloudMethod",
                         "extract-boundary": "#/$defs/BoundaryCloudMethod",
                         "filter-valid": "#/$defs/FilterCloudMethod",
                         "fit-plane-support": "#/$defs/PlaneSupportMethod",
@@ -806,6 +807,124 @@
                           "parameters_sha256"
                         ],
                         "title": "FilterCloudMethod",
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "description": "实际去噪方法及保留/剔除分支，不将剔除云误认为去噪结果。",
+                        "properties": {
+                          "method_id": {
+                            "const": "denoise-cloud",
+                            "title": "Method Id",
+                            "type": "string"
+                          },
+                          "method_version": {
+                            "maximum": 1,
+                            "minimum": 1,
+                            "title": "Method Version",
+                            "type": "integer"
+                          },
+                          "parameters": {
+                            "additionalProperties": false,
+                            "description": "距离沿输入已确认的物理单位，不隐式归一或设置工件默认值。",
+                            "properties": {
+                              "settings": {
+                                "discriminator": {
+                                  "mapping": {
+                                    "radius": "#/$defs/RadiusDenoise",
+                                    "statistical": "#/$defs/StatisticalDenoise"
+                                  },
+                                  "propertyName": "kind"
+                                },
+                                "oneOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "description": "K 个其他点的平均距离，按全云均值加总体标准差倍数保留。",
+                                    "properties": {
+                                      "kind": {
+                                        "const": "statistical",
+                                        "title": "Kind",
+                                        "type": "string"
+                                      },
+                                      "neighbors": {
+                                        "minimum": 1,
+                                        "title": "Neighbors",
+                                        "type": "integer"
+                                      },
+                                      "std_ratio": {
+                                        "exclusiveMinimum": 0,
+                                        "title": "Std Ratio",
+                                        "type": "number"
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "neighbors",
+                                      "std_ratio"
+                                    ],
+                                    "title": "StatisticalDenoise",
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "description": "闭球内其他点数量，不把查询点自身算作一个邻居。",
+                                    "properties": {
+                                      "kind": {
+                                        "const": "radius",
+                                        "title": "Kind",
+                                        "type": "string"
+                                      },
+                                      "radius": {
+                                        "exclusiveMinimum": 0,
+                                        "title": "Radius",
+                                        "type": "number"
+                                      },
+                                      "min_neighbors": {
+                                        "minimum": 1,
+                                        "title": "Min Neighbors",
+                                        "type": "integer"
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "radius",
+                                      "min_neighbors"
+                                    ],
+                                    "title": "RadiusDenoise",
+                                    "type": "object"
+                                  }
+                                ],
+                                "title": "Settings"
+                              }
+                            },
+                            "required": [
+                              "settings"
+                            ],
+                            "title": "DenoiseCloudParameters",
+                            "type": "object"
+                          },
+                          "parameters_sha256": {
+                            "pattern": "^[0-9a-f]{64}$",
+                            "title": "Parameters Sha256",
+                            "type": "string"
+                          },
+                          "selection": {
+                            "enum": [
+                              "kept",
+                              "removed"
+                            ],
+                            "title": "Selection",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "method_id",
+                          "method_version",
+                          "parameters",
+                          "parameters_sha256",
+                          "selection"
+                        ],
+                        "title": "DenoiseCloudMethod",
                         "type": "object"
                       },
                       {
@@ -17381,6 +17500,7 @@
                                   "discriminator": {
                                     "mapping": {
                                       "crop-roi": "#/$defs/CropCloudMethod",
+                                      "denoise-cloud": "#/$defs/DenoiseCloudMethod",
                                       "extract-boundary": "#/$defs/BoundaryCloudMethod",
                                       "filter-valid": "#/$defs/FilterCloudMethod",
                                       "fit-plane-support": "#/$defs/PlaneSupportMethod",
@@ -17551,6 +17671,124 @@
                                         "parameters_sha256"
                                       ],
                                       "title": "FilterCloudMethod",
+                                      "type": "object"
+                                    },
+                                    {
+                                      "additionalProperties": false,
+                                      "description": "实际去噪方法及保留/剔除分支，不将剔除云误认为去噪结果。",
+                                      "properties": {
+                                        "method_id": {
+                                          "const": "denoise-cloud",
+                                          "title": "Method Id",
+                                          "type": "string"
+                                        },
+                                        "method_version": {
+                                          "maximum": 1,
+                                          "minimum": 1,
+                                          "title": "Method Version",
+                                          "type": "integer"
+                                        },
+                                        "parameters": {
+                                          "additionalProperties": false,
+                                          "description": "距离沿输入已确认的物理单位，不隐式归一或设置工件默认值。",
+                                          "properties": {
+                                            "settings": {
+                                              "discriminator": {
+                                                "mapping": {
+                                                  "radius": "#/$defs/RadiusDenoise",
+                                                  "statistical": "#/$defs/StatisticalDenoise"
+                                                },
+                                                "propertyName": "kind"
+                                              },
+                                              "oneOf": [
+                                                {
+                                                  "additionalProperties": false,
+                                                  "description": "K 个其他点的平均距离，按全云均值加总体标准差倍数保留。",
+                                                  "properties": {
+                                                    "kind": {
+                                                      "const": "statistical",
+                                                      "title": "Kind",
+                                                      "type": "string"
+                                                    },
+                                                    "neighbors": {
+                                                      "minimum": 1,
+                                                      "title": "Neighbors",
+                                                      "type": "integer"
+                                                    },
+                                                    "std_ratio": {
+                                                      "exclusiveMinimum": 0,
+                                                      "title": "Std Ratio",
+                                                      "type": "number"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "kind",
+                                                    "neighbors",
+                                                    "std_ratio"
+                                                  ],
+                                                  "title": "StatisticalDenoise",
+                                                  "type": "object"
+                                                },
+                                                {
+                                                  "additionalProperties": false,
+                                                  "description": "闭球内其他点数量，不把查询点自身算作一个邻居。",
+                                                  "properties": {
+                                                    "kind": {
+                                                      "const": "radius",
+                                                      "title": "Kind",
+                                                      "type": "string"
+                                                    },
+                                                    "radius": {
+                                                      "exclusiveMinimum": 0,
+                                                      "title": "Radius",
+                                                      "type": "number"
+                                                    },
+                                                    "min_neighbors": {
+                                                      "minimum": 1,
+                                                      "title": "Min Neighbors",
+                                                      "type": "integer"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "kind",
+                                                    "radius",
+                                                    "min_neighbors"
+                                                  ],
+                                                  "title": "RadiusDenoise",
+                                                  "type": "object"
+                                                }
+                                              ],
+                                              "title": "Settings"
+                                            }
+                                          },
+                                          "required": [
+                                            "settings"
+                                          ],
+                                          "title": "DenoiseCloudParameters",
+                                          "type": "object"
+                                        },
+                                        "parameters_sha256": {
+                                          "pattern": "^[0-9a-f]{64}$",
+                                          "title": "Parameters Sha256",
+                                          "type": "string"
+                                        },
+                                        "selection": {
+                                          "enum": [
+                                            "kept",
+                                            "removed"
+                                          ],
+                                          "title": "Selection",
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "method_id",
+                                        "method_version",
+                                        "parameters",
+                                        "parameters_sha256",
+                                        "selection"
+                                      ],
+                                      "title": "DenoiseCloudMethod",
                                       "type": "object"
                                     },
                                     {
@@ -47874,6 +48112,7 @@
                                   "discriminator": {
                                     "mapping": {
                                       "crop-roi": "#/$defs/CropCloudMethod",
+                                      "denoise-cloud": "#/$defs/DenoiseCloudMethod",
                                       "extract-boundary": "#/$defs/BoundaryCloudMethod",
                                       "filter-valid": "#/$defs/FilterCloudMethod",
                                       "fit-plane-support": "#/$defs/PlaneSupportMethod",
@@ -48044,6 +48283,124 @@
                                         "parameters_sha256"
                                       ],
                                       "title": "FilterCloudMethod",
+                                      "type": "object"
+                                    },
+                                    {
+                                      "additionalProperties": false,
+                                      "description": "实际去噪方法及保留/剔除分支，不将剔除云误认为去噪结果。",
+                                      "properties": {
+                                        "method_id": {
+                                          "const": "denoise-cloud",
+                                          "title": "Method Id",
+                                          "type": "string"
+                                        },
+                                        "method_version": {
+                                          "maximum": 1,
+                                          "minimum": 1,
+                                          "title": "Method Version",
+                                          "type": "integer"
+                                        },
+                                        "parameters": {
+                                          "additionalProperties": false,
+                                          "description": "距离沿输入已确认的物理单位，不隐式归一或设置工件默认值。",
+                                          "properties": {
+                                            "settings": {
+                                              "discriminator": {
+                                                "mapping": {
+                                                  "radius": "#/$defs/RadiusDenoise",
+                                                  "statistical": "#/$defs/StatisticalDenoise"
+                                                },
+                                                "propertyName": "kind"
+                                              },
+                                              "oneOf": [
+                                                {
+                                                  "additionalProperties": false,
+                                                  "description": "K 个其他点的平均距离，按全云均值加总体标准差倍数保留。",
+                                                  "properties": {
+                                                    "kind": {
+                                                      "const": "statistical",
+                                                      "title": "Kind",
+                                                      "type": "string"
+                                                    },
+                                                    "neighbors": {
+                                                      "minimum": 1,
+                                                      "title": "Neighbors",
+                                                      "type": "integer"
+                                                    },
+                                                    "std_ratio": {
+                                                      "exclusiveMinimum": 0,
+                                                      "title": "Std Ratio",
+                                                      "type": "number"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "kind",
+                                                    "neighbors",
+                                                    "std_ratio"
+                                                  ],
+                                                  "title": "StatisticalDenoise",
+                                                  "type": "object"
+                                                },
+                                                {
+                                                  "additionalProperties": false,
+                                                  "description": "闭球内其他点数量，不把查询点自身算作一个邻居。",
+                                                  "properties": {
+                                                    "kind": {
+                                                      "const": "radius",
+                                                      "title": "Kind",
+                                                      "type": "string"
+                                                    },
+                                                    "radius": {
+                                                      "exclusiveMinimum": 0,
+                                                      "title": "Radius",
+                                                      "type": "number"
+                                                    },
+                                                    "min_neighbors": {
+                                                      "minimum": 1,
+                                                      "title": "Min Neighbors",
+                                                      "type": "integer"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "kind",
+                                                    "radius",
+                                                    "min_neighbors"
+                                                  ],
+                                                  "title": "RadiusDenoise",
+                                                  "type": "object"
+                                                }
+                                              ],
+                                              "title": "Settings"
+                                            }
+                                          },
+                                          "required": [
+                                            "settings"
+                                          ],
+                                          "title": "DenoiseCloudParameters",
+                                          "type": "object"
+                                        },
+                                        "parameters_sha256": {
+                                          "pattern": "^[0-9a-f]{64}$",
+                                          "title": "Parameters Sha256",
+                                          "type": "string"
+                                        },
+                                        "selection": {
+                                          "enum": [
+                                            "kept",
+                                            "removed"
+                                          ],
+                                          "title": "Selection",
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "method_id",
+                                        "method_version",
+                                        "parameters",
+                                        "parameters_sha256",
+                                        "selection"
+                                      ],
+                                      "title": "DenoiseCloudMethod",
                                       "type": "object"
                                     },
                                     {
@@ -64160,6 +64517,7 @@
                                   "discriminator": {
                                     "mapping": {
                                       "crop-roi": "#/$defs/CropCloudMethod",
+                                      "denoise-cloud": "#/$defs/DenoiseCloudMethod",
                                       "extract-boundary": "#/$defs/BoundaryCloudMethod",
                                       "filter-valid": "#/$defs/FilterCloudMethod",
                                       "fit-plane-support": "#/$defs/PlaneSupportMethod",
@@ -64330,6 +64688,124 @@
                                         "parameters_sha256"
                                       ],
                                       "title": "FilterCloudMethod",
+                                      "type": "object"
+                                    },
+                                    {
+                                      "additionalProperties": false,
+                                      "description": "实际去噪方法及保留/剔除分支，不将剔除云误认为去噪结果。",
+                                      "properties": {
+                                        "method_id": {
+                                          "const": "denoise-cloud",
+                                          "title": "Method Id",
+                                          "type": "string"
+                                        },
+                                        "method_version": {
+                                          "maximum": 1,
+                                          "minimum": 1,
+                                          "title": "Method Version",
+                                          "type": "integer"
+                                        },
+                                        "parameters": {
+                                          "additionalProperties": false,
+                                          "description": "距离沿输入已确认的物理单位，不隐式归一或设置工件默认值。",
+                                          "properties": {
+                                            "settings": {
+                                              "discriminator": {
+                                                "mapping": {
+                                                  "radius": "#/$defs/RadiusDenoise",
+                                                  "statistical": "#/$defs/StatisticalDenoise"
+                                                },
+                                                "propertyName": "kind"
+                                              },
+                                              "oneOf": [
+                                                {
+                                                  "additionalProperties": false,
+                                                  "description": "K 个其他点的平均距离，按全云均值加总体标准差倍数保留。",
+                                                  "properties": {
+                                                    "kind": {
+                                                      "const": "statistical",
+                                                      "title": "Kind",
+                                                      "type": "string"
+                                                    },
+                                                    "neighbors": {
+                                                      "minimum": 1,
+                                                      "title": "Neighbors",
+                                                      "type": "integer"
+                                                    },
+                                                    "std_ratio": {
+                                                      "exclusiveMinimum": 0,
+                                                      "title": "Std Ratio",
+                                                      "type": "number"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "kind",
+                                                    "neighbors",
+                                                    "std_ratio"
+                                                  ],
+                                                  "title": "StatisticalDenoise",
+                                                  "type": "object"
+                                                },
+                                                {
+                                                  "additionalProperties": false,
+                                                  "description": "闭球内其他点数量，不把查询点自身算作一个邻居。",
+                                                  "properties": {
+                                                    "kind": {
+                                                      "const": "radius",
+                                                      "title": "Kind",
+                                                      "type": "string"
+                                                    },
+                                                    "radius": {
+                                                      "exclusiveMinimum": 0,
+                                                      "title": "Radius",
+                                                      "type": "number"
+                                                    },
+                                                    "min_neighbors": {
+                                                      "minimum": 1,
+                                                      "title": "Min Neighbors",
+                                                      "type": "integer"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "kind",
+                                                    "radius",
+                                                    "min_neighbors"
+                                                  ],
+                                                  "title": "RadiusDenoise",
+                                                  "type": "object"
+                                                }
+                                              ],
+                                              "title": "Settings"
+                                            }
+                                          },
+                                          "required": [
+                                            "settings"
+                                          ],
+                                          "title": "DenoiseCloudParameters",
+                                          "type": "object"
+                                        },
+                                        "parameters_sha256": {
+                                          "pattern": "^[0-9a-f]{64}$",
+                                          "title": "Parameters Sha256",
+                                          "type": "string"
+                                        },
+                                        "selection": {
+                                          "enum": [
+                                            "kept",
+                                            "removed"
+                                          ],
+                                          "title": "Selection",
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "method_id",
+                                        "method_version",
+                                        "parameters",
+                                        "parameters_sha256",
+                                        "selection"
+                                      ],
+                                      "title": "DenoiseCloudMethod",
                                       "type": "object"
                                     },
                                     {
@@ -95045,6 +95521,7 @@
                                   "discriminator": {
                                     "mapping": {
                                       "crop-roi": "#/$defs/CropCloudMethod",
+                                      "denoise-cloud": "#/$defs/DenoiseCloudMethod",
                                       "extract-boundary": "#/$defs/BoundaryCloudMethod",
                                       "filter-valid": "#/$defs/FilterCloudMethod",
                                       "fit-plane-support": "#/$defs/PlaneSupportMethod",
@@ -95215,6 +95692,124 @@
                                         "parameters_sha256"
                                       ],
                                       "title": "FilterCloudMethod",
+                                      "type": "object"
+                                    },
+                                    {
+                                      "additionalProperties": false,
+                                      "description": "实际去噪方法及保留/剔除分支，不将剔除云误认为去噪结果。",
+                                      "properties": {
+                                        "method_id": {
+                                          "const": "denoise-cloud",
+                                          "title": "Method Id",
+                                          "type": "string"
+                                        },
+                                        "method_version": {
+                                          "maximum": 1,
+                                          "minimum": 1,
+                                          "title": "Method Version",
+                                          "type": "integer"
+                                        },
+                                        "parameters": {
+                                          "additionalProperties": false,
+                                          "description": "距离沿输入已确认的物理单位，不隐式归一或设置工件默认值。",
+                                          "properties": {
+                                            "settings": {
+                                              "discriminator": {
+                                                "mapping": {
+                                                  "radius": "#/$defs/RadiusDenoise",
+                                                  "statistical": "#/$defs/StatisticalDenoise"
+                                                },
+                                                "propertyName": "kind"
+                                              },
+                                              "oneOf": [
+                                                {
+                                                  "additionalProperties": false,
+                                                  "description": "K 个其他点的平均距离，按全云均值加总体标准差倍数保留。",
+                                                  "properties": {
+                                                    "kind": {
+                                                      "const": "statistical",
+                                                      "title": "Kind",
+                                                      "type": "string"
+                                                    },
+                                                    "neighbors": {
+                                                      "minimum": 1,
+                                                      "title": "Neighbors",
+                                                      "type": "integer"
+                                                    },
+                                                    "std_ratio": {
+                                                      "exclusiveMinimum": 0,
+                                                      "title": "Std Ratio",
+                                                      "type": "number"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "kind",
+                                                    "neighbors",
+                                                    "std_ratio"
+                                                  ],
+                                                  "title": "StatisticalDenoise",
+                                                  "type": "object"
+                                                },
+                                                {
+                                                  "additionalProperties": false,
+                                                  "description": "闭球内其他点数量，不把查询点自身算作一个邻居。",
+                                                  "properties": {
+                                                    "kind": {
+                                                      "const": "radius",
+                                                      "title": "Kind",
+                                                      "type": "string"
+                                                    },
+                                                    "radius": {
+                                                      "exclusiveMinimum": 0,
+                                                      "title": "Radius",
+                                                      "type": "number"
+                                                    },
+                                                    "min_neighbors": {
+                                                      "minimum": 1,
+                                                      "title": "Min Neighbors",
+                                                      "type": "integer"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "kind",
+                                                    "radius",
+                                                    "min_neighbors"
+                                                  ],
+                                                  "title": "RadiusDenoise",
+                                                  "type": "object"
+                                                }
+                                              ],
+                                              "title": "Settings"
+                                            }
+                                          },
+                                          "required": [
+                                            "settings"
+                                          ],
+                                          "title": "DenoiseCloudParameters",
+                                          "type": "object"
+                                        },
+                                        "parameters_sha256": {
+                                          "pattern": "^[0-9a-f]{64}$",
+                                          "title": "Parameters Sha256",
+                                          "type": "string"
+                                        },
+                                        "selection": {
+                                          "enum": [
+                                            "kept",
+                                            "removed"
+                                          ],
+                                          "title": "Selection",
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "method_id",
+                                        "method_version",
+                                        "parameters",
+                                        "parameters_sha256",
+                                        "selection"
+                                      ],
+                                      "title": "DenoiseCloudMethod",
                                       "type": "object"
                                     },
                                     {
@@ -127482,6 +128077,7 @@
                           "discriminator": {
                             "mapping": {
                               "crop-roi": "#/$defs/CropCloudMethod",
+                              "denoise-cloud": "#/$defs/DenoiseCloudMethod",
                               "extract-boundary": "#/$defs/BoundaryCloudMethod",
                               "filter-valid": "#/$defs/FilterCloudMethod",
                               "fit-plane-support": "#/$defs/PlaneSupportMethod",
@@ -127652,6 +128248,124 @@
                                 "parameters_sha256"
                               ],
                               "title": "FilterCloudMethod",
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "description": "实际去噪方法及保留/剔除分支，不将剔除云误认为去噪结果。",
+                              "properties": {
+                                "method_id": {
+                                  "const": "denoise-cloud",
+                                  "title": "Method Id",
+                                  "type": "string"
+                                },
+                                "method_version": {
+                                  "maximum": 1,
+                                  "minimum": 1,
+                                  "title": "Method Version",
+                                  "type": "integer"
+                                },
+                                "parameters": {
+                                  "additionalProperties": false,
+                                  "description": "距离沿输入已确认的物理单位，不隐式归一或设置工件默认值。",
+                                  "properties": {
+                                    "settings": {
+                                      "discriminator": {
+                                        "mapping": {
+                                          "radius": "#/$defs/RadiusDenoise",
+                                          "statistical": "#/$defs/StatisticalDenoise"
+                                        },
+                                        "propertyName": "kind"
+                                      },
+                                      "oneOf": [
+                                        {
+                                          "additionalProperties": false,
+                                          "description": "K 个其他点的平均距离，按全云均值加总体标准差倍数保留。",
+                                          "properties": {
+                                            "kind": {
+                                              "const": "statistical",
+                                              "title": "Kind",
+                                              "type": "string"
+                                            },
+                                            "neighbors": {
+                                              "minimum": 1,
+                                              "title": "Neighbors",
+                                              "type": "integer"
+                                            },
+                                            "std_ratio": {
+                                              "exclusiveMinimum": 0,
+                                              "title": "Std Ratio",
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "kind",
+                                            "neighbors",
+                                            "std_ratio"
+                                          ],
+                                          "title": "StatisticalDenoise",
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "description": "闭球内其他点数量，不把查询点自身算作一个邻居。",
+                                          "properties": {
+                                            "kind": {
+                                              "const": "radius",
+                                              "title": "Kind",
+                                              "type": "string"
+                                            },
+                                            "radius": {
+                                              "exclusiveMinimum": 0,
+                                              "title": "Radius",
+                                              "type": "number"
+                                            },
+                                            "min_neighbors": {
+                                              "minimum": 1,
+                                              "title": "Min Neighbors",
+                                              "type": "integer"
+                                            }
+                                          },
+                                          "required": [
+                                            "kind",
+                                            "radius",
+                                            "min_neighbors"
+                                          ],
+                                          "title": "RadiusDenoise",
+                                          "type": "object"
+                                        }
+                                      ],
+                                      "title": "Settings"
+                                    }
+                                  },
+                                  "required": [
+                                    "settings"
+                                  ],
+                                  "title": "DenoiseCloudParameters",
+                                  "type": "object"
+                                },
+                                "parameters_sha256": {
+                                  "pattern": "^[0-9a-f]{64}$",
+                                  "title": "Parameters Sha256",
+                                  "type": "string"
+                                },
+                                "selection": {
+                                  "enum": [
+                                    "kept",
+                                    "removed"
+                                  ],
+                                  "title": "Selection",
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "method_id",
+                                "method_version",
+                                "parameters",
+                                "parameters_sha256",
+                                "selection"
+                              ],
+                              "title": "DenoiseCloudMethod",
                               "type": "object"
                             },
                             {
@@ -289092,7 +289806,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.20",
+      "node_pack_version": "0.1.21",
       "metadata": {}
     },
     {
@@ -289580,7 +290294,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.20",
+      "node_pack_version": "0.1.21",
       "metadata": {}
     },
     {
@@ -289989,7 +290703,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.20",
+      "node_pack_version": "0.1.21",
       "metadata": {}
     },
     {
@@ -292588,7 +293302,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.20",
+      "node_pack_version": "0.1.21",
       "metadata": {}
     },
     {
@@ -292985,7 +293699,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.20",
+      "node_pack_version": "0.1.21",
       "metadata": {}
     },
     {
@@ -293485,7 +294199,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.20",
+      "node_pack_version": "0.1.21",
       "metadata": {}
     },
     {
@@ -294103,7 +294817,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.20",
+      "node_pack_version": "0.1.21",
       "metadata": {}
     },
     {
@@ -294762,7 +295476,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.20",
+      "node_pack_version": "0.1.21",
       "metadata": {}
     },
     {
@@ -296198,7 +296912,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.20",
+      "node_pack_version": "0.1.21",
       "metadata": {}
     },
     {
@@ -296459,7 +297173,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.20",
+      "node_pack_version": "0.1.21",
       "metadata": {}
     },
     {
@@ -296818,7 +297532,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.20",
+      "node_pack_version": "0.1.21",
       "metadata": {}
     },
     {
@@ -296875,7 +297589,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.20",
+      "node_pack_version": "0.1.21",
       "metadata": {}
     },
     {
@@ -297255,7 +297969,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.20",
+      "node_pack_version": "0.1.21",
       "metadata": {}
     },
     {
@@ -297327,7 +298041,145 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.20",
+      "node_pack_version": "0.1.21",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.metrology3d.denoise-cloud",
+      "display_name": "Denoise Cloud",
+      "category": "metrology3d.data.preprocess",
+      "description": "Denoise Cloud",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.21",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "cloud",
+          "display_name": "Cloud",
+          "payload_type_id": "point-cloud-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "cloud",
+          "display_name": "Cloud",
+          "payload_type_id": "point-cloud-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "removed",
+          "display_name": "Removed",
+          "payload_type_id": "point-cloud-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "additionalProperties": false,
+        "description": "距离沿输入已确认的物理单位，不隐式归一或设置工件默认值。",
+        "properties": {
+          "settings": {
+            "discriminator": {
+              "mapping": {
+                "radius": "#/$defs/RadiusDenoise",
+                "statistical": "#/$defs/StatisticalDenoise"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "description": "K 个其他点的平均距离，按全云均值加总体标准差倍数保留。",
+                "properties": {
+                  "kind": {
+                    "const": "statistical",
+                    "title": "Kind",
+                    "type": "string"
+                  },
+                  "neighbors": {
+                    "minimum": 1,
+                    "title": "Neighbors",
+                    "type": "integer"
+                  },
+                  "std_ratio": {
+                    "exclusiveMinimum": 0,
+                    "title": "Std Ratio",
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "neighbors",
+                  "std_ratio"
+                ],
+                "title": "StatisticalDenoise",
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "闭球内其他点数量，不把查询点自身算作一个邻居。",
+                "properties": {
+                  "kind": {
+                    "const": "radius",
+                    "title": "Kind",
+                    "type": "string"
+                  },
+                  "radius": {
+                    "exclusiveMinimum": 0,
+                    "title": "Radius",
+                    "type": "number"
+                  },
+                  "min_neighbors": {
+                    "minimum": 1,
+                    "title": "Min Neighbors",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "radius",
+                  "min_neighbors"
+                ],
+                "title": "RadiusDenoise",
+                "type": "object"
+              }
+            ],
+            "title": "Settings"
+          }
+        },
+        "required": [
+          "settings"
+        ],
+        "title": "DenoiseCloudParameters",
+        "type": "object"
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "vision.metrology3d"
+      ],
+      "runtime_requirements": {},
+      "node_pack_id": "metrology3d.nodes",
+      "node_pack_version": "0.1.21",
       "metadata": {}
     },
     {
@@ -297448,7 +298300,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.20",
+      "node_pack_version": "0.1.21",
       "metadata": {}
     },
     {
@@ -297673,7 +298525,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.20",
+      "node_pack_version": "0.1.21",
       "metadata": {}
     },
     {
@@ -297848,7 +298700,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.20",
+      "node_pack_version": "0.1.21",
       "metadata": {}
     },
     {
@@ -298047,7 +298899,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.20",
+      "node_pack_version": "0.1.21",
       "metadata": {}
     }
   ],

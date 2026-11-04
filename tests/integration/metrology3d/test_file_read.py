@@ -18,10 +18,10 @@ from custom_nodes.metrology3d_nodes.shared.io.read_file import read_cloud_file
 from tests.point_cloud_support import options, policy
 
 
-def publish(storage, content):
+def publish(storage, content, *, project_id="test"):
     """真实不可变对象，不用 fake success storage。"""
     metadata = storage.write_immutable_stream(
-        object_prefix="projects/test/results/cloud",
+        object_prefix=f"projects/{project_id}/results/cloud",
         source_stream=BytesIO(content),
         media_type="application/octet-stream",
         extension="bin",

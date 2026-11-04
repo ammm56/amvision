@@ -5,7 +5,26 @@ import {queryDisplay} from '@/workflows/workflow-editor/point-cloud/query-displa
 import {createGeometryOverlay} from '@/workflows/workflow-editor/point-cloud/geometry-overlay'
 import {rendererUsage} from '@/workflows/workflow-editor/point-cloud/preview-data'
 import {planeColorData,fillPlaneColors,planeColorSummary} from '@/workflows/workflow-editor/point-cloud/plane-colors'
+import mean from './fixtures/metrology-statistic-mean.json'
+import median from './fixtures/metrology-statistic-median.json'
+import quantile from './fixtures/metrology-statistic-quantile.json'
 const policy={max_points:100,max_data_bytes:10000,max_cpu_bytes:100000,max_gpu_bytes:100000,max_canvas_pixels:10000,max_position_error:.001}
+it.each([mean,median,quantile])('renders backend statistic evidence without inventing a query line',value=>{
+  const item=measurementItems(value)[0]!
+  expect(item.value).toBe(5);expect(item.query).toBeNull()
+  expect(item.geometry?.endpoints).toBeNull()
+  const scene=new Scene(),overlay=createGeometryOverlay(scene,new PerspectiveCamera(),document.createElement('canvas'),[0,0,0],policy,()=>{},()=>{},e=>{throw e})
+  try{
+    overlay.update({payload:value,selectedMeasurement:'step'})
+    const lines:LineSegments[]=[];scene.traverse(o=>{if(o instanceof LineSegments)lines.push(o)})
+    expect(lines).toHaveLength(2)
+    expect(lines.every(line=>line.geometry.getAttribute('position').count===24)).toBe(true)
+  }finally{overlay.dispose()}
+  expect(rendererUsage()).toEqual({cpuBytes:0,gpuBytes:0})
+  const broken=structuredClone(value)
+  Object.assign(broken.measurements.items[0]!.method,{query_resolution:{line:{query_position:[0,0,0],direction:[0,0,1]},pose:null}})
+  expect(()=>measurementItems(broken)).toThrow('cloud_preview_invalid')
+})
 it('reads pose UV evidence and rejects missing transforms, stale identity and forged lines',()=>{
   const pose={pose_id:'datum',target_frame_id:'part',source_frame_id:'fixture',length_unit:'mm',observation_id:'obs',state:'found',reason:null,transform:{matrix:[[1,0,0,-2],[0,1,0,-3],[0,0,1,-4],[0,0,0,1]]}}
   const item={kind:'height-query',valid:true,reason:null,method:{parameters:{query:{kind:'pose-uv',pose_id:'datum',target_frame_id:'part',uv:[.25,-.25]}},query_resolution:{pose,line:{query_position:[2.25,2.75,4],direction:[0,0,1]}}}}

@@ -1,0 +1,337 @@
+{
+  "type": "point-cloud-preview",
+  "format_id": "amvision.point-cloud-preview.v1",
+  "state": "ready",
+  "reason": null,
+  "observation_id": "8ce5d29097b042828ace6032457c724e",
+  "cloud_id": "02e558c5715b4eaa83bfc08cb5126492",
+  "revision": 1,
+  "spatial": {
+    "length_unit": "mm",
+    "unit_source": "configuration",
+    "frame_id": "fixture",
+    "axes": {
+      "handedness": "right",
+      "axis_labels": [
+        "X",
+        "Y",
+        "Z"
+      ],
+      "definition_source": "configuration"
+    }
+  },
+  "source_point_count": 8,
+  "point_count": 8,
+  "vertex_kind": "source",
+  "display_point_count": 8,
+  "excluded_non_finite_count": 0,
+  "sampling": {
+    "method_id": "logical-index-uniform-v1",
+    "requested_limit": 1000
+  },
+  "bounds": {
+    "min": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "max": [
+      1.0,
+      1.0,
+      8.0
+    ]
+  },
+  "render_origin": [
+    0.5,
+    0.5,
+    4.0
+  ],
+  "data": {
+    "encoding": "base64",
+    "content_length": 160,
+    "checksum_algorithm": "sha256",
+    "checksum": "d23554edc7fe16d0c6fb1242b6ad45e2686d856cdd22c19fd896b72a97896bbe",
+    "fields": [
+      {
+        "name": "positions",
+        "dtype": "float32",
+        "components": 3,
+        "count": 8,
+        "offset": 0,
+        "byte_length": 96
+      },
+      {
+        "name": "source_indices",
+        "dtype": "uint64",
+        "components": 1,
+        "count": 8,
+        "offset": 96,
+        "byte_length": 64
+      }
+    ],
+    "content": "AAAAAAAAAAAAAAAAAACAPwAAAAAAAIA/AAAAAAAAgD8AAABAAACAPwAAgD8AAEBAAAAAAAAAAAAAAKBAAACAPwAAAAAAAMBAAAAAAAAAgD8AAOBAAACAPwAAgD8AAABBAAAAAAAAAAABAAAAAAAAAAIAAAAAAAAAAwAAAAAAAAAEAAAAAAAAAAUAAAAAAAAABgAAAAAAAAAHAAAAAAAAAA=="
+  },
+  "color": {
+    "mode": "solid"
+  },
+  "source_asset": null,
+  "measurements": {
+    "format_id": "amvision.measurement-evidence3d.v1",
+    "observation_id": "8ce5d29097b042828ace6032457c724e",
+    "frame_id": "fixture",
+    "length_unit": "mm",
+    "items": [
+      {
+        "kind": "measure-step",
+        "item_id": "step",
+        "value": 5.0,
+        "valid": true,
+        "reason": null,
+        "method": {
+          "method_id": "measure-step",
+          "method_version": 1,
+          "parameters": {
+            "item_id": "step",
+            "frame_id": "fixture",
+            "length_unit": "mm",
+            "mode": {
+              "kind": "roi-statistic",
+              "origin": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "direction": [
+                0.0,
+                0.0,
+                1.0
+              ],
+              "statistic": {
+                "kind": "mean"
+              },
+              "quality_policy": {
+                "policy_id": "measurement-test",
+                "policy_version": 1,
+                "rules": [
+                  {
+                    "item_id": "reference_count",
+                    "unit": "1",
+                    "enabled": true,
+                    "required": true,
+                    "lower": 1.0,
+                    "upper": null,
+                    "include_lower": true,
+                    "include_upper": true
+                  },
+                  {
+                    "item_id": "reference_std",
+                    "unit": "mm",
+                    "enabled": true,
+                    "required": true,
+                    "lower": null,
+                    "upper": 2.0,
+                    "include_lower": true,
+                    "include_upper": true
+                  },
+                  {
+                    "item_id": "target_count",
+                    "unit": "1",
+                    "enabled": true,
+                    "required": true,
+                    "lower": 1.0,
+                    "upper": null,
+                    "include_lower": true,
+                    "include_upper": true
+                  },
+                  {
+                    "item_id": "target_std",
+                    "unit": "mm",
+                    "enabled": true,
+                    "required": true,
+                    "lower": null,
+                    "upper": 2.0,
+                    "include_lower": true,
+                    "include_upper": true
+                  }
+                ]
+              }
+            }
+          },
+          "parameters_sha256": "e64402235689e5cd8e9bd378da2784cbbcb9dd49b65e6484ccc4826a9fa0bd4a",
+          "query_resolution": null
+        },
+        "geometry": {
+          "kind": "statistic-difference",
+          "origin": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "direction": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "endpoints": null
+        },
+        "support": [
+          {
+            "role": "reference",
+            "content_sha256": "5b347ae94c636f44cb4f04946ef63cd54b94e40c03163929abcee2696a92487e",
+            "point_count": 4,
+            "source_point_count": 8,
+            "sample_origin": "measured",
+            "bounds": {
+              "min": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "max": [
+                1.0,
+                1.0,
+                3.0
+              ]
+            },
+            "plane": null,
+            "coverage": null,
+            "statistic": {
+              "count": 4,
+              "value": 1.5,
+              "mean": 1.5,
+              "std": 1.118033988749895,
+              "min": 0.0,
+              "max": 3.0
+            },
+            "extension": null
+          },
+          {
+            "role": "target",
+            "content_sha256": "458878ed15fbde0b08273c4090392fb5b731195dcccb4e4c6e2b438746805888",
+            "point_count": 4,
+            "source_point_count": 8,
+            "sample_origin": "measured",
+            "bounds": {
+              "min": [
+                0.0,
+                0.0,
+                5.0
+              ],
+              "max": [
+                1.0,
+                1.0,
+                8.0
+              ]
+            },
+            "plane": null,
+            "coverage": null,
+            "statistic": {
+              "count": 4,
+              "value": 6.5,
+              "mean": 6.5,
+              "std": 1.118033988749895,
+              "min": 5.0,
+              "max": 8.0
+            },
+            "extension": null
+          }
+        ],
+        "quality": {
+          "metrics": {
+            "observation_id": "8ce5d29097b042828ace6032457c724e",
+            "items": [
+              {
+                "item_id": "reference_count",
+                "unit": "1",
+                "value": 4.0,
+                "valid": true,
+                "reason": null
+              },
+              {
+                "item_id": "reference_std",
+                "unit": "mm",
+                "value": 1.118033988749895,
+                "valid": true,
+                "reason": null
+              },
+              {
+                "item_id": "target_count",
+                "unit": "1",
+                "value": 4.0,
+                "valid": true,
+                "reason": null
+              },
+              {
+                "item_id": "target_std",
+                "unit": "mm",
+                "value": 1.118033988749895,
+                "valid": true,
+                "reason": null
+              }
+            ]
+          },
+          "checks": [
+            {
+              "item_id": "reference_count",
+              "required": true,
+              "passed": true,
+              "valid": true,
+              "value": 4.0,
+              "unit": "1",
+              "lower": 1.0,
+              "upper": null,
+              "include_lower": true,
+              "include_upper": true,
+              "actual_unit": "1",
+              "reason": null
+            },
+            {
+              "item_id": "reference_std",
+              "required": true,
+              "passed": true,
+              "valid": true,
+              "value": 1.118033988749895,
+              "unit": "mm",
+              "lower": null,
+              "upper": 2.0,
+              "include_lower": true,
+              "include_upper": true,
+              "actual_unit": "mm",
+              "reason": null
+            },
+            {
+              "item_id": "target_count",
+              "required": true,
+              "passed": true,
+              "valid": true,
+              "value": 4.0,
+              "unit": "1",
+              "lower": 1.0,
+              "upper": null,
+              "include_lower": true,
+              "include_upper": true,
+              "actual_unit": "1",
+              "reason": null
+            },
+            {
+              "item_id": "target_std",
+              "required": true,
+              "passed": true,
+              "valid": true,
+              "value": 1.118033988749895,
+              "unit": "mm",
+              "lower": null,
+              "upper": 2.0,
+              "include_lower": true,
+              "include_upper": true,
+              "actual_unit": "mm",
+              "reason": null
+            }
+          ],
+          "usable": true
+        },
+        "sample_origin": "measured"
+      }
+    ]
+  }
+}
