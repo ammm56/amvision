@@ -12,6 +12,7 @@ from custom_nodes.metrology3d_nodes.shared.geometry_quality import (
 from custom_nodes.metrology3d_nodes.shared.preview import unavailable_body
 from custom_nodes.metrology3d_nodes.shared.geometry_samples import plane_samples
 from custom_nodes.metrology3d_nodes.shared.boundary_preview import curve_display
+from custom_nodes.metrology3d_nodes.shared.pose_source import require_pose
 
 
 def attach_geometry(runtime, cloud, body, values, *, policy, cancel):
@@ -136,11 +137,8 @@ def _attach_geometry(runtime, cloud, body, values, *, policy, cancel):
             cloud.spatial.length_unit,
         ):
             raise InvalidRequestError("位姿显示输入运行、观测或单位不一致")
-        require_quality_result(pose.quality, pose.method.quality_policy)
-        for support in pose.support:
-            if support.state == "ready":
-                with runtime.borrow(support):
-                    pass
+        require_pose(runtime, pose, observation_id=cloud.observation_id,
+                     frame_id=pose.source_frame_id, length_unit=cloud.spatial.length_unit, cancel=cancel)
         frame = dict(
             pose_id=pose.pose_id,
             state=pose.state,
@@ -148,6 +146,7 @@ def _attach_geometry(runtime, cloud, body, values, *, policy, cancel):
             source_frame_id=pose.source_frame_id,
             target_frame_id=pose.target_frame_id,
             quality=pose.quality,
+            method=pose.method,
             transform=pose.transform.model_dump(exclude={"format_id", "provenance"})
             if pose.transform
             else None,

@@ -1,0 +1,16 @@
+{
+  "format_id": "amvision.flow-application.v1",
+  "application_id": "metrology3d-normals-file",
+  "display_name": "Point Cloud Normals",
+  "template_ref": {"template_id": "metrology3d-normals", "template_version": "1.0.0", "source_uri": "metrology3d_normals.template.json"},
+  "runtime_mode": "python-json-workflow",
+  "description": "ASCII PLY float32 XYZ in mm. Explicit engineering parameters, not universal defaults.",
+  "bindings": [
+    {"binding_id": "cloud", "direction": "input", "template_port_id": "input", "binding_kind": "api-request", "required": true, "config": {"allowed_media_types": ["application/octet-stream"], "max_file_bytes": 1000000000, "payload_type_id": "file-ref.v1"}},
+    {"binding_id": "body", "direction": "output", "template_port_id": "body", "binding_kind": "http-response", "required": true, "config": {"payload_type_id": "response-body.v1"}},
+    {"binding_id": "summary", "direction": "output", "template_port_id": "summary", "binding_kind": "http-response", "required": true, "config": {"payload_type_id": "value.v1"}}
+  ],
+  "metadata": {
+    "app_mode": {"format_id": "amvision.workflow-app-mode.v1", "title": "Point Cloud Normals", "displays": [{"node_id": "preview", "output_port": "body", "title": "Cloud and normals", "size": "large"}]}
+  }
+}

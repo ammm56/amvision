@@ -16,6 +16,11 @@
       <label v-if="planes.length">{{ zh?'平面':'Plane' }}<select v-model="selectedPlane"><option value="">{{ zh?'未选择':'None' }}</option><option v-for="plane in planes" :key="String(plane.feature_id)" :value="String(plane.feature_id)">{{ plane.feature_id }}</option></select></label>
       <label><input v-model="showEvidence" type="checkbox" :disabled="!scene" @change="scene?.evidenceVisibility(showEvidence)">{{ zh?'测量叠加':'Measurement overlays' }}</label>
       <label><input v-model="showAxes" type="checkbox" :disabled="!scene" @change="scene?.axesVisible(showAxes)">{{ zh?'坐标轴':'Axes' }}</label>
+      <template v-if="body.normal_info">
+        <label><input v-model="showNormals" type="checkbox" :disabled="!scene||(!showNormals&&!normalLengthValid)">{{ zh?'概览法向':'Overview normals' }}</label>
+        <label>{{ zh?'线长':'Vector length' }} ({{ unit }})<input v-model.number="normalLength" type="number" min="0" step="any" :aria-label="zh?'法向线长':'Normal vector length'"></label>
+        <label>{{ zh?'显示步长':'Display stride' }}<input v-model.number="normalStride" type="number" min="1" step="1" :aria-label="zh?'法向显示步长':'Normal display stride'"></label>
+      </template>
       <label v-if="body.lineage_kind==='voxel-aggregate'"><input v-model="showVoxel" type="checkbox" :disabled="!scene">{{ zh?'选中体素':'Selected voxel' }}</label>
       <button v-if="picked?.voxelCorners" :title="zh?'聚焦选中体素':'Focus selected voxel'" :aria-label="zh?'聚焦选中体素':'Focus selected voxel'" :disabled="!scene||!showVoxel" @click="scene?.focusVoxel(picked.voxelCorners)"><Focus :size="18" /></button>
       <label v-if="body.asset_details"><input v-model="showAssetDetails" type="checkbox" :disabled="!scene||!detailController||!['original','coordinate-z'].includes(colorMode)">{{ zh?'原始点细节':'Original point details' }}</label>
@@ -35,6 +40,7 @@
     <div class="cloud-status">
       <span v-if="comparePayload">{{ zh?'对照点云 · 灰色':'Comparison cloud · gray' }}</span>
       <span v-if="comparisonError" role="alert">{{ errorMessage(comparisonError) }}</span>
+      <span v-if="normalError" role="alert">{{ errorMessage(normalError) }}</span>
       <span v-if="body.asset_details" class="cloud-detail-status" role="status" :title="detailError?`${detailLabel} · ${errorMessage(detailError)}`:detailLabel">{{ detailLabel }}<template v-if="detailCount"> · {{ detailCount }}</template><template v-if="detailError"> · {{ errorMessage(detailError) }}</template></span>
       <span>{{ unit }} · {{ frame }} · {{ zh?'显示':'Displayed' }} {{ detailStatus==='ready'?detailCount:body.display_point_count ?? '-' }} / {{ zh?'输入':'Input' }} {{ body.point_count ?? '-' }}<template v-if="body.source_point_count!==body.point_count"> · {{ zh?'原始':'Source' }} {{ body.source_point_count ?? '-' }}</template></span>
       <span v-if="color.mode === 'scalar'">{{ color.field }}: {{ color.min ?? '-' }} .. {{ color.max ?? '-' }}</span>
@@ -146,6 +152,9 @@ const debugLayers=ref<DebugLayers>({grid:true,profiles:true,candidates:true,part
 const activeDebug=computed(()=>debugItems.value.find(d=>d.id===selectedDebug.value))
 const picked = ref<ReturnType<CloudDisplayData['point']> | null>(null)
 const showVoxel=ref(true),comparisonError=ref('')
+const showNormals=ref(false),normalLength=ref<number|string>(''),normalStride=ref<number|string>(1),normalError=ref('')
+const normalLengthValid=computed(()=>typeof normalLength.value==='number'&&Number.isFinite(normalLength.value)&&normalLength.value>0&&typeof normalStride.value==='number'&&Number.isSafeInteger(normalStride.value)&&normalStride.value>=1)
+function syncNormals(){normalError.value='';try{scene.value?.normals(showNormals.value&&normalLengthValid.value?{length:Number(normalLength.value),stride:Number(normalStride.value)}:null)}catch(e){normalError.value=e instanceof Error?e.message:'cloud_preview_invalid'}}
 let comparisonController:ReturnType<typeof createComparisonController>|null=null
 let comparisonPolicy:Awaited<ReturnType<typeof readCloudCapabilities>>['renderer']=null
 let comparisonCount=0
@@ -253,6 +262,8 @@ onMounted(load)
 watch(() => [props.payload, props.projectId], load)
 watch(()=>props.comparePayload,syncComparison)
 watch([picked,showVoxel],syncVoxel)
+watch([showNormals,normalLength,normalStride,scene],syncNormals)
+watch(()=>[props.payload,props.projectId],()=>{showNormals.value=false;normalLength.value='';normalStride.value=1;normalError.value=''},{flush:'sync'})
 watch(()=>[props.roiScope,props.editRois,props.selectedRoiId,props.editArc,editMode.value,selectedMeasurement.value,selectedPlane.value,props.candidate,selectedCurve.value,selectedSegment.value,curveColorMode.value,picking.value,selectedDebug.value,debugLayers.value,debugSelection.value,selectedCurvePoint.value],updateGeometry,{deep:true})
 watch(()=>[selectedPlane.value,colorMode.value],updateColors)
 watch(()=>[showAssetDetails.value,viewportVisible.value,colorMode.value],syncDetails,{flush:'sync'})
@@ -286,8 +297,8 @@ onBeforeUnmount(release)
 .cloud-tools .color-bound{width:94px;min-height:28px;font:inherit;font-variant-numeric:tabular-nums;border:1px solid var(--am-border);border-radius:4px;padding:3px 6px;color:var(--am-text);background:var(--am-surface)}
 .cloud-tools input[aria-invalid=true]{outline:1px solid var(--am-danger,#d74444)}
 .cloud-stage { position: relative; min-width: 0; min-height: 0; background: #202326; }
-.cloud-color-scale{position:absolute;right:12px;top:16px;color:#fff;font-size:11px;pointer-events:none;font-variant-numeric:tabular-nums;text-shadow:0 1px 2px #000}
-.cloud-color-scale strong{display:block;font-size:11px;font-weight:500;margin-bottom:8px}.cloud-color-scale>div{display:flex;gap:6px;height:150px}.cloud-color-scale i{width:12px;border:1px solid #d8d8d8;background:linear-gradient(to top,#00f,#0ff,#0f0,#ff0,#f00)}.cloud-color-scale ol{display:flex;flex-direction:column;justify-content:space-between;list-style:none;padding:0;margin:0}
+.cloud-color-scale{position:absolute;right:12px;top:16px;display:flex;flex-direction:column;height:calc(100% - 32px);max-height:180px;color:#fff;font-size:11px;pointer-events:none;font-variant-numeric:tabular-nums;text-shadow:0 1px 2px #000}
+.cloud-color-scale strong{display:block;flex-shrink:0;font-size:11px;font-weight:500;margin-bottom:8px}.cloud-color-scale>div{display:flex;flex:1;min-height:0;gap:6px}.cloud-color-scale i{width:12px;border:1px solid #d8d8d8;background:linear-gradient(to top,#00f,#0ff,#0f0,#ff0,#f00)}.cloud-color-scale ol{display:flex;flex-direction:column;justify-content:space-between;list-style:none;padding:0;margin:0}
 .cloud-scale-bar{position:absolute;bottom:24px;left:18px;border:solid #fff;border-width:0 1px 1px;height:6px;pointer-events:none;color:#fff;text-shadow:0 1px 2px #000;text-align:center;font-size:11px;white-space:nowrap}.cloud-scale-bar span{position:absolute;top:8px;left:50%;transform:translateX(-50%)}
 .cloud-canvas { position: absolute; inset: 0; overflow: hidden; touch-action: none; }
 .cloud-message { position: absolute; inset: 0; margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px; text-align: center; overflow-wrap: anywhere; color: #f3f5f7; background: #202326; }

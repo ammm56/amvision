@@ -6,18 +6,21 @@ from pydantic import Field, StrictBool, model_validator
 
 from backend.contracts.workflows.geometry3d import PlaneGeometry
 from backend.contracts.workflows.geometry3d_methods import (
-    FrameBuildMethod,
     PlaneFitMethod,
-    RigidTransform3d,
+)
+from backend.contracts.workflows.pose3d_operations import (
+    PoseEvidence,
+    PoseOperationMethod,
+    MAX_POSE_STEPS,
 )
 from backend.contracts.workflows.geometry3d_quality import (
     GeometryQuality,
     check_geometry_policy,
     check_plane_metrics,
-    check_frame_metrics,
 )
 from backend.contracts.workflows.metrology import Contract, Identifier, unique_ids
 from backend.contracts.workflows.point_cloud import LengthUnit
+from backend.contracts.workflows.registration3d import RegistrationMethod
 from backend.contracts.workflows.point_cloud_runtime import CloudReference
 from backend.contracts.workflows.boundary3d_observations import (
     BoundaryFeature,
@@ -100,53 +103,43 @@ class Features3d(Contract):
         return self
 
 
-class Pose3d(Contract):
+class Pose3d(PoseEvidence):
     """本次完整定位结果；运行支持与可持久变换证据严格区分。"""
 
     format_id: Literal["amvision.pose3d.v1"] = "amvision.pose3d.v1"
     run_id: Identifier
-    observation_id: Identifier
-    pose_id: Identifier
-    source_frame_id: Identifier
-    target_frame_id: Identifier
-    length_unit: LengthUnit
-    state: Literal[
-        "found", "not_found", "ambiguous", "underconstrained", "insufficient_quality"
-    ]
-    reason: Identifier | None
-    transform: RigidTransform3d | None
     reference_feature_ids: Annotated[
-        tuple[Identifier, ...], Field(min_length=1, max_length=3)
+        tuple[Identifier, ...], Field(min_length=1, max_length=MAX_POSE_STEPS * 3)
     ]
-    support: Annotated[tuple[CloudReference, ...], Field(min_length=1, max_length=3)]
-    quality: GeometryQuality
-    method: FrameBuildMethod
+    support: Annotated[
+        tuple[CloudReference, ...], Field(min_length=1, max_length=MAX_POSE_STEPS * 3)
+    ]
 
     @model_validator(mode="after")
-    def check_pose(self) -> Self:
-        """严格绑定状态、身份、配方与实际变换，不接受上一轮的旧矩阵。"""
+    def check_support(self) -> Self:
+        """运行权限只来自当前 Scope 支持，派生方向不改写原支持坐标。"""
         found = self.state == "found"
-        if found != (self.transform is not None) or found != (self.reason is None):
-            raise ValueError("三维位姿状态与矩阵不一致")
-        if found and not self.quality.usable:
-            raise ValueError("有效位姿没有通过几何质量检查")
-        if self.source_frame_id == self.target_frame_id:
-            raise ValueError("位姿源目标坐标必须区分")
-        if (self.method.parameters.pose_id, self.method.parameters.target_frame_id) != (
-            self.pose_id,
-            self.target_frame_id,
-        ):
-            raise ValueError("位姿身份与参数不一致")
-        if self.quality.metrics.observation_id != self.observation_id:
-            raise ValueError("位姿质量观测不一致")
-        check_geometry_policy(self.quality, self.method.quality_policy)
-        check_frame_metrics(self.quality)
         unique_ids(self.reference_feature_ids, "reference_feature_ids")
         if self.method.feature_ids() != self.reference_feature_ids or len(
             self.support
         ) != len(self.reference_feature_ids):
             raise ValueError("位姿基准身份、数量或顺序与参数不一致")
-        for cloud in self.support:
+        atoms = (
+            tuple(s.pose for s in self.method.steps)
+            if isinstance(self.method, PoseOperationMethod)
+            else (self,)
+        )
+        identities = tuple(
+            identity
+            for atom in atoms
+            for identity in (
+                tuple((p.observation_id, p.frame_id) for p in atom.method.parents)
+                if isinstance(atom.method, RegistrationMethod)
+                else ((atom.observation_id, atom.source_frame_id),)
+                * len(atom.method.feature_ids())
+            )
+        )
+        for cloud, (observation, frame) in zip(self.support, identities, strict=True):
             if found and cloud.state != "ready":
                 raise ValueError("有效位姿不得引用缺测支持")
             if (
@@ -156,28 +149,9 @@ class Pose3d(Contract):
                 cloud.spatial.length_unit,
             ) != (
                 self.run_id,
-                self.observation_id,
-                self.source_frame_id,
+                observation,
+                frame,
                 self.length_unit,
             ):
                 raise ValueError("位姿支持身份不一致")
-        if self.transform is not None:
-            transform = self.transform
-            if (
-                transform.source_frame_id,
-                transform.target_frame_id,
-                transform.observation_id,
-                transform.length_unit,
-            ) != (
-                self.source_frame_id,
-                self.target_frame_id,
-                self.observation_id,
-                self.length_unit,
-            ):
-                raise ValueError("位姿矩阵身份不一致")
-            if (
-                transform.provenance.method != self.method
-                or transform.provenance.quality != self.quality
-            ):
-                raise ValueError("位姿与变换的生成证据不一致")
         return self

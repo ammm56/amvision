@@ -2,6 +2,7 @@ import { AxesHelper, Box3, Frustum, BufferAttribute, BufferGeometry, Color, Matr
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { createDetailLayer } from './detail-layer'
 import {createResampleLayer} from './resample-layer'
+import {createNormalLayer} from './normal-layer'
 import type { DetailBounds } from './asset-details'
 import type { CloudRendererPolicy } from '../services/measurement-resource.service'
 import { reserveCpu, reserveGpu, type CloudDisplayData } from './preview-data'
@@ -41,6 +42,7 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
   const scene = new Scene(), geometry = new BufferGeometry(), material = new PointsMaterial({ size: 2, sizeAttenuation: false, vertexColors: true })
   const detailLayer = createDetailLayer(scene, material, policy)
   const resampleLayer = createResampleLayer(scene,data.origin,policy,schedule)
+  const normalLayer = createNormalLayer(scene,data,policy,schedule)
   let detailChanged: (() => void) | null = null
   let detailPicked: ((point: ReturnType<CloudDisplayData['point']>) => void) | null = null
   let axes: AxesHelper | null = null
@@ -76,7 +78,7 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
       renderer.domElement.removeEventListener('pointerup', pick)
       renderer.dispose(); renderer.forceContextLoss(); renderer.domElement.remove(); renderer = null
     }
-    detailLayer.clear();resampleLayer.dispose(); geometry.dispose(); material.dispose(); axes?.dispose(); scene.clear(); releaseGpu();releaseColor()
+    detailLayer.clear();resampleLayer.dispose();normalLayer.dispose(); geometry.dispose(); material.dispose(); axes?.dispose(); scene.clear(); releaseGpu();releaseColor()
   }
   function lost(event: Event) { event.preventDefault(); dispose(); failed(new Error('cloud_context_lost')) }
   function down(event: PointerEvent) { if(active&&measurable)pointDown = {x: event.clientX, y: event.clientY} }
@@ -187,6 +189,7 @@ export function createCloudRenderer(host: HTMLElement, data: CloudDisplayData, p
         radius=Math.max(baseRadius,comparisonRadius)
       },
       voxelCell:resampleLayer.cell,
+      normals:normalLayer.update,
       detailEvents(changed: (() => void) | null, picked: ((point: ReturnType<CloudDisplayData['point']>) => void) | null) { detailChanged = changed; detailPicked = picked },
       detailVisible(bounds: DetailBounds) {
         camera.updateMatrixWorld()

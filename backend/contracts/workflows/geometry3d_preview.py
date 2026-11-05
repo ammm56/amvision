@@ -21,6 +21,12 @@ from backend.contracts.workflows.metrology import (
     unique_ids,
 )
 from backend.contracts.workflows.point_cloud import LengthUnit, JsonCount, Sha256
+from backend.contracts.workflows.geometry3d_methods import FrameBuildMethod
+from backend.contracts.workflows.registration3d import RegistrationMethod
+from backend.contracts.workflows.pose3d_operations import (
+    PoseOperationMethod,
+    require_same_matrix,
+)
 from backend.contracts.workflows.boundary3d_preview import CurveDisplay
 
 
@@ -67,6 +73,7 @@ class FrameDisplay(Contract):
     target_frame_id: Identifier
     transform: RigidMatrix3d | None
     quality: GeometryQuality
+    method: FrameBuildMethod | RegistrationMethod | PoseOperationMethod
 
 
 class GeometryPreview(Contract):
@@ -116,7 +123,41 @@ class GeometryPreview(Contract):
                 raise ValueError("平面显示观测不一致")
         if self.frame:
             frame = self.frame
-            check_frame_metrics(frame.quality)
+            if isinstance(frame.method, FrameBuildMethod):
+                check_frame_metrics(frame.quality)
+            elif isinstance(frame.method, RegistrationMethod):
+                frame.method.check_quality(frame.quality)
+                p = frame.method.parameters
+                if (
+                    frame.pose_id,
+                    frame.source_frame_id,
+                    frame.target_frame_id,
+                    self.length_unit,
+                ) != (p.pose_id, p.source_frame_id, p.target_frame_id, p.length_unit):
+                    raise ValueError("配准显示身份与来源不一致")
+            elif frame.quality != frame.method.quality():
+                raise ValueError("派生坐标显示质量与来源不一致")
+            else:
+                steps = frame.method.steps
+                if (
+                    frame.pose_id,
+                    frame.source_frame_id,
+                    frame.target_frame_id,
+                    self.length_unit,
+                ) != (
+                    frame.method.parameters.pose_id,
+                    steps[0].frames()[0],
+                    steps[-1].frames()[1],
+                    steps[0].pose.length_unit,
+                ):
+                    raise ValueError("派生坐标显示身份与来源不一致")
+                invalid = next((s.pose for s in steps if s.pose.state != "found"), None)
+                if (frame.state, frame.reason) != (
+                    (invalid.state, invalid.reason) if invalid else ("found", None)
+                ):
+                    raise ValueError("派生坐标显示状态与来源不一致")
+                if frame.transform is not None:
+                    require_same_matrix(frame.transform.matrix, frame.method.matrix())
             if (frame.state == "found") != frame.quality.usable:
                 raise ValueError("坐标显示与质量状态不一致")
             if self.frame_id not in (frame.source_frame_id, frame.target_frame_id):

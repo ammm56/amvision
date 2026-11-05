@@ -6,17 +6,9 @@ from typing import Annotated, Literal, Self
 from pydantic import Field, model_validator
 
 from backend.contracts.workflows.geometry3d import Point3, require_unit
-from backend.contracts.workflows.geometry3d_methods import (
-    FrameBuildMethod,
-    RigidTransform3d,
-)
-from backend.contracts.workflows.geometry3d_quality import (
-    GeometryQuality,
-    check_frame_metrics,
-    check_geometry_policy,
-)
+from backend.contracts.workflows.geometry3d import RigidMatrix3d
+from backend.contracts.workflows.pose3d_operations import PoseEvidence
 from backend.contracts.workflows.metrology import Contract, Finite, Identifier
-from backend.contracts.workflows.point_cloud import LengthUnit
 
 
 class ConfiguredQuery(Contract):
@@ -58,7 +50,7 @@ class QueryLine(Contract):
         return self
 
 
-def pose_query_line(transform: RigidTransform3d, uv: tuple[float, float]) -> QueryLine:
+def pose_query_line(transform: RigidMatrix3d, uv: tuple[float, float]) -> QueryLine:
     """由 target_from_source 的行轴反解源坐标点，不变换整片点云。"""
     m = transform.matrix
     local = (uv[0], uv[1], 0.0)
@@ -70,56 +62,8 @@ def pose_query_line(transform: RigidTransform3d, uv: tuple[float, float]) -> Que
     )
 
 
-class QueryPoseEvidence(Contract):
+class QueryPoseEvidence(PoseEvidence):
     """仅冻结实际位姿方法、质量和变换，失败位姿不补矩阵。"""
-
-    pose_id: Identifier
-    observation_id: Identifier
-    source_frame_id: Identifier
-    target_frame_id: Identifier
-    length_unit: LengthUnit
-    state: Literal[
-        "found", "not_found", "ambiguous", "underconstrained", "insufficient_quality"
-    ]
-    reason: Identifier | None
-    transform: RigidTransform3d | None
-    method: FrameBuildMethod
-    quality: GeometryQuality
-
-    @model_validator(mode="after")
-    def check_pose(self) -> Self:
-        """持久读取同样核验身份、质量和有效矩阵之间的关系。"""
-        found = self.state == "found"
-        if found != (self.transform is not None) or found != (self.reason is None):
-            raise ValueError("查询位姿状态与变换不一致")
-        if self.source_frame_id == self.target_frame_id or (
-            self.pose_id,
-            self.target_frame_id,
-        ) != (self.method.parameters.pose_id, self.method.parameters.target_frame_id):
-            raise ValueError("查询位姿方法身份不一致")
-        if self.quality.metrics.observation_id != self.observation_id:
-            raise ValueError("查询位姿质量观测不一致")
-        check_geometry_policy(self.quality, self.method.quality_policy)
-        check_frame_metrics(self.quality)
-        if found:
-            t = self.transform
-            if not self.quality.usable or (
-                t.observation_id,
-                t.source_frame_id,
-                t.target_frame_id,
-                t.length_unit,
-                t.provenance.method,
-                t.provenance.quality,
-            ) != (
-                self.observation_id,
-                self.source_frame_id,
-                self.target_frame_id,
-                self.length_unit,
-                self.method,
-                self.quality,
-            ):
-                raise ValueError("查询位姿变换或质量不一致")
-        return self
 
 
 class QueryResolution(Contract):

@@ -6,6 +6,7 @@ from typing import Self
 from pydantic import model_validator
 
 from backend.contracts.workflows.boundary3d import PoseContourBoundary
+from backend.contracts.workflows.geometry3d_methods import FrameBuildMethod
 from backend.contracts.workflows.evaluation3d import (
     EvaluationPlane3d,
     require_same_evaluation,
@@ -103,6 +104,8 @@ def resolve_contour(parameters, pose, datum, measurement, observation_id):
         observation_id,
     ):
         raise ValueError("等高基准身份或观测不一致")
+    if not isinstance(pose.method, FrameBuildMethod):
+        raise ValueError("动态等高必须连接具有明确主基准的 Build Frame，不能使用派生坐标")
     if datum.feature_id != pose.method.parameters.primary_feature_id:
         raise ValueError("等高基准必须是位姿的主基准")
     if pose.state == "found":

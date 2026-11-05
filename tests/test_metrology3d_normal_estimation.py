@@ -252,3 +252,14 @@ def test_spherical_patch_and_quality_failure_against_independent_svd():
     )
     assert not strict["normal_valid"].any() and not strict["normals"].any()
     assert (strict["normal_reason"] == NormalReason.QUALITY_FAILED).all()
+
+
+@pytest.mark.parametrize("kind", ["knn", "hybrid"])
+def test_equal_shell_batched_pca_matches_single_row_exactly(kind):
+    """密集等距壳层按原始身份截断，批量 PCA 与逐点输出逐位相同。"""
+    points = np.array([(x, y, 0) for x in range(20) for y in range(20)], dtype="f4")
+    p = parameters(kind)
+    single = execute(points, p, rows=1)
+    batch = execute(points, p, rows=200)
+    for name in single:
+        np.testing.assert_array_equal(single[name], batch[name])

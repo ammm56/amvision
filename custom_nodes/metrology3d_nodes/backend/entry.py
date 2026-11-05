@@ -5,6 +5,7 @@ from custom_nodes.metrology3d_nodes.backend import geometry_handlers
 from custom_nodes.metrology3d_nodes.backend import measurement_handlers
 from custom_nodes.metrology3d_nodes.backend import boundary_handlers
 from custom_nodes.metrology3d_nodes.backend import dimension_handlers
+from custom_nodes.metrology3d_nodes.backend import pose_handlers
 
 HANDLERS = {
     "read-cloud": handlers.read,
@@ -12,12 +13,16 @@ HANDLERS = {
     "filter-valid": handlers.filter_points,
     "denoise-cloud": handlers.denoise,
     "resample-cloud": handlers.resample,
+    "estimate-normals": handlers.normals,
     "cloud-preview": handlers.preview,
     "save-cloud": handlers.save,
     "export-cloud": handlers.export,
     "crop-roi": geometry_handlers.crop,
     "fit-plane": geometry_handlers.plane,
     "build-frame": geometry_handlers.frame,
+    "invert-pose": pose_handlers.invert,
+    "compose-pose": pose_handlers.compose,
+    "register-cloud": pose_handlers.register,
     "transform-cloud": geometry_handlers.transform,
     "height-query": measurement_handlers.height,
     "measure-step": measurement_handlers.step,

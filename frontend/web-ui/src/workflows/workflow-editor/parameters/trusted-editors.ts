@@ -11,10 +11,16 @@ import BoundarySettingsEditor from '../../../../../../custom_nodes/metrology3d_n
 import DimensionSettingsEditor from '../../../../../../custom_nodes/metrology3d_nodes/frontend/DimensionSettingsEditor.vue'
 import DenoiseSettingsEditor from '../../../../../../custom_nodes/metrology3d_nodes/frontend/DenoiseSettingsEditor.vue'
 import ResampleSettingsEditor from '../../../../../../custom_nodes/metrology3d_nodes/frontend/ResampleSettingsEditor.vue'
+import NormalsSettingsEditor from '../../../../../../custom_nodes/metrology3d_nodes/frontend/NormalsSettingsEditor.vue'
+import PoseSettingsEditor from '../../../../../../custom_nodes/metrology3d_nodes/frontend/PoseSettingsEditor.vue'
+import RegistrationSettingsEditor from '../../../../../../custom_nodes/metrology3d_nodes/frontend/RegistrationSettingsEditor.vue'
 
 const editors: Record<string, Component> = { 'core.rule.check-limits:rules':WorkflowLimitRulesEditor, 'custom.connector.pin-array-locate:layout': PinLayoutEditor, 'custom.connector.measure:items': MeasurementEditor,
   'custom.opencv.planar-calibrate:control_points':WorkflowCalibrationPointsEditor, 'custom.opencv.planar-calibrate:validation_points':WorkflowCalibrationPointsEditor }
 export function trustedParameterEditor(nodeType: string, parameter: string): Component | undefined {
+  if(nodeType==='custom.metrology3d.register-cloud'&&parameter==='settings')return RegistrationSettingsEditor
+  if(['custom.metrology3d.invert-pose','custom.metrology3d.compose-pose'].includes(nodeType)&&parameter==='settings')return PoseSettingsEditor
+  if(nodeType==='custom.metrology3d.estimate-normals'&&parameter==='settings')return NormalsSettingsEditor
   if(nodeType==='custom.metrology3d.resample-cloud'&&parameter==='settings')return ResampleSettingsEditor
   if(nodeType==='custom.metrology3d.denoise-cloud'&&parameter==='settings')return DenoiseSettingsEditor
   if(['custom.metrology3d.measure-extents','custom.metrology3d.measure-edge-pair','custom.metrology3d.measure-hole'].includes(nodeType)&&parameter==='settings')return DimensionSettingsEditor

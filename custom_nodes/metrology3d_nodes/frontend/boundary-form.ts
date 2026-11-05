@@ -17,6 +17,8 @@ export const boundaryRecipeValidator:RecipeValidator=(node,sources,zh)=>{
     if(dynamic&&pose?.nodeTypeId==='custom.metrology3d.build-frame'){
       const q=object(pose.parameters.settings)
       if(e.pose_id!==q.pose_id||e.target_frame_id!==q.target_frame_id)issues.push(zh?'位姿身份与当前连线不一致':'Pose identity differs from current connection')
+    }else if(dynamic&&pose&&['custom.metrology3d.invert-pose','custom.metrology3d.compose-pose'].includes(pose.nodeTypeId)){
+      issues.push(zh?'动态等高需要 Build Frame 主基准，不能连接派生坐标':'Dynamic contours require a Build Frame datum, not a derived pose')
     }
     const known=(sources.features??[]).every(s=>['custom.metrology3d.fit-plane','custom.metrology3d.height-query'].includes(s.nodeTypeId))
     const ids=(sources.features??[]).map(s=>object(s.nodeTypeId.endsWith('height-query')?object(s.parameters.settings).plane_fit:s.parameters.settings).feature_id)

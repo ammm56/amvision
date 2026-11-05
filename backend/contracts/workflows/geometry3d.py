@@ -407,8 +407,11 @@ class RigidMatrix3d(Contract):
     @model_validator(mode="after")
     def check_matrix(self) -> Self:
         """禁止尺度、镜像及投影分量，无隐式单位转换。"""
-        if self.source_frame_id == self.target_frame_id:
-            raise ValueError("变换必须显式区分源和目标坐标")
+        if self.source_frame_id == self.target_frame_id and any(
+            abs(v - int(i == j)) > ORTHOGONAL_TOLERANCE
+            for i, row in enumerate(self.matrix) for j, v in enumerate(row)
+        ):
+            raise ValueError("同名坐标只允许恒等变换")
         if self.matrix[3] != (0, 0, 0, 1):
             raise ValueError("刚性变换末行必须为 0,0,0,1")
         require_rotation(tuple(tuple(row[:3]) for row in self.matrix[:3]))

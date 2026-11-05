@@ -13,11 +13,31 @@ vi.mock('@/workflows/workflow-editor/point-cloud/boundary-debug',async importOri
 beforeEach(()=>{mocks.debug.mockResolvedValue([])})
 vi.mock('@/workflows/workflow-editor/services/measurement-resource.service', () => ({readCloudCapabilities:mocks.capabilities}))
 vi.mock('@/workflows/workflow-editor/point-cloud/preview-data',async importOriginal=>({...await importOriginal<object>(),decodeCloudPreview:mocks.decode}))
-vi.mock('@/workflows/workflow-editor/point-cloud/renderer', () => ({createCloudRenderer:(...args:unknown[])=>Object.assign({comparison:vi.fn(),voxelCell:vi.fn()},mocks.create(...args))}))
+vi.mock('@/workflows/workflow-editor/point-cloud/renderer', () => ({createCloudRenderer:(...args:unknown[])=>Object.assign({comparison:vi.fn(),voxelCell:vi.fn(),normals:vi.fn()},mocks.create(...args))}))
 vi.mock('@/workflows/workflow-editor/point-cloud/asset-details', () => ({readDetailIndex:mocks.details,loadDetailBlock:mocks.detailBlock}))
 const payload = {state:'ready',spatial:{length_unit:null,frame_id:'camera'},color:{mode:'solid'},source_point_count:20,display_point_count:2}
 afterEach(() => vi.resetAllMocks())
 function viewer() { return mount(CloudViewer, {props:{payload,projectId:'p'},global:{plugins:[createI18n({legacy:false,locale:'en-US'})]}}) }
+it('requires explicit normal length, keeps settings display-only and resets on source switch',async()=>{
+  const scene={dispose:vi.fn(),geometry:vi.fn(),normals:vi.fn()},data={dispose:vi.fn()}
+  mocks.capabilities.mockResolvedValue({renderer:{}});mocks.decode.mockResolvedValue(data);mocks.create.mockReturnValue(scene)
+  const body={...payload,normal_info:{},spatial:{frame_id:'camera',length_unit:'mm'}},before=JSON.stringify(body)
+  const w=mount(CloudViewer,{props:{payload:body,projectId:'p'},global:{plugins:[createI18n({legacy:false,locale:'en-US'})]}})
+  try{
+    await flushPromises()
+    const checkbox=w.findAll('label').find(l=>l.text()==='Overview normals')!.get('input')
+    expect(checkbox.attributes('disabled')).toBeDefined()
+    await w.get('[aria-label="Normal vector length"]').setValue(2)
+    await checkbox.setValue(true);expect(scene.normals).toHaveBeenLastCalledWith({length:2,stride:1})
+    await w.get('[aria-label="Normal display stride"]').setValue(3);expect(scene.normals).toHaveBeenLastCalledWith({length:2,stride:3})
+    await w.get('[aria-label="Normal vector length"]').setValue('');expect(scene.normals).toHaveBeenLastCalledWith(null)
+    await w.setProps({payload:{...body,observation_id:'next'}});await flushPromises()
+    expect((w.get('[aria-label="Normal vector length"]').element as HTMLInputElement).value).toBe('')
+    expect((checkbox.element as HTMLInputElement).checked).toBe(false)
+    expect(JSON.stringify(body)).toBe(before)
+  }finally{w.unmount()}
+  expect(scene.dispose).toHaveBeenCalledTimes(2);expect(data.dispose).toHaveBeenCalledTimes(2)
+})
 it.each(['full','evidence'] as const)('renders API failure text without translation warnings or HTML in %s',async presentation=>{
   const message='Missing index <img src=x onerror=alert(1)> {source}'
   const warn=vi.spyOn(console,'warn').mockImplementation(()=>{})

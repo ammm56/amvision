@@ -4,8 +4,8 @@
 
 ## 节点
 
-- 数据：Read Cloud、Normalize Units、Filter Valid、Denoise Cloud、Resample Cloud、Crop ROI、Transform Cloud、Save Cloud、Export Cloud。
-- 定位与特征：Fit Plane、Build Frame、Extract Boundary、Fit Line、Fit Circle。
+- 数据：Read Cloud、Normalize Units、Filter Valid、Denoise Cloud、Resample Cloud、Estimate Normals、Crop ROI、Transform Cloud、Save Cloud、Export Cloud。
+- 定位与特征：Fit Plane、Build Frame、Invert Pose、Compose Poses、Register Cloud、Extract Boundary、Fit Line、Fit Circle。
 - 测量：Height Query、Measure Step、Measure Extents、Measure Edge Pair、Measure Hole。
 - 显示：Cloud Preview。
 
@@ -15,13 +15,23 @@ Fit Circle 明确区分等权、`angular-soft-l1` 角区均衡和 `arc-length-so
 
 ## 依赖与启动
 
-当前 `0.1.23` 仍为二十节点：Resample Cloud 新增同次输入/输出对照、选中体素格框和聚焦；原始格键/成员数沿保存资产细节读取，当前格框同步单位和刚体变换。B03 已接通内部运行字段、存读和状态读取，但还没有公开 Estimate Normals 节点、参数编辑器或法向线段层。旧体素开发资产缺少当前格映射时拒绝读取，原文件保留并需重新生成；不加旧格式降级分支。验证范围与下一步见[本批记录](../../docs/development/3d-metrology-resample-display.md)。
+当前 `0.1.26` 为二十四个节点：新增 Register Cloud，显式初值的点到点/点到面 SE(3) 局部配准。移动与参考云可有不同观测身份，必须同次 Run、明确坐标/单位；没有缩放、镜像、隐式采样或粗定位回退。双向覆盖、全对应残差、六自由度退化及迭代收敛均纳入质量，失败不输出可用矩阵。复用 Open3D、Scope、Pose、Transform Cloud、保存读取、参数和查看器。详见[局部配准记录](../../docs/development/3d-metrology-registration.md)。
 
-`0.1.22` 共二十节点，新增 Resample Cloud。行间隔和体素原点代表只选择已有点，全部字段和原始来源保留；体素质心只生成坐标，保留原聚合格、完整成员行号及均值定义，不自动平均颜色、标签或法向。格距/格原点/单位、质心回写误差均为显式配方参数，质心是 estimated 而非实测支持。子集/变换/保存重读不能丢失原聚合格定义；交换格式不保留平台体素 CSR。接线为 Read/Filter Valid → Resample Cloud → Cloud Preview 或 Save Cloud，现有测量配方不自动改线。完整样本与发布验证、页面范围见[重采样记录](../../docs/development/3d-metrology-resample.md)。B03 尚未公开注册，内部法向内核不等于完成交付。
+`0.1.25` 新增 Invert Pose / Compose Poses，复用现有 pose、Scope、Transform Cloud、保存读取和参数工作区。组合明确为 first 后 second，源/目标链、同次观测、单位与原基准质量均检查；不会自动排序、拟合或生成新的质量门槛。派生 pose 可用于固定 U/V 查询，但不能冒充动态等高的物理主基准。详情与可导入示例见[位姿记录](../../docs/development/3d-metrology-pose-operations.md)。
+
+`0.1.24` 新增 Estimate Normals 公开节点、参数编辑器及有界概览法向层。沿用前批 normal_info、存读与状态读取；完整原云和 B02→B03 三方法已双平台正式发布验证，Windows 页面 Preview/发布/切版/调用/停止通过。详情、容量区别与可导入示例见[法向记录](../../docs/development/3d-metrology-normals.md)。
+
+`0.1.23` 已补齐 Resample Cloud 的同次输入/输出对照、选中体素格框和聚焦；原始格键/成员数沿保存资产细节读取，当前格框同步单位和刚体变换。旧体素开发资产缺少当前格映射时拒绝读取，原文件保留并需重新生成；不加旧格式降级分支。[前批记录](../../docs/development/3d-metrology-resample-display.md)保留当时 B03 尚未公开的历史状态。
+
+`0.1.22` 共二十节点，新增 Resample Cloud。行间隔和体素原点代表只选择已有点，全部字段和原始来源保留；体素质心只生成坐标，保留原聚合格、完整成员行号及均值定义，不自动平均颜色、标签或法向。格距/格原点/单位、质心回写误差均为显式配方参数，质心是 estimated 而非实测支持。子集/变换/保存重读不能丢失原聚合格定义；交换格式不保留平台体素 CSR。接线为 Read/Filter Valid → Resample Cloud → Cloud Preview 或 Save Cloud，现有测量配方不自动改线。完整样本与发布验证、页面范围见[重采样记录](../../docs/development/3d-metrology-resample.md)。
 
 `0.1.21` 新增 Denoise Cloud：显式统计邻域/半径邻域，输出保留和剔除的互补源点子集以及摘要；所有属性和原始行号沿原资源系统保存。统计使用其他 K 点的平均距离及总体标准差，半径包含边界且排除自身。参数不设生产默认，当前工件配方不自动去噪。完整云及双平台验证、实际成本见[本批记录](../../docs/development/3d-metrology-method-resources.md)。
 
 去噪接线为 Read Cloud → Normalize Units（单位需转换时）→ Filter Valid → Denoise Cloud；`cloud` 接后续计算或 Cloud Preview，`removed` 可单独接另一 Cloud Preview/Save Cloud 查看剔除点，`summary` 提供点数和实际统计阈值。统计法 K 必须小于输入点数；半径法使用输入云已确认的物理单位。该操作会改变支持点，不能无审核地插入已有测量配方；对真实细线/孤立结构是否保留须由方法与配方决定。去噪输出清除父云边界连接，不把删点后的旧线段当新边界。
+
+法向接线为 Read/Filter Valid → Estimate Normals → Preview/Save Cloud。kNN、全半径、hybrid 及无符号/参考方向/观测点定向均显式选择；质量阈值和邻域物理尺度不设默认。normal_valid 与 normal_oriented 分开，局部失败不删位置或补 +Z。源点保留原始行号，生成点保留原来源，不提升为实测支持。显示箭头默认关闭，显式长度/步长只作用于概览，不改变结果。完整 14,745,099 点 kNN 使用 8 GiB 工作/2 GiB 活跃数组的隔离配置通过，未自动扩大下列本机 4/1 GiB 配置；原云法向不是秒级操作，也没有插入现有工件测量图。
+
+配准接线为两路 Read/Filter Valid → Register Cloud；点到面参考支路须显式提供有效单位法向，Pose 接 Transform Cloud/Preview 或 B05。需要采样时由既有 Resample Cloud 节点显式控制，仅配准支路采样，完整原云仍可使用同一 Pose。局部有效不是全局唯一定位，初值、对应半径、质量参数均无生产默认。双云各 14,745,099 点的全量测试采用独立 16 GiB 工作/2 GiB 活跃数组；本机 4/1 GiB 配置不自动扩大，预算不足拒绝，不隐式缩点。当前未交付自动粗定位和台面约束方法。
 
 开发环境先激活项目环境，在仓库根目录安装受控版本：
 

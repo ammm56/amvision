@@ -1,4 +1,4 @@
-"""SciPy 精确邻域与 NumPy PCA 法向内核；不注册未完成的公开节点。"""
+"""SciPy 精确邻域与 NumPy PCA 法向内核；与节点和显示生命周期分离。"""
 
 import numpy as np
 from scipy.spatial import cKDTree
@@ -240,9 +240,15 @@ def estimate_normal_arrays(
         for local_row in np.flatnonzero(tied):
             row = start + int(local_row)
             selected = candidates(row, float(distances[local_row, maximum - 1]))
-            fit(np.array([row]), np.r_[row, selected][None, :])
-        for size in np.unique(length[~tied]):
-            offsets = np.flatnonzero((length == size) & ~tied)
+            # 完整壳层仍逐行按身份选择，PCA 合并到同长度批次，不改变支持。
+            size = len(selected)
+            neighbors[local_row, :size] = selected
+            distances[local_row, :size] = np.linalg.norm(
+                tree.data[selected] - tree.data[row], axis=1
+            )
+            length[local_row] = size
+        for size in np.unique(length):
+            offsets = np.flatnonzero(length == size)
             # 块内排序保证同一邻域累加次序稳定，不依赖 KDTree 的等距遍历。
             selected = neighbors[offsets, :size]
             d = distances[offsets, :size]

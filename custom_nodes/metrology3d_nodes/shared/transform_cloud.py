@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import numpy as np
 
-from backend.contracts.workflows.geometry3d_methods import TransformCloudParameters
+from backend.contracts.workflows.pose3d_operations import TransformCloudParameters
 from backend.contracts.workflows.point_cloud import CloudAxes
 from backend.contracts.workflows.point_cloud_runtime import (
     TransformCloudMethod,

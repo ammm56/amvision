@@ -24,6 +24,8 @@
 | 单帧工业规则 | `industrial_single_frame_*` | ROI、测量、匹配、缺陷、连续性和质量门禁 |
 | 数值三态 | `inspection_limits` | Check Limits → Result Record / Value Preview；同步/异步、App Mode 及无法判定传播 |
 | 三维锂电工件 | [完整工件配方](lithium-workpiece.md) | 文件/同机数组、十二钢片与两半圆、50 项工程判定、完整证据显示及 JSON 保存 |
+| 三维法向 | `metrology3d_normals` | ASCII PLY → Filter Valid → Estimate Normals → Preview；参数、容量与使用边界见[法向记录](../../development/3d-metrology-normals.md)，不自动插入工件配方 |
+| 三维位姿 | `metrology3d_pose_ops` | 当前工件文件 → 五窗基准 → Build Frame → Invert / Compose → Transform Cloud → Preview；显式次序、原字段与来源沿用，见[位姿记录](../../development/3d-metrology-pose-operations.md)，不是自动定位或客户通用参数 |
 | 本地目录 | `industrial_local_directory_*` | batch、poll、watch、cursor 和位置判定 |
 | PLC / Modbus | `plc_*` | 等待、状态字、TriggerSource 和结果回传 |
 | USB / UVC | `camera_usb_uvc_*`、`industrial_single_frame_usb_uvc_*` | 枚举、session、流预览和单帧处理 |

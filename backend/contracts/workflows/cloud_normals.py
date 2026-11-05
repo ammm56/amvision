@@ -121,3 +121,9 @@ class EstimateNormalsParameters(Contract):
         if maximum is not None and self.quality.min_support_points > maximum + 1:
             raise ValueError("最小支持点数超过邻域允许数量")
         return self
+
+
+class EstimateNormalsNodeParameters(Contract):
+    """节点参数沿现有 settings 编辑边界封装，算法参数保持同一份契约。"""
+
+    settings: EstimateNormalsParameters = Field(title="Settings")

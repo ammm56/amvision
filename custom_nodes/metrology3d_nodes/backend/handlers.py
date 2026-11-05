@@ -57,6 +57,22 @@ def resample(request):
     }
 
 
+def normals(request):
+    """计算法向沿同一 Runtime/取消/错误边界执行，不改变输入点和原属性。"""
+    from backend.contracts.workflows.cloud_normals import EstimateNormalsNodeParameters
+    from custom_nodes.metrology3d_nodes.shared.estimate_normals import estimate_normals
+
+    p = EstimateNormalsNodeParameters.model_validate(request.parameters)
+    env = require_node_runtime(request)
+    cloud, summary = estimate_normals(
+        env.runtime, cloud_input(request, env.runtime), p.settings, cancel=env.cancel
+    )
+    return {
+        "cloud": cloud.model_dump(mode="json"),
+        "summary": build_value_payload(summary),
+    }
+
+
 def read(request):
     """文件与资产使用相同运行引用，禁止两种来源同时输入。"""
     p = ReadCloudParameters.model_validate(request.parameters)

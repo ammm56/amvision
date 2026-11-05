@@ -179,18 +179,3 @@ class RigidTransform3d(RigidMatrix3d):
             ):
                 raise ValueError("变换父基准空间或观测不一致")
         return self
-
-
-class TransformCloudParameters(Contract):
-    """实际位姿摘要及完整变换证据，不保存可执行的历史运行引用。"""
-
-    pose_id: Identifier
-    pose_sha256: Sha256
-    transform: RigidTransform3d
-
-    @model_validator(mode="after")
-    def check_pose(self) -> Self:
-        """位姿稳定 ID 与生成变换的基准配方一致。"""
-        if self.pose_id != self.transform.provenance.method.parameters.pose_id:
-            raise ValueError("变换方法的位姿 ID 不一致")
-        return self

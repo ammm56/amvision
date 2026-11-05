@@ -1,5 +1,7 @@
 """用实际参数和输出模型生成 Catalog，不另建节点注册框架。"""
 
+from pydantic import RootModel
+
 from backend.contracts.nodes.node_pack_manifest import (
     CUSTOM_NODE_CATALOG_FORMAT,
     CustomNodeCatalogDocument,
@@ -15,6 +17,11 @@ from backend.contracts.workflows.cloud_preprocess import (
     DenoiseCloudParameters,
     ResampleCloudParameters,
 )
+from backend.contracts.workflows.cloud_normals import EstimateNormalsNodeParameters
+from backend.contracts.workflows.registration3d import (
+    RegistrationParameters,
+    RegistrationTransform,
+)
 from backend.contracts.workflows.metrology import ResourceReference
 from backend.contracts.workflows.workflow_graph import (
     WorkflowPayloadContract,
@@ -29,6 +36,10 @@ from backend.contracts.workflows.dimension3d_parameters import (
 )
 from backend.contracts.workflows.geometry3d_observations import Features3d, Pose3d
 from backend.contracts.workflows.geometry3d_methods import RigidTransform3d
+from backend.contracts.workflows.pose3d_operations import (
+    PoseOperationParameters,
+    PoseChainTransform,
+)
 from backend.contracts.workflows.measurement3d_evidence import MeasurementEvidence3d
 from backend.contracts.workflows.measurement3d_parameters import (
     HeightNodeParameters,
@@ -60,7 +71,8 @@ def build_custom_node_catalog_document():
             payload_type_id=key,
             display_name=title,
             transport_kind="inline-json",
-            json_schema=inline_model_schema(model),
+            # Payload 不由参数表单编辑，保留标准本地 $defs，避免来源证据重复展开。
+            json_schema=model.model_json_schema(),
         )
         for key, title, model in (
             ("point-cloud-ref.v1", "Point Cloud", CloudReference),
@@ -68,7 +80,13 @@ def build_custom_node_catalog_document():
             ("roi3d.v1", "3D ROI", RoiPayload),
             ("features3d.v1", "3D Features", Features3d),
             ("pose3d.v1", "3D Pose", Pose3d),
-            ("transform3d.v1", "3D Transform", RigidTransform3d),
+            (
+                "transform3d.v1",
+                "3D Transform",
+                RootModel[
+                    RigidTransform3d | RegistrationTransform | PoseChainTransform
+                ],
+            ),
             (
                 "measurement-evidence3d.v1",
                 "3D Measurement Evidence",
@@ -89,6 +107,33 @@ def build_custom_node_catalog_document():
     cloud = port("cloud", "point-cloud-ref.v1")
     definitions = []
     for key, title, category, model, inputs, outputs in (
+        (
+            "register-cloud",
+            "Register Cloud",
+            "metrology3d.geometry",
+            RegistrationParameters,
+            [
+                port("source", "point-cloud-ref.v1"),
+                port("reference", "point-cloud-ref.v1"),
+            ],
+            [port("pose", "pose3d.v1"), port("found", "boolean.v1")],
+        ),
+        (
+            "invert-pose",
+            "Invert Pose",
+            "metrology3d.geometry",
+            PoseOperationParameters,
+            [port("pose", "pose3d.v1")],
+            [port("pose", "pose3d.v1"), port("found", "boolean.v1")],
+        ),
+        (
+            "compose-pose",
+            "Compose Poses",
+            "metrology3d.geometry",
+            PoseOperationParameters,
+            [port("first", "pose3d.v1"), port("second", "pose3d.v1")],
+            [port("pose", "pose3d.v1"), port("found", "boolean.v1")],
+        ),
         (
             "measure-extents",
             "Measure Extents",
@@ -259,6 +304,14 @@ def build_custom_node_catalog_document():
             [cloud, port("summary", "value.v1")],
         ),
         (
+            "estimate-normals",
+            "Estimate Normals",
+            "metrology3d.data.preprocess",
+            EstimateNormalsNodeParameters,
+            [cloud],
+            [cloud, port("summary", "value.v1")],
+        ),
+        (
             "cloud-preview",
             "Cloud Preview",
             "metrology3d.ui.preview",
@@ -291,7 +344,24 @@ def build_custom_node_catalog_document():
         definitions.append(
             dict(
                 node_type_id="custom.metrology3d." + key,
-                version="0.1.23"
+                version="0.1.26"
+                if key
+                in {
+                    "register-cloud",
+                    "read-cloud",
+                    "save-cloud",
+                    "invert-pose",
+                    "compose-pose",
+                    "build-frame",
+                    "transform-cloud",
+                    "cloud-preview",
+                    "height-query",
+                    "measure-step",
+                    "extract-boundary",
+                }
+                else "0.1.24"
+                if key == "estimate-normals"
+                else "0.1.23"
                 if key
                 in {
                     "resample-cloud",

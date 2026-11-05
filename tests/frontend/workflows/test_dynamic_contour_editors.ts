@@ -35,6 +35,7 @@ it('checks connected pose, measurement item and live plane sources',()=>{
   const good=boundaryRecipeValidator(node,sources,false)
   expect(good.some(v=>v.includes('connection')||v.includes('sources')||v.includes('evidence'))).toBe(false)
   expect(boundaryRecipeValidator(node,{...sources,pose:[]},false)).toContain('Evaluation source and pose connection differ')
+  expect(boundaryRecipeValidator(node,{...sources,pose:[source('compose-pose',{pose_id:'datum'},'pose')]},false)).toContain('Dynamic contours require a Build Frame datum, not a derived pose')
   expect(boundaryRecipeValidator(node,{...sources,features:sources.features.slice(0,1)},false)).toContain('Plane sources are missing or duplicated')
 })
 it('switching the evaluation source removes editable stale geometry and switching back leaves the origin blank',async()=>{

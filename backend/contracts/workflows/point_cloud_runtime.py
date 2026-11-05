@@ -28,7 +28,7 @@ from backend.contracts.workflows.geometry3d import (
     CropCloudParameters,
     FitPlaneParameters,
 )
-from backend.contracts.workflows.geometry3d_methods import TransformCloudParameters
+from backend.contracts.workflows.pose3d_operations import TransformCloudParameters
 from backend.contracts.workflows.boundary3d import (
     BoundaryTopology,
     ExtractBoundaryParameters,

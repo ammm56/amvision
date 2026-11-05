@@ -13,6 +13,7 @@ from custom_nodes.metrology3d_nodes.shared.geometry_quality import (
     require_quality_result,
 )
 from custom_nodes.metrology3d_nodes.shared.preview import unavailable_body
+from custom_nodes.metrology3d_nodes.shared.pose_source import require_pose_quality
 
 
 def attach_measurements(cloud, body, values, *, policy, cancel):
@@ -49,12 +50,7 @@ def attach_measurements(cloud, body, values, *, policy, cancel):
                 resolution = item.method.query_resolution
                 if resolution is not None and resolution.pose is not None:
                     pose = resolution.pose
-                    require_quality_result(pose.quality, pose.method.quality_policy)
-                    if pose.transform is not None:
-                        for parent in pose.transform.provenance.parents:
-                            require_quality_result(
-                                parent.quality, parent.method.quality_policy
-                            )
+                    require_pose_quality(pose)
             for side in item.support:
                 if item.kind in {"height-query", "measure-step"} and side.plane:
                     require_quality_result(

@@ -78,9 +78,11 @@ export const measurementRecipeValidator:RecipeValidator=(node,sources,zh)=>{
     if(poses.length)issues.push(zh?'当前测量来源不能连接位姿端口':'This measurement source cannot connect a pose')
   }else if(query.kind==='pose-uv'){
     if(poses.length!==1)issues.push(zh?'基准坐标查询需要连接一个本次位姿':'Datum queries require one current pose input')
-    else if(poses[0]!.nodeTypeId==='custom.metrology3d.build-frame'){
+    else if(['custom.metrology3d.build-frame','custom.metrology3d.register-cloud'].includes(poses[0]!.nodeTypeId)){
       const source=object(poses[0]!.parameters.settings)
       if(query.pose_id!==source.pose_id||query.target_frame_id!==source.target_frame_id)issues.push(zh?'位姿 ID 或基准坐标与连接不一致':'Pose ID or datum frame differs from the connected input')
+    }else if(['custom.metrology3d.invert-pose','custom.metrology3d.compose-pose'].includes(poses[0]!.nodeTypeId)){
+      if(query.pose_id!==object(poses[0]!.parameters.settings).pose_id)issues.push(zh?'位姿 ID 与连接不一致':'Pose ID differs from the connected input')
     }
   }
   if(stat&&(sources.features?.length||!sources.reference?.length||!sources.target?.length)||!stat&&(sources.reference?.length||sources.target?.length||!sources.features?.length))issues.push(zh?'测量模式与输入连接不一致':'Measurement mode and input connections do not match')

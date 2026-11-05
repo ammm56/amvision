@@ -368,3 +368,104 @@ def test_normal_cancel_every_checkpoint_and_budget():
     finally:
         assert scope.close() == ()
     assert runtime.budget.used == 0
+
+
+def test_denoise_to_normals_keeps_original_rows_and_scalar_precision():
+    """B01 子集接 B03，排除点不混入邻域，输出不重编号或改变非计算字段。"""
+    from custom_nodes.metrology3d_nodes.shared.denoise import denoise_cloud
+    from tests.test_metrology3d_denoise import parameters as denoise_parameters
+
+    scope, runtime, source = fixture()
+    try:
+        kept, _, _ = denoise_cloud(
+            runtime, source, denoise_parameters("statistical"), cancel=lambda: None
+        )
+        result, _ = compute(runtime, kept)
+        with runtime.borrow(kept) as before, runtime.borrow(result) as after:
+            np.testing.assert_array_equal(
+                before.source_indices(0, kept.point_count),
+                after.source_indices(0, result.point_count),
+            )
+            for name, values in before.chunk(0, kept.point_count).items():
+                np.testing.assert_array_equal(
+                    values, after.chunk(0, result.point_count)[name]
+                )
+        assert result.normal_info.support.cloud_id == kept.cloud_id
+        assert runtime.source_point_count(result) == source.point_count
+    finally:
+        assert scope.close() == () and runtime.budget.used == 0
+
+
+@pytest.mark.parametrize("kind", ["surface", "grid-profile"])
+def test_normal_generated_surface_and_profile_roundtrip(tmp_path, kind):
+    """法向不改变生成顶点的来源，不给生成点补造原始行号。"""
+    if kind == "surface":
+        from backend.service.application.runtime.resource_scope import ResourceScope
+        from backend.service.application.workflows.point_cloud.runtime import (
+            get_cloud_runtime,
+        )
+        from tests.test_point_cloud_runtime import root_cloud
+        from tests.test_point_cloud_lineage import generated
+
+        scope = ResourceScope(kind="test")
+        runtime = get_cloud_runtime(scope, run_id="normal-surface", policy=policy())
+        root, _ = root_cloud(runtime)
+        source = generated(runtime, root)
+    else:
+        from tests.integration.metrology3d.test_envelope_runtime import (
+            fixture as envelope_fixture,
+            extract,
+        )
+
+        values, p, measured = envelope_fixture()
+        scope, runtime, *_ = values
+        source = extract(values, p, measured).items[0].support
+    try:
+        result, _ = compute(runtime, source, orientation=dict(kind="unoriented"))
+        service = create_resource_service(tmp_path)
+        assets = replace(ASSET_POLICY, max_asset_bytes=1024 * 1024)
+        asset = save_cloud(
+            runtime,
+            result,
+            service=service,
+            project_id="test",
+            name=kind,
+            mode="derived",
+            write_identity="f" * 64,
+            policy=assets,
+            cancel=lambda: None,
+        )
+        restored = read_asset(
+            runtime,
+            asset,
+            service=service,
+            project_id="test",
+            policy=assets,
+            cancel=lambda: None,
+        )
+        assert restored.topology == result.topology == source.topology
+        assert restored.normal_info == result.normal_info
+        with runtime.borrow(source) as a, runtime.borrow(restored) as b:
+            for start in range(0, source.point_count, runtime.policy.chunk_rows):
+                end = min(source.point_count, start + runtime.policy.chunk_rows)
+                np.testing.assert_array_equal(
+                    a.chunk(start, end)["positions"], b.chunk(start, end)["positions"]
+                )
+            with pytest.raises(InvalidRequestError, match="唯一原始"):
+                b.source_indices(0, 1)
+            if kind == "surface":
+                first, second = (
+                    a.lineage_chunk(0, source.point_count),
+                    b.lineage_chunk(0, restored.point_count),
+                )
+                assert not b.chunk(0, restored.point_count)["normal_valid"].any()
+            else:
+                first, second = (
+                    a.profile_lineage_snapshot(),
+                    b.profile_lineage_snapshot(),
+                )
+            for name, array in first.items():
+                np.testing.assert_array_equal(array, second[name])
+    finally:
+        assert scope.close() == ()
+    assert runtime.budget.used == 0

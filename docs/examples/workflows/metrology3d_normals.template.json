@@ -1,0 +1,61 @@
+{
+  "format_id": "amvision.workflow-graph-template.v1",
+  "template_id": "metrology3d-normals",
+  "template_version": "1.0.0",
+  "display_name": "Point Cloud Normals",
+  "description": "Explicit engineering example, not production quality defaults.",
+  "nodes": [
+    {
+      "node_id": "read",
+      "node_type_id": "custom.metrology3d.read-cloud",
+      "parameters": {
+        "source": {"kind": "file"},
+        "file_options": {
+          "profile_id": "ply-ascii",
+          "profile_version": 1,
+          "spatial": {
+            "length_unit": "mm", "unit_source": "configuration", "frame_id": "fixture",
+            "axes": {"handedness": "right", "axis_labels": ["X", "Y", "Z"], "definition_source": "configuration"}
+          },
+          "field_mapping": [{"source_names": ["x", "y", "z"], "target_name": "positions", "semantic": "position", "dtype": "float32", "components": 3, "unit": null}]
+        }
+      },
+      "ui_state": {"position": {"x": 0, "y": 0}}
+    },
+    {
+      "node_id": "filter",
+      "node_type_id": "custom.metrology3d.filter-valid",
+      "parameters": {"finite_fields": ["positions"], "sentinels": []},
+      "ui_state": {"position": {"x": 300, "y": 0}}
+    },
+    {
+      "node_id": "normals",
+      "node_type_id": "custom.metrology3d.estimate-normals",
+      "parameters": {
+        "settings": {
+          "neighborhood": {"kind": "knn", "neighbors": 16, "support": {"kind": "unrestricted"}},
+          "quality": {"min_support_points": 6, "min_normal_gap": 0.02, "max_rms": 0.03, "max_surface_variation": 0.1},
+          "orientation": {"kind": "direction", "direction": [0, 0, 1], "min_abs_cosine": 0.1},
+          "frame_id": "fixture", "length_unit": "mm", "existing_normals": "reject", "diagnostics": true
+        }
+      },
+      "ui_state": {"position": {"x": 600, "y": 0}}
+    },
+    {
+      "node_id": "preview",
+      "node_type_id": "custom.metrology3d.cloud-preview",
+      "parameters": {"point_limit": 100000, "color": {"mode": "solid"}},
+      "ui_state": {"position": {"x": 900, "y": 0}}
+    }
+  ],
+  "edges": [
+    {"edge_id": "read-filter", "source_node_id": "read", "source_port": "cloud", "target_node_id": "filter", "target_port": "cloud"},
+    {"edge_id": "filter-normals", "source_node_id": "filter", "source_port": "cloud", "target_node_id": "normals", "target_port": "cloud"},
+    {"edge_id": "normals-preview", "source_node_id": "normals", "source_port": "cloud", "target_node_id": "preview", "target_port": "cloud"}
+  ],
+  "template_inputs": [{"input_id": "input", "display_name": "Cloud file", "payload_type_id": "file-ref.v1", "target_node_id": "read", "target_port": "file", "required": true}],
+  "template_outputs": [
+    {"output_id": "body", "display_name": "Cloud", "payload_type_id": "response-body.v1", "source_node_id": "preview", "source_port": "body"},
+    {"output_id": "summary", "display_name": "Normal quality", "payload_type_id": "value.v1", "source_node_id": "normals", "source_port": "summary"}
+  ]
+}
