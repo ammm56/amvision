@@ -26,13 +26,13 @@
           </section>
           <section class="project-panel"><h2>{{ text('running') }}</h2>
             <div class="project-panel-body"><template v-for="group in activeGroups" :key="group.label">
-              <div class="project-section-heading"><h3>{{ text(group.label) }}</h3><div class="project-actions"><button v-for="link in group.links" :key="link.path" class="project-link" @click="navigate(link.path)">{{ text(link.label) }}</button></div></div>
+              <div class="project-section-heading"><h3>{{ text(group.label) }}</h3></div>
               <ProjectActivityTable v-if="group.items.length" :items="group.items" mode="running" v-bind="tableProps" @open="openItem" />
-              <p v-if="!group.items.length" class="project-empty-inline">{{ text(loading ? 'loading' : activityError ? 'failedRequest' : group.label === 'tasks' ? 'noTasks' : 'noServices') }}</p>
+              <p v-if="!group.items.length" class="project-empty-inline">{{ text(loading ? 'loading' : activityError ? 'failedRequest' : 'noServices') }}</p>
             </template></div>
           </section>
         </div>
-        <section v-if="shortcuts.length" class="project-panel project-continue-panel"><h2>{{ text('continue') }}</h2><div class="project-shortcuts"><button type="button" v-for="shortcut in shortcuts" :key="shortcut.path" :disabled="!!shortcut.reason" :title="shortcut.reason" @click="navigate(shortcut.path)"><component :is="shortcut.icon" :size="23" /><span>{{ text(shortcut.label) }}<small v-if="shortcut.reason">{{ shortcut.reason }}</small></span></button></div></section>
+        <section v-if="shortcuts.length" class="project-panel project-continue-panel" :aria-label="text('continue')"><div class="project-shortcuts"><button type="button" v-for="shortcut in shortcuts" :key="shortcut.path" :disabled="!!shortcut.reason" :title="shortcut.reason" @click="navigate(shortcut.path)"><component :is="shortcut.icon" :size="23" /><span>{{ text(shortcut.label) }}<small v-if="shortcut.reason">{{ shortcut.reason }}</small></span></button></div></section>
       </template>
       <ProjectResourceDrawer v-if="resourceItem" :key="resourceItem.resource_id" :project-id="project.project_id" :item="resourceItem" @close="resourceItem = null" />
       <ProjectDialogs v-if="dialog" :action="dialog" :project="project" @close="dialog = null" @changed="load" />
@@ -68,15 +68,14 @@ const canWrite = computed(() => session.hasScopes(['datasets:write']) || session
 const canSdk = computed(() => canExportProjectSdk(session))
 const canNavigate = (path: string) => canAccessPath(session.currentUser, path) && (!path.startsWith('/models') || session.hasScopes(['tasks:read']))
 const metrics = computed(() => ([{ label: 'datasets', path: '/datasets' }, { label: 'models', path: '/models' }, { label: 'apps', path: '/workflows/apps' }, { label: 'deployments', path: '/deployments' }] as const).filter(item => Object.hasOwn(project.value?.resource_counts || {}, item.label)).map(item => ({ ...item, count: project.value?.resource_counts?.[item.label] })))
-const links = [{ label: 'taskList', path: '/tasks' }, { label: 'deployments', path: '/deployments' }, { label: 'apps', path: '/workflows/apps' }] as const
 const serviceItems = computed(() => {
   const items = overview.value?.active || [], runtimes = items.filter(item => item.kind === 'runtime'), deployments = items.filter(item => item.kind === 'deployment')
   return [...runtimes.slice(0, 2), ...deployments.slice(0, 2), ...runtimes.slice(2), ...deployments.slice(2)].slice(0, 4)
 })
 const activeGroups = computed(() => [
-  { label: 'tasks' as const, items: overview.value?.active.filter(item => !['runtime', 'deployment'].includes(item.kind)) || [], links: links.filter(item => item.path === '/tasks' && canNavigate(item.path)) },
-  { label: 'services' as const, items: serviceItems.value, links: links.filter(item => item.path !== '/tasks' && canNavigate(item.path)) },
-].filter(group => group.label === 'tasks' ? overview.value?.access.tasks : overview.value?.access.runtimes || overview.value?.access.deployments))
+  { label: 'tasks' as const, items: overview.value?.active.filter(item => !['runtime', 'deployment'].includes(item.kind)) || [] },
+  { label: 'services' as const, items: serviceItems.value },
+].filter(group => group.label === 'tasks' ? overview.value?.access.tasks && group.items.length > 0 : overview.value?.access.runtimes || overview.value?.access.deployments))
 const shortcuts = computed(() => [
   { label: 'import' as const, path: '/datasets', icon: Database, scope: 'datasets:write', reason: '' },
   { label: 'train' as const, path: '/models', icon: Box, scope: 'tasks:write', reason: project.value?.resource_counts?.datasets === 0 ? text('needDataset') : '' },

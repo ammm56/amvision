@@ -103,7 +103,7 @@ export async function listSdkResources(id: string, signal?: AbortSignal): Promis
   }
   throw new Error('资源超过支持容量，请拆分项目后导出')
 }
-export const getProjectDeletionResult = (id: string, operation: string) => apiRequest<ProjectDeletionResult>(`/projects/${encodeURIComponent(id)}/deletion-operations/${encodeURIComponent(operation)}`)
+export const getProjectDeletionResult = (id: string, operation: string, signal?: AbortSignal) => apiRequest<ProjectDeletionResult>(`/projects/${encodeURIComponent(id)}/deletion-operations/${encodeURIComponent(operation)}`, { signal })
 
 export async function getProjectSummary(projectId: string): Promise<ProjectSummary> {
   return apiRequest<ProjectSummary>(`/projects/${encodeURIComponent(projectId)}/summary`)

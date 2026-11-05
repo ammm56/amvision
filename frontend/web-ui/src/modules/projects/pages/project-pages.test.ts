@@ -9,7 +9,7 @@ import { ApiError } from '@/shared/api/error'
 import ProjectListPage from './ProjectListPage.vue'
 import ProjectOverviewPage from './ProjectOverviewPage.vue'
 import ProjectDialogs from '../components/ProjectDialogs.vue'
-import { listProjects, getProject, getProjectOverview } from '../services/project.service'
+import { listProjects, getProject, getProjectOverview, getProjectSummary } from '../services/project.service'
 
 vi.mock('../services/project.service', () => ({ listProjects: vi.fn(), getProject: vi.fn(), getProjectOverview: vi.fn(), getProjectSummary: vi.fn() }))
 const project = { project_id: 'project-1', display_name: '真实项目', resource_counts: { datasets: 2, models: 3, apps: 4, deployments: 5 } }
@@ -70,6 +70,30 @@ it('受限账号保留项目与数据集入口，隐藏 SDK 和无权动作', as
   expect(wrapper!.text()).not.toContain('SDK'); expect(wrapper!.text()).not.toContain('创建部署'); expect(wrapper!.text()).not.toContain('编辑项目')
 })
 
+it('无执行任务时不展示任务分组或占位，保留服务与快捷入口', async () => {
+  vi.mocked(getProjectOverview).mockResolvedValue({ ...overview, active: [{ resource_id: 'runtime-1', name: '产线检测', kind: 'runtime', state: 'running', occurred_at: '2026-11-04T01:00:00Z' }] })
+  await open('/projects/project-1')
+  expect(wrapper!.text()).not.toContain('正在执行的任务')
+  expect(wrapper!.text()).not.toContain('暂无执行中的任务')
+  expect(wrapper!.text()).toContain('产线检测')
+  expect(wrapper!.find('.project-panel-body .project-actions').exists()).toBe(false)
+  expect(wrapper!.find('.project-continue-panel h2').exists()).toBe(false)
+  expect(wrapper!.findAll('.project-shortcuts button')).toHaveLength(4)
+})
+
+it('执行任务显示进度，刷新后任务结束则移除整个分组', async () => {
+  vi.mocked(getProjectOverview).mockResolvedValue({ ...overview, active: [{ resource_id: 'task-active', name: '训练进行中', kind: 'yolo11-training', state: 'running', occurred_at: '2026-11-04T01:00:00Z', progress: { percent: 42, stage: '训练' } }] })
+  await open('/projects/project-1')
+  expect(wrapper!.text()).toContain('正在执行的任务')
+  expect(wrapper!.text()).toContain('训练进行中')
+  expect(wrapper!.get('progress').attributes('value')).toBe('42')
+  vi.mocked(getProjectOverview).mockResolvedValue(overview)
+  await wrapper!.get('button[aria-label="刷新"]').trigger('click'); await flushPromises()
+  expect(wrapper!.text()).not.toContain('正在执行的任务')
+  expect(wrapper!.text()).not.toContain('训练进行中')
+  expect(wrapper!.find('progress').exists()).toBe(false)
+})
+
 it.each([403, 404])('概览 %s 隐藏旧信息并能返回列表', async status => {
   vi.mocked(getProject).mockRejectedValue(new ApiError(status, { message: '不应回显的内部详情' }))
   const router = await open('/projects/project-1')
@@ -91,17 +115,109 @@ it('名称按钮仅选择，查看独立导航；隐藏的当前项目可定位'
   expect(router.currentRoute.value.path).toBe('/projects')
   expect(store.selectedProjectId).toBe(project.project_id)
   expect(wrapper!.get('.project-name-button').attributes('aria-pressed')).toBe('true')
-  await wrapper!.findAll('.project-row-actions button').find(button => button.text() === '查看')!.trigger('click'); await flushPromises()
+  expect(getProject).not.toHaveBeenCalled()
+  await wrapper!.get('.project-row-actions button[aria-label="查看"]').trigger('click'); await flushPromises()
   expect(router.currentRoute.value.path).toBe('/projects/project-1')
+  expect(getProject).toHaveBeenCalledTimes(1)
 })
 
-it('创建成功留在列表并定位、提供查看；同名行显示可区分的 ID', async () => {
-  vi.mocked(listProjects).mockResolvedValue({ ...page, items: [project, { ...project, project_id: 'project-2' }] })
+it('行切换直接复用列表数据，连续切换和重复点击不请求详情或摘要', async () => {
+  const first = { ...project, summary: { project_id: project.project_id, generated_at: '2026-11-05T04:00:00Z' } }
+  const second = { ...project, project_id: 'project-2', display_name: '另一个项目', summary: null }
+  vi.mocked(listProjects).mockResolvedValue({ ...page, items: [first, second] })
+  // 即使详情服务没有响应，本地选中状态也必须立即切换。
+  vi.mocked(getProject).mockReturnValue(new Promise(() => {}))
+  const store = useProjectStore()
+  store.projects = [{ ...project, display_name: '旧名称' }]
+  await open('/projects')
+  const rows = wrapper!.findAll('.project-table tbody tr')
+  await rows[0].trigger('click')
+  expect(store.selectedProject).toEqual(first)
+  expect(store.selectedSummary).toEqual(first.summary)
+  expect(rows[0].classes()).toContain('is-current')
+  await rows[1].trigger('click')
+  expect(store.selectedProject).toEqual(second)
+  expect(store.selectedSummary).toBeNull()
+  expect(rows[0].classes()).not.toContain('is-current')
+  expect(rows[1].classes()).toContain('is-current')
+  await rows[0].trigger('click')
+  await rows[0].trigger('click')
+  expect(store.selectedProjectId).toBe(first.project_id)
+  expect(store.selectedSummary).toEqual(first.summary)
+  expect(store.projects).toHaveLength(2)
+  expect(getProject).not.toHaveBeenCalled()
+  expect(getProjectSummary).not.toHaveBeenCalled()
+  expect(listProjects).toHaveBeenCalledTimes(1)
+})
+
+it('查看直接进入概览，详情失权仍由概览显示无法访问', async () => {
   const router = await open('/projects')
+  vi.mocked(getProject).mockRejectedValue(new ApiError(403, { message: '无权访问' }))
+  await wrapper!.get('.project-row-actions button[aria-label="查看"]').trigger('click')
+  await flushPromises()
+  expect(router.currentRoute.value.path).toBe('/projects/project-1')
+  expect(wrapper!.text()).toContain('无法打开此项目')
+  expect(wrapper!.text()).not.toContain('真实项目')
+  expect(getProject).toHaveBeenCalledTimes(1)
+})
+
+it.each(['/projects', '/projects?q=旧筛选&offset=20'])('创建成功恢复完整列表首屏而不按 ID 筛选：%s', async path => {
+  vi.mocked(listProjects).mockResolvedValue({ ...page, items: [project, { ...project, project_id: 'project-2' }] })
+  const router = await open(path)
   expect(wrapper!.findAll('.project-disambiguation').map(item => item.text())).toEqual(['project-1', 'project-2'])
-  await wrapper!.findAll('button').find(item => item.text() === '新建项目')!.trigger('click'); await flushPromises()
+  await wrapper!.findAll('button').find(item => item.text() === '创建新项目')!.trigger('click'); await flushPromises()
   wrapper!.findComponent(ProjectDialogs).vm.$emit('created', project); await flushPromises()
   expect(router.currentRoute.value.path).toBe('/projects')
-  expect(router.currentRoute.value.query.q).toBe(project.project_id)
-  expect(wrapper!.find('.project-notice').text()).toContain('项目已创建')
+  expect(router.currentRoute.value.query.q).toBeUndefined()
+  expect(router.currentRoute.value.query.offset).toBeUndefined()
+  expect(wrapper!.get<HTMLInputElement>('input[aria-label="搜索项目"]').element.value).toBe('')
+  expect(listProjects).toHaveBeenLastCalledWith({ includeSummary: true, offset: 0, limit: 20, q: '' })
+  expect(wrapper!.findAll('.project-table tbody tr')).toHaveLength(2)
+  expect(useProjectStore().selectedProjectId).toBe(project.project_id)
+  expect(wrapper!.find('.project-notice').exists()).toBe(false)
+})
+
+it('更多菜单打开对应抽屉，受保护项目不提供删除入口', async () => {
+  const editable = { ...project, project_id: 'project-editable', revision: 'revision-1' }
+  const protectedProject = { ...project, project_id: 'project-protected', project_source: 'configured' as const, revision: 'revision-2' }
+  vi.mocked(listProjects).mockResolvedValue({ ...page, items: [editable, protectedProject] })
+  await open('/projects')
+  const rows = wrapper!.findAll('.project-table tbody tr')
+  expect(rows[0].findAll('.project-row-actions button').map(button => button.attributes('aria-label'))).toEqual(['查看', '更多操作'])
+  await rows[0].get('button[aria-haspopup="menu"]').trigger('keydown', { key: 'Enter' }); await flushPromises()
+  expect(Array.from(document.querySelectorAll('[role="menuitem"]')).map(item => item.textContent)).toEqual(['详情', '编辑', '删除'])
+  expect(document.querySelector('[role="menu"]')!.textContent).not.toContain('SDK')
+  ;(document.querySelectorAll('[role="menuitem"]')[0] as HTMLElement).click(); await flushPromises()
+  expect(wrapper!.getComponent(ProjectDialogs).props()).toMatchObject({ action: 'info', project: editable })
+  wrapper!.getComponent(ProjectDialogs).vm.$emit('close'); await flushPromises()
+  await rows[0].get('button[aria-haspopup="menu"]').trigger('keydown', { key: 'Enter' }); await flushPromises()
+  ;(document.querySelectorAll('[role="menuitem"]')[1] as HTMLElement).click(); await flushPromises()
+  expect(wrapper!.getComponent(ProjectDialogs).props()).toMatchObject({ action: 'edit', project: editable })
+  expect(useProjectStore().selectedProjectId).not.toBe(editable.project_id)
+  wrapper!.getComponent(ProjectDialogs).vm.$emit('close'); await flushPromises()
+  await rows[1].get('button[aria-haspopup="menu"]').trigger('keydown', { key: 'Enter' }); await flushPromises()
+  expect(Array.from(document.querySelectorAll('[role="menuitem"]')).map(item => item.textContent)).toEqual(['详情', '编辑'])
+})
+
+it('列表只读账号仅保留查看和信息操作，选中行不增加文字', async () => {
+  useSessionStore().currentUser = { principal_id: 'reader', scopes: ['datasets:read'], project_ids: ['project-1'], allowed_pages: ['projects'] } as never
+  const store = useProjectStore(); store.projects = [project]; store.selectedProjectId = project.project_id
+  await open('/projects')
+  expect(wrapper!.findAll('.project-row-actions button').map(button => button.attributes('aria-label'))).toEqual(['查看', '更多操作'])
+  await wrapper!.get('button[aria-haspopup="menu"]').trigger('keydown', { key: 'Enter' }); await flushPromises()
+  expect(Array.from(document.querySelectorAll('[role="menuitem"]')).map(item => item.textContent)).toEqual(['详情'])
+  expect(wrapper!.get('.project-table tbody tr').text()).not.toContain('当前项目')
+  expect(wrapper!.get('input[aria-label="搜索项目"]').attributes('placeholder')).toBeUndefined()
+})
+
+it.each([
+  { totalCount: 0, offset: 0, hasMore: false, visible: false },
+  { totalCount: 20, offset: 0, hasMore: false, visible: false },
+  { totalCount: 21, offset: 0, hasMore: true, visible: true },
+  { totalCount: null, offset: 0, hasMore: true, visible: true },
+  { totalCount: null, offset: 20, hasMore: false, visible: true },
+])('分页仅在存在跨页数据时显示：$totalCount / $offset / $hasMore', async ({ totalCount, offset, hasMore, visible }) => {
+  vi.mocked(listProjects).mockResolvedValue({ items: totalCount === 0 ? [] : [project], pagination: { ...page.pagination, totalCount, offset, hasMore } })
+  await open(offset ? `/projects?offset=${offset}` : '/projects')
+  expect(wrapper!.find('.project-pagination').exists()).toBe(visible)
 })

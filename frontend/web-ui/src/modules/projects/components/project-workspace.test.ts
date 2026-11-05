@@ -9,6 +9,7 @@ import ProjectMetadataDrawer from './ProjectMetadataDrawer.vue'
 import ProjectSdkDialog from './ProjectSdkDialog.vue'
 import ProjectDeleteDialog from './ProjectDeleteDialog.vue'
 import ProjectDialogs from './ProjectDialogs.vue'
+import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import { useFeedbackStore } from '@/app/stores/feedback.store'
 import { useSessionStore } from '@/app/stores/session.store'
 import { readPendingDeletions, savePendingDeletion, clearPendingDeletion, readPendingCreations } from '../project-recovery'
@@ -17,25 +18,129 @@ import { createProject, updateProject, listSdkResources, previewSdkConfigPackage
 vi.mock('../services/project.service', () => ({ createProject: vi.fn(), updateProject: vi.fn(), getProject: vi.fn(), listSdkResources: vi.fn(), previewSdkConfigPackage: vi.fn(), downloadSdkConfigPackage: vi.fn(), deleteProject: vi.fn(), previewProjectDeletion: vi.fn(), getProjectDeletionResult: vi.fn() }))
 beforeEach(() => { setActivePinia(createPinia()) })
 const wrappers: Array<{ unmount(): void }> = []
-afterEach(() => { wrappers.splice(0).forEach(wrapper => wrapper.unmount()); document.body.innerHTML = ''; localStorage.clear(); sessionStorage.clear(); vi.resetAllMocks() })
+afterEach(() => { wrappers.splice(0).forEach(wrapper => wrapper.unmount()); document.body.innerHTML = ''; localStorage.clear(); sessionStorage.clear(); vi.useRealTimers(); vi.resetAllMocks() })
 const project = { project_id: 'project-ui', display_name: '测试项目', description: '原说明', revision: 'a'.repeat(64) }
 const preview = { project_id: project.project_id, configuration_revision: 'b'.repeat(64), files: [{ path: 'config.json', count: 1 }], notes: [], warnings: [], workflow_runtime_count: 1, model_deployment_count: 0, trigger_source_count: 1 }
 
 describe('项目操作', () => {
+  it('删除以项目名称确认，不显示资源明细和技术字段', async () => {
+    vi.mocked(previewProjectDeletion).mockResolvedValue({ project_id: project.project_id, project_source: 'local_disk', protected: false, can_delete: true, blockers: [], resource_counts: { models: 2, dataset_versions: 0, workflow_runs: 12 } })
+    const wrapper = mount(ProjectDeleteDialog, { props: { project }, attachTo: document.body, global: { plugins: [i18n] } }); wrappers.push(wrapper)
+    await flushPromises()
+    expect(wrapper.find('details').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('删除明细')
+    expect(wrapper.text()).not.toContain('技术信息')
+    expect(wrapper.text()).not.toContain('Project ID')
+    const confirm = wrapper.getComponent(ConfirmDialog)
+    expect(confirm.props('confirmDisabled')).toBe(true)
+    await wrapper.get('input').setValue(project.project_id)
+    expect(confirm.props('confirmDisabled')).toBe(true)
+    confirm.vm.$emit('confirm'); await flushPromises()
+    expect(deleteProject).not.toHaveBeenCalled()
+    await wrapper.get('input').setValue(project.display_name)
+    expect(confirm.props('confirmDisabled')).toBe(false)
+  })
+
+  it('删除预检受阻时不提供确认入口，即使收到提交事件也不调用删除', async () => {
+    vi.mocked(previewProjectDeletion).mockResolvedValue({ project_id: project.project_id, project_source: 'local_disk', protected: false, can_delete: false, blockers: [{ resource_kind: 'deployment', resource_id: 'deployment-1', display_name: '生产模型', state: 'running' }], resource_counts: { models: 2 } })
+    const wrapper = mount(ProjectDeleteDialog, { props: { project }, attachTo: document.body, global: { plugins: [i18n] } }); wrappers.push(wrapper)
+    await flushPromises()
+    expect(wrapper.get('.blockers').text()).toContain('生产模型')
+    expect(wrapper.find('input').exists()).toBe(false)
+    expect(wrapper.getComponent(ConfirmDialog).props('showConfirm')).toBe(false)
+    wrapper.getComponent(ConfirmDialog).vm.$emit('confirm'); await flushPromises()
+    expect(deleteProject).not.toHaveBeenCalled()
+  })
+
+  it('清理失败直接显示原因，停止自动查询且不误报成功', async () => {
+    vi.useFakeTimers()
+    vi.mocked(getProjectDeletionResult).mockResolvedValue({ project_id: project.project_id, operation_id: 'operation-1', state: 'cleanup_failed', cleanup_error: '文件仍被占用', resource_counts: {} })
+    const wrapper = mount(ProjectDeleteDialog, { props: { project, operationId: 'operation-1' }, attachTo: document.body, global: { plugins: [i18n] } }); wrappers.push(wrapper)
+    await flushPromises()
+    expect(wrapper.text()).toContain('文件仍被占用')
+    expect(wrapper.text()).not.toContain('operation-1')
+    expect(wrapper.text()).not.toContain('项目已移除')
+    expect(wrapper.text()).not.toContain('核对结果')
+    expect(wrapper.find('input').exists()).toBe(false)
+    expect(wrapper.getComponent(ConfirmDialog).props('showConfirm')).toBe(false)
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(getProjectDeletionResult).toHaveBeenCalledTimes(1)
+    expect(deleteProject).not.toHaveBeenCalled()
+  })
+
   it('删除响应和查询连续失败保留待确认，不误发未受理也不重复 DELETE', async () => {
+    vi.useFakeTimers()
     vi.mocked(previewProjectDeletion).mockResolvedValueOnce({ project_id: project.project_id, project_source: 'local_disk', protected: false, can_delete: true, blockers: [], resource_counts: {} }).mockRejectedValue(new Error('断线'))
     vi.mocked(deleteProject).mockRejectedValue(new Error('删除响应丢失'))
     vi.mocked(getProjectDeletionResult).mockRejectedValue(new Error('查询断线'))
     const wrapper = mount(ProjectDeleteDialog, { props: { project }, attachTo: document.body, global: { plugins: [i18n] } }); wrappers.push(wrapper)
-    await flushPromises(); await wrapper.get('input').setValue(project.project_id)
+    await flushPromises(); await wrapper.get('input').setValue(project.display_name)
     const button = (name: string) => wrapper.findAll('button').find(item => item.text() === name)!
     await button('删除项目').trigger('click'); await flushPromises()
     expect(wrapper.emitted('unaccepted')).toBeUndefined()
     expect(wrapper.text()).toContain('删除结果尚未确认')
     expect(wrapper.text()).toContain(project.display_name)
-    await button('检查清理状态').trigger('click'); await flushPromises()
+    expect(wrapper.text()).not.toContain('核对结果')
+    await vi.advanceTimersByTimeAsync(5000); await flushPromises()
     expect(deleteProject).toHaveBeenCalledTimes(1)
+    expect(deleteProject).toHaveBeenCalledWith(project.project_id, project.project_id)
     expect(getProjectDeletionResult).toHaveBeenCalledTimes(2)
+    vi.mocked(getProjectDeletionResult).mockResolvedValue({ project_id: project.project_id, operation_id: 'operation-1', state: 'deleted', resource_counts: {} })
+    await vi.advanceTimersByTimeAsync(5000); await flushPromises()
+    expect(wrapper.text()).toContain('项目已移除')
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+    expect(deleteProject).toHaveBeenCalledTimes(1)
+  })
+
+  it('删除后自动等待清理完成，只展示项目已移除且停止查询', async () => {
+    vi.useFakeTimers()
+    const pending = { project_id: project.project_id, operation_id: 'operation-1', state: 'cleanup_pending' as const, resource_counts: {} }
+    vi.mocked(previewProjectDeletion).mockResolvedValue({ project_id: project.project_id, project_source: 'local_disk', protected: false, can_delete: true, blockers: [], resource_counts: {} })
+    vi.mocked(deleteProject).mockResolvedValue(pending)
+    vi.mocked(getProjectDeletionResult).mockResolvedValueOnce(pending).mockResolvedValue({ ...pending, state: 'deleted' })
+    const wrapper = mount(ProjectDeleteDialog, { props: { project }, attachTo: document.body, global: { plugins: [i18n] } }); wrappers.push(wrapper)
+    await flushPromises(); await wrapper.get('input').setValue(project.display_name)
+    wrapper.getComponent(ConfirmDialog).vm.$emit('confirm'); await flushPromises()
+    expect(wrapper.text()).not.toContain('项目已移除')
+    expect(wrapper.getComponent(ConfirmDialog).props('showConfirm')).toBe(false)
+    expect(wrapper.emitted('removed')).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(1000); await flushPromises()
+    expect(getProjectDeletionResult).toHaveBeenLastCalledWith(project.project_id, 'operation-1', expect.any(AbortSignal))
+    expect(wrapper.text()).toContain('项目已移除')
+    expect(wrapper.find('.deletion-result__success').exists()).toBe(true)
+    expect(wrapper.text()).not.toContain('文件')
+    expect(wrapper.text()).not.toContain('技术信息')
+    expect(wrapper.text()).not.toContain('核对结果')
+    expect(wrapper.emitted('removed')).toHaveLength(2)
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(getProjectDeletionResult).toHaveBeenCalledTimes(2)
+    expect(deleteProject).toHaveBeenCalledTimes(1)
+  })
+
+  it('关闭待完成结果面板会取消查询，迟到结果不会更新或继续轮询', async () => {
+    vi.useFakeTimers()
+    let resolve!: (value: Awaited<ReturnType<typeof getProjectDeletionResult>>) => void
+    vi.mocked(getProjectDeletionResult).mockReturnValue(new Promise(done => { resolve = done }))
+    const wrapper = mount(ProjectDeleteDialog, { props: { project, operationId: 'operation-1' }, attachTo: document.body, global: { plugins: [i18n] } }); wrappers.push(wrapper)
+    await flushPromises()
+    const signal = vi.mocked(getProjectDeletionResult).mock.calls[0][2]!
+    wrapper.unmount(); wrappers.pop()
+    expect(signal.aborted).toBe(true)
+    resolve({ project_id: project.project_id, operation_id: 'operation-1', state: 'cleanup_pending', resource_counts: {} })
+    await flushPromises(); await vi.advanceTimersByTimeAsync(30_000)
+    expect(wrapper.emitted('removed')).toBeUndefined()
+    expect(getProjectDeletionResult).toHaveBeenCalledTimes(1)
+  })
+
+  it('结果查询失权停止自动请求，保留未确认状态而不是成功', async () => {
+    vi.useFakeTimers()
+    vi.mocked(getProjectDeletionResult).mockRejectedValue(new ApiError(403, { message: '无权访问' }))
+    const wrapper = mount(ProjectDeleteDialog, { props: { project, operationId: 'operation-1' }, attachTo: document.body, global: { plugins: [i18n] } }); wrappers.push(wrapper)
+    await flushPromises(); await vi.advanceTimersByTimeAsync(30_000)
+    expect(wrapper.text()).toContain('删除结果尚未确认')
+    expect(wrapper.text()).not.toContain('项目已移除')
+    expect(wrapper.find('.deletion-result__loading').exists()).toBe(false)
+    expect(getProjectDeletionResult).toHaveBeenCalledTimes(1)
   })
 
   it('分别保留多个项目的清理回执，清除 B 不会移除 A', () => {
@@ -191,7 +296,7 @@ it.each(['edit', 'info'] as const)('从 %s 保存完成才显示项目已更新�
   vi.spyOn(useSessionStore(), 'loadBootstrap').mockRejectedValue(new Error('后台刷新暂不可用'))
   let complete!: (value: typeof project) => void
   vi.mocked(updateProject).mockImplementation(() => new Promise(resolve => { complete = resolve }))
-  const wrapper = mount(ProjectDialogs, { props: { action, project }, attachTo: document.body, global: { plugins: [i18n] } }); wrappers.push(wrapper)
+  const wrapper = mount(ProjectDialogs, { props: { action, project }, attachTo: document.body, global: { plugins: [i18n], stubs: { transition: false } } }); wrappers.push(wrapper)
   if (action === 'info') wrapper.getComponent(ProjectMetadataDrawer).vm.$emit('edit')
   await flushPromises()
   const input = document.querySelector<HTMLInputElement>('#project-metadata input')!
@@ -200,12 +305,14 @@ it.each(['edit', 'info'] as const)('从 %s 保存完成才显示项目已更新�
   expect(useFeedbackStore().notices).toHaveLength(0)
   expect(wrapper.emitted('close')).toBeUndefined()
   complete({ ...project, display_name: input.value }); await flushPromises()
+  expect(wrapper.emitted('close')).toBeUndefined()
+  await vi.waitFor(() => expect(wrapper.emitted('close')).toHaveLength(1))
   expect(wrapper.emitted('close')).toHaveLength(1)
   expect(wrapper.emitted('changed')).toHaveLength(1)
   expect(useFeedbackStore().notices).toMatchObject([{ variant: 'success', title: '项目已更新' }])
 })
 
-it('编辑失败和取消不会提示更新成功，创建成功仍使用创建反馈', async () => {
+it('编辑失败和取消不提示成功，创建成功使用公共轻提示', async () => {
   vi.mocked(updateProject).mockRejectedValue(new ApiError(409, { message: '并发修改' }))
   vi.spyOn(useSessionStore(), 'loadBootstrap').mockRejectedValue(new Error('后台刷新暂不可用'))
   const wrapper = mount(ProjectDialogs, { props: { action: 'edit', project }, attachTo: document.body, global: { plugins: [i18n] } }); wrappers.push(wrapper)
@@ -219,7 +326,7 @@ it('编辑失败和取消不会提示更新成功，创建成功仍使用创建�
   await wrapper.setProps({ action: 'create' })
   wrapper.getComponent(ProjectMetadataDrawer).vm.$emit('saved', project); await flushPromises()
   expect(wrapper.emitted('created')).toHaveLength(1)
-  expect(useFeedbackStore().notices).toHaveLength(0)
+  expect(useFeedbackStore().notices).toMatchObject([{ variant: 'success', title: '项目已创建', durationMs: 4500 }])
 })
 
 it.each(['success', 'request-failure', 'browser-failure'])('SDK 下载反馈正确区分 %s，URL 最终释放', async outcome => {
@@ -237,7 +344,7 @@ it.each(['success', 'request-failure', 'browser-failure'])('SDK 下载反馈正�
   vi.useFakeTimers()
   try {
     await wrapper.findAll('button').find(item => item.text() === '生成并下载')!.trigger('click'); await flushPromises()
-    if (outcome === 'success') expect(useFeedbackStore().notices).toMatchObject([{ variant: 'success', title: '已开始下载' }])
+    if (outcome === 'success') expect(useFeedbackStore().notices).toMatchObject([{ variant: 'info', title: '已开始下载' }])
     else expect(useFeedbackStore().notices).toHaveLength(0)
     if (outcome === 'request-failure') expect(click).not.toHaveBeenCalled()
     else { expect(click).toHaveBeenCalledTimes(1); await vi.advanceTimersByTimeAsync(1000); expect(revokeUrl).toHaveBeenCalledWith('blob:project-test') }

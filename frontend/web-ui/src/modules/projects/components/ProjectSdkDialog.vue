@@ -95,7 +95,7 @@ async function download() {
     try {
       link.click()
       // 只能确认已交给浏览器下载，不能确认文件已保存到用户磁盘。
-      feedback.success(text('downloadStarted'))
+      feedback.info(text('downloadStarted'))
     } finally { setTimeout(() => URL.revokeObjectURL(url), 1000) }
   } catch (e) { if (active) { error.value = projectError(e); selecting.value = true } } finally { busy.value = false; generating.value = false }
 }

@@ -1,5 +1,5 @@
 <template>
-  <SideDrawer :open="true" size="compact" :title="text(mode === 'create' ? 'create' : mode === 'edit' ? 'edit' : 'info')" :close-label="text('close')" :busy="busy" @close="close">
+  <SideDrawer :open="drawerOpen" size="compact" :title="text(mode === 'create' ? 'create' : mode === 'edit' ? 'edit' : 'info')" :close-label="text('close')" :busy="busy || !drawerOpen" @close="close" @after-leave="finishClose">
     <InlineError v-if="error" :message="error" />
     <div v-if="unknownCreation" class="latest-values"><p>{{ text('unknownCreation') }}</p><div class="project-actions"><Button :loading="busy" @click="checkCreation">{{ text('checkResult') }}</Button><Button :disabled="busy" @click="submit">{{ text('retryCreation') }}</Button><Button :disabled="busy" @click="newDraft">{{ text('anotherProject') }}</Button></div></div>
     <div v-if="pendingEdit" class="latest-values"><p>{{ text('unknownEdit') }}</p><Button :loading="busy" @click="checkEdit">{{ text('checkResult') }}</Button></div>
@@ -40,6 +40,11 @@ import { clearPendingCreation, readPendingEdit, savePendingCreation, savePending
 const props = defineProps<{ mode: 'create' | 'edit' | 'info'; project?: ProjectCatalogItem; editable?: boolean; principalId?: string; creation?: PendingCreation }>()
 const emit = defineEmits<{ close: []; edit: []; saved: [project: ProjectCatalogItem] }>()
 const text = useProjectText()
+const drawerOpen = ref(true)
+let savedProject: ProjectCatalogItem | undefined
+// 保留组件直至公共抽屉退场完成；不通过定时器猜测 CSS 动画结束时间。
+function finishClose() { if (savedProject) emit('saved', savedProject); else emit('close') }
+function complete(project: ProjectCatalogItem) { savedProject = project; drawerOpen.value = false }
 watch(() => props.mode, mode => {
   if (mode !== 'info') document.querySelector<HTMLInputElement>('#project-metadata input')?.focus()
 }, { flush: 'post' })
@@ -60,11 +65,11 @@ const busy = ref(false), error = ref(''), copied = ref(''), confirmDiscard = ref
 const dirty = computed(() => name.value !== baseline.value.display_name || description.value !== baseline.value.description)
 let leaveAnswer: ((answer: boolean) => void) | undefined
 function needsProtection() { return props.mode !== 'info' && dirty.value && !unknownCreation.value && !pendingEdit.value }
-function close() { if (busy.value) return; if (needsProtection()) confirmDiscard.value = true; else emit('close') }
+function close() { if (busy.value || !drawerOpen.value) return; if (needsProtection()) confirmDiscard.value = true; else drawerOpen.value = false }
 function finishLeave(answer: boolean) {
   confirmDiscard.value = false
   if (leaveAnswer) { const resolve = leaveAnswer; leaveAnswer = undefined; resolve(answer) }
-  else if (answer) emit('close')
+  else if (answer) drawerOpen.value = false
 }
 function guardLeave() {
   if (busy.value) return false
@@ -83,7 +88,7 @@ async function checkCreation() {
   busy.value = true; error.value = ''
   try {
     const project = await getProject(`project-${requestId.replaceAll('-', '')}`)
-    if (active) { clearPendingCreation(principal, requestId); unknownCreation.value = false; emit('saved', project) }
+    if (active) { clearPendingCreation(principal, requestId); unknownCreation.value = false; complete(project) }
   } catch (e) { error.value = e instanceof ApiError && e.status === 404 ? text('creationNotFound') : projectError(e) }
   finally { busy.value = false }
 }
@@ -124,12 +129,12 @@ async function resolveEdit() {
   const current = await getProject(props.project!.project_id)
   if (!active) return
   savePendingEdit(principal, props.project!.project_id, null); pendingEdit.value = null
-  if (current.display_name === submitted.display_name && (current.description || null) === submitted.description) { emit('saved', current); return }
+  if (current.display_name === submitted.display_name && (current.description || null) === submitted.description) { complete(current); return }
   if (current.revision === submitted.expected_revision) { error.value = text('editNotApplied'); return }
   latest.value = current; error.value = text('editConflict')
 }
 async function submit() {
-  if (busy.value || !name.value.trim() || pendingEdit.value || conflict.value || latest.value) return
+  if (busy.value || !drawerOpen.value || !name.value.trim() || pendingEdit.value || conflict.value || latest.value) return
   busy.value = true; error.value = ''
   try {
     const body = { display_name: name.value.trim(), description: description.value.trim() || null }
@@ -139,7 +144,7 @@ async function submit() {
       : await updateProject(props.project!.project_id, { ...body, expected_revision: expectedRevision.value })
     if (props.mode === 'create') clearPendingCreation(principal, requestId)
     else { savePendingEdit(principal, props.project!.project_id, null); pendingEdit.value = null }
-    if (active) { unknownCreation.value = false; emit('saved', project) }
+    if (active) { unknownCreation.value = false; complete(project) }
   } catch (e) {
     error.value = projectError(e)
     conflict.value = props.mode === 'edit' && e instanceof ApiError && e.status === 409
@@ -160,4 +165,7 @@ async function submit() {
 .field { display: grid; gap: 8px; }.field textarea { resize: vertical; min-height: 120px; }
 .required { color: var(--am-danger-icon); }.project-actions,.copy-line { display: flex; align-items: center; gap: 10px; }
 .copy-line { justify-content: space-between; }.copy-line code { font-size: 12px; overflow-wrap: anywhere; }
+.project-form,.project-info { animation: project-content-in var(--am-motion-normal, 160ms) var(--am-ease-standard, ease); }
+@keyframes project-content-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .project-form,.project-info { animation: none; } }
 </style>

@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import SideDrawer from './SideDrawer.vue'
 
@@ -18,6 +18,7 @@ describe('SideDrawer', () => {
       attachTo: document.body,
       props: { open: false, title: '公开请求示例', closeLabel: '关闭' },
       slots: { default: '<p>example</p>' },
+      global: { stubs: { transition: false } },
     })
 
     await wrapper.setProps({ open: true })
@@ -26,9 +27,29 @@ describe('SideDrawer', () => {
     expect(document.querySelector('[role="dialog"]')).not.toBeNull()
 
     await wrapper.setProps({ open: false })
-    await flushPromises()
+    expect(document.body.style.overflow).toBe('hidden')
+    expect(opener.inert).toBe(true)
+    await vi.waitFor(() => expect(wrapper.emitted('after-leave')).toHaveLength(1))
     expect(document.body.style.overflow).toBe('auto')
     expect(document.activeElement).toBe(opener)
+    wrapper.unmount()
+  })
+
+  it('退场中重新打开不能释放背景，最终关闭后才完成退场', async () => {
+    const wrapper = mount(SideDrawer, {
+      attachTo: document.body,
+      props: { open: true, title: '项目详情', closeLabel: '关闭' },
+      global: { stubs: { transition: false } },
+    })
+    await flushPromises()
+    await wrapper.setProps({ open: false })
+    await wrapper.setProps({ open: true })
+    await flushPromises()
+    expect(document.body.style.overflow).toBe('hidden')
+    expect(wrapper.emitted('after-leave')).toBeUndefined()
+    await wrapper.setProps({ open: false })
+    await vi.waitFor(() => expect(wrapper.emitted('after-leave')).toHaveLength(1))
+    expect(document.body.style.overflow).toBe('')
     wrapper.unmount()
   })
 

@@ -23,14 +23,14 @@ const editingInfo = ref(false)
 function saved(project: ProjectCatalogItem) {
   const index = store.projects.findIndex(item => item.project_id === project.project_id)
   if (index >= 0) store.projects[index] = project; else store.projects.push(project)
-  if (props.action !== 'create') feedback.success(text('updatedNotice'))
+  feedback.success(text(props.action === 'create' ? 'createdNotice' : 'updatedNotice'))
   emit('close'); emit('changed')
   if (props.action === 'create') emit('created', project)
   void session.loadBootstrap({ includeDevices: false }).catch(() => undefined)
 }
 function removed(result: ProjectDeletionResult) {
   if (result.state === 'failed') { clearPending(); return }
-  if (result.state === 'deleting') return
+  if (result.state === 'deleting') { remember(result.operation_id); return }
   if (result.state === 'deleted') clearPending()
   else remember(result.operation_id)
   void store.refreshAfterDeletion(result.project_id)

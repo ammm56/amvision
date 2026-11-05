@@ -1,6 +1,6 @@
 <template>
   <Teleport to="body">
-    <Transition name="side-drawer">
+    <Transition name="side-drawer" appear @after-leave="afterLeave">
       <div v-if="open" class="side-drawer__backdrop" :style="{ zIndex: order, background: covered ? 'transparent' : undefined }" @mousedown.self="closeDrawer">
         <aside
           ref="drawerRef"
@@ -45,14 +45,21 @@ const props = defineProps<{
   busy?: boolean
 }>()
 
-const emit = defineEmits<{ close: [] }>()
+const emit = defineEmits<{ close: []; 'after-leave': [] }>()
 
 const drawerRef = ref<HTMLElement | null>(null)
 const titleId = `${useId()}-title`
 const { activate, deactivate, trapFocus, isTop, order, covered } = useModalLayer(drawerRef)
 
 function closeDrawer(): void {
-  if (!props.busy && isTop()) emit('close')
+  if (props.open && !props.busy && isTop()) emit('close')
+}
+
+function afterLeave(): void {
+  // 退场结束后再释放背景与焦点，避免动画途中点击穿透或提前卸载。
+  if (props.open) return
+  deactivate()
+  emit('after-leave')
 }
 
 // 保存或切换状态会移除当前按钮；仅最上层抽屉接回焦点，不抢内层确认框焦点。
@@ -70,7 +77,6 @@ watch(drawerRef, (drawer, _, onCleanup) => {
 
 watch(() => props.open, (open) => {
   if (open) void activate()
-  else deactivate()
 }, { immediate: true, flush: 'post' })
 </script>
 
@@ -146,12 +152,12 @@ watch(() => props.open, (open) => {
 
 .side-drawer-enter-active,
 .side-drawer-leave-active {
-  transition: opacity 160ms ease;
+  transition: opacity var(--am-motion-panel, 200ms) var(--am-ease-standard, ease);
 }
 
 .side-drawer-enter-active .side-drawer,
 .side-drawer-leave-active .side-drawer {
-  transition: transform 180ms cubic-bezier(.2, 0, 0, 1);
+  transition: transform var(--am-motion-panel, 200ms) var(--am-ease-standard, ease);
 }
 
 .side-drawer-enter-from,
@@ -161,7 +167,7 @@ watch(() => props.open, (open) => {
 
 .side-drawer-enter-from .side-drawer,
 .side-drawer-leave-to .side-drawer {
-  transform: translateX(24px);
+  transform: translateX(100%);
 }
 
 @media (prefers-reduced-motion: reduce) {

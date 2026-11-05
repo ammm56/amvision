@@ -157,3 +157,47 @@ npm --prefix frontend/web-ui run build
 证据：[概览亮色](../design/frontend/verification/projects-row-actions-20261105/recent-row-light.png)、[暗色圆角反馈](../design/frontend/verification/projects-row-actions-20261105/recent-row-dark.png)、[主列表操作按钮](../design/frontend/verification/projects-row-actions-20261105/list-actions-light.png)、[实际行样式](../design/frontend/verification/projects-row-actions-20261105/computed-rows.json)。
 
 本任务启动的 HTTP、Inference Daemon 和 Worker Supervisor 已停止，5600 无监听；原有 5601 Vite 保留，专用 `.tmp/project-row-review` 已清理。
+
+## 追加：列表密度与概览精简（2026-11-05）
+
+本节按最新要求修订上节的固定行高、分组入口和快捷栏标题：
+
+- 主项目列表删除 88 px 固定行高，恢复原有单元格间距；真实默认项目行高 74 px。保留长名称单行省略与原操作列按钮。
+- 最近更新和全部记录的状态列为 80 px，时间列为 120 px，其余宽度留给名称／类型。表格最小宽度 500 px，使名称至少占六成；空间不足时双面板切为上下排列，更窄时表格在自身容器滚动。
+- 删除可见的“继续工作”标题，保留快捷操作和区域的无障碍名称。
+- 没有执行任务时隐藏整个任务分组及占位文字；有任务时仍显示名称、状态、阶段和进度。任务结束并刷新后分组消失。保留请求失败提示，不把异常伪装为成功空态。
+- 删除当前运行内重复的任务、部署、应用分类入口；记录仍可整行打开，其他分类入口保持不变。清理无用样式、文案及入口定义。
+
+验证：
+
+- 项目分类与 Store 的 6 个测试文件、46 项测试通过，Vue TypeScript 类型检查通过。新增无任务隐藏与任务完成后移除分组的行为测试。
+- 内置浏览器使用现有开发数据核对亮暗外观：最近更新列宽约 314 / 80 / 120 px，名称占 61.1%；日期文字宽约 101 px，小于可用宽 104 px；运行中状态未截断。概览记录仍为 72 px 行高。
+- 主列表查看按钮、当前运行状态单元格的整行跳转、查看全部的 20 条分页记录均正常。700 CSS px 窄窗口无页面横向溢出，完成后清除临时视口覆盖并恢复亮色。控制台 error 为空。
+- 未改业务数据、API、Runtime、Trigger 或 SDK；本次无 `.tmp` 临时产物。
+- 按最新服务管理要求，HTTP、Inference Daemon、Worker Supervisor 和 Vite 持续运行，后续仅在明确要求时停止。
+
+证据：[概览亮色](../design/frontend/verification/projects-overview-density-20261105/overview-light.png)、[概览暗色](../design/frontend/verification/projects-overview-density-20261105/overview-dark.png)、[项目列表](../design/frontend/verification/projects-overview-density-20261105/list-light.png)、[尺寸核对](../design/frontend/verification/projects-overview-density-20261105/measurements.json)。
+
+## 追加：项目行切换等待修复（2026-11-05）
+
+- 根因：列表行的 `select` 等待 `getProject` 返回后才修改选中状态。该接口会重新汇总资源，而列表已经通过 `includeSummary: true` 获取同一项目的数据。“查看”也先等待该请求，进入概览后又请求一次详情。
+- 修复：选中行直接同步列表返回的项目、项目 ID 和摘要，不再发起详情／摘要请求；无摘要时清空上一个项目的摘要。查看直接进入概览，由概览读取最新详情和处理 403／404。后端权限检查及列表失权清理不变，移除已无用途的异步选择计数器。
+- 命名：创建入口、创建抽屉及提交按钮统一显示“创建新项目”。
+- 验证：项目页面、Store、项目选择器共 26 项回归通过，覆盖详情无响应时立即选中、连续与重复点击、项目缓存替换／新增、无摘要清空、单次详情加载及失权提示。Vue TypeScript 检查通过。
+- 真实开发环境验证：使用既有“测试”“测试1”“默认项目”核对名称点击、说明单元格点击、查看与返回、创建抽屉打开／取消，未创建或修改业务数据；页面控制台无 error。截图为 1280 px 实际视口，未发生横向溢出。本次未进行精确帧耗时测量；性能改善来自消除切换路径的网络等待。
+- 证据：[项目切换与创建入口](../design/frontend/verification/projects-switch-20261105/list.png)。开发服务继续运行，本次未在 `.tmp` 创建临时产物。
+
+## 追加：项目抽屉动效与删除确认（2026-11-05）
+
+- 根因：公共 SideDrawer 没有首次入场动画，项目面板关闭时又直接卸载组件，退场动画没有执行机会；同时遮罩和面板原有动画时长不一致。删除框默认铺开全部资源种类，并重复展示及要求输入长 Project ID，信息层级过重。
+- 修复：公共抽屉首次挂载执行入场，遮罩与右侧滑动统一 200 ms；项目详情、编辑、创建在 `after-leave` 后关闭父组件或通知保存成功。模态层在退场结束后释放，避免点击穿透、焦点提前恢复；快速重开和减少动态效果偏好仍受支持。详情转编辑使用短内容过渡，保持原表单布局。
+- 删除确认改为 520 px 紧凑面板：项目名称、影响说明、主要非零资源数、名称确认输入。完整资源数量可展开；结果的技术信息另行展开。阻止原因及清理错误直接显示。前端名称确认不改变后端 Project ID 校验、权限检查、删除响应未知核对和清理状态逻辑；预检不允许或尚未完成时，直接触发提交也不会删除。
+
+验证：
+
+- 5 个文件、55 项回归通过，覆盖真实 Transition 退场、重开竞态、滚动隔离、焦点恢复、保存后关闭、名称确认、阻止删除、响应未知及清理失败；Vue TypeScript 检查通过。
+- 内置浏览器使用现有开发项目核对亮暗外观、详情转编辑、创建打开／取消、草稿取消后继续编辑和放弃修改、删除明细展开及确认按钮状态；未保存测试草稿，未执行真实删除，未改动业务记录。
+- 空资源项目的删除框由约 640×455 px 收紧为 520×329 px；关闭所有面板后没有残留 dialog、inert 或 body 滚动锁，控制台 warning/error 为空。动效生命周期由组件测试核对，未使用单张截图宣称完成精确帧时序测量。
+- 验证完成恢复亮色；开发服务继续运行。本次未在 `.tmp` 创建临时产物。
+
+证据：[原删除框](../design/frontend/verification/projects-dialogs-20261105/01-delete-before.png)、[亮色删除确认](../design/frontend/verification/projects-dialogs-20261105/04-delete-after-light.png)、[暗色删除确认](../design/frontend/verification/projects-dialogs-20261105/07-delete-after-dark.png)、[编辑抽屉](../design/frontend/verification/projects-dialogs-20261105/03-edit-after.png)、[创建抽屉](../design/frontend/verification/projects-dialogs-20261105/06-create-after-light.png)、[暗色详情](../design/frontend/verification/projects-dialogs-20261105/08-info-after-dark.png)。
