@@ -28,8 +28,6 @@ const labels = {
   searchAction: ['搜索', 'Search', '検索', '검색'],
   resourceGone: ['资源已变化或已移除，请刷新概览', 'Resource changed or removed. Refresh the overview.', 'リソースが変更または削除されました。', '리소스가 변경되거나 삭제되었습니다.'],
   partialResources: ['部分资源摘要读取失败，可刷新重试', 'Some resource summaries could not be loaded. Refresh to retry.', '一部の概要を読み込めません。再読み込みしてください。', '일부 요약을 불러오지 못했습니다. 새로 고침해 주세요.'],
-  checked: ['上次更新', 'Last updated', '最終更新', '마지막 업데이트'],
-  stale: ['本次刷新失败，保留上次结果', 'Refresh failed; showing the last result', '更新失敗・前回の結果', '새로 고침 실패, 이전 결과 표시'],
   noTasks: ['暂无执行中的任务', 'No active tasks', '実行中のタスクなし', '실행 중인 작업 없음'],
   noServices: ['暂无运行服务', 'No running services', '稼働サービスなし', '실행 중인 서비스 없음'],
   allTypes: ['全部类型', 'All types', 'すべての種類', '모든 유형'],

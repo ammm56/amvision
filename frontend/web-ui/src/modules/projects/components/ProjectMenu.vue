@@ -1,5 +1,5 @@
 <template>
-  <DropdownMenuRoot><DropdownMenuTrigger as-child><Button size="sm" variant="ghost" :aria-label="text('more')" @click.stop><Ellipsis :size="18" /></Button></DropdownMenuTrigger><DropdownMenuPortal><DropdownMenuContent class="project-menu" :side-offset="4" align="end">
+  <DropdownMenuRoot><DropdownMenuTrigger as-child><Button size="sm" variant="secondary" icon-only :aria-label="text('more')" @click.stop><Ellipsis :size="18" /></Button></DropdownMenuTrigger><DropdownMenuPortal><DropdownMenuContent class="project-menu" :side-offset="4" align="end">
     <DropdownMenuItem class="project-menu__item" @select="emit('action', 'info')">{{ text('info') }}</DropdownMenuItem>
     <DropdownMenuItem v-if="editable" class="project-menu__item" @select="emit('action', 'edit')">{{ text('edit') }}</DropdownMenuItem>
     <DropdownMenuItem v-if="exportable" class="project-menu__item" @select="emit('action', 'sdk')">{{ text('sdk') }}</DropdownMenuItem>

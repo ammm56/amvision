@@ -117,3 +117,43 @@ npm --prefix frontend/web-ui run build
 - 本任务 HTTP、Inference Daemon、Worker Supervisor 已停止，5600 无监听；保留原有 5601 Vite。
 
 证据：[顶部亮色悬停](../design/frontend/verification/projects-ui-audit-20261104/overview-hover-light.png)、[顶部暗色悬停](../design/frontend/verification/projects-ui-audit-20261104/overview-hover-dark.png)、[继续工作亮色](../design/frontend/verification/projects-ui-audit-20261104/shortcuts-hover-light.png)、[继续工作暗色](../design/frontend/verification/projects-ui-audit-20261104/shortcuts-hover-dark.png)、[全部记录](../design/frontend/verification/projects-ui-audit-20261104/all-records-light.png)、[最终概览](../design/frontend/verification/projects-ui-audit-20261104/overview-final-light.png)、[实际样式](../design/frontend/verification/projects-ui-audit-20261104/computed-styles.json)。
+
+## 追加：整格分类入口（2026-11-05）
+
+本次按用户修订取代上一轮“内缩圆角按钮＋竖线”的分类入口方案。
+
+- 顶部数据集、模型、应用、部署使用完整等宽格子，移除容器内留白、竖线和文字后的箭头。悬停范围与点击范围一致，外侧圆角由整体容器裁切。
+- “继续工作”移除标题下的横线，入口同样填满整格；保留标题与必要图标。入口随实际数量均分宽度，窄窗口切为两列，单项独占一行。
+- 沿用中性悬停色：亮色 `#f0f1f3`、暗色 `#303030`。键盘焦点改为内侧轮廓，避免被容器裁切；禁用入口不高亮。没有改动导航权限、项目选择、API 或运行链路。
+
+验证：
+
+- 真实开发数据库与内置浏览器：默认项目 5 个数据集、20 个模型、17 个应用、6 个部署；两种外观均完成顶部和底部实际悬停核对。
+- 1236 CSS px 视口下顶部格子高 84 px、底部格子高 76 px；分类格子无间隙，竖线伪元素为 none，顶部箭头数量为 0。
+- 点击顶部分类的左上边缘正常进入数据集；快捷入口通过 Enter 正常跳转，Tab 焦点可见；700 CSS px 下两列对齐，无页面横向溢出。检查后恢复原窗口和亮色外观。
+- 现有项目分类及 Store 回归 5 文件、39 项通过；`npm --prefix frontend/web-ui run typecheck` 通过；页面 error 日志为空。未创建、修改或删除业务数据。
+- 此处记录本次悬停范围与相关页面核对，不重复浏览器缩放验收，也不替代全平台业务验收。
+
+证据：[分类亮色](../design/frontend/verification/projects-category-hover-20261105/category-light.png)、[分类暗色](../design/frontend/verification/projects-category-hover-20261105/category-dark.png)、[继续工作亮色](../design/frontend/verification/projects-category-hover-20261105/shortcuts-light.png)、[继续工作暗色](../design/frontend/verification/projects-category-hover-20261105/shortcuts-dark.png)。
+
+本次 HTTP、Inference Daemon、Worker Supervisor 已按进程组停止，5600 无监听；保留原有 5601 Vite。专用临时目录已清理。
+
+## 追加：资源列表复用与操作边界（2026-11-05）
+
+- 保留设计图的分类统计、最近更新／当前运行双面板、继续工作布局，删除概览刷新时间和重复的“保留上次结果”说明。刷新错误仍通过 InlineError 呈现，已有数据保留逻辑不变。
+- 将触发入口现有的 `resource-table` 封装为轻量 `ResourceTable`，触发入口列表及项目最近更新、全部记录、当前运行共用表格底层样式。项目面板内不重复添加外框和逐行分隔线；状态复用 `StatusBadge`。
+- 概览记录整行可点击，移除箭头和额外查看操作列。名称入口保留 Tab／Enter／Space 语义；无访问权限时不能打开；单击名称不会重复触发。查看全部和分组入口保持轻量显示。
+- 主项目列表原有操作列的“查看”和“更多操作”使用公共 Button，编辑、删除继续在原有菜单中，未改变默认项目删除保护。
+- 概览及全部记录统一 72 px 行高，主项目列表统一 88 px 行高。长名称、说明单行省略，title 保留全文；运行进度、阶段仍可见，不由长文本撑高。状态列留足空间，状态标签不省略。
+- 公共表格的中性悬停背景覆盖整行，两端使用主题 6 px 圆角；键盘焦点覆盖同一行。
+
+验证：
+
+- 10 个测试文件、53 项相关回归通过；Vue TypeScript 类型检查通过。主列表查看测试原先依赖旧 `.project-link` 样式选择器，已改为按实际操作按钮定位，导航行为验证保持不变。
+- 真实开发环境核对最近更新、全部记录筛选、当前运行和触发入口详情；从当前运行的状态单元格可进入对应监视页，全部记录的日期单元格可打开数据集详情抽屉，主列表查看按钮进入概览。
+- 亮暗页面核对 72 px 行高、长文本 nowrap、6 px 两端圆角；实测运行中标签无截断。暗色截图同时包含鼠标整行悬停和键盘焦点。主列表实测 88 px 行高，操作列使用 secondary 按钮，默认项目删除仍禁用。
+- 验证页控制台 error 为空；未修改业务数据及 API、Runtime、Trigger 执行逻辑，检查后恢复亮色。
+
+证据：[概览亮色](../design/frontend/verification/projects-row-actions-20261105/recent-row-light.png)、[暗色圆角反馈](../design/frontend/verification/projects-row-actions-20261105/recent-row-dark.png)、[主列表操作按钮](../design/frontend/verification/projects-row-actions-20261105/list-actions-light.png)、[实际行样式](../design/frontend/verification/projects-row-actions-20261105/computed-rows.json)。
+
+本任务启动的 HTTP、Inference Daemon 和 Worker Supervisor 已停止，5600 无监听；原有 5601 Vite 保留，专用 `.tmp/project-row-review` 已清理。

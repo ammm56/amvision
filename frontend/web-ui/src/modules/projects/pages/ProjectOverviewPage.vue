@@ -8,9 +8,8 @@
         <div class="project-actions"><Button @click="dialog = 'info'"><Info :size="16" />{{ text('info') }}</Button><Button v-if="canWrite && project.revision" @click="dialog = 'edit'"><Pencil :size="16" />{{ text('edit') }}</Button><Button v-if="canSdk" @click="dialog = 'sdk'"><Package :size="16" />{{ text('sdk') }}</Button><Button :loading="loading" :aria-label="text('refresh')" @click="load"><RefreshCw :size="16" /></Button></div>
       </div>
       <p v-if="project.resource_errors?.length" class="sdk-warning">{{ text('partialResources') }}</p>
-      <div v-if="metrics.length" class="project-metrics"><button v-for="metric in metrics" :key="metric.label" :disabled="!canNavigate(metric.path)" @click="navigate(metric.path)"><span>{{ text(metric.label) }}</span><strong>{{ metric.count ?? '—' }}</strong><ChevronRight v-if="canNavigate(metric.path)" :size="16" /></button></div>
+      <div v-if="metrics.length" class="project-metrics"><button type="button" v-for="metric in metrics" :key="metric.label" :disabled="!canNavigate(metric.path)" @click="navigate(metric.path)"><span>{{ text(metric.label) }}</span><strong>{{ metric.count ?? '—' }}</strong></button></div>
 
-      <div class="project-observation"><span v-if="overview">{{ text('checked') }} {{ projectDate(overview.checked_at) }}</span><span v-if="(error || activityError) && overview" role="status">{{ text('stale') }}</span></div>
       <InlineError v-if="activityError && activityError !== error" :message="activityError" />
       <section v-if="expanded" class="project-panel">
         <div class="project-section-heading"><h2>{{ text('recent') }}</h2><Button @click="toggleRecent(false)">{{ text('backOverview') }}</Button></div>
@@ -21,23 +20,19 @@
       </section>
       <template v-else>
         <div class="project-overview-panels">
-          <section class="project-panel"><div class="project-section-heading"><h2>{{ text('recent') }}</h2><Button v-if="(overview?.total || 0) > 0" size="sm" variant="ghost" @click="toggleRecent(true)">{{ text('moreUpdates') }}<ChevronRight :size="16" /></Button></div>
+          <section class="project-panel"><div class="project-section-heading"><h2>{{ text('recent') }}</h2><Button v-if="(overview?.total || 0) > 0" size="sm" variant="ghost" @click="toggleRecent(true)">{{ text('moreUpdates') }}</Button></div>
             <ProjectActivityTable v-if="overview?.recent.length" :items="overview.recent" v-bind="tableProps" @open="openItem" />
             <p v-else class="project-empty-inline">{{ text(loading ? 'loading' : activityError ? 'failedRequest' : 'noActivity') }}</p>
           </section>
           <section class="project-panel"><h2>{{ text('running') }}</h2>
             <div class="project-panel-body"><template v-for="group in activeGroups" :key="group.label">
-              <div class="project-section-heading"><h3>{{ text(group.label) }}</h3><div class="project-actions"><button v-for="link in group.links" :key="link.path" class="project-link" @click="navigate(link.path)">{{ text(link.label) }}<ChevronRight :size="14" /></button></div></div>
-              <div v-for="item in group.items" :key="`${item.kind}-${item.resource_id}-${item.runtime_mode || ''}`" class="project-activity">
-                <div><strong>{{ item.name || item.resource_id }}</strong><small>{{ kindLabel(item.kind) }}<template v-if="item.runtime_mode"> · {{ text(item.runtime_mode) }}</template></small><small v-if="item.progress?.stage">{{ item.progress.stage }}</small><progress v-if="progress(item) !== null" :value="progress(item)!" max="100" :aria-label="item.name" /></div>
-                <span class="state" :class="stateClass(item.state)">{{ stateLabel(item.state) }}<small v-if="progress(item) !== null">{{ progress(item) }}%</small></span>
-                <button v-if="canOpen(item)" class="project-link" :aria-label="`${text('view')} ${item.name || item.resource_id}`" @click="openItem(item)"><ChevronRight :size="16" /></button>
-              </div>
+              <div class="project-section-heading"><h3>{{ text(group.label) }}</h3><div class="project-actions"><button v-for="link in group.links" :key="link.path" class="project-link" @click="navigate(link.path)">{{ text(link.label) }}</button></div></div>
+              <ProjectActivityTable v-if="group.items.length" :items="group.items" mode="running" v-bind="tableProps" @open="openItem" />
               <p v-if="!group.items.length" class="project-empty-inline">{{ text(loading ? 'loading' : activityError ? 'failedRequest' : group.label === 'tasks' ? 'noTasks' : 'noServices') }}</p>
             </template></div>
           </section>
         </div>
-        <section v-if="shortcuts.length" class="project-panel"><h2>{{ text('continue') }}</h2><div class="project-shortcuts"><button v-for="shortcut in shortcuts" :key="shortcut.path" :disabled="!!shortcut.reason" :title="shortcut.reason" @click="navigate(shortcut.path)"><component :is="shortcut.icon" :size="23" /><span>{{ text(shortcut.label) }}<small v-if="shortcut.reason">{{ shortcut.reason }}</small></span></button></div></section>
+        <section v-if="shortcuts.length" class="project-panel project-continue-panel"><h2>{{ text('continue') }}</h2><div class="project-shortcuts"><button type="button" v-for="shortcut in shortcuts" :key="shortcut.path" :disabled="!!shortcut.reason" :title="shortcut.reason" @click="navigate(shortcut.path)"><component :is="shortcut.icon" :size="23" /><span>{{ text(shortcut.label) }}<small v-if="shortcut.reason">{{ shortcut.reason }}</small></span></button></div></section>
       </template>
       <ProjectResourceDrawer v-if="resourceItem" :key="resourceItem.resource_id" :project-id="project.project_id" :item="resourceItem" @close="resourceItem = null" />
       <ProjectDialogs v-if="dialog" :action="dialog" :project="project" @close="dialog = null" @changed="load" />
@@ -49,14 +44,14 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { ChevronLeft, ChevronRight, Info, Pencil, Package, RefreshCw, Database, Box, Server, Workflow } from '@lucide/vue'
+import { ChevronLeft, Info, Pencil, Package, RefreshCw, Database, Box, Server, Workflow } from '@lucide/vue'
 import { useProjectStore } from '@/app/stores/project.store'
 import { useSessionStore } from '@/app/stores/session.store'
 import { canAccessPath, canAccessPage } from '@/platform/auth/page-access'
 import { ApiError } from '@/shared/api/error'
 import type { ProjectCatalogItem } from '@/shared/contracts'
 import { getProject, getProjectOverview, type ProjectOverview, type ProjectOverviewItem } from '../services/project.service'
-import { projectDate, projectError, projectName, useProjectText } from '../project-workspace'
+import { projectError, projectName, useProjectText } from '../project-workspace'
 import Button from '@/shared/ui/components/Button.vue'
 import SelectField from '@/shared/ui/components/Select.vue'
 import PaginationControls from '@/shared/ui/components/PaginationControls.vue'
@@ -131,7 +126,6 @@ async function toggleRecent(value: boolean) {
 }
 function filterRecent() { activityOffset.value = 0; overview.value = null; void load() }
 function pageRecent(delta: number) { activityOffset.value = Math.max(0, activityOffset.value + delta); overview.value = null; void load() }
-const stateClass = (state: string) => ({ 'is-ok': ['running', 'ready', 'completed', 'succeeded'].includes(state), 'is-failed': ['failed', 'error'].includes(state) })
 function stateLabel(state: string) {
   if (state === 'available' || state === 'saved' || state === 'published') return text(state)
   for (const prefix of ['tasks.status', 'startupPage.states', 'deploymentOps.states']) if (te(`${prefix}.${state}`)) return t(`${prefix}.${state}`)
@@ -157,7 +151,6 @@ function itemPath(item: ProjectOverviewItem) {
 }
 const canOpen = (item: ProjectOverviewItem) => item.kind === 'dataset-version' ? canAccessPage(session.currentUser, 'datasets') : item.kind === 'model-version' ? canAccessPage(session.currentUser, 'models') : canNavigate(itemPath(item))
 const tableProps = { canOpen, kindLabel, stateLabel }
-function progress(item: ProjectOverviewItem) { const value = item.progress?.percent; return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100 ? Math.round(value) : null }
 function openItem(item: ProjectOverviewItem) { if (!canOpen(item)) return; if (['dataset-version', 'model-version'].includes(item.kind)) resourceItem.value = item; else void navigate(itemPath(item)) }
 async function navigate(path: string) { if (!project.value || !canNavigate(path)) return; store.selectedProjectId = project.value.project_id; store.selectedSummary = project.value.summary ?? null; await router.push(path) }
 function backToList() { return router.push({ path: '/projects', query: route.query }) }
