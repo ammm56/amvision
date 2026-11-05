@@ -115,6 +115,8 @@ def build_custom_node_catalog_document():
             [
                 port("source", "point-cloud-ref.v1"),
                 port("reference", "point-cloud-ref.v1"),
+                port("source_datum", "pose3d.v1", required=False),
+                port("reference_datum", "pose3d.v1", required=False),
             ],
             [port("pose", "pose3d.v1"), port("found", "boolean.v1")],
         ),
@@ -344,7 +346,7 @@ def build_custom_node_catalog_document():
         definitions.append(
             dict(
                 node_type_id="custom.metrology3d." + key,
-                version="0.1.26"
+                version="0.1.28"
                 if key
                 in {
                     "register-cloud",

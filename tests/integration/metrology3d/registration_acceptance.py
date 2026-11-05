@@ -30,7 +30,9 @@ from tests.integration.metrology3d.published_support import published_system
 from tests.integration.metrology3d.package_acceptance import serve
 
 
-def prepare_reference(service, source_asset, policy):
+def prepare_reference(
+    service, source_asset, policy, *, angles=(2, -1, 3), offset=(0.1, -0.12, 0.08)
+):
     """外部真值按固定公式生成完整参考，算法未参与参考数据生成。"""
     scope = ResourceScope(kind="workflow")
     runtime = get_cloud_runtime(scope, run_id="reference-preparation", policy=policy.io)
@@ -44,8 +46,8 @@ def prepare_reference(service, source_asset, policy):
             cancel=lambda: None,
         )
         assert source.point_count == 14745099
-        rotation = Rotation.from_euler("xyz", [2, -1, 3], degrees=True).as_matrix()
-        translation = np.array([0.1, -0.12, 0.08])
+        rotation = Rotation.from_euler("xyz", angles, degrees=True).as_matrix()
+        translation = np.array(offset)
         values = np.empty((source.point_count, 3), dtype="f8")
         digest = sha256()
         with runtime.borrow(source) as view:
@@ -103,9 +105,14 @@ def main():
     parser.add_argument("--sample", type=Path, required=True)
     parser.add_argument("--serve", type=int)
     parser.add_argument("--registration-stride", type=int)
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--coarse", action="store_true")
+    modes.add_argument("--datum", action="store_true")
     args = parser.parse_args()
     if args.registration_stride is not None and args.registration_stride < 1:
         parser.error("配准支路步长必须显式为正整数")
+    if args.coarse and args.registration_stride is None:
+        parser.error("粗定位验收必须显式声明配准支路步长")
     if args.serve is not None and (
         args.serve in (5600, 5601) or not 1024 <= args.serve <= 65535
     ):
@@ -128,7 +135,12 @@ def main():
             )
         )
         asset = save_sample(service, args.sample, policy)
-        reference = prepare_reference(service, asset, policy)
+        angles = (37, -22, 81) if args.coarse else (2, -1, 3)
+        offset = (5, -8, 11) if args.coarse else (0.1, -0.12, 0.08)
+        reference = prepare_reference(
+            service, asset, policy, angles=angles, offset=offset
+        )
+        normal_settings = None
         # 密集实测云使用已知精确初值做全量链路核验；偏差恢复由独立椭球回归验证。
         p = registration_settings(
             initial_translation=[0.1, -0.12, 0.08],
@@ -136,10 +148,63 @@ def main():
             max_iterations=10,
             max_correspondence_distance=0.0001,
         )
+        if args.coarse:
+            from tests.test_metrology3d_coarse_registration import (
+                settings as coarse_settings,
+            )
+            from tests.test_metrology3d_normal_estimation import parameters as normals
+
+            # 这些数值只用于已知刚性真值对照，不写入原工件测量配方或生产默认。
+            p = coarse_settings()
+            p = type(p).model_validate(
+                p.model_dump()
+                | dict(search=p.search.model_dump() | dict(feature_radius=5.0))
+            )
+            normal_settings = tuple(
+                normals(
+                    frame_id=frame,
+                    neighborhood=dict(
+                        kind="knn", neighbors=16, support=dict(kind="unrestricted")
+                    ),
+                    quality=dict(
+                        min_support_points=3,
+                        min_normal_gap=1e-6,
+                        max_rms=1.0,
+                        max_surface_variation=0.3,
+                    ),
+                    orientation=dict(
+                        kind="direction", direction=direction, min_abs_cosine=1e-6
+                    ),
+                )
+                for frame, direction in (
+                    (p.source_frame_id, [0, 0, 1]),
+                    (
+                        p.target_frame_id,
+                        Rotation.from_euler("xyz", angles, degrees=True)
+                        .as_matrix()[:, 2]
+                        .tolist(),
+                    ),
+                )
+            )
+        datum_settings = None
+        if args.datum:
+            from tests.test_metrology3d_datum_registration import (
+                settings as datum_parameters,
+            )
+            from tests.integration.metrology3d.datum_documents import datum_configs
+
+            p = datum_parameters(max_iterations=10, max_correspondence_distance=0.0001)
+            datum_settings = datum_configs(
+                Rotation.from_euler("xyz", angles, degrees=True).as_matrix(),
+                np.array(offset),
+                full_sample=True,
+            )
         docs = registration_documents(
             assets=(asset, reference),
             parameters=p,
             registration_stride=args.registration_stride,
+            normal_settings=normal_settings,
+            datum_settings=datum_settings,
         )
         version = system.publish(point_limit=100000, documents=docs)
         system.start(version)
@@ -155,12 +220,11 @@ def main():
         assert run["state"] == "succeeded", run
         body = run["results"]["body"]
         frame = body["geometry"]["frame"]
+        (args.root / "response.json").write_text(json.dumps(run), encoding="utf-8")
         assert body["point_count"] == 14745099 and frame["state"] == "found", frame
         expected = np.eye(4)
-        expected[:3, :3] = Rotation.from_euler(
-            "xyz", [2, -1, 3], degrees=True
-        ).as_matrix()
-        expected[:3, 3] = [0.1, -0.12, 0.08]
+        expected[:3, :3] = Rotation.from_euler("xyz", angles, degrees=True).as_matrix()
+        expected[:3, 3] = offset
         matrix_error = float(
             np.max(np.abs(np.asarray(frame["transform"]["matrix"]) - expected))
         )
@@ -174,6 +238,11 @@ def main():
             runtime_id=system.runtime_id,
             test_working_bytes=policy.io.max_working_bytes,
             registration_stride=args.registration_stride,
+            initialization=p.initialization,
+            method=frame["method"],
+            normals=[n.model_dump(mode="json") for n in normal_settings]
+            if normal_settings
+            else None,
         )
         system.assert_reclaimed()
         system.call("POST", f"/app-runtimes/{system.runtime_id}/stop")

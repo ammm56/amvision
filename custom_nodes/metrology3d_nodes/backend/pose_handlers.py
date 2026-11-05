@@ -20,6 +20,8 @@ def register(request):
         CloudReference.model_validate(request.input_values.get("reference")),
         p.settings,
         cancel=env.cancel,
+        source_datum=None if request.input_values.get("source_datum") is None else Pose3d.model_validate(request.input_values["source_datum"]),
+        reference_datum=None if request.input_values.get("reference_datum") is None else Pose3d.model_validate(request.input_values["reference_datum"]),
     )
     return {
         "pose": pose.model_dump(mode="json"),

@@ -15,7 +15,9 @@ Fit Circle 明确区分等权、`angular-soft-l1` 角区均衡和 `arc-length-so
 
 ## 依赖与启动
 
-当前 `0.1.26` 为二十四个节点：新增 Register Cloud，显式初值的点到点/点到面 SE(3) 局部配准。移动与参考云可有不同观测身份，必须同次 Run、明确坐标/单位；没有缩放、镜像、隐式采样或粗定位回退。双向覆盖、全对应残差、六自由度退化及迭代收敛均纳入质量，失败不输出可用矩阵。复用 Open3D、Scope、Pose、Transform Cloud、保存读取、参数和查看器。详见[局部配准记录](../../docs/development/3d-metrology-registration.md)。
+当前 `0.1.28` 仍为二十四个节点：Register Cloud 新增显式双基准的三自由度台面局部配准，详见[台面约束记录](../../docs/development/3d-metrology-datum-registration.md)。两套当前有效 Build Frame 沿 `source_datum/reference_datum` 接入，只求 U/V 和绕 Z 转角；对应仍按三维距离，禁止高度漂移、倾斜、缩放、镜像和失败回退。两基准质量、完整来源、面内修正矩阵随 Pose/保存/显示传递。初值、求解预算、停止与工程质量均显式配置，不提供生产猜测值。
+
+前批 `0.1.27` 在显式初值局部 ICP 外增加 FPFH 粗定位，多批 RANSAC 后复用同一精化/质量。两云须显式提供有效有向法向，重采样由既有节点控制；多个合格但不等价的候选返回 ambiguous，一类候选只表示有限搜索未见多解。详见[粗定位记录](../../docs/development/3d-metrology-coarse-registration.md)及[局部配准记录](../../docs/development/3d-metrology-registration.md)。
 
 `0.1.25` 新增 Invert Pose / Compose Poses，复用现有 pose、Scope、Transform Cloud、保存读取和参数工作区。组合明确为 first 后 second，源/目标链、同次观测、单位与原基准质量均检查；不会自动排序、拟合或生成新的质量门槛。派生 pose 可用于固定 U/V 查询，但不能冒充动态等高的物理主基准。详情与可导入示例见[位姿记录](../../docs/development/3d-metrology-pose-operations.md)。
 
@@ -31,7 +33,7 @@ Fit Circle 明确区分等权、`angular-soft-l1` 角区均衡和 `arc-length-so
 
 法向接线为 Read/Filter Valid → Estimate Normals → Preview/Save Cloud。kNN、全半径、hybrid 及无符号/参考方向/观测点定向均显式选择；质量阈值和邻域物理尺度不设默认。normal_valid 与 normal_oriented 分开，局部失败不删位置或补 +Z。源点保留原始行号，生成点保留原来源，不提升为实测支持。显示箭头默认关闭，显式长度/步长只作用于概览，不改变结果。完整 14,745,099 点 kNN 使用 8 GiB 工作/2 GiB 活跃数组的隔离配置通过，未自动扩大下列本机 4/1 GiB 配置；原云法向不是秒级操作，也没有插入现有工件测量图。
 
-配准接线为两路 Read/Filter Valid → Register Cloud；点到面参考支路须显式提供有效单位法向，Pose 接 Transform Cloud/Preview 或 B05。需要采样时由既有 Resample Cloud 节点显式控制，仅配准支路采样，完整原云仍可使用同一 Pose。局部有效不是全局唯一定位，初值、对应半径、质量参数均无生产默认。双云各 14,745,099 点的全量测试采用独立 16 GiB 工作/2 GiB 活跃数组；本机 4/1 GiB 配置不自动扩大，预算不足拒绝，不隐式缩点。当前未交付自动粗定位和台面约束方法。
+配准接线为两路 Read/Filter Valid → Register Cloud；局部/台面点到面参考支路须显式提供有效单位法向，FPFH 两路均须提供有向法向，Pose 接 Transform Cloud/Preview 或 B05。台面模式每路另接 Crop ROI → Fit Plane → Build Frame；非台面模式不得残留两条基准接线。需要采样时由既有 Resample Cloud 节点显式控制，仅配准支路采样，完整原云仍可使用同一 Pose。局部有效不是全局唯一定位，初值、搜索预算、对应半径、质量参数均无生产默认。前批双云全量局部测试采用独立 16 GiB 工作/2 GiB 活跃数组；本机 4/1 GiB 配置不自动扩大，预算不足拒绝。台面内自动粗搜索仍未实现，不从 FPFH 六自由度结果投影或自动回退。
 
 开发环境先激活项目环境，在仓库根目录安装受控版本：
 

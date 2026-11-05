@@ -1,0 +1,1199 @@
+{
+  "point_count": 14745099,
+  "matrix_error": 1.7763568394002505e-14,
+  "published_seconds": 3.6354877068661153,
+  "quality": {
+    "metrics": {
+      "observation_id": "93b2dc7129404b3c90af5f1119eb8480",
+      "items": [
+        {
+          "item_id": "source_count",
+          "unit": "1",
+          "value": 28800.0,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "reference_count",
+          "unit": "1",
+          "value": 28800.0,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "correspondence_count",
+          "unit": "1",
+          "value": 28800.0,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "source_coverage",
+          "unit": "1",
+          "value": 1.0,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "reference_coverage",
+          "unit": "1",
+          "value": 1.0,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "rms",
+          "unit": "mm",
+          "value": 2.865932065945403e-14,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "max_residual",
+          "unit": "mm",
+          "value": 6.703246762680666e-14,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "rank",
+          "unit": "1",
+          "value": 6.0,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "observability",
+          "unit": "1",
+          "value": 0.28671683268160597,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "iterations",
+          "unit": "1",
+          "value": 1.0,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "converged",
+          "unit": "1",
+          "value": 1.0,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "candidate_consistency",
+          "unit": "1",
+          "value": 1.0,
+          "valid": true,
+          "reason": null
+        }
+      ]
+    },
+    "checks": [
+      {
+        "item_id": "correspondence_count",
+        "required": true,
+        "passed": true,
+        "valid": true,
+        "value": 28800.0,
+        "unit": "1",
+        "lower": 30.0,
+        "upper": null,
+        "include_lower": true,
+        "include_upper": true,
+        "actual_unit": "1",
+        "reason": null
+      },
+      {
+        "item_id": "source_coverage",
+        "required": true,
+        "passed": true,
+        "valid": true,
+        "value": 1.0,
+        "unit": "1",
+        "lower": 0.95,
+        "upper": null,
+        "include_lower": true,
+        "include_upper": true,
+        "actual_unit": "1",
+        "reason": null
+      },
+      {
+        "item_id": "reference_coverage",
+        "required": true,
+        "passed": true,
+        "valid": true,
+        "value": 1.0,
+        "unit": "1",
+        "lower": 0.95,
+        "upper": null,
+        "include_lower": true,
+        "include_upper": true,
+        "actual_unit": "1",
+        "reason": null
+      },
+      {
+        "item_id": "observability",
+        "required": true,
+        "passed": true,
+        "valid": true,
+        "value": 0.28671683268160597,
+        "unit": "1",
+        "lower": 1e-05,
+        "upper": null,
+        "include_lower": true,
+        "include_upper": true,
+        "actual_unit": "1",
+        "reason": null
+      },
+      {
+        "item_id": "rank",
+        "required": true,
+        "passed": true,
+        "valid": true,
+        "value": 6.0,
+        "unit": "1",
+        "lower": 6.0,
+        "upper": null,
+        "include_lower": true,
+        "include_upper": true,
+        "actual_unit": "1",
+        "reason": null
+      },
+      {
+        "item_id": "converged",
+        "required": true,
+        "passed": true,
+        "valid": true,
+        "value": 1.0,
+        "unit": "1",
+        "lower": 1.0,
+        "upper": null,
+        "include_lower": true,
+        "include_upper": true,
+        "actual_unit": "1",
+        "reason": null
+      },
+      {
+        "item_id": "rms",
+        "required": true,
+        "passed": true,
+        "valid": true,
+        "value": 2.865932065945403e-14,
+        "unit": "mm",
+        "lower": null,
+        "upper": 1e-05,
+        "include_lower": true,
+        "include_upper": true,
+        "actual_unit": "mm",
+        "reason": null
+      },
+      {
+        "item_id": "max_residual",
+        "required": true,
+        "passed": true,
+        "valid": true,
+        "value": 6.703246762680666e-14,
+        "unit": "mm",
+        "lower": null,
+        "upper": 0.0001,
+        "include_lower": true,
+        "include_upper": true,
+        "actual_unit": "mm",
+        "reason": null
+      },
+      {
+        "item_id": "candidate_consistency",
+        "required": true,
+        "passed": true,
+        "valid": true,
+        "value": 1.0,
+        "unit": "1",
+        "lower": 1.0,
+        "upper": null,
+        "include_lower": true,
+        "include_upper": true,
+        "actual_unit": "1",
+        "reason": null
+      }
+    ],
+    "usable": true
+  },
+  "version": "workflow-app-version-236e2fcff0cd4a548433c62f4e523538",
+  "runtime_id": "workflow-runtime-354d300bc9884130b7bf7927a70dba6f",
+  "test_working_bytes": 4294967296,
+  "registration_stride": 512,
+  "initialization": "fpfh",
+  "method": {
+    "method_id": "register-cloud",
+    "method_version": 1,
+    "scope": "feature-se3",
+    "parameters": {
+      "pose_id": "aligned",
+      "source_frame_id": "fixture",
+      "target_frame_id": "reference",
+      "length_unit": "mm",
+      "algorithm": "point-to-point",
+      "max_correspondence_distance": 0.8,
+      "max_iterations": 100,
+      "fitness_change": 1e-09,
+      "rmse_change": 1e-09,
+      "quality_policy": {
+        "policy_id": "test",
+        "policy_version": 1,
+        "rules": [
+          {
+            "item_id": "correspondence_count",
+            "unit": "1",
+            "enabled": true,
+            "required": true,
+            "lower": 30.0,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true
+          },
+          {
+            "item_id": "source_coverage",
+            "unit": "1",
+            "enabled": true,
+            "required": true,
+            "lower": 0.95,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true
+          },
+          {
+            "item_id": "reference_coverage",
+            "unit": "1",
+            "enabled": true,
+            "required": true,
+            "lower": 0.95,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true
+          },
+          {
+            "item_id": "observability",
+            "unit": "1",
+            "enabled": true,
+            "required": true,
+            "lower": 1e-05,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true
+          },
+          {
+            "item_id": "rank",
+            "unit": "1",
+            "enabled": true,
+            "required": true,
+            "lower": 6.0,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true
+          },
+          {
+            "item_id": "converged",
+            "unit": "1",
+            "enabled": true,
+            "required": true,
+            "lower": 1.0,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true
+          },
+          {
+            "item_id": "rms",
+            "unit": "mm",
+            "enabled": true,
+            "required": true,
+            "lower": null,
+            "upper": 1e-05,
+            "include_lower": true,
+            "include_upper": true
+          },
+          {
+            "item_id": "max_residual",
+            "unit": "mm",
+            "enabled": true,
+            "required": true,
+            "lower": null,
+            "upper": 0.0001,
+            "include_lower": true,
+            "include_upper": true
+          },
+          {
+            "item_id": "candidate_consistency",
+            "unit": "1",
+            "enabled": true,
+            "required": true,
+            "lower": 1.0,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true
+          }
+        ]
+      },
+      "initialization": "fpfh",
+      "search": {
+        "feature_radius": 5.0,
+        "feature_max_neighbors": 40,
+        "max_correspondence_distance": 0.2,
+        "edge_length_ratio": 0.9,
+        "samples": 3,
+        "iterations_per_trial": 128,
+        "trials": 3,
+        "equivalent_translation": 0.0001,
+        "equivalent_rotation_degrees": 0.01
+      }
+    },
+    "parameters_sha256": "39e01d16bf1fb458409f39bbc73bbb13ce615c58a0ec0d7b13f5a2351cfa374d",
+    "parents": [
+      {
+        "observation_id": "93b2dc7129404b3c90af5f1119eb8480",
+        "frame_id": "fixture",
+        "length_unit": "mm",
+        "point_count": 28800,
+        "support_content_sha256": "495354ea1ca4fe08bf5dc775bed9ab97096d7388cca1d8330fe38eb5863ab225"
+      },
+      {
+        "observation_id": "a2e8a8fb0f004d0db1bc945e9b421256",
+        "frame_id": "reference",
+        "length_unit": "mm",
+        "point_count": 28800,
+        "support_content_sha256": "63dc4001d58b44d63c853893514add3ed39bde4ca766360c2df429e7f195b5c2"
+      }
+    ],
+    "search": {
+      "feature_correspondence_count": 24047,
+      "candidates": [
+        {
+          "trial": 0,
+          "initial_matrix": [
+            [
+              0.14504351028309448,
+              -0.8240701737490465,
+              0.5476045369260322,
+              5.0
+            ],
+            [
+              0.9157686827436741,
+              -0.09773416870072563,
+              -0.3896354090355426,
+              -7.9999999999999964
+            ],
+            [
+              0.37460659341591224,
+              0.5579931729023166,
+              0.740481950599561,
+              10.999999999999996
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "refined_matrix": [
+            [
+              0.14504351028309456,
+              -0.8240701737490461,
+              0.5476045369260323,
+              5.000000000000017
+            ],
+            [
+              0.9157686827436744,
+              -0.09773416870072546,
+              -0.389635409035543,
+              -7.999999999999991
+            ],
+            [
+              0.37460659341591224,
+              0.5579931729023163,
+              0.7404819505995616,
+              10.999999999999982
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "reason": null,
+          "quality": {
+            "metrics": {
+              "observation_id": "93b2dc7129404b3c90af5f1119eb8480",
+              "items": [
+                {
+                  "item_id": "source_count",
+                  "unit": "1",
+                  "value": 28800.0,
+                  "valid": true,
+                  "reason": null
+                },
+                {
+                  "item_id": "reference_count",
+                  "unit": "1",
+                  "value": 28800.0,
+                  "valid": true,
+                  "reason": null
+                },
+                {
+                  "item_id": "correspondence_count",
+                  "unit": "1",
+                  "value": 28800.0,
+                  "valid": true,
+                  "reason": null
+                },
+                {
+                  "item_id": "source_coverage",
+                  "unit": "1",
+                  "value": 1.0,
+                  "valid": true,
+                  "reason": null
+                },
+                {
+                  "item_id": "reference_coverage",
+                  "unit": "1",
+                  "value": 1.0,
+                  "valid": true,
+                  "reason": null
+                },
+                {
+                  "item_id": "rms",
+                  "unit": "mm",
+                  "value": 2.865932065945403e-14,
+                  "valid": true,
+                  "reason": null
+                },
+                {
+                  "item_id": "max_residual",
+                  "unit": "mm",
+                  "value": 6.703246762680666e-14,
+                  "valid": true,
+                  "reason": null
+                },
+                {
+                  "item_id": "rank",
+                  "unit": "1",
+                  "value": 6.0,
+                  "valid": true,
+                  "reason": null
+                },
+                {
+                  "item_id": "observability",
+                  "unit": "1",
+                  "value": 0.28671683268160597,
+                  "valid": true,
+                  "reason": null
+                },
+                {
+                  "item_id": "iterations",
+                  "unit": "1",
+                  "value": 1.0,
+                  "valid": true,
+                  "reason": null
+                },
+                {
+                  "item_id": "converged",
+                  "unit": "1",
+                  "value": 1.0,
+                  "valid": true,
+                  "reason": null
+                }
+              ]
+            },
+            "checks": [
+              {
+                "item_id": "correspondence_count",
+                "required": true,
+                "passed": true,
+                "valid": true,
+                "value": 28800.0,
+                "unit": "1",
+                "lower": 30.0,
+                "upper": null,
+                "include_lower": true,
+                "include_upper": true,
+                "actual_unit": "1",
+                "reason": null
+              },
+              {
+                "item_id": "source_coverage",
+                "required": true,
+                "passed": true,
+                "valid": true,
+                "value": 1.0,
+                "unit": "1",
+                "lower": 0.95,
+                "upper": null,
+                "include_lower": true,
+                "include_upper": true,
+                "actual_unit": "1",
+                "reason": null
+              },
+              {
+                "item_id": "reference_coverage",
+                "required": true,
+                "passed": true,
+                "valid": true,
+                "value": 1.0,
+                "unit": "1",
+                "lower": 0.95,
+                "upper": null,
+                "include_lower": true,
+                "include_upper": true,
+                "actual_unit": "1",
+                "reason": null
+              },
+              {
+                "item_id": "observability",
+                "required": true,
+                "passed": true,
+                "valid": true,
+                "value": 0.28671683268160597,
+                "unit": "1",
+                "lower": 1e-05,
+                "upper": null,
+                "include_lower": true,
+                "include_upper": true,
+                "actual_unit": "1",
+                "reason": null
+              },
+              {
+                "item_id": "rank",
+                "required": true,
+                "passed": true,
+                "valid": true,
+                "value": 6.0,
+                "unit": "1",
+                "lower": 6.0,
+                "upper": null,
+                "include_lower": true,
+                "include_upper": true,
+                "actual_unit": "1",
+                "reason": null
+              },
+              {
+                "item_id": "converged",
+                "required": true,
+                "passed": true,
+                "valid": true,
+                "value": 1.0,
+                "unit": "1",
+                "lower": 1.0,
+                "upper": null,
+                "include_lower": true,
+                "include_upper": true,
+                "actual_unit": "1",
+                "reason": null
+              },
+              {
+                "item_id": "rms",
+                "required": true,
+                "passed": true,
+                "valid": true,
+                "value": 2.865932065945403e-14,
+                "unit": "mm",
+                "lower": null,
+                "upper": 1e-05,
+                "include_lower": true,
+                "include_upper": true,
+                "actual_unit": "mm",
+                "reason": null
+              },
+              {
+                "item_id": "max_residual",
+                "required": true,
+                "passed": true,
+                "valid": true,
+                "value": 6.703246762680666e-14,
+                "unit": "mm",
+                "lower": null,
+                "upper": 0.0001,
+                "include_lower": true,
+                "include_upper": true,
+                "actual_unit": "mm",
+                "reason": null
+              }
+            ],
+            "usable": true
+          }
+        },
+        {
+          "trial": 1,
+          "initial_matrix": [
+            [
+              0.1450435102830946,
+              -0.8240701737490466,
+              0.5476045369260325,
+              4.999999999999993
+            ],
+            [
+              0.9157686827436738,
+              -0.09773416870072565,
+              -0.3896354090355429,
+              -8.000000000000004
+            ],
+            [
+              0.37460659341591196,
+              0.5579931729023164,
+              0.7404819505995613,
+              10.999999999999986
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "refined_matrix": [
+            [
+              0.14504351028309473,
+              -0.8240701737490466,
+              0.5476045369260328,
+              4.999999999999997
+            ],
+            [
+              0.9157686827436742,
+              -0.09773416870072565,
+              -0.38963540903554333,
+              -8.000000000000007
+            ],
+            [
+              0.3746065934159121,
+              0.5579931729023162,
+              0.7404819505995618,
+              10.999999999999977
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "reason": null,
+          "quality": {
+            "metrics": {
+              "observation_id": "93b2dc7129404b3c90af5f1119eb8480",
+              "items": [
+                {
+                  "item_id": "source_count",
+                  "unit": "1",
+                  "value": 28800.0,
+                  "valid": true,
+                  "reason": null
+                },
+                {
+                  "item_id": "reference_count",
+                  "unit": "1",
+                  "value": 28800.0,
+                  "valid": true,
+                  "reason": null
+                },
+                {
+                  "item_id": "correspondence_count",
+                  "unit": "1",
+                  "value": 28800.0,
+                  "valid": true,
+                  "reason": null
+                },
+                {
+                  "item_id": "source_coverage",
+                  "unit": "1",
+                  "value": 1.0,
+                  "valid": true,
+                  "reason": null
+                },
+                {
+                  "item_id": "reference_coverage",
+                  "unit": "1",
+                  "value": 1.0,
+                  "valid": true,
+                  "reason": null
+                },
+                {
+                  "item_id": "rms",
+                  "unit": "mm",
+                  "value": 2.097659210650776e-14,
+                  "valid": true,
+                  "reason": null
+                },
+                {
+                  "item_id": "max_residual",
+                  "unit": "mm",
+                  "value": 4.7664655742347644e-14,
+                  "valid": true,
+                  "reason": null
+                },
+                {
+                  "item_id": "rank",
+                  "unit": "1",
+                  "value": 6.0,
+                  "valid": true,
+                  "reason": null
+                },
+                {
+                  "item_id": "observability",
+                  "unit": "1",
+                  "value": 0.2867168326816056,
+                  "valid": true,
+                  "reason": null
+                },
+                {
+                  "item_id": "iterations",
+                  "unit": "1",
+                  "value": 1.0,
+                  "valid": true,
+                  "reason": null
+                },
+                {
+                  "item_id": "converged",
+                  "unit": "1",
+                  "value": 1.0,
+                  "valid": true,
+                  "reason": null
+                }
+              ]
+            },
+            "checks": [
+              {
+                "item_id": "correspondence_count",
+                "required": true,
+                "passed": true,
+                "valid": true,
+                "value": 28800.0,
+                "unit": "1",
+                "lower": 30.0,
+                "upper": null,
+                "include_lower": true,
+                "include_upper": true,
+                "actual_unit": "1",
+                "reason": null
+              },
+              {
+                "item_id": "source_coverage",
+                "required": true,
+                "passed": true,
+                "valid": true,
+                "value": 1.0,
+                "unit": "1",
+                "lower": 0.95,
+                "upper": null,
+                "include_lower": true,
+                "include_upper": true,
+                "actual_unit": "1",
+                "reason": null
+              },
+              {
+                "item_id": "reference_coverage",
+                "required": true,
+                "passed": true,
+                "valid": true,
+                "value": 1.0,
+                "unit": "1",
+                "lower": 0.95,
+                "upper": null,
+                "include_lower": true,
+                "include_upper": true,
+                "actual_unit": "1",
+                "reason": null
+              },
+              {
+                "item_id": "observability",
+                "required": true,
+                "passed": true,
+                "valid": true,
+                "value": 0.2867168326816056,
+                "unit": "1",
+                "lower": 1e-05,
+                "upper": null,
+                "include_lower": true,
+                "include_upper": true,
+                "actual_unit": "1",
+                "reason": null
+              },
+              {
+                "item_id": "rank",
+                "required": true,
+                "passed": true,
+                "valid": true,
+                "value": 6.0,
+                "unit": "1",
+                "lower": 6.0,
+                "upper": null,
+                "include_lower": true,
+                "include_upper": true,
+                "actual_unit": "1",
+                "reason": null
+              },
+              {
+                "item_id": "converged",
+                "required": true,
+                "passed": true,
+                "valid": true,
+                "value": 1.0,
+                "unit": "1",
+                "lower": 1.0,
+                "upper": null,
+                "include_lower": true,
+                "include_upper": true,
+                "actual_unit": "1",
+                "reason": null
+              },
+              {
+                "item_id": "rms",
+                "required": true,
+                "passed": true,
+                "valid": true,
+                "value": 2.097659210650776e-14,
+                "unit": "mm",
+                "lower": null,
+                "upper": 1e-05,
+                "include_lower": true,
+                "include_upper": true,
+                "actual_unit": "mm",
+                "reason": null
+              },
+              {
+                "item_id": "max_residual",
+                "required": true,
+                "passed": true,
+                "valid": true,
+                "value": 4.7664655742347644e-14,
+                "unit": "mm",
+                "lower": null,
+                "upper": 0.0001,
+                "include_lower": true,
+                "include_upper": true,
+                "actual_unit": "mm",
+                "reason": null
+              }
+            ],
+            "usable": true
+          }
+        },
+        {
+          "trial": 2,
+          "initial_matrix": [
+            [
+              0.14504351028309434,
+              -0.8240701737490465,
+              0.5476045369260324,
+              5.0
+            ],
+            [
+              0.9157686827436738,
+              -0.09773416870072578,
+              -0.3896354090355426,
+              -8.000000000000009
+            ],
+            [
+              0.3746065934159121,
+              0.5579931729023165,
+              0.740481950599561,
+              10.999999999999993
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "refined_matrix": [
+            [
+              0.14504351028309453,
+              -0.8240701737490462,
+              0.5476045369260327,
+              5.000000000000018
+            ],
+            [
+              0.9157686827436741,
+              -0.09773416870072552,
+              -0.3896354090355428,
+              -7.999999999999992
+            ],
+            [
+              0.37460659341591207,
+              0.5579931729023163,
+              0.7404819505995611,
+              10.99999999999999
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "reason": null,
+          "quality": {
+            "metrics": {
+              "observation_id": "93b2dc7129404b3c90af5f1119eb8480",
+              "items": [
+                {
+                  "item_id": "source_count",
+                  "unit": "1",
+                  "value": 28800.0,
+                  "valid": true,
+                  "reason": null
+                },
+                {
+                  "item_id": "reference_count",
+                  "unit": "1",
+                  "value": 28800.0,
+                  "valid": true,
+                  "reason": null
+                },
+                {
+                  "item_id": "correspondence_count",
+                  "unit": "1",
+                  "value": 28800.0,
+                  "valid": true,
+                  "reason": null
+                },
+                {
+                  "item_id": "source_coverage",
+                  "unit": "1",
+                  "value": 1.0,
+                  "valid": true,
+                  "reason": null
+                },
+                {
+                  "item_id": "reference_coverage",
+                  "unit": "1",
+                  "value": 1.0,
+                  "valid": true,
+                  "reason": null
+                },
+                {
+                  "item_id": "rms",
+                  "unit": "mm",
+                  "value": 2.147839601450527e-14,
+                  "valid": true,
+                  "reason": null
+                },
+                {
+                  "item_id": "max_residual",
+                  "unit": "mm",
+                  "value": 6.665481691674458e-14,
+                  "valid": true,
+                  "reason": null
+                },
+                {
+                  "item_id": "rank",
+                  "unit": "1",
+                  "value": 6.0,
+                  "valid": true,
+                  "reason": null
+                },
+                {
+                  "item_id": "observability",
+                  "unit": "1",
+                  "value": 0.2867168326816056,
+                  "valid": true,
+                  "reason": null
+                },
+                {
+                  "item_id": "iterations",
+                  "unit": "1",
+                  "value": 1.0,
+                  "valid": true,
+                  "reason": null
+                },
+                {
+                  "item_id": "converged",
+                  "unit": "1",
+                  "value": 1.0,
+                  "valid": true,
+                  "reason": null
+                }
+              ]
+            },
+            "checks": [
+              {
+                "item_id": "correspondence_count",
+                "required": true,
+                "passed": true,
+                "valid": true,
+                "value": 28800.0,
+                "unit": "1",
+                "lower": 30.0,
+                "upper": null,
+                "include_lower": true,
+                "include_upper": true,
+                "actual_unit": "1",
+                "reason": null
+              },
+              {
+                "item_id": "source_coverage",
+                "required": true,
+                "passed": true,
+                "valid": true,
+                "value": 1.0,
+                "unit": "1",
+                "lower": 0.95,
+                "upper": null,
+                "include_lower": true,
+                "include_upper": true,
+                "actual_unit": "1",
+                "reason": null
+              },
+              {
+                "item_id": "reference_coverage",
+                "required": true,
+                "passed": true,
+                "valid": true,
+                "value": 1.0,
+                "unit": "1",
+                "lower": 0.95,
+                "upper": null,
+                "include_lower": true,
+                "include_upper": true,
+                "actual_unit": "1",
+                "reason": null
+              },
+              {
+                "item_id": "observability",
+                "required": true,
+                "passed": true,
+                "valid": true,
+                "value": 0.2867168326816056,
+                "unit": "1",
+                "lower": 1e-05,
+                "upper": null,
+                "include_lower": true,
+                "include_upper": true,
+                "actual_unit": "1",
+                "reason": null
+              },
+              {
+                "item_id": "rank",
+                "required": true,
+                "passed": true,
+                "valid": true,
+                "value": 6.0,
+                "unit": "1",
+                "lower": 6.0,
+                "upper": null,
+                "include_lower": true,
+                "include_upper": true,
+                "actual_unit": "1",
+                "reason": null
+              },
+              {
+                "item_id": "converged",
+                "required": true,
+                "passed": true,
+                "valid": true,
+                "value": 1.0,
+                "unit": "1",
+                "lower": 1.0,
+                "upper": null,
+                "include_lower": true,
+                "include_upper": true,
+                "actual_unit": "1",
+                "reason": null
+              },
+              {
+                "item_id": "rms",
+                "required": true,
+                "passed": true,
+                "valid": true,
+                "value": 2.147839601450527e-14,
+                "unit": "mm",
+                "lower": null,
+                "upper": 1e-05,
+                "include_lower": true,
+                "include_upper": true,
+                "actual_unit": "mm",
+                "reason": null
+              },
+              {
+                "item_id": "max_residual",
+                "required": true,
+                "passed": true,
+                "valid": true,
+                "value": 6.665481691674458e-14,
+                "unit": "mm",
+                "lower": null,
+                "upper": 0.0001,
+                "include_lower": true,
+                "include_upper": true,
+                "actual_unit": "mm",
+                "reason": null
+              }
+            ],
+            "usable": true
+          }
+        }
+      ]
+    }
+  },
+  "normals": [
+    {
+      "neighborhood": {
+        "kind": "knn",
+        "neighbors": 16,
+        "support": {
+          "kind": "unrestricted"
+        }
+      },
+      "quality": {
+        "min_support_points": 3,
+        "min_normal_gap": 1e-06,
+        "max_rms": 1.0,
+        "max_surface_variation": 0.3
+      },
+      "orientation": {
+        "kind": "direction",
+        "direction": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "min_abs_cosine": 1e-06
+      },
+      "frame_id": "fixture",
+      "length_unit": "mm",
+      "existing_normals": "reject",
+      "diagnostics": true
+    },
+    {
+      "neighborhood": {
+        "kind": "knn",
+        "neighbors": 16,
+        "support": {
+          "kind": "unrestricted"
+        }
+      },
+      "quality": {
+        "min_support_points": 3,
+        "min_normal_gap": 1e-06,
+        "max_rms": 1.0,
+        "max_surface_variation": 0.3
+      },
+      "orientation": {
+        "kind": "direction",
+        "direction": [
+          0.5476045369260323,
+          -0.3896354090355427,
+          0.7404819505995613
+        ],
+        "min_abs_cosine": 1e-06
+      },
+      "frame_id": "reference",
+      "length_unit": "mm",
+      "existing_normals": "reject",
+      "diagnostics": true
+    }
+  ]
+}

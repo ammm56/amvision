@@ -1,0 +1,1515 @@
+{
+  "point_count": 14745099,
+  "matrix_error": 1.0708128550529494e-08,
+  "published_seconds": 4.694024685071781,
+  "quality": {
+    "metrics": {
+      "observation_id": "4bfcd7374e7347ddb29158afaba802e8",
+      "items": [
+        {
+          "item_id": "source_count",
+          "unit": "1",
+          "value": 28800.0,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "reference_count",
+          "unit": "1",
+          "value": 28800.0,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "correspondence_count",
+          "unit": "1",
+          "value": 28800.0,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "source_coverage",
+          "unit": "1",
+          "value": 1.0,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "reference_coverage",
+          "unit": "1",
+          "value": 1.0,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "rms",
+          "unit": "mm",
+          "value": 5.2442240894547205e-08,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "max_residual",
+          "unit": "mm",
+          "value": 9.992015547566863e-08,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "rank",
+          "unit": "1",
+          "value": 3.0,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "observability",
+          "unit": "1",
+          "value": 0.9999372888352008,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "iterations",
+          "unit": "1",
+          "value": 2.0,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "converged",
+          "unit": "1",
+          "value": 1.0,
+          "valid": true,
+          "reason": null
+        },
+        {
+          "item_id": "datum_valid",
+          "unit": "1",
+          "value": 1.0,
+          "valid": true,
+          "reason": null
+        }
+      ]
+    },
+    "checks": [
+      {
+        "item_id": "correspondence_count",
+        "required": true,
+        "passed": true,
+        "valid": true,
+        "value": 28800.0,
+        "unit": "1",
+        "lower": 30.0,
+        "upper": null,
+        "include_lower": true,
+        "include_upper": true,
+        "actual_unit": "1",
+        "reason": null
+      },
+      {
+        "item_id": "source_coverage",
+        "required": true,
+        "passed": true,
+        "valid": true,
+        "value": 1.0,
+        "unit": "1",
+        "lower": 0.95,
+        "upper": null,
+        "include_lower": true,
+        "include_upper": true,
+        "actual_unit": "1",
+        "reason": null
+      },
+      {
+        "item_id": "reference_coverage",
+        "required": true,
+        "passed": true,
+        "valid": true,
+        "value": 1.0,
+        "unit": "1",
+        "lower": 0.95,
+        "upper": null,
+        "include_lower": true,
+        "include_upper": true,
+        "actual_unit": "1",
+        "reason": null
+      },
+      {
+        "item_id": "observability",
+        "required": true,
+        "passed": true,
+        "valid": true,
+        "value": 0.9999372888352008,
+        "unit": "1",
+        "lower": 1e-05,
+        "upper": null,
+        "include_lower": true,
+        "include_upper": true,
+        "actual_unit": "1",
+        "reason": null
+      },
+      {
+        "item_id": "rank",
+        "required": true,
+        "passed": true,
+        "valid": true,
+        "value": 3.0,
+        "unit": "1",
+        "lower": 3.0,
+        "upper": null,
+        "include_lower": true,
+        "include_upper": true,
+        "actual_unit": "1",
+        "reason": null
+      },
+      {
+        "item_id": "converged",
+        "required": true,
+        "passed": true,
+        "valid": true,
+        "value": 1.0,
+        "unit": "1",
+        "lower": 1.0,
+        "upper": null,
+        "include_lower": true,
+        "include_upper": true,
+        "actual_unit": "1",
+        "reason": null
+      },
+      {
+        "item_id": "rms",
+        "required": true,
+        "passed": true,
+        "valid": true,
+        "value": 5.2442240894547205e-08,
+        "unit": "mm",
+        "lower": null,
+        "upper": 1e-05,
+        "include_lower": true,
+        "include_upper": true,
+        "actual_unit": "mm",
+        "reason": null
+      },
+      {
+        "item_id": "max_residual",
+        "required": true,
+        "passed": true,
+        "valid": true,
+        "value": 9.992015547566863e-08,
+        "unit": "mm",
+        "lower": null,
+        "upper": 0.0001,
+        "include_lower": true,
+        "include_upper": true,
+        "actual_unit": "mm",
+        "reason": null
+      },
+      {
+        "item_id": "datum_valid",
+        "required": true,
+        "passed": true,
+        "valid": true,
+        "value": 1.0,
+        "unit": "1",
+        "lower": 1.0,
+        "upper": null,
+        "include_lower": true,
+        "include_upper": true,
+        "actual_unit": "1",
+        "reason": null
+      }
+    ],
+    "usable": true
+  },
+  "version": "workflow-app-version-8287d050c62b4599b621251c9227cfa1",
+  "runtime_id": "workflow-runtime-84c8b098b7b04085b511a6964ab4a0c6",
+  "test_working_bytes": 4294967296,
+  "registration_stride": 512,
+  "initialization": "datum",
+  "method": {
+    "method_id": "register-cloud",
+    "method_version": 1,
+    "scope": "datum-se2",
+    "parameters": {
+      "pose_id": "aligned",
+      "source_frame_id": "fixture",
+      "target_frame_id": "reference",
+      "length_unit": "mm",
+      "algorithm": "point-to-point",
+      "max_correspondence_distance": 0.0001,
+      "max_iterations": 10,
+      "fitness_change": 1e-09,
+      "rmse_change": 1e-09,
+      "quality_policy": {
+        "policy_id": "test",
+        "policy_version": 1,
+        "rules": [
+          {
+            "item_id": "correspondence_count",
+            "unit": "1",
+            "enabled": true,
+            "required": true,
+            "lower": 30.0,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true
+          },
+          {
+            "item_id": "source_coverage",
+            "unit": "1",
+            "enabled": true,
+            "required": true,
+            "lower": 0.95,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true
+          },
+          {
+            "item_id": "reference_coverage",
+            "unit": "1",
+            "enabled": true,
+            "required": true,
+            "lower": 0.95,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true
+          },
+          {
+            "item_id": "observability",
+            "unit": "1",
+            "enabled": true,
+            "required": true,
+            "lower": 1e-05,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true
+          },
+          {
+            "item_id": "rank",
+            "unit": "1",
+            "enabled": true,
+            "required": true,
+            "lower": 3.0,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true
+          },
+          {
+            "item_id": "converged",
+            "unit": "1",
+            "enabled": true,
+            "required": true,
+            "lower": 1.0,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true
+          },
+          {
+            "item_id": "rms",
+            "unit": "mm",
+            "enabled": true,
+            "required": true,
+            "lower": null,
+            "upper": 1e-05,
+            "include_lower": true,
+            "include_upper": true
+          },
+          {
+            "item_id": "max_residual",
+            "unit": "mm",
+            "enabled": true,
+            "required": true,
+            "lower": null,
+            "upper": 0.0001,
+            "include_lower": true,
+            "include_upper": true
+          },
+          {
+            "item_id": "datum_valid",
+            "unit": "1",
+            "enabled": true,
+            "required": true,
+            "lower": 1.0,
+            "upper": null,
+            "include_lower": true,
+            "include_upper": true
+          }
+        ]
+      },
+      "initialization": "datum",
+      "initial_uv": [
+        0.0,
+        0.0
+      ],
+      "initial_angle_degrees": 0.0,
+      "max_solver_evaluations": 40,
+      "solver_tolerance": 1e-11
+    },
+    "parameters_sha256": "2a386bfe52d2e5201aaf28170813d66614854bad1aa2df97979c4d9c369b2701",
+    "parents": [
+      {
+        "observation_id": "4bfcd7374e7347ddb29158afaba802e8",
+        "frame_id": "fixture",
+        "length_unit": "mm",
+        "point_count": 28800,
+        "support_content_sha256": "5dd5183a2ba191916fcdb36614121c2878bb7abd003d7e6b893304d8034c2a6f"
+      },
+      {
+        "observation_id": "c8c67826dac2495a9a94f7c61e1232ab",
+        "frame_id": "reference",
+        "length_unit": "mm",
+        "point_count": 28800,
+        "support_content_sha256": "6ae6298f87c84382a5cb583810d686615069d3fe86ef695b7f64ef15b06d7b64"
+      }
+    ],
+    "search": null,
+    "datum": {
+      "frames": [
+        {
+          "pose_id": "fixture-datum",
+          "observation_id": "4bfcd7374e7347ddb29158afaba802e8",
+          "source_frame_id": "fixture",
+          "target_frame_id": "fixture-datum",
+          "length_unit": "mm",
+          "state": "found",
+          "reason": null,
+          "transform": {
+            "source_frame_id": "fixture",
+            "target_frame_id": "fixture-datum",
+            "observation_id": "4bfcd7374e7347ddb29158afaba802e8",
+            "length_unit": "mm",
+            "matrix": [
+              [
+                0.999851114398177,
+                -6.5711849602877925e-06,
+                0.017255404763240223,
+                2.8323728608684694e-17
+              ],
+              [
+                0.0,
+                0.9999999274884753,
+                0.0003808189129124325,
+                -1.26636414625809e-18
+              ],
+              [
+                -0.017255406014456024,
+                -0.0003807622144593979,
+                0.9998510418974481,
+                15.691375311582949
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "format_id": "amvision.transform3d.v1",
+            "provenance": {
+              "method": {
+                "method_id": "build-frame",
+                "method_version": 1,
+                "parameters": {
+                  "pose_id": "fixture-datum",
+                  "target_frame_id": "fixture-datum",
+                  "primary_feature_id": "D",
+                  "positive_z": [
+                    0.0,
+                    0.0,
+                    1.0
+                  ],
+                  "origin": {
+                    "kind": "anchor-projection",
+                    "anchor": [
+                      0.0,
+                      0.0,
+                      0.0
+                    ]
+                  },
+                  "x_axis": {
+                    "kind": "direction",
+                    "direction": [
+                      1.0,
+                      0.0,
+                      0.0
+                    ]
+                  }
+                },
+                "parameters_sha256": "54cc01e980c0a2de6a754d69f7899bc3fd5eb5ce014d09f0d27f2d28296ee648",
+                "quality_policy": {
+                  "policy_id": "r5-frame",
+                  "policy_version": 1,
+                  "rules": [
+                    {
+                      "item_id": "axis_sine",
+                      "unit": "1",
+                      "enabled": true,
+                      "required": true,
+                      "lower": 0.99,
+                      "upper": null,
+                      "include_lower": true,
+                      "include_upper": true
+                    },
+                    {
+                      "item_id": "x_alignment",
+                      "unit": "1",
+                      "enabled": true,
+                      "required": true,
+                      "lower": 0.99,
+                      "upper": null,
+                      "include_lower": true,
+                      "include_upper": true
+                    },
+                    {
+                      "item_id": "z_alignment",
+                      "unit": "1",
+                      "enabled": true,
+                      "required": true,
+                      "lower": 0.99,
+                      "upper": null,
+                      "include_lower": true,
+                      "include_upper": true
+                    }
+                  ]
+                }
+              },
+              "parents": [
+                {
+                  "feature_id": "D",
+                  "observation_id": "4bfcd7374e7347ddb29158afaba802e8",
+                  "frame_id": "fixture",
+                  "length_unit": "mm",
+                  "geometry": {
+                    "normal": [
+                      -0.017255406014456024,
+                      -0.0003807622144593979,
+                      0.9998510418974481
+                    ],
+                    "offset": 15.691375311582945
+                  },
+                  "method": {
+                    "method_id": "fit-plane",
+                    "method_version": 1,
+                    "parameters": {
+                      "feature_id": "D",
+                      "positive_normal": [
+                        0.0,
+                        0.0,
+                        1.0
+                      ],
+                      "min_orientation_cosine": 0.99,
+                      "algorithm": {
+                        "kind": "svd"
+                      }
+                    },
+                    "parameters_sha256": "c7504b257362263e5dd6bdd5d514afe618e76651284e5d11b27224beeaaeda1c",
+                    "quality_policy": {
+                      "policy_id": "r5-D",
+                      "policy_version": 1,
+                      "rules": [
+                        {
+                          "item_id": "inlier_count",
+                          "unit": "1",
+                          "enabled": true,
+                          "required": true,
+                          "lower": 100.0,
+                          "upper": null,
+                          "include_lower": true,
+                          "include_upper": true
+                        },
+                        {
+                          "item_id": "tangent_ratio",
+                          "unit": "1",
+                          "enabled": true,
+                          "required": true,
+                          "lower": 0.01,
+                          "upper": null,
+                          "include_lower": true,
+                          "include_upper": true
+                        },
+                        {
+                          "item_id": "normal_gap",
+                          "unit": "1",
+                          "enabled": true,
+                          "required": true,
+                          "lower": 0.01,
+                          "upper": null,
+                          "include_lower": true,
+                          "include_upper": true
+                        },
+                        {
+                          "item_id": "rms",
+                          "unit": "mm",
+                          "enabled": true,
+                          "required": true,
+                          "lower": null,
+                          "upper": 0.025,
+                          "include_lower": true,
+                          "include_upper": true
+                        },
+                        {
+                          "item_id": "max_residual",
+                          "unit": "mm",
+                          "enabled": true,
+                          "required": true,
+                          "lower": null,
+                          "upper": 0.12,
+                          "include_lower": true,
+                          "include_upper": true
+                        }
+                      ]
+                    }
+                  },
+                  "quality": {
+                    "metrics": {
+                      "observation_id": "4bfcd7374e7347ddb29158afaba802e8",
+                      "items": [
+                        {
+                          "item_id": "input_count",
+                          "unit": "1",
+                          "value": 1822289.0,
+                          "valid": true,
+                          "reason": null
+                        },
+                        {
+                          "item_id": "inlier_count",
+                          "unit": "1",
+                          "value": 1822289.0,
+                          "valid": true,
+                          "reason": null
+                        },
+                        {
+                          "item_id": "inlier_ratio",
+                          "unit": "1",
+                          "value": 1.0,
+                          "valid": true,
+                          "reason": null
+                        },
+                        {
+                          "item_id": "tangent_ratio",
+                          "unit": "1",
+                          "value": 0.34354913066016174,
+                          "valid": true,
+                          "reason": null
+                        },
+                        {
+                          "item_id": "normal_gap",
+                          "unit": "1",
+                          "value": 0.3432501915287976,
+                          "valid": true,
+                          "reason": null
+                        },
+                        {
+                          "item_id": "rms",
+                          "unit": "mm",
+                          "value": 0.017805251050998824,
+                          "valid": true,
+                          "reason": null
+                        },
+                        {
+                          "item_id": "max_residual",
+                          "unit": "mm",
+                          "value": 0.1010608027864132,
+                          "valid": true,
+                          "reason": null
+                        }
+                      ]
+                    },
+                    "checks": [
+                      {
+                        "item_id": "inlier_count",
+                        "required": true,
+                        "passed": true,
+                        "valid": true,
+                        "value": 1822289.0,
+                        "unit": "1",
+                        "lower": 100.0,
+                        "upper": null,
+                        "include_lower": true,
+                        "include_upper": true,
+                        "actual_unit": "1",
+                        "reason": null
+                      },
+                      {
+                        "item_id": "tangent_ratio",
+                        "required": true,
+                        "passed": true,
+                        "valid": true,
+                        "value": 0.34354913066016174,
+                        "unit": "1",
+                        "lower": 0.01,
+                        "upper": null,
+                        "include_lower": true,
+                        "include_upper": true,
+                        "actual_unit": "1",
+                        "reason": null
+                      },
+                      {
+                        "item_id": "normal_gap",
+                        "required": true,
+                        "passed": true,
+                        "valid": true,
+                        "value": 0.3432501915287976,
+                        "unit": "1",
+                        "lower": 0.01,
+                        "upper": null,
+                        "include_lower": true,
+                        "include_upper": true,
+                        "actual_unit": "1",
+                        "reason": null
+                      },
+                      {
+                        "item_id": "rms",
+                        "required": true,
+                        "passed": true,
+                        "valid": true,
+                        "value": 0.017805251050998824,
+                        "unit": "mm",
+                        "lower": null,
+                        "upper": 0.025,
+                        "include_lower": true,
+                        "include_upper": true,
+                        "actual_unit": "mm",
+                        "reason": null
+                      },
+                      {
+                        "item_id": "max_residual",
+                        "required": true,
+                        "passed": true,
+                        "valid": true,
+                        "value": 0.1010608027864132,
+                        "unit": "mm",
+                        "lower": null,
+                        "upper": 0.12,
+                        "include_lower": true,
+                        "include_upper": true,
+                        "actual_unit": "mm",
+                        "reason": null
+                      }
+                    ],
+                    "usable": true
+                  },
+                  "support_content_sha256": "ce5d2a12f63833cf63257b1c721f39a0ce7963bcb0d4c955b3c2518abdaa20ed"
+                }
+              ],
+              "quality": {
+                "metrics": {
+                  "observation_id": "4bfcd7374e7347ddb29158afaba802e8",
+                  "items": [
+                    {
+                      "item_id": "axis_sine",
+                      "unit": "1",
+                      "value": 0.9998511143981769,
+                      "valid": true,
+                      "reason": null
+                    },
+                    {
+                      "item_id": "x_alignment",
+                      "unit": "1",
+                      "value": 0.999851114398177,
+                      "valid": true,
+                      "reason": null
+                    },
+                    {
+                      "item_id": "z_alignment",
+                      "unit": "1",
+                      "value": 0.9998510418974481,
+                      "valid": true,
+                      "reason": null
+                    },
+                    {
+                      "item_id": "origin_condition",
+                      "unit": "1",
+                      "value": null,
+                      "valid": false,
+                      "reason": "metric_unavailable"
+                    }
+                  ]
+                },
+                "checks": [
+                  {
+                    "item_id": "axis_sine",
+                    "required": true,
+                    "passed": true,
+                    "valid": true,
+                    "value": 0.9998511143981769,
+                    "unit": "1",
+                    "lower": 0.99,
+                    "upper": null,
+                    "include_lower": true,
+                    "include_upper": true,
+                    "actual_unit": "1",
+                    "reason": null
+                  },
+                  {
+                    "item_id": "x_alignment",
+                    "required": true,
+                    "passed": true,
+                    "valid": true,
+                    "value": 0.999851114398177,
+                    "unit": "1",
+                    "lower": 0.99,
+                    "upper": null,
+                    "include_lower": true,
+                    "include_upper": true,
+                    "actual_unit": "1",
+                    "reason": null
+                  },
+                  {
+                    "item_id": "z_alignment",
+                    "required": true,
+                    "passed": true,
+                    "valid": true,
+                    "value": 0.9998510418974481,
+                    "unit": "1",
+                    "lower": 0.99,
+                    "upper": null,
+                    "include_lower": true,
+                    "include_upper": true,
+                    "actual_unit": "1",
+                    "reason": null
+                  }
+                ],
+                "usable": true
+              },
+              "source_retained": false
+            }
+          },
+          "method": {
+            "method_id": "build-frame",
+            "method_version": 1,
+            "parameters": {
+              "pose_id": "fixture-datum",
+              "target_frame_id": "fixture-datum",
+              "primary_feature_id": "D",
+              "positive_z": [
+                0.0,
+                0.0,
+                1.0
+              ],
+              "origin": {
+                "kind": "anchor-projection",
+                "anchor": [
+                  0.0,
+                  0.0,
+                  0.0
+                ]
+              },
+              "x_axis": {
+                "kind": "direction",
+                "direction": [
+                  1.0,
+                  0.0,
+                  0.0
+                ]
+              }
+            },
+            "parameters_sha256": "54cc01e980c0a2de6a754d69f7899bc3fd5eb5ce014d09f0d27f2d28296ee648",
+            "quality_policy": {
+              "policy_id": "r5-frame",
+              "policy_version": 1,
+              "rules": [
+                {
+                  "item_id": "axis_sine",
+                  "unit": "1",
+                  "enabled": true,
+                  "required": true,
+                  "lower": 0.99,
+                  "upper": null,
+                  "include_lower": true,
+                  "include_upper": true
+                },
+                {
+                  "item_id": "x_alignment",
+                  "unit": "1",
+                  "enabled": true,
+                  "required": true,
+                  "lower": 0.99,
+                  "upper": null,
+                  "include_lower": true,
+                  "include_upper": true
+                },
+                {
+                  "item_id": "z_alignment",
+                  "unit": "1",
+                  "enabled": true,
+                  "required": true,
+                  "lower": 0.99,
+                  "upper": null,
+                  "include_lower": true,
+                  "include_upper": true
+                }
+              ]
+            }
+          },
+          "quality": {
+            "metrics": {
+              "observation_id": "4bfcd7374e7347ddb29158afaba802e8",
+              "items": [
+                {
+                  "item_id": "axis_sine",
+                  "unit": "1",
+                  "value": 0.9998511143981769,
+                  "valid": true,
+                  "reason": null
+                },
+                {
+                  "item_id": "x_alignment",
+                  "unit": "1",
+                  "value": 0.999851114398177,
+                  "valid": true,
+                  "reason": null
+                },
+                {
+                  "item_id": "z_alignment",
+                  "unit": "1",
+                  "value": 0.9998510418974481,
+                  "valid": true,
+                  "reason": null
+                },
+                {
+                  "item_id": "origin_condition",
+                  "unit": "1",
+                  "value": null,
+                  "valid": false,
+                  "reason": "metric_unavailable"
+                }
+              ]
+            },
+            "checks": [
+              {
+                "item_id": "axis_sine",
+                "required": true,
+                "passed": true,
+                "valid": true,
+                "value": 0.9998511143981769,
+                "unit": "1",
+                "lower": 0.99,
+                "upper": null,
+                "include_lower": true,
+                "include_upper": true,
+                "actual_unit": "1",
+                "reason": null
+              },
+              {
+                "item_id": "x_alignment",
+                "required": true,
+                "passed": true,
+                "valid": true,
+                "value": 0.999851114398177,
+                "unit": "1",
+                "lower": 0.99,
+                "upper": null,
+                "include_lower": true,
+                "include_upper": true,
+                "actual_unit": "1",
+                "reason": null
+              },
+              {
+                "item_id": "z_alignment",
+                "required": true,
+                "passed": true,
+                "valid": true,
+                "value": 0.9998510418974481,
+                "unit": "1",
+                "lower": 0.99,
+                "upper": null,
+                "include_lower": true,
+                "include_upper": true,
+                "actual_unit": "1",
+                "reason": null
+              }
+            ],
+            "usable": true
+          }
+        },
+        {
+          "pose_id": "reference-datum",
+          "observation_id": "c8c67826dac2495a9a94f7c61e1232ab",
+          "source_frame_id": "reference",
+          "target_frame_id": "reference-datum",
+          "length_unit": "mm",
+          "state": "found",
+          "reason": null,
+          "transform": {
+            "source_frame_id": "reference",
+            "target_frame_id": "reference-datum",
+            "observation_id": "c8c67826dac2495a9a94f7c61e1232ab",
+            "length_unit": "mm",
+            "matrix": [
+              [
+                0.9980600919734461,
+                0.05169650545833771,
+                0.03469184534371291,
+                -0.0963777761698411
+              ],
+              [
+                -0.05291825371268501,
+                0.9979756276897283,
+                0.03527470710428185,
+                0.12222692412569329
+              ],
+              [
+                -0.0327980370442491,
+                -0.037042109290495756,
+                0.9987753355511715,
+                15.610308041378595
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "format_id": "amvision.transform3d.v1",
+            "provenance": {
+              "method": {
+                "method_id": "build-frame",
+                "method_version": 1,
+                "parameters": {
+                  "pose_id": "reference-datum",
+                  "target_frame_id": "reference-datum",
+                  "primary_feature_id": "D",
+                  "positive_z": [
+                    -0.015591373024184431,
+                    -0.035764500123301124,
+                    0.9992386149554824
+                  ],
+                  "origin": {
+                    "kind": "anchor-projection",
+                    "anchor": [
+                      0.1,
+                      -0.12,
+                      0.08
+                    ]
+                  },
+                  "x_axis": {
+                    "kind": "direction",
+                    "direction": [
+                      0.9984774386394598,
+                      0.05232798522331313,
+                      0.01745240643728351
+                    ]
+                  }
+                },
+                "parameters_sha256": "a07c545767370d23a6e0a46ab5913f9755479c55ffae0c8183622e4ae2d21cd3",
+                "quality_policy": {
+                  "policy_id": "r5-frame",
+                  "policy_version": 1,
+                  "rules": [
+                    {
+                      "item_id": "axis_sine",
+                      "unit": "1",
+                      "enabled": true,
+                      "required": true,
+                      "lower": 0.99,
+                      "upper": null,
+                      "include_lower": true,
+                      "include_upper": true
+                    },
+                    {
+                      "item_id": "x_alignment",
+                      "unit": "1",
+                      "enabled": true,
+                      "required": true,
+                      "lower": 0.99,
+                      "upper": null,
+                      "include_lower": true,
+                      "include_upper": true
+                    },
+                    {
+                      "item_id": "z_alignment",
+                      "unit": "1",
+                      "enabled": true,
+                      "required": true,
+                      "lower": 0.99,
+                      "upper": null,
+                      "include_lower": true,
+                      "include_upper": true
+                    }
+                  ]
+                }
+              },
+              "parents": [
+                {
+                  "feature_id": "D",
+                  "observation_id": "c8c67826dac2495a9a94f7c61e1232ab",
+                  "frame_id": "reference",
+                  "length_unit": "mm",
+                  "geometry": {
+                    "normal": [
+                      -0.0327980370442491,
+                      -0.037042109290495756,
+                      0.9987753355511715
+                    ],
+                    "offset": 15.610308041378593
+                  },
+                  "method": {
+                    "method_id": "fit-plane",
+                    "method_version": 1,
+                    "parameters": {
+                      "feature_id": "D",
+                      "positive_normal": [
+                        -0.015591373024184431,
+                        -0.035764500123301124,
+                        0.9992386149554824
+                      ],
+                      "min_orientation_cosine": 0.99,
+                      "algorithm": {
+                        "kind": "svd"
+                      }
+                    },
+                    "parameters_sha256": "c3faeb7a559597d978c45fab061aacd0d4efc96f60fdc22a77e9bcf47497305f",
+                    "quality_policy": {
+                      "policy_id": "r5-D",
+                      "policy_version": 1,
+                      "rules": [
+                        {
+                          "item_id": "inlier_count",
+                          "unit": "1",
+                          "enabled": true,
+                          "required": true,
+                          "lower": 100.0,
+                          "upper": null,
+                          "include_lower": true,
+                          "include_upper": true
+                        },
+                        {
+                          "item_id": "tangent_ratio",
+                          "unit": "1",
+                          "enabled": true,
+                          "required": true,
+                          "lower": 0.01,
+                          "upper": null,
+                          "include_lower": true,
+                          "include_upper": true
+                        },
+                        {
+                          "item_id": "normal_gap",
+                          "unit": "1",
+                          "enabled": true,
+                          "required": true,
+                          "lower": 0.01,
+                          "upper": null,
+                          "include_lower": true,
+                          "include_upper": true
+                        },
+                        {
+                          "item_id": "rms",
+                          "unit": "mm",
+                          "enabled": true,
+                          "required": true,
+                          "lower": null,
+                          "upper": 0.025,
+                          "include_lower": true,
+                          "include_upper": true
+                        },
+                        {
+                          "item_id": "max_residual",
+                          "unit": "mm",
+                          "enabled": true,
+                          "required": true,
+                          "lower": null,
+                          "upper": 0.12,
+                          "include_lower": true,
+                          "include_upper": true
+                        }
+                      ]
+                    }
+                  },
+                  "quality": {
+                    "metrics": {
+                      "observation_id": "c8c67826dac2495a9a94f7c61e1232ab",
+                      "items": [
+                        {
+                          "item_id": "input_count",
+                          "unit": "1",
+                          "value": 1822264.0,
+                          "valid": true,
+                          "reason": null
+                        },
+                        {
+                          "item_id": "inlier_count",
+                          "unit": "1",
+                          "value": 1822264.0,
+                          "valid": true,
+                          "reason": null
+                        },
+                        {
+                          "item_id": "inlier_ratio",
+                          "unit": "1",
+                          "value": 1.0,
+                          "valid": true,
+                          "reason": null
+                        },
+                        {
+                          "item_id": "tangent_ratio",
+                          "unit": "1",
+                          "value": 0.34355089452629406,
+                          "valid": true,
+                          "reason": null
+                        },
+                        {
+                          "item_id": "normal_gap",
+                          "unit": "1",
+                          "value": 0.34325195344763826,
+                          "valid": true,
+                          "reason": null
+                        },
+                        {
+                          "item_id": "rms",
+                          "unit": "mm",
+                          "value": 0.017805306234417225,
+                          "valid": true,
+                          "reason": null
+                        },
+                        {
+                          "item_id": "max_residual",
+                          "unit": "mm",
+                          "value": 0.10106071762744172,
+                          "valid": true,
+                          "reason": null
+                        }
+                      ]
+                    },
+                    "checks": [
+                      {
+                        "item_id": "inlier_count",
+                        "required": true,
+                        "passed": true,
+                        "valid": true,
+                        "value": 1822264.0,
+                        "unit": "1",
+                        "lower": 100.0,
+                        "upper": null,
+                        "include_lower": true,
+                        "include_upper": true,
+                        "actual_unit": "1",
+                        "reason": null
+                      },
+                      {
+                        "item_id": "tangent_ratio",
+                        "required": true,
+                        "passed": true,
+                        "valid": true,
+                        "value": 0.34355089452629406,
+                        "unit": "1",
+                        "lower": 0.01,
+                        "upper": null,
+                        "include_lower": true,
+                        "include_upper": true,
+                        "actual_unit": "1",
+                        "reason": null
+                      },
+                      {
+                        "item_id": "normal_gap",
+                        "required": true,
+                        "passed": true,
+                        "valid": true,
+                        "value": 0.34325195344763826,
+                        "unit": "1",
+                        "lower": 0.01,
+                        "upper": null,
+                        "include_lower": true,
+                        "include_upper": true,
+                        "actual_unit": "1",
+                        "reason": null
+                      },
+                      {
+                        "item_id": "rms",
+                        "required": true,
+                        "passed": true,
+                        "valid": true,
+                        "value": 0.017805306234417225,
+                        "unit": "mm",
+                        "lower": null,
+                        "upper": 0.025,
+                        "include_lower": true,
+                        "include_upper": true,
+                        "actual_unit": "mm",
+                        "reason": null
+                      },
+                      {
+                        "item_id": "max_residual",
+                        "required": true,
+                        "passed": true,
+                        "valid": true,
+                        "value": 0.10106071762744172,
+                        "unit": "mm",
+                        "lower": null,
+                        "upper": 0.12,
+                        "include_lower": true,
+                        "include_upper": true,
+                        "actual_unit": "mm",
+                        "reason": null
+                      }
+                    ],
+                    "usable": true
+                  },
+                  "support_content_sha256": "54e7d11e24a4001755fc66fe18d1bcc2c314311cc9441135ea4381e01054cf58"
+                }
+              ],
+              "quality": {
+                "metrics": {
+                  "observation_id": "c8c67826dac2495a9a94f7c61e1232ab",
+                  "items": [
+                    {
+                      "item_id": "axis_sine",
+                      "unit": "1",
+                      "value": 0.999851114400629,
+                      "valid": true,
+                      "reason": null
+                    },
+                    {
+                      "item_id": "x_alignment",
+                      "unit": "1",
+                      "value": 0.9998511144006289,
+                      "valid": true,
+                      "reason": null
+                    },
+                    {
+                      "item_id": "z_alignment",
+                      "unit": "1",
+                      "value": 0.999851041900155,
+                      "valid": true,
+                      "reason": null
+                    },
+                    {
+                      "item_id": "origin_condition",
+                      "unit": "1",
+                      "value": null,
+                      "valid": false,
+                      "reason": "metric_unavailable"
+                    }
+                  ]
+                },
+                "checks": [
+                  {
+                    "item_id": "axis_sine",
+                    "required": true,
+                    "passed": true,
+                    "valid": true,
+                    "value": 0.999851114400629,
+                    "unit": "1",
+                    "lower": 0.99,
+                    "upper": null,
+                    "include_lower": true,
+                    "include_upper": true,
+                    "actual_unit": "1",
+                    "reason": null
+                  },
+                  {
+                    "item_id": "x_alignment",
+                    "required": true,
+                    "passed": true,
+                    "valid": true,
+                    "value": 0.9998511144006289,
+                    "unit": "1",
+                    "lower": 0.99,
+                    "upper": null,
+                    "include_lower": true,
+                    "include_upper": true,
+                    "actual_unit": "1",
+                    "reason": null
+                  },
+                  {
+                    "item_id": "z_alignment",
+                    "required": true,
+                    "passed": true,
+                    "valid": true,
+                    "value": 0.999851041900155,
+                    "unit": "1",
+                    "lower": 0.99,
+                    "upper": null,
+                    "include_lower": true,
+                    "include_upper": true,
+                    "actual_unit": "1",
+                    "reason": null
+                  }
+                ],
+                "usable": true
+              },
+              "source_retained": false
+            }
+          },
+          "method": {
+            "method_id": "build-frame",
+            "method_version": 1,
+            "parameters": {
+              "pose_id": "reference-datum",
+              "target_frame_id": "reference-datum",
+              "primary_feature_id": "D",
+              "positive_z": [
+                -0.015591373024184431,
+                -0.035764500123301124,
+                0.9992386149554824
+              ],
+              "origin": {
+                "kind": "anchor-projection",
+                "anchor": [
+                  0.1,
+                  -0.12,
+                  0.08
+                ]
+              },
+              "x_axis": {
+                "kind": "direction",
+                "direction": [
+                  0.9984774386394598,
+                  0.05232798522331313,
+                  0.01745240643728351
+                ]
+              }
+            },
+            "parameters_sha256": "a07c545767370d23a6e0a46ab5913f9755479c55ffae0c8183622e4ae2d21cd3",
+            "quality_policy": {
+              "policy_id": "r5-frame",
+              "policy_version": 1,
+              "rules": [
+                {
+                  "item_id": "axis_sine",
+                  "unit": "1",
+                  "enabled": true,
+                  "required": true,
+                  "lower": 0.99,
+                  "upper": null,
+                  "include_lower": true,
+                  "include_upper": true
+                },
+                {
+                  "item_id": "x_alignment",
+                  "unit": "1",
+                  "enabled": true,
+                  "required": true,
+                  "lower": 0.99,
+                  "upper": null,
+                  "include_lower": true,
+                  "include_upper": true
+                },
+                {
+                  "item_id": "z_alignment",
+                  "unit": "1",
+                  "enabled": true,
+                  "required": true,
+                  "lower": 0.99,
+                  "upper": null,
+                  "include_lower": true,
+                  "include_upper": true
+                }
+              ]
+            }
+          },
+          "quality": {
+            "metrics": {
+              "observation_id": "c8c67826dac2495a9a94f7c61e1232ab",
+              "items": [
+                {
+                  "item_id": "axis_sine",
+                  "unit": "1",
+                  "value": 0.999851114400629,
+                  "valid": true,
+                  "reason": null
+                },
+                {
+                  "item_id": "x_alignment",
+                  "unit": "1",
+                  "value": 0.9998511144006289,
+                  "valid": true,
+                  "reason": null
+                },
+                {
+                  "item_id": "z_alignment",
+                  "unit": "1",
+                  "value": 0.999851041900155,
+                  "valid": true,
+                  "reason": null
+                },
+                {
+                  "item_id": "origin_condition",
+                  "unit": "1",
+                  "value": null,
+                  "valid": false,
+                  "reason": "metric_unavailable"
+                }
+              ]
+            },
+            "checks": [
+              {
+                "item_id": "axis_sine",
+                "required": true,
+                "passed": true,
+                "valid": true,
+                "value": 0.999851114400629,
+                "unit": "1",
+                "lower": 0.99,
+                "upper": null,
+                "include_lower": true,
+                "include_upper": true,
+                "actual_unit": "1",
+                "reason": null
+              },
+              {
+                "item_id": "x_alignment",
+                "required": true,
+                "passed": true,
+                "valid": true,
+                "value": 0.9998511144006289,
+                "unit": "1",
+                "lower": 0.99,
+                "upper": null,
+                "include_lower": true,
+                "include_upper": true,
+                "actual_unit": "1",
+                "reason": null
+              },
+              {
+                "item_id": "z_alignment",
+                "required": true,
+                "passed": true,
+                "valid": true,
+                "value": 0.999851041900155,
+                "unit": "1",
+                "lower": 0.99,
+                "upper": null,
+                "include_lower": true,
+                "include_upper": true,
+                "actual_unit": "1",
+                "reason": null
+              }
+            ],
+            "usable": true
+          }
+        }
+      ],
+      "correction": [
+        [
+          1.0,
+          1.1753788751895842e-11,
+          0.0,
+          2.2221158720869136e-09
+        ],
+        [
+          -1.1753788751895842e-11,
+          1.0,
+          0.0,
+          1.0390175346518039e-08
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    }
+  },
+  "normals": null
+}

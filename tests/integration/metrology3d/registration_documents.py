@@ -9,7 +9,14 @@ from tests.point_cloud_support import options
 from tests.test_metrology3d_registration import settings
 
 
-def registration_documents(*, assets=None, parameters=None, registration_stride=None):
+def registration_documents(
+    *,
+    assets=None,
+    parameters=None,
+    registration_stride=None,
+    normal_settings=None,
+    datum_settings=None,
+):
     """所有数值为解析测试实例；业务配方必须按实际坐标/质量显式配置。"""
     template, application = cloud_documents(options().model_dump(mode="json"))
     graph, app = template.model_dump(mode="json"), application.model_dump(mode="json")
@@ -117,6 +124,85 @@ def registration_documents(*, assets=None, parameters=None, registration_stride=
                     target_port="cloud",
                 )
             )
+    if normal_settings is not None:
+        for port, config in zip(("source", "reference"), normal_settings, strict=True):
+            edge = next(
+                e
+                for e in graph["edges"]
+                if e["target_node_id"] == "register" and e["target_port"] == port
+            )
+            original = edge["source_node_id"]
+            key = f"{port}-normals"
+            edge["source_node_id"] = key
+            graph["nodes"].append(
+                dict(
+                    node_id=key,
+                    node_type_id="custom.metrology3d.estimate-normals",
+                    parameters=dict(settings=config.model_dump(mode="json")),
+                )
+            )
+            graph["edges"].append(
+                dict(
+                    edge_id=key,
+                    source_node_id=original,
+                    source_port="cloud",
+                    target_node_id=key,
+                    target_port="cloud",
+                )
+            )
+    if datum_settings is not None:
+        for port, original, configs in zip(
+            ("source", "reference"),
+            ("filter", "reference"),
+            datum_settings,
+            strict=True,
+        ):
+            for suffix, kind, config in zip(
+                ("roi", "plane", "frame"),
+                ("crop-roi", "fit-plane", "build-frame"),
+                configs,
+                strict=True,
+            ):
+                key = f"{port}-{suffix}"
+                parameters = dict(settings=config.model_dump(mode="json"))
+                if kind == "crop-roi":
+                    parameters = dict(
+                        source=dict(
+                            kind="parameters",
+                            roi=next(
+                                r.model_dump(mode="json")
+                                for r in config.rois
+                                if r.roi_id == config.roi_id
+                            ),
+                            bounds=[
+                                r.model_dump(mode="json")
+                                for r in config.rois
+                                if r.roi_id != config.roi_id
+                            ],
+                        )
+                    )
+                graph["nodes"].append(
+                    dict(
+                        node_id=key,
+                        node_type_id=f"custom.metrology3d.{kind}",
+                        parameters=parameters,
+                    )
+                )
+            for a, ap, b, bp in (
+                (original, "cloud", f"{port}-roi", "cloud"),
+                (f"{port}-roi", "cloud", f"{port}-plane", "cloud"),
+                (f"{port}-plane", "features", f"{port}-frame", "features"),
+                (f"{port}-frame", "pose", "register", f"{port}_datum"),
+            ):
+                graph["edges"].append(
+                    dict(
+                        edge_id=f"{a}-{b}",
+                        source_node_id=a,
+                        source_port=ap,
+                        target_node_id=b,
+                        target_port=bp,
+                    )
+                )
     for i, node in enumerate(graph["nodes"]):
         node["ui_state"] = dict(x=40 + (i % 3) * 480, y=40 + (i // 3) * 570)
     return WorkflowGraphTemplate.model_validate(graph), FlowApplication.model_validate(

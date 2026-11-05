@@ -2,7 +2,8 @@
 
 from backend.service.application.errors import InvalidRequestError
 from backend.contracts.workflows.geometry3d_methods import FrameBuildMethod
-from backend.contracts.workflows.pose3d_operations import FramePoseEvidence, PoseStep
+from backend.contracts.workflows.pose3d_operations import PoseStep
+from backend.contracts.workflows.frame3d_evidence import FramePoseEvidence
 from backend.contracts.workflows.registration3d import (
     RegistrationMethod,
     RegistrationPoseEvidence,
@@ -45,6 +46,17 @@ def require_pose_quality(pose):
     )
     for atom in atoms:
         require_quality_result(atom.quality, atom.method.quality_policy)
+        if isinstance(atom.method, RegistrationMethod) and atom.method.datum is not None:
+            for frame in atom.method.datum.frames:
+                require_pose_quality(frame)
+        if (
+            isinstance(atom.method, RegistrationMethod)
+            and atom.method.search is not None
+        ):
+            for candidate in atom.method.search.candidates:
+                require_quality_result(
+                    candidate.quality, atom.method.parameters.refinement_policy()
+                )
         if atom.transform is not None and isinstance(atom.method, FrameBuildMethod):
             for parent in atom.transform.provenance.parents:
                 require_quality_result(parent.quality, parent.method.quality_policy)

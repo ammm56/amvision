@@ -3,6 +3,7 @@
 import numpy as np
 
 from backend.service.application.errors import InvalidRequestError
+from backend.contracts.workflows.registration3d_search import check_candidate_matrix
 
 
 def working_bytes(source_count, reference_count, chunk_rows):
@@ -20,8 +21,10 @@ def _cloud(points, normals=None):
     return cloud
 
 
-def observability(points, reference, correspondence, normals, *, chunk_rows, cancel):
-    """按实际对应计算六维法方程；中心/长度归一避免单位决定退化结果。"""
+def observability(
+    points, reference, correspondence, normals, *, chunk_rows, cancel, planar=False
+):
+    """按实际对应计算允许自由度的法方程；中心/尺度归一不改变工程门禁。"""
     total, center = 0, np.zeros(3)
     for start in range(0, len(points), chunk_rows):
         cancel()
@@ -43,7 +46,7 @@ def observability(points, reference, correspondence, normals, *, chunk_rows, can
         residual_sum += np.square(distance).sum()
         max_residual = max(max_residual, float(distance.max(initial=0)))
     scale = np.sqrt(scale_sum / total)
-    gram = np.zeros((6, 6))
+    gram = np.zeros((3 if planar else 6, 3 if planar else 6))
     if scale > 0:
         for start in range(0, len(points), chunk_rows):
             cancel()
@@ -53,6 +56,8 @@ def observability(points, reference, correspondence, normals, *, chunk_rows, can
             if normals is not None:
                 n = normals[indices[mask]]
                 jac = np.concatenate((np.cross(p, n), n), axis=1)
+                if planar:
+                    jac = jac[:, (2, 3, 4)]
                 gram += jac.T @ jac
             else:
                 # 点到点残差的三行 Jacobian；不使用点到面的伪信息矩阵。
@@ -62,25 +67,22 @@ def observability(points, reference, correspondence, normals, *, chunk_rows, can
                 jac[:, 1, 0], jac[:, 1, 2] = -z, x
                 jac[:, 2, 0], jac[:, 2, 1] = y, -x
                 jac[:, :, 3:] = np.eye(3)
-                flat = jac.reshape(-1, 6)
+                if planar:
+                    jac = jac[:, :, (2, 3, 4)]
+                flat = jac.reshape(-1, gram.shape[0])
                 gram += flat.T @ flat
     eigen = np.linalg.eigvalsh(gram / total)
     # 数值秩判定是浮点可辨识性；工程下限另由配方质量约束。
-    tolerance = 64 * np.finfo(np.float64).eps * max(eigen[-1], 0)
+    # 三自由度投影可能把整组单位法向压到舍入噪声；不能以噪声自身归一成满秩。
+    tolerance = 64 * np.finfo(np.float64).eps * max(eigen[-1], 1 if planar else 0)
     rank = int(np.count_nonzero(eigen > tolerance))
     ratio = float(max(eigen[0], 0) / eigen[-1]) if eigen[-1] > 0 else 0.0
     return total, rank, ratio, float(np.sqrt(residual_sum / total)), max_residual
 
 
-def register_arrays(
-    source, reference, normals, parameters, *, max_working_bytes, chunk_rows, cancel
-):
-    """完整对应局部 ICP；只返回通过收敛和几何可辨识性的候选矩阵。"""
-    import open3d as o3d
-
+def validate_arrays(source, reference, normals, *, plane, chunk_rows, cancel):
+    """局部与特征配准共用精度、非有限位置和单位法向校验。"""
     cancel()
-    if working_bytes(len(source), len(reference), chunk_rows) > max_working_bytes:
-        raise InvalidRequestError("配准完整索引与工作数组超过工作预算")
     for array in (source, reference):
         if array.dtype != np.float64 or array.ndim != 2 or array.shape[1] != 3:
             raise InvalidRequestError("配准工作位置必须为 float64 三列")
@@ -95,7 +97,6 @@ def register_arrays(
                 > np.sqrt(np.finfo(np.float64).max) / 16
             ):
                 raise InvalidRequestError("配准坐标超过原生距离计算的数值范围")
-    plane = parameters.algorithm == "point-to-plane"
     if plane:
         if (
             normals is None
@@ -114,12 +115,16 @@ def register_arrays(
                 )
     elif normals is not None:
         raise InvalidRequestError("点到点方法不消费法向")
-    metrics = dict(
-        source_count=len(source),
-        reference_count=len(reference),
+
+
+def empty_metrics(source_count, reference_count):
+    """无可用候选时仍保留完整输入计数，不伪造零 RMS。"""
+    return dict(
+        source_count=source_count,
+        reference_count=reference_count,
         correspondence_count=0,
-        source_coverage=0.0 if len(source) else None,
-        reference_coverage=0.0 if len(reference) else None,
+        source_coverage=0.0 if source_count else None,
+        reference_coverage=0.0 if reference_count else None,
         rms=None,
         max_residual=None,
         rank=0,
@@ -127,11 +132,41 @@ def register_arrays(
         iterations=0,
         converged=0,
     )
+
+
+def register_arrays(
+    source,
+    reference,
+    normals,
+    parameters,
+    *,
+    max_working_bytes,
+    chunk_rows,
+    cancel,
+    initial_matrix=None,
+):
+    """同一局部 ICP，接受显式初值或经审计的粗定位候选，不隐藏粗定位。"""
+    import open3d as o3d
+
+    cancel()
+    if working_bytes(len(source), len(reference), chunk_rows) > max_working_bytes:
+        raise InvalidRequestError("配准完整索引与工作数组超过工作预算")
+    plane = parameters.algorithm == "point-to-plane"
+    validate_arrays(
+        source, reference, normals, plane=plane, chunk_rows=chunk_rows, cancel=cancel
+    )
+    metrics = empty_metrics(len(source), len(reference))
     if min(len(source), len(reference)) < 3:
         return None, metrics, "insufficient_support"
     reg = o3d.t.pipelines.registration
     src, target = _cloud(source), _cloud(reference, normals)
-    initial = np.asarray(parameters.initial_matrix(), dtype=np.float64)
+    initial = np.asarray(
+        parameters.initial_matrix() if initial_matrix is None else initial_matrix,
+        dtype=np.float64,
+    )
+    if initial.shape != (4, 4) or not np.isfinite(initial).all():
+        raise InvalidRequestError("配准初值必须为有限 4x4 刚性矩阵")
+    check_candidate_matrix(tuple(tuple(row) for row in initial))
     transformed = np.empty_like(source)
 
     def evaluate(matrix):

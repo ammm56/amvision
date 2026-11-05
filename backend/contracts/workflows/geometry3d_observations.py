@@ -133,7 +133,7 @@ class Pose3d(PoseEvidence):
             identity
             for atom in atoms
             for identity in (
-                tuple((p.observation_id, p.frame_id) for p in atom.method.parents)
+                atom.method.support_identities()
                 if isinstance(atom.method, RegistrationMethod)
                 else ((atom.observation_id, atom.source_frame_id),)
                 * len(atom.method.feature_ids())

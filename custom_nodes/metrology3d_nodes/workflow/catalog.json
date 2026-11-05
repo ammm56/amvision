@@ -1276,6 +1276,162 @@
             "title": "CloudVoxelGrid",
             "type": "object"
           },
+          "CoarseRegistrationSettings": {
+            "additionalProperties": false,
+            "description": "FPFH 双向匹配、多批原生 RANSAC 与现有局部 ICP。",
+            "properties": {
+              "pose_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Pose Id",
+                "type": "string"
+              },
+              "source_frame_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Source Frame Id",
+                "type": "string"
+              },
+              "target_frame_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Target Frame Id",
+                "type": "string"
+              },
+              "length_unit": {
+                "enum": [
+                  "m",
+                  "mm",
+                  "um"
+                ],
+                "title": "Length Unit",
+                "type": "string"
+              },
+              "algorithm": {
+                "enum": [
+                  "point-to-point",
+                  "point-to-plane"
+                ],
+                "title": "Algorithm",
+                "type": "string"
+              },
+              "max_correspondence_distance": {
+                "exclusiveMinimum": 0,
+                "title": "Max Correspondence Distance",
+                "type": "number"
+              },
+              "max_iterations": {
+                "maximum": 2147483647,
+                "minimum": 1,
+                "title": "Max Iterations",
+                "type": "integer"
+              },
+              "fitness_change": {
+                "exclusiveMinimum": 0,
+                "title": "Fitness Change",
+                "type": "number"
+              },
+              "rmse_change": {
+                "exclusiveMinimum": 0,
+                "title": "Rmse Change",
+                "type": "number"
+              },
+              "quality_policy": {
+                "$ref": "#/$defs/GeometryQualityPolicy"
+              },
+              "initialization": {
+                "const": "fpfh",
+                "default": "fpfh",
+                "title": "Initialization",
+                "type": "string"
+              },
+              "search": {
+                "$ref": "#/$defs/CoarseSearchParameters"
+              }
+            },
+            "required": [
+              "pose_id",
+              "source_frame_id",
+              "target_frame_id",
+              "length_unit",
+              "algorithm",
+              "max_correspondence_distance",
+              "max_iterations",
+              "fitness_change",
+              "rmse_change",
+              "quality_policy",
+              "search"
+            ],
+            "title": "CoarseRegistrationSettings",
+            "type": "object"
+          },
+          "CoarseSearchParameters": {
+            "additionalProperties": false,
+            "description": "全部工程尺度与搜索成本显式配置，不内置重采样或法向估计。",
+            "properties": {
+              "feature_radius": {
+                "exclusiveMinimum": 0,
+                "title": "Feature Radius",
+                "type": "number"
+              },
+              "feature_max_neighbors": {
+                "maximum": 2147483647,
+                "minimum": 3,
+                "title": "Feature Max Neighbors",
+                "type": "integer"
+              },
+              "max_correspondence_distance": {
+                "exclusiveMinimum": 0,
+                "title": "Max Correspondence Distance",
+                "type": "number"
+              },
+              "edge_length_ratio": {
+                "exclusiveMinimum": 0,
+                "maximum": 1,
+                "title": "Edge Length Ratio",
+                "type": "number"
+              },
+              "samples": {
+                "maximum": 2147483647,
+                "minimum": 3,
+                "title": "Samples",
+                "type": "integer"
+              },
+              "iterations_per_trial": {
+                "maximum": 2147483647,
+                "minimum": 1,
+                "title": "Iterations Per Trial",
+                "type": "integer"
+              },
+              "trials": {
+                "maximum": 744,
+                "minimum": 2,
+                "title": "Trials",
+                "type": "integer"
+              },
+              "equivalent_translation": {
+                "exclusiveMinimum": 0,
+                "title": "Equivalent Translation",
+                "type": "number"
+              },
+              "equivalent_rotation_degrees": {
+                "exclusiveMinimum": 0,
+                "maximum": 180,
+                "title": "Equivalent Rotation Degrees",
+                "type": "number"
+              }
+            },
+            "required": [
+              "feature_radius",
+              "feature_max_neighbors",
+              "max_correspondence_distance",
+              "edge_length_ratio",
+              "samples",
+              "iterations_per_trial",
+              "trials",
+              "equivalent_translation",
+              "equivalent_rotation_degrees"
+            ],
+            "title": "CoarseSearchParameters",
+            "type": "object"
+          },
           "ConfiguredQuery": {
             "additionalProperties": false,
             "description": "配方直接给出源坐标中的测量线。",
@@ -1767,6 +1923,239 @@
               "geometry"
             ],
             "title": "CylinderRoi",
+            "type": "object"
+          },
+          "DatumRegistrationEvidence": {
+            "additionalProperties": false,
+            "description": "固定 source/reference 顺序；correction 仅含基准间的 U/V/绕 Z 旋转。",
+            "properties": {
+              "frames": {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "$ref": "#/$defs/FramePoseEvidence"
+                  },
+                  {
+                    "$ref": "#/$defs/FramePoseEvidence"
+                  }
+                ],
+                "title": "Frames",
+                "type": "array"
+              },
+              "correction": {
+                "anyOf": [
+                  {
+                    "maxItems": 4,
+                    "minItems": 4,
+                    "prefixItems": [
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      }
+                    ],
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Correction"
+              }
+            },
+            "required": [
+              "frames",
+              "correction"
+            ],
+            "title": "DatumRegistrationEvidence",
+            "type": "object"
+          },
+          "DatumRegistrationSettings": {
+            "additionalProperties": false,
+            "description": "两套显式基准下的局部 SE(2)，不自动提供初值或粗定位。",
+            "properties": {
+              "pose_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Pose Id",
+                "type": "string"
+              },
+              "source_frame_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Source Frame Id",
+                "type": "string"
+              },
+              "target_frame_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Target Frame Id",
+                "type": "string"
+              },
+              "length_unit": {
+                "enum": [
+                  "m",
+                  "mm",
+                  "um"
+                ],
+                "title": "Length Unit",
+                "type": "string"
+              },
+              "algorithm": {
+                "enum": [
+                  "point-to-point",
+                  "point-to-plane"
+                ],
+                "title": "Algorithm",
+                "type": "string"
+              },
+              "max_correspondence_distance": {
+                "exclusiveMinimum": 0,
+                "title": "Max Correspondence Distance",
+                "type": "number"
+              },
+              "max_iterations": {
+                "maximum": 2147483647,
+                "minimum": 1,
+                "title": "Max Iterations",
+                "type": "integer"
+              },
+              "fitness_change": {
+                "exclusiveMinimum": 0,
+                "title": "Fitness Change",
+                "type": "number"
+              },
+              "rmse_change": {
+                "exclusiveMinimum": 0,
+                "title": "Rmse Change",
+                "type": "number"
+              },
+              "quality_policy": {
+                "$ref": "#/$defs/GeometryQualityPolicy"
+              },
+              "initialization": {
+                "const": "datum",
+                "default": "datum",
+                "title": "Initialization",
+                "type": "string"
+              },
+              "initial_uv": {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "title": "Initial Uv",
+                "type": "array"
+              },
+              "initial_angle_degrees": {
+                "title": "Initial Angle Degrees",
+                "type": "number"
+              },
+              "max_solver_evaluations": {
+                "maximum": 2147483647,
+                "minimum": 1,
+                "title": "Max Solver Evaluations",
+                "type": "integer"
+              },
+              "solver_tolerance": {
+                "exclusiveMaximum": 1,
+                "exclusiveMinimum": 2.220446049250313e-16,
+                "title": "Solver Tolerance",
+                "type": "number"
+              }
+            },
+            "required": [
+              "pose_id",
+              "source_frame_id",
+              "target_frame_id",
+              "length_unit",
+              "algorithm",
+              "max_correspondence_distance",
+              "max_iterations",
+              "fitness_change",
+              "rmse_change",
+              "quality_policy",
+              "initial_uv",
+              "initial_angle_degrees",
+              "max_solver_evaluations",
+              "solver_tolerance"
+            ],
+            "title": "DatumRegistrationSettings",
             "type": "object"
           },
           "DenoiseCloudMethod": {
@@ -5417,9 +5806,227 @@
             "title": "ReferenceExtension",
             "type": "object"
           },
+          "RegistrationCandidate": {
+            "additionalProperties": false,
+            "description": "一批原生搜索及同一 ICP 的完整结果；失败没有可执行矩阵。",
+            "properties": {
+              "trial": {
+                "exclusiveMaximum": 744,
+                "minimum": 0,
+                "title": "Trial",
+                "type": "integer"
+              },
+              "initial_matrix": {
+                "anyOf": [
+                  {
+                    "maxItems": 4,
+                    "minItems": 4,
+                    "prefixItems": [
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      }
+                    ],
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Initial Matrix"
+              },
+              "refined_matrix": {
+                "anyOf": [
+                  {
+                    "maxItems": 4,
+                    "minItems": 4,
+                    "prefixItems": [
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      }
+                    ],
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Refined Matrix"
+              },
+              "reason": {
+                "anyOf": [
+                  {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Reason"
+              },
+              "quality": {
+                "$ref": "#/$defs/GeometryQuality"
+              }
+            },
+            "required": [
+              "trial",
+              "initial_matrix",
+              "refined_matrix",
+              "reason",
+              "quality"
+            ],
+            "title": "RegistrationCandidate",
+            "type": "object"
+          },
           "RegistrationMethod": {
             "additionalProperties": false,
-            "description": "只声明给定初值附近的局部对齐，不声明全局唯一或实体精度。",
+            "description": "保留局部或有限搜索证据，不声明全局唯一或实体精度。",
             "properties": {
               "method_id": {
                 "const": "register-cloud",
@@ -5434,13 +6041,36 @@
                 "type": "integer"
               },
               "scope": {
-                "const": "local-se3",
                 "default": "local-se3",
+                "enum": [
+                  "local-se3",
+                  "feature-se3",
+                  "datum-se2"
+                ],
                 "title": "Scope",
                 "type": "string"
               },
               "parameters": {
-                "$ref": "#/$defs/RegistrationSettings"
+                "discriminator": {
+                  "mapping": {
+                    "datum": "#/$defs/DatumRegistrationSettings",
+                    "explicit": "#/$defs/RegistrationSettings",
+                    "fpfh": "#/$defs/CoarseRegistrationSettings"
+                  },
+                  "propertyName": "initialization"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/RegistrationSettings"
+                  },
+                  {
+                    "$ref": "#/$defs/CoarseRegistrationSettings"
+                  },
+                  {
+                    "$ref": "#/$defs/DatumRegistrationSettings"
+                  }
+                ],
+                "title": "Parameters"
               },
               "parameters_sha256": {
                 "pattern": "^[0-9a-f]{64}$",
@@ -5460,6 +6090,28 @@
                 ],
                 "title": "Parents",
                 "type": "array"
+              },
+              "search": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/RegistrationSearchEvidence"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "datum": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/DatumRegistrationEvidence"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
               }
             },
             "required": [
@@ -5507,6 +6159,7 @@
                 "enum": [
                   "found",
                   "not_found",
+                  "ambiguous",
                   "underconstrained",
                   "insufficient_quality"
                 ],
@@ -5581,6 +6234,31 @@
             "title": "RegistrationProvenance",
             "type": "object"
           },
+          "RegistrationSearchEvidence": {
+            "additionalProperties": false,
+            "description": "按批次保留实际候选，不保存原生索引或增加运行所有权。",
+            "properties": {
+              "feature_correspondence_count": {
+                "minimum": 0,
+                "title": "Feature Correspondence Count",
+                "type": "integer"
+              },
+              "candidates": {
+                "items": {
+                  "$ref": "#/$defs/RegistrationCandidate"
+                },
+                "maxItems": 744,
+                "title": "Candidates",
+                "type": "array"
+              }
+            },
+            "required": [
+              "feature_correspondence_count",
+              "candidates"
+            ],
+            "title": "RegistrationSearchEvidence",
+            "type": "object"
+          },
           "RegistrationSettings": {
             "additionalProperties": false,
             "description": "平移在参考坐标中；固定外旋 XYZ 等价于 Rz @ Ry @ Rx。",
@@ -5617,6 +6295,36 @@
                 "title": "Algorithm",
                 "type": "string"
               },
+              "max_correspondence_distance": {
+                "exclusiveMinimum": 0,
+                "title": "Max Correspondence Distance",
+                "type": "number"
+              },
+              "max_iterations": {
+                "maximum": 2147483647,
+                "minimum": 1,
+                "title": "Max Iterations",
+                "type": "integer"
+              },
+              "fitness_change": {
+                "exclusiveMinimum": 0,
+                "title": "Fitness Change",
+                "type": "number"
+              },
+              "rmse_change": {
+                "exclusiveMinimum": 0,
+                "title": "Rmse Change",
+                "type": "number"
+              },
+              "quality_policy": {
+                "$ref": "#/$defs/GeometryQualityPolicy"
+              },
+              "initialization": {
+                "const": "explicit",
+                "default": "explicit",
+                "title": "Initialization",
+                "type": "string"
+              },
               "initial_translation": {
                 "maxItems": 3,
                 "minItems": 3,
@@ -5650,30 +6358,6 @@
                 ],
                 "title": "Initial Rotation Degrees",
                 "type": "array"
-              },
-              "max_correspondence_distance": {
-                "exclusiveMinimum": 0,
-                "title": "Max Correspondence Distance",
-                "type": "number"
-              },
-              "max_iterations": {
-                "maximum": 2147483647,
-                "minimum": 1,
-                "title": "Max Iterations",
-                "type": "integer"
-              },
-              "fitness_change": {
-                "exclusiveMinimum": 0,
-                "title": "Fitness Change",
-                "type": "number"
-              },
-              "rmse_change": {
-                "exclusiveMinimum": 0,
-                "title": "Rmse Change",
-                "type": "number"
-              },
-              "quality_policy": {
-                "$ref": "#/$defs/GeometryQualityPolicy"
               }
             },
             "required": [
@@ -5682,13 +6366,13 @@
               "target_frame_id",
               "length_unit",
               "algorithm",
-              "initial_translation",
-              "initial_rotation_degrees",
               "max_correspondence_distance",
               "max_iterations",
               "fitness_change",
               "rmse_change",
-              "quality_policy"
+              "quality_policy",
+              "initial_translation",
+              "initial_rotation_degrees"
             ],
             "title": "RegistrationSettings",
             "type": "object"
@@ -10096,6 +10780,162 @@
             "title": "CloudVoxelGrid",
             "type": "object"
           },
+          "CoarseRegistrationSettings": {
+            "additionalProperties": false,
+            "description": "FPFH 双向匹配、多批原生 RANSAC 与现有局部 ICP。",
+            "properties": {
+              "pose_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Pose Id",
+                "type": "string"
+              },
+              "source_frame_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Source Frame Id",
+                "type": "string"
+              },
+              "target_frame_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Target Frame Id",
+                "type": "string"
+              },
+              "length_unit": {
+                "enum": [
+                  "m",
+                  "mm",
+                  "um"
+                ],
+                "title": "Length Unit",
+                "type": "string"
+              },
+              "algorithm": {
+                "enum": [
+                  "point-to-point",
+                  "point-to-plane"
+                ],
+                "title": "Algorithm",
+                "type": "string"
+              },
+              "max_correspondence_distance": {
+                "exclusiveMinimum": 0,
+                "title": "Max Correspondence Distance",
+                "type": "number"
+              },
+              "max_iterations": {
+                "maximum": 2147483647,
+                "minimum": 1,
+                "title": "Max Iterations",
+                "type": "integer"
+              },
+              "fitness_change": {
+                "exclusiveMinimum": 0,
+                "title": "Fitness Change",
+                "type": "number"
+              },
+              "rmse_change": {
+                "exclusiveMinimum": 0,
+                "title": "Rmse Change",
+                "type": "number"
+              },
+              "quality_policy": {
+                "$ref": "#/$defs/GeometryQualityPolicy"
+              },
+              "initialization": {
+                "const": "fpfh",
+                "default": "fpfh",
+                "title": "Initialization",
+                "type": "string"
+              },
+              "search": {
+                "$ref": "#/$defs/CoarseSearchParameters"
+              }
+            },
+            "required": [
+              "pose_id",
+              "source_frame_id",
+              "target_frame_id",
+              "length_unit",
+              "algorithm",
+              "max_correspondence_distance",
+              "max_iterations",
+              "fitness_change",
+              "rmse_change",
+              "quality_policy",
+              "search"
+            ],
+            "title": "CoarseRegistrationSettings",
+            "type": "object"
+          },
+          "CoarseSearchParameters": {
+            "additionalProperties": false,
+            "description": "全部工程尺度与搜索成本显式配置，不内置重采样或法向估计。",
+            "properties": {
+              "feature_radius": {
+                "exclusiveMinimum": 0,
+                "title": "Feature Radius",
+                "type": "number"
+              },
+              "feature_max_neighbors": {
+                "maximum": 2147483647,
+                "minimum": 3,
+                "title": "Feature Max Neighbors",
+                "type": "integer"
+              },
+              "max_correspondence_distance": {
+                "exclusiveMinimum": 0,
+                "title": "Max Correspondence Distance",
+                "type": "number"
+              },
+              "edge_length_ratio": {
+                "exclusiveMinimum": 0,
+                "maximum": 1,
+                "title": "Edge Length Ratio",
+                "type": "number"
+              },
+              "samples": {
+                "maximum": 2147483647,
+                "minimum": 3,
+                "title": "Samples",
+                "type": "integer"
+              },
+              "iterations_per_trial": {
+                "maximum": 2147483647,
+                "minimum": 1,
+                "title": "Iterations Per Trial",
+                "type": "integer"
+              },
+              "trials": {
+                "maximum": 744,
+                "minimum": 2,
+                "title": "Trials",
+                "type": "integer"
+              },
+              "equivalent_translation": {
+                "exclusiveMinimum": 0,
+                "title": "Equivalent Translation",
+                "type": "number"
+              },
+              "equivalent_rotation_degrees": {
+                "exclusiveMinimum": 0,
+                "maximum": 180,
+                "title": "Equivalent Rotation Degrees",
+                "type": "number"
+              }
+            },
+            "required": [
+              "feature_radius",
+              "feature_max_neighbors",
+              "max_correspondence_distance",
+              "edge_length_ratio",
+              "samples",
+              "iterations_per_trial",
+              "trials",
+              "equivalent_translation",
+              "equivalent_rotation_degrees"
+            ],
+            "title": "CoarseSearchParameters",
+            "type": "object"
+          },
           "ConfiguredQuery": {
             "additionalProperties": false,
             "description": "配方直接给出源坐标中的测量线。",
@@ -10587,6 +11427,239 @@
               "geometry"
             ],
             "title": "CylinderRoi",
+            "type": "object"
+          },
+          "DatumRegistrationEvidence": {
+            "additionalProperties": false,
+            "description": "固定 source/reference 顺序；correction 仅含基准间的 U/V/绕 Z 旋转。",
+            "properties": {
+              "frames": {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "$ref": "#/$defs/FramePoseEvidence"
+                  },
+                  {
+                    "$ref": "#/$defs/FramePoseEvidence"
+                  }
+                ],
+                "title": "Frames",
+                "type": "array"
+              },
+              "correction": {
+                "anyOf": [
+                  {
+                    "maxItems": 4,
+                    "minItems": 4,
+                    "prefixItems": [
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      }
+                    ],
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Correction"
+              }
+            },
+            "required": [
+              "frames",
+              "correction"
+            ],
+            "title": "DatumRegistrationEvidence",
+            "type": "object"
+          },
+          "DatumRegistrationSettings": {
+            "additionalProperties": false,
+            "description": "两套显式基准下的局部 SE(2)，不自动提供初值或粗定位。",
+            "properties": {
+              "pose_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Pose Id",
+                "type": "string"
+              },
+              "source_frame_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Source Frame Id",
+                "type": "string"
+              },
+              "target_frame_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Target Frame Id",
+                "type": "string"
+              },
+              "length_unit": {
+                "enum": [
+                  "m",
+                  "mm",
+                  "um"
+                ],
+                "title": "Length Unit",
+                "type": "string"
+              },
+              "algorithm": {
+                "enum": [
+                  "point-to-point",
+                  "point-to-plane"
+                ],
+                "title": "Algorithm",
+                "type": "string"
+              },
+              "max_correspondence_distance": {
+                "exclusiveMinimum": 0,
+                "title": "Max Correspondence Distance",
+                "type": "number"
+              },
+              "max_iterations": {
+                "maximum": 2147483647,
+                "minimum": 1,
+                "title": "Max Iterations",
+                "type": "integer"
+              },
+              "fitness_change": {
+                "exclusiveMinimum": 0,
+                "title": "Fitness Change",
+                "type": "number"
+              },
+              "rmse_change": {
+                "exclusiveMinimum": 0,
+                "title": "Rmse Change",
+                "type": "number"
+              },
+              "quality_policy": {
+                "$ref": "#/$defs/GeometryQualityPolicy"
+              },
+              "initialization": {
+                "const": "datum",
+                "default": "datum",
+                "title": "Initialization",
+                "type": "string"
+              },
+              "initial_uv": {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "title": "Initial Uv",
+                "type": "array"
+              },
+              "initial_angle_degrees": {
+                "title": "Initial Angle Degrees",
+                "type": "number"
+              },
+              "max_solver_evaluations": {
+                "maximum": 2147483647,
+                "minimum": 1,
+                "title": "Max Solver Evaluations",
+                "type": "integer"
+              },
+              "solver_tolerance": {
+                "exclusiveMaximum": 1,
+                "exclusiveMinimum": 2.220446049250313e-16,
+                "title": "Solver Tolerance",
+                "type": "number"
+              }
+            },
+            "required": [
+              "pose_id",
+              "source_frame_id",
+              "target_frame_id",
+              "length_unit",
+              "algorithm",
+              "max_correspondence_distance",
+              "max_iterations",
+              "fitness_change",
+              "rmse_change",
+              "quality_policy",
+              "initial_uv",
+              "initial_angle_degrees",
+              "max_solver_evaluations",
+              "solver_tolerance"
+            ],
+            "title": "DatumRegistrationSettings",
             "type": "object"
           },
           "DenoiseCloudMethod": {
@@ -14725,9 +15798,227 @@
             "title": "ReferenceExtension",
             "type": "object"
           },
+          "RegistrationCandidate": {
+            "additionalProperties": false,
+            "description": "一批原生搜索及同一 ICP 的完整结果；失败没有可执行矩阵。",
+            "properties": {
+              "trial": {
+                "exclusiveMaximum": 744,
+                "minimum": 0,
+                "title": "Trial",
+                "type": "integer"
+              },
+              "initial_matrix": {
+                "anyOf": [
+                  {
+                    "maxItems": 4,
+                    "minItems": 4,
+                    "prefixItems": [
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      }
+                    ],
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Initial Matrix"
+              },
+              "refined_matrix": {
+                "anyOf": [
+                  {
+                    "maxItems": 4,
+                    "minItems": 4,
+                    "prefixItems": [
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      }
+                    ],
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Refined Matrix"
+              },
+              "reason": {
+                "anyOf": [
+                  {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Reason"
+              },
+              "quality": {
+                "$ref": "#/$defs/GeometryQuality"
+              }
+            },
+            "required": [
+              "trial",
+              "initial_matrix",
+              "refined_matrix",
+              "reason",
+              "quality"
+            ],
+            "title": "RegistrationCandidate",
+            "type": "object"
+          },
           "RegistrationMethod": {
             "additionalProperties": false,
-            "description": "只声明给定初值附近的局部对齐，不声明全局唯一或实体精度。",
+            "description": "保留局部或有限搜索证据，不声明全局唯一或实体精度。",
             "properties": {
               "method_id": {
                 "const": "register-cloud",
@@ -14742,13 +16033,36 @@
                 "type": "integer"
               },
               "scope": {
-                "const": "local-se3",
                 "default": "local-se3",
+                "enum": [
+                  "local-se3",
+                  "feature-se3",
+                  "datum-se2"
+                ],
                 "title": "Scope",
                 "type": "string"
               },
               "parameters": {
-                "$ref": "#/$defs/RegistrationSettings"
+                "discriminator": {
+                  "mapping": {
+                    "datum": "#/$defs/DatumRegistrationSettings",
+                    "explicit": "#/$defs/RegistrationSettings",
+                    "fpfh": "#/$defs/CoarseRegistrationSettings"
+                  },
+                  "propertyName": "initialization"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/RegistrationSettings"
+                  },
+                  {
+                    "$ref": "#/$defs/CoarseRegistrationSettings"
+                  },
+                  {
+                    "$ref": "#/$defs/DatumRegistrationSettings"
+                  }
+                ],
+                "title": "Parameters"
               },
               "parameters_sha256": {
                 "pattern": "^[0-9a-f]{64}$",
@@ -14768,6 +16082,28 @@
                 ],
                 "title": "Parents",
                 "type": "array"
+              },
+              "search": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/RegistrationSearchEvidence"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "datum": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/DatumRegistrationEvidence"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
               }
             },
             "required": [
@@ -14815,6 +16151,7 @@
                 "enum": [
                   "found",
                   "not_found",
+                  "ambiguous",
                   "underconstrained",
                   "insufficient_quality"
                 ],
@@ -14889,6 +16226,31 @@
             "title": "RegistrationProvenance",
             "type": "object"
           },
+          "RegistrationSearchEvidence": {
+            "additionalProperties": false,
+            "description": "按批次保留实际候选，不保存原生索引或增加运行所有权。",
+            "properties": {
+              "feature_correspondence_count": {
+                "minimum": 0,
+                "title": "Feature Correspondence Count",
+                "type": "integer"
+              },
+              "candidates": {
+                "items": {
+                  "$ref": "#/$defs/RegistrationCandidate"
+                },
+                "maxItems": 744,
+                "title": "Candidates",
+                "type": "array"
+              }
+            },
+            "required": [
+              "feature_correspondence_count",
+              "candidates"
+            ],
+            "title": "RegistrationSearchEvidence",
+            "type": "object"
+          },
           "RegistrationSettings": {
             "additionalProperties": false,
             "description": "平移在参考坐标中；固定外旋 XYZ 等价于 Rz @ Ry @ Rx。",
@@ -14925,6 +16287,36 @@
                 "title": "Algorithm",
                 "type": "string"
               },
+              "max_correspondence_distance": {
+                "exclusiveMinimum": 0,
+                "title": "Max Correspondence Distance",
+                "type": "number"
+              },
+              "max_iterations": {
+                "maximum": 2147483647,
+                "minimum": 1,
+                "title": "Max Iterations",
+                "type": "integer"
+              },
+              "fitness_change": {
+                "exclusiveMinimum": 0,
+                "title": "Fitness Change",
+                "type": "number"
+              },
+              "rmse_change": {
+                "exclusiveMinimum": 0,
+                "title": "Rmse Change",
+                "type": "number"
+              },
+              "quality_policy": {
+                "$ref": "#/$defs/GeometryQualityPolicy"
+              },
+              "initialization": {
+                "const": "explicit",
+                "default": "explicit",
+                "title": "Initialization",
+                "type": "string"
+              },
               "initial_translation": {
                 "maxItems": 3,
                 "minItems": 3,
@@ -14958,30 +16350,6 @@
                 ],
                 "title": "Initial Rotation Degrees",
                 "type": "array"
-              },
-              "max_correspondence_distance": {
-                "exclusiveMinimum": 0,
-                "title": "Max Correspondence Distance",
-                "type": "number"
-              },
-              "max_iterations": {
-                "maximum": 2147483647,
-                "minimum": 1,
-                "title": "Max Iterations",
-                "type": "integer"
-              },
-              "fitness_change": {
-                "exclusiveMinimum": 0,
-                "title": "Fitness Change",
-                "type": "number"
-              },
-              "rmse_change": {
-                "exclusiveMinimum": 0,
-                "title": "Rmse Change",
-                "type": "number"
-              },
-              "quality_policy": {
-                "$ref": "#/$defs/GeometryQualityPolicy"
               }
             },
             "required": [
@@ -14990,13 +16358,13 @@
               "target_frame_id",
               "length_unit",
               "algorithm",
-              "initial_translation",
-              "initial_rotation_degrees",
               "max_correspondence_distance",
               "max_iterations",
               "fitness_change",
               "rmse_change",
-              "quality_policy"
+              "quality_policy",
+              "initial_translation",
+              "initial_rotation_degrees"
             ],
             "title": "RegistrationSettings",
             "type": "object"
@@ -18082,6 +19450,162 @@
             "title": "CloudVoxelGrid",
             "type": "object"
           },
+          "CoarseRegistrationSettings": {
+            "additionalProperties": false,
+            "description": "FPFH 双向匹配、多批原生 RANSAC 与现有局部 ICP。",
+            "properties": {
+              "pose_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Pose Id",
+                "type": "string"
+              },
+              "source_frame_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Source Frame Id",
+                "type": "string"
+              },
+              "target_frame_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Target Frame Id",
+                "type": "string"
+              },
+              "length_unit": {
+                "enum": [
+                  "m",
+                  "mm",
+                  "um"
+                ],
+                "title": "Length Unit",
+                "type": "string"
+              },
+              "algorithm": {
+                "enum": [
+                  "point-to-point",
+                  "point-to-plane"
+                ],
+                "title": "Algorithm",
+                "type": "string"
+              },
+              "max_correspondence_distance": {
+                "exclusiveMinimum": 0,
+                "title": "Max Correspondence Distance",
+                "type": "number"
+              },
+              "max_iterations": {
+                "maximum": 2147483647,
+                "minimum": 1,
+                "title": "Max Iterations",
+                "type": "integer"
+              },
+              "fitness_change": {
+                "exclusiveMinimum": 0,
+                "title": "Fitness Change",
+                "type": "number"
+              },
+              "rmse_change": {
+                "exclusiveMinimum": 0,
+                "title": "Rmse Change",
+                "type": "number"
+              },
+              "quality_policy": {
+                "$ref": "#/$defs/GeometryQualityPolicy"
+              },
+              "initialization": {
+                "const": "fpfh",
+                "default": "fpfh",
+                "title": "Initialization",
+                "type": "string"
+              },
+              "search": {
+                "$ref": "#/$defs/CoarseSearchParameters"
+              }
+            },
+            "required": [
+              "pose_id",
+              "source_frame_id",
+              "target_frame_id",
+              "length_unit",
+              "algorithm",
+              "max_correspondence_distance",
+              "max_iterations",
+              "fitness_change",
+              "rmse_change",
+              "quality_policy",
+              "search"
+            ],
+            "title": "CoarseRegistrationSettings",
+            "type": "object"
+          },
+          "CoarseSearchParameters": {
+            "additionalProperties": false,
+            "description": "全部工程尺度与搜索成本显式配置，不内置重采样或法向估计。",
+            "properties": {
+              "feature_radius": {
+                "exclusiveMinimum": 0,
+                "title": "Feature Radius",
+                "type": "number"
+              },
+              "feature_max_neighbors": {
+                "maximum": 2147483647,
+                "minimum": 3,
+                "title": "Feature Max Neighbors",
+                "type": "integer"
+              },
+              "max_correspondence_distance": {
+                "exclusiveMinimum": 0,
+                "title": "Max Correspondence Distance",
+                "type": "number"
+              },
+              "edge_length_ratio": {
+                "exclusiveMinimum": 0,
+                "maximum": 1,
+                "title": "Edge Length Ratio",
+                "type": "number"
+              },
+              "samples": {
+                "maximum": 2147483647,
+                "minimum": 3,
+                "title": "Samples",
+                "type": "integer"
+              },
+              "iterations_per_trial": {
+                "maximum": 2147483647,
+                "minimum": 1,
+                "title": "Iterations Per Trial",
+                "type": "integer"
+              },
+              "trials": {
+                "maximum": 744,
+                "minimum": 2,
+                "title": "Trials",
+                "type": "integer"
+              },
+              "equivalent_translation": {
+                "exclusiveMinimum": 0,
+                "title": "Equivalent Translation",
+                "type": "number"
+              },
+              "equivalent_rotation_degrees": {
+                "exclusiveMinimum": 0,
+                "maximum": 180,
+                "title": "Equivalent Rotation Degrees",
+                "type": "number"
+              }
+            },
+            "required": [
+              "feature_radius",
+              "feature_max_neighbors",
+              "max_correspondence_distance",
+              "edge_length_ratio",
+              "samples",
+              "iterations_per_trial",
+              "trials",
+              "equivalent_translation",
+              "equivalent_rotation_degrees"
+            ],
+            "title": "CoarseSearchParameters",
+            "type": "object"
+          },
           "ConfiguredQuery": {
             "additionalProperties": false,
             "description": "配方直接给出源坐标中的测量线。",
@@ -18573,6 +20097,239 @@
               "geometry"
             ],
             "title": "CylinderRoi",
+            "type": "object"
+          },
+          "DatumRegistrationEvidence": {
+            "additionalProperties": false,
+            "description": "固定 source/reference 顺序；correction 仅含基准间的 U/V/绕 Z 旋转。",
+            "properties": {
+              "frames": {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "$ref": "#/$defs/FramePoseEvidence"
+                  },
+                  {
+                    "$ref": "#/$defs/FramePoseEvidence"
+                  }
+                ],
+                "title": "Frames",
+                "type": "array"
+              },
+              "correction": {
+                "anyOf": [
+                  {
+                    "maxItems": 4,
+                    "minItems": 4,
+                    "prefixItems": [
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      }
+                    ],
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Correction"
+              }
+            },
+            "required": [
+              "frames",
+              "correction"
+            ],
+            "title": "DatumRegistrationEvidence",
+            "type": "object"
+          },
+          "DatumRegistrationSettings": {
+            "additionalProperties": false,
+            "description": "两套显式基准下的局部 SE(2)，不自动提供初值或粗定位。",
+            "properties": {
+              "pose_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Pose Id",
+                "type": "string"
+              },
+              "source_frame_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Source Frame Id",
+                "type": "string"
+              },
+              "target_frame_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Target Frame Id",
+                "type": "string"
+              },
+              "length_unit": {
+                "enum": [
+                  "m",
+                  "mm",
+                  "um"
+                ],
+                "title": "Length Unit",
+                "type": "string"
+              },
+              "algorithm": {
+                "enum": [
+                  "point-to-point",
+                  "point-to-plane"
+                ],
+                "title": "Algorithm",
+                "type": "string"
+              },
+              "max_correspondence_distance": {
+                "exclusiveMinimum": 0,
+                "title": "Max Correspondence Distance",
+                "type": "number"
+              },
+              "max_iterations": {
+                "maximum": 2147483647,
+                "minimum": 1,
+                "title": "Max Iterations",
+                "type": "integer"
+              },
+              "fitness_change": {
+                "exclusiveMinimum": 0,
+                "title": "Fitness Change",
+                "type": "number"
+              },
+              "rmse_change": {
+                "exclusiveMinimum": 0,
+                "title": "Rmse Change",
+                "type": "number"
+              },
+              "quality_policy": {
+                "$ref": "#/$defs/GeometryQualityPolicy"
+              },
+              "initialization": {
+                "const": "datum",
+                "default": "datum",
+                "title": "Initialization",
+                "type": "string"
+              },
+              "initial_uv": {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "title": "Initial Uv",
+                "type": "array"
+              },
+              "initial_angle_degrees": {
+                "title": "Initial Angle Degrees",
+                "type": "number"
+              },
+              "max_solver_evaluations": {
+                "maximum": 2147483647,
+                "minimum": 1,
+                "title": "Max Solver Evaluations",
+                "type": "integer"
+              },
+              "solver_tolerance": {
+                "exclusiveMaximum": 1,
+                "exclusiveMinimum": 2.220446049250313e-16,
+                "title": "Solver Tolerance",
+                "type": "number"
+              }
+            },
+            "required": [
+              "pose_id",
+              "source_frame_id",
+              "target_frame_id",
+              "length_unit",
+              "algorithm",
+              "max_correspondence_distance",
+              "max_iterations",
+              "fitness_change",
+              "rmse_change",
+              "quality_policy",
+              "initial_uv",
+              "initial_angle_degrees",
+              "max_solver_evaluations",
+              "solver_tolerance"
+            ],
+            "title": "DatumRegistrationSettings",
             "type": "object"
           },
           "DenoiseCloudMethod": {
@@ -22223,9 +23980,227 @@
             "title": "ReferenceExtension",
             "type": "object"
           },
+          "RegistrationCandidate": {
+            "additionalProperties": false,
+            "description": "一批原生搜索及同一 ICP 的完整结果；失败没有可执行矩阵。",
+            "properties": {
+              "trial": {
+                "exclusiveMaximum": 744,
+                "minimum": 0,
+                "title": "Trial",
+                "type": "integer"
+              },
+              "initial_matrix": {
+                "anyOf": [
+                  {
+                    "maxItems": 4,
+                    "minItems": 4,
+                    "prefixItems": [
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      }
+                    ],
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Initial Matrix"
+              },
+              "refined_matrix": {
+                "anyOf": [
+                  {
+                    "maxItems": 4,
+                    "minItems": 4,
+                    "prefixItems": [
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      }
+                    ],
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Refined Matrix"
+              },
+              "reason": {
+                "anyOf": [
+                  {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Reason"
+              },
+              "quality": {
+                "$ref": "#/$defs/GeometryQuality"
+              }
+            },
+            "required": [
+              "trial",
+              "initial_matrix",
+              "refined_matrix",
+              "reason",
+              "quality"
+            ],
+            "title": "RegistrationCandidate",
+            "type": "object"
+          },
           "RegistrationMethod": {
             "additionalProperties": false,
-            "description": "只声明给定初值附近的局部对齐，不声明全局唯一或实体精度。",
+            "description": "保留局部或有限搜索证据，不声明全局唯一或实体精度。",
             "properties": {
               "method_id": {
                 "const": "register-cloud",
@@ -22240,13 +24215,36 @@
                 "type": "integer"
               },
               "scope": {
-                "const": "local-se3",
                 "default": "local-se3",
+                "enum": [
+                  "local-se3",
+                  "feature-se3",
+                  "datum-se2"
+                ],
                 "title": "Scope",
                 "type": "string"
               },
               "parameters": {
-                "$ref": "#/$defs/RegistrationSettings"
+                "discriminator": {
+                  "mapping": {
+                    "datum": "#/$defs/DatumRegistrationSettings",
+                    "explicit": "#/$defs/RegistrationSettings",
+                    "fpfh": "#/$defs/CoarseRegistrationSettings"
+                  },
+                  "propertyName": "initialization"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/RegistrationSettings"
+                  },
+                  {
+                    "$ref": "#/$defs/CoarseRegistrationSettings"
+                  },
+                  {
+                    "$ref": "#/$defs/DatumRegistrationSettings"
+                  }
+                ],
+                "title": "Parameters"
               },
               "parameters_sha256": {
                 "pattern": "^[0-9a-f]{64}$",
@@ -22266,6 +24264,28 @@
                 ],
                 "title": "Parents",
                 "type": "array"
+              },
+              "search": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/RegistrationSearchEvidence"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "datum": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/DatumRegistrationEvidence"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
               }
             },
             "required": [
@@ -22313,6 +24333,7 @@
                 "enum": [
                   "found",
                   "not_found",
+                  "ambiguous",
                   "underconstrained",
                   "insufficient_quality"
                 ],
@@ -22387,6 +24408,31 @@
             "title": "RegistrationProvenance",
             "type": "object"
           },
+          "RegistrationSearchEvidence": {
+            "additionalProperties": false,
+            "description": "按批次保留实际候选，不保存原生索引或增加运行所有权。",
+            "properties": {
+              "feature_correspondence_count": {
+                "minimum": 0,
+                "title": "Feature Correspondence Count",
+                "type": "integer"
+              },
+              "candidates": {
+                "items": {
+                  "$ref": "#/$defs/RegistrationCandidate"
+                },
+                "maxItems": 744,
+                "title": "Candidates",
+                "type": "array"
+              }
+            },
+            "required": [
+              "feature_correspondence_count",
+              "candidates"
+            ],
+            "title": "RegistrationSearchEvidence",
+            "type": "object"
+          },
           "RegistrationSettings": {
             "additionalProperties": false,
             "description": "平移在参考坐标中；固定外旋 XYZ 等价于 Rz @ Ry @ Rx。",
@@ -22423,6 +24469,36 @@
                 "title": "Algorithm",
                 "type": "string"
               },
+              "max_correspondence_distance": {
+                "exclusiveMinimum": 0,
+                "title": "Max Correspondence Distance",
+                "type": "number"
+              },
+              "max_iterations": {
+                "maximum": 2147483647,
+                "minimum": 1,
+                "title": "Max Iterations",
+                "type": "integer"
+              },
+              "fitness_change": {
+                "exclusiveMinimum": 0,
+                "title": "Fitness Change",
+                "type": "number"
+              },
+              "rmse_change": {
+                "exclusiveMinimum": 0,
+                "title": "Rmse Change",
+                "type": "number"
+              },
+              "quality_policy": {
+                "$ref": "#/$defs/GeometryQualityPolicy"
+              },
+              "initialization": {
+                "const": "explicit",
+                "default": "explicit",
+                "title": "Initialization",
+                "type": "string"
+              },
               "initial_translation": {
                 "maxItems": 3,
                 "minItems": 3,
@@ -22456,30 +24532,6 @@
                 ],
                 "title": "Initial Rotation Degrees",
                 "type": "array"
-              },
-              "max_correspondence_distance": {
-                "exclusiveMinimum": 0,
-                "title": "Max Correspondence Distance",
-                "type": "number"
-              },
-              "max_iterations": {
-                "maximum": 2147483647,
-                "minimum": 1,
-                "title": "Max Iterations",
-                "type": "integer"
-              },
-              "fitness_change": {
-                "exclusiveMinimum": 0,
-                "title": "Fitness Change",
-                "type": "number"
-              },
-              "rmse_change": {
-                "exclusiveMinimum": 0,
-                "title": "Rmse Change",
-                "type": "number"
-              },
-              "quality_policy": {
-                "$ref": "#/$defs/GeometryQualityPolicy"
               }
             },
             "required": [
@@ -22488,13 +24540,13 @@
               "target_frame_id",
               "length_unit",
               "algorithm",
-              "initial_translation",
-              "initial_rotation_degrees",
               "max_correspondence_distance",
               "max_iterations",
               "fitness_change",
               "rmse_change",
-              "quality_policy"
+              "quality_policy",
+              "initial_translation",
+              "initial_rotation_degrees"
             ],
             "title": "RegistrationSettings",
             "type": "object"
@@ -24062,6 +26114,395 @@
             "title": "AnchorOrigin",
             "type": "object"
           },
+          "CoarseRegistrationSettings": {
+            "additionalProperties": false,
+            "description": "FPFH 双向匹配、多批原生 RANSAC 与现有局部 ICP。",
+            "properties": {
+              "pose_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Pose Id",
+                "type": "string"
+              },
+              "source_frame_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Source Frame Id",
+                "type": "string"
+              },
+              "target_frame_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Target Frame Id",
+                "type": "string"
+              },
+              "length_unit": {
+                "enum": [
+                  "m",
+                  "mm",
+                  "um"
+                ],
+                "title": "Length Unit",
+                "type": "string"
+              },
+              "algorithm": {
+                "enum": [
+                  "point-to-point",
+                  "point-to-plane"
+                ],
+                "title": "Algorithm",
+                "type": "string"
+              },
+              "max_correspondence_distance": {
+                "exclusiveMinimum": 0,
+                "title": "Max Correspondence Distance",
+                "type": "number"
+              },
+              "max_iterations": {
+                "maximum": 2147483647,
+                "minimum": 1,
+                "title": "Max Iterations",
+                "type": "integer"
+              },
+              "fitness_change": {
+                "exclusiveMinimum": 0,
+                "title": "Fitness Change",
+                "type": "number"
+              },
+              "rmse_change": {
+                "exclusiveMinimum": 0,
+                "title": "Rmse Change",
+                "type": "number"
+              },
+              "quality_policy": {
+                "$ref": "#/$defs/GeometryQualityPolicy"
+              },
+              "initialization": {
+                "const": "fpfh",
+                "default": "fpfh",
+                "title": "Initialization",
+                "type": "string"
+              },
+              "search": {
+                "$ref": "#/$defs/CoarseSearchParameters"
+              }
+            },
+            "required": [
+              "pose_id",
+              "source_frame_id",
+              "target_frame_id",
+              "length_unit",
+              "algorithm",
+              "max_correspondence_distance",
+              "max_iterations",
+              "fitness_change",
+              "rmse_change",
+              "quality_policy",
+              "search"
+            ],
+            "title": "CoarseRegistrationSettings",
+            "type": "object"
+          },
+          "CoarseSearchParameters": {
+            "additionalProperties": false,
+            "description": "全部工程尺度与搜索成本显式配置，不内置重采样或法向估计。",
+            "properties": {
+              "feature_radius": {
+                "exclusiveMinimum": 0,
+                "title": "Feature Radius",
+                "type": "number"
+              },
+              "feature_max_neighbors": {
+                "maximum": 2147483647,
+                "minimum": 3,
+                "title": "Feature Max Neighbors",
+                "type": "integer"
+              },
+              "max_correspondence_distance": {
+                "exclusiveMinimum": 0,
+                "title": "Max Correspondence Distance",
+                "type": "number"
+              },
+              "edge_length_ratio": {
+                "exclusiveMinimum": 0,
+                "maximum": 1,
+                "title": "Edge Length Ratio",
+                "type": "number"
+              },
+              "samples": {
+                "maximum": 2147483647,
+                "minimum": 3,
+                "title": "Samples",
+                "type": "integer"
+              },
+              "iterations_per_trial": {
+                "maximum": 2147483647,
+                "minimum": 1,
+                "title": "Iterations Per Trial",
+                "type": "integer"
+              },
+              "trials": {
+                "maximum": 744,
+                "minimum": 2,
+                "title": "Trials",
+                "type": "integer"
+              },
+              "equivalent_translation": {
+                "exclusiveMinimum": 0,
+                "title": "Equivalent Translation",
+                "type": "number"
+              },
+              "equivalent_rotation_degrees": {
+                "exclusiveMinimum": 0,
+                "maximum": 180,
+                "title": "Equivalent Rotation Degrees",
+                "type": "number"
+              }
+            },
+            "required": [
+              "feature_radius",
+              "feature_max_neighbors",
+              "max_correspondence_distance",
+              "edge_length_ratio",
+              "samples",
+              "iterations_per_trial",
+              "trials",
+              "equivalent_translation",
+              "equivalent_rotation_degrees"
+            ],
+            "title": "CoarseSearchParameters",
+            "type": "object"
+          },
+          "DatumRegistrationEvidence": {
+            "additionalProperties": false,
+            "description": "固定 source/reference 顺序；correction 仅含基准间的 U/V/绕 Z 旋转。",
+            "properties": {
+              "frames": {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "$ref": "#/$defs/FramePoseEvidence"
+                  },
+                  {
+                    "$ref": "#/$defs/FramePoseEvidence"
+                  }
+                ],
+                "title": "Frames",
+                "type": "array"
+              },
+              "correction": {
+                "anyOf": [
+                  {
+                    "maxItems": 4,
+                    "minItems": 4,
+                    "prefixItems": [
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      }
+                    ],
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Correction"
+              }
+            },
+            "required": [
+              "frames",
+              "correction"
+            ],
+            "title": "DatumRegistrationEvidence",
+            "type": "object"
+          },
+          "DatumRegistrationSettings": {
+            "additionalProperties": false,
+            "description": "两套显式基准下的局部 SE(2)，不自动提供初值或粗定位。",
+            "properties": {
+              "pose_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Pose Id",
+                "type": "string"
+              },
+              "source_frame_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Source Frame Id",
+                "type": "string"
+              },
+              "target_frame_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Target Frame Id",
+                "type": "string"
+              },
+              "length_unit": {
+                "enum": [
+                  "m",
+                  "mm",
+                  "um"
+                ],
+                "title": "Length Unit",
+                "type": "string"
+              },
+              "algorithm": {
+                "enum": [
+                  "point-to-point",
+                  "point-to-plane"
+                ],
+                "title": "Algorithm",
+                "type": "string"
+              },
+              "max_correspondence_distance": {
+                "exclusiveMinimum": 0,
+                "title": "Max Correspondence Distance",
+                "type": "number"
+              },
+              "max_iterations": {
+                "maximum": 2147483647,
+                "minimum": 1,
+                "title": "Max Iterations",
+                "type": "integer"
+              },
+              "fitness_change": {
+                "exclusiveMinimum": 0,
+                "title": "Fitness Change",
+                "type": "number"
+              },
+              "rmse_change": {
+                "exclusiveMinimum": 0,
+                "title": "Rmse Change",
+                "type": "number"
+              },
+              "quality_policy": {
+                "$ref": "#/$defs/GeometryQualityPolicy"
+              },
+              "initialization": {
+                "const": "datum",
+                "default": "datum",
+                "title": "Initialization",
+                "type": "string"
+              },
+              "initial_uv": {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "title": "Initial Uv",
+                "type": "array"
+              },
+              "initial_angle_degrees": {
+                "title": "Initial Angle Degrees",
+                "type": "number"
+              },
+              "max_solver_evaluations": {
+                "maximum": 2147483647,
+                "minimum": 1,
+                "title": "Max Solver Evaluations",
+                "type": "integer"
+              },
+              "solver_tolerance": {
+                "exclusiveMaximum": 1,
+                "exclusiveMinimum": 2.220446049250313e-16,
+                "title": "Solver Tolerance",
+                "type": "number"
+              }
+            },
+            "required": [
+              "pose_id",
+              "source_frame_id",
+              "target_frame_id",
+              "length_unit",
+              "algorithm",
+              "max_correspondence_distance",
+              "max_iterations",
+              "fitness_change",
+              "rmse_change",
+              "quality_policy",
+              "initial_uv",
+              "initial_angle_degrees",
+              "max_solver_evaluations",
+              "solver_tolerance"
+            ],
+            "title": "DatumRegistrationSettings",
+            "type": "object"
+          },
           "DirectionAxis": {
             "additionalProperties": false,
             "description": "显式源坐标正方向，投影至主平面后成为 X。",
@@ -25159,9 +27600,227 @@
             "title": "RansacPlane",
             "type": "object"
           },
+          "RegistrationCandidate": {
+            "additionalProperties": false,
+            "description": "一批原生搜索及同一 ICP 的完整结果；失败没有可执行矩阵。",
+            "properties": {
+              "trial": {
+                "exclusiveMaximum": 744,
+                "minimum": 0,
+                "title": "Trial",
+                "type": "integer"
+              },
+              "initial_matrix": {
+                "anyOf": [
+                  {
+                    "maxItems": 4,
+                    "minItems": 4,
+                    "prefixItems": [
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      }
+                    ],
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Initial Matrix"
+              },
+              "refined_matrix": {
+                "anyOf": [
+                  {
+                    "maxItems": 4,
+                    "minItems": 4,
+                    "prefixItems": [
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      }
+                    ],
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Refined Matrix"
+              },
+              "reason": {
+                "anyOf": [
+                  {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Reason"
+              },
+              "quality": {
+                "$ref": "#/$defs/GeometryQuality"
+              }
+            },
+            "required": [
+              "trial",
+              "initial_matrix",
+              "refined_matrix",
+              "reason",
+              "quality"
+            ],
+            "title": "RegistrationCandidate",
+            "type": "object"
+          },
           "RegistrationMethod": {
             "additionalProperties": false,
-            "description": "只声明给定初值附近的局部对齐，不声明全局唯一或实体精度。",
+            "description": "保留局部或有限搜索证据，不声明全局唯一或实体精度。",
             "properties": {
               "method_id": {
                 "const": "register-cloud",
@@ -25176,13 +27835,36 @@
                 "type": "integer"
               },
               "scope": {
-                "const": "local-se3",
                 "default": "local-se3",
+                "enum": [
+                  "local-se3",
+                  "feature-se3",
+                  "datum-se2"
+                ],
                 "title": "Scope",
                 "type": "string"
               },
               "parameters": {
-                "$ref": "#/$defs/RegistrationSettings"
+                "discriminator": {
+                  "mapping": {
+                    "datum": "#/$defs/DatumRegistrationSettings",
+                    "explicit": "#/$defs/RegistrationSettings",
+                    "fpfh": "#/$defs/CoarseRegistrationSettings"
+                  },
+                  "propertyName": "initialization"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/RegistrationSettings"
+                  },
+                  {
+                    "$ref": "#/$defs/CoarseRegistrationSettings"
+                  },
+                  {
+                    "$ref": "#/$defs/DatumRegistrationSettings"
+                  }
+                ],
+                "title": "Parameters"
               },
               "parameters_sha256": {
                 "pattern": "^[0-9a-f]{64}$",
@@ -25202,6 +27884,28 @@
                 ],
                 "title": "Parents",
                 "type": "array"
+              },
+              "search": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/RegistrationSearchEvidence"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "datum": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/DatumRegistrationEvidence"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
               }
             },
             "required": [
@@ -25249,6 +27953,7 @@
                 "enum": [
                   "found",
                   "not_found",
+                  "ambiguous",
                   "underconstrained",
                   "insufficient_quality"
                 ],
@@ -25323,6 +28028,31 @@
             "title": "RegistrationProvenance",
             "type": "object"
           },
+          "RegistrationSearchEvidence": {
+            "additionalProperties": false,
+            "description": "按批次保留实际候选，不保存原生索引或增加运行所有权。",
+            "properties": {
+              "feature_correspondence_count": {
+                "minimum": 0,
+                "title": "Feature Correspondence Count",
+                "type": "integer"
+              },
+              "candidates": {
+                "items": {
+                  "$ref": "#/$defs/RegistrationCandidate"
+                },
+                "maxItems": 744,
+                "title": "Candidates",
+                "type": "array"
+              }
+            },
+            "required": [
+              "feature_correspondence_count",
+              "candidates"
+            ],
+            "title": "RegistrationSearchEvidence",
+            "type": "object"
+          },
           "RegistrationSettings": {
             "additionalProperties": false,
             "description": "平移在参考坐标中；固定外旋 XYZ 等价于 Rz @ Ry @ Rx。",
@@ -25359,6 +28089,36 @@
                 "title": "Algorithm",
                 "type": "string"
               },
+              "max_correspondence_distance": {
+                "exclusiveMinimum": 0,
+                "title": "Max Correspondence Distance",
+                "type": "number"
+              },
+              "max_iterations": {
+                "maximum": 2147483647,
+                "minimum": 1,
+                "title": "Max Iterations",
+                "type": "integer"
+              },
+              "fitness_change": {
+                "exclusiveMinimum": 0,
+                "title": "Fitness Change",
+                "type": "number"
+              },
+              "rmse_change": {
+                "exclusiveMinimum": 0,
+                "title": "Rmse Change",
+                "type": "number"
+              },
+              "quality_policy": {
+                "$ref": "#/$defs/GeometryQualityPolicy"
+              },
+              "initialization": {
+                "const": "explicit",
+                "default": "explicit",
+                "title": "Initialization",
+                "type": "string"
+              },
               "initial_translation": {
                 "maxItems": 3,
                 "minItems": 3,
@@ -25392,30 +28152,6 @@
                 ],
                 "title": "Initial Rotation Degrees",
                 "type": "array"
-              },
-              "max_correspondence_distance": {
-                "exclusiveMinimum": 0,
-                "title": "Max Correspondence Distance",
-                "type": "number"
-              },
-              "max_iterations": {
-                "maximum": 2147483647,
-                "minimum": 1,
-                "title": "Max Iterations",
-                "type": "integer"
-              },
-              "fitness_change": {
-                "exclusiveMinimum": 0,
-                "title": "Fitness Change",
-                "type": "number"
-              },
-              "rmse_change": {
-                "exclusiveMinimum": 0,
-                "title": "Rmse Change",
-                "type": "number"
-              },
-              "quality_policy": {
-                "$ref": "#/$defs/GeometryQualityPolicy"
               }
             },
             "required": [
@@ -25424,13 +28160,13 @@
               "target_frame_id",
               "length_unit",
               "algorithm",
-              "initial_translation",
-              "initial_rotation_degrees",
               "max_correspondence_distance",
               "max_iterations",
               "fitness_change",
               "rmse_change",
-              "quality_policy"
+              "quality_policy",
+              "initial_translation",
+              "initial_rotation_degrees"
             ],
             "title": "RegistrationSettings",
             "type": "object"
@@ -27055,6 +29791,162 @@
             "title": "CloudExtentSource",
             "type": "object"
           },
+          "CoarseRegistrationSettings": {
+            "additionalProperties": false,
+            "description": "FPFH 双向匹配、多批原生 RANSAC 与现有局部 ICP。",
+            "properties": {
+              "pose_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Pose Id",
+                "type": "string"
+              },
+              "source_frame_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Source Frame Id",
+                "type": "string"
+              },
+              "target_frame_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Target Frame Id",
+                "type": "string"
+              },
+              "length_unit": {
+                "enum": [
+                  "m",
+                  "mm",
+                  "um"
+                ],
+                "title": "Length Unit",
+                "type": "string"
+              },
+              "algorithm": {
+                "enum": [
+                  "point-to-point",
+                  "point-to-plane"
+                ],
+                "title": "Algorithm",
+                "type": "string"
+              },
+              "max_correspondence_distance": {
+                "exclusiveMinimum": 0,
+                "title": "Max Correspondence Distance",
+                "type": "number"
+              },
+              "max_iterations": {
+                "maximum": 2147483647,
+                "minimum": 1,
+                "title": "Max Iterations",
+                "type": "integer"
+              },
+              "fitness_change": {
+                "exclusiveMinimum": 0,
+                "title": "Fitness Change",
+                "type": "number"
+              },
+              "rmse_change": {
+                "exclusiveMinimum": 0,
+                "title": "Rmse Change",
+                "type": "number"
+              },
+              "quality_policy": {
+                "$ref": "#/$defs/GeometryQualityPolicy"
+              },
+              "initialization": {
+                "const": "fpfh",
+                "default": "fpfh",
+                "title": "Initialization",
+                "type": "string"
+              },
+              "search": {
+                "$ref": "#/$defs/CoarseSearchParameters"
+              }
+            },
+            "required": [
+              "pose_id",
+              "source_frame_id",
+              "target_frame_id",
+              "length_unit",
+              "algorithm",
+              "max_correspondence_distance",
+              "max_iterations",
+              "fitness_change",
+              "rmse_change",
+              "quality_policy",
+              "search"
+            ],
+            "title": "CoarseRegistrationSettings",
+            "type": "object"
+          },
+          "CoarseSearchParameters": {
+            "additionalProperties": false,
+            "description": "全部工程尺度与搜索成本显式配置，不内置重采样或法向估计。",
+            "properties": {
+              "feature_radius": {
+                "exclusiveMinimum": 0,
+                "title": "Feature Radius",
+                "type": "number"
+              },
+              "feature_max_neighbors": {
+                "maximum": 2147483647,
+                "minimum": 3,
+                "title": "Feature Max Neighbors",
+                "type": "integer"
+              },
+              "max_correspondence_distance": {
+                "exclusiveMinimum": 0,
+                "title": "Max Correspondence Distance",
+                "type": "number"
+              },
+              "edge_length_ratio": {
+                "exclusiveMinimum": 0,
+                "maximum": 1,
+                "title": "Edge Length Ratio",
+                "type": "number"
+              },
+              "samples": {
+                "maximum": 2147483647,
+                "minimum": 3,
+                "title": "Samples",
+                "type": "integer"
+              },
+              "iterations_per_trial": {
+                "maximum": 2147483647,
+                "minimum": 1,
+                "title": "Iterations Per Trial",
+                "type": "integer"
+              },
+              "trials": {
+                "maximum": 744,
+                "minimum": 2,
+                "title": "Trials",
+                "type": "integer"
+              },
+              "equivalent_translation": {
+                "exclusiveMinimum": 0,
+                "title": "Equivalent Translation",
+                "type": "number"
+              },
+              "equivalent_rotation_degrees": {
+                "exclusiveMinimum": 0,
+                "maximum": 180,
+                "title": "Equivalent Rotation Degrees",
+                "type": "number"
+              }
+            },
+            "required": [
+              "feature_radius",
+              "feature_max_neighbors",
+              "max_correspondence_distance",
+              "edge_length_ratio",
+              "samples",
+              "iterations_per_trial",
+              "trials",
+              "equivalent_translation",
+              "equivalent_rotation_degrees"
+            ],
+            "title": "CoarseSearchParameters",
+            "type": "object"
+          },
           "ConfiguredQuery": {
             "additionalProperties": false,
             "description": "配方直接给出源坐标中的测量线。",
@@ -27657,6 +30549,239 @@
               "geometry"
             ],
             "title": "CylinderRoi",
+            "type": "object"
+          },
+          "DatumRegistrationEvidence": {
+            "additionalProperties": false,
+            "description": "固定 source/reference 顺序；correction 仅含基准间的 U/V/绕 Z 旋转。",
+            "properties": {
+              "frames": {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "$ref": "#/$defs/FramePoseEvidence"
+                  },
+                  {
+                    "$ref": "#/$defs/FramePoseEvidence"
+                  }
+                ],
+                "title": "Frames",
+                "type": "array"
+              },
+              "correction": {
+                "anyOf": [
+                  {
+                    "maxItems": 4,
+                    "minItems": 4,
+                    "prefixItems": [
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      }
+                    ],
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Correction"
+              }
+            },
+            "required": [
+              "frames",
+              "correction"
+            ],
+            "title": "DatumRegistrationEvidence",
+            "type": "object"
+          },
+          "DatumRegistrationSettings": {
+            "additionalProperties": false,
+            "description": "两套显式基准下的局部 SE(2)，不自动提供初值或粗定位。",
+            "properties": {
+              "pose_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Pose Id",
+                "type": "string"
+              },
+              "source_frame_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Source Frame Id",
+                "type": "string"
+              },
+              "target_frame_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Target Frame Id",
+                "type": "string"
+              },
+              "length_unit": {
+                "enum": [
+                  "m",
+                  "mm",
+                  "um"
+                ],
+                "title": "Length Unit",
+                "type": "string"
+              },
+              "algorithm": {
+                "enum": [
+                  "point-to-point",
+                  "point-to-plane"
+                ],
+                "title": "Algorithm",
+                "type": "string"
+              },
+              "max_correspondence_distance": {
+                "exclusiveMinimum": 0,
+                "title": "Max Correspondence Distance",
+                "type": "number"
+              },
+              "max_iterations": {
+                "maximum": 2147483647,
+                "minimum": 1,
+                "title": "Max Iterations",
+                "type": "integer"
+              },
+              "fitness_change": {
+                "exclusiveMinimum": 0,
+                "title": "Fitness Change",
+                "type": "number"
+              },
+              "rmse_change": {
+                "exclusiveMinimum": 0,
+                "title": "Rmse Change",
+                "type": "number"
+              },
+              "quality_policy": {
+                "$ref": "#/$defs/GeometryQualityPolicy"
+              },
+              "initialization": {
+                "const": "datum",
+                "default": "datum",
+                "title": "Initialization",
+                "type": "string"
+              },
+              "initial_uv": {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "title": "Initial Uv",
+                "type": "array"
+              },
+              "initial_angle_degrees": {
+                "title": "Initial Angle Degrees",
+                "type": "number"
+              },
+              "max_solver_evaluations": {
+                "maximum": 2147483647,
+                "minimum": 1,
+                "title": "Max Solver Evaluations",
+                "type": "integer"
+              },
+              "solver_tolerance": {
+                "exclusiveMaximum": 1,
+                "exclusiveMinimum": 2.220446049250313e-16,
+                "title": "Solver Tolerance",
+                "type": "number"
+              }
+            },
+            "required": [
+              "pose_id",
+              "source_frame_id",
+              "target_frame_id",
+              "length_unit",
+              "algorithm",
+              "max_correspondence_distance",
+              "max_iterations",
+              "fitness_change",
+              "rmse_change",
+              "quality_policy",
+              "initial_uv",
+              "initial_angle_degrees",
+              "max_solver_evaluations",
+              "solver_tolerance"
+            ],
+            "title": "DatumRegistrationSettings",
             "type": "object"
           },
           "DimensionDiagnostic": {
@@ -32712,9 +35837,227 @@
             "title": "ReferenceExtension",
             "type": "object"
           },
+          "RegistrationCandidate": {
+            "additionalProperties": false,
+            "description": "一批原生搜索及同一 ICP 的完整结果；失败没有可执行矩阵。",
+            "properties": {
+              "trial": {
+                "exclusiveMaximum": 744,
+                "minimum": 0,
+                "title": "Trial",
+                "type": "integer"
+              },
+              "initial_matrix": {
+                "anyOf": [
+                  {
+                    "maxItems": 4,
+                    "minItems": 4,
+                    "prefixItems": [
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      }
+                    ],
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Initial Matrix"
+              },
+              "refined_matrix": {
+                "anyOf": [
+                  {
+                    "maxItems": 4,
+                    "minItems": 4,
+                    "prefixItems": [
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      },
+                      {
+                        "maxItems": 4,
+                        "minItems": 4,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "type": "array"
+                      }
+                    ],
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Refined Matrix"
+              },
+              "reason": {
+                "anyOf": [
+                  {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Reason"
+              },
+              "quality": {
+                "$ref": "#/$defs/GeometryQuality"
+              }
+            },
+            "required": [
+              "trial",
+              "initial_matrix",
+              "refined_matrix",
+              "reason",
+              "quality"
+            ],
+            "title": "RegistrationCandidate",
+            "type": "object"
+          },
           "RegistrationMethod": {
             "additionalProperties": false,
-            "description": "只声明给定初值附近的局部对齐，不声明全局唯一或实体精度。",
+            "description": "保留局部或有限搜索证据，不声明全局唯一或实体精度。",
             "properties": {
               "method_id": {
                 "const": "register-cloud",
@@ -32729,13 +36072,36 @@
                 "type": "integer"
               },
               "scope": {
-                "const": "local-se3",
                 "default": "local-se3",
+                "enum": [
+                  "local-se3",
+                  "feature-se3",
+                  "datum-se2"
+                ],
                 "title": "Scope",
                 "type": "string"
               },
               "parameters": {
-                "$ref": "#/$defs/RegistrationSettings"
+                "discriminator": {
+                  "mapping": {
+                    "datum": "#/$defs/DatumRegistrationSettings",
+                    "explicit": "#/$defs/RegistrationSettings",
+                    "fpfh": "#/$defs/CoarseRegistrationSettings"
+                  },
+                  "propertyName": "initialization"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/RegistrationSettings"
+                  },
+                  {
+                    "$ref": "#/$defs/CoarseRegistrationSettings"
+                  },
+                  {
+                    "$ref": "#/$defs/DatumRegistrationSettings"
+                  }
+                ],
+                "title": "Parameters"
               },
               "parameters_sha256": {
                 "pattern": "^[0-9a-f]{64}$",
@@ -32755,6 +36121,28 @@
                 ],
                 "title": "Parents",
                 "type": "array"
+              },
+              "search": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/RegistrationSearchEvidence"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "datum": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/DatumRegistrationEvidence"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
               }
             },
             "required": [
@@ -32802,6 +36190,7 @@
                 "enum": [
                   "found",
                   "not_found",
+                  "ambiguous",
                   "underconstrained",
                   "insufficient_quality"
                 ],
@@ -32876,6 +36265,31 @@
             "title": "RegistrationProvenance",
             "type": "object"
           },
+          "RegistrationSearchEvidence": {
+            "additionalProperties": false,
+            "description": "按批次保留实际候选，不保存原生索引或增加运行所有权。",
+            "properties": {
+              "feature_correspondence_count": {
+                "minimum": 0,
+                "title": "Feature Correspondence Count",
+                "type": "integer"
+              },
+              "candidates": {
+                "items": {
+                  "$ref": "#/$defs/RegistrationCandidate"
+                },
+                "maxItems": 744,
+                "title": "Candidates",
+                "type": "array"
+              }
+            },
+            "required": [
+              "feature_correspondence_count",
+              "candidates"
+            ],
+            "title": "RegistrationSearchEvidence",
+            "type": "object"
+          },
           "RegistrationSettings": {
             "additionalProperties": false,
             "description": "平移在参考坐标中；固定外旋 XYZ 等价于 Rz @ Ry @ Rx。",
@@ -32912,6 +36326,36 @@
                 "title": "Algorithm",
                 "type": "string"
               },
+              "max_correspondence_distance": {
+                "exclusiveMinimum": 0,
+                "title": "Max Correspondence Distance",
+                "type": "number"
+              },
+              "max_iterations": {
+                "maximum": 2147483647,
+                "minimum": 1,
+                "title": "Max Iterations",
+                "type": "integer"
+              },
+              "fitness_change": {
+                "exclusiveMinimum": 0,
+                "title": "Fitness Change",
+                "type": "number"
+              },
+              "rmse_change": {
+                "exclusiveMinimum": 0,
+                "title": "Rmse Change",
+                "type": "number"
+              },
+              "quality_policy": {
+                "$ref": "#/$defs/GeometryQualityPolicy"
+              },
+              "initialization": {
+                "const": "explicit",
+                "default": "explicit",
+                "title": "Initialization",
+                "type": "string"
+              },
               "initial_translation": {
                 "maxItems": 3,
                 "minItems": 3,
@@ -32945,30 +36389,6 @@
                 ],
                 "title": "Initial Rotation Degrees",
                 "type": "array"
-              },
-              "max_correspondence_distance": {
-                "exclusiveMinimum": 0,
-                "title": "Max Correspondence Distance",
-                "type": "number"
-              },
-              "max_iterations": {
-                "maximum": 2147483647,
-                "minimum": 1,
-                "title": "Max Iterations",
-                "type": "integer"
-              },
-              "fitness_change": {
-                "exclusiveMinimum": 0,
-                "title": "Fitness Change",
-                "type": "number"
-              },
-              "rmse_change": {
-                "exclusiveMinimum": 0,
-                "title": "Rmse Change",
-                "type": "number"
-              },
-              "quality_policy": {
-                "$ref": "#/$defs/GeometryQualityPolicy"
               }
             },
             "required": [
@@ -32977,13 +36397,13 @@
               "target_frame_id",
               "length_unit",
               "algorithm",
-              "initial_translation",
-              "initial_rotation_degrees",
               "max_correspondence_distance",
               "max_iterations",
               "fitness_change",
               "rmse_change",
-              "quality_policy"
+              "quality_policy",
+              "initial_translation",
+              "initial_rotation_degrees"
             ],
             "title": "RegistrationSettings",
             "type": "object"
@@ -34192,7 +37612,7 @@
       "description": "Register Cloud",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.26",
+      "version": "0.1.28",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -34210,6 +37630,24 @@
           "payload_type_id": "point-cloud-ref.v1",
           "description": "",
           "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "source_datum",
+          "display_name": "Source_Datum",
+          "payload_type_id": "pose3d.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "reference_datum",
+          "display_name": "Reference_Datum",
+          "payload_type_id": "pose3d.v1",
+          "description": "",
+          "required": false,
           "multiple": false,
           "metadata": {}
         }
@@ -34239,208 +37677,680 @@
         "description": "沿已有 settings 参数分发。",
         "properties": {
           "settings": {
-            "additionalProperties": false,
-            "description": "平移在参考坐标中；固定外旋 XYZ 等价于 Rz @ Ry @ Rx。",
-            "properties": {
-              "pose_id": {
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
-                "title": "Pose Id",
-                "type": "string"
+            "discriminator": {
+              "mapping": {
+                "datum": "#/$defs/DatumRegistrationSettings",
+                "explicit": "#/$defs/RegistrationSettings",
+                "fpfh": "#/$defs/CoarseRegistrationSettings"
               },
-              "source_frame_id": {
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
-                "title": "Source Frame Id",
-                "type": "string"
-              },
-              "target_frame_id": {
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
-                "title": "Target Frame Id",
-                "type": "string"
-              },
-              "length_unit": {
-                "enum": [
-                  "m",
-                  "mm",
-                  "um"
-                ],
-                "title": "Length Unit",
-                "type": "string"
-              },
-              "algorithm": {
-                "enum": [
-                  "point-to-point",
-                  "point-to-plane"
-                ],
-                "title": "Algorithm",
-                "type": "string"
-              },
-              "initial_translation": {
-                "maxItems": 3,
-                "minItems": 3,
-                "prefixItems": [
-                  {
-                    "type": "number"
-                  },
-                  {
-                    "type": "number"
-                  },
-                  {
-                    "type": "number"
-                  }
-                ],
-                "title": "Initial Translation",
-                "type": "array"
-              },
-              "initial_rotation_degrees": {
-                "maxItems": 3,
-                "minItems": 3,
-                "prefixItems": [
-                  {
-                    "type": "number"
-                  },
-                  {
-                    "type": "number"
-                  },
-                  {
-                    "type": "number"
-                  }
-                ],
-                "title": "Initial Rotation Degrees",
-                "type": "array"
-              },
-              "max_correspondence_distance": {
-                "exclusiveMinimum": 0,
-                "title": "Max Correspondence Distance",
-                "type": "number"
-              },
-              "max_iterations": {
-                "maximum": 2147483647,
-                "minimum": 1,
-                "title": "Max Iterations",
-                "type": "integer"
-              },
-              "fitness_change": {
-                "exclusiveMinimum": 0,
-                "title": "Fitness Change",
-                "type": "number"
-              },
-              "rmse_change": {
-                "exclusiveMinimum": 0,
-                "title": "Rmse Change",
-                "type": "number"
-              },
-              "quality_policy": {
+              "propertyName": "initialization"
+            },
+            "oneOf": [
+              {
                 "additionalProperties": false,
-                "description": "几何质量沿现有规则，值来自配方而非节点默认。",
+                "description": "平移在参考坐标中；固定外旋 XYZ 等价于 Rz @ Ry @ Rx。",
                 "properties": {
-                  "policy_id": {
+                  "pose_id": {
                     "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
-                    "title": "Policy Id",
+                    "title": "Pose Id",
                     "type": "string"
                   },
-                  "policy_version": {
+                  "source_frame_id": {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                    "title": "Source Frame Id",
+                    "type": "string"
+                  },
+                  "target_frame_id": {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                    "title": "Target Frame Id",
+                    "type": "string"
+                  },
+                  "length_unit": {
+                    "enum": [
+                      "m",
+                      "mm",
+                      "um"
+                    ],
+                    "title": "Length Unit",
+                    "type": "string"
+                  },
+                  "algorithm": {
+                    "enum": [
+                      "point-to-point",
+                      "point-to-plane"
+                    ],
+                    "title": "Algorithm",
+                    "type": "string"
+                  },
+                  "max_correspondence_distance": {
+                    "exclusiveMinimum": 0,
+                    "title": "Max Correspondence Distance",
+                    "type": "number"
+                  },
+                  "max_iterations": {
+                    "maximum": 2147483647,
                     "minimum": 1,
-                    "title": "Policy Version",
+                    "title": "Max Iterations",
                     "type": "integer"
                   },
-                  "rules": {
-                    "items": {
-                      "additionalProperties": false,
-                      "description": "通用上下限规则；单位精确匹配，必检集合来自保存的配置。",
-                      "properties": {
-                        "item_id": {
-                          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
-                          "title": "Item Id",
-                          "type": "string"
-                        },
-                        "unit": {
-                          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
-                          "title": "Unit",
-                          "type": "string"
-                        },
-                        "enabled": {
-                          "default": true,
-                          "title": "Enabled",
-                          "type": "boolean"
-                        },
-                        "required": {
-                          "default": true,
-                          "title": "Required",
-                          "type": "boolean"
-                        },
-                        "lower": {
-                          "anyOf": [
-                            {
-                              "type": "number"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ],
-                          "default": null,
-                          "title": "Lower"
-                        },
-                        "upper": {
-                          "anyOf": [
-                            {
-                              "type": "number"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ],
-                          "default": null,
-                          "title": "Upper"
-                        },
-                        "include_lower": {
-                          "default": true,
-                          "title": "Include Lower",
-                          "type": "boolean"
-                        },
-                        "include_upper": {
-                          "default": true,
-                          "title": "Include Upper",
-                          "type": "boolean"
-                        }
+                  "fitness_change": {
+                    "exclusiveMinimum": 0,
+                    "title": "Fitness Change",
+                    "type": "number"
+                  },
+                  "rmse_change": {
+                    "exclusiveMinimum": 0,
+                    "title": "Rmse Change",
+                    "type": "number"
+                  },
+                  "quality_policy": {
+                    "additionalProperties": false,
+                    "description": "几何质量沿现有规则，值来自配方而非节点默认。",
+                    "properties": {
+                      "policy_id": {
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                        "title": "Policy Id",
+                        "type": "string"
                       },
-                      "required": [
-                        "item_id",
-                        "unit"
-                      ],
-                      "title": "LimitRule",
-                      "type": "object"
+                      "policy_version": {
+                        "minimum": 1,
+                        "title": "Policy Version",
+                        "type": "integer"
+                      },
+                      "rules": {
+                        "items": {
+                          "additionalProperties": false,
+                          "description": "通用上下限规则；单位精确匹配，必检集合来自保存的配置。",
+                          "properties": {
+                            "item_id": {
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                              "title": "Item Id",
+                              "type": "string"
+                            },
+                            "unit": {
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                              "title": "Unit",
+                              "type": "string"
+                            },
+                            "enabled": {
+                              "default": true,
+                              "title": "Enabled",
+                              "type": "boolean"
+                            },
+                            "required": {
+                              "default": true,
+                              "title": "Required",
+                              "type": "boolean"
+                            },
+                            "lower": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ],
+                              "default": null,
+                              "title": "Lower"
+                            },
+                            "upper": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ],
+                              "default": null,
+                              "title": "Upper"
+                            },
+                            "include_lower": {
+                              "default": true,
+                              "title": "Include Lower",
+                              "type": "boolean"
+                            },
+                            "include_upper": {
+                              "default": true,
+                              "title": "Include Upper",
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "item_id",
+                            "unit"
+                          ],
+                          "title": "LimitRule",
+                          "type": "object"
+                        },
+                        "maxItems": 8192,
+                        "minItems": 1,
+                        "title": "Rules",
+                        "type": "array"
+                      }
                     },
-                    "maxItems": 8192,
-                    "minItems": 1,
-                    "title": "Rules",
+                    "required": [
+                      "policy_id",
+                      "policy_version",
+                      "rules"
+                    ],
+                    "title": "GeometryQualityPolicy",
+                    "type": "object"
+                  },
+                  "initialization": {
+                    "const": "explicit",
+                    "default": "explicit",
+                    "title": "Initialization",
+                    "type": "string"
+                  },
+                  "initial_translation": {
+                    "maxItems": 3,
+                    "minItems": 3,
+                    "prefixItems": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ],
+                    "title": "Initial Translation",
+                    "type": "array"
+                  },
+                  "initial_rotation_degrees": {
+                    "maxItems": 3,
+                    "minItems": 3,
+                    "prefixItems": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ],
+                    "title": "Initial Rotation Degrees",
                     "type": "array"
                   }
                 },
                 "required": [
-                  "policy_id",
-                  "policy_version",
-                  "rules"
+                  "pose_id",
+                  "source_frame_id",
+                  "target_frame_id",
+                  "length_unit",
+                  "algorithm",
+                  "max_correspondence_distance",
+                  "max_iterations",
+                  "fitness_change",
+                  "rmse_change",
+                  "quality_policy",
+                  "initial_translation",
+                  "initial_rotation_degrees"
                 ],
-                "title": "GeometryQualityPolicy",
+                "title": "RegistrationSettings",
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "FPFH 双向匹配、多批原生 RANSAC 与现有局部 ICP。",
+                "properties": {
+                  "pose_id": {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                    "title": "Pose Id",
+                    "type": "string"
+                  },
+                  "source_frame_id": {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                    "title": "Source Frame Id",
+                    "type": "string"
+                  },
+                  "target_frame_id": {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                    "title": "Target Frame Id",
+                    "type": "string"
+                  },
+                  "length_unit": {
+                    "enum": [
+                      "m",
+                      "mm",
+                      "um"
+                    ],
+                    "title": "Length Unit",
+                    "type": "string"
+                  },
+                  "algorithm": {
+                    "enum": [
+                      "point-to-point",
+                      "point-to-plane"
+                    ],
+                    "title": "Algorithm",
+                    "type": "string"
+                  },
+                  "max_correspondence_distance": {
+                    "exclusiveMinimum": 0,
+                    "title": "Max Correspondence Distance",
+                    "type": "number"
+                  },
+                  "max_iterations": {
+                    "maximum": 2147483647,
+                    "minimum": 1,
+                    "title": "Max Iterations",
+                    "type": "integer"
+                  },
+                  "fitness_change": {
+                    "exclusiveMinimum": 0,
+                    "title": "Fitness Change",
+                    "type": "number"
+                  },
+                  "rmse_change": {
+                    "exclusiveMinimum": 0,
+                    "title": "Rmse Change",
+                    "type": "number"
+                  },
+                  "quality_policy": {
+                    "additionalProperties": false,
+                    "description": "几何质量沿现有规则，值来自配方而非节点默认。",
+                    "properties": {
+                      "policy_id": {
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                        "title": "Policy Id",
+                        "type": "string"
+                      },
+                      "policy_version": {
+                        "minimum": 1,
+                        "title": "Policy Version",
+                        "type": "integer"
+                      },
+                      "rules": {
+                        "items": {
+                          "additionalProperties": false,
+                          "description": "通用上下限规则；单位精确匹配，必检集合来自保存的配置。",
+                          "properties": {
+                            "item_id": {
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                              "title": "Item Id",
+                              "type": "string"
+                            },
+                            "unit": {
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                              "title": "Unit",
+                              "type": "string"
+                            },
+                            "enabled": {
+                              "default": true,
+                              "title": "Enabled",
+                              "type": "boolean"
+                            },
+                            "required": {
+                              "default": true,
+                              "title": "Required",
+                              "type": "boolean"
+                            },
+                            "lower": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ],
+                              "default": null,
+                              "title": "Lower"
+                            },
+                            "upper": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ],
+                              "default": null,
+                              "title": "Upper"
+                            },
+                            "include_lower": {
+                              "default": true,
+                              "title": "Include Lower",
+                              "type": "boolean"
+                            },
+                            "include_upper": {
+                              "default": true,
+                              "title": "Include Upper",
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "item_id",
+                            "unit"
+                          ],
+                          "title": "LimitRule",
+                          "type": "object"
+                        },
+                        "maxItems": 8192,
+                        "minItems": 1,
+                        "title": "Rules",
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "policy_id",
+                      "policy_version",
+                      "rules"
+                    ],
+                    "title": "GeometryQualityPolicy",
+                    "type": "object"
+                  },
+                  "initialization": {
+                    "const": "fpfh",
+                    "default": "fpfh",
+                    "title": "Initialization",
+                    "type": "string"
+                  },
+                  "search": {
+                    "additionalProperties": false,
+                    "description": "全部工程尺度与搜索成本显式配置，不内置重采样或法向估计。",
+                    "properties": {
+                      "feature_radius": {
+                        "exclusiveMinimum": 0,
+                        "title": "Feature Radius",
+                        "type": "number"
+                      },
+                      "feature_max_neighbors": {
+                        "maximum": 2147483647,
+                        "minimum": 3,
+                        "title": "Feature Max Neighbors",
+                        "type": "integer"
+                      },
+                      "max_correspondence_distance": {
+                        "exclusiveMinimum": 0,
+                        "title": "Max Correspondence Distance",
+                        "type": "number"
+                      },
+                      "edge_length_ratio": {
+                        "exclusiveMinimum": 0,
+                        "maximum": 1,
+                        "title": "Edge Length Ratio",
+                        "type": "number"
+                      },
+                      "samples": {
+                        "maximum": 2147483647,
+                        "minimum": 3,
+                        "title": "Samples",
+                        "type": "integer"
+                      },
+                      "iterations_per_trial": {
+                        "maximum": 2147483647,
+                        "minimum": 1,
+                        "title": "Iterations Per Trial",
+                        "type": "integer"
+                      },
+                      "trials": {
+                        "maximum": 744,
+                        "minimum": 2,
+                        "title": "Trials",
+                        "type": "integer"
+                      },
+                      "equivalent_translation": {
+                        "exclusiveMinimum": 0,
+                        "title": "Equivalent Translation",
+                        "type": "number"
+                      },
+                      "equivalent_rotation_degrees": {
+                        "exclusiveMinimum": 0,
+                        "maximum": 180,
+                        "title": "Equivalent Rotation Degrees",
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "feature_radius",
+                      "feature_max_neighbors",
+                      "max_correspondence_distance",
+                      "edge_length_ratio",
+                      "samples",
+                      "iterations_per_trial",
+                      "trials",
+                      "equivalent_translation",
+                      "equivalent_rotation_degrees"
+                    ],
+                    "title": "CoarseSearchParameters",
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "pose_id",
+                  "source_frame_id",
+                  "target_frame_id",
+                  "length_unit",
+                  "algorithm",
+                  "max_correspondence_distance",
+                  "max_iterations",
+                  "fitness_change",
+                  "rmse_change",
+                  "quality_policy",
+                  "search"
+                ],
+                "title": "CoarseRegistrationSettings",
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "两套显式基准下的局部 SE(2)，不自动提供初值或粗定位。",
+                "properties": {
+                  "pose_id": {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                    "title": "Pose Id",
+                    "type": "string"
+                  },
+                  "source_frame_id": {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                    "title": "Source Frame Id",
+                    "type": "string"
+                  },
+                  "target_frame_id": {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                    "title": "Target Frame Id",
+                    "type": "string"
+                  },
+                  "length_unit": {
+                    "enum": [
+                      "m",
+                      "mm",
+                      "um"
+                    ],
+                    "title": "Length Unit",
+                    "type": "string"
+                  },
+                  "algorithm": {
+                    "enum": [
+                      "point-to-point",
+                      "point-to-plane"
+                    ],
+                    "title": "Algorithm",
+                    "type": "string"
+                  },
+                  "max_correspondence_distance": {
+                    "exclusiveMinimum": 0,
+                    "title": "Max Correspondence Distance",
+                    "type": "number"
+                  },
+                  "max_iterations": {
+                    "maximum": 2147483647,
+                    "minimum": 1,
+                    "title": "Max Iterations",
+                    "type": "integer"
+                  },
+                  "fitness_change": {
+                    "exclusiveMinimum": 0,
+                    "title": "Fitness Change",
+                    "type": "number"
+                  },
+                  "rmse_change": {
+                    "exclusiveMinimum": 0,
+                    "title": "Rmse Change",
+                    "type": "number"
+                  },
+                  "quality_policy": {
+                    "additionalProperties": false,
+                    "description": "几何质量沿现有规则，值来自配方而非节点默认。",
+                    "properties": {
+                      "policy_id": {
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                        "title": "Policy Id",
+                        "type": "string"
+                      },
+                      "policy_version": {
+                        "minimum": 1,
+                        "title": "Policy Version",
+                        "type": "integer"
+                      },
+                      "rules": {
+                        "items": {
+                          "additionalProperties": false,
+                          "description": "通用上下限规则；单位精确匹配，必检集合来自保存的配置。",
+                          "properties": {
+                            "item_id": {
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                              "title": "Item Id",
+                              "type": "string"
+                            },
+                            "unit": {
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                              "title": "Unit",
+                              "type": "string"
+                            },
+                            "enabled": {
+                              "default": true,
+                              "title": "Enabled",
+                              "type": "boolean"
+                            },
+                            "required": {
+                              "default": true,
+                              "title": "Required",
+                              "type": "boolean"
+                            },
+                            "lower": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ],
+                              "default": null,
+                              "title": "Lower"
+                            },
+                            "upper": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ],
+                              "default": null,
+                              "title": "Upper"
+                            },
+                            "include_lower": {
+                              "default": true,
+                              "title": "Include Lower",
+                              "type": "boolean"
+                            },
+                            "include_upper": {
+                              "default": true,
+                              "title": "Include Upper",
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "item_id",
+                            "unit"
+                          ],
+                          "title": "LimitRule",
+                          "type": "object"
+                        },
+                        "maxItems": 8192,
+                        "minItems": 1,
+                        "title": "Rules",
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "policy_id",
+                      "policy_version",
+                      "rules"
+                    ],
+                    "title": "GeometryQualityPolicy",
+                    "type": "object"
+                  },
+                  "initialization": {
+                    "const": "datum",
+                    "default": "datum",
+                    "title": "Initialization",
+                    "type": "string"
+                  },
+                  "initial_uv": {
+                    "maxItems": 2,
+                    "minItems": 2,
+                    "prefixItems": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ],
+                    "title": "Initial Uv",
+                    "type": "array"
+                  },
+                  "initial_angle_degrees": {
+                    "title": "Initial Angle Degrees",
+                    "type": "number"
+                  },
+                  "max_solver_evaluations": {
+                    "maximum": 2147483647,
+                    "minimum": 1,
+                    "title": "Max Solver Evaluations",
+                    "type": "integer"
+                  },
+                  "solver_tolerance": {
+                    "exclusiveMaximum": 1,
+                    "exclusiveMinimum": 2.220446049250313e-16,
+                    "title": "Solver Tolerance",
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "pose_id",
+                  "source_frame_id",
+                  "target_frame_id",
+                  "length_unit",
+                  "algorithm",
+                  "max_correspondence_distance",
+                  "max_iterations",
+                  "fitness_change",
+                  "rmse_change",
+                  "quality_policy",
+                  "initial_uv",
+                  "initial_angle_degrees",
+                  "max_solver_evaluations",
+                  "solver_tolerance"
+                ],
+                "title": "DatumRegistrationSettings",
                 "type": "object"
               }
-            },
-            "required": [
-              "pose_id",
-              "source_frame_id",
-              "target_frame_id",
-              "length_unit",
-              "algorithm",
-              "initial_translation",
-              "initial_rotation_degrees",
-              "max_correspondence_distance",
-              "max_iterations",
-              "fitness_change",
-              "rmse_change",
-              "quality_policy"
             ],
-            "title": "RegistrationSettings",
-            "type": "object"
+            "title": "Settings"
           }
         },
         "required": [
@@ -34455,7 +38365,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.26",
+      "node_pack_version": "0.1.28",
       "metadata": {}
     },
     {
@@ -34466,7 +38376,7 @@
       "description": "Invert Pose",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.26",
+      "version": "0.1.28",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -34532,7 +38442,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.26",
+      "node_pack_version": "0.1.28",
       "metadata": {}
     },
     {
@@ -34543,7 +38453,7 @@
       "description": "Compose Poses",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.26",
+      "version": "0.1.28",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -34618,7 +38528,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.26",
+      "node_pack_version": "0.1.28",
       "metadata": {}
     },
     {
@@ -35167,7 +39077,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.26",
+      "node_pack_version": "0.1.28",
       "metadata": {}
     },
     {
@@ -35655,7 +39565,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.26",
+      "node_pack_version": "0.1.28",
       "metadata": {}
     },
     {
@@ -36064,7 +39974,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.26",
+      "node_pack_version": "0.1.28",
       "metadata": {}
     },
     {
@@ -36075,7 +39985,7 @@
       "description": "Extract Boundary",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.26",
+      "version": "0.1.28",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -38663,7 +42573,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.26",
+      "node_pack_version": "0.1.28",
       "metadata": {}
     },
     {
@@ -39060,7 +42970,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.26",
+      "node_pack_version": "0.1.28",
       "metadata": {}
     },
     {
@@ -39560,7 +43470,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.26",
+      "node_pack_version": "0.1.28",
       "metadata": {}
     },
     {
@@ -39571,7 +43481,7 @@
       "description": "Height Query",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.26",
+      "version": "0.1.28",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -40178,7 +44088,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.26",
+      "node_pack_version": "0.1.28",
       "metadata": {}
     },
     {
@@ -40189,7 +44099,7 @@
       "description": "Measure Step",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.26",
+      "version": "0.1.28",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -40837,7 +44747,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.26",
+      "node_pack_version": "0.1.28",
       "metadata": {}
     },
     {
@@ -42273,7 +46183,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.26",
+      "node_pack_version": "0.1.28",
       "metadata": {}
     },
     {
@@ -42534,7 +46444,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.26",
+      "node_pack_version": "0.1.28",
       "metadata": {}
     },
     {
@@ -42545,7 +46455,7 @@
       "description": "Build Frame",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.26",
+      "version": "0.1.28",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -42893,7 +46803,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.26",
+      "node_pack_version": "0.1.28",
       "metadata": {}
     },
     {
@@ -42904,7 +46814,7 @@
       "description": "Transform Cloud",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.26",
+      "version": "0.1.28",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -42950,7 +46860,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.26",
+      "node_pack_version": "0.1.28",
       "metadata": {}
     },
     {
@@ -42961,7 +46871,7 @@
       "description": "Read Cloud",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.26",
+      "version": "0.1.28",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -43330,7 +47240,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.26",
+      "node_pack_version": "0.1.28",
       "metadata": {}
     },
     {
@@ -43402,7 +47312,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.26",
+      "node_pack_version": "0.1.28",
       "metadata": {}
     },
     {
@@ -43540,7 +47450,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.26",
+      "node_pack_version": "0.1.28",
       "metadata": {}
     },
     {
@@ -43661,7 +47571,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.26",
+      "node_pack_version": "0.1.28",
       "metadata": {}
     },
     {
@@ -43889,7 +47799,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.26",
+      "node_pack_version": "0.1.28",
       "metadata": {}
     },
     {
@@ -44288,7 +48198,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.26",
+      "node_pack_version": "0.1.28",
       "metadata": {}
     },
     {
@@ -44299,7 +48209,7 @@
       "description": "Cloud Preview",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.26",
+      "version": "0.1.28",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -44513,7 +48423,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.26",
+      "node_pack_version": "0.1.28",
       "metadata": {}
     },
     {
@@ -44524,7 +48434,7 @@
       "description": "Save Cloud",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.26",
+      "version": "0.1.28",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -44688,7 +48598,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.26",
+      "node_pack_version": "0.1.28",
       "metadata": {}
     },
     {
@@ -44887,7 +48797,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.26",
+      "node_pack_version": "0.1.28",
       "metadata": {}
     }
   ],

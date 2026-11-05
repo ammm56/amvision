@@ -25,8 +25,8 @@ from backend.contracts.workflows.geometry3d_methods import FrameBuildMethod
 from backend.contracts.workflows.registration3d import RegistrationMethod
 from backend.contracts.workflows.pose3d_operations import (
     PoseOperationMethod,
-    require_same_matrix,
 )
+from backend.contracts.workflows.frame3d_evidence import require_same_matrix
 from backend.contracts.workflows.boundary3d_preview import CurveDisplay
 
 
@@ -127,6 +127,11 @@ class GeometryPreview(Contract):
                 check_frame_metrics(frame.quality)
             elif isinstance(frame.method, RegistrationMethod):
                 frame.method.check_quality(frame.quality)
+                frame.method.check_search_result(
+                    frame.state,
+                    frame.reason,
+                    frame.transform.matrix if frame.transform else None,
+                )
                 p = frame.method.parameters
                 if (
                     frame.pose_id,
