@@ -52,7 +52,7 @@ type Action = 'create' | 'info' | 'edit' | 'sdk' | 'delete'
 const dialog = ref<{ action: Action; project?: ProjectCatalogItem; operationId?: string; creation?: PendingCreation } | null>(null)
 const pending = ref(readPendingDeletions(session.currentUser?.principal_id || ''))
 const pendingCreations = ref<PendingCreation[]>([])
-const hiddenCurrent = computed(() => store.selectedProject && !items.value.some(item => item.project_id === store.selectedProjectId) ? store.selectedProject : null)
+const hiddenCurrent = computed(() => !loading.value && !error.value && store.selectedProject && !items.value.some(item => item.project_id === store.selectedProjectId) ? store.selectedProject : null)
 const duplicateNames = computed(() => {
   const names = new Set<string>(), duplicates = new Set<string>()
   for (const item of items.value) { const name = projectName(item).toLocaleLowerCase(); if (names.has(name)) duplicates.add(name); names.add(name) }

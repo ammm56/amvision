@@ -70,6 +70,21 @@ it('受限账号保留项目与数据集入口，隐藏 SDK 和无权动作', as
   expect(wrapper!.text()).not.toContain('SDK'); expect(wrapper!.text()).not.toContain('创建部署'); expect(wrapper!.text()).not.toContain('编辑项目')
 })
 
+it('全部更新不足一页或筛选无结果时不显示分页，跨页仍可翻页', async () => {
+  vi.mocked(getProjectOverview).mockResolvedValue({ ...overview, total: 1 })
+  await open('/projects/project-1')
+  await wrapper!.findAll('button').find(button => button.text() === '查看全部')!.trigger('click'); await flushPromises()
+  expect(wrapper!.find('.pagination-controls').exists()).toBe(false)
+  vi.mocked(getProjectOverview).mockResolvedValue({ ...overview, total: 21 })
+  await wrapper!.get('button[aria-label="刷新"]').trigger('click'); await flushPromises()
+  expect(wrapper!.find('.pagination-controls').exists()).toBe(true)
+  vi.mocked(getProjectOverview).mockResolvedValue({ ...overview, recent: [], total: 0 })
+  await wrapper!.get('.project-activity-filters input').setValue('无匹配')
+  await wrapper!.get('.project-activity-filters').trigger('submit'); await flushPromises()
+  expect(wrapper!.text()).toContain('没有匹配的资源')
+  expect(wrapper!.find('.pagination-controls').exists()).toBe(false)
+})
+
 it('无执行任务时不展示任务分组或占位，保留服务与快捷入口', async () => {
   vi.mocked(getProjectOverview).mockResolvedValue({ ...overview, active: [{ resource_id: 'runtime-1', name: '产线检测', kind: 'runtime', state: 'running', occurred_at: '2026-11-04T01:00:00Z' }] })
   await open('/projects/project-1')
@@ -101,6 +116,22 @@ it.each([403, 404])('概览 %s 隐藏旧信息并能返回列表', async status 
   expect(wrapper!.text()).not.toContain('内部详情')
   await wrapper!.findAll('button').find(item => item.text() === '返回项目列表')!.trigger('click'); await flushPromises()
   expect(router.currentRoute.value.path).toBe('/projects')
+})
+
+it('列表尚未返回或请求失败时不误报当前项目位于结果外', async () => {
+  const store = useProjectStore()
+  store.projects = [project]; store.selectedProjectId = project.project_id
+  let finish!: (value: typeof page) => void
+  vi.mocked(listProjects).mockReturnValueOnce(new Promise(resolve => { finish = resolve }))
+  await open('/projects')
+  expect(wrapper!.text()).toContain('正在加载')
+  expect(wrapper!.find('.project-current-location').exists()).toBe(false)
+  finish(page); await flushPromises()
+  expect(wrapper!.find('.project-current-location').exists()).toBe(false)
+  vi.mocked(listProjects).mockRejectedValueOnce(new ApiError(403, { message: '无权访问' }))
+  await wrapper!.findAll('button').find(button => button.text() === '刷新')!.trigger('click'); await flushPromises()
+  expect(wrapper!.find('.project-current-location').exists()).toBe(false)
+  expect(wrapper!.find('[role="alert"]').exists()).toBe(true)
 })
 
 it('名称按钮仅选择，查看独立导航；隐藏的当前项目可定位', async () => {

@@ -3,6 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { i18n } from '@/platform/i18n'
 import { ApiError } from '@/shared/api/error'
 import ProjectMetadataDrawer from './ProjectMetadataDrawer.vue'
+import SideDrawer from '@/shared/ui/components/SideDrawer.vue'
 import { createProject, getProject, updateProject } from '../services/project.service'
 import { readPendingCreations, readPendingEdit } from '../project-recovery'
 
@@ -37,6 +38,9 @@ it('保存响应丢失但读回内容相同，按已保存处理，不重复 PAT
   vi.mocked(updateProject).mockRejectedValue(new Error('响应丢失'))
   vi.mocked(getProject).mockResolvedValue({ ...project, display_name: '本地修改', revision: 'b'.repeat(64) })
   await open(); await submit()
+  expect(wrapper!.emitted('saved')).toBeUndefined()
+  expect(wrapper!.getComponent(SideDrawer).props('open')).toBe(false)
+  wrapper!.getComponent(SideDrawer).vm.$emit('after-leave'); await flushPromises()
   expect(wrapper!.emitted('saved')?.[0][0]).toMatchObject({ display_name: '本地修改' })
   expect(updateProject).toHaveBeenCalledTimes(1)
   expect(readPendingEdit('user', project.project_id)).toBeNull()

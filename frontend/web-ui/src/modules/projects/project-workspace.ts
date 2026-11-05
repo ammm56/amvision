@@ -135,6 +135,7 @@ const labels = {
   disabledTriggers: ['包含未启用的触发入口', 'Include disabled triggers', '無効なトリガーを含める', '비활성 트리거 포함'],
   token: ['包含当前访问凭据', 'Include current access credential', '現在の認証情報を含める', '현재 접근 자격 증명 포함'],
   files: ['配置文件', 'Configuration files', '設定ファイル', '구성 파일'],
+  resourceFiles: ['文件', 'Files', 'ファイル', '파일'],
   server: ['服务地址', 'Service URL', 'サービス URL', '서비스 주소'],
   noResources: ['暂无可导出的资源', 'No exportable resources', 'エクスポート可能なリソースなし', '내보낼 리소스 없음'],
   remove: ['删除项目', 'Delete project', 'プロジェクトを削除', '프로젝트 삭제'],

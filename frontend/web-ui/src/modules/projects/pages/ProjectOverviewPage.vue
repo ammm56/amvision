@@ -16,7 +16,7 @@
         <form class="project-activity-filters" @submit.prevent="filterRecent"><input v-model="activityQuery" :placeholder="text('searchActivity')" :aria-label="text('searchActivity')" /><SelectField v-model="activityKind" :options="kindOptions" :aria-label="text('allTypes')" @update:model-value="filterRecent" /><Button type="submit">{{ text('searchAction') }}</Button><Button v-if="activityQuery || activityKind" @click="activityQuery = ''; activityKind = ''; filterRecent()">{{ text('clear') }}</Button></form>
         <ProjectActivityTable v-if="overview?.recent.length" :items="overview.recent" v-bind="tableProps" @open="openItem" />
         <p v-else class="project-empty-inline">{{ text(loading ? 'loading' : activityError ? 'failedRequest' : activityQuery || activityKind ? 'noMatchesResources' : 'noActivity') }}</p>
-        <PaginationControls :offset="activityOffset" :limit="20" :item-count="overview?.recent.length || 0" :total-count="overview?.total ?? null" :has-more="activityOffset + 20 < (overview?.total || 0)" :disabled="loading" @previous="pageRecent(-20)" @next="pageRecent(20)" />
+        <PaginationControls v-if="activityOffset > 0 || (overview?.total || 0) > 20" :offset="activityOffset" :limit="20" :item-count="overview?.recent.length || 0" :total-count="overview?.total ?? null" :has-more="activityOffset + 20 < (overview?.total || 0)" :disabled="loading" @previous="pageRecent(-20)" @next="pageRecent(20)" />
       </section>
       <template v-else>
         <div class="project-overview-panels">

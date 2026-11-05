@@ -201,3 +201,28 @@ npm --prefix frontend/web-ui run build
 - 验证完成恢复亮色；开发服务继续运行。本次未在 `.tmp` 创建临时产物。
 
 证据：[原删除框](../design/frontend/verification/projects-dialogs-20261105/01-delete-before.png)、[亮色删除确认](../design/frontend/verification/projects-dialogs-20261105/04-delete-after-light.png)、[暗色删除确认](../design/frontend/verification/projects-dialogs-20261105/07-delete-after-dark.png)、[编辑抽屉](../design/frontend/verification/projects-dialogs-20261105/03-edit-after.png)、[创建抽屉](../design/frontend/verification/projects-dialogs-20261105/06-create-after-light.png)、[暗色详情](../design/frontend/verification/projects-dialogs-20261105/08-info-after-dark.png)。
+
+## 追加：项目分类进入下一分类前复核（2026-11-05）
+
+基线：`6c52bc23`。本节以最近确认的紧凑列表、查看与更多菜单、中性轻提示、简化删除内容为准；此前删除明细、技术信息、手动核对及浏览器缩放要求已被后续意见替代，不恢复这些交互。
+
+本轮发现并修复：
+
+1. 数据集／模型版本详情仍直接卸载，未执行公共抽屉退场。改为先关闭，再在 `after-leave` 通知父页面；关闭后恢复入口焦点、背景滚动和交互。
+2. 概览“查看全部”在不足一页或筛选无结果时仍显示分页。与项目列表统一：存在跨页或处于后续页时才显示。
+3. 模型版本的权重、标签和指标文件被标成“配置文件”。改为“文件”；SDK 专用文案保持不变，四种语言同步。
+4. 返回列表时，结果尚未加载就短暂显示当前项目定位提示。读取成功且项目确实不在结果中才显示；加载／失败时不误报。
+
+同时修正一项编辑恢复测试：保存核对成功后，等待真实抽屉退场再断言父组件事件，遵守已实现的动效生命周期，不改保存逻辑。
+
+验证结果：
+
+- 项目、Store、SideDrawer、ConfirmDialog 和模态层共 10 文件、78 项测试通过；最后增加加载提示回归并修正文件文案后，受影响的页面和资源抽屉 2 文件、24 项复测通过。`npm --prefix frontend/web-ui run build` 通过 TypeScript 检查及正式构建。现有 WorkflowEditor／CloudViewer 分块仍有超过 500 kB 的体积提示，不属于本次项目页面运行错误。
+- 后端项目 API、访问边界、SDK 配置包及资源清理共 22 项 pytest 通过，使用隔离数据库和临时目录；未修改后端协议或 Runtime／Trigger 数据面。
+- 真实开发环境完成：列表与项目切换 → 创建草稿取消／保留 → 创建成功完整列表 → 编辑保存 → 空项目概览与 SDK 禁用 → 默认项目概览及全部记录筛选 → 数据集／模型版本详情 → SDK 范围筛选、返回预览及实际下载 → 临时项目名称确认与删除完成。
+- SDK 搜索无匹配不清空 37 个已选资源；筛选后取消一项仅改变可见选择，返回预览不应用未确认修改。实际下载包含 18 个配置 JSON、manifest 和 README，JSON 均可解析；取消访问凭据后，所有 token 字段为占位符，无真实凭据。
+- 使用本次创建的独立空项目验证写操作，完成后已删除；原有“测试1”“测试”“默认项目”及资源未变更。真实删除经自动结果查询进入“项目已移除”，没有重复删除、额外核对按钮或成功横幅。
+- 内置浏览器核对亮暗主题及 1280×720 短屏：没有页面横向溢出，状态可完整读取，抽屉标题／底栏可达。关闭后无残留 inert 或滚动锁，焦点回到打开入口；浏览器 warning/error 为空。故障、权限、并发和结果不明分支使用回归测试验证，未故意中断生产服务或撤销真实账号权限。
+- 已恢复亮色和默认项目；本轮 pytest 临时目录及验证下载 ZIP 已清理。开发后端 liveness 为 ready，前端 HTTP 200，服务继续运行。
+
+结论：最近确认的项目分类范围未发现剩余阻塞项，可以进入数据集分类实现。本结论限定于上述页面、交互和回归范围，不代表全平台或所有潜在异常均已验收。
