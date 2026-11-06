@@ -66,3 +66,14 @@ def test_child_rejects_shared_listener():
     """防止后续接线重新把父进程 socket 交给子进程。"""
     with pytest.raises(ValueError, match="socket"):
         reload_server.serve(Mock(), sockets=[Mock()])
+
+
+def test_windows_reload_child_restores_console_interrupt(monkeypatch):
+    """只在子进程启用 Ctrl+C，不改变父进程组控制规则。"""
+    import ctypes
+    kernel = Mock()
+    kernel.SetConsoleCtrlHandler.return_value = 1
+    monkeypatch.setattr(reload_server.sys, 'platform', 'win32')
+    monkeypatch.setattr(ctypes, 'WinDLL', Mock(return_value=kernel), raising=False)
+    reload_server.enable_reload_interrupt()
+    kernel.SetConsoleCtrlHandler.assert_called_once_with(None, False)
