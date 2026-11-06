@@ -1,7 +1,6 @@
 """真实发布版本、准入和独立 worker 的点云验收，不使用 FakeRuntime。"""
 
 import json
-from hashlib import sha256, file_digest
 from pathlib import Path
 import platform
 import subprocess
@@ -17,12 +16,11 @@ from tests.integration.metrology3d.published_client import (
 )
 from tests.test_point_cloud_trigger import descriptor
 from tests.integration.metrology3d.published_support import published_system, wait_for
-from tests.integration.metrology3d.test_transport_full_sample import (
-    FILE_SHA,
+from tests.integration.metrology3d.full_cloud_sample import (
+    sample_array,
     ARRAY_SHA,
     POINTS,
 )
-from backend.contracts.workflows.point_cloud import CloudBufferDescriptor
 
 ROOT = Path(__file__).resolve().parents[3]
 PROBE = (
@@ -58,49 +56,6 @@ def test_real_published_small_cloud(tmp_path):
         assert run["workflow_app_version_id"] == version
         assert run["worker_instance_id"] == runtime["worker_instance_id"]
         system.assert_reclaimed()
-
-
-def sample_array(sample, destination):
-    """用受控 parser 读取完整原始样本，不自行解码、不只取样本前缀。"""
-    from trimesh.exchange.ply import read_ply_header, read_ply_data
-
-    with sample.open("rb") as stream:
-        assert file_digest(stream, "sha256").hexdigest() == FILE_SHA
-        stream.seek(0)
-        header = read_ply_header(stream, max_header_bytes=65536)
-        data = read_ply_data(
-            stream,
-            header,
-            max_decoded_bytes=400000000,
-            chunk_rows=65536,
-            chunk_bytes=4194304,
-        )
-    assert len(data) == POINTS and data.dtype.names == ("x", "y", "z")
-    digest = sha256()
-    with destination.open("wb") as stream:
-        for start in range(0, POINTS, 65536):
-            block = np.column_stack(
-                [data[key][start : start + 65536] for key in data.dtype.names]
-            )
-            assert block.dtype == np.dtype("<f4")
-            with memoryview(block).cast("B") as view:
-                digest.update(view)
-                stream.write(view)
-    assert digest.hexdigest() == ARRAY_SHA
-    cloud = descriptor().model_dump(mode="json")
-    cloud.update(point_count=POINTS, content_length=POINTS * 12)
-    cloud["fields"][0].update(count=POINTS, byte_length=POINTS * 12)
-    cloud["spatial"] = dict(
-        length_unit=None,
-        unit_source="unknown",
-        frame_id="sample-source",
-        axes=dict(
-            handedness="unknown",
-            axis_labels=["X", "Y", "Z"],
-            definition_source="unknown",
-        ),
-    )
-    return CloudBufferDescriptor.model_validate(cloud)
 
 
 def dotnet_command(

@@ -50,9 +50,7 @@ from tests.metrology3d_transport_support import (
     cloud_snapshot_child,
 )
 
-FILE_SHA = "ff2b9e0ef2d6c45af02c4bf8d474cd82f77f86ad92bd371a4c0f71b1b90d116b"
-ARRAY_SHA = "956927f058ba4a0170b1c1b93b1411b613fbe21fcbfc278ad0a7fc3cf621a1c6"
-POINTS = 14_745_099
+from tests.integration.metrology3d.full_cloud_sample import FILE_SHA, ARRAY_SHA, POINTS
 
 
 def test_small_array_spawn_contract(tmp_path):

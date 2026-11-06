@@ -4,6 +4,7 @@
 
 ## 验收与基准
 
+- [B08 通用高度图](3d-metrology-height-map.md)：固定格/本次 Pose、四方法、逐格贡献来源及 Scope 内核；区分已验证计算与尚未接通的高度图输出资产、公开节点和页面。
 - [B07 扫描轮廓输入](3d-metrology-profile-input.md)：0.1.30/26 节点；双方法、原行表所有权/存读、公开 Profiles to Cloud、Trigger/Python/Windows .NET 和参数/显示接通。大成员 NPZ 读取修复、双平台组合及页面证据见第 6 节；实采/最大载荷/新发行范围独立保留。
 - [B06 审计与后续实施步骤](3d-metrology-b06-review.md)：保留修复前复现；跨代标定来源、重复摘要扫描与输入/内存边界已修复，Windows/WSL 各 309 项组合通过（含 B07 内核）；真实发布分别 7 项、6 项通过/1 项平台跳过，Windows 第三代资产像素显示已验，测试环境已清理。
 - [B06 标定栅格输入与点云来源](3d-metrology-raster-input.md)：0.1.29 二十五节点；针孔深度/正交高度、文件/数组标定来源、Trigger/Python/.NET、像素身份/保存和参数工作区；双平台真实发布与 Windows 页面，明确实采/容量/发行剩余范围。
