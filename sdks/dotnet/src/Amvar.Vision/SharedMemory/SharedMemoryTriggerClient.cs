@@ -91,7 +91,7 @@ namespace Amvar.Vision.SharedMemory
             JObject descriptor, byte[] content, SharedMemoryTriggerRequest request)
         {
             if (content == null) throw new ArgumentNullException(nameof(content));
-            var frozen = ValidateCloudDescriptor(descriptor, request);
+            var frozen = ValidateArrayDescriptor(descriptor, request, "amvision.point-cloud-buffer.v1");
             if (content.LongLength != frozen.Value<long>("content_length"))
                 throw new ArgumentException("Point cloud content length does not match descriptor.", nameof(content));
             return Invoke(content.LongLength, "application/vnd.amvision.point-cloud-buffer",
@@ -106,18 +106,64 @@ namespace Amvar.Vision.SharedMemory
             JObject descriptor, SharedMemoryTriggerBufferWriter fill, SharedMemoryTriggerRequest request)
         {
             if (fill == null) throw new ArgumentNullException(nameof(fill));
-            var frozen = ValidateCloudDescriptor(descriptor, request);
+            var frozen = ValidateArrayDescriptor(descriptor, request, "amvision.point-cloud-buffer.v1");
             return Invoke(frozen.Value<long>("content_length"), "application/vnd.amvision.point-cloud-buffer",
                 request, null, null, null, null, writer => writer.Write(fill), CreateTimings(request), frozen);
         }
 
-        private static JObject ValidateCloudDescriptor(JObject descriptor, SharedMemoryTriggerRequest request)
+        /// <summary>提交标定标量与可选掩码；服务端分配前校验完整标定，不转换为 uint8 图片。</summary>
+        public SharedMemoryTriggerResult InvokeCalibratedRaster(
+            JObject descriptor, byte[] content, SharedMemoryTriggerRequest request)
+        {
+            if (content == null) throw new ArgumentNullException(nameof(content));
+            var frozen = ValidateArrayDescriptor(descriptor, request, "amvision.raster-buffer.v1");
+            if (content.LongLength != frozen.Value<long>("content_length"))
+                throw new ArgumentException("Raster length does not match descriptor.", nameof(content));
+            return Invoke(content.LongLength, "application/vnd.amvision.raster-buffer",
+                request, null, null, null, null, writer => writer.Write(content), CreateTimings(request), frozen, PreparedArrayKind.Raster);
+        }
+
+        /// <summary>在现有 writer 生命周期内填写标量载荷；回调异常沿同一取消路径回收。</summary>
+        public SharedMemoryTriggerResult InvokeCalibratedRaster(
+            JObject descriptor, SharedMemoryTriggerBufferWriter fill, SharedMemoryTriggerRequest request)
+        {
+            if (fill == null) throw new ArgumentNullException(nameof(fill));
+            var frozen = ValidateArrayDescriptor(descriptor, request, "amvision.raster-buffer.v1");
+            return Invoke(frozen.Value<long>("content_length"), "application/vnd.amvision.raster-buffer",
+                request, null, null, null, null, writer => writer.Write(fill), CreateTimings(request), frozen, PreparedArrayKind.Raster);
+        }
+
+        /// <summary>提交完整标定轮廓、原始行表和可选有效标记，不排序或补点。</summary>
+        public SharedMemoryTriggerResult InvokeCalibratedProfiles(
+            JObject descriptor, byte[] content, SharedMemoryTriggerRequest request)
+        {
+            if (content == null) throw new ArgumentNullException(nameof(content));
+            var frozen = ValidateArrayDescriptor(descriptor, request, "amvision.profile-buffer.v1");
+            if (content.LongLength != frozen.Value<long>("content_length"))
+                throw new ArgumentException("Profile length does not match descriptor.", nameof(content));
+            return Invoke(content.LongLength, "application/vnd.amvision.profile-buffer",
+                request, null, null, null, null, writer => writer.Write(content), CreateTimings(request), frozen, PreparedArrayKind.Profiles);
+        }
+
+        /// <summary>在既有 writer guard 内填写轮廓；失败使用同一取消和回收路径。</summary>
+        public SharedMemoryTriggerResult InvokeCalibratedProfiles(
+            JObject descriptor, SharedMemoryTriggerBufferWriter fill, SharedMemoryTriggerRequest request)
+        {
+            if (fill == null) throw new ArgumentNullException(nameof(fill));
+            var frozen = ValidateArrayDescriptor(descriptor, request, "amvision.profile-buffer.v1");
+            return Invoke(frozen.Value<long>("content_length"), "application/vnd.amvision.profile-buffer",
+                request, null, null, null, null, writer => writer.Write(fill), CreateTimings(request), frozen, PreparedArrayKind.Profiles);
+        }
+
+        private enum PreparedArrayKind { Cloud, Raster, Profiles }
+
+        private static JObject ValidateArrayDescriptor(JObject descriptor, SharedMemoryTriggerRequest request, string format)
         {
             if (descriptor == null) throw new ArgumentNullException(nameof(descriptor));
             if (request == null || string.IsNullOrWhiteSpace(request.InputBinding))
                 throw new ArgumentException("Point cloud requires an explicit InputBinding.", nameof(request));
             var frozen = (JObject)descriptor.DeepClone();
-            if (frozen.Value<string>("format_id") != "amvision.point-cloud-buffer.v1"
+            if (frozen.Value<string>("format_id") != format
                 || frozen["content_length"]?.Type != JTokenType.Integer)
                 throw new ArgumentException("Point cloud descriptor format or length is invalid.", nameof(descriptor));
             var size = frozen.Value<long>("content_length");
@@ -428,7 +474,8 @@ namespace Amvar.Vision.SharedMemory
             string? pixelFormat,
             Action<ExternalLocalBufferWriter> write,
             SharedMemoryTriggerTimings? timings,
-            JObject? cloudDescriptor = null)
+            JObject? cloudDescriptor = null,
+            PreparedArrayKind arrayKind = PreparedArrayKind.Cloud)
         {
             BeginInvocation();
             try
@@ -443,7 +490,8 @@ namespace Amvar.Vision.SharedMemory
                     pixelFormat,
                     write,
                     timings,
-                    cloudDescriptor);
+                    cloudDescriptor,
+                    arrayKind);
             }
             finally
             {
@@ -461,7 +509,8 @@ namespace Amvar.Vision.SharedMemory
             string? pixelFormat,
             Action<ExternalLocalBufferWriter> write,
             SharedMemoryTriggerTimings? timings,
-            JObject? cloudDescriptor)
+            JObject? cloudDescriptor,
+            PreparedArrayKind arrayKind)
         {
             if (contentLength <= 0)
             {
@@ -477,11 +526,12 @@ namespace Amvar.Vision.SharedMemory
             var preparePayload = cloudDescriptor != null
                 ? WorkflowJsonDefaults.SerializeToUtf8Bytes(new JObject
                 {
-                    ["format_id"] = "amvision.workflow-trigger-cloud-prepare.v1",
+                    ["format_id"] = arrayKind == PreparedArrayKind.Profiles ? "amvision.workflow-trigger-profile-prepare.v1"
+                        : arrayKind == PreparedArrayKind.Raster ? "amvision.workflow-trigger-raster-prepare.v1" : "amvision.workflow-trigger-cloud-prepare.v1",
                     ["trigger_source_id"] = options.TriggerSourceId,
                     ["event_id"] = eventId,
                     ["event_payload_key"] = inputBinding,
-                    ["cloud"] = cloudDescriptor
+                    [arrayKind == PreparedArrayKind.Profiles ? "profiles" : arrayKind == PreparedArrayKind.Raster ? "raster" : "cloud"] = cloudDescriptor
                 })
                 : WorkflowJsonDefaults.SerializeToUtf8Bytes(new WorkflowTriggerPrepare
             {
@@ -498,7 +548,11 @@ namespace Amvar.Vision.SharedMemory
                     PixelFormat = NormalizeOptional(pixelFormat)
                 }
             });
-            var claimed = cloudDescriptor != null ? mailbox.ClaimCloud(
+            var claimed = arrayKind == PreparedArrayKind.Profiles ? mailbox.ClaimProfiles(
+                checked((uint)Math.Ceiling(options.Timeout.TotalMilliseconds)),
+                checked((ulong)options.RouteGeneration), preparePayload, Guid.NewGuid()) : arrayKind == PreparedArrayKind.Raster ? mailbox.ClaimRaster(
+                checked((uint)Math.Ceiling(options.Timeout.TotalMilliseconds)),
+                checked((ulong)options.RouteGeneration), preparePayload, Guid.NewGuid()) : cloudDescriptor != null ? mailbox.ClaimCloud(
                 checked((uint)Math.Ceiling(options.Timeout.TotalMilliseconds)),
                 checked((ulong)options.RouteGeneration), preparePayload, Guid.NewGuid()) : mailbox.Claim(
                 checked((uint)Math.Ceiling(options.Timeout.TotalMilliseconds)),

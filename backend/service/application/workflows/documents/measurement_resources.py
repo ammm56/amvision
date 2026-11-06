@@ -155,6 +155,9 @@ class MeasurementResourceService:
                 )
             try:
                 yield
+            except InterruptedError:
+                # 取消不是磁盘故障；保留原异常供运行控制层处理。
+                raise
             except OSError as exc:
                 raise PersistenceOperationError(
                     "计量资源文件操作失败，请检查文件占用、权限或磁盘空间后重新操作",

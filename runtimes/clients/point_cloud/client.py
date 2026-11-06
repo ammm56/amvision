@@ -17,6 +17,10 @@ from backend.contracts.workflows.point_cloud import CloudBufferDescriptor
 from backend.contracts.workflows.point_cloud_trigger import (
     WorkflowTriggerCloudPrepareV1,
 )
+from backend.contracts.workflows.raster3d import RasterBufferDescriptor
+from backend.contracts.workflows.raster_trigger import WorkflowTriggerRasterPrepareV1
+from backend.contracts.workflows.profile3d import ProfileBufferDescriptor
+from backend.contracts.workflows.profile_trigger import WorkflowTriggerProfilePrepareV1
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.local_buffers import LocalBufferBrokerSettings
 from backend.service.application.local_buffers.direct_mmap_reader import (
@@ -60,26 +64,104 @@ class PointCloudClient:
         cancelled: Callable[[], bool] | None = None,
     ) -> dict:
         """提交完整紧密数组或数组文件；响应 ACK 后返回，不返回悬空共享内存。"""
+        prepare = WorkflowTriggerCloudPrepareV1(
+            trigger_source_id=source_id,
+            event_id=uuid4().hex,
+            event_payload_key=payload_key,
+            cloud=CloudBufferDescriptor.model_validate(cloud.model_dump(mode="json")),
+        )
+        return self._invoke(
+            prepare,
+            cloud.content_length,
+            generation,
+            content,
+            timeout_ms,
+            payload,
+            cancelled,
+        )
+
+    def invoke_raster(
+        self,
+        *,
+        source_id: str,
+        generation: int,
+        raster: RasterBufferDescriptor,
+        content: bytes | bytearray | memoryview | Path,
+        timeout_ms: int,
+        payload_key: str = "raster",
+        payload: dict | None = None,
+        cancelled: Callable[[], bool] | None = None,
+    ) -> dict:
+        """提交完整标量及可选掩码；标定随 PREPARE 固定，不允许 REQUEST 覆盖。"""
+        prepare = WorkflowTriggerRasterPrepareV1(
+            trigger_source_id=source_id,
+            event_id=uuid4().hex,
+            event_payload_key=payload_key,
+            raster=RasterBufferDescriptor.model_validate(
+                raster.model_dump(mode="json")
+            ),
+        )
+        return self._invoke(
+            prepare,
+            raster.content_length,
+            generation,
+            content,
+            timeout_ms,
+            payload,
+            cancelled,
+        )
+
+    def invoke_profiles(
+        self,
+        *,
+        source_id: str,
+        generation: int,
+        profiles: ProfileBufferDescriptor,
+        content: bytes | bytearray | memoryview | Path,
+        timeout_ms: int,
+        payload_key: str = "profiles",
+        payload: dict | None = None,
+        cancelled: Callable[[], bool] | None = None,
+    ) -> dict:
+        """提交完整轮廓和行表，复用固定 PREPARE 与同一次 ACK 生命周期。"""
+        prepare = WorkflowTriggerProfilePrepareV1(
+            trigger_source_id=source_id,
+            event_id=uuid4().hex,
+            event_payload_key=payload_key,
+            profiles=ProfileBufferDescriptor.model_validate(
+                profiles.model_dump(mode="json")
+            ),
+        )
+        return self._invoke(
+            prepare,
+            prepare.profiles.content_length,
+            generation,
+            content,
+            timeout_ms,
+            payload,
+            cancelled,
+        )
+
+    def _invoke(
+        self,
+        prepared,
+        content_length,
+        generation,
+        content,
+        timeout_ms,
+        payload,
+        cancelled,
+    ):
+        """所有数组共用同一个 writer、总时限、ACK 与取消路径。"""
         if type(timeout_ms) is not int or timeout_ms <= 0:
             raise ValueError("timeout_ms 必须是正整数")
-        cloud = CloudBufferDescriptor.model_validate(cloud.model_dump(mode="json"))
-        event_id = uuid4().hex
-        if payload and payload_key in payload:
-            raise ValueError("payload 不能覆盖点云绑定")
-        prepare = (
-            WorkflowTriggerCloudPrepareV1(
-                trigger_source_id=source_id,
-                event_id=event_id,
-                event_payload_key=payload_key,
-                cloud=cloud,
-            )
-            .model_dump_json()
-            .encode()
-        )
+        if payload and prepared.event_payload_key in payload:
+            raise ValueError("payload 不能覆盖数组绑定")
+        prepare = prepared.model_dump_json().encode()
         request = (
             WorkflowTriggerRequestV1(
-                trigger_source_id=source_id,
-                event_id=event_id,
+                trigger_source_id=prepared.trigger_source_id,
+                event_id=prepared.event_id,
                 payload=payload or {},
             )
             .model_dump_json()
@@ -113,11 +195,18 @@ class PointCloudClient:
                     raise ValueError("点云数组必须是 C-contiguous")
                 source = stack.enter_context(source.cast("B"))
                 size = source.nbytes
-            if size != cloud.content_length:
+            if size != content_length:
                 raise ValueError("点云载荷长度与 descriptor 不一致")
             check()
             with WorkflowTriggerMailboxClient(buffers_root=self.buffers_root) as client:
-                identity = client.claim_cloud(
+                claim = (
+                    client.claim_profiles
+                    if isinstance(prepared, WorkflowTriggerProfilePrepareV1)
+                    else client.claim_raster
+                    if isinstance(prepared, WorkflowTriggerRasterPrepareV1)
+                    else client.claim_cloud
+                )
+                identity = claim(
                     timeout_ms=timeout_ms,
                     route_generation=generation,
                     prepare_payload=prepare,
@@ -142,7 +231,7 @@ class PointCloudClient:
                         )
                         try:
                             with access.acquire_writer_view(allocation) as target:
-                                if len(target) != cloud.content_length:
+                                if len(target) != content_length:
                                     raise ValueError("writer 容量与点云长度不一致")
                                 for offset in range(0, size, 4 * 1024 * 1024):
                                     check()

@@ -74,6 +74,7 @@ class CloudDetailIndex(Contract):
     blocks: tuple[DetailBlock, ...]
     voxel: DetailVoxel | None = None
     normal_info: CloudNormalInfo | None = None
+    profile_records: bool = Field(default=False, strict=True)
 
     @model_validator(mode="after")
     def validate_layout(self):
@@ -105,6 +106,15 @@ class CloudDetailIndex(Contract):
             self.normal_info.check_fields(
                 self.fields, self.spatial, generated=self.vertex_kind == "generated"
             )
+        if self.profile_records:
+            fields = {f.name: f for f in self.fields}
+            if self.vertex_kind != "source" or any(
+                name not in fields
+                or fields[name].dtype != "uint64"
+                or fields[name].components != 1
+                for name in ("acquisition_line_id", "profile_sample_index")
+            ):
+                raise ValueError("轮廓细节缺少原始采集身份字段")
         if self.voxel is not None:
             if (
                 self.vertex_kind != "generated"

@@ -14,10 +14,14 @@ import ResampleSettingsEditor from '../../../../../../custom_nodes/metrology3d_n
 import NormalsSettingsEditor from '../../../../../../custom_nodes/metrology3d_nodes/frontend/NormalsSettingsEditor.vue'
 import PoseSettingsEditor from '../../../../../../custom_nodes/metrology3d_nodes/frontend/PoseSettingsEditor.vue'
 import RegistrationSettingsEditor from '../../../../../../custom_nodes/metrology3d_nodes/frontend/RegistrationSettingsEditor.vue'
+import RasterSettingsEditor from '../../../../../../custom_nodes/metrology3d_nodes/frontend/RasterSettingsEditor.vue'
+import ProfileSettingsEditor from '../../../../../../custom_nodes/metrology3d_nodes/frontend/ProfileSettingsEditor.vue'
 
 const editors: Record<string, Component> = { 'core.rule.check-limits:rules':WorkflowLimitRulesEditor, 'custom.connector.pin-array-locate:layout': PinLayoutEditor, 'custom.connector.measure:items': MeasurementEditor,
   'custom.opencv.planar-calibrate:control_points':WorkflowCalibrationPointsEditor, 'custom.opencv.planar-calibrate:validation_points':WorkflowCalibrationPointsEditor }
 export function trustedParameterEditor(nodeType: string, parameter: string): Component | undefined {
+  if(nodeType==='custom.metrology3d.profiles-to-cloud'&&parameter==='settings')return ProfileSettingsEditor
+  if(nodeType==='custom.metrology3d.raster-to-cloud'&&parameter==='settings')return RasterSettingsEditor
   if(nodeType==='custom.metrology3d.register-cloud'&&parameter==='settings')return RegistrationSettingsEditor
   if(['custom.metrology3d.invert-pose','custom.metrology3d.compose-pose'].includes(nodeType)&&parameter==='settings')return PoseSettingsEditor
   if(nodeType==='custom.metrology3d.estimate-normals'&&parameter==='settings')return NormalsSettingsEditor

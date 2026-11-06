@@ -132,6 +132,8 @@ def build_index(runtime, cloud, service, root, generation, policy, cancel, owner
                 bounds=dict(min=seed.low.tolist(), max=seed.high.tolist()),
                 fields=fields,
                 normal_info=cloud.normal_info,
+                profile_records=cloud.vertex_kind == "source"
+                and runtime.profile_source(cloud) is not None,
                 row_bytes=dtype.itemsize,
                 logical_dtype=logical,
                 identity_dtype=identity,

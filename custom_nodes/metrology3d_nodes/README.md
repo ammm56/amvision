@@ -4,7 +4,7 @@
 
 ## 节点
 
-- 数据：Read Cloud、Normalize Units、Filter Valid、Denoise Cloud、Resample Cloud、Estimate Normals、Crop ROI、Transform Cloud、Save Cloud、Export Cloud。
+- 数据：Read Cloud、Raster to Cloud、Normalize Units、Filter Valid、Denoise Cloud、Resample Cloud、Estimate Normals、Crop ROI、Transform Cloud、Save Cloud、Export Cloud。
 - 定位与特征：Fit Plane、Build Frame、Invert Pose、Compose Poses、Register Cloud、Extract Boundary、Fit Line、Fit Circle。
 - 测量：Height Query、Measure Step、Measure Extents、Measure Edge Pair、Measure Hole。
 - 显示：Cloud Preview。
@@ -15,7 +15,11 @@ Fit Circle 明确区分等权、`angular-soft-l1` 角区均衡和 `arc-length-so
 
 ## 依赖与启动
 
-当前 `0.1.28` 仍为二十四个节点：Register Cloud 新增显式双基准的三自由度台面局部配准，详见[台面约束记录](../../docs/development/3d-metrology-datum-registration.md)。两套当前有效 Build Frame 沿 `source_datum/reference_datum` 接入，只求 U/V 和绕 Z 转角；对应仍按三维距离，禁止高度漂移、倾斜、缩放、镜像和失败回退。两基准质量、完整来源、面内修正矩阵随 Pose/保存/显示传递。初值、求解预算、停止与工程质量均显式配置，不提供生产猜测值。
+当前 `0.1.30` 为二十六个节点，包含 Raster to Cloud 和 Profiles to Cloud。Raster 文件模式接 `file-ref.v1`，标定由节点参数提供；数组模式接 `calibrated-raster.v1`，使用同机 PREPARE 固定的完整标定，节点不覆盖。两模式显式二选一，不从灰度或文件名猜深度。接线为 Raster to Cloud → Filter Valid → 既有测量/Preview/Save Cloud；原始标量、无效原因、完整像素身份和标定追溯随资产存读保留。Python 和 Windows .NET 调用复用既有 Trigger/LocalBuffer，详见[B06 规格与验收](../../docs/development/3d-metrology-raster-input.md)。
+
+B07 公开节点已接通：固定原采集行号步距/逐行编码器、严格 NPZ/同机数组、原行表 Scope 所有权、原件及派生无损资产，沿已有 Read/Save Cloud、资源 API 和配方资源包工作。Profiles to Cloud 文件模式由节点提供标定，数组模式只接受当前 PREPARE 固定的标定；Trigger/Python/Windows .NET、参数工作区、原行/样点及空行显示同批接通。空行和编码器原值保存在有预算行表块，不靠逐点属性反推、不新增资源系统。详见[B07 规格与回归](../../docs/development/3d-metrology-profile-input.md)；实采 NPZ、最大载荷及最新离线装配仍独立保留，不能用解析真值替代。
+
+前批 `0.1.28` 在 Register Cloud 新增显式双基准的三自由度台面局部配准，详见[台面约束记录](../../docs/development/3d-metrology-datum-registration.md)。两套当前有效 Build Frame 沿 `source_datum/reference_datum` 接入，只求 U/V 和绕 Z 转角；对应仍按三维距离，禁止高度漂移、倾斜、缩放、镜像和失败回退。两基准质量、完整来源、面内修正矩阵随 Pose/保存/显示传递。初值、求解预算、停止与工程质量均显式配置，不提供生产猜测值。
 
 前批 `0.1.27` 在显式初值局部 ICP 外增加 FPFH 粗定位，多批 RANSAC 后复用同一精化/质量。两云须显式提供有效有向法向，重采样由既有节点控制；多个合格但不等价的候选返回 ambiguous，一类候选只表示有限搜索未见多解。详见[粗定位记录](../../docs/development/3d-metrology-coarse-registration.md)及[局部配准记录](../../docs/development/3d-metrology-registration.md)。
 
@@ -44,7 +48,7 @@ python -m pip check
 python -m custom_nodes.metrology3d_nodes.workflow.generate_catalog
 ```
 
-manifest 锁定 NumPy 2.4.4、SciPy 1.18.0、Open3D 0.20.0、trimesh 5.1.1+amvision.2、pypcd4 1.5.1+amvision.2、python-neo-lzf 0.3.5。缺包或版本不符时包仍显示在节点管理中，但不注册可执行节点；安装不会由业务请求或节点自动触发。发行包的 bundled Python 必须安装同一组依赖及其传递依赖，不能只复制节点目录。
+manifest 锁定 NumPy 2.4.4、SciPy 1.18.0、Open3D 0.20.0、Pillow 12.2.0、trimesh 5.1.1+amvision.2、pypcd4 1.5.1+amvision.2、python-neo-lzf 0.3.5。缺包或版本不符时包仍显示在节点管理中，但不注册可执行节点；安装不会由业务请求或节点自动触发。发行包的 bundled Python 必须安装同一组依赖及其传递依赖，不能只复制节点目录。
 
 Windows/Ubuntu x64 为当前支持范围。Ubuntu Open3D 需要可加载的 `libusb-1.0.so.0`；开发环境须满足该依赖，当前 CPU 离线包已将受控 libusb 及许可随包装配，不依赖临时 sysroot 或现场 apt 安装。实际发行验收覆盖 Windows x64 / WSL Ubuntu 24.04 x64，见[CPU 离线发行](../../docs/deployment/cpu-offline-release.md)，不外推任意 Linux。Ubuntu 运行数据库、锁、共享内存及输出目录使用原生文件系统，不使用 `/mnt/w` 的 DrvFS。源码与输入样本可以从挂载盘只读访问。
 

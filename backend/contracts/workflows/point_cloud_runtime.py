@@ -44,6 +44,8 @@ from backend.contracts.workflows.cloud_normal_info import (
     CloudNormalInfo,
     EstimateNormalsMethod,
 )
+from backend.contracts.workflows.raster3d import RasterSource
+from backend.contracts.workflows.profile3d import ProfileSource
 
 
 class NormalizeCloudUnits(Contract):
@@ -311,8 +313,51 @@ class CloudAssetSource(Contract):
         return self
 
 
+class CloudRasterSource(RasterSource):
+    """当前运行的文件引用单独携带，持久来源只保留 RasterSource 正文。"""
+
+    file: dict[str, JsonValue] | None
+
+    @model_validator(mode="after")
+    def check_file(self) -> Self:
+        """来源标签不能与实际固定文件身份冲突。"""
+        if (self.input_format == "array") != (self.file is None):
+            raise ValueError("标量来源与文件引用不一致")
+        if self.file is not None and (
+            self.file.get("file_name"),
+            self.file.get("content_length"),
+            self.file.get("checksum"),
+        ) != (self.file_name, self.content_length, self.content_sha256):
+            raise ValueError("标量文件引用与来源摘要不一致")
+        return self
+
+
+class CloudProfileSource(ProfileSource):
+    """本次运行文件引用；持久内容不保留此访问句柄。"""
+
+    file: dict[str, JsonValue] | None
+
+    @model_validator(mode="after")
+    def check_file(self) -> Self:
+        """文件权限描述必须与固定来源一致。"""
+        if (self.input_format == "array") != (self.file is None):
+            raise ValueError("轮廓来源与文件引用不一致")
+        if self.file is not None and (
+            self.file.get("file_name"),
+            self.file.get("content_length"),
+            self.file.get("checksum"),
+        ) != (self.file_name, self.content_length, self.content_sha256):
+            raise ValueError("轮廓文件引用与摘要不一致")
+        return self
+
+
 CloudSource = Annotated[
-    CloudFileSource | CloudLocalSource | CloudDerivedSource | CloudAssetSource,
+    CloudFileSource
+    | CloudLocalSource
+    | CloudDerivedSource
+    | CloudAssetSource
+    | CloudRasterSource
+    | CloudProfileSource,
     Field(discriminator="kind"),
 ]
 
@@ -415,6 +460,14 @@ class CloudReference(Contract):
             if self.reason is not None or any(value is None for value in identity):
                 raise ValueError("ready 点云缺少资源身份或字段")
             names = [field.name for field in self.fields]
+            if isinstance(self.source, (CloudRasterSource, CloudProfileSource)):
+                self.source.check_cloud(self.point_count, self.spatial, self.fields)
+                if (
+                    self.source_metadata is not None
+                    or self.topology is not None
+                    or self.normal_info is not None
+                ):
+                    raise ValueError("标定原始像素不能混入 PCD 视点或派生几何信息")
             unique_ids(names, "fields")
             if "positions" not in names:
                 raise ValueError("点云必须包含 positions")

@@ -3,6 +3,7 @@ import { resourceVersionPath, type MeasurementResourceReference, type CloudRende
 import { object, count, vector, widths, scalar, decimal, D, reserveCpu, validatePolicy, type CloudDisplayData } from './preview-data'
 import {voxelGrid,voxelCorners,type VoxelGrid} from './voxel-display'
 import {normalNames,normalOrientation,normalPoint} from './normal-display'
+import {profileNames,profilePoint} from './profile-display'
 
 export interface DetailBounds { min: number[]; max: number[] }
 interface DetailField { name: string; dtype: string; components: number; offset: number }
@@ -15,6 +16,7 @@ export interface DetailIndex {
   row_bytes: number; logical_offset: number; identity_offset: number; leaf_limit: number; blocks: DetailBlock[]
   voxel?:{keys_offset:number;members_offset:number;aggregation:Record<string,unknown>;grid:VoxelGrid}|null
   normal_info?:Record<string,unknown>|null;spatial?:unknown
+  profile_records?:boolean
 }
 
 function bounds(value: unknown): DetailBounds {
@@ -98,6 +100,10 @@ export async function decodeDetailBlock(raw: ArrayBuffer, index: DetailIndex, bl
     const read = (f: DetailField, row: number, c = 0) => scalar(view, { dtype: f.dtype, offset: row * index.row_bytes + f.offset }, c)
     const orientation=index.normal_info?normalOrientation(index.normal_info,index.spatial):null
     const normalFields=new Map(index.fields.filter(f=>normalNames.includes(f.name as typeof normalNames[number])).map(f=>[f.name,f]))
+    const profileFields=profileNames.map(name=>index.fields.find(f=>f.name===name))
+    const profileRecords=index.profile_records===true
+    if(index.profile_records!=null&&typeof index.profile_records!=='boolean'||profileRecords&&(index.vertex_kind!=='source'||!profileFields.every(f=>f?.dtype==='uint64'&&f.components===1)))throw new Error('cloud_preview_invalid')
+    const readProfile=(i:number)=>profilePoint(read(profileFields[0]!,i),read(profileFields[1]!,i),index.source_point_count)
     const low = [Infinity, Infinity, Infinity], high = [-Infinity, -Infinity, -Infinity]
     for (let i = 0; i < block.count; i++) {
       if (i % 4096 === 0) { await new Promise(resolve => setTimeout(resolve, 0)); signal.throwIfAborted() }
@@ -107,6 +113,7 @@ export async function decodeDetailBlock(raw: ArrayBuffer, index: DetailIndex, bl
         || index.vertex_kind === 'generated' && identity !== logical) throw new Error('cloud_preview_invalid')
       if(index.voxel){const members=view.getBigUint64(i*index.row_bytes+index.voxel.members_offset,true);if(members<1n||members>BigInt(index.source_point_count))throw new Error('cloud_preview_invalid')}
       if(orientation)normalPoint((name,c=0)=>Number(read(normalFields.get(name)!,i,c)),position.dtype,orientation)
+      if(profileRecords)readProfile(i)
       for (let c = 0; c < 3; c++) {
         const value = Number(read(position, i, c)), relative = value - origin[c]!
         positions[i * 3 + c] = relative
@@ -127,6 +134,7 @@ export async function decodeDetailBlock(raw: ArrayBuffer, index: DetailIndex, bl
       const v=index.voxel,key=v?[0,1,2].map(c=>view.getBigInt64(i*index.row_bytes+v.keys_offset+c*8,true).toString()):null
       const grid=v?object(object(v.aggregation.parameters).settings):null
       return { sourceIndex: index.vertex_kind === 'source' ? identity : null, ...(index.vertex_kind === 'generated' ? { vertexIndex: identity } : {}),
+        ...(profileRecords?{profile:readProfile(i)}:{}),
         ...(orientation?{normal:normalPoint((name,c=0)=>Number(read(normalFields.get(name)!,i,c)),position.dtype,orientation)}:{}),
         ...(v?{voxelKey:key!,memberCount:view.getBigUint64(i*index.row_bytes+v.members_offset,true).toString(),voxelFrame:String(grid!.frame_id),voxelUnit:String(grid!.length_unit),voxelCorners:voxelCorners(v.grid,key!)}:{}),
         xyz: [0, 1, 2].map(c => Number(read(position, i, c))), scalar: color.mode === 'scalar' ? read(colorField!, i, component).toString() : null }

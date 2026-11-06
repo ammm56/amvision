@@ -1,4 +1,6 @@
 import Decimal from 'decimal.js'
+import { rasterIdentity } from './raster-display'
+import { profileIdentity, profileNames, profilePoint, type ProfilePoint } from './profile-display'
 import {voxelGrid,voxelCorners} from './voxel-display'
 import {normalNames,normalOrientation,normalPoint,type NormalPoint} from './normal-display'
 import type { CloudRendererPolicy } from '../services/measurement-resource.service'
@@ -67,7 +69,7 @@ export function decimal(value: unknown): Decimal {
 
 export interface CloudDisplayData {
   positions: Float32Array; colors: Float32Array; count: number; origin: number[]
-  point(index: number): { sourceIndex: string | null; vertexIndex?: string; voxelKey?: string[]; memberCount?: string; voxelFrame?: string; voxelUnit?: string; voxelCorners?:number[][];normal?:NormalPoint; xyz: number[]; scalar: string | null }
+  point(index: number): { sourceIndex: string | null; vertexIndex?: string; voxelKey?: string[]; memberCount?: string; voxelFrame?: string; voxelUnit?: string; voxelCorners?:number[][];normal?:NormalPoint; profile?:ProfilePoint; xyz: number[]; scalar: string | null }
   dispose(): void
 }
 
@@ -90,6 +92,9 @@ export async function decodeCloudPreview(value: unknown, policy: CloudRendererPo
   const body = object(value), data = object(body.data), color = object(body.color)
   if (body.type !== 'point-cloud-preview' || body.format_id !== 'amvision.point-cloud-preview.v1' || body.state !== 'ready') throw new Error('cloud_preview_invalid')
   const n = count(body.display_point_count), originalCount = count(body.source_point_count), pointCount = count(body.point_count), size = count(data.content_length)
+  rasterIdentity(body.raster_source, originalCount)
+  const profiles = profileIdentity(body.profile_source, originalCount, body.profile_empty_count)
+  if (profiles && body.raster_source != null) throw new Error('cloud_preview_invalid')
   if (!['source', 'generated'].includes(String(body.vertex_kind))) throw new Error('cloud_preview_invalid')
   const generated = body.vertex_kind === 'generated'
   const voxel = body.lineage_kind === 'voxel-aggregate'
@@ -117,6 +122,7 @@ export async function decodeCloudPreview(value: unknown, policy: CloudRendererPo
     const expected = color.mode === 'solid' ? ['positions', indexField] : color.mode === 'rgb' ? ['positions', indexField, 'colors'] : color.mode === 'scalar' ? ['positions', indexField, 'scalar'] : []
     if(orientation&&expected.length)expected.push(...normalNames)
     if(voxel&&expected.length)expected.push('voxel_keys','member_counts')
+    if(profiles&&!generated&&expected.length)expected.push(...profileNames)
     if (!Array.isArray(data.fields) || !expected.length || data.fields.length !== expected.length) throw new Error('cloud_preview_invalid')
     let end = 0
     const fieldItems=data.fields
@@ -128,6 +134,7 @@ export async function decodeCloudPreview(value: unknown, policy: CloudRendererPo
       if (!width || f.name !== expected[index] || f.count !== n || f.components !== components || f.offset !== offset || f.byte_length !== n * components * width) throw new Error('cloud_preview_invalid')
       if (index === 0 && !['float32', 'float64'].includes(String(f.dtype)) || index === 1 && f.dtype !== 'uint64' || f.name === 'colors' && f.dtype !== 'uint8') throw new Error('cloud_preview_invalid')
       if(f.name==='voxel_keys'&&f.dtype!=='int64'||f.name==='member_counts'&&f.dtype!=='uint64')throw new Error('cloud_preview_invalid')
+      if(profileNames.includes(f.name as typeof profileNames[number])&&f.dtype!=='uint64')throw new Error('cloud_preview_invalid')
       if(f.name==='normals'&&f.dtype!==object(fieldItems[0]).dtype||typeof f.name==='string'&&normalNames.slice(1).includes(f.name as typeof normalNames[1])&&f.dtype!=='uint8')throw new Error('cloud_preview_invalid')
       for (let i = end; i < offset; i++) if (raw[i] !== 0) throw new Error('cloud_preview_invalid')
       end = offset + n * components * width
@@ -136,6 +143,8 @@ export async function decodeCloudPreview(value: unknown, policy: CloudRendererPo
     })
     if (end !== size) throw new Error('cloud_preview_invalid')
     const normalFields=new Map(fields.filter(f=>normalNames.includes(f.name as typeof normalNames[number])).map(f=>[f.name,f]))
+    const profileFields = profileNames.map(name=>fields.find(f=>f.name===name))
+    const readProfile = (i:number) => profilePoint(scalar(view,profileFields[0]!,i),scalar(view,profileFields[1]!,i),originalCount)
     const origin = vector(body.render_origin), bounds = object(body.bounds), low = vector(bounds.min), high = vector(bounds.max)
     if (low.some((v, i) => v > high[i]! || origin[i]! < v || origin[i]! > high[i]!)) throw new Error('cloud_preview_invalid')
     const view = new DataView(raw.buffer), positions = new Float32Array(n * 3), colors = new Float32Array(n * 3)
@@ -148,6 +157,7 @@ export async function decodeCloudPreview(value: unknown, policy: CloudRendererPo
       const sourceIndex = scalar(view, fields[1]!, i) as bigint
       if (sourceIndex >= BigInt(generated ? pointCount : originalCount) || generated && sourceIndex <= previous) throw new Error('cloud_preview_invalid')
       previous = sourceIndex
+      if(profiles&&!generated)readProfile(i)
       if(orientation)normalPoint((name,c=0)=>Number(scalar(view,normalFields.get(name)!,i*(name==='normals'?3:1)+c)),fields[0]!.dtype,orientation)
       if(voxel){const members=scalar(view,fields.at(-1)!,i) as bigint;if(members<1n||members>BigInt(originalCount))throw new Error('cloud_preview_invalid')}
       for (let c = 0; c < 3; c++) {
@@ -171,6 +181,7 @@ export async function decodeCloudPreview(value: unknown, policy: CloudRendererPo
       if (released || !Number.isInteger(index) || index < 0 || index >= n) throw new Error('cloud_point_unavailable')
       const identity = scalar(view, fields[1]!, index).toString()
       return { sourceIndex: generated ? null : identity, ...(generated ? { vertexIndex: identity } : {}),
+        ...(profiles&&!generated?{profile:readProfile(index)}:{}),
         ...(orientation?{normal:normalPoint((name,c=0)=>Number(scalar(view,normalFields.get(name)!,index*(name==='normals'?3:1)+c)),fields[0]!.dtype,orientation)}:{}),
         ...(voxel?{voxelKey:[0,1,2].map(c=>scalar(view,fields.at(-2)!,index*3+c).toString()),memberCount:scalar(view,fields.at(-1)!,index).toString(),voxelFrame:String(grid!.frame_id),voxelUnit:String(grid!.length_unit),voxelCorners:voxelCorners(currentGrid!,[0,1,2].map(c=>scalar(view,fields.at(-2)!,index*3+c).toString()))}:{}),
         xyz: [0, 1, 2].map(c => scalar(view, fields[0]!, index * 3 + c) as number), scalar: color.mode === 'scalar' ? scalar(view, fields[2]!, index).toString() : null }

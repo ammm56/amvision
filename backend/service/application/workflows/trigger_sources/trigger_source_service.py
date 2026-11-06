@@ -1378,7 +1378,11 @@ def _find_trigger_contract_mapping_issues(
             issues.append({"kind": "missing_required_input", "binding_id": binding_id})
             continue
         expected_payload_type = str(input_contract.get("payload_type_id") or "value.v1")
-        if expected_payload_type == "point-cloud-ref.v1" and mapping_present:
+        if (
+            expected_payload_type
+            in {"point-cloud-ref.v1", "calibrated-raster.v1", "calibrated-profiles.v1"}
+            and mapping_present
+        ):
             source = (
                 mapping_rule.get("source") if isinstance(mapping_rule, dict) else None
             )
@@ -1393,10 +1397,11 @@ def _find_trigger_contract_mapping_issues(
                         "binding_id": binding_id,
                     }
                 )
-        if (
-            not isinstance(mapping_rule, dict)
-            and expected_payload_type != "point-cloud-ref.v1"
-        ):
+        if not isinstance(mapping_rule, dict) and expected_payload_type not in {
+            "point-cloud-ref.v1",
+            "calibrated-raster.v1",
+            "calibrated-profiles.v1",
+        }:
             continue
         if not workflow_trigger_supports_input_payload_type(
             trigger_kind,
@@ -1411,7 +1416,11 @@ def _find_trigger_contract_mapping_issues(
                     "supported_payload_type_ids": sorted(
                         HIGH_PERFORMANCE_TRIGGER_INPUT_PAYLOAD_TYPE_IDS
                         | (
-                            {"point-cloud-ref.v1"}
+                            {
+                                "point-cloud-ref.v1",
+                                "calibrated-raster.v1",
+                                "calibrated-profiles.v1",
+                            }
                             if trigger_kind == "local-shared-memory"
                             else set()
                         )

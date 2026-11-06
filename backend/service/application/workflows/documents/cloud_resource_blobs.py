@@ -89,6 +89,13 @@ class _ArrayBytes:
         self.asset, self.blob, self.tail = asset, blob, b""
         self.ranges = []
         self.lineage = None
+        if blob.role == "profile-rows":
+            from backend.service.application.workflows.point_cloud.profile_rows import (
+                ProfileRowsBytesValidator,
+            )
+
+            origin, _ = asset.original_observation()
+            self.lineage = ProfileRowsBytesValidator(origin.profiles)
         if blob.role == "lineage":
             from backend.service.application.workflows.documents.cloud_lineage_validation import (
                 LineageBytesValidator,

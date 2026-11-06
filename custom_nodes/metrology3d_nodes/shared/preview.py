@@ -55,6 +55,8 @@ def _build_cloud_preview(runtime, reference, options, *, policy, cancel):
     if reference.state == "unavailable":
         return unavailable_body(reference, reference.reason)
     fields = {f.name: f for f in reference.fields}
+    profile_source = runtime.profile_source(reference)
+    profile_records = profile_source is not None and reference.vertex_kind == "source"
     color = options.color
     if color.mode == "rgb" and "colors" not in fields:
         raise InvalidRequestError("RGB 显示需要 colors 字段")
@@ -109,6 +111,11 @@ def _build_cloud_preview(runtime, reference, options, *, policy, cancel):
             )
         if reference.lineage_kind == "voxel-aggregate":
             layout.extend([("voxel_keys", "int64", 3), ("member_counts", "uint64", 1)])
+        if profile_records:
+            layout.extend(
+                (name, "uint64", 1)
+                for name in ("acquisition_line_id", "profile_sample_index")
+            )
         descriptors, length = [], 0
         for name, dtype, components in layout:
             width = FIELD_WIDTHS[dtype]
@@ -137,6 +144,7 @@ def _build_cloud_preview(runtime, reference, options, *, policy, cancel):
         )
         if length > policy.max_data_bytes or rows < 1:
             return unavailable_body(reference, "preview_size_limit")
+        raster_source = runtime.raster_source(reference)
         body = dict(
             type="point-cloud-preview",
             format_id="amvision.point-cloud-preview.v1",
@@ -147,6 +155,15 @@ def _build_cloud_preview(runtime, reference, options, *, policy, cancel):
             revision=reference.revision,
             spatial=reference.spatial.model_dump(mode="json"),
             source_point_count=runtime.source_point_count(reference),
+            raster_source=raster_source.model_dump(mode="json")
+            if raster_source
+            else None,
+            profile_source=profile_source.profiles.model_dump(mode="json")
+            if profile_source
+            else None,
+            profile_empty_count=_empty_profile_count(
+                runtime, reference, profile_source, rows, cancel
+            ),
             point_count=reference.point_count,
             vertex_kind=reference.vertex_kind,
             lineage_kind=reference.lineage_kind,
@@ -214,6 +231,9 @@ def _build_cloud_preview(runtime, reference, options, *, policy, cancel):
             selected = candidates[(targets[written:end] - seen).astype(np.intp)]
             if len(selected):
                 arrays["positions"][written:end] = block["positions"][selected]
+                if profile_records:
+                    for name in ("acquisition_line_id", "profile_sample_index"):
+                        arrays[name][written:end] = block[name][selected]
                 if reference.normal_info is not None:
                     for name in (
                         "normals",
@@ -277,6 +297,22 @@ def _build_cloud_preview(runtime, reference, options, *, policy, cancel):
         if len(canonical_cloud_json(body)) > policy.max_body_bytes:
             return unavailable_body(reference, "preview_size_limit")
         return body
+
+
+def _empty_profile_count(runtime, reference, source, rows, cancel):
+    """有界读取原行表计数，包含被过滤及无样点的原始采集行。"""
+    if source is None:
+        return None
+    count = 0
+    with runtime.borrow_profile_rows(reference) as table:
+        offsets = table["line_offsets"]
+        for start in range(0, source.profiles.profile_count, rows):
+            cancel()
+            stop = min(start + rows, source.profiles.profile_count)
+            count += int(
+                np.count_nonzero(offsets[start:stop] == offsets[start + 1 : stop + 1])
+            )
+    return count
 
 
 def _valid(block):

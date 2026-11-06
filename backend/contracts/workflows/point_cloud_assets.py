@@ -31,13 +31,21 @@ from backend.contracts.workflows.boundary3d import BoundaryTopology
 from backend.contracts.workflows.point_cloud import canonical_cloud_json
 from hashlib import sha256
 from backend.contracts.workflows.boundary3d_observations import BoundaryEvidence
+from backend.contracts.workflows.raster3d import RasterSource
+from backend.contracts.workflows.profile3d import ProfileSource
 
 
 class CloudBlob(Contract):
     """仅允许格式规定的成员，实际对象键由服务生成。"""
 
-    role: Literal["original", "data", "indices", "lineage"]
-    name: Literal["original.bin", "data.bin", "source-indices.bin", "lineage.bin"]
+    role: Literal["original", "data", "indices", "lineage", "profile-rows"]
+    name: Literal[
+        "original.bin",
+        "data.bin",
+        "source-indices.bin",
+        "lineage.bin",
+        "profile-rows.bin",
+    ]
     content_length: JsonCount
     sha256: Sha256
 
@@ -51,6 +59,7 @@ class CloudBlob(Contract):
                 "data": "data.bin",
                 "indices": "source-indices.bin",
                 "lineage": "lineage.bin",
+                "profile-rows": "profile-rows.bin",
             }[self.role]
         ):
             raise ValueError("点云数据块角色与名称不一致")
@@ -100,7 +109,12 @@ class AssetDerivedSource(Contract):
 
 
 AssetSource = Annotated[
-    AssetFileSource | AssetLocalSource | AssetDerivedSource, Field(discriminator="kind")
+    AssetFileSource
+    | AssetLocalSource
+    | AssetDerivedSource
+    | RasterSource
+    | ProfileSource,
+    Field(discriminator="kind"),
 ]
 
 
@@ -152,6 +166,16 @@ class AssetIndices(Contract):
     count: JsonCount
     source_point_count: JsonCount
     source: AssetSource
+
+    @model_validator(mode="after")
+    def check_raster_count(self) -> Self:
+        """过滤之后仍以完整像素网格作为原始行号范围。"""
+        if (
+            isinstance(self.source, RasterSource)
+            and self.source_point_count != self.source.raster.point_count()
+        ):
+            raise ValueError("标量资产原始总点数不一致")
+        return self
 
 
 class AssetGeneratedLineage(Contract):
@@ -222,7 +246,7 @@ class CloudAssetBase(Contract):
     source: AssetSource
     spatial: CloudSpatial
     provenance: AssetProvenance
-    blobs: Annotated[tuple[CloudBlob, ...], Field(min_length=1, max_length=2)]
+    blobs: Annotated[tuple[CloudBlob, ...], Field(min_length=1, max_length=3)]
     source_field_names: tuple[CloudSourceNames, ...]
     parent_assets: tuple[ResourceReference, ...]
     point_count: JsonCount
@@ -231,6 +255,10 @@ class CloudAssetBase(Contract):
     topology: BoundaryTopology | None
     boundary: BoundaryEvidence | None = None
     normal_info: CloudNormalInfo | None = None
+
+    def original_observation(self) -> tuple[AssetSource, int]:
+        """返回持久内容中的原始观测及记录总数，不解析外部父资产。"""
+        return self.source, self.point_count
 
     @model_validator(mode="after")
     def check_common(self) -> Self:
@@ -284,6 +312,14 @@ class CloudAssetBase(Contract):
             raise ValueError("点云组织信息与数量不一致")
         unique_ids([f.name for f in self.fields], "fields")
         fields = {f.name: f for f in self.fields}
+        if isinstance(self.source, (RasterSource, ProfileSource)):
+            self.source.check_cloud(self.point_count, self.spatial, self.fields)
+            if (
+                self.source_metadata is not None
+                or self.topology is not None
+                or self.normal_info is not None
+            ):
+                raise ValueError("标定原始资产不能混入 PCD 视点或派生几何信息")
         if self.source_field_names and set(fields) != {
             m.name for m in self.source_field_names
         }:
@@ -370,6 +406,37 @@ class OriginalCloudAsset(CloudAssetBase):
         )
 
 
+class RasterCloudAsset(CloudAssetBase):
+    """逐字节保存原标量文件，重读使用同一标定与无效规则。"""
+
+    representation: Literal["raster-original"]
+    fields: Annotated[tuple[CloudField, ...], Field(min_length=1)]
+
+    @model_validator(mode="after")
+    def check_original(self) -> Self:
+        """不把数组源或计算点云伪装成原始文件。"""
+        if (
+            not isinstance(self.source, RasterSource)
+            or self.source.input_format == "array"
+            or len(self.blobs) != 1
+            or self.blobs[0].role != "original"
+            or self.vertex_kind != "source"
+            or self.topology is not None
+            or self.normal_info is not None
+            or self.boundary is not None
+            or self.source_metadata is not None
+            or self.source_field_names
+            or not self.provenance.source_retained
+        ):
+            raise ValueError("标量原件必须保留完整原文件和标定")
+        if (self.blobs[0].content_length, self.blobs[0].sha256) != (
+            self.source.content_length,
+            self.source.content_sha256,
+        ):
+            raise ValueError("标量原件与内容摘要不一致")
+        return self
+
+
 class ArrayCloudAsset(CloudAssetBase):
     """所有字段按 little-endian 连续块无损存储。"""
 
@@ -379,9 +446,35 @@ class ArrayCloudAsset(CloudAssetBase):
     indices: AssetIndices | None
     lineage: AssetGeneratedLineage | AssetProfileLineage | AssetVoxelLineage | None
 
+    def original_observation(self) -> tuple[AssetSource, int]:
+        """源点索引和生成关系均沿用最初观测，不把派生点数当原始总数。"""
+        origin = self.lineage if self.lineage is not None else self.indices
+        return (
+            (origin.source, origin.source_point_count)
+            if origin is not None
+            else super().original_observation()
+        )
+
     @model_validator(mode="after")
     def check_layout(self) -> Self:
         """允许零点但不接受多余尾字节、重叠块或错误索引说明。"""
+        origin, source_count = self.original_observation()
+        if (
+            isinstance(origin, RasterSource)
+            and source_count != origin.raster.point_count()
+        ):
+            raise ValueError("标量资产原始总点数不一致")
+        row_blob = next((b for b in self.blobs if b.role == "profile-rows"), None)
+        if isinstance(origin, ProfileSource):
+            if (
+                source_count != origin.profiles.point_count
+                or row_blob is None
+                or row_blob.content_length != origin.profiles.row_bytes()
+                or row_blob.sha256 != origin.row_table_sha256
+            ):
+                raise ValueError("轮廓原始总数、行表布局或摘要不一致")
+        elif row_blob is not None:
+            raise ValueError("非轮廓观测不能携带轮廓行表")
         unique_ids([f.name for f in self.fields], "fields")
         if "positions" not in {f.name for f in self.fields}:
             raise ValueError("资产必须有 positions")
@@ -431,6 +524,38 @@ class ArrayCloudAsset(CloudAssetBase):
         return self
 
 
+class ProfileCloudAsset(CloudAssetBase):
+    """NPZ 原件保留完整轮廓、空行和原标定；重读时重新严格解码。"""
+
+    representation: Literal["profiles-original"]
+    fields: Annotated[tuple[CloudField, ...], Field(min_length=1)]
+
+    @model_validator(mode="after")
+    def check_original(self) -> Self:
+        """只允许有完整原件来源的资产，不接受数组冒充文件。"""
+        if (
+            not isinstance(self.source, ProfileSource)
+            or self.source.input_format != "npz"
+            or len(self.blobs) != 1
+            or self.blobs[0].role != "original"
+            or self.vertex_kind != "source"
+            or self.topology is not None
+            or self.normal_info is not None
+            or self.boundary is not None
+            or self.source_metadata is not None
+            or self.source_field_names
+            or not self.provenance.source_retained
+        ):
+            raise ValueError("轮廓原件必须保留完整 NPZ 与标定")
+        if (self.blobs[0].content_length, self.blobs[0].sha256) != (
+            self.source.content_length,
+            self.source.content_sha256,
+        ):
+            raise ValueError("轮廓原件与输入摘要不一致")
+        return self
+
+
 PointCloudAsset = Annotated[
-    OriginalCloudAsset | ArrayCloudAsset, Field(discriminator="representation")
+    OriginalCloudAsset | ArrayCloudAsset | RasterCloudAsset | ProfileCloudAsset,
+    Field(discriminator="representation"),
 ]

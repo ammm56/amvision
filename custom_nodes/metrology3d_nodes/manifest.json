@@ -1,7 +1,7 @@
 {
   "format_id": "amvision.node-pack-manifest.v1",
   "id": "metrology3d.nodes",
-  "version": "0.1.28",
+  "version": "0.1.30",
   "displayName": "3D Metrology",
   "description": "点云读写、预处理、定位、特征拟合与尺寸测量。容量由 Workflow 点云策略显式配置。",
   "category": "vision",
@@ -14,7 +14,7 @@
     "operatingSystems": ["windows", "linux"],
     "architectures": ["amd64", "x86_64"],
     "pythonDistributions": [
-      "numpy==2.4.4", "scipy==1.18.0", "open3d==0.20.0",
+      "numpy==2.4.4", "scipy==1.18.0", "open3d==0.20.0", "Pillow==12.2.0",
       "trimesh==5.1.1+amvision.2", "pypcd4==1.5.1+amvision.2", "python-neo-lzf==0.3.5"
     ]
   },

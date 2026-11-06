@@ -19,7 +19,7 @@
       </div>
 
       <template v-if="states[input.binding_id]">
-        <CloudInputNotice v-if="input.payload_type_id === 'point-cloud-ref.v1'" />
+        <CloudInputNotice v-if="['point-cloud-ref.v1','calibrated-raster.v1','calibrated-profiles.v1'].includes(input.payload_type_id)" :payload-type="input.payload_type_id" />
         <template v-else-if="input.payload_type_id === 'image-ref.v1'">
           <Select
             v-if="input.transports.includes('multipart-upload') && input.transports.includes('json-reference')"

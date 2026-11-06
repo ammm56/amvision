@@ -21,6 +21,8 @@ from backend.contracts.workflows.point_cloud_assets import (
     CloudBlob,
     CloudSourceNames,
     OriginalCloudAsset,
+    RasterCloudAsset,
+    ProfileCloudAsset,
 )
 from backend.contracts.workflows.point_cloud import canonical_cloud_json
 from backend.service.application.errors import InvalidRequestError
@@ -49,6 +51,17 @@ from backend.service.application.workflows.point_cloud.voxel_lineage import (
 from backend.service.application.workflows.point_cloud.profile_lineage import (
     profile_lineage_shapes,
 )
+from custom_nodes.metrology3d_nodes.shared.raster_assets import (
+    freeze_raster_source,
+    original_raster_content,
+    restore_raster_asset,
+)
+from custom_nodes.metrology3d_nodes.shared.profile_assets import (
+    freeze_profile_source,
+    original_profile_content,
+    restore_profile_asset,
+)
+from backend.service.application.workflows.point_cloud.profile_rows import row_chunks
 
 
 class _Chunks:
@@ -79,6 +92,10 @@ def _source(reference, options):
         )
     if reference.source.kind == "local-array":
         return AssetLocalSource.model_validate(reference.source.model_dump())
+    if reference.source.kind == "calibrated-raster":
+        return freeze_raster_source(reference.source)
+    if reference.source.kind == "calibrated-profiles":
+        return freeze_profile_source(reference.source)
     raise InvalidRequestError("来源不是可直接保存的原始输入")
 
 
@@ -237,6 +254,25 @@ def save_cloud(
                 ).stream
                 for blob in cloud.blobs
             }
+        elif (
+            mode == "original"
+            and root.source.kind in ("calibrated-raster", "calibrated-profiles")
+            and root.source.file is not None
+        ):
+            content = (
+                original_raster_content(root)
+                if root.source.kind == "calibrated-raster"
+                else original_profile_content(root)
+            )
+            streams = {
+                "original.bin": stack.enter_context(
+                    service.storage.open_read_snapshot(
+                        root.source.file["object_key"],
+                        expected_checksum=root.source.content_sha256,
+                        expected_version=root.source.file["immutable_version"],
+                    )
+                ).stream
+            }
         elif mode == "original" and root.source.kind == "file":
             source = _source(root, options)
             blob = CloudBlob(
@@ -284,6 +320,16 @@ def save_cloud(
                 ).stream
             }
         else:
+            # 只读取已绑定的根资产，沿用其中已校验的来源，不猜测历史父链。
+            if root.source.kind == "asset":
+                root_cloud = service.read(
+                    root.source.reference, project_id=project_id
+                ).content.point_cloud
+                source, source_count = root_cloud.original_observation()
+                if source_count != runtime.source_point_count(selected):
+                    raise InvalidRequestError("保存来源与运行原始总点数不一致")
+            else:
+                source = _source(root, options)
             fields, length = _layout(selected)
             row_size = sum(FIELD_WIDTHS[f.dtype] * f.components for f in fields)
             rows = min(
@@ -315,13 +361,24 @@ def save_cloud(
 
             blobs = [_blob("data", "data.bin", data_factory())]
             streams = {"data.bin": _Chunks(data_factory())}
+            if source.kind == "calibrated-profiles":
+                table = stack.enter_context(runtime.borrow_profile_rows(selected))
+
+                def profile_factory():
+                    return row_chunks(
+                        table,
+                        source.profiles,
+                        chunk_bytes=policy.chunk_bytes,
+                        cancel=cancel,
+                    )
+
+                rows_blob = _blob("profile-rows", "profile-rows.bin", profile_factory())
+                if rows_blob.sha256 != source.row_table_sha256:
+                    raise InvalidRequestError("保存轮廓原行表与观测摘要不一致")
+                blobs.append(rows_blob)
+                streams[rows_blob.name] = _Chunks(profile_factory())
             indices = None
             lineage = None
-            source = (
-                _source(root, options)
-                if root.source.kind != "asset"
-                else {"kind": "derived"}
-            )
             if selected.vertex_kind == "generated":
                 if selected.lineage_kind == "grid-profile":
                     profile_arrays = view.profile_lineage_snapshot()
@@ -376,11 +433,6 @@ def save_cloud(
 
                 blobs.append(_blob("indices", "source-indices.bin", index_factory()))
                 streams["source-indices.bin"] = _Chunks(index_factory())
-                source = (
-                    _source(root, options)
-                    if root.source.kind != "asset"
-                    else {"kind": "derived"}
-                )
                 indices = {
                     "dtype": index_dtype,
                     "count": selected.point_count,
@@ -472,6 +524,10 @@ def read_asset(runtime, reference, *, service, project_id, policy, cancel):
         cloud = document.content.point_cloud
         if sum(b.content_length for b in cloud.blobs) > policy.max_asset_bytes:
             raise InvalidRequestError("点云资产超过显式容量")
+        if isinstance(cloud, RasterCloudAsset):
+            return restore_raster_asset(runtime, document, service, project_id, cancel)
+        if isinstance(cloud, ProfileCloudAsset):
+            return restore_profile_asset(runtime, document, service, project_id, cancel)
         if isinstance(cloud, OriginalCloudAsset):
             blob = cloud.blobs[0]
             key = cloud_blob_key(service, reference, blob)
@@ -518,13 +574,23 @@ def _read_blocks(runtime, document, service, policy, cancel):
     lineage_bytes = next(
         (b.content_length for b in cloud.blobs if b.role == "lineage"), 0
     )
-    if array_bytes + index_bytes + lineage_bytes > runtime.policy.max_decoded_bytes:
+    profile_bytes = next(
+        (b.content_length for b in cloud.blobs if b.role == "profile-rows"), 0
+    )
+    if (
+        array_bytes + index_bytes + lineage_bytes + profile_bytes
+        > runtime.policy.max_decoded_bytes
+    ):
         raise InvalidRequestError("资产数组超过解码预算")
-    reservation = runtime.budget.reserve(array_bytes + index_bytes + lineage_bytes)
+    reservation = runtime.budget.reserve(
+        array_bytes + index_bytes + lineage_bytes + profile_bytes
+    )
     arrays, owners = {}, []
     index_reservation = None
     lineage_reservation = None
     lineage_arrays = {}
+    profile_arrays = {}
+    profile_reservation = None
     try:
         for field in cloud.fields:
             cancel()
@@ -556,6 +622,13 @@ def _read_blocks(runtime, document, service, policy, cancel):
             for name, (shape, dtype) in shapes.items():
                 cancel()
                 lineage_arrays[name] = np.empty(shape, dtype=dtype)
+        if profile_bytes:
+            origin, _ = cloud.original_observation()
+            for name, dtype, shape in origin.profiles.row_layout():
+                cancel()
+                profile_arrays[name] = np.empty(
+                    shape, dtype=np.dtype(dtype).newbyteorder("<")
+                )
         for blob in cloud.blobs:
             with service.storage.open_read_snapshot(
                 cloud_blob_key(service, document.reference, blob)
@@ -601,8 +674,12 @@ def _read_blocks(runtime, document, service, policy, cancel):
                 elif blob.role == "lineage":
                     for value in lineage_arrays.values():
                         _fill(checked, value, policy.chunk_bytes, cancel)
+                elif blob.role == "profile-rows":
+                    for value in profile_arrays.values():
+                        _fill(checked, value, policy.chunk_bytes, cancel)
                 else:
                     raise InvalidRequestError("数组资产含非法数据块")
+                value = None
                 if checked.read(1):
                     raise InvalidRequestError("资产数据块含多余字节")
         # 将一次联合准入拆成两个所有权，拆分期间不释放实际数组计费。
@@ -631,16 +708,28 @@ def _read_blocks(runtime, document, service, policy, cancel):
             runtime.storage_scope.register(
                 ("asset-lineage", uuid4().hex), lineage, lambda v: v.close()
             )
+        profile_rows = None
+        if profile_bytes:
+            profile_reservation = reservation.split(profile_bytes)
+            profile_rows = OwnedCloudArrays(profile_arrays, profile_reservation)
+            profile_arrays.clear()
+            owners.append(profile_rows)
+            runtime.storage_scope.register(
+                ("asset-profile-rows", uuid4().hex), profile_rows, lambda v: v.close()
+            )
         return runtime.register_asset(
             owner=owner,
             document=document,
             indices=indices,
             lineage=lineage,
+            profile_rows=profile_rows,
             cancel=cancel,
         )
     except BaseException as error:
         arrays.clear()
         lineage_arrays.clear()
+        profile_arrays.clear()
+        value = None
         index = None
         release_exception_frames(error)
         for owner in reversed(owners):
@@ -648,6 +737,8 @@ def _read_blocks(runtime, document, service, policy, cancel):
         reservation.close()
         if index_reservation is not None:
             index_reservation.close()
+        if profile_reservation is not None:
+            profile_reservation.close()
         if lineage_reservation is not None:
             lineage_reservation.close()
         raise

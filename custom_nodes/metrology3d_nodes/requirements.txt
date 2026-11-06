@@ -4,3 +4,4 @@
 -r ../../runtimes/python_patches/requirements-io.txt
 scipy==1.18.0
 open3d==0.20.0
+Pillow==12.2.0

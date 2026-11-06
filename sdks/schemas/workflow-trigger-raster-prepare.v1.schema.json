@@ -1,0 +1,465 @@
+{
+  "$defs": {
+    "CalibratedRaster": {
+      "additionalProperties": false,
+      "description": "完整标定正文随来源保存；ID/版本是追溯标签，不授予资产访问权。",
+      "properties": {
+        "format_id": {
+          "const": "amvision.calibrated-raster.v1",
+          "title": "Format Id",
+          "type": "string"
+        },
+        "width": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "title": "Width",
+          "type": "integer"
+        },
+        "height": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "title": "Height",
+          "type": "integer"
+        },
+        "dtype": {
+          "enum": [
+            "uint8",
+            "uint16",
+            "int16",
+            "uint32",
+            "int32",
+            "float32",
+            "float64"
+          ],
+          "title": "Dtype",
+          "type": "string"
+        },
+        "calibration_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+          "title": "Calibration Id",
+          "type": "string"
+        },
+        "calibration_revision": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+          "title": "Calibration Revision",
+          "type": "string"
+        },
+        "spatial": {
+          "$ref": "#/$defs/CloudSpatial"
+        },
+        "projection": {
+          "discriminator": {
+            "mapping": {
+              "orthographic-height": "#/$defs/OrthographicHeight",
+              "rectified-pinhole": "#/$defs/PinholeDepth"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/PinholeDepth"
+            },
+            {
+              "$ref": "#/$defs/OrthographicHeight"
+            }
+          ],
+          "title": "Projection"
+        },
+        "value_scale": {
+          "exclusiveMinimum": 0,
+          "title": "Value Scale",
+          "type": "number"
+        },
+        "value_offset": {
+          "title": "Value Offset",
+          "type": "number"
+        },
+        "validity": {
+          "$ref": "#/$defs/RasterValidity"
+        },
+        "position_dtype": {
+          "enum": [
+            "float32",
+            "float64"
+          ],
+          "title": "Position Dtype",
+          "type": "string"
+        }
+      },
+      "required": [
+        "format_id",
+        "width",
+        "height",
+        "dtype",
+        "calibration_id",
+        "calibration_revision",
+        "spatial",
+        "projection",
+        "value_scale",
+        "value_offset",
+        "validity",
+        "position_dtype"
+      ],
+      "title": "CalibratedRaster",
+      "type": "object"
+    },
+    "CloudAxes": {
+      "additionalProperties": false,
+      "description": "轴语义声明；标签不是隐含的坐标变换。",
+      "properties": {
+        "handedness": {
+          "enum": [
+            "right",
+            "left",
+            "unknown"
+          ],
+          "title": "Handedness",
+          "type": "string"
+        },
+        "axis_labels": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          ],
+          "title": "Axis Labels",
+          "type": "array"
+        },
+        "definition_source": {
+          "enum": [
+            "metadata",
+            "configuration",
+            "unknown"
+          ],
+          "title": "Definition Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "handedness",
+        "axis_labels",
+        "definition_source"
+      ],
+      "title": "CloudAxes",
+      "type": "object"
+    },
+    "CloudSpatial": {
+      "additionalProperties": false,
+      "description": "点云长度单位、坐标系和轴定义。",
+      "properties": {
+        "length_unit": {
+          "anyOf": [
+            {
+              "enum": [
+                "m",
+                "mm",
+                "um"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Length Unit"
+        },
+        "unit_source": {
+          "enum": [
+            "metadata",
+            "configuration",
+            "unknown"
+          ],
+          "title": "Unit Source",
+          "type": "string"
+        },
+        "frame_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+          "title": "Frame Id",
+          "type": "string"
+        },
+        "axes": {
+          "$ref": "#/$defs/CloudAxes"
+        }
+      },
+      "required": [
+        "length_unit",
+        "unit_source",
+        "frame_id",
+        "axes"
+      ],
+      "title": "CloudSpatial",
+      "type": "object"
+    },
+    "OrthographicHeight": {
+      "additionalProperties": false,
+      "description": "原点是第零行列像素的零高位置；行列与高度方向均显式声明。",
+      "properties": {
+        "kind": {
+          "const": "orthographic-height",
+          "title": "Kind",
+          "type": "string"
+        },
+        "origin": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Origin",
+          "type": "array"
+        },
+        "column_direction": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Column Direction",
+          "type": "array"
+        },
+        "row_direction": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Row Direction",
+          "type": "array"
+        },
+        "height_direction": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Height Direction",
+          "type": "array"
+        },
+        "column_step": {
+          "exclusiveMinimum": 0,
+          "title": "Column Step",
+          "type": "number"
+        },
+        "row_step": {
+          "exclusiveMinimum": 0,
+          "title": "Row Step",
+          "type": "number"
+        }
+      },
+      "required": [
+        "kind",
+        "origin",
+        "column_direction",
+        "row_direction",
+        "height_direction",
+        "column_step",
+        "row_step"
+      ],
+      "title": "OrthographicHeight",
+      "type": "object"
+    },
+    "PinholeDepth": {
+      "additionalProperties": false,
+      "description": "已去畸变、零 skew 的针孔模型；像素中心使用整数列/行坐标。",
+      "properties": {
+        "kind": {
+          "const": "rectified-pinhole",
+          "title": "Kind",
+          "type": "string"
+        },
+        "depth_kind": {
+          "enum": [
+            "axial-z",
+            "ray-range"
+          ],
+          "title": "Depth Kind",
+          "type": "string"
+        },
+        "fx": {
+          "exclusiveMinimum": 0,
+          "title": "Fx",
+          "type": "number"
+        },
+        "fy": {
+          "exclusiveMinimum": 0,
+          "title": "Fy",
+          "type": "number"
+        },
+        "cx": {
+          "title": "Cx",
+          "type": "number"
+        },
+        "cy": {
+          "title": "Cy",
+          "type": "number"
+        }
+      },
+      "required": [
+        "kind",
+        "depth_kind",
+        "fx",
+        "fy",
+        "cx",
+        "cy"
+      ],
+      "title": "PinholeDepth",
+      "type": "object"
+    },
+    "RasterBufferDescriptor": {
+      "additionalProperties": false,
+      "description": "同机 LE 连续 HW 标量及可选紧随其后的 uint8 掩码，不携带租约。",
+      "properties": {
+        "format_id": {
+          "const": "amvision.raster-buffer.v1",
+          "title": "Format Id",
+          "type": "string"
+        },
+        "raster": {
+          "$ref": "#/$defs/CalibratedRaster"
+        },
+        "has_mask": {
+          "title": "Has Mask",
+          "type": "boolean"
+        },
+        "content_length": {
+          "exclusiveMinimum": 0,
+          "maximum": 1000000000,
+          "title": "Content Length",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "format_id",
+        "raster",
+        "has_mask",
+        "content_length"
+      ],
+      "title": "RasterBufferDescriptor",
+      "type": "object"
+    },
+    "RasterValidity": {
+      "additionalProperties": false,
+      "description": "原始哨兵在缩放前判断，物理范围在缩放后判断；无默认阈值。",
+      "properties": {
+        "invalid_raw_values": {
+          "items": {
+            "type": "number"
+          },
+          "title": "Invalid Raw Values",
+          "type": "array"
+        },
+        "minimum": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Minimum"
+        },
+        "maximum": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Maximum"
+        }
+      },
+      "required": [
+        "invalid_raw_values",
+        "minimum",
+        "maximum"
+      ],
+      "title": "RasterValidity",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "完整布局与标定在分配前验证；REQUEST 不能替换。",
+  "properties": {
+    "format_id": {
+      "const": "amvision.workflow-trigger-raster-prepare.v1",
+      "default": "amvision.workflow-trigger-raster-prepare.v1",
+      "title": "Format Id",
+      "type": "string"
+    },
+    "trigger_source_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+      "title": "Trigger Source Id",
+      "type": "string"
+    },
+    "event_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+      "title": "Event Id",
+      "type": "string"
+    },
+    "event_payload_key": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+      "title": "Event Payload Key",
+      "type": "string"
+    },
+    "raster": {
+      "$ref": "#/$defs/RasterBufferDescriptor"
+    }
+  },
+  "required": [
+    "trigger_source_id",
+    "event_id",
+    "event_payload_key",
+    "raster"
+  ],
+  "title": "WorkflowTriggerRasterPrepareV1",
+  "type": "object"
+}

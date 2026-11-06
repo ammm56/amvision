@@ -8,6 +8,18 @@ from backend.contracts.workflows.point_cloud_trigger import (
     WorkflowTriggerCloudInputV1,
     WorkflowTriggerCloudPrepareV1,
 )
+from backend.contracts.workflows.raster_trigger import (
+    RASTER_BUFFER_MEDIA_TYPE,
+    RASTER_PAYLOAD_TYPE,
+    WorkflowTriggerRasterInputV1,
+    WorkflowTriggerRasterPrepareV1,
+)
+from backend.contracts.workflows.profile_trigger import (
+    PROFILE_BUFFER_MEDIA_TYPE,
+    PROFILE_PAYLOAD_TYPE,
+    WorkflowTriggerProfileInputV1,
+    WorkflowTriggerProfilePrepareV1,
+)
 from backend.service.application.errors import (
     InvalidRequestError,
     ServiceConfigurationError,
@@ -18,9 +30,22 @@ def buffer_metadata(prepare):
     """只返回 Broker 已支持的表示属性；点云布局不冒充 image shape。"""
     if isinstance(prepare, WorkflowTriggerPrepareV1):
         return prepare.image.model_dump(exclude={"event_payload_key", "content_length"})
-    if isinstance(prepare, WorkflowTriggerCloudPrepareV1):
+    if isinstance(
+        prepare,
+        (
+            WorkflowTriggerCloudPrepareV1,
+            WorkflowTriggerRasterPrepareV1,
+            WorkflowTriggerProfilePrepareV1,
+        ),
+    ):
         return dict(
-            media_type=CLOUD_BUFFER_MEDIA_TYPE,
+            media_type=(
+                PROFILE_BUFFER_MEDIA_TYPE
+                if isinstance(prepare, WorkflowTriggerProfilePrepareV1)
+                else RASTER_BUFFER_MEDIA_TYPE
+                if isinstance(prepare, WorkflowTriggerRasterPrepareV1)
+                else CLOUD_BUFFER_MEDIA_TYPE
+            ),
             shape=(),
             dtype=None,
             layout=None,
@@ -31,6 +56,10 @@ def buffer_metadata(prepare):
 
 def buffer_length(prepare):
     """分配长度只取自已验证的 PREPARE。"""
+    if isinstance(prepare, WorkflowTriggerProfilePrepareV1):
+        return prepare.profiles.content_length
+    if isinstance(prepare, WorkflowTriggerRasterPrepareV1):
+        return prepare.raster.content_length
     return (
         prepare.cloud.content_length
         if isinstance(prepare, WorkflowTriggerCloudPrepareV1)
@@ -40,6 +69,26 @@ def buffer_length(prepare):
 
 def input_payload(prepare, buffer_ref):
     """构造一次固定布局的输入值，不采用 REQUEST 中的替代描述。"""
+    if isinstance(prepare, WorkflowTriggerProfilePrepareV1):
+        from backend.service.application.workflows.point_cloud.profile_buffer import (
+            profile_descriptor_sha256,
+        )
+
+        return prepare.event_payload_key, WorkflowTriggerProfileInputV1(
+            descriptor=prepare.profiles,
+            descriptor_sha256=profile_descriptor_sha256(prepare.profiles),
+            buffer_ref=buffer_ref,
+        ).model_dump(mode="json")
+    if isinstance(prepare, WorkflowTriggerRasterPrepareV1):
+        from backend.service.application.workflows.point_cloud.raster_buffer import (
+            raster_descriptor_sha256,
+        )
+
+        return prepare.event_payload_key, WorkflowTriggerRasterInputV1(
+            descriptor=prepare.raster,
+            descriptor_sha256=raster_descriptor_sha256(prepare.raster),
+            buffer_ref=buffer_ref,
+        ).model_dump(mode="json")
     if isinstance(prepare, WorkflowTriggerCloudPrepareV1):
         from backend.service.application.workflows.point_cloud.local_array import (
             cloud_descriptor_sha256,
@@ -59,11 +108,18 @@ def input_payload(prepare, buffer_ref):
 
 def validate_cloud_prepare(prepare, source, policy):
     """分配前核对固定的公开 binding 和显式容量，不创建等待队列。"""
-    if not isinstance(prepare, WorkflowTriggerCloudPrepareV1):
+    if not isinstance(
+        prepare,
+        (
+            WorkflowTriggerCloudPrepareV1,
+            WorkflowTriggerRasterPrepareV1,
+            WorkflowTriggerProfilePrepareV1,
+        ),
+    ):
         return
     if policy is None:
         raise ServiceConfigurationError("3D Metrology 未配置运行策略，不能分配点云输入")
-    if prepare.cloud.content_length > min(
+    if buffer_length(prepare) > min(
         policy.io.max_decoded_bytes, policy.io.max_live_array_bytes
     ):
         raise InvalidRequestError("点云输入超过显式数组预算")
@@ -74,7 +130,12 @@ def validate_cloud_prepare(prepare, source, policy):
         if isinstance(rule, dict)
         and rule.get("source") == f"payload.{prepare.event_payload_key}"
     ]
-    if not mapped or any(
-        types.get(binding) != "point-cloud-ref.v1" for binding in mapped
-    ):
+    expected = (
+        PROFILE_PAYLOAD_TYPE
+        if isinstance(prepare, WorkflowTriggerProfilePrepareV1)
+        else RASTER_PAYLOAD_TYPE
+        if isinstance(prepare, WorkflowTriggerRasterPrepareV1)
+        else "point-cloud-ref.v1"
+    )
+    if not mapped or any(types.get(binding) != expected for binding in mapped):
         raise InvalidRequestError("点云 PREPARE 未映射到已发布的同机数组 binding")

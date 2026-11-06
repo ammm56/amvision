@@ -76,7 +76,11 @@ def test_high_performance_trigger_rejects_http_only_inputs_from_contract(
             "supported_payload_type_ids": sorted(
                 HIGH_PERFORMANCE_TRIGGER_INPUT_PAYLOAD_TYPE_IDS
                 | (
-                    {"point-cloud-ref.v1"}
+                    {
+                        "point-cloud-ref.v1",
+                        "calibrated-raster.v1",
+                        "calibrated-profiles.v1",
+                    }
                     if trigger_kind == "local-shared-memory"
                     else set()
                 )

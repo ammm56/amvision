@@ -64,6 +64,12 @@ from backend.contracts.workflows.boundary3d import (
 )
 
 
+from backend.contracts.workflows.raster3d import RasterToCloudParameters
+from backend.contracts.workflows.raster_trigger import WorkflowTriggerRasterInputV1
+from backend.contracts.workflows.profile3d import ProfilesToCloudParameters
+from backend.contracts.workflows.profile_trigger import WorkflowTriggerProfileInputV1
+
+
 def build_custom_node_catalog_document():
     """生成正式 Catalog；字段定义直接来自公开参数与结果契约。"""
     payloads = tuple(
@@ -76,6 +82,12 @@ def build_custom_node_catalog_document():
         )
         for key, title, model in (
             ("point-cloud-ref.v1", "Point Cloud", CloudReference),
+            ("calibrated-raster.v1", "Calibrated Raster", WorkflowTriggerRasterInputV1),
+            (
+                "calibrated-profiles.v1",
+                "Calibrated Profiles",
+                WorkflowTriggerProfileInputV1,
+            ),
             ("measurement-resource-ref.v1", "Measurement Resource", ResourceReference),
             ("roi3d.v1", "3D ROI", RoiPayload),
             ("features3d.v1", "3D Features", Features3d),
@@ -107,6 +119,28 @@ def build_custom_node_catalog_document():
     cloud = port("cloud", "point-cloud-ref.v1")
     definitions = []
     for key, title, category, model, inputs, outputs in (
+        (
+            "profiles-to-cloud",
+            "Profiles to Cloud",
+            "metrology3d.data.io",
+            ProfilesToCloudParameters,
+            [
+                port("file", "file-ref.v1", False),
+                port("profiles", "calibrated-profiles.v1", False),
+            ],
+            [cloud, port("summary", "value.v1")],
+        ),
+        (
+            "raster-to-cloud",
+            "Raster to Cloud",
+            "metrology3d.data.io",
+            RasterToCloudParameters,
+            [
+                port("file", "file-ref.v1", False),
+                port("raster", "calibrated-raster.v1", False),
+            ],
+            [cloud, port("summary", "value.v1")],
+        ),
         (
             "register-cloud",
             "Register Cloud",
@@ -346,7 +380,12 @@ def build_custom_node_catalog_document():
         definitions.append(
             dict(
                 node_type_id="custom.metrology3d." + key,
-                version="0.1.28"
+                version="0.1.30"
+                if key
+                in {"profiles-to-cloud", "read-cloud", "save-cloud", "cloud-preview"}
+                else "0.1.29"
+                if key == "raster-to-cloud"
+                else "0.1.28"
                 if key
                 in {
                     "register-cloud",

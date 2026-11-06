@@ -139,7 +139,8 @@ def test_replay_still_validates_the_submitted_stream(service, data):
     service.verify_cloud(document, policy=POLICY, cancel=lambda: None)
 
 
-def test_cancellation_before_commit_and_after_commit(service, monkeypatch):
+@pytest.mark.parametrize("error_type", [RuntimeError, InterruptedError])
+def test_cancellation_before_commit_and_after_commit(service, monkeypatch, error_type):
     """提交前清理；原子提交后报告异常也不能破坏已落地副作用。"""
     calls = 0
 
@@ -147,9 +148,9 @@ def test_cancellation_before_commit_and_after_commit(service, monkeypatch):
         nonlocal calls
         calls += 1
         if calls == 4:
-            raise RuntimeError("cancel")
+            raise error_type("cancel")
 
-    with pytest.raises(RuntimeError, match="cancel"):
+    with pytest.raises(error_type, match="cancel"):
         save(service, cancel=cancel)
     assert service.list_versions(project_id="test") == []
     write = service.storage.write_json

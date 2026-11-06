@@ -44,6 +44,10 @@
       <span v-if="body.asset_details" class="cloud-detail-status" role="status" :title="detailError?`${detailLabel} · ${errorMessage(detailError)}`:detailLabel">{{ detailLabel }}<template v-if="detailCount"> · {{ detailCount }}</template><template v-if="detailError"> · {{ errorMessage(detailError) }}</template></span>
       <span>{{ unit }} · {{ frame }} · {{ zh?'显示':'Displayed' }} {{ detailStatus==='ready'?detailCount:body.display_point_count ?? '-' }} / {{ zh?'输入':'Input' }} {{ body.point_count ?? '-' }}<template v-if="body.source_point_count!==body.point_count"> · {{ zh?'原始':'Source' }} {{ body.source_point_count ?? '-' }}</template></span>
       <span v-if="color.mode === 'scalar'">{{ color.field }}: {{ color.min ?? '-' }} .. {{ color.max ?? '-' }}</span>
+      <span v-if="rasterGrid">{{ zh?'原始网格':'Source grid' }} {{ rasterGrid.width }} × {{ rasterGrid.height }} · {{ zh?'标定':'Calibration' }} {{ rasterGrid.id }} / {{ rasterGrid.revision }}</span>
+      <span v-if="pickedPixel">{{ zh?'原像素（从 0 开始）':'Source pixel (zero-based)' }} · {{ zh?'行':'Row' }} {{ pickedPixel.row }} · {{ zh?'列':'Column' }} {{ pickedPixel.column }}</span>
+      <span v-if="profileSource">{{ zh?'原采集行':'Acquired profiles' }} {{ profileSource.count }} · {{ zh?'空行':'Empty profiles' }} {{ profileSource.empty }} · {{ zh?'标定':'Calibration' }} {{ profileSource.id }} / {{ profileSource.revision }}</span>
+      <span v-if="profileSource&&picked?.profile">{{ zh?'原采集行号':'Acquisition line ID' }} {{ picked.profile.line }} · {{ zh?'行内样点（从 0 开始）':'Sample in profile (zero-based)' }} {{ picked.profile.sample }}</span>
       <span v-if="picked">{{ picked.sourceIndex === null ? (zh ? '生成顶点' : 'Generated vertex') : (zh ? '原始行' : 'Source row') }} #{{ picked.sourceIndex ?? picked.vertexIndex }} · XYZ {{ picked.xyz.join(', ') }}<template v-if="picked.scalar !== null"> · {{ picked.scalar }}</template><template v-if="picked.voxelKey"> · {{ zh ? '原聚合格' : 'Aggregation cell' }} {{ picked.voxelKey.join(', ') }} ({{ picked.voxelFrame }}, {{ picked.voxelUnit }}) · {{ zh ? '实测成员' : 'Measured members' }} {{ picked.memberCount }}</template></span>
       <span v-if="colorMode==='support'&&colorSummary">{{ zh?'显示点':'Display points' }} · {{ zh?'支持':'Support' }} {{ colorSummary.support }} · {{ zh?'剔除':'Rejected' }} {{ colorSummary.rejected }} · {{ zh?'无关':'Unrelated' }} {{ colorSummary.unrelated }}</span>
       <span v-if="picked?.normal">{{ normalLabel(picked.normal,zh) }}<template v-if="picked.normal.valid"> · {{ picked.normal.vector.join(', ') }}</template><template v-if="picked.normal.reason===5"> · {{ zh?'定向歧义':'Ambiguous orientation' }}</template></span>
@@ -74,6 +78,8 @@ import { createCloudRenderer, type CloudViewState } from './renderer'
 import {createComparisonController} from './comparison-controller'
 import {comparableClouds} from './voxel-display'
 import {normalLabel} from './normal-display'
+import {rasterIdentity,sourcePixel} from './raster-display'
+import {profileIdentity} from './profile-display'
 import GeometrySummary from './GeometrySummary.vue'
 import MeasurementSummary from './MeasurementSummary.vue'
 import BoundarySummary from './BoundarySummary.vue'
@@ -151,6 +157,9 @@ const debugItems=shallowRef<DebugEvidence[]>([]),selectedDebug=ref(''),debugErro
 const debugLayers=ref<DebugLayers>({grid:true,profiles:true,candidates:true,partition:false})
 const activeDebug=computed(()=>debugItems.value.find(d=>d.id===selectedDebug.value))
 const picked = ref<ReturnType<CloudDisplayData['point']> | null>(null)
+const rasterGrid = computed(() => { try { return rasterIdentity(body.value.raster_source, body.value.source_point_count) } catch { return null } })
+const pickedPixel = computed(() => sourcePixel(picked.value?.sourceIndex, rasterGrid.value))
+const profileSource = computed(() => { try { return profileIdentity(body.value.profile_source,body.value.source_point_count,body.value.profile_empty_count) } catch { return null } })
 const showVoxel=ref(true),comparisonError=ref('')
 const showNormals=ref(false),normalLength=ref<number|string>(''),normalStride=ref<number|string>(1),normalError=ref('')
 const normalLengthValid=computed(()=>typeof normalLength.value==='number'&&Number.isFinite(normalLength.value)&&normalLength.value>0&&typeof normalStride.value==='number'&&Number.isSafeInteger(normalStride.value)&&normalStride.value>=1)

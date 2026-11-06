@@ -23,6 +23,42 @@ namespace Amvar.Vision
             return MaterializeSharedMemoryResult(localSharedMemoryTriggerOperations.InvokePointCloud(
                 triggerSourceName, descriptor, fill, request));
         }
+        /// <summary>按配置提交完整标定栅格；物化结果后沿现有路径 ACK。</summary>
+        public TriggerResult InvokeSharedMemoryCalibratedRaster(string triggerSourceName, JObject descriptor,
+            byte[] content, SharedMemoryTriggerRequest request)
+        {
+            EnsureNotDisposed();
+            return MaterializeSharedMemoryResult(localSharedMemoryTriggerOperations.InvokeCalibratedRaster(
+                triggerSourceName, descriptor, content, request));
+        }
+
+        /// <summary>直接填写标量载荷，不建立中间数组。</summary>
+        public TriggerResult InvokeSharedMemoryCalibratedRaster(string triggerSourceName, JObject descriptor,
+            SharedMemoryTriggerBufferWriter fill, SharedMemoryTriggerRequest request)
+        {
+            EnsureNotDisposed();
+            return MaterializeSharedMemoryResult(localSharedMemoryTriggerOperations.InvokeCalibratedRaster(
+                triggerSourceName, descriptor, fill, request));
+        }
+
+        /// <summary>按配置提交完整轮廓，物化结果后沿现有路径 ACK。</summary>
+        public TriggerResult InvokeSharedMemoryCalibratedProfiles(string triggerSourceName, JObject descriptor,
+            byte[] content, SharedMemoryTriggerRequest request)
+        {
+            EnsureNotDisposed();
+            return MaterializeSharedMemoryResult(localSharedMemoryTriggerOperations.InvokeCalibratedProfiles(
+                triggerSourceName, descriptor, content, request));
+        }
+
+        /// <summary>在受控 Span 内填写轮廓、行表和可选有效标记。</summary>
+        public TriggerResult InvokeSharedMemoryCalibratedProfiles(string triggerSourceName, JObject descriptor,
+            SharedMemoryTriggerBufferWriter fill, SharedMemoryTriggerRequest request)
+        {
+            EnsureNotDisposed();
+            return MaterializeSharedMemoryResult(localSharedMemoryTriggerOperations.InvokeCalibratedProfiles(
+                triggerSourceName, descriptor, fill, request));
+        }
+
         /// <summary>按配置 key 原样写入 encoded 或 raw 图片 bytes。</summary>
         public TriggerResult InvokeSharedMemoryImageBytes(
             string triggerSourceName,

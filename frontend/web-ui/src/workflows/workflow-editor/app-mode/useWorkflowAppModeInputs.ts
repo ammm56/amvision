@@ -31,7 +31,7 @@ export function useWorkflowAppModeInputs() {
   }
 
   function hasValue(input: WorkflowAppContractInput): boolean {
-    if (input.payload_type_id === 'point-cloud-ref.v1') return false
+    if (['point-cloud-ref.v1','calibrated-raster.v1','calibrated-profiles.v1'].includes(input.payload_type_id)) return false
     const state = states.value[input.binding_id]
     if (!state) return false
     if (input.payload_type_id === 'image-base64.v1' || input.payload_type_id === 'file-ref.v1') return state.file !== null

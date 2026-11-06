@@ -27,7 +27,7 @@ def test_formal_implementation_is_discovered_once():
     )
     assert (
         sum(d.node_pack_id == "metrology3d.nodes" for d in snapshot.node_definitions)
-        == 24
+        == 26
     )
     status = next(
         s

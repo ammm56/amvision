@@ -53,7 +53,21 @@ Windows 在发行根目录运行，使用发行包自己的解释器：
 
 同一入口代码支持 Ubuntu，解释器路径为 `python/bin/python3`。Windows/WSL Ubuntu CPU 完整离线包的实际验证见 [A12 记录](../../../docs/development/3d-metrology-offline-release.md)，不能外推其他目标。工具没有添加平台专用进程控制，沿用已有统一启动、整组停止和退出回收。
 
-## 生命周期
+## 标定栅格输入
+
+B06 同机数组使用 `client.invoke_raster(raster=RasterBufferDescriptor.model_validate(descriptor), content=..., source_id=..., generation=..., timeout_ms=..., payload_key="raster")`。
+其余配置、取消、ACK 和错误处理与 `invoke` 相同；没有第二套共享内存协议。布局必须为 little-endian 连续 HW 标量，可紧随同尺寸 uint8 0/1 mask，完整标定和布局一起冻结在 PREPARE。
+
+命令行在原入口增加显式 `--input-kind raster --payload-key raster`。这是原始数组入口，不接受 NPY 文件头或 PNG/TIFF 压缩文件；文件使用既有 HTTP 上传。
+Trigger 的映射目标必须是 `calibrated-raster.v1`，节点选择同机数组模式，不能同时填写另一套标定。文件模式则在节点内填写标定。具体格式、单位及无效值规则见 [B06 契约](../../../docs/development/3d-metrology-raster-input.md)。
+
+## 标定轮廓输入
+
+B07 使用 `client.invoke_profiles(profiles=ProfileBufferDescriptor.model_validate(descriptor), content=..., source_id=..., generation=..., timeout_ms=..., payload_key="profiles")`；其余生命周期与原 `invoke` 共用。命令行显式选择 `--input-kind profiles --payload-key profiles`，输入键必须匹配目标 Trigger，而不是固定名称。
+
+描述为 `amvision.profile-buffer.v1`，包含完整标定、N/M、原值 dtype、扫描位移规则和 `has_validity`。正文按声明的轮廓数组、行偏移、原采集行号、可选编码器位置/掩码顺序紧密 little-endian 拼接。文件输入为 NPZ，走 HTTP 文件上传并使用节点标定；不能把 NPZ 直接传给同机数组入口。详见[B07 契约](../../../docs/development/3d-metrology-profile-input.md)。
+
+## 生命周期与结果
 
 - 一次调用一个 event_id，正式 PREPARE/WRITING/REQUEST/RESPONSE/ACK，无自动重试或等待准入队列。
 - 总超时覆盖分配、分块写入和响应；可传 `cancelled=lambda: stop_event.is_set()`。取消后抛出 `CancelledError`，通知服务端撤销，并释放本地 writer/mmap。

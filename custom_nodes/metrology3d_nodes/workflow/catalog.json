@@ -694,6 +694,264 @@
             "title": "BoxRoi",
             "type": "object"
           },
+          "CalibratedProfiles": {
+            "additionalProperties": false,
+            "description": "轮廓 X/高度已按 spatial 单位标定；扫描位置是独立物理量。",
+            "properties": {
+              "format_id": {
+                "const": "amvision.calibrated-profiles.v1",
+                "title": "Format Id",
+                "type": "string"
+              },
+              "point_count": {
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "title": "Point Count",
+                "type": "integer"
+              },
+              "profile_count": {
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "title": "Profile Count",
+                "type": "integer"
+              },
+              "dtype": {
+                "enum": [
+                  "float32",
+                  "float64"
+                ],
+                "title": "Dtype",
+                "type": "string"
+              },
+              "calibration_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Calibration Id",
+                "type": "string"
+              },
+              "calibration_revision": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Calibration Revision",
+                "type": "string"
+              },
+              "spatial": {
+                "$ref": "#/$defs/CloudSpatial"
+              },
+              "origin": {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "title": "Origin",
+                "type": "array"
+              },
+              "x_direction": {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "title": "X Direction",
+                "type": "array"
+              },
+              "scan_direction": {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "title": "Scan Direction",
+                "type": "array"
+              },
+              "height_direction": {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "title": "Height Direction",
+                "type": "array"
+              },
+              "displacement": {
+                "discriminator": {
+                  "mapping": {
+                    "encoder-positions": "#/$defs/EncoderProfilePositions",
+                    "fixed-step": "#/$defs/FixedProfileStep"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/FixedProfileStep"
+                  },
+                  {
+                    "$ref": "#/$defs/EncoderProfilePositions"
+                  }
+                ],
+                "title": "Displacement"
+              },
+              "position_dtype": {
+                "enum": [
+                  "float32",
+                  "float64"
+                ],
+                "title": "Position Dtype",
+                "type": "string"
+              }
+            },
+            "required": [
+              "format_id",
+              "point_count",
+              "profile_count",
+              "dtype",
+              "calibration_id",
+              "calibration_revision",
+              "spatial",
+              "origin",
+              "x_direction",
+              "scan_direction",
+              "height_direction",
+              "displacement",
+              "position_dtype"
+            ],
+            "title": "CalibratedProfiles",
+            "type": "object"
+          },
+          "CalibratedRaster": {
+            "additionalProperties": false,
+            "description": "完整标定正文随来源保存；ID/版本是追溯标签，不授予资产访问权。",
+            "properties": {
+              "format_id": {
+                "const": "amvision.calibrated-raster.v1",
+                "title": "Format Id",
+                "type": "string"
+              },
+              "width": {
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "title": "Width",
+                "type": "integer"
+              },
+              "height": {
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "title": "Height",
+                "type": "integer"
+              },
+              "dtype": {
+                "enum": [
+                  "uint8",
+                  "uint16",
+                  "int16",
+                  "uint32",
+                  "int32",
+                  "float32",
+                  "float64"
+                ],
+                "title": "Dtype",
+                "type": "string"
+              },
+              "calibration_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Calibration Id",
+                "type": "string"
+              },
+              "calibration_revision": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Calibration Revision",
+                "type": "string"
+              },
+              "spatial": {
+                "$ref": "#/$defs/CloudSpatial"
+              },
+              "projection": {
+                "discriminator": {
+                  "mapping": {
+                    "orthographic-height": "#/$defs/OrthographicHeight",
+                    "rectified-pinhole": "#/$defs/PinholeDepth"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/PinholeDepth"
+                  },
+                  {
+                    "$ref": "#/$defs/OrthographicHeight"
+                  }
+                ],
+                "title": "Projection"
+              },
+              "value_scale": {
+                "exclusiveMinimum": 0,
+                "title": "Value Scale",
+                "type": "number"
+              },
+              "value_offset": {
+                "title": "Value Offset",
+                "type": "number"
+              },
+              "validity": {
+                "$ref": "#/$defs/RasterValidity"
+              },
+              "position_dtype": {
+                "enum": [
+                  "float32",
+                  "float64"
+                ],
+                "title": "Position Dtype",
+                "type": "string"
+              }
+            },
+            "required": [
+              "format_id",
+              "width",
+              "height",
+              "dtype",
+              "calibration_id",
+              "calibration_revision",
+              "spatial",
+              "projection",
+              "value_scale",
+              "value_offset",
+              "validity",
+              "position_dtype"
+            ],
+            "title": "CalibratedRaster",
+            "type": "object"
+          },
           "CloudAssetSource": {
             "additionalProperties": false,
             "description": "本次读取的完整持久资源身份；历史运行 ID 不取得当前访问权。",
@@ -1017,6 +1275,88 @@
             "title": "CloudParent",
             "type": "object"
           },
+          "CloudProfileSource": {
+            "additionalProperties": false,
+            "description": "本次运行文件引用；持久内容不保留此访问句柄。",
+            "properties": {
+              "kind": {
+                "const": "calibrated-profiles",
+                "title": "Kind",
+                "type": "string"
+              },
+              "profiles": {
+                "$ref": "#/$defs/CalibratedProfiles"
+              },
+              "input_format": {
+                "enum": [
+                  "npz",
+                  "array"
+                ],
+                "title": "Input Format",
+                "type": "string"
+              },
+              "content_length": {
+                "exclusiveMinimum": 0,
+                "maximum": 1000000000,
+                "title": "Content Length",
+                "type": "integer"
+              },
+              "content_sha256": {
+                "pattern": "^[0-9a-f]{64}$",
+                "title": "Content Sha256",
+                "type": "string"
+              },
+              "row_table_sha256": {
+                "pattern": "^[0-9a-f]{64}$",
+                "title": "Row Table Sha256",
+                "type": "string"
+              },
+              "file_name": {
+                "anyOf": [
+                  {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "File Name"
+              },
+              "has_validity": {
+                "title": "Has Validity",
+                "type": "boolean"
+              },
+              "file": {
+                "anyOf": [
+                  {
+                    "additionalProperties": {
+                      "$ref": "#/$defs/JsonValue"
+                    },
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "File"
+              }
+            },
+            "required": [
+              "kind",
+              "profiles",
+              "input_format",
+              "content_length",
+              "content_sha256",
+              "row_table_sha256",
+              "file_name",
+              "has_validity",
+              "file"
+            ],
+            "title": "CloudProfileSource",
+            "type": "object"
+          },
           "CloudProvenance": {
             "additionalProperties": false,
             "description": "方法参数正文与来源状态；运行内可访问不等于已经持久保存。",
@@ -1096,6 +1436,84 @@
               "source_retained"
             ],
             "title": "CloudProvenance",
+            "type": "object"
+          },
+          "CloudRasterSource": {
+            "additionalProperties": false,
+            "description": "当前运行的文件引用单独携带，持久来源只保留 RasterSource 正文。",
+            "properties": {
+              "kind": {
+                "const": "calibrated-raster",
+                "title": "Kind",
+                "type": "string"
+              },
+              "raster": {
+                "$ref": "#/$defs/CalibratedRaster"
+              },
+              "input_format": {
+                "enum": [
+                  "array",
+                  "npy",
+                  "png",
+                  "tiff"
+                ],
+                "title": "Input Format",
+                "type": "string"
+              },
+              "content_length": {
+                "exclusiveMinimum": 0,
+                "maximum": 1000000000,
+                "title": "Content Length",
+                "type": "integer"
+              },
+              "content_sha256": {
+                "pattern": "^[0-9a-f]{64}$",
+                "title": "Content Sha256",
+                "type": "string"
+              },
+              "file_name": {
+                "anyOf": [
+                  {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "File Name"
+              },
+              "has_mask": {
+                "title": "Has Mask",
+                "type": "boolean"
+              },
+              "file": {
+                "anyOf": [
+                  {
+                    "additionalProperties": {
+                      "$ref": "#/$defs/JsonValue"
+                    },
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "File"
+              }
+            },
+            "required": [
+              "kind",
+              "raster",
+              "input_format",
+              "content_length",
+              "content_sha256",
+              "file_name",
+              "has_mask",
+              "file"
+            ],
+            "title": "CloudRasterSource",
             "type": "object"
           },
           "CloudSentinel": {
@@ -2473,6 +2891,42 @@
             "title": "DirectionalStep",
             "type": "object"
           },
+          "EncoderProfilePositions": {
+            "additionalProperties": false,
+            "description": "原编码器位置经显式尺度和零点换算，方向由 scan_direction 给定。",
+            "properties": {
+              "kind": {
+                "const": "encoder-positions",
+                "title": "Kind",
+                "type": "string"
+              },
+              "dtype": {
+                "enum": [
+                  "float32",
+                  "float64"
+                ],
+                "title": "Dtype",
+                "type": "string"
+              },
+              "scale": {
+                "exclusiveMinimum": 0,
+                "title": "Scale",
+                "type": "number"
+              },
+              "origin": {
+                "title": "Origin",
+                "type": "number"
+              }
+            },
+            "required": [
+              "kind",
+              "dtype",
+              "scale",
+              "origin"
+            ],
+            "title": "EncoderProfilePositions",
+            "type": "object"
+          },
           "EnvelopeGrid": {
             "additionalProperties": false,
             "description": "有限格阵；origin 为左下格角，shape 按 U/V 排列，不从输入极值推断。",
@@ -3110,6 +3564,35 @@
               "value"
             ],
             "title": "FixedContourHeight",
+            "type": "object"
+          },
+          "FixedProfileStep": {
+            "additionalProperties": false,
+            "description": "原采集行号对应位移；origin_line_id 的位置为扫描零点。",
+            "properties": {
+              "kind": {
+                "const": "fixed-step",
+                "title": "Kind",
+                "type": "string"
+              },
+              "origin_line_id": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "title": "Origin Line Id",
+                "type": "integer"
+              },
+              "step": {
+                "exclusiveMinimum": 0,
+                "title": "Step",
+                "type": "number"
+              }
+            },
+            "required": [
+              "kind",
+              "origin_line_id",
+              "step"
+            ],
+            "title": "FixedProfileStep",
             "type": "object"
           },
           "FrameBuildMethod": {
@@ -4480,6 +4963,106 @@
             "title": "NumericTable",
             "type": "object"
           },
+          "OrthographicHeight": {
+            "additionalProperties": false,
+            "description": "原点是第零行列像素的零高位置；行列与高度方向均显式声明。",
+            "properties": {
+              "kind": {
+                "const": "orthographic-height",
+                "title": "Kind",
+                "type": "string"
+              },
+              "origin": {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "title": "Origin",
+                "type": "array"
+              },
+              "column_direction": {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "title": "Column Direction",
+                "type": "array"
+              },
+              "row_direction": {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "title": "Row Direction",
+                "type": "array"
+              },
+              "height_direction": {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "title": "Height Direction",
+                "type": "array"
+              },
+              "column_step": {
+                "exclusiveMinimum": 0,
+                "title": "Column Step",
+                "type": "number"
+              },
+              "row_step": {
+                "exclusiveMinimum": 0,
+                "title": "Row Step",
+                "type": "number"
+              }
+            },
+            "required": [
+              "kind",
+              "origin",
+              "column_direction",
+              "row_direction",
+              "height_direction",
+              "column_step",
+              "row_step"
+            ],
+            "title": "OrthographicHeight",
+            "type": "object"
+          },
           "PcdSourceMetadata": {
             "additionalProperties": false,
             "description": "原始 PCD 的组织、视点及其原坐标声明，不自动应用视点。",
@@ -4547,6 +5130,53 @@
               "source_spatial"
             ],
             "title": "PcdSourceMetadata",
+            "type": "object"
+          },
+          "PinholeDepth": {
+            "additionalProperties": false,
+            "description": "已去畸变、零 skew 的针孔模型；像素中心使用整数列/行坐标。",
+            "properties": {
+              "kind": {
+                "const": "rectified-pinhole",
+                "title": "Kind",
+                "type": "string"
+              },
+              "depth_kind": {
+                "enum": [
+                  "axial-z",
+                  "ray-range"
+                ],
+                "title": "Depth Kind",
+                "type": "string"
+              },
+              "fx": {
+                "exclusiveMinimum": 0,
+                "title": "Fx",
+                "type": "number"
+              },
+              "fy": {
+                "exclusiveMinimum": 0,
+                "title": "Fy",
+                "type": "number"
+              },
+              "cx": {
+                "title": "Cx",
+                "type": "number"
+              },
+              "cy": {
+                "title": "Cy",
+                "type": "number"
+              }
+            },
+            "required": [
+              "kind",
+              "depth_kind",
+              "fx",
+              "fy",
+              "cx",
+              "cy"
+            ],
+            "title": "PinholeDepth",
             "type": "object"
           },
           "PlaneAxis": {
@@ -5648,6 +6278,48 @@
               "probability"
             ],
             "title": "RansacPlane",
+            "type": "object"
+          },
+          "RasterValidity": {
+            "additionalProperties": false,
+            "description": "原始哨兵在缩放前判断，物理范围在缩放后判断；无默认阈值。",
+            "properties": {
+              "invalid_raw_values": {
+                "items": {
+                  "type": "number"
+                },
+                "title": "Invalid Raw Values",
+                "type": "array"
+              },
+              "minimum": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Minimum"
+              },
+              "maximum": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Maximum"
+              }
+            },
+            "required": [
+              "invalid_raw_values",
+              "minimum",
+              "maximum"
+            ],
+            "title": "RasterValidity",
             "type": "object"
           },
           "ReferenceExtension": {
@@ -7855,6 +8527,8 @@
             "discriminator": {
               "mapping": {
                 "asset": "#/$defs/CloudAssetSource",
+                "calibrated-profiles": "#/$defs/CloudProfileSource",
+                "calibrated-raster": "#/$defs/CloudRasterSource",
                 "derived": "#/$defs/CloudDerivedSource",
                 "file": "#/$defs/CloudFileSource",
                 "local-array": "#/$defs/CloudLocalSource"
@@ -7873,6 +8547,12 @@
               },
               {
                 "$ref": "#/$defs/CloudAssetSource"
+              },
+              {
+                "$ref": "#/$defs/CloudRasterSource"
+              },
+              {
+                "$ref": "#/$defs/CloudProfileSource"
               }
             ],
             "title": "Source"
@@ -8003,6 +8683,1114 @@
           "topology"
         ],
         "title": "CloudReference",
+        "type": "object"
+      },
+      "artifact_kinds": [],
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.workflow-payload-contract.v1",
+      "payload_type_id": "calibrated-raster.v1",
+      "display_name": "Calibrated Raster",
+      "transport_kind": "inline-json",
+      "json_schema": {
+        "$defs": {
+          "BufferRef": {
+            "additionalProperties": false,
+            "description": "描述固定 arena 中一个短期连续 extent 的只读引用。",
+            "properties": {
+              "format_id": {
+                "const": "amvision.buffer-ref.v1",
+                "default": "amvision.buffer-ref.v1",
+                "title": "Format Id",
+                "type": "string"
+              },
+              "buffer_id": {
+                "title": "Buffer Id",
+                "type": "string"
+              },
+              "lease_id": {
+                "title": "Lease Id",
+                "type": "string"
+              },
+              "arena_id": {
+                "title": "Arena Id",
+                "type": "string"
+              },
+              "descriptor_index": {
+                "minimum": 0,
+                "title": "Descriptor Index",
+                "type": "integer"
+              },
+              "descriptor_generation": {
+                "minimum": 1,
+                "title": "Descriptor Generation",
+                "type": "integer"
+              },
+              "broker_epoch": {
+                "title": "Broker Epoch",
+                "type": "string"
+              },
+              "offset": {
+                "minimum": 0,
+                "title": "Offset",
+                "type": "integer"
+              },
+              "content_length": {
+                "exclusiveMinimum": 0,
+                "title": "Content Length",
+                "type": "integer"
+              },
+              "allocation_capacity_bytes": {
+                "exclusiveMinimum": 0,
+                "title": "Allocation Capacity Bytes",
+                "type": "integer"
+              },
+              "shape": {
+                "default": [],
+                "items": {
+                  "type": "integer"
+                },
+                "title": "Shape",
+                "type": "array"
+              },
+              "dtype": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Dtype"
+              },
+              "layout": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Layout"
+              },
+              "pixel_format": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Pixel Format"
+              },
+              "media_type": {
+                "title": "Media Type",
+                "type": "string"
+              },
+              "readonly": {
+                "default": true,
+                "title": "Readonly",
+                "type": "boolean"
+              },
+              "metadata": {
+                "additionalProperties": true,
+                "title": "Metadata",
+                "type": "object"
+              }
+            },
+            "required": [
+              "buffer_id",
+              "lease_id",
+              "arena_id",
+              "descriptor_index",
+              "descriptor_generation",
+              "broker_epoch",
+              "offset",
+              "content_length",
+              "allocation_capacity_bytes",
+              "media_type"
+            ],
+            "title": "BufferRef",
+            "type": "object"
+          },
+          "CalibratedRaster": {
+            "additionalProperties": false,
+            "description": "完整标定正文随来源保存；ID/版本是追溯标签，不授予资产访问权。",
+            "properties": {
+              "format_id": {
+                "const": "amvision.calibrated-raster.v1",
+                "title": "Format Id",
+                "type": "string"
+              },
+              "width": {
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "title": "Width",
+                "type": "integer"
+              },
+              "height": {
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "title": "Height",
+                "type": "integer"
+              },
+              "dtype": {
+                "enum": [
+                  "uint8",
+                  "uint16",
+                  "int16",
+                  "uint32",
+                  "int32",
+                  "float32",
+                  "float64"
+                ],
+                "title": "Dtype",
+                "type": "string"
+              },
+              "calibration_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Calibration Id",
+                "type": "string"
+              },
+              "calibration_revision": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Calibration Revision",
+                "type": "string"
+              },
+              "spatial": {
+                "$ref": "#/$defs/CloudSpatial"
+              },
+              "projection": {
+                "discriminator": {
+                  "mapping": {
+                    "orthographic-height": "#/$defs/OrthographicHeight",
+                    "rectified-pinhole": "#/$defs/PinholeDepth"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/PinholeDepth"
+                  },
+                  {
+                    "$ref": "#/$defs/OrthographicHeight"
+                  }
+                ],
+                "title": "Projection"
+              },
+              "value_scale": {
+                "exclusiveMinimum": 0,
+                "title": "Value Scale",
+                "type": "number"
+              },
+              "value_offset": {
+                "title": "Value Offset",
+                "type": "number"
+              },
+              "validity": {
+                "$ref": "#/$defs/RasterValidity"
+              },
+              "position_dtype": {
+                "enum": [
+                  "float32",
+                  "float64"
+                ],
+                "title": "Position Dtype",
+                "type": "string"
+              }
+            },
+            "required": [
+              "format_id",
+              "width",
+              "height",
+              "dtype",
+              "calibration_id",
+              "calibration_revision",
+              "spatial",
+              "projection",
+              "value_scale",
+              "value_offset",
+              "validity",
+              "position_dtype"
+            ],
+            "title": "CalibratedRaster",
+            "type": "object"
+          },
+          "CloudAxes": {
+            "additionalProperties": false,
+            "description": "轴语义声明；标签不是隐含的坐标变换。",
+            "properties": {
+              "handedness": {
+                "enum": [
+                  "right",
+                  "left",
+                  "unknown"
+                ],
+                "title": "Handedness",
+                "type": "string"
+              },
+              "axis_labels": {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                ],
+                "title": "Axis Labels",
+                "type": "array"
+              },
+              "definition_source": {
+                "enum": [
+                  "metadata",
+                  "configuration",
+                  "unknown"
+                ],
+                "title": "Definition Source",
+                "type": "string"
+              }
+            },
+            "required": [
+              "handedness",
+              "axis_labels",
+              "definition_source"
+            ],
+            "title": "CloudAxes",
+            "type": "object"
+          },
+          "CloudSpatial": {
+            "additionalProperties": false,
+            "description": "点云长度单位、坐标系和轴定义。",
+            "properties": {
+              "length_unit": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "m",
+                      "mm",
+                      "um"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Length Unit"
+              },
+              "unit_source": {
+                "enum": [
+                  "metadata",
+                  "configuration",
+                  "unknown"
+                ],
+                "title": "Unit Source",
+                "type": "string"
+              },
+              "frame_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Frame Id",
+                "type": "string"
+              },
+              "axes": {
+                "$ref": "#/$defs/CloudAxes"
+              }
+            },
+            "required": [
+              "length_unit",
+              "unit_source",
+              "frame_id",
+              "axes"
+            ],
+            "title": "CloudSpatial",
+            "type": "object"
+          },
+          "OrthographicHeight": {
+            "additionalProperties": false,
+            "description": "原点是第零行列像素的零高位置；行列与高度方向均显式声明。",
+            "properties": {
+              "kind": {
+                "const": "orthographic-height",
+                "title": "Kind",
+                "type": "string"
+              },
+              "origin": {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "title": "Origin",
+                "type": "array"
+              },
+              "column_direction": {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "title": "Column Direction",
+                "type": "array"
+              },
+              "row_direction": {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "title": "Row Direction",
+                "type": "array"
+              },
+              "height_direction": {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "title": "Height Direction",
+                "type": "array"
+              },
+              "column_step": {
+                "exclusiveMinimum": 0,
+                "title": "Column Step",
+                "type": "number"
+              },
+              "row_step": {
+                "exclusiveMinimum": 0,
+                "title": "Row Step",
+                "type": "number"
+              }
+            },
+            "required": [
+              "kind",
+              "origin",
+              "column_direction",
+              "row_direction",
+              "height_direction",
+              "column_step",
+              "row_step"
+            ],
+            "title": "OrthographicHeight",
+            "type": "object"
+          },
+          "PinholeDepth": {
+            "additionalProperties": false,
+            "description": "已去畸变、零 skew 的针孔模型；像素中心使用整数列/行坐标。",
+            "properties": {
+              "kind": {
+                "const": "rectified-pinhole",
+                "title": "Kind",
+                "type": "string"
+              },
+              "depth_kind": {
+                "enum": [
+                  "axial-z",
+                  "ray-range"
+                ],
+                "title": "Depth Kind",
+                "type": "string"
+              },
+              "fx": {
+                "exclusiveMinimum": 0,
+                "title": "Fx",
+                "type": "number"
+              },
+              "fy": {
+                "exclusiveMinimum": 0,
+                "title": "Fy",
+                "type": "number"
+              },
+              "cx": {
+                "title": "Cx",
+                "type": "number"
+              },
+              "cy": {
+                "title": "Cy",
+                "type": "number"
+              }
+            },
+            "required": [
+              "kind",
+              "depth_kind",
+              "fx",
+              "fy",
+              "cx",
+              "cy"
+            ],
+            "title": "PinholeDepth",
+            "type": "object"
+          },
+          "RasterBufferDescriptor": {
+            "additionalProperties": false,
+            "description": "同机 LE 连续 HW 标量及可选紧随其后的 uint8 掩码，不携带租约。",
+            "properties": {
+              "format_id": {
+                "const": "amvision.raster-buffer.v1",
+                "title": "Format Id",
+                "type": "string"
+              },
+              "raster": {
+                "$ref": "#/$defs/CalibratedRaster"
+              },
+              "has_mask": {
+                "title": "Has Mask",
+                "type": "boolean"
+              },
+              "content_length": {
+                "exclusiveMinimum": 0,
+                "maximum": 1000000000,
+                "title": "Content Length",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "format_id",
+              "raster",
+              "has_mask",
+              "content_length"
+            ],
+            "title": "RasterBufferDescriptor",
+            "type": "object"
+          },
+          "RasterValidity": {
+            "additionalProperties": false,
+            "description": "原始哨兵在缩放前判断，物理范围在缩放后判断；无默认阈值。",
+            "properties": {
+              "invalid_raw_values": {
+                "items": {
+                  "type": "number"
+                },
+                "title": "Invalid Raw Values",
+                "type": "array"
+              },
+              "minimum": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Minimum"
+              },
+              "maximum": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Maximum"
+              }
+            },
+            "required": [
+              "invalid_raw_values",
+              "minimum",
+              "maximum"
+            ],
+            "title": "RasterValidity",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "description": "平台生成的只读定位，必须同时具有当前运行的私有交接身份。",
+        "properties": {
+          "format_id": {
+            "const": "amvision.workflow-trigger-raster-input.v1",
+            "default": "amvision.workflow-trigger-raster-input.v1",
+            "title": "Format Id",
+            "type": "string"
+          },
+          "descriptor": {
+            "$ref": "#/$defs/RasterBufferDescriptor"
+          },
+          "descriptor_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Descriptor Sha256",
+            "type": "string"
+          },
+          "buffer_ref": {
+            "$ref": "#/$defs/BufferRef"
+          }
+        },
+        "required": [
+          "descriptor",
+          "descriptor_sha256",
+          "buffer_ref"
+        ],
+        "title": "WorkflowTriggerRasterInputV1",
+        "type": "object"
+      },
+      "artifact_kinds": [],
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.workflow-payload-contract.v1",
+      "payload_type_id": "calibrated-profiles.v1",
+      "display_name": "Calibrated Profiles",
+      "transport_kind": "inline-json",
+      "json_schema": {
+        "$defs": {
+          "BufferRef": {
+            "additionalProperties": false,
+            "description": "描述固定 arena 中一个短期连续 extent 的只读引用。",
+            "properties": {
+              "format_id": {
+                "const": "amvision.buffer-ref.v1",
+                "default": "amvision.buffer-ref.v1",
+                "title": "Format Id",
+                "type": "string"
+              },
+              "buffer_id": {
+                "title": "Buffer Id",
+                "type": "string"
+              },
+              "lease_id": {
+                "title": "Lease Id",
+                "type": "string"
+              },
+              "arena_id": {
+                "title": "Arena Id",
+                "type": "string"
+              },
+              "descriptor_index": {
+                "minimum": 0,
+                "title": "Descriptor Index",
+                "type": "integer"
+              },
+              "descriptor_generation": {
+                "minimum": 1,
+                "title": "Descriptor Generation",
+                "type": "integer"
+              },
+              "broker_epoch": {
+                "title": "Broker Epoch",
+                "type": "string"
+              },
+              "offset": {
+                "minimum": 0,
+                "title": "Offset",
+                "type": "integer"
+              },
+              "content_length": {
+                "exclusiveMinimum": 0,
+                "title": "Content Length",
+                "type": "integer"
+              },
+              "allocation_capacity_bytes": {
+                "exclusiveMinimum": 0,
+                "title": "Allocation Capacity Bytes",
+                "type": "integer"
+              },
+              "shape": {
+                "default": [],
+                "items": {
+                  "type": "integer"
+                },
+                "title": "Shape",
+                "type": "array"
+              },
+              "dtype": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Dtype"
+              },
+              "layout": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Layout"
+              },
+              "pixel_format": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Pixel Format"
+              },
+              "media_type": {
+                "title": "Media Type",
+                "type": "string"
+              },
+              "readonly": {
+                "default": true,
+                "title": "Readonly",
+                "type": "boolean"
+              },
+              "metadata": {
+                "additionalProperties": true,
+                "title": "Metadata",
+                "type": "object"
+              }
+            },
+            "required": [
+              "buffer_id",
+              "lease_id",
+              "arena_id",
+              "descriptor_index",
+              "descriptor_generation",
+              "broker_epoch",
+              "offset",
+              "content_length",
+              "allocation_capacity_bytes",
+              "media_type"
+            ],
+            "title": "BufferRef",
+            "type": "object"
+          },
+          "CalibratedProfiles": {
+            "additionalProperties": false,
+            "description": "轮廓 X/高度已按 spatial 单位标定；扫描位置是独立物理量。",
+            "properties": {
+              "format_id": {
+                "const": "amvision.calibrated-profiles.v1",
+                "title": "Format Id",
+                "type": "string"
+              },
+              "point_count": {
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "title": "Point Count",
+                "type": "integer"
+              },
+              "profile_count": {
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "title": "Profile Count",
+                "type": "integer"
+              },
+              "dtype": {
+                "enum": [
+                  "float32",
+                  "float64"
+                ],
+                "title": "Dtype",
+                "type": "string"
+              },
+              "calibration_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Calibration Id",
+                "type": "string"
+              },
+              "calibration_revision": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Calibration Revision",
+                "type": "string"
+              },
+              "spatial": {
+                "$ref": "#/$defs/CloudSpatial"
+              },
+              "origin": {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "title": "Origin",
+                "type": "array"
+              },
+              "x_direction": {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "title": "X Direction",
+                "type": "array"
+              },
+              "scan_direction": {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "title": "Scan Direction",
+                "type": "array"
+              },
+              "height_direction": {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "title": "Height Direction",
+                "type": "array"
+              },
+              "displacement": {
+                "discriminator": {
+                  "mapping": {
+                    "encoder-positions": "#/$defs/EncoderProfilePositions",
+                    "fixed-step": "#/$defs/FixedProfileStep"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/FixedProfileStep"
+                  },
+                  {
+                    "$ref": "#/$defs/EncoderProfilePositions"
+                  }
+                ],
+                "title": "Displacement"
+              },
+              "position_dtype": {
+                "enum": [
+                  "float32",
+                  "float64"
+                ],
+                "title": "Position Dtype",
+                "type": "string"
+              }
+            },
+            "required": [
+              "format_id",
+              "point_count",
+              "profile_count",
+              "dtype",
+              "calibration_id",
+              "calibration_revision",
+              "spatial",
+              "origin",
+              "x_direction",
+              "scan_direction",
+              "height_direction",
+              "displacement",
+              "position_dtype"
+            ],
+            "title": "CalibratedProfiles",
+            "type": "object"
+          },
+          "CloudAxes": {
+            "additionalProperties": false,
+            "description": "轴语义声明；标签不是隐含的坐标变换。",
+            "properties": {
+              "handedness": {
+                "enum": [
+                  "right",
+                  "left",
+                  "unknown"
+                ],
+                "title": "Handedness",
+                "type": "string"
+              },
+              "axis_labels": {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                ],
+                "title": "Axis Labels",
+                "type": "array"
+              },
+              "definition_source": {
+                "enum": [
+                  "metadata",
+                  "configuration",
+                  "unknown"
+                ],
+                "title": "Definition Source",
+                "type": "string"
+              }
+            },
+            "required": [
+              "handedness",
+              "axis_labels",
+              "definition_source"
+            ],
+            "title": "CloudAxes",
+            "type": "object"
+          },
+          "CloudSpatial": {
+            "additionalProperties": false,
+            "description": "点云长度单位、坐标系和轴定义。",
+            "properties": {
+              "length_unit": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "m",
+                      "mm",
+                      "um"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Length Unit"
+              },
+              "unit_source": {
+                "enum": [
+                  "metadata",
+                  "configuration",
+                  "unknown"
+                ],
+                "title": "Unit Source",
+                "type": "string"
+              },
+              "frame_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Frame Id",
+                "type": "string"
+              },
+              "axes": {
+                "$ref": "#/$defs/CloudAxes"
+              }
+            },
+            "required": [
+              "length_unit",
+              "unit_source",
+              "frame_id",
+              "axes"
+            ],
+            "title": "CloudSpatial",
+            "type": "object"
+          },
+          "EncoderProfilePositions": {
+            "additionalProperties": false,
+            "description": "原编码器位置经显式尺度和零点换算，方向由 scan_direction 给定。",
+            "properties": {
+              "kind": {
+                "const": "encoder-positions",
+                "title": "Kind",
+                "type": "string"
+              },
+              "dtype": {
+                "enum": [
+                  "float32",
+                  "float64"
+                ],
+                "title": "Dtype",
+                "type": "string"
+              },
+              "scale": {
+                "exclusiveMinimum": 0,
+                "title": "Scale",
+                "type": "number"
+              },
+              "origin": {
+                "title": "Origin",
+                "type": "number"
+              }
+            },
+            "required": [
+              "kind",
+              "dtype",
+              "scale",
+              "origin"
+            ],
+            "title": "EncoderProfilePositions",
+            "type": "object"
+          },
+          "FixedProfileStep": {
+            "additionalProperties": false,
+            "description": "原采集行号对应位移；origin_line_id 的位置为扫描零点。",
+            "properties": {
+              "kind": {
+                "const": "fixed-step",
+                "title": "Kind",
+                "type": "string"
+              },
+              "origin_line_id": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "title": "Origin Line Id",
+                "type": "integer"
+              },
+              "step": {
+                "exclusiveMinimum": 0,
+                "title": "Step",
+                "type": "number"
+              }
+            },
+            "required": [
+              "kind",
+              "origin_line_id",
+              "step"
+            ],
+            "title": "FixedProfileStep",
+            "type": "object"
+          },
+          "ProfileBufferDescriptor": {
+            "additionalProperties": false,
+            "description": "同机 little-endian 连续块，固定顺序、无 padding，标定由载荷固定。",
+            "properties": {
+              "format_id": {
+                "const": "amvision.profile-buffer.v1",
+                "title": "Format Id",
+                "type": "string"
+              },
+              "profiles": {
+                "$ref": "#/$defs/CalibratedProfiles"
+              },
+              "has_validity": {
+                "title": "Has Validity",
+                "type": "boolean"
+              },
+              "content_length": {
+                "exclusiveMinimum": 0,
+                "maximum": 1000000000,
+                "title": "Content Length",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "format_id",
+              "profiles",
+              "has_validity",
+              "content_length"
+            ],
+            "title": "ProfileBufferDescriptor",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "description": "由平台生成且需要本次运行私有交接身份的只读输入。",
+        "properties": {
+          "format_id": {
+            "const": "amvision.workflow-trigger-profile-input.v1",
+            "default": "amvision.workflow-trigger-profile-input.v1",
+            "title": "Format Id",
+            "type": "string"
+          },
+          "descriptor": {
+            "$ref": "#/$defs/ProfileBufferDescriptor"
+          },
+          "descriptor_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Descriptor Sha256",
+            "type": "string"
+          },
+          "buffer_ref": {
+            "$ref": "#/$defs/BufferRef"
+          }
+        },
+        "required": [
+          "descriptor",
+          "descriptor_sha256",
+          "buffer_ref"
+        ],
+        "title": "WorkflowTriggerProfileInputV1",
         "type": "object"
       },
       "artifact_kinds": [],
@@ -9586,6 +11374,264 @@
             "title": "BoxRoi",
             "type": "object"
           },
+          "CalibratedProfiles": {
+            "additionalProperties": false,
+            "description": "轮廓 X/高度已按 spatial 单位标定；扫描位置是独立物理量。",
+            "properties": {
+              "format_id": {
+                "const": "amvision.calibrated-profiles.v1",
+                "title": "Format Id",
+                "type": "string"
+              },
+              "point_count": {
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "title": "Point Count",
+                "type": "integer"
+              },
+              "profile_count": {
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "title": "Profile Count",
+                "type": "integer"
+              },
+              "dtype": {
+                "enum": [
+                  "float32",
+                  "float64"
+                ],
+                "title": "Dtype",
+                "type": "string"
+              },
+              "calibration_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Calibration Id",
+                "type": "string"
+              },
+              "calibration_revision": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Calibration Revision",
+                "type": "string"
+              },
+              "spatial": {
+                "$ref": "#/$defs/CloudSpatial"
+              },
+              "origin": {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "title": "Origin",
+                "type": "array"
+              },
+              "x_direction": {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "title": "X Direction",
+                "type": "array"
+              },
+              "scan_direction": {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "title": "Scan Direction",
+                "type": "array"
+              },
+              "height_direction": {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "title": "Height Direction",
+                "type": "array"
+              },
+              "displacement": {
+                "discriminator": {
+                  "mapping": {
+                    "encoder-positions": "#/$defs/EncoderProfilePositions",
+                    "fixed-step": "#/$defs/FixedProfileStep"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/FixedProfileStep"
+                  },
+                  {
+                    "$ref": "#/$defs/EncoderProfilePositions"
+                  }
+                ],
+                "title": "Displacement"
+              },
+              "position_dtype": {
+                "enum": [
+                  "float32",
+                  "float64"
+                ],
+                "title": "Position Dtype",
+                "type": "string"
+              }
+            },
+            "required": [
+              "format_id",
+              "point_count",
+              "profile_count",
+              "dtype",
+              "calibration_id",
+              "calibration_revision",
+              "spatial",
+              "origin",
+              "x_direction",
+              "scan_direction",
+              "height_direction",
+              "displacement",
+              "position_dtype"
+            ],
+            "title": "CalibratedProfiles",
+            "type": "object"
+          },
+          "CalibratedRaster": {
+            "additionalProperties": false,
+            "description": "完整标定正文随来源保存；ID/版本是追溯标签，不授予资产访问权。",
+            "properties": {
+              "format_id": {
+                "const": "amvision.calibrated-raster.v1",
+                "title": "Format Id",
+                "type": "string"
+              },
+              "width": {
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "title": "Width",
+                "type": "integer"
+              },
+              "height": {
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "title": "Height",
+                "type": "integer"
+              },
+              "dtype": {
+                "enum": [
+                  "uint8",
+                  "uint16",
+                  "int16",
+                  "uint32",
+                  "int32",
+                  "float32",
+                  "float64"
+                ],
+                "title": "Dtype",
+                "type": "string"
+              },
+              "calibration_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Calibration Id",
+                "type": "string"
+              },
+              "calibration_revision": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Calibration Revision",
+                "type": "string"
+              },
+              "spatial": {
+                "$ref": "#/$defs/CloudSpatial"
+              },
+              "projection": {
+                "discriminator": {
+                  "mapping": {
+                    "orthographic-height": "#/$defs/OrthographicHeight",
+                    "rectified-pinhole": "#/$defs/PinholeDepth"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/PinholeDepth"
+                  },
+                  {
+                    "$ref": "#/$defs/OrthographicHeight"
+                  }
+                ],
+                "title": "Projection"
+              },
+              "value_scale": {
+                "exclusiveMinimum": 0,
+                "title": "Value Scale",
+                "type": "number"
+              },
+              "value_offset": {
+                "title": "Value Offset",
+                "type": "number"
+              },
+              "validity": {
+                "$ref": "#/$defs/RasterValidity"
+              },
+              "position_dtype": {
+                "enum": [
+                  "float32",
+                  "float64"
+                ],
+                "title": "Position Dtype",
+                "type": "string"
+              }
+            },
+            "required": [
+              "format_id",
+              "width",
+              "height",
+              "dtype",
+              "calibration_id",
+              "calibration_revision",
+              "spatial",
+              "projection",
+              "value_scale",
+              "value_offset",
+              "validity",
+              "position_dtype"
+            ],
+            "title": "CalibratedRaster",
+            "type": "object"
+          },
           "CircleFeature": {
             "additionalProperties": false,
             "description": "圆沿用统一几何有效性边界，额外保存求解器证据。",
@@ -10273,6 +12319,88 @@
             "title": "CloudParent",
             "type": "object"
           },
+          "CloudProfileSource": {
+            "additionalProperties": false,
+            "description": "本次运行文件引用；持久内容不保留此访问句柄。",
+            "properties": {
+              "kind": {
+                "const": "calibrated-profiles",
+                "title": "Kind",
+                "type": "string"
+              },
+              "profiles": {
+                "$ref": "#/$defs/CalibratedProfiles"
+              },
+              "input_format": {
+                "enum": [
+                  "npz",
+                  "array"
+                ],
+                "title": "Input Format",
+                "type": "string"
+              },
+              "content_length": {
+                "exclusiveMinimum": 0,
+                "maximum": 1000000000,
+                "title": "Content Length",
+                "type": "integer"
+              },
+              "content_sha256": {
+                "pattern": "^[0-9a-f]{64}$",
+                "title": "Content Sha256",
+                "type": "string"
+              },
+              "row_table_sha256": {
+                "pattern": "^[0-9a-f]{64}$",
+                "title": "Row Table Sha256",
+                "type": "string"
+              },
+              "file_name": {
+                "anyOf": [
+                  {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "File Name"
+              },
+              "has_validity": {
+                "title": "Has Validity",
+                "type": "boolean"
+              },
+              "file": {
+                "anyOf": [
+                  {
+                    "additionalProperties": {
+                      "$ref": "#/$defs/JsonValue"
+                    },
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "File"
+              }
+            },
+            "required": [
+              "kind",
+              "profiles",
+              "input_format",
+              "content_length",
+              "content_sha256",
+              "row_table_sha256",
+              "file_name",
+              "has_validity",
+              "file"
+            ],
+            "title": "CloudProfileSource",
+            "type": "object"
+          },
           "CloudProvenance": {
             "additionalProperties": false,
             "description": "方法参数正文与来源状态；运行内可访问不等于已经持久保存。",
@@ -10352,6 +12480,84 @@
               "source_retained"
             ],
             "title": "CloudProvenance",
+            "type": "object"
+          },
+          "CloudRasterSource": {
+            "additionalProperties": false,
+            "description": "当前运行的文件引用单独携带，持久来源只保留 RasterSource 正文。",
+            "properties": {
+              "kind": {
+                "const": "calibrated-raster",
+                "title": "Kind",
+                "type": "string"
+              },
+              "raster": {
+                "$ref": "#/$defs/CalibratedRaster"
+              },
+              "input_format": {
+                "enum": [
+                  "array",
+                  "npy",
+                  "png",
+                  "tiff"
+                ],
+                "title": "Input Format",
+                "type": "string"
+              },
+              "content_length": {
+                "exclusiveMinimum": 0,
+                "maximum": 1000000000,
+                "title": "Content Length",
+                "type": "integer"
+              },
+              "content_sha256": {
+                "pattern": "^[0-9a-f]{64}$",
+                "title": "Content Sha256",
+                "type": "string"
+              },
+              "file_name": {
+                "anyOf": [
+                  {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "File Name"
+              },
+              "has_mask": {
+                "title": "Has Mask",
+                "type": "boolean"
+              },
+              "file": {
+                "anyOf": [
+                  {
+                    "additionalProperties": {
+                      "$ref": "#/$defs/JsonValue"
+                    },
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "File"
+              }
+            },
+            "required": [
+              "kind",
+              "raster",
+              "input_format",
+              "content_length",
+              "content_sha256",
+              "file_name",
+              "has_mask",
+              "file"
+            ],
+            "title": "CloudRasterSource",
             "type": "object"
           },
           "CloudReference": {
@@ -10452,6 +12658,8 @@
                 "discriminator": {
                   "mapping": {
                     "asset": "#/$defs/CloudAssetSource",
+                    "calibrated-profiles": "#/$defs/CloudProfileSource",
+                    "calibrated-raster": "#/$defs/CloudRasterSource",
                     "derived": "#/$defs/CloudDerivedSource",
                     "file": "#/$defs/CloudFileSource",
                     "local-array": "#/$defs/CloudLocalSource"
@@ -10470,6 +12678,12 @@
                   },
                   {
                     "$ref": "#/$defs/CloudAssetSource"
+                  },
+                  {
+                    "$ref": "#/$defs/CloudRasterSource"
+                  },
+                  {
+                    "$ref": "#/$defs/CloudProfileSource"
                   }
                 ],
                 "title": "Source"
@@ -11977,6 +14191,42 @@
             "title": "DirectionalStep",
             "type": "object"
           },
+          "EncoderProfilePositions": {
+            "additionalProperties": false,
+            "description": "原编码器位置经显式尺度和零点换算，方向由 scan_direction 给定。",
+            "properties": {
+              "kind": {
+                "const": "encoder-positions",
+                "title": "Kind",
+                "type": "string"
+              },
+              "dtype": {
+                "enum": [
+                  "float32",
+                  "float64"
+                ],
+                "title": "Dtype",
+                "type": "string"
+              },
+              "scale": {
+                "exclusiveMinimum": 0,
+                "title": "Scale",
+                "type": "number"
+              },
+              "origin": {
+                "title": "Origin",
+                "type": "number"
+              }
+            },
+            "required": [
+              "kind",
+              "dtype",
+              "scale",
+              "origin"
+            ],
+            "title": "EncoderProfilePositions",
+            "type": "object"
+          },
           "EnvelopeGrid": {
             "additionalProperties": false,
             "description": "有限格阵；origin 为左下格角，shape 按 U/V 排列，不从输入极值推断。",
@@ -12816,6 +15066,35 @@
               "value"
             ],
             "title": "FixedContourHeight",
+            "type": "object"
+          },
+          "FixedProfileStep": {
+            "additionalProperties": false,
+            "description": "原采集行号对应位移；origin_line_id 的位置为扫描零点。",
+            "properties": {
+              "kind": {
+                "const": "fixed-step",
+                "title": "Kind",
+                "type": "string"
+              },
+              "origin_line_id": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "title": "Origin Line Id",
+                "type": "integer"
+              },
+              "step": {
+                "exclusiveMinimum": 0,
+                "title": "Step",
+                "type": "number"
+              }
+            },
+            "required": [
+              "kind",
+              "origin_line_id",
+              "step"
+            ],
+            "title": "FixedProfileStep",
             "type": "object"
           },
           "FrameBuildMethod": {
@@ -14409,6 +16688,106 @@
             "title": "NumericTable",
             "type": "object"
           },
+          "OrthographicHeight": {
+            "additionalProperties": false,
+            "description": "原点是第零行列像素的零高位置；行列与高度方向均显式声明。",
+            "properties": {
+              "kind": {
+                "const": "orthographic-height",
+                "title": "Kind",
+                "type": "string"
+              },
+              "origin": {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "title": "Origin",
+                "type": "array"
+              },
+              "column_direction": {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "title": "Column Direction",
+                "type": "array"
+              },
+              "row_direction": {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "title": "Row Direction",
+                "type": "array"
+              },
+              "height_direction": {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "title": "Height Direction",
+                "type": "array"
+              },
+              "column_step": {
+                "exclusiveMinimum": 0,
+                "title": "Column Step",
+                "type": "number"
+              },
+              "row_step": {
+                "exclusiveMinimum": 0,
+                "title": "Row Step",
+                "type": "number"
+              }
+            },
+            "required": [
+              "kind",
+              "origin",
+              "column_direction",
+              "row_direction",
+              "height_direction",
+              "column_step",
+              "row_step"
+            ],
+            "title": "OrthographicHeight",
+            "type": "object"
+          },
           "PcdSourceMetadata": {
             "additionalProperties": false,
             "description": "原始 PCD 的组织、视点及其原坐标声明，不自动应用视点。",
@@ -14476,6 +16855,53 @@
               "source_spatial"
             ],
             "title": "PcdSourceMetadata",
+            "type": "object"
+          },
+          "PinholeDepth": {
+            "additionalProperties": false,
+            "description": "已去畸变、零 skew 的针孔模型；像素中心使用整数列/行坐标。",
+            "properties": {
+              "kind": {
+                "const": "rectified-pinhole",
+                "title": "Kind",
+                "type": "string"
+              },
+              "depth_kind": {
+                "enum": [
+                  "axial-z",
+                  "ray-range"
+                ],
+                "title": "Depth Kind",
+                "type": "string"
+              },
+              "fx": {
+                "exclusiveMinimum": 0,
+                "title": "Fx",
+                "type": "number"
+              },
+              "fy": {
+                "exclusiveMinimum": 0,
+                "title": "Fy",
+                "type": "number"
+              },
+              "cx": {
+                "title": "Cx",
+                "type": "number"
+              },
+              "cy": {
+                "title": "Cy",
+                "type": "number"
+              }
+            },
+            "required": [
+              "kind",
+              "depth_kind",
+              "fx",
+              "fy",
+              "cx",
+              "cy"
+            ],
+            "title": "PinholeDepth",
             "type": "object"
           },
           "PlaneAxis": {
@@ -15640,6 +18066,48 @@
               "probability"
             ],
             "title": "RansacPlane",
+            "type": "object"
+          },
+          "RasterValidity": {
+            "additionalProperties": false,
+            "description": "原始哨兵在缩放前判断，物理范围在缩放后判断；无默认阈值。",
+            "properties": {
+              "invalid_raw_values": {
+                "items": {
+                  "type": "number"
+                },
+                "title": "Invalid Raw Values",
+                "type": "array"
+              },
+              "minimum": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Minimum"
+              },
+              "maximum": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Maximum"
+              }
+            },
+            "required": [
+              "invalid_raw_values",
+              "minimum",
+              "maximum"
+            ],
+            "title": "RasterValidity",
             "type": "object"
           },
           "ReferenceExtension": {
@@ -18620,6 +21088,264 @@
             "title": "BoxRoi",
             "type": "object"
           },
+          "CalibratedProfiles": {
+            "additionalProperties": false,
+            "description": "轮廓 X/高度已按 spatial 单位标定；扫描位置是独立物理量。",
+            "properties": {
+              "format_id": {
+                "const": "amvision.calibrated-profiles.v1",
+                "title": "Format Id",
+                "type": "string"
+              },
+              "point_count": {
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "title": "Point Count",
+                "type": "integer"
+              },
+              "profile_count": {
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "title": "Profile Count",
+                "type": "integer"
+              },
+              "dtype": {
+                "enum": [
+                  "float32",
+                  "float64"
+                ],
+                "title": "Dtype",
+                "type": "string"
+              },
+              "calibration_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Calibration Id",
+                "type": "string"
+              },
+              "calibration_revision": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Calibration Revision",
+                "type": "string"
+              },
+              "spatial": {
+                "$ref": "#/$defs/CloudSpatial"
+              },
+              "origin": {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "title": "Origin",
+                "type": "array"
+              },
+              "x_direction": {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "title": "X Direction",
+                "type": "array"
+              },
+              "scan_direction": {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "title": "Scan Direction",
+                "type": "array"
+              },
+              "height_direction": {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "title": "Height Direction",
+                "type": "array"
+              },
+              "displacement": {
+                "discriminator": {
+                  "mapping": {
+                    "encoder-positions": "#/$defs/EncoderProfilePositions",
+                    "fixed-step": "#/$defs/FixedProfileStep"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/FixedProfileStep"
+                  },
+                  {
+                    "$ref": "#/$defs/EncoderProfilePositions"
+                  }
+                ],
+                "title": "Displacement"
+              },
+              "position_dtype": {
+                "enum": [
+                  "float32",
+                  "float64"
+                ],
+                "title": "Position Dtype",
+                "type": "string"
+              }
+            },
+            "required": [
+              "format_id",
+              "point_count",
+              "profile_count",
+              "dtype",
+              "calibration_id",
+              "calibration_revision",
+              "spatial",
+              "origin",
+              "x_direction",
+              "scan_direction",
+              "height_direction",
+              "displacement",
+              "position_dtype"
+            ],
+            "title": "CalibratedProfiles",
+            "type": "object"
+          },
+          "CalibratedRaster": {
+            "additionalProperties": false,
+            "description": "完整标定正文随来源保存；ID/版本是追溯标签，不授予资产访问权。",
+            "properties": {
+              "format_id": {
+                "const": "amvision.calibrated-raster.v1",
+                "title": "Format Id",
+                "type": "string"
+              },
+              "width": {
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "title": "Width",
+                "type": "integer"
+              },
+              "height": {
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "title": "Height",
+                "type": "integer"
+              },
+              "dtype": {
+                "enum": [
+                  "uint8",
+                  "uint16",
+                  "int16",
+                  "uint32",
+                  "int32",
+                  "float32",
+                  "float64"
+                ],
+                "title": "Dtype",
+                "type": "string"
+              },
+              "calibration_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Calibration Id",
+                "type": "string"
+              },
+              "calibration_revision": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "title": "Calibration Revision",
+                "type": "string"
+              },
+              "spatial": {
+                "$ref": "#/$defs/CloudSpatial"
+              },
+              "projection": {
+                "discriminator": {
+                  "mapping": {
+                    "orthographic-height": "#/$defs/OrthographicHeight",
+                    "rectified-pinhole": "#/$defs/PinholeDepth"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/PinholeDepth"
+                  },
+                  {
+                    "$ref": "#/$defs/OrthographicHeight"
+                  }
+                ],
+                "title": "Projection"
+              },
+              "value_scale": {
+                "exclusiveMinimum": 0,
+                "title": "Value Scale",
+                "type": "number"
+              },
+              "value_offset": {
+                "title": "Value Offset",
+                "type": "number"
+              },
+              "validity": {
+                "$ref": "#/$defs/RasterValidity"
+              },
+              "position_dtype": {
+                "enum": [
+                  "float32",
+                  "float64"
+                ],
+                "title": "Position Dtype",
+                "type": "string"
+              }
+            },
+            "required": [
+              "format_id",
+              "width",
+              "height",
+              "dtype",
+              "calibration_id",
+              "calibration_revision",
+              "spatial",
+              "projection",
+              "value_scale",
+              "value_offset",
+              "validity",
+              "position_dtype"
+            ],
+            "title": "CalibratedRaster",
+            "type": "object"
+          },
           "CloudAssetSource": {
             "additionalProperties": false,
             "description": "本次读取的完整持久资源身份；历史运行 ID 不取得当前访问权。",
@@ -18943,6 +21669,88 @@
             "title": "CloudParent",
             "type": "object"
           },
+          "CloudProfileSource": {
+            "additionalProperties": false,
+            "description": "本次运行文件引用；持久内容不保留此访问句柄。",
+            "properties": {
+              "kind": {
+                "const": "calibrated-profiles",
+                "title": "Kind",
+                "type": "string"
+              },
+              "profiles": {
+                "$ref": "#/$defs/CalibratedProfiles"
+              },
+              "input_format": {
+                "enum": [
+                  "npz",
+                  "array"
+                ],
+                "title": "Input Format",
+                "type": "string"
+              },
+              "content_length": {
+                "exclusiveMinimum": 0,
+                "maximum": 1000000000,
+                "title": "Content Length",
+                "type": "integer"
+              },
+              "content_sha256": {
+                "pattern": "^[0-9a-f]{64}$",
+                "title": "Content Sha256",
+                "type": "string"
+              },
+              "row_table_sha256": {
+                "pattern": "^[0-9a-f]{64}$",
+                "title": "Row Table Sha256",
+                "type": "string"
+              },
+              "file_name": {
+                "anyOf": [
+                  {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "File Name"
+              },
+              "has_validity": {
+                "title": "Has Validity",
+                "type": "boolean"
+              },
+              "file": {
+                "anyOf": [
+                  {
+                    "additionalProperties": {
+                      "$ref": "#/$defs/JsonValue"
+                    },
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "File"
+              }
+            },
+            "required": [
+              "kind",
+              "profiles",
+              "input_format",
+              "content_length",
+              "content_sha256",
+              "row_table_sha256",
+              "file_name",
+              "has_validity",
+              "file"
+            ],
+            "title": "CloudProfileSource",
+            "type": "object"
+          },
           "CloudProvenance": {
             "additionalProperties": false,
             "description": "方法参数正文与来源状态；运行内可访问不等于已经持久保存。",
@@ -19022,6 +21830,84 @@
               "source_retained"
             ],
             "title": "CloudProvenance",
+            "type": "object"
+          },
+          "CloudRasterSource": {
+            "additionalProperties": false,
+            "description": "当前运行的文件引用单独携带，持久来源只保留 RasterSource 正文。",
+            "properties": {
+              "kind": {
+                "const": "calibrated-raster",
+                "title": "Kind",
+                "type": "string"
+              },
+              "raster": {
+                "$ref": "#/$defs/CalibratedRaster"
+              },
+              "input_format": {
+                "enum": [
+                  "array",
+                  "npy",
+                  "png",
+                  "tiff"
+                ],
+                "title": "Input Format",
+                "type": "string"
+              },
+              "content_length": {
+                "exclusiveMinimum": 0,
+                "maximum": 1000000000,
+                "title": "Content Length",
+                "type": "integer"
+              },
+              "content_sha256": {
+                "pattern": "^[0-9a-f]{64}$",
+                "title": "Content Sha256",
+                "type": "string"
+              },
+              "file_name": {
+                "anyOf": [
+                  {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "File Name"
+              },
+              "has_mask": {
+                "title": "Has Mask",
+                "type": "boolean"
+              },
+              "file": {
+                "anyOf": [
+                  {
+                    "additionalProperties": {
+                      "$ref": "#/$defs/JsonValue"
+                    },
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "File"
+              }
+            },
+            "required": [
+              "kind",
+              "raster",
+              "input_format",
+              "content_length",
+              "content_sha256",
+              "file_name",
+              "has_mask",
+              "file"
+            ],
+            "title": "CloudRasterSource",
             "type": "object"
           },
           "CloudReference": {
@@ -19122,6 +22008,8 @@
                 "discriminator": {
                   "mapping": {
                     "asset": "#/$defs/CloudAssetSource",
+                    "calibrated-profiles": "#/$defs/CloudProfileSource",
+                    "calibrated-raster": "#/$defs/CloudRasterSource",
                     "derived": "#/$defs/CloudDerivedSource",
                     "file": "#/$defs/CloudFileSource",
                     "local-array": "#/$defs/CloudLocalSource"
@@ -19140,6 +22028,12 @@
                   },
                   {
                     "$ref": "#/$defs/CloudAssetSource"
+                  },
+                  {
+                    "$ref": "#/$defs/CloudRasterSource"
+                  },
+                  {
+                    "$ref": "#/$defs/CloudProfileSource"
                   }
                 ],
                 "title": "Source"
@@ -20647,6 +23541,42 @@
             "title": "DirectionalStep",
             "type": "object"
           },
+          "EncoderProfilePositions": {
+            "additionalProperties": false,
+            "description": "原编码器位置经显式尺度和零点换算，方向由 scan_direction 给定。",
+            "properties": {
+              "kind": {
+                "const": "encoder-positions",
+                "title": "Kind",
+                "type": "string"
+              },
+              "dtype": {
+                "enum": [
+                  "float32",
+                  "float64"
+                ],
+                "title": "Dtype",
+                "type": "string"
+              },
+              "scale": {
+                "exclusiveMinimum": 0,
+                "title": "Scale",
+                "type": "number"
+              },
+              "origin": {
+                "title": "Origin",
+                "type": "number"
+              }
+            },
+            "required": [
+              "kind",
+              "dtype",
+              "scale",
+              "origin"
+            ],
+            "title": "EncoderProfilePositions",
+            "type": "object"
+          },
           "EnvelopeGrid": {
             "additionalProperties": false,
             "description": "有限格阵；origin 为左下格角，shape 按 U/V 排列，不从输入极值推断。",
@@ -21284,6 +24214,35 @@
               "value"
             ],
             "title": "FixedContourHeight",
+            "type": "object"
+          },
+          "FixedProfileStep": {
+            "additionalProperties": false,
+            "description": "原采集行号对应位移；origin_line_id 的位置为扫描零点。",
+            "properties": {
+              "kind": {
+                "const": "fixed-step",
+                "title": "Kind",
+                "type": "string"
+              },
+              "origin_line_id": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "title": "Origin Line Id",
+                "type": "integer"
+              },
+              "step": {
+                "exclusiveMinimum": 0,
+                "title": "Step",
+                "type": "number"
+              }
+            },
+            "required": [
+              "kind",
+              "origin_line_id",
+              "step"
+            ],
+            "title": "FixedProfileStep",
             "type": "object"
           },
           "FrameBuildMethod": {
@@ -22654,6 +25613,106 @@
             "title": "NumericTable",
             "type": "object"
           },
+          "OrthographicHeight": {
+            "additionalProperties": false,
+            "description": "原点是第零行列像素的零高位置；行列与高度方向均显式声明。",
+            "properties": {
+              "kind": {
+                "const": "orthographic-height",
+                "title": "Kind",
+                "type": "string"
+              },
+              "origin": {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "title": "Origin",
+                "type": "array"
+              },
+              "column_direction": {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "title": "Column Direction",
+                "type": "array"
+              },
+              "row_direction": {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "title": "Row Direction",
+                "type": "array"
+              },
+              "height_direction": {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "title": "Height Direction",
+                "type": "array"
+              },
+              "column_step": {
+                "exclusiveMinimum": 0,
+                "title": "Column Step",
+                "type": "number"
+              },
+              "row_step": {
+                "exclusiveMinimum": 0,
+                "title": "Row Step",
+                "type": "number"
+              }
+            },
+            "required": [
+              "kind",
+              "origin",
+              "column_direction",
+              "row_direction",
+              "height_direction",
+              "column_step",
+              "row_step"
+            ],
+            "title": "OrthographicHeight",
+            "type": "object"
+          },
           "PcdSourceMetadata": {
             "additionalProperties": false,
             "description": "原始 PCD 的组织、视点及其原坐标声明，不自动应用视点。",
@@ -22721,6 +25780,53 @@
               "source_spatial"
             ],
             "title": "PcdSourceMetadata",
+            "type": "object"
+          },
+          "PinholeDepth": {
+            "additionalProperties": false,
+            "description": "已去畸变、零 skew 的针孔模型；像素中心使用整数列/行坐标。",
+            "properties": {
+              "kind": {
+                "const": "rectified-pinhole",
+                "title": "Kind",
+                "type": "string"
+              },
+              "depth_kind": {
+                "enum": [
+                  "axial-z",
+                  "ray-range"
+                ],
+                "title": "Depth Kind",
+                "type": "string"
+              },
+              "fx": {
+                "exclusiveMinimum": 0,
+                "title": "Fx",
+                "type": "number"
+              },
+              "fy": {
+                "exclusiveMinimum": 0,
+                "title": "Fy",
+                "type": "number"
+              },
+              "cx": {
+                "title": "Cx",
+                "type": "number"
+              },
+              "cy": {
+                "title": "Cy",
+                "type": "number"
+              }
+            },
+            "required": [
+              "kind",
+              "depth_kind",
+              "fx",
+              "fy",
+              "cx",
+              "cy"
+            ],
+            "title": "PinholeDepth",
             "type": "object"
           },
           "PlaneAxis": {
@@ -23822,6 +26928,48 @@
               "probability"
             ],
             "title": "RansacPlane",
+            "type": "object"
+          },
+          "RasterValidity": {
+            "additionalProperties": false,
+            "description": "原始哨兵在缩放前判断，物理范围在缩放后判断；无默认阈值。",
+            "properties": {
+              "invalid_raw_values": {
+                "items": {
+                  "type": "number"
+                },
+                "title": "Invalid Raw Values",
+                "type": "array"
+              },
+              "minimum": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Minimum"
+              },
+              "maximum": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Maximum"
+              }
+            },
+            "required": [
+              "invalid_raw_values",
+              "minimum",
+              "maximum"
+            ],
+            "title": "RasterValidity",
             "type": "object"
           },
           "ReferenceExtension": {
@@ -37606,6 +40754,944 @@
   "node_definitions": [
     {
       "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.metrology3d.profiles-to-cloud",
+      "display_name": "Profiles to Cloud",
+      "category": "metrology3d.data.io",
+      "description": "Profiles to Cloud",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.30",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "file",
+          "display_name": "File",
+          "payload_type_id": "file-ref.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "profiles",
+          "display_name": "Profiles",
+          "payload_type_id": "calibrated-profiles.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "cloud",
+          "display_name": "Cloud",
+          "payload_type_id": "point-cloud-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "additionalProperties": false,
+        "description": "轮廓节点的两种显式入口；不用于规则标量网格。",
+        "properties": {
+          "settings": {
+            "discriminator": {
+              "mapping": {
+                "file": "#/$defs/ProfileFileInput",
+                "local-array": "#/$defs/ProfileLocalInput"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "description": "NPZ 不携带另一套标定；文件模式标定以节点参数为唯一来源。",
+                "properties": {
+                  "kind": {
+                    "const": "file",
+                    "title": "Kind",
+                    "type": "string"
+                  },
+                  "file_format": {
+                    "const": "npz",
+                    "title": "File Format",
+                    "type": "string"
+                  },
+                  "profiles": {
+                    "additionalProperties": false,
+                    "description": "轮廓 X/高度已按 spatial 单位标定；扫描位置是独立物理量。",
+                    "properties": {
+                      "format_id": {
+                        "const": "amvision.calibrated-profiles.v1",
+                        "title": "Format Id",
+                        "type": "string"
+                      },
+                      "point_count": {
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991,
+                        "title": "Point Count",
+                        "type": "integer"
+                      },
+                      "profile_count": {
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991,
+                        "title": "Profile Count",
+                        "type": "integer"
+                      },
+                      "dtype": {
+                        "enum": [
+                          "float32",
+                          "float64"
+                        ],
+                        "title": "Dtype",
+                        "type": "string"
+                      },
+                      "calibration_id": {
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                        "title": "Calibration Id",
+                        "type": "string"
+                      },
+                      "calibration_revision": {
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                        "title": "Calibration Revision",
+                        "type": "string"
+                      },
+                      "spatial": {
+                        "additionalProperties": false,
+                        "description": "点云长度单位、坐标系和轴定义。",
+                        "properties": {
+                          "length_unit": {
+                            "anyOf": [
+                              {
+                                "enum": [
+                                  "m",
+                                  "mm",
+                                  "um"
+                                ],
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "title": "Length Unit"
+                          },
+                          "unit_source": {
+                            "enum": [
+                              "metadata",
+                              "configuration",
+                              "unknown"
+                            ],
+                            "title": "Unit Source",
+                            "type": "string"
+                          },
+                          "frame_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                            "title": "Frame Id",
+                            "type": "string"
+                          },
+                          "axes": {
+                            "additionalProperties": false,
+                            "description": "轴语义声明；标签不是隐含的坐标变换。",
+                            "properties": {
+                              "handedness": {
+                                "enum": [
+                                  "right",
+                                  "left",
+                                  "unknown"
+                                ],
+                                "title": "Handedness",
+                                "type": "string"
+                              },
+                              "axis_labels": {
+                                "maxItems": 3,
+                                "minItems": 3,
+                                "prefixItems": [
+                                  {
+                                    "maxLength": 128,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  {
+                                    "maxLength": 128,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  {
+                                    "maxLength": 128,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  }
+                                ],
+                                "title": "Axis Labels",
+                                "type": "array"
+                              },
+                              "definition_source": {
+                                "enum": [
+                                  "metadata",
+                                  "configuration",
+                                  "unknown"
+                                ],
+                                "title": "Definition Source",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "handedness",
+                              "axis_labels",
+                              "definition_source"
+                            ],
+                            "title": "CloudAxes",
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "length_unit",
+                          "unit_source",
+                          "frame_id",
+                          "axes"
+                        ],
+                        "title": "CloudSpatial",
+                        "type": "object"
+                      },
+                      "origin": {
+                        "maxItems": 3,
+                        "minItems": 3,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "title": "Origin",
+                        "type": "array"
+                      },
+                      "x_direction": {
+                        "maxItems": 3,
+                        "minItems": 3,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "title": "X Direction",
+                        "type": "array"
+                      },
+                      "scan_direction": {
+                        "maxItems": 3,
+                        "minItems": 3,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "title": "Scan Direction",
+                        "type": "array"
+                      },
+                      "height_direction": {
+                        "maxItems": 3,
+                        "minItems": 3,
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ],
+                        "title": "Height Direction",
+                        "type": "array"
+                      },
+                      "displacement": {
+                        "discriminator": {
+                          "mapping": {
+                            "encoder-positions": "#/$defs/EncoderProfilePositions",
+                            "fixed-step": "#/$defs/FixedProfileStep"
+                          },
+                          "propertyName": "kind"
+                        },
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "description": "原采集行号对应位移；origin_line_id 的位置为扫描零点。",
+                            "properties": {
+                              "kind": {
+                                "const": "fixed-step",
+                                "title": "Kind",
+                                "type": "string"
+                              },
+                              "origin_line_id": {
+                                "maximum": 9007199254740991,
+                                "minimum": 0,
+                                "title": "Origin Line Id",
+                                "type": "integer"
+                              },
+                              "step": {
+                                "exclusiveMinimum": 0,
+                                "title": "Step",
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "origin_line_id",
+                              "step"
+                            ],
+                            "title": "FixedProfileStep",
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "description": "原编码器位置经显式尺度和零点换算，方向由 scan_direction 给定。",
+                            "properties": {
+                              "kind": {
+                                "const": "encoder-positions",
+                                "title": "Kind",
+                                "type": "string"
+                              },
+                              "dtype": {
+                                "enum": [
+                                  "float32",
+                                  "float64"
+                                ],
+                                "title": "Dtype",
+                                "type": "string"
+                              },
+                              "scale": {
+                                "exclusiveMinimum": 0,
+                                "title": "Scale",
+                                "type": "number"
+                              },
+                              "origin": {
+                                "title": "Origin",
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "dtype",
+                              "scale",
+                              "origin"
+                            ],
+                            "title": "EncoderProfilePositions",
+                            "type": "object"
+                          }
+                        ],
+                        "title": "Displacement"
+                      },
+                      "position_dtype": {
+                        "enum": [
+                          "float32",
+                          "float64"
+                        ],
+                        "title": "Position Dtype",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "format_id",
+                      "point_count",
+                      "profile_count",
+                      "dtype",
+                      "calibration_id",
+                      "calibration_revision",
+                      "spatial",
+                      "origin",
+                      "x_direction",
+                      "scan_direction",
+                      "height_direction",
+                      "displacement",
+                      "position_dtype"
+                    ],
+                    "title": "CalibratedProfiles",
+                    "type": "object"
+                  },
+                  "has_validity": {
+                    "title": "Has Validity",
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "file_format",
+                  "profiles",
+                  "has_validity"
+                ],
+                "title": "ProfileFileInput",
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "数组模式不允许节点覆写调用方固定的标定。",
+                "properties": {
+                  "kind": {
+                    "const": "local-array",
+                    "title": "Kind",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "title": "ProfileLocalInput",
+                "type": "object"
+              }
+            ],
+            "title": "Settings"
+          }
+        },
+        "required": [
+          "settings"
+        ],
+        "title": "ProfilesToCloudParameters",
+        "type": "object"
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "vision.metrology3d"
+      ],
+      "runtime_requirements": {},
+      "node_pack_id": "metrology3d.nodes",
+      "node_pack_version": "0.1.30",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.metrology3d.raster-to-cloud",
+      "display_name": "Raster to Cloud",
+      "category": "metrology3d.data.io",
+      "description": "Raster to Cloud",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "version": "0.1.29",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "file",
+          "display_name": "File",
+          "payload_type_id": "file-ref.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "raster",
+          "display_name": "Raster",
+          "payload_type_id": "calibrated-raster.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "cloud",
+          "display_name": "Cloud",
+          "payload_type_id": "point-cloud-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "additionalProperties": false,
+        "description": "公开节点显式二选一，切换来源时不得保留另一来源参数。",
+        "properties": {
+          "settings": {
+            "discriminator": {
+              "mapping": {
+                "file": "#/$defs/RasterFileInput",
+                "local-array": "#/$defs/RasterLocalInput"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "description": "文件由节点持有完整标定，不依赖文件名猜测格式或单位。",
+                "properties": {
+                  "kind": {
+                    "const": "file",
+                    "title": "Kind",
+                    "type": "string"
+                  },
+                  "file_format": {
+                    "enum": [
+                      "npy",
+                      "png",
+                      "tiff"
+                    ],
+                    "title": "File Format",
+                    "type": "string"
+                  },
+                  "raster": {
+                    "additionalProperties": false,
+                    "description": "完整标定正文随来源保存；ID/版本是追溯标签，不授予资产访问权。",
+                    "properties": {
+                      "format_id": {
+                        "const": "amvision.calibrated-raster.v1",
+                        "title": "Format Id",
+                        "type": "string"
+                      },
+                      "width": {
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991,
+                        "title": "Width",
+                        "type": "integer"
+                      },
+                      "height": {
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991,
+                        "title": "Height",
+                        "type": "integer"
+                      },
+                      "dtype": {
+                        "enum": [
+                          "uint8",
+                          "uint16",
+                          "int16",
+                          "uint32",
+                          "int32",
+                          "float32",
+                          "float64"
+                        ],
+                        "title": "Dtype",
+                        "type": "string"
+                      },
+                      "calibration_id": {
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                        "title": "Calibration Id",
+                        "type": "string"
+                      },
+                      "calibration_revision": {
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                        "title": "Calibration Revision",
+                        "type": "string"
+                      },
+                      "spatial": {
+                        "additionalProperties": false,
+                        "description": "点云长度单位、坐标系和轴定义。",
+                        "properties": {
+                          "length_unit": {
+                            "anyOf": [
+                              {
+                                "enum": [
+                                  "m",
+                                  "mm",
+                                  "um"
+                                ],
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "title": "Length Unit"
+                          },
+                          "unit_source": {
+                            "enum": [
+                              "metadata",
+                              "configuration",
+                              "unknown"
+                            ],
+                            "title": "Unit Source",
+                            "type": "string"
+                          },
+                          "frame_id": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                            "title": "Frame Id",
+                            "type": "string"
+                          },
+                          "axes": {
+                            "additionalProperties": false,
+                            "description": "轴语义声明；标签不是隐含的坐标变换。",
+                            "properties": {
+                              "handedness": {
+                                "enum": [
+                                  "right",
+                                  "left",
+                                  "unknown"
+                                ],
+                                "title": "Handedness",
+                                "type": "string"
+                              },
+                              "axis_labels": {
+                                "maxItems": 3,
+                                "minItems": 3,
+                                "prefixItems": [
+                                  {
+                                    "maxLength": 128,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  {
+                                    "maxLength": 128,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  {
+                                    "maxLength": 128,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  }
+                                ],
+                                "title": "Axis Labels",
+                                "type": "array"
+                              },
+                              "definition_source": {
+                                "enum": [
+                                  "metadata",
+                                  "configuration",
+                                  "unknown"
+                                ],
+                                "title": "Definition Source",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "handedness",
+                              "axis_labels",
+                              "definition_source"
+                            ],
+                            "title": "CloudAxes",
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "length_unit",
+                          "unit_source",
+                          "frame_id",
+                          "axes"
+                        ],
+                        "title": "CloudSpatial",
+                        "type": "object"
+                      },
+                      "projection": {
+                        "discriminator": {
+                          "mapping": {
+                            "orthographic-height": "#/$defs/OrthographicHeight",
+                            "rectified-pinhole": "#/$defs/PinholeDepth"
+                          },
+                          "propertyName": "kind"
+                        },
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "description": "已去畸变、零 skew 的针孔模型；像素中心使用整数列/行坐标。",
+                            "properties": {
+                              "kind": {
+                                "const": "rectified-pinhole",
+                                "title": "Kind",
+                                "type": "string"
+                              },
+                              "depth_kind": {
+                                "enum": [
+                                  "axial-z",
+                                  "ray-range"
+                                ],
+                                "title": "Depth Kind",
+                                "type": "string"
+                              },
+                              "fx": {
+                                "exclusiveMinimum": 0,
+                                "title": "Fx",
+                                "type": "number"
+                              },
+                              "fy": {
+                                "exclusiveMinimum": 0,
+                                "title": "Fy",
+                                "type": "number"
+                              },
+                              "cx": {
+                                "title": "Cx",
+                                "type": "number"
+                              },
+                              "cy": {
+                                "title": "Cy",
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "depth_kind",
+                              "fx",
+                              "fy",
+                              "cx",
+                              "cy"
+                            ],
+                            "title": "PinholeDepth",
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "description": "原点是第零行列像素的零高位置；行列与高度方向均显式声明。",
+                            "properties": {
+                              "kind": {
+                                "const": "orthographic-height",
+                                "title": "Kind",
+                                "type": "string"
+                              },
+                              "origin": {
+                                "maxItems": 3,
+                                "minItems": 3,
+                                "prefixItems": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  }
+                                ],
+                                "title": "Origin",
+                                "type": "array"
+                              },
+                              "column_direction": {
+                                "maxItems": 3,
+                                "minItems": 3,
+                                "prefixItems": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  }
+                                ],
+                                "title": "Column Direction",
+                                "type": "array"
+                              },
+                              "row_direction": {
+                                "maxItems": 3,
+                                "minItems": 3,
+                                "prefixItems": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  }
+                                ],
+                                "title": "Row Direction",
+                                "type": "array"
+                              },
+                              "height_direction": {
+                                "maxItems": 3,
+                                "minItems": 3,
+                                "prefixItems": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  }
+                                ],
+                                "title": "Height Direction",
+                                "type": "array"
+                              },
+                              "column_step": {
+                                "exclusiveMinimum": 0,
+                                "title": "Column Step",
+                                "type": "number"
+                              },
+                              "row_step": {
+                                "exclusiveMinimum": 0,
+                                "title": "Row Step",
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "origin",
+                              "column_direction",
+                              "row_direction",
+                              "height_direction",
+                              "column_step",
+                              "row_step"
+                            ],
+                            "title": "OrthographicHeight",
+                            "type": "object"
+                          }
+                        ],
+                        "title": "Projection"
+                      },
+                      "value_scale": {
+                        "exclusiveMinimum": 0,
+                        "title": "Value Scale",
+                        "type": "number"
+                      },
+                      "value_offset": {
+                        "title": "Value Offset",
+                        "type": "number"
+                      },
+                      "validity": {
+                        "additionalProperties": false,
+                        "description": "原始哨兵在缩放前判断，物理范围在缩放后判断；无默认阈值。",
+                        "properties": {
+                          "invalid_raw_values": {
+                            "items": {
+                              "type": "number"
+                            },
+                            "title": "Invalid Raw Values",
+                            "type": "array"
+                          },
+                          "minimum": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "title": "Minimum"
+                          },
+                          "maximum": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "title": "Maximum"
+                          }
+                        },
+                        "required": [
+                          "invalid_raw_values",
+                          "minimum",
+                          "maximum"
+                        ],
+                        "title": "RasterValidity",
+                        "type": "object"
+                      },
+                      "position_dtype": {
+                        "enum": [
+                          "float32",
+                          "float64"
+                        ],
+                        "title": "Position Dtype",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "format_id",
+                      "width",
+                      "height",
+                      "dtype",
+                      "calibration_id",
+                      "calibration_revision",
+                      "spatial",
+                      "projection",
+                      "value_scale",
+                      "value_offset",
+                      "validity",
+                      "position_dtype"
+                    ],
+                    "title": "CalibratedRaster",
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "file_format",
+                  "raster"
+                ],
+                "title": "RasterFileInput",
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "同机输入只使用 PREPARE 中已固定的标定，不允许参数覆盖。",
+                "properties": {
+                  "kind": {
+                    "const": "local-array",
+                    "title": "Kind",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "title": "RasterLocalInput",
+                "type": "object"
+              }
+            ],
+            "title": "Settings"
+          }
+        },
+        "required": [
+          "settings"
+        ],
+        "title": "RasterToCloudParameters",
+        "type": "object"
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "vision.metrology3d"
+      ],
+      "runtime_requirements": {},
+      "node_pack_id": "metrology3d.nodes",
+      "node_pack_version": "0.1.30",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.metrology3d.register-cloud",
       "display_name": "Register Cloud",
       "category": "metrology3d.geometry",
@@ -38365,7 +42451,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.28",
+      "node_pack_version": "0.1.30",
       "metadata": {}
     },
     {
@@ -38442,7 +42528,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.28",
+      "node_pack_version": "0.1.30",
       "metadata": {}
     },
     {
@@ -38528,7 +42614,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.28",
+      "node_pack_version": "0.1.30",
       "metadata": {}
     },
     {
@@ -39077,7 +43163,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.28",
+      "node_pack_version": "0.1.30",
       "metadata": {}
     },
     {
@@ -39565,7 +43651,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.28",
+      "node_pack_version": "0.1.30",
       "metadata": {}
     },
     {
@@ -39974,7 +44060,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.28",
+      "node_pack_version": "0.1.30",
       "metadata": {}
     },
     {
@@ -42573,7 +46659,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.28",
+      "node_pack_version": "0.1.30",
       "metadata": {}
     },
     {
@@ -42970,7 +47056,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.28",
+      "node_pack_version": "0.1.30",
       "metadata": {}
     },
     {
@@ -43470,7 +47556,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.28",
+      "node_pack_version": "0.1.30",
       "metadata": {}
     },
     {
@@ -44088,7 +48174,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.28",
+      "node_pack_version": "0.1.30",
       "metadata": {}
     },
     {
@@ -44747,7 +48833,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.28",
+      "node_pack_version": "0.1.30",
       "metadata": {}
     },
     {
@@ -46183,7 +50269,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.28",
+      "node_pack_version": "0.1.30",
       "metadata": {}
     },
     {
@@ -46444,7 +50530,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.28",
+      "node_pack_version": "0.1.30",
       "metadata": {}
     },
     {
@@ -46803,7 +50889,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.28",
+      "node_pack_version": "0.1.30",
       "metadata": {}
     },
     {
@@ -46860,7 +50946,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.28",
+      "node_pack_version": "0.1.30",
       "metadata": {}
     },
     {
@@ -46871,7 +50957,7 @@
       "description": "Read Cloud",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.28",
+      "version": "0.1.30",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -47240,7 +51326,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.28",
+      "node_pack_version": "0.1.30",
       "metadata": {}
     },
     {
@@ -47312,7 +51398,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.28",
+      "node_pack_version": "0.1.30",
       "metadata": {}
     },
     {
@@ -47450,7 +51536,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.28",
+      "node_pack_version": "0.1.30",
       "metadata": {}
     },
     {
@@ -47571,7 +51657,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.28",
+      "node_pack_version": "0.1.30",
       "metadata": {}
     },
     {
@@ -47799,7 +51885,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.28",
+      "node_pack_version": "0.1.30",
       "metadata": {}
     },
     {
@@ -48198,7 +52284,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.28",
+      "node_pack_version": "0.1.30",
       "metadata": {}
     },
     {
@@ -48209,7 +52295,7 @@
       "description": "Cloud Preview",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.28",
+      "version": "0.1.30",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -48423,7 +52509,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.28",
+      "node_pack_version": "0.1.30",
       "metadata": {}
     },
     {
@@ -48434,7 +52520,7 @@
       "description": "Save Cloud",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.28",
+      "version": "0.1.30",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -48598,7 +52684,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.28",
+      "node_pack_version": "0.1.30",
       "metadata": {}
     },
     {
@@ -48797,7 +52883,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "metrology3d.nodes",
-      "node_pack_version": "0.1.28",
+      "node_pack_version": "0.1.30",
       "metadata": {}
     }
   ],

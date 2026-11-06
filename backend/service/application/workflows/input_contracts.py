@@ -125,7 +125,12 @@ class WorkflowInputValidator:
                     details={"binding_ids": [binding_id]},
                 )
             if (
-                contract_item.get("payload_type_id") == "point-cloud-ref.v1"
+                contract_item.get("payload_type_id")
+                in {
+                    "point-cloud-ref.v1",
+                    "calibrated-raster.v1",
+                    "calibrated-profiles.v1",
+                }
                 and binding_id not in trusted_cloud_input_ids
             ):
                 raise WorkflowInputError(
@@ -612,17 +617,33 @@ def _build_input_contract_item(
             details={"binding_id": binding.binding_id},
         )
     payload_schema = _closed_outer_schema(payload_contract.json_schema)
-    if payload_type_id == "point-cloud-ref.v1":
+    if payload_type_id in {
+        "point-cloud-ref.v1",
+        "calibrated-raster.v1",
+        "calibrated-profiles.v1",
+    }:
         from backend.contracts.workflows.point_cloud_trigger import (
             WorkflowTriggerCloudInputV1,
         )
         from backend.contracts.workflows.schema_helpers import inline_model_schema
+        from backend.contracts.workflows.raster_trigger import (
+            WorkflowTriggerRasterInputV1,
+        )
+        from backend.contracts.workflows.profile_trigger import (
+            WorkflowTriggerProfileInputV1,
+        )
 
         if "transports" in config and config["transports"] != ["local-shared-memory"]:
             raise ServiceConfigurationError(
                 "点云数组 binding 只支持 local-shared-memory"
             )
-        payload_schema = inline_model_schema(WorkflowTriggerCloudInputV1)
+        payload_schema = inline_model_schema(
+            WorkflowTriggerProfileInputV1
+            if payload_type_id == "calibrated-profiles.v1"
+            else WorkflowTriggerRasterInputV1
+            if payload_type_id == "calibrated-raster.v1"
+            else WorkflowTriggerCloudInputV1
+        )
     return {
         **_binding_contract_fields(binding, payload_type_id),
         "payload_schema": payload_schema,
@@ -695,7 +716,11 @@ def _request_defaults(payload_type_id: str, transport_kind: str) -> dict[str, ob
             max_files=1,
             transports=["multipart-upload"],
         )
-    elif payload_type_id == "point-cloud-ref.v1":
+    elif payload_type_id in {
+        "point-cloud-ref.v1",
+        "calibrated-raster.v1",
+        "calibrated-profiles.v1",
+    }:
         result.update(transports=["local-shared-memory"])
     elif transport_kind == "inline-json":
         result.update(max_inline_bytes=DEFAULT_INLINE_MAX_BYTES, transports=["json"])

@@ -31,6 +31,9 @@ def main():
             "roi-union",
             "visible-envelope",
             "workpiece-delivery",
+            "calibrated-raster",
+            "calibrated-raster-resaved",
+            "calibrated-profiles",
         ),
         default="boundary-circle",
     )
@@ -70,6 +73,101 @@ def main():
             else (args.recipe,)
         )
         for kind in () if args.recipe == "empty" else kinds:
+            if kind == "calibrated-profiles":
+                import numpy as np
+                from tests.test_metrology3d_profile_conversion import specification
+                from tests.integration.metrology3d.test_profiles_published import (
+                    profile_documents,
+                )
+
+                row, col = np.mgrid[:192, :256]
+                heights = (0.015 * col + 0.025 * row + 2 * np.sin(col / 32)).astype(
+                    "float32"
+                )
+                # 显式缺一采集行、留一空行，不把合成标定数据称为真实扫描。
+                lengths = np.full(192, 256, dtype=np.uint64)
+                lengths[80] = 0
+                keep = row.ravel() != 80
+                rows = np.arange(192, dtype=np.uint64)
+                rows[100:] += 1
+                offsets = np.concatenate(
+                    (np.zeros(1, dtype=np.uint64), np.cumsum(lengths))
+                )
+                spec = specification(
+                    point_count=int(offsets[-1]),
+                    profile_count=192,
+                    dtype="float32",
+                    origin=[0, 0, 0],
+                    x_direction=[1, 0, 0],
+                    scan_direction=[0, 1, 0],
+                    height_direction=[0, 0, 1],
+                    displacement=dict(kind="fixed-step", origin_line_id=0, step=0.25),
+                )
+                path = root / "calibrated-profiles.npz"
+                np.savez(
+                    path,
+                    profiles=np.column_stack(
+                        (col.ravel()[keep] * np.float32(0.25), heights.ravel()[keep])
+                    ).astype("float32"),
+                    line_offsets=offsets,
+                    line_ids=rows,
+                )
+                version = system.publish(
+                    point_limit=500, documents=profile_documents(spec)
+                )
+                print(
+                    f"Published {version}; analytic calibrated profiles input={path}",
+                    flush=True,
+                )
+                continue
+            if kind in {"calibrated-raster", "calibrated-raster-resaved"}:
+                import numpy as np
+                from tests.test_metrology3d_raster_conversion import specification
+                from tests.integration.metrology3d.test_raster_published import (
+                    raster_documents,
+                )
+
+                row, col = np.mgrid[:192, :256]
+                heights = (0.015 * col + 0.025 * row + 2 * np.sin(col / 32)).astype(
+                    "float32"
+                )
+                spec = specification(
+                    width=256,
+                    height=192,
+                    projection=dict(
+                        kind="orthographic-height",
+                        origin=[0, 0, 0],
+                        column_direction=[1, 0, 0],
+                        row_direction=[0, 1, 0],
+                        height_direction=[0, 0, 1],
+                        column_step=0.25,
+                        row_step=0.25,
+                    ),
+                )
+                path = root / "calibrated-height.npy"
+                np.save(path, heights, allow_pickle=False)
+                if kind == "calibrated-raster-resaved":
+                    from tests.integration.metrology3d.test_raster_published import (
+                        publish_saved_raster_roundtrip,
+                    )
+                    from tests.test_metrology3d_raster_io import encode
+
+                    body = publish_saved_raster_roundtrip(
+                        system, spec, encode(heights, "npy")
+                    )
+                    print(
+                        f"Published saved raster; pixels={body['source_point_count']}; calibration={body['raster_source']['calibration_id']}",
+                        flush=True,
+                    )
+                    continue
+                version = system.publish(
+                    point_limit=1000, documents=raster_documents(spec=spec)
+                )
+                print(
+                    f"Published {version}; analytic calibrated grid input={path}",
+                    flush=True,
+                )
+                continue
             if args.recipe == "methods":
                 from tests.integration.metrology3d.method_documents import (
                     method_documents,

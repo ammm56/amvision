@@ -10,6 +10,10 @@ from backend.contracts.workflows import (
     WorkflowTriggerRequestV1,
 )
 from backend.contracts.workflows.point_cloud import CloudBufferDescriptor
+from backend.contracts.workflows.raster3d import RasterBufferDescriptor
+from backend.contracts.workflows.profile3d import ProfileBufferDescriptor
+from backend.contracts.workflows.profile_trigger import WorkflowTriggerProfilePrepareV1
+from backend.contracts.workflows.raster_trigger import WorkflowTriggerRasterPrepareV1
 from backend.contracts.workflows.point_cloud_trigger import (
     WorkflowTriggerCloudPrepareV1,
 )
@@ -59,17 +63,34 @@ def invoke_cloud(
 ):
     """经 PREPARE、WRITING、REQUEST、RESPONSE 和 ACK 完成真实调用。"""
     with WorkflowTriggerMailboxClient(buffers_root=root) as client:
-        identity = client.claim_cloud(
+        if isinstance(cloud, ProfileBufferDescriptor):
+            model, key, claim = (
+                WorkflowTriggerProfilePrepareV1,
+                "profiles",
+                client.claim_profiles,
+            )
+        elif isinstance(cloud, RasterBufferDescriptor):
+            model, key, claim = (
+                WorkflowTriggerRasterPrepareV1,
+                "raster",
+                client.claim_raster,
+            )
+        else:
+            model, key, claim = (
+                WorkflowTriggerCloudPrepareV1,
+                "cloud",
+                client.claim_cloud,
+            )
+        prepare = model(
+            trigger_source_id=source,
+            event_id="published-cloud",
+            event_payload_key="cloud",
+            **{key: cloud},
+        )
+        identity = claim(
             timeout_ms=timeout_ms,
             route_generation=generation,
-            prepare_payload=WorkflowTriggerCloudPrepareV1(
-                trigger_source_id=source,
-                event_id="published-cloud",
-                event_payload_key="cloud",
-                cloud=cloud,
-            )
-            .model_dump_json()
-            .encode(),
+            prepare_payload=prepare.model_dump_json().encode(),
         )
         try:
             outcome = wait_for(
@@ -140,15 +161,19 @@ def invoke_cloud(
 
 if __name__ == "__main__":
     root, source, generation, descriptor, content, mode, timeout, *ready = sys.argv[1:]
+    raw = json.loads(Path(descriptor).read_text("utf-8"))
+    model = {
+        "amvision.point-cloud-buffer.v1": CloudBufferDescriptor,
+        "amvision.raster-buffer.v1": RasterBufferDescriptor,
+        "amvision.profile-buffer.v1": ProfileBufferDescriptor,
+    }[raw["format_id"]]
     print(
         json.dumps(
             invoke_cloud(
                 root,
                 source,
                 int(generation),
-                CloudBufferDescriptor.model_validate_json(
-                    Path(descriptor).read_text("utf-8")
-                ),
+                model.model_validate(raw),
                 Path(content),
                 timeout_ms=int(timeout),
                 hold_writer=ready[0] if mode == "hold-writer" else None,

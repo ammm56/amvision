@@ -67,7 +67,7 @@ export function useWorkflowPreviewInputs(options: WorkflowPreviewInputsOptions) 
     const state = previewInputState.value[binding.binding_id]
     if (!state) return false
     const payloadTypeId = options.getBindingPayloadTypeId(binding)
-    if (payloadTypeId === 'point-cloud-ref.v1') return false
+    if (['point-cloud-ref.v1','calibrated-raster.v1','calibrated-profiles.v1'].includes(payloadTypeId)) return false
     if (usesStructuredJsonPreviewEditor(payloadTypeId)) {
       return Boolean(state.jsonValue.trim())
     }

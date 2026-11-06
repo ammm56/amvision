@@ -31,6 +31,10 @@ namespace Amvar.Vision.ContractTests
                     return InvokeSharedMemory(args);
                 case "--invoke-shared-memory-cloud":
                     return InvokePointCloud(args);
+                case "--invoke-shared-memory-raster":
+                    return InvokePointCloud(args, "raster");
+                case "--invoke-shared-memory-profiles":
+                    return InvokePointCloud(args, "profiles");
                 case "--invoke-shared-memory-output":
                     return InvokeSharedMemoryOutput(args);
                 case "--invoke-shared-memory-input":
@@ -71,7 +75,7 @@ namespace Amvar.Vision.ContractTests
             return 0;
         }
 
-        private static int InvokePointCloud(string[] args)
+        private static int InvokePointCloud(string[] args, string kind = "cloud")
         {
             if (args.Length < 7 || args.Length > 9) return 64;
             if (args[6] != "bytes" && args[6] != "fill" && args[6] != "hold-writer") return 64;
@@ -80,9 +84,7 @@ namespace Amvar.Vision.ContractTests
             using var client = new SharedMemoryTriggerClient(options);
             var descriptor = JObject.Parse(File.ReadAllText(args[4]));
             var request = new SharedMemoryTriggerRequest { InputBinding = "cloud", EventId = "event-1" };
-            using var result = args[6] == "bytes"
-                ? client.InvokePointCloud(descriptor, File.ReadAllBytes(args[5]), request)
-                : client.InvokePointCloud(descriptor, destination =>
+            SharedMemoryTriggerBufferWriter fill = destination =>
                 {
                     if (args[6] == "hold-writer")
                     {
@@ -100,7 +102,15 @@ namespace Amvar.Vision.ContractTests
                         offset += count;
                     }
                     if (offset != destination.Length) throw new InvalidDataException("cloud file is incomplete");
-                }, request);
+                };
+            using var result = kind == "profiles"
+                ? (args[6] == "bytes" ? client.InvokeCalibratedProfiles(descriptor, File.ReadAllBytes(args[5]), request)
+                                     : client.InvokeCalibratedProfiles(descriptor, fill, request))
+                : kind == "raster"
+                ? (args[6] == "bytes" ? client.InvokeCalibratedRaster(descriptor, File.ReadAllBytes(args[5]), request)
+                                     : client.InvokeCalibratedRaster(descriptor, fill, request))
+                : (args[6] == "bytes" ? client.InvokePointCloud(descriptor, File.ReadAllBytes(args[5]), request)
+                                     : client.InvokePointCloud(descriptor, fill, request));
             Console.WriteLine(JsonConvert.SerializeObject(result.Result));
             return 0;
         }

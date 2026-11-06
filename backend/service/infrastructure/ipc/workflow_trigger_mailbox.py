@@ -32,6 +32,8 @@ from backend.service.application.workflows.trigger_sources.trigger_message_chann
     EVENT_REQUEST_SCHEMA_ID,
     PREPARE_SCHEMA_ID,
     CLOUD_PREPARE_SCHEMA_ID,
+    RASTER_PREPARE_SCHEMA_ID,
+    PROFILE_PREPARE_SCHEMA_ID,
     REQUEST_SCHEMA_ID,
     RESPONSE_SCHEMA_ID,
     WorkflowTriggerDescriptorIdentity,
@@ -234,10 +236,19 @@ class WorkflowTriggerMailboxServer:
         }
         try:
             # 类型由 envelope 明确指定；不在图片解码失败后尝试点云。
-            prepare_schema_id = (
-                CLOUD_PREPARE_SCHEMA_ID
-                if context.wire_bytes.startswith(b'{"schema_id":"' + CLOUD_PREPARE_SCHEMA_ID.encode() + b'",')
-                else PREPARE_SCHEMA_ID
+            prepare_schema_id = next(
+                (
+                    schema
+                    for schema in (
+                        CLOUD_PREPARE_SCHEMA_ID,
+                        RASTER_PREPARE_SCHEMA_ID,
+                        PROFILE_PREPARE_SCHEMA_ID,
+                    )
+                    if context.wire_bytes.startswith(
+                        b'{"schema_id":"' + schema.encode() + b'",'
+                    )
+                ),
+                PREPARE_SCHEMA_ID,
             )
             payload = decode_trigger_payload(
                 context.wire_bytes,
@@ -581,7 +592,10 @@ class WorkflowTriggerMailboxServer:
                 ack_timeouts.append(identity)
             if event.descriptor_released:
                 released.append(identity)
-            if event.descriptor_released or event.reason == MailboxTerminalReason.CANCELLED:
+            if (
+                event.descriptor_released
+                or event.reason == MailboxTerminalReason.CANCELLED
+            ):
                 with self._lock:
                     self._identities.pop(key, None)
                     self._contexts.pop(key, None)
@@ -845,14 +859,61 @@ class WorkflowTriggerMailboxClient:
             envelope_name="event-only REQUEST",
         )
 
-    def claim_cloud(self, *, timeout_ms: int, route_generation: int,
-                    prepare_payload: bytes, request_id: UUID | None = None):
+    def claim_cloud(
+        self,
+        *,
+        timeout_ms: int,
+        route_generation: int,
+        prepare_payload: bytes,
+        request_id: UUID | None = None,
+    ):
         """以独立业务 schema 使用同一 PREPARE/REQUEST/ACK 状态机。"""
         return self._claim(
-            timeout_ms=timeout_ms, route_generation=route_generation,
-            payload=prepare_payload, request_id=request_id,
+            timeout_ms=timeout_ms,
+            route_generation=route_generation,
+            payload=prepare_payload,
+            request_id=request_id,
             schema_id=CLOUD_PREPARE_SCHEMA_ID,
-            phase=contract.DESCRIPTOR_STATE_PREPARE, envelope_name="Cloud PREPARE",
+            phase=contract.DESCRIPTOR_STATE_PREPARE,
+            envelope_name="Cloud PREPARE",
+        )
+
+    def claim_raster(
+        self,
+        *,
+        timeout_ms: int,
+        route_generation: int,
+        prepare_payload: bytes,
+        request_id: UUID | None = None,
+    ):
+        """标量布局独立验证，槽位、所有权和取消沿同一状态机。"""
+        return self._claim(
+            timeout_ms=timeout_ms,
+            route_generation=route_generation,
+            payload=prepare_payload,
+            request_id=request_id,
+            schema_id=RASTER_PREPARE_SCHEMA_ID,
+            phase=contract.DESCRIPTOR_STATE_PREPARE,
+            envelope_name="Raster PREPARE",
+        )
+
+    def claim_profiles(
+        self,
+        *,
+        timeout_ms: int,
+        route_generation: int,
+        prepare_payload: bytes,
+        request_id: UUID | None = None,
+    ) -> WorkflowTriggerDescriptorIdentity:
+        """扫描轮廓共用原 mailbox claim，不新增分配或等待流程。"""
+        return self._claim(
+            timeout_ms=timeout_ms,
+            route_generation=route_generation,
+            payload=prepare_payload,
+            request_id=request_id,
+            schema_id=PROFILE_PREPARE_SCHEMA_ID,
+            phase=contract.DESCRIPTOR_STATE_PREPARE,
+            envelope_name="Profile PREPARE",
         )
 
     def _claim(

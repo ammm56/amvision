@@ -177,6 +177,22 @@ namespace Amvar.Vision.SharedMemory
                 WorkflowTriggerMailboxV1.PhasePrepare, "Cloud PREPARE");
         }
 
+        internal WorkflowTriggerDescriptorIdentity ClaimProfiles(
+            uint timeoutMs, ulong routeGeneration, byte[] preparePayload, Guid requestId)
+        {
+            return ClaimCore(timeoutMs, routeGeneration, preparePayload, requestId,
+                "amvision.workflow-trigger.profile-prepare.v1",
+                WorkflowTriggerMailboxV1.PhasePrepare, "Profile PREPARE");
+        }
+
+        internal WorkflowTriggerDescriptorIdentity ClaimRaster(
+            uint timeoutMs, ulong routeGeneration, byte[] preparePayload, Guid requestId)
+        {
+            return ClaimCore(timeoutMs, routeGeneration, preparePayload, requestId,
+                "amvision.workflow-trigger.raster-prepare.v1",
+                WorkflowTriggerMailboxV1.PhasePrepare, "Raster PREPARE");
+        }
+
         private WorkflowTriggerDescriptorIdentity ClaimCore(
             uint timeoutMs,
             ulong routeGeneration,

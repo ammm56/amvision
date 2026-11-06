@@ -61,6 +61,9 @@ class _CloudRecord:
     file_options: CloudFileOptions | None = None
     source_point_count: int | None = None
     lineage: OwnedCloudArrays | None = None
+    raster_spec: bytes | None = None
+    profile_source: bytes | None = None
+    profile_rows: OwnedCloudArrays | None = None
 
 
 class CloudView:
@@ -300,6 +303,7 @@ class CloudRuntime:
         source_metadata: PcdSourceMetadata | None,
         cancel: Callable[[], None],
         file_options: CloudFileOptions | None = None,
+        profile_rows: OwnedCloudArrays | None = None,
     ) -> CloudReference:
         """入口完成全量校验后发布；owner 必须已由 storage_scope 持有。"""
         with self._lock:
@@ -317,9 +321,17 @@ class CloudRuntime:
                     raise InvalidRequestError("文件来源缺少一致的完整读取参数")
             elif file_options is not None:
                 raise InvalidRequestError("同机数组不能携带文件读取参数")
+            if (
+                source.kind in ("calibrated-raster", "calibrated-profiles")
+                and source.file is not None
+            ):
+                require_file_ref_payload(source.file)
             if id(owner) in self._owners:
                 raise InvalidRequestError("同一原始 owner 已登记，不允许改写来源")
             self._validate_arrays(owner, point_count, fields, cancel)
+            self._validate_profile_observation(
+                source, profile_rows, owner, point_count, None, "source", cancel
+            )
             reference = CloudReference(
                 format_id="amvision.point-cloud-ref.v1",
                 state="ready",
@@ -346,6 +358,17 @@ class CloudRuntime:
                     canonical_cloud_json(reference.model_dump(mode="json")),
                     owner,
                     file_options=file_options,
+                    raster_spec=canonical_cloud_json(
+                        source.raster.model_dump(mode="json")
+                    )
+                    if source.kind == "calibrated-raster"
+                    else None,
+                    profile_source=canonical_cloud_json(
+                        source.model_dump(mode="json", exclude={"file"})
+                    )
+                    if source.kind == "calibrated-profiles"
+                    else None,
+                    profile_rows=profile_rows,
                 ),
             )
             self._owners[id(owner)] = reference.cloud_id
@@ -373,6 +396,20 @@ class CloudRuntime:
                 else None
             )
 
+    def raster_source(self, reference: CloudReference):
+        """从可信父链返回标定快照；资产重读后不丢失原始像素身份。"""
+        from backend.contracts.workflows.raster3d import CalibratedRaster
+
+        with self._lock:
+            record = self._resolve(reference)
+            while record.parent is not None:
+                record = record.parent
+            return (
+                CalibratedRaster.model_validate_json(record.raster_spec)
+                if record.raster_spec
+                else None
+            )
+
     def source_point_count(self, reference: CloudReference) -> int:
         """返回最初输入总点数；资产恢复使用已冻结索引来源，不以子集点数代替。"""
         with self._lock:
@@ -385,8 +422,79 @@ class CloudRuntime:
                 else CloudReference.model_validate_json(record.reference).point_count
             )
 
+    def profile_source(self, reference: CloudReference):
+        """返回当前可信父链的原始标定，不暴露外部资产读取权限。"""
+        from backend.contracts.workflows.profile3d import ProfileSource
+
+        with self._lock:
+            record = self._resolve(reference)
+            while record.parent is not None:
+                record = record.parent
+            return (
+                ProfileSource.model_validate_json(record.profile_source)
+                if record.profile_source
+                else None
+            )
+
+    @contextmanager
+    def borrow_profile_rows(self, reference: CloudReference):
+        """原始行表随运行所有者借用；关闭 Run 时不得抢先回收。"""
+        with self.producing():
+            with self._lock:
+                record = self._resolve(reference)
+                while record.parent is not None:
+                    record = record.parent
+                if record.profile_rows is None:
+                    raise InvalidRequestError("当前观测没有原始轮廓行表")
+                owner = record.profile_rows
+            with owner.borrow() as arrays:
+                yield arrays
+
+    def _validate_profile_observation(
+        self, source, rows, owner, count, indices, vertex_kind, cancel
+    ):
+        """发布前统一验证来源、行表摘要及原记录身份，不信任调用方模型副本。"""
+        from backend.service.application.workflows.point_cloud.profile_rows import (
+            row_digest,
+            validate_profile_rows,
+            validate_profile_points,
+        )
+
+        if (source.kind == "calibrated-profiles") != (rows is not None):
+            raise InvalidRequestError("轮廓来源与行表所有权不一致")
+        if rows is None:
+            return
+        if not self.storage_scope.owns(rows):
+            raise InvalidRequestError("轮廓行表不属于当前运行")
+        with rows.borrow() as table, owner.borrow() as arrays, ExitStack() as stack:
+            if set(table) != {name for name, _, _ in source.profiles.row_layout()}:
+                raise InvalidRequestError("轮廓行表包含未声明字段")
+            validate_profile_rows(
+                table, source.profiles, policy=self.policy, cancel=cancel
+            )
+            if (
+                row_digest(table, source.profiles, policy=self.policy, cancel=cancel)
+                != source.row_table_sha256
+            ):
+                raise InvalidRequestError("轮廓原行表摘要不一致")
+            if vertex_kind == "source":
+                origin_indices = (
+                    stack.enter_context(indices.borrow())["indices"]
+                    if indices
+                    else None
+                )
+                validate_profile_points(
+                    arrays,
+                    table,
+                    source,
+                    count=count,
+                    indices=origin_indices,
+                    policy=self.policy,
+                    cancel=cancel,
+                )
+
     def register_asset(
-        self, *, owner, document, indices, cancel, lineage=None
+        self, *, owner, document, indices, cancel, lineage=None, profile_rows=None
     ) -> CloudReference:
         """已验证资产恢复新的运行身份，历史行号与数组所有权仍归当前 Scope。"""
         from backend.contracts.workflows.point_cloud_assets import (
@@ -396,6 +504,7 @@ class CloudRuntime:
         with self._lock:
             self._require_open()
             cloud = document.content.point_cloud
+            origin_source, source_count = cloud.original_observation()
             fields = tuple(
                 CloudField.model_validate(
                     f.model_dump(include=set(CloudField.model_fields))
@@ -475,22 +584,34 @@ class CloudRuntime:
                 isinstance(cloud, ArrayCloudAsset) and cloud.indices is not None
             ):
                 raise InvalidRequestError("资产索引与内容说明不一致")
+            self._validate_profile_observation(
+                origin_source,
+                profile_rows,
+                owner,
+                cloud.point_count,
+                indices,
+                cloud.vertex_kind,
+                cancel,
+            )
             self._publish(
                 reference,
                 _CloudRecord(
                     canonical_cloud_json(reference.model_dump(mode="json")),
                     owner,
                     indices=indices,
-                    source_point_count=(
-                        cloud.lineage.source_point_count
-                        if isinstance(cloud, ArrayCloudAsset)
-                        and cloud.lineage is not None
-                        else cloud.indices.source_point_count
-                        if isinstance(cloud, ArrayCloudAsset)
-                        and cloud.indices is not None
-                        else cloud.point_count
-                    ),
+                    source_point_count=source_count,
                     lineage=lineage,
+                    raster_spec=canonical_cloud_json(
+                        origin_source.raster.model_dump(mode="json")
+                    )
+                    if origin_source.kind == "calibrated-raster"
+                    else None,
+                    profile_source=canonical_cloud_json(
+                        origin_source.model_dump(mode="json")
+                    )
+                    if origin_source.kind == "calibrated-profiles"
+                    else None,
+                    profile_rows=profile_rows,
                 ),
             )
             self._owners[id(owner)] = reference.cloud_id

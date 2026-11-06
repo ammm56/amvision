@@ -37,6 +37,46 @@ namespace Amvar.Vision.TriggerSource.SharedMemory
                 ApplyDefaults(request, configured));
         }
 
+        /// <summary>标量数组必须明确 binding，不采用图片输入默认项。</summary>
+        internal SharedMemoryTriggerResult InvokeCalibratedRaster(string name, JObject descriptor,
+            byte[] content, SharedMemoryTriggerRequest request)
+        {
+            if (request == null || string.IsNullOrWhiteSpace(request.InputBinding))
+                throw new ArgumentException("Raster requires an explicit InputBinding.", nameof(request));
+            var configured = RequireConfiguredSource(name);
+            return GetClient(configured).InvokeCalibratedRaster(descriptor, content, ApplyDefaults(request, configured));
+        }
+
+        /// <summary>复用受控 writer，不新增共享内存映射或调用队列。</summary>
+        internal SharedMemoryTriggerResult InvokeCalibratedRaster(string name, JObject descriptor,
+            SharedMemoryTriggerBufferWriter fill, SharedMemoryTriggerRequest request)
+        {
+            if (request == null || string.IsNullOrWhiteSpace(request.InputBinding))
+                throw new ArgumentException("Raster requires an explicit InputBinding.", nameof(request));
+            var configured = RequireConfiguredSource(name);
+            return GetClient(configured).InvokeCalibratedRaster(descriptor, fill, ApplyDefaults(request, configured));
+        }
+
+        /// <summary>轮廓数组显式指定 binding，沿已有配置、默认身份与 client 调用。</summary>
+        internal SharedMemoryTriggerResult InvokeCalibratedProfiles(string name, JObject descriptor,
+            byte[] content, SharedMemoryTriggerRequest request)
+        {
+            if (request == null || string.IsNullOrWhiteSpace(request.InputBinding))
+                throw new ArgumentException("Profiles require an explicit InputBinding.", nameof(request));
+            var configured = RequireConfiguredSource(name);
+            return GetClient(configured).InvokeCalibratedProfiles(descriptor, content, ApplyDefaults(request, configured));
+        }
+
+        /// <summary>直接填写完整轮廓和行表，复用原 writer 生命周期。</summary>
+        internal SharedMemoryTriggerResult InvokeCalibratedProfiles(string name, JObject descriptor,
+            SharedMemoryTriggerBufferWriter fill, SharedMemoryTriggerRequest request)
+        {
+            if (request == null || string.IsNullOrWhiteSpace(request.InputBinding))
+                throw new ArgumentException("Profiles require an explicit InputBinding.", nameof(request));
+            var configured = RequireConfiguredSource(name);
+            return GetClient(configured).InvokeCalibratedProfiles(descriptor, fill, ApplyDefaults(request, configured));
+        }
+
         internal SharedMemoryTriggerResult InvokeBgr24(
             string triggerSourceName,
             byte[] bgr24Bytes,

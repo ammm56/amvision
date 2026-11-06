@@ -63,10 +63,10 @@ def import_cloud_archive(
     stream.seek(0)
     try:
         with ZipFile(stream) as archive, ExitStack() as stack:
-            names = validate_stored_members(archive, max_entries=3)
+            names = validate_stored_members(archive, max_entries=4)
             if (
                 len(names) != len(set(names))
-                or not 2 <= len(names) <= 3
+                or not 2 <= len(names) <= 4
                 or "resource.json" not in names
             ):
                 raise ValueError("点云资产包成员无效")

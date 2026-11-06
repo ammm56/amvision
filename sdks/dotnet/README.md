@@ -43,10 +43,15 @@ JSON 统一使用 Newtonsoft.Json；ZeroMQ 统一使用 NetMQ。SDK 项目文件
 - Model Deployment runtime 查询、启动、停止、预热、重置和推理调用
 - TriggerSource 查询、启用、禁用、健康检查
 - ZeroMQ TriggerSource 图片、BGR24、Base64、事件触发调用
-- local-shared-memory 图片、完整点云数组与无图片 event-only v1 调用
+- local-shared-memory 图片、完整点云数组、标定栅格数组与无图片 event-only v1 调用
 - 本地配置文件加载和按 key 调用已配置 runtime / deployment / trigger
 
 Console 示例不是 SDK 边界的一部分，不能把核心封装写到 console 项目中。完整点云文件/同机数组入口、descriptor 与当前验收边界见[Workflow 点云输入](../../docs/api/workflow-point-cloud-input.md)。
+
+B06 标定栅格调用：`SharedMemoryTriggerClient.InvokeCalibratedRaster`、配置化操作 `SharedMemory.InvokeCalibratedRaster` 和 `AMVisionOperationRunner.InvokeSharedMemoryCalibratedRaster` 均支持 `byte[]` 或直接写入回调。描述使用 `amvision.raster-buffer.v1`，包含完整标定、连续 HW 标量布局和可选 mask；字段定义以 [PREPARE schema](../schemas/workflow-trigger-raster-prepare.v1.schema.json) 为准。
+
+B07 标定轮廓调用：`SharedMemoryTriggerClient.InvokeCalibratedProfiles` 和 `AMVisionOperationRunner.InvokeSharedMemoryCalibratedProfiles` 提供 `byte[]` 与直接写入回调。描述使用 `amvision.profile-buffer.v1`，包含完整原采集行表布局与标定；必须填写实际 `InputBinding`，REQUEST 不能覆盖。参见[轮廓 PREPARE schema](../schemas/workflow-trigger-profile-prepare.v1.schema.json)和[B07 规格](../../docs/development/3d-metrology-profile-input.md)。Windows net472 覆盖真实发布、两种写入与写入者异常退出回收；Ubuntu 使用正式 Python 同机工具，不宣称 net472 跨平台可运行。更新源码不等于旧离线包自动包含新接口。
+服务端在分配前核验标定、公开 binding 与容量；REQUEST 不得重写该输入键。原 PREPARE/WRITING/REQUEST/RESPONSE/ACK、取消和所有者回收保持统一。Windows net472 为已支持平台，Ubuntu 使用同目录 Python 调用工具，不宣称 net472 的 Linux 支持。
 
 新建 Runtime 时，`WorkflowAppRuntimeCreateRequest.WorkflowAppVersionId` 与兼容字段 `ApplicationId` 必须且只能设置一个。新控制面代码使用准确发布版本。`AMVisionClient` 提供 revision 列表、详情和 `SelectWorkflowAppRuntimeVersionResponseAsync`；设备侧常驻调用仍只保存稳定 Runtime/Trigger id，不指定 `latest` 或单次请求 revision。兼容契约切换后不需要重新下载配置包。
 

@@ -26,9 +26,16 @@ from backend.contracts.workflows import (
     WorkflowTriggerPrepareV1,
     WorkflowTriggerRequestV1,
 )
-from backend.contracts.workflows.point_cloud_trigger import WorkflowTriggerCloudPrepareV1
+from backend.contracts.workflows.point_cloud_trigger import (
+    WorkflowTriggerCloudPrepareV1,
+)
+from backend.contracts.workflows.raster_trigger import WorkflowTriggerRasterPrepareV1
+from backend.contracts.workflows.profile_trigger import WorkflowTriggerProfilePrepareV1
 from backend.service.application.workflows.trigger_sources.input_buffers import (
-    buffer_length, buffer_metadata, input_payload, validate_cloud_prepare,
+    buffer_length,
+    buffer_metadata,
+    input_payload,
+    validate_cloud_prepare,
 )
 from backend.service.application.errors import (
     InvalidRequestError,
@@ -74,6 +81,8 @@ from backend.service.application.workflows.trigger_sources.error_classification 
 )
 from backend.service.application.workflows.trigger_sources.trigger_message_channel import (
     CLOUD_PREPARE_SCHEMA_ID,
+    RASTER_PREPARE_SCHEMA_ID,
+    PROFILE_PREPARE_SCHEMA_ID,
     PREPARE_SCHEMA_ID,
     EVENT_REQUEST_SCHEMA_ID,
     WorkflowTriggerDescriptorIdentity,
@@ -108,7 +117,13 @@ class _PendingMailboxRequest:
     event_id: str
     route: WorkflowTriggerRoute
     source_permit: WorkflowTriggerSourcePermit
-    prepare: WorkflowTriggerPrepareV1 | WorkflowTriggerCloudPrepareV1 | None = None
+    prepare: (
+        WorkflowTriggerPrepareV1
+        | WorkflowTriggerCloudPrepareV1
+        | WorkflowTriggerRasterPrepareV1
+        | WorkflowTriggerProfilePrepareV1
+        | None
+    ) = None
     allocation: ExternalBufferAllocation | None = None
     current_receipt: LeaseOwnershipReceipt | None = None
     trigger_event: TriggerEventContract | None = None
@@ -464,7 +479,9 @@ class WorkflowTriggerMailboxSupervisor:
         if thread is not None and thread.is_alive():
             thread.join(timeout=5.0)
             if thread.is_alive():
-                raise OperationTimeoutError("Workflow Trigger poller 尚未退出，保留 mailbox 和 executor，禁止替换 owner")
+                raise OperationTimeoutError(
+                    "Workflow Trigger poller 尚未退出，保留 mailbox 和 executor，禁止替换 owner"
+                )
         self._thread = None
         if not self._executor_closed:
             self.executor.shutdown(wait=True, cancel_futures=False)
@@ -499,7 +516,11 @@ class WorkflowTriggerMailboxSupervisor:
                             not item.task_active or item.prepare_future is not None
                             for item in self._pending.values()
                         )
-                        interval = min(self.poll_interval_seconds, 0.00025) if exchanging else self.poll_interval_seconds
+                        interval = (
+                            min(self.poll_interval_seconds, 0.00025)
+                            if exchanging
+                            else self.poll_interval_seconds
+                        )
                     sleep(interval)
             except Exception as error:
                 logger.exception("Workflow Trigger mailbox poller 发生异常")
@@ -528,6 +549,10 @@ class WorkflowTriggerMailboxSupervisor:
             prepare_decode_started_at = perf_counter()
             if prepare_schema_id == CLOUD_PREPARE_SCHEMA_ID:
                 prepare = WorkflowTriggerCloudPrepareV1.model_validate_json(payload)
+            elif prepare_schema_id == RASTER_PREPARE_SCHEMA_ID:
+                prepare = WorkflowTriggerRasterPrepareV1.model_validate_json(payload)
+            elif prepare_schema_id == PROFILE_PREPARE_SCHEMA_ID:
+                prepare = WorkflowTriggerProfilePrepareV1.model_validate_json(payload)
             elif prepare_schema_id == PREPARE_SCHEMA_ID:
                 prepare = WorkflowTriggerPrepareV1.model_validate_json(payload)
             else:
@@ -536,9 +561,19 @@ class WorkflowTriggerMailboxSupervisor:
                 trigger_source_id=prepare.trigger_source_id,
                 expected_generation=route_generation,
             )
-            if isinstance(prepare, WorkflowTriggerCloudPrepareV1):
-                validate_cloud_prepare(prepare, route.trigger_source,
-                                       self.runtime_service.settings.workflow_runtime.point_cloud)
+            if isinstance(
+                prepare,
+                (
+                    WorkflowTriggerCloudPrepareV1,
+                    WorkflowTriggerRasterPrepareV1,
+                    WorkflowTriggerProfilePrepareV1,
+                ),
+            ):
+                validate_cloud_prepare(
+                    prepare,
+                    route.trigger_source,
+                    self.runtime_service.settings.workflow_runtime.point_cloud,
+                )
             source_id = prepare.trigger_source_id
             self._record_source_request(source_id)
             identity = self.mailbox.tighten_accepted_timeout(
@@ -568,7 +603,8 @@ class WorkflowTriggerMailboxSupervisor:
             permit = self.executor.reserve()
             pending.task_active = True
             pending.prepare_future = self.executor.submit_reserved(
-                permit, lambda: self._allocate_input(pending),
+                permit,
+                lambda: self._allocate_input(pending),
             )
         except Exception as error:
             if permit is not None:
@@ -600,25 +636,30 @@ class WorkflowTriggerMailboxSupervisor:
         pending.allocation = allocation
         pending.current_receipt = allocation.receipt
         pending.timings["broker_allocate_ms"] = _elapsed_ms(started_at)
-        return WorkflowTriggerAllocationV1(
-            arena_id=allocation.lease.arena_id,
-            lease_id=allocation.lease.lease_id,
-            buffer_id=allocation.lease.buffer_id,
-            descriptor_index=allocation.lease.descriptor_index,
-            descriptor_generation=allocation.lease.descriptor_generation,
-            broker_epoch=allocation.lease.broker_epoch,
-            layout_fingerprint=allocation.receipt.layout_fingerprint,
-            offset=allocation.lease.offset,
-            content_length=allocation.lease.content_length,
-            allocation_capacity_bytes=allocation.lease.allocation_capacity_bytes,
-        ).model_dump_json().encode("utf-8")
+        return (
+            WorkflowTriggerAllocationV1(
+                arena_id=allocation.lease.arena_id,
+                lease_id=allocation.lease.lease_id,
+                buffer_id=allocation.lease.buffer_id,
+                descriptor_index=allocation.lease.descriptor_index,
+                descriptor_generation=allocation.lease.descriptor_generation,
+                broker_epoch=allocation.lease.broker_epoch,
+                layout_fingerprint=allocation.receipt.layout_fingerprint,
+                offset=allocation.lease.offset,
+                content_length=allocation.lease.content_length,
+                allocation_capacity_bytes=allocation.lease.allocation_capacity_bytes,
+            )
+            .model_dump_json()
+            .encode("utf-8")
+        )
 
     def _complete_preparations(self, *, stopping: bool = False) -> bool:
         """只处理已完成 Future；执行槽归还后才允许 SDK 发布 REQUEST。"""
 
         with self._pending_lock:
             completed = tuple(
-                item for item in self._pending.values()
+                item
+                for item in self._pending.values()
                 if item.prepare_future is not None and item.prepare_future.done()
             )
         for pending in completed:
@@ -632,7 +673,8 @@ class WorkflowTriggerMailboxSupervisor:
                 self._raise_if_request_terminal(pending)
                 started_at = perf_counter()
                 self.mailbox.publish_writing(
-                    identity=pending.identity, allocation_payload=payload,
+                    identity=pending.identity,
+                    allocation_payload=payload,
                 )
                 pending.timings["mailbox_publish_writing_ms"] = _elapsed_ms(started_at)
                 pending.timings["mailbox_prepare_ms"] = _elapsed_ms(pending.started_at)
@@ -679,7 +721,9 @@ class WorkflowTriggerMailboxSupervisor:
             # submit 成功后 permit 只由 executor 回收；不能在 task 仍运行时
             # 因取消/ACK 提前释放容量。提交失败则下方按 identity 补偿。
             pending.executor_permit = None
-            self.executor.submit_reserved(permit, lambda: self._admit_buffer_request(request, pending))
+            self.executor.submit_reserved(
+                permit, lambda: self._admit_buffer_request(request, pending)
+            )
         except Exception as error:
             if permit is not None:
                 self.executor.release_reserved(permit)
@@ -688,12 +732,16 @@ class WorkflowTriggerMailboxSupervisor:
             self._finish_pending_task(pending)
 
     def _admit_buffer_request(
-        self, request: WorkflowTriggerMailboxRequest, pending: _PendingMailboxRequest,
+        self,
+        request: WorkflowTriggerMailboxRequest,
+        pending: _PendingMailboxRequest,
     ) -> None:
         """在同一个已有 executor 槽位完成准入、输入 handoff 和 Workflow 执行。"""
         request_admission_started_at = perf_counter()
         if pending.executor_submitted_at is not None:
-            pending.timings["executor_start_wait_ms"] = _elapsed_ms(pending.executor_submitted_at)
+            pending.timings["executor_start_wait_ms"] = _elapsed_ms(
+                pending.executor_submitted_at
+            )
         try:
             request_decode_started_at = perf_counter()
             request_contract = WorkflowTriggerRequestV1.model_validate_json(
@@ -790,9 +838,17 @@ class WorkflowTriggerMailboxSupervisor:
                 lease_id=runtime_receipt.lease_id,
                 ownership_receipt=runtime_receipt,
             )
-            if isinstance(prepare, WorkflowTriggerCloudPrepareV1):
+            if isinstance(
+                prepare,
+                (
+                    WorkflowTriggerCloudPrepareV1,
+                    WorkflowTriggerRasterPrepareV1,
+                    WorkflowTriggerProfilePrepareV1,
+                ),
+            ):
                 from backend.service.application.workflows.point_cloud.trigger_input import (
-                    CLOUD_HANDOFF_KEY, CloudInputHandoff,
+                    CLOUD_HANDOFF_KEY,
+                    CloudInputHandoff,
                 )
 
                 _, value = input_payload(prepare, committed.buffer_ref)
@@ -801,7 +857,8 @@ class WorkflowTriggerMailboxSupervisor:
                 )
                 execution_metadata[CLOUD_HANDOFF_KEY] = CloudInputHandoff(
                     run_id=admission.workflow_run.workflow_run_id,
-                    binding_ids=bindings, payload=value,
+                    binding_ids=bindings,
+                    payload=value,
                 )
             admission = replace(admission, execution_metadata=execution_metadata)
             pending.admission = admission
@@ -961,7 +1018,10 @@ class WorkflowTriggerMailboxSupervisor:
         ):
             return
         try:
-            if pending.executor_submitted_at is not None and "executor_start_wait_ms" not in pending.timings:
+            if (
+                pending.executor_submitted_at is not None
+                and "executor_start_wait_ms" not in pending.timings
+            ):
                 pending.timings["executor_start_wait_ms"] = _elapsed_ms(
                     pending.executor_submitted_at
                 )
@@ -1161,7 +1221,17 @@ class WorkflowTriggerMailboxSupervisor:
             raise InvalidRequestError("Workflow Trigger 图片 PREPARE 上下文不存在")
         event_payload = dict(request.payload)
         key, value = input_payload(prepare, buffer_ref)
-        if isinstance(prepare, WorkflowTriggerCloudPrepareV1) and key in event_payload:
+        if (
+            isinstance(
+                prepare,
+                (
+                    WorkflowTriggerCloudPrepareV1,
+                    WorkflowTriggerRasterPrepareV1,
+                    WorkflowTriggerProfilePrepareV1,
+                ),
+            )
+            and key in event_payload
+        ):
             raise InvalidRequestError("REQUEST 不能替换 PREPARE 已固定的点云输入")
         event_payload[key] = value
         return TriggerEventContract(

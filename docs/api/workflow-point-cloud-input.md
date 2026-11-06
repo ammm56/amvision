@@ -2,7 +2,7 @@
 
 M3.2 起运行引用为 `point-cloud-ref.v1`，资产内容和显示同步升级；同机 `point-cloud-buffer.v1` 与 Cloud PREPARE 二进制布局不变。旧三维配方需审核重发，旧资产保留历史并需重建，不自动迁移或回退执行。字段与保存/恢复规格见 [M3.2 实施记录](../development/3d-metrology-m3-boundary.md#5-运行引用与保存契约)。
 
-本接口扩展现有文件输入与 local-shared-memory Trigger，不新建 Workflow 或发布系统。每次提交完整输入，载荷不超过 1,000,000,000 字节。该上限不是运行内存上限，也不是已完成 1 GB 容量验收的声明。十八个三维节点已按批准的本机工程配置启用，timeout、运行和显示预算见[节点包说明](../../custom_nodes/metrology3d_nodes/README.md)；示例中的文件、解码和资产上限不能覆盖任意接近 1 GB 的输入，完整容量及发行缺口见[剩余清单](../development/3d-metrology-remaining.md)。
+本接口扩展现有文件输入与 local-shared-memory Trigger，不新建 Workflow 或发布系统。每次提交完整输入，载荷不超过 1,000,000,000 字节。该上限不是运行内存上限，也不是全部格式/算法的 1 GB 容量验收声明。当前源码二十六个三维节点已按批准的本机工程配置启用，timeout、运行和显示预算见[节点包说明](../../custom_nodes/metrology3d_nodes/README.md)；示例中的文件、解码和资产上限不能覆盖任意接近 1 GB 的输入，完整容量及发行缺口见[剩余清单](../development/3d-metrology-remaining.md)。
 
 2026-11-02 新增可选 [1 GB 工程配置](../../custom_nodes/metrology3d_nodes/workstation-1gb.example.json)，Windows/WSL 的真实文件、Python 同机数组及 HTTP Preview 主链路已通过精确 1 GB 验证，详见[容量记录](../development/3d-metrology-capacity.md)。该配置不自动覆盖已有服务；原工作站配置仍为较小容量。压缩展开、索引和工作数组仍逐项准入，单次输入上限不等于任意 1 GB 文件都可执行任何算法。
 
@@ -26,6 +26,33 @@ M3.2 起运行引用为 `point-cloud-ref.v1`，资产内容和显示同步升级
 - 不支持远程共享内存、ZeroMQ 点云、图片描述符包装或自动 HTTP fallback。浏览器数组输入不提供 JSON 编辑框。
 
 后端在分配前校验输入契约与预算；调用方完成写入、释放 writer guard 后发布 REQUEST。平台取得运行准入并交接 owner，worker 在 ResourceScope 内只读映射，结果按既有 ACK 生命周期释放。没有额外等待队列。
+
+## 标定深度/高度栅格
+
+Raster to Cloud 显式二选一，不从图片灰度、文件名或旧输入猜测物理标定：
+
+- 文件模式输入 `file-ref.v1`，复用上述上传；节点 `settings={kind:"file",file_format:"npy|png|tiff",raster:...}` 固定标定、原始 dtype、尺度、单位与无效规则。NPY 为二维标量，PNG/TIFF 只接受已核定的单通道无损类型，具体范围见 [B06 文件矩阵](../development/3d-metrology-raster-input.md#3-字段与文件范围)。
+- 同机数组模式输入 `calibrated-raster.v1`，节点 `settings={kind:"local-array"}`，不允许再填标定。调用使用 `amvision.workflow-trigger-raster-prepare.v1`，其中 raster 为 `amvision.raster-buffer.v1`，完整定义见 [PREPARE schema](../../sdks/schemas/workflow-trigger-raster-prepare.v1.schema.json)。布局为 little-endian 连续 HW 标量，可紧随同尺寸 uint8 0/1 mask，无 padding/尾字节；不能传 NPY 头或压缩图片字节。
+- Trigger 映射必须准确指向发布的 `calibrated-raster.v1` binding。标定、布局和输入键在 PREPARE 冻结，REQUEST 不能覆盖；同一 owner/Scope 处理分配、执行、取消、ACK 和客户端退出，不新增等待队列。HTTP JSON、远程共享内存、普通图像 buffer 不提供数组降级入口。
+- 原始像素身份为 `row*width+column`，无效像素保留原始值和状态，位置为 NaN。已有 Filter Valid 显式筛除后仍保留最初行号及完整网格总数；保存重读和显示保留标定来源。
+
+Python 使用 `PointCloudClient.invoke_raster`，Windows .NET 使用 `SharedMemoryTriggerClient.InvokeCalibratedRaster` 或配置化 `AMVisionOperationRunner.InvokeSharedMemoryCalibratedRaster`，byte[] 与直接 writer 均支持。输入键使用实际 Trigger 映射，不默认替换应用绑定。源文件仍可通过 HTTP 跨机上传，数组只支持同机。
+
+本批真实发布、Python 数组、取消/切版/异常回收通过 Windows/WSL；.NET 仅声明 Windows net472，页面仅声明 Windows。独立解析网格通过不等于实采标定精度认证；旧点云 1 GB 证据不替代新栅格转换的资源峰值与最大容量验收。
+
+## 标定扫描轮廓
+
+Profiles to Cloud 已接通两种显式方法：原采集行号固定步距、逐行编码器位置。文件模式使用 `settings={kind:"file",file_format:"npz",profiles:...,has_validity:...}` 和 `file-ref.v1`；数组模式只使用 `settings={kind:"local-array"}` 和 `calibrated-profiles.v1`，不能覆盖载荷标定。
+
+同机准备格式为 `amvision.workflow-trigger-profile-prepare.v1`，字段 `profiles` 是 `amvision.profile-buffer.v1`，见[公开 schema](../../sdks/schemas/workflow-trigger-profile-prepare.v1.schema.json)。原始二进制按 `profiles`、`line_offsets`、`line_ids`、可选 `encoder_positions`、可选 `validity` 连续 little-endian 拼接；完整形状、类型和条件见[B07 字段表](../development/3d-metrology-profile-input.md#22-文件成员与二进制布局)。不是 NPZ 文件字节，也不能复用栅格准备格式。
+
+准备时冻结描述摘要、输入键与已发布 binding。REQUEST 不得替换；普通 JSON 和其他协议不能伪造同机数组。调用复用原准入、writer/reader guard、取消和 ACK，不新增队列。Python 使用 `invoke_profiles(profiles=descriptor, ...)`；Windows .NET 使用 `InvokeCalibratedProfiles` 或配置化 `InvokeSharedMemoryCalibratedProfiles`，同时提供 byte[] 和直接写入回调。
+
+`source_indices` 是最初总样点记录号；采集行号、原行内样点号另存字段。缺行不压缩步距，空行不补点，倒向/重复编码器位置原样保留。浏览器文件使用既有上传；数组只展示同机输入提示，不提供无效 JSON 提交框。查看器显示原行表总数、空行数和标定身份，源点拾取显示实际采集行/样点；生成点不伪装为原始记录。
+
+资产 `source.kind=calibrated-profiles` 保存完整标定、输入摘要、`row_table_sha256` 和完整原始点数/采集行数。原 NPZ 使用 `profiles-original` 保存；数组与派生云额外带 `profile-rows.bin`，依次包含 little-endian 行偏移、原采集行号、可选编码器位置。ZIP 精确包含 manifest 与声明的最多三个块，不接受其他成员。完整空行也保留，不靠点字段反推行表。现有资源包的授权、闭包、引用映射及回滚复用不变。
+
+该来源首次接入当前三维 v1 开发契约，既有非轮廓资产不增加行表、不删除或迁移数据，也没有旧格式兼容执行分支。运行、资产与跨代验证范围见[B07 记录](../development/3d-metrology-profile-input.md)。
 
 ## .NET 调用
 

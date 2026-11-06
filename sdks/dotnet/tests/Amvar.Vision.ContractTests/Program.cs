@@ -134,6 +134,14 @@ namespace Amvar.Vision.ContractTests
                 AssertThrows<ArgumentException>(() => operations.InvokePointCloud(
                     "cloud", new JObject(), destination => { }, request));
                 Assert(request.InputBinding == binding, "invalid cloud binding must not be replaced");
+                AssertThrows<ArgumentException>(() => operations.InvokeCalibratedRaster(
+                    "raster", new JObject(), new byte[0], request));
+                AssertThrows<ArgumentException>(() => operations.InvokeCalibratedRaster(
+                    "raster", new JObject(), destination => { }, request));
+                AssertThrows<ArgumentException>(() => operations.InvokeCalibratedProfiles(
+                    "profiles", new JObject(), new byte[0], request));
+                AssertThrows<ArgumentException>(() => operations.InvokeCalibratedProfiles(
+                    "profiles", new JObject(), destination => { }, request));
             }
         }
 
