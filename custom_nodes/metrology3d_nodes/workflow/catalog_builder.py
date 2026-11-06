@@ -68,6 +68,10 @@ from backend.contracts.workflows.raster3d import RasterToCloudParameters
 from backend.contracts.workflows.raster_trigger import WorkflowTriggerRasterInputV1
 from backend.contracts.workflows.profile3d import ProfilesToCloudParameters
 from backend.contracts.workflows.profile_trigger import WorkflowTriggerProfileInputV1
+from backend.contracts.workflows.height_map_reference import (
+    HeightMapReference,
+    HeightMapNodeParameters,
+)
 
 
 def build_custom_node_catalog_document():
@@ -82,6 +86,7 @@ def build_custom_node_catalog_document():
         )
         for key, title, model in (
             ("point-cloud-ref.v1", "Point Cloud", CloudReference),
+            ("height-map-ref.v1", "Height Map", HeightMapReference),
             ("calibrated-raster.v1", "Calibrated Raster", WorkflowTriggerRasterInputV1),
             (
                 "calibrated-profiles.v1",
@@ -110,7 +115,7 @@ def build_custom_node_catalog_document():
     def port(name, kind, required=True, multiple=False):
         return dict(
             name=name,
-            display_name=name.title(),
+            display_name="Height Map" if name == "height_map" else name.title(),
             payload_type_id=kind,
             required=required,
             multiple=multiple,
@@ -119,6 +124,18 @@ def build_custom_node_catalog_document():
     cloud = port("cloud", "point-cloud-ref.v1")
     definitions = []
     for key, title, category, model, inputs, outputs in (
+        (
+            "cloud-to-height-map",
+            "Cloud to Height Map",
+            "metrology3d.data.preprocess",
+            HeightMapNodeParameters,
+            [cloud, port("pose", "pose3d.v1", False)],
+            [
+                cloud,
+                port("height_map", "height-map-ref.v1"),
+                port("summary", "value.v1"),
+            ],
+        ),
         (
             "profiles-to-cloud",
             "Profiles to Cloud",
@@ -305,7 +322,11 @@ def build_custom_node_catalog_document():
             "metrology3d.data.io",
             ReadCloudParameters,
             [port("file", "file-ref.v1", False)],
-            [cloud, port("features", "features3d.v1", False)],
+            [
+                cloud,
+                port("features", "features3d.v1", False),
+                port("height_map", "height-map-ref.v1", False),
+            ],
         ),
         (
             "normalize-units",
@@ -357,6 +378,7 @@ def build_custom_node_catalog_document():
                 port("features", "features3d.v1", False, True),
                 port("pose", "pose3d.v1", False),
                 port("evidence", "measurement-evidence3d.v1", False, True),
+                port("height_map", "height-map-ref.v1", False),
             ],
             [port("body", "response-body.v1")],
         ),
@@ -365,7 +387,11 @@ def build_custom_node_catalog_document():
             "Save Cloud",
             "metrology3d.data.io",
             SaveCloudParameters,
-            [cloud, port("features", "features3d.v1", False)],
+            [
+                cloud,
+                port("features", "features3d.v1", False),
+                port("height_map", "height-map-ref.v1", False),
+            ],
             [port("resource", "measurement-resource-ref.v1")],
         ),
         (
@@ -380,7 +406,10 @@ def build_custom_node_catalog_document():
         definitions.append(
             dict(
                 node_type_id="custom.metrology3d." + key,
-                version="0.1.30"
+                version="0.1.31"
+                if key
+                in {"cloud-to-height-map", "read-cloud", "save-cloud", "cloud-preview"}
+                else "0.1.30"
                 if key
                 in {"profiles-to-cloud", "read-cloud", "save-cloud", "cloud-preview"}
                 else "0.1.29"

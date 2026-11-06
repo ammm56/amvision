@@ -220,6 +220,7 @@ def save_cloud(
     expected_base=None,
     actor_id=None,
     features=None,
+    height_map=None,
 ):
     """保存原件或全部派生字段；已提交版本由服务拥有，不归运行 Scope 删除。"""
     if mode not in ("original", "derived"):
@@ -239,7 +240,15 @@ def save_cloud(
     selected = root if mode == "original" else reference
     with runtime.producing(), ExitStack() as stack:
         view = stack.enter_context(runtime.borrow(selected))
-        if selected.source.kind == "asset":
+        if selected.source.kind == "asset" and (
+            height_map is None
+            or isinstance(
+                service.read(
+                    selected.source.reference, project_id=project_id
+                ).content.point_cloud,
+                ArrayCloudAsset,
+            )
+        ):
             document = service.read(selected.source.reference, project_id=project_id)
             cloud = document.content.point_cloud
             if mode == "original" and cloud.source.kind == "derived":
@@ -443,7 +452,7 @@ def save_cloud(
                 format_id="amvision.point-cloud-asset.v1",
                 kind="point-cloud",
                 representation="array-blocks",
-                source={"kind": "derived"} if parent else _source(root, options),
+                source={"kind": "derived"} if parent else source,
                 spatial=selected.spatial,
                 provenance=AssetProvenance(
                     method=selected.provenance.method,
@@ -471,6 +480,28 @@ def save_cloud(
             payload = content.model_dump(mode="json")
             payload["point_cloud"]["boundary"] = boundary.model_dump(mode="json")
             content = MeasurementResourceContent.model_validate(payload)
+        if height_map is not None:
+            from custom_nodes.metrology3d_nodes.shared.height_map_assets import (
+                prepare_height_map,
+            )
+
+            evidence, blob, stream = stack.enter_context(
+                prepare_height_map(
+                    runtime,
+                    selected,
+                    height_map,
+                    mode=mode,
+                    chunk_bytes=policy.chunk_bytes,
+                    cancel=cancel,
+                )
+            )
+            payload = content.model_dump(mode="json")
+            payload["point_cloud"]["height_map"] = evidence.model_dump(mode="json")
+            payload["point_cloud"]["blobs"] = [
+                b for b in payload["point_cloud"]["blobs"] if b["role"] != "height-map"
+            ] + [blob.model_dump(mode="json")]
+            content = MeasurementResourceContent.model_validate(payload)
+            streams[blob.name] = stream
         return service.save_cloud(
             project_id=project_id,
             name=name,
@@ -677,6 +708,11 @@ def _read_blocks(runtime, document, service, policy, cancel):
                 elif blob.role == "profile-rows":
                     for value in profile_arrays.values():
                         _fill(checked, value, policy.chunk_bytes, cancel)
+                elif blob.role == "height-map":
+                    # 高度图由读取方按需恢复；此处仍完整校验，不能漏掉坏数据块。
+                    checked = CheckedBlobStream(snapshot.stream, blob, cancel, cloud)
+                    while checked.read(policy.chunk_bytes):
+                        pass
                 else:
                     raise InvalidRequestError("数组资产含非法数据块")
                 value = None

@@ -4,7 +4,7 @@
 
 ## 节点
 
-- 数据：Read Cloud、Raster to Cloud、Normalize Units、Filter Valid、Denoise Cloud、Resample Cloud、Estimate Normals、Crop ROI、Transform Cloud、Save Cloud、Export Cloud。
+- 数据：Read Cloud、Raster to Cloud、Profiles to Cloud、Cloud to Height Map、Normalize Units、Filter Valid、Denoise Cloud、Resample Cloud、Estimate Normals、Crop ROI、Transform Cloud、Save Cloud、Export Cloud。
 - 定位与特征：Fit Plane、Build Frame、Invert Pose、Compose Poses、Register Cloud、Extract Boundary、Fit Line、Fit Circle。
 - 测量：Height Query、Measure Step、Measure Extents、Measure Edge Pair、Measure Hole。
 - 显示：Cloud Preview。
@@ -15,7 +15,9 @@ Fit Circle 明确区分等权、`angular-soft-l1` 角区均衡和 `arc-length-so
 
 ## 依赖与启动
 
-当前 `0.1.30` 为二十六个节点，包含 Raster to Cloud 和 Profiles to Cloud。Raster 文件模式接 `file-ref.v1`，标定由节点参数提供；数组模式接 `calibrated-raster.v1`，使用同机 PREPARE 固定的完整标定，节点不覆盖。两模式显式二选一，不从灰度或文件名猜深度。接线为 Raster to Cloud → Filter Valid → 既有测量/Preview/Save Cloud；原始标量、无效原因、完整像素身份和标定追溯随资产存读保留。Python 和 Windows .NET 调用复用既有 Trigger/LocalBuffer，详见[B06 规格与验收](../../docs/development/3d-metrology-raster-input.md)。
+当前 `0.1.31` 为二十七个节点，新增 Cloud to Height Map。Raster 文件模式接 `file-ref.v1`，标定由节点参数提供；数组模式接 `calibrated-raster.v1`，使用同机 PREPARE 固定的完整标定，节点不覆盖。两模式显式二选一，不从灰度或文件名猜深度。接线为 Raster to Cloud → Filter Valid → 既有测量/Preview/Save Cloud；原始标量、无效原因、完整像素身份和标定追溯随资产存读保留。Python 和 Windows .NET 调用复用既有 Trigger/LocalBuffer，详见[B06 规格与验收](../../docs/development/3d-metrology-raster-input.md)。
+
+B08 接线为完整云 → Filter Valid → Cloud to Height Map；当前坐标或本次 Pose 二选一，固定格中心/方向/步距/格数和 min/max/mean/median 显式提供，空格不补洞。节点 `cloud` 直通与 `height_map` 两端口同时接 Cloud Preview 或 derived 模式 Save Cloud；Read Cloud 恢复两端口，不重新聚合。不能在中间改变 cloud 再复用旧 map。原始行号和三种生成来源、统计、成员及历史 Pose 随无损资产和配方包保存，交换 PLY/PCD/XYZ 不保留高度图 CSR。查看器显示完整有界高度网格、无数据格、统计和三维格范围联动；超显示预算只影响显示，不修改测量。详见[B08 接线与验证](../../docs/development/3d-metrology-height-map.md#7-输出公开节点与真实页面2026-11-06)。
 
 B07 公开节点已接通：固定原采集行号步距/逐行编码器、严格 NPZ/同机数组、原行表 Scope 所有权、原件及派生无损资产，沿已有 Read/Save Cloud、资源 API 和配方资源包工作。Profiles to Cloud 文件模式由节点提供标定，数组模式只接受当前 PREPARE 固定的标定；Trigger/Python/Windows .NET、参数工作区、原行/样点及空行显示同批接通。空行和编码器原值保存在有预算行表块，不靠逐点属性反推、不新增资源系统。详见[B07 规格与回归](../../docs/development/3d-metrology-profile-input.md)；实采 NPZ、最大载荷及最新离线装配仍独立保留，不能用解析真值替代。
 

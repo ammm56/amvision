@@ -103,6 +103,27 @@ def read(request):
             p.source.reference, project_id=env.project_id
         ).content.point_cloud.boundary
     result = {"cloud": cloud.model_dump(mode="json")}
+    if p.source.kind != "file":
+        from custom_nodes.metrology3d_nodes.shared.height_map_assets import (
+            read_height_map,
+        )
+        from custom_nodes.metrology3d_nodes.shared.height_map_reference import (
+            publish_height_map,
+        )
+
+        saved = read_height_map(
+            env.runtime,
+            cloud,
+            document=env.service.read(p.source.reference, project_id=env.project_id),
+            service=env.service,
+            project_id=env.project_id,
+            policy=env.policy.assets(),
+            cancel=env.cancel,
+        )
+        if saved is not None:
+            result["height_map"] = publish_height_map(env.runtime, saved).model_dump(
+                mode="json"
+            )
     # 未确认物理空间的原件只能输出 cloud，不伪造 Features3d 的单位或坐标。
     if cloud.spatial.frame_id is not None and cloud.spatial.length_unit is not None:
         from custom_nodes.metrology3d_nodes.shared.boundary_assets import (
@@ -167,6 +188,14 @@ def preview(request):
     base_policy = preview_base_policy(
         env.runtime, request.input_values, env.policy.preview, cancel=env.cancel
     )
+    from custom_nodes.metrology3d_nodes.shared.height_map_preview import (
+        attach_height_map,
+        height_map_base_policy,
+    )
+
+    cloud_policy = height_map_base_policy(
+        env.runtime, cloud, request.input_values.get("height_map"), base_policy
+    )
     body = attach_measurements(
         cloud,
         attach_geometry(
@@ -176,19 +205,27 @@ def preview(request):
                 env.runtime,
                 cloud,
                 p,
-                policy=base_policy,
+                policy=cloud_policy,
                 cancel=env.cancel,
             ),
             request.input_values,
-            policy=base_policy,
+            policy=cloud_policy,
             cancel=env.cancel,
         ),
         request.input_values,
-        policy=base_policy,
+        policy=cloud_policy,
         cancel=env.cancel,
     )
     if detail is not None:
         body["asset_details"] = {"source": detail.source.model_dump(mode="json")}
+    body = attach_height_map(
+        env.runtime,
+        cloud,
+        body,
+        request.input_values.get("height_map"),
+        policy=base_policy,
+        cancel=env.cancel,
+    )
     return {
         "body": attach_debug(
             env.runtime,
@@ -208,6 +245,16 @@ def save(request):
     cloud = cloud_input(request, env.runtime)
     if cloud.state != "ready":
         raise InvalidRequestError("不可用点云不能保存")
+    from custom_nodes.metrology3d_nodes.shared.height_map_reference import (
+        resolve_height_map,
+    )
+
+    value = request.input_values.get("height_map")
+    height_map = (
+        resolve_height_map(env.runtime, value, cloud=cloud)
+        if value is not None
+        else None
+    )
     reference = save_cloud(
         env.runtime,
         cloud,
@@ -220,6 +267,7 @@ def save(request):
         policy=env.policy.assets(),
         cancel=env.cancel,
         features=request.input_values.get("features"),
+        height_map=height_map,
     )
     return {"resource": reference.model_dump(mode="json")}
 

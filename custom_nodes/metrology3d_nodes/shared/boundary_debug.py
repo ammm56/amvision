@@ -431,6 +431,9 @@ def attach_debug(runtime, cloud, body, values, *, policy, cancel):
     data_remaining = policy.max_data_bytes - (body.get("data") or {}).get(
         "content_length", 0
     )
+    data_remaining -= ((body.get("height_map") or {}).get("data") or {}).get(
+        "content_length", 0
+    )
     for raw in values.get("features") or ():
         features = Features3d.model_validate(raw)
         if (

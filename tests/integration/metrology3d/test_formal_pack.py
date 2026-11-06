@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[3]
 
 
 def test_catalog_is_generated_from_current_contracts_and_loads():
-    """正式目录与生成器逐字段一致，二十四个 handler 沿正常 loader 可注册。"""
+    """正式目录与生成器逐字段一致，二十七个 handler 沿正常 loader 可注册。"""
     file = ROOT / "custom_nodes/metrology3d_nodes/workflow/catalog.json"
     assert (
         CustomNodeCatalogDocument.model_validate_json(file.read_text("utf-8"))
@@ -31,7 +31,7 @@ def test_catalog_is_generated_from_current_contracts_and_loads():
         for d in catalog.get_catalog_snapshot().node_definitions
         if d.node_pack_id == "metrology3d.nodes"
     ]
-    assert len(definitions) == 24
+    assert len(definitions) == 27
     loader = WorkflowNodeRuntimeRegistryLoader(
         node_catalog_registry=catalog, node_pack_loader=packs
     )

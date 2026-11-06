@@ -1,0 +1,44 @@
+{
+  "platform": "Windows",
+  "point_count": 14745099,
+  "grid": [
+    512,
+    256
+  ],
+  "step_mm": 0.5,
+  "records": [
+    {
+      "method": "minimum",
+      "seconds": 1.6681892001070082,
+      "occupied_count": 55102,
+      "outside_count": 0,
+      "max_rounding_error": 0.0,
+      "sha256": "8249196c570adfc7c16a6bb2b143c4a5314fe8b060ea7c6af46cbf9ca6c46d13"
+    },
+    {
+      "method": "maximum",
+      "seconds": 1.6071583998855203,
+      "occupied_count": 55102,
+      "outside_count": 0,
+      "max_rounding_error": 0.0,
+      "sha256": "9e5aea83ecd01dc6e932d994a36ae78d9ca998da19258ec76c0bfd15845cb796"
+    },
+    {
+      "method": "mean",
+      "seconds": 1.940461999969557,
+      "occupied_count": 55102,
+      "outside_count": 0,
+      "max_rounding_error": 9.5367431640625e-07,
+      "sha256": "22601ad0f22ecf5c8cff12e169925a14fddf005f1d147c154a5193fe0d567cf5",
+      "saved_sha256": "22601ad0f22ecf5c8cff12e169925a14fddf005f1d147c154a5193fe0d567cf5"
+    },
+    {
+      "method": "median",
+      "seconds": 5.5128337000496686,
+      "occupied_count": 55102,
+      "outside_count": 0,
+      "max_rounding_error": 9.5367431640625e-07,
+      "sha256": "a93ef183a2e8eaede6c89c4612330c6d12054574d58955a42ab94019ffe6313e"
+    }
+  ]
+}

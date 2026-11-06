@@ -94,6 +94,11 @@ def test_complete_height_map_input_and_sources(tmp_path, request):
                     sha256=digest.hexdigest(),
                 )
             )
+            if method == "mean":
+                records[-1]["saved_sha256"] = saved_result(
+                    tmp_path, runtime, source, result
+                )
+                assert records[-1]["saved_sha256"] == digest.hexdigest()
             runtime.storage_scope.close_resource(result.resource_key)
             assert runtime.budget.used == baseline
     finally:
@@ -114,3 +119,70 @@ def test_complete_height_map_input_and_sources(tmp_path, request):
         (target / f"height-map-{platform.system().lower()}.json").write_text(
             json.dumps(report, indent=2), encoding="utf-8"
         )
+
+
+def saved_result(tmp_path, runtime, source, result):
+    """完整工件显式保存结果，另一运行读回全部数组与来源，不重新计算。"""
+    from backend.service.application.runtime.resource_scope import ResourceScope
+    from backend.service.application.workflows.point_cloud.runtime import (
+        get_cloud_runtime,
+    )
+    from backend.service.application.workflows.documents.cloud_resource_blobs import (
+        CloudAssetPolicy,
+    )
+    from custom_nodes.metrology3d_nodes.shared.cloud_assets import (
+        save_cloud,
+        read_asset,
+    )
+    from custom_nodes.metrology3d_nodes.shared.height_map_assets import read_height_map
+    from tests.point_cloud_support import create_resource_service
+
+    service = create_resource_service(tmp_path / "saved-result")
+    assets = CloudAssetPolicy(
+        max_asset_bytes=1_000_000_000,
+        max_archive_bytes=1_100_000_000,
+        chunk_bytes=1024**2,
+    )
+    ref = save_cloud(
+        runtime,
+        source,
+        height_map=result,
+        service=service,
+        project_id="test",
+        name="full-height-map",
+        mode="derived",
+        write_identity="a" * 64,
+        policy=assets,
+        cancel=lambda: None,
+    )
+    scope = ResourceScope(kind="test")
+    target = get_cloud_runtime(scope, run_id="restore-full", policy=runtime.policy)
+    try:
+        loaded = read_asset(
+            target,
+            ref,
+            service=service,
+            project_id="test",
+            policy=assets,
+            cancel=lambda: None,
+        )
+        saved = read_height_map(
+            target,
+            loaded,
+            document=service.read(ref, project_id="test"),
+            service=service,
+            project_id="test",
+            policy=assets,
+            cancel=lambda: None,
+        )
+        digest = sha256()
+        with saved.borrow(target) as values:
+            for key in sorted(values):
+                digest.update(key.encode("ascii"))
+                for start in range(0, len(values[key]), target.policy.chunk_rows):
+                    digest.update(
+                        values[key][start : start + target.policy.chunk_rows].tobytes()
+                    )
+        return digest.hexdigest()
+    finally:
+        assert scope.close() == () and target.budget.used == 0

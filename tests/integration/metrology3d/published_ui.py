@@ -34,6 +34,7 @@ def main():
             "calibrated-raster",
             "calibrated-raster-resaved",
             "calibrated-profiles",
+            "height-map",
         ),
         default="boundary-circle",
     )
@@ -51,7 +52,7 @@ def main():
         policy = PointCloudExecutionPolicy.model_validate_json(
             args.point_cloud_policy.read_text("utf-8")
         )
-    elif args.recipe in {"visible-envelope", "workpiece-delivery"}:
+    elif args.recipe in {"visible-envelope", "workpiece-delivery", "height-map"}:
         from tests.integration.metrology3d.representative_workflow import (
             representative_policy,
         )
@@ -73,6 +74,25 @@ def main():
             else (args.recipe,)
         )
         for kind in () if args.recipe == "empty" else kinds:
+            if kind == "height-map":
+                from tests.test_metrology3d_height_map import parameters
+                from tests.integration.metrology3d.test_height_map_published import (
+                    documents,
+                )
+
+                settings = parameters().model_dump(mode="json")
+                settings.update(width=256, height=512)
+                settings["grid"].update(
+                    origin=(-64, -192, 0), column_step=0.5, row_step=0.5
+                )
+                version = system.publish(
+                    point_limit=500000, documents=documents(settings, file=True)
+                )
+                print(
+                    f"Published {version}; provide complete original sample through UI",
+                    flush=True,
+                )
+                continue
             if kind == "calibrated-profiles":
                 import numpy as np
                 from tests.test_metrology3d_profile_conversion import specification

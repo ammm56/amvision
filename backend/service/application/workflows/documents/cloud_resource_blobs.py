@@ -89,6 +89,12 @@ class _ArrayBytes:
         self.asset, self.blob, self.tail = asset, blob, b""
         self.ranges = []
         self.lineage = None
+        if blob.role == "height-map":
+            from backend.service.application.workflows.point_cloud.height_map_bytes import (
+                HeightMapBytesValidator,
+            )
+
+            self.lineage = HeightMapBytesValidator(asset)
         if blob.role == "profile-rows":
             from backend.service.application.workflows.point_cloud.profile_rows import (
                 ProfileRowsBytesValidator,

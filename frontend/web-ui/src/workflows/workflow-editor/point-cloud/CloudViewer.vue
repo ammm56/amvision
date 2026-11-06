@@ -5,7 +5,7 @@
       <button :title="zh?'放大':'Zoom in'" :aria-label="zh?'放大':'Zoom in'" :disabled="!scene" @click="scene?.zoom(true)"><ZoomIn :size="18" /></button>
       <button :title="zh?'缩小':'Zoom out'" :aria-label="zh?'缩小':'Zoom out'" :disabled="!scene" @click="scene?.zoom(false)"><ZoomOut :size="18" /></button>
       <label v-if="focusOptions.length">{{ zh?'定位对象':'Focus object' }}<select v-model="focusTarget"><option v-for="target in focusOptions" :key="target.id" :value="target.id">{{ target.label }}</option></select></label><button v-if="focusOptions.length" :title="zh?'聚焦所选对象':'Focus selected object'" :aria-label="zh?'聚焦所选对象':'Focus selected object'" :disabled="!scene" @click="scene?.focus(focusTarget)"><Focus :size="18" /></button>
-      <button v-if="presentation==='full'&&(body.geometry||curves.length||measurements.length||debugItems.length||debugError)" :title="zh?'测量与质量详情':'Measurement and quality details'" :aria-label="zh?'测量与质量详情':'Measurement and quality details'" :aria-pressed="showDetails" @click="showDetails=!showDetails"><List :size="18" /></button>
+      <button v-if="presentation==='full'&&(body.geometry||body.height_map||curves.length||measurements.length||debugItems.length||debugError)" :title="zh?'测量与质量详情':'Measurement and quality details'" :aria-label="zh?'测量与质量详情':'Measurement and quality details'" :aria-pressed="showDetails" @click="showDetails=!showDetails"><List :size="18" /></button>
       <div class="cloud-modes" role="group" :aria-label="zh?'视角操作':'View navigation'"><button :title="zh?'旋转视角':'Rotate view'" :aria-label="zh?'旋转视角':'Rotate view'" :aria-pressed="!pan" :disabled="!scene" @click="pan=false; scene?.pan(false)"><Orbit :size="18" /></button><button :title="t('pan')" :aria-label="t('pan')" :aria-pressed="pan" :disabled="!scene" @click="pan=true; scene?.pan(true)"><Hand :size="18" /></button></div>
       <button v-if="allowPick" :title="zh?'拾取候选位置':'Pick candidate position'" :aria-label="zh?'拾取候选位置':'Pick candidate position'" :aria-pressed="picking" :disabled="!scene" @click="picking=!picking"><Crosshair :size="18" /></button>
       <label>{{ t('projection') }}<select v-model="orthographic" :disabled="!scene" @change="scene?.projection(orthographic)"><option :value="false">{{ t('perspective') }}</option><option :value="true">{{ t('orthographic') }}</option></select></label>
@@ -59,6 +59,7 @@
     <div v-if="detailsVisible&&evidenceTabs.length" :id="`${viewerId}-panel`" class="evidence-panel" role="tabpanel" :aria-labelledby="`${viewerId}-${detailTab}`">
       <div v-if="detailTab==='rois'" class="roi-display-list"><div v-for="roi in displayRois" :key="String(roi.roi_id)"><span>{{ roi.roi_id }}</span><RoiVisibilityButton :roi-id="String(roi.roi_id)" :state="readOnlyVisibility.state(String(roi.roi_id))" :disabled="!scene" @toggle="readOnlyVisibility.toggle(String(roi.roi_id))" /></div></div>
       <GeometrySummary v-if="detailTab==='geometry'&&body.geometry" :geometry="displayObject(body.geometry)" :selected="selectedPlane" @select-plane="selectedPlane=$event" />
+      <HeightMapPanel v-if="detailTab==='height-map'&&body.height_map" :payload="body" :project-id="projectId" @select="selectHeightCell" @focus="focusHeightCell" />
       <BoundarySummary v-if="detailTab==='features'&&curves.length" :items="curves" :selected="selectedCurve" :selected-segment="selectedSegment" :selected-index="selectedCurvePoint" @select="selectCurve" @select-point="selectedCurvePoint=$event" />
       <MeasurementSummary v-if="detailTab==='measurements'&&measurements.length" :items="measurements" :unit="String(unit)" :selected="selectedMeasurement" @select="selectMeasurement" />
       <BoundaryDebugSummary v-if="detailTab==='debug'" :items="debugItems" :selected-id="selectedDebug" :layers="debugLayers" :selection="debugSelection" :error="debugError" @select="selectDebug" @layers="debugLayers=$event" @pick="selectDebugPoint" />
@@ -81,6 +82,7 @@ import {normalLabel} from './normal-display'
 import {rasterIdentity,sourcePixel} from './raster-display'
 import {profileIdentity} from './profile-display'
 import GeometrySummary from './GeometrySummary.vue'
+import HeightMapPanel from './HeightMapPanel.vue'
 import MeasurementSummary from './MeasurementSummary.vue'
 import BoundarySummary from './BoundarySummary.vue'
 import BoundaryDebugSummary from './BoundaryDebugSummary.vue'
@@ -152,7 +154,7 @@ function selectView(event: Event) {
 const showDetails=ref(false)
 const detailsVisible=computed(()=>props.presentation==='evidence'||props.presentation==='full'&&showDetails.value)
 const detailTab=ref('measurements')
-const evidenceTabs=computed(()=>[...(!props.editRois&&displayRois.value.length?[{id:'rois',label:zh.value?'ROI 显示':'ROI visibility'}]:[]),...(measurements.value.length?[{id:'measurements',label:zh.value?'测量':'Measurements'}]:[]),...(curves.value.length?[{id:'features',label:zh.value?'边界 / 拟合':'Boundary / fit'}]:[]),...(planes.value.length||displayObject(body.value.geometry).frame?[{id:'geometry',label:zh.value?'基准 / 质量':'Datum / quality'}]:[]),...(debugItems.value.length||debugError.value?[{id:'debug',label:zh.value?'提取调试':'Extraction debug'}]:[])])
+const evidenceTabs=computed(()=>[...(!props.editRois&&displayRois.value.length?[{id:'rois',label:zh.value?'ROI 显示':'ROI visibility'}]:[]),...(body.value.height_map?[{id:'height-map',label:zh.value?'高度图':'Height map'}]:[]),...(measurements.value.length?[{id:'measurements',label:zh.value?'测量':'Measurements'}]:[]),...(curves.value.length?[{id:'features',label:zh.value?'边界 / 拟合':'Boundary / fit'}]:[]),...(planes.value.length||displayObject(body.value.geometry).frame?[{id:'geometry',label:zh.value?'基准 / 质量':'Datum / quality'}]:[]),...(debugItems.value.length||debugError.value?[{id:'debug',label:zh.value?'提取调试':'Extraction debug'}]:[])])
 const debugItems=shallowRef<DebugEvidence[]>([]),selectedDebug=ref(''),debugError=ref(''),debugSelection=ref<DebugSelection|null>(null)
 const debugLayers=ref<DebugLayers>({grid:true,profiles:true,candidates:true,partition:false})
 const activeDebug=computed(()=>debugItems.value.find(d=>d.id===selectedDebug.value))
@@ -192,6 +194,12 @@ watch(scalableRoi,canScale=>{if(!canScale&&editMode.value==='scale')editMode.val
 watch(focusOptions,targets=>{if(!targets.some(t=>t.id===focusTarget.value))focusTarget.value=targets[0]?.id??'measurement'})
 watch(evidenceTabs,tabs=>{if(!tabs.some(tab=>tab.id===detailTab.value))detailTab.value=tabs[0]?.id??''})
 let generation = 0, controller: AbortController | null = null, data: CloudDisplayData | null = null, scenePayload:Record<string,unknown>|null=null
+const heightCorners=shallowRef<number[][]|null>(null)
+function selectHeightCell(value:{payload:Record<string,unknown>;corners:number[][]|null}){if(value.payload!==props.payload)return;heightCorners.value=value.corners;syncHeightCell()}
+function syncHeightCell(){if(scenePayload!==props.payload||!body.value.height_map)return;try{scene.value?.heightCell(detailsVisible.value&&detailTab.value==='height-map'?heightCorners.value:null)}catch(e){error.value=e instanceof Error?e.message:'cloud_preview_invalid'}}
+function focusHeightCell(value:{payload:Record<string,unknown>;corners:number[][]}){if(value.payload===props.payload&&scenePayload===props.payload)scene.value?.focusVoxel(value.corners)}
+watch(()=>[detailsVisible.value,detailTab.value,scene.value],syncHeightCell)
+watch(()=>[props.payload,props.projectId],()=>{heightCorners.value=null},{flush:'sync'})
 const showAssetDetails=ref(false),detailStatus=ref<DetailStatus>('overview'),detailCount=ref(0),detailError=ref('')
 const detailController=shallowRef<ReturnType<typeof createDetailController>|null>(null)
 const detailLabel=computed(()=>({overview:zh.value?'概览':'Overview',loading:zh.value?'加载原始点':'Loading original points',ready:zh.value?'当前视野全分辨率':'Full resolution in current view',limited:zh.value?'概览 · 视野超出容量或无点':'Overview: view exceeds capacity or is empty',error:zh.value?'细节加载失败':'Detail loading failed'})[detailStatus.value])
