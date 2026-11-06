@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import { apiRequest } from './http-client'
 
-export type DeletionKind = 'task' | 'dataset' | 'dataset-version' | 'dataset-import' | 'dataset-export'
+export type DeletionKind = 'task' | 'dataset' | 'dataset-version' | 'dataset-import' | 'dataset-export' | 'dataset-export-files'
 export interface DeletionStatus {
   operation_id: string
   project_id: string

@@ -55,7 +55,7 @@
 
 - 外壳：[WorkbenchShell.vue](../../../frontend/web-ui/src/shells/workbench/WorkbenchShell.vue)、[导航配置](../../../frontend/web-ui/src/config/navigation.config.ts)。自动折叠为 `max-width: 899px`，不是文档原写的 1024–1279px。
 - 颜色与基础尺度：[tokens](../../../frontend/web-ui/src/shared/styles/tokens)；普通标题隐藏：[content.css](../../../frontend/web-ui/src/shared/styles/content.css)；设置标题隐藏：[settings.css](../../../frontend/web-ui/src/modules/settings/settings.css)。
-- 数据集：[DatasetOperationsPage.vue](../../../frontend/web-ui/src/modules/datasets/pages/DatasetOperationsPage.vue)；模型区域次序：[ModelOperationsPage.vue](../../../frontend/web-ui/src/modules/models/pages/ModelOperationsPage.vue)。
+- 数据集：原 DatasetOperationsPage 已于 2026-11-05 被[DatasetCatalogPage.vue](../../../frontend/web-ui/src/modules/datasets/pages/DatasetCatalogPage.vue)及版本工作区取代；模型区域次序：[ModelOperationsPage.vue](../../../frontend/web-ui/src/modules/models/pages/ModelOperationsPage.vue)。
 - 页面边界：[Workflow 路由](../../../frontend/web-ui/src/workflows/workflow-editor/routes.ts)、[模型路由](../../../frontend/web-ui/src/modules/models/routes.ts)、[部署路由](../../../frontend/web-ui/src/modules/deployments/routes.ts)、[项目路由](../../../frontend/web-ui/src/modules/projects/routes.ts)。
 - 显示关联：[应用模式配置](../../../frontend/web-ui/src/workflows/workflow-editor/components/WorkflowAppModeConfigDialog.vue)；执行边界：[Preview](../../architecture/workflows/preview-execution.md)、[Runtime 显示](../../architecture/workflows/runtime-display.md)。
 - 连接器：[节点 UI 实施与验证](../../development/connector-usability-implementation.md)、[工程 Workflow](../../examples/workflows/connector-inspection.md)。合成开发验证不能作为实物计量验收。

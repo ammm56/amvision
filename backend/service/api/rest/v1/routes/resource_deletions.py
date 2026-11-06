@@ -36,7 +36,12 @@ class ResourceDeletionRequest(BaseModel):
         "amvision.resource-deletion-request.v1"
     )
     kind: Literal[
-        "task", "dataset", "dataset-version", "dataset-import", "dataset-export"
+        "task",
+        "dataset",
+        "dataset-version",
+        "dataset-import",
+        "dataset-export",
+        "dataset-export-files",
     ]
     resource_id: str = Field(min_length=1, max_length=128)
     project_id: str = Field(min_length=1, max_length=128)

@@ -223,11 +223,10 @@ class ProjectSummaryService:
                 continue
             try:
                 if kind == "datasets":
-                    counts[kind] = len(
-                        _list_project_dataset_ids(
-                            dataset_storage=self.dataset_storage, project_id=project_id
-                        )
-                    )
+                    with self.session_factory.create_session() as session:
+                        counts[kind] = SqlAlchemyUnitOfWork(
+                            session
+                        ).dataset_catalog.count(project_id)
                 elif kind == "apps":
                     service = LocalWorkflowJsonService(
                         dataset_storage=self.dataset_storage,
@@ -367,6 +366,7 @@ class ProjectSummaryService:
             database_summary = unit_of_work.project_summaries.get_database_summary(
                 normalized_project_id
             )
+            dataset_total = unit_of_work.dataset_catalog.count(normalized_project_id)
         finally:
             unit_of_work.close()
 
@@ -374,15 +374,11 @@ class ProjectSummaryService:
             dataset_storage=self.dataset_storage,
             project_id=normalized_project_id,
         )
-        dataset_ids = _list_project_dataset_ids(
-            dataset_storage=self.dataset_storage,
-            project_id=normalized_project_id,
-        )
 
         return ProjectSummarySnapshot(
             project_id=normalized_project_id,
             generated_at=_now_isoformat(),
-            datasets=ProjectDatasetInventorySnapshot(dataset_total=len(dataset_ids)),
+            datasets=ProjectDatasetInventorySnapshot(dataset_total=dataset_total),
             imports=ProjectStatusSummarySnapshot(
                 total=sum(database_summary.import_status_counts.values()),
                 status_counts=database_summary.import_status_counts,
@@ -626,20 +622,6 @@ def _build_task_status_summary(
         total=sum(normalized_status_counts.values()),
         status_counts=normalized_status_counts,
     )
-
-
-def _list_project_dataset_ids(
-    *,
-    dataset_storage: LocalDatasetStorage,
-    project_id: str,
-) -> tuple[str, ...]:
-    """扫描 Project datasets 目录并返回一级数据集目录名。"""
-
-    datasets_root = dataset_storage.resolve(f"projects/{project_id}/datasets")
-    if not datasets_root.is_dir():
-        return ()
-    dataset_ids = sorted(path.name for path in datasets_root.iterdir() if path.is_dir())
-    return tuple(dataset_ids)
 
 
 def _list_validation_session_statuses(

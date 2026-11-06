@@ -67,3 +67,22 @@ describe('SideDrawer', () => {
     wrapper.unmount()
   })
 })
+
+
+it('图像对象抽屉不锁定背景交互，关闭后将焦点交还触发按钮', async () => {
+  const opener = document.createElement('button')
+  document.body.append(opener)
+  opener.focus()
+  const wrapper = mount(SideDrawer, { attachTo: document.body, props: { open: true, title: '对象', closeLabel: '关闭', nonmodal: true } })
+  await flushPromises()
+  expect(opener.inert).not.toBe(true)
+  expect(document.body.style.overflow).not.toBe('hidden')
+  const dialog = document.querySelector('[role="dialog"]')!
+  expect(dialog.getAttribute('aria-modal')).toBeNull()
+  ;(dialog.querySelector('button') as HTMLButtonElement).click()
+  await flushPromises()
+  expect(wrapper.emitted('close')).toHaveLength(1)
+  expect(document.activeElement).toBe(opener)
+  wrapper.unmount()
+  opener.remove()
+})

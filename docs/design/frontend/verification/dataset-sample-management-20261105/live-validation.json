@@ -1,0 +1,103 @@
+{
+  "checked_at": "2026-11-06T00:08:01.521681+08:00",
+  "source_version": "dataset-version-1d3feaf9c1a5",
+  "source_samples": 2,
+  "added_version": "dataset-version-0f85de9ac414",
+  "added_samples": 4,
+  "removal_job": {
+    "task_id": "task-56bd7af4aaf85f4894fd4bcbf254c867",
+    "state": "succeeded",
+    "operation": "revise",
+    "config": {
+      "selection": null,
+      "exclude_selection": {
+        "mode": "ids",
+        "sample_ids": [
+          "sample-dataset-version-0f85de9ac414-1"
+        ],
+        "q": "",
+        "split": "",
+        "category_id": null,
+        "annotation_state": ""
+      },
+      "category_names": {},
+      "split_ratios": null,
+      "seed": 42,
+      "group_key": "",
+      "handoff_export_id": null,
+      "returned_version_id": null,
+      "keep_missing": false,
+      "accept_image_changes": false
+    },
+    "created_at": "2026-11-05T16:06:34.914522+00:00",
+    "finished_at": "2026-11-05T16:06:35.282300+00:00",
+    "result": {
+      "operation": "revise",
+      "dataset_version_id": "dataset-version-0f85de9ac414",
+      "checked_at": "2026-11-05T16:06:35.236400+00:00",
+      "source_count": 4,
+      "sample_count": 3,
+      "excluded_count": 1,
+      "split_counts": {
+        "train": 3
+      },
+      "group_count": 3,
+      "group_key": "",
+      "categories": [
+        {
+          "category_id": 0,
+          "name": "barcode_verified"
+        },
+        {
+          "category_id": 1,
+          "name": "dmcode"
+        },
+        {
+          "category_id": 2,
+          "name": "qrcode"
+        },
+        {
+          "category_id": 3,
+          "name": "barcode"
+        }
+      ],
+      "split_changed": 0,
+      "signature": "1f51014e5e9bdf94856e7103809d61203917419b914115de65183f4aa401421c",
+      "created_version_id": "dataset-version-a44bb2940876"
+    },
+    "progress": {
+      "percent": 100,
+      "stage": "completed"
+    },
+    "error_message": null
+  },
+  "export_id": "dataset-export-abb7cd15bb3b",
+  "export_images": 4,
+  "export_objects": 6,
+  "unique_ids_and_files": true,
+  "source_unchanged": true,
+  "service_status": {
+    "ready": true,
+    "state": "ready",
+    "instance_id": "33864a62bfce49b28a9ceef39e52450c",
+    "checked_at": "2026-11-05T16:24:26.205686+00:00",
+    "summary": {
+      "deployments": {
+        "expected": 6,
+        "ready": 6
+      },
+      "runtimes": {
+        "expected": 10,
+        "ready": 10
+      },
+      "triggers": {
+        "expected": 8,
+        "ready": 8
+      }
+    },
+    "blockers": []
+  },
+  "removed_version": "dataset-version-a44bb2940876",
+  "removed_samples": 3,
+  "removed_objects": 5
+}

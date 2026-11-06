@@ -1,6 +1,7 @@
 import { apiRequest } from '@/shared/api/http-client'
 
 export interface DatasetVersionRelation {
+  version_number: number
   dataset_version_id: string
   dataset_id: string
   project_id: string
@@ -12,6 +13,11 @@ export interface DatasetVersionRelation {
 }
 
 export interface DatasetImportSummary {
+  display_name?: string
+  version_number?: number | null
+  source_file_name?: string | null
+  sample_count?: number | null
+  category_count?: number | null
   dataset_import_id: string
   task_id?: string | null
   dataset_id: string
@@ -65,6 +71,11 @@ export interface DatasetImportInput {
   taskType: string
   splitStrategy?: string
   classMapJson?: string
+  displayName?: string
+  description?: string
+  baseVersionId?: string
+  expectedContentRevision?: string
+  excludeSelection?: DatasetSampleSelection
 }
 
 export interface DatasetExportFormatCatalog {
@@ -75,6 +86,8 @@ export interface DatasetExportFormatCatalog {
 }
 
 export interface DatasetExportSummary {
+  display_name?: string
+  version_number?: number | null
   dataset_export_id: string
   task_id?: string | null
   dataset_id: string
@@ -119,6 +132,17 @@ export interface DatasetExportInput {
   displayName?: string
   categoryNames?: string[]
   includeTestSplit: boolean
+  selection?: DatasetSampleSelection
+  annotationHandoff?: boolean
+}
+
+export interface DatasetSampleSelection {
+  mode: 'ids' | 'filter'
+  sample_ids?: string[]
+  q?: string
+  split?: string
+  category_id?: number
+  annotation_state?: string
 }
 
 export interface DatasetExportPackageResponse {
@@ -137,9 +161,14 @@ export async function submitDatasetImport(input: DatasetImportInput): Promise<Da
   formData.set('dataset_id', input.datasetId)
   formData.set('package', input.packageFile)
   formData.set('task_type', input.taskType)
+  if (input.displayName) formData.set('dataset_display_name', input.displayName)
+  if (input.description) formData.set('dataset_description', input.description)
   if (input.formatType) formData.set('format_type', input.formatType)
   if (input.splitStrategy) formData.set('split_strategy', input.splitStrategy)
   if (input.classMapJson?.trim()) formData.set('class_map_json', input.classMapJson.trim())
+  if (input.baseVersionId) formData.set('base_version_id', input.baseVersionId)
+  if (input.expectedContentRevision !== undefined) formData.set('expected_content_revision', input.expectedContentRevision)
+  if (input.excludeSelection) formData.set('exclude_selection_json', JSON.stringify(input.excludeSelection))
   return apiRequest<DatasetImportSubmissionResponse>('/datasets/imports', { method: 'POST', body: formData })
 }
 
@@ -184,6 +213,8 @@ export async function createDatasetExport(input: DatasetExportInput): Promise<Da
       display_name: input.displayName ?? '',
       category_names: input.categoryNames ?? [],
       include_test_split: input.includeTestSplit,
+      selection: input.selection,
+      annotation_handoff: input.annotationHandoff ?? false,
     },
   })
 }

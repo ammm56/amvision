@@ -86,6 +86,9 @@ class DatasetExportRequest:
     category_names: tuple[str, ...] = ()
     include_test_split: bool = True
     dataset_export_id: str | None = None
+    # 可选固定版本选择；None 保持既有整版本导出行为。
+    selection: dict[str, object] | None = None
+    annotation_handoff: bool = False
 
 
 @dataclass(frozen=True)

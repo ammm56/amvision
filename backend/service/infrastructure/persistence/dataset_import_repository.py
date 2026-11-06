@@ -5,10 +5,15 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
+from backend.service.infrastructure.persistence.dataset_catalog_repository import (
+    DatasetCatalogRepository,
+)
 
 from backend.service.application.errors import PersistenceOperationError
 from backend.service.domain.datasets.dataset_import import DatasetImport
-from backend.service.infrastructure.persistence.dataset_import_orm import DatasetImportRecord
+from backend.service.infrastructure.persistence.dataset_import_orm import (
+    DatasetImportRecord,
+)
 
 
 class SqlAlchemyDatasetImportRepository:
@@ -31,7 +36,21 @@ class SqlAlchemyDatasetImportRepository:
         """
 
         try:
-            existing_record = self.session.get(DatasetImportRecord, dataset_import.dataset_import_id)
+            DatasetCatalogRepository(self.session).ensure(
+                dataset_import.project_id,
+                dataset_import.dataset_id,
+                dataset_import.task_type,
+                dataset_import.created_at,
+                display_name=str(
+                    dataset_import.metadata.get("dataset_display_name") or ""
+                ),
+                description=str(
+                    dataset_import.metadata.get("dataset_description") or ""
+                ),
+            )
+            existing_record = self.session.get(
+                DatasetImportRecord, dataset_import.dataset_import_id
+            )
             if existing_record is None:
                 self.session.add(self._to_record(dataset_import))
                 return
@@ -51,8 +70,12 @@ class SqlAlchemyDatasetImportRepository:
             existing_record.manifest_file = dataset_import.manifest_file
             existing_record.split_strategy = dataset_import.split_strategy
             existing_record.class_map_json = dict(dataset_import.class_map)
-            existing_record.detected_profile_json = dict(dataset_import.detected_profile)
-            existing_record.validation_report_json = dict(dataset_import.validation_report)
+            existing_record.detected_profile_json = dict(
+                dataset_import.detected_profile
+            )
+            existing_record.validation_report_json = dict(
+                dataset_import.validation_report
+            )
             existing_record.error_message = dataset_import.error_message
             existing_record.metadata_json = dict(dataset_import.metadata)
         except SQLAlchemyError as error:
@@ -96,7 +119,9 @@ class SqlAlchemyDatasetImportRepository:
         statement = (
             select(DatasetImportRecord)
             .where(DatasetImportRecord.dataset_id == dataset_id)
-            .order_by(DatasetImportRecord.created_at, DatasetImportRecord.dataset_import_id)
+            .order_by(
+                DatasetImportRecord.created_at, DatasetImportRecord.dataset_import_id
+            )
         )
         try:
             records = self.session.execute(statement).scalars().all()
@@ -108,13 +133,17 @@ class SqlAlchemyDatasetImportRepository:
 
         return tuple(self._to_domain(record) for record in records)
 
-    def list_dataset_imports_by_project(self, project_id: str) -> tuple[DatasetImport, ...]:
+    def list_dataset_imports_by_project(
+        self, project_id: str
+    ) -> tuple[DatasetImport, ...]:
         """按 Project id 列出导入记录。"""
 
         statement = (
             select(DatasetImportRecord)
             .where(DatasetImportRecord.project_id == project_id)
-            .order_by(DatasetImportRecord.created_at, DatasetImportRecord.dataset_import_id)
+            .order_by(
+                DatasetImportRecord.created_at, DatasetImportRecord.dataset_import_id
+            )
         )
         try:
             records = self.session.execute(statement).scalars().all()

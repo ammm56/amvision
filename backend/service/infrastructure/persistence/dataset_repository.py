@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
+from backend.service.infrastructure.persistence.dataset_catalog_repository import (
+    DatasetCatalogRepository,
+)
 
 from backend.service.application.errors import PersistenceOperationError
 from backend.service.domain.datasets.dataset_version import (
@@ -17,8 +20,11 @@ from backend.service.domain.datasets.dataset_version import (
     ObbAnnotation,
     PoseAnnotation,
 )
-from backend.service.domain.datasets.dataset_version_summary import DatasetVersionSummary
+from backend.service.domain.datasets.dataset_version_summary import (
+    DatasetVersionSummary,
+)
 from backend.service.infrastructure.persistence.dataset_orm import (
+    DatasetRecord,
     DatasetAnnotationRecord,
     DatasetCategoryRecord,
     DatasetSampleRecord,
@@ -46,15 +52,73 @@ class SqlAlchemyDatasetVersionRepository:
         """
 
         try:
+            DatasetCatalogRepository(self.session).ensure(
+                dataset_version.project_id,
+                dataset_version.dataset_id,
+                dataset_version.task_type,
+                str(dataset_version.metadata.get("created_at") or ""),
+            )
             existing_record = self.session.get(
                 DatasetVersionRecord,
                 dataset_version.dataset_version_id,
             )
             if existing_record is not None:
-                self.session.delete(existing_record)
+                if (existing_record.project_id, existing_record.dataset_id) != (
+                    dataset_version.project_id,
+                    dataset_version.dataset_id,
+                ):
+                    raise PersistenceOperationError("不能更改已有数据集版本的归属")
+                version_number = existing_record.version_number
+                # 更新聚合内容而不删除版本身份，外部版本引用与版本号保持不变。
+                existing_record.samples.clear()
+                existing_record.categories.clear()
                 self.session.flush()
+                replacement = self._to_record(dataset_version)
+                existing_record.metadata_json = replacement.metadata_json
+                self.session.execute(
+                    update(DatasetRecord)
+                    .where(
+                        DatasetRecord.project_id == dataset_version.project_id,
+                        DatasetRecord.dataset_id == dataset_version.dataset_id,
+                    )
+                    .values(
+                        updated_at=str(
+                            dataset_version.metadata.get("updated_at")
+                            or dataset_version.metadata.get("created_at")
+                            or ""
+                        )
+                    )
+                )
+                categories, samples = (
+                    list(replacement.categories),
+                    list(replacement.samples),
+                )
+                replacement.categories.clear()
+                replacement.samples.clear()
+                existing_record.categories = categories
+                existing_record.samples = samples
+                return
+            else:
+                # 先原子递增取得行写锁，再读取计数；适用于 SQLite/MySQL/PostgreSQL。
+                # 与版本发布同事务，失败回滚不消耗序号，删除版本不重用已分配号码。
+                self.session.execute(
+                    update(DatasetRecord)
+                    .where(
+                        DatasetRecord.project_id == dataset_version.project_id,
+                        DatasetRecord.dataset_id == dataset_version.dataset_id,
+                    )
+                    .values(version_sequence=DatasetRecord.version_sequence + 1)
+                )
+                version_number = self.session.scalar(
+                    select(DatasetRecord.version_sequence).where(
+                        DatasetRecord.project_id == dataset_version.project_id,
+                        DatasetRecord.dataset_id == dataset_version.dataset_id,
+                    )
+                )
 
-            self.session.add(self._to_record(dataset_version))
+            record = self._to_record(dataset_version)
+            record.version_number = version_number
+            self.session.add(record)
         except SQLAlchemyError as error:
             raise PersistenceOperationError(
                 "保存 DatasetVersion 失败",
@@ -123,6 +187,7 @@ class SqlAlchemyDatasetVersionRepository:
                 DatasetVersionRecord.project_id,
                 DatasetVersionRecord.task_type,
                 DatasetVersionRecord.metadata_json,
+                DatasetVersionRecord.version_number,
             )
             .where(DatasetVersionRecord.project_id == project_id)
             .order_by(DatasetVersionRecord.dataset_version_id.desc())
@@ -148,7 +213,9 @@ class SqlAlchemyDatasetVersionRepository:
                     func.count(DatasetSampleRecord.sample_id),
                 )
                 .where(DatasetSampleRecord.dataset_version_id.in_(version_ids))
-                .group_by(DatasetSampleRecord.dataset_version_id, DatasetSampleRecord.split)
+                .group_by(
+                    DatasetSampleRecord.dataset_version_id, DatasetSampleRecord.split
+                )
             ).all()
         except SQLAlchemyError as error:
             raise PersistenceOperationError(
@@ -164,9 +231,9 @@ class SqlAlchemyDatasetVersionRepository:
         split_names_by_version: dict[str, set[str]] = {}
         for dataset_version_id, split_name, sample_count in sample_rows:
             normalized_version_id = str(dataset_version_id)
-            sample_counts[normalized_version_id] = (
-                sample_counts.get(normalized_version_id, 0) + int(sample_count)
-            )
+            sample_counts[normalized_version_id] = sample_counts.get(
+                normalized_version_id, 0
+            ) + int(sample_count)
             split_names_by_version.setdefault(normalized_version_id, set()).add(
                 str(split_name)
             )
@@ -187,6 +254,7 @@ class SqlAlchemyDatasetVersionRepository:
                     in split_names_by_version.get(str(row.dataset_version_id), set())
                 ),
                 metadata=dict(row.metadata_json or {}),
+                version_number=row.version_number,
             )
             for row in version_rows
         )
@@ -239,6 +307,7 @@ class SqlAlchemyDatasetVersionRepository:
             project_id=record.project_id,
             task_type=record.task_type,
             metadata=dict(record.metadata_json or {}),
+            version_number=record.version_number,
             categories=tuple(
                 DatasetCategory(category_id=category.category_id, name=category.name)
                 for category in record.categories
@@ -361,10 +430,18 @@ class SqlAlchemyDatasetVersionRepository:
     def _build_annotation_domain(
         self,
         annotation: DatasetAnnotationRecord,
-    ) -> DetectionAnnotation | InstanceSegmentationAnnotation | PoseAnnotation | ClassificationAnnotation | ObbAnnotation:
+    ) -> (
+        DetectionAnnotation
+        | InstanceSegmentationAnnotation
+        | PoseAnnotation
+        | ClassificationAnnotation
+        | ObbAnnotation
+    ):
         """把统一 ORM annotation 实体转换为领域对象。"""
 
-        annotation_type = (annotation.annotation_type or "detection").strip() or "detection"
+        annotation_type = (
+            annotation.annotation_type or "detection"
+        ).strip() or "detection"
         metadata = dict(annotation.metadata_json or {})
         if annotation_type == "classification":
             return ClassificationAnnotation(

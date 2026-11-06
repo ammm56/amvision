@@ -104,6 +104,23 @@ class ResourceDeletionRepository:
 
     def delete_records(self, references: list[ResourceRef]) -> None:
         """按外键顺序删除业务聚合和精确关联 Outbox。"""
+        for reference in references:
+            if reference.kind == "dataset-export-files":
+                row = self.session.get(DatasetExportRecord, reference.resource_id)
+                if row is not None:
+                    # 与清理提交同一事务。原始格式、类别、计数和导出时间保留。
+                    metadata = dict(row.metadata_json or {})
+                    metadata["files_cleaned_at"] = datetime.now(
+                        timezone.utc
+                    ).isoformat()
+                    for key in (
+                        "package_object_key",
+                        "package_file_name",
+                        "package_size",
+                        "packaged_at",
+                    ):
+                        metadata.pop(key, None)
+                    row.metadata_json = metadata
         removed_files = {
             ref.resource_id for ref in references if ref.kind == "model-file"
         }
@@ -131,6 +148,18 @@ class ResourceDeletionRepository:
                     continue
                 row = self.session.get(RESOURCE_TABLES[kind], reference.resource_id)
                 if row is not None:
+                    if kind == "dataset-import" and row.dataset_version_id:
+                        version = self.session.get(
+                            DatasetVersionRecord, row.dataset_version_id
+                        )
+                        if version is not None and row.validation_report_json:
+                            # 旧版本也保留真实校验事实，导入记录清理不抹除版本质量报告。
+                            version.metadata_json = {
+                                **(version.metadata_json or {}),
+                                "validation_report": deepcopy(
+                                    row.validation_report_json
+                                ),
+                            }
                     self.session.delete(row)
             self.session.flush()
 

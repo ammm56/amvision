@@ -24,7 +24,7 @@
       @keydown="handleTriggerKeydown"
     >
       <span class="ui-select__value" :class="{ 'is-placeholder': !selectedOption }">
-        {{ selectedOption?.label ?? resolvedPlaceholder }}
+        <slot name="value" :option="selectedOption">{{ selectedOption?.label ?? resolvedPlaceholder }}</slot>
       </span>
       <ChevronDown :size="16" />
     </button>
@@ -44,7 +44,7 @@
         @click.prevent.stop="selectOption(option.value)"
         @mouseenter="activeIndex = index"
       >
-        <span>{{ option.label }}</span>
+        <span><slot name="option" :option="option">{{ option.label }}</slot></span>
         <Check v-if="floating && isSelected(option.value)" class="ui-select__check" :size="14" aria-hidden="true" />
         <small v-if="option.description">{{ option.description }}</small>
       </button>

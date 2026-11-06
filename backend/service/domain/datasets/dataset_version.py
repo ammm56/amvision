@@ -257,3 +257,5 @@ class DatasetVersion:
     samples: tuple[DatasetSample, ...]
     task_type: DatasetTaskType
     metadata: dict[str, object] = field(default_factory=dict)
+    # 仓储自动分配，外部提交的序号不能覆盖已发布版本。
+    version_number: int = 1

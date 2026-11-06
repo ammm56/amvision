@@ -2,9 +2,18 @@
 
 from __future__ import annotations
 
+from backend.contracts.datasets.sample_selection import DatasetSampleSelection
+from backend.service.application.datasets.content import (
+    content_access,
+    require_revision,
+    obsolete_content,
+    cleanup_content,
+)
+from backend.service.application.datasets.imports.merge import merge_import
+
 import zipfile
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, ExitStack, nullcontext
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import PurePosixPath
@@ -53,6 +62,7 @@ from backend.service.application.datasets.imports.version_writer import (
 )
 from backend.service.application.errors import (
     InvalidRequestError,
+    ResourceConflictError,
     ResourceNotFoundError,
     ServiceError,
     UnsupportedDatasetFormatError,
@@ -62,6 +72,7 @@ from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
     SqlAlchemyTaskService,
     TaskExecutionFence,
+    TaskStateCommandRequest,
 )
 from backend.service.application.tasks.queue_outbox import build_queue_outbox_message
 from backend.service.domain.datasets.category_names import parse_category_names
@@ -150,6 +161,17 @@ class SqlAlchemyDatasetImportService(
         """
 
         self._validate_request(request, package_file=package_file)
+        if request.base_version_id:
+            with self._open_unit_of_work() as unit:
+                source = unit.dataset_catalog.version_identity(
+                    request.dataset_id, request.base_version_id
+                )
+                expected = request.expected_content_revision
+                if expected is None:
+                    expected = source["metadata"].get("content_revision", "")
+                if source["metadata"].get("content_revision", "") != expected:
+                    raise ResourceConflictError("当前版本的样本已变化，请刷新后重新操作")
+                request = replace(request, expected_content_revision=expected)
         dataset_import_id = self._next_id("dataset-import")
         task_id = self._next_id("task")
         queue_task_id = f"queue-message-{task_id}"
@@ -181,6 +203,11 @@ class SqlAlchemyDatasetImportService(
                 "task_type": request.task_type,
                 "split_strategy": request.split_strategy,
                 "class_map": request.class_map,
+                "base_version_id": request.base_version_id,
+                "expected_content_revision": request.expected_content_revision,
+                "exclude_selection": request.exclude_selection.model_dump()
+                if request.exclude_selection
+                else None,
                 "metadata": request.metadata,
             },
         )
@@ -231,11 +258,19 @@ class SqlAlchemyDatasetImportService(
 
         return initial_import
 
-    def process_dataset_import(
+    def process_dataset_import(self, dataset_import_id: str, *, execution_fence=None):
+        """读源内容时持共享保护，所有文件准备完成后才提交当前版本更新。"""
+        with ExitStack() as reads:
+            return self._process_dataset_import(
+                dataset_import_id, execution_fence=execution_fence, reads=reads
+            )
+
+    def _process_dataset_import(
         self,
         dataset_import_id: str,
         *,
         execution_fence: TaskExecutionFence | None = None,
+        reads: ExitStack,
     ) -> DatasetImportResult:
         """处理一条已登记的 DatasetImport。
 
@@ -247,6 +282,8 @@ class SqlAlchemyDatasetImportService(
         """
 
         current_import = self._get_dataset_import(dataset_import_id)
+        if current_import.status == "cancelled":
+            raise InvalidRequestError("当前导入任务已取消，不能继续执行")
         import_layout = self._build_import_layout(current_import)
 
         if (
@@ -277,7 +314,8 @@ class SqlAlchemyDatasetImportService(
         )
 
         request = self._load_staged_request(current_import, import_layout)
-        dataset_version_id = self._next_id("dataset-version")
+        dataset_version_id = request.base_version_id or self._next_id("dataset-version")
+        revision = uuid4().hex if request.base_version_id else ""
         version_layout: DatasetVersionLayout | None = None
         try:
             self.dataset_storage.extract_zip(
@@ -297,9 +335,44 @@ class SqlAlchemyDatasetImportService(
                 request=request,
                 import_layout=import_layout,
             )
+            parent_metadata = {}
+            if request.base_version_id:
+                reads.enter_context(
+                    content_access(self.dataset_storage, dataset_version_id)
+                )
+                with self._open_unit_of_work() as unit:
+                    source = unit.datasets.get_dataset_version(request.base_version_id)
+                    if source is None or (
+                        source.project_id,
+                        source.dataset_id,
+                        source.task_type,
+                    ) != (request.project_id, request.dataset_id, request.task_type):
+                        raise InvalidRequestError("来源版本已不可用或不属于当前数据集")
+                    require_revision(source, request.expected_content_revision)
+                    excluded = (
+                        unit.dataset_catalog.selected_ids(
+                            source.dataset_version_id,
+                            request.exclude_selection.model_dump(),
+                        )
+                        if request.exclude_selection
+                        else set()
+                    )
+                parsed_content = merge_import(
+                    self.dataset_storage, source, parsed_content, excluded
+                )
+                parent_metadata = {
+                    **source.metadata,
+                    "content_revision": revision,
+                    "obsolete_content": obsolete_content(source, self.dataset_storage),
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }
             version_scoped_content = self._assign_version_scoped_sample_ids(
                 parsed_content,
                 dataset_version_id=dataset_version_id,
+                retained_ids={s.sample_id for s in source.samples}
+                if request.base_version_id
+                else None,
+                update_id=revision,
             )
             current_import = replace(
                 current_import,
@@ -333,6 +406,7 @@ class SqlAlchemyDatasetImportService(
                 project_id=request.project_id,
                 dataset_id=request.dataset_id,
                 dataset_version_id=dataset_version_id,
+                content_revision=revision,
             )
             dataset_version = DatasetVersion(
                 dataset_version_id=dataset_version_id,
@@ -345,8 +419,14 @@ class SqlAlchemyDatasetImportService(
                 ),
                 task_type=parsed_content.task_type,
                 metadata={
+                    **parent_metadata,
                     "source_import_id": dataset_import_id,
-                    "created_at": current_import.created_at,
+                    "created_at": source.metadata.get(
+                        "created_at", current_import.created_at
+                    )
+                    if request.base_version_id
+                    else current_import.created_at,
+                    "validation_report": dict(parsed_content.validation_report),
                     "format_type": parsed_content.format_type,
                     "format_id": parsed_content.detected_profile.get("format_id"),
                     "image_root": parsed_content.image_root,
@@ -404,7 +484,31 @@ class SqlAlchemyDatasetImportService(
                     "staging_cleanup_status": cleanup_status,
                 },
             )
-            self._save_dataset_version_and_import(dataset_version, completed_import)
+            reads.close()
+            with (
+                content_access(self.dataset_storage, dataset_version_id, write=True)
+                if request.base_version_id
+                else nullcontext()
+            ):
+                self._save_dataset_version_and_import(
+                    dataset_version,
+                    completed_import,
+                    execution_fence=execution_fence,
+                    expected_revision=request.expected_content_revision,
+                )
+                if request.base_version_id:
+                    cleanup_content(self.dataset_storage, dataset_version)
+            # 状态和产物已在同一事务提交；后续不再发送第二个 succeeded 命令。
+            if execution_fence is not None:
+                return DatasetImportResult(
+                    dataset_import=completed_import,
+                    dataset_version=dataset_version,
+                    sample_count=len(dataset_version.samples),
+                    category_count=len(dataset_version.categories),
+                    split_names=self._collect_dataset_version_split_names(
+                        dataset_version
+                    ),
+                )
             self._append_dataset_import_task_event(
                 completed_import,
                 event_type="result",
@@ -451,6 +555,7 @@ class SqlAlchemyDatasetImportService(
                 import_layout=import_layout,
                 error=wrapped_error,
                 version_layout=version_layout,
+                execution_fence=execution_fence,
             )
             raise wrapped_error from error
 
@@ -470,6 +575,22 @@ class SqlAlchemyDatasetImportService(
         - 当请求字段不完整或当前任务类型不支持时抛出请求错误。
         """
 
+        if request.exclude_selection and not request.base_version_id:
+            raise InvalidRequestError("删除样本必须指定来源版本")
+        if request.base_version_id:
+            with self._open_unit_of_work() as unit:
+                source = unit.dataset_catalog.version_identity(
+                    request.dataset_id, request.base_version_id
+                )
+                if (
+                    source["project_id"] != request.project_id
+                    or source["task_type"] != request.task_type
+                ):
+                    raise InvalidRequestError("来源版本不属于当前项目或任务类型不一致")
+                if request.exclude_selection:
+                    unit.dataset_catalog.selection_summary(
+                        request.base_version_id, request.exclude_selection.model_dump()
+                    )
         if not request.project_id.strip():
             raise InvalidRequestError("project_id 不能为空")
         if not request.dataset_id.strip():
@@ -723,6 +844,13 @@ class SqlAlchemyDatasetImportService(
                 str(key): str(value) for key, value in class_map_payload.items()
             },
             metadata={str(key): value for key, value in metadata_payload.items()},
+            base_version_id=payload.get("base_version_id"),
+            expected_content_revision=payload.get("expected_content_revision"),
+            exclude_selection=DatasetSampleSelection.model_validate(
+                payload["exclude_selection"]
+            )
+            if payload.get("exclude_selection")
+            else None,
         )
 
     def _cleanup_completed_staging(self, import_layout: DatasetImportLayout) -> str:
@@ -912,6 +1040,12 @@ class SqlAlchemyDatasetImportService(
         """
 
         if version_layout is not None:
+            with self._open_unit_of_work() as unit:
+                registered_import = unit.dataset_imports.get_dataset_import(
+                    initial_import.dataset_import_id
+                )
+            if registered_import and registered_import.status == "completed":
+                return
             self.dataset_storage.delete_tree(version_layout.version_path)
         failure_report = {
             "status": "failed",
@@ -1022,6 +1156,9 @@ class SqlAlchemyDatasetImportService(
         self,
         dataset_version: DatasetVersion,
         dataset_import: DatasetImport,
+        *,
+        execution_fence=None,
+        expected_revision=None,
     ) -> None:
         """在同一事务里保存 DatasetVersion 和 DatasetImport。
 
@@ -1030,10 +1167,45 @@ class SqlAlchemyDatasetImportService(
         - dataset_import：要更新的导入记录。
         """
 
-        with self._open_unit_of_work() as unit_of_work:
-            unit_of_work.datasets.save_dataset_version(dataset_version)
-            unit_of_work.dataset_imports.save_dataset_import(dataset_import)
-            unit_of_work.commit()
+        def persist(unit):
+            """提交时重验来源，取消抢先成功时不会更新样本。"""
+            if expected_revision is not None:
+                require_revision(
+                    unit.datasets.get_dataset_version(
+                        dataset_version.dataset_version_id
+                    ),
+                    expected_revision,
+                )
+            unit.datasets.save_dataset_version(dataset_version)
+            unit.dataset_imports.save_dataset_import(dataset_import)
+
+        if execution_fence is not None:
+            task_id = dataset_import.metadata["task_id"]
+            task = self.task_service.get_task(task_id).task
+            self.task_service.execute_task_state_command(
+                TaskStateCommandRequest(
+                    task_id=task_id,
+                    target_state="succeeded",
+                    expected_states=("running",),
+                    expected_current_attempt_no=task.current_attempt_no,
+                    fence=execution_fence,
+                    result_patch={
+                        "dataset_version_id": dataset_version.dataset_version_id,
+                        "sample_count": len(dataset_version.samples),
+                        "category_count": len(dataset_version.categories),
+                        "split_names": list(
+                            self._collect_dataset_version_split_names(dataset_version)
+                        ),
+                    },
+                    progress_patch={"stage": "completed", "percent": 100},
+                    message="数据集样本已保存",
+                ),
+                persist_result=persist,
+            )
+        else:
+            with self._open_unit_of_work() as unit:
+                persist(unit)
+                unit.commit()
 
     def _next_id(self, prefix: str) -> str:
         """生成一个带前缀的新对象 id。
@@ -1067,6 +1239,7 @@ class SqlAlchemyDatasetImportService(
             created_at=created_at,
             task_spec={
                 "dataset_import_id": dataset_import.dataset_import_id,
+                "base_version_id": request.base_version_id,
                 "dataset_id": request.dataset_id,
                 "package_file_name": request.package_file_name,
                 "format_type": request.format_type,

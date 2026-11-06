@@ -15,7 +15,10 @@ from backend.service.infrastructure.persistence.dataset_export_orm import (
 from backend.service.infrastructure.persistence.dataset_import_orm import (
     DatasetImportRecord,
 )
-from backend.service.infrastructure.persistence.dataset_orm import DatasetVersionRecord
+from backend.service.infrastructure.persistence.dataset_orm import (
+    DatasetRecord,
+    DatasetVersionRecord,
+)
 from backend.service.infrastructure.persistence.deployment_orm import (
     DeploymentInstanceRecord,
 )
@@ -29,7 +32,9 @@ from backend.service.infrastructure.persistence.model_transfer_repository import
     ModelTransferRecord,
 )
 from backend.service.infrastructure.persistence.task_orm import TaskRecordEntity
-from backend.service.infrastructure.persistence.queue_outbox_orm import QueueOutboxMessageEntity
+from backend.service.infrastructure.persistence.queue_outbox_orm import (
+    QueueOutboxMessageEntity,
+)
 from backend.service.application.resource_deletion_plan import referenced_ids
 from backend.service.application.errors import ResourceInUseError
 from backend.service.infrastructure.persistence.workflow_runtime_orm import (
@@ -55,6 +60,7 @@ class ProjectDatabaseInventory:
     trigger_sources: tuple[tuple[str, bool, str, str], ...]
     model_file_storage_uris: tuple[str, ...]
     counts: dict[str, int]
+
 
 class SqlAlchemyProjectDeletionRepository:
     """在单个事务内盘点并删除 Project 关联记录。"""
@@ -170,9 +176,18 @@ class SqlAlchemyProjectDeletionRepository:
         """删除 Project 关联记录，由外层 Unit of Work 提交。"""
 
         try:
-            task_ids = set(self.session.scalars(select(TaskRecordEntity.task_id).where(TaskRecordEntity.project_id == project_id)))
+            task_ids = set(
+                self.session.scalars(
+                    select(TaskRecordEntity.task_id).where(
+                        TaskRecordEntity.project_id == project_id
+                    )
+                )
+            )
             for message in self.session.scalars(select(QueueOutboxMessageEntity)):
-                payload = {"payload": message.payload_json, "metadata": message.metadata_json}
+                payload = {
+                    "payload": message.payload_json,
+                    "metadata": message.metadata_json,
+                }
                 project_owned = any(
                     isinstance(value, dict) and value.get("project_id") == project_id
                     for value in (message.payload_json, message.metadata_json)
@@ -180,7 +195,10 @@ class SqlAlchemyProjectDeletionRepository:
                 if not project_owned and not (referenced_ids(payload) & task_ids):
                     continue
                 if message.state in {"pending", "leased"}:
-                    raise ResourceInUseError("Project 仍有待投递 Outbox 消息", details={"message_id": message.message_id})
+                    raise ResourceInUseError(
+                        "Project 仍有待投递 Outbox 消息",
+                        details={"message_id": message.message_id},
+                    )
                 self.session.delete(message)
             # LocalAuthUserRecord 保存的是 Project id 数组，不是 Project 所有权记录。
             # 删除 Project 时必须同步撤销引用，避免将来复用同名 id 后旧权限复活。
@@ -220,6 +238,7 @@ class SqlAlchemyProjectDeletionRepository:
                 DatasetExportRecord,
                 DatasetImportRecord,
                 DatasetVersionRecord,
+                DatasetRecord,
             ):
                 self._delete_project_records(model, project_id)
         except SQLAlchemyError as error:

@@ -10,7 +10,7 @@ from backend.service.domain.datasets.dataset_version import DatasetTaskType
 
 
 # 数据集导出记录的最小状态集合。
-DatasetExportStatus = Literal["queued", "running", "completed", "failed"]
+DatasetExportStatus = Literal["queued", "running", "completed", "failed", "cancelled"]
 
 
 @dataclass(frozen=True)

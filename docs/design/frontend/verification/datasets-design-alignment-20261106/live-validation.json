@@ -1,0 +1,110 @@
+{
+  "dataset": "dataset-5996dd3c8b7e421dbe9ad64bd2ee2585",
+  "version": "dataset-version-c0987fd6036d",
+  "version_number": 9,
+  "before_samples": 7,
+  "after_samples": 6,
+  "source_version_samples": 5,
+  "production_readonly_samples": 1174,
+  "stale_status": 409,
+  "task_id": "task-3bd518c707e7589a9f15397cc027c2b6",
+  "description": "设计对照验收：手动创建，按 80/20 划分。",
+  "images": [
+    {
+      "sample_id": "sample-dataset-version-c0987fd6036d-2",
+      "thumbnail": false,
+      "bytes": 535274
+    },
+    {
+      "sample_id": "sample-dataset-version-c0987fd6036d-2",
+      "thumbnail": true,
+      "bytes": 71568
+    },
+    {
+      "sample_id": "sample-dataset-version-c0987fd6036d-4",
+      "thumbnail": false,
+      "bytes": 535274
+    },
+    {
+      "sample_id": "sample-dataset-version-c0987fd6036d-4",
+      "thumbnail": true,
+      "bytes": 71568
+    },
+    {
+      "sample_id": "sample-c1db073f030e4b9ea74165c58473c6c6-7",
+      "thumbnail": false,
+      "bytes": 640396
+    },
+    {
+      "sample_id": "sample-c1db073f030e4b9ea74165c58473c6c6-7",
+      "thumbnail": true,
+      "bytes": 78635
+    },
+    {
+      "sample_id": "sample-dataset-version-c0987fd6036d-1",
+      "thumbnail": false,
+      "bytes": 640396
+    },
+    {
+      "sample_id": "sample-dataset-version-c0987fd6036d-1",
+      "thumbnail": true,
+      "bytes": 78635
+    },
+    {
+      "sample_id": "sample-dataset-version-c0987fd6036d-3",
+      "thumbnail": false,
+      "bytes": 640396
+    },
+    {
+      "sample_id": "sample-dataset-version-c0987fd6036d-3",
+      "thumbnail": true,
+      "bytes": 78635
+    },
+    {
+      "sample_id": "sample-dataset-version-c0987fd6036d-5",
+      "thumbnail": false,
+      "bytes": 640396
+    },
+    {
+      "sample_id": "sample-dataset-version-c0987fd6036d-5",
+      "thumbnail": true,
+      "bytes": 78635
+    }
+  ],
+  "service_status": {
+    "ready": true,
+    "state": "ready",
+    "instance_id": "83717bed1f9f4c15ae78fc7fd9de7724",
+    "checked_at": "2026-11-06T02:08:18.134358+00:00",
+    "summary": {
+      "deployments": {
+        "expected": 6,
+        "ready": 6
+      },
+      "runtimes": {
+        "expected": 10,
+        "ready": 10
+      },
+      "triggers": {
+        "expected": 8,
+        "ready": 8
+      }
+    },
+    "blockers": []
+  },
+  "export": {
+    "dataset_export_id": "dataset-export-5515e019b157",
+    "samples": 6,
+    "objects": 10,
+    "image_references_valid": true
+  },
+  "historical_import": {
+    "dataset_import_id": "dataset-import-3bb2e47f1e51",
+    "sample_count": 7,
+    "split_counts": {
+      "train": 6,
+      "val": 1
+    },
+    "added_count": 2
+  }
+}

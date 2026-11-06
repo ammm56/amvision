@@ -7,9 +7,11 @@ from fastapi import APIRouter
 from .exports import dataset_exports_router
 from .imports import dataset_imports_router
 from .deletion import dataset_deletion_router
+from .catalog import dataset_catalog_router
 
 
 datasets_router = APIRouter(prefix="/datasets", tags=["datasets"])
+datasets_router.include_router(dataset_catalog_router)
 datasets_router.include_router(dataset_imports_router)
 datasets_router.include_router(dataset_exports_router)
 datasets_router.include_router(dataset_deletion_router)

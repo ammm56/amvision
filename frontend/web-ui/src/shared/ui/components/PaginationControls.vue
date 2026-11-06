@@ -1,12 +1,16 @@
 <template>
   <nav class="pagination-controls" aria-label="Pagination">
-    <p class="pagination-controls__summary" aria-live="polite">{{ summaryText }}</p>
+    <p class="pagination-controls__summary" aria-live="polite"><slot name="summary">{{ summaryText }}</slot></p>
     <div class="pagination-controls__actions">
-      <span class="pagination-controls__page">{{ pageText }}</span>
+      <span v-if="!numbered" class="pagination-controls__page">{{ pageText }}</span>
       <div class="pagination-controls__buttons">
         <Button size="sm" variant="secondary" :disabled="disabled || !canGoPrevious" @click="emit('previous')">
           {{ t('common.pagination.previous') }}
         </Button>
+        <template v-if="numbered" v-for="(page, index) in pageNumbers" :key="index">
+          <Button v-if="page" size="sm" :variant="page === currentPage ? 'primary' : 'secondary'" :aria-current="page === currentPage ? 'page' : undefined" :disabled="disabled" @click="emit('go', (page - 1) * limit)">{{ page }}</Button>
+          <span v-else aria-hidden="true">…</span>
+        </template>
         <Button size="sm" variant="secondary" :disabled="disabled || !canGoNext" @click="emit('next')">
           {{ t('common.pagination.next') }}
         </Button>
@@ -29,6 +33,7 @@ const props = withDefaults(
     totalCount?: number | null
     hasMore?: boolean
     disabled?: boolean
+    numbered?: boolean
   }>(),
   {
     totalCount: null,
@@ -40,6 +45,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   previous: []
   next: []
+  go: [offset: number]
 }>()
 
 const { t } = useI18n()
@@ -52,6 +58,15 @@ const totalPages = computed(() => {
   return Math.max(Math.ceil(props.totalCount / props.limit), 1)
 })
 const canGoPrevious = computed(() => props.offset > 0)
+const pageNumbers = computed(() => {
+  const total = totalPages.value || currentPage.value
+  const values = new Set([1, total, currentPage.value - 1, currentPage.value, currentPage.value + 1])
+  if (currentPage.value <= 3) { values.add(2); values.add(3); values.add(4); values.add(5) }
+  const pages = [...values].filter(page => page >= 1 && page <= total).sort((a, b) => a - b)
+  const result: (number | null)[] = []
+  pages.forEach((page, index) => { if (index && page - pages[index - 1] > 1) result.push(null); result.push(page) })
+  return result
+})
 const canGoNext = computed(() => {
   if (props.hasMore) return true
   if (props.totalCount === null) return false

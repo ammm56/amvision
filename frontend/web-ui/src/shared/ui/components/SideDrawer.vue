@@ -1,18 +1,18 @@
 <template>
   <Teleport to="body">
     <Transition name="side-drawer" appear @after-leave="afterLeave">
-      <div v-if="open" class="side-drawer__backdrop" :style="{ zIndex: order, background: covered ? 'transparent' : undefined }" @mousedown.self="closeDrawer">
+      <div v-if="open" class="side-drawer__backdrop" :class="{ 'side-drawer__backdrop--plain': plain, 'side-drawer__backdrop--nonmodal': nonmodal }" :style="{ zIndex: order, background: covered || nonmodal ? 'transparent' : undefined }" @mousedown.self="closeDrawer">
         <aside
           ref="drawerRef"
           class="side-drawer"
-          :class="{ 'side-drawer--compact': size === 'compact' }"
+          :class="[{ 'side-drawer--compact': size === 'compact', 'side-drawer--plain': plain }, panelClass]"
           :aria-busy="busy"
           role="dialog"
-          aria-modal="true"
+          :aria-modal="nonmodal ? undefined : true"
           :aria-labelledby="titleId"
           tabindex="-1"
           @keydown.esc.stop.prevent="closeDrawer"
-          @keydown.tab.stop="trapFocus"
+          @keydown.tab="!nonmodal && trapFocus($event)"
         >
           <header class="side-drawer__header">
             <h2 :id="titleId">{{ title }}</h2>
@@ -34,7 +34,7 @@
 
 <script setup lang="ts">
 import { X } from '@lucide/vue'
-import { ref, useId, watch } from 'vue'
+import { nextTick, ref, useId, watch } from 'vue'
 import { useModalLayer } from './modal-layer'
 
 const props = defineProps<{
@@ -43,16 +43,25 @@ const props = defineProps<{
   closeLabel: string
   size?: 'default' | 'compact'
   busy?: boolean
+  /** 资源详情使用无边框关闭图标，其他现有抽屉保持原样。 */
+  plain?: boolean
+  panelClass?: string
+  /** 对象检查允许与背景图像同时操作；其他资源抽屉仍为模态。 */
+  nonmodal?: boolean
 }>()
 
 const emit = defineEmits<{ close: []; 'after-leave': [] }>()
 
 const drawerRef = ref<HTMLElement | null>(null)
+let opener: HTMLElement | null = null
 const titleId = `${useId()}-title`
 const { activate, deactivate, trapFocus, isTop, order, covered } = useModalLayer(drawerRef)
 
 function closeDrawer(): void {
-  if (props.open && !props.busy && isTop()) emit('close')
+  if (props.open && !props.busy && (props.nonmodal || isTop())) {
+    if (props.nonmodal && opener?.isConnected && drawerRef.value?.contains(document.activeElement)) opener.focus({ preventScroll: true })
+    emit('close')
+  }
 }
 
 function afterLeave(): void {
@@ -76,8 +85,15 @@ watch(drawerRef, (drawer, _, onCleanup) => {
 }, { flush: 'post' })
 
 watch(() => props.open, (open) => {
-  if (open) void activate()
-}, { immediate: true, flush: 'post' })
+  if (open) {
+    if (props.nonmodal) {
+      opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
+      void nextTick(() => drawerRef.value?.focus({ preventScroll: true }))
+    } else void activate()
+  } else if (props.nonmodal && opener?.isConnected && drawerRef.value?.contains(document.activeElement)) {
+    opener.focus({ preventScroll: true })
+  }
+}, { immediate: true, flush: 'pre' })
 </script>
 
 <style scoped>
@@ -101,7 +117,15 @@ watch(() => props.open, (open) => {
   box-shadow: var(--am-shadow-modal);
 }
 
+.side-drawer__backdrop--nonmodal { pointer-events:none; }
+.side-drawer__backdrop--nonmodal .side-drawer { pointer-events:auto; }
+
 .side-drawer--compact { width: min(520px, 100vw); }
+.side-drawer__backdrop--plain { background:color-mix(in srgb, var(--am-overlay) 45%, transparent); }
+.side-drawer--plain .side-drawer__header,
+.side-drawer--plain .side-drawer__footer { padding: 20px 28px; }
+.side-drawer--plain .side-drawer__content { padding: 20px 28px; }
+.side-drawer--plain .side-drawer__close { border-color: transparent; background: transparent; }
 
 .side-drawer__header,
 .side-drawer__footer {

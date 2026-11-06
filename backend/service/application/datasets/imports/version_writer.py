@@ -47,6 +47,11 @@ class DatasetImportVersionWriterMixin:
                 "project_id": dataset_version.project_id,
                 "task_type": dataset_version.task_type,
                 "source_import_id": dataset_import_id,
+                **{
+                    key: dataset_version.metadata[key]
+                    for key in ("parent_version_id", "source_kind")
+                    if key in dataset_version.metadata
+                },
                 "format_type": parsed_content.format_type,
                 "sample_count": len(parsed_content.samples),
                 "category_count": len(parsed_content.categories),
@@ -138,6 +143,8 @@ class DatasetImportVersionWriterMixin:
         parsed_content: ParsedDatasetContent,
         *,
         dataset_version_id: str,
+        retained_ids: set[str] | None = None,
+        update_id: str = "",
     ) -> ParsedDatasetContent:
         """为写入 DatasetVersion 的样本和标注分配 version-scoped id。"""
 
@@ -145,7 +152,12 @@ class DatasetImportVersionWriterMixin:
         next_annotation_index = 1
         for sample_index, parsed_sample in enumerate(parsed_content.samples, start=1):
             source_sample = parsed_sample.sample
-            scoped_sample_id = f"sample-{dataset_version_id}-{sample_index}"
+            retained = source_sample.sample_id in (retained_ids or set())
+            scoped_sample_id = (
+                source_sample.sample_id
+                if retained
+                else f"sample-{update_id or dataset_version_id}-{sample_index}"
+            )
             image_object_key = self._build_version_image_object_key(
                 sample_id=scoped_sample_id,
                 split=source_sample.split,
@@ -157,7 +169,9 @@ class DatasetImportVersionWriterMixin:
                     clone_dataset_annotation(
                         annotation,
                         annotation_id=(
-                            f"ann-{dataset_version_id}-{next_annotation_index}"
+                            annotation.annotation_id
+                            if retained
+                            else f"ann-{update_id or dataset_version_id}-{next_annotation_index}"
                         ),
                         metadata_updates={
                             "source_annotation_id": annotation.annotation_id,

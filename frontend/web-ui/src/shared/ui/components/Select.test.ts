@@ -4,6 +4,19 @@ import { describe, expect, it } from 'vitest'
 import Select from './Select.vue'
 
 describe('Select', () => {
+  it('renders custom value and option content without changing selection or keyboard behavior', async () => {
+    const wrapper = mount(Select, {
+      props: { modelValue: 'asc', options: [{ value: 'asc', label: 'Ascending' }, { value: 'desc', label: 'Descending' }] },
+      slots: { value: '<template #value="{ option }"><b>{{ option.label }}</b></template>', option: '<template #option="{ option }"><i>{{ option.label }}</i></template>' },
+    })
+    expect(wrapper.get('.ui-select__value b').text()).toBe('Ascending')
+    await wrapper.get('.ui-select__button').trigger('click')
+    expect(wrapper.findAll('.ui-select__option i').map(item => item.text())).toEqual(['Ascending', 'Descending'])
+    await wrapper.get('.ui-select__button').trigger('keydown', { key: 'ArrowDown' })
+    await wrapper.get('.ui-select__button').trigger('keydown', { key: 'Enter' })
+    expect(wrapper.emitted('update:modelValue')).toEqual([['desc']])
+    wrapper.unmount()
+  })
   it('keeps a floating menu outside the scroll container and Escape inside the dialog', async () => {
     const wrapper = mount(Select, { attachTo: document.body, props: {
       floating: true, ariaLabel: 'Operation', modelValue: 'sum',

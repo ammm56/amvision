@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from backend.contracts.datasets.sample_selection import DatasetSampleSelection
 
 from backend.service.domain.datasets.dataset_import import (
     DatasetFormatType,
@@ -43,6 +44,10 @@ class DatasetImportRequest:
     split_strategy: DatasetImportRequestedSplitStrategy | None = None
     class_map: dict[str, str] = field(default_factory=dict)
     metadata: dict[str, object] = field(default_factory=dict)
+    # 指定时直接更新当前版本；只有独立的创建版本操作才分配新序号。
+    base_version_id: str | None = None
+    expected_content_revision: str | None = None
+    exclude_selection: DatasetSampleSelection | None = None
 
 
 @dataclass(frozen=True)

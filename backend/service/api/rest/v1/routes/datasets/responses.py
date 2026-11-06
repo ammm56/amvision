@@ -97,6 +97,7 @@ def _build_dataset_version_relation(
 		return None
 
 	return DatasetVersionRelationResponse(
+		version_number=dataset_version.version_number,
 		dataset_version_id=dataset_version.dataset_version_id,
 		dataset_id=dataset_version.dataset_id,
 		project_id=dataset_version.project_id,
@@ -188,6 +189,9 @@ def _build_validation_report_response(
 		task_type=_read_optional_str(report, "task_type"),
 		category_count=_read_optional_int(report, "category_count"),
 		sample_count=_read_optional_int(report, "sample_count"),
+		added_count=_read_optional_int(report, "added_count"),
+		removed_count=_read_optional_int(report, "removed_count"),
+		retained_count=_read_optional_int(report, "retained_count"),
 		split_counts={
 			str(split_name): int(sample_count)
 			for split_name, sample_count in split_counts.items()

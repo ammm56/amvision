@@ -197,6 +197,7 @@ class LocalDatasetStorage:
         project_id: str,
         dataset_id: str,
         dataset_version_id: str,
+        content_revision: str = "",
     ) -> DatasetVersionLayout:
         """创建一个 DatasetVersion 所需的目录布局。
 
@@ -212,6 +213,12 @@ class LocalDatasetStorage:
         version_root = (
             self._dataset_root(project_id, dataset_id) / "versions" / dataset_version_id
         )
+        if content_revision:
+            if len(content_revision) != 32 or any(
+                c not in "0123456789abcdef" for c in content_revision
+            ):
+                raise InvalidRequestError("数据集内容标识无效")
+            version_root = version_root / "contents" / content_revision
         manifests_dir = version_root / "manifests"
         images_dir = version_root / "images"
         samples_dir = version_root / "samples"

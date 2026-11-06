@@ -61,20 +61,24 @@ elif sys.platform == "linux":
         ]
 
 
-def change_windows_lock(file_object, *, offset: int, unlock: bool = False) -> None:
+def change_windows_lock(
+    file_object, *, offset: int, unlock: bool = False, shared: bool = False
+) -> None:
     """立即获取或释放一个字节的排他锁，异常包含准确 winerror。"""
     operation = _Overlapped(offset=offset & 0xFFFFFFFF, offset_high=offset >> 32)
     handle = msvcrt.get_osfhandle(file_object.fileno())
     result = (
         _unlock(handle, 0, 1, 0, ctypes.byref(operation))
         if unlock
-        else _lock(handle, 3, 0, 1, 0, ctypes.byref(operation))
+        else _lock(handle, 1 if shared else 3, 0, 1, 0, ctypes.byref(operation))
     )
     if not result:
         raise ctypes.WinError(ctypes.get_last_error())
 
 
-def change_posix_lock(file_object, *, offset: int, unlock: bool = False) -> None:
+def change_posix_lock(
+    file_object, *, offset: int, unlock: bool = False, shared: bool = False
+) -> None:
     """Linux OFD 锁随本句柄释放，不能降级为进程级 lockf。"""
     if sys.platform != "linux":
         raise RuntimeError("当前路径写协调只验收 Windows 和 Linux 的句柄归属锁")
@@ -85,7 +89,7 @@ def change_posix_lock(file_object, *, offset: int, unlock: bool = False) -> None
     ):
         raise RuntimeError("不支持当前进程的 Linux flock ABI")
     operation = _Flock(
-        type=fcntl.F_UNLCK if unlock else fcntl.F_WRLCK,
+        type=fcntl.F_UNLCK if unlock else (fcntl.F_RDLCK if shared else fcntl.F_WRLCK),
         whence=os.SEEK_SET,
         start=offset,
         length=1,

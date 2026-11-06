@@ -35,7 +35,9 @@ IMPLEMENTED_DATASET_IMPORT_FORMAT_TYPES_BY_TASK_TYPE: Final[
 
 
 # 数据集导入记录的最小状态集合。
-DatasetImportStatus = Literal["received", "extracted", "validated", "completed", "failed"]
+DatasetImportStatus = Literal[
+    "received", "extracted", "validated", "completed", "failed", "cancelled"
+]
 
 
 # 导入请求允许的 split 策略。

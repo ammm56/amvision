@@ -2264,7 +2264,7 @@ onUnmounted(() => {
 
 <style scoped>
 .image-viewer--results { grid-template-rows:auto minmax(0,1fr) minmax(100px,var(--result-height,28vh)) auto; }
-.image-viewer__results { display:grid;grid-template-rows:auto minmax(0,1fr);min-height:0;overflow:hidden;background:var(--am-surface); }
+.image-viewer__results { display:grid;grid-template-rows:auto minmax(0,1fr);min-height:0;overflow:hidden;background:var(--am-surface);color:var(--am-text); }
 .image-viewer__results > :deep(*) { box-sizing:border-box; }
 .image-viewer__results-size { display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:2px 8px;font-size:11px;color:var(--am-text-muted); }
 .image-viewer__results-size input { width:100px; }

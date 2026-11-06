@@ -3,6 +3,15 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from dataclasses import replace
+from contextlib import nullcontext
+from backend.service.application.datasets.content import content_access
+from backend.service.application.datasets.selection import select_samples
+from backend.service.application.datasets.annotation_handoff import (
+    HANDOFF_FORMATS,
+    write_handoff,
+)
+from backend.service.application.errors import InvalidRequestError
 from uuid import uuid4
 
 from backend.contracts.datasets.dataset_formats import (
@@ -51,13 +60,35 @@ class SqlAlchemyDatasetExporter(
     def export_dataset(self, request: DatasetExportRequest) -> DatasetExportResult:
         """执行数据集导出。"""
 
+        guard = content_access(self.dataset_storage, request.dataset_version_id) if self.dataset_storage else nullcontext()
+        with guard:
+            return self._export_current_dataset(request)
+
+    def _export_current_dataset(self, request: DatasetExportRequest) -> DatasetExportResult:
+        """完整读取期间保护当前内容，训练导出的文件不受后续样本修改影响。"""
+
         unit_of_work = SqlAlchemyUnitOfWork(self.session_factory.create_session())
         try:
-            dataset_version = unit_of_work.datasets.get_dataset_version(request.dataset_version_id)
+            dataset_version = unit_of_work.datasets.get_dataset_version(
+                request.dataset_version_id
+            )
+            if dataset_version is not None and request.selection is not None:
+                selected = unit_of_work.dataset_catalog.selected_ids(
+                    request.dataset_version_id, request.selection
+                )
+                dataset_version = replace(dataset_version, samples=tuple(
+                    sample for sample in dataset_version.samples
+                    if sample.sample_id in selected and (request.include_test_split or sample.split != "test")
+                ))
+                if not dataset_version.samples:
+                    raise InvalidRequestError("当前选择没有可导出的样本")
+                request = replace(request, selection=None)
         finally:
             unit_of_work.close()
 
-        return self._export_loaded_dataset(request=request, dataset_version=dataset_version)
+        return self._export_loaded_dataset(
+            request=request, dataset_version=dataset_version
+        )
 
     def _export_loaded_dataset(
         self,
@@ -69,6 +100,13 @@ class SqlAlchemyDatasetExporter(
 
         if dataset_version is None:
             raise ValueError(f"未知的 DatasetVersion: {request.dataset_version_id}")
+        if request.annotation_handoff and (
+            request.format_id not in HANDOFF_FORMATS
+            or request.category_names
+            and tuple(request.category_names)
+            != tuple(c.name for c in dataset_version.categories)
+        ):
+            raise InvalidRequestError("外部标注交接须使用 COCO 并保留来源类别名称")
         if dataset_version.project_id != request.project_id:
             raise ValueError("请求中的 project_id 与 DatasetVersion 不一致")
         if dataset_version.dataset_id != request.dataset_id:
@@ -83,6 +121,9 @@ class SqlAlchemyDatasetExporter(
                 f"导出格式 {request.format_id} 与 task_type={dataset_version.task_type} 不匹配"
             )
 
+        dataset_version = replace(
+            dataset_version, samples=select_samples(dataset_version, request.selection)
+        )
         category_names = self._resolve_category_names(
             categories=dataset_version.categories,
             category_names=request.category_names,
@@ -102,6 +143,10 @@ class SqlAlchemyDatasetExporter(
             dataset_version=dataset_version,
             include_test_split=request.include_test_split,
         )
+        if request.selection is not None and not any(
+            samples for _, samples in split_samples
+        ):
+            raise ValueError("排除 test 后没有可导出的样本")
         class_map = self._build_class_map(dataset_version.categories)
         exported_at = datetime.now(timezone.utc).isoformat()
         format_manifest, annotation_payloads_by_split = self._build_format_payloads(
@@ -130,7 +175,9 @@ class SqlAlchemyDatasetExporter(
                 "target_format": request.format_id,
                 "class_map": class_map,
                 "exported_at": exported_at,
+                "split_counts": {name: len(samples) for name, samples in split_samples},
                 "export_path": export_prefix,
+                "annotation_handoff": request.annotation_handoff,
                 "implemented_formats": IMPLEMENTED_DATASET_EXPORT_FORMATS,
             },
         )
@@ -141,6 +188,10 @@ class SqlAlchemyDatasetExporter(
                 split_samples=split_samples,
                 export_result=export_result,
             )
+            if request.annotation_handoff:
+                write_handoff(
+                    self.dataset_storage, dataset_version, export_result, split_samples
+                )
 
         return export_result
 
