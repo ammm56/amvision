@@ -1,7 +1,8 @@
 # 受控 Python 点云依赖
 
 此目录仅保存构建材料，不加入运行时 `sys.path`，不由 backend 或节点直接导入。
-当前范围为 PLY/PCD 严格 I/O 及 M3.3 最小面积矩形扩展；不代表节点包已生产启用。
+当前已使用范围为 PLY/PCD 严格 I/O 及 M3.3 最小面积矩形扩展。
+另有 [Open3D 采样坐标基修复候选](open3d/README.md)，尚不替换运行依赖。
 
 ## 来源与修改
 
@@ -23,7 +24,8 @@
 ## 构建与验证
 
 开发命令先执行 `conda activate amvision`，确认 `python` 来自该环境。
-构建在独立 Python 环境进行，构建器本身不联网、不安装依赖、不改环境。
+纯 Python I/O 构建在独立 Python 环境进行，不联网、不安装依赖、不改环境。
+Open3D 原生分支按上游 CMake 下载并校验第三方构建输入，不属于离线构建步骤。
 归档从 manifest 中的固定 URL 获取。示例中的目录必须尚不存在：
 
 ```powershell

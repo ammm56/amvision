@@ -3,9 +3,11 @@
 from pathlib import Path
 import subprocess
 import sys
+import pytest
 
 
-def test_wrong_source_hash_cannot_build(tmp_path):
+@pytest.mark.parametrize("package", ["trimesh", "pypcd4", "open3d"])
+def test_wrong_source_hash_cannot_build(tmp_path, package):
     """坏归档不能被解压，也不能调用构建后端。"""
     source = tmp_path / "wrong.tar.gz"
     source.write_bytes(b"not an upstream archive")
@@ -17,7 +19,7 @@ def test_wrong_source_hash_cannot_build(tmp_path):
         [
             sys.executable,
             str(script),
-            "trimesh",
+            package,
             "--archive",
             str(source),
             "--work-dir",

@@ -1,0 +1,18 @@
+diff --git a/3rdparty/find_dependencies.cmake b/3rdparty/find_dependencies.cmake
+--- a/3rdparty/find_dependencies.cmake
++++ b/3rdparty/find_dependencies.cmake
+@@ -1014,6 +1014,13 @@ endif()
+ # because the link command runs via "/bin/sh -c" and "(" / ")" are shell
+ # metacharacters.
+-if(UNIX AND NOT APPLE)
++if(UNIX AND NOT APPLE AND NOT USE_SYSTEM_CURL AND NOT USE_SYSTEM_OPENSSL AND NOT BUILD_WEBRTC)
++    # Interface wrappers are expanded after the raw group flags by CMake.
++    # Group the actual archives so GNU ld rescans their mutual references.
++    list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS_FROM_CUSTOM
++        Open3D::3rdparty_curl
++        Open3D::3rdparty_openssl
++        "$<LINK_GROUP:RESCAN,${CURL_LIB_DIR}/libcurl.a,${BORINGSSL_LIB_DIR}/libssl.a,${BORINGSSL_LIB_DIR}/libcrypto.a>")
++elseif(UNIX AND NOT APPLE)
+     list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS_FROM_CUSTOM
+         "-Wl,-\\("
+         Open3D::3rdparty_curl

@@ -1,4 +1,4 @@
-"""校验固定上游归档并构建普通 wheel；不联网、不安装、不改现场环境。"""
+"""校验固定上游归档并构建 wheel；不安装、不改现场环境。原生构建按上游取依赖。"""
 
 from __future__ import annotations
 
@@ -24,12 +24,27 @@ def digest(path: Path) -> str:
 def main() -> None:
     """要求空构建目录，防止复用污染源或覆盖既有产物。"""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("package", choices=("trimesh", "pypcd4"))
+    parser.add_argument("package", choices=("trimesh", "pypcd4", "open3d"))
     parser.add_argument("--archive", type=Path, required=True)
     parser.add_argument("--work-dir", type=Path, required=True)
     parser.add_argument("--wheel-dir", type=Path, required=True)
+    parser.add_argument("--prepare-only", action="store_true")
+    parser.add_argument("--cmake", default="cmake")
+    parser.add_argument("--generator", default="Ninja")
+    parser.add_argument("--jobs", type=int, default=1)
+    parser.add_argument("--build-prefix", type=Path)
+    parser.add_argument("--download-dir", type=Path)
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1] / "runtimes" / "python_patches"
+    if args.package == "open3d":
+        if args.jobs < 1:
+            parser.error("--jobs must be positive")
+        from build_controlled_open3d import build
+
+        build(args, root / "open3d")
+        return
+    if args.prepare_only:
+        parser.error("--prepare-only is only supported for open3d")
     spec = json.loads((root / "manifest.json").read_text("utf-8"))["packages"][
         args.package
     ]

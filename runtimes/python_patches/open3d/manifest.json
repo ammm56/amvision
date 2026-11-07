@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "upstream_version": "0.20.0",
+  "version": "0.20.0+amvision.1",
+  "source_url": "https://codeload.github.com/isl-org/Open3D/tar.gz/refs/tags/v0.20.0",
+  "source_commit": "b6c5e196384ad71e75b6e6f9c5da22d046221f1d",
+  "source_sha256": "66a8ff94cf3f641d77a2b885ef7bdc8e7a4e6c0fa689458d559d3f6d771feef4",
+  "source_directory": "Open3D-0.20.0",
+  "original_files": {
+    "3rdparty/find_dependencies.cmake": "0ef6d690ba521f220aab400ace390de7c737ff1a765b2b18c041431284fa16cf",
+    "cpp/open3d/t/geometry/kernel/PointCloudImpl.h": "b801f4191372f5aa533b629a7a70aa7d95569ea3f3ad711dfafc702eda7d173b",
+    "CMakeLists.txt": "59991d103ea11ef959c48a2da6f7e4e21ecbe89425a4efc9de213868bee0af06"
+  },
+  "patches": {
+    "linux-static-link.patch": "3068bff74cb8a66c9584b62dd49e85195e2891d5fd550b3dbd1bf64cd60bfeec",
+    "boundary-frame.patch": "1c48e71277e3e482ee1c2a29f44474cb9faddf1cf04c00653885bbdfd200272d"
+  },
+  "support_files": {
+    "cpp/open3d/core/linalg/kernel/Matrix.h": "b08f5738a79cd18de8657f60add0a935019f19a9f0b2ccd20da3b3d9ea13c7d6",
+    "LICENSE": "e2105d24aa1dae0fb5450f5b974dbf369b44d3c91a100d1b134922edb0647175"
+  },
+  "patched_files": {
+    "3rdparty/find_dependencies.cmake": "8372f60b648dbda3a891d2cbbfe7f7490499601df098ec94ee637236bc407938",
+    "cpp/open3d/t/geometry/kernel/PointCloudImpl.h": "e486b46674d372cf51e354bb59b56ffbb4224d08ccc3bd96af48c63f5aaed636",
+    "CMakeLists.txt": "bf8e54ca1774c86d6f66a4557cff0de23cda3257269a4682b3fc8ed6c05ddf31"
+  },
+  "cmake_options": {
+    "CMAKE_BUILD_TYPE": "Release",
+    "DEVELOPER_BUILD": "OFF",
+    "BUILD_SHARED_LIBS": "ON",
+    "BUILD_PYTHON_MODULE": "ON",
+    "BUILD_EXAMPLES": "OFF",
+    "BUILD_UNIT_TESTS": "OFF",
+    "BUILD_BENCHMARKS": "OFF",
+    "BUILD_GUI": "OFF",
+    "BUILD_WEBRTC": "OFF",
+    "BUILD_JUPYTER_EXTENSION": "OFF",
+    "BUILD_CUDA_MODULE": "OFF",
+    "BUILD_SYCL_MODULE": "OFF",
+    "BUILD_ISPC_MODULE": "OFF",
+    "BUILD_PYTORCH_OPS": "OFF",
+    "BUILD_TENSORFLOW_OPS": "OFF",
+    "BUNDLE_OPEN3D_ML": "OFF",
+    "BUILD_LIBREALSENSE": "OFF",
+    "BUILD_AZURE_KINECT": "OFF",
+    "WITH_STUBGEN": "OFF"
+  }
+}

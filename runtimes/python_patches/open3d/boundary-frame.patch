@@ -1,0 +1,31 @@
+diff --git a/cpp/open3d/t/geometry/kernel/PointCloudImpl.h b/cpp/open3d/t/geometry/kernel/PointCloudImpl.h
+--- a/cpp/open3d/t/geometry/kernel/PointCloudImpl.h
++++ b/cpp/open3d/t/geometry/kernel/PointCloudImpl.h
+@@ -356,13 +356,9 @@
+ OPEN3D_HOST_DEVICE void GetCoordinateSystemOnPlane(const scalar_t* query,
+                                                    scalar_t* u,
+                                                    scalar_t* v) {
+-    // Unless the x and y coords are both close to zero, we can simply take
+-    // ( -y, x, 0 ) and normalize it. If both x and y are close to zero,
+-    // then the vector is close to the z-axis, so it's far from colinear to
+-    // the x-axis for instance. So we take the crossed product with (1,0,0)
+-    // and normalize it.
+-    if (!(abs(query[0] - query[2]) < 1e-6) ||
+-        !(abs(query[1] - query[2]) < 1e-6)) {
++    // Select the larger tangent-plane norm to avoid an axial singularity.
++    // The input normal must be finite and nonzero, as required by the caller.
++    if (abs(query[0]) > abs(query[2])) {
+         const scalar_t norm2_inv =
+                 1.0 / sqrt(query[0] * query[0] + query[1] * query[1]);
+         v[0] = -1 * query[1] * norm2_inv;
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -363,6 +363,7 @@
+ else()
+     set(OPEN3D_VERSION_FULL "${OPEN3D_VERSION}")
+ endif()
++set(OPEN3D_VERSION_FULL "${OPEN3D_VERSION}+amvision.1")
+ set(OPEN3D_VERSION_FULL "${OPEN3D_VERSION_FULL}" CACHE STRING
+     "Open3D full version." FORCE)
+ set(OPEN3D_PACKAGE_VERSION "${OPEN3D_VERSION_FULL}")
