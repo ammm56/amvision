@@ -21,6 +21,7 @@ from backend.service.application.runtime.exception_cleanup import (
 )
 from backend.service.application.workflows.point_cloud.arrays import OwnedCloudArrays
 from custom_nodes.metrology3d_nodes.shared.geometry_quality import geometry_quality
+from custom_nodes.metrology3d_nodes.shared.plane_support import orthogonal_fit_blocks
 
 
 def _rows(runtime, reference, *, held_bytes=0):
@@ -47,61 +48,15 @@ def _positions(view, start, stop):
 
 
 def _orthogonal_fit(runtime, reference, cancel):
-    """分块中心化 QR 保持正交目标，最后只对 3 列 R 做 SVD。"""
+    """原读取/预算边界不变，边缘双侧验证共用同一正交目标。"""
     rows = _rows(runtime, reference)
-    points = centered = None
-    try:
-        with (
-            runtime.borrow(reference) as view,
-            np.errstate(over="raise", invalid="raise"),
-        ):
-            anchor = _positions(view, 0, 1)[0].copy()
-            total = np.zeros(3)
-            compensation = np.zeros(3)
-            for start in range(0, reference.point_count, rows):
-                cancel()
-                points = _positions(
-                    view, start, min(start + rows, reference.point_count)
-                )
-                addition = (points - anchor).sum(axis=0) - compensation
-                new_total = total + addition
-                compensation = (new_total - total) - addition
-                total = new_total
-            relative_center = total / reference.point_count
-            center = anchor + relative_center
-            reduced = np.empty((0, 3), dtype=np.float64)
-            for start in range(0, reference.point_count, rows):
-                cancel()
-                points = _positions(
-                    view, start, min(start + rows, reference.point_count)
-                )
-                centered = (points - anchor) - relative_center
-                reduced = np.linalg.qr(np.concatenate((reduced, centered)), mode="r")
-            _, singular, right = np.linalg.svd(reduced, full_matrices=False)
-            normal = right[-1]
-            squares = 0.0
-            largest = 0.0
-            for start in range(0, reference.point_count, rows):
-                cancel()
-                points = _positions(
-                    view, start, min(start + rows, reference.point_count)
-                )
-                residuals = ((points - anchor) - relative_center) @ normal
-                squares += float(residuals @ residuals)
-                largest = max(largest, float(np.max(np.abs(residuals))))
-            points = centered = None
-            cancel()
-            return (
-                center,
-                normal,
-                singular,
-                float(np.sqrt(squares / reference.point_count)),
-                largest,
-            )
-    except BaseException as error:
-        points = centered = None
-        release_exception_frames(error)
-        raise
+    with runtime.borrow(reference) as view:
+        return orthogonal_fit_blocks(
+            reference.point_count,
+            lambda start, stop: _positions(view, start, stop),
+            chunk_rows=rows,
+            cancel=cancel,
+        )
 
 
 def _ransac_support(runtime, reference, parameters, cancel):

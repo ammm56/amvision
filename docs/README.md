@@ -14,7 +14,7 @@ AMVision 是面向本地工作站、工控机和边缘设备的工业视觉服�
 | 调用 REST、WebSocket、ZeroMQ 或 SDK | [API 与集成](api/README.md) |
 | 核对模型和数据格式支持范围 | [参考资料](reference/README.md) |
 | 开发 Core Node、Custom Node 或 Node Pack | [节点扩展](nodes/README.md) |
-| 规划三维测量节点、算法及工程师/现场操作 | [当前进度与剩余清单](development/3d-metrology-remaining.md)；[3D Metrology 基线](development/3d-metrology.md)；[正式工件配方](examples/workflows/lithium-workpiece.md)；[B08 高度图](development/3d-metrology-height-map.md)。当前 26 个公开节点，工件 50 项几何有效；新增 B08 内核尚未公开接线，实体精度、十秒及最新发行按清单单列。历史批次状态不代表当前缺口。 |
+| 规划三维测量节点、算法及工程师/现场操作 | [当前进度与剩余清单](development/3d-metrology-remaining.md)；[3D Metrology 基线](development/3d-metrology.md)；[正式工件配方](examples/workflows/lithium-workpiece.md)；[B08 高度图](development/3d-metrology-height-map.md)；[B09 实体边实施](development/3d-metrology-edge-evidence.md)。当前 27 个公开节点，工件 50 项几何有效；B08 已交付，B09 高度/法向实测连续边及目标质量已实现，采样原生缺陷待受控修复，诊断、存读和公开页面尚待接通。实体精度、十秒及最新发行按清单单列，历史批次状态不代表当前缺口。 |
 | 配置 YOLOE / SAM3 Node Pack 与本地模型资产 | [YOLOE / SAM3 资产](architecture/workflows/yoloe-sam3-assets.md) |
 | 排查日志、服务和现场集成 | [运维与排障](operations/README.md) |
 | 查看关键设计取舍 | [架构决策记录](decisions/README.md) |

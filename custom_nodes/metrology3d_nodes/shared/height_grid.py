@@ -43,8 +43,8 @@ def grid_edges(parameters: HeightMapParameters):
     return edges
 
 
-def project_grid_block(points, parameters, edges, *, target_from_source=None):
-    """仅升精度当前块；返回格编号与轴向高度，格外编号为 -1。"""
+def grid_local_points(points, parameters, *, target_from_source=None):
+    """高度聚合和边缘支持共用同一物理投影，转换仅作用当前工作块。"""
     values = points.astype(np.float64)
     with np.errstate(over="ignore", invalid="ignore"):
         if target_from_source is not None:
@@ -57,6 +57,12 @@ def project_grid_block(points, parameters, edges, *, target_from_source=None):
         local = (values - grid.origin) @ axes.T
     if not np.isfinite(local).all():
         raise InvalidRequestError("高度图投影包含非有限值")
+    return local
+
+
+def project_grid_block(points, parameters, edges, *, target_from_source=None):
+    """返回格编号与轴向高度，格外编号为 -1。"""
+    local = grid_local_points(points, parameters, target_from_source=target_from_source)
     # searchsorted 避免靠近格边的点在加半格时舍入到另一格。
     column = np.searchsorted(edges[0], local[:, 0], side="right") - 1
     row = np.searchsorted(edges[1], local[:, 1], side="right") - 1

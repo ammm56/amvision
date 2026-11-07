@@ -14,34 +14,69 @@ from custom_nodes.metrology3d_nodes.shared.roi_mask import roi_mask
 def select_targets(
     vertices, candidates, parameters, *, max_working_bytes, cancel, capture=None
 ):
+    """现有表面方法将明确选择配置交给共享选择器，不改变既有行为。"""
+    return select_boundary_targets(
+        vertices,
+        candidates,
+        targets=parameters.targets,
+        evaluation=parameters.evaluation,
+        min_projected_area=parameters.surface.min_projected_area,
+        max_working_bytes=max_working_bytes,
+        cancel=cancel,
+        capture=capture,
+    )
+
+
+def target_mask(actual, target, evaluation, *, max_working_bytes, cancel):
+    """目标 ROI 和片段环带共用同一选择定义，诊断不能绕过环带。"""
+    mask = roi_mask(
+        actual, target.region, max_working_bytes=max_working_bytes, cancel=cancel
+    )
+    if isinstance(target, BoundaryFragmentTarget):
+        uv = (
+            (actual.astype(np.float64) - evaluation.origin)
+            @ np.asarray(evaluation.rotation)
+        )[:, :2]
+        delta = uv - target.arc.center
+        radius = np.linalg.norm(delta, axis=1)
+        angles = (np.arctan2(delta[:, 1], delta[:, 0]) - target.arc.start_angle) % (
+            2 * pi
+        )
+        lo, hi = target.arc.radius_range
+        mask &= (radius >= lo) & (radius <= hi) & (angles <= target.arc.sweep)
+    return mask
+
+
+def select_boundary_targets(
+    vertices,
+    candidates,
+    *,
+    targets,
+    evaluation,
+    min_projected_area,
+    max_working_bytes,
+    cancel,
+    capture=None,
+):
     """返回原因、失败目标、逻辑行和拓扑；任一目标失败不交付部分结果。"""
     chosen, layouts, used, cursor = [], [], set(), 0
-    evaluation = parameters.evaluation
     rotation = np.asarray(evaluation.rotation)
     if capture is not None:
         capture.stage = "selection"
-    for target_index, target in enumerate(parameters.targets):
+    for target_index, target in enumerate(targets):
         cancel()
         grouped = isinstance(target, BoundaryFragmentTarget)
         matches = []
         for candidate_index, candidate in enumerate(candidates):
             cancel()
             actual = vertices[candidate.indices]
-            mask = roi_mask(
+            mask = target_mask(
                 actual,
-                target.region,
+                target,
+                evaluation,
                 max_working_bytes=max_working_bytes,
                 cancel=cancel,
             )
-            if grouped:
-                uv = ((actual.astype(np.float64) - evaluation.origin) @ rotation)[:, :2]
-                delta = uv - target.arc.center
-                radius = np.linalg.norm(delta, axis=1)
-                angles = (
-                    np.arctan2(delta[:, 1], delta[:, 0]) - target.arc.start_angle
-                ) % (2 * pi)
-                lo, hi = target.arc.radius_range
-                mask &= (radius >= lo) & (radius <= hi) & (angles <= target.arc.sweep)
             parts = selected_runs(candidate, mask, cancel=cancel)
             matched_count = 0
             accepted_before = len(matches)
@@ -115,7 +150,7 @@ def select_targets(
                         - uv[:, 1] * np.roll(uv[:, 0], -1)
                     )
                 )
-                if abs(area2) < 2 * parameters.surface.min_projected_area:
+                if abs(area2) < 2 * min_projected_area:
                     return (
                         "degenerate_boundary_projection",
                         target.target_id,
