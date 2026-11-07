@@ -18,6 +18,62 @@ CMake 补丁写入受控包版本，并修复 Linux bundled curl/BoringSSL 静�
 ISPC 在该候选中关闭；不能据此声明与上游 wheel 的全套模块或性能等价。
 运行依赖仍固定原版本，只有双平台完整原生与既有几何回归后才更新节点、发行锁和产物。
 
+## 开发笔记本离线安装
+
+适用于已有相同 `amvision` 环境的 Windows x64 开发笔记本。此包为 CPython 3.12 的 CPU wheel；
+安装不需要 Visual Studio、Windows SDK、CMake 或 Ninja，也不需要重建 conda 环境。
+
+**交接顺序：** 笔记本先同步 Git；由操作者手动复制文件，再通知笔记本会话执行安装。
+Git 只管理构建脚本、补丁和说明，不管理 `runtimes/third_party/`。仅完成 Git 同步时不启动下载、安装或编译。
+
+**复制清单：** 构建机和笔记本使用同一仓库相对目录
+`runtimes/third_party/python-geometry/open3d-candidates/0.20.0+amvision.1/`。
+
+| Windows 所需文件 | 大小 | 用途 |
+| --- | ---: | --- |
+| `open3d-0.20.0+amvision.1-cp312-cp312-win_amd64.whl` | 31,217,075 B | 已含原生 DLL 和 Python 扩展，不另行解压 |
+| `open3d-0.20.0+amvision.1-cp312-cp312-win_amd64.build.json` | 2,162 B | 核对版本、平台和 wheel SHA-256 |
+
+不需要复制上一级目录的原版 `0.20.0`、Ubuntu 的 `open3d_cpu` wheel 或
+`open3d-build-inputs/`（约 1.38 GiB，仅重新构建时使用）。上述两文件是已有开发环境的增量，
+不是空机器的完整依赖包。
+
+**收到安装通知后**，从笔记本仓库根目录执行以下 PowerShell 步骤。先核对文件与解释器；
+任何一项不匹配都应停止，不从 PyPI 取同名包替代。
+
+```powershell
+conda activate amvision
+python -c "import platform,struct,sys; print(sys.executable, sys.version); sys.exit(0 if sys.implementation.name == 'cpython' and sys.version_info[:2] == (3,12) and platform.machine().upper() in ('AMD64','X86_64') and struct.calcsize('P') == 8 else 1)"
+if ($LASTEXITCODE -ne 0) { throw '需要 CPython 3.12 x64' }
+$dir = 'runtimes/third_party/python-geometry/open3d-candidates/0.20.0+amvision.1'
+$stem = 'open3d-0.20.0+amvision.1-cp312-cp312-win_amd64'
+$wheel = (Resolve-Path -LiteralPath "$dir/$stem.whl" -ErrorAction Stop).Path
+$record = Get-Content -Raw -LiteralPath "$dir/$stem.build.json" -ErrorAction Stop | ConvertFrom-Json
+$expected = 'dc18e527be4816b375b9156ffc5a2d449af6cce97a57a3749010369b25d78563'
+if ($record.version -ne '0.20.0+amvision.1' -or $record.wheel_sha256 -ne $expected -or
+    (Get-FileHash -LiteralPath $wheel -Algorithm SHA256).Hash -ne $expected) { throw 'Open3D 构建身份不匹配' }
+```
+
+当前候选**不覆盖业务 conda 环境**。在同一 PowerShell 窗口创建独立验证环境，复用已有依赖；
+使用明确的解释器路径，无需切换激活状态：
+
+```powershell
+$venv = Join-Path $env:LOCALAPPDATA 'amvision/venvs/open3d-0.20.0-amvision.1'
+python -m venv --system-site-packages $venv
+if ($LASTEXITCODE -ne 0) { throw '创建验证环境失败' }
+$py = Join-Path $venv 'Scripts/python.exe'
+& $py -m pip install --no-index --only-binary=:all: $wheel
+if ($LASTEXITCODE -ne 0) { throw '离线安装失败；核对缺少的依赖，不在线回退' }
+& $py -c "import open3d,sys; from pathlib import Path; print(open3d.__version__, open3d.__file__); assert open3d.__version__ == '0.20.0+amvision.1' and Path(open3d.__file__).resolve().is_relative_to(Path(sys.prefix).resolve())"
+if ($LASTEXITCODE -ne 0) { throw '实际加载的 Open3D 与候选不一致' }
+& $py -m tests.integration.metrology3d.sampling_boundary_native_audit
+if ($LASTEXITCODE -ne 0) { throw '原生边界验证失败' }
+```
+
+笔记本会话应报告解释器路径、wheel 摘要、实际模块路径及原生审计结果（预期 40/40）。
+缺少依赖时记录具体包名，核对两机环境或补复制相应 wheel；不要以 `--no-deps` 隐藏缺项。
+Fit Plane 的业务版本准入和生产发行锁尚未切换，候选导入成功不等于可以替换在用节点依赖。
+
 ## 构建
 
 开发环境先执行 `conda activate amvision`，构建使用显式 x64 Python 3.12
