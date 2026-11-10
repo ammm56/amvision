@@ -20,14 +20,15 @@
           <DatasetSampleImage :dataset-id="workspace.dataset_id" :sample="selected" :categories="workspace.categories" :show-annotations="true" :selected-object="objectId" :pose-schemas="poseSchemas" />
           <div class="dataset-structure-summary-info">
             <h3>{{ text('sampleInfo') }}</h3>
-            <ResourceTable class="dataset-table" :label="text('sampleInfo')"><thead><tr><th style="width:70px">{{ label('内容', 'Content') }}</th><th>{{ label('样本数据', 'Sample data') }}</th><th style="width:92px">{{ text('actions') }}</th></tr></thead><tbody>
+            <template v-if="sampleMedia(selected)"><DatasetMediaDetails :key="selected.sample_id" :dataset="workspace.dataset_id" :sample="selected" :media="sampleMedia(selected)!"/><Button @click="emit('sample', selected)">{{ text('view') }}</Button></template>
+            <ResourceTable v-else class="dataset-table" :label="text('sampleInfo')"><thead><tr><th style="width:70px">{{ label('内容', 'Content') }}</th><th>{{ label('样本数据', 'Sample data') }}</th><th style="width:92px">{{ text('actions') }}</th></tr></thead><tbody>
               <tr><td>{{ text('image') }}</td><td :title="selected.file_name">{{ selected.file_name }}<small>{{ selected.width }} × {{ selected.height }} px · {{ selected.split }}</small></td><td><button class="dataset-object-name dataset-structure-link" @click="emit('sample', selected)">{{ label('查看大图', 'View image') }}</button></td></tr>
               <tr><td>{{ label('标注', 'Annotations') }}</td><td>{{ selected.annotations.length }} {{ text('object') }}<small>{{ typeof workspace.metadata.format_type === 'string' ? workspace.metadata.format_type.toUpperCase() : workspace.task_type }}</small></td><td><button class="dataset-object-name dataset-structure-link" @click="rawOpen = !rawOpen">{{ text('view') }}</button></td></tr>
             </tbody></ResourceTable>
             <pre v-if="rawOpen" class="dataset-json">{{ JSON.stringify(selected.annotations, null, 2) }}</pre>
           </div>
         </section>
-        <section class="resource-section dataset-structure-objects">
+        <section v-if="!sampleMedia(selected)" class="resource-section dataset-structure-objects">
           <h3>{{ selected.annotations.length }} {{ text('object') }}<span v-if="categorySummary">：{{ categorySummary }}</span></h3>
           <div class="dataset-object-cards">
             <button v-for="(item, index) in selected.annotations.slice(0, objectLimit)" :key="item.annotation_id" :class="{ 'is-selected': objectId === item.annotation_id }" @click="objectId = item.annotation_id">
@@ -50,6 +51,8 @@ import Button from '@/shared/ui/components/Button.vue'
 import ResourceTable from '@/shared/ui/data-display/ResourceTable.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import { annotationColor } from '../annotations'
+import DatasetMediaDetails from './DatasetMediaDetails.vue'
+import {sampleMedia} from '../sample-media'
 import DatasetSampleImage from './DatasetSampleImage.vue'
 import { listDatasetSamples, type DatasetWorkspace, type DatasetSample, type DatasetPage } from '../services/dataset-workspace.service'
 import { datasetError, useDatasetText } from '../dataset-workspace'

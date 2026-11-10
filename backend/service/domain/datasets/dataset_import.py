@@ -26,6 +26,7 @@ IMPLEMENTED_DATASET_IMPORT_TASK_TYPES: Final[tuple[DatasetImportTaskType, ...]] 
     "pose",
     "classification",
     "obb",
+    "anomaly", "connector-reference", "rgbd", "point-cloud",
 )
 
 

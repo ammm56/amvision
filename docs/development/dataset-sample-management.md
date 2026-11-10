@@ -34,6 +34,8 @@
 - 真实页面核对 1024px 亮暗、展开/收起导航；筛选标签不重叠、无水平滚动，网格/列表和标注显示与批量操作分组；叶目录首次出现就没有展开箭头。恢复亮色与默认视口，开发服务保持运行。
 - [真实操作结果](../design/frontend/verification/dataset-polish-20261106/live-validation.json)、[最终样本页](../design/frontend/verification/dataset-polish-20261106/samples-after-light.png)、[当前版本更新](../design/frontend/verification/dataset-polish-20261106/update-current-light.png)、[目录树](../design/frontend/verification/dataset-polish-20261106/tree-after-light.png)。
 
+异常、连接器参考、RGB-D 和点云样本的输入、附件及查看方法见[专用样本 ZIP 格式](dataset-sample-media.md)。
+
 ## 设计对照与后续验证
 
 表单、版本切换、目录、大图、历史报告的修复，以及 v9 真实样本增删、导出和 20 项前端回归结果，见[2026-11-06 设计核对记录](../design/frontend/verification/datasets-design-alignment-20261106/README.md)。当前版本修改和手动创建版本语义保持上述约定。

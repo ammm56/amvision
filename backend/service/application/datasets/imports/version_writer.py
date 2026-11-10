@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import PurePosixPath
 
+from .formats.sample_media import copy_assets
+
 from backend.service.application.datasets.imports.contracts import (
     ParsedDatasetContent,
     ParsedDatasetSample,
@@ -98,6 +100,7 @@ class DatasetImportVersionWriterMixin:
                 parsed_sample.source_image_path,
                 image_object_key,
             )
+            copy_assets(self.dataset_storage, sample.metadata, parsed_sample.source_image_path, image_object_key)
             self.dataset_storage.write_json(
                 sample_object_key,
                 {
@@ -161,7 +164,7 @@ class DatasetImportVersionWriterMixin:
             image_object_key = self._build_version_image_object_key(
                 sample_id=scoped_sample_id,
                 split=source_sample.split,
-                file_name=source_sample.file_name,
+                file_name="preview.png" if parsed_content.task_type == "point-cloud" else source_sample.file_name,
             )
             scoped_annotations: list[DatasetAnnotation] = []
             for annotation in source_sample.annotations:

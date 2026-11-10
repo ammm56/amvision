@@ -36,6 +36,10 @@ class DatasetImportFormatDetectorMixin:
         - 识别出的格式类型。
         """
 
+        if "amvision-media" in IMPLEMENTED_DATASET_IMPORT_FORMAT_TYPES_BY_TASK_TYPE[task_type]:
+            if requested_format_type not in (None, "amvision-media") or not (dataset_root / "samples.json").is_file():
+                raise InvalidRequestError("此任务需要含 samples.json 的专用样本 ZIP")
+            return "amvision-media"
         candidates: list[DatasetFormatType] = []
         if self._collect_coco_manifest_paths(dataset_root):
             candidates.append("coco")

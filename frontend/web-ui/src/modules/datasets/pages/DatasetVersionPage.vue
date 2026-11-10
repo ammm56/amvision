@@ -17,7 +17,7 @@
           @change="changeVersion"
           @more="tab = 'lineage'"
         />
-        <span v-if="workspace" class="dataset-task-label">{{ workspace.task_type }}</span>
+        <span v-if="workspace" class="dataset-task-label">{{ isMediaTask(workspace.task_type) ? text(workspace.task_type) : workspace.task_type }}</span>
       </div>
       <div class="dataset-actions">
         <ResourceMenu :label="text('more')" :items="headerActions" @action="headerAction" />
@@ -43,10 +43,10 @@
       :aria-busy="loading"
       :inert="loading || !currentWorkspace"
     >
-      <div class="dataset-stats">
-        <div><strong>{{ workspace.sample_count.toLocaleString() }}</strong><span>{{ label('图像数量', 'Images') }}</span></div>
-        <div><strong>{{ workspace.object_count.toLocaleString() }}</strong><span>{{ label('对象数量', 'Objects') }}</span></div>
-        <div><strong>{{ workspace.category_count.toLocaleString() }}</strong><span>{{ label('类别数量', 'Classes') }}</span></div>
+      <div class="dataset-stats" :class="{'media-stats':isMediaTask(workspace.task_type)}">
+        <div><strong>{{ workspace.sample_count.toLocaleString() }}</strong><span>{{ isMediaTask(workspace.task_type) ? text('samples') : label('图像数量', 'Images') }}</span></div>
+        <div v-if="!isMediaTask(workspace.task_type)"><strong>{{ workspace.object_count.toLocaleString() }}</strong><span>{{ label('对象数量', 'Objects') }}</span></div>
+        <div v-if="workspace.category_count || !isMediaTask(workspace.task_type)"><strong>{{ workspace.category_count.toLocaleString() }}</strong><span>{{ label('类别数量', 'Classes') }}</span></div>
         <div><strong>{{ ['train', 'val', 'test'].map(key => (workspace!.split_counts[key] ?? 0).toLocaleString()).join(' / ') }}</strong><span>train / val / test</span></div>
         <div class="dataset-test-status"><strong>{{ workspace.split_counts.test ? label('已配置', 'Configured') : label('未配置', 'Not configured') }}</strong><span>{{ label('测试集', 'Test set') }}</span></div>
       </div>
@@ -76,7 +76,7 @@
                 })),
               ]"
               @update:model-value="search" /></label
-          ><label class="dataset-filter"
+          ><label v-if="workspace.category_count || !isMediaTask(workspace.task_type)" class="dataset-filter"
             >{{ text('classes')
             }}<SelectField
               v-model="category"
@@ -88,7 +88,7 @@
                 })),
               ]"
               @update:model-value="search" /></label
-          ><label class="dataset-filter"
+          ><label v-if="!isMediaTask(workspace.task_type)" class="dataset-filter"
             >{{ text('annotation')
             }}<SelectField
               v-model="annotationState"
@@ -121,7 +121,7 @@
               @click="grid = false"
               ><List :size="16"
             /></Button>
-            <label class="dataset-checkbox dataset-annotation-toggle"
+            <label v-if="!isMediaTask(workspace.task_type)" class="dataset-checkbox dataset-annotation-toggle"
               ><input v-model="annotations" type="checkbox" />{{
                 text('showAnnotations')
               }}</label
@@ -215,8 +215,7 @@
               <div>
                 <strong :title="sample.file_name">{{ sample.file_name }}</strong
                 ><small
-                  >{{ sample.split }} · {{ sample.annotations.length }}
-                  {{ text('object') }}</small
+                  >{{ sample.split }} · {{ mediaCaption(sample) }}</small
                 >
               </div>
               <ResourceMenu
@@ -241,8 +240,8 @@
               <th v-if="canWrite" style="width: 48px"></th>
               <th style="width:80px">{{ label('缩略图', 'Thumbnail') }}</th><th style="width:28%">{{ text('fileName') }}</th>
               <th>{{ label('划分', 'Split') }}</th>
-              <th>{{ label('对象数量', 'Objects') }}</th>
-              <th>{{ text('annotation') }}</th>
+              <th>{{ isMediaTask(workspace.task_type) ? text('sampleInfo') : label('对象数量', 'Objects') }}</th>
+              <th v-if="!isMediaTask(workspace.task_type)">{{ text('annotation') }}</th>
               <th style="width:140px">{{ text('actions') }}</th>
             </tr>
           </thead>
@@ -270,8 +269,8 @@
                 <span class="dataset-sample-filename" :title="sample.file_name">{{ sample.file_name }}</span>
               </td>
               <td><span class="dataset-task-label">{{ sample.split }}</span></td>
-              <td>{{ sample.annotations.length }}</td>
-              <td><span class="dataset-annotation-status" :class="{ 'is-annotated': sample.annotations.length > 0 }"><Circle :size="8" fill="currentColor" />{{ sample.annotations.length ? label('已标注', 'Annotated') : text('unannotated') }}</span></td>
+              <td>{{ isMediaTask(workspace.task_type) ? mediaCaption(sample) : sample.annotations.length }}</td>
+              <td v-if="!isMediaTask(workspace.task_type)"><span class="dataset-annotation-status" :class="{ 'is-annotated': sample.annotations.length > 0 }"><Circle :size="8" fill="currentColor" />{{ sample.annotations.length ? label('已标注', 'Annotated') : text('unannotated') }}</span></td>
               <td>
                 <div class="dataset-actions"><Button size="sm" variant="ghost" class="dataset-sample-view" @click.stop="showImage(sample)">{{ text('view') }}</Button><Button size="sm" variant="ghost" @click.stop="showInfo(sample)">{{ label('信息', 'Info') }}</Button></div>
               </td>
@@ -293,7 +292,7 @@
           @previous="page(-limit)"
           @next="page(limit)"
           @go="page($event - offset)"
-        ><template #summary>{{ label(`共 ${total.toLocaleString()} 张图像，每页 ${limit} 条`, `${total.toLocaleString()} images, ${limit} per page`) }}</template></PaginationControls>
+        ><template #summary>{{ label(`共 ${total.toLocaleString()} ${isMediaTask(workspace.task_type)?'个样本':'张图像'}，每页 ${limit} 条`, `${total.toLocaleString()} images, ${limit} per page`) }}</template></PaginationControls>
         <SelectField :model-value="String(limit)" :aria-label="label('每页样本', 'Samples per page')" :options="[8, 16, 24, 48].map(n => ({ value: String(n), label: `${n} ${label('条/页', '/ page')}` }))" @update:model-value="limit = Number($event); search()" />
         </div>
       </template>
@@ -309,7 +308,7 @@
     </div>
     <SideDrawer
       :open="infoOpen"
-      :title="workspace?.task_type === 'classification' ? label('样本与标签', 'Sample and labels') : label('样本与对象', 'Sample and objects')" size="compact" plain :nonmodal="!!viewer"
+      :title="isMediaTask(workspace?.task_type) ? (workspace?.task_type === 'connector-reference' ? label('参考资料', 'Reference') : text('sampleInfo')) : workspace?.task_type === 'classification' ? label('样本与标签', 'Sample and labels') : label('样本与对象', 'Sample and objects')" size="compact" plain :nonmodal="!!viewer"
       :close-label="text('close')"
       @close="infoOpen = false"
       @after-leave="afterInfoClose"
@@ -323,7 +322,8 @@
           :selected-object="selectedObject"
           :pose-schemas="poseSchemas"
         />
-        <DatasetSampleDetails :sample="detail" :categories="workspace.categories" :selected="selectedObject" :task="workspace.task_type" :source="typeof workspace.metadata.format_type === 'string' ? workspace.metadata.format_type.toUpperCase() : '—'" @select="selectObject" />
+        <DatasetMediaDetails v-if="isMediaTask(workspace.task_type) && sampleMedia(detail)" :key="detail.sample_id" :dataset="datasetId" :sample="detail" :media="sampleMedia(detail)!" />
+        <DatasetSampleDetails v-else :sample="detail" :categories="workspace.categories" :selected="selectedObject" :task="workspace.task_type" :source="typeof workspace.metadata.format_type === 'string' ? workspace.metadata.format_type.toUpperCase() : '—'" @select="selectObject" />
         </template
       ><template #footer
         ><Button v-if="!viewer" :disabled="!detail" @click="detail && showImage(detail)"
@@ -331,7 +331,12 @@
         ><span v-else /><Button @click="infoOpen = false">{{ text('close') }}</Button></template
       ></SideDrawer
     >
-    <DatasetImageViewer v-if="viewer && workspace" :open="!!viewer" :image="viewer"
+    <DatasetMediaViewer v-if="viewer && workspace && viewerSample && isMediaTask(workspace.task_type) && sampleMedia(viewerSample)"
+      :key="viewerSample.sample_id" :dataset="datasetId" :name="workspace.dataset.display_name" :version="`v${workspace.version_number}`"
+      :neighbors="!viewerStandalone && samples.some(s=>s.sample_id===viewerSample?.sample_id) ? samples.slice(Math.max(0,viewerIndex-offset-3),viewerIndex-offset+4) : []" @pick="showImage($event)" :sample="viewerSample" :media="sampleMedia(viewerSample)!" :image="viewer.src" :busy="viewerBusy"
+      :previous="!viewerStandalone && viewerIndex>0" :next="!viewerStandalone && viewerIndex<total-1"
+      @info="showInfo(viewerSample)" @close="closeViewer" @previous="adjacent(-1)" @next="adjacent(1)" />
+    <DatasetImageViewer v-else-if="viewer && workspace" :open="!!viewer" :image="viewer"
       :dataset-name="workspace.dataset.display_name" :version="`v${workspace.version_number}`"
       :split="viewerSample?.split || ''" :object-count="viewerSample?.annotations.length || 0"
       :annotations="viewerAnnotations" :busy="viewerBusy" :invalid="viewerInvalid"
@@ -372,6 +377,9 @@ import SelectField from '@/shared/ui/components/Select.vue'
 import ResourceMenu from '@/shared/ui/components/ResourceMenu.vue'
 import SideDrawer from '@/shared/ui/components/SideDrawer.vue'
 import DatasetSampleDetails from '../components/DatasetSampleDetails.vue'
+import { isMediaTask, sampleMedia } from '../sample-media'
+import DatasetMediaViewer from '../components/DatasetMediaViewer.vue'
+import DatasetMediaDetails from '../components/DatasetMediaDetails.vue'
 import DatasetImageViewer from '../components/DatasetImageViewer.vue'
 import DatasetInfoDrawer from '../components/DatasetInfoDrawer.vue'
 import ResourceTable from '@/shared/ui/data-display/ResourceTable.vue'
@@ -745,7 +753,7 @@ async function showImage(
       viewerController.signal,
     )
     if (request !== viewerGeneration) return
-    const annotated = await annotatedImage(
+    const annotated = isMediaTask(workspace.value!.task_type) ? {blob, invalid:0} : await annotatedImage(
       blob,
       sample,
       new Map(workspace.value!.categories.map((c) => [c.category_id, c.name])),
@@ -759,7 +767,7 @@ async function showImage(
     if (annotatedUrl) URL.revokeObjectURL(annotatedUrl)
     viewerUrl = URL.createObjectURL(blob)
     originalMediaType = blob.type
-    annotatedUrl = URL.createObjectURL(annotated.blob)
+    annotatedUrl = isMediaTask(workspace.value!.task_type) ? '' : URL.createObjectURL(annotated.blob)
     viewerInvalid.value = annotated.invalid
     viewerSample.value = sample
     viewerIndex.value =
@@ -779,10 +787,10 @@ function updateViewerImage() {
   viewer.value = {
     id: sample.sample_id,
     title: sample.file_name,
-    src: viewerAnnotations.value ? annotatedUrl : viewerUrl,
+    src: viewerAnnotations.value && annotatedUrl ? annotatedUrl : viewerUrl,
     width: sample.width,
     height: sample.height,
-    mediaType: viewerAnnotations.value ? 'image/jpeg' : originalMediaType,
+    mediaType: viewerAnnotations.value && annotatedUrl ? 'image/jpeg' : originalMediaType,
   }
 }
 async function selectViewerObject(id: string) {
@@ -808,6 +816,14 @@ async function selectViewerObject(id: string) {
     if (request === overlayGeneration && imageRequest === viewerGeneration)
       feedback.error(datasetError(e))
   }
+}
+function mediaCaption(sample:DatasetSample) {
+  const m=sampleMedia(sample)
+  if(m?.kind==='anomaly')return m.defect || (m.label==='normal' ? label('正常','Normal') : label('异常','Anomaly'))
+  if(m?.kind==='connector-reference')return (m.pins?.length || 0)+' PIN'
+  if(m?.kind==='rgbd')return 'RGB-D · '+m.id
+  if(m?.kind==='point-cloud')return m.point_count?.toLocaleString()+' '+label('点','points')
+  return sample.annotations.length+' '+text('object')
 }
 function closeViewer() {
   overlayGeneration++
@@ -1168,5 +1184,6 @@ function selectFiltered() {
 .dataset-sample-filters .dataset-sort-filter { margin-left:auto; display:flex; align-items:center; flex:0 1 130px; max-width:130px; }
 .dataset-sample-filters .dataset-sort-filter > div { flex:1; }
 .dataset-stats { grid-template-columns: .8fr .8fr .8fr 1.4fr 1.5fr; }
+.dataset-stats.media-stats{grid-template-columns:repeat(auto-fit,minmax(130px,1fr))}
 @media(max-width:1200px) { .dataset-sample-filters .dataset-sort-filter { margin-left:0; } }
 </style>

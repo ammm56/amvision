@@ -84,13 +84,17 @@
                 :disabled="!!existing"
               />
             </label>
+            <details v-if="isMediaTask(taskType)" class="field--wide">
+              <summary>{{ label('ZIP 清单格式','ZIP manifest format') }}</summary>
+              <pre class="dataset-json">{{ mediaExample }}</pre>
+            </details>
           </template>
           <template v-if="step === 2">
             <label class="field"
               ><span>{{ text('splits') }}</span
               ><SelectField v-model="split" :options="splitOptions"
             /></label>
-            <div class="field field--wide">
+            <div v-if="canMapClasses" class="field field--wide">
               <span>{{
                 label('类别重命名（可选）', 'Rename classes (optional)')
               }}</span>
@@ -140,8 +144,8 @@
               <dd>
                 {{ splitOptions.find((item) => item.value === split)?.label }}
               </dd>
-              <dt>{{ label('类别映射', 'Class mapping') }}</dt>
-              <dd>
+              <dt v-if="canMapClasses">{{ label('类别映射', 'Class mapping') }}</dt>
+              <dd v-if="canMapClasses">
                 {{
                   classMap.length
                     ? classMap
@@ -345,6 +349,7 @@ import { useI18n } from 'vue-i18n'
 import { ArrowLeft, ArrowRight, Plus, Search, X } from '@lucide/vue'
 import { useProjectStore } from '@/app/stores/project.store'
 import { useSessionStore } from '@/app/stores/session.store'
+import { isMediaTask } from '../sample-media'
 import Button from '@/shared/ui/components/Button.vue'
 import SelectField from '@/shared/ui/components/Select.vue'
 import FilePicker from '@/shared/ui/components/FilePicker.vue'
@@ -409,6 +414,15 @@ const step = ref(0),
   formatType = ref(''),
   split = ref('auto'),
   classMap = ref<{ source: string; target: string }[]>([])
+const mediaExample = computed(() => {
+  const examples: Record<string, Record<string, unknown>> = {
+    anomaly: { image:'surface.png', label:'anomaly', defect:'scratch' },
+    'connector-reference': {image:'connector.png', synthetic:true, unit:'mm', pitch:2.54, pins:[{id:'P1',x:120,y:80}]},
+    rgbd: {image:'color.png',depth:'depth.png',unit:'mm',scale:1,invalid:0},
+    'point-cloud': {cloud:'part.ply',unit:'mm',frame:'scanner'},
+  }
+  return 'samples.json\n' + JSON.stringify({format_id:'amvision.sample-media.v1',task_type:taskType.value,samples:[{id:'sample-1',split:'train',...examples[taskType.value]}]},null,2)
+})
 const packageFile = computed<File | File[] | null>({
   get: () => file.value,
   set: (value) => {
@@ -565,7 +579,9 @@ async function selectVersion(version: Pick<DatasetVersion, 'dataset_id' | 'datas
     if (active && id === selectionGeneration) busy.value = false
   }
 }
+const canMapClasses = computed(() => !isMediaTask(taskType.value) || taskType.value === 'anomaly')
 watch(taskType, () => {
+  if (!canMapClasses.value) classMap.value = []
   if (!formatOptions.value.some((item) => item.value === formatType.value))
     formatType.value = ''
 })

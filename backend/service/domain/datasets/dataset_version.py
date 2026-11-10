@@ -7,7 +7,7 @@ from typing import Literal
 
 
 # 最小支持的数据集任务类型。
-DatasetTaskType = Literal["detection", "segmentation", "semantic-segmentation", "pose", "classification", "obb"]
+DatasetTaskType = Literal["detection", "segmentation", "semantic-segmentation", "pose", "classification", "obb", "anomaly", "connector-reference", "rgbd", "point-cloud"]
 
 
 # 最小支持的数据集 split 名称。

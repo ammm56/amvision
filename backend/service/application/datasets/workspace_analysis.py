@@ -77,7 +77,17 @@ def quality_report(storage, version, tick):
                 if image.size != (sample.width, sample.height):
                     issue("image_size", sample, "图片尺寸与登记尺寸不一致")
                 image.verify()
+            media = sample.metadata.get("sample_media", {})
+            if media:
+                from .imports.formats.sample_media import asset_path
+                for kind in media["assets"]:
+                    if not asset_path(path, kind).is_file():
+                        issue("missing_asset", sample, f"缺少样本附件 {kind}")
             digest = file_digest(path, tick)
+            if media.get("kind") == "point-cloud":
+                digest = file_digest(asset_path(path, "cloud"), tick)
+            elif media.get("kind") == "rgbd":
+                digest += file_digest(asset_path(path, "depth"), tick)
             if digest in digests:
                 issue(
                     "duplicate_image",
@@ -88,7 +98,7 @@ def quality_report(storage, version, tick):
                 digests[digest] = sample.sample_id
         except (OSError, ValueError, Image.DecompressionBombError) as error:
             issue("unreadable_image", sample, f"图片无法读取：{type(error).__name__}")
-        if not sample.annotations:
+        if not sample.annotations and not sample.metadata.get("sample_media"):
             issue("empty_annotation", sample, "未提供标注，需确认是否为正常负样本")
         for annotation in sample.annotations:
             if annotation.category_id not in category_ids:

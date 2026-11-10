@@ -132,7 +132,7 @@
             <strong :title="rowName(row)">{{ rowName(row) }}</strong>
           </td>
           <template v-if="isDataset(row)"
-            ><td :title="row.task_type">{{ row.task_type }}</td>
+            ><td :title="row.task_type">{{ isMediaTask(row.task_type) ? text(row.task_type) : row.task_type }}</td>
             <td class="dataset-version-cell">
               <span :title="row.latest_version?.dataset_version_id">{{
                 row.latest_version
@@ -149,7 +149,7 @@
                 `v${row.version_number}`
               }}</span>
             </td>
-            <td :title="text(row.task_type)">{{ row.task_type }}</td>
+            <td :title="text(row.task_type)">{{ isMediaTask(row.task_type) ? text(row.task_type) : row.task_type }}</td>
             <td><DatasetCounts :items="sampleColumns(row.sample_count, null).slice(0, 1)" summary /></td>
             <td :title="versionSource(row)">{{ versionSource(row) }}</td></template
           >
@@ -264,6 +264,7 @@ import { useFeedbackStore } from '@/app/stores/feedback.store'
 import Button from '@/shared/ui/components/Button.vue'
 import SelectField from '@/shared/ui/components/Select.vue'
 import ResourceMenu from '@/shared/ui/components/ResourceMenu.vue'
+import {isMediaTask} from '../sample-media'
 import ResourceTable from '@/shared/ui/data-display/ResourceTable.vue'
 import TaskStateBadge from '@/modules/tasks/components/TaskStateBadge.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'

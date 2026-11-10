@@ -41,8 +41,11 @@ from backend.contracts.datasets.exports.yolo_export import (
 )
 
 
+from .formats.sample_media import MediaExportManifest
+
 DatasetExportFormatManifest = (
-    CocoDetectionExportManifest
+    MediaExportManifest
+    | CocoDetectionExportManifest
     | VocDetectionExportManifest
     | VocInstanceSegmentationExportManifest
     | ImageNetClassificationExportManifest

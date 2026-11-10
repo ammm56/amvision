@@ -100,6 +100,9 @@ class DatasetExportPayloadBuilderMixin(
             "exported_at": exported_at,
             "export_path": export_prefix,
         }
+        if request.format_id.startswith("amvision-"):
+            from .sample_media import build_media_manifest
+            return build_media_manifest(dataset_version, split_samples), {}
         if request.format_id in {
             COCO_DETECTION_DATASET_FORMAT,
             COCO_INSTANCE_SEGMENTATION_DATASET_FORMAT,

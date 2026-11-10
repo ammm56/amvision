@@ -601,7 +601,7 @@ class SqlAlchemyDatasetImportService(
             raise InvalidRequestError("上传 zip 文件不能为空")
         if request.task_type not in IMPLEMENTED_DATASET_IMPORT_TASK_TYPES:
             raise UnsupportedDatasetFormatError(
-                "当前导入接口只支持 detection、segmentation、pose、classification、obb",
+                "导入任务类型不受支持，请查看数据集导入能力目录",
                 details={
                     "task_type": request.task_type,
                     "implemented_task_types": list(
@@ -919,7 +919,12 @@ class SqlAlchemyDatasetImportService(
         )
 
         parsed_content: ParsedDatasetContent
-        if format_type == "coco":
+        if format_type == "amvision-media":
+            from .formats.sample_media import parse_sample_media
+            parsed_content = parse_sample_media(dataset_root, request)
+            if not parsed_content.categories:
+                return self._attach_registered_format_profile(parsed_content)
+        elif format_type == "coco":
             parsed_content = self._parse_coco_detection(
                 task_type=request.task_type,
                 dataset_root=dataset_root,

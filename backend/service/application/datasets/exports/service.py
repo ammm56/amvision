@@ -162,7 +162,7 @@ class SqlAlchemyDatasetExporter(
         export_result = DatasetExportResult(
             dataset_version_id=request.dataset_version_id,
             format_id=request.format_id,
-            manifest_object_key=f"{export_prefix}/manifest.json",
+            manifest_object_key=f"{export_prefix}/samples.json" if request.format_id.startswith("amvision-") else f"{export_prefix}/manifest.json",
             split_names=tuple(split_name for split_name, _ in split_samples),
             sample_count=sum(len(samples) for _, samples in split_samples),
             category_names=category_names,

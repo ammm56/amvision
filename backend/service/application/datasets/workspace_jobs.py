@@ -16,6 +16,7 @@ from backend.service.application.datasets.content import (
 )
 
 from backend.contracts.datasets.workspace_jobs import DatasetWorkspaceJobRequest
+from backend.service.application.datasets.imports.formats.sample_media import copy_assets
 from backend.service.application.datasets.workspace_analysis import (
     compare_versions,
     derivation_plan,
@@ -437,9 +438,8 @@ class DatasetWorkspaceJobs:
                 if content_revision
                 else f"sample-{version_id}-{index + 1}"
             )
-            image_key = (
-                f"images/{sample.split}/{sample_id}/{Path(sample.file_name).name}"
-            )
+            image_name = "preview.png" if source.task_type == "point-cloud" else Path(sample.file_name).name
+            image_key = f"images/{sample.split}/{sample_id}/{image_name}"
             target = self.storage.resolve(f"{layout.version_path}/{image_key}")
             target.parent.mkdir(parents=True, exist_ok=True)
             source_path = (image_sources or {}).get(sample.sample_id) or image_path(
@@ -449,6 +449,7 @@ class DatasetWorkspaceJobs:
                 while block := reader.read(1024 * 1024):
                     writer.write(block)
                     tick()
+            copy_assets(self.storage, sample.metadata, source_path, f"{layout.version_path}/{image_key}")
             copied = replace(
                 sample,
                 sample_id=sample_id,

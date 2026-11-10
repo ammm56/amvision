@@ -51,6 +51,8 @@ def protect_version(
 
 
 dataset_catalog_router = APIRouter(dependencies=[Depends(protect_version)])
+# 任务状态和取消只读取数据库，可在 worker 排他写入大附件时查询。
+dataset_jobs_router = APIRouter()
 Reader = Annotated[AuthenticatedPrincipal, Depends(require_scopes("datasets:read"))]
 Writer = Annotated[AuthenticatedPrincipal, Depends(require_scopes("datasets:write"))]
 Uow = Annotated[UnitOfWork, Depends(get_unit_of_work)]
@@ -235,7 +237,7 @@ def get_workspace(
     return uow.dataset_catalog.version(dataset_id, version_id)
 
 
-@dataset_catalog_router.post(
+@dataset_jobs_router.post(
     "/{dataset_id}/versions/{version_id}/jobs", status_code=202
 )
 def submit_workspace_job(
@@ -255,7 +257,7 @@ def submit_workspace_job(
     return {"task_id": task.task_id, "state": task.state}
 
 
-@dataset_catalog_router.get("/{dataset_id}/versions/{version_id}/jobs")
+@dataset_jobs_router.get("/{dataset_id}/versions/{version_id}/jobs")
 def list_workspace_jobs(
     dataset_id: str,
     version_id: str,
@@ -285,7 +287,7 @@ def checked_workspace_task(dataset_id, version_id, task_id, principal, uow):
     return task
 
 
-@dataset_catalog_router.get("/{dataset_id}/versions/{version_id}/jobs/{task_id}")
+@dataset_jobs_router.get("/{dataset_id}/versions/{version_id}/jobs/{task_id}")
 def get_workspace_job(
     dataset_id: str, version_id: str, task_id: str, principal: Reader, uow: Uow
 ) -> dict:
@@ -304,7 +306,7 @@ def get_workspace_job(
     }
 
 
-@dataset_catalog_router.get(
+@dataset_jobs_router.get(
     "/{dataset_id}/versions/{version_id}/job-requests/{request_id}"
 )
 def find_workspace_request(
@@ -318,7 +320,7 @@ def find_workspace_request(
     return get_workspace_job(dataset_id, version_id, task_id, principal, uow)
 
 
-@dataset_catalog_router.post(
+@dataset_jobs_router.post(
     "/{dataset_id}/versions/{version_id}/jobs/{task_id}/cancel"
 )
 def cancel_workspace_job(
@@ -514,6 +516,7 @@ def get_sample_image(
     uow: Uow,
     storage: Storage,
     thumbnail: bool = False,
+    asset: str | None = None,
 ) -> Response:
     """仅提供当前版本内已登记图片；缩略图使用 JPEG，不改写原图。"""
     version = checked_version(principal, uow, dataset_id, version_id)
@@ -532,6 +535,14 @@ def get_sample_image(
     path = storage.resolve(f"{root_key}/{relative}").resolve()
     if not path.is_relative_to(root) or not path.is_file():
         raise ResourceNotFoundError("样本图片不存在或已移除")
+    if asset is not None:
+        from backend.service.application.datasets.imports.formats.sample_media import ASSETS, asset_path
+        if asset not in ASSETS or asset not in sample["metadata"].get("sample_media", {}).get("assets", ()):
+            raise ResourceNotFoundError("样本没有此附件")
+        attachment = asset_path(path, asset).resolve()
+        if not attachment.is_relative_to(root) or not attachment.is_file():
+            raise ResourceNotFoundError("样本附件不存在或已移除")
+        return FileResponse(attachment, media_type=ASSETS[asset], headers={"X-Content-Type-Options": "nosniff"})
     if not thumbnail:
         return FileResponse(
             path,
