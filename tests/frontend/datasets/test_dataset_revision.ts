@@ -163,3 +163,16 @@ it('首次读取失败可原页重试，恢复删除草稿而不自动提交', a
   expect(api.submitDatasetJob).not.toHaveBeenCalled()
   w.unmount()
 })
+
+it('删除范围未能读取时不能上传并隐式删除，重试后才显示保存', async () => {
+  api.getDatasetSelectionSummary.mockRejectedValueOnce(new Error('offline'))
+  const w = await create()
+  expect(w.findComponent({ name: 'FilePicker' }).exists()).toBe(false)
+  expect(w.findAll('button').some(b => b.text() === '保存修改')).toBe(false)
+  await w.findAll('button').find(b => b.text() === '重试')!.trigger('click')
+  await flushPromises()
+  expect(w.text()).toContain('删除所选样本')
+  expect(w.findAll('button').find(b => b.text() === '保存修改')?.attributes('disabled')).toBeUndefined()
+  expect(api.submitDatasetJob).not.toHaveBeenCalled()
+  w.unmount()
+})

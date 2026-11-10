@@ -19,7 +19,7 @@
         <Button :loading="loading" @click="load"
           ><RefreshCw :size="16" />{{ text('refresh') }}</Button
         ><ResourceMenu
-          v-if="detail && canWrite"
+          v-if="detail && canWrite && actions.length"
           :label="text('more')"
           :items="actions"
           @action="confirmAction = $event"
@@ -66,6 +66,12 @@
           )
         }}
       </p>
+      <ol v-if="importDetail" class="dataset-steps" :aria-label="label('导入进度', 'Import progress')">
+        <li v-for="(step, index) in importSteps" :key="step.label" :aria-label="step.complete ? step.label + ' · ' + label('已完成', 'Completed') : step.label" :class="{ 'is-complete': step.complete }">
+          <span aria-hidden="true"><Check v-if="step.complete" :size="15" /><template v-else>{{ index + 1 }}</template></span>
+          {{ step.label }}
+        </li>
+      </ol>
       <ResourceCleanupPanel
         v-if="canWrite"
         :project-id="detail.project_id"
@@ -159,6 +165,8 @@
           </dl>
           <Button
             v-if="canWrite && detail.dataset_version_id"
+            :disabled="!workspace"
+            :title="!workspace ? label('来源版本暂不可用', 'Source version unavailable') : undefined"
             @click="newExport"
             ><Download :size="16" />{{
               label('重新创建导出', 'Create another export')
@@ -317,6 +325,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import {
   Activity,
+  Check,
   ArrowLeft,
   ArrowUp,
   ChevronRight,
@@ -415,6 +424,19 @@ const completedAt = computed(() =>
       '',
   ),
 )
+const importSteps = computed(() => {
+  const entry = importDetail.value
+  if (!entry) return []
+  return [
+    { label: label('上传文件', 'Upload file'), complete: entry.upload_state === 'uploaded' },
+    { label: label('识别格式', 'Identify format'), complete: !!entry.detected_profile.format_type },
+    { label: label('检查数据', 'Validate data'), complete: entry.validation_report.status === 'ok' },
+    {
+      label: entry.validation_report.added_count != null ? label('更新版本', 'Update version') : label('生成版本', 'Create version'),
+      complete: entry.status === 'completed' && !!entry.dataset_version_id,
+    },
+  ]
+})
 const classNames = computed(
   () =>
     exportDetail.value?.category_names ||
@@ -540,7 +562,7 @@ function viewVersion() {
     )
 }
 function newExport() {
-  if (detail.value)
+  if (detail.value && workspace.value)
     void router.push({
       path: '/datasets/export',
       query: {
@@ -580,11 +602,12 @@ async function load() {
           result.dataset_id,
           result.dataset_version_id,
         )
-        if (request === generation) workspace.value = data
+        if (active && request === generation) workspace.value = data
       } catch {
         /* 记录仍可查看，来源版本可能已不可用。 */
       }
     }
+    if (!active || request !== generation) return
     if (
       exportDetail.value?.status === 'completed' &&
       !cleaned.value &&
@@ -709,7 +732,7 @@ async function openFile(file: DatasetFile) {
       filePreviewOpen.value = true
     }
   } catch (e) {
-    fileError.value = datasetError(e)
+    if (active && request === fileGeneration) fileError.value = datasetError(e)
   }
 }
 const filePreviewOpen = ref(false)

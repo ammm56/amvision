@@ -25,6 +25,7 @@ from backend.service.application.errors import InvalidRequestError
 from backend.service.infrastructure.filesystem.atomic_files import (
     discard_temporary_file,
     publish_path_without_overwrite,
+    rename_path_with_retry,
     replace_path_with_retry,
 )
 from backend.service.infrastructure.filesystem.windows_paths import to_filesystem_path
@@ -1043,7 +1044,7 @@ class LocalDatasetStorage:
         # 暂存/恢复依赖原子重命名。shutil.move 在权限错误时也会回退复制，
         # 可能产生两个不完整目录，不能用于数据库与文件间的事务边界。
         # 跨文件系统或被占用时直接报错，源目录保持原样。
-        filesystem_source_path.rename(filesystem_destination_path)
+        rename_path_with_retry(filesystem_source_path, filesystem_destination_path)
 
     def reset_directory(self, relative_path: str) -> None:
         """清空一个目录并重新创建空目录。

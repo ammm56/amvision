@@ -221,7 +221,7 @@ def test_delete_completed_dataset_import_removes_import_files_only(
                 params={"project_id": "project-1"},
             )
 
-        assert delete_response.status_code == 204
+        assert delete_response.status_code == 204, delete_response.text
         assert not import_root.exists()
         assert version_root.is_dir()
 

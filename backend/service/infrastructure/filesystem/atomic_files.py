@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from time import monotonic, sleep
 
@@ -38,11 +39,23 @@ def replace_path_with_retry(
     - retry_timeout_seconds：Windows 短暂占用的最大重试预算。
     """
 
-    deadline = monotonic() + max(0.0, float(retry_timeout_seconds))
+    _retry_windows_move(replace_shared_file, source_path, target_path, retry_timeout_seconds)
+
+
+def rename_path_with_retry(source_path: Path, target_path: Path) -> None:
+    """暂存或恢复目录，保留原生 rename 语义；Windows 短暂占用最多等待五秒。"""
+    _retry_windows_move(Path.rename, source_path, target_path, 5.0)
+
+
+def _retry_windows_move(
+    move: Callable[[Path, Path], object], source_path: Path, target_path: Path, timeout: float
+) -> None:
+    """仅对可恢复的 Windows 权限或共享错误重试同一次文件系统操作。"""
+    deadline = monotonic() + max(0.0, float(timeout))
     retry_interval_seconds = 0.005
     while True:
         try:
-            replace_shared_file(source_path, target_path)
+            move(source_path, target_path)
             return
         except PermissionError as error:
             if (
@@ -51,7 +64,7 @@ def replace_path_with_retry(
                 or monotonic() >= deadline
             ):
                 raise
-            sleep(retry_interval_seconds)
+            sleep(min(retry_interval_seconds, max(0.0, deadline - monotonic())))
             retry_interval_seconds = min(retry_interval_seconds * 2.0, 0.1)
 
 

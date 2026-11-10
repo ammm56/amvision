@@ -16,12 +16,12 @@
       <span>{{ workspace?.dataset.display_name }}</span>
     </div>
     <InlineError v-if="error" :message="error" />
-    <Button v-if="error && !workspace && !loading" @click="initialize">{{
+    <Button v-if="error && !loading && (!workspace || (initializationFailed && !staleSelection) || (pollFailed && !job))" @click="initialize">{{
       text('retry')
     }}</Button>
     <p v-if="loading" role="status">{{ text('loading') }}</p>
     <section
-      v-if="workspace && !job && !unknown"
+      v-if="workspace && !job && !unknown && !route.query.task && !loading && (!initializationFailed || staleSelection)"
       class="resource-section dataset-revision-form"
     >
       <dl class="dataset-details">
@@ -259,6 +259,7 @@ function viewVersion(id: string) {
 }
 async function loadJob(id: string) {
   clearTimeout(timer)
+  if (job.value?.task_id !== id) job.value = null
   pollFailed.value = false
   try {
     const result = await getDatasetJob(dataset, version, id)
@@ -414,17 +415,18 @@ function unload(event: BeforeUnloadEvent) {
     event.returnValue = ''
   }
 }
+const initializationFailed = ref(false)
 async function initialize() {
   loading.value = true
+  initializationFailed.value = false
   error.value = ''
   try {
     const source = await getDatasetWorkspace(dataset, version)
     if (!active) return
     workspace.value = source
     const saved = history.state.datasetSelection
-    if (saved?.version === version) {
+    if (!route.query.task && !requestId && saved?.version === version) {
       if (
-        !route.query.task &&
         saved.revision !== undefined &&
         saved.revision !== String(source.metadata.content_revision || '')
       ) {
@@ -440,10 +442,9 @@ async function initialize() {
       removedNames.value = Array.isArray(saved.names)
         ? saved.names.slice(0, 8)
         : []
-      if (!route.query.task)
-        removedCount.value = (
-          await getDatasetSelectionSummary(dataset, version, saved.selection)
-        ).sample_count
+      removedCount.value = (
+        await getDatasetSelectionSummary(dataset, version, saved.selection)
+      ).sample_count
     }
     if (route.query.task) {
       submitted.value = true
@@ -460,7 +461,10 @@ async function initialize() {
       await resolveUnknown()
     }
   } catch (e) {
-    if (active) error.value = datasetError(e)
+    if (active) {
+      initializationFailed.value = true
+      error.value = datasetError(e)
+    }
   } finally {
     if (active) loading.value = false
   }

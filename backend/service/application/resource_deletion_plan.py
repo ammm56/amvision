@@ -149,6 +149,10 @@ def build_resource_deletion_plan(
         """把聚合根加入去重清单。"""
         selected[resource_kind, str(row[ID_FIELDS[resource_kind]])] = row
 
+    dataset_record = kind == "dataset" and any(
+        row["project_id"] == project_id and row["dataset_id"] == resource_id
+        for row in inventory.get("dataset", ())
+    )
     if kind == "dataset":
         for item_kind in ("dataset-version", "dataset-import", "dataset-export"):
             for row in inventory[item_kind]:
@@ -159,6 +163,7 @@ def build_resource_deletion_plan(
                     add(item_kind, row)
         if (
             not selected
+            and not dataset_record
             and not storage.resolve(
                 f"projects/{project_id}/datasets/{resource_id}"
             ).is_dir()
@@ -556,7 +561,8 @@ def build_resource_deletion_plan(
         operation_id=operation_id,
         project_id=project_id,
         target=ResourceRef(kind=kind, resource_id=resource_id),
-        records=[ResourceRef(kind=rk, resource_id=rid) for rk, rid in selected],
+        records=[ResourceRef(kind=rk, resource_id=rid) for rk, rid in selected]
+        + ([ResourceRef(kind="dataset", resource_id=resource_id)] if dataset_record else []),
         paths=[
             StorageDeletionTarget(
                 source=path,

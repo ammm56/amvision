@@ -204,10 +204,9 @@ def test_workspace_import_browse_edit_and_preserve_after_record_deletion(tmp_pat
                 ]
                 == "真实测试数据集"
             )
-            assert (
-                client.get(base + "/import-report", headers=read).json()["available"]
-                is True
-            )
+            report = client.get(base + "/import-report", headers=read).json()
+            assert report["available"] is True
+            assert report["dataset_import_id"] is None
     finally:
         factory.engine.dispose()
 

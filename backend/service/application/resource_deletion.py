@@ -122,7 +122,7 @@ class ResourceDeletionService:
             unit = self._unit()
             try:
                 # 同一 Project 的新资源登记/恢复被 sentinel 排除；终态执行器不再拥有写权限。
-                unit.resource_deletions.delete_records(plan.records)
+                unit.resource_deletions.delete_records(plan.records, project_id=plan.project_id)
                 committed = operation.model_copy(update={"state": "committed"})
                 unit.resource_deletions.save(committed)
                 if not unit.workflow_runtime.complete_workflow_application_lifecycle(

@@ -314,7 +314,7 @@
             type="submit"
             variant="primary"
             :loading="busy"
-            :disabled="busy || !canWrite"
+            :disabled="busy || !canWrite || (!importing && !selected)"
             >{{
               step === 3 ? label('提交', 'Submit') : label('下一步', 'Next')
             }}</Button
@@ -363,13 +363,13 @@ import {
 } from '../services/dataset.service'
 import {
   getDatasetInfo,
+  getDatasetSelectionSummary,
   getDatasetWorkspace,
   listDatasetVersionPage,
   type DatasetInfo,
   type DatasetVersion,
 } from '../services/dataset-workspace.service'
 import '../dataset-workspace.css'
-import { apiRequest } from '@/shared/api/http-client'
 const route = useRoute(),
   router = useRouter(),
   project = useProjectStore(),
@@ -528,8 +528,9 @@ async function loadVersions() {
     if (active && id === listGeneration) error.value = datasetError(e)
   }
 }
-async function selectVersion(version: DatasetVersion) {
+async function selectVersion(version: Pick<DatasetVersion, 'dataset_id' | 'dataset_version_id'>) {
   const id = ++selectionGeneration
+  selected.value = null
   busy.value = true
   error.value = ''
   try {
@@ -538,16 +539,19 @@ async function selectVersion(version: DatasetVersion) {
       version.dataset_version_id,
     )
     if (!active || id !== selectionGeneration) return
-    selected.value = result
     if (result.dataset_version_id !== String(route.query.version || ''))
       selection.value = undefined
-    selectionCounts.value = selection.value
-      ? await apiRequest(
-          `${'/datasets/' + encodeURIComponent(result.dataset_id) + '/versions/' + encodeURIComponent(result.dataset_version_id)}/selection-summary`,
-          { method: 'POST', body: selection.value },
-        )
+    const saved = window.history.state?.datasetSelection
+    if (selection.value && saved?.revision !== undefined &&
+        saved.revision !== String(result.metadata.content_revision || '')) {
+      throw new Error(label('当前版本已更新，请返回重新选择样本。', 'This version has changed. Go back and select samples again.'))
+    }
+    const counts = selection.value
+      ? await getDatasetSelectionSummary(result.dataset_id, result.dataset_version_id, selection.value)
       : null
     if (!active || id !== selectionGeneration) return
+    selectionCounts.value = counts
+    selected.value = result
     exportClasses.value = result.categories.map((c) => ({
       id: c.category_id,
       source: c.name,
@@ -556,7 +560,7 @@ async function selectVersion(version: DatasetVersion) {
     exportFormat.value = exportOptions.value[0]?.value || ''
     includeTest.value = !!(selectionCounts.value || result).split_counts.test
   } catch (e) {
-    if (active) error.value = datasetError(e)
+    if (active && id === selectionGeneration) error.value = datasetError(e)
   } finally {
     if (active && id === selectionGeneration) busy.value = false
   }
@@ -566,6 +570,7 @@ watch(taskType, () => {
     formatType.value = ''
 })
 async function next() {
+  if (busy.value || unknown.value) return
   error.value = ''
   if (!canWrite.value) {
     error.value = label(
@@ -687,6 +692,7 @@ async function next() {
   }
 }
 onMounted(async () => {
+  busy.value = true
   try {
     if (importing && route.query.dataset) {
       existing.value = await getDatasetInfo(projectId, datasetId)
@@ -698,12 +704,13 @@ onMounted(async () => {
       await loadVersions()
       const v = String(route.query.version || '')
       if (v && route.query.dataset) {
-        const source = await getDatasetWorkspace(String(route.query.dataset), v)
-        await selectVersion(source)
+        await selectVersion({ dataset_id: String(route.query.dataset), dataset_version_id: v })
       }
     }
   } catch (e) {
     if (active) error.value = datasetError(e)
+  } finally {
+    if (active) busy.value = false
   }
 })
 onBeforeUnmount(() => {

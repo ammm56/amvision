@@ -100,7 +100,13 @@
           />
         </div>
         <template v-if="report?.available"
-          ><p>{{ datasetDate(report.checked_at) }}</p>
+          >
+          <div class="dataset-actions">
+            <span v-if="report.checked_at">{{ datasetDate(report.checked_at) }}</span>
+            <Button v-if="report.dataset_import_id" size="sm" @click="router.push('/datasets/imports/' + encodeURIComponent(report.dataset_import_id))">
+              {{ label('导入详情', 'Import details') }}
+            </Button>
+          </div>
           <dl class="dataset-details">
             <template v-for="(value, key) in reportCounts" :key="key"
               ><dt>{{ reportLabel(String(key)) }}</dt>

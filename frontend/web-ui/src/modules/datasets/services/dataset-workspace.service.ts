@@ -278,7 +278,7 @@ export function getDatasetReport(
   return apiRequest<{
     available: boolean
     checked_at: string | null
-    dataset_import_id?: string
+    dataset_import_id?: string | null
     report: Record<string, unknown> | null
   }>(`${datasetVersionPath(datasetId, versionId)}/import-report`, { signal })
 }

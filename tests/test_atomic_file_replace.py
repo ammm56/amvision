@@ -125,3 +125,34 @@ def test_local_dataset_storage_text_write_uses_atomic_replace_retry(
         == '{"status":"ready"}\n'
     )
     assert not list(dataset_storage.resolve("models").glob("*.tmp"))
+
+
+def test_move_tree_retries_temporary_sharing_failure_without_replacing_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """暂存目录遭遇短暂占用后完整移入；已存在的目标仍拒绝覆盖。"""
+    from backend.service.application.errors import InvalidRequestError
+
+    storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path)))
+    storage.write_text("imports/a/labels.txt", "barcode")
+    rename = Path.rename
+    attempts = 0
+
+    def briefly_locked(source: Path, destination: Path) -> Path:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            error = PermissionError("import package still in use")
+            error.winerror = 5
+            raise error
+        return rename(source, destination)
+
+    monkeypatch.setattr(Path, "rename", briefly_locked)
+    storage.move_tree("imports/a", "staging/a")
+    assert attempts == 2
+    assert storage.resolve("staging/a/labels.txt").read_text(encoding="utf-8") == "barcode"
+    storage.write_text("imports/a/labels.txt", "new")
+    with pytest.raises(InvalidRequestError):
+        storage.move_tree("imports/a", "staging/a")
+    assert storage.resolve("staging/a/labels.txt").read_text(encoding="utf-8") == "barcode"
+    assert storage.resolve("imports/a/labels.txt").read_text(encoding="utf-8") == "new"

@@ -10,7 +10,7 @@
       <span v-if="workspace">{{ workspace.dataset.display_name }}</span>
     </div>
     <InlineError v-if="error" :message="error" />
-    <Button v-if="error && !workspace && !loading" @click="initialize">{{
+    <Button v-if="error && !loading && (!workspace || (initializationFailed && !staleSelection) || (pollFailed && !job))" @click="initialize">{{
       text('retry')
     }}</Button>
     <ol
@@ -26,9 +26,9 @@
       </li>
     </ol>
     <p v-if="loading">{{ text('loading') }}</p>
-    <template v-if="workspace">
+    <template v-if="workspace && !loading && (!initializationFailed || staleSelection)">
       <form
-        v-if="operation === 'derive' && !checked && !job"
+        v-if="operation === 'derive' && !checked && !job && !route.query.task"
         class="resource-section dataset-config"
         @submit.prevent="submit('derive-check')"
       >
@@ -126,7 +126,7 @@
         </fieldset>
       </form>
       <section
-        v-if="operation === 'compare' && !job"
+        v-if="operation === 'compare' && !job && !route.query.task"
         class="resource-section dataset-config"
       >
         <h2>{{ label('选择比较版本', 'Choose a comparison version') }}</h2>
@@ -155,7 +155,7 @@
         >
       </section>
       <section
-        v-if="operation === 'quality' && !job"
+        v-if="operation === 'quality' && !job && !route.query.task"
         class="resource-section dataset-config"
       >
         <h2>{{ label('质量检查', 'Quality checks') }}</h2>
@@ -390,6 +390,7 @@ function viewSample(id: string, target?: string) {
 }
 async function loadJob(id: string) {
   clearTimeout(timer)
+  if (job.value?.task_id !== id) job.value = null
   pollFailed.value = false
   try {
     const result = await getDatasetJob(dataset, version, id)
@@ -599,8 +600,10 @@ function beforeUnload(event: BeforeUnloadEvent) {
     event.returnValue = ''
   }
 }
+const initializationFailed = ref(false)
 async function initialize() {
   loading.value = true
+  initializationFailed.value = false
   error.value = ''
   try {
     if (
@@ -646,7 +649,10 @@ async function initialize() {
       await resolveUnknown()
     }
   } catch (e) {
-    if (active) error.value = datasetError(e)
+    if (active) {
+      initializationFailed.value = true
+      error.value = datasetError(e)
+    }
   } finally {
     if (active) loading.value = false
   }

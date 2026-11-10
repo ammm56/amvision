@@ -481,9 +481,16 @@ class DatasetCatalogRepository:
         version = self.session.get(DatasetVersionRecord, version_id)
         metadata = dict(version.metadata_json or {}) if version else {}
         if "validation_report" in metadata:
+            source_id = metadata.get("source_import_id")
+            # 已清理的导入保留报告快照，同时移除失效的详情跳转。
+            record_id = self.session.scalar(
+                select(DatasetImportRecord.dataset_import_id).where(
+                    DatasetImportRecord.dataset_import_id == source_id
+                )
+            ) if source_id else None
             return {
                 "available": True,
-                "dataset_import_id": metadata.get("source_import_id"),
+                "dataset_import_id": record_id,
                 "checked_at": metadata.get("created_at"),
                 "report": metadata["validation_report"],
             }
