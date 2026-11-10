@@ -448,3 +448,9 @@ final result: passed（仅本轮范围）
 final result: passed（本次两处样式修改）
 
 查看页标签仅移除白色底，保留绿色文字／下划线；样本对象抽屉仅移除内容区分隔线。真实页面样式计算值与截图已核对，记录见 dataset-sample-polish-20261106/README.md 的追加核对。纯 CSS 修改未改变选择、导航或数据逻辑。
+
+## 数据集导入向导、导入详情、导出向导和导出详情（2026-11-10）
+
+17 组亮暗状态已对照，短屏检查为 1024×768。检查数据来自本地开发服务，上传中断通过浏览器故障注入复现。逐图结果、截图和边界见[核对记录](docs/design/frontend/verification/dataset-transfer-20261110/README.md)。
+
+final result: passed（上述状态与数据范围）

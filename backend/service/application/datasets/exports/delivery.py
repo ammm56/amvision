@@ -344,7 +344,9 @@ class SqlAlchemyDatasetExportDeliveryService:
         )
 
     def _build_package_file_name(self, dataset_export: DatasetExport) -> str:
-        """构建 DatasetExport 下载包的默认文件名。"""
+        """优先使用向导设置的文件名；以导出 ID 作为未设置时的默认名称。"""
+        if name := dataset_export.metadata.get("package_name"):
+            return str(name)
 
         return (
             f"{dataset_export.dataset_id}-{dataset_export.format_id}-"

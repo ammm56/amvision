@@ -162,6 +162,9 @@ class DatasetExportCreateRequestBody(BaseModel):
     category_names: tuple[str, ...] = Field(
         default_factory=tuple, description="可选的导出类别名列表"
     )
+    included_splits: tuple[str, ...] | None = Field(default=None, max_length=3)
+    source_category_ids: tuple[int, ...] | None = Field(default=None, max_length=10000)
+    package_name: str = Field(default="", max_length=180)
     include_test_split: bool = Field(default=True, description="是否包含 test split")
     selection: DatasetSampleSelection | None = Field(
         default=None, description="固定来源版本内的样本选择；省略时导出整个版本"

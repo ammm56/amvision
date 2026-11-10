@@ -124,6 +124,9 @@ class SqlAlchemyDatasetExporter(
         dataset_version = replace(
             dataset_version, samples=select_samples(dataset_version, request.selection)
         )
+        from .transfer_options import validate_options, apply_category_order
+        validate_options(request, dataset_version)
+        dataset_version = apply_category_order(dataset_version, request.source_category_ids, request.category_names)
         category_names = self._resolve_category_names(
             categories=dataset_version.categories,
             category_names=request.category_names,
@@ -143,11 +146,22 @@ class SqlAlchemyDatasetExporter(
             dataset_version=dataset_version,
             include_test_split=request.include_test_split,
         )
+        if request.included_splits is not None:
+            split_samples = tuple((name, items) for name, items in split_samples if name in request.included_splits)
+            if not any(items for _, items in split_samples):
+                raise InvalidRequestError("所选划分没有可导出的样本")
         if request.selection is not None and not any(
             samples for _, samples in split_samples
         ):
             raise ValueError("排除 test 后没有可导出的样本")
         class_map = self._build_class_map(dataset_version.categories)
+        object_counts = dict.fromkeys(class_map, 0)
+        split_objects = {}
+        for split, samples in split_samples:
+            split_objects[split] = sum(len(sample.annotations) for sample in samples)
+            for sample in samples:
+                for annotation in sample.annotations:
+                    object_counts[str(annotation.category_id)] += 1
         exported_at = datetime.now(timezone.utc).isoformat()
         format_manifest, annotation_payloads_by_split = self._build_format_payloads(
             request=request,
@@ -174,6 +188,9 @@ class SqlAlchemyDatasetExporter(
                 "source_dataset_id": dataset_version.dataset_id,
                 "target_format": request.format_id,
                 "class_map": class_map,
+                "split_object_counts": split_objects,
+                "category_object_counts": object_counts,
+                "object_count": sum(object_counts.values()),
                 "exported_at": exported_at,
                 "split_counts": {name: len(samples) for name, samples in split_samples},
                 "export_path": export_prefix,
@@ -192,6 +209,17 @@ class SqlAlchemyDatasetExporter(
                 write_handoff(
                     self.dataset_storage, dataset_version, export_result, split_samples
                 )
+
+            # 清理文件后仍能查看导出时的顶层目录和文件。只记录有界摘要。
+            from itertools import islice
+            root = self.dataset_storage.resolve(export_prefix)
+            entries = list(islice(root.iterdir(), 101))
+            export_result.metadata["file_list"] = [
+                {"name": p.name, "path": p.name, "directory": p.is_dir(),
+                 "size": None if p.is_dir() else p.stat().st_size}
+                for p in sorted(entries[:100], key=lambda p: (not p.is_dir(), p.name))
+            ]
+            export_result.metadata["file_list_truncated"] = len(entries) > 100
 
         return export_result
 

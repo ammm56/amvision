@@ -19,8 +19,9 @@
   "dependencies": {
     "@lucide/vue": "^1.16.0",
     "@vueuse/core": "^14.3.0",
-    "dompurify": "^3.4.14",
+    "@zip.js/zip.js": "^2.24.0",
     "decimal.js": "10.6.0",
+    "dompurify": "^3.4.14",
     "echarts": "^6.1.0",
     "marked": "^18.0.11",
     "motion-v": "^2.4.4",

@@ -103,6 +103,9 @@ def create_dataset_export(
             format_id=body.format_id,
             output_object_prefix=body.output_object_prefix,
             category_names=body.category_names,
+            included_splits=body.included_splits,
+            source_category_ids=body.source_category_ids,
+            package_name=body.package_name,
             include_test_split=body.include_test_split,
             selection=body.selection.model_dump()
             if body.selection is not None

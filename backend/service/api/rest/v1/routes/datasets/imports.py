@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 import json
+from contextlib import nullcontext
+from uuid import UUID
+from backend.service.application.datasets.imports.upload_draft import DatasetUploadDrafts, UploadDraft
+from backend.service.application.project_access import require_explicit_project_access
 from pydantic import ValidationError
+from backend.contracts.datasets.workspace_jobs import DatasetDerivation
 from backend.contracts.datasets.sample_selection import DatasetSampleSelection
 from dataclasses import replace
 from pathlib import PurePosixPath
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, UploadFile
 
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.db import get_session_factory, get_unit_of_work
@@ -71,6 +76,31 @@ async def read_content_revision(
     return "" if "expected_content_revision" in form else None
 
 
+@dataset_imports_router.post("/upload-drafts", status_code=201)
+def upload_draft(
+    project_id: Annotated[str, Form()],
+    package: Annotated[UploadFile, File()],
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("datasets:write"))],
+    storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+) -> UploadDraft:
+    """上传到当前主体的临时目录；不提交导入任务或分配版本。"""
+    require_explicit_project_access(visible_project_ids=principal.project_ids, project_id=project_id)
+    return DatasetUploadDrafts(storage, project_id, principal.principal_id).upload(package.filename or "", package.file)
+
+
+@dataset_imports_router.delete("/upload-drafts/{token}", status_code=204)
+def discard_upload_draft(
+    token: UUID,
+    project_id: str,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("datasets:write"))],
+    storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+) -> Response:
+    """丢弃当前主体尚未提交的 ZIP。"""
+    require_explicit_project_access(visible_project_ids=principal.project_ids, project_id=project_id)
+    DatasetUploadDrafts(storage, project_id, principal.principal_id).discard(token)
+    return Response(status_code=204)
+
+
 @dataset_imports_router.post(
     "/imports", response_model=DatasetImportSubmissionResponse, status_code=202
 )
@@ -82,13 +112,16 @@ def import_dataset_zip(
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
     project_id: Annotated[str, Form()],
     dataset_id: Annotated[str, Form()],
-    package: Annotated[UploadFile, File()],
     task_type: Annotated[DatasetImportTaskType, Form()],
     expected_content_revision: Annotated[str | None, Depends(read_content_revision)],
+    package: Annotated[UploadFile | None, File()] = None,
+    draft_id: Annotated[UUID | None, Form()] = None,
     format_type: Annotated[DatasetFormatType | None, Form()] = None,
     split_strategy: Annotated[
         DatasetImportRequestedSplitStrategy | None, Form()
     ] = None,
+    split_ratios: Annotated[list[int] | None, Form()] = None,
+    split_seed: Annotated[int, Form(ge=0, le=2147483647)] = 42,
     class_map_json: Annotated[str | None, Form()] = None,
     dataset_display_name: Annotated[str, Form(max_length=255)] = "",
     dataset_description: Annotated[str, Form(max_length=2000)] = "",
@@ -119,6 +152,15 @@ def import_dataset_zip(
             details={"project_id": project_id},
         )
 
+    repartition = {}
+    if split_ratios is not None:
+        if base_version_id or split_strategy not in (None, "auto"):
+            raise InvalidRequestError("重新划分只适用于导入新版本")
+        try:
+            config = DatasetDerivation(split_ratios=tuple(split_ratios), seed=split_seed)
+        except ValidationError as exc:
+            raise InvalidRequestError("请提供三项合计为 100 的划分比例") from exc
+        repartition = {"split_ratios": config.split_ratios, "seed": config.seed}
     class_map = _parse_class_map_json(class_map_json)
     try:
         excluded = (
@@ -132,26 +174,34 @@ def import_dataset_zip(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     )
-    submitted_import = service.submit_dataset_import(
-        DatasetImportRequest(
-            project_id=project_id,
-            dataset_id=dataset_id,
-            package_file_name=package.filename or "dataset.zip",
-            format_type=format_type,
-            task_type=task_type,
-            split_strategy=split_strategy,
-            class_map=class_map,
-            base_version_id=base_version_id,
-            expected_content_revision=expected_content_revision,
-            exclude_selection=excluded,
-            metadata={
-                "principal_id": principal.principal_id,
-                "dataset_display_name": dataset_display_name.strip(),
-                "dataset_description": dataset_description,
-            },
-        ),
-        package_file=package.file,
+    if (package is None) == (draft_id is None):
+        raise InvalidRequestError("需要提供 ZIP 文件或一个已上传的草稿")
+    source = (
+        nullcontext((package.filename or "dataset.zip", package.file)) if package is not None
+        else DatasetUploadDrafts(dataset_storage, project_id, principal.principal_id).consume(draft_id)
     )
+    with source as (source_name, source_stream):
+        submitted_import = service.submit_dataset_import(
+            DatasetImportRequest(
+                project_id=project_id,
+                dataset_id=dataset_id,
+                package_file_name=source_name,
+                format_type=format_type,
+                task_type=task_type,
+                split_strategy=split_strategy,
+                class_map=class_map,
+                base_version_id=base_version_id,
+                expected_content_revision=expected_content_revision,
+                exclude_selection=excluded,
+                metadata={
+                    **repartition,
+                    "principal_id": principal.principal_id,
+                    "dataset_display_name": dataset_display_name.strip(),
+                    "dataset_description": dataset_description,
+                },
+            ),
+            package_file=source_stream,
+        )
     queue_task_id = _read_optional_str(submitted_import.metadata, "queue_task_id")
     if queue_task_id is None:
         raise InvalidRequestError("DatasetImport 缺少队列消息 id")

@@ -114,6 +114,10 @@ class ResourceDeletionRepository:
                     metadata["files_cleaned_at"] = datetime.now(
                         timezone.utc
                     ).isoformat()
+                    for key in ("package_file_name", "package_size"):
+                        if metadata.get(key) is not None:
+                            target = "historical_package_name" if key == "package_file_name" else "historical_package_size"
+                            metadata[target] = metadata[key]
                     for key in (
                         "package_object_key",
                         "package_file_name",

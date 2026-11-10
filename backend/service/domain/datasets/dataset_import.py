@@ -48,6 +48,7 @@ DatasetImportRequestedSplitStrategy = Literal["auto", "train", "val", "test"]
 # 导入完成后记录的实际 split 策略。
 DatasetImportResolvedSplitStrategy = Literal[
     "manifest-name",
+    "seeded-ratios",
     "image_sets",
     "image_sets-trainval-as-train",
     "image_sets-multi-shard",

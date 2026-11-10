@@ -142,6 +142,9 @@ class SqlAlchemyDatasetExportTaskService:
                 "output_object_prefix": request.output_object_prefix,
                 "created_by": created_by,
                 "target_format": request.format_id,
+                "included_splits": request.included_splits,
+                "source_category_ids": request.source_category_ids,
+                "package_name": request.package_name,
                 "selection": request.selection,
                 "annotation_handoff": request.annotation_handoff,
                 "queue_name": DATASET_EXPORT_QUEUE_NAME,
@@ -458,6 +461,8 @@ class SqlAlchemyDatasetExportTaskService:
     ) -> None:
         """校验导出请求与 DatasetVersion 身份是否一致。"""
 
+        from .transfer_options import validate_options
+        validate_options(request, dataset_version)
         if dataset_version.project_id != request.project_id:
             raise InvalidRequestError(
                 "请求中的 project_id 与 DatasetVersion 不一致",
@@ -541,6 +546,9 @@ class SqlAlchemyDatasetExportTaskService:
             include_test_split=dataset_export.include_test_split,
             dataset_export_id=dataset_export.dataset_export_id,
             selection=dataset_export.metadata.get("selection"),
+            included_splits=dataset_export.metadata.get("included_splits"),
+            source_category_ids=dataset_export.metadata.get("source_category_ids"),
+            package_name=dataset_export.metadata.get("package_name", ""),
             annotation_handoff=bool(
                 dataset_export.metadata.get("annotation_handoff", False)
             ),

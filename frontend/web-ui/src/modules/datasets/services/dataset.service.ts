@@ -66,9 +66,12 @@ export interface DatasetImportSubmissionResponse {
 export interface DatasetImportInput {
   projectId: string
   datasetId: string
-  packageFile: File
+  packageFile?: File
+  draftId?: string
   formatType?: string
   taskType: string
+  splitRatios?: number[]
+  splitSeed?: number
   splitStrategy?: string
   classMapJson?: string
   displayName?: string
@@ -130,6 +133,9 @@ export interface DatasetExportInput {
   datasetVersionId: string
   formatId: string
   displayName?: string
+  includedSplits?: string[]
+  sourceCategoryIds?: number[]
+  packageName?: string
   categoryNames?: string[]
   includeTestSplit: boolean
   selection?: DatasetSampleSelection
@@ -159,11 +165,14 @@ export async function submitDatasetImport(input: DatasetImportInput): Promise<Da
   const formData = new FormData()
   formData.set('project_id', input.projectId)
   formData.set('dataset_id', input.datasetId)
-  formData.set('package', input.packageFile)
+  if (input.packageFile) formData.set('package', input.packageFile)
+  if (input.draftId) formData.set('draft_id', input.draftId)
   formData.set('task_type', input.taskType)
   if (input.displayName) formData.set('dataset_display_name', input.displayName)
   if (input.description) formData.set('dataset_description', input.description)
   if (input.formatType) formData.set('format_type', input.formatType)
+  input.splitRatios?.forEach(n=>formData.append('split_ratios',String(n)))
+  if(input.splitSeed!==undefined) formData.set('split_seed',String(input.splitSeed))
   if (input.splitStrategy) formData.set('split_strategy', input.splitStrategy)
   if (input.classMapJson?.trim()) formData.set('class_map_json', input.classMapJson.trim())
   if (input.baseVersionId) formData.set('base_version_id', input.baseVersionId)
@@ -212,6 +221,7 @@ export async function createDatasetExport(input: DatasetExportInput): Promise<Da
       format_id: input.formatId,
       display_name: input.displayName ?? '',
       category_names: input.categoryNames ?? [],
+      included_splits:input.includedSplits, source_category_ids:input.sourceCategoryIds, package_name:input.packageName || '',
       include_test_split: input.includeTestSplit,
       selection: input.selection,
       annotation_handoff: input.annotationHandoff ?? false,

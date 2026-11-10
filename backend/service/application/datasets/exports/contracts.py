@@ -92,6 +92,9 @@ class DatasetExportRequest:
     # 可选固定版本选择；None 保持既有整版本导出行为。
     selection: dict[str, object] | None = None
     annotation_handoff: bool = False
+    included_splits: tuple[str, ...] | None = None
+    source_category_ids: tuple[int, ...] | None = None
+    package_name: str = ""
 
 
 @dataclass(frozen=True)

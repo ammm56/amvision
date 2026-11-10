@@ -335,6 +335,22 @@ class SqlAlchemyDatasetImportService(
                 request=request,
                 import_layout=import_layout,
             )
+            if request.metadata.get("split_ratios") is not None:
+                from backend.contracts.datasets.workspace_jobs import DatasetDerivation
+                from backend.service.application.datasets.workspace_analysis import derivation_plan
+
+                original = DatasetVersion(dataset_version_id, request.dataset_id, request.project_id,
+                    parsed_content.categories, tuple(item.sample for item in parsed_content.samples),
+                    parsed_content.task_type)
+                planned, summary = derivation_plan(original, DatasetDerivation(
+                    split_ratios=request.metadata["split_ratios"], seed=request.metadata["seed"]), None)
+                splits = summary["split_counts"]
+                parsed_content = replace(parsed_content,
+                    samples=tuple(replace(item, sample=sample) for item, sample in
+                                 zip(parsed_content.samples, planned.samples, strict=True)),
+                    split_strategy="seeded-ratios",
+                    detected_profile={**parsed_content.detected_profile, "split_counts": splits, "split_names": list(splits)},
+                    validation_report={**parsed_content.validation_report, "split_counts": splits})
             parent_metadata = {}
             if request.base_version_id:
                 reads.enter_context(
@@ -471,6 +487,14 @@ class SqlAlchemyDatasetImportService(
             )
 
             cleanup_status = self._cleanup_completed_staging(import_layout)
+            # 固定导入完成时的对象计数，后续编辑同一版本不改变历史报告。
+            object_counts = {str(category.category_id): 0 for category in parsed_content.categories}
+            split_objects = {}
+            for item in parsed_content.samples:
+                split_objects[item.sample.split] = split_objects.get(item.sample.split, 0) + len(item.sample.annotations)
+                for annotation in item.sample.annotations:
+                    key = str(annotation.category_id)
+                    object_counts[key] += 1
             completed_import = replace(
                 current_import,
                 status="completed",
@@ -482,6 +506,9 @@ class SqlAlchemyDatasetImportService(
                     "category_count": len(parsed_content.categories),
                     "split_counts": self._collect_split_counts(parsed_content.samples),
                     "staging_cleanup_status": cleanup_status,
+                    "split_object_counts": split_objects,
+                    "category_object_counts": object_counts,
+                    "object_count": sum(object_counts.values()),
                 },
             )
             reads.close()
