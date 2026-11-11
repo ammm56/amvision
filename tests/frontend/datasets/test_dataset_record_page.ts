@@ -14,7 +14,7 @@ vi.mock('../../../frontend/web-ui/src/app/stores/feedback.store', () => ({ useFe
 vi.mock('vue-router', () => ({ useRoute: () => route, useRouter: () => ({ push: vi.fn() }) }))
 const mountPage = (kind: 'imports' | 'exports') => shallowMount(DatasetRecordPage, { props: { kind }, global: {
   plugins: [createI18n({ legacy: false, locale: 'zh-CN', messages: {} })],
-  stubs: { ResourceTable: { template: '<table><slot /></table>' } },
+  stubs: { DatasetExportFiles: false, ResourceTable: { template: '<table><slot /></table>' } },
 } })
 afterEach(() => vi.clearAllMocks())
 it('失败导入展示结构化错误，不把没有检查报告误报为没有错误', async () => {
@@ -37,6 +37,6 @@ it('数据集信息不可用时仍加载导出文件；切换记录不会复用�
   expect(wrapper.text()).toContain('data.yaml')
   route.params.datasetExportId = 'export-b'
   await flushPromises()
-  expect(api.apiRequest).toHaveBeenLastCalledWith('/datasets/exports/export-b/files', { query: { path: '', after: '' } })
+  expect(api.apiRequest).toHaveBeenLastCalledWith('/datasets/exports/export-b/files', { query: { path: '', after: '' }, signal: expect.any(AbortSignal) })
   wrapper.unmount()
 })

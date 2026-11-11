@@ -4,6 +4,7 @@ export function getDatasetSelectionSummary(
   dataset: string,
   version: string,
   selection: DatasetSampleSelection,
+  signal?: AbortSignal,
 ) {
   return apiRequest<{
     sample_count: number
@@ -11,6 +12,7 @@ export function getDatasetSelectionSummary(
   }>(`${datasetVersionPath(dataset, version)}/selection-summary`, {
     method: 'POST',
     body: selection,
+    signal,
   })
 }
 export function getDatasetSample(
@@ -32,6 +34,7 @@ export interface DatasetJob {
     | 'compare'
     | 'return-check'
     | 'return-apply'
+  content_revision?: string | null
   config?: Record<string, any>
   state: string
   created_at: string
@@ -44,19 +47,22 @@ export function listDatasetJobs(
   dataset: string,
   version: string,
   offset = 0,
+  options: { operation?: "quality"; limit?: number; signal?: AbortSignal } = {},
 ) {
   return apiRequest<DatasetPage<DatasetJob>>(
     `${datasetVersionPath(dataset, version)}/jobs`,
-    { query: { offset, limit: 20 } },
+    { query: { offset, limit: options.limit ?? 20, operation: options.operation }, signal: options.signal },
   )
 }
 export function getDatasetJob(
   dataset: string,
   version: string,
   task: string,
+  signal?: AbortSignal,
 ) {
   return apiRequest<DatasetJob>(
     `${datasetVersionPath(dataset, version)}/jobs/${encodeURIComponent(task)}`,
+    { signal },
   )
 }
 export function findDatasetJob(
@@ -103,6 +109,7 @@ export interface DatasetInfo {
   revision: string
 }
 export interface DatasetVersion {
+  task_references?: { training: number; evaluation: number }
   availability?: {
     state: 'available' | 'missing' | 'unavailable' | 'updating' | 'empty'
     reason: string
@@ -126,6 +133,7 @@ export interface DatasetItem extends DatasetInfo {
   latest_version: DatasetVersion | null
 }
 export interface DatasetWorkspace extends DatasetVersion {
+  split_object_counts?: Record<string, number>
   parent_version_number: number | null
   dataset: DatasetInfo
   categories: { category_id: number; name: string }[]
@@ -260,6 +268,17 @@ export interface DatasetFile {
   directory: boolean
   size: number | null
 }
+export interface VersionTaskReference {
+  task_id: string
+  task_kind: string
+  display_name: string
+  created_at: string
+}
+export function listVersionTaskReferences(datasetId:string, versionId:string, offset:number, signal?:AbortSignal) {
+  return apiRequest<{ items:VersionTaskReference[]; has_more:boolean }>(
+    `${datasetVersionPath(datasetId,versionId)}/task-references`, { query:{offset,limit:20},signal },
+  )
+}
 export function getDatasetCategories(
   datasetId: string,
   versionId: string,
@@ -289,13 +308,14 @@ export function getDatasetFiles(
   after = '',
   signal?: AbortSignal,
   directoriesOnly = false,
+  limit = 50,
 ) {
   return apiRequest<{
     items: DatasetFile[]
     path: string
     next_cursor: string | null
   }>(`${datasetVersionPath(datasetId, versionId)}/files`, {
-    query: { path, after, directories_only: directoriesOnly },
+    query: { path, after, directories_only: directoriesOnly, limit },
     signal,
   })
 }

@@ -1,4 +1,5 @@
 import { useI18n } from 'vue-i18n'
+import { formatSystemDateTime } from '@/shared/formatters/date-time'
 const labels = {
   versionState_available: ['可用', 'Available'],
   versionState_missing: ['资源缺失', 'Missing resources'],
@@ -59,7 +60,7 @@ const labels = {
   ok: ['检查通过', 'Checks passed'],
   detection: ['目标检测', 'Detection'],
   anomaly: ['异常检测','Anomaly'],
-  'connector-reference': ['连接器参考','Connector reference'],
+  'connector-reference': ['连接器','Connector'],
   rgbd: ['RGB-D','RGB-D'],
   'point-cloud': ['点云','Point cloud'],
   classification: ['图像分类', 'Classification'],
@@ -165,17 +166,16 @@ export function useDatasetText() {
 export function datasetError(error: unknown) {
   return error instanceof Error ? error.message : String(error)
 }
+export function datasetFormatLabel(id?: string | null) {
+  if (!id) return '—'
+  if (id.startsWith('coco-')) return 'COCO JSON'
+  if (id.startsWith('voc-')) return 'Pascal VOC'
+  if (id.startsWith('imagenet-')) return 'ImageNet'
+  if (id.startsWith('dota-')) return 'DOTA OBB'
+  if (id.startsWith('yolo-')) return 'YOLO ' + id.slice(5).replace(/-v\d+$/, '').replaceAll('-', ' ')
+  return id
+}
 export function datasetDate(value?: string | null) {
-  if (!value) return '—'
-  const date = new Date(value)
-  return Number.isNaN(date.valueOf())
-    ? '—'
-    : date.toLocaleString(undefined, {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-      })
+  const formatted = formatSystemDateTime(value, 'minutes')
+  return formatted === '-' ? '—' : formatted
 }

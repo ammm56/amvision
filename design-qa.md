@@ -454,3 +454,23 @@ final result: passed（本次两处样式修改）
 17 组亮暗状态已对照，短屏检查为 1024×768。检查数据来自本地开发服务，上传中断通过浏览器故障注入复现。逐图结果、截图和边界见[核对记录](docs/design/frontend/verification/dataset-transfer-20261110/README.md)。
 
 final result: passed（上述状态与数据范围）
+
+## 数据集导入向导细节复核（2026-11-10）
+
+以原图核对上传区、已上传文件行、数据定义、类别映射、划分统计及提交检查。数据定义同时验证新建和已有数据集，切回新建保留输入。真实 COCO 文件生成 v1，提交前与记录中的样本、对象、类别数量为 2、2、1。删除文件、重新选择同一文件、缺失图像阻止提交均在内置浏览器验证。用独立本地测试端口中断首次上传连接，点击重新上传后得到开发服务回执。亮暗短屏 1024×768 无水平溢出。服务端正式校验与本地清单预查分别显示。
+
+[亮色对照](docs/design/frontend/verification/dataset-import-refinement/compare-light.jpg) · [暗色对照](docs/design/frontend/verification/dataset-import-refinement/compare-dark.jpg)。按设计稿与真实状态比较，使用当前工作站导航及真实样本；上传中断交互实测为亮色。
+
+final result: passed（导入向导上述状态）
+
+## 数据集导入、导出设计对照（2026-11-10）
+
+使用本地工作站和 dataset worker，按原图核对两个四步向导、完成／失败详情、记录列表和确认框。桌面参照为 1672 × 941，短屏实测为 1024 × 768，亮暗主题分别截图；短屏目录树默认收起，仍可展开。核对时修正了导出兼容检查的左右栏比例、表头与类别行错位、文件名前图标换行、不兼容时的格式对照以及确认框中的清理／保留范围。
+
+真实 COCO ZIP 的两张图片、两条标注和映射后的类别通过导出 ZIP 的完整性与 JSON 校验。另测上传连接中断后重传、缺图阻止提交、错误边界框导入失败、格式不兼容阻止导出及清理后的下载禁用。没有为凑齐设计稿的示例值补造时间、预计包大小或目标标注；类别映射按现场要求默认收起。数据集前端回归 18 个文件、44 项通过；生产构建通过。
+
+[亮暗设计图与实测截图逐项对照](docs/design/frontend/verification/dataset-transfer-records/导入导出设计实测对照.html)
+
+## 导入与导出字体、日期和图标复核（2026-11-10）
+
+工作站使用本地分发的 Noto Sans SC 可变字体，普通表格正文 14 px、辅助信息 13 px。实心状态图标仅内部符号使用白色描边。文件树的省略号按目录展开，键盘可以操作。亮暗两套 22 组[原图和实测对照](docs/design/frontend/verification/dataset-transfer-records/导入导出设计实测对照.html)已更新。[现有 1,224 张样本的导入详情，1024 × 768 暗色](docs/design/frontend/verification/dataset-transfer-records/实测-导入详情-1024-dark.png)显示同一次执行的四个时间、对应状态以及无白色外圈的结果图标。

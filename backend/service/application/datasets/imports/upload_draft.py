@@ -96,7 +96,8 @@ class DatasetUploadDrafts:
             path.rename(claimed)
         except FileNotFoundError as error:
             raise ResourceNotFoundError(
-                "上传文件已过期、已提交或不存在，请重新选择 ZIP"
+                "上传文件已过期、已提交或不存在，请重新选择 ZIP",
+                details={"resource": "upload_draft"},
             ) from error
         try:
             name = json.loads(path.with_suffix(".json").read_text(encoding="utf-8"))[

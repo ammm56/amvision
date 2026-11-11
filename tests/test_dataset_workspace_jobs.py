@@ -91,6 +91,10 @@ def test_quality_derivation_compare_and_cancel(tmp_path, monkeypatch):
             assert info["metadata"]["description"] == "手动确认的训练版本"
             assert client.get(base + "/samples", headers=read).json() == original
             comparison = submit("compare", compare_version_id=new_version)
+            # 即使最新任务是比较，质量标签页也必须读取该版本最近的质量检查。
+            filtered = client.get(base + "/jobs", headers=read, params={"operation":"quality", "limit":1}).json()
+            assert [row["task_id"] for row in filtered["items"]] == [quality["task_id"]]
+            assert "content_revision" in quality
             assert comparison["result"]["counts"].get("added", 0) == 0
             assert comparison["result"]["counts"].get("removed", 0) == 0
             assert comparison["result"]["counts"]["categories"] > 0

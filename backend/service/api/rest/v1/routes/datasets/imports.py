@@ -378,15 +378,27 @@ def get_dataset_import_detail(
     if (
         task is not None
         and task.project_id == dataset_import.project_id
-        and task.finished_at
+        and task.task_spec.get("dataset_import_id") == dataset_import_id
     ):
-        dataset_import = replace(
-            dataset_import,
-            metadata={
-                **dataset_import.metadata,
-                "completed_at": task.finished_at,
-            },
-        )
+        metadata = dict(dataset_import.metadata)
+        if task.finished_at:
+            metadata["completed_at"] = task.finished_at
+        # 旧记录从同次执行的进度事件恢复时间，列表查询不读取事件。
+        if task.current_attempt_no and not metadata.get("validated_at"):
+            attempt = unit_of_work.tasks.get_task_attempt_by_number(
+                task.task_id, task.current_attempt_no
+            )
+            attempt_id = attempt.attempt_id if attempt else None
+            for event in unit_of_work.tasks.list_task_events(
+                task.task_id, event_type="progress"
+            ):
+                if event.attempt_id != attempt_id:
+                    continue
+                progress = event.payload.get("progress")
+                stage = progress.get("stage") if isinstance(progress, dict) else None
+                if stage in ("extracted", "validated") and not metadata.get(f"{stage}_at"):
+                    metadata[f"{stage}_at"] = event.created_at
+        dataset_import = replace(dataset_import, metadata=metadata)
     response = _build_dataset_import_detail(
         dataset_import=dataset_import,
         dataset_version=None,

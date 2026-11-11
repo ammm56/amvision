@@ -1,24 +1,26 @@
 <template>
   <section class="resource-section dataset-record-files">
-    <h2>
+    <details open>
+    <summary><span><Folder :size="17" />
       {{
         cleaned
           ? l('历史文件清单', 'Historical files')
           : l('导出文件结构', 'Export file structure')
       }}
-    </h2>
+      <template v-if="format"> · {{ format }}</template>
+    </span><ChevronRight class="files-disclosure" :size="16" /></summary>
     <InlineError v-if="error" :message="error" /><Button
       v-if="error"
       @click="load(failedPath)"
       >{{ l('重试', 'Retry') }}</Button
     >
-    <ResourceTable class="dataset-table" :label="l('文件清单', 'Files')">
+    <ResourceTable embedded class="dataset-table" :label="l('文件清单', 'Files')">
       <thead>
         <tr>
-          <th width="48%">{{ l('文件名', 'Name') }}</th>
+          <th width="34%">{{ l('文件名', 'Name') }}</th>
           <th>{{ l('类型', 'Type') }}</th>
           <th>{{ l('大小', 'Size') }}</th>
-          <th>{{ l('状态', 'Status') }}</th>
+          <th>{{ l('状态', 'Status') }}</th><th>{{ l('用途','Purpose') }}</th>
         </tr>
       </thead>
       <tbody>
@@ -75,9 +77,9 @@
                   cleaned ? l('已清理', 'Cleaned') : l('可用', 'Available')
                 }}</span
               >
-            </td></template
+            </td><td :title="filePurpose(row.file.path)">{{ filePurpose(row.file.path) }}</td></template
           >
-          <td v-else colspan="4">
+          <td v-else colspan="5">
             <Button
               size="sm"
               :loading="pending.has(row.folder)"
@@ -97,6 +99,7 @@
     <small v-if="cleaned && truncated">{{
       l('仅保留前 100 个顶层条目', 'First 100 top-level entries retained')
     }}</small>
+    </details>
   </section>
 </template>
 <script setup lang="ts">
@@ -117,6 +120,7 @@ import { datasetError } from '../dataset-workspace'
 import type { DatasetFile } from '../services/dataset-workspace.service'
 const props = defineProps<{
   id: string
+  format?: string
   cleaned: boolean
   history: DatasetFile[]
   truncated: boolean
@@ -179,6 +183,15 @@ async function load(folder: string) {
     pending.value.delete(folder)
   }
 }
+function filePurpose(path: string) {
+  const root = path.split('/')[0]
+  if (root === 'images' || root === 'JPEGImages') return l('样本图像','Sample images')
+  if (['annotations','labels','Annotations','SegmentationClass','SegmentationObject'].includes(root)) return l('标注','Annotations')
+  if (root === 'ImageSets') return l('数据划分','Dataset splits')
+  if (root === 'manifest.json' || root === 'samples.json') return l('数据集清单','Dataset manifest')
+  if (root === 'assets') return l('样本文件','Sample files')
+  return '—'
+}
 function toggle(path: string) {
   if (expanded.value.has(path)) expanded.value.delete(path)
   else {
@@ -209,6 +222,9 @@ onBeforeUnmount(() => controller.abort())
 button.tree-entry {
   cursor: pointer;
   padding: 4px;
+  border: 0;
+  background: transparent;
+  font: inherit;
   border-radius: 4px;
 }
 button.tree-entry:hover {
@@ -217,10 +233,15 @@ button.tree-entry:hover {
 .turned {
   transform: rotate(90deg);
 }
+.dataset-record-files summary, .dataset-record-files summary span { display: flex; align-items: center; gap: 9px; }
+.dataset-record-files summary { justify-content: space-between; cursor: pointer; font-weight: 600; list-style: none; }
+.dataset-record-files details[open] summary { margin-bottom: 14px; }
+.dataset-record-files details[open] .files-disclosure { transform: rotate(90deg); }
 .file-state svg {
   color: var(--am-success-icon);
 }
 .file-state.cleaned svg {
   color: var(--am-warning-icon);
 }
+.dataset-table td > .tree-entry, .dataset-table td > .file-state { display: inline-flex; }
 </style>

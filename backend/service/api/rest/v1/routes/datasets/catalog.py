@@ -120,12 +120,13 @@ def list_versions(
     q: str = Query("", max_length=200),
     task_type: str = "",
     state: VersionState = "",
+    include_references: bool = False,
     offset: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
 ) -> dict:
     """分页查询版本，不沿用全量聚合接口。"""
     check_project(principal, project_id)
-    return list_version_availability(
+    page = list_version_availability(
         uow.dataset_catalog,
         storage,
         project_id,
@@ -136,6 +137,27 @@ def list_versions(
         offset=offset,
         limit=limit,
     )
+    if include_references:
+        references = uow.dataset_catalog.version_task_counts(
+            project_id, [row["dataset_version_id"] for row in page["items"]]
+        )
+        for row in page["items"]:
+            row["task_references"] = references[row["dataset_version_id"]]
+    return page
+
+
+@dataset_catalog_router.get("/{dataset_id}/versions/{version_id}/task-references")
+def list_version_task_references(
+    dataset_id: str,
+    version_id: str,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("datasets:read", "tasks:read"))],
+    uow: Uow,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+) -> dict:
+    """校验版本归属与任务读取权限后返回版本引用明细。"""
+    version = checked_version(principal, uow, dataset_id, version_id)
+    return uow.dataset_catalog.version_task_references(version["project_id"], version_id, offset, limit)
 
 
 @dataset_catalog_router.get("/catalog/{dataset_id}")
@@ -265,11 +287,12 @@ def list_workspace_jobs(
     uow: Uow,
     offset: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
+    operation: Literal["quality"] | None = None,
 ) -> dict:
     """工作区操作历史分页。"""
     identity = checked_version(principal, uow, dataset_id, version_id)
     return uow.dataset_catalog.jobs(
-        identity["project_id"], version_id, offset=offset, limit=limit
+        identity["project_id"], version_id, offset=offset, limit=limit, operation=operation or ""
     )
 
 
@@ -301,6 +324,7 @@ def get_workspace_job(
         "created_at": task.created_at,
         "finished_at": task.finished_at,
         "result": task.result,
+        "content_revision": task.task_spec.get("expected_content_revision"),
         "progress": task.progress,
         "error_message": task.error_message,
     }

@@ -72,6 +72,42 @@ def test_workspace_import_browse_edit_and_preserve_after_record_deletion(tmp_pat
             workspace = client.get(base + "/workspace", headers=read).json()
             assert workspace["sample_count"] == item["latest_version"]["sample_count"]
             assert workspace["categories"][0]["name"]
+            assert sum(workspace["split_object_counts"].values()) == workspace["object_count"]
+            # 仅训练、评估任务计入引用；其他项目及其他版本不得泄露。
+            from backend.service.infrastructure.persistence.task_orm import TaskRecordEntity
+
+            with factory.create_session() as session:
+                for task_id, project, kind, linked_id in (
+                    ("ref-train", "project-1", "yolo-training", version_id),
+                    ("ref-eval", "project-1", "yolo-evaluation", version_id),
+                    ("ref-other", "project-2", "yolo-training", version_id),
+                    ("ref-version", "project-1", "yolo-training", "other-version"),
+                    ("ref-export", "project-1", "dataset-export", version_id),
+                ):
+                    session.add(TaskRecordEntity(
+                        task_id=task_id, project_id=project, task_kind=kind, state="succeeded",
+                        created_at="2026-11-10T01:00:00+00:00",
+                        metadata_json={"dataset_version_id": linked_id} if kind.endswith("-evaluation") else {},
+                        task_spec_json={} if kind.endswith("-evaluation") else {"dataset_version_id": linked_id},
+                    ))
+                session.commit()
+            version_page = client.get("/api/v1/datasets/catalog/versions", headers=read, params={
+                "project_id":"project-1", "dataset_id":"dataset-test", "include_references":"true",
+            }).json()
+            assert version_page["items"][0]["task_references"] == {"training":1, "evaluation":1}
+            dataset_only = build_bearer_headers(issue_test_user_token(
+                factory, username="version-dataset-reader", scopes=("datasets:read",), project_ids=("project-1",),
+            ))
+            assert client.get(base + "/task-references", headers=dataset_only).status_code == 403
+            task_reader = build_bearer_headers(issue_test_user_token(
+                factory, username="version-reference-reader",
+                scopes=("datasets:read","tasks:read"), project_ids=("project-1",),
+            ))
+            reference_page = client.get(base + "/task-references", headers=task_reader, params={"limit":1}).json()
+            assert reference_page["has_more"] and reference_page["items"][0]["task_id"] == "ref-eval"
+            next_page = client.get(base + "/task-references", headers=task_reader, params={"offset":1}).json()
+            assert not next_page["has_more"] and [row["task_id"] for row in next_page["items"]] == ["ref-train"]
+
             samples = client.get(
                 base + "/samples", headers=read, params={"limit": 1, "category_id": 0}
             ).json()

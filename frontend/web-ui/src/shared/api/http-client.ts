@@ -105,6 +105,39 @@ async function handleResponse<T>(response: Response, responseType: ResponseType)
   return (await response.json()) as T
 }
 
+/** multipart 上传需要浏览器提供字节进度，同时沿用普通接口的身份与错误处理。 */
+export async function uploadForm<T>(
+  path: string, form: FormData, signal: AbortSignal,
+  onProgress: (fraction: number) => void, retryAuth = true,
+): Promise<T> {
+  signal.throwIfAborted()
+  const response = await new Promise<Response>((resolve, reject) => {
+    const request = new XMLHttpRequest()
+    request.open('POST', buildUrl(path))
+    for (const [key, value] of Object.entries(buildBearerAuthHeader(hooks.getAccessToken()))) {
+      request.setRequestHeader(key, value)
+    }
+    request.upload.onprogress = event => {
+      if (event.lengthComputable && event.total) onProgress(event.loaded / event.total)
+    }
+    const abort = () => request.abort()
+    signal.addEventListener('abort', abort, { once: true })
+    request.onloadend = () => signal.removeEventListener('abort', abort)
+    request.onabort = () => reject(new DOMException('Aborted', 'AbortError'))
+    request.onerror = () => reject(new TypeError(translate('errors.requestFailed')))
+    request.onload = () => resolve(new Response(request.responseText, {
+      status: request.status, statusText: request.statusText,
+      headers: { 'x-request-id': request.getResponseHeader('x-request-id') || '' },
+    }))
+    request.send(form)
+  })
+  if (response.status === 401 && retryAuth) {
+    if (await hooks.refreshAccessToken()) return uploadForm<T>(path, form, signal, onProgress, false)
+    hooks.onUnauthorized()
+  }
+  return handleResponse<T>(response, 'json')
+}
+
 export async function apiRequest<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
   const {
     body,

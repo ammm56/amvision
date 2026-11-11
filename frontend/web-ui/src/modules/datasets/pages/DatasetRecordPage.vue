@@ -1,29 +1,29 @@
 <template>
   <section
     class="dataset-workspace dataset-record"
-    :class="{ 'dataset-record--export': !importing }"
+    :class="{ 'dataset-record--export': !importing, 'dataset-record--import': importing }"
   >
     <div class="dataset-heading">
       <div class="dataset-actions">
         <Button @click="back"
           ><ArrowLeft :size="16" />{{
-            text(importing ? 'imports' : 'exports')
+            text('back')
           }}</Button
         >
         <h1 class="dataset-title" :title="name">
-          <template v-if="name">{{ name }} · </template>
+          <template v-if="name && importing">{{ name }} · </template>
           {{
             label(
-              importing ? '导入详情' : exportDetail?.format_id || '导出详情',
+              importing ? '导入详情' : '导出记录',
               importing
                 ? 'Import details'
-                : exportDetail?.format_id || 'Export details',
+                : 'Export record',
             )
           }}
         </h1>
       </div>
       <div class="dataset-actions">
-        <Button :loading="loading" @click="load"
+        <Button :loading="loading" @click="load()"
           ><RefreshCw :size="16" />{{ text('refresh') }}</Button
         ><ResourceMenu
           v-if="detail && canWrite && actions.length"
@@ -37,6 +37,7 @@
     <div v-if="!detail && loading" role="status">{{ text('loading') }}</div>
     <template v-if="detail">
       <div class="dataset-record-heading">
+        <strong v-if="exportDetail" class="dataset-record-subject">{{ name }} · {{ datasetFormatLabel(exportDetail.format_id) }}</strong>
         <StatusBadge
           v-if="cleaned"
           tone="neutral"
@@ -66,24 +67,6 @@
             >{{ label('重新创建导出', 'Create another export') }}</Button
           >
           <Button
-            v-if="exportDetail?.status === 'completed' && trainingSupported"
-            :disabled="cleaned"
-            @click="startTraining"
-            >{{
-              label('用此导出创建训练', 'Create training from export')
-            }}</Button
-          >
-          <Button
-            v-if="detail.task_id && session.hasScopes(['tasks:read'])"
-            @click="router.push(`/tasks/${detail.task_id}`)"
-            ><Activity :size="16" />{{
-              label('任务详情', 'Task details')
-            }}</Button
-          ><Button v-if="!importing && workspace" @click="viewVersion"
-            ><FolderOpen :size="16" />{{
-              label('查看版本', 'View version')
-            }}</Button
-          ><Button
             v-if="exportDetail?.status === 'completed'"
             :disabled="cleaned"
             :variant="cleaned ? 'secondary' : 'primary'"
@@ -93,16 +76,27 @@
               label('下载 ZIP', 'Download ZIP')
             }}</Button
           >
+          <Button
+            v-if="exportDetail?.status === 'completed' && trainingSupported"
+            :disabled="cleaned"
+            @click="startTraining"
+            >{{
+              label('用此导出创建训练', 'Create training from export')
+            }}</Button
+          >
+          <Button v-if="!importing && workspace" @click="viewVersion"
+            ><FolderOpen :size="16" />{{
+              label('查看版本', 'View version')
+            }}</Button
+          >
+
         </div>
       </div>
-      <p v-if="cleaned" class="record-warning" role="status">
-        <Info :size="17" />{{
-          label(
-            '导出文件已清理，记录仍保留。',
-            'Export files were cleaned. The record is retained.',
-          )
-        }}
-      </p>
+      <div v-if="importDetail" class="record-file-meta">
+        <span>{{ formatBytes(importDetail.package_size) }}</span><span>{{ label('数据格式','Format') }} {{ importFormatName }}</span>
+        <span>{{ label('提交时间', 'Submitted') }} {{ datasetDate(detail.created_at) }}</span>
+        <span v-if="completedAt">{{ label('完成时间', 'Completed') }} {{ datasetDate(completedAt) }}</span>
+      </div>
       <InlineError
         v-if="detail.error_message && !importDetail"
         :message="detail.error_message"
@@ -139,56 +133,54 @@
               :size="15"
             /><template v-else>{{ index + 1 }}</template></span
           >
-          {{ step.label }}
+          <div><strong>{{ index + 1 }}. {{ step.label }}</strong>
+            <time v-if="step.time" :datetime="step.time" :title="datasetDate(step.time)">{{ formatSystemDateTime(step.time, 'step') }}</time>
+            <small v-else>—</small>
+            <small>{{ step.complete ? step.result : failedStage === index ? label('失败','Failed') : label('待处理','Pending') }}</small>
+          </div>
         </li>
       </ol>
       <ResourceCleanupPanel
         v-if="canWrite"
         :project-id="detail.project_id"
+        :resource-id="identity"
         @settled="load"
       />
       <div v-if="exportDetail" class="export-facts">
         <div v-for="item in exportFacts" :key="item.label">
-          <small>{{ item.label }}</small
-          ><strong :title="item.value">{{ item.value }}</strong>
+          <small>{{ item.label }}</small>
+          <div class="fact-value"><component :is="item.icon" :size="17" /><strong :title="item.value">{{ item.value }}</strong></div>
+          <small v-if="item.note">{{ item.note }}</small>
         </div>
       </div>
+      <p v-if="cleaned" class="record-warning" role="status">
+        <TriangleAlert :size="17" />{{
+          label(
+            '导出文件已清理，记录仍保留。',
+            'Export files were cleaned. The record is retained.',
+          )
+        }}
+      </p>
       <div
         v-if="importDetail"
         class="dataset-record-grid dataset-record-overview"
       >
         <section class="resource-section">
-          <h2>{{ text('source') }}</h2>
+          <h2>{{ label('来源信息','Source information') }}</h2>
           <dl class="dataset-details">
             <dt>{{ text('fileName') }}</dt>
             <dd>{{ sourceFileName }}</dd>
-            <dt>{{ text('task') }}</dt>
-            <dd>{{ text(detail.task_type) }}</dd>
-            <dt>{{ text('created') }}</dt>
-            <dd>{{ datasetDate(detail.created_at) }}</dd>
-            <dt>{{ label('完成时间', 'Completed') }}</dt>
-            <dd>{{ datasetDate(completedAt) }}</dd>
-            <template v-if="!importing"
-              ><dt>{{ text('samples') }}</dt>
-              <dd>{{ number(sampleCount) }}</dd>
-              <dt>{{ text('classes') }}</dt>
-              <dd>{{ number(classCount) }}</dd></template
-            >
-            <dt v-if="importing">{{ label('数据格式', 'Data format') }}</dt>
-            <dd v-if="importing">{{ format }}</dd>
-            <dt v-if="importDetail">
-              {{ label('来源包大小', 'Source package size') }}
-            </dt>
-            <dd v-if="importDetail">
-              {{ formatBytes(importDetail.package_size) }}
-            </dd>
+            <dt>{{ label('文件大小','File size') }}</dt><dd>{{ formatBytes(importDetail.package_size) }}</dd>
+            <dt>{{ label('数据格式','Format') }}</dt><dd>{{ importFormatName }}</dd>
+            <dt>{{ label('提交时间','Submitted') }}</dt><dd>{{ datasetDate(detail.created_at) }}</dd>
+            <dt>{{ label('完成时间','Completed') }}</dt><dd>{{ datasetDate(completedAt) }}</dd>
           </dl>
         </section>
         <section v-if="importDetail" class="resource-section">
           <div class="dataset-heading">
-            <h2>{{ label('检查结果', 'Check result') }}</h2>
+            <h2>{{ importDetail.status === 'failed' ? label('导入失败', 'Import failed') : label('结构检查结果', 'Validation results') }}</h2>
             <StatusBadge
-              v-if="importDetail.validation_report.status"
+              v-if="importDetail.validation_report.status && importDetail.validation_report.status !== 'ok' && importDetail.status !== 'failed'"
               :label="
                 importDetail.validation_report.status === 'ok'
                   ? label('检查通过', 'Checks passed')
@@ -201,24 +193,25 @@
               "
             />
           </div>
+          <div v-if="importDetail.status === 'failed'" class="record-failure" role="alert"><TriangleAlert :size="21" />
+            <div><strong>{{ importSteps[failedStage]?.label || label('导入失败','Import failed') }}</strong>
+            <p>{{ detail.error_message || issues[0]?.message || label('查看下方错误信息。','See the error details below.') }}</p></div>
+          </div>
           <ResourceTable
             v-if="importDetail.validation_report.status === 'ok'"
-            class="dataset-table"
+            class="dataset-table validation-table"
             :label="label('校验摘要', 'Validation summary')"
             ><thead>
               <tr>
                 <th>{{ label('检查项', 'Check') }}</th>
-                <th>{{ text('status') }}</th>
                 <th>{{ label('结果', 'Result') }}</th>
+                <th>{{ label('详情', 'Details') }}</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="check in validationRows" :key="check.label">
-                <td>{{ check.label }}</td>
-                <td>
-                  <Check :size="15" class="passed-check" />
-                  {{ label('通过', 'Passed') }}
-                </td>
+                <td><span class="check-item"><CircleCheck class="status-disc" :size="17" />{{ check.label }}</span></td>
+                <td><span class="mapping-pass"><CircleCheck class="status-disc" :size="17" />{{ label('通过', 'Passed') }}</span></td>
                 <td>{{ check.value }}</td>
               </tr>
             </tbody></ResourceTable
@@ -230,7 +223,7 @@
             {{ number(importDetail.validation_report.removed_count) }}
           </p>
           <ResourceTable
-            v-if="issues.length"
+            v-if="issues.length && (importDetail.status !== 'failed' || issues.length > 1 || (detail.error_message && detail.error_message !== issues[0]?.message))"
             class="dataset-table"
             :label="label('问题', 'Issues')"
             ><thead>
@@ -249,7 +242,7 @@
             </tbody></ResourceTable
           >
           <InlineError
-            v-if="detail.error_message"
+            v-if="importDetail.status !== 'failed' && detail.error_message && !issues.some(issue => issue.message === detail?.error_message)"
             :message="detail.error_message"
           />
           <p
@@ -285,7 +278,7 @@
       </div>
       <div class="dataset-record-grid dataset-record-tables">
         <section class="resource-section">
-          <h2>{{ label('类别映射', 'Class mapping') }}</h2>
+          <h2>{{ label('类别映射', 'Class mapping') }}<small v-if="classMappings.length"> ({{ classMappings.length }})</small></h2>
           <ResourceTable
             v-if="classMappings.length"
             class="dataset-table"
@@ -293,10 +286,11 @@
             ><thead>
               <tr>
                 <th>
-                  {{ label('类别 ID', 'Class ID') }}
+                  {{ label('类别名称', 'Class name') }}
                 </th>
-                <th>{{ label('类别名称', 'Class name') }}</th>
+                <th v-if="exportDetail">{{ label('目标类别 ID', 'Target class ID') }}</th>
                 <th>{{ label('对象数', 'Objects') }}</th>
+                <th v-if="importDetail">{{ label('映射状态', 'Mapping status') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -304,10 +298,12 @@
                 v-for="mapping in classMappings"
                 :key="`${mapping.source}:${mapping.target}`"
               >
-                <td :title="mapping.source">{{ mapping.source }}</td>
                 <td :title="mapping.target">{{ mapping.target }}</td>
+                <td v-if="exportDetail" :title="mapping.source">{{ mapping.source }}</td>
                 <td>{{ number(objectCounts[mapping.source]) }}</td>
+                <td v-if="importDetail"><span v-if="importDetail.validation_report.status === 'ok'" class="mapping-pass"><CircleCheck class="status-disc" :size="15" />{{ label('映射完成','Mapped') }}</span><template v-else>—</template></td>
               </tr>
+              <tr v-if="importDetail && detail.metadata.object_count != null"><th scope="row">{{ label('合计','Total') }}</th><td>{{ number(detail.metadata.object_count) }}</td><td>—</td></tr>
             </tbody></ResourceTable
           ><span v-else>—</span>
         </section>
@@ -316,7 +312,7 @@
           <ResourceTable class="dataset-table" :label="text('splits')"
             ><thead>
               <tr>
-                <th>Split</th>
+                <th>{{ label('划分','Split') }}</th>
                 <th class="dataset-number-cell">{{ text('samples') }}</th>
                 <th class="dataset-number-cell">
                   {{ label('对象数', 'Objects') }}
@@ -349,7 +345,7 @@
                 </td>
               </tr>
               <tr v-if="sampleCount != null && Object.keys(splitCounts).length">
-                <th>{{ label('总计', 'Total') }}</th>
+                <th scope="row">{{ label('总计', 'Total') }}</th>
                 <td class="dataset-number-cell">{{ number(sampleCount) }}</td>
                 <td class="dataset-number-cell">
                   {{ number(detail.metadata.object_count) }}
@@ -366,6 +362,7 @@
         v-if="exportDetail?.status === 'completed'"
         :key="identity + ':' + cleaned"
         :id="identity"
+        :format="datasetFormatLabel(exportDetail.format_id)"
         :cleaned="cleaned"
         :history="historicalFiles"
         :truncated="!!detail.metadata.file_list_truncated"
@@ -373,9 +370,10 @@
         @preview="openFile"
       />
       <InlineError v-if="fileError" :message="fileError" />
-      <section
+      <section class="resource-section">
+      <div
         v-if="importDetail?.status === 'completed' && detail.dataset_version_id"
-        class="resource-section dataset-record-result"
+        class="dataset-record-result"
       >
         <div>
           <h2>
@@ -385,16 +383,16 @@
                 : label('生成的数据集版本', 'Created dataset version')
             }}
           </h2>
-          <span
-            >{{ versionLabel }} · {{ number(sampleCount) }}
-            {{ text('samples') }} · {{ number(classCount) }}
-            {{ text('classes') }}</span
-          >
+          <ResourceTable embedded class="dataset-table" :label="label('版本摘要','Version summary')">
+            <thead><tr><th>{{ label('版本号','Version') }}</th><th>{{ label('样本数量','Samples') }}</th><th>{{ label('对象数量','Objects') }}</th><th>{{ label('类别数量','Classes') }}</th><th>{{ label('数据格式','Format') }}</th><th>{{ label('生成时间','Created') }}</th></tr></thead>
+            <tbody><tr><td><span class="version-number"><Database :size="16" />{{ versionLabel }}</span></td><td>{{ number(sampleCount) }}</td><td>{{ number(detail.metadata.object_count) }}</td><td>{{ number(classCount) }}</td><td>{{ importFormatName }}</td><td :title="datasetDate(completedAt)">{{ datasetDate(completedAt) }}</td></tr></tbody>
+          </ResourceTable>
         </div>
         <div class="dataset-actions">
           <Button v-if="canWrite && workspace" @click="newExport"
             ><Download :size="16" />{{ text('export') }}</Button
-          ><Button v-if="workspace" variant="primary" @click="viewVersion"
+          >
+          <Button v-if="workspace" variant="primary" @click="viewVersion"
             ><FolderOpen :size="16" />{{
               label('查看版本', 'View version')
             }}</Button
@@ -402,8 +400,7 @@
             label('版本暂不可用', 'Version unavailable')
           }}</span>
         </div>
-      </section>
-      <section class="resource-section">
+      </div>
         <details>
           <summary>
             {{ label('原始参数与报告', 'Parameters and report') }}
@@ -423,8 +420,9 @@
       </p>
       <pre class="dataset-json">{{ filePreview?.content }}</pre>
     </SideDrawer>
+    <DatasetRecordConfirm v-if="confirmAction === 'cleanup' || confirmAction === 'delete'" :importing="importing" :clean="confirmAction === 'cleanup'" :name="name" :version="versionLabel" :file="importing ? sourceFileName : exportDetail?.package_file_name" :busy="busy" @confirm="performAction" @cancel="confirmAction = ''" />
     <ConfirmDialog
-      v-if="confirmAction"
+      v-else-if="confirmAction"
       :title="confirmTitle"
       :message="confirmMessage"
       :confirm-label="confirmTitle"
@@ -438,11 +436,11 @@
 </template>
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import {
-  Activity,
-  Info,
+  Database, Scan, Layers, Clock, FileArchive, CircleCheck, TriangleAlert,
   Check,
   ArrowLeft,
   Download,
@@ -456,6 +454,7 @@ import { useFeedbackStore } from '@/app/stores/feedback.store'
 import Button from '@/shared/ui/components/Button.vue'
 import ResourceMenu from '@/shared/ui/components/ResourceMenu.vue'
 import ResourceCleanupPanel from '@/shared/ui/components/ResourceCleanupPanel.vue'
+import DatasetRecordConfirm from '../components/DatasetRecordConfirm.vue'
 import SideDrawer from '@/shared/ui/components/SideDrawer.vue'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import ResourceTable from '@/shared/ui/data-display/ResourceTable.vue'
@@ -482,7 +481,7 @@ import {
   type DatasetWorkspace,
   type DatasetFile,
 } from '../services/dataset-workspace.service'
-import { datasetDate, datasetError, useDatasetText } from '../dataset-workspace'
+import { datasetDate, datasetError, useDatasetText, datasetFormatLabel } from '../dataset-workspace'
 import DatasetExportFiles from '../components/DatasetExportFiles.vue'
 import DatasetCounts from '../components/DatasetCounts.vue'
 import { useDatasetCounts } from '../dataset-counts'
@@ -529,6 +528,7 @@ const canWrite = computed(() => session.hasScopes(['datasets:write'])),
 const format = computed(
   () => importDetail.value?.format_type || exportDetail.value?.format_id || '—',
 )
+const importFormatName = computed(() => format.value === 'imagenet' ? 'ImageNet' : format.value.toUpperCase())
 const number = (value: unknown) =>
   typeof value === 'number' && Number.isFinite(value)
     ? value.toLocaleString()
@@ -598,52 +598,30 @@ function startTraining() {
 const exportFacts = computed(() => {
   const e = exportDetail.value
   if (!e) return []
+  const size = e.package_size ?? (e.metadata.historical_package_size as number | undefined)
   return [
-    { label: label('来源版本', 'Source version'), value: versionLabel.value },
-    { label: text('format'), value: e.format_id },
-    { label: text('splits'), value: e.split_names.join(' / ') || '—' },
-    { label: text('created'), value: datasetDate(e.created_at) },
-    {
-      label: label('完成时间', 'Completed'),
-      value: datasetDate(completedAt.value),
-    },
-    {
-      label: text('file'),
-      value:
-        e.package_file_name ||
-        String(
-          e.metadata.historical_package_name ||
-            e.metadata.package_name ||
-            (cleaned.value
-              ? text('cleaned')
-              : e.status === 'completed'
-                ? text('packageOnDownload')
-                : '—'),
-        ),
-    },
-    {
-      label: label('ZIP 大小', 'ZIP size'),
-      value: formatBytes(
-        e.package_size ??
-          (e.metadata.historical_package_size as number | undefined),
-      ),
-    },
+    { icon: Database, label: label('来源版本','Source version'), value: [name.value, versionLabel.value].filter(Boolean).join(' ') },
+    { icon: Scan, label: label('目标格式','Target format'), value: datasetFormatLabel(e.format_id) },
+    { icon: Layers, label: label('类别与划分','Classes and splits'), value: [e.category_names.length + ' ' + text('classes'), ...e.split_names.map(key => key + ' ' + (splitCounts.value[key] ?? '—'))].join(' · ') },
+    { icon: Clock, label: text('created'), value: datasetDate(e.created_at) },
+    { icon: Clock, label: label('完成时间','Completed'), value: datasetDate(completedAt.value) },
+    { icon: FileArchive, label: label('导出产物','Export package'), value: e.package_file_name || String(e.metadata.historical_package_name || e.metadata.package_name || (cleaned.value ? text('cleaned') : e.status === 'completed' ? text('packageOnDownload') : '—')), note: size != null ? formatBytes(size) : '' },
   ]
 })
 const validationRows = computed(() => [
-  { label: text('samples'), value: number(sampleCount.value) },
+  { label: label('样本文件', 'Sample files'), value: label(`已导入 ${number(sampleCount.value)} 个样本`, `${number(sampleCount.value)} samples imported`) },
   ...(detail.value?.metadata.object_count != null
     ? [
         {
-          label: label('对象', 'Objects'),
-          value: number(detail.value.metadata.object_count),
+          label: label('标注校验', 'Annotation validation'),
+          value: label(`${number(detail.value.metadata.object_count)} 个标注对象`, `${number(detail.value.metadata.object_count)} annotated objects`),
         },
       ]
     : []),
-  { label: text('classes'), value: number(classCount.value) },
+  { label: label('类别映射','Class mapping'), value: label(`${number(classCount.value)} 个类别`, `${number(classCount.value)} classes`) },
   {
     label: text('splits'),
-    value: Object.keys(splitCounts.value).join(' / ') || '—',
+    value: Object.entries(splitCounts.value).map(([split, count]) => split + ' ' + number(count)).join(' / ') || '—',
   },
 ])
 const failedStage = computed(() =>
@@ -656,15 +634,21 @@ const importSteps = computed(() => {
   if (!entry) return []
   return [
     {
-      label: label('上传文件', 'Upload file'),
+      label: label('上传数据', 'Upload data'),
+      result: label('上传完成', 'Uploaded'),
+      time: String(entry.metadata.uploaded_at || ''),
       complete: entry.upload_state === 'uploaded',
     },
     {
-      label: label('识别格式', 'Identify format'),
-      complete: !!entry.detected_profile.format_type,
+      label: label('数据结构检查', 'Check structure'),
+      result: label('解包完成', 'Archive extracted'),
+      time: String(entry.metadata.extracted_at || ''),
+      complete: !!entry.metadata.extracted_at || !!entry.detected_profile.format_type,
     },
     {
-      label: label('检查数据', 'Validate data'),
+      label: label('标注校验', 'Validate annotations'),
+      result: label('校验通过', 'Validated'),
+      time: String(entry.metadata.validated_at || ''),
       complete: entry.validation_report.status === 'ok',
     },
     {
@@ -672,6 +656,8 @@ const importSteps = computed(() => {
         entry.validation_report.added_count != null
           ? label('更新版本', 'Update version')
           : label('生成版本', 'Create version'),
+      result: entry.validation_report.added_count != null ? label('版本已更新','Version updated') : label('版本已生成','Version created'),
+      time: completedAt.value,
       complete: entry.status === 'completed' && !!entry.dataset_version_id,
     },
   ]
@@ -832,17 +818,17 @@ function formatBytes(value?: number | null) {
     ? `${(value / 1048576).toFixed(1)} MB`
     : `${(value / 1024).toFixed(1)} KB`
 }
-async function load() {
+async function load(background = false) {
   clearTimeout(timer)
   const request = ++generation
-  loading.value = true
-  error.value = ''
+  loading.value = !background || !detail.value
   let retryable = true
   try {
     const result = await (importing.value
       ? getDatasetImportDetail(identity.value)
       : getDatasetExportDetail(identity.value))
     if (!active || request !== generation) return
+    error.value = ''
     detail.value = result
     // 名称与来源版本的读取失败不应阻止历史记录及导出文件查看。
     try {
@@ -872,7 +858,7 @@ async function load() {
   } finally {
     if (active && request === generation) {
       loading.value = false
-      if (retryable && !terminal.value) timer = setTimeout(load, 2500)
+      if (retryable && !terminal.value) timer = setTimeout(() => void load(true), 2500)
     }
   }
 }
@@ -980,6 +966,8 @@ onBeforeUnmount(() => {
 })
 </script>
 <style scoped>
+.record-failure { display: flex; gap: 12px; padding: 16px; color: var(--am-danger-text); background: var(--am-danger-surface); border-radius: var(--am-radius-sm); overflow-wrap: anywhere; }
+.record-failure p { color: var(--am-text); margin: 6px 0 0; }
 .dataset-record-heading {
   display: flex;
   align-items: center;
@@ -1033,6 +1021,19 @@ onBeforeUnmount(() => {
   color: var(--am-text-muted);
   font-size: 14px;
 }
+.dataset-record-result > div:first-child { flex: 1 1 530px; min-width: 0; }
+.dataset-record-result th:last-child { width: 26%; }
+.record-file-meta { display: flex; flex-wrap: wrap; gap: 6px 18px; color: var(--am-text-muted); font-size: 13px; margin-top: -8px; }
+.dataset-record .dataset-record-grid { grid-template-columns: minmax(0, 0.88fr) minmax(0, 1.12fr); gap: 14px; }
+.dataset-record { gap: 14px; }
+.dataset-record .resource-section { padding: clamp(16px, 1.5vw, 24px); gap: 12px; }
+.dataset-record .resource-section > .resource-table { margin-inline: 0; }
+.dataset-record :deep(.resource-table thead th) { background: var(--am-page); }
+.dataset-record .resource-section > .resource-table { border: 0; }
+.dataset-record .resource-section h2 { font-size: 16px; }
+.dataset-record h2 small { font-weight: 400; color: var(--am-text-muted); }
+.dataset-record :deep(.dataset-table td), .dataset-record :deep(.dataset-table th) { padding: 8px 10px; }
+.dataset-record .dataset-record-overview .dataset-details { row-gap: 11px; }
 .dataset-file-name > span {
   min-width: 0;
   overflow: hidden;
@@ -1064,7 +1065,7 @@ onBeforeUnmount(() => {
   font-size: 13px;
 }
 @media (max-width: 850px) {
-  .dataset-record-grid {
+  .dataset-record .dataset-record-grid {
     grid-template-columns: 1fr;
   }
   .dataset-record-heading > .dataset-actions {
@@ -1118,5 +1119,54 @@ onBeforeUnmount(() => {
 .dataset-record .dataset-steps li.is-failed span {
   background: var(--am-danger, #dc2626);
   color: white;
+}
+.dataset-record .dataset-steps li > div { display: grid; gap: 5px; }
+.dataset-record .dataset-steps li strong { font-size: 14px; color: var(--am-text); }
+.dataset-record .dataset-steps li small, .dataset-record .dataset-steps li time { color: var(--am-text-muted); font-size: var(--am-type-caption); line-height: 1.45; }
+.dataset-record .dataset-steps li time { font-variant-numeric: tabular-nums; }
+.dataset-record .export-facts { grid-template-columns: minmax(0,1.2fr) minmax(0,1fr) minmax(0,1.25fr) repeat(2,minmax(0,1fr)) minmax(0,1.4fr); }
+.export-facts .fact-value { display: flex; align-items: baseline; gap: 8px; margin-block-start: 6px; }
+.fact-value svg { flex: none; align-self: flex-start; margin-top: 2px; }
+.export-facts .fact-value strong { margin: 0; }
+.mapping-pass { display: inline-flex; align-items: center; gap: 5px; color: var(--am-success-text); }
+.mapping-pass svg { fill: var(--am-brand-primary); stroke: white; }
+.record-warning { margin: 0; }
+@media(max-width:1099px) { .dataset-record .export-facts { grid-template-columns: repeat(3,minmax(0,1fr)); } }
+.dataset-record td > .mapping-pass { display: inline-flex; }
+.dataset-record--import { gap: 12px; }
+.dataset-record--import .dataset-record-heading { column-gap: 16px; }
+.dataset-record--import .dataset-record-heading :deep(.task-state-icon) { font-size: 19px; font-weight: 600; }
+.dataset-record--import .dataset-record-heading :deep(.task-state-icon--success) { color: var(--am-success-text); }
+.dataset-record--import .dataset-record-heading :deep(.task-state-icon__symbol) { width: 32px; height: 32px; flex-basis: 32px; }
+.dataset-record--import .dataset-record-subject { padding-inline-start: 16px; border-inline-start: 1px solid var(--am-border); }
+.dataset-record--import .record-file-meta { margin: -5px 0 2px 48px; gap: 6px 0; font-size: 14px; }
+.record-file-meta span + span { padding-inline-start: 14px; margin-inline-start: 14px; border-inline-start: 1px solid var(--am-border); }
+.dataset-record--import .dataset-steps { align-items: flex-start; padding: 16px; }
+.dataset-record--import .dataset-steps li { align-items: flex-start; }
+.dataset-record--import .dataset-steps li::after { margin-top: 18px; }
+.dataset-record--import .dataset-steps li > span { width: 36px; height: 36px; flex: 0 0 36px; }
+.dataset-record--import .dataset-steps li > span svg { width: 22px; height: 22px; }
+.dataset-record--import .dataset-record-grid { grid-template-columns: minmax(0, .89fr) minmax(0, 1.11fr); gap: 12px; }
+.dataset-record--import .resource-section { padding: clamp(14px,1.15vw,20px); }
+.dataset-record--import .dataset-record-overview .dataset-details { grid-template-columns: minmax(110px,32%) minmax(0,1fr); gap: 0; }
+.dataset-record--import .dataset-details > * { padding: 9px 6px; border-bottom: 1px solid var(--am-border); }
+.dataset-record--import .dataset-table .check-item, .dataset-record--import .dataset-table .version-number { display: inline-flex; align-items: center; gap: 9px; color: inherit; }
+.check-item svg { flex: none; fill: var(--am-brand-primary); stroke: white; }
+.validation-table th:first-child { width: 34%; }
+.validation-table th:nth-child(2) { width: 20%; }
+.validation-table td:last-child { white-space: normal; overflow-wrap: anywhere; }
+.dataset-record--import .dataset-record-tables tbody tr:has(> th[scope="row"]) { font-weight: 600; }
+.dataset-record--import .dataset-record-tables tbody tr:has(> th[scope="row"]):not(:hover) { background: var(--am-page); }
+.dataset-record--import .dataset-record-result { align-items: center; }
+.dataset-record--import .dataset-record-result .dataset-actions { margin-top: 20px; }
+.dataset-record-result + details { padding-top: 10px; border-top: 1px solid var(--am-border); }
+@media (max-width: 850px) {
+  .dataset-record--import .dataset-record-grid { grid-template-columns: minmax(0,1fr); }
+}
+@media(min-width:1280px) and (min-height:780px) {
+  .dataset-record .dataset-title { font-size: clamp(20px,1.45vw,25px); }
+  .dataset-record .resource-section h2 { font-size: clamp(16px,1.08vw,18px); }
+  .dataset-record .dataset-record-subject { font-size: clamp(17px,1.17vw,20px); }
+  .dataset-record :deep(.dataset-table th),.dataset-record :deep(.dataset-table td) { font-size: clamp(14px,.96vw,16px); }
 }
 </style>

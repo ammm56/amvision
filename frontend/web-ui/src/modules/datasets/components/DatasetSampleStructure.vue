@@ -93,7 +93,7 @@ onBeforeUnmount(() => { generation++; controller.abort() })
 </script>
 <style scoped>
 .dataset-sample-structure { display:grid; grid-template-columns:280px minmax(0,1fr); gap:20px; min-width:0; }
-.dataset-structure-tree { background:var(--am-surface); border:1px solid var(--am-border); border-radius:var(--am-radius-md); padding:68px 12px 16px; align-self:stretch; max-height:680px; min-height:520px; overflow:auto; }
+.dataset-structure-tree { background:var(--am-surface); border:1px solid var(--am-border); border-radius:var(--am-radius-md); padding:14px 12px 16px; align-self:stretch; max-height:680px; min-height:520px; overflow:auto; }
 .dataset-structure-tree h2 { font-size:14px; margin:4px 0 16px; }
 .dataset-structure-root,.dataset-structure-tree button { display:flex; align-items:center; gap:8px; min-width:0; }
 .dataset-structure-root { font-size:13px; padding:8px 0; }

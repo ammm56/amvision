@@ -189,8 +189,8 @@ export async function listProjectDatasetImports(projectId: string): Promise<Data
   return apiRequest<DatasetImportSummary[]>('/datasets/imports', { query: { project_id: projectId } })
 }
 
-export async function getDatasetImportDetail(datasetImportId: string): Promise<DatasetImportDetail> {
-  return apiRequest<DatasetImportDetail>(`/datasets/imports/${encodeURIComponent(datasetImportId)}`)
+export async function getDatasetImportDetail(datasetImportId: string, signal?: AbortSignal): Promise<DatasetImportDetail> {
+  return apiRequest<DatasetImportDetail>(`/datasets/imports/${encodeURIComponent(datasetImportId)}`, { signal })
 }
 
 export async function deleteDatasetImport(datasetImportId: string): Promise<void> {

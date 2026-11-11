@@ -31,6 +31,7 @@
         <component :is="iconComponent" :size="22" />
       </div>
       <div class="file-picker__content">
+        <slot name="content">
         <strong v-if="selectedFiles.length === 0">{{ t('common.filePicker.noFile') }}</strong>
         <span v-if="selectedFiles.length === 0">{{ description || t('common.filePicker.dropHint') }}</span>
         <ul v-if="selectedFiles.length > 0" class="file-picker__files">
@@ -39,12 +40,13 @@
             <span class="file-picker__file-size">{{ formatFileSize(file.size) }}</span>
           </li>
         </ul>
+        </slot>
       </div>
       <div class="file-picker__actions">
         <Button size="sm" variant="secondary" :disabled="disabled" @click.stop="openFileDialog">
-          {{ selectedFiles.length > 0 ? t('common.filePicker.replace') : t('common.filePicker.choose') }}
+          <slot name="choose-label">{{ selectedFiles.length > 0 ? t('common.filePicker.replace') : t('common.filePicker.choose') }}</slot>
         </Button>
-        <Button v-if="selectedFiles.length > 0" size="sm" variant="ghost" :disabled="disabled" @click.stop="clearFiles">
+        <Button v-if="selectedFiles.length > 0 && showClear" size="sm" variant="ghost" :disabled="disabled" @click.stop="clearFiles">
           <X :size="14" />
           {{ t('common.filePicker.clear') }}
         </Button>
@@ -75,6 +77,7 @@ const props = withDefaults(
     disabled?: boolean
     icon?: FilePickerIcon
     showLabel?: boolean
+    showClear?: boolean
   }>(),
   {
     modelValue: null,
@@ -85,6 +88,7 @@ const props = withDefaults(
     disabled: false,
     icon: 'upload',
     showLabel: true,
+    showClear: true,
   },
 )
 
@@ -118,8 +122,9 @@ function openFileDialog(): void {
 }
 
 function handleInputChange(event: Event): void {
-  const files = Array.from((event.target as HTMLInputElement).files ?? [])
-  applyFiles(files)
+  const input = event.target as HTMLInputElement
+  applyFiles(Array.from(input.files ?? []))
+  input.value = ''
 }
 
 function handleDrop(event: DragEvent): void {

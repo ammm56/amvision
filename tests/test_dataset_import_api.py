@@ -104,6 +104,11 @@ def test_import_dataset_zip_creates_coco_dataset_version(tmp_path: Path) -> None
         assert dataset_import is not None
         assert dataset_import.status == "completed"
         assert dataset_import.format_type == "coco"
+        assert (
+            dataset_import.metadata["uploaded_at"]
+            <= dataset_import.metadata["extracted_at"]
+            <= dataset_import.metadata["validated_at"]
+        )
         assert dataset_import.detected_profile["format_type"] == "coco"
         assert dataset_import.detected_profile["format_id"] == "coco-detection-v1"
         assert dataset_version is not None

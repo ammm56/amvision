@@ -56,11 +56,13 @@
     />
     <ResourceTable
       v-if="rows.length"
+      :aria-busy="loading"
+      :inert="rowsTab !== tab"
       class="dataset-table dataset-catalog-table"
-      :class="`dataset-catalog-table--${tab}`"
-      :label="text(tab)"
+      :class="`dataset-catalog-table--${rowsTab}`"
+      :label="text(rowsTab)"
     >
-      <colgroup v-if="tab === 'datasets'">
+      <colgroup v-if="rowsTab === 'datasets'">
         <col class="catalog-col-name" />
         <col class="catalog-col-task" />
         <col class="catalog-col-version" />
@@ -73,48 +75,48 @@
         <col class="record-col-name" />
         <col class="record-col-primary" />
         <col class="record-col-secondary" />
-        <col v-if="tab !== 'exports'" class="record-col-samples" />
+        <col v-if="rowsTab !== 'exports'" class="record-col-samples" />
         <col class="record-col-source" />
-        <col v-if="tab === 'exports'" class="record-col-file" />
+        <col v-if="rowsTab === 'exports'" class="record-col-file" />
         <col class="record-col-time" />
-        <col v-if="tab === 'versions'" class="record-col-state" />
+        <col v-if="rowsTab === 'versions'" class="record-col-state" />
         <col class="catalog-col-actions" />
       </colgroup>
       <thead>
         <tr>
-          <th scope="col" class="dataset-name-column">{{ text(tab === 'versions' ? 'datasets' : tab === 'imports' ? 'targetDataset' : tab === 'exports' ? 'sourceDataset' : 'name') }}</th>
-          <th scope="col" :class="{ 'dataset-version-cell': tab === 'versions' || tab === 'exports' }">
+          <th scope="col" class="dataset-name-column">{{ text(rowsTab === 'versions' ? 'datasets' : rowsTab === 'imports' ? 'targetDataset' : rowsTab === 'exports' ? 'sourceDataset' : 'name') }}</th>
+          <th scope="col" :class="{ 'dataset-version-cell': rowsTab === 'versions' || rowsTab === 'exports' }">
             {{
               text(
-                tab === 'datasets'
+                rowsTab === 'datasets'
                   ? 'taskColumn'
-                  : tab === 'versions'
+                  : rowsTab === 'versions'
                     ? 'version'
-                    : tab === 'imports' ? 'sourcePackage' : 'version',
+                    : rowsTab === 'imports' ? 'sourcePackage' : 'version',
               )
             }}
           </th>
-          <th scope="col" :class="{ 'dataset-version-cell': tab === 'datasets' }">
+          <th scope="col" :class="{ 'dataset-version-cell': rowsTab === 'datasets' }">
             {{
               text(
-                tab === 'datasets'
+                rowsTab === 'datasets'
                   ? 'version'
-                  : tab === 'versions'
+                  : rowsTab === 'versions'
                     ? 'taskColumn'
-                    : tab === 'imports' ? 'status' : 'format',
+                    : rowsTab === 'imports' ? 'status' : 'format',
               )
             }}
           </th>
-          <th v-if="tab !== 'exports'" scope="col">
-            {{ text('samples') }}<template v-if="tab === 'datasets'"> / {{ text('classes') }}</template>
+          <th v-if="rowsTab !== 'exports'" scope="col">
+            {{ text('samples') }}<template v-if="rowsTab === 'datasets'"> / {{ text('classes') }}</template>
           </th>
-          <th v-if="tab === 'datasets'" scope="col">{{ text('splits') }}</th>
-          <th v-else scope="col">{{ text(tab === 'versions' ? 'source' : tab === 'imports' ? 'importedVersion' : 'status') }}</th>
-          <th v-if="tab === 'exports'" scope="col">{{ text('file') }}</th>
+          <th v-if="rowsTab === 'datasets'" scope="col">{{ text('splits') }}</th>
+          <th v-else scope="col">{{ text(rowsTab === 'versions' ? 'source' : rowsTab === 'imports' ? 'importedVersion' : 'status') }}</th>
+          <th v-if="rowsTab === 'exports'" scope="col">{{ text('file') }}</th>
           <th scope="col" class="dataset-time-column">
-            {{ text(tab === 'datasets' ? 'updated' : tab === 'imports' ? 'submitted' : 'created') }}
+            {{ text(rowsTab === 'datasets' ? 'updated' : rowsTab === 'imports' ? 'submitted' : 'created') }}
           </th>
-          <th v-if="tab === 'versions'" scope="col">{{ text('status') }}</th>
+          <th v-if="rowsTab === 'versions'" scope="col">{{ text('status') }}</th>
           <th scope="col" class="dataset-action-column">{{ text('actions') }}</th>
         </tr>
       </thead>
@@ -198,7 +200,7 @@
         </tr>
       </tbody>
     </ResourceTable>
-    <div v-else class="dataset-empty">
+    <div v-else-if="!error" class="dataset-empty">
       <Database :size="32" />
       <p>
         {{
@@ -233,8 +235,9 @@
       @close="drawer = null"
       @saved="afterSaved"
     />
+    <DatasetRecordConfirm v-if="removal && ('dataset_import_id' in removal || 'dataset_export_id' in removal)" :importing="'dataset_import_id' in removal" :clean="cleanupOnly" :name="rowName(removal)" :version="removal.version_number ? 'v'+removal.version_number : undefined" :file="'dataset_import_id' in removal ? removal.source_file_name : removal.package_file_name" :busy="deleting" @confirm="remove" @cancel="removal = null" />
     <ConfirmDialog
-      v-if="removal"
+      v-else-if="removal"
       :title="text(cleanupOnly ? 'cleanup' : 'remove')"
       :message="deleteMessage"
       :confirm-label="text(cleanupOnly ? 'cleanup' : 'remove')"
@@ -271,6 +274,7 @@ import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import PaginationControls from '@/shared/ui/components/PaginationControls.vue'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
+import DatasetRecordConfirm from '../components/DatasetRecordConfirm.vue'
 import ResourceCleanupPanel from '@/shared/ui/components/ResourceCleanupPanel.vue'
 import DatasetInfoDrawer from '../components/DatasetInfoDrawer.vue'
 import DatasetCounts from '../components/DatasetCounts.vue'
@@ -304,6 +308,7 @@ const router = useRouter(),
   session = useSessionStore(),
   text = useDatasetText()
 const tab = ref<Tab>('datasets'),
+  rowsTab = ref<Tab>('datasets'),
   q = ref(''),
   taskType = ref(''),
   availability = ref(''),
@@ -400,6 +405,7 @@ async function load() {
   controller?.abort()
   controller = new AbortController()
   const request = ++generation
+  const requestedTab = tab.value
   loading.value = true
   error.value = ''
   try {
@@ -422,7 +428,8 @@ async function load() {
       : tab.value === 'versions'
         ? listDatasetVersionPage(query, controller.signal)
         : listDatasetRecordPage(tab.value, query, controller.signal))
-    if (request !== generation) return
+    if (request !== generation || tab.value !== requestedTab) return
+    rowsTab.value = requestedTab
     rows.value = result.items
     total.value = result.total
     if (offset.value && rows.value.length === 0) {
@@ -435,6 +442,7 @@ async function load() {
       !(e instanceof DOMException && e.name === 'AbortError')
     ) {
       error.value = datasetError(e)
+      if (rowsTab.value !== requestedTab) { rows.value = []; total.value = 0 }
     }
   } finally {
     if (request === generation) loading.value = false
@@ -458,7 +466,6 @@ function changeTab(value: Tab) {
   if (tab.value === value) return
   tab.value = value
   offset.value = 0
-  rows.value = []
   taskType.value = ''
   availability.value = ''
   period.value = ''
@@ -626,6 +633,9 @@ async function remove() {
 watch(
   () => project.selectedProjectId,
   () => {
+    generation++
+    controller?.abort()
+    loading.value = false
     rows.value = []
     total.value = 0
     removal.value = null

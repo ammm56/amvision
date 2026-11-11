@@ -47,8 +47,9 @@ def test_upload_draft_owner_retry_and_one_time_consumption(tmp_path):
         with pytest.raises(ResourceNotFoundError), drafts.consume(token):
             pytest.fail("重复提交不能同时领取文件")
     drafts.discard(token)
-    with pytest.raises(ResourceNotFoundError), drafts.consume(token):
+    with pytest.raises(ResourceNotFoundError) as missing, drafts.consume(token):
         pytest.fail("已提交草稿不能再次使用")
+    assert missing.value.details["resource"] == "upload_draft"
 
 
 def test_export_class_order_validates_and_preserves_source():

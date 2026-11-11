@@ -233,6 +233,8 @@ class SqlAlchemyDatasetImportService(
                 "queue_task_id": queue_task_id,
                 "processing_state": "queued",
                 **request.metadata,
+                "extracted_at": None,
+                "validated_at": None,
             },
         )
         try:
@@ -321,7 +323,15 @@ class SqlAlchemyDatasetImportService(
             self.dataset_storage.extract_zip(
                 import_layout.package_path, import_layout.extracted_path
             )
-            current_import = replace(current_import, status="extracted")
+            current_import = replace(
+                current_import,
+                status="extracted",
+                metadata={
+                    **current_import.metadata,
+                    "extracted_at": datetime.now(timezone.utc).isoformat(),
+                    "validated_at": None,
+                },
+            )
             self._save_dataset_import(current_import)
             self._append_dataset_import_task_event(
                 current_import,
@@ -394,6 +404,10 @@ class SqlAlchemyDatasetImportService(
                 current_import,
                 format_type=parsed_content.format_type,
                 status="validated",
+                metadata={
+                    **current_import.metadata,
+                    "validated_at": datetime.now(timezone.utc).isoformat(),
+                },
                 image_root=parsed_content.image_root,
                 annotation_root=parsed_content.annotation_root,
                 manifest_file=parsed_content.manifest_file,

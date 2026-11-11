@@ -17,7 +17,7 @@
       >
         <header class="confirm-dialog__header">
           <div>
-            <h2 :id="titleId">{{ title }}</h2>
+            <h2 :id="titleId"><slot name="title-icon" />{{ title }}</h2>
           </div>
           <button type="button" class="confirm-dialog__close" :aria-label="cancelLabel" :disabled="busy && !allowCloseWhileBusy" @click="cancelDialog">
             <X :size="16" />

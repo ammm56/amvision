@@ -14,7 +14,7 @@
         <DatasetVersionSelect
           v-if="workspace"
           :workspace="workspace"
-          @change="changeVersion"
+          @change="changeVersion($event,true)"
           @more="tab = 'lineage'"
         />
         <span v-if="workspace" class="dataset-task-label">{{ isMediaTask(workspace.task_type) ? text(workspace.task_type) : workspace.task_type }}</span>
@@ -25,14 +25,8 @@
           v-if="canWrite"
           variant="primary"
           :disabled="loading || !currentWorkspace"
-          @click="
-            router.push({
-              path: '/datasets/export',
-              query: { dataset: datasetId, version: versionId },
-            })
-          "
-          ><Download :size="16" />{{ text('export') }}</Button
-        >
+          @click="headerAction(primaryAction)"
+          ><component :is="primaryAction==='quality' ? RefreshCw : primaryAction==='create' ? Plus : Download" :size="16" />{{primaryAction==='quality' ? label('重新检查','Run checks') : primaryAction==='create' ? label('创建新版本','Create version') : text('export')}}</Button>
       </div>
     </div>
     <InlineError v-if="error" :message="error" />
@@ -43,12 +37,12 @@
       :aria-busy="loading"
       :inert="loading || !currentWorkspace"
     >
-      <div class="dataset-stats" :class="{'media-stats':isMediaTask(workspace.task_type)}">
+      <div class="dataset-stats">
         <div><strong>{{ workspace.sample_count.toLocaleString() }}</strong><span>{{ isMediaTask(workspace.task_type) ? text('samples') : label('图像数量', 'Images') }}</span></div>
         <div v-if="!isMediaTask(workspace.task_type)"><strong>{{ workspace.object_count.toLocaleString() }}</strong><span>{{ label('对象数量', 'Objects') }}</span></div>
         <div v-if="workspace.category_count || !isMediaTask(workspace.task_type)"><strong>{{ workspace.category_count.toLocaleString() }}</strong><span>{{ label('类别数量', 'Classes') }}</span></div>
-        <div><strong>{{ ['train', 'val', 'test'].map(key => (workspace!.split_counts[key] ?? 0).toLocaleString()).join(' / ') }}</strong><span>train / val / test</span></div>
-        <div class="dataset-test-status"><strong>{{ workspace.split_counts.test ? label('已配置', 'Configured') : label('未配置', 'Not configured') }}</strong><span>{{ label('测试集', 'Test set') }}</span></div>
+        <div class="dataset-split-stat"><strong>{{ ['train', 'val', 'test'].map(key => workspace!.split_counts[key]?.toLocaleString(locale) ?? '—').join(' / ') }}</strong><span>train / val / test</span></div>
+        <div class="dataset-test-status"><strong>{{ 'test' in workspace.split_counts ? label('已配置', 'Configured') : label('未配置', 'Not configured') }}</strong><span>{{ label('测试集', 'Test set') }}</span></div>
       </div>
       <div class="dataset-tabs" role="tablist">
         <button
@@ -301,6 +295,7 @@
         :key="workspace.dataset_version_id"
         :workspace="workspace"
         :tab="tab"
+        @samples="tab = 'sampleTab'"
         @filter="filterSamples"
         @version="changeVersion"
         @sample="showExternalImage"
@@ -412,14 +407,17 @@ const datasetId = computed(() => String(route.params.datasetId)),
   versionId = computed(() => String(route.params.versionId)),
   canWrite = computed(() => session.hasScopes(['datasets:write']))
 const datasetInfoMode = ref<'info' | 'edit' | null>(null)
+const primaryAction = computed(()=>tab.value==='quality'?'quality':['categories','lineage'].includes(tab.value)?'create':'export')
 const headerActions = computed(() => [
   { id: 'info', label: text('info'), icon: Info },
-  ...(canWrite.value ? [{ id: 'edit', label: text('editShort'), icon: Pencil }, { id: 'create', label: label('创建新版本', 'Create new version'), icon: Plus }] : []),
+  ...(canWrite.value ? [{ id: 'edit', label: text('editShort'), icon: Pencil }, ...(primaryAction.value!=='create' ? [{ id: 'create', label: label('创建新版本', 'Create new version'), icon: Plus }] : []), ...(primaryAction.value!=='export' ? [{id:'export',label:text('export'),icon:Download}] : []), ...(tab.value==='lineage' ? [{id:'compare',label:label('比较版本','Compare versions'),icon:RefreshCw},{id:'samples',label:label('更新样本','Update samples'),icon:Plus}] : [])] : []),
   { id: 'refresh', label: text('refresh'), icon: RefreshCw },
 ])
 function headerAction(id: string) {
   if (id === 'info' || id === 'edit') datasetInfoMode.value = id
   else if (id === 'refresh') void load()
+  else if(id==='export' && canWrite.value) void router.push({path:'/datasets/export',query:{dataset:datasetId.value,version:versionId.value}})
+  else if(['quality','compare','samples'].includes(id) && canWrite.value) void router.push(`/datasets/${datasetId.value}/versions/${versionId.value}/tools/${id}`)
   else if (id === 'create' && canWrite.value) void router.push(`/datasets/${datasetId.value}/versions/${versionId.value}/tools/derive`)
 }
 function saveInfo(info: DatasetInfo) { if (workspace.value) workspace.value.dataset = info; datasetInfoMode.value = null }
@@ -860,10 +858,11 @@ async function adjacent(delta: number) {
     viewerBusy.value = false
   }
 }
-function changeVersion(id: string) {
-  void router.push(
-    `/datasets/${encodeURIComponent(datasetId.value)}/versions/${encodeURIComponent(id)}`,
-  )
+function changeVersion(id: string, keepTab = false) {
+  void router.push({
+    path: `/datasets/${encodeURIComponent(datasetId.value)}/versions/${encodeURIComponent(id)}`,
+    query: keepTab && tab.value !== 'sampleTab' ? {tab:tab.value} : {},
+  })
 }
 watch(
   () => [datasetId.value, versionId.value],
@@ -916,13 +915,14 @@ function selectFiltered() {
 }
 </script>
 <style scoped>
-.dataset-stats { display:grid; grid-template-columns:1fr 1fr 1fr 1.7fr 1fr; align-items:center; padding:18px 22px; background:var(--am-surface); border:1px solid var(--am-border); border-radius:var(--am-radius-md); }
-.dataset-stats > div { display:flex; flex-direction:column; gap:7px; min-width:0; padding:0 20px; border-right:1px solid var(--am-border); }
-.dataset-stats > div:first-child { padding-left:0; }
-.dataset-stats > div:last-child { border:0; padding-right:0; align-items:flex-end; }
-.dataset-stats strong { font-size:22px; line-height:28px; font-weight:500; font-variant-numeric:tabular-nums; white-space:nowrap; }
-.dataset-stats > div > span { font-size:13px; color:var(--am-text-muted); }
-.dataset-stats .dataset-test-status strong { font-size:14px; }
+.dataset-stats { display:flex; align-items:center; padding:14px 0; background:var(--am-surface); border:1px solid var(--am-border); border-radius:var(--am-radius-md); }
+.dataset-stats > div { position:relative; display:grid; justify-items:center; align-content:center; row-gap:3px; min-width:max-content; flex:0 1 13%; padding:0 14px; }
+.dataset-stats > div:not(:last-child)::after { content:''; position:absolute; inset-inline-end:0; top:50%; height:30px; width:1px; transform:translateY(-50%); background:var(--am-border); }
+.dataset-stats .dataset-split-stat { flex-basis:22%; }
+.dataset-stats .dataset-test-status { flex:0 0 auto; margin-inline-start:auto; margin-inline-end:clamp(10px, 1.5vw, 24px); }
+.dataset-stats strong { font-size:22px; line-height:1.3; font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.dataset-stats > div > span { font-size:13px; line-height:1.45; color:var(--am-text-muted); }
+.dataset-stats .dataset-test-status strong { font-size:15px; }
 .dataset-checkbox {
   display: flex;
   gap: 8px;
@@ -1166,9 +1166,8 @@ function selectFiltered() {
   box-shadow: none;
 }
 @media (max-width: 1200px) {
-  .dataset-stats { padding: 14px 16px; }
-  .dataset-stats > div { padding:0 12px; }
-  .dataset-stats strong { font-size:19px; }
+  .dataset-stats { padding-block:12px; }
+  .dataset-stats strong { font-size:20px; }
   .dataset-sample-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .dataset-sample-filters .dataset-filter { flex-basis: 90px; }
 }
@@ -1183,7 +1182,5 @@ function selectFiltered() {
 .dataset-view-controls :deep(.ui-button.is-active) { color:var(--am-brand-on-primary); background:var(--am-brand-primary); }
 .dataset-sample-filters .dataset-sort-filter { margin-left:auto; display:flex; align-items:center; flex:0 1 130px; max-width:130px; }
 .dataset-sample-filters .dataset-sort-filter > div { flex:1; }
-.dataset-stats { grid-template-columns: .8fr .8fr .8fr 1.4fr 1.5fr; }
-.dataset-stats.media-stats{grid-template-columns:repeat(auto-fit,minmax(130px,1fr))}
 @media(max-width:1200px) { .dataset-sample-filters .dataset-sort-filter { margin-left:0; } }
 </style>

@@ -329,6 +329,43 @@ class DatasetCatalogRepository:
             "limit": limit,
         }
 
+    def _version_tasks(self, project_id: str, ids: list[str]):
+        """返回当前项目中直接使用这些版本的训练、评估任务投影。"""
+        from backend.service.infrastructure.persistence.task_orm import TaskRecordEntity as Task
+
+        version = func.coalesce(
+            Task.task_spec_json["dataset_version_id"].as_string(),
+            Task.metadata_json["dataset_version_id"].as_string(),
+        )
+        return select(
+            version.label("version_id"), Task.task_kind, Task.task_id, Task.display_name, Task.created_at
+        ).where(
+            Task.project_id == project_id, version.in_(ids),
+            or_(Task.task_kind.endswith("-training"), Task.task_kind.endswith("-evaluation")),
+        )
+
+    def version_task_counts(self, project_id: str, ids: list[str]) -> dict[str, dict[str, int]]:
+        """仅在查看版本来源时按当前页聚合，不读取任务载荷。"""
+        counts = {key: {"training": 0, "evaluation": 0} for key in ids}
+        if ids:
+            tasks = self._version_tasks(project_id, ids).subquery()
+            query = select(tasks.c.version_id, tasks.c.task_kind, func.count()).group_by(
+                tasks.c.version_id, tasks.c.task_kind
+            )
+            for key, kind, count in self.session.execute(query):
+                counts[key][kind.rsplit("-", 1)[1]] += count
+        return counts
+
+    def version_task_references(self, project_id: str, version_id: str, offset: int, limit: int) -> dict:
+        """分页列出引用的任务，只返回可用于打开详情的轻量字段。"""
+        tasks = self._version_tasks(project_id, [version_id]).subquery()
+        rows = self.session.execute(
+            select(tasks.c.task_id, tasks.c.task_kind, tasks.c.display_name, tasks.c.created_at)
+            .order_by(tasks.c.created_at.desc(), tasks.c.task_id)
+            .offset(offset).limit(limit + 1)
+        ).mappings().all()
+        return {"items": [dict(row) for row in rows[:limit]], "has_more": len(rows) > limit}
+
     def version_summaries(self, ids: list[str]) -> list[dict]:
         """仅聚合当前页版本的计数，不读取样本数组。"""
         if not ids:
@@ -412,6 +449,13 @@ class DatasetCatalogRepository:
         if not items or items[0]["dataset_id"] != dataset_id:
             raise ResourceNotFoundError("找不到指定的数据集版本")
         result = items[0]
+        # 目录统计和划分总数包含未指定类别的对象，不能累加各类别图像数。
+        result["split_object_counts"] = dict(self.session.execute(
+            select(DatasetSampleRecord.split, func.count())
+            .join(DatasetAnnotationRecord, DatasetAnnotationRecord.sample_id == DatasetSampleRecord.sample_id)
+            .where(DatasetSampleRecord.dataset_version_id == version_id)
+            .group_by(DatasetSampleRecord.split)
+        ).all())
         # 来源版本仅返回同一数据集中的序号；已删除的来源不能伪造仍可访问。
         parent_id = str(result["metadata"].get("parent_version_id") or "")
         parent = self.session.get(DatasetVersionRecord, parent_id) if parent_id else None
@@ -683,7 +727,7 @@ class DatasetCatalogRepository:
         return ids
 
     def jobs(
-        self, project_id: str, version_id: str, *, offset: int = 0, limit: int = 20
+        self, project_id: str, version_id: str, *, offset: int = 0, limit: int = 20, operation: str = ""
     ) -> dict:
         """只加载本页摘要；报告在详情按需读取。"""
         from backend.service.infrastructure.persistence.task_orm import (
@@ -695,6 +739,8 @@ class DatasetCatalogRepository:
             Task.task_kind == "dataset-workspace",
             Task.task_spec_json["dataset_version_id"].as_string() == version_id,
         )
+        if operation:
+            statement = statement.where(Task.task_spec_json["operation"].as_string() == operation)
         total = (
             self.session.scalar(select(func.count()).select_from(statement.subquery()))
             or 0

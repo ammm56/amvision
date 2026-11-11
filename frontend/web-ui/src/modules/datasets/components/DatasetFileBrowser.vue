@@ -5,71 +5,128 @@
         label('重试', 'Retry')
       }}</Button>
     </div>
-    <div class="dataset-file-layout">
+    <div class="dataset-file-layout" :class="{ collapsed }">
       <nav
         class="dataset-file-tree"
         :aria-label="label('版本目录树', 'Version folder tree')"
       >
-        <div class="dataset-tree-heading"><h2 class="dataset-tree-title">{{ label('版本资产', 'Version assets') }}</h2><button :title="label('收起目录', 'Collapse folders')" :aria-label="label('收起目录', 'Collapse folders')" @click="expanded = new Set([''])"><ChevronsLeft :size="16" /></button></div>
-        <div
-          v-for="row in treeRows"
-          :key="row.path"
-          class="dataset-tree-row"
-          :style="{ paddingLeft: `${Math.min(row.depth, 6) * 12}px` }"
-          :class="{ 'is-selected': (row.directory ? folder : selectedFile) === row.path }"
-        >
+        <div class="dataset-tree-heading">
+          <h2 v-show="!collapsed" class="dataset-tree-title">
+            {{ label('版本资产', 'Version assets') }}
+          </h2>
           <button
-            :aria-expanded="row.leaf ? undefined : expanded.has(row.path)"
-            :class="{ 'dataset-tree-leaf': row.leaf }"
-            :disabled="row.leaf"
-            :aria-hidden="row.leaf || undefined"
-            :aria-label="`${expanded.has(row.path) ? label('收起', 'Collapse') : label('展开', 'Expand')} ${row.name}`"
-            @click="toggle(row.path)"
+            type="button"
+            :title="toggleLabel"
+            :aria-label="toggleLabel"
+            :aria-controls="treeId"
+            :aria-expanded="!collapsed"
+            @click="collapsed = !collapsed"
           >
-            <ChevronDown
-              v-if="expanded.has(row.path)"
-              :size="14"
-            /><ChevronRight v-else :size="14" />
+            <ChevronsRight class="rail-chevron" :size="16" aria-hidden="true" />
           </button>
-          <button
-            class="dataset-tree-name"
-            :title="row.path || '/'"
-            :aria-current="folder === row.path ? 'location' : undefined"
-            @click="row.directory ? selectFolder(row.path) : openFile(row)"
+        </div>
+        <div v-show="!collapsed" :id="treeId" class="dataset-tree-scroll">
+          <div
+            v-for="row in treeRows"
+            :key="row.path"
+            class="dataset-tree-row"
+            :style="{ paddingLeft: `${Math.min(row.depth, 6) * 12}px` }"
+            :class="{ 'is-selected': (selectedFile || folder) === row.path }"
           >
-            <component :is="row.directory ? Folder : FileText" :size="16" /><span>{{ row.name }}</span>
-          </button>
-          <button
-            v-if="row.more"
-            class="dataset-tree-more"
-            :title="label('加载更多', 'Load more')"
-            @click="loadTree(row.path, true)"
-          >
-            …
-          </button>
+            <button
+              :aria-expanded="row.leaf ? undefined : expanded.has(row.path)"
+              :class="{ 'dataset-tree-leaf': row.leaf }"
+              :disabled="row.leaf"
+              :aria-hidden="row.leaf || undefined"
+              :aria-label="`${expanded.has(row.path) ? label('收起', 'Collapse') : label('展开', 'Expand')} ${row.name}`"
+              @click="toggle(row.path)"
+            >
+              <ChevronDown
+                v-if="expanded.has(row.path)"
+                :size="14"
+              /><ChevronRight v-else :size="14" />
+            </button>
+            <button
+              class="dataset-tree-name"
+              :title="row.path || '/'"
+              :disabled="!canPreview(row)"
+              :aria-current="folder === row.path ? 'location' : undefined"
+              @click="row.directory ? selectFolder(row.path) : openFile(row)"
+            >
+              <component
+                :is="row.directory ? Folder : FileText"
+                :size="16"
+              /><span>{{ row.name }}</span
+              ><small
+                v-if="row.directory && row.path && entryCount(row, false) !== '—'"
+                >({{ entryCount(row, false) }})</small
+              >
+            </button>
+            <button
+              v-if="row.more"
+              class="dataset-tree-more"
+              :title="label('加载更多', 'Load more')"
+              @click="loadTree(row.path, true)"
+            >
+              …
+            </button>
+          </div>
         </div>
       </nav>
       <div class="dataset-file-content" :aria-busy="busy" :inert="busy">
-    <div class="dataset-toolbar dataset-file-toolbar">
-      <Button icon-only :aria-label="label('上一级', 'Parent')" :disabled="!folder" @click="selectFolder(parent)"
-        ><ArrowUp :size="16" /></Button
-      >
-      <span class="dataset-file-path" :title="folder || '/'">{{
-        folder || '/'
-      }}</span>
-    </div>
+        <div class="dataset-toolbar dataset-file-toolbar">
+          <span class="location-label">{{
+            label('当前位置：', 'Location:')
+          }}</span>
+          <button class="crumb" @click="selectFolder('')">
+            {{ label('版本资产', 'Version assets') }}
+          </button>
+          <span v-if="folder" aria-hidden="true">/</span>
+          <span class="dataset-file-path" :title="folder || '/'"
+            ><template v-if="!folder">/</template
+            ><template v-for="(part, i) in folder.split('/')" v-else :key="i"
+              ><span v-if="i" aria-hidden="true">/</span
+              ><button
+                class="crumb"
+                @click="
+                  selectFolder(
+                    folder
+                      .split('/')
+                      .slice(0, i + 1)
+                      .join('/'),
+                  )
+                "
+              >
+                {{ part }}
+              </button></template
+            ></span
+          >
+          <Button
+            v-if="folder"
+            size="sm"
+            icon-only
+            :aria-label="label('上一级', 'Parent')"
+            @click="selectFolder(parent)"
+            ><ArrowUp :size="15"
+          /></Button>
+        </div>
         <span
           v-if="busy && page.items.length"
           class="dataset-folder-loading"
           role="status"
           >{{ text('loading') }}</span
         >
-        <ResourceTable class="dataset-table" :label="text('structure')">
+        <ResourceTable
+          embedded
+          class="dataset-table"
+          :label="text('structure')"
+        >
           <thead>
             <tr>
               <th>{{ text('fileName') }}</th>
               <th style="width: 90px">{{ label('类型', 'Type') }}</th>
-              <th style="width: 90px">{{ label('大小', 'Size') }}</th>
+              <th class="file-count">{{ label('关联样本', 'Samples') }}</th>
+              <th class="file-count">{{ label('标注对象', 'Objects') }}</th>
               <th style="width: 84px">{{ text('actions') }}</th>
             </tr>
           </thead>
@@ -77,12 +134,21 @@
             <tr
               v-for="item in page.items"
               :key="item.path"
+              :class="{ 'is-selected': selectedFile === item.path }"
               @dblclick="openFile(item)"
             >
               <td>
                 <button
                   class="dataset-file-entry"
-                  :title="item.name"
+                  :disabled="!canPreview(item)"
+                  :title="
+                    item.size == null
+                      ? item.name
+                      : item.name +
+                        ' · ' +
+                        (item.size / 1024).toFixed(1) +
+                        ' KB'
+                  "
                   @click="openFile(item)"
                 >
                   <component
@@ -91,36 +157,59 @@
                   /><span>{{ item.name }}</span>
                 </button>
               </td>
-              <td>{{ item.directory ? label('文件夹', 'Folder') : item.name.split('.').pop()?.toUpperCase() || '—' }}</td>
               <td>
                 {{
-                  item.size == null
-                    ? '—'
-                    : `${(item.size / 1024).toFixed(1)} KB`
+                  item.directory
+                    ? label('文件夹', 'Folder')
+                    : item.name.split('.').pop()?.toUpperCase() || '—'
                 }}
               </td>
+              <td>{{ entryCount(item, false) }}</td>
+              <td>{{ entryCount(item, true) }}</td>
               <td>
                 <Button
                   v-if="canPreview(item)"
                   size="sm"
                   @click="openFile(item)"
-                  >{{ text('view') }}</Button
+                  >{{
+                    item.directory ? label('打开', 'Open') : text('view')
+                  }}</Button
                 >
               </td>
             </tr>
           </tbody>
         </ResourceTable>
-        <div v-if="!page.items.length && !error" class="dataset-empty" role="status">
+        <div
+          v-if="!page.items.length && !error"
+          class="dataset-empty"
+          role="status"
+        >
           {{ busy ? text('loading') : label('空文件夹', 'Empty folder') }}
         </div>
-        <div v-if="page.next_cursor || cursors.length" class="dataset-actions">
-          <Button :disabled="busy || !cursors.length" @click="previous">{{
-            label('上一页', 'Previous')
-          }}</Button
-          ><Button :disabled="busy || !page.next_cursor" @click="next">{{
-            label('下一页', 'Next')
-          }}</Button>
-        </div>
+        <footer v-if="!error && !busy" class="files-footer">
+          <span
+            >{{
+              cursors.length || page.next_cursor
+                ? label('本页', 'On this page:')
+                : label('共', 'Total:')
+            }}
+            {{ page.items.length }} {{ label('项', 'entries') }}</span
+          >
+          <div
+            v-if="page.next_cursor || cursors.length || pageSize !== 20"
+            class="dataset-actions"
+          >
+            <Button :disabled="busy || !cursors.length" @click="previous">{{
+              label('上一页', 'Previous')
+            }}</Button
+            ><Button :disabled="busy || !page.next_cursor" @click="next">{{
+              label('下一页', 'Next')
+            }}</Button>
+            <SelectField fit-options :model-value="pageSize" :aria-label="label('每页文件数','Files per page')"
+              :options="[20,50,100].map(value=>({value,label:value + label(' 条/页',' / page')}))"
+              @update:model-value="resizePage(Number($event))" />
+          </div>
+        </footer>
       </div>
     </div>
     <SideDrawer
@@ -148,16 +237,17 @@
   </div>
 </template>
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, useId, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   ArrowUp,
   ChevronDown,
-  ChevronsLeft,
+  ChevronsRight,
   ChevronRight,
   Folder,
   FileText,
 } from '@lucide/vue'
+import SelectField from '@/shared/ui/components/Select.vue'
 import Button from '@/shared/ui/components/Button.vue'
 import SideDrawer from '@/shared/ui/components/SideDrawer.vue'
 import ResourceTable from '@/shared/ui/data-display/ResourceTable.vue'
@@ -177,7 +267,15 @@ const label = (zh: string, en: string) =>
   locale.value.startsWith('zh') ? zh : en
 type Page = { items: DatasetFile[]; next_cursor: string | null }
 const emptyPage = (): Page => ({ items: [], next_cursor: null })
+const collapsed = ref(
+  window.matchMedia?.('(max-width: 1100px) and (max-height: 820px)')?.matches ??
+    false,
+)
 const selectedFile = ref('')
+const treeId = useId()
+const toggleLabel = computed(() =>
+  collapsed.value ? label('展开目录', 'Show folders') : label('收起目录', 'Collapse folders'),
+)
 const folder = ref(''),
   after = ref(''),
   cursors = ref<string[]>([]),
@@ -218,7 +316,8 @@ const treeRows = computed(() => {
       size,
       depth,
       leaf:
-        !directory || hasChildren === false ||
+        !directory ||
+        hasChildren === false ||
         (!!tree.value[path] &&
           !tree.value[path].items.length &&
           !tree.value[path].next_cursor),
@@ -226,26 +325,50 @@ const treeRows = computed(() => {
     })
     if (expanded.value.has(path))
       for (const child of tree.value[path]?.items || [])
-        visit(child.path, child.name, depth + 1, child.directory, child.has_children, child.size)
+        visit(
+          child.path,
+          child.name,
+          depth + 1,
+          child.directory,
+          child.has_children,
+          child.size,
+        )
   }
-  visit('', `${props.workspace.dataset?.display_name || text('datasets')} · v${props.workspace.version_number}`, 0)
+  visit(
+    '',
+    `${props.workspace.dataset?.display_name || text('datasets')} · v${props.workspace.version_number}`,
+    0,
+  )
   return rows
 })
 // 树与表格读取同一目录时复用请求；已访问页缓存有上限，版本切换统一失效。
-function readPage(path: string, after: string): Promise<Page> {
-  const key = `${path}\0${after}`, epoch = generation
+const pageSize = ref(20)
+function readPage(path: string, after: string, limit = 20): Promise<Page> {
+  const key = `${limit}:${path}\0${after}`,
+    epoch = generation
   const found = cache.get(key)
   if (found) return Promise.resolve(found)
   const pending = pendingPages.get(key)
   if (pending) return pending
-  const request = getDatasetFiles(props.workspace.dataset_id, props.workspace.dataset_version_id, path, after, controller.signal)
-    .then(result => {
+  const request = getDatasetFiles(
+    props.workspace.dataset_id,
+    props.workspace.dataset_version_id,
+    path,
+    after,
+    controller.signal,
+    false,
+    limit,
+  )
+    .then((result) => {
       if (epoch === generation) {
         if (cache.size >= 64) cache.delete(cache.keys().next().value!)
         cache.set(key, result)
       }
       return result
-    }).finally(() => { if (pendingPages.get(key) === request) pendingPages.delete(key) })
+    })
+    .finally(() => {
+      if (pendingPages.get(key) === request) pendingPages.delete(key)
+    })
   pendingPages.set(key, request)
   return request
 }
@@ -254,7 +377,10 @@ async function loadTree(path: string, more = false) {
   const epoch = generation
   treePending.add(path)
   try {
-    const result = await readPage(path, more ? tree.value[path]?.next_cursor || '' : '')
+    const result = await readPage(
+      path,
+      more ? tree.value[path]?.next_cursor || '' : '',
+    )
     if (epoch !== generation) return
     tree.value[path] = {
       ...result,
@@ -279,7 +405,7 @@ function toggle(path: string) {
 async function loadPage() {
   const request = ++selectionGeneration,
     epoch = generation,
-    key = `${folder.value}\0${after.value}`
+    key = `${pageSize.value}:${folder.value}\0${after.value}`
   error.value = ''
   if (cache.has(key)) {
     page.value = cache.get(key)!
@@ -289,7 +415,7 @@ async function loadPage() {
   busy.value = true
   // 保留上一目录的尺寸并暂时阻止操作，避免异步切换时表格反复塌缩。
   try {
-    const result = await readPage(folder.value, after.value)
+    const result = await readPage(folder.value, after.value, pageSize.value)
     if (epoch !== generation) return
     if (request === selectionGeneration) page.value = result
   } catch (e) {
@@ -315,6 +441,13 @@ function selectFolder(path: string) {
   void loadTree(path)
   void loadPage()
 }
+function resizePage(size: number) {
+  if (![20,50,100].includes(size)) return
+  pageSize.value=size
+  cursors.value=[]
+  after.value=''
+  void loadPage()
+}
 function next() {
   if (!page.value.next_cursor) return
   cursors.value.push(after.value)
@@ -324,6 +457,24 @@ function next() {
 function previous() {
   after.value = cursors.value.pop() || ''
   void loadPage()
+}
+// 只对结构契约中代表整版本或单个划分的资产显示统计，其他文件不推测关系。
+function entryCount(item: DatasetFile, objects: boolean) {
+  const w = props.workspace
+  if (
+    ['images', 'samples', 'manifests/dataset-version.json'].includes(item.path)
+  )
+    return (
+      (objects ? w.object_count : w.sample_count)?.toLocaleString(
+        locale.value,
+      ) ?? '—'
+    )
+  const split =
+    item.path.match(/^(?:images|samples)\/(train|val|test)$/)?.[1] ||
+    item.path.match(/^indexes\/(train|val|test)\.json$/)?.[1]
+  if (!split || (objects && !w.split_object_counts)) return '—'
+  const counts = objects ? w.split_object_counts : w.split_counts
+  return counts ? (counts[split] ?? 0).toLocaleString(locale.value) : '—'
 }
 const isImage = (item: DatasetFile) =>
   /\.(jpe?g|png|webp|bmp)$/i.test(item.name)
@@ -352,6 +503,8 @@ async function openFile(item: DatasetFile) {
     return
   }
   if (!canPreview(item)) return
+  const directory = item.path.split('/').slice(0, -1).join('/')
+  if (folder.value !== directory) selectFolder(directory)
   selectedFile.value = item.path
   clearPreview()
   const request = ++previewGeneration
@@ -417,7 +570,8 @@ onBeforeUnmount(() => {
 }
 .dataset-file-layout {
   display: grid;
-  grid-template-columns: 280px minmax(0, 1fr);
+  grid-template-columns: clamp(220px, 24%, 340px) minmax(0, 1fr);
+  transition: grid-template-columns 180ms var(--am-ease-standard);
   gap: 16px;
   min-height: 520px;
 }
@@ -434,7 +588,7 @@ onBeforeUnmount(() => {
   z-index: 1;
 }
 .dataset-file-tree {
-  padding: 68px 12px 16px;
+  padding: 12px;
   border: 1px solid var(--am-border);
   border-radius: var(--am-radius-md);
   background: var(--am-surface);
@@ -442,7 +596,11 @@ onBeforeUnmount(() => {
   min-height: 520px;
   min-width: 0;
 }
-.dataset-tree-title { margin: 6px 8px 12px; font-size: 14px; font-weight: 600; }
+.dataset-tree-title {
+  margin: 6px 8px 12px;
+  font-size: 14px;
+  font-weight: 600;
+}
 .dataset-tree-row {
   display: flex;
   align-items: center;
@@ -471,6 +629,11 @@ onBeforeUnmount(() => {
 }
 .dataset-tree-leaf {
   visibility: hidden;
+}
+.dataset-tree-name small {
+  white-space: nowrap;
+  flex: none;
+  color: var(--am-text-muted);
 }
 .dataset-tree-name {
   flex: 1;
@@ -508,13 +671,114 @@ onBeforeUnmount(() => {
     grid-template-columns: 220px minmax(0, 1fr);
   }
 }
+.files-footer :deep(.ui-select__menu) {
+  top: auto;
+  bottom: calc(100% + 4px);
+}
 </style>
 
 <style scoped>
-.dataset-tree-heading { display:flex; align-items:center; justify-content:space-between; padding:4px 4px 12px; }
-.dataset-tree-heading .dataset-tree-title { margin:0; }
-.dataset-tree-heading > button { display:grid; place-items:center; background:none; border:0; color:var(--am-text-muted); padding:4px; cursor:pointer; border-radius:var(--am-radius-sm); }
-.dataset-tree-heading > button:hover { background:var(--am-hover-surface); }
-.dataset-file-toolbar { padding:8px 12px; background:var(--am-surface); border:1px solid var(--am-border); border-radius:var(--am-radius-md); }
-.dataset-file-tree { max-height:680px; overflow-y:auto; }
+.dataset-tree-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 4px 12px;
+}
+.dataset-tree-heading .dataset-tree-title {
+  margin: 0;
+}
+.dataset-tree-heading > button {
+  display: grid;
+  place-items: center;
+  background: none;
+  border: 0;
+  color: var(--am-text-muted);
+  flex: none;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  cursor: pointer;
+  border-radius: var(--am-radius-sm);
+}
+.dataset-tree-heading > button:hover {
+  background: var(--am-hover-surface);
+}
+.dataset-file-toolbar {
+  padding: 8px 12px;
+  background: var(--am-surface);
+  border: 1px solid var(--am-border);
+  border-radius: var(--am-radius-md);
+}
+.dataset-file-tree {
+  display: flex;
+  flex-direction: column;
+  max-height: 680px;
+  overflow: hidden;
+}
+.dataset-tree-scroll {
+  min-height: 0;
+  overflow-y: auto;
+}
+.file-count {
+  width: 14%;
+}
+.dataset-file-layout.collapsed {
+  grid-template-columns: 44px minmax(0, 1fr);
+}
+.collapsed .dataset-file-tree { padding: 8px 0; }
+.collapsed .dataset-tree-heading { justify-content: center; padding: 0; }
+.rail-chevron { transition: transform 180ms var(--am-ease-standard); }
+.dataset-tree-heading button[aria-expanded='true'] .rail-chevron { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) {
+  .dataset-file-layout, .rail-chevron { transition: none; }
+}
+.dataset-file-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid var(--am-border);
+  border-radius: var(--am-radius-md);
+  background: var(--am-surface);
+  overflow: hidden;
+}
+.dataset-file-toolbar {
+  border: 0;
+  border-radius: 0;
+  padding: 12px 14px;
+  gap: 6px;
+  min-height: 46px;
+  flex-wrap: nowrap;
+}
+.dataset-file-content :deep(.resource-table) {
+  border: 0;
+  border-radius: 0;
+}
+.crumb {
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  padding: 2px;
+}
+.crumb:hover {
+  text-decoration: underline;
+}
+.location-label,
+.files-footer {
+  font-size: 13px;
+  color: var(--am-text-muted);
+}
+.files-footer {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-top: 1px solid var(--am-border);
+}
+.dataset-file-layout,
+.dataset-file-tree {
+  min-height: clamp(320px, 51vh, 540px);
+}
 </style>

@@ -67,6 +67,14 @@ class DatasetCatalog(Protocol):
         """读取版本列表，单页最多由 API 限制为 100 条。"""
         ...
 
+    def version_task_counts(self, project_id: str, ids: list[str]) -> dict[str, dict[str, int]]:
+        """按版本统计当前项目训练、评估任务的实际引用。"""
+        ...
+
+    def version_task_references(self, project_id: str, version_id: str, offset: int, limit: int) -> dict:
+        """列出实际引用此版本的训练、评估任务。"""
+        ...
+
     def version_summaries(self, ids: list[str]) -> list[dict]:
         """仅聚合当前页版本的计数，不读取样本数组。"""
         ...
@@ -128,7 +136,7 @@ class DatasetCatalog(Protocol):
         ...
 
     def jobs(
-        self, project_id: str, version_id: str, *, offset: int = 0, limit: int = 20
+        self, project_id: str, version_id: str, *, offset: int = 0, limit: int = 20, operation: str = ""
     ) -> dict:
         """分页读取固定版本的工作区检查与操作。"""
         ...
