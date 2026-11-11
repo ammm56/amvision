@@ -45,6 +45,7 @@ import {
 } from 'echarts/components'
 import { init, use, type ECharts, type EChartsCoreOption } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
+import { workbenchFontFamily } from '@/shared/ui/canvas-font'
 
 import type { ModelTaskType } from '../services/model.service'
 import {
@@ -147,7 +148,7 @@ onBeforeUnmount(() => {
 function initializeChart(element: HTMLElement | null): ECharts | null {
   // jsdom 没有可用的 canvas 布局；浏览器中容器宽度大于零时再初始化。
   if (element === null || element.clientWidth <= 0) return null
-  return init(element, undefined, { renderer: 'canvas' })
+  return init(element, { textStyle: { fontFamily: workbenchFontFamily() } }, { renderer: 'canvas' })
 }
 
 function renderCharts(): void {

@@ -1,6 +1,6 @@
 <template>
   <span v-if="appearance === 'icon'" class="task-state-icon" :class="`task-state-icon--${statusTone}`" :title="statusLabel">
-    <component :is="stateIcon" :size="20" :stroke-width="2" class="task-state-icon__symbol" :class="{ 'task-state-icon__symbol--loading': canonicalState === 'running' }" aria-hidden="true" />
+    <component :is="stateIcon" :size="20" :stroke-width="2" class="task-state-icon__symbol" :class="{ 'status-disc': statusTone === 'success' || statusTone === 'danger', 'task-state-icon__symbol--loading': canonicalState === 'running' }" aria-hidden="true" />
     <span class="task-state-icon__label">{{ statusLabel }}</span>
   </span>
   <StatusBadge v-else :tone="statusTone">

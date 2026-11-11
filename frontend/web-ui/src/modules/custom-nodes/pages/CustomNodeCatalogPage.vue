@@ -415,6 +415,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import { computed, defineComponent, h, onMounted, ref, watch, type PropType } from 'vue'
 import { CircleCheck, ListFilter, Power, PowerOff, RefreshCw, RotateCcw, ScrollText, Search, Upload, X } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
@@ -1012,9 +1013,7 @@ function formatJson(value: unknown): string {
 }
 
 function formatTimestamp(value: string): string {
-  if (!value) return '-'
-  const timestamp = new Date(value)
-  return Number.isNaN(timestamp.getTime()) ? value : timestamp.toLocaleString(currentLocale.value)
+  return formatSystemDateTime(value)
 }
 
 function shortHash(value: string): string {

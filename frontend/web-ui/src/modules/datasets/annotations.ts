@@ -1,3 +1,4 @@
+import { loadCanvasFont, workbenchFontFamily } from '@/shared/ui/canvas-font'
 import type {
   DatasetAnnotation,
   DatasetSample,
@@ -99,6 +100,7 @@ export function paintAnnotations(
 ): number {
   const sx = width / sample.width,
     sy = height / sample.height
+  const font = `${12 * labelScale}px ${workbenchFontFamily()}`
   let classRow = 0,
     invalid = 0
   const ordered = [...sample.annotations].sort(
@@ -114,7 +116,7 @@ export function paintAnnotations(
     ctx.strokeStyle = color
     ctx.fillStyle = color
     ctx.lineWidth = (item.annotation_id === selected ? 3 : 1.6) * labelScale
-    ctx.font = `${12 * labelScale}px sans-serif`
+    ctx.font = font
     let x = 8 * labelScale,
       y = (20 + classRow * 22) * labelScale
     if (item.annotation_type === 'classification') classRow++
@@ -258,6 +260,7 @@ export async function annotatedImage(
 ) {
   const bitmap = await createImageBitmap(blob, { imageOrientation: 'none' })
   try {
+    await loadCanvasFont([...categories.values()].join(''))
     const canvas = document.createElement('canvas')
     const scale = Math.min(1, 4096 / Math.max(bitmap.width, bitmap.height))
     canvas.width = Math.round(bitmap.width * scale)

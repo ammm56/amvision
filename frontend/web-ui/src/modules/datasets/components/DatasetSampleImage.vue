@@ -22,6 +22,7 @@ import {
   type DatasetSample,
 } from '../services/dataset-workspace.service'
 import { annotationBounds, paintAnnotations } from '../annotations'
+import { loadCanvasFont } from '@/shared/ui/canvas-font'
 import { useDatasetText } from '../dataset-workspace'
 const props = defineProps<{
   datasetId: string
@@ -109,6 +110,17 @@ function draw() {
   ctx.restore()
 }
 useResizeObserver(canvas, draw)
+watch(
+  () => props.showAnnotations ? [...labels.value.values()].join('') : '',
+  async (text, _, cleanup) => {
+    if (!text) return
+    let current = true
+    cleanup(() => { current = false })
+    await loadCanvasFont(text)
+    if (current) draw()
+  },
+  { immediate: true },
+)
 watch(
   () => [
     props.datasetId,

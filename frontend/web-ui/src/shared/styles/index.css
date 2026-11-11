@@ -1264,10 +1264,10 @@ textarea:focus-visible {
   font-weight: 700;
 }
 
-.resource-table td span:not(.status-badge, .status-badge *) {
+.resource-table td > strong + span:not(.status-badge) {
   display: block;
   color: var(--am-text-muted);
-  font-size: 12px;
+  font-size: var(--am-type-caption);
 }
 
 .resource-table td .compact-info-value {

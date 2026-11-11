@@ -17,12 +17,12 @@ withDefaults(defineProps<{ label?: string; embedded?: boolean }>(), { embedded: 
 .resource-table--embedded :deep(td) { border-bottom: 0; }
 .resource-table :deep(tr.is-clickable) { cursor: pointer; }
 .resource-table :deep(tbody tr) { border-radius: var(--am-radius-sm); }
-.resource-table :deep(tbody td) { transition: background-color var(--am-motion-fast) var(--am-ease-standard); }
-.resource-table :deep(tbody td:first-child) { border-radius: var(--am-radius-sm) 0 0 var(--am-radius-sm); }
-.resource-table :deep(tbody td:last-child) { border-radius: 0 var(--am-radius-sm) var(--am-radius-sm) 0; }
+.resource-table :deep(tbody :is(td, th[scope="row"])) { transition: background-color var(--am-motion-fast) var(--am-ease-standard); }
+.resource-table :deep(tbody :is(td, th[scope="row"]):first-child) { border-radius: var(--am-radius-sm) 0 0 var(--am-radius-sm); }
+.resource-table :deep(tbody :is(td, th[scope="row"]):last-child) { border-radius: 0 var(--am-radius-sm) var(--am-radius-sm) 0; }
 .resource-table :deep(tbody tr:hover:not(.is-selected)) { background: transparent; }
-.resource-table :deep(tbody tr:hover:not(.is-selected) > td),
-.resource-table :deep(tr:has([data-row-action]:focus-visible) > td) { background: var(--am-row-hover); }
+.resource-table :deep(tbody tr:hover:not(.is-selected) > :is(td, th[scope="row"])),
+.resource-table :deep(tr:has([data-row-action]:focus-visible) > :is(td, th[scope="row"])) { background: var(--am-row-hover); }
 .resource-table :deep(tr:has([data-row-action]:focus-visible)) {
   outline: 2px solid var(--am-focus-ring);
   outline-offset: -2px;
